@@ -4,8 +4,11 @@
 //! it as an upright wall's prisms are (an arc's chords, its doors' and windows' jambs) and up it where an opening, or a wall it
 //! joins, starts or stops. Each piece's bottom and top follow its base and top, what they are attached to included, at the
 //! point each corner has leant to. Straight, a piece's faces are flat; curved, it is a cone's, in chords.
+//!
+//! An upright wall joined at an end to a slanted one is lofted the same way ([`lofted`]): its end follows the slanted wall's face
+//! up the wall, as Revit's does; an edited profile's too, each stretch between its edges' planes.
 
-use super::{Axis, Bound, Hole, Index, bounds, cap_heights, cap_with, faces_at, hole, openings_of};
+use super::{Axis, Bound, Hole, Index, Plane, arms, bounds, cap_heights, cap_with, faces_at, hole, openings_of, profile};
 use crate::geom::{self, P2};
 use crate::model::{Element, Id, Model};
 
@@ -18,10 +21,34 @@ pub(crate) type Piece = Vec<[P3; 3]>;
 /// How long a piece along a wall attached to a roof or a floor may be, mm: its top follows theirs in straight steps.
 const STEP: f64 = 500.0;
 
-/// Wall `id`'s solid, leaning: closed pieces, round its doors and windows (with `openings`). Nothing for an upright wall.
+/// Whether wall `id` is lofted rather than a stack of prisms: it leans, or a wall it joins at an end does, so its ends move as
+/// it rises.
+pub(crate) fn lofted(m: &Model, id: Id, index: Option<&Index>) -> bool {
+    let Some(w) = m.wall(id) else { return false };
+    if w.slant != 0.0 && w.slant.is_finite() {
+        return true;
+    }
+    if !w.join || w.panel_of.is_some() || crate::curtain::pattern(m, w).is_some() {
+        return false;
+    }
+    [false, true].into_iter().any(|at_end| arms(m, id, at_end, index, &|_| true, None).0.iter().any(|a| a.id != id && a.leans))
+}
+
+/// Wall `id`'s solid, lofted: closed pieces, round its doors and windows (with `openings`), but those whose families cut it with
+/// voids of their own, which the voids cut (as [`super::prisms`] leaves them). Nothing for a wall that isn't ([`lofted`]): its
+/// prisms are its solid.
 pub(crate) fn pieces(m: &Model, id: Id, openings: bool, index: Option<&Index>) -> Vec<Piece> {
+    pieces_holed(m, id, openings, true, index)
+}
+
+/// [`pieces`] with every opening its rectangle, voids or none: what stands where cutting by the voids fails.
+pub(crate) fn pieces_rect(m: &Model, id: Id, index: Option<&Index>) -> Vec<Piece> {
+    pieces_holed(m, id, true, false, index)
+}
+
+fn pieces_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&Index>) -> Vec<Piece> {
     let Some(w) = m.wall(id) else { return Vec::new() };
-    if w.slant == 0.0 || !w.slant.is_finite() {
+    if !lofted(m, id, index) {
         return Vec::new();
     }
     let guid = m.guid(id);
@@ -30,7 +57,12 @@ pub(crate) fn pieces(m: &Model, id: Id, openings: bool, index: Option<&Index>) -
     let holes: Vec<Hole> = if openings {
         openings_of(m, id, index)
             .filter_map(|e| match e {
-                Element::Door(o) | Element::Window(o) if o.host == guid => hole(m, w, e, o),
+                Element::Door(o) | Element::Window(o) if o.host == guid => {
+                    if voided && !m.opening_voids_local(e).is_empty() {
+                        return None;
+                    }
+                    hole(m, w, e, o)
+                }
                 _ => None,
             })
             .collect()
@@ -45,6 +77,8 @@ pub(crate) fn pieces(m: &Model, id: Id, openings: bool, index: Option<&Index>) -
         cuts.extend((1..n).map(|i| len * i as f64 / n as f64));
     }
     cuts.extend(holes.iter().flat_map(|h| [h.s0, h.s1]).filter(|s| *s > 0.0 && *s < len));
+    // An edited profile turns at its corners.
+    cuts.extend(profile::stations(w).into_iter().filter(|s| *s > 0.0 && *s < len));
     cuts.sort_by(f64::total_cmp);
     cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     let bands = cap_heights(m, id, index);
@@ -72,26 +106,36 @@ pub(crate) fn pieces(m: &Model, id: Id, openings: bool, index: Option<&Index>) -
             gaps.extend(edges.into_iter().map(|z| (z, z)));
         }
         gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
-        let mut floors: Vec<Level> = vec![Level::Bound(&base)];
-        let mut ceilings: Vec<Level> = Vec::new();
-        for (g0, g1) in gaps {
-            ceilings.push(Level::Flat(g0));
-            floors.push(Level::Flat(g1));
-        }
-        ceilings.push(Level::Bound(&top));
-        for (under, over) in floors.iter().zip(&ceilings) {
-            if let Some(piece) = loft(&ring, under, over, m.own_base(w)) {
-                out.push(piece);
+        // From its base to its top; an edited profile's, each stretch it covers here, from one edge's plane to another's.
+        let stretches: Vec<(Level, Level)> = if w.profile.is_empty() {
+            vec![(Level::Bound(&base), Level::Bound(&top))]
+        } else {
+            profile::planes_at(m, w, mid).into_iter().map(|(b, t)| (Level::Plane(b), Level::Plane(t))).collect()
+        };
+        for &(low, high) in &stretches {
+            let mut floors = vec![low];
+            let mut ceilings = Vec::new();
+            for &(g0, g1) in &gaps {
+                ceilings.push(Level::Flat(g0));
+                floors.push(Level::Flat(g1));
+            }
+            ceilings.push(high);
+            for (under, over) in floors.into_iter().zip(ceilings) {
+                if let Some(piece) = loft(&ring, (&under, &over), (&low, &high), m.own_base(w)) {
+                    out.push(piece);
+                }
             }
         }
     }
     out
 }
 
-/// A piece's bottom or top: a level, or what the wall's base or top is (attached, under a roof's slopes).
+/// A piece's bottom or top: a level, what the wall's base or top is (attached, under a roof's slopes), or an edge of its profile.
+#[derive(Clone, Copy)]
 enum Level<'a> {
     Flat(f64),
     Bound(&'a Bound),
+    Plane(Plane),
 }
 
 impl Level<'_> {
@@ -99,11 +143,11 @@ impl Level<'_> {
     fn at(&self, ring: &impl Fn(f64, f64) -> Vec<P2>, i: usize, guess: f64, standing: f64) -> Option<f64> {
         match self {
             Level::Flat(z) => Some(*z),
-            Level::Bound(b) => {
+            Level::Bound(_) | Level::Plane(_) => {
                 let mut z = guess;
                 for _ in 0..8 {
                     let q = *ring(z, standing).get(i)?;
-                    let next = b.at(q);
+                    let next = self.rough(q);
                     if !next.is_finite() {
                         return None;
                     }
@@ -122,13 +166,16 @@ impl Level<'_> {
         match self {
             Level::Flat(z) => *z,
             Level::Bound(b) => b.at(q),
+            Level::Plane(p) => p.at(q),
         }
     }
 }
 
 /// The piece from `under` up to `over` of the outline `ring` gives at each height: each corner from where it leans to at the one
-/// to where it leans to at the other. None where it has no height, or its outline changes shape as it rises.
-fn loft(ring: &impl Fn(f64, f64) -> Vec<P2>, under: &Level, over: &Level, base: f64) -> Option<Piece> {
+/// to where it leans to at the other, never below the wall's own bottom there nor over its top (`within`: where a roof it follows
+/// or its profile's edge dips under an opening's head, that is the top). None where it has no height, or its outline changes shape
+/// as it rises.
+fn loft(ring: &impl Fn(f64, f64) -> Vec<P2>, (under, over): (&Level, &Level), within: (&Level, &Level), base: f64) -> Option<Piece> {
     let first = ring(base, base);
     let centre = first.iter().fold(P2(0.0, 0.0), |s, q| s + *q) * (1.0 / first.len().max(1) as f64);
     let (lo, hi) = (under.rough(centre), over.rough(centre));
@@ -143,8 +190,8 @@ fn loft(ring: &impl Fn(f64, f64) -> Vec<P2>, under: &Level, over: &Level, base: 
     let mut bottom = Vec::with_capacity(n);
     let mut top = Vec::with_capacity(n);
     for i in 0..n {
-        let z0 = under.at(ring, i, lo, standing)?;
-        let z1 = over.at(ring, i, hi, standing)?.max(z0);
+        let z0 = under.at(ring, i, lo, standing)?.max(within.0.at(ring, i, lo, standing)?);
+        let z1 = over.at(ring, i, hi, standing)?.min(within.1.at(ring, i, hi, standing)?).max(z0);
         let (r0, r1) = (ring(z0, standing), ring(z1, standing));
         if r0.len() != n || r1.len() != n {
             return None;
@@ -159,7 +206,7 @@ fn loft(ring: &impl Fn(f64, f64) -> Vec<P2>, under: &Level, over: &Level, base: 
 }
 
 /// The closed solid between `bottom` and `top`, corner for corner: its two ends, and a side between each two corners.
-fn closed(mut bottom: Vec<P3>, mut top: Vec<P3>) -> Piece {
+pub(crate) fn closed(mut bottom: Vec<P3>, mut top: Vec<P3>) -> Piece {
     let plan = |r: &[P3]| r.iter().map(|p| P2(p[0], p[1])).collect::<Vec<P2>>();
     // Counter-clockwise in plan, so its sides face out.
     if geom::area(&plan(&bottom)) < 0.0 {

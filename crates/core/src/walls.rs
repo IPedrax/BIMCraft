@@ -293,8 +293,6 @@ pub(crate) struct Arm {
     pub(crate) cw: P2,
     pub(crate) centre: P2,
     pub(crate) thick: f64,
-    /// How far a slanted wall's faces have moved across at the height asked: its corners move as far.
-    pub(crate) lean: f64,
     /// Whether it is a slanted wall's: a join it takes part in is worked out the same way at every height.
     pub(crate) leans: bool,
     /// A curtain wall ending where a plain wall does: it doesn't mitre, the plain wall ends square against it.
@@ -319,7 +317,6 @@ pub(crate) fn arm_at(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool, z: O
         cw: axis.at(s, cw),
         centre: axis.at(s, (ext + int) / 2.0),
         thick: ext - int,
-        lean: z.map_or(0.0, |z| lean(m, w, z)),
         leans: w.slant != 0.0,
         butts: false,
     }
@@ -386,7 +383,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
                 && joins(o)
             {
                 let (t, (e, i), c) = (ax.tangent(s), (ax.at(s, ext), ax.at(s, int)), ax.at(s, (ext + int) / 2.0));
-                let (lean, leans) = (z.map_or(0.0, |z| lean(m, o, z)), o.slant != 0.0);
+                let leans = o.slant != 0.0;
                 arms.push(Arm {
                     id: other,
                     at_end: false,
@@ -396,7 +393,6 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
                     cw: i,
                     centre: c,
                     thick: ext - int,
-                    lean,
                     leans,
                     butts: false,
                 });
@@ -409,7 +405,6 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
                     cw: e,
                     centre: c,
                     thick: ext - int,
-                    lean,
                     leans,
                     butts: false,
                 });

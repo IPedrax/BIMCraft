@@ -1738,8 +1738,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let axis_rep = w.add(format!("IFCSHAPEREPRESENTATION(#{axis},'Axis','Curve2D',(#{line}))"));
                 // Its outline swept up, mitred where it joins others as the plan's is; attached to a roof or a floor, with an
                 // edited profile, or taller than what it joins, a closed shell for each of its prisms.
-                let shape = if wl.slant != 0.0 {
-                    // Slanted: the pieces it is lofted from, each a closed face set in its frame.
+                let shape = if walls::slant::lofted(m, id, None) {
+                    // Slanted, or joined to a slanted wall: the pieces it is lofted from, each a closed face set in its frame.
                     let sets: Vec<u64> = walls::slant::pieces(m, id, false, None)
                         .iter()
                         .map(|piece| {

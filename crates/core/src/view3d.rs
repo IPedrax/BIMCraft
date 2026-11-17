@@ -1071,19 +1071,21 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
         part: 0,
     };
     let voids = walls::host_voids_in(m, id, index);
-    // A slanted wall leans: pieces lofted up it, cut as a section cuts any mesh.
-    let leaning = |openings: bool| -> Vec<Solid> {
-        walls::slant::pieces(m, id, openings, index)
+    // Lofted pieces, cut as a section cuts any mesh.
+    let leaning = |voided: bool| -> Vec<Solid> {
+        let pieces = if voided { walls::slant::pieces(m, id, true, index) } else { walls::slant::pieces_rect(m, id, index) };
+        pieces
             .into_iter()
             .map(|tris| Solid::Mesh { owner: id, color: WALL, tex: 0, caps: 0, round: false, cut: true, tris, vis: 0 })
             .collect()
     };
-    if m.wall(id).is_some_and(|w| w.slant != 0.0) {
+    // Slanted, or joined to a slanted wall at an end: its ends move as it rises.
+    if walls::slant::lofted(m, id, index) {
         let solids = leaning(true);
         if voids.is_empty() {
             return solids;
         }
-        return cut_by_voids(id, WALL, solids, &voids).unwrap_or_else(|| leaning(true));
+        return cut_by_voids(id, WALL, solids, &voids).unwrap_or_else(|| leaning(false));
     }
     let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
     if voids.is_empty() {
@@ -1591,7 +1593,18 @@ fn solids_in_with(
                     let u = axis.tangent(o.offset);
                     let frame = Frame { o: axis.at(o.offset, walls::centre(m, w)), u, n: u.perp() };
                     let a = (h.s0 - o.offset, h.s1 - o.offset);
-                    out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (h.bottom, h.top) });
+                    if w.slant != 0.0 {
+                        // In a slanted wall it leans with it, staying in the wall all the way up.
+                        let at = |x: f64, c: f64, z: f64| {
+                            let q = frame.o + frame.u * x + frame.n * (c + walls::lean(m, w, z));
+                            [q.0, q.1, z]
+                        };
+                        let ring = |z: f64| vec![at(a.0, -25.0, z), at(a.1, -25.0, z), at(a.1, 25.0, z), at(a.0, 25.0, z)];
+                        let tris = walls::slant::closed(ring(h.bottom), ring(h.top));
+                        out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
+                    } else {
+                        out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (h.bottom, h.top) });
+                    }
                 }
             }
             _ => {}

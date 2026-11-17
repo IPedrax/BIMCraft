@@ -49,8 +49,15 @@ cut covers it, and IFC writes them as face sets. A join a slanted wall takes par
 keeps its shape as it rises: its corner is where the walls' centre lines cross there, the same point for every wall at the node, a
 face's crossing allowed twice the thickest wall's thickness from it; a corner farther off than half the shortest wall (walls nearly in
 line leaning apart) is no corner, and each ends square at its own end there. A wall ending on a slanted one is found ending on it at
-their feet, and stops at its face, as far as that wall reaches, at every height. `wall_shape_tests` sweeps corners from 30° to 165°
-and T-junctions at many leans. A door or a window stands where the wall has leant to at its sill and
+their feet, and stops at its face, as far as that wall reaches, at every height. An upright wall joined at an end to a slanted one is
+lofted too (`slant::lofted`), so its end follows the slanted wall's face up the wall as Revit's does, an edited profile's included
+(each stretch between its edges' planes), and every lofted piece is held between its wall's own bottom and top corner by corner.
+`wall_shape_tests` sweeps corners from 30° to 165° and T-junctions at many leans.
+
+Doors and windows in a slanted wall cut it with upright jambs and a level sill and head, through its lean; a plain one's leaf or glass,
+a family's forms and its voids lean with the wall (`opening_lean`), so they stay in it all the way up; an opening whose family cuts
+with voids of its own leaves its rectangle to them, as in an upright wall (`slant::pieces`, `pieces_rect` where cutting fails); a plan
+cuts the gap where the wall has leant to; IFC deepens the opening's void by the lean. A door or a window stands where the wall has leant to at its sill and
 leans with it (`Model::opening_frame`, `opening_lean`); its hole is cut with upright jambs and a level sill and head.
 
 A straight, upright, unattached wall can have its shape in elevation edited (Revit's Edit Profile): `profile` holds loops of
@@ -60,8 +67,8 @@ at its ends and its doors' sills are measured as before, and not crossing itself
 the profile; between two cuts each stretch it covers is a prism from one edge's plane to another's, less its openings
 (`profile::stack`), so 3D, sections and IFC take it as they take any wall, and a plan cuts it only where the profile reaches the cut
 plane (`walls::plan_cut`). Its top for its openings and its height are the profile's (`walls::top_at`, `heights`). On the desktop it is Revit's
-Edit Profile: Modify | Walls has a Mode panel (Edit Profile, and Reset Profile once the wall has one) for one such wall selected, and
-the Modify panel is kept whole while the others make room, as Revit's is. In a view that looks at the wall (a section or an elevation
+Edit Profile: Modify | Walls has a Mode panel (Edit Profile, and Reset Profile once the wall has one) for one such wall selected; beside it
+the Modify Wall panel yields (`ribbon::yielding`), so a narrow ribbon lists Attach and Detach before it takes the Modify panel's tools. In a view that looks at the wall (a section or an elevation
 whose line runs along it, or the 3D view) Edit Profile is sketch mode on the wall's face (`sketch::Of::Profile`): its outline and holes
 are sketch lines in the wall's `[along, up]` frame on an upright `sketch3d::Face`, which a section's camera shows as the 3D view's
 does, so they can be deleted and the outline sketched again with the Draw panel, Modify's grips and Delete, as a floor's boundary is;

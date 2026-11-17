@@ -220,12 +220,14 @@ fn joined(s: &Session, a: Id, b: Id, what: &str, touching: bool) {
     for r in [&ra, &rb] {
         assert!(r.iter().all(|o| o.len() == r[0].len()), "{what}: its outline changes shape as it rises: {r:?}");
     }
-    // In 3D each is whole: one piece each, a slanted one lofted, an upright one a prism.
+    // In 3D each is whole: lofted in one piece where its ends move as it rises (an upright one too, where it ends on or meets a
+    // slanted one), else its prisms (an upright wall a slanted one ends on: nothing of it moves).
     for id in [a, b] {
-        let slanted = s.model.wall(id).is_some_and(|w| w.slant != 0.0);
-        if slanted {
+        if crate::walls::slant::lofted(&s.model, id, None) {
             let pieces = crate::walls::slant::pieces(&s.model, id, true, None);
             assert_eq!(pieces.len(), 1, "{what}: wall {id} in 3D is {} pieces", pieces.len());
+        } else {
+            assert!(!crate::walls::prisms(&s.model, id, true).is_empty(), "{what}: wall {id} has no solid");
         }
     }
 }
@@ -303,5 +305,168 @@ fn three_walls_one_slanted_share_their_node_at_every_height() {
                 assert!(overlap(a, b) < 1.0, "{z}: overlap {}\\n{a:?}\\n{b:?}", overlap(a, b));
             }
         }
+    }
+}
+
+/// The corners of wall `id`'s pieces at height `z`, in plan.
+fn corners_at(s: &Session, id: Id, z: f64) -> Vec<P2> {
+    crate::walls::slant::pieces(&s.model, id, true, None)
+        .iter()
+        .flatten()
+        .flatten()
+        .filter(|p| (p[2] - z).abs() < 1e-6)
+        .map(|p| P2(p[0], p[1]))
+        .collect()
+}
+
+#[test]
+fn an_upright_wall_joined_to_a_slanted_one_follows_its_face_up_the_wall() {
+    // As Revit's: the upright wall's end leans with the slanted wall's face, a sloped end, not a square one.
+    let s = session(
+        r#"wall {"points": [[6000, 0], [0, 0]], "height": 3000, "slant": 30}
+           wall {"points": [[0, 0], [0, 6000]], "height": 3000}"#,
+    );
+    let upright = 100003;
+    assert!(crate::walls::slant::lofted(&s.model, upright, None));
+    let lean = 3000.0 * 30f64.to_radians().tan();
+    // At its foot it starts at the corner; at its top, where the slanted wall has leant to (south, its exterior).
+    let low = corners_at(&s, upright, 0.0).iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    let high = corners_at(&s, upright, 3000.0).iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    assert!((low + 100.0 / 30f64.to_radians().cos()).abs() < 1.0, "{low}");
+    assert!((high - (low - lean)).abs() < 1.0, "{high} {low}");
+    // To IFC as face sets too.
+    assert!(crate::ifc::export(&s.model).matches("IFCTRIANGULATEDFACESET").count() >= 2);
+}
+
+#[test]
+fn a_shape_edited_wall_still_joins_a_slanted_one_at_its_untouched_end() {
+    // Edit Profile on the upright wall: a notch at its far end's top and a square hole, its end at the corner untouched.
+    let mut s = session(
+        r#"wall {"points": [[6000, 0], [0, 0]], "height": 3000, "slant": 30}
+           wall {"points": [[0, 0], [0, 8000]], "height": 3000}"#,
+    );
+    let shaped = 100003;
+    let notch = serde_json::json!([
+        [[0, 0], [8000, 0], [8000, 2000], [6000, 2000], [6000, 3000], [0, 3000]],
+        [[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000]]
+    ]);
+    s.execute("modify", &serde_json::json!({"id": shaped, "profile": notch})).unwrap_or_else(|e| panic!("{e}"));
+    let pieces = crate::walls::slant::pieces(&s.model, shaped, true, None);
+    assert!(pieces.len() >= 4, "round its hole and its notch: {}", pieces.len());
+    // Its end still follows the slanted wall's face up to its top.
+    let lean = 3000.0 * 30f64.to_radians().tan();
+    let low = corners_at(&s, shaped, 0.0).iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    let high = corners_at(&s, shaped, 3000.0).iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    assert!((high - (low - lean)).abs() < 1.0, "{high} {low}");
+    // Nothing over its notch, nothing in its hole.
+    let points: Vec<[f64; 3]> = pieces.iter().flatten().flatten().copied().collect();
+    assert!(points.iter().all(|p| !(p[1] > 6000.0 + 1e-6 && p[2] > 2000.0 + 1e-6)), "over the notch");
+    let in_hole = |p: &[f64; 3]| p[1] > 3000.0 + 1e-6 && p[1] < 4000.0 - 1e-6 && p[2] > 1000.0 + 1e-6 && p[2] < 2000.0 - 1e-6;
+    assert!(!points.iter().any(in_hole), "in the hole");
+}
+
+/// Whether point `p` lies inside the closed meshes `tris`: a ray from it crosses them an odd number of times.
+fn inside(tris: &[[[f64; 3]; 3]], p: [f64; 3]) -> bool {
+    let d = [0.5773, 0.5774, 0.5775];
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let cross = |a: [f64; 3], b: [f64; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let hits = tris
+        .iter()
+        .filter(|[a, b, c]| {
+            let (e1, e2) = (sub(*b, *a), sub(*c, *a));
+            let h = cross(d, e2);
+            let det = dot(e1, h);
+            if det.abs() < 1e-12 {
+                return false;
+            }
+            let s = sub(p, *a);
+            let u = dot(s, h) / det;
+            let q = cross(s, e1);
+            let v = dot(d, q) / det;
+            let t = dot(e2, q) / det;
+            (0.0..=1.0).contains(&u) && v >= 0.0 && u + v <= 1.0 && t > 1e-9
+        })
+        .count();
+    hits % 2 == 1
+}
+
+/// The triangles of element `id`'s solids.
+fn triangles_of(s: &Session, id: Id) -> Vec<[[f64; 3]; 3]> {
+    let mut out = Vec::new();
+    for solid in solids(&s.model).iter().filter(|x| x.owner() == id) {
+        let mut tris = Vec::new();
+        solid.tris(&mut tris);
+        out.extend(tris.into_iter().map(|t| t.p));
+    }
+    out
+}
+
+#[test]
+fn doors_and_windows_cut_a_slanted_wall_and_lean_with_it() {
+    let mut s = session(
+        r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 20}
+           door {"wall": 100002, "offset": 1500}
+           window {"wall": 100002, "offset": 4500}"#,
+    );
+    let wall = 100002;
+    let (door, window) = (100003, 100004);
+    let tan = 20f64.to_radians().tan();
+    // On the wall's centre where it has leant to at height `z`.
+    let on = |x: f64, z: f64| [x, z * tan, z];
+    let w = triangles_of(&s, wall);
+    assert!(!inside(&w, on(1500.0, 1000.0)), "the door's hole");
+    assert!(!inside(&w, on(4500.0, 1600.0)), "the window's hole");
+    assert!(inside(&w, on(3000.0, 1000.0)) && inside(&w, on(4500.0, 400.0)) && inside(&w, on(4500.0, 2700.0)), "the wall round them");
+    // Each stays in the wall's thickness as it rises.
+    let half = 100.0 / 20f64.to_radians().cos() + 30.0;
+    for id in [door, window] {
+        let pts: Vec<[f64; 3]> = triangles_of(&s, id).into_iter().flatten().collect();
+        assert!(!pts.is_empty(), "{id} is drawn");
+        for p in &pts {
+            assert!((p[1] - p[2] * tan).abs() <= half, "{id}: {p:?} is out of the wall, {} off its centre", p[1] - p[2] * tan);
+        }
+    }
+    // IFC: both, each with the opening that voids the wall.
+    let ifc = crate::ifc::export(&s.model);
+    assert!(ifc.contains("IFCDOOR(") && ifc.contains("IFCWINDOW("));
+    assert_eq!(ifc.matches("IFCOPENINGELEMENT(").count(), 2);
+    // A door moved along the wall keeps cutting where it is.
+    s.execute("modify", &serde_json::json!({"id": door, "offset": 2500})).unwrap_or_else(|e| panic!("{e}"));
+    let w = triangles_of(&s, wall);
+    assert!(!inside(&w, on(2500.0, 1000.0)) && inside(&w, on(1500.0, 1000.0)));
+}
+
+#[test]
+fn a_window_family_cuts_a_slanted_wall_with_its_own_void_leaning_with_it() {
+    // An arched window whose void, 400 deep, cuts its host: in a wall leaning 30°, it leans with the wall, so it cuts through
+    // the wall all the way up, though the wall has moved 1.4 m across at its head.
+    let mut s = session(r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 30}"#);
+    let mut profile = vec![serde_json::json!([-500, 0]), serde_json::json!([500, 0])];
+    for k in 0..=16 {
+        let a = std::f64::consts::PI * f64::from(k) / 16.0;
+        profile.push(serde_json::json!([(500.0 * a.cos()).round(), (1000.0 + 500.0 * a.sin()).round()]));
+    }
+    s.execute(
+        "family",
+        &serde_json::json!({"name": "Arched", "category": "window", "types": {"A": {}},
+        "parameters": [{"name": "Width", "value": 1000}, {"name": "Height", "value": 1500}, {"name": "Sill Height", "value": 900},
+            {"name": "Void Depth", "instance": true, "value": 400}],
+        "forms": [
+            {"void": true, "plane": "xz", "profile": profile, "from": "-Void Depth / 2", "to": "Void Depth / 2"},
+            {"profile": [[-500, -40], [500, -40], [500, 40], [-500, 40]], "from": 0, "to": 40, "material": ""}
+        ]}),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    s.execute("window", &serde_json::json!({"wall": 100002, "offset": 3000, "family": "Arched"})).unwrap_or_else(|e| panic!("{e}"));
+    let tan = 30f64.to_radians().tan();
+    let on = |x: f64, z: f64| [x, z * tan, z];
+    let w = triangles_of(&s, 100002);
+    // Through its rectangle and its arch, high and low: open; beside it and over it: wall.
+    for (x, z) in [(3000.0, 1100.0), (3000.0, 2300.0), (2700.0, 1400.0)] {
+        assert!(!inside(&w, on(x, z)), "open at {x}, {z}");
+    }
+    for (x, z) in [(1500.0, 1400.0), (3000.0, 600.0), (3000.0, 2700.0), (2600.0, 2350.0)] {
+        assert!(inside(&w, on(x, z)), "wall at {x}, {z}");
     }
 }

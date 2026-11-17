@@ -5747,7 +5747,10 @@ impl BimApp {
         let attachable = self.selected_attachable();
         if !attachable.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
             let title = if walls.is_empty() { msg!("Modify Column") } else { msg!("Modify Wall") };
-            panel(ui, title, |ui| {
+            // With one wall's Mode panel beside it, it makes room first, keeping Flip: a narrow ribbon lists Attach and Detach
+            // before it takes the Modify panel's tools, as the Mode panel would otherwise make it.
+            let mode = matches!(walls.as_slice(), [id] if profile::profile_editable(&self.session.model, *id));
+            let body = |ui: &mut Ui| {
                 if !walls.is_empty() {
                     let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
                     if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
@@ -5762,7 +5765,8 @@ impl BimApp {
                 if big_button(ui, Icon::Detach, "Detach Top/Base", false, tip).clicked() {
                     self.run("modify", json!({"ids": attachable, "attach_top": null, "attach_base": null}));
                 }
-            });
+            };
+            if mode { ribbon::yielding(ui, title, body) } else { panel(ui, title, body) }
         }
         // One straight, upright wall: Revit's Mode panel of Modify | Walls, its shape in elevation sketched again.
         if let [id] = self.selected_walls().as_slice()
@@ -5823,9 +5827,7 @@ impl BimApp {
                 self.shape_tools(ui, floor);
             });
         }
-        // The tools every selection takes (Move, Copy, Rotate…): kept whole while the other panels make room, as Revit's Modify
-        // panel is, whatever a contextual tab adds before it.
-        ribbon::kept(ui, "Modify", |ui| {
+        panel(ui, "Modify", |ui| {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in rows {
