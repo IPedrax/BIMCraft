@@ -2226,8 +2226,8 @@ fn the_elevation_tool_looks_at_the_wall_clicked_and_turns_round_when_dragged_pas
     let mut h = app(BOX);
     press(&mut h, "View");
     press(&mut h, "Elevation");
-    // Beside the building there is nothing to look at: no elevation.
-    click(&mut h, P2(4000.0, 9000.0));
+    // Beside the building there is nothing to look at: no elevation. (West of it: north of it is under the ribbon.)
+    click(&mut h, P2(-2500.0, 3000.0));
     assert!(ids(&h, "elevation").is_empty());
     // The north wall, clicked on its outer half: the mark stands 1.5 m outside its centre line, looking south at it.
     click(&mut h, P2(4000.0, 6050.0));
@@ -6594,6 +6594,7 @@ mod cad;
 mod camera_views;
 mod chinese;
 mod classification;
+mod clipboard;
 mod clouds;
 mod codes;
 mod control;

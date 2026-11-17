@@ -26,6 +26,9 @@ mod circuit_tests;
 pub mod classification;
 #[cfg(test)]
 mod classification_tests;
+pub mod clipboard;
+#[cfg(test)]
+mod clipboard_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;

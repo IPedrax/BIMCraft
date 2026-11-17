@@ -3137,9 +3137,10 @@ msgstr "Clique para onde o próximo lance segue a partir do patamar: em frente, 
 msgid "Client Name"
 msgstr "Nome do cliente"
 
+#: crates/ui-egui/src/clipboard.rs:201
 #: crates/ui-egui/src/editor/document.rs:624
 msgid "Clipboard"
-msgstr ""
+msgstr "Área de transferência"
 
 #: crates/ui-egui/src/lib.rs:6259
 msgid "Clockwise"
@@ -9898,9 +9899,11 @@ msgstr "Elipse parcial: clique nas extremidades do eixo e depois até onde ela s
 msgid "Passphrase:"
 msgstr "Senha-frase:"
 
+#: crates/core/src/commands.rs:1926 crates/ui-egui/src/clipboard.rs:56
+#: crates/ui-egui/src/clipboard.rs:206 crates/ui-egui/src/context.rs:88
 #: crates/ui-egui/src/editor/document.rs:625
 msgid "Paste"
-msgstr ""
+msgstr "Colar"
 
 #: crates/core/src/fixtures.rs:489
 msgid "Patch Panel"
@@ -18638,6 +18641,169 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:6614
 msgid "Click where the detail line starts; Q pins a guide there."
 msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:53
+msgid "Aligned to Current View"
+msgstr "Alinhado à vista atual"
+
+#: crates/ui-egui/src/clipboard.rs:55
+msgid "Aligned to Picked Level"
+msgstr "Alinhado ao nível escolhido"
+
+#: crates/ui-egui/src/clipboard.rs:54
+msgid "Aligned to Same Place"
+msgstr "Alinhado ao mesmo local"
+
+#: crates/ui-egui/src/clipboard.rs:51
+msgid "Aligned to Selected Levels"
+msgstr "Alinhado aos níveis selecionados"
+
+#: crates/ui-egui/src/clipboard.rs:52
+msgid "Aligned to Selected Views"
+msgstr "Alinhado às vistas selecionadas"
+
+#: crates/ui-egui/src/lib.rs:5954
+msgid "Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."
+msgstr "Clique na linha de um nível neste corte ou elevação: os elementos colados vão para ele. Esc cancela."
+
+#: crates/ui-egui/src/clipboard.rs:361
+msgid "Click a level the pasted elements go onto. Esc cancels."
+msgstr "Clique no nível para onde vão os elementos colados. Esc cancela."
+
+#: crates/ui-egui/src/clipboard.rs:349 crates/ui-egui/src/clipboard.rs:485
+#: crates/ui-egui/src/lib.rs:5918
+msgid "Click on the work plane where the pasted elements go. Esc cancels."
+msgstr "Clique no plano de trabalho onde ficam os elementos colados. Esc cancela."
+
+#: crates/ui-egui/src/clipboard.rs:351 crates/ui-egui/src/lib.rs:5953
+msgid "Click where the pasted elements go. Esc cancels."
+msgstr "Clique onde vão os elementos colados. Esc cancela."
+
+#: crates/ui-egui/src/clipboard.rs:308
+msgid "Copied {} elements to the clipboard."
+msgstr "{} elementos copiados para a área de transferência."
+
+#: crates/core/src/commands.rs:1908 crates/ui-egui/src/clipboard.rs:225
+#: crates/ui-egui/src/context.rs:87
+msgid "Copy to Clipboard"
+msgstr "Copiar para a área de transferência"
+
+#: crates/ui-egui/src/clipboard.rs:223
+msgid "Copy to Clipboard (Ctrl+C): the selection, to paste in any view, or in another BIMCraft"
+msgstr "Copiar para a área de transferência (Ctrl+C): a seleção, para colar em qualquer vista ou em outro BIMCraft"
+
+#: crates/core/src/commands.rs:1918 crates/ui-egui/src/clipboard.rs:219
+#: crates/ui-egui/src/context.rs:86
+msgid "Cut to Clipboard"
+msgstr "Recortar para a área de transferência"
+
+#: crates/ui-egui/src/clipboard.rs:217
+msgid "Cut to Clipboard (Ctrl+X): the selection, taken away to paste elsewhere"
+msgstr "Recortar para a área de transferência (Ctrl+X): a seleção, retirada para colar em outro lugar"
+
+#: crates/ui-egui/src/clipboard.rs:309
+msgid "Cut {} elements to the clipboard."
+msgstr "{} elementos recortados para a área de transferência."
+
+#: crates/ui-egui/src/clipboard.rs:69
+msgid "In a section or an elevation: click a level; model elements go onto it"
+msgstr "Em um corte ou elevação: clique em um nível; os elementos do modelo vão para ele"
+
+#: crates/ui-egui/src/clipboard.rs:67
+msgid "Into this view where they were in theirs; model elements onto this plan's level"
+msgstr "Nesta vista, onde estavam na sua; elementos do modelo no nível desta planta"
+
+#: crates/ui-egui/src/clipboard.rs:65
+msgid "Model elements onto each level picked from a list, at the same place in plan"
+msgstr "Elementos do modelo em cada nível escolhido de uma lista, no mesmo lugar em planta"
+
+#: crates/ui-egui/src/clipboard.rs:519
+msgid "None of this project's views is like the one they were copied from."
+msgstr "Nenhuma vista deste projeto é como aquela de onde foram copiados."
+
+#: crates/ui-egui/src/clipboard.rs:205
+msgid "Paste (Ctrl+V), and its Aligned options"
+msgstr "Colar (Ctrl+V) e suas opções Alinhado"
+
+#: crates/ui-egui/src/clipboard.rs:63
+msgid "Paste (Ctrl+V): the copied elements follow the cursor; click where they go"
+msgstr "Colar (Ctrl+V): os elementos copiados seguem o cursor; clique onde vão"
+
+#: crates/ui-egui/src/clipboard.rs:50
+msgid "Paste from Clipboard"
+msgstr "Colar da área de transferência"
+
+#: crates/ui-egui/src/clipboard.rs:458
+msgid "Paste in 3D"
+msgstr "Colar em 3D"
+
+#: crates/ui-egui/src/clipboard.rs:517
+msgid "Paste into these views:"
+msgstr "Colar nestas vistas:"
+
+#: crates/ui-egui/src/clipboard.rs:517
+msgid "Paste onto these levels:"
+msgstr "Colar nestes níveis:"
+
+#: crates/ui-egui/src/clipboard.rs:418
+msgid "Pasted {} elements."
+msgstr "{} elementos colados."
+
+#: crates/ui-egui/src/clipboard.rs:420
+msgid "Pasted {} elements; {} left out: {}"
+msgstr "{} elementos colados; {} deixados de fora: {}"
+
+#: crates/ui-egui/src/clipboard.rs:467
+msgid "Position on Work Plane"
+msgstr "Posicionar no plano de trabalho"
+
+#: crates/ui-egui/src/clipboard.rs:463
+msgid "Same Place"
+msgstr "Mesmo local"
+
+#: crates/ui-egui/src/clipboard.rs:468
+msgid "They follow the cursor over the view's work plane; click where they go"
+msgstr "Seguem o cursor sobre o plano de trabalho da vista; clique onde ficam"
+
+#: crates/ui-egui/src/clipboard.rs:66
+msgid "View-specific elements into each view picked from a list"
+msgstr "Elementos específicos de vista em cada vista escolhida de uma lista"
+
+#: crates/ui-egui/src/clipboard.rs:460
+msgid "Where do the pasted elements go?"
+msgstr "Onde ficam os elementos colados?"
+
+#: crates/ui-egui/src/clipboard.rs:68
+msgid "Where they were, on their levels"
+msgstr "Onde estavam, nos seus níveis"
+
+#: crates/ui-egui/src/clipboard.rs:464
+msgid "Where they were, on their levels: Aligned to Same Place"
+msgstr "Onde estavam, nos seus níveis: Alinhado ao mesmo local"
+
+#: crates/ui-egui/src/clipboard.rs:496 crates/ui-egui/src/section.rs:441
+msgid "click a level line"
+msgstr "clique na linha de um nível"
+
+#: crates/ui-egui/src/canvas.rs:2520
+msgid "click a level line in a section or an elevation"
+msgstr "clique na linha de um nível em um corte ou elevação"
+
+#: crates/ui-egui/src/orbit.rs:2319
+msgid "click on the work plane, where the view doesn't run along it"
+msgstr "clique no plano de trabalho, num ponto em que a vista não o veja de perfil"
+
+#: crates/ui-egui/src/clipboard.rs:289
+msgid "select what to copy first"
+msgstr "selecione primeiro o que copiar"
+
+#: crates/ui-egui/src/clipboard.rs:333
+msgid "the clipboard holds nothing to paste: copy elements first (Ctrl+C)"
+msgstr "a área de transferência não tem nada para colar: copie elementos primeiro (Ctrl+C)"
+
+#: crates/ui-egui/src/clipboard.rs:311
+msgid "{} elements to the clipboard; {} left out (levels, views and sheets aren't copied)."
+msgstr "{} elementos para a área de transferência; {} deixados de fora (níveis, vistas e folhas não são copiados)."
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

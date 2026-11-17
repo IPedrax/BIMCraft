@@ -871,3 +871,15 @@ msgstr ""
 #: crates/core/src/grids.rs:27 crates/core/src/lines.rs:184
 msgid "Grid - ISO Dash Dot"
 msgstr ""
+
+#: crates/core/src/commands.rs:1908
+msgid "Copy to Clipboard"
+msgstr "Copiar para a área de transferência"
+
+#: crates/core/src/commands.rs:1918
+msgid "Cut to Clipboard"
+msgstr "Recortar para a área de transferência"
+
+#: crates/core/src/commands.rs:1926
+msgid "Paste"
+msgstr "Colar"

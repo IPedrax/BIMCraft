@@ -162,6 +162,10 @@ impl BimApp {
         if let Some(q) = self.clicked_at(&response) {
             match pick(q) {
                 found if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
+                _ if self.tool == Tool::Paste => {
+                    let p = view.mm((q.x - rect.min.x, q.y - rect.min.y));
+                    self.paste_at(id, P2((p.0 * 2.0).round() / 2.0, (p.1 * 2.0).round() / 2.0));
+                }
                 // Notes in paper mm, to the half millimetre.
                 _ if self.tool == Tool::Text => {
                     let p = view.mm((q.x - rect.min.x, q.y - rect.min.y));

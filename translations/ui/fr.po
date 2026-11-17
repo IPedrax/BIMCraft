@@ -18639,6 +18639,169 @@ msgstr ""
 msgid "Click where the detail line starts; Q pins a guide there."
 msgstr ""
 
+#: crates/ui-egui/src/clipboard.rs:53
+msgid "Aligned to Current View"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:55
+msgid "Aligned to Picked Level"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:54
+msgid "Aligned to Same Place"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:51
+msgid "Aligned to Selected Levels"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:52
+msgid "Aligned to Selected Views"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5954
+msgid "Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:361
+msgid "Click a level the pasted elements go onto. Esc cancels."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:349 crates/ui-egui/src/clipboard.rs:485
+#: crates/ui-egui/src/lib.rs:5918
+msgid "Click on the work plane where the pasted elements go. Esc cancels."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:351 crates/ui-egui/src/lib.rs:5953
+msgid "Click where the pasted elements go. Esc cancels."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:308
+msgid "Copied {} elements to the clipboard."
+msgstr ""
+
+#: crates/core/src/commands.rs:1908 crates/ui-egui/src/clipboard.rs:225
+#: crates/ui-egui/src/context.rs:87
+msgid "Copy to Clipboard"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:223
+msgid "Copy to Clipboard (Ctrl+C): the selection, to paste in any view, or in another BIMCraft"
+msgstr ""
+
+#: crates/core/src/commands.rs:1918 crates/ui-egui/src/clipboard.rs:219
+#: crates/ui-egui/src/context.rs:86
+msgid "Cut to Clipboard"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:217
+msgid "Cut to Clipboard (Ctrl+X): the selection, taken away to paste elsewhere"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:309
+msgid "Cut {} elements to the clipboard."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:69
+msgid "In a section or an elevation: click a level; model elements go onto it"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:67
+msgid "Into this view where they were in theirs; model elements onto this plan's level"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:65
+msgid "Model elements onto each level picked from a list, at the same place in plan"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:519
+msgid "None of this project's views is like the one they were copied from."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:205
+msgid "Paste (Ctrl+V), and its Aligned options"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:63
+msgid "Paste (Ctrl+V): the copied elements follow the cursor; click where they go"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:50
+msgid "Paste from Clipboard"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:458
+msgid "Paste in 3D"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:517
+msgid "Paste into these views:"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:517
+msgid "Paste onto these levels:"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:418
+msgid "Pasted {} elements."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:420
+msgid "Pasted {} elements; {} left out: {}"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:467
+msgid "Position on Work Plane"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:463
+msgid "Same Place"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:468
+msgid "They follow the cursor over the view's work plane; click where they go"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:66
+msgid "View-specific elements into each view picked from a list"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:460
+msgid "Where do the pasted elements go?"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:68
+msgid "Where they were, on their levels"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:464
+msgid "Where they were, on their levels: Aligned to Same Place"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:496 crates/ui-egui/src/section.rs:441
+msgid "click a level line"
+msgstr ""
+
+#: crates/ui-egui/src/canvas.rs:2520
+msgid "click a level line in a section or an elevation"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:2319
+msgid "click on the work plane, where the view doesn't run along it"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:289
+msgid "select what to copy first"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:333
+msgid "the clipboard holds nothing to paste: copy elements first (Ctrl+C)"
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:311
+msgid "{} elements to the clipboard; {} left out (levels, views and sheets aren't copied)."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Une valeur vide est celle de la famille, comme dans l'onglet Paramètres."
