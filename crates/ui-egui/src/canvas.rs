@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Weak};
 
 use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult};
-use bimcraft_core::geom::{self, P2};
+use bimcraft_core::geom::{self, P2, micron};
 use bimcraft_core::model::{
     Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face, Floor, Id, Landing, Line, MAX_COORD, Mass,
     Model, Ramp, Reference, Roof, Section, Spot, Stair, TOL, Tag, Wall,
@@ -443,6 +443,16 @@ impl Default for Canvas {
 }
 
 impl Canvas {
+    /// The marks, the face `Tab` chose and the held guide belong to the command being drawn: clearing them together
+    /// keeps a stale hysteresis or dwell from surviving a finish, an undo or an Escape.
+    pub(crate) fn guides_reset(&mut self) {
+        self.pins.borrow_mut().clear();
+        self.start_edge = None;
+        self.wall_face = None;
+        self.last_align.set(None);
+        self.dwell.set(None);
+    }
+
     /// View `level` (a plan's key, a section or an elevation) as it was last shown: its zoom, its middle and its size.
     pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
@@ -1099,22 +1109,41 @@ pub(crate) fn lock_glyph(kind: Kind, lock: Lock, refined: bool) -> Option<LockGl
     }
 }
 
+/// The guide ink and its screen sizes, built once a frame: the hairline, the tail past the cursor, and which look.
+/// The drawing helpers take this instead of a `refined` flag and re-deriving the ink.
+#[derive(Clone, Copy)]
+pub(crate) struct GuideLook {
+    pub(crate) ink: GuideInk,
+    pub(crate) hair: f32,
+    pub(crate) tail: f32,
+    pub(crate) refined: bool,
+}
+
+impl GuideLook {
+    pub(crate) fn of(p: &Painter, refined: bool) -> Self {
+        Self { ink: guide_ink(), hair: 1.0 / p.pixels_per_point(), tail: 100.0, refined }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn plain(hair: f32, tail: f32, refined: bool) -> Self {
+        Self { ink: guide_ink(), hair, tail, refined }
+    }
+}
+
 /// The shapes the guides at a point draw: each guide's ray to the view's edge, the stronger segment from
 /// its source to the point it locks, and its source's mark. `to` and `along` put a model point and a
-/// model direction on the screen; `refined` picks the thin ink over the dashed magenta of old.
+/// model direction on the screen; `look` picks the thin ink over the dashed magenta of old.
 pub(crate) fn alignment_shapes(
     alignments: &[AlignmentResult],
     to: impl Fn(P2) -> Pos2,
     along: impl Fn(P2) -> Vec2,
-    tail: f32,
-    hair: f32,
-    refined: bool,
+    look: GuideLook,
 ) -> Vec<Shape> {
-    let ink = guide_ink();
+    let ink = look.ink;
     let mut out = Vec::new();
     // A hairline is one physical pixel; on an axis it is put on the pixel grid, where it is crisp, not two pale
-    // halves straddling an edge. `hair` is `1 / pixels_per_point`, as `show_alignments` gives it.
-    let ppp = 1.0 / hair.max(f32::EPSILON);
+    // halves straddling an edge.
+    let ppp = 1.0 / look.hair.max(f32::EPSILON);
     let on_grid = |v: f32| ((v * ppp).floor() + 0.5) / ppp;
     for res in alignments {
         let mut at = to(res.snapped_point);
@@ -1127,28 +1156,28 @@ pub(crate) fn alignment_shapes(
         } else if d.y.abs() < 1e-3 {
             (at.y, source.y) = (on_grid(at.y), on_grid(at.y));
         }
-        if refined {
+        if look.refined {
             // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks — but
             // only the last screen-wide stretch of it in the strong ink. A 40 m grid's source is 200 px away at 1:100, and
             // its whole length would run across the plan as if the guide were the element.
             let reach = (at - source).length();
-            let near = if reach > tail { at + (source - at) / reach * tail } else { source };
-            if reach > tail {
-                out.push(Shape::line_segment([source, near], Stroke::new(hair, ink.ray.gamma_multiply(0.35))));
+            let near = if reach > look.tail { at + (source - at) / reach * look.tail } else { source };
+            if reach > look.tail {
+                out.push(Shape::line_segment([source, near], Stroke::new(look.hair, ink.ray.gamma_multiply(0.35))));
             }
-            out.push(Shape::line_segment([near, at], Stroke::new(hair, ink.core)));
+            out.push(Shape::line_segment([near, at], Stroke::new(look.hair, ink.core)));
             // A short tail past the cursor, fading: the plan stays clear of rays that run to the view's edge.
             for (i, alpha) in [0.5f32, 0.28, 0.12].into_iter().enumerate() {
-                let (a, b) = (at + d * (tail * i as f32 / 3.0), at + d * (tail * (i + 1) as f32 / 3.0));
-                out.push(Shape::line_segment([a, b], Stroke::new(hair, ink.ray.gamma_multiply(alpha))));
+                let (a, b) = (at + d * (look.tail * i as f32 / 3.0), at + d * (look.tail * (i + 1) as f32 / 3.0));
+                out.push(Shape::line_segment([a, b], Stroke::new(look.hair, ink.ray.gamma_multiply(alpha))));
             }
             if !matches!(res.axis, AlignmentAxis::Inferred { .. }) {
                 out.push(Shape::circle_filled(source, 2.5, ink.anchor));
-                out.push(Shape::circle_stroke(source, 4.5, Stroke::new(hair, ink.anchor.gamma_multiply(0.45))));
+                out.push(Shape::circle_stroke(source, 4.5, Stroke::new(look.hair, ink.anchor.gamma_multiply(0.45))));
             }
         } else {
             // Classic keeps its dashed look, still only beside the cursor.
-            out.extend(Shape::dashed_line(&[at - d * 24.0, at + d * tail], Stroke::new(1.0, CLASSIC_GUIDE), 6.0, 4.0));
+            out.extend(Shape::dashed_line(&[at - d * 24.0, at + d * look.tail], Stroke::new(1.0, CLASSIC_GUIDE), 6.0, 4.0));
             // The point it comes from, marked: a borrowed direction's is the point being drawn from,
             // which already has the tool's own marker.
             if !matches!(res.axis, AlignmentAxis::Inferred { .. }) {
@@ -1295,13 +1324,11 @@ pub(crate) fn standing_dimensions(p: &Painter, m: &Model, v: &View, e: &Element)
 }
 
 /// A ruler from `a` to `b`: its line, and its graduations at round lengths at least 10 px apart,
-/// every fifth longer. `refined` draws the live drawing's fine one, quieter than the line it measures.
-fn ruler_shapes(sc: &Scene, a: P2, b: P2, refined: bool) -> Vec<Shape> {
+/// every fifth longer. `look` draws the live drawing's fine one, quieter than the line it measures.
+fn ruler_shapes(sc: &Scene, a: P2, b: P2, look: GuideLook) -> Vec<Shape> {
     let (pa, pb) = (sc.screen(a), sc.screen(b));
-    let ink = guide_ink();
-    let hair = 1.0 / sc.p.pixels_per_point();
-    let (spine, tick, long, short) = if refined {
-        (Stroke::new(hair, ink.ruler), Stroke::new(hair, ink.tick), 6.0, 3.0)
+    let (spine, tick, long, short) = if look.refined {
+        (Stroke::new(look.hair, look.ink.ruler), Stroke::new(look.hair, look.ink.tick), 6.0, 3.0)
     } else {
         (Stroke::new(2.0, canvas_pal().accent), Stroke::new(1.0, canvas_pal().accent), 7.0, 3.5)
     };
@@ -1321,7 +1348,7 @@ fn ruler_shapes(sc: &Scene, a: P2, b: P2, refined: bool) -> Vec<Shape> {
 
 /// The angle at `last` between the line back to `prev` and the line on to `next`, as a small arc: dotted and muted in the
 /// refined look, so it does not fight the walls.
-fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2, refined: bool) -> Vec<Shape> {
+fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2, look: GuideLook) -> Vec<Shape> {
     let (c, a, b) = (sc.screen(last), sc.screen(prev) - sc.screen(last), sc.screen(next) - sc.screen(last));
     if a.length() < 30.0 || b.length() < 30.0 {
         return Vec::new();
@@ -1335,11 +1362,10 @@ fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2, refined: bool) -> Vec<Sh
     while sweep < -std::f32::consts::PI {
         sweep += std::f32::consts::TAU;
     }
-    let radius = if refined { 26.0 } else { 22.0 };
+    let radius = if look.refined { 26.0 } else { 22.0 };
     let pts: Vec<Pos2> = (0..=24).map(|i| a0 + sweep * i as f32 / 24.0).map(|t| c + vec2(t.cos(), t.sin()) * radius).collect();
-    if refined {
-        let hair = 1.0 / sc.p.pixels_per_point();
-        Shape::dashed_line(&pts, Stroke::new(hair, guide_ink().arc), 2.5, 2.5)
+    if look.refined {
+        Shape::dashed_line(&pts, Stroke::new(look.hair, look.ink.arc), 2.5, 2.5)
     } else {
         vec![Shape::line(pts, Stroke::new(1.0, canvas_pal().accent))]
     }
@@ -1450,11 +1476,6 @@ fn round(p: P2) -> P2 {
 
 fn point(p: P2) -> Value {
     json!([p.0, p.1])
-}
-
-/// `p` to the micron: what a point meant to be exact is, without float noise.
-fn micron(p: P2) -> P2 {
-    P2((p.0 * 1e3).round() / 1e3, (p.1 * 1e3).round() / 1e3)
 }
 
 /// `d`'s direction, turned onto the nearest multiple of `inc` degrees when it's within 3° of one
@@ -1700,12 +1721,10 @@ impl BimApp {
         let tol = f64::from(snaps.alignment_tolerance) / v.scale;
         let config = AlignmentConfig {
             enabled: true,
-            tolerance: tol,
             endpoints: snaps.endpoint,
             midpoints: snaps.midpoint,
             faces: true,
             intersections: snaps.intersection,
-            angles: false,
         };
         let start = from.last().copied();
         let key = self.plan_key().unwrap_or(level);
@@ -1752,15 +1771,13 @@ impl BimApp {
     /// glyph to say. `from` is the point being drawn from, whose segment the badge keeps off as it keeps off the rays.
     fn show_alignments(&self, sc: &Scene, alignments: &[AlignmentResult], from: Option<P2>) -> Lock {
         self.canvas.badge.set(None);
-        let refined = self.refined_guides();
         // A temporary guide fades out 100 px past the cursor; the plan is never crossed edge to edge by a snap ray.
-        let tail = 100.0;
-        let hair = 1.0 / sc.p.pixels_per_point();
+        let look = GuideLook::of(sc.p, self.refined_guides());
         let along = |d: P2| {
             let (x, y) = sc.v.along(d);
             vec2(x as f32, y as f32)
         };
-        sc.p.extend(alignment_shapes(alignments, |p| sc.screen(p), along, tail, hair, refined));
+        sc.p.extend(alignment_shapes(alignments, |p| sc.screen(p), along, look));
         let lock = match alignments {
             [] => Lock::Free,
             [one] => Lock::One(along(one.axis.direction()).normalized()),
@@ -1769,13 +1786,13 @@ impl BimApp {
         if let Some(first) = alignments.first() {
             let at = sc.screen(first.snapped_point);
             let text = alignment_tag(alignments);
-            if refined {
+            if look.refined {
                 // What runs through the glyph: the rays, and the segment being drawn, so the pill sits in a clear corner.
                 let mut lines: Vec<f32> = alignments.iter().map(|r| along(r.axis.direction()).angle()).collect();
                 if let Some(a) = from {
                     lines.push((at - sc.screen(a)).angle());
                 }
-                self.canvas.badge.set(Some(badge(sc.p, at, text, guide_ink(), &lines)));
+                self.canvas.badge.set(Some(badge(sc.p, at, text, look.ink, &lines)));
             } else {
                 tag(sc.p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, text);
             }
@@ -1808,7 +1825,10 @@ impl BimApp {
         let at = if pointer.square || matches!(f.kind, Kind::Angle) { f.at } else { pointer.at };
         let found: Vec<AlignmentResult> =
             self.alignments(m, level, v, at, from).into_iter().filter(|a| on_guide(a.snapped_point)).collect();
-        if crossing_only && found.len() < 2 { Vec::new() } else { found }
+        let found = if crossing_only && found.len() < 2 { Vec::new() } else { found };
+        // The held guide is one that was drawn, not one the filter took away: the next frame's 12-px leave reads this.
+        self.canvas.last_align.set(found.first().map(|a| a.axis));
+        found
     }
 
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.
@@ -1876,7 +1896,15 @@ impl BimApp {
     /// marker, by what it snapped to; and its name.
     fn show_snap(&self, sc: &Scene, f: &Found, lock: Lock) {
         let name = snap_name(sc.m, f);
-        snap_mark(sc.p, sc.screen(f.at), f.guide.map(|g| sc.screen(g.from)), f.kind, lock, self.refined_guides(), name);
+        snap_mark(
+            sc.p,
+            sc.screen(f.at),
+            f.guide.map(|g| sc.screen(g.from)),
+            f.kind,
+            lock,
+            GuideLook::of(sc.p, self.refined_guides()),
+            name,
+        );
     }
 
     /// The wall line a pick would take, along the wall's own stretch, in the canvas's hover ink: before a click or a rest,
@@ -1895,8 +1923,9 @@ impl BimApp {
 
     /// The reference under the pointer this frame: a snapped point, else the nearest wall face or centre line, detail
     /// line or grid within 8 px.
-    fn mark_target(&self, sc: &Scene, q: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
-        let key = self.plan_key().unwrap_or(sc.level);
+    /// What the pointer may mark: the snap's element or the plan's picking, and the reference nearest the pointer.
+    /// The ring and `Q` both read this, so a section plugs its own space in here rather than copying either.
+    fn pin_target(&self, m: &Model, level: Id, key: Id, v: &View, at: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
         let mut under = self.canvas.under_cursor.clone();
         // The snap knows the wall even on a frame the retained plan's picking comes back empty.
         if let Some(id) = f.source
@@ -1904,7 +1933,12 @@ impl BimApp {
         {
             under.push(id);
         }
-        crate::guide_refs::target_at(sc.m, sc.level, key, sc.v, q, f, &under)
+        crate::guide_refs::target_at(m, level, key, v, at, f, &under)
+    }
+
+    fn mark_target(&self, sc: &Scene, q: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
+        let key = self.plan_key().unwrap_or(sc.level);
+        self.pin_target(sc.m, sc.level, key, sc.v, q, f)
     }
 
     /// Fills the ring on the reference under the pointer, and marks it when the ring closes. It is the target's key and
@@ -1989,11 +2023,8 @@ impl BimApp {
         self.canvas.now.set(ui.input(|i| i.time));
         let tool = std::mem::discriminant(&self.tool);
         if self.canvas.pin_tool != Some(tool) || self.canvas.pin_view != Some(key) {
-            self.canvas.pins.borrow_mut().clear();
-            self.canvas.start_edge = None;
-            self.canvas.wall_face = None;
-            self.canvas.last_align.set(None);
-            self.canvas.dwell.set(None);
+            self.canvas.guides_reset();
+            // A new tool or view may mark again under a pointer that did not move; a finish keeps the guard.
             self.canvas.dwell_quiet.set(None);
             self.canvas.pin_tool = Some(tool);
             self.canvas.pin_view = Some(key);
@@ -2718,7 +2749,7 @@ impl BimApp {
         // The Measure tool's ruler, as laid.
         if let (Tool::Measure(_), Some((a, b))) = (&self.tool, self.measured) {
             let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
-            p.extend(ruler_shapes(&scene, a, b, false));
+            p.extend(ruler_shapes(&scene, a, b, GuideLook::of(&p, false)));
             let r = snap::ruler(a, b);
             let units = model.units;
             let text = format!(
@@ -3173,13 +3204,11 @@ impl BimApp {
             }
             Tool::ExportRegion(_) => self.export_region_at(v.mm(at)),
             Tool::SpecifyPoint => {
-                // Snapped as any point; its height by what it snapped to.
-                let f = self.snap(m, level, v, at, &[], false);
-                let p = self
-                    .alignments_for(m, level, v, &f, &[], GuideAt { at: v.mm(at), square: false })
-                    .first()
-                    .map_or(f.at, |a| a.snapped_point);
-                let z = bimcraft_core::coordinates::picked_z(m, level, p, f.source);
+                // Snapped as any point, through the preview's one landing; its height by what it snapped to.
+                let (f, found) = self.landed(m, level, v, at, &[], false);
+                let source = f.source;
+                let p = Self::on_guide(f, &found);
+                let z = bimcraft_core::coordinates::picked_z(m, level, p, source);
                 self.specify_at([p.0, p.1, z]);
             }
             &Tool::RotateNorth { centre, start, place } => {
@@ -3938,9 +3967,7 @@ impl BimApp {
             }
             self.run("railing", p);
         }
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
-        self.canvas.pins.borrow_mut().clear();
+        self.canvas.guides_reset();
     }
 
     /// The Detail Line tool's next point. A line a click, as walls are: each click after the first makes a line from the
@@ -3999,9 +4026,7 @@ impl BimApp {
         } else if let Tool::DetailLine(path) = &mut self.tool {
             path.clear();
         }
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.wall_face = None;
-        self.canvas.start_edge = None;
+        self.canvas.guides_reset();
     }
 
     /// A detail line through the points clicked, round to the first again where `closed`, in the Options Bar's line
@@ -4033,9 +4058,7 @@ impl BimApp {
             }
             Err(e) => self.status = Status { text: tf("mass: {}", &[&e]), error: true },
         }
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
-        self.canvas.pins.borrow_mut().clear();
+        self.canvas.guides_reset();
     }
 
     /// The Text tool's click: a note saying what the Options Bar says, its top left at `at` in
@@ -4176,8 +4199,7 @@ impl BimApp {
                         // Back on its start, the chain closes; without Chain, every wall stands alone.
                         if !self.chain || first.dist(p) <= TOL {
                             chain.clear();
-                            self.canvas.start_edge = None;
-                            self.canvas.pins.borrow_mut().clear();
+                            self.canvas.guides_reset();
                         } else {
                             chain.push(p);
                         }
@@ -4324,9 +4346,7 @@ impl BimApp {
         if let Tool::Wall(chain) = &mut self.tool {
             chain.clear();
         }
-        self.canvas.start_edge = None;
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.wall_face = None;
+        self.canvas.guides_reset();
     }
 
     /// Walls along `points`, each turning `arc` degrees, as the Options Bar says: their type,
@@ -4606,7 +4626,7 @@ impl BimApp {
             let ring: Vec<Pos2> = ring.into_iter().map(&at).collect();
             p.add(Shape::closed_line(ring, Stroke::new(1.0, pal().accent)));
             let fixed = if start { ends.1 } else { ends.0 };
-            p.extend(ruler_shapes(&sc, fixed, to, self.refined_guides()));
+            p.extend(ruler_shapes(&sc, fixed, to, GuideLook::of(&p, self.refined_guides())));
             self.show_snap(&sc, &found, Lock::Free);
             self.canvas.found.set(Some(found));
             let r = snap::ruler(fixed, to);
@@ -6053,7 +6073,7 @@ impl BimApp {
             if let (Some(&last), true) =
                 (chain.last(), matches!(shape, draw::Shape::Circle | draw::Shape::Inscribed | draw::Shape::Circumscribed))
             {
-                p.extend(ruler_shapes(sc, last, next, refined));
+                p.extend(ruler_shapes(sc, last, next, GuideLook::of(sc.p, refined)));
             }
             self.shape_dimensions(sc, chain, next);
             return;
@@ -6096,9 +6116,9 @@ impl BimApp {
         }
         // The ruler along the new line, and an arc at the corner it turns from the line before.
         if let Some(&last) = chain.last() {
-            p.extend(ruler_shapes(sc, last, next, refined));
+            p.extend(ruler_shapes(sc, last, next, GuideLook::of(sc.p, refined)));
             if let [.., prev, l] = chain {
-                p.extend(corner_arc(sc, *prev, *l, next, refined));
+                p.extend(corner_arc(sc, *prev, *l, next, GuideLook::of(sc.p, refined)));
             }
         }
         // The listening dimension is `shape_texts`'s, the same text a shape's numbers are, so the field `Tab` is on is
@@ -6178,13 +6198,7 @@ impl BimApp {
         let chain = picked(&self.tool);
         let at = v.px(cursor);
         let f = self.snap(&m, level, &v, at, &chain, false);
-        let mut under = self.canvas.under_cursor.clone();
-        if let Some(id) = f.source
-            && !under.contains(&id)
-        {
-            under.push(id);
-        }
-        let Some(target) = crate::guide_refs::target_at(&m, level, key, &v, at, &f, &under) else { return };
+        let Some(target) = self.pin_target(&m, level, key, &v, at, &f) else { return };
         let lines = target.lines(&m, level, m.guid(key));
         let marked = self.canvas.pins.borrow_mut().toggle(key, target, lines);
         // The hover that pressed Q has had its mark: the ring must not fill and take it back while the hand rests, nor
@@ -6352,11 +6366,10 @@ pub(crate) fn snap_name(m: &Model, f: &Found) -> String {
 
 /// A snap's marker at `at` on screen, by what it snapped to (`kind`), its guide dashed from `from` (the point it runs from,
 /// on screen) on past it, and `name` beside it: the plan's and a family's sketch's alike. `lock` says what holds a free
-/// point, which changes its marker; `refined` draws the thin ink of Manage > Snaps instead of the classic one.
-pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, lock: Lock, refined: bool, name: String) {
-    let ink = guide_ink();
-    let hair = 1.0 / p.pixels_per_point();
-    let stroke = Stroke::new(if refined { 1.5 } else { 2.0 }, canvas_pal().accent);
+/// point, which changes its marker; `look` is the frame's ink, refined or classic as Manage > Snaps chose.
+pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, lock: Lock, look: GuideLook, name: String) {
+    let (ink, hair) = (look.ink, look.hair);
+    let stroke = Stroke::new(if look.refined { 1.5 } else { 2.0 }, canvas_pal().accent);
     if let Some(a) = from
         && a.distance(at) > 1.0
     {
@@ -6364,7 +6377,7 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, l
         // off would make a dash for every 10 px.
         let u = (at - a).normalized();
         let back = a.distance(at).min(4000.0) + 24.0;
-        let (stroke, dash, gap) = if refined {
+        let (stroke, dash, gap) = if look.refined {
             (Stroke::new(hair, canvas_pal().accent.gamma_multiply(0.6)), 4.0, 4.0)
         } else {
             (Stroke::new(1.0, canvas_pal().accent), 6.0, 4.0)
@@ -6372,7 +6385,7 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, l
         p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], stroke, dash, gap));
     }
     // The guides' glyph comes first: a point both an angle step and two guides hold says which guides, not the step.
-    if let Some(glyph) = lock_glyph(kind, lock, refined) {
+    if let Some(glyph) = lock_glyph(kind, lock, look.refined) {
         match glyph {
             LockGlyph::Bullseye => {
                 p.circle_stroke(at, 7.0, Stroke::new(hair, ink.core));
