@@ -40,7 +40,7 @@ msgstr "Tegel"
 msgid "Brick 225 x 75"
 msgstr "Tegel 225 x 75"
 
-#: crates/core/src/commands.rs:5838
+#: crates/core/src/commands.rs:5875
 msgid "Camera"
 msgstr "Kamera"
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Koppar"
 
-#: crates/core/src/commands.rs:2094
+#: crates/core/src/commands.rs:2107
 msgid "Copy"
 msgstr "Kopiera"
 
@@ -133,7 +133,7 @@ msgstr "Datauttag"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:14141
+#: crates/core/src/commands.rs:14178
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -218,9 +218,9 @@ msgstr "Elbelysning"
 msgid "Electrical Power"
 msgstr "Elkraft"
 
-#: crates/core/src/commands.rs:13888
-#: crates/core/src/commands.rs:13903
-#: crates/core/src/commands.rs:18615
+#: crates/core/src/commands.rs:13925
+#: crates/core/src/commands.rs:13940
+#: crates/core/src/commands.rs:18652
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -350,7 +350,7 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:8544
+#: crates/core/src/commands.rs:8581
 #: crates/core/src/model.rs:4509
 msgid "Level"
 msgstr "Nivå"
@@ -391,7 +391,7 @@ msgstr "Beteckning"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:11055
+#: crates/core/src/commands.rs:11092
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -407,8 +407,8 @@ msgstr "Medelbreda linjer"
 msgid "Membrane"
 msgstr "Membran"
 
-#: crates/core/src/commands.rs:3938
-#: crates/core/src/commands.rs:17178
+#: crates/core/src/commands.rs:3951
+#: crates/core/src/commands.rs:17215
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:6041
@@ -505,11 +505,11 @@ msgstr "Porslin"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4234
+#: crates/core/src/commands.rs:4247
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:9271
+#: crates/core/src/commands.rs:9308
 msgid "Property Line"
 msgstr ""
 
@@ -541,7 +541,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:11585
+#: crates/core/src/commands.rs:11622
 msgid "Room"
 msgstr "Rum"
 
@@ -577,8 +577,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:13823
-#: crates/core/src/commands.rs:18614
+#: crates/core/src/commands.rs:13860
+#: crates/core/src/commands.rs:18651
 msgid "Section"
 msgstr "Sektion"
 
@@ -749,7 +749,7 @@ msgstr "Obegränsad höjd"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:14377
+#: crates/core/src/commands.rs:14414
 msgid "Unnamed"
 msgstr "Namnlös"
 
@@ -778,7 +778,7 @@ msgstr "Volym"
 msgid "WC"
 msgstr "WC"
 
-#: crates/core/src/commands.rs:368
+#: crates/core/src/commands.rs:381
 msgid "Wall"
 msgstr "Vägg"
 
