@@ -43,6 +43,7 @@ mod finishes;
 mod footer;
 mod gpu;
 mod printsets;
+mod profile;
 mod publisher;
 mod stairgrips;
 mod stairtype;
@@ -819,6 +820,8 @@ pub struct BimApp {
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
     curtain_editor: Option<curtain::CurtainEditor>,
+    /// Edit Profile on a wall, while it's open.
+    profile_editor: Option<profile::ProfileEditor>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
     curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
     /// With a mullion's whole grid picked, the other places on it.
@@ -1713,6 +1716,7 @@ impl BimApp {
             spot_type_dialog: None,
             spot_grip: None,
             curtain_editor: None,
+            profile_editor: None,
             curtain_part: None,
             curtain_more: Vec::new(),
             curtain_hover: None,
@@ -2469,6 +2473,7 @@ impl BimApp {
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
             || self.curtain_editor.is_some()
+            || self.profile_editor.is_some()
             || !self.curtain_asking.is_empty()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
@@ -5757,6 +5762,21 @@ impl BimApp {
                 if big_button(ui, Icon::Detach, "Detach Top/Base", false, tip).clicked() {
                     self.run("modify", json!({"ids": attachable, "attach_top": null, "attach_base": null}));
                 }
+                // One straight, upright wall: its shape in elevation, as Revit's Edit Profile.
+                if let [id] = walls.as_slice()
+                    && profile::profile_editable(&self.session.model, *id)
+                {
+                    let id = *id;
+                    let tip = msg!("Edit Profile: the wall's shape in elevation, its outline and any holes, in place of its rectangle");
+                    if big_button(ui, Icon::EditProfile, msg!("Edit Profile"), self.profile_editor.is_some(), tip).clicked() {
+                        self.open_profile_editor(id);
+                    }
+                    let shaped = self.session.model.wall(id).is_some_and(|w| !w.profile.is_empty());
+                    let tip = msg!("Reset Profile: the wall's rectangle back, from its base to its top");
+                    if shaped && big_button(ui, Icon::ResetProfile, msg!("Reset Profile"), false, tip).clicked() {
+                        self.run("modify", json!({"id": id, "profile": []}));
+                    }
+                }
             });
         }
         // Work plane-based components selected: Revit's Work Plane panel, Edit Work Plane (T12).
@@ -6900,6 +6920,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
         self.curtain_editor_window(ctx);
+        self.profile_editor_window(ctx);
         self.curtain_message(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);

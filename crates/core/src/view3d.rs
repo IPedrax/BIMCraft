@@ -133,8 +133,8 @@ pub(crate) fn unit(a: P3) -> P3 {
 /// curved surfaces: a wall's outside or inside, a component's by its first triangle's place in the
 /// scene), so the facets read as one.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct Tri {
-    p: [P3; 3],
+pub(crate) struct Tri {
+    pub(crate) p: [P3; 3],
     owner: Id,
     color: Rgb,
     /// The skin of its material ([`skin`]): in the low 22 bits the texture over its colour, one more than where the material
@@ -530,7 +530,7 @@ impl Solid {
             .collect()
     }
 
-    fn tris(&self, out: &mut Vec<Tri>) {
+    pub(crate) fn tris(&self, out: &mut Vec<Tri>) {
         match self {
             Solid::Box { owner, color, tex, frame, a, c, z } => frame.cuboid(out, *owner, (*color, *tex), *a, *c, *z),
             Solid::Slab { owner, color, tex, face, rise } => prism(out, *owner, (*color, *tex), face, *rise),
@@ -1071,6 +1071,20 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
         part: 0,
     };
     let voids = walls::host_voids_in(m, id, index);
+    // A slanted wall leans: pieces lofted up it, cut as a section cuts any mesh.
+    let leaning = |openings: bool| -> Vec<Solid> {
+        walls::slant::pieces(m, id, openings, index)
+            .into_iter()
+            .map(|tris| Solid::Mesh { owner: id, color: WALL, tex: 0, caps: 0, round: false, cut: true, tris, vis: 0 })
+            .collect()
+    };
+    if m.wall(id).is_some_and(|w| w.slant != 0.0) {
+        let solids = leaning(true);
+        if voids.is_empty() {
+            return solids;
+        }
+        return cut_by_voids(id, WALL, solids, &voids).unwrap_or_else(|| leaning(true));
+    }
     let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
     if voids.is_empty() {
         return prisms;
@@ -1249,26 +1263,40 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
             (color, skin(m, material) | part)
         })
         .collect();
-    let u = (w.end - w.start).unit();
-    let frame = Frame { o: w.start, u, n: u.perp() };
-    let (base, plane) = (m.own_base(w), curtain::grid_plane(m, w));
+    // Its grid's surface: a straight upright wall's line, a curved wall's chords, a slanted wall's slope.
+    let f = &l.surface;
     for piece in l.pieces() {
         let Some(p) = l.parts.get(piece.first) else { continue };
         let (Some(s), Some(&(color, tex))) = (l.shapes.get(p.shape as usize), looks.get(p.shape as usize)) else { continue };
         let [along, up, across] = piece.centre;
         let [da, dz, dc] = piece.size.map(|x| x / 2.0);
+        let ax = f.axes(along, p.turn);
+        let o3 = f.at(along, up, across);
+        // A part in its own axes, `[along, across, up]` from its centre, in the model.
+        let world = |c: [f64; 3]| std::array::from_fn(|k| o3[k] + ax[0][k] * c[0] + ax[1][k] * c[1] + ax[2][k] * c[2]);
         if s.is_cut() {
-            let world = |c: [f64; 3]| {
-                let q = frame.o + frame.u * (along + c[0]) + frame.n * (plane + across + c[1]);
-                [q.0, q.1, base + up + c[2]]
-            };
             let tris = s.tris().into_iter().map(|t| t.map(world)).collect();
             out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
             continue;
         }
+        if f.leans() {
+            // Tilted with its face: a box can't lean, so its twelve triangles.
+            let mut made = Vec::with_capacity(12);
+            Frame { o: P2(0.0, 0.0), u: P2(1.0, 0.0), n: P2(0.0, 1.0) }.cuboid(
+                &mut made,
+                id,
+                (color, tex),
+                (-da, da),
+                (-dc, dc),
+                (-dz, dz),
+            );
+            let tris = made.into_iter().map(|t| t.p.map(world)).collect();
+            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
+            continue;
+        }
         // Round its own centre, which is what makes its triangles a shape placed, to the last bit: see `curtain_copies`.
-        let o = frame.o + frame.u * along + frame.n * (plane + across);
-        let (ux, nx) = turned(frame.u, p.turn);
+        let (base, o) = (o3[2] - up, P2(o3[0], o3[1]));
+        let (ux, nx) = (P2(ax[0][0], ax[0][1]), P2(ax[1][0], ax[1][1]));
         out.push(Solid::Box {
             owner: id,
             color,
@@ -1279,16 +1307,6 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
             z: (base + up - dz, base + up + dz),
         });
     }
-}
-
-/// A wall's run `u` turned `turn` radians in plan, and its left: a part's own axes.
-fn turned(u: P2, turn: f64) -> (P2, P2) {
-    if turn == 0.0 {
-        return (u, u.perp());
-    }
-    let (cos, sin) = (turn.cos(), turn.sin());
-    let v = P2(u.0 * cos - u.1 * sin, u.0 * sin + u.1 * cos);
-    (v, v.perp())
 }
 
 /// The material of a curtain wall's part of this shape; none is empty.
@@ -1307,9 +1325,7 @@ fn curtain_copies(
 ) -> Vec<(usize, crate::component_geometry::ComponentInstance)> {
     use crate::curtain;
     let l = curtain::layout(m, w);
-    let u = (w.end - w.start).unit();
-    let n = u.perp();
-    let (base, plane) = (m.own_base(w), curtain::grid_plane(m, w));
+    let f = &l.surface;
     let mut out = Vec::with_capacity(l.parts.len());
     let mut first = 0;
     for piece in l.pieces() {
@@ -1329,14 +1345,9 @@ fn curtain_copies(
             shapes.len() - 1
         });
         let [along, up, across] = piece.centre;
-        let o = w.start + u * along + n * (plane + across);
-        let (ux, nx) = turned(u, p.turn);
-        let copy = crate::component_geometry::ComponentInstance {
-            owner: id,
-            shape,
-            at: [o.0, o.1, base + up],
-            axes: [[ux.0, ux.1, 0.0], [nx.0, nx.1, 0.0], [0.0, 0.0, 1.0]],
-        };
+        // Along its run, across its face and up it: a slanted wall's parts tilt with it.
+        let copy =
+            crate::component_geometry::ComponentInstance { owner: id, shape, at: f.at(along, up, across), axes: f.axes(along, p.turn) };
         if copy.solid() {
             out.push((first, copy));
         }

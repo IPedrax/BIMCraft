@@ -2239,6 +2239,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             join: true,
             curtain: None,
             panel_of: None,
+            slant: 0.0,
+            profile: Vec::new(),
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));

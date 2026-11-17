@@ -7450,6 +7450,7 @@ mod trim;
 mod typed;
 mod typeprops;
 mod view_controls;
+mod wall_shapes;
 mod window;
 mod work_plane_based;
 mod working3d;

@@ -30,6 +30,34 @@ neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it o
 footing under such a wall stops at its face as if it were a wall too. The desktop's right-click menu offers Disallow Join and
 Allow Join for the walls and runs selected (`context::Action`, a `modify {join}` command).
 
+Where a wall joins one that stops lower (or starts higher), its end changes there (`walls::cap_heights`): up to the lower wall's
+top the two mitre, and above it the taller wall's end is square, as far out as the corner reached (`walls::cap_at`), so it closes
+the corner over the lower wall instead of showing its mitre's 45° face. `walls::prisms` parts a wall's end prisms at those
+heights, a plan cuts its outline at its cut plane's height (`walls::outline_at`, `layer_geometry_at`), and IFC writes such a wall as
+shells of its prisms.
+
+A wall's `slant` (Revit's Cross-Section Slanted, Angle From Vertical; Properties' Angle From Vertical (°)) leans its faces that many
+degrees from upright about its location line at its base, toward its exterior positive, up to `walls::MAX_SLANT` (60°) either way.
+At each height its faces are moved across as it leans and widened by the slope (`walls::faces_at`), and everything that finds a
+wall's ends takes the height (`arms`, `end_geometry`, `cap_with`), so slanted walls mitre with each other and with upright ones at
+every height. Its solid is `walls/slant.rs`: pieces lofted between its outlines at their bottoms and tops, cut along it as an
+upright wall's prisms are (an arc's chords, its openings' jambs) and up it at its openings and its joins' heights; each corner's
+bottom and top follow what its base and top are attached to at the point it has leant to, so a curved slanted wall attached top
+and bottom is a cone between a floor and a roof. The 3D view and sections draw those meshes, a plan cuts the wall where it has
+leant to at its cut plane, and IFC writes them as face sets. A door or a window stands where the wall has leant to at its sill and
+leans with it (`Model::opening_frame`, `opening_lean`); its hole is cut with upright jambs and a level sill and head.
+
+A straight, upright, unattached wall can have its shape in elevation edited (Revit's Edit Profile): `profile` holds loops of
+`[along, up]` mm from its start and its base, the first its outline and the others holes, which `modify {id, profile}` sets and
+`profile: []` resets. `Model::check` keeps the outline running from its start to its end and standing on its base, so it still joins
+at its ends and its doors' sills are measured as before, and not crossing itself. `walls/profile.rs` cuts the wall at each corner of
+the profile; between two cuts each stretch it covers is a prism from one edge's plane to another's, less its openings
+(`profile::stack`), so 3D, sections and IFC take it as they take any wall, and a plan cuts it only where the profile reaches the cut
+plane (`walls::plan_cut`). Its top for its openings and its height are the profile's (`walls::top_at`, `heights`). On the desktop,
+Modify | Walls has Edit Profile for one such wall selected, a dialog of the wall to scale from its exterior (`crates/ui-egui/src/profile.rs`):
+drag a point, click an edge for a new one, type a point's place, add or remove a hole; OK is one undo step. Reset Profile beside it
+takes the shape off.
+
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
 unattached, with the same base and top; each type three layers, finish, structure and finish, each with a material and a

@@ -9,6 +9,8 @@ use std::f64::consts::{PI, TAU};
 
 mod compound;
 mod index;
+pub(crate) mod profile;
+pub(crate) mod slant;
 pub(crate) use index::{Index, reach};
 
 use crate::geom::{self, P2};
@@ -194,6 +196,34 @@ pub fn faces(m: &Model, w: &Wall) -> (f64, f64) {
     (ext, ext - t)
 }
 
+/// Farther up or down than anything stands, mm: the open end of a band of height.
+const FAR: f64 = 1.0e12;
+
+/// The most a wall's faces may lean from upright, either way, degrees.
+pub const MAX_SLANT: f64 = 60.0;
+
+/// How far wall `w`'s faces have moved to its left at height `z`, leaning `slant` degrees about its location line at its base.
+pub fn lean(m: &Model, w: &Wall, z: f64) -> f64 {
+    if w.slant == 0.0 || !w.slant.is_finite() {
+        return 0.0;
+    }
+    (z - m.own_base(w)) * w.slant.clamp(-MAX_SLANT, MAX_SLANT).to_radians().tan()
+}
+
+/// [`faces`] at height `z`: a slanted wall's moved over as it leans, and as much wider across in plan as a slope across it
+/// is longer than the thickness. Without a height, or upright, its faces.
+pub fn faces_at(m: &Model, w: &Wall, z: Option<f64>) -> (f64, f64) {
+    let (ext, int) = faces(m, w);
+    match z {
+        Some(z) if w.slant != 0.0 && w.slant.is_finite() => {
+            let wide = 1.0 / w.slant.clamp(-MAX_SLANT, MAX_SLANT).to_radians().cos();
+            let d = lean(m, w, z);
+            (ext * wide + d, int * wide + d)
+        }
+        _ => (ext, int),
+    }
+}
+
 /// How far to the left of its location line a wall's centre line lies.
 pub fn centre(m: &Model, w: &Wall) -> f64 {
     let (ext, int) = faces(m, w);
@@ -213,7 +243,7 @@ pub(crate) fn joined_at(m: &Model, id: Id, at_end: bool, index: Option<&Index>) 
     if !w.join {
         return false;
     }
-    let (arms, _) = arms(m, id, at_end, index, &|_| true);
+    let (arms, _) = arms(m, id, at_end, index, &|_| true, None);
     arms.iter().any(|a| a.id != id)
 }
 
@@ -263,14 +293,17 @@ pub(crate) struct Arm {
     pub(crate) cw: P2,
     pub(crate) centre: P2,
     pub(crate) thick: f64,
+    /// How far a slanted wall's faces have moved across at the height asked: its corners move as far.
+    pub(crate) lean: f64,
     /// A curtain wall ending where a plain wall does: it doesn't mitre, the plain wall ends square against it.
     pub(crate) butts: bool,
 }
 
 /// Wall `w` leaving the node at its start, or with `at_end`, at its end.
-pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm {
+/// At height `z`, a slanted wall's faces are where it has leant to there ([`faces_at`]); without one, at its base.
+pub(crate) fn arm_at(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool, z: Option<f64>) -> Arm {
     let axis = Axis::of(w);
-    let (ext, int) = faces(m, w);
+    let (ext, int) = faces_at(m, w, z);
     let s = if at_end { axis.length() } else { 0.0 };
     let t = axis.tangent(s);
     // Leaving from its end, it goes back: its interior face is on the counter-clockwise side.
@@ -284,6 +317,7 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
         cw: axis.at(s, cw),
         centre: axis.at(s, (ext + int) / 2.0),
         thick: ext - int,
+        lean: z.map_or(0.0, |z| lean(m, w, z)),
         butts: false,
     }
 }
@@ -291,10 +325,11 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
 /// among them: those ending there, and a wall it ends on, both ways from where it does. Whether it
 /// ends on one, too.
-fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> (Vec<Arm>, bool) {
+/// At height `z`, slanted walls' faces are where they lean to there; without one, at their bases.
+fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool, z: Option<f64>) -> (Vec<Arm>, bool) {
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
-    let mut arms = vec![arm(m, id, w, at_end, true)];
+    let mut arms = vec![arm_at(m, id, w, at_end, true, z)];
     // A wall standing in a curtain wall's cell joins nothing, and nothing it.
     if w.panel_of.is_some() {
         return (arms, false);
@@ -327,21 +362,33 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
         }
         if o.start.dist(node) <= TOL {
             if joins(o) {
-                arms.push(Arm { butts: butts(o), ..arm(m, other, o, false, false) });
+                arms.push(Arm { butts: butts(o), ..arm_at(m, other, o, false, false, z) });
             }
         } else if o.end.dist(node) <= TOL {
             if joins(o) {
-                arms.push(Arm { butts: butts(o), ..arm(m, other, o, true, false) });
+                arms.push(Arm { butts: butts(o), ..arm_at(m, other, o, true, false, z) });
             }
         } else {
             // A wall it ends on: the node within its thickness, between its ends.
             let ax = Axis::of(o);
             let (s, across) = ax.project(node);
-            let (ext, int) = faces(m, o);
+            let (ext, int) = faces_at(m, o, z);
             if s > TOL && s < ax.length() - TOL && (int - TOL..=ext + TOL).contains(&across) && ax.distance(node, across) <= TOL && joins(o)
             {
                 let (t, (e, i), c) = (ax.tangent(s), (ax.at(s, ext), ax.at(s, int)), ax.at(s, (ext + int) / 2.0));
-                arms.push(Arm { id: other, at_end: false, mine: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int, butts: false });
+                let lean = z.map_or(0.0, |z| lean(m, o, z));
+                arms.push(Arm {
+                    id: other,
+                    at_end: false,
+                    mine: false,
+                    way: t,
+                    ccw: e,
+                    cw: i,
+                    centre: c,
+                    thick: ext - int,
+                    lean,
+                    butts: false,
+                });
                 arms.push(Arm {
                     id: other,
                     at_end: false,
@@ -351,6 +398,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
                     cw: e,
                     centre: c,
                     thick: ext - int,
+                    lean,
                     butts: false,
                 });
                 through = true;
@@ -373,7 +421,7 @@ pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
 }
 
 fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
-    end_geometry(m, id, at_end, index, &|_| true).outline
+    end_geometry(m, id, at_end, index, &|_| true, None).outline
 }
 
 #[derive(Default)]
@@ -389,9 +437,9 @@ impl WallEnd {
 }
 
 /// [`cap`] and how a compound corner shares it, joined only to walls `keep` keeps.
-fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> WallEnd {
+fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool, z: Option<f64>) -> WallEnd {
     let Some(w) = m.wall(id) else { return WallEnd::default() };
-    let (arms, through) = arms(m, id, at_end, index, keep);
+    let (arms, through) = arms(m, id, at_end, index, keep, z);
     let (against, arms): (Vec<Arm>, Vec<Arm>) = arms.into_iter().partition(|a| a.butts);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
@@ -409,14 +457,19 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
         let d = against.iter().map(reach).fold(f64::MAX, f64::min);
         return WallEnd::plain(if d < f64::MAX { vec![me.cw + me.way * d, me.ccw + me.way * d] } else { vec![me.cw, me.ccw] });
     }
+    // A square compound corner is of upright walls: a slanted one mitres.
+    let upright = |id: Id| m.wall(id).is_none_or(|x| x.slant == 0.0);
     if n == 2
         && !through
+        && upright(me.id)
+        && upright(next.id)
         && let Some(end) = compound::corner(m, me, next)
     {
         return end;
     }
     let node = if at_end { w.end } else { w.start };
-    let limit = arms.iter().map(|a| a.thick).fold(0.0, f64::max);
+    // Leaning walls' corners move with them, as far again as the most leant.
+    let limit = arms.iter().map(|a| a.thick).fold(0.0, f64::max) + 2.0 * arms.iter().map(|a| a.lean.abs()).fold(0.0, f64::max);
     // Where a face of this wall crosses a neighbour's facing face, near enough to the node either way; else its own
     // end. A crossing far along the wall is no corner at all: two walls meeting at a shallow angle cross metres in.
     let meet = |face: P2, other: P2, other_way: P2| {
@@ -426,6 +479,92 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
     };
     let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
     WallEnd::plain(if through { vec![cw, ccw] } else { vec![cw, node, ccw] })
+}
+
+/// [`cap`] at height `z`: joined only to the walls standing there. Where a wall it mitres with stops below (or starts
+/// above) `z` and nothing else joins it there, its end is square, as far out as the whole corner reaches, so the taller wall
+/// closes the corner over the lower one instead of showing its mitre.
+pub fn cap_at(m: &Model, id: Id, at_end: bool, z: f64) -> Vec<P2> {
+    cap_at_in(m, id, at_end, None, z)
+}
+
+pub(crate) fn cap_at_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>, z: f64) -> Vec<P2> {
+    cap_with(m, id, at_end, index, z, z)
+}
+
+/// The cap at height `z`, joined to the walls standing at height `standing`: in a band of height whose joins are the same, its
+/// cap at each of its two ends, the same points moved as the walls lean.
+pub(crate) fn cap_with(m: &Model, id: Id, at_end: bool, index: Option<&Index>, z: f64, standing: f64) -> Vec<P2> {
+    let full = end_geometry(m, id, at_end, index, &|_| true, Some(z));
+    let Some(w) = m.wall(id) else { return full.outline };
+    let stands = |o: &Wall| m.base_z(o) <= standing && standing < m.top_z(o);
+    let (arms_here, _) = arms(m, id, at_end, index, &stands, Some(z));
+    let (all_arms, _) = arms(m, id, at_end, index, &|_| true, Some(z));
+    if arms_here.len() == all_arms.len() {
+        return full.outline;
+    }
+    if arms_here.iter().filter(|a| !a.butts).count() >= 2 {
+        return end_geometry(m, id, at_end, index, &stands, Some(z)).outline;
+    }
+    // Free here: square, out to the farthest the corner below reaches (back from the way it leaves the node).
+    let me = arm_at(m, id, w, at_end, true, Some(z));
+    let reach = full.outline.iter().map(|p| (*p - me.centre).dot(me.way)).fold(f64::INFINITY, f64::min);
+    let reach = if reach.is_finite() { reach } else { 0.0 };
+    vec![me.cw + me.way * reach, me.ccw + me.way * reach]
+}
+
+/// The heights between wall `id`'s base and top where what its ends join changes: the bases and tops of the walls joined
+/// to it that stop inside its height. Its cap is the same from one to the next ([`cap_at`]).
+pub(crate) fn cap_heights(m: &Model, id: Id, index: Option<&Index>) -> Vec<f64> {
+    let Some(w) = m.wall(id) else { return Vec::new() };
+    if !w.join || w.panel_of.is_some() {
+        return Vec::new();
+    }
+    let (lo, hi) = (m.base_z(w), m.top_z(w));
+    let mut zs = Vec::new();
+    for at_end in [false, true] {
+        let (arms, _) = arms(m, id, at_end, index, &|_| true, None);
+        for a in arms.iter().filter(|a| a.id != id && a.id != 0) {
+            let Some(o) = m.wall(a.id) else { continue };
+            for z in [m.base_z(o), m.top_z(o)] {
+                if z.is_finite() && z > lo + TOL && z < hi - TOL {
+                    zs.push(z);
+                }
+            }
+        }
+    }
+    zs.sort_by(f64::total_cmp);
+    zs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    zs
+}
+
+/// What a plan cutting at height `z` cuts of wall `id`: its outline there ([`outline_at`]), in parts where an edited profile
+/// leaves it only some stretches at that height.
+pub(crate) fn plan_cut(m: &Model, id: Id, index: Option<&Index>, z: f64) -> Vec<Vec<P2>> {
+    let Some(w) = m.wall(id) else { return Vec::new() };
+    profile::clip(w, z - m.own_base(w), &outline_at_in(m, id, index, z))
+}
+
+/// Wall `id`'s outline at height `z`: [`outline`], its caps as [`cap_at`] has them there.
+pub fn outline_at(m: &Model, id: Id, z: f64) -> Vec<P2> {
+    outline_at_in(m, id, None, z)
+}
+
+pub(crate) fn outline_at_in(m: &Model, id: Id, index: Option<&Index>, z: f64) -> Vec<P2> {
+    let Some(w) = m.wall(id) else { return Vec::new() };
+    let axis = Axis::of(w);
+    let (ext, int) = faces_at(m, w, Some(z));
+    let len = axis.length();
+    let between = |pts: Vec<P2>| {
+        let n = pts.len();
+        pts.into_iter().skip(1).take(n.saturating_sub(2))
+    };
+    let mut ring = cap_at_in(m, id, false, index, z);
+    ring.extend(between(axis.points(0.0, len, ext)));
+    ring.extend(cap_at_in(m, id, true, index, z));
+    ring.extend(between(axis.points(len, 0.0, int)));
+    ring.dedup_by(|a, b| a.dist(*b) < 1e-6);
+    ring
 }
 
 /// Wall `id`'s centre line, an arc as chords: each end it joins others at run on (or back) to the
@@ -445,7 +584,7 @@ pub(crate) fn centre_line_filtered(m: &Model, id: Id, index: Option<&Index>, kee
     let axis = Axis::of(w);
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
-        let (arms, _) = arms(m, id, at_end, index, keep);
+        let (arms, _) = arms(m, id, at_end, index, keep, None);
         let Some(me) = arms.iter().find(|a| a.id == id) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms
@@ -480,9 +619,9 @@ pub(crate) fn outline_filtered(m: &Model, id: Id, index: Option<&Index>, keep: &
         let n = pts.len();
         pts.into_iter().skip(1).take(n.saturating_sub(2))
     };
-    let mut ring = end_geometry(m, id, false, index, keep).outline;
+    let mut ring = end_geometry(m, id, false, index, keep, None).outline;
     ring.extend(between(axis.points(0.0, len, ext)));
-    ring.extend(end_geometry(m, id, true, index, keep).outline);
+    ring.extend(end_geometry(m, id, true, index, keep, None).outline);
     ring.extend(between(axis.points(len, 0.0, int)));
     ring.dedup_by(|a, b| a.dist(*b) < 1e-6);
     ring
@@ -551,12 +690,33 @@ impl LayerGeometry {
 }
 
 pub(crate) fn layer_geometry(m: &Model, id: Id, index: Option<&Index>) -> LayerGeometry {
+    layer_geometry_at(m, id, index, None)
+}
+
+/// [`layer_geometry`] at height `z`, its ends as [`cap_at`] has them there; at every height, without one.
+pub(crate) fn layer_geometry_at(m: &Model, id: Id, index: Option<&Index>, z: Option<f64>) -> LayerGeometry {
     let Some(w) = m.wall(id) else { return LayerGeometry::default() };
     let axis = Axis::of(w);
     let len = axis.length();
-    let ends = [end_geometry(m, id, false, index, &|_| true), end_geometry(m, id, true, index, &|_| true)];
+    let end = |at_end: bool| {
+        let whole = end_geometry(m, id, at_end, index, &|_| true, z);
+        match z {
+            Some(z) => {
+                let here = cap_at_in(m, id, at_end, index, z);
+                if here == whole.outline { whole } else { WallEnd::plain(here) }
+            }
+            None => whole,
+        }
+    };
+    let ends = [end(false), end(true)];
+    // A slanted wall's layers lean with its faces.
+    let (ext, _) = faces(m, w);
+    let (ext_z, int_z) = faces_at(m, w, z);
+    let thick = m.thickness(w);
+    let wide = if thick > 0.0 { (ext_z - int_z) / thick } else { 1.0 };
     let lines = boundaries(m, w)
         .into_iter()
+        .map(|off| ext_z - (ext - off) * wide)
         .enumerate()
         .map(|(k, off)| {
             let mut line = axis.points(0.0, len, off);
@@ -763,14 +923,21 @@ pub fn base_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).0.at(Axis::of(w).at(s, centre(m, w)))
 }
 
-/// A wall's top over the point `s` mm along its centre line.
+/// A wall's top over the point `s` mm along its centre line: of an edited profile, the highest it reaches there.
 pub fn top_at(m: &Model, w: &Wall, s: f64) -> f64 {
+    if let Some(up) = profile::top_at(w, s) {
+        return m.own_base(w) + up;
+    }
     bounds(m, w).1.at(Axis::of(w).at(s, centre(m, w)))
 }
 
 /// A wall's lowest base and highest top along its faces and its centre line, where what it's
 /// attached to bends (sampled: a ridge along it may fall between samples).
 pub fn heights(m: &Model, w: &Wall) -> (f64, f64) {
+    if let Some((lo, hi)) = profile::extent(w) {
+        let base = m.own_base(w);
+        return (base + lo, base + hi);
+    }
     if w.attach_base.is_none() && w.attach_top.is_none() {
         return (m.own_base(w), m.own_top(w));
     }
@@ -924,20 +1091,75 @@ fn prisms_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&
         .collect();
     let mut cuts = axis.stations(0.0, len);
     cuts.extend(holes.iter().flat_map(|h| [h.s0, h.s1]).filter(|s| *s > 0.0 && *s < len));
+    // An edited profile turns at its corners: each stretch between two has its own bottom and top.
+    cuts.extend(profile::stations(w).into_iter().filter(|s| *s > 0.0 && *s < len));
     cuts.sort_by(f64::total_cmp);
     cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     let (start, end) = (cap_in(m, id, false, index), cap_in(m, id, true, index));
+    // Where a wall it joins stops within its height, its ends change there: each band of height its own caps.
+    let bands = cap_heights(m, id, index);
     let (base, top) = bounds(m, w);
     let curve = axis.centre().map(|c| (c, axis.at(0.0, (ext + int) / 2.0).dist(c)));
     let mut out = Vec::new();
     for pair in cuts.windows(2) {
         let &[a, b] = pair else { continue };
-        let mut ring = if a <= 0.0 { start.clone() } else { vec![axis.at(a, int), axis.at(a, ext)] };
-        ring.extend(if b >= len { end.clone() } else { vec![axis.at(b, ext), axis.at(b, int)] });
+        let ring_at = |z: Option<f64>| {
+            let cap = |at_end: bool, whole: &Vec<P2>| match z {
+                Some(z) if !bands.is_empty() => cap_at_in(m, id, at_end, index, z),
+                _ => whole.clone(),
+            };
+            let mut ring = if a <= 0.0 { cap(false, &start) } else { vec![axis.at(a, int), axis.at(a, ext)] };
+            ring.extend(if b >= len { cap(true, &end) } else { vec![axis.at(b, ext), axis.at(b, int)] });
+            ring
+        };
+        let ends = a <= 0.0 || b >= len;
+        let ring = ring_at(None);
         // Up from its base to its top, past the openings over its middle.
         let mid = (a + b) / 2.0;
         let mut gaps: Vec<(f64, f64)> = holes.iter().filter(|h| h.s0 <= mid && mid <= h.s1).map(|h| (h.bottom, h.top)).collect();
+        if ends {
+            // A band's edge is a gap of no height, but for one within an opening, which is no wall at all.
+            let open = |z: f64| gaps.iter().any(|(g0, g1)| *g0 <= z && z <= *g1);
+            let edges: Vec<f64> = bands.iter().copied().filter(|z| !open(*z)).collect();
+            gaps.extend(edges.into_iter().map(|z| (z, z)));
+        }
         gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
+        if !w.profile.is_empty() {
+            // Each stretch the profile covers here, from its edge below to its edge above, less the openings. At its ends, each
+            // band of height between where the walls it joins stop has its own caps: the band's limits are gaps too.
+            let real: Vec<(f64, f64)> = gaps.iter().copied().filter(|(g0, g1)| g1 > g0).collect();
+            let mut limits = vec![f64::NEG_INFINITY];
+            if ends {
+                limits.extend(bands.iter().copied());
+            }
+            limits.push(f64::INFINITY);
+            for (bottom, top) in profile::planes_at(m, w, mid) {
+                for pair in limits.windows(2) {
+                    let &[lo, hi] = pair else { continue };
+                    let ring = match (lo.is_finite(), hi.is_finite()) {
+                        (false, false) => ring.clone(),
+                        (true, true) => ring_at(Some((lo + hi) / 2.0)),
+                        (true, false) => ring_at(Some(lo + 1.0)),
+                        (false, true) => ring_at(Some(hi - 1.0)),
+                    };
+                    let mut g = real.clone();
+                    if lo.is_finite() {
+                        g.push((-FAR, lo));
+                    }
+                    if hi.is_finite() {
+                        g.push((hi, FAR));
+                    }
+                    g.sort_by(|x, y| x.0.total_cmp(&y.0));
+                    out.extend(profile::stack(ring, bottom, top, &g).into_iter().map(|(ring, bottom, top)| Prism {
+                        ring,
+                        bottom,
+                        top,
+                        curve,
+                    }));
+                }
+            }
+            continue;
+        }
         let flat = |z: f64| Bound { regions: Vec::new(), own: z };
         let mut floors: Vec<Bound> = vec![base.clone()];
         let mut ceilings: Vec<Bound> = Vec::new();
@@ -946,8 +1168,10 @@ fn prisms_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&
             floors.push(flat(g1));
         }
         ceilings.push(top.clone());
+        let middle = axis.at(mid, (ext + int) / 2.0);
         for (under, over) in floors.iter().zip(&ceilings) {
-            for (part, bottom) in under.parts(ring.clone()) {
+            let ring = if ends && !bands.is_empty() { ring_at(Some((under.at(middle) + over.at(middle)) / 2.0)) } else { ring.clone() };
+            for (part, bottom) in under.parts(ring) {
                 for (part, top) in over.parts(part) {
                     // Only where it has some height.
                     let part = geom::clip(&part, |q| top.at(q) - bottom.at(q));
@@ -1025,6 +1249,37 @@ mod tests {
                 assert!((geom::area(o).abs() - 800_000.0).abs() < 1e-3, "{degrees}°: {}", geom::area(o));
             }
         }
+    }
+
+    #[test]
+    fn a_taller_wall_closes_the_corner_square_over_the_lower_one_it_mitres_with() {
+        // An L: the east wall 3000 high, the north one 6000. Below 3000 they mitre; above, the north wall's end is square,
+        // flush with the east wall's outer face, with no 45° face over the lower wall's top.
+        let s = session(
+            r#"wall {"points": [[4000, 0], [0, 0]], "height": 3000}
+               wall {"points": [[0, 0], [0, 4000]], "height": 6000}"#,
+        );
+        let tall = 100003;
+        let below = cap_at(&s.model, tall, false, 1500.0);
+        assert_eq!(below, cap(&s.model, tall, false), "mitred where both stand");
+        assert_eq!(below.len(), 3, "{below:?}");
+        let above = cap_at(&s.model, tall, false, 4500.0);
+        assert_eq!(above.len(), 2, "square: {above:?}");
+        // Square across the wall at the lower wall's outer face, 100 mm south of the corner.
+        assert!(above.iter().all(|p| (p.1 + 100.0).abs() < 1e-6), "{above:?}");
+        assert!(above.iter().any(|p| near(*p, P2(-100.0, -100.0))) && above.iter().any(|p| near(*p, P2(100.0, -100.0))), "{above:?}");
+        // The lower wall never changes.
+        assert_eq!(cap_at(&s.model, 100002, true, 1500.0), cap(&s.model, 100002, true));
+        // Its solid: prisms below 3000 end in the mitre, those above square; together, the whole wall.
+        let prisms = prisms(&s.model, tall, false);
+        assert_eq!(prisms.len(), 2, "{prisms:?}");
+        let high = prisms.iter().find(|p| p.bottom.at(P2(0.0, 0.0)) > 2999.0).unwrap_or_else(|| panic!("{prisms:?}"));
+        assert!(high.ring.iter().all(|p| p.1 > -100.0 - 1e-6), "{:?}", high.ring);
+        assert!(!high.ring.iter().any(|p| near(*p, P2(0.0, 0.0))), "no mitre's node up there: {:?}", high.ring);
+        let low = prisms.iter().find(|p| p.top.at(P2(0.0, 0.0)) < 3001.0).unwrap_or_else(|| panic!("{prisms:?}"));
+        assert!(low.ring.iter().any(|p| near(*p, P2(0.0, 0.0))), "{:?}", low.ring);
+        // A plan cutting above the lower wall sees the square end.
+        assert_eq!(outline_at(&s.model, tall, 4500.0).len(), 4);
     }
 
     #[test]
@@ -1122,11 +1377,15 @@ mod tests {
         if let Some(Element::Wall(w)) = m.elements.get_mut(100003) {
             w.attach_top = Some(roof);
         }
-        // Attached under a gable: the parts either side of the ridge, under the two slopes.
+        // Attached under a gable: up to where the walls either side stop (3000), its ends mitred with theirs; over that, the
+        // parts either side of the ridge, under the two slopes, square at their ends.
         let whole = prisms(&m, 100003, false);
-        assert_eq!(whole.len(), 2);
+        assert_eq!(whole.len(), 3);
         let tan = 30f64.to_radians().tan();
-        assert!(whole.iter().all(|p| (p.top.at(P2(8000.0, 3000.0)) - (3000.0 + 3100.0 * tan)).abs() < 1e-6));
+        let (low, high): (Vec<&Prism>, Vec<&Prism>) = whole.iter().partition(|p| p.top.g == P2(0.0, 0.0));
+        assert_eq!((low.len(), high.len()), (1, 2));
+        assert!((low[0].top.z - 3000.0).abs() < 1e-6);
+        assert!(high.iter().all(|p| (p.top.at(P2(8000.0, 3000.0)) - (3000.0 + 3100.0 * tan)).abs() < 1e-6));
     }
 
     #[test]

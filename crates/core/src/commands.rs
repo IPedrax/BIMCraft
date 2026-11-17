@@ -364,10 +364,12 @@ other_files(
         "wall",
         msg!("Wall"),
         &["WA"],
-        "{points: [[x,y],…], closed?, type?, level?, top_level?, top_offset?, height?, base_offset?, arc?, location?, attach_top?, \
+        "{points: [[x,y],…], closed?, type?, level?, top_level?, top_offset?, height?, base_offset?, arc?, slant?, location?, attach_top?, \
          attach_base?, room_bounding?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
          to `top_level`, `top_offset` mm above it (0; negative, below it; the top must stay above the base). `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
-         its right). `location`: the line of it the points are on: centre (the default), core-centre, exterior-finish, \
+         its right). `slant`: degrees its faces lean from upright about its location line at its base (Revit's Cross-Section \
+         Slanted), toward its exterior positive, up to 60 either way; a curtain wall's grid leans with it. `location`: the line \
+         of it the points are on: centre (the default), core-centre, exterior-finish, \
          interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls \
          drawn clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands \
          on. `room_bounding`: false for a wall rooms run past (a low wall, a balustrade); true, the default, bounds them",
@@ -10641,6 +10643,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
     let top_offset = num(c, p, "top_offset")?.unwrap_or(0.0);
     let height = height.unwrap_or(DEFAULT_HEIGHT);
     let arc = num(c, p, "arc")?.unwrap_or(0.0);
+    let slant = num(c, p, "slant")?.unwrap_or(0.0);
     let location = match string(c, p, "location")? {
         Some(n) => Location::from_name(&n).ok_or_else(|| bad(c, location_names(&n)))?,
         // A curtain wall stands on a face, as it has no centre of its own to speak of.
@@ -10699,6 +10702,8 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 join: true,
                 curtain: None,
                 panel_of: None,
+                slant,
+                profile: Vec::new(),
             }))),
             _ => None,
         })
@@ -13226,6 +13231,8 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             join: true,
             curtain: None,
             panel_of: None,
+            slant: 0.0,
+            profile: Vec::new(),
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));

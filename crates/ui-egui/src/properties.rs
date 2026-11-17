@@ -147,6 +147,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
+            ("Constraints", "slant", msg!("Angle From Vertical (°)"), Number),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
