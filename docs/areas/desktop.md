@@ -212,7 +212,8 @@ its interior face, as `Model::reference_lines` gives them to dimensions — and 
 which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. `Shift+Tab`, before the first point and mid-chain
 alike, steps the pick through the three from the line it has now (`Canvas::wall_face`), and that line is drawn in the canvas's
 hover ink before a click, so a face and a centre line are told apart before they are taken; plain `Tab` is the reading's
-fields once a chain has a base, and before it — where there are no fields — steps the lines too. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
+fields once a chain has a base, and before it — where there are no fields — steps the lines too. A stair outside the rules
+takes `Tab` before both: the nearest stair that fits gives its riser, tread and width. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
 wall lends one edge pin — marking another of its faces moves the pin (`Marked::Moved`) rather than spending a second of
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
 guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
