@@ -18242,6 +18242,42 @@ msgstr ""
 msgid "Two Segment"
 msgstr ""
 
+#: crates/ui-egui/src/fly.rs:215 crates/ui-egui/src/lib.rs:495
+msgid "Fly Mode"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:37
+msgid "Fly Mode (FY): fly through the 3D view: W, A, S and D move, Q and E rise and fall, the mouse looks round, the wheel sets the speed; Esc leaves it"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:130
+msgid "Fly mode"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:143 crates/ui-egui/src/fly.rs:176
+msgid "Fly mode off"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:164
+msgid "Fly mode on"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:35
+msgid "W A S D fly, Q rises, E falls, the mouse looks round, the wheel sets the speed, Shift flies faster; Esc leaves fly mode"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:147
+msgid "fly mode is for the 3D view: open it (3D) first"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:224
+msgid "{} ft/s"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:225
+msgid "{} m/s"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "留空的值表示使用族自身的值，如“參數”選項卡中所示。"

@@ -40,6 +40,7 @@ mod fillpatterns;
 mod filter;
 mod find;
 mod finishes;
+mod fly;
 mod footer;
 mod gpu;
 mod printsets;
@@ -433,7 +434,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 68] = [
+const SHORTCUTS: [(&str, &str); 69] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -492,6 +493,8 @@ const SHORTCUTS: [(&str, &str); 68] = [
     ("CW", msg!("Co-Work")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
+    // Revit's fly has none; the 3D view's fly mode.
+    ("FY", msg!("Fly Mode")),
     // Revit has none for its title blocks; no command or tool takes TB.
     ("TB", "Title Blocks"),
     // Revit has no building codes, and none of these for its stairs; letters it doesn't use.
@@ -928,8 +931,11 @@ pub struct BimApp {
     snap_once: Option<Once>,
     /// The Measure tool's last ruler: where it starts and ends.
     measured: Option<(P2, P2)>,
-    /// Tab pressed over the plan, taken from egui's focus keys: cycle what's under the cursor.
+    /// Tab pressed over the plan, taken from egui's focus keys: step the numbers a shape is typed by, or before its first
+    /// point cycle what's under the cursor.
     tab_cycle: bool,
+    /// Shift+Tab pressed over the plan: cycle the lines of the wall under the pointer, mid-chain or before the first point.
+    face_cycle: bool,
     /// What a window handed over that `pace` kept back for the frames after the one it came in.
     held: Vec<Event>,
     /// The Keyboard Shortcuts dialog is open (KS); the Manage tab drops its Project Units menu open
@@ -1790,6 +1796,7 @@ impl BimApp {
             cad_box: None,
             link_box: None,
             tab_cycle: false,
+            face_cycle: false,
             held: Vec::new(),
             show_shortcuts: false,
             custom_shortcuts: BTreeMap::new(),
@@ -2208,6 +2215,7 @@ impl BimApp {
         self.poll_export(&ctx);
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
+        self.fly_frame(&ctx);
         self.keys(&ctx);
         self.family_keys(&ctx);
         self.os_requests(&ctx);
@@ -2921,6 +2929,10 @@ impl BimApp {
             }
             "GD" => {
                 self.open_display();
+                return true;
+            }
+            "FY" => {
+                self.toggle_fly();
                 return true;
             }
             "TB" => {
@@ -3689,6 +3701,12 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // A number being typed goes first, and the field back to Length: the point it is for is still wanted. A field
+        // opened with no digits in it is nothing to drop, so the first Esc takes the chain as it always did.
+        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() {
+            self.clear_typed();
+            return;
+        }
         // Esc drops the drawing's marked references with the points they were marked for.
         self.canvas.pins.borrow_mut().clear();
         self.canvas.start_edge = None;
@@ -7162,9 +7180,24 @@ impl eframe::App for BimApp {
             bench.input(raw);
         }
         self.pace(&mut raw.events);
-        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight.
+        // Flying, the pointer is hidden (and on X11, which can't lock it, still roams the window): a click would act on
+        // whatever it happens to be over.
+        if self.orbit.fly.is_some() {
+            raw.events.retain(|e| !matches!(e, Event::PointerButton { .. }));
+        }
+        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight. Tab steps the
+        // reading's fields; Shift+Tab steps the lines of the wall under the pointer, which a chain in hand would
+        // otherwise never reach, `Tab` being the fields' from its first point on. Where no chain is drawn, it is Tab.
         if self.canvas.hovering() && self.active_family().is_none() && !ctx.egui_wants_keyboard_input() {
-            self.tab_cycle |= raw.events.iter().any(|e| matches!(e, Event::Key { key: Key::Tab, pressed: true, .. }));
+            for event in &raw.events {
+                if let Event::Key { key: Key::Tab, pressed: true, modifiers, .. } = event {
+                    if modifiers.shift {
+                        self.face_cycle = true;
+                    } else {
+                        self.tab_cycle = true;
+                    }
+                }
+            }
             raw.events.retain(|e| !matches!(e, Event::Key { key: Key::Tab, .. }));
         }
     }

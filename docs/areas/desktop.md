@@ -207,10 +207,11 @@ point or an edge until the ring closes — 150 ms of dead zone, then 300 ms of f
 `Q` at once, before the first point as much as after it; `Q` again, `Esc`, finishing the command or changing tool or
 view clears them, and a view keeps three (`CAP`). A wall is three references — its exterior face, its centre line and
 its interior face, as `Model::reference_lines` gives them to dimensions — and a pick takes the one nearest the pointer,
-which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. `Tab`, while a line or a wall is being drawn,
-steps the pick through the three from the line it has now (`Canvas::wall_face`), and that line is drawn in the canvas's
-hover ink before a click, so a face and a centre line are told apart before they are taken; a number already typed keeps
-Tab for the field it belongs to. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
+which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. Before the first point `Tab` steps the pick
+through the three from the line it has now (`Canvas::wall_face`); once the chain has a point, `Tab` steps the reading's
+fields (length, then angle) and `Shift+Tab` steps the three, a number typed or not (`face_cycle`); for a tool that
+draws no chain (Modify, Dimension, a curtain wall's parts, a section, the 3D view) `Shift+Tab` is `Tab`. The line held is drawn
+in the canvas's hover ink before a click, so a face and a centre line are told apart before they are taken. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
 wall lends one edge pin — marking another of its faces moves the pin (`Marked::Moved`) rather than spending a second of
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
 guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
@@ -275,6 +276,16 @@ Both gestures (`orbit/placement.rs`) preview the existing `modify` or `move` com
 commit once through `BimApp::run`. An invalid placement, lost focus, changed selection or intervening model edit
 drops the pending gesture. A valid release adds one Undo step. Curved-host window dragging, rehosting, multiple
 selection dragging, drag-time numeric entry and snapping are outside this interaction.
+Fly mode (FY, or the wing on the 3D view's control bar; `fly.rs`) flies the active 3D view as a game's camera: W and S forward and
+back where it looks, A and D to the side, Q up and E down, the mouse turning it about the eye (`Camera::flown` in the core), the wheel
+setting the speed (it starts at what crosses the model in about eight seconds) and Shift flying four times as fast. A parallel view is
+turned to perspective as it begins (`perspective`), since only a perspective view has an eye. While it flies the window holds the
+pointer, hidden (locked where the system can, else confined to the window; the mouse's own motion, egui's `pointer.motion`, turns the
+view), and a banner over the view says so. Clicks are dropped while it flies (`raw_input_hook`): X11 can't lock the pointer, and the
+hidden one would click whatever it roamed over. The letters fly only with no Ctrl, Cmd or Alt held, so Ctrl+S saves and Alt+drag still
+turns the view. Esc, FY or the wing again end it, and so do leaving the 3D view, opening a family, a dialog that takes the keys
+(`keys_taken`) or the window losing focus (`BimApp::fly_frame`). A camera view writes where it flew to back to its camera once, as fly
+mode ends however it ends, so a flight is one step to undo. It is the 3D view's only: elsewhere FY says so.
 
 A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
 ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element

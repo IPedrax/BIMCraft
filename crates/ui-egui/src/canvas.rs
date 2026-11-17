@@ -990,9 +990,18 @@ fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
 /// what's drawn: `text` anchored at `at` as `align` says.
 pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>) {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(12.0), pal().accent);
-    let rect = align.anchor_size(at, galley.size());
+    let rect = inside(align.anchor_size(at, galley.size()), p.clip_rect());
     p.rect_filled(rect.expand2(vec2(3.0, 1.0)), 2.0, pal().surface.gamma_multiply(0.85));
     p.galley(rect.min, galley, pal().accent);
+}
+
+/// `rect` moved inside `clip`, never cut by the view's edge: a snap's name over a point at the top is read a line lower,
+/// not as half a name.
+pub(crate) fn inside(rect: Rect, clip: Rect) -> Rect {
+    let clip = clip.shrink(2.0);
+    let dx = (clip.left() - rect.left()).max(0.0) - (rect.right() - clip.right()).max(0.0);
+    let dy = (clip.top() - rect.top()).max(0.0) - (rect.bottom() - clip.bottom()).max(0.0);
+    rect.translate(vec2(dx, dy))
 }
 
 /// What the guides at a point say: the one inference, or the two that cross there, so a point both
@@ -1119,8 +1128,15 @@ pub(crate) fn alignment_shapes(
             (at.y, source.y) = (on_grid(at.y), on_grid(at.y));
         }
         if refined {
-            // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks.
-            out.push(Shape::line_segment([source, at], Stroke::new(hair, ink.core)));
+            // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks — but
+            // only the last screen-wide stretch of it in the strong ink. A 40 m grid's source is 200 px away at 1:100, and
+            // its whole length would run across the plan as if the guide were the element.
+            let reach = (at - source).length();
+            let near = if reach > tail { at + (source - at) / reach * tail } else { source };
+            if reach > tail {
+                out.push(Shape::line_segment([source, near], Stroke::new(hair, ink.ray.gamma_multiply(0.35))));
+            }
+            out.push(Shape::line_segment([near, at], Stroke::new(hair, ink.core)));
             // A short tail past the cursor, fading: the plan stays clear of rays that run to the view's edge.
             for (i, alpha) in [0.5f32, 0.28, 0.12].into_iter().enumerate() {
                 let (a, b) = (at + d * (tail * i as f32 / 3.0), at + d * (tail * (i + 1) as f32 / 3.0));
@@ -2020,15 +2036,45 @@ impl BimApp {
         if under != c.under {
             (c.under, c.cycle) = (under, 0);
         }
-        let tab = ui.input(|i| i.key_pressed(Key::Tab)) && local.is_some();
-        if tab {
+        // Without the app's input hook, as in a test, this frame's events still hold the Tab, so round it up here too.
+        let (tab, face) = ui.input(|i| {
+            let mut found = (false, false);
+            if local.is_none() {
+                return found;
+            }
+            for e in &i.events {
+                if let Event::Key { key: Key::Tab, pressed: true, modifiers, .. } = e {
+                    if modifiers.shift {
+                        found.1 = true;
+                    } else {
+                        found.0 = true;
+                    }
+                }
+            }
+            found
+        });
+        if tab || face {
             ui.ctx().memory_mut(|m| {
                 if let Some(f) = m.focused() {
                     m.surrender_focus(f);
                 }
             });
         }
-        let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        // The tools whose chain Shift+Tab steps a wall's three lines for; for any other, Shift+Tab is Tab.
+        let chain = matches!(
+            self.tool,
+            Tool::Wall(_)
+                | Tool::DetailLine(_)
+                | Tool::SketchLine(_)
+                | Tool::Railing(_)
+                | Tool::Mass(_)
+                | Tool::Move(_)
+                | Tool::Copy(_)
+                | Tool::Column
+                | Tool::Run(..)
+        );
+        let face = std::mem::take(&mut self.face_cycle) || face;
+        let tabbed = std::mem::take(&mut self.tab_cycle) || tab || (face && !chain);
         // Drawing a stair outside the rules, Tab takes the nearest stair that fits: its riser, tread and width. That Tab is the
         // stair's, not a wall face's.
         let mut stair_tabbed = false;
@@ -2112,44 +2158,33 @@ impl BimApp {
         } else if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
-        // Tab over a wall, while a line or a wall is being drawn from a point, steps through the wall's three references —
-        // its exterior face, its centre line and its interior face — starting from the one the pick has now, so the first
-        // Tab always moves the point. A number already typed keeps Tab for the field it belongs to.
+        // Tab steps the reading's fields; before the first point there are none, so it steps the wall's three references
+        // under the pointer — its exterior face, its centre line and its interior face. Shift+Tab steps those three
+        // anytime, mid-chain and while a number is typed too, so a wall face is never lost to the fields' key.
         let typing = !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty();
-        let chain = matches!(
-            self.tool,
-            Tool::Wall(_)
-                | Tool::DetailLine(_)
-                | Tool::SketchLine(_)
-                | Tool::Railing(_)
-                | Tool::Mass(_)
-                | Tool::Move(_)
-                | Tool::Copy(_)
-                | Tool::Column
-                | Tool::Run(..)
-        );
+        let faces = face || (tabbed && self.base().is_none());
         let mut wall_tabbed = false;
-        if tabbed
+        if faces
             && !stair_tabbed
             && !reference_tabbed
             && !segment_tabbed
-            && !typing
+            && (!typing || face)
             && !ui.ctx().egui_wants_keyboard_input()
             && chain
             && self.typed_fields() == 0
-            && let Some(id) = self
-                .canvas
-                .under_cursor
-                .iter()
-                .copied()
-                .find(|id| model.wall(*id).is_some_and(|w| w.arc == 0.0 && model.cut_by(w, model.guid(level))))
+            && let Some(id) =
+                self.canvas.under_cursor.iter().copied().find(|id| model.wall(*id).is_some_and(|w| model.straight_at(w, level)))
         {
+            // The face the cycle starts from: the one it holds, else the wall's line nearest the pointer. Shift is also
+            // the square modifier, so the pick shown while the key is down is squared off the wall; the nearest line is
+            // asked again without it, or the first press would start from the middle instead of moving.
+            let nearest = local.and_then(|q| {
+                let f = self.snap(&model, level, &view, q, &[], false);
+                (f.source == Some(id)).then(|| f.face.unwrap_or(Face::Centre))
+            });
             let now = match self.canvas.wall_face {
                 Some((held, face)) if held == id => face,
-                _ => match self.canvas.found.get() {
-                    Some(f) if f.source == Some(id) => f.face.unwrap_or(Face::Centre),
-                    _ => Face::Centre,
-                },
+                _ => nearest.unwrap_or(Face::Centre),
             };
             let next = match now {
                 Face::Left => Face::Centre,
@@ -5241,8 +5276,10 @@ impl BimApp {
                 _ => None,
             };
             let live = degrees(turning.unwrap_or_else(|| snap::ruler(last, next).angle));
-            // The length and, once Tab has been pressed, the angle: the one being typed in brackets.
-            let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
+            // The length and the angle, both shown while a segment is drawn, so Tab's move is seen before a digit is
+            // typed: the field that takes the digits is the one in brackets, Length until Tab and the angle after it.
+            // `(Enter)` says that field holds a number to place.
+            let angled = self.line_angle_field() || self.drawing.field == 1 || !self.drawing.other.is_empty();
             let text = match (self.typed_length.is_empty(), angled) {
                 (true, false) => format!("{}  {live}", m.units.with_unit(last.dist(next))),
                 (false, false) => format!("{} (Enter)", self.typed_length.trim()),
@@ -5254,9 +5291,11 @@ impl BimApp {
                     };
                     let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.trim().to_string() };
                     let ang = if ang.is_empty() { live } else { format!("{}°", ang.trim()) };
+                    // `typed_length` is whichever field Tab left taking the digits.
+                    let enter = if self.typed_length.is_empty() { "" } else { " (Enter)" };
                     match self.drawing.field {
-                        1 => format!("{len}  [{ang}] (Enter)"),
-                        _ => format!("[{len}]  {ang} (Enter)"),
+                        1 => format!("{len}  [{ang}]{enter}"),
+                        _ => format!("[{len}]  {ang}{enter}"),
                     }
                 }
             };
@@ -6040,20 +6079,23 @@ impl BimApp {
                 p.extend(corner_arc(sc, *prev, *l, next, refined));
             }
         }
-        // The listening dimension: its length and the angle Tab is on, said as every other tool's numbers are. The refined
-        // look sets the plain reading (nothing typed, Tab not pressed) in a pill beside the segment's middle, on the outside of
-        // the corner it turns at and clear of the badge; anything typed or bracketed is said by the cursor.
-        let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
-        match chain {
-            [.., last] if refined && self.typed_length.is_empty() && !angled => {
+        // The listening dimension is `shape_texts`'s, the same text a shape's numbers are, so the field `Tab` is on is
+        // bracketed and the digits are seen to go there. Drawn on its own once, the preview left `Tab`'s move unseen.
+        if let Some(&last) = chain.last()
+            && let Some((_, text)) = self.shape_texts(m, chain, next).into_iter().next()
+        {
+            if refined && self.typed_length.is_empty() {
+                // Beside the segment's middle, on the outside of the corner it turns at, and clear of the line by the pill's
+                // own width so a wide pill never crosses back over a steep segment; the badge it must keep off is known.
+                let (pl, pn) = (sc.screen(last), sc.screen(next));
                 let prev = match chain {
                     [.., prev, _] => Some(sc.screen(*prev)),
                     _ => None,
                 };
-                let reading = self.shape_texts(m, chain, next).into_iter().next().map(|(_, t)| t).unwrap_or_default();
-                reading_pill(sc.p, sc.screen(*last), sc.screen(next), prev, reading, guide_ink(), self.canvas.badge.get());
+                reading_pill(sc.p, pl, pn, prev, text, guide_ink(), self.canvas.badge.get());
+            } else {
+                label(sc.screen(next), text);
             }
-            _ => self.shape_dimensions(sc, chain, next),
         }
     }
 }

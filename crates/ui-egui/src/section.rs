@@ -312,7 +312,7 @@ impl BimApp {
                 }
             });
         }
-        if (std::mem::take(&mut self.tab_cycle) || tab)
+        if (std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab)
             && let (Some(q), Some(wall)) = (local, hovered)
             && crate::curtain::tab_wall(&model, &self.selection, &[wall], Some(wall), self.tool == Tool::Modify) == Some(wall)
             && let Some((cam, _)) = render::section_camera(&model, id, view)
