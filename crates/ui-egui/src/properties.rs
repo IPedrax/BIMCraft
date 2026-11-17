@@ -89,6 +89,8 @@ enum Kind {
     Link,
     /// One of these values (as the command names it, and its label): a drop-down, the first when it has none.
     Choice(&'static [(&'static str, &'static str)]),
+    /// A wall's shape in elevation: Edit Profile, and Reset Profile once it has one (one straight, upright wall only).
+    Profile,
 }
 
 use Kind::*;
@@ -148,6 +150,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Constraints", "slant", msg!("Angle From Vertical (°)"), Number),
+            ("Constraints", "profile", msg!("Profile"), Profile),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
@@ -2151,6 +2154,8 @@ impl BimApp {
         let mut crop = None;
         // An element a link was clicked for: the selection.
         let mut select = None;
+        // A wall's Edit Profile (false) or Reset Profile (true) clicked.
+        let mut profiled: Option<bool> = None;
         // A stair's sign clicked: the rules it is outside of, in a window of their own.
         let mut findings = false;
         let units = model.units;
@@ -2347,6 +2352,20 @@ impl BimApp {
                                 select = Some(other);
                             }
                         }
+                        // Edit Profile sketches it on its face in a section, an elevation or the 3D view, or opens the dialog.
+                        Profile => {
+                            ui.horizontal(|ui| {
+                                let editable = ids.len() == 1 && crate::profile::profile_editable(model, id);
+                                let shaped = val.as_array().is_some_and(|a| !a.is_empty());
+                                let edit = ui.add_enabled(editable, Button::new(t("Edit Profile")));
+                                if edit.clicked() {
+                                    profiled = Some(false);
+                                }
+                                if shaped && ui.add_enabled(editable, Button::new(t("Reset Profile"))).clicked() {
+                                    profiled = Some(true);
+                                }
+                            });
+                        }
                         Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
                             // Blank across a selection may be values that differ, not nothing.
                             let hint = match kind {
@@ -2367,6 +2386,11 @@ impl BimApp {
         }
         if let Some(other) = select {
             self.selection = vec![other];
+        }
+        match profiled {
+            Some(false) => self.edit_profile(id),
+            Some(true) => drop(self.run("modify", json!({"id": id, "profile": []}))),
+            None => {}
         }
         // A view's crop: on to all it shows, or off.
         if let (Some(on), &[view]) = (crop, ids) {

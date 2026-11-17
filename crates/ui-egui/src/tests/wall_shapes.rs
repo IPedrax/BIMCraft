@@ -2,6 +2,13 @@
 
 use super::*;
 
+/// A button of the Properties palette, scrolled into sight first: a wall's Profile row is low in it.
+fn press_row(h: &mut Harness<BimApp>, label: &str) {
+    h.get_by_label(label).scroll_to_me();
+    h.run();
+    press(h, label);
+}
+
 fn wall(h: &Harness<BimApp>) -> (Id, bimcraft_core::model::Wall) {
     let m = &h.state().session.model;
     m.elements
@@ -32,8 +39,7 @@ fn edit_profile_shapes_a_selected_wall_in_one_step_and_reset_profile_takes_it_ba
     let (id, _) = wall(&h);
     h.state_mut().selection = vec![id];
     h.run();
-    press(&mut h, "Modify | Walls");
-    press(&mut h, "Edit Profile");
+    press_row(&mut h, "Edit Profile");
     let editor = h.state().profile_editor.clone().unwrap_or_else(|| panic!("Edit Profile is open"));
     assert_eq!(editor.loops, [crate::profile::rectangle(6000.0, 3000.0)], "it starts as the wall's rectangle");
     // A point on the top edge, raised to a gable's peak: picked, then typed.
@@ -51,12 +57,7 @@ fn edit_profile_shapes_a_selected_wall_in_one_step_and_reset_profile_takes_it_ba
     assert_eq!(h.state().session.model.top_z(&w), 4500.0);
     h.state_mut().selection = vec![id];
     h.run();
-    press(&mut h, "Modify | Walls");
-    // A narrow ribbon folds the Mode panel into its list.
-    if h.query_by_label("Reset Profile").is_none() {
-        press(&mut h, "Mode ▾");
-    }
-    press(&mut h, "Reset Profile");
+    press_row(&mut h, "Reset Profile");
     assert!(wall(&h).1.profile.is_empty(), "{}", h.state().status.text);
 }
 
@@ -66,8 +67,7 @@ fn edit_profile_says_why_a_shape_off_the_walls_ends_is_refused_and_stays_open() 
     let (id, _) = wall(&h);
     h.state_mut().selection = vec![id];
     h.run();
-    press(&mut h, "Modify | Walls");
-    press(&mut h, "Edit Profile");
+    press_row(&mut h, "Edit Profile");
     // Its end corner past the wall's end.
     press(&mut h, "Point 1 2");
     type_into(&mut h, "Along the Wall", "7000");
@@ -83,8 +83,9 @@ fn edit_profile_is_offered_only_for_a_straight_upright_wall() {
     let (id, _) = wall(&h);
     h.state_mut().selection = vec![id];
     h.run();
-    press(&mut h, "Modify | Walls");
-    assert!(h.query_by_label("Edit Profile").is_none());
+    // Its Properties row's button is there, but greyed: a click does nothing.
+    press_row(&mut h, "Edit Profile");
+    assert!(h.state().sketch.is_none() && h.state().profile_editor.is_none());
 }
 
 /// Where a point of wall `id`'s face, `[along, up]`, shows in section `view` as last drawn.
@@ -120,8 +121,7 @@ fn edit_profile_in_a_section_sketches_on_the_walls_face_and_a_hole_drawn_there_i
     h.run();
     h.state_mut().selection = vec![id];
     h.run();
-    press(&mut h, "Modify | Walls");
-    press(&mut h, "Edit Profile");
+    press_row(&mut h, "Edit Profile");
     let sk = h.state().sketch.clone().unwrap_or_else(|| panic!("sketching: {}", h.state().status.text));
     assert_eq!(sk.of, crate::sketch::Of::Profile(id));
     assert_eq!(sk.plan, Sheet::Section(view), "on the section it began in");
@@ -155,8 +155,7 @@ fn edit_profile_in_the_3d_view_sketches_on_the_walls_face() {
     h.run();
     h.state_mut().selection = vec![id];
     h.run();
-    press(&mut h, "Modify | Walls");
-    press(&mut h, "Edit Profile");
+    press_row(&mut h, "Edit Profile");
     let sk = h.state().sketch.clone().unwrap_or_else(|| panic!("sketching: {}", h.state().status.text));
     assert_eq!((sk.of, sk.plan), (crate::sketch::Of::Profile(id), Sheet::View3D));
     assert_eq!(h.state().sketch_surface().map(|f| f.world(P2(1000.0, 500.0))), Some([1000.0, 0.0, 500.0]));

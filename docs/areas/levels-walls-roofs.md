@@ -54,13 +54,14 @@ at its ends and its doors' sills are measured as before, and not crossing itself
 the profile; between two cuts each stretch it covers is a prism from one edge's plane to another's, less its openings
 (`profile::stack`), so 3D, sections and IFC take it as they take any wall, and a plan cuts it only where the profile reaches the cut
 plane (`walls::plan_cut`). Its top for its openings and its height are the profile's (`walls::top_at`, `heights`). On the desktop,
-Modify | Walls has a Mode panel with Edit Profile for one such wall selected. In a section or an elevation whose line runs along the
+a wall's Properties has a Profile row: Edit Profile, and Reset Profile once it has one, for one such wall selected (a row rather than a
+ribbon button, as the Modify | Walls tab has no room left at narrow widths without folding Modify's tools). In a section or an elevation whose line runs along the
 wall, or in the 3D view, it is sketch mode on the wall's face (`sketch::Of::Profile`): the outline and holes are sketch lines in the
 wall's `[along, up]` frame on an upright `sketch3d::Face`, which a section's camera shows as the 3D view's does, so the Draw panel's
 tools, Modify's grips, Delete and Finish Edit Mode work as for a floor's boundary; points snap to the lines' ends and to 10 mm.
 Finish solves the lines into one outline with holes and sets the profile (the wall's own rectangle sets none), one undo step. In a
 plan, which can't show the shape, Edit Profile opens a dialog of the wall to scale from its exterior (`crates/ui-egui/src/profile.rs`):
-drag a point, click an edge for a new one, type a point's place, add or remove a hole. Reset Profile beside it takes the shape off.
+drag a point, click an edge for a new one, type a point's place, add or remove a hole. Reset Profile takes the shape off.
 
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,

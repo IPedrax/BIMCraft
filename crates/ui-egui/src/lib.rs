@@ -5764,25 +5764,6 @@ impl BimApp {
                 }
             });
         }
-        // One straight, upright wall: its shape in elevation, Revit's Mode panel of Modify | Walls.
-        if let [id] = self.selected_walls().as_slice()
-            && self.tool == Tool::Modify
-            && profile::profile_editable(&self.session.model, *id)
-        {
-            let id = *id;
-            panel(ui, msg!("Mode"), |ui| {
-                let tip = msg!("Edit Profile: the wall's shape in elevation, its outline and any holes, in place of its rectangle");
-                let on = self.profile_editor.is_some() || matches!(self.sketch.as_ref().map(|sk| sk.of), Some(sketch::Of::Profile(_)));
-                if big_button(ui, Icon::EditProfile, msg!("Edit Profile"), on, tip).clicked() {
-                    self.edit_profile(id);
-                }
-                let shaped = self.session.model.wall(id).is_some_and(|w| !w.profile.is_empty());
-                let tip = msg!("Reset Profile: the wall's rectangle back, from its base to its top");
-                if shaped && big_button(ui, Icon::ResetProfile, msg!("Reset Profile"), false, tip).clicked() {
-                    self.run("modify", json!({"id": id, "profile": []}));
-                }
-            });
-        }
         // Work plane-based components selected: Revit's Work Plane panel, Edit Work Plane (T12).
         let hosted = self.work_plane_components();
         if !hosted.is_empty() && self.tool == Tool::Modify {
