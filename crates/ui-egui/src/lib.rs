@@ -2027,9 +2027,7 @@ impl BimApp {
         }
         // A mark names what stood when it was made: undo or redo can take that away or move it.
         if matches!(id, "undo" | "redo") && result.is_ok() {
-            self.canvas.pins.borrow_mut().clear();
-            self.canvas.start_edge = None;
-            self.canvas.wall_face = None;
+            self.canvas.guides_reset();
         }
         // A change that would break a group from inside: the window asks what to do (Ungroup, Create New Type, Cancel).
         if let Err(e) = &result {
@@ -2656,6 +2654,12 @@ impl BimApp {
         if self.sketch.is_none() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
             self.run("redo", json!({}));
         }
+        // Ctrl+A with a reading field in hand selects that field for overwrite, as a text field does: it is taken before
+        // the two-letter shortcuts, so it neither waits for a second letter nor reaches the canvas's Select All.
+        if self.drawing.armed && self.line_angle_field() && pressed(Modifiers::COMMAND, Key::A) {
+            self.drawing.selected = true;
+            self.typed.clear();
+        }
         // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
         for letter in ctrl_letters(ctx) {
             self.ctrl_letter(ctx, letter);
@@ -2713,7 +2717,12 @@ impl BimApp {
             // A snap override typed was for that point.
             self.snap_once = None;
         }
-        if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
+        if self.drawing.selected && pressed(Modifiers::NONE, Key::Backspace) {
+            // A whole-selected field is cleared by Backspace, not clipped a digit at a time: the number goes and the field
+            // catches up with the pointer again.
+            self.typed_length.clear();
+            self.drawing.selected = false;
+        } else if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
             self.typed_length.pop();
         }
         // Backspace while a dimension is being picked takes its last reference out.
@@ -2726,7 +2735,13 @@ impl BimApp {
             refs.pop();
         }
         if pressed(Modifiers::NONE, Key::Delete) {
-            self.delete();
+            // While a field is whole-selected, Delete empties that field rather than deleting the selection.
+            if self.drawing.selected {
+                self.typed_length.clear();
+                self.drawing.selected = false;
+            } else {
+                self.delete();
+            }
         }
         // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke turns a wall,
         // a door or a window, so holding Shift or Space cannot fill the Undo history.
@@ -2789,8 +2804,16 @@ impl BimApp {
         // without Ctrl are no shortcut.
         for ch in typed.chars() {
             let listening = self.base().is_some() || self.filleting() || self.rotating();
-            let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
+            // A bearing west of east is negative, so the angle field takes its sign; Rotate always has.
+            let negative_angle = self.drawing.field == 1 && self.line_angle_field();
+            let sign = ch == '-' && (self.rotating() || negative_angle) && self.typed_length.is_empty();
             if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
+                // The field `Tab` armed holds what is selected, so the first digit replaces it instead of appending.
+                if self.drawing.selected {
+                    self.typed_length.clear();
+                    self.drawing.selected = false;
+                }
+                self.drawing.armed = true;
                 self.typed_length.push(ch);
             }
         }
@@ -3786,16 +3809,14 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
-        // A number being typed goes first, and the field back to Length: the point it is for is still wanted. A field
-        // opened with no digits in it is nothing to drop, so the first Esc takes the chain as it always did.
-        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() {
+        // A number being typed, or a field armed with Tab, goes first, and the field back to Length: the point it is for
+        // is still wanted, and a stale locked length must not linger. The next Esc drops the chain.
+        if !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty() || self.drawing.armed {
             self.clear_typed();
             return;
         }
         // Esc drops the drawing's marked references with the points they were marked for.
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
+        self.canvas.guides_reset();
         // Walls' Outline's Options Bar clears its walls first: the mode itself stays on.
         if self.outline_pending {
             self.outline_walls.clear();

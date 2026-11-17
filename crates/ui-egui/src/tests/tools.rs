@@ -156,7 +156,7 @@ fn what_is_typed_for_one_shape_is_not_taken_for_another_and_tab_stays_among_its_
     digits(&mut h, "300");
     press(&mut h, "Circle");
     assert_eq!((h.state().typed_length.as_str(), h.state().drawing.other.as_str(), h.state().drawing.field), ("", "", 0));
-    // A circle's one number is the field Tab was on, whatever it was last: its label says what Enter does.
+    // A circle's one number is the field Tab was on, whatever it was last: the box says what Enter does.
     click(&mut h, P2(3000.0, 4000.0));
     hover(&mut h, P2(4000.0, 4000.0));
     h.state_mut().drawing.field = 1;
@@ -164,7 +164,7 @@ fn what_is_typed_for_one_shape_is_not_taken_for_another_and_tab_stays_among_its_
     let chain = h.state().points().cloned().unwrap_or_default();
     let m = h.state().session.model.clone();
     let texts = h.state().shape_texts(&m, &chain, P2(4000.0, 4000.0));
-    assert_eq!(texts.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(), ["300 (Enter)"]);
+    assert_eq!(texts.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(), ["300"]);
     key(&mut h, Key::Enter);
     assert_eq!(curve(&h, *ids(&h, "line").last().unwrap()), Curve::Circle { centre: P2(3000.0, 4000.0), radius: 300.0 });
 }

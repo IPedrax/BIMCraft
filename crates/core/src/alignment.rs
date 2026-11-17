@@ -38,10 +38,6 @@ pub enum AlignmentAxis {
     X,
     /// Horizontal guide: cursor y-coordinate aligns with reference point's y.
     Y,
-    /// 45-degree diagonal guide (y - x = constant).
-    Angle45,
-    /// 135-degree diagonal guide (y + x = constant).
-    Angle135,
     /// A direction borrowed from a line the cursor is near, through the point being drawn from:
     /// parallel to that line, or square to it.
     Inferred { along: P2, of: Inference },
@@ -62,8 +58,6 @@ impl AlignmentAxis {
         match self {
             AlignmentAxis::X => P2(0.0, 1.0),
             AlignmentAxis::Y => P2(1.0, 0.0),
-            AlignmentAxis::Angle45 => P2(std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
-            AlignmentAxis::Angle135 => P2(-std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
             AlignmentAxis::Inferred { along, .. } => along,
             AlignmentAxis::Collinear { along } => along,
         }
@@ -74,8 +68,6 @@ impl AlignmentAxis {
         match self {
             AlignmentAxis::X => ui_msg!("Vertical"),
             AlignmentAxis::Y => ui_msg!("Horizontal"),
-            AlignmentAxis::Angle45 => "45°",
-            AlignmentAxis::Angle135 => "135°",
             AlignmentAxis::Inferred { of: Inference::Parallel, .. } => ui_msg!("Parallel"),
             AlignmentAxis::Inferred { of: Inference::Perpendicular, .. } => ui_msg!("Perpendicular"),
             AlignmentAxis::Collinear { .. } => ui_msg!("On Line"),
@@ -122,26 +114,15 @@ pub struct AlignmentResult {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AlignmentConfig {
     pub enabled: bool,
-    /// Tolerance in model units (mm).
-    pub tolerance: f64,
     pub endpoints: bool,
     pub midpoints: bool,
     pub faces: bool,
     pub intersections: bool,
-    pub angles: bool,
 }
 
 impl Default for AlignmentConfig {
     fn default() -> AlignmentConfig {
-        AlignmentConfig {
-            enabled: true,
-            tolerance: 80.0,
-            endpoints: true,
-            midpoints: true,
-            faces: true,
-            intersections: true,
-            angles: false,
-        }
+        AlignmentConfig { enabled: true, endpoints: true, midpoints: true, faces: true, intersections: true }
     }
 }
 
@@ -593,7 +574,7 @@ impl AlignmentGuideService {
             }
         }
         if guides.is_empty() {
-            return if self.config.angles { self.find_diagonal_alignment(cursor, start_point, tolerance) } else { Vec::new() };
+            return Vec::new();
         }
 
         // Two guides crossing say where the point goes, and both are named; one says only one of its
@@ -660,66 +641,6 @@ impl AlignmentGuideService {
             }
         }
         best.map(|(_, axis)| Guide { axis, anchor: start, kind: ReferenceType::Endpoint, wall_id: None })
-    }
-
-    /// Checks 45° and 135° diagonal alignments if enabled.
-    fn find_diagonal_alignment(&self, cursor: P2, start_point: Option<P2>, tolerance: f64) -> Vec<AlignmentResult> {
-        let is_self = |p: P2| {
-            if let Some(start) = start_point { p.dist(start) <= TOL } else { false }
-        };
-
-        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
-        let mut best: Option<(AlignmentAxis, ReferencePoint, P2, f64)> = None;
-
-        for &r in &self.references {
-            if is_self(r.point) {
-                continue;
-            }
-
-            // 45° line: (y - R.y) = (x - R.x) => (x - y) - (R.x - R.y) = 0
-            let d45 = ((cursor.0 - cursor.1) - (r.point.0 - r.point.1)).abs() * inv_sqrt2;
-            if d45 <= tolerance {
-                let u = P2(1.0, 1.0) * inv_sqrt2;
-                let proj = r.point + u * ((cursor - r.point).dot(u));
-                let dist = r.point.dist(cursor);
-                let is_better = match &best {
-                    None => true,
-                    Some((_, prev_r, _, prev_dist)) => (r.kind as u8, dist) < (prev_r.kind as u8, *prev_dist),
-                };
-                if is_better {
-                    best = Some((AlignmentAxis::Angle45, r, proj, dist));
-                }
-            }
-
-            // 135° line: (y - R.y) = -(x - R.x) => (x + y) - (R.x + R.y) = 0
-            let d135 = ((cursor.0 + cursor.1) - (r.point.0 + r.point.1)).abs() * inv_sqrt2;
-            if d135 <= tolerance {
-                let u = P2(-1.0, 1.0) * inv_sqrt2;
-                let proj = r.point + u * ((cursor - r.point).dot(u));
-                let dist = r.point.dist(cursor);
-                let is_better = match &best {
-                    None => true,
-                    Some((_, prev_r, _, prev_dist)) => (r.kind as u8, dist) < (prev_r.kind as u8, *prev_dist),
-                };
-                if is_better {
-                    best = Some((AlignmentAxis::Angle135, r, proj, dist));
-                }
-            }
-        }
-
-        if let Some((axis, r, proj, _)) = best {
-            let p = micron(proj);
-            vec![AlignmentResult {
-                snapped_point: p,
-                guide_line: GuideLine { from: r.point, to: p },
-                reference_point: r.point,
-                axis,
-                kind: r.kind,
-                wall_id: r.wall_id,
-            }]
-        } else {
-            Vec::new()
-        }
     }
 
     pub fn references(&self) -> &[ReferencePoint] {
@@ -896,7 +817,7 @@ mod why_tests {
     #[test]
     fn a_line_borrows_the_direction_of_the_wall_beside_it() {
         let (s, level) = beside_a_slanted_wall();
-        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let config = AlignmentConfig::default();
         let service = AlignmentGuideService::from_model(&s.model, level, config);
         let start = P2(0.0, 2000.0);
         let along = P2(4000.0, 2309.0) * (1.0 / P2(4000.0, 2309.0).length());
@@ -916,7 +837,7 @@ mod why_tests {
     #[test]
     fn a_line_borrows_the_direction_square_to_the_wall_beside_it() {
         let (s, level) = beside_a_slanted_wall();
-        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let config = AlignmentConfig::default();
         let service = AlignmentGuideService::from_model(&s.model, level, config);
         let start = P2(0.0, 2000.0);
         let along = P2(4000.0, 2309.0) * (1.0 / P2(4000.0, 2309.0).length());
@@ -938,7 +859,7 @@ mod why_tests {
         s.script(r#"wall {"points": [[0, 0], [4000, 2309]]}"#).unwrap();
         s.script(r#"wall {"points": [[1000, 6000], [1000, 7000]]}"#).unwrap();
         let level = s.model.levels()[0].0;
-        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let config = AlignmentConfig::default();
         let service = AlignmentGuideService::from_model(&s.model, level, config);
         let start = P2(0.0, 2000.0);
         // Near the vertical wall's end (x = 1000) and near the slanted wall's parallel through `start`.
@@ -959,7 +880,7 @@ mod why_tests {
         let mut s = Session::new();
         s.script(r#"detail_line {"points": [[0, 0], [4000, 2309]]}"#).unwrap();
         let level = s.model.levels()[0].0;
-        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let config = AlignmentConfig::default();
         let service = AlignmentGuideService::from_model(&s.model, level, config);
 
         // Its far end's x, as a vertical guide.
@@ -981,7 +902,7 @@ mod why_tests {
     #[test]
     fn a_guide_is_not_borrowed_at_the_point_it_starts_from() {
         let (s, level) = beside_a_slanted_wall();
-        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let config = AlignmentConfig::default();
         let service = AlignmentGuideService::from_model(&s.model, level, config);
         let start = P2(1234.0, 2000.0);
 
@@ -997,7 +918,7 @@ mod why_tests {
         s.script(r#"wall {"points": [[0, 0], [0, 100]]}"#).unwrap();
         s.script(r#"wall {"points": [[1000, 0], [1174, 985]]}"#).unwrap();
         let level = s.model.levels()[0].0;
-        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let config = AlignmentConfig::default();
         let service = AlignmentGuideService::from_model(&s.model, level, config);
         // The vertical guide is x = 0; the borrowed one crosses it at (0, -567). The cursor is on the
         // first and 24 mm off the second, 136 mm from where they meet: inside 2 × tolerance, past 1.5.
@@ -1013,7 +934,7 @@ mod why_tests {
     #[test]
     fn a_direction_no_line_runs_in_is_not_borrowed() {
         let (s, level) = beside_a_slanted_wall();
-        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let config = AlignmentConfig::default();
         let service = AlignmentGuideService::from_model(&s.model, level, config);
         let start = P2(0.0, 2000.0);
         let sixty = 60.0_f64.to_radians();
@@ -1140,15 +1061,7 @@ mod why_tests {
         s.script(r#"wall {"points": [[0, 0], [5000, 0]]}"#).unwrap();
         let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
         let level = s.model.levels()[0].0;
-        let config = AlignmentConfig {
-            enabled: true,
-            tolerance: 50.0,
-            endpoints: true,
-            midpoints: true,
-            faces: true,
-            intersections: true,
-            angles: false,
-        };
+        let config = AlignmentConfig { enabled: true, endpoints: true, midpoints: true, faces: true, intersections: true };
         let service = AlignmentGuideService::from_model(&s.model, level, config);
         let found = service.find_alignments(P2(5005.0, 3000.0), Some(P2(0.0, 3000.0)), 50.0);
         assert!(found.first().is_some_and(|a| a.wall_id == Some(wall)), "{found:?}");
