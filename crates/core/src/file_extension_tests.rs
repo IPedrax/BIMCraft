@@ -83,7 +83,9 @@ fn every_project_extension_saves_and_opens_and_an_old_file_is_left_as_it_was() {
         let mut opened = Session::new();
         opened.execute("open", &json!({"path": path})).unwrap();
         assert_eq!(opened.model.to_json().unwrap(), text, "{ext}");
-        assert_eq!(opened.path.as_ref(), Some(&path), "{ext}");
+        // A template is read and let go: what it holds is a new project, with no file of its own.
+        let kept = (ext != "bimt").then_some(&path);
+        assert_eq!(opened.path.as_ref(), kept, "{ext}");
     }
     // A project from before: read through every way a file is read, and never renamed or rewritten for it.
     let old = dir.join("before.bimcraft");
@@ -106,6 +108,42 @@ fn every_project_extension_saves_and_opens_and_an_old_file_is_left_as_it_was() {
     assert_eq!(std::fs::read(&old).unwrap(), bytes);
     assert_eq!(std::fs::metadata(&old).unwrap().modified().unwrap(), modified);
     assert_eq!(names(), before, "nothing was written beside it");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_template_opens_as_a_new_project_and_saving_one_keeps_the_projects_own_file() {
+    let dir = dir();
+    let mut s = Session::new();
+    s.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();
+    let project = dir.join("house.bimc");
+    s.execute("save", &json!({"path": project})).unwrap();
+    // Saving as a template writes it, and the project's own file is still the one Save writes.
+    let template = dir.join("office.bimt");
+    let reply = s.execute("save", &json!({"path": template})).unwrap();
+    assert_eq!(reply["template"], true, "{reply}");
+    assert_eq!(s.path.as_ref(), Some(&project), "the project keeps its own file");
+    let bytes = std::fs::read(&template).unwrap();
+    // Opened, it is the template's content with no file: Save asks where, and the template is never written over.
+    let mut opened = Session::new();
+    let reply = opened.execute("open", &json!({"path": template})).unwrap();
+    assert_eq!(reply["template"], true, "{reply}");
+    assert_eq!(opened.path, None);
+    assert_eq!(opened.model.to_json().unwrap(), s.model.to_json().unwrap());
+    assert!(opened.history().is_empty(), "nothing to undo in a new project");
+    let err = opened.execute("save", &json!({})).unwrap_err();
+    assert!(err.contains("`path` is required"), "{err}");
+    opened.execute("wall", &json!({"points": [[0, 2000], [4000, 2000]]})).unwrap();
+    opened.execute("save", &json!({"path": dir.join("new.bimc")})).unwrap();
+    assert_eq!(std::fs::read(&template).unwrap(), bytes, "the template is as it was");
+    // Any project opens as a template when asked; a project opens as itself otherwise.
+    let mut as_template = Session::new();
+    let reply = as_template.execute("open", &json!({"path": project, "as_template": true})).unwrap();
+    assert_eq!((reply["template"].as_bool(), as_template.path.clone()), (Some(true), None));
+    let reply = as_template.execute("open", &json!({"path": project})).unwrap();
+    assert_eq!((reply.get("template"), as_template.path.clone()), (None, Some(project.clone())));
+    let err = as_template.execute("open", &json!({"path": project, "as_template": "yes"})).unwrap_err();
+    assert!(err.contains("as_template"), "{err}");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
