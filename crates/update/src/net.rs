@@ -162,27 +162,6 @@ pub fn host_of(url: &str) -> String {
     url.parse::<Uri>().ok().and_then(|u| u.host().map(str::to_string)).unwrap_or_else(|| "the address".into())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::feed_hop_allowed;
-
-    #[test]
-    fn a_plugin_feed_is_https_and_never_this_machine() {
-        assert!(feed_hop_allowed("https://example.org/demo/latest.json", false));
-        assert!(!feed_hop_allowed("http://example.org/latest.json", false));
-        assert!(!feed_hop_allowed("https://user:pw@example.org/latest.json", false));
-        assert!(!feed_hop_allowed("https://example.org/latest.json#frag", false));
-        assert!(!feed_hop_allowed("https://localhost:8443/latest.json", false));
-        assert!(!feed_hop_allowed("https://127.0.0.1/latest.json", false));
-        assert!(!feed_hop_allowed("https://[::1]/latest.json", false));
-        assert!(!feed_hop_allowed("https://169.254.1.1/latest.json", false));
-        assert!(!feed_hop_allowed("https://[fe80::1]/latest.json", false));
-        // A local development server is allowed only when the user turned the setting on.
-        assert!(feed_hop_allowed("https://127.0.0.1:8443/latest.json", true));
-        assert!(feed_hop_allowed("https://localhost/latest.json", true));
-    }
-}
-
 impl Net for Ureq {
     fn get(&self, url: &str, limit: u64, out: &mut dyn Write) -> Result<(), String> {
         let budget = match self.policy {
@@ -226,5 +205,26 @@ impl Net for Ureq {
             return io::copy(&mut body, out).map(|_| ()).map_err(|e| format!("{host}: {e}"));
         }
         Err("too many redirects".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::feed_hop_allowed;
+
+    #[test]
+    fn a_plugin_feed_is_https_and_never_this_machine() {
+        assert!(feed_hop_allowed("https://example.org/demo/latest.json", false));
+        assert!(!feed_hop_allowed("http://example.org/latest.json", false));
+        assert!(!feed_hop_allowed("https://user:pw@example.org/latest.json", false));
+        assert!(!feed_hop_allowed("https://example.org/latest.json#frag", false));
+        assert!(!feed_hop_allowed("https://localhost:8443/latest.json", false));
+        assert!(!feed_hop_allowed("https://127.0.0.1/latest.json", false));
+        assert!(!feed_hop_allowed("https://[::1]/latest.json", false));
+        assert!(!feed_hop_allowed("https://169.254.1.1/latest.json", false));
+        assert!(!feed_hop_allowed("https://[fe80::1]/latest.json", false));
+        // A local development server is allowed only when the user turned the setting on.
+        assert!(feed_hop_allowed("https://127.0.0.1:8443/latest.json", true));
+        assert!(feed_hop_allowed("https://localhost/latest.json", true));
     }
 }
