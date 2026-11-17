@@ -235,7 +235,8 @@ fn a_tilted_component_mirrored_across_a_line_is_its_mirror_image() {
         m.component_pieces(c).into_iter().flat_map(|p| p.tris).flatten().collect::<Vec<[f64; 3]>>()
     };
     let before = points(&s.model);
-    // Across the line through the origin and (1, 2): each point reflected in plan, its height kept.
+    // Across the line through the origin and (1, 2): each point reflected in plan, its height kept (to a thousandth of a
+    // millimetre: the turn is found through a point a metre along it and rounded; a tilt left unreflected misses by hundreds).
     s.execute("mirror", &json!({"ids": [id], "axis": [[0, 0], [1000, 2000]]})).unwrap();
     let after = points(&s.model);
     let d = [1.0 / 5f64.sqrt(), 2.0 / 5f64.sqrt()];
@@ -243,7 +244,7 @@ fn a_tilted_component_mirrored_across_a_line_is_its_mirror_image() {
     for p in &before {
         let k = 2.0 * (p[0] * d[0] + p[1] * d[1]);
         let q = [k * d[0] - p[0], k * d[1] - p[1], p[2]];
-        assert!(after.iter().any(|a| (0..3).all(|i| (a[i] - q[i]).abs() < 1e-6)), "{p:?} reflected is {q:?}, not among {after:?}");
+        assert!(after.iter().any(|a| (0..3).all(|i| (a[i] - q[i]).abs() < 1e-3)), "{p:?} reflected is {q:?}, not among {after:?}");
     }
 }
 
