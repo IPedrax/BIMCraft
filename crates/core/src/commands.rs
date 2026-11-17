@@ -9254,6 +9254,7 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
         }
         m.families.insert(name.clone(), family);
         let id = m.insert(Element::Component(Component {
+            tilt: None,
             adaptive: None,
             family: name.clone(),
             type_name: "Imported".into(),
@@ -18187,10 +18188,14 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
         // A run keeps its heights at its ends; its section is the same either way round.
         crate::model::run_arm!(r) => (r.start, r.end) = (f(r.start), f(r.end)),
-        // A mirror image is the family's, flipped.
+        // A mirror image is the family's, flipped. A tilt is taken before `angle`, which the mirror reflects across its own
+        // line, so what is left of it is a reflection across the family's x and z: its directions' y the other way.
         Element::Component(cp) => {
             (cp.at, cp.angle) = turned(f, cp.at, cp.angle);
             cp.mirrored ^= mo.mirror;
+            if let (true, Some(t)) = (mo.mirror, &mut cp.tilt) {
+                t.iter_mut().for_each(|v| v[1] = -v[1]);
+            }
         }
         // A mirror image turns the other way at its landings.
         Element::Stair(st) => {

@@ -469,6 +469,7 @@ fn boxes(
                 params.insert(name.to_string(), micron(mm(*feet)).into());
             }
             Ok(Component {
+                tilt: None,
                 family: family.clone(),
                 type_name: type_name.clone(),
                 level,

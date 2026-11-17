@@ -234,6 +234,14 @@ impl Placement {
         std::array::from_fn(|i| self.origin[i] + p[0] * a[i] + p[1] * b[i] + p[2] * c[i])
     }
 
+    /// [`Placement::piece`] as the 3D view draws it: its triangles placed, its bottom and top theirs, and no outline in plan
+    /// (none, and no holes), which a tilted piece would find as the hull of every triangle, for nothing.
+    pub fn solid(&self, pc: &Piece) -> Piece {
+        let tris: Vec<[P3; 3]> = pc.tris.iter().map(|t| t.map(|p| self.place(p))).collect();
+        let (bottom, top) = tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
+        Piece { tris, outline: Vec::new(), holes: Vec::new(), bottom, top, ..pc.clone() }
+    }
+
     /// A piece of the family's (mirrored already, if it is) where the component stands. Upright, its outline is placed and
     /// its bottom and top are its own over the origin's height; tilted, its outline is what its triangles cover seen from
     /// above (their hull) and its bottom and top theirs.
@@ -295,6 +303,11 @@ impl Model {
         let upright = Placement { origin, axes: [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]], upright: true };
         if self.placed_by_points(c) {
             return upright;
+        }
+        if let (None, Some([x, z])) = (c.host, c.tilt) {
+            let turn = |v: P3| [v[0] * cos - v[1] * sin, v[0] * sin + v[1] * cos, v[2]];
+            let (x, z) = (turn(x), turn(z));
+            return Placement { origin, axes: [x, cross(z, x), z], upright: false };
         }
         let Some(h) = c.host else { return upright };
         let Some(at) = self.host_at(&h) else { return upright };
