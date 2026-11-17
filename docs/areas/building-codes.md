@@ -39,7 +39,9 @@ names the methods the electrical commands take when not given one, each by what 
 {"code": "ibc", "country": "US", "electrical": {"building_demand": "NEC 220.84"}, "stairs": {…}}
 ```
 
-- `demand`: the utility whose standard `demand` reads (`CPFL`, `ENEL`, `CELESC`: `demand.rs`).
+- `demand`: the utility whose standard `demand` reads (`demand::utilities`): `CPFL`, `ENEL`, `CELESC` (`demand.rs`), then the
+  groups whose categories are data (`FECOERGS`, `HIDROPAN`, `ENERGISA`, `EQUATORIAL`, `COPEL`: `entrance.rs`); a group's member
+  (`COPREL`, `EMT`) is named to `demand` itself.
 - `building_demand`: the method of `data/building-demand.json` that `building_demand` reads, by its `standard` (Celesc,
   Cemig, Fecoergs, Hidropan, ITC-BT-10, RTIEBT, GP 16, NEC 220.84).
 

@@ -424,3 +424,25 @@ fn the_electrical_demand_tab_picks_the_methods_demand_and_building_demand_take_i
         assert_eq!(r["utility"], "CPFL", "rev {rev}");
     }
 }
+
+#[test]
+fn the_demand_picker_offers_the_utilities_whose_categories_are_data_in_both_profiles() {
+    for rev in [true, false] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        h.state_mut().run("building_code", json!({"set": "nbr-9050"})).unwrap();
+        press(&mut h, "Manage");
+        h.get_by_label("Building Codes").click_accesskit();
+        h.run();
+        press(&mut h, "Electrical Demand");
+        h.get_by_role_and_label(Role::ComboBox, "Demand (one installation)").click_accesskit();
+        h.run();
+        h.get_by_label("HIDROPAN").click_accesskit();
+        h.run();
+        // It cites its own standard, from the data.
+        assert!(h.query_all_by_label_contains("Hidropan, Regulamento").next().is_some(), "Hidropan's RIC (rev {rev})");
+        press(&mut h, "OK");
+        assert_eq!(h.state().session.model.electrical_methods().demand.as_deref(), Some("HIDROPAN"), "rev {rev}");
+        let r = h.state_mut().run("demand", json!({"installed_kw": 10})).unwrap();
+        assert_eq!((r["utility"].as_str(), r["category"]["name"].as_str()), (Some("HIDROPAN"), Some("A")), "rev {rev}");
+    }
+}
