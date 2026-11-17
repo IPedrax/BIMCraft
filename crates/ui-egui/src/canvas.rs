@@ -3772,7 +3772,7 @@ impl BimApp {
     /// The Detail Line tool's next point. A line a click, as walls are: each click after the first makes a line from the
     /// one before, and with Chain goes on from there until back on the first point. With Polyline, the points gather into
     /// one line, closed when back on the first, else finished with Enter.
-    fn place_detail_line(&mut self, level: Id, p: P2) {
+    pub(crate) fn place_detail_line(&mut self, level: Id, p: P2) {
         if !matches!(self.shape(), draw::Shape::Line | draw::Shape::Polyline) {
             if let Some(made) = self.shape_click(p) {
                 self.make_detail_lines(level, &made);

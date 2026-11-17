@@ -2865,6 +2865,16 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [elevation], "by": [0, -1e9], "end": "far"}),
         json!({"ids": [elevation, section], "by": [5, 5], "end": "line"}),
         json!({"ids": [section], "by": [0, f64::MAX], "end": "mark"}),
+        // Dimensions and Move in a section's or an elevation's drawing plane: points past any coordinate, a reference twice or
+        // of no line in the view, the view itself moved, and what isn't a list or a point.
+        json!({"view": section, "refs": [{"id": 100000}, {"id": 100001}], "at": [1e300, f64::MAX]}),
+        json!({"view": section, "refs": [{"id": 100002}, {"id": 100002}], "at": [0, 0], "type": 5}),
+        json!({"view": elevation, "refs": [{"id": 100002, "point": "start"}, {"id": section}], "at": [0, 1e9]}),
+        json!({"view": elevation, "refs": "x", "at": []}),
+        json!({"view": section, "ids": [100002, 100003, section], "by": [1e300, 0]}),
+        json!({"view": elevation, "ids": [100002, 100004], "by": [f64::MAX, -1e300]}),
+        json!({"view": section, "ids": [elevation], "by": [500, 500]}),
+        json!({"view": section, "ids": [], "by": "x"}),
     ];
     let views = |m: &Model| {
         m.elements.values().filter(|e| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))).count()

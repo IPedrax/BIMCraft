@@ -20,6 +20,8 @@ use crate::style::canvas_pal;
 use crate::view_worker::Latest;
 use crate::{BimApp, Status, Tool};
 
+mod tools;
+
 /// Geometry and visibility identity, independent of interaction paint.
 type Shot = (Arc<Model>, Id, View, View);
 
@@ -302,7 +304,12 @@ impl BimApp {
             d.pick((x, y), PICK / k)
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
-        let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
+        // Modify and Demolish pick what is under the cursor, and the section tools take their references from it.
+        let picks = matches!(
+            self.tool,
+            Tool::Modify | Tool::Demolish | Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }
+        );
+        let hovered = local.filter(|_| picks).and_then(|q| pick(&self.cut, &d, q));
         // On the selected curtain wall under the cursor, Tab goes through its parts there, on the plane the view looks at.
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab)) && local.is_some();
         if tab {
@@ -517,6 +524,14 @@ impl BimApp {
             if let Some(q) = clicked {
                 self.export_region_at(view.mm(q));
             }
+            return;
+        }
+        // Only edit through the model generation being displayed. A stale picture must never
+        // lend a reference to geometry from a newer snapshot.
+        let fresh = self.cut.shown.as_ref().is_some_and(|(m, v, ..)| *v == id && Arc::ptr_eq(m, &model));
+        if self.vertical_tools(ui, &p, rect, view, id, local, clicked.filter(|_| fresh), hovered) {
+            self.context_menu(&response);
+            self.nav_bar(ui, rect, id);
             return;
         }
         match (clicked, &self.tool) {
