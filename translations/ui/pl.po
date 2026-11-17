@@ -18121,6 +18121,62 @@ msgstr ""
 msgid "stair: `{}` is not a width"
 msgstr ""
 
+#: crates/ui-egui/src/draw.rs:687
+msgid "Create Group (GP): the selected detail lines, filled regions and text made one detail group"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:188 crates/ui-egui/src/lib.rs:473
+msgid "Fly Mode"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:36
+msgid "Fly Mode (FY): fly through the 3D view: W, A, S and D move, Q and E rise and fall, the mouse looks round, the wheel sets the speed; Esc leaves it"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:124
+msgid "Fly mode"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:136 crates/ui-egui/src/fly.rs:168
+msgid "Fly mode off"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:157
+msgid "Fly mode on"
+msgstr ""
+
+#: crates/ui-egui/src/canvas.rs:1417
+msgid "Lines up with wall {}"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:34
+msgid "W A S D fly, Q rises, E falls, the mouse looks round, the wheel sets the speed, Shift flies faster; Esc leaves fly mode"
+msgstr ""
+
+#: crates/ui-egui/src/canvas.rs:1417
+msgid "align"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:140
+msgid "fly mode is for the 3D view: open it (3D) first"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:34
+msgid "select a detail group to ungroup"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:19
+msgid "select the detail lines, filled regions and text to group first"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:197
+msgid "{} ft/s"
+msgstr ""
+
+#: crates/ui-egui/src/fly.rs:198
+msgid "{} m/s"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Pusta wartość oznacza wartość rodziny, tak jak jest w zakładce Parametry."

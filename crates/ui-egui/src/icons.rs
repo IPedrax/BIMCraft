@@ -156,6 +156,7 @@ icon_names! {
     FamilyEditor,
     TempHide,
     Reveal,
+    Fly,
     Settings,
     Dock,
     Minimize,
@@ -1524,6 +1525,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(10.0, 22.0), (14.0, 22.0)]);
             g.cubic([(8.5, 15.5), (0.0, 9.0), (7.0, 3.0), (12.0, 3.0)]);
             g.cubic([(12.0, 3.0), (17.0, 3.0), (24.0, 9.0), (15.5, 15.5)]);
+        }
+        Icon::Fly => {
+            // A wing: its leading edge swept up and back, its feathers stepping down to the root.
+            g.cubic([(3.0, 16.0), (7.0, 9.0), (14.0, 5.0), (21.0, 4.0)]);
+            g.line(&[(21.0, 4.0), (17.0, 10.5), (18.0, 12.0), (13.0, 14.0), (13.5, 16.0), (8.5, 17.5), (8.5, 19.5), (3.0, 16.0)]);
+            g.line(&[(17.0, 10.5), (12.0, 11.0)]);
+            g.line(&[(13.0, 14.0), (8.5, 14.5)]);
         }
         Icon::Settings => {
             // A single outlined gear with equal tooth rhythm and one unfilled hub.

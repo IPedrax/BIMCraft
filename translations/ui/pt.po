@@ -18107,6 +18107,42 @@ msgctxt "side"
 msgid "Top"
 msgstr "Superior"
 
+#: crates/ui-egui/src/fly.rs:188 crates/ui-egui/src/lib.rs:473
+msgid "Fly Mode"
+msgstr "Modo Voo"
+
+#: crates/ui-egui/src/fly.rs:36
+msgid "Fly Mode (FY): fly through the 3D view: W, A, S and D move, Q and E rise and fall, the mouse looks round, the wheel sets the speed; Esc leaves it"
+msgstr "Modo Voo (FY): voe pela vista 3D: W, A, S e D movem, Q e E sobem e descem, o mouse olha em volta, a roda define a velocidade; Esc sai"
+
+#: crates/ui-egui/src/fly.rs:124
+msgid "Fly mode"
+msgstr "Modo voo"
+
+#: crates/ui-egui/src/fly.rs:136 crates/ui-egui/src/fly.rs:168
+msgid "Fly mode off"
+msgstr "Modo voo desligado"
+
+#: crates/ui-egui/src/fly.rs:157
+msgid "Fly mode on"
+msgstr "Modo voo ligado"
+
+#: crates/ui-egui/src/fly.rs:34
+msgid "W A S D fly, Q rises, E falls, the mouse looks round, the wheel sets the speed, Shift flies faster; Esc leaves fly mode"
+msgstr "W A S D voam, Q sobe, E desce, o mouse olha em volta, a roda define a velocidade, Shift voa mais rápido; Esc sai do modo voo"
+
+#: crates/ui-egui/src/fly.rs:140
+msgid "fly mode is for the 3D view: open it (3D) first"
+msgstr "o modo voo é da vista 3D: abra-a (3D) primeiro"
+
+#: crates/ui-egui/src/fly.rs:197
+msgid "{} ft/s"
+msgstr "{} ft/s"
+
+#: crates/ui-egui/src/fly.rs:198
+msgid "{} m/s"
+msgstr "{} m/s"
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Um valor em branco é o da própria família, como a aba Parâmetros o tem."

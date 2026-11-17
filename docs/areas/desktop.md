@@ -258,6 +258,15 @@ desktop app starts its reader (`BimApp::space_mouse`, Windows only for now), whi
 3DxWare running too, while its profile for BIMCraft passes the axes on as `HIDMultiAxis_*`), the axes found in its report
 descriptor (`spacemouse/descriptor.rs`). With `BIMCRAFT_SPACEMOUSE_LOG=<file>` the reader logs what it found and every report.
 
+Fly mode (FY, or the wing on the 3D view's control bar; `fly.rs`) flies the active 3D view as a game's camera: W and S forward and
+back where it looks, A and D to the side, Q up and E down, the mouse turning it about the eye (`Camera::flown` in the core), the wheel
+setting the speed (it starts at what crosses the model in about eight seconds) and Shift flying four times as fast. A parallel view is
+turned to perspective as it begins (`perspective`), since only a perspective view has an eye. While it flies the window holds the
+pointer, hidden (locked where the system can, else confined to the window; the mouse's own motion, egui's `pointer.motion`, turns the
+view), and a banner over the view says so. Esc, FY or the wing again end it, and so do leaving the 3D view, opening a family or the
+window losing focus (`BimApp::fly_frame`). A camera view writes where it flew to back to its camera once, when fly mode ends, so a
+flight is one step to undo. It is the 3D view's only: elsewhere FY says so.
+
 A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
 ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element
 and runs its command when it ends: an end or the place over its level's plane, snapped as a plan snaps; an arrow up or down, landing on
