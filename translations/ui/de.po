@@ -192,7 +192,7 @@ msgstr "Die Punkte eines Kreises, einer Ellipse oder eines Bogens entlang ihrer 
 msgid "A city, a country, an EPSG code or words of a name: São Paulo, Germany, 31983, UTM 23S"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:392
+#: crates/ui-egui/src/electrical.rs:397
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "Material, Isolierung und Betriebstemperatur eines Leiters sowie die Strombelastbarkeit jedes Querschnitts, in mm²."
 
@@ -538,7 +538,7 @@ msgstr ""
 msgid "Add Checked to Project"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:385
+#: crates/ui-egui/src/electrical.rs:390
 msgid "Add Distribution System"
 msgstr "Verteilungssystem hinzufügen"
 
@@ -601,9 +601,9 @@ msgstr ""
 msgid "Add Rectangle"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:285
-#: crates/ui-egui/src/codes/tree.rs:302
-#: crates/ui-egui/src/codes/tree.rs:466
+#: crates/ui-egui/src/codes/tree.rs:291
+#: crates/ui-egui/src/codes/tree.rs:308
+#: crates/ui-egui/src/codes/tree.rs:473
 #: crates/ui-egui/src/codes.rs:827
 msgid "Add Row"
 msgstr ""
@@ -625,7 +625,7 @@ msgstr "Auswahl hinzufügen"
 msgid "Add Shortcut"
 msgstr "Tastenkürzel hinzufügen"
 
-#: crates/ui-egui/src/electrical.rs:460
+#: crates/ui-egui/src/electrical.rs:465
 msgid "Add Size"
 msgstr "Größe hinzufügen"
 
@@ -654,11 +654,11 @@ msgstr "Scheitelpunkt hinzufügen"
 msgid "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape"
 msgstr "Scheitelpunkt hinzufügen: Polylinie oder Spline an der Stelle des Scheitelpunkts anklicken; ein Spline behält seine Form"
 
-#: crates/ui-egui/src/electrical.rs:313
+#: crates/ui-egui/src/electrical.rs:318
 msgid "Add Voltage"
 msgstr "Spannung hinzufügen"
 
-#: crates/ui-egui/src/electrical.rs:405
+#: crates/ui-egui/src/electrical.rs:410
 msgid "Add Wire Type"
 msgstr "Leitungstyp hinzufügen"
 
@@ -970,7 +970,7 @@ msgstr "Immer vertikal"
 msgid "Amendments:"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 msgid "Ampacity"
 msgstr "Strombelastbarkeit"
 
@@ -1897,7 +1897,7 @@ msgstr "Berechneter Wert…"
 msgid "Came in: {}"
 msgstr "Eingelesen: {}"
 
-#: crates/core/src/commands.rs:2655
+#: crates/core/src/commands.rs:2656
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4852
 #: crates/ui-egui/src/properties.rs:294
@@ -2272,7 +2272,7 @@ msgstr "Nachweis: fck"
 msgid "Checking for updates…"
 msgstr "Aktualisierungen werden gesucht…"
 
-#: crates/core/src/commands.rs:4193
+#: crates/core/src/commands.rs:4194
 msgid "Checking the model"
 msgstr ""
 
@@ -3550,7 +3550,7 @@ msgid "Copper"
 msgstr "Kupfer"
 
 #: crates/core/src/commands.rs:1964
-#: crates/ui-egui/src/codes/tree.rs:312
+#: crates/ui-egui/src/codes/tree.rs:318
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -3599,7 +3599,7 @@ msgstr "Bericht kopieren"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "ID, GUID und IFC GlobalId kopieren"
 
-#: crates/ui-egui/src/codes/tree.rs:312
+#: crates/ui-egui/src/codes/tree.rs:318
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
@@ -3846,7 +3846,7 @@ msgstr "Ansicht zuschneiden: nur den Zuschneidebereich anzeigen; Kanten an ihren
 msgid "Cross"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 msgid "Cross-Section"
 msgstr "Querschnitt"
 
@@ -4150,7 +4150,7 @@ msgstr "Scheitelpunkt löschen"
 msgid "Delete Vertex: click a polyline's corner or a spline's point to take it out"
 msgstr "Scheitelpunkt löschen: eine Ecke einer Polylinie oder einen Punkt eines Splines anklicken, um ihn zu entfernen"
 
-#: crates/ui-egui/src/electrical.rs:408
+#: crates/ui-egui/src/electrical.rs:413
 msgid "Delete Wire Type"
 msgstr "Leitungstyp löschen"
 
@@ -4158,11 +4158,11 @@ msgstr "Leitungstyp löschen"
 msgid "Delete location {}"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:450
+#: crates/ui-egui/src/electrical.rs:455
 msgid "Delete size {}"
 msgstr "Größe {} löschen"
 
-#: crates/ui-egui/src/electrical.rs:375
+#: crates/ui-egui/src/electrical.rs:380
 msgid "Delete system {}"
 msgstr "System {} löschen"
 
@@ -4178,15 +4178,15 @@ msgstr ""
 msgid "Delete this code from the project. If the project uses it, its rules are kept."
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:279
-#: crates/ui-egui/src/codes/tree.rs:363
-#: crates/ui-egui/src/codes/tree.rs:413
-#: crates/ui-egui/src/codes/tree.rs:455
+#: crates/ui-egui/src/codes/tree.rs:285
+#: crates/ui-egui/src/codes/tree.rs:369
+#: crates/ui-egui/src/codes/tree.rs:420
+#: crates/ui-egui/src/codes/tree.rs:462
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:303
+#: crates/ui-egui/src/electrical.rs:308
 msgid "Delete voltage {}"
 msgstr "Spannung {} löschen"
 
@@ -4218,7 +4218,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:13855
+#: crates/core/src/commands.rs:13864
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -4852,7 +4852,7 @@ msgstr "Breite jedes Stifts auf dem Papier, mm, für Bemaßungen, Beschriftungen
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "Breite jedes Stifts auf dem Papier, mm, in Ansichten bei jedem Maßstab: eine Ansicht zwischen zwei Werten übernimmt den näheren. Stift 0 ist immer eine Haarlinie."
 
-#: crates/ui-egui/src/electrical.rs:348
+#: crates/ui-egui/src/electrical.rs:353
 #: crates/ui-egui/src/mep.rs:290
 msgid "Earthing"
 msgstr "Erdung"
@@ -5136,7 +5136,7 @@ msgstr "Elektroeinstellungen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektroeinstellungen: die Spannungen, Verteilungssysteme und Leitungstypen, auf die sich Stromkreise und Verteiler beziehen; Querschnitte in mm²"
 
-#: crates/core/src/commands.rs:3126
+#: crates/core/src/commands.rs:3127
 msgid "Elements"
 msgstr "Elemente"
 
@@ -6635,7 +6635,7 @@ msgstr "Anzahl, Dicke und Abstand der Stäbe sind frei wählbar; ein leeres Feld
 msgid "How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:333
+#: crates/ui-egui/src/electrical.rs:338
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Wie viele Phasen und Leiter jedes System hat (die Außenleiter und der Neutralleiter), die Spannungen, die es liefert, und wie es geerdet ist."
 
@@ -6999,7 +6999,7 @@ msgstr "Dämmung"
 msgid "Insulation Width"
 msgstr "Dämmungsbreite"
 
-#: crates/ui-egui/src/electrical.rs:432
+#: crates/ui-egui/src/electrical.rs:437
 msgid "Insulation:"
 msgstr "Isolierung:"
 
@@ -7276,7 +7276,7 @@ msgid "LEFT"
 msgstr ""
 
 #: crates/ui-egui/src/editor/dimensions.rs:1088
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 #: crates/ui-egui/src/parameters.rs:1497
 #: crates/ui-egui/src/parameters.rs:1600
 #: crates/ui-egui/src/titleblocks.rs:142
@@ -7630,15 +7630,15 @@ msgstr "Linienfarbe"
 msgid "Line dash"
 msgstr "Linienstrich"
 
-#: crates/ui-egui/src/electrical.rs:347
+#: crates/ui-egui/src/electrical.rs:352
 msgid "Line to earth"
 msgstr "Leiter-Erde"
 
-#: crates/ui-egui/src/electrical.rs:345
+#: crates/ui-egui/src/electrical.rs:350
 msgid "Line to line"
 msgstr "Leiter-Leiter"
 
-#: crates/ui-egui/src/electrical.rs:346
+#: crates/ui-egui/src/electrical.rs:351
 msgid "Line to neutral"
 msgstr "Leiter-Neutralleiter"
 
@@ -8203,7 +8203,7 @@ msgstr "Eigenschaften übertragen: Typ '{}' auf {} Element(e) angewendet"
 msgid "Material"
 msgstr "Material"
 
-#: crates/ui-egui/src/electrical.rs:418
+#: crates/ui-egui/src/electrical.rs:423
 #: crates/ui-egui/src/lib.rs:5674
 #: crates/ui-egui/src/properties.rs:3307
 msgid "Material:"
@@ -8256,7 +8256,7 @@ msgstr "Maximaler Winkel"
 msgid "Maximum Riser Height"
 msgstr "Maximale Steigungshöhe"
 
-#: crates/core/src/commands.rs:2769
+#: crates/core/src/commands.rs:2770
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -8805,7 +8805,7 @@ msgstr "NICHT UMSCHLOSSEN"
 #: crates/ui-egui/src/editor/types_dialog.rs:478
 #: crates/ui-egui/src/editor/work_plane.rs:211
 #: crates/ui-egui/src/electrical.rs:296
-#: crates/ui-egui/src/electrical.rs:342
+#: crates/ui-egui/src/electrical.rs:347
 #: crates/ui-egui/src/lib.rs:6090
 #: crates/ui-egui/src/parameters.rs:820
 #: crates/ui-egui/src/parameters.rs:1399
@@ -8839,7 +8839,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/types_dialog.rs:481
 #: crates/ui-egui/src/editor/types_dialog.rs:568
 #: crates/ui-egui/src/editor/work_plane.rs:196
-#: crates/ui-egui/src/electrical.rs:415
+#: crates/ui-egui/src/electrical.rs:420
 #: crates/ui-egui/src/phasing.rs:350
 #: crates/ui-egui/src/phasing.rs:536
 #: crates/ui-egui/src/properties.rs:4044
@@ -9276,7 +9276,7 @@ msgstr "In diesem Netzwerk nicht sichtbar: Eine andere Sitzung auf diesem Rechne
 msgid "Note"
 msgstr "Notiz"
 
-#: crates/ui-egui/src/electrical.rs:435
+#: crates/ui-egui/src/electrical.rs:440
 msgid "Note:"
 msgstr "Notiz:"
 
@@ -9943,7 +9943,7 @@ msgstr ""
 msgid "Paste"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:320
+#: crates/ui-egui/src/codes/tree.rs:326
 msgid "Paste rows here"
 msgstr ""
 
@@ -10082,7 +10082,7 @@ msgid "Phase {}"
 msgstr ""
 
 #: crates/core/src/panel_schedule.rs:367
-#: crates/ui-egui/src/electrical.rs:343
+#: crates/ui-egui/src/electrical.rs:348
 msgid "Phases"
 msgstr "Phasen"
 
@@ -11125,7 +11125,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschaften über dem Projektbrowser, links, wie zu Beginn"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:9320
+#: crates/core/src/commands.rs:9321
 msgid "Property Line"
 msgstr ""
 
@@ -11305,7 +11305,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4150
+#: crates/core/src/commands.rs:4151
 msgid "Reading the file"
 msgstr ""
 
@@ -12292,7 +12292,7 @@ msgstr "Maßstab: das Papier, das diese Ansicht darstellt, 1 : n des Modells; Be
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:2557
+#: crates/core/src/commands.rs:2558
 msgid "Schedule"
 msgstr "Tabelle"
 
@@ -12965,15 +12965,15 @@ msgstr ""
 msgid "Size"
 msgstr "Größe"
 
-#: crates/ui-egui/src/electrical.rs:446
+#: crates/ui-egui/src/electrical.rs:451
 msgid "Size {} ampacity"
 msgstr "Größe {} Strombelastbarkeit"
 
-#: crates/ui-egui/src/electrical.rs:448
+#: crates/ui-egui/src/electrical.rs:453
 msgid "Size {} label"
 msgstr "Größe {} Bezeichnung"
 
-#: crates/ui-egui/src/electrical.rs:445
+#: crates/ui-egui/src/electrical.rs:450
 msgid "Size {} section"
 msgstr "Größe {} Querschnitt"
 
@@ -13220,7 +13220,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "Quellcode auf GitHub"
 
-#: crates/ui-egui/src/codes/tree.rs:266
+#: crates/ui-egui/src/codes/tree.rs:272
 msgid "Source:"
 msgstr ""
 
@@ -13794,31 +13794,31 @@ msgstr "System"
 msgid "System Family: {}"
 msgstr "Systemfamilie: {}"
 
-#: crates/ui-egui/src/electrical.rs:374
+#: crates/ui-egui/src/electrical.rs:379
 msgid "System {} earthing"
 msgstr "System {} Erdung"
 
-#: crates/ui-egui/src/electrical.rs:366
+#: crates/ui-egui/src/electrical.rs:371
 msgid "System {} line to earth"
 msgstr "System {} Leiter-Erde"
 
-#: crates/ui-egui/src/electrical.rs:364
+#: crates/ui-egui/src/electrical.rs:369
 msgid "System {} line to line"
 msgstr "System {} Leiter-Leiter"
 
-#: crates/ui-egui/src/electrical.rs:365
+#: crates/ui-egui/src/electrical.rs:370
 msgid "System {} line to neutral"
 msgstr "System {} Leiter-Neutralleiter"
 
-#: crates/ui-egui/src/electrical.rs:354
+#: crates/ui-egui/src/electrical.rs:359
 msgid "System {} name"
 msgstr "System {} Name"
 
-#: crates/ui-egui/src/electrical.rs:361
+#: crates/ui-egui/src/electrical.rs:366
 msgid "System {} phases"
 msgstr "System {} Phasen"
 
-#: crates/ui-egui/src/electrical.rs:363
+#: crates/ui-egui/src/electrical.rs:368
 msgid "System {} wires"
 msgstr "System {} Leiter"
 
@@ -13929,7 +13929,7 @@ msgstr "Technische Normen: Zeichnungsnormen konfigurieren (NBR, ISO, ANSI, EU); 
 msgid "Tee"
 msgstr "Abzweig"
 
-#: crates/ui-egui/src/electrical.rs:429
+#: crates/ui-egui/src/electrical.rs:434
 msgid "Temperature:"
 msgstr "Temperatur:"
 
@@ -15416,11 +15416,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:14091
+#: crates/core/src/commands.rs:14100
 msgid "Unnamed"
 msgstr "Unbenannt"
 
-#: crates/core/src/commands.rs:4167
+#: crates/core/src/commands.rs:4168
 msgid "Unpacking the project"
 msgstr ""
 
@@ -15484,7 +15484,7 @@ msgstr "Obere Begrenzung"
 msgid "Use"
 msgstr "Verwenden"
 
-#: crates/ui-egui/src/codes/tree.rs:321
+#: crates/ui-egui/src/codes/tree.rs:327
 msgid "Use Pasted Rows"
 msgstr ""
 
@@ -15804,11 +15804,11 @@ msgstr "Spannung"
 msgid "Voltage {} is supplied by distribution system {}: change that first."
 msgstr "Spannung {} wird von Verteilungssystem {} geliefert: dieses zuerst ändern."
 
-#: crates/ui-egui/src/electrical.rs:302
+#: crates/ui-egui/src/electrical.rs:307
 msgid "Voltage {} maximum"
 msgstr "Spannung {} Maximum"
 
-#: crates/ui-egui/src/electrical.rs:301
+#: crates/ui-egui/src/electrical.rs:306
 msgid "Voltage {} minimum"
 msgstr "Spannung {} Minimum"
 
@@ -15816,7 +15816,7 @@ msgstr "Spannung {} Minimum"
 msgid "Voltage {} name"
 msgstr "Spannung {} Name"
 
-#: crates/ui-egui/src/electrical.rs:300
+#: crates/ui-egui/src/electrical.rs:301
 msgid "Voltage {} nominal"
 msgstr "Spannung {} Nennwert"
 
@@ -16098,27 +16098,27 @@ msgstr "Leitung (EW): Anfang und Ende anklicken; eine Klickkette erzeugt für je
 msgid "Wire Types"
 msgstr "Leitungstypen"
 
-#: crates/ui-egui/src/electrical.rs:433
+#: crates/ui-egui/src/electrical.rs:438
 msgid "Wire insulation"
 msgstr "Leitungsisolierung"
 
-#: crates/ui-egui/src/electrical.rs:427
+#: crates/ui-egui/src/electrical.rs:432
 msgid "Wire material"
 msgstr "Leitungsmaterial"
 
-#: crates/ui-egui/src/electrical.rs:436
+#: crates/ui-egui/src/electrical.rs:441
 msgid "Wire note"
 msgstr "Leitungsnotiz"
 
-#: crates/ui-egui/src/electrical.rs:430
+#: crates/ui-egui/src/electrical.rs:435
 msgid "Wire temperature"
 msgstr "Leitungstemperatur"
 
-#: crates/ui-egui/src/electrical.rs:416
+#: crates/ui-egui/src/electrical.rs:421
 msgid "Wire type name"
 msgstr "Name des Leitungstyps"
 
-#: crates/ui-egui/src/electrical.rs:396
+#: crates/ui-egui/src/electrical.rs:401
 msgid "Wire type:"
 msgstr "Leitungstyp:"
 
@@ -16126,7 +16126,7 @@ msgstr "Leitungstyp:"
 msgid "Wireframe"
 msgstr "Drahtmodell"
 
-#: crates/ui-egui/src/electrical.rs:344
+#: crates/ui-egui/src/electrical.rs:349
 msgid "Wires"
 msgstr "Leiter"
 
@@ -17387,7 +17387,7 @@ msgstr "{} px"
 msgid "{} redefined from lines"
 msgstr "{} aus Linien neu definiert"
 
-#: crates/ui-egui/src/codes/tree.rs:257
+#: crates/ui-egui/src/codes/tree.rs:263
 #: crates/ui-egui/src/codes.rs:192
 msgid "{} rows"
 msgstr ""

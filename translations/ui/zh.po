@@ -193,7 +193,7 @@ msgstr "圆、椭圆或圆弧沿其轴线的点：东、北、西、南"
 msgid "A city, a country, an EPSG code or words of a name: São Paulo, Germany, 31983, UTM 23S"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:392
+#: crates/ui-egui/src/electrical.rs:397
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "导线的材质、绝缘层和工作温度，以及每种截面积的载流量，截面积单位为 mm²。"
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "Add Checked to Project"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:385
+#: crates/ui-egui/src/electrical.rs:390
 msgid "Add Distribution System"
 msgstr "添加配电系统"
 
@@ -602,9 +602,9 @@ msgstr ""
 msgid "Add Rectangle"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:285
-#: crates/ui-egui/src/codes/tree.rs:302
-#: crates/ui-egui/src/codes/tree.rs:466
+#: crates/ui-egui/src/codes/tree.rs:291
+#: crates/ui-egui/src/codes/tree.rs:308
+#: crates/ui-egui/src/codes/tree.rs:473
 #: crates/ui-egui/src/codes.rs:827
 msgid "Add Row"
 msgstr ""
@@ -626,7 +626,7 @@ msgstr "添加所选"
 msgid "Add Shortcut"
 msgstr "添加快捷键"
 
-#: crates/ui-egui/src/electrical.rs:460
+#: crates/ui-egui/src/electrical.rs:465
 msgid "Add Size"
 msgstr "添加规格"
 
@@ -655,11 +655,11 @@ msgstr "添加顶点"
 msgid "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape"
 msgstr "添加顶点：在多段线或样条曲线上单击要添加顶点的位置；样条曲线形状不变"
 
-#: crates/ui-egui/src/electrical.rs:313
+#: crates/ui-egui/src/electrical.rs:318
 msgid "Add Voltage"
 msgstr "添加电压"
 
-#: crates/ui-egui/src/electrical.rs:405
+#: crates/ui-egui/src/electrical.rs:410
 msgid "Add Wire Type"
 msgstr "添加导线类型"
 
@@ -971,7 +971,7 @@ msgstr "总是垂直"
 msgid "Amendments:"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 msgid "Ampacity"
 msgstr "载流量"
 
@@ -1898,7 +1898,7 @@ msgstr "计算值…"
 msgid "Came in: {}"
 msgstr "已导入：{}"
 
-#: crates/core/src/commands.rs:2655
+#: crates/core/src/commands.rs:2656
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4852
 #: crates/ui-egui/src/properties.rs:294
@@ -2273,7 +2273,7 @@ msgstr "校核：fck"
 msgid "Checking for updates…"
 msgstr "正在检查更新…"
 
-#: crates/core/src/commands.rs:4193
+#: crates/core/src/commands.rs:4194
 msgid "Checking the model"
 msgstr ""
 
@@ -3551,7 +3551,7 @@ msgid "Copper"
 msgstr "铜"
 
 #: crates/core/src/commands.rs:1964
-#: crates/ui-egui/src/codes/tree.rs:312
+#: crates/ui-egui/src/codes/tree.rs:318
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -3600,7 +3600,7 @@ msgstr "复制报告"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "复制其 ID、GUID 和 IFC GlobalId"
 
-#: crates/ui-egui/src/codes/tree.rs:312
+#: crates/ui-egui/src/codes/tree.rs:318
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
@@ -3847,7 +3847,7 @@ msgstr "裁剪视图：仅显示裁剪区域；拖动其夹点调整边缘"
 msgid "Cross"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 msgid "Cross-Section"
 msgstr "截面积"
 
@@ -4151,7 +4151,7 @@ msgstr "删除顶点"
 msgid "Delete Vertex: click a polyline's corner or a spline's point to take it out"
 msgstr "删除顶点：单击多段线的角点或样条曲线的点将其删除"
 
-#: crates/ui-egui/src/electrical.rs:408
+#: crates/ui-egui/src/electrical.rs:413
 msgid "Delete Wire Type"
 msgstr "删除导线类型"
 
@@ -4159,11 +4159,11 @@ msgstr "删除导线类型"
 msgid "Delete location {}"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:450
+#: crates/ui-egui/src/electrical.rs:455
 msgid "Delete size {}"
 msgstr "删除规格 {}"
 
-#: crates/ui-egui/src/electrical.rs:375
+#: crates/ui-egui/src/electrical.rs:380
 msgid "Delete system {}"
 msgstr "删除系统 {}"
 
@@ -4179,15 +4179,15 @@ msgstr ""
 msgid "Delete this code from the project. If the project uses it, its rules are kept."
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:279
-#: crates/ui-egui/src/codes/tree.rs:363
-#: crates/ui-egui/src/codes/tree.rs:413
-#: crates/ui-egui/src/codes/tree.rs:455
+#: crates/ui-egui/src/codes/tree.rs:285
+#: crates/ui-egui/src/codes/tree.rs:369
+#: crates/ui-egui/src/codes/tree.rs:420
+#: crates/ui-egui/src/codes/tree.rs:462
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:303
+#: crates/ui-egui/src/electrical.rs:308
 msgid "Delete voltage {}"
 msgstr "删除电压 {}"
 
@@ -4219,7 +4219,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:13855
+#: crates/core/src/commands.rs:13864
 msgid "Dependent"
 msgstr "相关"
 
@@ -4853,7 +4853,7 @@ msgstr "每支笔在图纸上的宽度（毫米），用于尺寸标注、标记
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "每支笔在各比例视图中于图纸上的宽度（毫米）：介于两个比例之间的视图取较近的一个。笔 0 始终是发丝线。"
 
-#: crates/ui-egui/src/electrical.rs:348
+#: crates/ui-egui/src/electrical.rs:353
 #: crates/ui-egui/src/mep.rs:290
 msgid "Earthing"
 msgstr "接地"
@@ -5137,7 +5137,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:3126
+#: crates/core/src/commands.rs:3127
 msgid "Elements"
 msgstr "图元"
 
@@ -6636,7 +6636,7 @@ msgstr "根数、直径和间距由您决定；留空的项不使用。间距为
 msgid "How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:333
+#: crates/ui-egui/src/electrical.rs:338
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "每个系统的相数和导线数（相线和中性线）、其供应的电压，以及接地方式。"
 
@@ -7000,7 +7000,7 @@ msgstr "保温层"
 msgid "Insulation Width"
 msgstr "隔热层宽度"
 
-#: crates/ui-egui/src/electrical.rs:432
+#: crates/ui-egui/src/electrical.rs:437
 msgid "Insulation:"
 msgstr "绝缘层："
 
@@ -7277,7 +7277,7 @@ msgid "LEFT"
 msgstr ""
 
 #: crates/ui-egui/src/editor/dimensions.rs:1088
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 #: crates/ui-egui/src/parameters.rs:1497
 #: crates/ui-egui/src/parameters.rs:1600
 #: crates/ui-egui/src/titleblocks.rs:142
@@ -7631,15 +7631,15 @@ msgstr "线颜色"
 msgid "Line dash"
 msgstr "线型虚实"
 
-#: crates/ui-egui/src/electrical.rs:347
+#: crates/ui-egui/src/electrical.rs:352
 msgid "Line to earth"
 msgstr "线对地电压"
 
-#: crates/ui-egui/src/electrical.rs:345
+#: crates/ui-egui/src/electrical.rs:350
 msgid "Line to line"
 msgstr "线间电压"
 
-#: crates/ui-egui/src/electrical.rs:346
+#: crates/ui-egui/src/electrical.rs:351
 msgid "Line to neutral"
 msgstr "线对中性线电压"
 
@@ -8204,7 +8204,7 @@ msgstr "已匹配属性：将类型“{}”应用于 {} 个元素"
 msgid "Material"
 msgstr "材质"
 
-#: crates/ui-egui/src/electrical.rs:418
+#: crates/ui-egui/src/electrical.rs:423
 #: crates/ui-egui/src/lib.rs:5674
 #: crates/ui-egui/src/properties.rs:3307
 msgid "Material:"
@@ -8257,7 +8257,7 @@ msgstr "最大角度"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:2769
+#: crates/core/src/commands.rs:2770
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -8806,7 +8806,7 @@ msgstr "未封闭"
 #: crates/ui-egui/src/editor/types_dialog.rs:478
 #: crates/ui-egui/src/editor/work_plane.rs:211
 #: crates/ui-egui/src/electrical.rs:296
-#: crates/ui-egui/src/electrical.rs:342
+#: crates/ui-egui/src/electrical.rs:347
 #: crates/ui-egui/src/lib.rs:6090
 #: crates/ui-egui/src/parameters.rs:820
 #: crates/ui-egui/src/parameters.rs:1399
@@ -8840,7 +8840,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/types_dialog.rs:481
 #: crates/ui-egui/src/editor/types_dialog.rs:568
 #: crates/ui-egui/src/editor/work_plane.rs:196
-#: crates/ui-egui/src/electrical.rs:415
+#: crates/ui-egui/src/electrical.rs:420
 #: crates/ui-egui/src/phasing.rs:350
 #: crates/ui-egui/src/phasing.rs:536
 #: crates/ui-egui/src/properties.rs:4044
@@ -9277,7 +9277,7 @@ msgstr "在此网络中不可见：本机上的另一个会话占用了该端口
 msgid "Note"
 msgstr "提示"
 
-#: crates/ui-egui/src/electrical.rs:435
+#: crates/ui-egui/src/electrical.rs:440
 msgid "Note:"
 msgstr "备注："
 
@@ -9944,7 +9944,7 @@ msgstr ""
 msgid "Paste"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:320
+#: crates/ui-egui/src/codes/tree.rs:326
 msgid "Paste rows here"
 msgstr ""
 
@@ -10083,7 +10083,7 @@ msgid "Phase {}"
 msgstr ""
 
 #: crates/core/src/panel_schedule.rs:367
-#: crates/ui-egui/src/electrical.rs:343
+#: crates/ui-egui/src/electrical.rs:348
 msgid "Phases"
 msgstr "相数"
 
@@ -11126,7 +11126,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:9320
+#: crates/core/src/commands.rs:9321
 msgid "Property Line"
 msgstr ""
 
@@ -11306,7 +11306,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4150
+#: crates/core/src/commands.rs:4151
 msgid "Reading the file"
 msgstr ""
 
@@ -12293,7 +12293,7 @@ msgstr "比例：此视图所代表的图纸，为模型的 1 : n；其注释和
 msgid "Scan"
 msgstr "扫描"
 
-#: crates/core/src/commands.rs:2557
+#: crates/core/src/commands.rs:2558
 msgid "Schedule"
 msgstr "明细表"
 
@@ -12966,15 +12966,15 @@ msgstr ""
 msgid "Size"
 msgstr "尺寸"
 
-#: crates/ui-egui/src/electrical.rs:446
+#: crates/ui-egui/src/electrical.rs:451
 msgid "Size {} ampacity"
 msgstr "规格 {} 载流量"
 
-#: crates/ui-egui/src/electrical.rs:448
+#: crates/ui-egui/src/electrical.rs:453
 msgid "Size {} label"
 msgstr "规格 {} 标签"
 
-#: crates/ui-egui/src/electrical.rs:445
+#: crates/ui-egui/src/electrical.rs:450
 msgid "Size {} section"
 msgstr "规格 {} 截面积"
 
@@ -13221,7 +13221,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "GitHub 上的源代码"
 
-#: crates/ui-egui/src/codes/tree.rs:266
+#: crates/ui-egui/src/codes/tree.rs:272
 msgid "Source:"
 msgstr ""
 
@@ -13795,31 +13795,31 @@ msgstr "系统"
 msgid "System Family: {}"
 msgstr "系统族：{}"
 
-#: crates/ui-egui/src/electrical.rs:374
+#: crates/ui-egui/src/electrical.rs:379
 msgid "System {} earthing"
 msgstr "系统 {} 接地"
 
-#: crates/ui-egui/src/electrical.rs:366
+#: crates/ui-egui/src/electrical.rs:371
 msgid "System {} line to earth"
 msgstr "系统 {} 线对地电压"
 
-#: crates/ui-egui/src/electrical.rs:364
+#: crates/ui-egui/src/electrical.rs:369
 msgid "System {} line to line"
 msgstr "系统 {} 线间电压"
 
-#: crates/ui-egui/src/electrical.rs:365
+#: crates/ui-egui/src/electrical.rs:370
 msgid "System {} line to neutral"
 msgstr "系统 {} 线对中性线电压"
 
-#: crates/ui-egui/src/electrical.rs:354
+#: crates/ui-egui/src/electrical.rs:359
 msgid "System {} name"
 msgstr "系统 {} 名称"
 
-#: crates/ui-egui/src/electrical.rs:361
+#: crates/ui-egui/src/electrical.rs:366
 msgid "System {} phases"
 msgstr "系统 {} 相数"
 
-#: crates/ui-egui/src/electrical.rs:363
+#: crates/ui-egui/src/electrical.rs:368
 msgid "System {} wires"
 msgstr "系统 {} 导线数"
 
@@ -13930,7 +13930,7 @@ msgstr "技术制图标准：配置制图标准 (NBR、ISO、ANSI、EU)；当前
 msgid "Tee"
 msgstr "三通"
 
-#: crates/ui-egui/src/electrical.rs:429
+#: crates/ui-egui/src/electrical.rs:434
 msgid "Temperature:"
 msgstr "温度："
 
@@ -15417,11 +15417,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:14091
+#: crates/core/src/commands.rs:14100
 msgid "Unnamed"
 msgstr "未命名"
 
-#: crates/core/src/commands.rs:4167
+#: crates/core/src/commands.rs:4168
 msgid "Unpacking the project"
 msgstr ""
 
@@ -15485,7 +15485,7 @@ msgstr "上限"
 msgid "Use"
 msgstr "使用"
 
-#: crates/ui-egui/src/codes/tree.rs:321
+#: crates/ui-egui/src/codes/tree.rs:327
 msgid "Use Pasted Rows"
 msgstr ""
 
@@ -15805,11 +15805,11 @@ msgstr "电压"
 msgid "Voltage {} is supplied by distribution system {}: change that first."
 msgstr "电压 {} 由配电系统 {} 供电：请先更改该系统。"
 
-#: crates/ui-egui/src/electrical.rs:302
+#: crates/ui-egui/src/electrical.rs:307
 msgid "Voltage {} maximum"
 msgstr "电压 {} 最大值"
 
-#: crates/ui-egui/src/electrical.rs:301
+#: crates/ui-egui/src/electrical.rs:306
 msgid "Voltage {} minimum"
 msgstr "电压 {} 最小值"
 
@@ -15817,7 +15817,7 @@ msgstr "电压 {} 最小值"
 msgid "Voltage {} name"
 msgstr "电压 {} 名称"
 
-#: crates/ui-egui/src/electrical.rs:300
+#: crates/ui-egui/src/electrical.rs:301
 msgid "Voltage {} nominal"
 msgstr "电压 {} 标称值"
 
@@ -16099,27 +16099,27 @@ msgstr "导线 (EW)：单击起点和终点；连续单击可为每一段创建�
 msgid "Wire Types"
 msgstr "导线类型"
 
-#: crates/ui-egui/src/electrical.rs:433
+#: crates/ui-egui/src/electrical.rs:438
 msgid "Wire insulation"
 msgstr "导线绝缘层"
 
-#: crates/ui-egui/src/electrical.rs:427
+#: crates/ui-egui/src/electrical.rs:432
 msgid "Wire material"
 msgstr "导线材质"
 
-#: crates/ui-egui/src/electrical.rs:436
+#: crates/ui-egui/src/electrical.rs:441
 msgid "Wire note"
 msgstr "导线备注"
 
-#: crates/ui-egui/src/electrical.rs:430
+#: crates/ui-egui/src/electrical.rs:435
 msgid "Wire temperature"
 msgstr "导线温度"
 
-#: crates/ui-egui/src/electrical.rs:416
+#: crates/ui-egui/src/electrical.rs:421
 msgid "Wire type name"
 msgstr "导线类型名称"
 
-#: crates/ui-egui/src/electrical.rs:396
+#: crates/ui-egui/src/electrical.rs:401
 msgid "Wire type:"
 msgstr "导线类型："
 
@@ -16127,7 +16127,7 @@ msgstr "导线类型："
 msgid "Wireframe"
 msgstr "线框"
 
-#: crates/ui-egui/src/electrical.rs:344
+#: crates/ui-egui/src/electrical.rs:349
 msgid "Wires"
 msgstr "导线数"
 
@@ -17388,7 +17388,7 @@ msgstr "{} px"
 msgid "{} redefined from lines"
 msgstr "由线重新定义的 {}"
 
-#: crates/ui-egui/src/codes/tree.rs:257
+#: crates/ui-egui/src/codes/tree.rs:263
 #: crates/ui-egui/src/codes.rs:192
 msgid "{} rows"
 msgstr ""

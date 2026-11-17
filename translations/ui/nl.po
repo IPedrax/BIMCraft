@@ -193,7 +193,7 @@ msgstr "De punten van een cirkel, een ellips of een boog op de assen: oost, noor
 msgid "A city, a country, an EPSG code or words of a name: São Paulo, Germany, 31983, UTM 23S"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:392
+#: crates/ui-egui/src/electrical.rs:397
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "Het materiaal, de isolatie en de werktemperatuur van een geleider, en het stroomdraagvermogen van elke doorsnede, in mm²."
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "Add Checked to Project"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:385
+#: crates/ui-egui/src/electrical.rs:390
 msgid "Add Distribution System"
 msgstr "Distributiesysteem toevoegen"
 
@@ -602,9 +602,9 @@ msgstr ""
 msgid "Add Rectangle"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:285
-#: crates/ui-egui/src/codes/tree.rs:302
-#: crates/ui-egui/src/codes/tree.rs:466
+#: crates/ui-egui/src/codes/tree.rs:291
+#: crates/ui-egui/src/codes/tree.rs:308
+#: crates/ui-egui/src/codes/tree.rs:473
 #: crates/ui-egui/src/codes.rs:827
 msgid "Add Row"
 msgstr ""
@@ -626,7 +626,7 @@ msgstr "Selectie toevoegen"
 msgid "Add Shortcut"
 msgstr "Sneltoets toevoegen"
 
-#: crates/ui-egui/src/electrical.rs:460
+#: crates/ui-egui/src/electrical.rs:465
 msgid "Add Size"
 msgstr "Maat toevoegen"
 
@@ -655,11 +655,11 @@ msgstr "Hoekpunt toevoegen"
 msgid "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape"
 msgstr "Hoekpunt toevoegen: klik op een polylijn of een spline waar een hoekpunt komt; een spline behoudt zijn vorm"
 
-#: crates/ui-egui/src/electrical.rs:313
+#: crates/ui-egui/src/electrical.rs:318
 msgid "Add Voltage"
 msgstr "Spanning toevoegen"
 
-#: crates/ui-egui/src/electrical.rs:405
+#: crates/ui-egui/src/electrical.rs:410
 msgid "Add Wire Type"
 msgstr "Draadtype toevoegen"
 
@@ -971,7 +971,7 @@ msgstr "Altijd verticaal"
 msgid "Amendments:"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 msgid "Ampacity"
 msgstr "Stroomdraagvermogen"
 
@@ -1898,7 +1898,7 @@ msgstr "Berekende waarde…"
 msgid "Came in: {}"
 msgstr "Binnengekomen: {}"
 
-#: crates/core/src/commands.rs:2655
+#: crates/core/src/commands.rs:2656
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4852
 #: crates/ui-egui/src/properties.rs:294
@@ -2273,7 +2273,7 @@ msgstr "Controle: fck"
 msgid "Checking for updates…"
 msgstr "Controleren op updates…"
 
-#: crates/core/src/commands.rs:4193
+#: crates/core/src/commands.rs:4194
 msgid "Checking the model"
 msgstr ""
 
@@ -3551,7 +3551,7 @@ msgid "Copper"
 msgstr "Koper"
 
 #: crates/core/src/commands.rs:1964
-#: crates/ui-egui/src/codes/tree.rs:312
+#: crates/ui-egui/src/codes/tree.rs:318
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -3600,7 +3600,7 @@ msgstr "Rapport kopiëren"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Kopieer de ID, GUID en IFC-GlobalId"
 
-#: crates/ui-egui/src/codes/tree.rs:312
+#: crates/ui-egui/src/codes/tree.rs:318
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
@@ -3847,7 +3847,7 @@ msgstr "Weergave bijsnijden: toon alleen het bijsnijdgebied; sleep de randen aan
 msgid "Cross"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 msgid "Cross-Section"
 msgstr "Doorsnede"
 
@@ -4151,7 +4151,7 @@ msgstr "Hoekpunt verwijderen"
 msgid "Delete Vertex: click a polyline's corner or a spline's point to take it out"
 msgstr "Hoekpunt verwijderen: klik op een hoek van een polylijn of een punt van een spline om het weg te nemen"
 
-#: crates/ui-egui/src/electrical.rs:408
+#: crates/ui-egui/src/electrical.rs:413
 msgid "Delete Wire Type"
 msgstr "Draadtype verwijderen"
 
@@ -4159,11 +4159,11 @@ msgstr "Draadtype verwijderen"
 msgid "Delete location {}"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:450
+#: crates/ui-egui/src/electrical.rs:455
 msgid "Delete size {}"
 msgstr "Maat {} verwijderen"
 
-#: crates/ui-egui/src/electrical.rs:375
+#: crates/ui-egui/src/electrical.rs:380
 msgid "Delete system {}"
 msgstr "Systeem {} verwijderen"
 
@@ -4179,15 +4179,15 @@ msgstr ""
 msgid "Delete this code from the project. If the project uses it, its rules are kept."
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:279
-#: crates/ui-egui/src/codes/tree.rs:363
-#: crates/ui-egui/src/codes/tree.rs:413
-#: crates/ui-egui/src/codes/tree.rs:455
+#: crates/ui-egui/src/codes/tree.rs:285
+#: crates/ui-egui/src/codes/tree.rs:369
+#: crates/ui-egui/src/codes/tree.rs:420
+#: crates/ui-egui/src/codes/tree.rs:462
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:303
+#: crates/ui-egui/src/electrical.rs:308
 msgid "Delete voltage {}"
 msgstr "Spanning {} verwijderen"
 
@@ -4219,7 +4219,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:13855
+#: crates/core/src/commands.rs:13864
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -4853,7 +4853,7 @@ msgstr "De breedte van elke pen op papier, mm, voor maatlijnen, labels, tekst, r
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "De breedte van elke pen op papier, mm, in weergaven op elke schaal: een weergave tussen twee schalen neemt die van de dichtstbijzijnde. Pen 0 is altijd een haarlijn."
 
-#: crates/ui-egui/src/electrical.rs:348
+#: crates/ui-egui/src/electrical.rs:353
 #: crates/ui-egui/src/mep.rs:290
 msgid "Earthing"
 msgstr "Aarding"
@@ -5137,7 +5137,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:3126
+#: crates/core/src/commands.rs:3127
 msgid "Elements"
 msgstr "Elementen"
 
@@ -6636,7 +6636,7 @@ msgstr "Hoeveel staven, hoe dik en hoe ver uit elkaar bepaal je zelf; een leeg v
 msgid "How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."
 msgstr ""
 
-#: crates/ui-egui/src/electrical.rs:333
+#: crates/ui-egui/src/electrical.rs:338
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Hoeveel fasen en draden elk systeem heeft (de fasegeleiders en de nulgeleider), de spanningen die het levert, en hoe het geaard is."
 
@@ -7000,7 +7000,7 @@ msgstr "Isolatie"
 msgid "Insulation Width"
 msgstr "Breedte isolatie"
 
-#: crates/ui-egui/src/electrical.rs:432
+#: crates/ui-egui/src/electrical.rs:437
 msgid "Insulation:"
 msgstr "Isolatie:"
 
@@ -7277,7 +7277,7 @@ msgid "LEFT"
 msgstr ""
 
 #: crates/ui-egui/src/editor/dimensions.rs:1088
-#: crates/ui-egui/src/electrical.rs:442
+#: crates/ui-egui/src/electrical.rs:447
 #: crates/ui-egui/src/parameters.rs:1497
 #: crates/ui-egui/src/parameters.rs:1600
 #: crates/ui-egui/src/titleblocks.rs:142
@@ -7631,15 +7631,15 @@ msgstr "Lijnkleur"
 msgid "Line dash"
 msgstr "Lijnstreep"
 
-#: crates/ui-egui/src/electrical.rs:347
+#: crates/ui-egui/src/electrical.rs:352
 msgid "Line to earth"
 msgstr "Fase-aarde"
 
-#: crates/ui-egui/src/electrical.rs:345
+#: crates/ui-egui/src/electrical.rs:350
 msgid "Line to line"
 msgstr "Fase-fase"
 
-#: crates/ui-egui/src/electrical.rs:346
+#: crates/ui-egui/src/electrical.rs:351
 msgid "Line to neutral"
 msgstr "Fase-nul"
 
@@ -8204,7 +8204,7 @@ msgstr "Eigenschappen overgenomen: type '{}' toegepast op {} element(en)"
 msgid "Material"
 msgstr "Materiaal"
 
-#: crates/ui-egui/src/electrical.rs:418
+#: crates/ui-egui/src/electrical.rs:423
 #: crates/ui-egui/src/lib.rs:5674
 #: crates/ui-egui/src/properties.rs:3307
 msgid "Material:"
@@ -8257,7 +8257,7 @@ msgstr "Maximale hoek"
 msgid "Maximum Riser Height"
 msgstr "Maximale hoogte optrede"
 
-#: crates/core/src/commands.rs:2769
+#: crates/core/src/commands.rs:2770
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -8806,7 +8806,7 @@ msgstr "NIET OMSLOTEN"
 #: crates/ui-egui/src/editor/types_dialog.rs:478
 #: crates/ui-egui/src/editor/work_plane.rs:211
 #: crates/ui-egui/src/electrical.rs:296
-#: crates/ui-egui/src/electrical.rs:342
+#: crates/ui-egui/src/electrical.rs:347
 #: crates/ui-egui/src/lib.rs:6090
 #: crates/ui-egui/src/parameters.rs:820
 #: crates/ui-egui/src/parameters.rs:1399
@@ -8840,7 +8840,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/types_dialog.rs:481
 #: crates/ui-egui/src/editor/types_dialog.rs:568
 #: crates/ui-egui/src/editor/work_plane.rs:196
-#: crates/ui-egui/src/electrical.rs:415
+#: crates/ui-egui/src/electrical.rs:420
 #: crates/ui-egui/src/phasing.rs:350
 #: crates/ui-egui/src/phasing.rs:536
 #: crates/ui-egui/src/properties.rs:4044
@@ -9277,7 +9277,7 @@ msgstr "Niet zichtbaar op dit netwerk: een andere sessie op deze machine gebruik
 msgid "Note"
 msgstr "Notitie"
 
-#: crates/ui-egui/src/electrical.rs:435
+#: crates/ui-egui/src/electrical.rs:440
 msgid "Note:"
 msgstr "Notitie:"
 
@@ -9944,7 +9944,7 @@ msgstr ""
 msgid "Paste"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:320
+#: crates/ui-egui/src/codes/tree.rs:326
 msgid "Paste rows here"
 msgstr ""
 
@@ -10083,7 +10083,7 @@ msgid "Phase {}"
 msgstr ""
 
 #: crates/core/src/panel_schedule.rs:367
-#: crates/ui-egui/src/electrical.rs:343
+#: crates/ui-egui/src/electrical.rs:348
 msgid "Phases"
 msgstr "Fasen"
 
@@ -11126,7 +11126,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschappen boven de Projectbrowser, links, zoals in het begin"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:9320
+#: crates/core/src/commands.rs:9321
 msgid "Property Line"
 msgstr ""
 
@@ -11306,7 +11306,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4150
+#: crates/core/src/commands.rs:4151
 msgid "Reading the file"
 msgstr ""
 
@@ -12293,7 +12293,7 @@ msgstr "Schaal: het papier dat deze weergave voorstelt, 1 : n van het model: haa
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:2557
+#: crates/core/src/commands.rs:2558
 msgid "Schedule"
 msgstr "Lijst"
 
@@ -12966,15 +12966,15 @@ msgstr ""
 msgid "Size"
 msgstr "Grootte"
 
-#: crates/ui-egui/src/electrical.rs:446
+#: crates/ui-egui/src/electrical.rs:451
 msgid "Size {} ampacity"
 msgstr "Stroomdraagvermogen van maat {}"
 
-#: crates/ui-egui/src/electrical.rs:448
+#: crates/ui-egui/src/electrical.rs:453
 msgid "Size {} label"
 msgstr "Label van maat {}"
 
-#: crates/ui-egui/src/electrical.rs:445
+#: crates/ui-egui/src/electrical.rs:450
 msgid "Size {} section"
 msgstr "Doorsnede van maat {}"
 
@@ -13221,7 +13221,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "Broncode op GitHub"
 
-#: crates/ui-egui/src/codes/tree.rs:266
+#: crates/ui-egui/src/codes/tree.rs:272
 msgid "Source:"
 msgstr ""
 
@@ -13795,31 +13795,31 @@ msgstr "Systeem"
 msgid "System Family: {}"
 msgstr "Systeemfamilie: {}"
 
-#: crates/ui-egui/src/electrical.rs:374
+#: crates/ui-egui/src/electrical.rs:379
 msgid "System {} earthing"
 msgstr "Aarding van systeem {}"
 
-#: crates/ui-egui/src/electrical.rs:366
+#: crates/ui-egui/src/electrical.rs:371
 msgid "System {} line to earth"
 msgstr "Fase-aarde van systeem {}"
 
-#: crates/ui-egui/src/electrical.rs:364
+#: crates/ui-egui/src/electrical.rs:369
 msgid "System {} line to line"
 msgstr "Fase-fase van systeem {}"
 
-#: crates/ui-egui/src/electrical.rs:365
+#: crates/ui-egui/src/electrical.rs:370
 msgid "System {} line to neutral"
 msgstr "Fase-nul van systeem {}"
 
-#: crates/ui-egui/src/electrical.rs:354
+#: crates/ui-egui/src/electrical.rs:359
 msgid "System {} name"
 msgstr "Naam van systeem {}"
 
-#: crates/ui-egui/src/electrical.rs:361
+#: crates/ui-egui/src/electrical.rs:366
 msgid "System {} phases"
 msgstr "Fasen van systeem {}"
 
-#: crates/ui-egui/src/electrical.rs:363
+#: crates/ui-egui/src/electrical.rs:368
 msgid "System {} wires"
 msgstr "Draden van systeem {}"
 
@@ -13930,7 +13930,7 @@ msgstr "Technische normen: stel tekennormen in (NBR, ISO, ANSI, EU); nu {}"
 msgid "Tee"
 msgstr "T-stuk"
 
-#: crates/ui-egui/src/electrical.rs:429
+#: crates/ui-egui/src/electrical.rs:434
 msgid "Temperature:"
 msgstr "Temperatuur:"
 
@@ -15417,11 +15417,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:14091
+#: crates/core/src/commands.rs:14100
 msgid "Unnamed"
 msgstr "Naamloos"
 
-#: crates/core/src/commands.rs:4167
+#: crates/core/src/commands.rs:4168
 msgid "Unpacking the project"
 msgstr ""
 
@@ -15485,7 +15485,7 @@ msgstr "Bovengrens"
 msgid "Use"
 msgstr "Gebruiken"
 
-#: crates/ui-egui/src/codes/tree.rs:321
+#: crates/ui-egui/src/codes/tree.rs:327
 msgid "Use Pasted Rows"
 msgstr ""
 
@@ -15805,11 +15805,11 @@ msgstr "Spanning"
 msgid "Voltage {} is supplied by distribution system {}: change that first."
 msgstr "Spanning {} wordt geleverd door distributiesysteem {}: wijzig dat eerst."
 
-#: crates/ui-egui/src/electrical.rs:302
+#: crates/ui-egui/src/electrical.rs:307
 msgid "Voltage {} maximum"
 msgstr "Maximum van spanning {}"
 
-#: crates/ui-egui/src/electrical.rs:301
+#: crates/ui-egui/src/electrical.rs:306
 msgid "Voltage {} minimum"
 msgstr "Minimum van spanning {}"
 
@@ -15817,7 +15817,7 @@ msgstr "Minimum van spanning {}"
 msgid "Voltage {} name"
 msgstr "Naam van spanning {}"
 
-#: crates/ui-egui/src/electrical.rs:300
+#: crates/ui-egui/src/electrical.rs:301
 msgid "Voltage {} nominal"
 msgstr "Nominale waarde van spanning {}"
 
@@ -16099,27 +16099,27 @@ msgstr "Draad (EW): klik op het begin en het einde; een reeks klikken maakt een 
 msgid "Wire Types"
 msgstr "Draadtypes"
 
-#: crates/ui-egui/src/electrical.rs:433
+#: crates/ui-egui/src/electrical.rs:438
 msgid "Wire insulation"
 msgstr "Isolatie van de draad"
 
-#: crates/ui-egui/src/electrical.rs:427
+#: crates/ui-egui/src/electrical.rs:432
 msgid "Wire material"
 msgstr "Materiaal van de draad"
 
-#: crates/ui-egui/src/electrical.rs:436
+#: crates/ui-egui/src/electrical.rs:441
 msgid "Wire note"
 msgstr "Notitie bij de draad"
 
-#: crates/ui-egui/src/electrical.rs:430
+#: crates/ui-egui/src/electrical.rs:435
 msgid "Wire temperature"
 msgstr "Temperatuur van de draad"
 
-#: crates/ui-egui/src/electrical.rs:416
+#: crates/ui-egui/src/electrical.rs:421
 msgid "Wire type name"
 msgstr "Naam van het draadtype"
 
-#: crates/ui-egui/src/electrical.rs:396
+#: crates/ui-egui/src/electrical.rs:401
 msgid "Wire type:"
 msgstr "Draadtype:"
 
@@ -16127,7 +16127,7 @@ msgstr "Draadtype:"
 msgid "Wireframe"
 msgstr "Draadmodel"
 
-#: crates/ui-egui/src/electrical.rs:344
+#: crates/ui-egui/src/electrical.rs:349
 msgid "Wires"
 msgstr "Draden"
 
@@ -17388,7 +17388,7 @@ msgstr "{} px"
 msgid "{} redefined from lines"
 msgstr "{} opnieuw gedefinieerd uit lijnen"
 
-#: crates/ui-egui/src/codes/tree.rs:257
+#: crates/ui-egui/src/codes/tree.rs:263
 #: crates/ui-egui/src/codes.rs:192
 msgid "{} rows"
 msgstr ""
