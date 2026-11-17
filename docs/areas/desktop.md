@@ -144,7 +144,10 @@ A selected straight wall shows, besides its length, how far its centre line stan
 each side, square to it from its middle (`Model::wall_clearances`; `wall_dimensions` draws them a little along it): a typed one moves the
 wall by the difference, the walls joined to it stretching (`move`).
 The Text tool's Leader (Options Bar) makes the first click the point the note's leader reaches and the next the note's top left corner,
-in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first.
+in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first. Leader Type, beside it, is how that leader runs:
+Straight, Two Segment (a shoulder level with the note, its lettering's height long, then to the point) or Curved, an arc bowing from
+that shoulder's corner (`LeaderKind`, the note's `leader_kind`). The same row appears while a note with a leader is rewritten, so a
+placed note's leader changes its shape there.
 
 Align (AL) highlights the exact edge or axis under the cursor before either pick, leaving the selected reference as an
 extended dashed line. It searches the candidates under the pointer for a usable line rather than letting annotation mask

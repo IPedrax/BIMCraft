@@ -217,7 +217,9 @@ use the separate font fallback below, so a character outside the drawing letteri
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
 rename): Revit's font, size (its capitals' height on paper, mm), bold, italic, underline, width factor, colour, and a border
-`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts. A project starts
+`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts: straight from
+there, in two segments (a shoulder level with the note, its lettering's height long, then to the point), or as an arc bowing from
+that shoulder's corner (`LeaderKind`, the note's `leader_kind`; straight unless told). A project starts
 with 2.5mm, 3.5mm and 5mm in Arial; `text_type` makes, renames and deletes them (none in use). A type's font is a name:
 any font the system has, or one we carry (IBM Plex Sans, IBM Plex Mono, BIMCraft Lettering: `font.rs`'s single-stroke
 capitals). `text/system.rs` lists the system's fonts once (`system::index`): it looks through the folders Linux, Windows
