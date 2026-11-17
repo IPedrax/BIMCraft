@@ -18201,6 +18201,11 @@ msgstr ""
 msgid "Underlay View"
 msgstr ""
 
+#: crates/ui-egui/src/editor/document.rs:922
+#: crates/ui-egui/src/editor/document.rs:925
+msgid "Defines Origin"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Een lege waarde is die van de familie zelf, zoals het tabblad Parameters ze toont."

@@ -18200,6 +18200,11 @@ msgstr ""
 msgid "Underlay View"
 msgstr ""
 
+#: crates/ui-egui/src/editor/document.rs:922
+#: crates/ui-egui/src/editor/document.rs:925
+msgid "Defines Origin"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "留空的值表示使用族自身的值，如“參數”選項卡中所示。"

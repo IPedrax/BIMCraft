@@ -18204,6 +18204,35 @@ msgstr ""
 msgid "Underlay View"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:4017
+msgid "3D Scene as glTF…"
+msgstr ""
+
+#: crates/ui-egui/src/settings.rs:639
+msgid "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: never in a printed drawing, a sheet or an export"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5457
+msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:922
+#: crates/ui-egui/src/editor/document.rs:925
+msgid "Defines Origin"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1277
+msgid "No fill"
+msgstr ""
+
+#: crates/ui-egui/src/settings.rs:638
+msgid "Show the origin marker in plans"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4018
+msgid "glTF binary"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Un valore vuoto è quello dell'oggetto stesso, come nella scheda Parametri."

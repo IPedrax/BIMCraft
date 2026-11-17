@@ -18222,6 +18222,103 @@ msgstr ""
 msgid "stair: `{}` is not a width"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:5517
+msgid "Click the start of the angle, or type an angle in the Options Bar."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5457
+msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+msgstr ""
+
+#: crates/ui-egui/src/draw.rs:687
+msgid "Create Group (GP): the selected detail lines, filled regions and text made one detail group"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:922
+#: crates/ui-egui/src/editor/document.rs:925
+msgid "Defines Origin"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4929
+msgid "Detach Top/Base: the walls' tops and bases their own again"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:807
+msgid "Edit Boundary: sketch its outline and holes again"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4005
+msgid "IFC…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4692
+msgid "Links"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4331
+msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1277
+msgid "No fill"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:3268
+msgid "No project parameters yet: New makes one."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4009
+msgid "PNG image"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5501
+msgid "Pick a roof or a floor: the selected walls' bases stand on it."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5502
+msgid "Pick a roof or a floor: the selected walls' tops follow its underside."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4011
+msgid "Plan as SVG…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4594
+msgid "Project Parameters: values of your own each element of their categories holds, for schedules and IFC"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4012
+msgid "SVG drawing"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4014
+msgid "Sheets as PDF…"
+msgstr ""
+
+#: crates/ui-egui/src/settings.rs:638
+msgid "Show the origin marker in plans"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4008
+msgid "View as PNG…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4018
+msgid "glTF binary"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:34
+msgid "select a detail group to ungroup"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:19
+msgid "select the detail lines, filled regions and text to group first"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:2774
+msgid "select the walls to attach first"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Pusta wartość oznacza wartość rodziny, tak jak jest w zakładce Parametry."
