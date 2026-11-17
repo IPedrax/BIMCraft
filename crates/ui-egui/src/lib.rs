@@ -2543,7 +2543,7 @@ impl BimApp {
             self.typed.clear();
             return;
         }
-        if self.sketch.is_none() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
+        if self.sketch.is_none() && !self.chain_active() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
             self.run("redo", json!({}));
         }
         // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
@@ -2595,6 +2595,12 @@ impl BimApp {
         }
         if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
             self.typed_length.pop();
+        }
+        // Backspace in a wall or detail line chain takes its last point back, and the segment built to it, so the model and
+        // the chain stay one drawing.
+        if self.typed_length.is_empty() && self.drawing.other.is_empty() && self.chain_active() && pressed(Modifiers::NONE, Key::Backspace)
+        {
+            self.undo_chain_point();
         }
         // Backspace while a dimension is being picked takes its last reference out.
         if pressed(Modifiers::NONE, Key::Backspace)
@@ -2707,10 +2713,20 @@ impl BimApp {
             'D' => self.toggle_home(),
             // While sketching, Ctrl+Z takes back a line; the model's steps wait until Finish or Cancel.
             'Z' if self.sketch.is_some() => self.unsketch(),
+            // Mid-chain, undo is the chain's: a typed number goes first, as in a field; then the point and the segment
+            // built to it, never a step of the model behind it.
             'Z' => {
-                self.run("undo", json!({}));
+                if self.chain_active() {
+                    if self.typed_length.is_empty() && self.drawing.other.is_empty() {
+                        self.undo_chain_point();
+                    } else {
+                        self.clear_typed();
+                    }
+                } else {
+                    self.run("undo", json!({}));
+                }
             }
-            'Y' if self.sketch.is_none() => {
+            'Y' if self.sketch.is_none() && !self.chain_active() => {
                 self.run("redo", json!({}));
             }
             '1' => self.toggle_properties(),
@@ -3572,6 +3588,11 @@ impl BimApp {
             }
             _ => None,
         }
+    }
+
+    /// A wall or detail line chain with a point already placed.
+    fn chain_active(&self) -> bool {
+        matches!(self.tool, Tool::Wall(_) | Tool::DetailLine(_)) && self.base().is_some()
     }
 
     /// The level of the plan on screen, a floor plan or a ceiling plan (of a plan view, its level's).
@@ -6435,8 +6456,10 @@ impl BimApp {
         }
         match &self.tool {
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
-            Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
-            Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
+            Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point; Q pins a guide there."),
+            Tool::Wall(_) => msg!(
+                "Click the next point; Enter or Esc ends the chain, Shift keeps it square. Tab steps length and angle, or the wall's lines; Backspace or Ctrl+Z takes back the last point and wall; Q pins a guide."
+            ),
             Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),
             Tool::Attach => msg!("Pick a roof or a floor: the tops of what's selected follow its underside."),
             Tool::Door => msg!("Click a wall to place the door."),
@@ -6588,8 +6611,10 @@ impl BimApp {
             Tool::Mass(pts) if pts.is_empty() => msg!("Click the first corner of the mass's footprint."),
             Tool::Mass(pts) if pts.len() < 3 => msg!("Click the footprint's next corner. Esc cancels."),
             Tool::Mass(_) => msg!("Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."),
-            Tool::DetailLine(pts) if pts.is_empty() => msg!("Click where the detail line starts."),
-            Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
+            Tool::DetailLine(pts) if pts.is_empty() => msg!("Click where the detail line starts; Q pins a guide there."),
+            Tool::DetailLine(_) => msg!(
+                "Click its next point; Enter finishes it, the first point again closes it; Tab steps length and angle; Backspace or Ctrl+Z takes back the last point and line; Q pins a guide. Esc cancels."
+            ),
             Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
             Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
             Tool::ModifySubElements => {

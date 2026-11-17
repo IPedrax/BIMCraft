@@ -3813,6 +3813,50 @@ impl BimApp {
         }
     }
 
+    /// Backspace in a wall or detail line chain: take the last point back, and the segment built to it, so the chain goes
+    /// on from the point before. A detail line made only when its chain ends has no segment to undo.
+    pub(crate) fn undo_chain_point(&mut self) -> bool {
+        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() {
+            return false;
+        }
+        // Only a Line builds a segment a click: an arc, a spline or a polyline keeps its points until the shape is made.
+        let (points, built) = match &self.tool {
+            Tool::Wall(chain) => (chain.len(), self.shape() == draw::Shape::Line && chain.len() >= 2),
+            Tool::DetailLine(path) => (path.len(), self.shape() == draw::Shape::Line && !self.one_line() && path.len() >= 2),
+            _ => return false,
+        };
+        if points == 0 {
+            return false;
+        }
+        // A chain is normally the last thing that changed the model: a click that built no segment pushes no point. Undo
+        // first, so a failed undo leaves the chain as it was.
+        if built {
+            let start_edge = self.canvas.start_edge;
+            if self.run("undo", json!({})).is_none() {
+                return true;
+            }
+            // The undo clears the drawing's marks, as they may name what it took away; the wall the chain started on is not
+            // one of them, so its line stays the chain's guide.
+            self.canvas.start_edge = start_edge;
+        }
+        let left = match &mut self.tool {
+            Tool::Wall(chain) => {
+                chain.pop();
+                chain.len()
+            }
+            Tool::DetailLine(path) => {
+                path.pop();
+                path.len()
+            }
+            _ => return false,
+        };
+        if left == 0 {
+            self.canvas.start_edge = None;
+            self.canvas.wall_face = None;
+        }
+        true
+    }
+
     /// The Detail Line tool's Enter: with Polyline, a detail line through the points clicked, in the plan of `level`;
     /// else the chain ends, its lines made as it went.
     pub(crate) fn finish_detail_line(&mut self, level: Id) {

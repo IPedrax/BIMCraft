@@ -341,6 +341,231 @@ fn a_sketch_stays_in_the_plan_it_began_in() {
     assert_eq!(h.state().sheet, Sheet::Plan(second));
 }
 
+/// Ctrl+Z as the user presses it: the Ctrl keys are read by `keys`, not the ribbon's Undo.
+fn ctrl_z(h: &mut Harness<BimApp>) {
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+}
+
+/// The wall through `a` and `b`, whichever way round it was drawn.
+fn wall_through(h: &Harness<BimApp>, a: P2, b: P2) -> bool {
+    walls(h).iter().any(|(s, e)| (s.dist(a) < 1.0 && e.dist(b) < 1.0) || (s.dist(b) < 1.0 && e.dist(a) < 1.0))
+}
+
+/// The one element of `category` that is not in `before`: what the next click made.
+fn made(h: &Harness<BimApp>, category: &str, before: &[Id]) -> Id {
+    ids(h, category).into_iter().find(|id| !before.contains(id)).expect("the element the next click made")
+}
+
+/// What `before` names still stands, and the element an undo made is gone.
+fn survived(h: &Harness<BimApp>, category: &str, before: &[Id], made: Id) {
+    let now = ids(h, category);
+    assert!(!now.contains(&made), "the element the undo took back is gone");
+    for id in before {
+        assert!(now.contains(id), "the element that stood before it stays: {id}");
+    }
+}
+
+#[test]
+fn backspace_takes_back_the_last_point_of_a_wall_and_of_a_detail_line_chain() {
+    // Wall: the second click builds a wall; Backspace takes the wall and its point, and the chain goes on from the first.
+    let mut h = app(BOX);
+    tool(&mut h, "Wall");
+    let before = ids(&h, "wall");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(4000.0, 1000.0));
+    assert_eq!(ids(&h, "wall").len(), before.len() + 1, "the second click built the wall");
+    let built = made(&h, "wall", &before);
+    key(&mut h, Key::Backspace);
+    survived(&h, "wall", &before, built);
+    assert!(matches!(&h.state().tool, Tool::Wall(chain) if chain.len() == 1), "the chain keeps its first point");
+    click(&mut h, P2(1000.0, 4000.0));
+    assert_eq!(ids(&h, "wall").len(), before.len() + 1);
+    assert!(wall_through(&h, P2(1000.0, 1000.0), P2(1000.0, 4000.0)), "the next wall runs from the point the chain went back to");
+
+    // Detail Line: the same.
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    let before = ids(&h, "line");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(4000.0, 1000.0));
+    assert_eq!(ids(&h, "line").len(), before.len() + 1, "the second click built the line");
+    let built = made(&h, "line", &before);
+    key(&mut h, Key::Backspace);
+    survived(&h, "line", &before, built);
+    assert!(matches!(&h.state().tool, Tool::DetailLine(path) if path.len() == 1), "the chain keeps its first point");
+    click(&mut h, P2(1000.0, 4000.0));
+    assert_eq!(ids(&h, "line").len(), before.len() + 1);
+    let line = made(&h, "line", &before);
+    match h.state().session.model.elements.get(line) {
+        Some(Element::DetailLine(l)) => {
+            let (start, end) = (l.curve.start(), l.curve.end());
+            assert!(
+                (start.dist(P2(1000.0, 1000.0)) < 1.0 && end.dist(P2(1000.0, 4000.0)) < 1.0)
+                    || (start.dist(P2(1000.0, 4000.0)) < 1.0 && end.dist(P2(1000.0, 1000.0)) < 1.0),
+                "the next line runs from the point the chain went back to: {start:?} to {end:?}"
+            );
+        }
+        e => panic!("{line} is {e:?}"),
+    }
+}
+
+#[test]
+fn ctrl_z_takes_back_the_last_point_of_a_wall_and_of_a_detail_line_chain() {
+    // Wall: Ctrl+Z mid-chain takes the last wall and its point, not a step of the model behind the chain.
+    let mut h = app(BOX);
+    tool(&mut h, "Wall");
+    let before = ids(&h, "wall");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(4000.0, 1000.0));
+    assert_eq!(ids(&h, "wall").len(), before.len() + 1, "the second click built the wall");
+    let built = made(&h, "wall", &before);
+    ctrl_z(&mut h);
+    survived(&h, "wall", &before, built);
+    assert!(matches!(&h.state().tool, Tool::Wall(chain) if chain.len() == 1), "the chain keeps its first point");
+    click(&mut h, P2(1000.0, 4000.0));
+    assert_eq!(ids(&h, "wall").len(), before.len() + 1);
+    assert!(wall_through(&h, P2(1000.0, 1000.0), P2(1000.0, 4000.0)), "the next wall runs from the point the chain went back to");
+
+    // Detail Line: the same.
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    let before = ids(&h, "line");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(4000.0, 1000.0));
+    assert_eq!(ids(&h, "line").len(), before.len() + 1, "the second click built the line");
+    let built = made(&h, "line", &before);
+    ctrl_z(&mut h);
+    survived(&h, "line", &before, built);
+    assert!(matches!(&h.state().tool, Tool::DetailLine(path) if path.len() == 1), "the chain keeps its first point");
+    click(&mut h, P2(1000.0, 4000.0));
+    assert_eq!(ids(&h, "line").len(), before.len() + 1);
+    let line = made(&h, "line", &before);
+    match h.state().session.model.elements.get(line) {
+        Some(Element::DetailLine(l)) => {
+            let (start, end) = (l.curve.start(), l.curve.end());
+            assert!(
+                (start.dist(P2(1000.0, 1000.0)) < 1.0 && end.dist(P2(1000.0, 4000.0)) < 1.0)
+                    || (start.dist(P2(1000.0, 4000.0)) < 1.0 && end.dist(P2(1000.0, 1000.0)) < 1.0),
+                "the next line runs from the point the chain went back to: {start:?} to {end:?}"
+            );
+        }
+        e => panic!("{line} is {e:?}"),
+    }
+}
+
+#[test]
+fn backspace_on_a_shape_that_is_not_made_yet_only_takes_its_point_back() {
+    // A wall arc has two of its three points after two clicks and has built nothing: Backspace must not undo the last
+    // wall of the model.
+    let mut h = app(BOX);
+    tool(&mut h, "Wall");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(4000.0, 1000.0));
+    key(&mut h, Key::Escape);
+    let (before, steps) = (walls(&h).len(), h.state().session.history().len());
+    tool(&mut h, "Wall");
+    press(&mut h, "Start-End-Radius Arc");
+    click(&mut h, P2(1000.0, 3000.0));
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(walls(&h).len(), before, "two of the arc's three points make no wall");
+    key(&mut h, Key::Backspace);
+    assert!(matches!(&h.state().tool, Tool::Wall(p) if p.len() == 1), "one point back");
+    assert_eq!(walls(&h).len(), before, "no wall went with it");
+    assert_eq!(h.state().session.history().len(), steps, "nor a model step");
+
+    // A detail spline is points until Enter, and takes no line with its point either.
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(4000.0, 1000.0));
+    key(&mut h, Key::Escape);
+    let (before, steps) = (ids(&h, "line").len(), h.state().session.history().len());
+    press(&mut h, "Spline");
+    click(&mut h, P2(1000.0, 3000.0));
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(ids(&h, "line").len(), before, "a spline is made when Enter ends it");
+    key(&mut h, Key::Backspace);
+    assert!(matches!(&h.state().tool, Tool::DetailLine(p) if p.len() == 1), "one point back");
+    assert_eq!(ids(&h, "line").len(), before, "no line went with it");
+    assert_eq!(h.state().session.history().len(), steps, "nor a model step");
+}
+
+#[test]
+fn ctrl_z_with_a_typed_length_clears_it_before_the_chain() {
+    let mut h = app(BOX);
+    tool(&mut h, "Wall");
+    let before = ids(&h, "wall");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(4000.0, 1000.0));
+    let built = made(&h, "wall", &before);
+    h.event(Event::Text("5000".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "5000");
+    ctrl_z(&mut h);
+    assert!(h.state().typed_length.is_empty(), "the number goes first, as in a field");
+    assert!(ids(&h, "wall").contains(&built), "and the chain's wall stands");
+    ctrl_z(&mut h);
+    assert!(!ids(&h, "wall").contains(&built), "then the point and its wall");
+}
+
+#[test]
+fn undo_keeps_the_wall_a_chain_started_on_as_its_guide() {
+    let mut h = app(BOX);
+    tool(&mut h, "Wall");
+    click(&mut h, P2(4000.0, 0.0));
+    assert!(h.state().canvas.start_edge.is_some(), "the chain started on the bottom wall");
+    click(&mut h, P2(4000.0, 3000.0));
+    key(&mut h, Key::Backspace);
+    assert!(h.state().canvas.start_edge.is_some(), "the undo kept the wall the chain started on");
+}
+
+#[test]
+fn a_wall_and_a_detail_line_chain_name_their_keys_in_the_status_bar() {
+    let mut h = app(BOX);
+    tool(&mut h, "Wall");
+    assert!(h.state().prompt().contains("Q pins a guide there"), "the start point says Q: {}", h.state().prompt());
+    click(&mut h, P2(1000.0, 1000.0));
+    let wall = h.state().prompt();
+    for hint in
+        ["Tab steps length and angle", "the wall's lines", "Backspace or Ctrl+Z takes back the last point and wall", "Q pins a guide"]
+    {
+        assert!(wall.contains(hint), "{hint} in {wall}");
+    }
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    assert!(h.state().prompt().contains("Q pins a guide there"), "the start point says Q: {}", h.state().prompt());
+    click(&mut h, P2(1000.0, 1000.0));
+    let line = h.state().prompt();
+    for hint in ["Tab steps length and angle", "Backspace or Ctrl+Z takes back the last point and line", "Q pins a guide"] {
+        assert!(line.contains(hint), "{hint} in {line}");
+    }
+}
+
+#[test]
+fn backspace_on_a_polyline_only_takes_its_point_back() {
+    // A polyline is made when Enter ends it: there is no segment to undo, and no model step to take with the point.
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    press(&mut h, "Polyline");
+    let steps = h.state().session.history().len();
+    for p in [P2(1000.0, 1000.0), P2(3000.0, 1000.0), P2(3000.0, 3000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(ids(&h, "line").len(), 0, "nothing until Enter");
+    key(&mut h, Key::Backspace);
+    assert!(matches!(&h.state().tool, Tool::DetailLine(path) if path.len() == 2), "one point back");
+    assert_eq!(h.state().session.history().len(), steps, "no model step went with the point");
+    key(&mut h, Key::Backspace);
+    key(&mut h, Key::Backspace);
+    assert!(matches!(&h.state().tool, Tool::DetailLine(path) if path.is_empty()), "the first point goes too");
+    assert_eq!(h.state().session.history().len(), steps, "and still no model step");
+}
+
 #[test]
 fn edit_type_from_a_regions_edit_boundary_opens_the_type_the_region_has() {
     let mut h = app(&format!(
