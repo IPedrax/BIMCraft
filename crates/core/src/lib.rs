@@ -188,6 +188,9 @@ mod read_only_tests;
 pub mod rebar;
 #[cfg(test)]
 mod rebar_tests;
+pub mod rehost;
+#[cfg(test)]
+mod rehost_tests;
 pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;

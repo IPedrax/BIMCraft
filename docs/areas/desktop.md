@@ -788,3 +788,24 @@ samples are the ones to fix. Measured with it on the annotated 100-storey tower 
 File > Settings > Files has **Compressed save** (a tick in the File menu too), off at first and kept in `settings.json`: on, Save
 and Save As write the project as `save {compress: true}` does, its JSON in a zip (`bimcraft_core::bimc`), several times smaller
 and slower to save and open, as the box says; off, plain JSON. Exports take no such choice, and Open reads either.
+
+
+## Pick New Host
+
+With one ordinary door/window selected, the contextual Modify tools and its right-click menu offer **Pick New Host**.
+It is enabled in floor and ceiling plans for an unpinned, ungrouped opening in an ordinary straight wall, outside Edit Group.
+The user points at another drawn wall, sees the opening preview and distances, then clicks once to commit. A nearby stretch
+centre uses the existing opening centre snap. The command's `offset` also permits exact millimetre placement from scripts;
+after placement the existing temporary dimensions remain available. There is no new drag gesture or numeric preview editor.
+
+The target must share the source wall's level and base elevation. Sill, type, instance values, mark and interior/exterior-relative
+hand/facing settings are retained. A thicker wall reevaluates a family's Wall Thickness. Invalid fit or unsupported hosts show
+why and make no edit. Curved/curtain/grouped hosts are unsupported. Sections/elevations/3D show the action disabled; switch to
+a plan. Existing plan visibility/picking determines which wall can be targeted.
+
+`rehost.rs` keeps the source GUID, active view and model snapshot for the pending pick. Hover validation runs `pick_new_host`
+on a scratch session seeded from the checked snapshot; the live click runs it through `BimApp::exec`, so the UI, connected agents and Co-Work use the same
+operation. Escape keeps the original opening selected and changes nothing. Switching views or an intervening model edit
+cancels the pending pick. A successful click returns to Modify with the same element selected and adds one Undo step.
+`tests/rehost.rs` drives discovery, clicking, cancellation and stale previews; `tests/control.rs` exercises the connected
+command and invalidation of a pending user pick. Rehosting changes the model, not the family's definition or placement defaults.

@@ -71,6 +71,13 @@ const fn other_files(id: &'static str, label: &'static str, params: &'static str
 }
 
 pub static ALL: &[Command] = &[
+    edit(
+        "pick_new_host",
+        "Pick New Host",
+        &[],
+        "{id, wall, offset} move one existing door/window to another ordinary straight wall, by id or GUID; offset is its centre in mm from the target wall's start. Keeps identity, mark, family/type, instance parameters, sill and hand/facing relative to the target wall's interior/exterior faces. Walls must share a level and base elevation. Pinned openings, curved/curtain hosts and group contexts are refused. One undo step; invalid fit changes nothing",
+        pick_new_host,
+    ),
     other(
         "adaptive_capture",
         "Capture Adaptive Context",
@@ -17418,6 +17425,21 @@ fn room_finish(s: &mut Session, p: &Value) -> R {
     Ok(
         json!({"room": room, "part": part.name(), "was": was, "state": if then == Finish::Disconnected { "disconnected" } else { "regenerating" }}),
     )
+}
+
+fn pick_new_host(s: &mut Session, p: &Value) -> R {
+    let c = "pick_new_host";
+    only(c, p, &["id", "wall", "offset"])?;
+    if s.editing_group().is_some() {
+        return Err(bad(c, "Pick New Host is unavailable while editing a group; finish or cancel Edit Group first"));
+    }
+    let required = |key| p.get(key).ok_or_else(|| bad(c, format!("`{key}` is required")));
+    let id = element_id(c, &s.model, required("id")?)?;
+    let wall = element_id(c, &s.model, required("wall")?)?;
+    let offset = num(c, p, "offset")?.ok_or_else(|| bad(c, "`offset` in mm from the target wall's start is required"))?;
+    crate::rehost::target(&s.model, id, wall).map_err(|e| bad(c, e))?;
+    let host = s.model.guid(wall);
+    modify(s, &json!({"id": id, "host": host, "offset": offset}))
 }
 
 fn modify(s: &mut Session, p: &Value) -> R {

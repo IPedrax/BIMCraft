@@ -1277,3 +1277,25 @@ In `crates/ui-egui`, the Family Editor:
   in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
   overlay drawn through a view's projection alone).
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+
+
+## Pick New Host for an existing opening
+
+`pick_new_host {id, wall, offset}` changes an ordinary door or window's host and its centre distance from the target
+wall's start, in millimetres. Both references accept an id or GUID. It delegates to `modify`; `Model::check` remains the
+single source of fit, overlap and family-parameter validation. One successful call adds one undo step. Refusal preserves
+the model and history. The element is never deleted/recreated: its id/GUID, mark, family/type, instance/project parameters,
+sill and hand/facing flags remain. Tags and references continue to name the same opening. Families evaluate against the
+new wall's thickness. Old/new wall cuts and their derived graphics follow the changed host reference.
+
+`rehost.rs` limits eligibility to unpinned, ungrouped ordinary openings with ordinary straight source/target walls on the
+same level and at the same `own_base` elevation (within 0.000001 mm). Curtain walls, panel replacement walls, curved walls,
+grouped source or target walls, and any Edit Group session are refused. The original wall is not a new host: use Move
+for same-wall changes. Different levels/bases are deferred rather than silently changing the sill datum. Existing policy
+permitting a head above the wall top is retained. Flips stay relative to the target wall's interior/exterior faces;
+reversing its axis may reverse the opening's world orientation. This is the agreed behavior, not a claim of native Revit parity.
+
+The desktop exposes this in plans only ([desktop](desktop.md)); CLI and MCP execute the same command. No saved fields or
+FORMAT change. `rehost_tests.rs` covers identity, parameters, flips, fit/refusal, group/curtain/curved controls, raised bases,
+read-only, history, save/open, tags/dimensions, family thickness and fresh/incremental geometry. Source-backed external
+family evaluators are not part of upstream main and need their own compatibility replay.

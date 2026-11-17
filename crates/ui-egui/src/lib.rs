@@ -44,6 +44,7 @@ mod footer;
 mod gpu;
 mod printsets;
 mod publisher;
+mod rehost;
 mod stairgrips;
 mod stairtype;
 pub use gpu::limits_for;
@@ -165,6 +166,8 @@ pub enum Sheet {
 pub enum Tool {
     /// Select the element under the cursor.
     Modify,
+    /// Rehost the selected ordinary opening by picking another straight wall in a plan.
+    PickNewHost,
     /// The points of the wall chain clicked so far.
     Wall(Vec<P2>),
     Door,
@@ -1048,6 +1051,7 @@ pub struct BimApp {
     component_angle: f64,
     /// Hinge hand for this run of the Door tool. Facing follows the pointer.
     door_flip_hand: bool,
+    rehost: Option<rehost::Pending>,
     /// An adaptive component's points clicked so far, in the project, before the last one places it.
     pub(crate) adaptive_clicks: Vec<[f64; 3]>,
     /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
@@ -1843,6 +1847,7 @@ impl BimApp {
             component: None,
             component_angle: 0.0,
             door_flip_hand: false,
+            rehost: None,
             adaptive_clicks: Vec::new(),
             adaptive_grip: None,
             placement_plane: None,
@@ -1918,6 +1923,7 @@ impl BimApp {
         }
         // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
         self.poll_assistant(ctx);
+        self.keep_rehost();
     }
 
     /// Run a command; when it fails, say why.
@@ -2021,6 +2027,7 @@ impl BimApp {
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
+            Tool::PickNewHost => Some(msg!("Pick New Host")),
             Tool::Door => Some(msg!("Place Door")),
             Tool::Window => Some(msg!("Place Window")),
             Tool::Room => Some(msg!("Place Room")),
@@ -3232,6 +3239,7 @@ impl BimApp {
     }
 
     fn set_tool(&mut self, mut tool: Tool) {
+        self.rehost = None;
         self.adaptive_clicks.clear();
         self.note_arrow = None;
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
@@ -3244,7 +3252,7 @@ impl BimApp {
             self.open_sheet(Sheet::View3D);
         }
         // Move, Copy, Rotate and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
-        let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
+        let edits = matches!(tool, Tool::PickNewHost | Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
         let picks = matches!(
             tool,
             Tool::Align(_)
@@ -3590,6 +3598,11 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        if self.tool == Tool::PickNewHost {
+            self.set_tool(Tool::Modify);
+            self.status = Status::default();
+            return;
+        }
         // Esc drops the drawing's marked references with the points they were marked for.
         self.canvas.pins.borrow_mut().clear();
         self.canvas.start_edge = None;
@@ -3787,6 +3800,9 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        if sheet != self.sheet && self.tool == Tool::PickNewHost {
+            self.set_tool(Tool::Modify);
+        }
         // A family document's view: its tab after the document's others (after the project's and the documents' before it),
         // and the document showing it. The project's tool, selection and views are left as they are.
         if let Sheet::Family(id, view) = sheet {
@@ -5433,6 +5449,22 @@ impl BimApp {
             return;
         }
         self.sketch_starters(ui);
+        if self.rehost_selected() {
+            panel(ui, msg!("Host"), |ui| {
+                let tip = msg!(
+                    "Pick New Host: move this opening to another straight wall on the same level and base, keeping its sill and interior/exterior orientation. In plans only; no grouped or curtain hosts."
+                );
+                if ui
+                    .add_enabled_ui(self.rehost_available(), |ui| {
+                        big_button(ui, Icon::Wall, "Pick New Host", self.tool == Tool::PickNewHost, tip)
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.start_rehost();
+                }
+            });
+        }
         panel(ui, "Properties", |ui| {
             let shown = self.docking.shown(dock::Palette::Properties);
             if big_button(ui, Icon::Properties, "Properties", shown, "Properties (PP): show or hide the palette").clicked() {
@@ -6439,6 +6471,7 @@ impl BimApp {
             Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
             Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),
             Tool::Attach => msg!("Pick a roof or a floor: the tops of what's selected follow its underside."),
+            Tool::PickNewHost => msg!("Pick another straight wall on the same level and base. Click to place; Esc cancels."),
             Tool::Door => msg!("Click a wall to place the door."),
             Tool::Window => msg!("Click a wall to place the window."),
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),

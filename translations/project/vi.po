@@ -40,7 +40,7 @@ msgstr "Gạch"
 msgid "Brick 225 x 75"
 msgstr "Gạch 225 x 75"
 
-#: crates/core/src/commands.rs:5821
+#: crates/core/src/commands.rs:5828
 msgid "Camera"
 msgstr "Camera"
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Đồng"
 
-#: crates/core/src/commands.rs:2091
+#: crates/core/src/commands.rs:2098
 msgid "Copy"
 msgstr "Sao chép"
 
@@ -133,7 +133,7 @@ msgstr "Ổ cắm dữ liệu"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:14124
+#: crates/core/src/commands.rs:14131
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -218,9 +218,9 @@ msgstr "Điện chiếu sáng"
 msgid "Electrical Power"
 msgstr "Điện động lực"
 
-#: crates/core/src/commands.rs:13871
-#: crates/core/src/commands.rs:13886
-#: crates/core/src/commands.rs:18598
+#: crates/core/src/commands.rs:13878
+#: crates/core/src/commands.rs:13893
+#: crates/core/src/commands.rs:18620
 msgid "Elevation"
 msgstr "Mặt đứng"
 
@@ -350,7 +350,7 @@ msgstr "Chiều rộng chân"
 msgid "Length"
 msgstr "Chiều dài"
 
-#: crates/core/src/commands.rs:8527
+#: crates/core/src/commands.rs:8534
 #: crates/core/src/model.rs:4509
 msgid "Level"
 msgstr "Tầng"
@@ -391,7 +391,7 @@ msgstr "Ký hiệu"
 msgid "Masking"
 msgstr "Che"
 
-#: crates/core/src/commands.rs:11038
+#: crates/core/src/commands.rs:11045
 msgid "Mass"
 msgstr "Khối"
 
@@ -407,8 +407,8 @@ msgstr "Nét trung bình"
 msgid "Membrane"
 msgstr "Màng"
 
-#: crates/core/src/commands.rs:3935
-#: crates/core/src/commands.rs:17161
+#: crates/core/src/commands.rs:3942
+#: crates/core/src/commands.rs:17168
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:6041
@@ -505,11 +505,11 @@ msgstr "Sứ"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4231
+#: crates/core/src/commands.rs:4238
 msgid "Project"
 msgstr "Dự án"
 
-#: crates/core/src/commands.rs:9254
+#: crates/core/src/commands.rs:9261
 msgid "Property Line"
 msgstr ""
 
@@ -541,7 +541,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Ngói"
 
-#: crates/core/src/commands.rs:11568
+#: crates/core/src/commands.rs:11575
 msgid "Room"
 msgstr "Phòng"
 
@@ -577,8 +577,8 @@ msgstr "Lớp vữa láng"
 msgid "Seat Height"
 msgstr "Chiều cao mặt ghế"
 
-#: crates/core/src/commands.rs:13806
-#: crates/core/src/commands.rs:18597
+#: crates/core/src/commands.rs:13813
+#: crates/core/src/commands.rs:18619
 msgid "Section"
 msgstr "Mặt cắt"
 
@@ -749,7 +749,7 @@ msgstr "Chiều cao không giới hạn"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:14360
+#: crates/core/src/commands.rs:14367
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
@@ -778,7 +778,7 @@ msgstr "Thể tích"
 msgid "WC"
 msgstr "Bồn cầu"
 
-#: crates/core/src/commands.rs:365
+#: crates/core/src/commands.rs:372
 msgid "Wall"
 msgstr "Tường"
 
