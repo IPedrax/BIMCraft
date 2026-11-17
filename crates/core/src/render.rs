@@ -4508,10 +4508,7 @@ fn below_tris(tris: &[[view3d::P3; 3]], cut: f64) -> Vec<[view3d::P3; 3]> {
 /// a leaf with its swing, or glass.
 #[allow(clippy::too_many_arguments)]
 fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64, shown: bool, hides: &dyn Fn(&str) -> bool) {
-    let Some(h) = walls::hole(m, w, e, o) else { return };
-    if !(h.bottom <= cut && cut < h.top) {
-        return;
-    }
+    let Some(h) = m.opening_hole(e, cut) else { return };
     let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
     let (s0, s1) = (h.s0, h.s1);
     // Clear a little past the faces too, where the outlines' outer halves are; along an arc, an arc.

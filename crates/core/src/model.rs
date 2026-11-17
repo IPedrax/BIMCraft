@@ -6053,6 +6053,15 @@ impl Model {
         self.opening_dims(e).ok()
     }
 
+    /// The hole a door or a window cuts in its wall, when the cut plane at height `cut` passes through it: what a plan or
+    /// a section shows of the opening at that height, and nothing for a window whose sill is over the plane or a door
+    /// whose head is under it. None too when its wall or its type is gone.
+    pub fn opening_hole(&self, e: &Element, cut: f64) -> Option<crate::walls::Hole> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return None };
+        let h = crate::walls::hole(self, self.wall(o.host)?, e, o)?;
+        (h.bottom <= cut && cut < h.top).then_some(h)
+    }
+
     /// Where a door's or window's family's axes lie: the point in plan at the middle of the opening in the middle
     /// of its wall, the way the wall runs there, and the height of its sill.
     pub fn opening_frame(&self, o: &Opening) -> Option<(P2, P2, f64)> {
@@ -11003,6 +11012,31 @@ mod tests {
         }
         let e = m.check().unwrap_err();
         assert!(e.contains(&format!("wall {id}")) && e.contains("Brick") && e.contains("Generic - 200mm"), "{e}");
+    }
+
+    /// A cut plane shows an opening only between its sill and its head, and through the hole its own type cuts: the one
+    /// question a plan's ink and a plan's snapping both ask.
+    #[test]
+    fn a_cut_plane_shows_an_opening_between_its_sill_and_its_head() {
+        let mut m = Model::new("t");
+        let host = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        let d = m.insert(door(m.guid(host), 2500.0));
+        let e = m.elements.get(d).expect("the door");
+        let h = m.opening_hole(e, 1000.0).expect("the cut plane passes through it");
+        assert!((h.s0 - 2050.0).abs() < 1e-6 && (h.s1 - 2950.0).abs() < 1e-6, "the hole along the wall: {:?}", (h.s0, h.s1));
+        assert_eq!((h.bottom, h.top), (0.0, 2100.0), "from the level's floor to its head");
+        assert!(m.opening_hole(e, 2100.0).is_none(), "its head is under the plane");
+        // One lifted over the plane, as a window is: nothing of it shows at 1200, all of it at its own height.
+        let mut lifted = door(m.guid(host), 4000.0);
+        if let Element::Door(o) = &mut lifted {
+            o.sill = 2000.0;
+        }
+        let w = m.insert(lifted);
+        let we = m.elements.get(w).expect("the lifted one");
+        assert!(m.opening_hole(we, 1200.0).is_none(), "under its sill");
+        assert_eq!(m.opening_hole(we, 2100.0).map(|h| (h.bottom, h.top)), Some((2000.0, 4100.0)));
+        // Only a door or a window has one.
+        assert!(m.opening_hole(&wall(m.guid(100000), P2(0.0, 0.0), P2(1000.0, 0.0)), 1000.0).is_none());
     }
 
     #[test]

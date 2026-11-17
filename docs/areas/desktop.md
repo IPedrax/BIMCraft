@@ -180,7 +180,7 @@ line from the last point touches a circle or an arc (`tangents`), else a scan's 
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
-grid point lying on it beats a rounded length), a wall's own line (its exterior face, its centre line or its interior face, whichever the pointer is nearest: `Model::reference_lines`, the same three a dimension measures to), the nearest point of a detail line, else the nearest 10 mm.
+grid point lying on it beats a rounded length), a wall's own line (its exterior face, its centre line or its interior face, whichever the pointer is nearest: `Model::reference_lines`, the same three a dimension measures to), the nearest point of a detail line, the ends of a door's or a window's two jambs (the lines its dimensions measure to, each across its wall) with the middle of the opening a point of its own, else the nearest 10 mm.
 The walls the cursor reaches add their outlines as the plan draws them (`outlines`: the corners and the
 faces as lines), and a stair its corners, riser ends and landing edges (`stairs::reference_edges`); while the Stair
 tool drafts one, `Snaps::stair_corners` keeps a stair to its location line's corners (`stairs::line_corners`). In a section or an
