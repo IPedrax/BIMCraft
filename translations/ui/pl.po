@@ -18531,6 +18531,14 @@ msgstr ""
 msgid "stair: `{}` is not a width"
 msgstr ""
 
+#: crates/ui-egui/src/sketch.rs:856
+msgid "No walls on this level enclose an area: sketch the outline."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:846
+msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Pusta wartość oznacza wartość rodziny, tak jak jest w zakładce Parametry."

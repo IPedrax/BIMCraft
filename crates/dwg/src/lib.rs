@@ -35,8 +35,9 @@ pub struct Limits {
 }
 
 impl Limits {
-    /// 64 MB of DWG, and 128 MB of DXF, which is the most the core's DXF reader reads (`dxf::MAX_BYTES`).
-    pub const DEFAULT: Limits = Limits { dwg_bytes: 64 << 20, dxf_bytes: 128 << 20 };
+    /// 128 MB of DWG (the largest real drawing measured was 77 MB), and as much DXF as the core's DXF reader reads
+    /// (`dxf::MAX_BYTES`, 512 MB).
+    pub const DEFAULT: Limits = Limits { dwg_bytes: 128 << 20, dxf_bytes: bimcraft_core::dxf::MAX_BYTES };
 }
 
 /// A DWG read: the DXF it became, and notes on what the read left out.
