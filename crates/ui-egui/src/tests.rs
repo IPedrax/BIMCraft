@@ -1786,6 +1786,20 @@ fn painted_text(h: &Harness<BimApp>) -> Vec<String> {
     out
 }
 
+/// How many boxes filled with `fill` the last frame painted: a reading's field in the accent's selection fill, say.
+fn painted_boxes(h: &Harness<BimApp>, fill: egui::Color32) -> usize {
+    fn walk(s: &egui::Shape, fill: egui::Color32, n: &mut usize) {
+        match s {
+            egui::Shape::Rect(r) if r.fill == fill => *n += 1,
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, fill, n)),
+            _ => {}
+        }
+    }
+    let mut n = 0;
+    h.output().shapes.iter().for_each(|c| walk(&c.shape, fill, &mut n));
+    n
+}
+
 #[test]
 fn the_door_and_window_tools_sketch_what_a_click_would_put_in_the_wall() {
     for label in ["Door", "Window"] {
@@ -5003,10 +5017,13 @@ fn tab_over_a_wall_steps_its_faces_and_away_from_it_the_numbers() {
     tool(&mut h, "Wall");
     click(&mut h, P2(0.0, 1000.0));
     assert_eq!(hover(&mut h, P2(2000.0, ext - 10.0)).and_then(|f| f.face), Some(Face::Left), "the wall is under the pointer");
-    // Mid-chain `Tab` is the reading's, even over a wall: the field must step, the wall must not take the key.
+    // Mid-chain `Tab` is the reading's, even over a wall: the first press arms the length, the second steps to the angle.
+    key(&mut h, Key::Tab);
+    assert_eq!((h.state().drawing.field, h.state().drawing.armed), (0, true), "the length is armed");
+    assert_eq!(h.state().canvas.wall_face, None, "the wall kept its own line");
     key(&mut h, Key::Tab);
     assert_eq!(h.state().drawing.field, 1, "the angle takes the digits");
-    assert_eq!(h.state().canvas.wall_face, None, "the wall kept its own line");
+    assert_eq!(h.state().canvas.wall_face, None, "still the wall's own line");
     // `Shift+Tab` steps the wall's three lines from the one the pick has now.
     shift_key(&mut h, Key::Tab);
     assert!(h.state().canvas.wall_face.is_some_and(|(w, _)| w == id), "the wall's line, from the fields' key");
@@ -5017,9 +5034,11 @@ fn tab_over_a_wall_steps_its_faces_and_away_from_it_the_numbers() {
     // `Esc` takes the number first, leaving the point it was for.
     key(&mut h, Key::Escape);
     assert_eq!((h.state().typed_length.as_str(), h.state().drawing.field), ("", 0), "the number went and the field came back to Length");
+    assert!(!h.state().drawing.armed, "and the reading is back to Idle");
     assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there");
-    // Off every wall, Tab steps to the angle, and the reading says which field it is.
+    // Off every wall, Tab arms the length and steps to the angle, and the reading says which field it is.
     assert_eq!(hover(&mut h, P2(2000.0, 1000.0)).and_then(|f| f.face), None, "no wall under the pointer");
+    key(&mut h, Key::Tab);
     key(&mut h, Key::Tab);
     assert_eq!(h.state().drawing.field, 1, "the angle takes the digits now");
     let chain = h.state().points().cloned().unwrap_or_default();
@@ -5040,32 +5059,112 @@ fn tab_taken_by_the_apps_input_hook_steps_the_fields_off_a_wall() {
     // What `raw_input_hook` does: the key is not in this frame's events, only the flag is.
     h.state_mut().tab_cycle = true;
     h.run();
+    assert_eq!((h.state().drawing.field, h.state().drawing.armed), (0, true), "the length is armed first");
+    h.state_mut().tab_cycle = true;
+    h.run();
     assert_eq!(h.state().drawing.field, 1, "the angle takes the digits");
     h.state_mut().tab_cycle = true;
     h.run();
     assert_eq!(h.state().drawing.field, 0, "and the length takes them again");
 }
 
-/// The line's reading is painted with the field `Tab` is on in brackets, as a shape's numbers are. The preview drew
-/// a reading of its own once, so `Tab` moved the field and nothing on screen said so whatever `shape_texts` answered.
+/// The line's reading is one pill in every state: Idle reads plainly, `Tab` puts the selection fill on the field that
+/// takes the digits, and typing replaces that field's number while the line itself is drawn at it. The preview drew a
+/// reading of its own once, so `Tab` moved the field and nothing on screen said so.
 #[test]
-fn the_reading_a_line_paints_brackets_the_field_tab_is_on() {
+fn the_reading_a_line_paints_the_field_tab_is_on_in_the_accent() {
     let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
     tool(&mut h, "Wall");
     click(&mut h, P2(0.0, 1000.0));
     hover(&mut h, P2(2000.0, 1000.0));
-    let reading = |h: &Harness<BimApp>| {
-        painted_text(h)
-            .into_iter()
-            .find(|t| t.contains("mm") && t.contains('['))
-            .unwrap_or_else(|| panic!("no bracketed reading among {:?}", painted_text(h)))
-    };
-    let before = reading(&h);
-    assert!(before.trim_start().starts_with('['), "the length takes the digits first: {before}");
+    let boxes = painted_boxes(&h, crate::style::canvas_pal().accent);
+    let idle = painted_text(&h).into_iter().find(|t| t.contains("mm")).expect("the reading");
+    assert!(!idle.contains('['), "Idle reads plainly, no box: {idle}");
+    assert_eq!(boxes, 0, "no field is in hand");
     key(&mut h, Key::Tab);
-    let after = reading(&h);
-    assert!(after.find('[') > before.find('['), "the angle takes them now: {before} -> {after}");
-    assert!(after.contains('°'), "the angle is still read: {after}");
+    assert_eq!(painted_boxes(&h, crate::style::canvas_pal().accent), 1, "one field in the accent's selection fill");
+    h.event(Event::Text("500".into()));
+    h.run();
+    assert!(painted_text(&h).iter().any(|t| t.trim() == "500"), "the typed number is the field's: {:?}", painted_text(&h));
+    assert_eq!(painted_boxes(&h, crate::style::canvas_pal().accent), 1, "the pill did not fall back to bare text");
+}
+
+/// The numbers lock the geometry as they are typed: the line is drawn at them, the pointer only sets the angle (a length
+/// typed) or the length along the ray (an angle typed), and a click places exactly what is shown.
+#[test]
+fn a_typed_length_draws_the_line_at_it_and_a_click_places_it() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 1000.0));
+    hover(&mut h, P2(3000.0, 1000.0));
+    h.event(Event::Text("500".into()));
+    h.run();
+    let chain = h.state().points().cloned().unwrap_or_default();
+    // The preview's end is the typed length along the pointer's direction, not the pointer's own reach.
+    let end = h.state().typed_end(&chain, P2(3000.0, 1000.0));
+    assert!(end.dist(P2(500.0, 1000.0)) < 0.01, "the length is the typed one: {end:?}");
+    // Sweeping the pointer keeps the length and turns the line.
+    let end = h.state().typed_end(&chain, P2(0.0, 4000.0));
+    assert!(end.dist(P2(0.0, 1500.0)) < 0.01, "still 500, turned north: {end:?}");
+    // A click places what the preview shows.
+    click(&mut h, P2(0.0, 4000.0));
+    let wall = ids(&h, "wall")[0];
+    let m = &h.state().session.model;
+    let length = bimcraft_core::walls::Axis::of(m.wall(wall).expect("the wall")).length();
+    assert!((length - 500.0).abs() < 0.01, "the wall is 500 long: {length}");
+}
+
+/// `Tab` back to a locked field selects it, so the first digit replaces its number rather than appending to it.
+#[test]
+fn tab_back_to_a_locked_length_replaces_it_on_the_first_digit() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    hover(&mut h, P2(3000.0, 0.0));
+    h.event(Event::Text("500".into()));
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!((h.state().drawing.field, h.state().drawing.other.as_str()), (1, "500"), "500 is locked, the angle is in hand");
+    key(&mut h, Key::Tab);
+    assert!(h.state().drawing.selected, "the locked length is selected");
+    h.event(Event::Text("8".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "8", "the first digit replaced the 500");
+}
+
+/// A typed angle locks the ray and the pointer slides the length along it, so the line is drawn at both before Enter.
+#[test]
+fn a_typed_angle_locks_the_direction_and_the_pointer_slides_the_length() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    hover(&mut h, P2(2000.0, 2000.0));
+    key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("90".into()));
+    h.run();
+    let chain = h.state().points().cloned().unwrap_or_default();
+    let end = h.state().typed_end(&chain, P2(2000.0, 2000.0));
+    assert!(end.dist(P2(0.0, 2000.0)) < 0.01, "north, as far as the pointer reaches along the ray: {end:?}");
+    // With nothing typed the pointer is the point, exactly: the lock never feeds back into the snap.
+    h.state_mut().clear_typed();
+    let p = P2(1234.0, 567.0);
+    assert_eq!(h.state().typed_end(&chain, p), p);
+}
+
+/// A shape's own numbers lock its geometry too: a rectangle is previewed at its typed width, not the pointer's.
+#[test]
+fn a_rectangle_previews_its_typed_width_before_enter() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    press(&mut h, "Rectangle");
+    click(&mut h, P2(0.0, 0.0));
+    hover(&mut h, P2(3000.0, 2000.0));
+    h.event(Event::Text("1000".into()));
+    h.run();
+    let chain = h.state().points().cloned().unwrap_or_default();
+    let end = h.state().typed_end(&chain, P2(3000.0, 2000.0));
+    assert!((end.0 - 1000.0).abs() < 0.01 && (end.1 - 2000.0).abs() < 0.01, "the width is the typed one: {end:?}");
 }
 
 /// Before Point 1 there is no number to type, so `Tab` has the faces to itself.
@@ -5102,14 +5201,18 @@ fn esc_drops_a_typed_number_before_the_chain() {
     assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there: {:?}", h.state().tool);
     key(&mut h, Key::Escape);
     assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "the second Esc drops the chain");
-    // A field opened with no digits in it is nothing to drop: one Esc takes the chain, not two.
+    // A field armed with Tab and no digits in it is still a field in hand: one Esc returns the reading to Idle, the next
+    // drops the chain, so a stale lock never lingers while a press meant for it throws away a point.
     tool(&mut h, "Wall");
     click(&mut h, P2(0.0, 0.0));
     hover(&mut h, P2(5000.0, 5000.0));
     key(&mut h, Key::Tab);
-    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits, and none is typed");
+    assert_eq!((h.state().drawing.field, h.state().drawing.armed), (0, true), "the length is armed, and none is typed");
     key(&mut h, Key::Escape);
-    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "one Esc, nothing to drop: {:?}", h.state().tool);
+    assert!(!h.state().drawing.armed, "one Esc returns the reading to Idle");
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there: {:?}", h.state().tool);
+    key(&mut h, Key::Escape);
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "the next Esc drops the chain");
 }
 
 /// One edge pin per wall: marking another of its faces moves the pin rather than spending a second of the three, and the

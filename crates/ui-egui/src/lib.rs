@@ -2663,6 +2663,12 @@ impl BimApp {
             let listening = self.base().is_some() || self.filleting() || self.rotating();
             let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
             if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
+                // The field `Tab` armed holds what is selected, so the first digit replaces it instead of appending.
+                if self.drawing.selected {
+                    self.typed_length.clear();
+                    self.drawing.selected = false;
+                }
+                self.drawing.armed = true;
                 self.typed_length.push(ch);
             }
         }
@@ -3594,9 +3600,9 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
-        // A number being typed goes first, and the field back to Length: the point it is for is still wanted. A field
-        // opened with no digits in it is nothing to drop, so the first Esc takes the chain as it always did.
-        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() {
+        // A number being typed, or a field armed with Tab, goes first, and the field back to Length: the point it is for
+        // is still wanted, and a stale locked length must not linger. The next Esc drops the chain.
+        if !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty() || self.drawing.armed {
             self.clear_typed();
             return;
         }

@@ -93,6 +93,10 @@ pub struct Drawing {
     /// Which of a shape's numbers is being typed (a rectangle's width, 0, or height, 1), and what's typed in the other.
     pub field: usize,
     pub other: String,
+    /// The reading has a field in hand: `Tab` armed it, or a digit was typed into it. The pill boxes it.
+    pub armed: bool,
+    /// What the armed field holds is selected, as a text field's is: the next digit replaces it rather than appending.
+    pub selected: bool,
 }
 
 impl Default for Drawing {
@@ -116,6 +120,8 @@ impl Default for Drawing {
             centre_mark: false,
             field: 0,
             other: String::new(),
+            armed: false,
+            selected: false,
         }
     }
 }
@@ -497,11 +503,13 @@ impl BimApp {
         self.drawing.align_lock = None;
     }
 
-    /// What's typed dropped: a length, or a shape's numbers.
+    /// What's typed dropped: a length, or a shape's numbers, and the reading back to Idle.
     pub(crate) fn clear_typed(&mut self) {
         self.typed_length.clear();
         self.drawing.other.clear();
         self.drawing.field = 0;
+        self.drawing.armed = false;
+        self.drawing.selected = false;
     }
 
     /// Enter with a shape's numbers typed: its next point where they say, toward the cursor at `cursor`. False when
@@ -516,6 +524,8 @@ impl BimApp {
         let field = self.drawing.field.min(names.len().saturating_sub(1));
         let (typed, other) = (std::mem::take(&mut self.typed_length), std::mem::take(&mut self.drawing.other));
         self.drawing.field = 0;
+        self.drawing.armed = false;
+        self.drawing.selected = false;
         let units = self.session.model.units;
         let mut values = vec![None; names.len()];
         for (i, text) in [(field, typed), (1 - field.min(1), other)] {

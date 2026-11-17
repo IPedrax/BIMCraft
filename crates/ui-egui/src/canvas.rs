@@ -1004,6 +1004,15 @@ pub(crate) fn inside(rect: Rect, clip: Rect) -> Rect {
     rect.translate(vec2(dx, dy))
 }
 
+/// The reading's field in hand: `text` in the accent's selection fill with white lettering, as the pill's boxed field is,
+/// so the same token looks the same wherever it is read.
+fn selection_box(p: &Painter, at: Pos2, align: Align2, text: &str) {
+    let galley = p.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), Color32::WHITE);
+    let rect = align.anchor_size(at, galley.size());
+    p.rect_filled(rect.expand2(vec2(4.0, 1.5)), 3.0, canvas_pal().accent);
+    p.galley(rect.min, galley, Color32::WHITE);
+}
+
 /// What the guides at a point say: the one inference, or the two that cross there, so a point both
 /// of them lock says which two.
 pub(crate) fn alignment_tag(alignments: &[bimcraft_core::alignment::AlignmentResult]) -> String {
@@ -1479,6 +1488,12 @@ fn norm_turn(a: f64) -> f64 {
 /// An angle as a ruler reads it: to the hundredth of a degree.
 fn degrees(a: f64) -> String {
     format!("{}°", (a * 100.0).round() / 100.0 + 0.0)
+}
+
+/// An angle as typed, in degrees: `30`, `30°`, `-45`. None when it does not read as one.
+pub(crate) fn parse_angle(text: &str) -> Option<f64> {
+    let text = text.trim().trim_end_matches('°').trim();
+    text.parse::<f64>().ok().filter(|a| a.is_finite())
 }
 
 /// The point a tool picked first, while it has one.
@@ -2193,9 +2208,15 @@ impl BimApp {
             wall_tabbed = true;
         }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
+        // From Idle the first Tab arms the length (nothing is typed yet, so there is nothing to move away from); after
+        // that it swaps, and the field it moves onto is selected, so the first digit replaces rather than appends.
         if tabbed && !wall_tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
-            std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
-            self.drawing.field = 1 - self.drawing.field.min(1);
+            if self.drawing.armed {
+                std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
+                self.drawing.field = 1 - self.drawing.field.min(1);
+            }
+            self.drawing.armed = true;
+            self.drawing.selected = true;
         }
         let c = &mut self.canvas;
         // How near the cursor a dimension's reference line must be, mm.
@@ -3018,7 +3039,13 @@ impl BimApp {
                 };
                 let square = mods.shift || (self.constrain && matches!(self.tool, Tool::Move(_) | Tool::Copy(_)));
                 let pt = self.snap_point(m, level, v, at, &chain, square);
+                // A click places what the preview shows: the reading's numbers lock the point as `Enter` does.
+                let points = self.points().cloned().unwrap_or_default();
+                let pt = self.typed_end(&points, pt);
                 self.place(level, pt);
+                if self.drawing.armed {
+                    self.clear_typed();
+                }
             }
             &Tool::Rotate { centre, start, place } => {
                 self.tool = match (place, start) {
@@ -4147,34 +4174,88 @@ impl BimApp {
             return;
         }
         let Some(cursor) = self.canvas.cursor else { return };
-        if self.place_numbers(level, self.canvas.found.get().map_or(cursor, |f| f.at)) {
+        let at = self.canvas.found.get().map_or(cursor, |f| f.at);
+        if self.place_numbers(level, at) {
             return;
         }
-        let typed = std::mem::take(&mut self.typed_length);
-        let Some(base) = self.base() else { return };
-        // The length and the angle, whichever Tab left in `drawing.other`.
-        let other = std::mem::take(&mut self.drawing.other);
-        let (typed, angle) = if std::mem::take(&mut self.drawing.field) == 1 { (other, typed) } else { (typed, other) };
-        let toward = match (angle.trim().trim_end_matches('°').trim().parse::<f64>(), self.canvas.found.get()) {
-            (Ok(a), _) if a.is_finite() => P2(a.to_radians().cos(), a.to_radians().sin()),
-            (Err(_), _) if !angle.trim().is_empty() => {
-                self.status = Status { text: tf("`{}` is not an angle", &[angle.trim()]), error: true };
-                return;
-            }
-            (_, Some(f)) if f.at.dist(base) > TOL => (f.at - base).unit(),
-            _ => snap_angle(cursor - base, self.snaps.angle),
-        };
-        // An angle with no length: as far along it as the cursor is.
-        let typed = if typed.trim().is_empty() {
-            let d = cursor - base;
-            self.session.model.units.length(d.0 * toward.0 + d.1 * toward.1)
-        } else {
-            typed
-        };
-        match self.session.model.units.parse(&typed) {
-            Some(len) if len > 0.0 && len <= MAX_COORD => self.put(level, micron(base + toward * len)),
-            _ => self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true },
+        let Some(_) = self.base() else { return };
+        // What is typed must read as a length and an angle before it places; the preview shows what it can. Either way the
+        // numbers were for this point, so Enter takes them.
+        let (len, ang) = (self.typed_texts().0.to_string(), self.typed_texts().1.to_string());
+        let points = self.points().cloned().unwrap_or_default();
+        let end = self.typed_end(&points, at);
+        self.clear_typed();
+        if !len.is_empty() && self.session.model.units.parse(&len).is_none_or(|l| !(l.is_finite() && l > 0.0 && l <= MAX_COORD)) {
+            self.status = Status { text: tf("`{}` is not a length", &[&len]), error: true };
+            return;
         }
+        if !ang.is_empty() && parse_angle(&ang).is_none() {
+            self.status = Status { text: tf("`{}` is not an angle", &[&ang]), error: true };
+            return;
+        }
+        self.put(level, micron(end));
+    }
+
+    /// What is typed for the length and for the angle, whichever field `Tab` is on.
+    pub(crate) fn typed_texts(&self) -> (&str, &str) {
+        if self.drawing.field == 1 {
+            (self.drawing.other.trim(), self.typed_length.trim())
+        } else {
+            (self.typed_length.trim(), self.drawing.other.trim())
+        }
+    }
+
+    /// The next point the reading's numbers put it at: a shape's own numbers through `draw::typed`, a line's or a wall's
+    /// through the typed length along the typed angle (else the pointer's). `cursor` is the pointer's snapped point, so
+    /// the direction is the snap's and the numbers only ever narrow it. What the preview draws, what `Enter` places and
+    /// what a click places is this one answer.
+    pub(crate) fn typed_end(&self, points: &[P2], cursor: P2) -> P2 {
+        let (len, ang) = self.typed_texts();
+        // Nothing typed is the pointer's own point, exactly: the lock changes nothing until a number is in hand.
+        if len.is_empty() && ang.is_empty() {
+            return cursor;
+        }
+        let shape = self.shape();
+        let names = bimcraft_core::draw::numbers(shape, points.len());
+        if !names.is_empty() {
+            let values: Vec<Option<f64>> = names
+                .iter()
+                .enumerate()
+                .map(|(i, name)| {
+                    let text = if i == self.drawing.field.min(1) { &self.typed_length } else { &self.drawing.other };
+                    self.number_value(name, text)
+                })
+                .collect();
+            return bimcraft_core::draw::typed(shape, points, cursor, &values).unwrap_or(cursor);
+        }
+        let Some(base) = self.base() else { return cursor };
+        let toward = match parse_angle(ang) {
+            Some(a) => P2(a.to_radians().cos(), a.to_radians().sin()),
+            None if ang.is_empty() => {
+                let d = cursor - base;
+                if d.length() <= TOL {
+                    return cursor;
+                }
+                d.unit()
+            }
+            None => return cursor,
+        };
+        let len = match (len.is_empty(), self.session.model.units.parse(len)) {
+            (true, _) => (cursor - base).dot(toward),
+            (false, Some(l)) => l,
+            (false, None) => return cursor,
+        };
+        if len.is_finite() && len >= 0.0 && len <= MAX_COORD { base + toward * len } else { cursor }
+    }
+
+    /// A shape's number as typed: an angle in degrees, else a length in the project's units.
+    fn number_value(&self, name: &str, text: &str) -> Option<f64> {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        let value = if name == "Angle" { parse_angle(text) } else { self.session.model.units.parse(text) };
+        value.filter(|v| v.is_finite() && *v > 0.0 && *v <= MAX_COORD)
     }
 
     /// End the wall chain, its walls built as it went: the tool's Enter. An arc not finished yet
@@ -5123,11 +5204,43 @@ impl BimApp {
 
     /// The listening dimensions of a shape being drawn, with the cursor at `next`: a rectangle's width and height by
     /// their sides, a radius, an angle or a reach by the cursor, each as typed once something is; else the length
-    /// from the last point, as a line's. The number Tab is on says Enter.
+    /// from the last point, as a line's. The number Tab is on is boxed.
     fn shape_dimensions(&self, sc: &Scene, chain: &[P2], next: P2) {
-        for (at, text) in self.shape_texts(sc.m, chain, next) {
-            tag(sc.p, sc.screen(at) + vec2(12.0, -12.0), Align2::LEFT_BOTTOM, text);
+        let names = bimcraft_core::draw::numbers(self.shape(), chain.len());
+        let field = self.drawing.field.min(names.len().saturating_sub(1));
+        for (i, (at, text)) in self.shape_texts(sc.m, chain, next).into_iter().enumerate() {
+            let q = sc.screen(at) + vec2(12.0, -12.0);
+            if !names.is_empty() && self.drawing.armed && i == field {
+                selection_box(sc.p, q, Align2::LEFT_BOTTOM, &text);
+            } else {
+                tag(sc.p, q, Align2::LEFT_BOTTOM, text);
+            }
         }
+    }
+
+    /// The line or wall being drawn: its length and its angle (the corner it turns from the one before, else from east),
+    /// the field that takes the digits boxed, and which numbers are typed.
+    pub(crate) fn line_reading(&self, m: &Model, chain: &[P2], next: P2) -> Option<Reading> {
+        let &last = chain.last()?;
+        let (len, ang) = self.typed_texts();
+        let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.to_string() };
+        let ang = if ang.is_empty() {
+            let turn = match chain {
+                [.., prev, l] => snap::corner(*prev, *l, next),
+                _ => None,
+            };
+            degrees(turn.unwrap_or_else(|| snap::ruler(last, next).angle))
+        } else {
+            format!("{}°", ang)
+        };
+        Some(Reading {
+            len,
+            ang,
+            focus: self.drawing.armed.then_some(self.drawing.field.min(1)),
+            caret: self.drawing.armed && (!self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty()),
+            len_locked: !self.typed_texts().0.is_empty(),
+            ang_locked: !self.typed_texts().1.is_empty(),
+        })
     }
 
     /// What [`BimApp::shape_dimensions`] says, and where (a model point each).
@@ -5142,41 +5255,11 @@ impl BimApp {
                 None => Vec::new(),
             };
         }
-        let Some(&last) = chain.last() else { return Vec::new() };
         if names.is_empty() {
-            // The length and the angle, both shown while a segment is drawn, so Tab's move is seen before a digit is
-            // typed: the field that takes the digits is the one in brackets, Length until Tab and the angle after it.
-            // `(Enter)` says that field holds a number to place.
-            let angled = self.line_angle_field() || self.drawing.field == 1 || !self.drawing.other.is_empty();
-            let text = match (self.typed_length.is_empty(), angled) {
-                (true, false) => m.units.with_unit(last.dist(next)),
-                (false, false) => format!("{} (Enter)", self.typed_length.trim()),
-                _ => {
-                    let (len, ang) = if self.drawing.field == 1 {
-                        (&self.drawing.other, &self.typed_length)
-                    } else {
-                        (&self.typed_length, &self.drawing.other)
-                    };
-                    let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.trim().to_string() };
-                    // The angle a segment is read at: the corner it turns from the one before, else from east.
-                    let ang = if ang.is_empty() {
-                        let turn = match chain {
-                            [.., prev, l] => snap::corner(*prev, *l, next),
-                            _ => None,
-                        };
-                        degrees(turn.unwrap_or_else(|| snap::ruler(last, next).angle))
-                    } else {
-                        format!("{}°", ang.trim())
-                    };
-                    // `typed_length` is whichever field Tab left taking the digits.
-                    let enter = if self.typed_length.is_empty() { "" } else { " (Enter)" };
-                    match self.drawing.field {
-                        1 => format!("{len}  [{ang}]{enter}"),
-                        _ => format!("[{len}]  {ang}{enter}"),
-                    }
-                }
-            };
-            return vec![(next, text)];
+            // The length and the angle, both shown while a segment is drawn: the field that takes the digits is the one
+            // in brackets, and `line_reading` is what the pill draws, so the two cannot say different things.
+            let Some(reading) = self.line_reading(m, chain, next) else { return Vec::new() };
+            return vec![(next, reading.text())];
         }
         let now = bimcraft_core::draw::reading(shape, chain, next);
         let field = self.drawing.field.min(names.len() - 1);
@@ -5194,8 +5277,7 @@ impl BimApp {
                 Some(v) => m.units.with_unit(*v),
                 None => continue,
             };
-            let text = if i == field && (!typed.is_empty() || names.len() > 1) { format!("{shown} (Enter)") } else { shown };
-            out.push((places.get(i).copied().unwrap_or(next), text));
+            out.push((places.get(i).copied().unwrap_or(next), shown));
         }
         out
     }
@@ -5891,7 +5973,10 @@ impl BimApp {
             (true, [.., last]) if chain.len() < 2 || shape.open_ended() => std::slice::from_ref(last),
             (true, _) => &[],
         };
-        let next = self.found(sc, q, guide, square);
+        // The pointer's snapped point first, so the direction is the snap's; then the reading's numbers lock it: a typed
+        // length keeps the angle the pointer sweeps, a typed angle keeps the ray the pointer slides along.
+        let pointer = self.found(sc, q, guide, square);
+        let next = self.typed_end(chain, pointer);
         if shaped {
             for c in self.shape_preview(next) {
                 p.add(Shape::line(c.points().into_iter().map(|pt| sc.screen(pt)).collect(), stroke));
@@ -5939,32 +6024,82 @@ impl BimApp {
                 p.extend(corner_arc(sc, *prev, *l, next, refined));
             }
         }
-        // The listening dimension is `shape_texts`'s, the same text a shape's numbers are, so the field `Tab` is on is
-        // bracketed and the digits are seen to go there. Drawn on its own once, the preview left `Tab`'s move unseen.
-        if let Some(&last) = chain.last()
-            && let Some((_, text)) = self.shape_texts(m, chain, next).into_iter().next()
+        // With the angle in hand, the baseline it is read from and the arc it turns through: degrees from east, as the
+        // reading and the command say, so the two are never at odds.
+        if self.drawing.armed
+            && self.drawing.field == 1
+            && let Some(&base) = chain.last()
         {
-            if refined && self.typed_length.is_empty() {
+            let d = next - base;
+            let r = d.length().min(1200.0);
+            let dotted = Stroke::new(1.0, guide_ink().core.gamma_multiply(0.6));
+            p.extend(Shape::dashed_line(&[sc.screen(base), sc.screen(base + P2(r, 0.0))], dotted, 6.0, 4.0));
+            let turn = d.1.atan2(d.0);
+            let steps = 16;
+            let arc: Vec<Pos2> = (0..=steps)
+                .map(|i| {
+                    let a = turn * i as f64 / steps as f64;
+                    sc.screen(base + P2(a.cos(), a.sin()) * r)
+                })
+                .collect();
+            p.extend(Shape::dashed_line(&arc, dotted, 6.0, 4.0));
+        }
+        // One reading in every state: `line_reading` is its numbers and the field that takes the digits, so Idle, armed,
+        // typing and locked are the same pill in the same place.
+        if let Some(reading) = self.line_reading(m, chain, next) {
+            if refined {
                 // Beside the segment's middle, on the outside of the corner it turns at, and clear of the line by the pill's
                 // own width so a wide pill never crosses back over a steep segment; the badge it must keep off is known.
+                let last = chain.last().copied().unwrap_or(next);
                 let (pl, pn) = (sc.screen(last), sc.screen(next));
                 let prev = match chain {
                     [.., prev, _] => Some(sc.screen(*prev)),
                     _ => None,
                 };
-                reading_pill(sc.p, pl, pn, prev, text, guide_ink(), self.canvas.badge.get());
+                reading_pill(sc.p, pl, pn, prev, &reading, guide_ink(), self.canvas.badge.get());
             } else {
-                label(sc.screen(next), text);
+                label(sc.screen(next), reading.text());
             }
         }
     }
 }
 
+/// The line reading's two numbers and the state of the field that takes the digits: which one is boxed (`None` in
+/// Idle), whether a caret sits in it, and which of the two is locked to a typed value rather than following the
+/// pointer. One value for the pill, the classic label and the tests, so they cannot read differently.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Reading {
+    pub len: String,
+    pub ang: String,
+    pub focus: Option<usize>,
+    pub caret: bool,
+    pub len_locked: bool,
+    pub ang_locked: bool,
+}
+
+impl Reading {
+    /// The reading as text, the boxed field in brackets and a caret where one is typed: the classic look's label.
+    pub(crate) fn text(&self) -> String {
+        let (len, ang) = match self.focus {
+            Some(0) => (format!("[{}]{}", self.len, if self.caret { "|" } else { "" }), self.ang.clone()),
+            Some(_) => (self.len.clone(), format!("[{}]{}", self.ang, if self.caret { "|" } else { "" })),
+            None => (self.len.clone(), self.ang.clone()),
+        };
+        format!("{len}  {ang}")
+    }
+}
+
 /// A live reading in a pill of its own: the length and angle on the guide ink's paper, on the outside of the segment it
 /// measures and kept inside the painter's edge, so neither the line, the corner's arc nor the badge behind it cuts the number.
-fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, text: String, ink: GuideInk, avoid: Option<Rect>) -> Rect {
-    let galley = p.layout_no_wrap(text, FontId::proportional(11.5), ink.badge_text);
-    let size = galley.size() + vec2(10.0, 5.0);
+fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, reading: &Reading, ink: GuideInk, avoid: Option<Rect>) -> Rect {
+    let font = FontId::proportional(11.5);
+    let len = p.layout_no_wrap(reading.len.clone(), font.clone(), ink.badge_text);
+    let ang = p.layout_no_wrap(reading.ang.clone(), font.clone(), ink.badge_text);
+    let pad = vec2(6.0, 2.5);
+    let gap = 9.0;
+    let caret = if reading.caret { 1.5 } else { 0.0 };
+    let height = len.size().y.max(ang.size().y);
+    let size = vec2(len.size().x + gap + ang.size().x + caret + pad.x * 2.0, height + pad.y * 2.0);
     let at = reading_spot(from, to, prev, size, avoid);
     let clip = p.clip_rect();
     let c = pos2(
@@ -5975,7 +6110,27 @@ fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, text: Str
     let radius = rect.height() / 2.0;
     p.rect_filled(rect, radius, ink.badge);
     p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
-    p.galley(rect.min + vec2(5.0, 2.5), galley, ink.badge_text);
+    let y = rect.center().y - height / 2.0;
+    let mut x = rect.min.x + pad.x;
+    // The field Tab is on: the accent's selection fill, white lettering and a caret when a number is being typed. The
+    // other keeps the pill's own ink, quieter while it is locked to a typed value and no longer follows the pointer.
+    for (i, galley) in [(0usize, len), (1usize, ang)] {
+        if reading.focus == Some(i) {
+            let box_rect = Rect::from_min_size(pos2(x - 2.5, y - 1.5), galley.size() + vec2(5.0, 3.0));
+            p.rect_filled(box_rect, 3.0, canvas_pal().accent);
+            p.galley(pos2(x, y), galley.clone(), Color32::WHITE);
+            if reading.caret {
+                let cx = x + galley.size().x + 0.8;
+                p.line_segment([pos2(cx, y + 1.0), pos2(cx, y + height - 1.0)], Stroke::new(1.2, Color32::WHITE));
+            }
+            x = box_rect.max.x + gap - 2.5;
+        } else {
+            let locked = if i == 0 { reading.len_locked } else { reading.ang_locked };
+            let tone = if locked { ink.badge_text.gamma_multiply(0.55) } else { ink.badge_text };
+            p.galley(pos2(x, y), galley.clone(), tone);
+            x += galley.size().x + gap;
+        }
+    }
     rect
 }
 
