@@ -17,28 +17,28 @@ pub struct Norm {
 
 const ROMAN: [&str; 4] = ["I", "II", "III", "IV"];
 /// The most notes one host gets.
-const MAX_NOTES: usize = 24;
+pub(super) const MAX_NOTES: usize = 24;
 /// Slack for comparing a figure with a limit: the limits are exact, so a bar of 4 mm is under 5.
-const EPS: f64 = 1e-6;
+pub(super) const EPS: f64 = 1e-6;
 
-fn area(d: f64) -> f64 {
+pub(super) fn area(d: f64) -> f64 {
     PI * d * d / 4.0
 }
 
-fn on<'a>(bars: &'a [Bar], layers: &'a [&str]) -> impl Iterator<Item = &'a Bar> {
+pub(super) fn on<'a>(bars: &'a [Bar], layers: &'a [&str]) -> impl Iterator<Item = &'a Bar> {
     bars.iter().filter(move |b| layers.contains(&b.layer))
 }
 
-fn steel(bars: &[Bar], layers: &[&str]) -> f64 {
+pub(super) fn steel(bars: &[Bar], layers: &[&str]) -> f64 {
     on(bars, layers).map(|b| area(b.diameter)).sum()
 }
 
-fn thickest(bars: &[Bar], layers: &[&str]) -> f64 {
+pub(super) fn thickest(bars: &[Bar], layers: &[&str]) -> f64 {
     on(bars, layers).map(|b| b.diameter).fold(0.0, f64::max)
 }
 
 /// The widest gap between neighbours among `xs`, the ones within `TOL` of each other being one.
-fn widest(mut xs: Vec<f64>) -> f64 {
+pub(super) fn widest(mut xs: Vec<f64>) -> f64 {
     xs.sort_by(f64::total_cmp);
     xs.dedup_by(|a, b| (*a - *b).abs() < TOL);
     xs.windows(2).map(|w| w[1] - w[0]).fold(0.0, f64::max)

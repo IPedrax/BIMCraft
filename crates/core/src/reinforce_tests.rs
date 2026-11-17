@@ -515,6 +515,7 @@ fn hostile_parameters_for_every_kind_of_host_are_refused_or_made_never_a_crash()
         );
         hostile.push(json!({"cover": 25, "bottom": {"count": 4, "diameter": 16, "bent": {"count": n.clone(), "angle": n.clone(), "top": n.clone()}}, "bars": {"diameter": 16, "x": 3, "y": 3, "jog": {"by": n.clone(), "from_top": n.clone(), "slope": n.clone()}}, "stirrup": pitch(json!(5), json!(150))}));
         hostile.push(json!({"cover": 25, "bottom": row(json!(2), json!(16)), "bars": {"diameter": 16}, "check": n.clone(), "aggressiveness": n.clone(), "fck": n.clone()}));
+        hostile.push(json!({"cover": 25, "bottom": row(json!(2), json!(16)), "bars": {"diameter": 16}, "check": "EN 1992-1-1", "exposure": n.clone(), "fyk": n.clone(), "fck": n.clone()}));
         hostile.push(json!({"cover": 25, "bars": {"diameter": 16}, "anchor": {"start": n.clone(), "end": n.clone(), "below": n.clone(), "above": n.clone()}, "skin": pitch(json!(8), n.clone()), "clearance": n}));
     }
     for host in hosts {
@@ -1261,5 +1262,147 @@ fn a_check_of_a_column_and_a_floor_names_what_is_off() {
     let text = r["notes"].to_string();
     for want in ["20.1", "an eighth", "293 mm apart", "7.4.7.2"] {
         assert!(text.contains(want), "{want}: {text}");
+    }
+}
+
+/// `reinforce`'s parameters plus `extra`, for a check that names the Eurocode.
+fn en(base: &Value, extra: Value) -> Value {
+    let mut p = base.clone();
+    p.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+    p.as_object_mut().unwrap().insert("check".into(), json!("EN 1992-1-1"));
+    p
+}
+
+#[test]
+fn an_eurocode_check_of_a_beam_names_clauses_of_en_1992_1_1_and_changes_nothing_else() {
+    let mut s = Session::new();
+    let host = beam(&mut s);
+    let arm = json!({
+        "host": host, "cover": 25, "bottom": {"count": 3, "diameter": 16}, "top": {"count": 2, "diameter": 12.5},
+        "stirrup": {"diameter": 5, "spacing": 150}
+    });
+    let notes = |s: &mut Session, extra: Value| run(s, "reinforce", en(&arm, extra))["notes"].clone();
+    // A beam 200 x 500: sound bars, a cover of 25 mm for XC1 (15 + the 10 mm for deviation), nothing to say.
+    assert_eq!(notes(&mut s, json!({"exposure": "XC1", "fck": 25, "fyk": 500})), json!([]));
+    // The standard's name is read as NBR 6118's is: any case, punctuation and edition.
+    let r = run(&mut s, "reinforce", en(&arm, json!({"exposure": "xc1", "fck": 25, "fyk": 500})));
+    assert_eq!(r["notes"], json!([]), "{r}");
+    let r = run(&mut s, "reinforce", {
+        let mut p = en(&arm, json!({"exposure": "XC1", "fck": 25, "fyk": 500}));
+        p["check"] = json!("en1992-1-1:2004");
+        p
+    });
+    assert_eq!(r["notes"], json!([]), "{r}");
+    // XC4 asks 30 + 10 = 40 mm: the top, the bottom and the sides are under it. The bars are made all the same.
+    let r = run(&mut s, "reinforce", en(&arm, json!({"exposure": "XC4", "fck": 25, "fyk": 500})));
+    let list = r["notes"].as_array().unwrap();
+    assert_eq!(list.len(), 3, "{list:?}");
+    assert!(list.iter().all(|n| n.as_str().unwrap().starts_with("EN 1992-1-1 4.4.1.2") && n.as_str().unwrap().contains("XC4")), "{list:?}");
+    assert_eq!(r["count"].as_u64(), Some(46));
+    // Stirrups of 4 mm every 400: under the least ratio (0.08 sqrt(fck) / fyk) and further apart than 0.75 d, d being 462 mm.
+    let text = notes(&mut s, json!({"exposure": "XC1", "fck": 25, "fyk": 500, "stirrup": {"diameter": 4, "spacing": 400}})).to_string();
+    for want in ["9.2.2", "under the", "0.75 d", "apart"] {
+        assert!(text.contains(want), "{want}: {text}");
+    }
+    // One bar of 8 mm below is under the least steel, 0.26 fctm / fyk of b d (123 mm2, for C25 and a d of 462).
+    let text = notes(&mut s, json!({"exposure": "XC1", "fck": 25, "fyk": 500, "bottom": {"count": 1, "diameter": 8}})).to_string();
+    assert!(text.contains("9.2.1.1") && text.contains("least"), "{text}");
+    // Without `fck` and `fyk` the two limits that need them are named as not checked, once.
+    let text = notes(&mut s, json!({"exposure": "XC1"})).to_string();
+    assert_eq!(text.matches("9.2.1.1").count(), 1, "{text}");
+    assert!(text.contains("fck") && text.contains("fyk"), "{text}");
+    // Without `exposure` the cover is not asked about.
+    let text = notes(&mut s, json!({"fck": 25, "fyk": 500})).to_string();
+    assert!(!text.contains("4.4.1.2"), "{text}");
+}
+
+#[test]
+fn an_eurocode_check_of_a_column_a_floor_and_a_footing_names_what_is_off() {
+    let mut s = Session::new();
+    let host = column(&mut s, 0.0);
+    let sound = json!({"host": host, "cover": 25, "bars": {"diameter": 16, "x": 3, "y": 3}, "stirrup": {"diameter": 6.3, "spacing": 150}});
+    let known = json!({"exposure": "XC1", "fck": 25, "fyk": 500});
+    let r = run(&mut s, "reinforce", en(&sound, known.clone()));
+    assert_eq!(r["notes"], json!([]), "{r}");
+    // 6 mm bars are under the 8 mm; four of them are 0.13 % of 90000 mm2, under the 0.2 %; 4 mm stirrups are under 6 mm
+    // and 300 mm apart is over min(20 x 6, 300, 400) = 120.
+    let thin = json!({"host": host, "cover": 25, "bars": {"diameter": 6, "x": 2, "y": 2}, "stirrup": {"diameter": 4, "spacing": 300}});
+    let text = run(&mut s, "reinforce", en(&thin, known.clone()))["notes"].to_string();
+    for want in ["9.5.2", "under the 8 mm", "0.13 %", "9.5.3", "stirrups of 4 mm", "apart"] {
+        assert!(text.contains(want), "{want}: {text}");
+    }
+    // Eight bars of 32 mm are 7 % of the section, over the 4 %.
+    let fat = json!({"host": host, "cover": 25, "bars": {"diameter": 32, "x": 3, "y": 3}, "stirrup": {"diameter": 8, "spacing": 150}});
+    let text = run(&mut s, "reinforce", en(&fat, known.clone()))["notes"].to_string();
+    assert!(text.contains("9.5.2") && text.contains("4 % most"), "{text}");
+    // A floor is one structural class under a beam (4.4.1.2): XC3 asks 20 + 10 = 30 mm, and 450 mm between bars is over min(3 h, 400).
+    let fl = slab(&mut s, json!({}));
+    let floor = json!({"host": fl, "cover": 20, "bottom": {"x": {"diameter": 12, "spacing": 450}}});
+    let text = run(&mut s, "reinforce", en(&floor, json!({"exposure": "XC3"})))["notes"].to_string();
+    for want in ["4.4.1.2", "XC3", "30 mm", "9.3.1.1", "400 mm"] {
+        assert!(text.contains(want), "{want}: {text}");
+    }
+    let sound = json!({"host": fl, "cover": 30, "bottom": {"x": {"diameter": 12, "spacing": 200}}});
+    assert_eq!(run(&mut s, "reinforce", en(&sound, json!({"exposure": "XC3"})))["notes"], json!([]));
+    // A footing cast on blinding concrete has 40 mm at least, whatever the exposure.
+    let foot = footing(&mut s);
+    let mesh = json!({"x": {"diameter": 10, "spacing": 200}, "y": {"diameter": 10, "spacing": 200}});
+    let text =
+        run(&mut s, "reinforce", en(&json!({"host": foot, "cover": 25, "mesh": mesh}), json!({"exposure": "XC1"})))["notes"].to_string();
+    assert!(text.contains("4.4.1.3") && text.contains("40 mm"), "{text}");
+}
+
+#[test]
+fn the_two_standards_take_their_own_parameters_and_refuse_the_other_s() {
+    let mut s = Session::new();
+    let host = beam(&mut s);
+    let arm = json!({"host": host, "cover": 25, "bottom": {"count": 3, "diameter": 16}, "stirrup": {"diameter": 5, "spacing": 150}});
+    let with = |extra: Value| {
+        let mut p = arm.clone();
+        p.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        p
+    };
+    // What goes with `check` and nothing else.
+    for key in [json!({"exposure": "XC1"}), json!({"fyk": 500})] {
+        assert!(fails(&mut s, "reinforce", with(key)).contains("go with `check`"));
+    }
+    // Each standard names the other's parameter as the other's.
+    let e = fails(&mut s, "reinforce", with(json!({"check": "EN 1992-1-1", "aggressiveness": 2})));
+    assert!(e.contains("aggressiveness") && e.contains("exposure") && e.contains("NBR 6118"), "{e}");
+    for key in ["exposure", "fyk"] {
+        let value = if key == "fyk" { json!(500) } else { json!("XC1") };
+        let e = fails(&mut s, "reinforce", with(json!({"check": "NBR 6118", key: value})));
+        assert!(e.contains("EN 1992-1-1") && e.contains("aggressiveness"), "{e}");
+    }
+    // The values are read for what they are.
+    let e = fails(&mut s, "reinforce", with(json!({"check": "EN 1992-1-1", "exposure": "XZ9"})));
+    assert!(e.contains("exposure") && e.contains("XC1") && e.contains("XD3"), "{e}");
+    assert!(fails(&mut s, "reinforce", with(json!({"check": "EN 1992-1-1", "fyk": 50}))).contains("MPa"));
+    assert!(fails(&mut s, "reinforce", with(json!({"check": "EN 1992-1-1", "fck": 5}))).contains("MPa"));
+    // A standard it doesn't know is told what it does.
+    let e = fails(&mut s, "reinforce", with(json!({"check": "ACI 318"})));
+    assert!(e.contains("NBR 6118") && e.contains("EN 1992-1-1"), "{e}");
+}
+
+#[test]
+fn every_note_of_either_standard_starts_with_the_standard_and_a_clause() {
+    let mut s = Session::new();
+    let host = beam(&mut s);
+    let arm = json!({
+        "host": host, "cover": 25, "bottom": {"count": 1, "diameter": 8}, "stirrup": {"diameter": 4, "spacing": 400}
+    });
+    for p in [en(&arm, json!({"exposure": "XD3", "fck": 25, "fyk": 500})), en(&arm, json!({"exposure": "XS3", "fck": 70, "fyk": 500})), {
+        let mut p = arm.clone();
+        p.as_object_mut().unwrap().extend(json!({"check": "NBR 6118", "aggressiveness": 4}).as_object().unwrap().clone());
+        p
+    }] {
+        let r = run(&mut s, "reinforce", p);
+        let notes = r["notes"].as_array().unwrap();
+        assert!(!notes.is_empty());
+        for n in notes {
+            let n = n.as_str().unwrap();
+            let rest = n.strip_prefix("EN 1992-1-1 ").or_else(|| n.strip_prefix("NBR 6118 ")).unwrap_or_else(|| panic!("no standard: {n}"));
+            assert!(rest.starts_with(|c: char| c.is_ascii_digit()), "no clause: {n}");
+        }
     }
 }
