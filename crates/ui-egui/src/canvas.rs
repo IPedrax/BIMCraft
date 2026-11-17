@@ -2059,8 +2059,21 @@ impl BimApp {
                 }
             });
         }
-        let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        // The tools whose chain Shift+Tab steps a wall's three lines for; for any other, Shift+Tab is Tab.
+        let chain = matches!(
+            self.tool,
+            Tool::Wall(_)
+                | Tool::DetailLine(_)
+                | Tool::SketchLine(_)
+                | Tool::Railing(_)
+                | Tool::Mass(_)
+                | Tool::Move(_)
+                | Tool::Copy(_)
+                | Tool::Column
+                | Tool::Run(..)
+        );
         let face = std::mem::take(&mut self.face_cycle) || face;
+        let tabbed = std::mem::take(&mut self.tab_cycle) || tab || (face && !chain);
         // Drawing a stair outside the rules, Tab takes the nearest stair that fits: its riser, tread and width. That Tab is the
         // stair's, not a wall face's.
         let mut stair_tabbed = false;
@@ -2148,18 +2161,6 @@ impl BimApp {
         // under the pointer — its exterior face, its centre line and its interior face. Shift+Tab steps those three
         // anytime, mid-chain and while a number is typed too, so a wall face is never lost to the fields' key.
         let typing = !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty();
-        let chain = matches!(
-            self.tool,
-            Tool::Wall(_)
-                | Tool::DetailLine(_)
-                | Tool::SketchLine(_)
-                | Tool::Railing(_)
-                | Tool::Mass(_)
-                | Tool::Move(_)
-                | Tool::Copy(_)
-                | Tool::Column
-                | Tool::Run(..)
-        );
         let faces = face || (tabbed && self.base().is_none());
         let mut wall_tabbed = false;
         if faces

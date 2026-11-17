@@ -4684,7 +4684,8 @@ fn a_guides_strong_segment_reaches_only_a_screen_from_the_point_it_locks() {
         })
         .expect("the relation's own ink");
     assert!((strong[1] - strong[0]).length() <= 100.01, "one screen's reach, not 20 m: {strong:?}");
-    assert_eq!(strong[1], to(at), "it ends on the point it locks");
+    // A horizontal hairline is put on the pixel grid, half a pixel off the point's own row.
+    assert!(strong[1].distance(to(at)) <= 0.5, "it ends on the point it locks: {strong:?}");
 }
 
 /// The live reading sits clear of its own segment and its badge: a wide horizontal pill beside a steep one is pushed

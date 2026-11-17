@@ -7060,7 +7060,7 @@ impl eframe::App for BimApp {
         self.pace(&mut raw.events);
         // The family document's views take Tab themselves (F10c), the project's canvas being out of sight. Tab steps the
         // reading's fields; Shift+Tab steps the lines of the wall under the pointer, which a chain in hand would
-        // otherwise never reach, `Tab` being the fields' from its first point on.
+        // otherwise never reach, `Tab` being the fields' from its first point on. Where no chain is drawn, it is Tab.
         if self.canvas.hovering() && self.active_family().is_none() && !ctx.egui_wants_keyboard_input() {
             for event in &raw.events {
                 if let Event::Key { key: Key::Tab, pressed: true, modifiers, .. } = event {

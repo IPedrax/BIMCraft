@@ -1871,7 +1871,7 @@ impl BimApp {
             .filter(|id| !trimming || model.wall(*id).is_some());
         // On the selected curtain wall under the cursor, Tab goes through its parts there.
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab));
-        if (std::mem::take(&mut self.tab_cycle) || tab)
+        if (std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab)
             && let (Some(at), Some(id)) = (hover, hovered)
             && crate::curtain::tab_wall(&model, &selection, &[id], Some(id), self.tool == Tool::Modify) == Some(id)
             && let Some(w) = model.wall(id)
