@@ -214,7 +214,7 @@ other_files(
          x2, y2] (only what lies inside: a plan's model mm, a sheet's paper mm; every drawing format), pages?: [first, \
          last] or \"1, 3, 5-7\"}. `pdf`: {archive?: none|a1b|a2b|a2u|a3b|a4 (PDF/A, checked as it is written: a file that wouldn't be one \
          isn't written), version?: \"1.4\" to \"2.0\" (1.7), raster? (each page a picture at `page.dpi`), cut_marks? (the pages \
-         of a tiled drawing get hairlines in the margin where they meet), title?, author?, subject?, keywords?: [..]}. \
+         of a tiled drawing get hairlines in the margin where they meet), title?, author?, subject?, keywords?: [..], creator?, producer? (omitted/null: defaults; blank: omit; otherwise as given)}. \
          `ifc_origin` is IFC's, as `save` takes it; `selected` (ids or GUIDs) the elements a BCF topic is about. Returns `written` ({path, format, of}) and `failed` ({of, format, \
          error})",
         export,

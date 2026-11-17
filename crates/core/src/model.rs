@@ -213,6 +213,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a building code names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`,
 /// `building_demand`), and a project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and
 /// `demand` and `building_demand` would ask for a method again.
+/// And a PDF publishing entry may set or omit its Creator and Producer (`creator`, `producer`, written only then); a build
+/// that reads up to 20 would leave them out as fields it doesn't know, list them as left out and write its own.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -5267,6 +5269,7 @@ impl Model {
             crate::curtain::corner_types(self);
         }
         // 20 to 21: classification tables and their bindings. A file of 20 holds none, so nothing to do.
+        // 20 to 21: a PDF publishing entry's Creator and Producer. A file of 20 sets neither, so nothing to do.
         self.format = FORMAT;
     }
 

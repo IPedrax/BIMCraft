@@ -18143,6 +18143,26 @@ msgstr ""
 msgid "glTF binary"
 msgstr ""
 
+#: crates/ui-egui/src/export/mod.rs:947
+msgid "Creator"
+msgstr ""
+
+#: crates/ui-egui/src/export/mod.rs:947
+msgid "Default Creator"
+msgstr ""
+
+#: crates/ui-egui/src/export/mod.rs:951
+msgid "Default Producer"
+msgstr ""
+
+#: crates/ui-egui/src/export/mod.rs:1192
+msgid "Leave blank to omit this entry."
+msgstr ""
+
+#: crates/ui-egui/src/export/mod.rs:950
+msgid "Producer"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Un valore vuoto è quello dell'oggetto stesso, come nella scheda Parametri."
