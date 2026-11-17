@@ -1425,11 +1425,11 @@ msgstr "Zugeordnetes Geschoss"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:4099
+#: crates/core/src/model.rs:4100
 msgid "At wall centre line"
 msgstr "An Wandmittellinie"
 
-#: crates/core/src/model.rs:4100
+#: crates/core/src/model.rs:4101
 msgid "At wall finish"
 msgstr "An Wandoberfläche"
 
@@ -1880,7 +1880,7 @@ msgstr "Begrenzungslinie: die Linien des Profils"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:4498
+#: crates/core/src/model.rs:4499
 msgid "Brick"
 msgstr "Ziegel"
 
@@ -1888,7 +1888,7 @@ msgstr "Ziegel"
 msgid "Brick 225 x 75"
 msgstr "Ziegel 225 x 75"
 
-#: crates/core/src/model.rs:5088
+#: crates/core/src/model.rs:5089
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2345,7 +2345,7 @@ msgstr ""
 msgid "Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:4506
+#: crates/core/src/model.rs:4507
 msgid "Ceramic tile"
 msgstr "Keramikfliese"
 
@@ -3505,7 +3505,7 @@ msgstr "Konzeptioneller Volumenkörper"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:4500
+#: crates/core/src/model.rs:4501
 msgid "Concrete block"
 msgstr "Betonblock"
 
@@ -3750,7 +3750,7 @@ msgstr "{} Zeilen kopiert, tabgetrennt."
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:4514
+#: crates/core/src/model.rs:4515
 msgid "Copper"
 msgstr "Kupfer"
 
@@ -4952,11 +4952,11 @@ msgstr "Gepunktet"
 msgid "Double Door"
 msgstr "Zweiflügelige Tür"
 
-#: crates/core/src/model.rs:3779
+#: crates/core/src/model.rs:3780
 msgid "Double Sliding"
 msgstr "Doppelt schiebend"
 
-#: crates/core/src/model.rs:3777
+#: crates/core/src/model.rs:3778
 msgid "Double Swing"
 msgstr "Doppelt aufschlagend"
 
@@ -5176,7 +5176,7 @@ msgstr "Erdungselektrode (EG): ein Stab, der vom Geschoss aus dort eingetrieben 
 msgid "Earthing Electrodes"
 msgstr "Erdungselektroden"
 
-#: crates/core/src/model.rs:2490
+#: crates/core/src/model.rs:2491
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "East"
@@ -6255,7 +6255,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:3781
+#: crates/core/src/model.rs:3782
 msgid "Fixed"
 msgstr "Fest"
 
@@ -6457,7 +6457,7 @@ msgstr "Ordner für neue Projekte"
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:3780
+#: crates/core/src/model.rs:3781
 msgid "Folding"
 msgstr "Falt-"
 
@@ -6823,7 +6823,7 @@ msgstr ""
 msgid "Guides from the whole model"
 msgstr ""
 
-#: crates/core/src/model.rs:4505
+#: crates/core/src/model.rs:4506
 msgid "Gypsum board"
 msgstr "Gipskartonplatte"
 
@@ -9667,7 +9667,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2488
+#: crates/core/src/model.rs:2489
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "North"
@@ -11869,7 +11869,7 @@ msgstr ""
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:5056
+#: crates/core/src/model.rs:5057
 msgid "Reading elements"
 msgstr ""
 
@@ -11877,7 +11877,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:5100
+#: crates/core/src/model.rs:5101
 msgid "Reading the project"
 msgstr ""
 
@@ -12555,7 +12555,7 @@ msgstr ""
 msgid "Risers"
 msgstr "Steigungen"
 
-#: crates/core/src/model.rs:3783
+#: crates/core/src/model.rs:3784
 msgid "Roller"
 msgstr ""
 
@@ -12587,7 +12587,7 @@ msgstr "Dach über Fläche (RB): ein Dach auf den oberen Flächen der ausgewähl
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dach über Grundriss: innerhalb der Wände anklicken, um sie im Geschoss darüber zu überdachen"
 
-#: crates/core/src/model.rs:4507
+#: crates/core/src/model.rs:4508
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
@@ -12981,7 +12981,7 @@ msgstr "Tabellen/Mengen (alle)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:4503
+#: crates/core/src/model.rs:4504
 msgid "Screed"
 msgstr "Estrich"
 
@@ -13073,7 +13073,7 @@ msgstr "Schnittkasten: 3D-Ansicht auf einen Kasten zuschneiden; jede Fläche üb
 msgid "Section: {}"
 msgstr "Schnitt: {}"
 
-#: crates/core/src/model.rs:3782
+#: crates/core/src/model.rs:3783
 msgid "Sectional"
 msgstr ""
 
@@ -13750,7 +13750,7 @@ msgstr "Himmel"
 msgid "Slab Thickness"
 msgstr ""
 
-#: crates/core/src/model.rs:3778
+#: crates/core/src/model.rs:3779
 msgid "Sliding"
 msgstr "Schiebe-"
 
@@ -13949,7 +13949,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "Quellcode auf GitHub"
 
-#: crates/core/src/model.rs:2489
+#: crates/core/src/model.rs:2490
 msgid "South"
 msgstr "Süden"
 
@@ -14425,7 +14425,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "Sweep-Verschmelzung: ein Pfad aus einer Linie oder einem Bogen und ein Profil an jedem Ende, entlang des Pfads verschmolzen"
 
-#: crates/core/src/model.rs:3776
+#: crates/core/src/model.rs:3777
 msgid "Swing"
 msgstr "Aufschlagrichtung"
 
@@ -16742,7 +16742,7 @@ msgstr "Gewicht"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2491
+#: crates/core/src/model.rs:2492
 msgid "West"
 msgstr "Westen"
 

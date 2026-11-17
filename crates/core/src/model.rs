@@ -2356,6 +2356,7 @@ impl Element {
         match self {
             Element::Floor(f) => Some(&f.shape),
             Element::Roof(r) => Some(&r.shape),
+            Element::Toposolid(t) => Some(&t.shape),
             _ => None,
         }
     }
