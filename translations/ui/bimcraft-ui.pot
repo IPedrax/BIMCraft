@@ -1399,11 +1399,11 @@ msgstr ""
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:3965
+#: crates/core/src/model.rs:3971
 msgid "At wall centre line"
 msgstr ""
 
-#: crates/core/src/model.rs:3966
+#: crates/core/src/model.rs:3972
 msgid "At wall finish"
 msgstr ""
 
@@ -1850,7 +1850,7 @@ msgstr ""
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:4359
+#: crates/core/src/model.rs:4365
 msgid "Brick"
 msgstr ""
 
@@ -1858,7 +1858,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/model.rs:4931
+#: crates/core/src/model.rs:4948
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2311,11 +2311,11 @@ msgstr ""
 msgid "Centre Stringer Width (Optional)"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6150
+#: crates/ui-egui/src/canvas.rs:6151
 msgid "Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:4367
+#: crates/core/src/model.rs:4373
 msgid "Ceramic tile"
 msgstr ""
 
@@ -3469,7 +3469,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:4361
+#: crates/core/src/model.rs:4367
 msgid "Concrete block"
 msgstr ""
 
@@ -3714,7 +3714,7 @@ msgstr ""
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:4375
+#: crates/core/src/model.rs:4381
 msgid "Copper"
 msgstr ""
 
@@ -3775,15 +3775,15 @@ msgstr ""
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/core/src/model.rs:506
+#: crates/core/src/model.rs:508
 msgid "Core Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:509
+#: crates/core/src/model.rs:511
 msgid "Core Face: Exterior"
 msgstr ""
 
-#: crates/core/src/model.rs:510
+#: crates/core/src/model.rs:512
 msgid "Core Face: Interior"
 msgstr ""
 
@@ -4426,7 +4426,7 @@ msgstr ""
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:14124
+#: crates/core/src/commands.rs:14125
 msgid "Dependent"
 msgstr ""
 
@@ -4880,11 +4880,11 @@ msgstr ""
 msgid "Double Door"
 msgstr ""
 
-#: crates/core/src/model.rs:3650
+#: crates/core/src/model.rs:3656
 msgid "Double Sliding"
 msgstr ""
 
-#: crates/core/src/model.rs:3648
+#: crates/core/src/model.rs:3654
 msgid "Double Swing"
 msgstr ""
 
@@ -5103,7 +5103,7 @@ msgstr ""
 msgid "Earthing Electrodes"
 msgstr ""
 
-#: crates/core/src/model.rs:2385
+#: crates/core/src/model.rs:2391
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "East"
@@ -5676,7 +5676,7 @@ msgstr ""
 msgid "Extents"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6148
+#: crates/ui-egui/src/canvas.rs:6149
 msgid "Exterior Face"
 msgstr ""
 
@@ -6051,7 +6051,7 @@ msgstr ""
 msgid "Fine"
 msgstr ""
 
-#: crates/core/src/import.rs:1601
+#: crates/core/src/import.rs:1807
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:921
 msgid "Finish"
@@ -6081,11 +6081,11 @@ msgstr ""
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr ""
 
-#: crates/core/src/model.rs:507
+#: crates/core/src/model.rs:509
 msgid "Finish Face: Exterior"
 msgstr ""
 
-#: crates/core/src/model.rs:508
+#: crates/core/src/model.rs:510
 msgid "Finish Face: Interior"
 msgstr ""
 
@@ -6140,7 +6140,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:3652
+#: crates/core/src/model.rs:3658
 msgid "Fixed"
 msgstr ""
 
@@ -6318,7 +6318,7 @@ msgstr ""
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:3651
+#: crates/core/src/model.rs:3657
 msgid "Folding"
 msgstr ""
 
@@ -6684,7 +6684,7 @@ msgstr ""
 msgid "Guides from the whole model"
 msgstr ""
 
-#: crates/core/src/model.rs:4366
+#: crates/core/src/model.rs:4372
 msgid "Gypsum board"
 msgstr ""
 
@@ -7286,7 +7286,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr ""
 
-#: crates/core/src/import.rs:1600
+#: crates/core/src/import.rs:1806
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr ""
@@ -7312,7 +7312,7 @@ msgstr ""
 msgid "Interface scale"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6149
+#: crates/ui-egui/src/canvas.rs:6150
 msgid "Interior Face"
 msgstr ""
 
@@ -8422,7 +8422,7 @@ msgstr ""
 msgid "Margin"
 msgstr ""
 
-#: crates/core/src/model.rs:1786
+#: crates/core/src/model.rs:1788
 msgid "Mark"
 msgstr ""
 
@@ -8572,7 +8572,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr ""
 
-#: crates/core/src/import.rs:1603
+#: crates/core/src/import.rs:1809
 #: crates/ui-egui/src/properties.rs:920
 msgid "Membrane"
 msgstr ""
@@ -9080,7 +9080,7 @@ msgstr ""
 msgid "NOT ENCLOSED"
 msgstr ""
 
-#: crates/core/src/model.rs:1787
+#: crates/core/src/model.rs:1789
 #: crates/ui-egui/src/adaptive_editor.rs:665
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:89
@@ -9492,7 +9492,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2383
+#: crates/core/src/model.rs:2389
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "North"
@@ -11464,7 +11464,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr ""
 
 #: crates/core/src/commands.rs:665
-#: crates/core/src/commands.rs:9254
+#: crates/core/src/commands.rs:9255
 msgid "Property Line"
 msgstr ""
 
@@ -11648,7 +11648,7 @@ msgstr ""
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:4899
+#: crates/core/src/model.rs:4916
 msgid "Reading elements"
 msgstr ""
 
@@ -11656,7 +11656,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:4943
+#: crates/core/src/model.rs:4960
 msgid "Reading the project"
 msgstr ""
 
@@ -12330,7 +12330,7 @@ msgstr ""
 msgid "Risers"
 msgstr ""
 
-#: crates/core/src/model.rs:3654
+#: crates/core/src/model.rs:3660
 msgid "Roller"
 msgstr ""
 
@@ -12358,7 +12358,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:4368
+#: crates/core/src/model.rs:4374
 msgid "Roof tiles"
 msgstr ""
 
@@ -12739,7 +12739,7 @@ msgstr ""
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:4364
+#: crates/core/src/model.rs:4370
 msgid "Screed"
 msgstr ""
 
@@ -12830,7 +12830,7 @@ msgstr ""
 msgid "Section: {}"
 msgstr ""
 
-#: crates/core/src/model.rs:3653
+#: crates/core/src/model.rs:3659
 msgid "Sectional"
 msgstr ""
 
@@ -13473,7 +13473,7 @@ msgstr ""
 msgid "Slab Thickness"
 msgstr ""
 
-#: crates/core/src/model.rs:3649
+#: crates/core/src/model.rs:3655
 msgid "Sliding"
 msgstr ""
 
@@ -13534,15 +13534,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6000
+#: crates/ui-egui/src/canvas.rs:6001
 msgid "Snap reference cleared"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5999
+#: crates/ui-egui/src/canvas.rs:6000
 msgid "Snap reference marked"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6001
+#: crates/ui-egui/src/canvas.rs:6002
 msgid "Snap reference moved"
 msgstr ""
 
@@ -13672,7 +13672,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr ""
 
-#: crates/core/src/model.rs:2384
+#: crates/core/src/model.rs:2390
 msgid "South"
 msgstr ""
 
@@ -14052,7 +14052,7 @@ msgstr ""
 msgid "Subject"
 msgstr ""
 
-#: crates/core/src/import.rs:1602
+#: crates/core/src/import.rs:1808
 #: crates/ui-egui/src/properties.rs:918
 msgid "Substrate"
 msgstr ""
@@ -14135,7 +14135,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr ""
 
-#: crates/core/src/model.rs:3647
+#: crates/core/src/model.rs:3653
 msgid "Swing"
 msgstr ""
 
@@ -15610,7 +15610,7 @@ msgstr ""
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1788
+#: crates/core/src/model.rs:1790
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:1010
 #: crates/ui-egui/src/editor/nested.rs:273
@@ -15840,7 +15840,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:14360
+#: crates/core/src/commands.rs:14361
 msgid "Unnamed"
 msgstr ""
 
@@ -16292,7 +16292,7 @@ msgstr ""
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr ""
 
-#: crates/core/src/model.rs:505
+#: crates/core/src/model.rs:507
 msgid "Wall Centreline"
 msgstr ""
 
@@ -16358,7 +16358,7 @@ msgstr ""
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2386
+#: crates/core/src/model.rs:2392
 msgid "West"
 msgstr ""
 
@@ -17803,7 +17803,7 @@ msgstr ""
 msgid "{} of {} risers"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6153
+#: crates/ui-egui/src/canvas.rs:6154
 #: crates/ui-egui/src/orbit.rs:2197
 msgid "{} of {} {}"
 msgstr ""
