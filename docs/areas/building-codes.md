@@ -195,7 +195,8 @@ its candidates from the lookup and culling by box and height brought it to under
    `check` that says what can't be rules). Register it in `codes::sections()` with its label, a line on what it holds and
    what reads it.
 2. Its numbers go in a code's file, each with a source and, where it isn't the document's requirement, a kind. A generic or
-   default code holds forgiving numbers where a section must always read.
+   default code holds forgiving numbers where a section must always read, never a copy of another code's table: that stays in
+   its standard's code, and the library hands it on saying whose it is (a test in `codes/tests.rs` holds this).
 3. The module takes its rules as an argument (`WaterRules::smallest_dn`). Its command reads `Model::rules::<S>()`, so the
    project's choice and changes hold. The old free functions may stay, reading `codes::library_rules`, and the module's tests
    pin the numbers through the move.

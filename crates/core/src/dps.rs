@@ -15,7 +15,7 @@
 //! - Connection: a line with no neutral, and TN-C, connection 1 (each phase to the PE); TN-S, TT and IT with a neutral, connection 2
 //!   (each phase and the neutral to the PE) or 3 (each phase to the neutral, and the neutral to the PE).
 //! - At least 5 kA (8/20 µs) of nominal discharge current for each mode of protection (20 kA on a three-phase network, 10 kA on a
-//!   single-phase one, between the neutral and the PE of connection 3); at least 12.5 kA (10/350 µs) of impulse current against
+//!   single-phase one, between the neutral and the PE of connection 3); at least 12.5 kA of impulse current (the standard fixes no waveform for its test) against
 //!   direct lightning (50 kA three-phase, 25 kA single-phase, between the neutral and the PE of connection 3, where it can't be
 //!   worked out by IEC 61312-1). Connecting conductors of 4 mm² copper at least (16 mm² against direct lightning), no more than
 //!   0.5 m in all.
@@ -77,7 +77,7 @@ pub struct Rules {
     pub conductor_length: f64,
     /// The least section of the connecting conductors, mm² of copper.
     pub conductor_section: ByPurpose,
-    /// The least nominal discharge current, kA (8/20 µs), and impulse current, kA (10/350 µs).
+    /// The least nominal discharge current, kA (8/20 µs), and impulse current, kA (no waveform fixed).
     pub discharge: ByMode,
     pub impulse: ByMode,
     /// The least follow current a spark-gap device between neutral and PE interrupts in TN and TT, A.
@@ -353,7 +353,7 @@ pub fn discharge(r: &Rules, purpose: Purpose, neutral_pe: bool, phases: u32) -> 
     }
 }
 
-/// The least impulse current (kA, 10/350 µs) against direct lightning for each mode of protection; for the neutral–PE mode of
+/// The least impulse current (kA, no waveform fixed) against direct lightning for each mode of protection; for the neutral–PE mode of
 /// connection 3 it is the standard's figure where it can't be worked out.
 pub fn impulse(r: &Rules, neutral_pe: bool, phases: u32) -> f64 {
     match (neutral_pe, phases) {

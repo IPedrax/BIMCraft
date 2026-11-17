@@ -2235,7 +2235,7 @@
    "factor_source": "Fecoergs REGD 035.01.06 (23/08/2024), item 7.2.2.1: 1.2 (growth), on the units only",
    "factor_on_common": false,
    "notes": [
-    "Four rows of the area table (96, 100, 248 and 249 m²) differ by 0.01 to 0.02 kVA from the curve 0.034939·A^0.895075 that Celesc's Tabela 02 follows: rounding, left as printed."
+    "Five rows of the area table (96, 100, 248, 249 and 500 m²) differ by 0.01 to 0.04 kVA from the curve 0.034939·A^0.895075 that Celesc's Tabela 02 follows: rounding, left as printed."
    ],
    "not_covered": [
     "the condominium's demand (give it in `common_demand`)",

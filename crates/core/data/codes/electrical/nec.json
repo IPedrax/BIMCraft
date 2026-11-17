@@ -415,8 +415,8 @@
  },
  "sources": {
   "building_demand": "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units): the connected load of all the units, each worked out as 220.84(C) says, times a demand factor by their number; the house loads apart, by Part III. The 2026 edition moves Article 220's load calculations to Article 120 (120.84).",
-  "voltages": "ANSI C84.1, the 277/480 V system of North America's commercial buildings; a band of 10 % either way",
-  "distribution_systems": "ANSI C84.1, the 277/480 V system of North America's commercial buildings; a band of 10 % either way",
+  "voltages": "the 277/480 V system of North America's commercial buildings (a nominal voltage of ANSI C84.1); the band of 10 % either way is BIMCraft's own practice",
+  "distribution_systems": "the 277/480 V system of North America's commercial buildings (a nominal voltage of ANSI C84.1); the band of 10 % either way is BIMCraft's own practice",
   "wire_types": "each wire type's own note names its table"
  },
  "kinds": {

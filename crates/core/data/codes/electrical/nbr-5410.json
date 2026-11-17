@@ -2617,7 +2617,7 @@
   "circuits.reactance": "a conductor's reactance in a conduit, Ω/km: with it the drop agrees with the makers' V/A·km tables within about 3 %",
   "circuits.drop_limit": {
    "doc": "nbr5410",
-   "item": "6.2.7.1, the drop a terminal circuit may have, per cent of the voltage"
+   "item": "6.2.7.2, the drop a terminal circuit may have, per cent of the voltage"
   },
   "circuits.sections": {
    "doc": "nbr5410",
@@ -2673,7 +2673,7 @@
   },
   "surge.impulse": {
    "doc": "nbr5410",
-   "item": "6.3.5.2.4 d): the least impulse current (kA, 10/350 µs) against direct lightning where IEC 61312-1 does not work it out"
+   "item": "6.3.5.2.4 d): the least impulse current (kA; the standard fixes no waveform for its test) against direct lightning where IEC 61312-1 does not work it out"
   },
   "surge.follow_current": {
    "doc": "nbr5410",
@@ -2691,8 +2691,8 @@
    "doc": "nbr5410",
    "item": "Tabela 31, note 3 (IEC 61663-2): components tied to a signal line at the entry (kV)"
   },
-  "voltages": "the Brazilian low-voltage systems (ANEEL PRODIST Módulo 8), 127/220 and 220/380 V; a band of 10 % either way",
-  "distribution_systems": "the Brazilian low-voltage systems (ANEEL PRODIST Módulo 8), 127/220 and 220/380 V; a band of 10 % either way",
+  "voltages": "the Brazilian low-voltage systems, 127/220 and 220/380 V; the band of 10 % either way is BIMCraft's own practice",
+  "distribution_systems": "the Brazilian low-voltage systems, 127/220 and 220/380 V; the band of 10 % either way is BIMCraft's own practice",
   "wire_types": "each wire type's own note names its table"
  },
  "kinds": {

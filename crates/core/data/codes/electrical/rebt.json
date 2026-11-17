@@ -5,7 +5,7 @@
  "region": "España",
  "edition": "2002",
  "references": [
-  "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002), ITC-BT-10, item 3"
+  "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002; ITC-BT-10 as consolidated after Real Decreto 1053/2014), ITC-BT-10, item 3"
  ],
  "note": "A building's demand by this country's method (`building_demand`). The rest of the discipline comes from BIMCraft's library, and says so.",
  "sections": {
@@ -13,7 +13,7 @@
    "standard": "ITC-BT-10",
    "utilities": [],
    "country": "ES",
-   "source": "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002), ITC-BT-10, item 3: a building's load is its dwellings' (the mean of their powers × the coefficient of Tabla 1) plus the general services, the shops and offices and the garages, these at a coefficient of 1. The powers are W at 230 V, given here in kW.",
+   "source": "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002; ITC-BT-10 as consolidated after Real Decreto 1053/2014), ITC-BT-10, item 3: a building's load is its dwellings' (the mean of their powers × the coefficient of Tabla 1) plus the general services, the shops and offices and the garages, these at a coefficient of 1. The powers are W at 230 V, given here in kW.",
    "unit": "kW",
    "min_dwellings": 1,
    "mean_of": "demand",
@@ -157,6 +157,6 @@
   }
  },
  "sources": {
-  "building_demand": "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002), ITC-BT-10, item 3: a building's load is its dwellings' (the mean of their powers × the coefficient of Tabla 1) plus the general services, the shops and offices and the garages, these at a coefficient of 1. The powers are W at 230 V, given here in kW."
+  "building_demand": "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002; ITC-BT-10 as consolidated after Real Decreto 1053/2014), ITC-BT-10, item 3: a building's load is its dwellings' (the mean of their powers × the coefficient of Tabla 1) plus the general services, the shops and offices and the garages, these at a coefficient of 1. The powers are W at 230 V, given here in kW."
  }
 }

@@ -21,7 +21,7 @@
    "min_dwellings": 4,
    "mean_of": "area",
    "dwelling": {
-    "source": "ND-5.2, Tabela 13 (page 108): the demand of one apartment, a, by its floor area in ranges up to 1000 m²; an area between two ranges takes the higher",
+    "source": "ND-5.2, Tabela 13 (page 105 as printed): the demand of one apartment, a, by its floor area in ranges up to 1000 m²; an area between two ranges takes the higher",
     "by_area": [
      [
       15,
@@ -202,7 +202,7 @@
     ]
    },
    "diversity": {
-    "source": "ND-5.2, Tabela 12 (pages 106 and 107): the multiplication factor f, an equivalent number of apartments, from 4 apartments up to 300",
+    "source": "ND-5.2, Tabela 12 (pages 103 and 104 as printed): the multiplication factor f, an equivalent number of apartments, from 4 apartments up to 300",
     "steps": [
      [
       4,

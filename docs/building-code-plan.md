@@ -224,7 +224,7 @@ crates/core/data/codes/
   ```json
   {"code": "nbr-5410", "discipline": "electrical", "name": "ABNT NBR 5410:2004", "region": "Brasil",
    "references": [...], "checked": "...", "note": "...", "amends": null,
-   "sections": {"conductors": {"drop_limit": {"value": 4, "source": "NBR 5410:2004 6.2.7.1 c)", "kind": "requirement"}, ...}}}
+   "sections": {"conductors": {"drop_limit": {"value": 4, "source": "NBR 5410:2004 6.2.7.2", "kind": "requirement"}, ...}}}
   ```
 
   A rule may be given bare (`"drop_limit": 4`) where its source is the section's.
@@ -275,7 +275,7 @@ crates/core/data/codes/
   <reference>ABNT NBR 5410:2004 (versão corrigida 2008)</reference>
   <checked>…</checked>
   <section name="conductors">
-    <rule name="drop_limit" value="4" unit="%" kind="requirement" source="NBR 5410:2004 6.2.7.1"/>
+    <rule name="drop_limit" value="4" unit="%" kind="requirement" source="NBR 5410:2004 6.2.7.2"/>
     <table name="ampacity_cu_pvc" source="NBR 5410:2004 Tabela 36" page="101">
       <column name="section" unit="mm2"/><column name="A1_2" unit="A"/> …
       <row>1.5 14.5 13.5 …</row>
@@ -313,7 +313,7 @@ discipline header, so import, export, presets and Save As work **per discipline*
 │ 🔍 [ find a rule…          ] │ Conductors and Protection                                         NBR 5410:2004 │
 │                              │ ─────────────────────────────────────────────────────────────────────────────── │
 │ Supply and Systems           │ Rule                          Value               From      Source               │
-│ Conductors and Protection ●3 │ Voltage drop, branch circuit  [ 4   ] %           code      6.2.7.1 c)        ⓘ │
+│ Conductors and Protection ●3 │ Voltage drop, branch circuit  [ 4   ] %           code      6.2.7.2           ⓘ │
 │ Voltage Drop                 │ Reactance                     [ 0.1 ] Ω/km        code      practice          ⓘ │
 │ Conduit Fill                 │ Least section, lighting       [ 1.5 ] mm²         code      Tabela 47         ⓘ │
 │ Dwelling Loads and Outlets   │ Least section, power          [ 2.5 ] mm²         ● project  code says 2.5  Reset│

@@ -1542,3 +1542,83 @@ fn a_stair_in_a_tower_measures_its_headroom_to_what_is_over_it_and_only_that() {
     let each = t.elapsed() / 10;
     assert!(each < std::time::Duration::from_millis(200), "{each:?} for each code check");
 }
+
+/// The rows of every table in `v`, however deep: each element of an array whose elements are rows (arrays or objects, never
+/// plain numbers, so a shared series such as the conductor sections is no table) and that holds at least one number, written
+/// with every number as a float, so `9` and `9.0` read alike and an object's keys in order.
+fn rows(v: &Value, out: &mut Vec<String>) {
+    fn has_number(v: &Value) -> bool {
+        match v {
+            Value::Number(_) => true,
+            Value::Array(a) => a.iter().any(has_number),
+            Value::Object(o) => o.values().any(has_number),
+            _ => false,
+        }
+    }
+    fn norm(v: &Value) -> Value {
+        match v {
+            Value::Number(n) => n.as_f64().map(|f| json!(f)).unwrap_or(Value::Null),
+            Value::Array(a) => Value::Array(a.iter().map(norm).collect()),
+            Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), norm(x))).collect()),
+            other => other.clone(),
+        }
+    }
+    match v {
+        Value::Array(a) => {
+            for x in a {
+                if matches!(x, Value::Array(_) | Value::Object(_)) && has_number(x) {
+                    out.push(norm(x).to_string());
+                }
+                rows(x, out);
+            }
+        }
+        // A table kept as an object keyed by name (wire types, voltages): each entry is a row.
+        Value::Object(o) => {
+            for x in o.values() {
+                if matches!(x, Value::Object(_)) && has_number(x) {
+                    out.push(norm(x).to_string());
+                }
+                rows(x, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn the_code_of_a_project_that_chose_none_holds_no_other_code_s_tables() {
+    // A table a standard prints belongs to that standard's code: the default one reads it from the library, which says
+    // whose it is, and never holds a copy under its own name (generic's wire types were NBR 5410's Tabelas 36 and 37). A
+    // copy is caught row by row, so one changed row, a part of a table or its rows reordered don't hide it; four rows in
+    // common are a copy. Every edition counts, superseded ones too.
+    let mut checked = 0;
+    for d in Discipline::ALL {
+        let codes: Vec<&BuildingCode> = codes().iter().filter(|c| c.discipline == d).collect();
+        if codes.is_empty() {
+            continue;
+        }
+        let defaults: Vec<&&BuildingCode> = codes.iter().filter(|c| c.default).collect();
+        assert_eq!(defaults.len(), 1, "{d:?} has one default code");
+        let default = defaults[0];
+        let mut theirs = std::collections::HashSet::new();
+        for c in codes.iter().filter(|c| c.code != default.code) {
+            let mut r = Vec::new();
+            c.sections.values().for_each(|s| rows(s, &mut r));
+            theirs.extend(r);
+        }
+        for (key, section) in &default.sections {
+            let mut ours = Vec::new();
+            rows(section, &mut ours);
+            let shared: Vec<&String> = ours.iter().filter(|r| theirs.contains(*r)).collect();
+            assert!(
+                shared.len() < 4,
+                "{d:?} {}'s {key} holds {} rows of another code's tables, as {:.120}",
+                default.code,
+                shared.len(),
+                shared[0]
+            );
+        }
+        checked += 1;
+    }
+    assert!(checked >= 5, "every discipline has codes");
+}
