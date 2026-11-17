@@ -3724,6 +3724,8 @@ fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!((floor.len(), field(&h, floor[0], "area_m2")), (1, json!(48.0)));
@@ -3743,6 +3745,8 @@ fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     // A drain 30 mm down in its middle, from Shape Editing's Add Point at the Options Bar's elevation.
@@ -3776,6 +3780,8 @@ fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_a
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     press(&mut h, "Add Point");
@@ -3821,6 +3827,8 @@ fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height(
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     press(&mut h, "Add Point");
@@ -3914,6 +3922,8 @@ fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free()
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!(floor.len(), 1);
@@ -4101,6 +4111,7 @@ fn a_floor_types_layers_go_from_its_top_down() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     press(&mut h, "Edit Type");
     // A layer on top of its structure: tiles, 10 mm.

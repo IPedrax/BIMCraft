@@ -530,6 +530,79 @@ fn floors_default_to_the_outline_of_the_walls() {
     assert!(e.contains("boundary"), "{e}");
 }
 
+/// A box of 200 mm walls with 50 mm finish, a 100 mm core and 50 mm finish, their location lines at their centres.
+fn core_house(s: &mut Session) -> Vec<u64> {
+    run(
+        s,
+        "type",
+        json!({"category": "wall", "name": "C60", "layers": [
+            {"function": "finish", "thickness": 50},
+            {"function": "structure", "thickness": 100},
+            {"function": "finish", "thickness": 50}
+        ]}),
+    );
+    let r = run(s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true, "type": "C60"}));
+    r["ids"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).collect()
+}
+
+#[test]
+fn a_floor_can_follow_a_face_of_the_walls() {
+    let mut s = Session::new();
+    core_house(&mut s);
+    let area = |s: &mut Session, p: Value| run(s, "floor", p)["area_m2"].as_f64().unwrap_or_default();
+    assert!((area(&mut s, json!({})) - 48.0).abs() < 1e-6, "the centre lines");
+    assert!((area(&mut s, json!({"outline": "centre"})) - 48.0).abs() < 1e-6, "said, the centre lines");
+    let core = run(&mut s, "floor", json!({"outline": "interior-core"}));
+    let core_id = core["id"].as_u64();
+    let core_area = core["area_m2"].as_f64().unwrap_or_default();
+    let finish = area(&mut s, json!({"outline": "interior-finish"}));
+    assert!((core_area - 7.9 * 5.9).abs() < 1e-6, "{core_area}");
+    assert!((finish - 7.8 * 5.8).abs() < 1e-6, "{finish}");
+    assert!(finish < core_area && core_area < 48.0, "{finish} {core_area}");
+    assert!((area(&mut s, json!({"outline": "exterior-core"})) - 8.1 * 6.1).abs() < 1e-6);
+    let f = run(&mut s, "elements", json!({"category": "floor"}));
+    let boundary: Vec<P2> = f["elements"]
+        .as_array()
+        .and_then(|a| a.iter().find(|e| e["id"].as_u64() == core_id))
+        .and_then(|e| e["boundary"].as_array())
+        .map(|a| a.iter().filter_map(|p| Some(P2(p[0].as_f64()?, p[1].as_f64()?))).collect())
+        .unwrap_or_default();
+    assert!(boundary.iter().any(|p| p.dist(P2(50.0, 50.0)) < 1e-6), "{boundary:?}");
+    assert!((area(&mut s, json!({"outline": "interior-finish", "outline_offset": -50})) - 7.9 * 5.9).abs() < 1e-6);
+}
+
+#[test]
+fn sketch_can_read_one_walls_face_line() {
+    let mut s = Session::new();
+    let ids = core_house(&mut s);
+    let r = run(&mut s, "sketch", json!({"wall": ids[0], "face": "exterior-core", "offset": 25}));
+    assert_eq!((r["wall"].clone(), r["face"].clone(), r["offset"].clone()), (json!(ids[0]), json!("exterior-core"), json!(25.0)));
+    assert!(r["line"]["start"].is_array() && r["line"]["end"].is_array(), "{r}");
+    // A core face of a wall with no structural layer falls back to its finish face.
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    let r = run(&mut s, "sketch", json!({"wall": ids[0], "face": "interior-core"}));
+    assert_eq!(r["face"], json!("interior-finish"), "{r}");
+}
+
+#[test]
+fn a_core_outline_says_which_wall_has_no_core_and_an_offset_needs_an_outline() {
+    let mut s = Session::new();
+    house(&mut s);
+    let e = s.execute("floor", &json!({"outline": "interior-core"})).unwrap_err();
+    assert!(e.contains("100002") && e.contains("Generic - 200mm") && e.contains("core"), "{e}");
+    let e = s.execute("floor", &json!({"outline_offset": 50})).unwrap_err();
+    assert!(e.contains("outline_offset") && e.contains("outline"), "{e}");
+    let e = s.execute("floor", &json!({"outline": "interior-core", "boundary": [[0, 0], [1000, 0], [1000, 1000]]})).unwrap_err();
+    assert!(e.contains("boundary") && e.contains("outline"), "{e}");
+    let e = s.execute("floor", &json!({"outline": "middle"})).unwrap_err();
+    assert!(e.contains("interior-core") && e.contains("middle"), "{e}");
+    let f = run(&mut s, "floor", json!({}));
+    let id = f["id"].as_u64().unwrap_or_default();
+    let e = s.execute("edit_boundary", &json!({"id": id, "outline": "interior-core"})).unwrap_err();
+    assert!(e.contains("sketch"), "{e}");
+}
+
 #[test]
 fn a_sketched_elements_boundary_lies_at_its_own_height_in_3d() {
     let mut s = Session::new();

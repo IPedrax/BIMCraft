@@ -18147,6 +18147,96 @@ msgstr ""
 msgid "The drag plane is edge-on to this view."
 msgstr ""
 
+#: crates/ui-egui/src/sketch.rs:1387
+msgid "A wall has no core: the outline follows its finish face."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1320
+msgid "Click walls in the view to pick them: DRAW follows just those, or every wall when none is picked"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:514 crates/ui-egui/src/sketch.rs:1303
+#: crates/ui-egui/src/sketch.rs:1307
+msgid "Core"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1323 crates/ui-egui/src/sketch.rs:1324
+msgid "DRAW"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1323
+msgid "DRAW: redraw the outline, along the walls picked or every wall"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1810 crates/ui-egui/src/sketch.rs:1483
+msgid "Extend into wall (to core)"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1827 crates/ui-egui/src/sketch.rs:1008
+#: crates/ui-egui/src/sketch.rs:1500
+msgid "Offset: a number in {}"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1314
+msgid "Outline Offset:"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1360
+msgid "Outline Offset: a number in {}"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1560
+msgid "Pick Walls: a boundary line on the wall's core face under the pointer."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1562
+msgid "Pick Walls: a boundary line on the wall's finish face under the pointer."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1398
+msgid "This outline is already in the sketch: the same outline is not drawn twice."
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1818 crates/ui-egui/src/sketch.rs:1022
+msgid "This wall has no core: its faces are its finish faces."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:82
+msgid "Wall Centre Line"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1298
+msgid "Wall Component:"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1336 crates/ui-egui/src/sketch.rs:1347
+msgid "Wall of a boundary line is gone: the line stays as drawn."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1274
+msgid "Walls' Outline: choose the line and the walls on the Options Bar, then press DRAW"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1319
+msgid "Walls: all"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1319
+msgid "Walls: {}"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:512
+msgid "exterior"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:511
+msgid "interior"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:515
+msgid "{} — {}, Offset {}"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "留空的值表示使用族自身的值，如“参数”选项卡中所示。"

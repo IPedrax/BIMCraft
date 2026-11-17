@@ -36,7 +36,7 @@ use crate::rebar;
 use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
-use crate::walls::{self, Axis, stacked};
+use crate::walls::{self, Axis, Face as WallFace, stacked};
 use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
@@ -405,9 +405,14 @@ other_files(
         ui_msg!("Floor"),
         &[],
         "{boundary?: [[x,y],…], openings?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], level?, type?, offset?, slope?, arrow?: \
-         [[x,y],[x,y]], structural?} a slab (a structural one with `structural`, as Revit's Floor: Structural), its top at the level, or `offset` mm above it, open through `openings` (holes inside it, apart); no boundary = the outline \
-         of the level's walls along their centre lines, open over each loop of them standing free inside, joined to none of \
-         the outer ones and with no room in it (a courtyard). Sloped: its top rises `slope` degrees (negative, falls) along \
+         [[x,y],[x,y]], structural?, outline?: \"centre\" | \"exterior-finish\" | \"interior-finish\" | \"exterior-core\" | \
+         \"interior-core\", outline_offset?} a slab (a structural one with `structural`, as Revit's Floor: Structural), its top at \
+         the level, or `offset` mm above it, open through `openings` (holes inside it, apart); no boundary = the outline of the \
+         level's walls along their centre lines, or along `outline`'s face, `outline_offset` mm out from it (a positive offset \
+         moves the line away from the wall, so `interior-core` is the floor inside the finish faces and `interior-finish` is \
+         smaller still), open over each loop of them standing free inside, joined to none of the outer ones and with no room \
+         in it (a courtyard); a core outline needs every wall of the level to have a structural layer, and says which wall has \
+         none. Give `boundary` or `outline`, not both. Sloped: its top rises `slope` degrees (negative, falls) along \
          the slope arrow, from its tail, where it's at the offset, toward its head. Its top's model pattern starts at \
          `pattern_origin` and turns by `pattern_angle` (see modify). An outline, and each opening, is simple: \
          no edge across another or along it, none ending part way along one, no spike or keyhole slit (`ceiling`, `roof` \
@@ -429,15 +434,18 @@ other_files(
     other(
         "sketch",
         "Sketch",
-        "{lines: [[[x,y],[x,y]],…]} solves a sketch without making anything, as Finish Edit Mode does: lines in any order, \
-         either way round, joined end to end (within 1 mm) into closed loops; a loop inside no other (or inside a hole) an \
-         outline, counter-clockwise, one inside an outline a hole in it, clockwise. Gives each region's `outline`, `holes` and \
-         `area_m2`, or every problem with the lines it's about (numbered from 0): ends no other line meets, lines that \
-         intersect or overlap (a line too: a polyline round a bow tie crosses itself), three or more lines at a point. \
-         A sketch is solved as the straight pieces its lines are drawn with (an arc, a circle or a curve is cut into chords, \
-         a circle into up to 8,193): past 200,000 of them, or when they lie so close together that telling which cross \
-         takes more than six million steps, it is refused at once. `sketch` on floor, ceiling, roof and shaft, and \
-         edit_boundary, take the same lines for one outline and its holes",
+        "{lines: [[[x,y],[x,y]],…] | wall: id|guid, face: \"centre\" | \"exterior-finish\" | \"interior-finish\" | \
+         \"exterior-core\" | \"interior-core\", offset?: mm} solves a sketch without making anything, as Finish Edit Mode \
+         does: lines in any order, either way round, joined end to end (within 1 mm) into closed loops; a loop inside no \
+         other (or inside a hole) an outline, counter-clockwise, one inside an outline a hole in it, clockwise. Gives each \
+         region's `outline`, `holes` and `area_m2`, or every problem with the lines it's about (numbered from 0): ends no \
+         other line meets, lines that intersect or overlap (a line too: a polyline round a bow tie crosses itself), three \
+         or more lines at a point. With `wall`, gives that wall's line on `face`, `offset` mm from it, instead: the line \
+         Pick Walls would place; a core face of a wall with no core falls back to its finish face. A sketch is solved as \
+         the straight pieces its lines are drawn with (an arc, a circle or a curve is cut into chords, a circle into up to \
+         8,193): past 200,000 of them, or when they lie so close together that telling which cross takes more than six \
+         million steps, it is refused at once. `sketch` on floor, ceiling, roof and shaft, and edit_boundary, take the same \
+         lines for one outline and its holes",
         sketch_lines,
     ),
     edit(
@@ -457,7 +465,9 @@ other_files(
         "{id, sketch?: [[[x,y],[x,y]],…]} redraws a floor's, a ceiling's, a roof's footprint's or a shaft's outline and its \
          holes (a floor's or a ceiling's openings, a roof's courtyards; a shaft has none) as a sketch, all at once (see \
          `sketch`); a roof's gable edges stay gables where the new footprint has the same edge. Without `sketch`, gives the \
-         outline and holes it has now, as the lines to edit. The outline must be simple, as `floor` says; a line that \
+         outline and holes it has now, as the lines to edit. The line a Pick Walls placed in the window's sketch remembers its \
+         wall and face while that sketch is open, never in the project: a command gives every line by its coordinates, and \
+         `floor`'s `outline` takes their place. The outline must be simple, as `floor` says; a line that \
          crosses itself is found as two that cross are",
         edit_boundary,
     ),
@@ -3646,9 +3656,16 @@ fn wall_on_any_level(m: &Model, at: P2) -> Option<(Guid, f64)> {
 /// inside it, joined to none of the outer walls, with no room in them and in no other loop. A loop
 /// joined to the outer walls, or with a room in it, is rooms.
 pub fn floor_outline(m: &Model, level: impl Key) -> Option<(Vec<P2>, Vec<Vec<P2>>)> {
+    floor_outline_only(m, level, None)
+}
+
+/// [`floor_outline`] along the walls in `only` (none: every wall of the level), so Walls' Outline can follow just the
+/// walls picked in the view.
+pub fn floor_outline_only(m: &Model, level: impl Key, only: Option<&BTreeSet<Id>>) -> Option<(Vec<P2>, Vec<Vec<P2>>)> {
     let level = m.guid(level);
     // Each piece's outline, clockwise, the largest first.
-    let mut pieces: Vec<Vec<P2>> = geom::faces(&m.wall_lines(level), TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
+    let mut pieces: Vec<Vec<P2>> =
+        geom::faces(&outline_lines(m, &level, only), TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
     pieces.sort_by(|a, b| geom::area(a).total_cmp(&geom::area(b)));
     let (outer, inner) = pieces.split_first()?;
     // The loops standing free inside the outline: the other pieces, inside it. Whether loop `a`
@@ -3669,6 +3686,189 @@ pub fn floor_outline(m: &Model, level: impl Key) -> Option<(Vec<P2>, Vec<Vec<P2>
     // Courtyards: the outermost loops, outdoors.
     let courtyards = (0..loops.len()).filter(|&a| !nested(a) && !indoors.contains(&a)).map(|a| tidy(loops[a])).collect();
     Some((outer.iter().rev().copied().collect(), courtyards))
+}
+
+/// The centre lines of the walls of `level` in `only` (none: all of them), as segments, as [`floor_outline`] reads them.
+fn outline_lines(m: &Model, level: &Guid, only: Option<&BTreeSet<Id>>) -> Vec<(P2, P2)> {
+    let Some(only) = only else { return m.wall_lines(*level) };
+    let mut lines = Vec::new();
+    for id in m.bounding_walls(level, false) {
+        if only.contains(&id) {
+            lines.extend(geom::ring_edges(&walls::centre_line(m, id)));
+        }
+    }
+    lines
+}
+
+/// The outline `floor` gives a floor on `level` along a face of the walls around it, out `offset` mm from that face,
+/// and its courtyards: the face of each wall that the floor lies on. `Interior...` is the side the floor is on, and
+/// `Exterior...` the other, so a core outline is a slab to the core faces, inside the finish. A positive offset moves
+/// the line away from the wall, as the Options Bar's Offset does. A wall with no structural layer is an error when a
+/// core face is asked for, naming it; a centre outline with no offset is [`floor_outline`].
+pub fn floor_outline_faces(m: &Model, level: impl Key, face: WallFace, offset: f64) -> Result<(Vec<P2>, Vec<Vec<P2>>), String> {
+    floor_outline_faces_of(m, level, face, offset, None, false)
+}
+
+/// [`floor_outline_faces`] along the walls in `only` (none: every wall of the level), so Walls' Outline can follow just
+/// the walls picked in the view.
+pub fn floor_outline_faces_of(
+    m: &Model,
+    level: impl Key,
+    face: WallFace,
+    offset: f64,
+    only: Option<&BTreeSet<Id>>,
+    centre_outward: bool,
+) -> Result<(Vec<P2>, Vec<Vec<P2>>), String> {
+    let level = m.guid(level);
+    if face == WallFace::Centre && offset == 0.0 {
+        return floor_outline_only(m, level, only)
+            .ok_or_else(|| format!("no walls enclose an area on {}; give `boundary`", level_name(m, level)));
+    }
+    // The centre-line outline says which side of each wall the floor is on.
+    let mut pieces: Vec<Vec<P2>> =
+        geom::faces(&outline_lines(m, &level, only), TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
+    pieces.sort_by(|a, b| geom::area(a).total_cmp(&geom::area(b)));
+    let (outer, inner) = match pieces.split_first() {
+        Some((outer, inner)) => (outer, inner),
+        None => return Err(format!("no walls enclose an area on {}; give `boundary`", level_name(m, level))),
+    };
+    let loops: Vec<&Vec<P2>> = inner.iter().filter(|f| f.iter().all(|q| geom::contains(outer, *q))).collect();
+    let nested = |a: usize| (0..loops.len()).any(|b| b != a && loops[a].iter().all(|q| geom::contains(loops[b], *q)));
+    let around = |p: P2| {
+        (0..loops.len()).filter(|&a| geom::contains(loops[a], p)).max_by(|&a, &b| geom::area(loops[a]).total_cmp(&geom::area(loops[b])))
+    };
+    let indoors: Vec<usize> = m
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Room(r) if r.level == level => around(r.point),
+            _ => None,
+        })
+        .collect();
+    let courtyards: Vec<Vec<P2>> = (0..loops.len()).filter(|&a| !nested(a) && !indoors.contains(&a)).map(|a| tidy(loops[a])).collect();
+    let inside = |q: P2| geom::contains(outer, q) && !courtyards.iter().any(|c| geom::contains(c, q));
+    let mut lines: Vec<Vec<P2>> = Vec::new();
+    let mut thickest: f64 = TOL;
+    for id in m.bounding_walls(&level, false).collect::<Vec<_>>() {
+        if only.is_some_and(|only| !only.contains(&id)) {
+            continue;
+        }
+        let Some(w) = m.wall(id) else { continue };
+        let (ext, int) = walls::faces(m, w);
+        let thickness = (ext - int).abs();
+        thickest = thickest.max(thickness);
+        let axis = Axis::of(w);
+        let mid = axis.length() / 2.0;
+        // Just off either face: which side the floor's area is on.
+        let probe = thickness / 2.0 + 1.0;
+        let inside_left = match (inside(axis.at(mid, probe)), inside(axis.at(mid, -probe))) {
+            (true, false) => true,
+            (false, true) => false,
+            // A wall wholly inside the floor, or outside it (a partition): the left side, as a floor round the room.
+            _ => true,
+        };
+        let side_left = match face {
+            WallFace::Centre => true,
+            WallFace::ExteriorFinish | WallFace::ExteriorCore => !inside_left,
+            WallFace::InteriorFinish | WallFace::InteriorCore => inside_left,
+        };
+        let core = face.is_core();
+        let resolved = match (face == WallFace::Centre, side_left, core) {
+            (true, _, _) => WallFace::Centre,
+            (false, true, false) => WallFace::ExteriorFinish,
+            (false, false, false) => WallFace::InteriorFinish,
+            (false, true, true) => WallFace::ExteriorCore,
+            (false, false, true) => WallFace::InteriorCore,
+        };
+        if core && walls::core_faces(m, w).is_none() {
+            return Err(format!(
+                "wall {id} ({}): it has no core (its type has no structural layer); give a finish outline, or give the wall a core",
+                w.type_name
+            ));
+        }
+        // A centre-line offset goes toward the floor, into the loop, on every wall whatever way it was drawn; Space
+        // turns that round to the outside.
+        let offset = if face == WallFace::Centre {
+            let inward = if inside_left { offset } else { -offset };
+            if centre_outward { -inward } else { inward }
+        } else {
+            offset
+        };
+        if let Some(line) = walls::face_line(m, id, resolved, offset) {
+            let pts = line.points();
+            if pts.len() >= 2 {
+                lines.push(pts);
+            }
+        }
+    }
+    // Lines of walls of different thickness meet at a corner a little apart: each pair of ends that belong to the same
+    // corner is run on to the point where their lines cross, so a corner stays square and is not cut at 45°. Offset
+    // moves the ends too, so the gap a corner may leave grows with it by twice.
+    let reach = thickest + 2.0 * offset.abs() + TOL;
+    let ends: Vec<(usize, usize, P2)> = lines
+        .iter()
+        .enumerate()
+        .flat_map(|(i, l)| {
+            let last = l.len() - 1;
+            [(i, 0, l[0]), (i, last, l[last])]
+        })
+        .collect();
+    let mut joins: Vec<(P2, P2)> = Vec::new();
+    let mut met = vec![false; ends.len()];
+    for a in 0..ends.len() {
+        if met[a] {
+            continue;
+        }
+        let (ai, api, ap) = ends[a];
+        let near = (a + 1..ends.len())
+            .filter(|&b| !met[b] && ends[b].0 != ai)
+            .filter_map(|b| {
+                let d = ap.dist(ends[b].2);
+                (d <= reach).then_some((b, d))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        let Some((b, _)) = near else { continue };
+        let (bi, bpi, bp) = ends[b];
+        let way = |li: usize, pi: usize| {
+            let pts = &lines[li];
+            if pi == 0 { pts.get(1).map(|q| pts[pi] - *q) } else { pts.get(pi - 1).map(|q| pts[pi] - *q) }
+        };
+        let crossing = way(ai, api).zip(way(bi, bpi)).and_then(|(da, db)| geom::line_intersection(ap, ap + da, bp, bp + db));
+        match crossing.filter(|x| x.dist(ap) <= reach && x.dist(bp) <= reach) {
+            Some(x) => {
+                lines[ai][api] = x;
+                lines[bi][bpi] = x;
+            }
+            // Walls running the same way, or a corner too far to miter: a short segment still closes it.
+            None if ap.dist(bp) > TOL => joins.push((ap, bp)),
+            None => {}
+        }
+        met[a] = true;
+        met[b] = true;
+    }
+    let mut segs: Vec<(P2, P2)> = lines.iter().flat_map(|l| geom::ring_edges(l)).collect();
+    segs.extend(joins);
+    let mut faces: Vec<Vec<P2>> = geom::faces(&segs, TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
+    faces.sort_by(|a, b| geom::area(a).total_cmp(&geom::area(b)));
+    let (outer, inner) = match faces.split_first() {
+        Some((outer, inner)) => (outer, inner),
+        None => return Err(format!("no walls enclose an area on {}; give `boundary`", level_name(m, level))),
+    };
+    let loops: Vec<&Vec<P2>> = inner.iter().filter(|f| f.iter().all(|q| geom::contains(outer, *q))).collect();
+    let nested = |a: usize| (0..loops.len()).any(|b| b != a && loops[a].iter().all(|q| geom::contains(loops[b], *q)));
+    let around = |p: P2| {
+        (0..loops.len()).filter(|&a| geom::contains(loops[a], p)).max_by(|&a, &b| geom::area(loops[a]).total_cmp(&geom::area(loops[b])))
+    };
+    let indoors: Vec<usize> = m
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Room(r) if r.level == level => around(r.point),
+            _ => None,
+        })
+        .collect();
+    let courtyards = (0..loops.len()).filter(|&a| !nested(a) && !indoors.contains(&a)).map(|a| tidy(loops[a])).collect();
+    Ok((outer.iter().rev().copied().collect(), courtyards))
 }
 
 /// A ring by its corners, to the micron, from its south-west corner.
@@ -10964,12 +11164,32 @@ fn floor(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let level = level_param(c, m, p, "level")?;
     let type_name = type_param(c, p, m, "floor")?;
+    let outline = match string(c, p, "outline")? {
+        Some(name) => Some(WallFace::parse(&name).ok_or_else(|| {
+            let names: Vec<&str> = WallFace::ALL.iter().map(|f| f.named()).collect();
+            bad(c, format!("`outline` is one of {}, not `{name}`", names.join(", ")))
+        })?),
+        None => None,
+    };
+    let outline_offset = num(c, p, "outline_offset")?.unwrap_or(0.0);
+    if outline.is_none() && p.get("outline_offset").is_some_and(|v| !v.is_null()) {
+        return Err(bad(c, "`outline_offset` needs `outline`: say which face to offset from"));
+    }
+    if outline.is_some() && !absent(p.get("boundary")) {
+        return Err(bad(c, "give either `boundary` or `outline`, not both"));
+    }
+    if outline.is_some() && !absent(p.get("sketch")) {
+        return Err(bad(c, "give either `sketch` or `outline`, not both"));
+    }
     let (mut boundary, openings, sketch) = match sketched(c, p, "openings", &[])? {
         Some((r, lines)) => (r.outer, r.holes, lines),
         None => {
             let (boundary, found) = match absent(p.get("boundary")) {
-                true => floor_outline(m, level)
-                    .ok_or_else(|| bad(c, format!("no walls enclose an area on {}; give `boundary`", level_name(m, level))))?,
+                true => match outline {
+                    Some(face) => floor_outline_faces(m, level, face, outline_offset).map_err(|e| bad(c, e))?,
+                    None => floor_outline(m, level)
+                        .ok_or_else(|| bad(c, format!("no walls enclose an area on {}; give `boundary`", level_name(m, level))))?,
+                },
                 false => (ring(points(c, p, "boundary")?), Vec::new()),
             };
             (boundary, rings(c, p, "openings")?.unwrap_or(found), Vec::new())
@@ -11004,7 +11224,12 @@ fn floor(s: &mut Session, p: &Value) -> R {
         pattern_origin: P2(0.0, 0.0),
         pattern_angle: 0.0,
     }));
-    Ok(json!({"id": id, "area_m2": area}))
+    let mut reply = json!({"id": id, "area_m2": area});
+    if let Some(face) = outline {
+        reply["outline"] = json!(face.named());
+        reply["outline_offset"] = json!(outline_offset);
+    }
+    Ok(reply)
 }
 
 fn ceiling(s: &mut Session, p: &Value) -> R {
@@ -13383,8 +13608,28 @@ fn rings(c: &str, p: &Value, key: &str) -> Result<Option<Vec<Vec<P2>>>, String> 
     Ok(Some(given.into_iter().map(ring).collect()))
 }
 
-fn sketch_lines(_: &mut Session, p: &Value) -> R {
+fn sketch_lines(s: &mut Session, p: &Value) -> R {
     let c = "sketch";
+    if let Some(wall) = p.get("wall").filter(|v| !v.is_null()) {
+        let m = &s.model;
+        let id = element_id(c, m, wall)?;
+        let w = m.wall(id).ok_or_else(|| bad(c, format!("element {id} is not a wall")))?;
+        let name = string(c, p, "face")?.ok_or_else(|| bad(c, "`face` is required with `wall`"))?;
+        let mut face = WallFace::parse(&name).ok_or_else(|| {
+            let names: Vec<&str> = WallFace::ALL.iter().map(|f| f.named()).collect();
+            bad(c, format!("`face` is one of {}, not `{name}`", names.join(", ")))
+        })?;
+        let offset = num(c, p, "offset")?.unwrap_or(0.0);
+        if !offset.is_finite() {
+            return Err(bad(c, "`offset` must be a finite length"));
+        }
+        if face.is_core() && walls::core_faces(m, w).is_none() {
+            face = face.with_core(false);
+        }
+        let line = walls::face_line(m, id, face, offset).ok_or_else(|| bad(c, format!("wall {id} has no line on {}", face.named())))?;
+        let line = serde_json::to_value(crate::curves::Fields::of(&line)).unwrap_or_default();
+        return Ok(json!({"wall": id, "face": face.named(), "offset": offset, "line": line}));
+    }
     let lines = sketch_param(c, p, "lines", &[])?.ok_or_else(|| bad(c, "`lines` [[[x,y],[x,y]],…] is required"))?;
     let profile = sketch::solve(&lines)
         .map_err(|e| bad(c, format!("the lines don't make closed loops: {}", sketch::say(&e, &sketch::namer(&lines)))))?;
@@ -13426,6 +13671,9 @@ fn boundary_now(e: &Element) -> Option<Vec<SketchLine>> {
 /// Revit's Edit Boundary: an element's outline and its holes redrawn as one sketch.
 fn edit_boundary(s: &mut Session, p: &Value) -> R {
     let c = "edit_boundary";
+    if !absent(p.get("outline")) || !absent(p.get("outline_offset")) {
+        return Err(bad(c, "`outline` and `outline_offset` are for `floor`, not `edit_boundary`: give the lines in `sketch`"));
+    }
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor, ceiling, roof or shaft to edit, is required"))?;
     let e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;

@@ -696,6 +696,25 @@ pub struct BimApp {
     /// The Floor tool makes structural floors; the Beam tool's justification and height over the level; the footing tools'
     /// thickness and the height of their tops.
     floor_structural: bool,
+    /// Pick Walls' Options Bar: whether a boundary line goes on a wall's core face (else its finish) and how far out
+    /// from the face it lies, in the project's units. They last while the sketch is open.
+    pub(crate) pick_core: bool,
+    pub(crate) pick_offset: String,
+    /// Pick Walls' line on the other side of its wall, as Space flips it: its face mirrored across the wall.
+    pub(crate) pick_flip: bool,
+    /// Walls' Outline: the line of the walls the contour follows (their centre line, their interior or their exterior
+    /// face), which component of a wall that face is (its finish or its core) and how far out from it the line lies.
+    pub(crate) outline_side: crate::sketch::OutlineSide,
+    pub(crate) outline_core: bool,
+    pub(crate) outline_offset: String,
+    /// A centre-line outline offset to the outside of the loop, as Space turns it; by default it goes inside.
+    pub(crate) outline_flip: bool,
+    /// Walls' Outline asked for and its Options Bar open: the contour is made when DRAW is pressed there.
+    pub(crate) outline_pending: bool,
+    /// The walls picked for Walls' Outline: DRAW follows these alone, and with none it follows every wall of the level.
+    pub(crate) outline_walls: BTreeSet<Id>,
+    /// The sketch Line chain's first and last line indices while Offset draws it: corners are trimmed to meet.
+    pub(crate) sketch_line_chain: Option<(usize, usize)>,
     run_justify: Justify,
     beam_offset: String,
     /// The Options Bar's justification and offset of the run tools not on screen, by category, and whose are.
@@ -1638,6 +1657,16 @@ impl BimApp {
             column_top: None,
             column_height: units.length(3000.0),
             floor_structural: false,
+            pick_core: true,
+            pick_offset: String::new(),
+            pick_flip: false,
+            outline_side: crate::sketch::OutlineSide::Interior,
+            outline_core: true,
+            outline_offset: String::new(),
+            outline_flip: false,
+            outline_pending: false,
+            outline_walls: BTreeSet::new(),
+            sketch_line_chain: None,
             run_justify: Justify::Top,
             beam_offset: units.length(0.0),
             run_kept: BTreeMap::new(),
@@ -2533,6 +2562,37 @@ impl BimApp {
         if pressed(Modifiers::COMMAND, Key::Comma) {
             self.settings_page = Some(settings::Page::Interface);
         }
+        // Space in Walls' Outline's Offset field turns a centre-line offset from the inside to the outside, instead of
+        // typing a space.
+        if self.outline_pending
+            && self.outline_side == crate::sketch::OutlineSide::Axis
+            && ctx.memory(|m| m.has_focus(egui::Id::new("outline-offset")))
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            self.outline_flip = !self.outline_flip;
+            ctx.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(t) if t.trim().is_empty())));
+            return;
+        }
+        // Space in Pick Walls' Offset field flips the line to the other face of its wall.
+        if matches!(self.tool, Tool::SketchPick)
+            && ctx.memory(|m| m.has_focus(egui::Id::new("pick-offset")))
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            self.pick_flip = !self.pick_flip;
+            ctx.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(t) if t.trim().is_empty())));
+            return;
+        }
+        // Space in the Offset field flips the side the offset is drawn on, instead of typing a space: the preview and
+        // the line the last click makes follow it.
+        if self.target().is_some()
+            && self.shape().takes_offset()
+            && ctx.memory(|m| m.has_focus(egui::Id::new("draw-offset")))
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            self.drawing.offset_flip = !self.drawing.offset_flip;
+            ctx.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(t) if t.trim().is_empty())));
+            return;
+        }
         // A text field has the letters: there Ctrl's own keys that aren't a field's act at once, and no shortcut is typed.
         if ctx.egui_wants_keyboard_input() {
             for (key, letter) in [(Key::S, 'S'), (Key::O, 'O'), (Key::N, 'N'), (Key::K, 'K'), (Key::P, 'P'), (Key::Num1, '1')] {
@@ -2629,6 +2689,18 @@ impl BimApp {
         {
             *place = true;
             *start = None;
+        }
+        // Space while Walls' Outline follows a centre line: its offset goes from the loop's inside to its outside.
+        if self.outline_pending && self.outline_side == crate::sketch::OutlineSide::Axis && pressed(Modifiers::NONE, Key::Space) {
+            self.outline_flip = !self.outline_flip;
+        }
+        // Space while Pick Walls is on: its line goes to the other face of the wall.
+        if matches!(self.tool, Tool::SketchPick) && pressed(Modifiers::NONE, Key::Space) {
+            self.pick_flip = !self.pick_flip;
+        }
+        // Space while a Draw tool is on: its Offset goes to the other side, in the preview and in what the click makes.
+        if self.target().is_some() && self.shape().takes_offset() && pressed(Modifiers::NONE, Key::Space) {
+            self.drawing.offset_flip = !self.drawing.offset_flip;
         }
         // Space steps the Dimension tool's lay: Auto, Aligned, Horizontal, Vertical.
         if let Tool::Dimension(mode, _) = &mut self.tool
@@ -3250,6 +3322,12 @@ impl BimApp {
     fn set_tool(&mut self, mut tool: Tool) {
         self.adaptive_clicks.clear();
         self.note_arrow = None;
+        // Another tool takes the Options Bar: Walls' Outline's own closes, putting no outline in the sketch. The Modify
+        // arrow is the one Walls' Outline itself uses, so choosing it leaves the mode on.
+        self.sketch_line_chain = None;
+        if tool != Tool::Modify {
+            self.leave_walls_outline();
+        }
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -3610,6 +3688,13 @@ impl BimApp {
         self.canvas.pins.borrow_mut().clear();
         self.canvas.start_edge = None;
         self.canvas.wall_face = None;
+        // Walls' Outline's Options Bar clears its walls first: the mode itself stays on.
+        if self.outline_pending {
+            self.outline_walls.clear();
+            self.selection.clear();
+            self.status = Status::default();
+            return;
+        }
         // A note's leader point clicked goes first, the Text tool staying on.
         if self.note_arrow.take().is_some() {
             self.status = Status::default();
@@ -3644,6 +3729,7 @@ impl BimApp {
         }
         self.typed.clear();
         self.ribbon_peek = false;
+        self.sketch_line_chain = None;
         // A snap override waiting for its point goes first, leaving what's being drawn.
         if self.snap_once.take().is_some() {
             return;
@@ -5916,11 +6002,15 @@ impl BimApp {
                 return;
             }
             if self.sketch.is_some() {
+                let pending = self.outline_pending;
                 self.sketch_options(ui);
-                match self.tool {
-                    Tool::SketchLine(_) => self.shape_options(ui),
-                    Tool::Offset => self.offset_options(ui),
-                    _ => {}
+                // Walls' Outline's own Options Bar stands alone until its DRAW.
+                if !pending {
+                    match self.tool {
+                        Tool::SketchLine(_) => self.shape_options(ui),
+                        Tool::Offset => self.offset_options(ui),
+                        _ => {}
+                    }
                 }
                 return;
             }

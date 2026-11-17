@@ -1635,6 +1635,7 @@ impl BimApp {
             self.opening_picker(ui, &model);
             self.floor_slope(ui, &model);
             self.sketch_slope(ui);
+            self.sketch_pick(ui);
             if !ids.is_empty() {
                 self.parameters(ui, &model, &ids, rows);
                 if let Subject::Element(id) = subject {
@@ -1942,6 +1943,60 @@ impl BimApp {
                 };
             }
         }
+    }
+
+    /// A boundary line that Pick Walls placed, picked alone in Modify: the wall it came from, whether it follows the
+    /// wall's core or its finish, and its offset. A change puts the line back on the face and is one step of the sketch's
+    /// undo, as a grip moved is.
+    fn sketch_pick(&mut self, ui: &mut Ui) {
+        let Some(sk) = &self.sketch else { return };
+        if !matches!(self.tool, Tool::Modify) {
+            return;
+        }
+        let picked: Vec<usize> = sk.picked.iter().copied().collect();
+        let [i] = picked[..] else { return };
+        let Some(p) = sk.picks.get(&i).copied() else { return };
+        let m = Arc::clone(&self.session.model);
+        let Some(w) = m.wall(p.wall) else { return };
+        let mut core = p.face.is_core();
+        let mut typed = None;
+        grid(ui, ("sketch-pick", i), |ui| {
+            let name = ui.label(t("Wall"));
+            let _ = name;
+            ui.label(format!("{} ({})", w.type_name, p.wall));
+            ui.end_row();
+            ui.checkbox(&mut core, t("Extend into wall (to core)"));
+            ui.end_row();
+            let name = ui.label(t("Offset:"));
+            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.units.length(p.offset), name.id, m.units.name());
+            ui.end_row();
+        });
+        let face_changed = core != p.face.is_core();
+        if face_changed && core && bimcraft_core::walls::core_faces(&m, w).is_none() {
+            self.status = Status { text: msg!("This wall has no core: its faces are its finish faces.").into(), error: true };
+            return;
+        }
+        let offset = match typed {
+            Some(text) if text.trim().is_empty() => Some(0.0),
+            Some(text) => m.units.parse(&text),
+            None => Some(p.offset),
+        };
+        let Some(offset) = offset else {
+            self.status = Status { text: tf("Offset: a number in {}", &[m.units.name()]), error: true };
+            return;
+        };
+        if !face_changed && (offset - p.offset).abs() <= f64::EPSILON {
+            return;
+        }
+        if let Some(sk) = &mut self.sketch
+            && let Some(p) = sk.picks.get_mut(&i)
+        {
+            if face_changed {
+                p.face = p.face.with_core(core);
+            }
+            p.offset = offset;
+        }
+        self.refit_picks();
     }
 
     /// The Type Selector: the category and the type of what the palette shows, a drop-down of
