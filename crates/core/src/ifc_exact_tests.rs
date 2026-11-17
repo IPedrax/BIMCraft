@@ -429,7 +429,7 @@ fn a_file_with_a_tilted_bolt_is_of_a_format_0_12_refuses_as_newer_rather_than_st
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     // 0.12 reads up to 20 and would leave `tilt` out without a word, standing the bolt up: a file that can hold one is newer.
     assert_eq!(v["format"], FORMAT);
-    assert!(FORMAT > 20, "{FORMAT}");
+    const { assert!(FORMAT > 20) };
     let mut newer = v.clone();
     newer["format"] = serde_json::json!(FORMAT + 1);
     let e = Model::read(&newer.to_string()).unwrap_err();
