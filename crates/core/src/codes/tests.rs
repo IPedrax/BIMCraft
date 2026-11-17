@@ -1819,7 +1819,7 @@ fn demand_and_building_demand_take_the_methods_the_project_s_code_names() {
 
     // What can't be named is refused, and the project stays as it was.
     for p in [
-        json!({"electrical": {"demand": "COPEL"}}),
+        json!({"electrical": {"demand": "EDP"}}),
         json!({"electrical": {"demand": ""}}),
         json!({"electrical": {"building_demand": "DIN 18015-1"}}),
         json!({"electrical": {"building_demand": 5}}),
