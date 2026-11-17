@@ -380,6 +380,16 @@ fn the_tools_read_the_model_and_list_commands_by_filter() {
     let wall = wall["elements"][0]["id"].clone();
     run(&mut s, "execute", json!({"command": "door", "params": {"at": [2000, 0]}})).unwrap();
     assert_eq!(run(&mut s, "query_elements", json!({"host": wall})).unwrap()["count"], 1);
+    // The components standing in a room.
+    run(
+        &mut s,
+        "execute",
+        json!({"command": "wall", "params": {"points": [[10000, 0], [14000, 0], [14000, 4000], [10000, 4000]], "closed": true}}),
+    )
+    .unwrap();
+    let room = run(&mut s, "execute", json!({"command": "room", "params": {"point": [12000, 2000]}})).unwrap()["id"].clone();
+    run(&mut s, "execute", json!({"command": "component", "params": {"family": "Outlet", "at": [11000, 1000]}})).unwrap();
+    assert_eq!(run(&mut s, "query_elements", json!({"room": room})).unwrap()["count"], 1);
 }
 
 #[test]
