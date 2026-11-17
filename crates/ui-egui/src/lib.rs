@@ -905,9 +905,11 @@ pub struct BimApp {
     snap_once: Option<Once>,
     /// The Measure tool's last ruler: where it starts and ends.
     measured: Option<(P2, P2)>,
-    /// Tab pressed over the plan, taken from egui's focus keys: cycle what's under the cursor, or step the numbers a
-    /// shape is typed by.
+    /// Tab pressed over the plan, taken from egui's focus keys: step the numbers a shape is typed by, or before its first
+    /// point cycle what's under the cursor.
     tab_cycle: bool,
+    /// Shift+Tab pressed over the plan: cycle the lines of the wall under the pointer, mid-chain or before the first point.
+    face_cycle: bool,
     /// What a window handed over that `pace` kept back for the frames after the one it came in.
     held: Vec<Event>,
     /// The Keyboard Shortcuts dialog is open (KS); the Manage tab drops its Project Units menu open
@@ -1757,6 +1759,7 @@ impl BimApp {
             cad_box: None,
             link_box: None,
             tab_cycle: false,
+            face_cycle: false,
             held: Vec::new(),
             show_shortcuts: false,
             custom_shortcuts: BTreeMap::new(),
@@ -7055,9 +7058,19 @@ impl eframe::App for BimApp {
             bench.input(raw);
         }
         self.pace(&mut raw.events);
-        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight.
+        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight. Tab steps the
+        // reading's fields; Shift+Tab steps the lines of the wall under the pointer, which a chain in hand would
+        // otherwise never reach, `Tab` being the fields' from its first point on.
         if self.canvas.hovering() && self.active_family().is_none() && !ctx.egui_wants_keyboard_input() {
-            self.tab_cycle |= raw.events.iter().any(|e| matches!(e, Event::Key { key: Key::Tab, pressed: true, .. }));
+            for event in &raw.events {
+                if let Event::Key { key: Key::Tab, pressed: true, modifiers, .. } = event {
+                    if modifiers.shift {
+                        self.face_cycle = true;
+                    } else {
+                        self.tab_cycle = true;
+                    }
+                }
+            }
             raw.events.retain(|e| !matches!(e, Event::Key { key: Key::Tab, .. }));
         }
     }
