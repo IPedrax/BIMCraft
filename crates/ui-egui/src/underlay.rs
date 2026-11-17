@@ -460,6 +460,7 @@ impl BimApp {
                 if let Some(error) = self.underlay_error.as_ref() {
                     ui.colored_label(crate::style::pal().error, error);
                 }
+                ui.weak(t("A working aid: an underlay is not printed or exported."));
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {

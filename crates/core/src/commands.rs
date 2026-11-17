@@ -1428,8 +1428,9 @@ other_files(
          (mm, in the view's own axes: a plan's east and north, a section's along and up) and `angle` (degrees \
          counter-clockwise) set where it is, `move` moves it by as much again, `rotate` turns it by that many degrees about \
          `about` (the internal origin's place without one), and `reset` puts it back on the internal origin. The underlay is \
-         the view's, saved with it, and a duplicate of the view has it too. Without any of these it only says what the view \
-         has",
+         the view's, saved with it, and a duplicate of the view has it too. It is not Revit's Underlay (a plan's range of \
+         levels), and a working aid: it is not printed, exported or put on sheets. Without any of these it only says what the \
+         view has",
         underlay_cmd,
     ),
     edit(

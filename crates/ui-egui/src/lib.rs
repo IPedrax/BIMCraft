@@ -432,7 +432,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 68] = [
+const SHORTCUTS: [(&str, &str); 69] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -506,6 +506,8 @@ const SHORTCUTS: [(&str, &str); 68] = [
     ("XS", "Stop"),
     // Revit has no Classification Manager; CI is free there and here.
     ("CI", "Classification Manager"),
+    // Revit has no Underlay Settings of this kind (its Underlay is a plan's range of levels); UD is free there and here.
+    ("UD", "Underlay Settings"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -2890,6 +2892,16 @@ impl BimApp {
             }
             "CI" => {
                 self.open_classification();
+                return true;
+            }
+            // The plan, section or elevation on screen: its underlay's settings, where a view with none picks one.
+            "UD" => {
+                match self.underlay_target() {
+                    Some(view) => self.underlay_dialog = Some(view),
+                    None => {
+                        self.status = Status { text: t("Underlay Settings is for a plan, a section or an elevation").into(), error: true }
+                    }
+                }
                 return true;
             }
             "EU" | "UE" => {

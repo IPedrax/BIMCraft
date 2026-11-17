@@ -1068,6 +1068,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
         "Player",
         "Run Script",
         "New Script",
+        "Underlay Settings",
     ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {

@@ -913,10 +913,11 @@ the mark back at the middle.
 
 ## Underlays
 
-A plan, a section or an elevation may show another view under it (or over it), as Archicad's Trace & Reference does, and more
-freely than Revit's Underlay, which is a plan's level below or above only: any plan (a level's or a plan view), section or
-elevation but itself, drawn as its own view range, graphics (Visibility/Graphics, its template, detail level, scale) and crop
-draw it. It is the view's own, saved with it (`Level::underlay`, `PlanView::underlay`, `Section::underlay`: `underlay.rs`'s
+A plan, a section or an elevation may show another view under it (or over it). It is Archicad's Trace & Reference, not Revit's
+Underlay: Revit's shows a plan the elements of a range of levels, looking down or up, which BIMCraft doesn't offer (a view's range
+and orientation are its own, and a ceiling plan shows no underlay). It is a working aid, not printed, exported or put on sheets.
+Any plan (a level's or a plan view), section or elevation but itself can be shown, drawn as its own view range, graphics
+(Visibility/Graphics, its template, detail level, scale) and crop draw it. It is the view's own, saved with it (`Level::underlay`, `PlanView::underlay`, `Section::underlay`: `underlay.rs`'s
 `Underlay`), and a duplicate of the view has it too; deleting the view an underlay shows takes it off the views that showed it. The
 `underlay` command sets it: `source` (null takes it off), `on`, `color`,
 `fills`, `hide_annotation` (on by default: dimensions, tags, notes, grids, levels, marks and other annotation categories,
@@ -943,9 +944,11 @@ about `about`, and `reset`.
   changes nothing costs a draw call. Behind the view it is painted over the paper and the background grid and under the
   drawing (a section's picture lets it through, its paper clear, as under a background grid); in front, over the drawing.
   Properties' Underlay group has Show Underlay (on with nothing chosen yet, a plan's starts with the level below, else above),
-  the view it shows and Underlay Settings, which has the rest; Move (two points) and Rotate (a centre and two rays) pick in
+  the view it shows and Underlay Settings (UD opens it for the view on screen), which has the rest and says an underlay is a
+  working aid, not printed or exported; Move (two points) and Rotate (a centre and two rays) pick in
   the view while the dialog stands aside, Esc stops them, and Reset Position puts it back. The Project Browser's right-click
   Show as Underlay puts a plan, section or elevation under the view on screen. A ceiling plan shows none.
-- **Not yet:** an underlay is not printed, exported or drawn on sheets; a source view's own underlay isn't drawn in it; a change
+- **Not yet:** an underlay is not printed, exported or drawn on sheets, by design for now (Underlay Settings says so); a source
+  view's own underlay isn't drawn in it; a change
   to another level still makes it again (a revision check on what the source shows would spare that).
 

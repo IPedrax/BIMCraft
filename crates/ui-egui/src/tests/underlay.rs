@@ -123,3 +123,18 @@ fn the_browser_shows_a_view_as_the_underlay_of_the_view_on_screen() {
     h.state_mut().show_as_underlay(one);
     assert_eq!(underlay(&h, view).map(|u| h.state().session.model.elements.id(u.view)), Some(Some(one)));
 }
+
+#[test]
+fn ud_opens_the_underlay_settings_of_the_view_on_screen_and_says_why_not_in_3d() {
+    let mut h = app(FLOORS);
+    let view = level_two(&mut h);
+    shortcut(&mut h, "UD");
+    assert_eq!(h.state().underlay_dialog, Some(view));
+    assert!(h.query_by_label("Underlay Settings: Level 2").is_some(), "with no underlay yet, it is where one is picked");
+    assert!(h.query_all_by_label_contains("not printed or exported").next().is_some(), "and it says an underlay is a working aid");
+    press(&mut h, "Close");
+    assert_eq!(h.state().underlay_dialog, None);
+    shortcut(&mut h, "3D");
+    shortcut(&mut h, "UD");
+    assert!(h.state().underlay_dialog.is_none() && h.state().status.error, "{}", h.state().status.text);
+}
