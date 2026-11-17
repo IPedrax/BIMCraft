@@ -77,8 +77,10 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
   share runs in about 25 seconds, the whole workspace's in a couple of minutes once built.
 - That one, `hostile_params_never_panic_or_break_the_model` (`tests.rs`), sweeps every command with every hostile input and takes about a
   minute on twelve cores; its cost grows with the commands and the payloads. Run it before you finish (`cargo test --workspace`); CI
-  always does. A new command gets payloads with its real keys and a target in the sweep's base project (the detailing commands' are
-  `detail_tests::sweep_payloads`, which also makes the base's detail lines, regions, group and Linework).
+  runs it on Linux only, with the two random-edit oracles of the 3D scene (`view3d::update::tests::random_edits_*`): they check the
+  model's logic, and were two thirds of the core's test time on Windows. A new command gets payloads with its real keys and a
+  target in the sweep's base project (the detailing commands' are `detail_tests::sweep_payloads`, which also makes the base's
+  detail lines, regions, group and Linework).
 - Drawings and IFC are tested through their output (pixels of the PNG, entity references in the STEP file), not through the
   structures that make them.
 

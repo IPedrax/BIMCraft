@@ -36,8 +36,11 @@ jobs:
           - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
           # Windows and macOS compile slowly (Windows 32 minutes, macOS 35, Linux 13) and took 74 to 92 and 64 to 86 minutes in all on
           # main. Their crates are built without debug info and the timings are kept (below), so a slow run shows what is left to cut.
-          - { name: Windows, runner: windows-latest, timeout: 100, test_flags: '--config ci/fast-build.toml --timings' }
-          - { name: macOS, runner: macos-15, timeout: 120, test_flags: '--config ci/fast-build.toml --timings' }
+          # They also leave out the three tests that run longest, which only Linux runs: the hostile sweep and the two random-edit
+          # oracles of the 3D scene. They check the model's logic, not the platform, and were two thirds of the core's test time on
+          # Windows (the three alone: 1,470 of 2,220 seconds).
+          - { name: Windows, runner: windows-latest, timeout: 100, test_flags: '--config ci/fast-build.toml --timings', test_args: '-- --skip hostile_params_never_panic_or_break_the_model --skip view3d::update::tests::random_edits' }
+          - { name: macOS, runner: macos-15, timeout: 120, test_flags: '--config ci/fast-build.toml --timings', test_args: '-- --skip hostile_params_never_panic_or_break_the_model --skip view3d::update::tests::random_edits' }
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +54,16 @@ jobs:
       - name: Rust
         shell: bash
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
+
+      # Runners of one kind differ: the Linux test step alone took 26 to 63 minutes. The CPU says whether a slow run was unlucky.
+      - name: Machine
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) grep -m1 'model name' /proc/cpuinfo; nproc ;;
+            macOS) sysctl -n machdep.cpu.brand_string hw.ncpu ;;
+            Windows) powershell -NoProfile -Command "(Get-CimInstance Win32_Processor).Name; (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors" ;;
+          esac
 
       # The dependencies' builds, kept between runs (egui and wgpu from scratch take about 15 minutes). Only main saves the cache, so
       # branch runs reuse it without filling the repository's 10 GB of caches with a copy each.
@@ -78,7 +91,7 @@ jobs:
           cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
-        run: cargo test --workspace ${{ matrix.test_flags }}
+        run: cargo test --workspace ${{ matrix.test_flags }} ${{ matrix.test_args }}
 
       - uses: actions/upload-artifact@v4
         if: runner.os != 'Linux' && always()
