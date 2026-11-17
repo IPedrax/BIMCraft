@@ -478,7 +478,19 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
             .unwrap_or(face)
     };
     let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
-    WallEnd::plain(if through { vec![cw, ccw] } else { vec![cw, node, ccw] })
+    // Where a wall leans, the walls' centre lines cross elsewhere at this height than at their foot: the corner goes there.
+    let hub = if arms.iter().any(|a| a.lean != 0.0) {
+        let crossings: Vec<P2> = [prev, next]
+            .iter()
+            .filter(|o| o.id != me.id)
+            .filter_map(|o| geom::line_intersection(me.centre, me.centre + me.way, o.centre, o.centre + o.way))
+            .filter(|c| (-limit..=limit).contains(&(*c - node).dot(me.way)))
+            .collect();
+        if crossings.is_empty() { node } else { crossings.iter().fold(P2(0.0, 0.0), |a, c| a + *c) * (1.0 / crossings.len() as f64) }
+    } else {
+        node
+    };
+    WallEnd::plain(if through { vec![cw, ccw] } else { vec![cw, hub, ccw] })
 }
 
 /// [`cap`] at height `z`: joined only to the walls standing there. Where a wall it mitres with stops below (or starts
@@ -1312,6 +1324,23 @@ mod tests {
         assert!(low.ring.iter().any(|p| near(*p, P2(0.0, 0.0))), "{:?}", low.ring);
         // A plan cutting above the lower wall sees the square end.
         assert_eq!(outline_at(&s.model, tall, 4500.0).len(), 4);
+    }
+
+    #[test]
+    fn an_upright_wall_meets_a_slanted_one_where_it_has_leant_to_with_no_spike_to_its_foot() {
+        // A slanted wall east along y = 0 leaning 15° north, and an upright one north from its start. At 1200 mm the slanted wall
+        // has leant 322 mm north: the upright wall's end meets it there, and nothing of it reaches back to the corner at its foot.
+        let s = session(
+            r#"wall {"points": [[4000, 0], [0, 0]], "height": 3000, "slant": -15}
+               wall {"points": [[0, 0], [0, 4000]], "height": 3000}"#,
+        );
+        let lean = 1200.0 * 15f64.to_radians().tan();
+        let half = 100.0 / 15f64.to_radians().cos();
+        for id in [100002, 100003] {
+            let o = outline_at(&s.model, id, 1200.0);
+            let low = o.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+            assert!(low > lean - half - 1e-6, "{id}: {o:?}");
+        }
     }
 
     #[test]
