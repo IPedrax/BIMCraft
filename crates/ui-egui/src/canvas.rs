@@ -7,13 +7,14 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Weak};
 
+use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult};
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::model::{
-    Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Floor, Id, Landing, Line, MAX_COORD, Mass, Model,
-    RISER, Ramp, Reference, Roof, Section, Spot, Stair, TOL, TREAD, Tag, Wall,
+    Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face, Floor, Id, Landing, Line, MAX_COORD, Mass,
+    Model, Ramp, Reference, Roof, Section, Spot, Stair, TOL, Tag, Wall,
 };
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
-use bimcraft_core::snap::{self, Found, Kind, Reach};
+use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d::shape_snap_plan;
 use bimcraft_core::walls::{self, Axis};
 use bimcraft_core::{floor_outline, opening_of, roof_footprint};
@@ -27,7 +28,7 @@ use crate::draw;
 use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
-use crate::style::{canvas_pal, pal};
+use crate::style::{GuideInk, GuideStyle, canvas_pal, guide_ink, pal};
 use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
 
 /// How near the cursor an element is picked, in px.
@@ -329,7 +330,7 @@ pub struct Canvas {
     /// (`render::view_angle`); none, not turned.
     turns: BTreeMap<Id, f64>,
     /// Where the plan was last shown, in points.
-    rect: Rect,
+    pub(crate) rect: Rect,
     /// How much of its height the cards floating over the view (its tabs at the top, its view control bar at the foot) take
     /// between them, points: a view is fitted into the rest.
     pub(crate) room: f32,
@@ -341,7 +342,7 @@ pub struct Canvas {
     grab: Option<P2>,
     drag: Option<Drag>,
     /// What's under the cursor, as `Drawing::pick_all` orders it, and how far Tab has gone.
-    under: Vec<Id>,
+    pub(crate) under: Vec<Id>,
     cycle: usize,
     /// A crop region's grip being dragged: the view, and which edge (see [`grips`]).
     crop_drag: Option<(Id, usize)>,
@@ -350,6 +351,11 @@ pub struct Canvas {
     /// A part of the selected section or elevation being dragged in plan: the view, the part (its line, an end, its far
     /// clip) and the model point it was taken at.
     view_grip: Option<(Id, bimcraft_core::elevation::Part, P2)>,
+    /// A selected stair's grip being dragged: the stair, and which.
+    pub(crate) stair_grip: Option<(Id, bimcraft_core::stairs::Grip)>,
+    /// A part of the selected stair picked on its own (a flight, a landing): the stair, and which part
+    /// (`stairs::stair_parts`).
+    pub(crate) stair_part: Option<(Id, usize)>,
     /// A selected level's end being dragged in a section or an elevation: the level, and whether
     /// it's its far end.
     level_grip: Option<(Id, bool)>,
@@ -362,6 +368,32 @@ pub struct Canvas {
     prior: Option<Vec<Id>>,
     /// What the last point a tool previewed snapped to this frame, if one did.
     pub(crate) found: Cell<Option<Found>>,
+    /// Where the last inference badge was drawn this frame, for the live reading to keep off it.
+    badge: Cell<Option<Rect>>,
+    /// The marked snap references of each view (Archicad's), and the ring filling on the one under the pointer.
+    pub(crate) pins: RefCell<crate::guide_refs::Pins>,
+    /// The ring filling on the target under the pointer (pub(crate) for the screenshots and tests to stage a frame).
+    pub(crate) dwell: Cell<Option<crate::guide_refs::Dwell>>,
+    /// Where the ring is drawn this frame, and how much of it: the plan is painted over the preview, so the ring
+    /// waits for the pass after it.
+    dwell_view: Cell<Option<(Pos2, f32)>>,
+    /// Where a mark was just made, and the element it is of: until the pointer leaves that element (or moves off a place
+    /// that is not one), the ring must not take the mark back.
+    dwell_quiet: Cell<Option<(Option<Id>, Pos2)>>,
+    /// The wall face `Tab` chose under the pointer: the snap and the ring take that line while the pointer stays on that
+    /// wall, even at its ends, where an end would otherwise win.
+    pub(crate) wall_face: Option<(Id, Face)>,
+    /// The elements the plan's picking found under the pointer this frame: what `Q` may mark.
+    pub(crate) under_cursor: Vec<Id>,
+    /// The wall face or centre line the chain started on: its direction and its collinear extension are passive guides.
+    pub(crate) start_edge: Option<bimcraft_core::alignment::GuideSource>,
+    /// The frame's time, for the dwell.
+    pub(crate) now: Cell<f64>,
+    /// The guide the last frame held, so leaving it takes 12 px, not 8.
+    last_align: Cell<Option<AlignmentAxis>>,
+    /// The tool and view the pins belong to: a change clears them.
+    pin_tool: Option<std::mem::Discriminant<Tool>>,
+    pin_view: Option<Id>,
     /// The cached alignment service (see [`AlignmentCache`]). A command gives the
     /// session a model of its own to change while the history keeps the one before, so a moved element, an undo and a redo
     /// change the address though they change neither count. shortcut: an address freed and taken again by a model of the same
@@ -386,11 +418,25 @@ impl Default for Canvas {
             crop_drag: None,
             grip: None,
             view_grip: None,
+            stair_grip: None,
+            stair_part: None,
             level_grip: None,
             press: None,
             lifted: None,
             prior: None,
             found: Cell::new(None),
+            badge: Cell::new(None),
+            pins: RefCell::new(crate::guide_refs::Pins::default()),
+            dwell: Cell::new(None),
+            dwell_view: Cell::new(None),
+            dwell_quiet: Cell::new(None),
+            wall_face: None,
+            under_cursor: Vec::new(),
+            start_edge: None,
+            now: Cell::new(0.0),
+            last_align: Cell::new(None),
+            pin_tool: None,
+            pin_view: None,
             alignment_cache: RefCell::new(None),
         }
     }
@@ -840,6 +886,79 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
     t
 }
 
+/// Edit Group's plan: everything washed with the paper's colour, so it reads greyed, and the primitives of `keep` drawn again
+/// over the wash as they are (`selected` and `hovered` lit as ever).
+#[allow(clippy::too_many_arguments)]
+fn grey_outside(p: &Painter, rect: Rect, at: Place, d: &Drawing, keep: &HashSet<Id>, selected: &[Id], hovered: Option<Id>, thin: bool) {
+    p.rect_filled(rect, 0.0, color(render::PAPER).gamma_multiply(GREYED));
+    let set: HashSet<Id> = selected.iter().copied().collect();
+    let clip = p.clip_rect();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        // A picture (a scan's) isn't drawn again: none is a group's.
+        if owner.is_some_and(|o| keep.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &set, hovered, thin, &mut [].iter());
+        }
+    }
+}
+
+/// The primitives of `ids` drawn again in the hover colour: a hovered group's members, which the drawing doesn't own as the group.
+fn paint_hovered(p: &Painter, at: Place, d: &Drawing, ids: &HashSet<Id>, thin: bool) {
+    if ids.is_empty() {
+        return;
+    }
+    let clip = p.clip_rect();
+    let none = HashSet::new();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        if owner.is_some_and(|o| ids.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &none, *owner, thin, &mut [].iter());
+        }
+    }
+}
+
+/// How much of the paper's colour Edit Group washes the rest of a plan with: enough to read as greyed, not gone.
+const GREYED: f32 = 0.72;
+
+/// A dashed frame round the members of each group among `lit` (the first `hovered` of them hovered, the rest selected), and a
+/// cross at its origin.
+fn group_frames(p: &Painter, m: &Model, d: &Shown, lit: &[Id], hovered: usize) {
+    for (i, id) in lit.iter().enumerate() {
+        let Some(inst) = m.elements.get(*id).and_then(bimcraft_core::groups::instance) else { continue };
+        let members: HashSet<Id> = bimcraft_core::groups::members(m, *id).into_iter().collect();
+        let mut lo = Pos2::new(f32::INFINITY, f32::INFINITY);
+        let mut hi = Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut take = |q: &(f32, f32)| {
+            let q = d.place.pos(*q);
+            (lo, hi) = (lo.min(q), hi.max(q));
+        };
+        for (prim, owner) in d.prims.iter().zip(&d.owners) {
+            if !owner.is_some_and(|o| members.contains(&o)) {
+                continue;
+            }
+            match prim {
+                Prim::Fill { rings, .. } => rings.iter().flatten().for_each(&mut take),
+                Prim::Line { pts, .. } => pts.iter().for_each(&mut take),
+                _ => {}
+            }
+        }
+        let colour = if i < hovered { canvas_pal().hover } else { canvas_pal().accent };
+        let stroke = Stroke::new(1.0, colour);
+        if lo.x.is_finite() && hi.x.is_finite() {
+            let r = Rect::from_min_max(lo, hi).expand(6.0);
+            let ring = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+            p.extend(Shape::dashed_line(&ring, stroke, 6.0, 4.0));
+        }
+        let o = d.place.pos(d.view.px(inst.placement.at));
+        p.line_segment([o - vec2(6.0, 0.0), o + vec2(6.0, 0.0)], Stroke::new(1.5, colour));
+        p.line_segment([o - vec2(0.0, 6.0), o + vec2(0.0, 6.0)], Stroke::new(1.5, colour));
+    }
+}
+
 /// The selected elements' outlines taken by `f` (on screen): where a move, a turn or a mirror
 /// puts them.
 fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos2) -> Pos2) {
@@ -875,6 +994,163 @@ pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>)
     p.rect_filled(rect.expand2(vec2(3.0, 1.0)), 2.0, pal().surface.gamma_multiply(0.85));
     p.galley(rect.min, galley, pal().accent);
 }
+
+/// What the guides at a point say: the one inference, or the two that cross there, so a point both
+/// of them lock says which two.
+pub(crate) fn alignment_tag(alignments: &[bimcraft_core::alignment::AlignmentResult]) -> String {
+    match alignments {
+        [] => String::new(),
+        [one] => t(one.axis.name()).to_string(),
+        [a, b, ..] => tf("Intersection: {}, {}", &[t(a.axis.name()), t(b.axis.name())]),
+    }
+}
+
+/// A badge: `text` in a compact pill beside the glyph at `at`, in the guide ink, kept inside the
+/// painter's edge and off the guide lines through the glyph (`lines`, their screen angles).
+pub(crate) fn badge(p: &Painter, at: Pos2, text: impl Into<String>, ink: GuideInk, lines: &[f32]) -> Rect {
+    let galley = p.layout_no_wrap(text.into(), FontId::proportional(11.5), ink.badge_text);
+    let size = galley.size() + vec2(12.0, 6.0);
+    let rect = badge_rect(at, size, p.clip_rect(), lines);
+    let radius = rect.height() / 2.0;
+    p.rect_filled(rect, radius, ink.badge);
+    p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
+    p.galley(rect.min + vec2(6.0, 3.0), galley, ink.badge_text);
+    rect
+}
+
+/// Where a badge of `size` goes beside the glyph at `at`, inside `clip`: of the four corners round the glyph, the one
+/// whose middle lies farthest from the guide lines through it (`lines`, screen angles), so a ray never runs under it.
+/// Right and below when nothing runs through the glyph, and never past the view's edge.
+pub(crate) fn badge_rect(at: Pos2, size: Vec2, clip: Rect, lines: &[f32]) -> Rect {
+    let (gap, edge) = (12.0, 6.0);
+    let corners = [vec2(gap, gap), vec2(-gap - size.x, gap), vec2(gap, -gap - size.y), vec2(-gap - size.x, -gap - size.y)];
+    // How far a corner's middle is from the nearest guide line: a line runs both ways, so the angle is taken modulo a
+    // half turn, and its nearer side is the distance.
+    let clearance = |offset: Vec2| {
+        let c = offset + size * 0.5;
+        let a = c.y.atan2(c.x);
+        lines.iter().fold(f32::INFINITY, |nearest, &line| {
+            let d = (a - line).rem_euclid(std::f32::consts::PI);
+            nearest.min(d.min(std::f32::consts::PI - d))
+        })
+    };
+    let mut offset = vec2(gap, gap);
+    let mut best = f32::NEG_INFINITY;
+    for c in corners {
+        let d = clearance(c);
+        // Only a corner appreciably clearer than the ones before it takes the badge: a crossing at a right angle leaves
+        // every corner as far, and the default (right and below) is the one to keep.
+        if d > best + 0.02 {
+            (offset, best) = (c, d);
+        }
+    }
+    let x = (at.x + offset.x).clamp(clip.left() + edge, (clip.right() - edge - size.x).max(clip.left() + edge));
+    let y = (at.y + offset.y).clamp(clip.top() + edge, (clip.bottom() - edge - size.y).max(clip.top() + edge));
+    Rect::from_min_size(pos2(x, y), size)
+}
+
+/// What holds the point being placed: nothing, one guide (the direction it runs on the screen), or two
+/// guides crossing. The cursor's own glyph says which.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) enum Lock {
+    #[default]
+    Free,
+    One(Vec2),
+    Cross,
+}
+
+/// The glyph a refined cursor takes when guides hold the point: a crosshair with nothing on it, a dot with a tick
+/// square across one guide, or a bullseye where two cross.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum LockGlyph {
+    Crosshair,
+    Slide(Vec2),
+    Bullseye,
+}
+
+/// The pointer a guide is found from, and whether `Shift` is holding a step: the two things the snap's own rounded point
+/// cannot say. One value so `alignments_for` stays within clippy's argument count.
+#[derive(Clone, Copy)]
+struct GuideAt {
+    at: P2,
+    square: bool,
+}
+
+/// What the guides hold `kind` with, if they hold it: `None` leaves the point its own marker (an angle step's dot, a
+/// wall's square). The lock wins over an angle step, so a point both a step and two guides hold says which guides.
+pub(crate) fn lock_glyph(kind: Kind, lock: Lock, refined: bool) -> Option<LockGlyph> {
+    if !refined || !matches!(kind, Kind::Free | Kind::Angle) {
+        return None;
+    }
+    match lock {
+        Lock::Cross => Some(LockGlyph::Bullseye),
+        Lock::One(d) => Some(LockGlyph::Slide(d)),
+        Lock::Free if kind == Kind::Free => Some(LockGlyph::Crosshair),
+        Lock::Free => None,
+    }
+}
+
+/// The shapes the guides at a point draw: each guide's ray to the view's edge, the stronger segment from
+/// its source to the point it locks, and its source's mark. `to` and `along` put a model point and a
+/// model direction on the screen; `refined` picks the thin ink over the dashed magenta of old.
+pub(crate) fn alignment_shapes(
+    alignments: &[AlignmentResult],
+    to: impl Fn(P2) -> Pos2,
+    along: impl Fn(P2) -> Vec2,
+    tail: f32,
+    hair: f32,
+    refined: bool,
+) -> Vec<Shape> {
+    let ink = guide_ink();
+    let mut out = Vec::new();
+    // A hairline is one physical pixel; on an axis it is put on the pixel grid, where it is crisp, not two pale
+    // halves straddling an edge. `hair` is `1 / pixels_per_point`, as `show_alignments` gives it.
+    let ppp = 1.0 / hair.max(f32::EPSILON);
+    let on_grid = |v: f32| ((v * ppp).floor() + 0.5) / ppp;
+    for res in alignments {
+        let mut at = to(res.snapped_point);
+        let mut source = to(res.reference_point);
+        let d = along(res.axis.direction());
+        let d = if d.length() > f32::EPSILON { d / d.length() } else { vec2(1.0, 0.0) };
+        // The ray and the relation share the line, so both are put on the same grid.
+        if d.x.abs() < 1e-3 {
+            (at.x, source.x) = (on_grid(at.x), on_grid(at.x));
+        } else if d.y.abs() < 1e-3 {
+            (at.y, source.y) = (on_grid(at.y), on_grid(at.y));
+        }
+        if refined {
+            // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks.
+            out.push(Shape::line_segment([source, at], Stroke::new(hair, ink.core)));
+            // A short tail past the cursor, fading: the plan stays clear of rays that run to the view's edge.
+            for (i, alpha) in [0.5f32, 0.28, 0.12].into_iter().enumerate() {
+                let (a, b) = (at + d * (tail * i as f32 / 3.0), at + d * (tail * (i + 1) as f32 / 3.0));
+                out.push(Shape::line_segment([a, b], Stroke::new(hair, ink.ray.gamma_multiply(alpha))));
+            }
+            if !matches!(res.axis, AlignmentAxis::Inferred { .. }) {
+                out.push(Shape::circle_filled(source, 2.5, ink.anchor));
+                out.push(Shape::circle_stroke(source, 4.5, Stroke::new(hair, ink.anchor.gamma_multiply(0.45))));
+            }
+        } else {
+            // Classic keeps its dashed look, still only beside the cursor.
+            out.extend(Shape::dashed_line(&[at - d * 24.0, at + d * tail], Stroke::new(1.0, CLASSIC_GUIDE), 6.0, 4.0));
+            // The point it comes from, marked: a borrowed direction's is the point being drawn from,
+            // which already has the tool's own marker.
+            if !matches!(res.axis, AlignmentAxis::Inferred { .. }) {
+                out.push(Shape::rect_stroke(
+                    Rect::from_center_size(source, vec2(7.0, 7.0)),
+                    0.0,
+                    Stroke::new(1.5, CLASSIC_ANCHOR),
+                    StrokeKind::Middle,
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Revit's magenta for an alignment guide, and the blue of the square that marks its source: the classic look.
+pub(crate) const CLASSIC_GUIDE: Color32 = Color32::from_rgb(255, 0, 255);
+pub(crate) const CLASSIC_ANCHOR: Color32 = Color32::from_rgb(0, 160, 255);
 
 impl BimApp {
     /// The view's name in the bottom left corner of the canvas `rect`, over the view control bar where that floats over the corner.
@@ -1003,11 +1279,17 @@ pub(crate) fn standing_dimensions(p: &Painter, m: &Model, v: &View, e: &Element)
 }
 
 /// A ruler from `a` to `b`: its line, and its graduations at round lengths at least 10 px apart,
-/// every fifth longer.
-fn ruler_shapes(sc: &Scene, a: P2, b: P2) -> Vec<Shape> {
+/// every fifth longer. `refined` draws the live drawing's fine one, quieter than the line it measures.
+fn ruler_shapes(sc: &Scene, a: P2, b: P2, refined: bool) -> Vec<Shape> {
     let (pa, pb) = (sc.screen(a), sc.screen(b));
-    let stroke = Stroke::new(1.0, pal().accent);
-    let mut shapes = vec![Shape::line_segment([pa, pb], Stroke::new(2.0, pal().accent))];
+    let ink = guide_ink();
+    let hair = 1.0 / sc.p.pixels_per_point();
+    let (spine, tick, long, short) = if refined {
+        (Stroke::new(hair, ink.ruler), Stroke::new(hair, ink.tick), 6.0, 3.0)
+    } else {
+        (Stroke::new(2.0, canvas_pal().accent), Stroke::new(1.0, canvas_pal().accent), 7.0, 3.5)
+    };
+    let mut shapes = vec![Shape::line_segment([pa, pb], spine)];
     let len = pa.distance(pb);
     if len < 30.0 {
         return shapes;
@@ -1015,17 +1297,18 @@ fn ruler_shapes(sc: &Scene, a: P2, b: P2) -> Vec<Shape> {
     let (u, step) = ((pb - pa) / len, (snap::graduation(sc.v.scale) * sc.v.scale) as f32);
     let n = vec2(u.y, -u.x);
     for k in 1..=((len / step) as usize).min(500) {
-        let (at, half) = (pa + u * (step * k as f32), if k % 5 == 0 { 7.0 } else { 3.5 });
-        shapes.push(Shape::line_segment([at - n * half, at + n * half], stroke));
+        let (at, half) = (pa + u * (step * k as f32), if k % 5 == 0 { long } else { short });
+        shapes.push(Shape::line_segment([at - n * half, at + n * half], tick));
     }
     shapes
 }
 
-/// The angle at `last` between the line back to `prev` and the line on to `next`, as a small arc.
-fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2) -> Option<Shape> {
+/// The angle at `last` between the line back to `prev` and the line on to `next`, as a small arc: dotted and muted in the
+/// refined look, so it does not fight the walls.
+fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2, refined: bool) -> Vec<Shape> {
     let (c, a, b) = (sc.screen(last), sc.screen(prev) - sc.screen(last), sc.screen(next) - sc.screen(last));
     if a.length() < 30.0 || b.length() < 30.0 {
-        return None;
+        return Vec::new();
     }
     let (a0, a1) = (a.y.atan2(a.x), b.y.atan2(b.x));
     // The way round that's the smaller angle.
@@ -1036,8 +1319,14 @@ fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2) -> Option<Shape> {
     while sweep < -std::f32::consts::PI {
         sweep += std::f32::consts::TAU;
     }
-    let pts = (0..=12).map(|i| a0 + sweep * i as f32 / 12.0).map(|t| c + vec2(t.cos(), t.sin()) * 22.0).collect();
-    Some(Shape::line(pts, Stroke::new(1.0, pal().accent)))
+    let radius = if refined { 26.0 } else { 22.0 };
+    let pts: Vec<Pos2> = (0..=24).map(|i| a0 + sweep * i as f32 / 24.0).map(|t| c + vec2(t.cos(), t.sin()) * radius).collect();
+    if refined {
+        let hair = 1.0 / sc.p.pixels_per_point();
+        Shape::dashed_line(&pts, Stroke::new(hair, guide_ink().arc), 2.5, 2.5)
+    } else {
+        vec![Shape::line(pts, Stroke::new(1.0, canvas_pal().accent))]
+    }
 }
 
 /// What a preview draws on: the canvas, the model and its drawing, the level and the view.
@@ -1191,6 +1480,31 @@ fn start_of(tool: &Tool) -> &[P2] {
     }
 }
 
+/// Every point a drawing tool has picked, for the snaps its next one takes from them: a chain's own points, or the one
+/// point a tool began at. `Q` reads the same list the click's own snap does, whatever tool is drawing.
+fn picked(tool: &Tool) -> Vec<P2> {
+    match tool {
+        Tool::Wall(p) | Tool::Railing(p) | Tool::Mass(p) | Tool::DetailLine(p) | Tool::SketchLine(p) | Tool::Stair(p) | Tool::Ramp(p) => {
+            p.clone()
+        }
+        Tool::ExtrusionRoof(p) => p.clone(),
+        Tool::Grid(p)
+        | Tool::ReferencePlane(p)
+        | Tool::RoomSeparator(p)
+        | Tool::Move(p)
+        | Tool::Copy(p)
+        | Tool::Section(p)
+        | Tool::SlopeArrow(p)
+        | Tool::AddSplitLine(p)
+        | Tool::Measure(p)
+        | Tool::Run(_, p) => p.iter().copied().collect(),
+        Tool::Mirror { start, .. } | Tool::PatternCorner(start) | Tool::Shaft(start) | Tool::RepeatingDetail(start) => {
+            start.iter().copied().collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// A selection box from pixel `from` to `q` of a view in `rect`: Revit draws a crossing box (right
 /// to left) dashed, a window box solid.
 pub(crate) fn box_shapes(rect: Rect, from: (f32, f32), q: (f32, f32)) -> Vec<Shape> {
@@ -1313,17 +1627,18 @@ impl BimApp {
     }
 
     /// Where a point picked at pixel `at` lands, with the points `from` already picked: on what
-    /// the plan has there, a guide at an angle from the last of them, a wall's centre line, or the
-    /// nearest 10 mm, as Manage > Snaps says. `square` keeps the step from the last horizontal or
-    /// vertical.
+    /// the plan has there, a guide at an angle from the last of them, a wall's own line — the face `Tab` chose, else the
+    /// nearest of its exterior face, its centre line and its interior face — or the nearest 10 mm, as Manage > Snaps
+    /// says. `square` keeps the step from the last horizontal or vertical.
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
-        let snaps = self.snaps_now();
+        // Drafting a stair, the stairs there offer only their location lines' corners; Tab's wall face holds while the pointer is on it.
+        let snaps = Snaps { stair_corners: matches!(self.tool, Tool::Stair(_)), preferred_face: self.canvas.wall_face, ..self.snaps_now() };
         // A camera's mark is a symbol, not a set of snap points: anywhere on it lands on its eye.
         if snaps.endpoint
             && let Some((id, eye)) = render::camera_at(m, level, v, at)
         {
-            return Found { at: eye, kind: Kind::Endpoint, guide: None, source: Some(id) };
+            return Found { at: eye, kind: Kind::Endpoint, guide: None, source: Some(id), face: None };
         }
         let view = self.plan_key().unwrap_or(level);
         let found = match &self.sketch {
@@ -1340,28 +1655,34 @@ impl BimApp {
             && !square
             && self.snap_once.is_none()
             && self.grid_snapping
+            // A wall of a Fixed Grid has its pattern's lengths: a background grid would fight them.
+            && self.drawing_fixed_curtain().is_none()
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
-            return Found { at, kind: Kind::Intersection, guide: None, source: None };
+            // The lattice is a place for a free point, not a crossing of two model lines: a guide may still take it.
+            return Found { at, kind: Kind::Free, guide: None, source: None, face: None };
         }
         found
     }
 
-    /// Finds alignment guides (smart snapping) to reference points of existing elements when drawing.
+    /// Finds alignment guides (smart snapping) for the point at `cursor`: in the drawing's own context (the chain, the
+    /// wall it started on, the grids near the cursor and the marked references) unless `Guides from the whole model`
+    /// is on. `from` are the points placed so far: its last is the point being drawn from, its pairs the segments.
     pub(crate) fn alignments(
         &self,
         m: &Model,
         level: Id,
         v: &View,
         cursor: P2,
-        start: Option<P2>,
+        from: &[P2],
     ) -> Vec<bimcraft_core::alignment::AlignmentResult> {
+        use bimcraft_core::alignment::{AlignmentConfig, AlignmentGuideService};
         let snaps = self.snaps_now();
         if !snaps.alignment_guides {
             return Vec::new();
         }
         let tol = f64::from(snaps.alignment_tolerance) / v.scale;
-        let config = bimcraft_core::alignment::AlignmentConfig {
+        let config = AlignmentConfig {
             enabled: true,
             tolerance: tol,
             endpoints: snaps.endpoint,
@@ -1370,59 +1691,93 @@ impl BimApp {
             intersections: snaps.intersection,
             angles: false,
         };
+        let start = from.last().copied();
+        let key = self.plan_key().unwrap_or(level);
+        // How far out a guide still holds the point it had last frame: 12 px to leave, 8 to enter.
+        let wider = |service: &AlignmentGuideService, held: Option<AlignmentAxis>| {
+            let Some(held) = held else { return Vec::new() };
+            service.find_alignments(cursor, start, tol * 1.5).into_iter().filter(|a| a.axis == held).collect()
+        };
+        if !snaps.guides_from_whole_model {
+            let drawing = crate::guide_refs::Drawing { key, cursor, from, start_edge: self.canvas.start_edge };
+            let ctx = crate::guide_refs::context(m, v, drawing, &self.canvas.pins.borrow(), snaps.guides_from_grids);
+            let service = AlignmentGuideService::from_context(&ctx, config);
+            let mut found = service.find_alignments(cursor, start, tol);
+            if found.is_empty() {
+                found = wider(&service, self.canvas.last_align.get());
+            }
+            self.canvas.last_align.set(found.first().map(|a| a.axis));
+            return found;
+        }
         let mut cache = self.canvas.alignment_cache.borrow_mut();
         let at = std::ptr::from_ref(m) as usize;
         let reuse = cache.as_ref().is_some_and(|c| {
             c.level == level && c.next_id == m.next_id && c.len == m.elements.len() && c.at == at && c.service.config() == &config
         });
         if !reuse {
-            let s = bimcraft_core::alignment::AlignmentGuideService::from_model(m, level, config);
+            let s = AlignmentGuideService::from_model(m, level, config);
             *cache = Some(AlignmentCache { level, next_id: m.next_id, len: m.elements.len(), at, service: s });
         }
-        cache.as_ref().map_or_else(Vec::new, |c| c.service.find_alignments(cursor, start, tol))
-    }
-
-    /// Finds alignment guides (smart snapping) to reference points of existing walls when drawing a wall.
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn wall_alignments(
-        &self,
-        m: &Model,
-        level: Id,
-        v: &View,
-        cursor: P2,
-        start: Option<P2>,
-    ) -> Vec<bimcraft_core::alignment::AlignmentResult> {
-        self.alignments(m, level, v, cursor, start)
-    }
-
-    /// Renders visual alignment guide lines, reference markers, and alignment tags.
-    fn show_alignments(&self, sc: &Scene, alignments: &[bimcraft_core::alignment::AlignmentResult]) {
-        let magenta = Color32::from_rgb(255, 0, 255);
-        let magenta_stroke = Stroke::new(1.0, magenta);
-        let marker_stroke = Stroke::new(1.5, Color32::from_rgb(0, 160, 255));
-        for res in alignments {
-            let a = sc.screen(res.reference_point);
-            let b = sc.screen(res.snapped_point);
-            if a.distance(b) > 0.5 {
-                let dir = (b - a).normalized();
-                let ext_a = a - dir * 24.0;
-                let ext_b = b + dir * 24.0;
-                sc.p.extend(Shape::dashed_line(&[ext_a, ext_b], magenta_stroke, 6.0, 4.0));
-            }
-            sc.p.rect_stroke(Rect::from_center_size(a, vec2(7.0, 7.0)), 0.0, marker_stroke, StrokeKind::Middle);
+        let Some(service) = cache.as_ref().map(|c| &c.service) else { return Vec::new() };
+        let mut found = service.find_alignments(cursor, start, tol);
+        if found.is_empty() {
+            found = wider(service, self.canvas.last_align.get());
         }
+        self.canvas.last_align.set(found.first().map(|a| a.axis));
+        found
+    }
+
+    /// Whether guides and the live drawing's aids are drawn in the refined look (Manage > Snaps).
+    pub(crate) fn refined_guides(&self) -> bool {
+        self.guide_style == GuideStyle::Refined
+    }
+
+    /// Renders visual alignment guide lines, reference markers, and alignment tags: what holds the point, for the cursor's own
+    /// glyph to say. `from` is the point being drawn from, whose segment the badge keeps off as it keeps off the rays.
+    fn show_alignments(&self, sc: &Scene, alignments: &[AlignmentResult], from: Option<P2>) -> Lock {
+        self.canvas.badge.set(None);
+        let refined = self.refined_guides();
+        // A temporary guide fades out 100 px past the cursor; the plan is never crossed edge to edge by a snap ray.
+        let tail = 100.0;
+        let hair = 1.0 / sc.p.pixels_per_point();
+        let along = |d: P2| {
+            let (x, y) = sc.v.along(d);
+            vec2(x as f32, y as f32)
+        };
+        sc.p.extend(alignment_shapes(alignments, |p| sc.screen(p), along, tail, hair, refined));
+        let lock = match alignments {
+            [] => Lock::Free,
+            [one] => Lock::One(along(one.axis.direction()).normalized()),
+            _ => Lock::Cross,
+        };
         if let Some(first) = alignments.first() {
-            // Why it lined up: with which wall, by its id, as Select by ID finds it.
-            let why = first.wall_id.map_or_else(|| t("align").to_string(), |w| tf("Lines up with wall {}", &[&w.to_string()]));
-            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, &why);
+            let at = sc.screen(first.snapped_point);
+            let text = alignment_tag(alignments);
+            if refined {
+                // What runs through the glyph: the rays, and the segment being drawn, so the pill sits in a clear corner.
+                let mut lines: Vec<f32> = alignments.iter().map(|r| along(r.axis.direction()).angle()).collect();
+                if let Some(a) = from {
+                    lines.push((at - sc.screen(a)).angle());
+                }
+                self.canvas.badge.set(Some(badge(sc.p, at, text, guide_ink(), &lines)));
+            } else {
+                tag(sc.p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, text);
+            }
         }
+        lock
     }
 
-    /// The alignment guides a pick that landed at `f` takes: a free point any, a point on an angle guide one that keeps it on that
-    /// guide (a wall drawn east whose end lines up with another wall's end).
-    fn alignments_for(&self, m: &Model, level: Id, v: &View, f: &Found, from: &[P2]) -> Vec<bimcraft_core::alignment::AlignmentResult> {
-        if !self.snaps_now().alignment_guides || from.is_empty() || !matches!(f.kind, Kind::Free | Kind::Angle) {
+    /// The alignment guides a pick that landed at `f` takes: a free point any, a point on an angle guide one that keeps it on
+    /// that guide (a wall drawn east whose end lines up with another wall's end). A crossing of two guides may take a point
+    /// off a wall's face or a line; one guide alone may not, the face under the pointer being the more exact reference then.
+    /// `pointer` is where the pointer is, not where the snap rounded it: a point on the 10 mm grid must not decide whether
+    /// a guide is near. While `pointer.square` holds a step (Shift), the angle's own point is the one to measure from.
+    fn alignments_for(&self, m: &Model, level: Id, v: &View, f: &Found, from: &[P2], pointer: GuideAt) -> Vec<AlignmentResult> {
+        if !self.snaps_now().alignment_guides {
+            return Vec::new();
+        }
+        let crossing_only = matches!(f.kind, Kind::Nearest);
+        if !matches!(f.kind, Kind::Free | Kind::Angle) && !crossing_only {
             return Vec::new();
         }
         let on_guide = |p: P2| {
@@ -1431,13 +1786,32 @@ impl BimApp {
                 (u.0 * d.1 - u.1 * d.0).abs() <= 0.5
             })
         };
-        self.alignments(m, level, v, f.at, from.last().copied()).into_iter().filter(|a| on_guide(a.snapped_point)).collect()
+        // A rounded free point is up to 7 mm from the pointer, which is more than a guide's reach when zoomed in; and a
+        // single guide's own point must be the pointer's, not the 10 mm one. Shift's line and an angle step are already
+        // the point that was asked for.
+        let at = if pointer.square || matches!(f.kind, Kind::Angle) { f.at } else { pointer.at };
+        let found: Vec<AlignmentResult> =
+            self.alignments(m, level, v, at, from).into_iter().filter(|a| on_guide(a.snapped_point)).collect();
+        if crossing_only && found.len() < 2 { Vec::new() } else { found }
     }
 
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.
     pub(crate) fn snap_point(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> P2 {
-        let f = self.snap(m, level, v, at, from, square);
-        self.alignments_for(m, level, v, &f, from).first().map_or(f.at, |a| a.snapped_point)
+        let (f, alignments) = self.landed(m, level, v, at, from, square);
+        Self::on_guide(f, &alignments)
+    }
+
+    /// The snap at `q`, and the guides it follows: the one landing the preview and the commit both read, so a guide
+    /// cannot be drawn and then ignored.
+    fn landed(&self, m: &Model, level: Id, v: &View, q: (f32, f32), from: &[P2], square: bool) -> (Found, Vec<AlignmentResult>) {
+        let f = self.snap(m, level, v, q, from, square);
+        let alignments = self.alignments_for(m, level, v, &f, from, GuideAt { at: v.mm(q), square });
+        (f, alignments)
+    }
+
+    /// A point on the first guide `f` follows, else the snap's own.
+    fn on_guide(f: Found, alignments: &[AlignmentResult]) -> P2 {
+        alignments.first().map_or(f.at, |a| a.snapped_point)
     }
 
     /// What a pick at pixel `q` would land on, shown: its marker and what it is, and the guide it
@@ -1461,30 +1835,125 @@ impl BimApp {
     }
 
     fn found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
-        let mut f = self.snap(sc.m, sc.level, sc.v, q, from, square);
-        let alignments = self.alignments_for(sc.m, sc.level, sc.v, &f, from);
-        if let Some(first) = alignments.first() {
-            f.at = first.snapped_point;
-            self.show_alignments(sc, &alignments);
+        let (mut f, alignments) = self.landed(sc.m, sc.level, sc.v, q, from, square);
+        let target = self.mark_target(sc, q, &f);
+        f.at = Self::on_guide(f, &alignments);
+        let lock = self.show_alignments(sc, &alignments, from.last().copied());
+        self.show_target_line(sc, &f);
+        self.show_snap(sc, &f, lock);
+        match target {
+            Some(target) => {
+                self.dwell_tick(sc, q, target);
+                self.show_dwell(sc, q, target);
+            }
+            None => {
+                // Off every reference: no ring, and the next rest starts its own fill.
+                self.canvas.dwell.set(None);
+                self.canvas.dwell_view.set(None);
+            }
         }
-        self.show_snap(sc, &f);
         self.canvas.found.set(Some(f));
         f.at
     }
 
     /// A snap's guide, dashed through the point it runs from and on past the snapped one; its
     /// marker, by what it snapped to; and its name.
-    fn show_snap(&self, sc: &Scene, f: &Found) {
-        // And of which element, by its id, as Select by ID finds it.
-        let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
-            Some((id, e)) => {
-                let of = crate::lang::category(e.category(), false);
-                // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-                tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
+    fn show_snap(&self, sc: &Scene, f: &Found, lock: Lock) {
+        let name = snap_name(sc.m, f);
+        snap_mark(sc.p, sc.screen(f.at), f.guide.map(|g| sc.screen(g.from)), f.kind, lock, self.refined_guides(), name);
+    }
+
+    /// The wall line a pick would take, along the wall's own stretch, in the canvas's hover ink: before a click or a rest,
+    /// the exact face or centre line is seen, not guessed from a diamond a pixel off it. A line already marked is left to
+    /// its pin, which says the same thing.
+    fn show_target_line(&self, sc: &Scene, f: &Found) {
+        let (Some(id), Some(face)) = (f.source, f.face) else { return };
+        let Ok((a, b)) = sc.m.reference_line(&Reference::line(sc.m.guid(id), face)) else { return };
+        let key = self.plan_key().unwrap_or(sc.level);
+        let marked = crate::guide_refs::PinTarget::Edge { a, b, id: Some(id), face, near: None };
+        if self.canvas.pins.borrow().is_marked(key, marked) {
+            return;
+        }
+        sc.p.line_segment([sc.screen(a), sc.screen(b)], Stroke::new(1.5, canvas_pal().hover));
+    }
+
+    /// The reference under the pointer this frame: a snapped point, else the nearest wall face or centre line, detail
+    /// line or grid within 8 px.
+    fn mark_target(&self, sc: &Scene, q: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
+        let key = self.plan_key().unwrap_or(sc.level);
+        let mut under = self.canvas.under_cursor.clone();
+        // The snap knows the wall even on a frame the retained plan's picking comes back empty.
+        if let Some(id) = f.source
+            && !under.contains(&id)
+        {
+            under.push(id);
+        }
+        crate::guide_refs::target_at(sc.m, sc.level, key, sc.v, q, f, &under)
+    }
+
+    /// Fills the ring on the reference under the pointer, and marks it when the ring closes. It is the target's key and
+    /// the pointer's stillness that keep the ring alive, not the snapped point: a `Nearest` point slides along its face.
+    fn dwell_tick(&self, sc: &Scene, q: (f32, f32), target: crate::guide_refs::PinTarget) {
+        if !self.snaps_now().mark_on_hover {
+            self.canvas.dwell.set(None);
+            return;
+        }
+        let now = self.canvas.now.get();
+        let here = pos(sc.p.clip_rect().min, q);
+        let key = target.key();
+        // A mark made on this element a moment ago is not taken back while the hand stays on it: sweeping across one wall,
+        // whose three lines are a few pixels apart on a fitted plan, can mark it once and no more.
+        if let Some((marked, at)) = self.canvas.dwell_quiet.get() {
+            let same = match (marked, target.id()) {
+                (Some(q), Some(t)) => q == t,
+                _ => here.distance(at) <= crate::guide_refs::STILL,
+            };
+            if same {
+                self.canvas.dwell.set(None);
+                return;
             }
-            None => t(f.kind.name()).to_string(),
+            self.canvas.dwell_quiet.set(None);
+        }
+        let held = self
+            .canvas
+            .dwell
+            .get()
+            .filter(|d| d.key == key && vec2(here.x - d.from.0, here.y - d.from.1).length() <= crate::guide_refs::STILL);
+        let mut dwell = held.unwrap_or(crate::guide_refs::Dwell { key, from: (here.x, here.y), start: now, marked: false });
+        if dwell.progress(now) >= 1.0 && !dwell.marked {
+            dwell.marked = true;
+            let view = self.plan_key().unwrap_or(sc.level);
+            let lines = target.lines(sc.m, sc.level, sc.m.guid(view));
+            self.canvas.pins.borrow_mut().toggle(view, target, lines);
+            self.canvas.dwell_quiet.set(Some((target.id(), here)));
+        }
+        self.canvas.dwell.set(Some(dwell));
+    }
+
+    /// The ring filling on `target`: a faint circle, then its arc, at the point or under the pointer on the edge. The
+    /// plan is painted over this pass, so the ring itself is drawn after it (`dwell_view`).
+    fn show_dwell(&self, sc: &Scene, q: (f32, f32), target: crate::guide_refs::PinTarget) {
+        let Some(dwell) = self.canvas.dwell.get() else {
+            self.canvas.dwell_view.set(None);
+            return;
         };
-        snap_mark(sc.p, sc.screen(f.at), f.guide.map(|g| sc.screen(g.from)), f.kind, name);
+        let now = self.canvas.now.get();
+        if !dwell.filling(now) {
+            self.canvas.dwell_view.set(None);
+            return;
+        }
+        let center = match target {
+            crate::guide_refs::PinTarget::Point { at, .. } => sc.screen(at),
+            crate::guide_refs::PinTarget::Edge { .. } => pos(sc.p.clip_rect().min, q),
+        };
+        self.canvas.dwell_view.set(Some((center, dwell.progress(now))));
+    }
+
+    /// The marked references themselves: a point's halo, an edge's finite face, so a reference is seen before its ray.
+    fn show_pins(&self, sc: &Scene) {
+        let pins = self.canvas.pins.borrow();
+        let hair = 1.0 / sc.p.pixels_per_point();
+        sc.p.extend(pin_shapes(pins.at(sc.key), |q| sc.screen(q), hair));
     }
 
     /// The plan `key` names, filling `ui`: a level's own, or a plan view of one. What is built is on the plan's level; what is
@@ -1500,6 +1969,19 @@ impl BimApp {
         // Oriented to true north, the plan turns on screen.
         self.canvas.turn(key, render::view_angle(&model, key));
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
+        // The marked references belong to this view and to the tool that was drawing when they were made.
+        self.canvas.now.set(ui.input(|i| i.time));
+        let tool = std::mem::discriminant(&self.tool);
+        if self.canvas.pin_tool != Some(tool) || self.canvas.pin_view != Some(key) {
+            self.canvas.pins.borrow_mut().clear();
+            self.canvas.start_edge = None;
+            self.canvas.wall_face = None;
+            self.canvas.last_align.set(None);
+            self.canvas.dwell.set(None);
+            self.canvas.dwell_quiet.set(None);
+            self.canvas.pin_tool = Some(tool);
+            self.canvas.pin_view = Some(key);
+        }
         // Where the pointer is, for the others in a Co-Work session.
         self.cowork_seen.pointer = local.map(|q| (key, view.mm(q)));
         let mods = ui.input(|i| i.modifiers);
@@ -1513,12 +1995,20 @@ impl BimApp {
             None => c.drawing.drawing(&model, key, view, up),
         };
         let d = Shown::new(d, view, rect.min);
+        // What the pointer is over, for a snap reference to mark: the plan's picking, whichever tool is drawing.
+        let picked = local.map(|q| d.pick_all(q, PICK)).unwrap_or_default();
+        c.under_cursor = picked.clone();
 
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
         let sketching = self.sketch.is_some();
+        // A member of a group is picked as its group first; Tab steps on to the member (Revit's groups).
+        // In Edit Group only the group's own pick (and with Add, only what may join it).
+        let scope = self.session.group_scope();
+        let pick_mode = self.group_pick.filter(|_| scope.is_some());
+        let picks = |ids: &[Id], boxed: bool| crate::groups::picks(&model, ids, scope.as_ref(), pick_mode, boxed);
         let under = match (&self.tool, local) {
-            (Tool::Modify, Some(q)) if !sketching => d.pick_all(q, PICK),
+            (Tool::Modify, Some(q)) if !sketching => picks(&d.pick_all(q, PICK), false),
             _ => Vec::new(),
         };
         // A dimension under the cursor: Tab steps through its segments before its element.
@@ -1538,6 +2028,17 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        // Drawing a stair outside the rules, Tab takes the nearest stair that fits: its riser, tread and width. That Tab is the
+        // stair's, not a wall face's.
+        let mut stair_tabbed = false;
+        if tabbed
+            && matches!(self.tool, Tool::Stair(_))
+            && let Some((riser, tread, width)) = self.stair_offer.take()
+        {
+            let units = self.session.model.units;
+            (self.stair_riser, self.stair_tread, self.stair_width) = (units.length(riser), units.length(tread), units.length(width));
+            stair_tabbed = true;
+        }
         // A dimension being picked or edited: Tab steps through the references of the element under the cursor, so the one a
         // click takes is seen first: its corners and ends, and its faces and centre lines.
         let reference_refs: Option<Vec<Reference>> = match (&self.dimension_refs_edit, &self.tool) {
@@ -1594,11 +2095,71 @@ impl BimApp {
                 segment_tabbed = true;
             }
         }
-        if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
+        // On a curtain wall that's selected and under the cursor, Tab goes through its parts there; else through what's under it.
+        let free = self.tool == Tool::Modify;
+        let on_cursor = c.under.get(c.cycle % c.under.len().max(1)).copied();
+        let parts = local.filter(|_| tabbed && !reference_tabbed && !segment_tabbed).and_then(|q| {
+            let id = crate::curtain::tab_wall(&model, &self.selection, &c.under, on_cursor, free)?;
+            crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, view.mm(q), view.scale)
+        });
+        if let Some((id, list)) = parts {
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
+            self.curtain_more.clear();
+            if self.curtain_part.is_some() {
+                self.selection = vec![id];
+            }
+        } else if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
+        // Tab over a wall, while a line or a wall is being drawn from a point, steps through the wall's three references —
+        // its exterior face, its centre line and its interior face — starting from the one the pick has now, so the first
+        // Tab always moves the point. A number already typed keeps Tab for the field it belongs to.
+        let typing = !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty();
+        let chain = matches!(
+            self.tool,
+            Tool::Wall(_)
+                | Tool::DetailLine(_)
+                | Tool::SketchLine(_)
+                | Tool::Railing(_)
+                | Tool::Mass(_)
+                | Tool::Move(_)
+                | Tool::Copy(_)
+                | Tool::Column
+                | Tool::Run(..)
+        );
+        let mut wall_tabbed = false;
+        if tabbed
+            && !stair_tabbed
+            && !reference_tabbed
+            && !segment_tabbed
+            && !typing
+            && !ui.ctx().egui_wants_keyboard_input()
+            && chain
+            && self.typed_fields() == 0
+            && let Some(id) = self
+                .canvas
+                .under_cursor
+                .iter()
+                .copied()
+                .find(|id| model.wall(*id).is_some_and(|w| w.arc == 0.0 && model.cut_by(w, model.guid(level))))
+        {
+            let now = match self.canvas.wall_face {
+                Some((held, face)) if held == id => face,
+                _ => match self.canvas.found.get() {
+                    Some(f) if f.source == Some(id) => f.face.unwrap_or(Face::Centre),
+                    _ => Face::Centre,
+                },
+            };
+            let next = match now {
+                Face::Left => Face::Centre,
+                Face::Centre => Face::Right,
+                _ => Face::Left,
+            };
+            self.canvas.wall_face = Some((id, next));
+            wall_tabbed = true;
+        }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
-        if tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
+        if tabbed && !wall_tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
             std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
             self.drawing.field = 1 - self.drawing.field.min(1);
         }
@@ -1611,7 +2172,7 @@ impl BimApp {
         let tool = self.tool.clone();
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
-            Tool::Modify => d.pick(q, PICK),
+            Tool::Modify => picks(&d.pick_all(q, PICK), false).first().copied(),
             Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             // A line to draw along, or to round.
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
@@ -1701,6 +2262,7 @@ impl BimApp {
         let dragged = self.sketch_drag(ui, &response, rect, &view, level);
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
+        self.stair_grip_drag(ui, &response, rect, &view, level);
         self.line_grip_drag(ui, &response, rect, &view, level);
         self.adaptive_grip_drag(ui, &response, rect, &view, level);
         self.view_grip_drag(ui, &response, rect, &view);
@@ -1714,6 +2276,7 @@ impl BimApp {
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
             && self.canvas.view_grip.is_none()
+            && self.canvas.stair_grip.is_none()
             && self.drawing.grip.is_none()
             && self.adaptive_grip.is_none()
             && self.spot_grip.is_none()
@@ -1747,7 +2310,10 @@ impl BimApp {
                         };
                     }
                 }
-                Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
+                Drag::Box(from) => {
+                    let found = picks(&d.in_box(from, q, q.0 < from.0), true);
+                    self.pick_up(found, click_modifiers(ui))
+                }
             }
         }
         // A double click on a section's or an elevation's mark opens its view, as in Revit; on a note, writes in it.
@@ -1817,13 +2383,26 @@ impl BimApp {
         if response.double_clicked() && !dragged && !writing && self.finishable() {
             self.finish_open_shape();
         }
+        // And a stair drawn along a line: the stair of what is drawn so far.
+        if response.double_clicked()
+            && !dragged
+            && !writing
+            && matches!(self.stair_shape, crate::StairShape::Straight | crate::StairShape::Arc)
+            && matches!(&self.tool, Tool::Stair(pts) if pts.len() >= 2)
+        {
+            self.finish_stair_path(level);
+        }
 
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         self.paint_background_grid(&p, rect, view);
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
-        let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
+        // A group selected lights its members; a curtain wall selected stays as it is drawn, for the part Tab picks to be seen.
+        let mut marked: Vec<Id> = crate::curtain::tinted_selection(&model, &bimcraft_core::groups::with_members(&model, &self.selection))
+            .into_iter()
+            .filter(|id| Some(*id) != shaped)
+            .collect();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
@@ -1834,7 +2413,11 @@ impl BimApp {
             draw::Picked::Sketch(_) => None,
         }));
         let sketch_trim = self.sketch.is_some() && matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. });
-        let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim { None } else { hovered };
+        let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim {
+            None
+        } else {
+            crate::curtain::tinted_hover(&model, &self.selection, hovered)
+        };
         let place = Place { hide: self.writing(), ..d.place };
         let kept = pipeline.as_ref().is_some_and(|pipeline| {
             self.canvas.drawing.retained.paint(ui.ctx(), pipeline, &p, place, rect.min, &d.drawing, &marked, painted_hover, self.thin)
@@ -1842,8 +2425,80 @@ impl BimApp {
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
         }
+        // Edit Group: the rest of the plan greyed under a wash of the paper, the group's own (and what Add points at) over it.
+        if let Some(scope) = &scope {
+            let keep: HashSet<Id> = scope.members.iter().copied().chain(painted_hover).collect();
+            grey_outside(&p, rect, place, &d, &keep, &marked, painted_hover, self.thin);
+        }
+        // A group under the pointer (a click takes it, Tab steps into it) has no lines of its own: its members light instead.
+        if let Some(g) = painted_hover.filter(|g| model.elements.get(*g).and_then(bimcraft_core::groups::instance).is_some()) {
+            let members: HashSet<Id> = bimcraft_core::groups::members(&model, g).into_iter().filter(|id| !marked.contains(id)).collect();
+            paint_hovered(&p, place, &d, &members, self.thin);
+        }
+        // The guides' marks and the dwell ring are aids over the plan, not part of it: the retained plan is painted
+        // after the preview pass, so they are drawn again here, on top.
+        let marks = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
+        self.show_pins(&marks);
+        if let Some((center, progress)) = self.canvas.dwell_view.get() {
+            let ink = guide_ink();
+            let r = crate::guide_refs::RING;
+            p.circle_stroke(center, r, Stroke::new(1.0, ink.anchor.gamma_multiply(0.28)));
+            if progress > 0.0 {
+                let start = -std::f32::consts::FRAC_PI_2;
+                let n = 28;
+                let pts: Vec<Pos2> = (0..=n)
+                    .map(|i| {
+                        let a = start + std::f32::consts::TAU * progress * i as f32 / n as f32;
+                        center + vec2(a.cos(), a.sin()) * r
+                    })
+                    .collect();
+                p.add(Shape::line(pts, Stroke::new(2.0, ink.core)));
+            }
+        }
         let kind = if up { "ceiling" } else { "plan" };
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
+        // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
+        if self.curtain_part.is_none() {
+            for w in self.selection.iter().filter_map(|id| model.wall(*id).filter(|_| crate::curtain::is_curtain(&model, *id))) {
+                let ring = bimcraft_core::curtain::outline_on_plan(&model, w).iter().map(|q| pos(rect.min, view.px(*q))).collect();
+                crate::curtain::mark_wall(&p, ring);
+            }
+        }
+        let under_cursor = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool)
+            .zip(self.canvas.cursor)
+            .and_then(|(id, q)| crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, q, view.scale));
+        self.curtain_part_aim(under_cursor);
+        let plan_mark = |p: &egui::Painter, id: Id, at, picked: bool| {
+            let l = self.curtain_laid.of(&model, id);
+            if let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::plan_ring(&l, &model, w, at)) {
+                crate::curtain::mark_part(p, ring.iter().map(|q| pos(rect.min, view.px(*q))).collect(), picked);
+            }
+        };
+        if let Some((id, at)) = self.curtain_aim {
+            plan_mark(&p, id, at, false);
+        }
+        if let Some((id, _)) = self.curtain_part {
+            for at in self.curtain_parts_picked() {
+                plan_mark(&p, id, at, true);
+            }
+        }
+        // The Curtain Grid tool: where the cursor would place a line.
+        if let Tool::CurtainGrid { wall, way } = self.tool {
+            let aim = self.canvas.cursor.zip(model.wall(wall)).and_then(|(q, w)| {
+                let (along, off) = bimcraft_core::walls::Axis::of(w).project(q);
+                let (ext, int) = bimcraft_core::walls::faces(&model, w);
+                let reach = f64::from(PICK) / view.scale;
+                let near = off >= int - reach && off <= ext + reach && way == bimcraft_core::curtain::GridWay::Vertical;
+                near.then_some((along, 0.0))
+            });
+            self.curtain_hover = crate::curtain::grid_aim(&model, &self.tool, aim);
+            if let Some((id, at, _)) = self.curtain_grid_hover()
+                && let Some(w) = model.wall(id)
+            {
+                let ends = bimcraft_core::curtain::line_on_plan(&model, w, at).map(|q| pos(rect.min, view.px(q)));
+                p.line_segment(ends, Stroke::new(2.0, pal().accent));
+            }
+        }
         // The working aid: which view this is. On the screen only; no drawing is made of it. (Where the project's 0, 0 is, is
         // the Internal Origin's mark, Site's in Visibility/Graphics.)
         if self.show_view_name {
@@ -1888,6 +2543,8 @@ impl BimApp {
                 }
             }
         }
+        // A group hovered or selected: a dashed frame round its members and a cross at its origin, as Revit draws one.
+        group_frames(&p, &model, &d, &lit, hover_lit);
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
                 let by = self.dragged(&model, &view, from, view.mm(q));
@@ -1916,11 +2573,15 @@ impl BimApp {
         if let Some(q) = local {
             let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
             self.preview(&scene, q, hovered, mods.shift);
+        } else {
+            // The pointer is off the plan: no dwell ring, and no half-filled rest left for when it returns.
+            self.canvas.dwell.set(None);
+            self.canvas.dwell_view.set(None);
         }
         // The Measure tool's ruler, as laid.
         if let (Tool::Measure(_), Some((a, b))) = (&self.tool, self.measured) {
             let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
-            p.extend(ruler_shapes(&scene, a, b));
+            p.extend(ruler_shapes(&scene, a, b, false));
             let r = snap::ruler(a, b);
             let units = model.units;
             let text = format!(
@@ -1940,6 +2601,7 @@ impl BimApp {
         self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
         self.adaptive_overlay(ui, rect, &view);
         self.view_extent_overlay(ui, &model, &view, rect);
+        self.stair_grip_overlay(ui, &model, &view, rect, level);
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing
@@ -1958,6 +2620,10 @@ impl BimApp {
         self.locks(ui, &model, &view, rect, key);
         self.context_menu(&response);
         self.nav_bar(ui, rect, key);
+        // A ring that is filling needs the next frame, even when the pointer is still.
+        if self.canvas.dwell.get().is_some_and(|d| !d.marked) {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+        }
     }
 
     /// A selection box in a section or an elevation, where nothing moves by dragging (in a plan, a
@@ -2117,6 +2783,10 @@ impl BimApp {
 
     /// Add `found` to the selection with Ctrl, take it away with Shift, else select just it.
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
+        // Edit Group's Add or Remove: what is picked joins the group or leaves it, and isn't selected.
+        if self.group_pick_up(&found) {
+            return;
+        }
         if mods.shift {
             self.selection.retain(|id| !found.contains(id));
         } else if mods.command {
@@ -2194,6 +2864,19 @@ impl BimApp {
             self.dimension_refs_click(m, key, v, at, hovered);
             return;
         }
+        if let Tool::CurtainSegment { .. } = self.tool {
+            self.status = Status { text: t("a segment is picked in a section, an elevation or the 3D view").into(), error: true };
+            return;
+        }
+        if let Tool::CurtainGrid { way, .. } = self.tool {
+            if way == bimcraft_core::curtain::GridWay::Horizontal {
+                self.status =
+                    Status { text: t("a horizontal grid is placed in a section, an elevation or the 3D view").into(), error: true };
+            } else {
+                self.curtain_grid_click();
+            }
+            return;
+        }
         match &self.tool {
             &Tool::Vertex { delete } if self.sketch.is_some() => self.vertex_click(None, v.mm(at), f64::from(PICK) / v.scale, delete),
             Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
@@ -2211,7 +2894,23 @@ impl BimApp {
             }
             // A sketch tool with the sketch gone: nothing to draw into.
             Tool::SketchLine(_) | Tool::SketchPick => self.tool = Tool::Modify,
-            Tool::Modify => self.pick_up(hovered.into_iter().collect(), mods),
+            Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. } => {}
+            // A click on the stair already selected, one drawn along a line, picks the flight or landing under it.
+            Tool::Modify
+                if !mods.shift
+                    && !mods.command
+                    && hovered.is_some()
+                    && self.selection.as_slice() == hovered.as_slice()
+                    && let Some(Element::Stair(st)) = hovered.and_then(|id| m.elements.get(id))
+                    && !st.path.is_empty()
+                    && let Some(i) = bimcraft_core::stairs::part_at(st, v.mm(at)) =>
+            {
+                self.canvas.stair_part = hovered.map(|id| (id, i));
+            }
+            Tool::Modify => {
+                self.canvas.stair_part = None;
+                self.pick_up(hovered.into_iter().collect(), mods);
+            }
             Tool::Door | Tool::Window => {
                 let door = matches!(self.tool, Tool::Door);
                 let cat = if door { "door" } else { "window" };
@@ -2302,7 +3001,10 @@ impl BimApp {
             Tool::SpecifyPoint => {
                 // Snapped as any point; its height by what it snapped to.
                 let f = self.snap(m, level, v, at, &[], false);
-                let p = self.alignments_for(m, level, v, &f, &[]).first().map_or(f.at, |a| a.snapped_point);
+                let p = self
+                    .alignments_for(m, level, v, &f, &[], GuideAt { at: v.mm(at), square: false })
+                    .first()
+                    .map_or(f.at, |a| a.snapped_point);
                 let z = bimcraft_core::coordinates::picked_z(m, level, p, f.source);
                 self.specify_at([p.0, p.1, z]);
             }
@@ -2363,7 +3065,8 @@ impl BimApp {
             Tool::Trim(_) | Tool::TrimTo { .. } => self.trim_click(hovered, v.mm(at)),
             Tool::Split => {
                 if let Some(id) = hovered {
-                    self.run("split", json!({"id": id, "at": point(self.snap(m, level, v, at, &[], false).at)}));
+                    let at = self.snap_point(m, level, v, at, &[], false);
+                    self.run("split", json!({"id": id, "at": point(at)}));
                 }
             }
             Tool::Offset => {
@@ -2488,9 +3191,16 @@ impl BimApp {
                 }
             }
             Tool::Text => self.write_note(key, round(v.mm(at))),
-            Tool::DetailGroup => self.place_group(key, self.snap(m, level, v, at, &[], false).at),
+            Tool::DetailGroup => {
+                let p = self.snap_point(m, level, v, at, &[], false);
+                self.place_group(key, p)
+            }
+            Tool::ModelGroup => {
+                let p = self.snap_point(m, level, v, at, &[], false);
+                self.place_model_group(level, p)
+            }
             &Tool::RepeatingDetail(start) => {
-                let p = self.snap(m, level, v, at, start.as_slice(), mods.shift).at;
+                let p = self.snap_point(m, level, v, at, start.as_slice(), mods.shift);
                 match start {
                     None => self.tool = Tool::RepeatingDetail(Some(p)),
                     Some(a) => {
@@ -2509,7 +3219,7 @@ impl BimApp {
             Tool::SpotCoordinate(first) => {
                 let first = *first;
                 let from: Vec<P2> = first.into_iter().collect();
-                let p = self.snap(m, level, v, at, &from, mods.shift).at;
+                let p = self.snap_point(m, level, v, at, &from, mods.shift);
                 self.spot_coordinate_click(key, first, p);
             }
             Tool::Acquire => {
@@ -2558,7 +3268,20 @@ impl BimApp {
                 if pts.last().is_some_and(|l| l.dist(p) <= TOL) {
                     return;
                 }
+                // What the stretch to this click is: steps or a landing, straight or an arc.
+                if !ramp {
+                    self.stair_kinds.truncate(pts.len().saturating_sub(1));
+                    if !pts.is_empty() {
+                        let wide = m.units.parse(&self.stair_width);
+                        self.stair_kinds.push((self.stair_landing, self.stair_shape == crate::StairShape::Arc, wide));
+                    }
+                }
                 pts.push(p);
+                // Drawn by hand, each click is an end of a riser: Enter makes the stair.
+                if !ramp && self.stair_shape == crate::StairShape::Risers {
+                    self.tool = Tool::Stair(pts);
+                    return;
+                }
                 let next = match (pts.len(), self.flight(m, level, &pts, ramp)) {
                     (1, _) | (_, Ok((_, false))) => pts,
                     (_, Ok((e, true))) => {
@@ -2607,7 +3330,8 @@ impl BimApp {
                     _ if path.len() >= 2 => Vec::new(),
                     _ => path.last().copied().into_iter().collect(),
                 };
-                let p = self.snap(m, level, v, at, &guide, mods.shift).at;
+                // The guide its preview draws is the line the click goes on, as a wall's does.
+                let p = self.snap_point(m, level, v, at, &guide, mods.shift);
                 match self.shape() {
                     draw::Shape::Fillet => {
                         let picked = hovered.filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_))));
@@ -2720,7 +3444,7 @@ impl BimApp {
             },
             // A custom fill pattern's tile: two opposite corners, the pattern made of the lines picked on the second.
             &Tool::PatternCorner(first) => {
-                let p = self.snap(m, level, v, at, first.as_slice(), false).at;
+                let p = self.snap_point(m, level, v, at, first.as_slice(), false);
                 match first {
                     None => self.tool = Tool::PatternCorner(Some(p)),
                     Some(a) => self.pattern_corners(a, p),
@@ -2728,7 +3452,7 @@ impl BimApp {
             }
             // Two opposite corners of a rectangle.
             &Tool::Shaft(start) => {
-                let p = self.snap(m, level, v, at, start.as_slice(), false).at;
+                let p = self.snap_point(m, level, v, at, start.as_slice(), false);
                 match start {
                     None => self.tool = Tool::Shaft(Some(p)),
                     Some(a) if (a.0 - p.0).abs() > TOL && (a.1 - p.1).abs() > TOL => {
@@ -2749,7 +3473,7 @@ impl BimApp {
             // The selected floor's slope arrow, from its tail to its head; then Modify, the floor
             // still selected.
             &Tool::SlopeArrow(tail) => {
-                let p = self.snap(m, level, v, at, tail.as_slice(), mods.shift).at;
+                let p = self.snap_point(m, level, v, at, tail.as_slice(), mods.shift);
                 match (tail, self.selected_floor(), number(&self.floor_slope)) {
                     (None, ..) => self.tool = Tool::SlopeArrow(Some(p)),
                     (Some(a), Some(floor), Some(slope)) if a.dist(p) > TOL => {
@@ -2835,7 +3559,7 @@ impl BimApp {
             let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(0.0));
             let (bottom, top) = m.span(level, 0.0, top_level, height);
             let up = (run * slope / 100.0 * 1000.0).round() / 1000.0;
-            let landings = if top - bottom - up > 1.0 { vec![Landing { at: up, turn }] } else { Vec::new() };
+            let landings = if top - bottom - up > 1.0 { vec![Landing { at: up, turn, ..Landing::default() }] } else { Vec::new() };
             let done = done(&landings);
             Ok((
                 Element::Ramp(Ramp {
@@ -2852,27 +3576,180 @@ impl BimApp {
                 done,
             ))
         } else {
-            let width = m.units.parse(&self.stair_width).ok_or_else(|| tf("stair: `{}` is not a width", &[&self.stair_width]))?;
+            let width = m
+                .units
+                .parse(&self.stair_width)
+                .ok_or_else(|| tf("The width \"{}\" isn't a length. Type a number, such as 1200.", &[&self.stair_width]))?;
+            // The rules of the type the stair will be of: its own where it has them, else the building code's.
+            let kind = self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default();
+            let held = bimcraft_core::codes::limits_of(m, &kind);
+            let rules = &held.rules;
+            let top = top_params(m, level, self.stair_top, &self.stair_height).map_err(|e| tf("stair: {}", &[&e]))?;
+            let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(DEFAULT_HEIGHT));
             let mut st = Stair {
+                type_name: kind.clone(),
                 params: Default::default(),
                 level: m.guid(level),
-                top_level: m.level_above(level),
-                height: DEFAULT_HEIGHT,
+                top_level,
+                height,
+                base_offset: 0.0,
+                top_offset: 0.0,
+                lock_going: self.stair_lock_going,
+                unsketched: None,
                 start,
                 angle,
                 width,
-                riser: RISER,
-                tread: TREAD,
+                riser: m.units.parse(&self.stair_riser).filter(|r| *r >= 50.0 && *r <= 500.0).unwrap_or(rules.riser),
+                tread: m.units.parse(&self.stair_tread).filter(|g| *g >= 50.0 && *g <= 2000.0).unwrap_or(rules.going),
                 landings: Vec::new(),
+                line: self.stair_line,
+                offset: m.units.parse(&self.stair_offset).unwrap_or(0.0),
+                spiral: None,
+                sketch: Vec::new(),
+                path: Vec::new(),
+                multistorey: false,
+                edges: Vec::new(),
             };
-            let (n, _, _) = m.flight(&st);
-            // As many risers as the run clicked holds, a tread between each two.
-            let first = ((run / TREAD).round() + 1.0).max(2.0);
-            if f64::from(n) - first >= 2.0 {
-                st.landings.push(Landing { at: first, turn });
+            // Multistorey where it climbs past a level on the way.
+            st.multistorey = self.stair_multistorey && m.storeys(&Stair { multistorey: true, ..st.clone() }).len() > 1;
+            // Drawn by hand: each two points a riser, its left end and its right, going up.
+            if self.stair_shape == crate::StairShape::Risers {
+                st.sketch = (pts.as_chunks::<2>().0.iter())
+                    .filter(|[a, b]| a.dist(*b) >= 1.0)
+                    .map(|[a, b]| bimcraft_core::model::SketchStep { riser: [*a, *b], outline: Vec::new() })
+                    .collect();
+                let [a, b, ..] = st.sketch.as_slice() else {
+                    return Err(t("Click both ends of each riser. A stair needs two risers at least.").into());
+                };
+                let way = b.mid() - a.mid();
+                (st.start, st.angle) = (a.mid(), (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9);
+                (st.line, st.offset) = (Default::default(), 0.0);
+                return Ok((Element::Stair(st), false));
             }
-            let done = done(&st.landings);
+            // A spiral: the first click is its centre, the second the middle of its first riser; it winds counter-clockwise
+            // from there, or clockwise as the Options Bar says, with treads of the code's depth on its middle line.
+            if self.stair_shape == crate::StairShape::Spiral {
+                let (out, radius) = ((end - start).unit(), start.dist(end));
+                let way = if self.stair_clockwise { out.perp() * -1.0 } else { out.perp() };
+                st.start = end;
+                st.angle = (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9;
+                (st.line, st.offset) = (Default::default(), 0.0);
+                if radius < width / 2.0 {
+                    return Err(tf(
+                        "stair: its centre is {} from its middle line at least, half its width",
+                        &[&m.units.with_unit(width / 2.0)],
+                    ));
+                }
+                st.spiral = Some(bimcraft_core::model::Spiral { radius: if self.stair_clockwise { -radius } else { radius }, sweep: 0.0 });
+                return Ok((Element::Stair(st), true));
+            }
+            // Along the line clicked: each stretch a flight or a landing, straight or an arc that leaves the one before it
+            // smoothly. Winders, where the Options Bar asks, round a corner where a flight meets the flight before it.
+            let mut way: Option<P2> = None;
+            for (i, ends) in pts.windows(2).enumerate() {
+                let &[a, b] = ends else { continue };
+                if a.dist(b) < 1.0 {
+                    continue;
+                }
+                let (landing, curved, wide) =
+                    self.stair_kinds.get(i).copied().unwrap_or((self.stair_landing, self.stair_shape == crate::StairShape::Arc, None));
+                // Each stretch as wide as the Width box said when it was clicked: one wider or narrower than the first
+                // has a width of its own.
+                let wide = wide.unwrap_or(width);
+                if i == 0 {
+                    st.width = wide;
+                }
+                let own = ((wide - st.width).abs() > 1e-6).then_some(wide);
+                let chord = (b - a).unit();
+                // An arc turns through twice the angle from the way it leaves to its chord.
+                let arc = match way {
+                    Some(from) if curved => {
+                        let turn = 2.0 * (from.0 * chord.1 - from.1 * chord.0).atan2(from.dot(chord)).to_degrees();
+                        if (1.0..=340.0).contains(&turn.abs()) { (turn * 1000.0).round() / 1000.0 } else { 0.0 }
+                    }
+                    _ => 0.0,
+                };
+                let after_flight = st.path.last().is_some_and(|s| !s.landing);
+                let winders = if !landing && after_flight && arc == 0.0 { self.stair_winders.min(30) } else { 0 };
+                st.path.push(bimcraft_core::model::PathSeg { to: b, landing, arc, winders, width: own });
+                // The way it goes on from there: along the chord, or round the arc.
+                let (s, c) = arc.to_radians().sin_cos();
+                way = Some(match way {
+                    Some(from) if arc != 0.0 => P2(from.0 * c - from.1 * s, from.0 * s + from.1 * c),
+                    _ => chord,
+                });
+            }
+            let Some(first) = st.path.first() else { return Err(t("click where its first stretch ends").into()) };
+            let along = first.to - st.start;
+            st.angle = (along.1.atan2(along.0).to_degrees() * 1e9).round() / 1e9;
+            // Done when its flights, as drawn, hold all its risers.
+            let done = st.path.last().is_some_and(|s| !s.landing) && bimcraft_core::stairs::path_full(m, &st);
+            // Short of that, it is what is drawn and no more: each flight the risers its length holds, the stair's top
+            // under its top level by the risers not drawn. What was clicked stays put whatever is drawn next, and a
+            // double click finishes it there.
+            if !done && !st.multistorey {
+                let (n, each, _) = m.flight(&st);
+                let k = bimcraft_core::stairs::drawn_risers(m, &st);
+                if (2..n).contains(&k) {
+                    let short = f64::from(n - k) * each;
+                    if st.top_level.is_some() {
+                        st.top_offset = short;
+                    } else {
+                        st.height -= short;
+                    }
+                    // Its risers as high as they were: the count it climbs in is the count drawn.
+                    if m.flight(&st).0 != k {
+                        st.riser = each;
+                    }
+                    // Drawn from the top, what is drawn hangs from the top level: its foot raised, not its top lowered.
+                    if self.stair_from_top {
+                        st.top_offset = 0.0;
+                        st.base_offset = -short;
+                    }
+                }
+            }
+            // Drawn from the top, it climbs the other way along what was drawn.
+            if self.stair_from_top
+                && let Some(up) = bimcraft_core::stairs::flipped(m, &st)
+            {
+                st = up;
+            }
             Ok((Element::Stair(st), done))
+        }
+    }
+
+    /// A double click or Enter while the Stair tool draws along a line: the stair of what is drawn, its last flight taking
+    /// the risers left.
+    pub(crate) fn finish_stair_path(&mut self, level: Id) {
+        let Tool::Stair(pts) = &mut self.tool else { return };
+        if pts.len() < 2 {
+            return;
+        }
+        let pts = std::mem::take(pts);
+        let m = std::sync::Arc::clone(&self.session.model);
+        match self.flight(&m, level, &pts, false) {
+            Ok((e, _)) => {
+                let mut params = serde_json::to_value(&e).unwrap_or_default();
+                params["railings"] = json!(self.railings);
+                self.run("stair", params);
+            }
+            Err(e) => self.status = Status { text: e, error: true },
+        }
+        self.stair_kinds.clear();
+    }
+
+    /// The Stair tool's Enter while it draws by hand: the stair of the risers clicked.
+    pub(crate) fn finish_stair_sketch(&mut self, level: Id) {
+        let Tool::Stair(pts) = &mut self.tool else { return };
+        let pts = std::mem::take(pts);
+        let m = std::sync::Arc::clone(&self.session.model);
+        match self.flight(&m, level, &pts, false) {
+            Ok((e, _)) => {
+                let mut params = serde_json::to_value(&e).unwrap_or_default();
+                params["railings"] = json!(false);
+                self.run("stair", params);
+            }
+            Err(e) => self.status = Status { text: e, error: true },
         }
     }
 
@@ -2887,6 +3764,9 @@ impl BimApp {
             }
             self.run("railing", p);
         }
+        self.canvas.start_edge = None;
+        self.canvas.wall_face = None;
+        self.canvas.pins.borrow_mut().clear();
     }
 
     /// The Detail Line tool's next point. A line a click, as walls are: each click after the first makes a line from the
@@ -2945,6 +3825,9 @@ impl BimApp {
         } else if let Tool::DetailLine(path) = &mut self.tool {
             path.clear();
         }
+        self.canvas.pins.borrow_mut().clear();
+        self.canvas.wall_face = None;
+        self.canvas.start_edge = None;
     }
 
     /// A detail line through the points clicked, round to the first again where `closed`, in the Options Bar's line
@@ -2976,6 +3859,9 @@ impl BimApp {
             }
             Err(e) => self.status = Status { text: tf("mass: {}", &[&e]), error: true },
         }
+        self.canvas.start_edge = None;
+        self.canvas.wall_face = None;
+        self.canvas.pins.borrow_mut().clear();
     }
 
     /// The Text tool's click: a note saying what the Options Bar says, its top left at `at` in
@@ -3107,18 +3993,30 @@ impl BimApp {
                     if self.options_refused() {
                         return;
                     }
+                    // A Fixed Grid ends the wall at its pattern's nearest length, and the chain goes on from there.
+                    let fixed = self.drawing_fixed_curtain().cloned();
+                    let p = self.fixed_end(fixed.as_ref(), last, p);
                     if self.build_walls(level, &draw::offset_line(last, p, self.draw_options().offset), false, 0.0) {
                         let Tool::Wall(chain) = &mut self.tool else { return };
                         // Back on its start, the chain closes; without Chain, every wall stands alone.
                         if !self.chain || first.dist(p) <= TOL {
                             chain.clear();
+                            self.canvas.start_edge = None;
+                            self.canvas.pins.borrow_mut().clear();
                         } else {
                             chain.push(p);
                         }
                     }
                 }
                 (Some(_), _) => {}
-                (None, _) => chain.push(p),
+                (None, _) => {
+                    chain.push(p);
+                    // A chain whose first point the snap put on a wall — one of its faces or its centre line — draws with
+                    // that line's direction and extension for as long as it runs.
+                    if self.canvas.start_edge.is_none() {
+                        self.canvas.start_edge = crate::guide_refs::wall_edge_at(&self.session.model, level, p, TOL);
+                    }
+                }
             },
             // Each click past the first a line from the one before, the chain going on from there.
             Tool::RoomSeparator(start) => match start.take() {
@@ -3180,6 +4078,10 @@ impl BimApp {
     /// The Move and Copy tools' second point: the selection moved or copied by `to - from`. A copy
     /// is selected afterwards; with Multiple, the tool goes on copying from the same base point.
     fn shift_selection(&mut self, from: P2, to: P2) {
+        if self.curtain_grid_moving().is_some() {
+            self.move_grid_on_plan(from, to);
+            return;
+        }
         let copy = matches!(self.tool, Tool::Copy(_));
         let again = if copy { Tool::Copy(Some(from)) } else { Tool::Move(Some(from)) };
         if from.dist(to) <= TOL {
@@ -3247,6 +4149,9 @@ impl BimApp {
         if let Tool::Wall(chain) = &mut self.tool {
             chain.clear();
         }
+        self.canvas.start_edge = None;
+        self.canvas.pins.borrow_mut().clear();
+        self.canvas.wall_face = None;
     }
 
     /// Walls along `points`, each turning `arc` degrees, as the Options Bar says: their type,
@@ -3266,6 +4171,16 @@ impl BimApp {
         });
         if let Some(t) = self.types.get("wall") {
             p["type"] = json!(t);
+            // A curtain wall stands on its exterior or interior face: the command puts it on one unless one is asked for.
+            let curtain = self.session.model.types.wall.get(t).is_some_and(|w| w.curtain.is_some());
+            if curtain
+                && !matches!(
+                    self.wall_location,
+                    bimcraft_core::model::Location::ExteriorFinish | bimcraft_core::model::Location::InteriorFinish
+                )
+            {
+                p.as_object_mut().map(|o| o.remove("location"));
+            }
         }
         // Drawn in the 3D view, on the face their base stands on.
         if let Some(offset) = self.orbit.wall_base {
@@ -3415,6 +4330,10 @@ impl BimApp {
         } else {
             found.at
         };
+        // A wall of a Fixed Grid stays in its pattern's lengths.
+        let wall = self.gripped().and_then(|id| m.wall(id));
+        let pattern = wall.and_then(|w| m.types.wall.get(&w.type_name)).and_then(|t| t.curtain.as_ref()).map(|l| &l.columns);
+        let at = self.fixed_end(pattern.filter(|d| d.fit == bimcraft_core::curtain::Fit::Fixed), fixed, at);
         (found, at)
     }
 
@@ -3508,8 +4427,8 @@ impl BimApp {
             let ring: Vec<Pos2> = ring.into_iter().map(&at).collect();
             p.add(Shape::closed_line(ring, Stroke::new(1.0, pal().accent)));
             let fixed = if start { ends.1 } else { ends.0 };
-            p.extend(ruler_shapes(&sc, fixed, to));
-            self.show_snap(&sc, &found);
+            p.extend(ruler_shapes(&sc, fixed, to, self.refined_guides()));
+            self.show_snap(&sc, &found, Lock::Free);
             self.canvas.found.set(Some(found));
             let r = snap::ruler(fixed, to);
             let reading = format!("{}  {}", m.units.with_unit(r.length), degrees(if start { norm_turn(r.angle + 180.0) } else { r.angle }));
@@ -4287,8 +5206,9 @@ impl BimApp {
         let (p, m, v, level, key) = (sc.p, sc.m, sc.v, sc.level, sc.key);
         let origin = p.clip_rect().min;
         let cursor = pos(origin, q);
-        let stroke = Stroke::new(2.0, pal().accent);
-        let thin = Stroke::new(1.0, pal().accent);
+        let refined = self.refined_guides();
+        let stroke = Stroke::new(2.0, canvas_pal().accent);
+        let thin = Stroke::new(1.0, canvas_pal().accent);
         let label = |at: Pos2, text: String| tag(p, at + vec2(12.0, -12.0), Align2::LEFT_BOTTOM, text);
         let dashed = |a: Pos2, b: Pos2| p.extend(Shape::dashed_line(&[a, b], thin, 8.0, 4.0));
         // An element a click would add, drawn as the plan would draw it.
@@ -4304,7 +5224,13 @@ impl BimApp {
             Tool::SketchPick => &[],
             // The group a click would place.
             Tool::DetailGroup => {
-                if let Some(e) = self.group_at(m, key, self.found(sc, q, &[], false)) {
+                for e in self.group_at(m, key, self.found(sc, q, &[], false)) {
+                    sketched(&e);
+                }
+                return;
+            }
+            Tool::ModelGroup => {
+                for e in self.model_group_at(m, level, self.found(sc, q, &[], false)) {
                     sketched(&e);
                 }
                 return;
@@ -4345,14 +5271,58 @@ impl BimApp {
                 if let Ok((e, _)) = self.flight(m, level, &with, ramp) {
                     sketched(&e);
                     let first = match &e {
+                        // Along a line: the risers drawn, of those it needs to reach its top level.
+                        // Along a line: the risers drawn, of those it needs to reach its top (its top level, or the
+                        // height asked), and how high the last of them climbs.
+                        Element::Stair(st) if !st.path.is_empty() => {
+                            let height = top_params(m, level, self.stair_top, &self.stair_height)
+                                .ok()
+                                .and_then(|p| p["height"].as_f64())
+                                .unwrap_or(st.height);
+                            let whole = Stair { top_offset: 0.0, height, ..st.clone() };
+                            let (full, each, _) = m.flight(&whole);
+                            let drawn = bimcraft_core::stairs::drawn_risers(m, &whole).clamp(1, full.max(1));
+                            Some(tf(
+                                "Step {} of {} - {}",
+                                &[&drawn.to_string(), &full.to_string(), &m.units.with_unit(f64::from(drawn) * each)],
+                            ))
+                        }
                         Element::Stair(st) => {
                             st.landings.first().map(|l| tf("{} of {} risers", &[&l.at.to_string(), &m.flight(st).0.to_string()]))
                         }
                         Element::Ramp(r) => r.landings.first().map(|l| tf("{} up", &[&m.units.with_unit(l.at)])),
                         _ => None,
                     };
-                    if let Some(text) = first.filter(|_| with.len() == 2) {
+                    let along = matches!(&e, Element::Stair(st) if !st.path.is_empty());
+                    if let Some(text) = first.filter(|_| with.len() == 2 || along) {
                         label(cursor, text);
+                    }
+                    // What the project's building code would say of the stair as it would be made: under the cursor.
+                    if let Element::Stair(st) = &e {
+                        let outside = bimcraft_core::codes::stair_findings(m, st);
+                        let named: Vec<&str> = outside.iter().take(3).map(|f| crate::codes::rule_label(f.rule)).collect();
+                        let (said, color) = match outside.len() {
+                            0 => (t("Inside the rules").to_string(), pal().muted),
+                            1 => (format!("{}: {}", t("Outside 1 rule"), named.join(", ")), crate::codes::OUTSIDE),
+                            n => (format!("{}: {}", tf("Outside {} rules", &[&n.to_string()]), named.join(", ")), crate::codes::OUTSIDE),
+                        };
+                        p.text(cursor + vec2(18.0, 22.0), Align2::LEFT_TOP, said, FontId::proportional(11.5), color);
+                        // The nearest stair that fits, offered: Tab takes its riser, tread and width.
+                        if !outside.is_empty() && st.sketch.is_empty() {
+                            let locks = bimcraft_core::codes::Locks { landings: true, ..Default::default() };
+                            if let Some(best) =
+                                bimcraft_core::codes::solve(m, st, locks).into_iter().next().filter(|b| b.findings.is_empty())
+                            {
+                                let tip = tf(
+                                    "Tab: {} risers of {}, treads {}",
+                                    &[&best.risers.to_string(), &m.units.with_unit(best.riser), &m.units.with_unit(best.tread)],
+                                );
+                                p.text(cursor + vec2(18.0, 38.0), Align2::LEFT_TOP, tip, FontId::proportional(11.5), pal().accent);
+                                self.stair_offer.set(Some((best.riser, best.tread, best.width)));
+                            }
+                        } else {
+                            self.stair_offer.set(None);
+                        }
                     }
                 }
                 return;
@@ -4697,7 +5667,8 @@ impl BimApp {
             // The spot coordinate as it would be: on the cursor, then from its point to the cursor.
             Tool::SpotCoordinate(first) => {
                 let from: Vec<P2> = first.iter().copied().collect();
-                let p = self.snap(m, level, v, q, &from, false).at;
+                // The same landing the click takes, with the marker: the guide's exact point, not the snap's rounded one.
+                let p = self.found(sc, q, &from, false);
                 let (at, end) = match *first {
                     None => (p, None),
                     Some(a) => (a, Some(p)),
@@ -4886,7 +5857,7 @@ impl BimApp {
             if let (Some(&last), true) =
                 (chain.last(), matches!(shape, draw::Shape::Circle | draw::Shape::Inscribed | draw::Shape::Circumscribed))
             {
-                p.extend(ruler_shapes(sc, last, next));
+                p.extend(ruler_shapes(sc, last, next, refined));
             }
             self.shape_dimensions(sc, chain, next);
             return;
@@ -4921,11 +5892,9 @@ impl BimApp {
         }
         // The ruler along the new line, and an arc at the corner it turns from the line before.
         if let Some(&last) = chain.last() {
-            p.extend(ruler_shapes(sc, last, next));
-            if let [.., prev, l] = chain
-                && let Some(a) = corner_arc(sc, *prev, *l, next)
-            {
-                p.add(a);
+            p.extend(ruler_shapes(sc, last, next, refined));
+            if let [.., prev, l] = chain {
+                p.extend(corner_arc(sc, *prev, *l, next, refined));
             }
         }
         // The listening dimension: the length so far and the angle (at the corner it turns, else from
@@ -4937,15 +5906,103 @@ impl BimApp {
             };
             format!("{}  {}", m.units.with_unit(last.dist(next)), degrees(angle.unwrap_or_else(|| snap::ruler(last, next).angle)))
         };
-        match (chain.last(), self.typed_length.is_empty()) {
-            (Some(_), false) => label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim())),
-            (Some(last), true) => label(sc.screen(next), reading(*last)),
-            (None, _) => {}
+        if let Some(last) = chain.last() {
+            if !self.typed_length.is_empty() {
+                label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim()));
+            } else if refined {
+                // Beside the segment's middle, on the outside of the corner it turns at, and clear of the line by the pill's
+                // own width so a wide pill never crosses back over a steep segment; the badge it must keep off is known.
+                let (pl, pn) = (sc.screen(*last), sc.screen(next));
+                let prev = match chain {
+                    [.., prev, _] => Some(sc.screen(*prev)),
+                    _ => None,
+                };
+                reading_pill(sc.p, pl, pn, prev, reading(*last), guide_ink(), self.canvas.badge.get());
+            } else {
+                label(sc.screen(next), reading(*last));
+            }
         }
     }
 }
 
+/// A live reading in a pill of its own: the length and angle on the guide ink's paper, on the outside of the segment it
+/// measures and kept inside the painter's edge, so neither the line, the corner's arc nor the badge behind it cuts the number.
+fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, text: String, ink: GuideInk, avoid: Option<Rect>) -> Rect {
+    let galley = p.layout_no_wrap(text, FontId::proportional(11.5), ink.badge_text);
+    let size = galley.size() + vec2(10.0, 5.0);
+    let at = reading_spot(from, to, prev, size, avoid);
+    let clip = p.clip_rect();
+    let c = pos2(
+        at.x.clamp(clip.left() + 4.0 + size.x / 2.0, (clip.right() - 4.0 - size.x / 2.0).max(clip.left() + 4.0 + size.x / 2.0)),
+        at.y.clamp(clip.top() + 4.0 + size.y / 2.0, (clip.bottom() - 4.0 - size.y / 2.0).max(clip.top() + 4.0 + size.y / 2.0)),
+    );
+    let rect = Rect::from_center_size(c, size);
+    let radius = rect.height() / 2.0;
+    p.rect_filled(rect, radius, ink.badge);
+    p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
+    p.galley(rect.min + vec2(5.0, 2.5), galley, ink.badge_text);
+    rect
+}
+
+/// Where a reading pill of `size` goes for the segment `from` → `to`, turning at `prev`: past the segment's middle on the
+/// outside of the turn, far enough along the normal that the pill's own box projected on the normal clears the line (a
+/// fixed offset lets a wide pill cross back over a steep segment), and farther out again where the badge at `avoid` or the
+/// corner's arc would reach it.
+pub(crate) fn reading_spot(from: Pos2, to: Pos2, prev: Option<Pos2>, size: Vec2, avoid: Option<Rect>) -> Pos2 {
+    let d = to - from;
+    let len = d.length();
+    let dir = if len > f32::EPSILON { d / len } else { vec2(1.0, 0.0) };
+    let mut n = vec2(dir.y, -dir.x);
+    if let Some(prev) = prev
+        && n.dot(prev - from) < 0.0
+    {
+        n = -n;
+    }
+    let half = 0.5 * (n.x.abs() * size.x + n.y.abs() * size.y);
+    let middle = from + dir * (len * 0.5);
+    let mut off = (6.0 + half).max((45.0f32.powi(2) - (len * 0.5).powi(2)).max(0.0).sqrt());
+    if let Some(avoid) = avoid {
+        // The badge sits by the cursor, at the segment's other end: step along the normal until the two boxes part.
+        let beyond = (avoid.center() - middle).dot(n) + 0.5 * (n.x.abs() * avoid.width() + n.y.abs() * avoid.height()) + half + 6.0;
+        off = off.max(beyond);
+    }
+    middle + n * off
+}
+
 impl BimApp {
+    /// `Q`: marks the point or edge under the pointer as a snap reference for this command, or unmarks it. It works
+    /// before the first point, so a wall can start where two marked references cross.
+    pub(crate) fn pin_under_cursor(&mut self) {
+        let Some(key) = self.plan_key() else { return };
+        let Some(v) = self.canvas.view(key) else { return };
+        let Some(cursor) = self.canvas.cursor else { return };
+        let m = Arc::clone(&self.session.model);
+        let level = m.plan_level(key).unwrap_or(key);
+        let chain = picked(&self.tool);
+        let at = v.px(cursor);
+        let f = self.snap(&m, level, &v, at, &chain, false);
+        let mut under = self.canvas.under_cursor.clone();
+        if let Some(id) = f.source
+            && !under.contains(&id)
+        {
+            under.push(id);
+        }
+        let Some(target) = crate::guide_refs::target_at(&m, level, key, &v, at, &f, &under) else { return };
+        let lines = target.lines(&m, level, m.guid(key));
+        let marked = self.canvas.pins.borrow_mut().toggle(key, target, lines);
+        // The hover that pressed Q has had its mark: the ring must not fill and take it back while the hand rests, nor
+        // while it crosses the other faces of the same wall.
+        let here = pos2(self.canvas.rect.min.x + at.0, self.canvas.rect.min.y + at.1);
+        self.canvas.dwell.set(None);
+        self.canvas.dwell_quiet.set(Some((target.id(), here)));
+        let text = match marked {
+            crate::guide_refs::Marked::New => t("Snap reference marked"),
+            crate::guide_refs::Marked::Cleared => t("Snap reference cleared"),
+            crate::guide_refs::Marked::Moved => t("Snap reference moved"),
+        };
+        self.status = Status { text: text.to_string(), error: false };
+    }
+
     /// Under Modify Sub Elements, a drag from one of the selected floor's shape points moves it in plan, snapped, at its
     /// height, the split lines ending there going with it; on release, one `edit_shape`. Whether it took the release, which is
     /// then no click.
@@ -5057,10 +6114,52 @@ impl BimApp {
     }
 }
 
+/// The shapes a view's marked references draw: a dot and a ring on a marked point, the line itself for a marked edge. A pin
+/// is never a square and never a filled block: the classic guide's blue square is the only square a guide shows.
+pub(crate) fn pin_shapes(pins: &[crate::guide_refs::Pin], to: impl Fn(P2) -> Pos2, hair: f32) -> Vec<Shape> {
+    let ink = guide_ink();
+    let mut out = Vec::new();
+    for pin in pins {
+        match pin.target {
+            crate::guide_refs::PinTarget::Point { at, .. } => {
+                let c = to(at);
+                out.push(Shape::circle_stroke(c, 6.5, Stroke::new(hair, ink.anchor.gamma_multiply(0.5))));
+                out.push(Shape::circle_filled(c, 2.5, ink.core));
+            }
+            crate::guide_refs::PinTarget::Edge { a, b, .. } => {
+                out.push(Shape::line_segment([to(a), to(b)], Stroke::new(2.5, ink.core)));
+            }
+        }
+    }
+    out
+}
+
+/// What a snap is called, for its tag and the status box: a wall's own line says which of its three it is — its exterior
+/// face, its centre line or its interior face — and every other snap says what kind it is, with the element it came from:
+/// "Exterior Face of Wall 100231", "Endpoint of Detail Line 100012", "Nearest".
+pub(crate) fn snap_name(m: &Model, f: &Found) -> String {
+    let Some((id, e)) = f.source.and_then(|id| Some((id, m.elements.get(id)?))) else {
+        return t(f.kind.name()).to_string();
+    };
+    let of = crate::lang::category(e.category(), false);
+    // A wall says which of its three lines it snapped to, as its dimensions do; anything else says what kind of snap it is.
+    // TRANSLATORS: what a point snapped to, then the category and id of its element: "Exterior Face of Wall 100231".
+    let what = match (f.face, e.category()) {
+        (Some(Face::Left), "wall") => t("Exterior Face"),
+        (Some(Face::Right), "wall") => t("Interior Face"),
+        (Some(_), "wall") => t("Centreline"),
+        _ => t(f.kind.name()),
+    };
+    tf("{} of {} {}", &[what, &of, &id.to_string()])
+}
+
 /// A snap's marker at `at` on screen, by what it snapped to (`kind`), its guide dashed from `from` (the point it runs from,
-/// on screen) on past it, and `name` beside it: the plan's and a family's sketch's alike.
-pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, name: String) {
-    let (stroke, thin) = (Stroke::new(2.0, pal().accent), Stroke::new(1.0, pal().accent));
+/// on screen) on past it, and `name` beside it: the plan's and a family's sketch's alike. `lock` says what holds a free
+/// point, which changes its marker; `refined` draws the thin ink of Manage > Snaps instead of the classic one.
+pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, lock: Lock, refined: bool, name: String) {
+    let ink = guide_ink();
+    let hair = 1.0 / p.pixels_per_point();
+    let stroke = Stroke::new(if refined { 1.5 } else { 2.0 }, canvas_pal().accent);
     if let Some(a) = from
         && a.distance(at) > 1.0
     {
@@ -5068,7 +6167,34 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, n
         // off would make a dash for every 10 px.
         let u = (at - a).normalized();
         let back = a.distance(at).min(4000.0) + 24.0;
-        p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], thin, 6.0, 4.0));
+        let (stroke, dash, gap) = if refined {
+            (Stroke::new(hair, canvas_pal().accent.gamma_multiply(0.6)), 4.0, 4.0)
+        } else {
+            (Stroke::new(1.0, canvas_pal().accent), 6.0, 4.0)
+        };
+        p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], stroke, dash, gap));
+    }
+    // The guides' glyph comes first: a point both an angle step and two guides hold says which guides, not the step.
+    if let Some(glyph) = lock_glyph(kind, lock, refined) {
+        match glyph {
+            LockGlyph::Bullseye => {
+                p.circle_stroke(at, 7.0, Stroke::new(hair, ink.core));
+                p.circle_stroke(at, 3.9, Stroke::new(hair, ink.anchor.gamma_multiply(0.5)));
+                p.circle_filled(at, 1.5, ink.core);
+            }
+            LockGlyph::Slide(d) => {
+                p.circle_filled(at, 2.5, ink.core);
+                // Square on the guide: the way the point can still slide.
+                let n = vec2(-d.y, d.x) * 3.5;
+                p.line_segment([at - n, at + n], Stroke::new(hair, ink.core));
+            }
+            LockGlyph::Crosshair => {
+                p.line_segment([at - vec2(5.0, 0.0), at + vec2(5.0, 0.0)], Stroke::new(hair, ink.cursor));
+                p.line_segment([at - vec2(0.0, 5.0), at + vec2(0.0, 5.0)], Stroke::new(hair, ink.cursor));
+                p.circle_filled(at, 1.2, ink.cursor);
+            }
+        }
+        return;
     }
     match kind {
         Kind::Endpoint => {
@@ -5096,7 +6222,7 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, n
         Kind::Point => {
             p.line_segment([at + vec2(-7.0, 0.0), at + vec2(7.0, 0.0)], stroke);
             p.line_segment([at + vec2(0.0, -7.0), at + vec2(0.0, 7.0)], stroke);
-            p.circle_filled(at, 2.5, pal().accent);
+            p.circle_filled(at, 2.5, canvas_pal().accent);
         }
         // A quarter of a round, its corner on the point.
         Kind::Quadrant => {
@@ -5115,10 +6241,10 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, n
         }
         Kind::Anchor => {
             p.circle_stroke(at, 6.0, stroke);
-            p.circle_filled(at, 2.0, pal().accent);
+            p.circle_filled(at, 2.0, canvas_pal().accent);
         }
         Kind::Angle => {
-            p.circle_filled(at, 3.0, pal().accent);
+            p.circle_filled(at, 3.0, canvas_pal().accent);
         }
         Kind::Free => {
             p.rect_stroke(Rect::from_center_size(at, vec2(8.0, 8.0)), 0.0, stroke, StrokeKind::Middle);

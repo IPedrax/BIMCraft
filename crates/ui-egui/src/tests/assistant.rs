@@ -406,9 +406,9 @@ fn a_new_project_keeps_the_assistants_network_and_choices_and_forgets_the_conver
 }
 
 /// A network that holds each request until the test lets it through, so a reply arrives exactly when the test says.
-struct Gated {
-    open: std::sync::atomic::AtomicBool,
-    inner: Arc<Fake>,
+pub(super) struct Gated {
+    pub(super) open: std::sync::atomic::AtomicBool,
+    pub(super) inner: Arc<Fake>,
 }
 
 impl Net for Gated {

@@ -723,10 +723,12 @@ fn a_detail_group_draws_its_members_wherever_it_is_placed_and_turned_and_comes_a
     let a = line(&mut s, json!({"start": [0, 0], "end": [1000, 0], "style": "Wide Lines"}));
     let b = line(&mut s, json!({"start": [0, 0], "end": [0, 500]}));
     let lines = |s: &Session| s.model.elements.values().filter(|e| matches!(e, Element::DetailLine(_))).count();
-    // Grouped: the lines become the group's, one element about the middle of them.
+    // Grouped: the lines stay, the group's members, its origin the middle of them.
     let r = run(&mut s, "create_group", json!({"ids": [a, b], "name": "Angle"}));
     let g = r["id"].as_u64().unwrap_or_default();
-    assert_eq!((lines(&s), field(&s, g, "type"), field(&s, g, "at")), (0, json!("Angle"), json!([500.0, 250.0])));
+    assert_eq!((lines(&s), field(&s, g, "type"), field(&s, g, "at")), (2, json!("Angle"), json!([500.0, 250.0])));
+    // What a group draws is its members': each line its own, picked as the group's.
+    let drawn = |m: &Model, g: Id| -> Vec<(f32, f32)> { crate::groups::members(m, g).into_iter().flat_map(|id| drawn(m, id)).collect() };
     let near = |pts: &[(f32, f32)], at: (f32, f32)| pts.iter().any(|p| (p.0 - at.0).abs() < 1.5 && (p.1 - at.1).abs() < 1.5);
     let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
     assert!(near(&drawn(&s.model, g), view.px(P2(1000.0, 0.0))), "drawn where its lines were");
@@ -742,6 +744,7 @@ fn a_detail_group_draws_its_members_wherever_it_is_placed_and_turned_and_comes_a
     let back = run(&mut s, "ungroup", json!({"id": g2}))["ids"].clone();
     let back: Vec<Id> = back.as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
     assert_eq!(back.len(), 2);
+    assert_eq!(lines(&s), 4, "the first group's two and these");
     let long = curve(&s, back[0]);
     assert!(long.points().iter().all(|p| (p.0 - 3250.0).abs() < 1e-6), "{long:?}");
     assert_eq!(field(&s, back[0], "style"), json!("Wide Lines"));
@@ -775,7 +778,7 @@ fn a_repeating_detail_places_a_group_along_its_line_every_spacing() {
     let pts = drawn(&s.model, id);
     for x in [0.0, 250.0, 500.0, 750.0, 1000.0] {
         let (a, b) = (view.px(P2(x, -50.0)), view.px(P2(x, 50.0)));
-        assert!(pts.contains(&a) && pts.contains(&b), "a tick at {x}: {pts:?}");
+        assert!(pts.contains(&a) && pts.contains(&b), "a tick at {x}: {pts:?} {:?}", s.model.detail_groups.get("Tick"));
     }
     // Along a line north, each turned to it.
     run(&mut s, "rotate", json!({"ids": [id], "about": [0, 0], "angle": 90}));

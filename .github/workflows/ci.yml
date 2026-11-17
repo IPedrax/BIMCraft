@@ -35,7 +35,8 @@ jobs:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
           - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
           - { name: Windows, runner: windows-latest, timeout: 100 }
-          - { name: macOS, runner: macos-15, timeout: 90 }
+          # macOS's tests took 75 to 86 minutes on main before the stairs, groups, curtain walls and classification came in.
+          - { name: macOS, runner: macos-15, timeout: 120 }
     steps:
       - uses: actions/checkout@v4
 

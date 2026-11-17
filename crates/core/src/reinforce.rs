@@ -12,7 +12,9 @@ use crate::rebar::{DIAMETERS, GRADE, MAX_BARS};
 use crate::view3d::{P3, add, mul, sub, unit};
 use crate::walls::Plane;
 
+mod en1992;
 mod norm;
+use en1992::{En1992, Exposure};
 use norm::Norm;
 
 /// A bar to make: on `layer` of its host's, `diameter` mm thick, of steel `grade`, along `path` (mm, over the host's level).
@@ -385,28 +387,83 @@ pub struct Made {
     pub notes: Vec<String>,
 }
 
-/// The standard a `check` names, with what it is told: only NBR 6118.
-fn norm(a: &mut Args) -> Result<Option<Norm>, String> {
+/// The standard a `check` names, with what it is told: NBR 6118 or EN 1992-1-1.
+enum Check {
+    Nbr(Norm),
+    En(En1992),
+}
+
+impl Check {
+    fn beam(&self, size: (f64, f64), cv: &Cover, f: &Frame, bars: &[Bar]) -> Vec<String> {
+        match self {
+            Check::Nbr(n) => n.beam(size, cv, f, bars),
+            Check::En(n) => n.beam(size, cv, f, bars),
+        }
+    }
+
+    fn column(&self, size: (f64, f64), round: bool, cv: &Cover, f: &Frame, bars: &[Bar]) -> Vec<String> {
+        match self {
+            Check::Nbr(n) => n.column(size, round, cv, f, bars),
+            Check::En(n) => n.column(size, round, cv, f, bars),
+        }
+    }
+
+    fn floor(&self, thick: f64, cv: &Cover, bars: &[Bar]) -> Vec<String> {
+        match self {
+            Check::Nbr(n) => n.floor(thick, cv, bars),
+            Check::En(n) => n.floor(thick, cv, bars),
+        }
+    }
+
+    fn footing(&self, cv: &Cover) -> Vec<String> {
+        match self {
+            Check::Nbr(n) => n.footing(cv),
+            Check::En(n) => n.footing(cv),
+        }
+    }
+}
+
+fn norm(a: &mut Args) -> Result<Option<Check>, String> {
     let check = a.take::<String>("check")?;
     let class = a.take::<u8>("aggressiveness")?;
     let fck = a.take::<f64>("fck")?;
+    let exposure = a.take::<String>("exposure")?;
+    let fyk = a.take::<f64>("fyk")?;
     let Some(name) = check else {
-        return match (class, fck) {
-            (None, None) => Ok(None),
-            _ => Err("reinforce: `aggressiveness` and `fck` go with `check`: give `check` \"NBR 6118\"".into()),
+        return if class.is_none() && fck.is_none() && exposure.is_none() && fyk.is_none() {
+            Ok(None)
+        } else {
+            Err("reinforce: `aggressiveness`, `exposure`, `fck` and `fyk` go with `check`: give `check` \"NBR 6118\" or \"EN 1992-1-1\""
+                .into())
         };
     };
     let key: String = name.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
-    if !key.starts_with("nbr6118") {
-        return Err(format!("reinforce: `check` {name:?} isn't one this knows: it is \"NBR 6118\""));
-    }
-    if class.is_some_and(|c| !(1..=4).contains(&c)) {
-        return Err("reinforce: `aggressiveness` is the class 1 to 4 (I to IV)".into());
-    }
     if fck.is_some_and(|c| !(10.0..=100.0).contains(&c)) {
         return Err("reinforce: `fck` is the concrete's strength in MPa, 10 to 100".into());
     }
-    Ok(Some(Norm { class, fck }))
+    if key.starts_with("nbr6118") {
+        if exposure.is_some() || fyk.is_some() {
+            return Err("reinforce: `exposure` and `fyk` go with `check` \"EN 1992-1-1\"; NBR 6118 takes `aggressiveness` and `fck`".into());
+        }
+        if class.is_some_and(|c| !(1..=4).contains(&c)) {
+            return Err("reinforce: `aggressiveness` is the class 1 to 4 (I to IV)".into());
+        }
+        return Ok(Some(Check::Nbr(Norm { class, fck })));
+    }
+    if key.starts_with("en1992") {
+        if class.is_some() {
+            return Err("reinforce: `aggressiveness` goes with `check` \"NBR 6118\"; EN 1992-1-1 takes `exposure`, `fck` and `fyk`".into());
+        }
+        let exposure = match exposure {
+            Some(e) => Some(Exposure::read(&e).ok_or_else(|| format!("reinforce: `exposure` is {}", Exposure::NAMES))?),
+            None => None,
+        };
+        if fyk.is_some_and(|y| !(200.0..=1000.0).contains(&y)) {
+            return Err("reinforce: `fyk` is the steel's yield strength in MPa, 200 to 1000".into());
+        }
+        return Ok(Some(Check::En(En1992 { exposure, fck, fyk })));
+    }
+    Err(format!("reinforce: `check` {name:?} isn't one this knows: it is \"NBR 6118\" or \"EN 1992-1-1\""))
 }
 
 pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {

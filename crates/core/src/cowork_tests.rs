@@ -298,6 +298,42 @@ fn a_guests_undo_on_the_host_is_the_guests_own() {
 }
 
 #[test]
+fn a_guests_group_edit_and_conflict_fix_land_on_the_hosts_session() {
+    let mut s = house();
+    s.author = Some("Ana".into());
+    let w = wall(&mut s, 40000);
+    let g = s.execute("create_group", &json!({"ids": [w]})).unwrap()["id"].as_u64().unwrap();
+    let none = (None, None);
+    // Edit Group's commands make no undo step, but the edit is the host session's, as `resolve_group`'s step is: a guest's go
+    // there, and while the host lets guests only look they are refused.
+    for c in ["edit_group", "add_to_group", "remove_from_group", "finish_group", "cancel_group", "resolve_group"] {
+        assert_eq!(place(c, &json!({})), Place::Host, "{c}");
+    }
+    let e = run_for_guest(&mut s, "Bo", "edit_group", &json!({"id": g}), none.clone(), false).unwrap_err();
+    assert!(e.contains("only look"), "{e}");
+    assert_eq!(s.editing_group(), None);
+    // Bo edits the group on the host: its wall moves freely there, and Finish finds the edit he began.
+    run_for_guest(&mut s, "Bo", "edit_group", &json!({"id": g}), none.clone(), true).unwrap();
+    assert_eq!(s.editing_group(), Some(s.model.guid(g)));
+    run_for_guest(&mut s, "Bo", "move", &json!({"ids": [w], "by": [0, 500]}), none.clone(), true).unwrap();
+    run_for_guest(&mut s, "Bo", "finish_group", &json!({}), none.clone(), true).unwrap();
+    assert_eq!(s.editing_group(), None);
+    // Moved outside Edit Group, the wall is a conflict; his Ungroup of it is done on the host, as his step.
+    let moved = json!({"ids": [w], "by": [0, 500]});
+    let e = run_for_guest(&mut s, "Bo", "move", &moved, none.clone(), true).unwrap_err();
+    assert!(crate::groups::is_conflict(&e), "{e}");
+    run_for_guest(&mut s, "Bo", "resolve_group", &json!({"fix": "ungroup", "command": "move", "params": moved}), none.clone(), true)
+        .unwrap();
+    assert!(!s.model.elements.contains_key(g), "ungrouped");
+    assert_eq!(s.steps(false)[0].by.as_deref(), Some("Bo"));
+    // What would replace the host's project isn't run through it.
+    let e = run_for_guest(&mut s, "Bo", "resolve_group", &json!({"fix": "ungroup", "command": "NEW"}), none, true).unwrap_err();
+    assert!(e.contains("isn't run through it"), "{e}");
+    assert!(s.model.elements.contains_key(w));
+    assert_eq!(s.author.as_deref(), Some("Ana"));
+}
+
+#[test]
 fn outside_a_session_undo_and_redo_are_as_they_always_were() {
     let mut s = house();
     let a = wall(&mut s, 40000);

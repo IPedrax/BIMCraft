@@ -14,7 +14,7 @@ use bimcraft_i18n::ui_msg;
 pub mod classes;
 mod v2x3;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
 use crate::family::ConnectorKind;
@@ -101,6 +101,17 @@ const MAP: u64 = 86;
 const MAP_DEFINES: u64 = 87;
 const CRS: u64 = 88;
 const CRS_DEFINES: u64 = 89;
+const STAIR_COVERS: u64 = 90;
+const STAIR_MEMBERS: u64 = 91;
+const FLIGHT_PSET: u64 = 94;
+const FLIGHT_PSET_DEFINES: u64 = 95;
+const STAIR_OWN: u64 = 96;
+const STAIR_OWN_DEFINES: u64 = 97;
+const STAIR_MATERIALS: u64 = 98;
+const CURTAIN_PART: u64 = 99;
+const CURTAIN_MATERIALS: u64 = 100;
+/// The project's classification tables' codes (`classify`).
+const CODES_CLASSIFIED: u64 = 101;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -124,6 +135,26 @@ pub fn own_property(set: &str, name: &str) -> bool {
     let common = set.starts_with("Pset_") && set.ends_with("Common");
     (common && matches!(name, "LoadBearing" | "Status"))
         || (set == DEVICE_SET && matches!(name, "NumberOfPoles" | "PowerFactor" | "RatedVoltage"))
+        || stair_property(set, name)
+}
+
+/// Whether property `name` of set `set` is one the export works out of a stair itself, in its common set and its flights':
+/// what the stair is (its risers, its going, its headroom), never a parameter of it, so an import leaves it out.
+pub fn stair_property(set: &str, name: &str) -> bool {
+    matches!(set, "Pset_StairCommon" | "Pset_StairFlightCommon")
+        && matches!(
+            name,
+            "NumberOfRiser"
+                | "NumberOfTreads"
+                | "RiserHeight"
+                | "TreadLength"
+                | "NosingLength"
+                | "WalkingLineOffset"
+                | "RequiredHeadroom"
+                | "Headroom"
+                | "WaistThickness"
+                | "IsExternal"
+        )
 }
 
 /// A number for `text`, the same each time: what keys a GlobalId made for a name.
@@ -133,6 +164,9 @@ fn key_of(text: &str) -> u64 {
 
 /// The property set a run's justification and category go in (its system is an IfcSystem it is assigned to).
 pub const RUN: &str = "BIMCraft_Run";
+/// BIMCraft's own property set on a stair: the stair as BIMCraft holds it (its path, spiral, sketch, winders, landings),
+/// and its type, so an import makes it a stair again rather than measuring its solids.
+pub const STAIR: &str = "BIMCraft_Stair";
 
 /// The property set a distribution board's data goes in: `Mains` (amperes), `Slots`, `DistributionSystem` (its name) and `SupplyFrom`
 /// (the GlobalId of the board that supplies it). The system is also an IfcDistributionSystem the board is assigned to, which is
@@ -175,6 +209,65 @@ pub const PHASING: &str = "BIMCraft_Phasing";
 pub const IMPLIED: &str = "Implied: no phase is set for it, so it was made in the first phase";
 
 /// What a stair's or a ramp's IFC type is, by its landings: `kind` is STAIR or RAMP.
+/// A stair's predefined type, as IFC4 names the shapes: from its landings, its path's turns, or its spiral.
+fn stair_shape(st: &crate::model::Stair) -> String {
+    if st.spiral.is_some() {
+        return ".SPIRAL_STAIR.".into();
+    }
+    if !st.path.is_empty() {
+        if st.path.iter().any(|p| p.arc != 0.0) {
+            return ".CURVED_RUN_STAIR.".into();
+        }
+        // The turns between its flights: those at both ends of a landing are one turn.
+        let mut turns: Vec<f64> = Vec::new();
+        let mut from = st.start;
+        let mut way: Option<f64> = None;
+        let mut pending = 0.0;
+        for p in &st.path {
+            let d = p.to - from;
+            if d.length() < 1e-6 {
+                continue;
+            }
+            let a = d.1.atan2(d.0).to_degrees();
+            if let Some(w) = way {
+                pending += (a - w + 540.0).rem_euclid(360.0) - 180.0;
+            }
+            if !p.landing {
+                if pending.abs() > 1.0 {
+                    turns.push(pending);
+                }
+                pending = 0.0;
+            }
+            way = Some(a);
+            from = p.to;
+        }
+        if st.path.iter().any(|p| p.winders > 0) {
+            return match turns.len() {
+                1 => ".QUARTER_WINDING_STAIR.".into(),
+                2 if turns.windows(2).all(|p| p.first().map(|t| t.signum()) == p.get(1).map(|t| t.signum())) => {
+                    ".HALF_WINDING_STAIR.".into()
+                }
+                _ => ".NOTDEFINED.".into(),
+            };
+        }
+        let turned: Vec<crate::model::Landing> =
+            turns.iter().map(|t| crate::model::Landing { turn: (t / 90.0).round() * 90.0, ..Default::default() }).collect();
+        let landings = st.path.iter().filter(|p| p.landing).count();
+        if turned.is_empty() && landings > 0 {
+            return ".TWO_STRAIGHT_RUN_STAIR.".into();
+        }
+        return shape_of(&turned, "STAIR");
+    }
+    if st.landings.iter().any(|l| l.winders > 0) {
+        return match st.landings.len() {
+            1 => ".QUARTER_WINDING_STAIR.".into(),
+            2 => ".HALF_WINDING_STAIR.".into(),
+            _ => ".NOTDEFINED.".into(),
+        };
+    }
+    shape_of(&st.landings, "STAIR")
+}
+
 fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
     let turns: Vec<f64> = landings.iter().map(|l| l.turn).collect();
     let shape = match turns.as_slice() {
@@ -186,6 +279,61 @@ fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
         _ => return ".NOTDEFINED.".into(),
     };
     format!(".{shape}_{kind}.")
+}
+
+/// The codes elements and their types hold from the project's classification tables, as ISO 16739's classification resource
+/// has them: an `IfcClassification` for each system (its publisher, edition and name), an `IfcClassificationReference` for
+/// each code held (its code, title and system), and an `IfcRelAssociatesClassification` from each code to the elements
+/// that hold it, theirs or their type's. What it wrote, each product's parameters (the code's and its title's), which the
+/// export then writes neither as properties nor as references of the parameter's own classification.
+fn classify<'m>(w: &mut Step, m: &'m Model, products: &BTreeMap<Id, u64>) -> BTreeSet<(&'m str, u64)> {
+    use crate::classification::{self as cls, Target};
+    let mut codes: BTreeMap<(String, String), (u64, Vec<u64>)> = BTreeMap::new();
+    let mut written = BTreeSet::new();
+    for b in &m.classification.bindings {
+        let (Some(table), Some(q)) = (m.classification.tables.get(&b.table), m.parameters.get(&b.parameter)) else { continue };
+        let def = cls::system(&table.system);
+        // One classification a system: Uniclass's Ss and Pr are both Uniclass 2015.
+        let name = def.map_or_else(|| b.table.clone(), |d| d.name.to_string());
+        for (&id, &ent) in products {
+            let Some(e) = m.elements.get(id) else { continue };
+            if !q.categories.iter().any(|c| c == e.category()) {
+                continue;
+            }
+            let Some(item) = cls::current(m, b, &Target::Element(id)).and_then(|c| table.find(c)) else { continue };
+            // One for each system, shared with a family's OmniClass and a parameter's own classification; one edition for
+            // it, or none when its tables disagree: NBR 15965's parts came out years apart.
+            let mut editions = m
+                .classification
+                .tables
+                .values()
+                .filter(|t| if def.is_some() { t.system == table.system } else { std::ptr::eq(*t, table) })
+                .map(|t| t.edition.as_str());
+            let first = editions.next().unwrap_or_default();
+            let edition = (!first.is_empty() && editions.all(|e| e == first)).then_some(first);
+            let system = w.classification_by(&name, def.map(|d| d.publisher), edition);
+            let entry = codes.entry((name.clone(), item.code.clone())).or_insert_with(|| {
+                let r = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{},#{system},$,$)", s(&item.code), s(&item.title)));
+                (r, Vec::new())
+            });
+            if !entry.1.contains(&ent) {
+                entry.1.push(ent);
+            }
+            written.insert((b.parameter.as_str(), ent));
+            if let Some(title) = &b.title {
+                written.insert((title.as_str(), ent));
+            }
+        }
+    }
+    for ((name, code), (r, ents)) in codes {
+        let key = name
+            .bytes()
+            .chain([0])
+            .chain(code.bytes())
+            .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{r})", w.guid(CODES_CLASSIFIED, key), refs(&ents)));
+    }
+    written
 }
 
 /// A STEP string literal: `'` doubled, `\` doubled, anything outside printable ASCII as `\X2\…\X0\`
@@ -223,6 +371,98 @@ pub(crate) fn ratio(x: f64) -> String {
 
 /// The digits of an IFC GlobalId, in order.
 const DIGITS: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+
+/// A curtain wall: no body of its own, the sum of its mullions (`IfcMember`) and panels (`IfcPlate`), placed from it. Parts of
+/// the same shape share one `IfcProductDefinitionShape`, so identical parts are written once. A part's GlobalId is made from
+/// the wall's GUID and its address on the pattern, so it stays through every export while the wall does. Returns the wall.
+fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey: u64) -> u64 {
+    use crate::curtain::{self, PartKind};
+    let u = Axis::of(wl).tangent(0.0);
+    let at = w.place(Some(storey), (wl.start.0, wl.start.1, wl.base_offset), Some(u));
+    let ent =
+        w.add(format!("IFCCURTAINWALL({},$,{},$,{},#{at},$,'{id}',.NOTDEFINED.)", w.guid(ELEMENT, id), s(&wl.type_name), s(&wl.type_name)));
+    w.typed("IFCCURTAINWALLTYPE", ".NOTDEFINED.", &wl.type_name, ent);
+    let l = curtain::layout(m, wl);
+    let plane = curtain::grid_plane(m, wl);
+    let mut shapes: Vec<Option<u64>> = vec![None; l.shapes.len()];
+    let mut parts = Vec::with_capacity(l.parts.len());
+    let mut by_material: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+    let guid_of_wall = w.own.get(&id).map_or(u128::from(id), |g| g.as_u128());
+    for p in &l.parts {
+        let Some(shape) = l.shapes.get(p.shape as usize) else { continue };
+        let material = shape.material_in(m).unwrap_or_default().to_string();
+        let body = match shapes.get(p.shape as usize).copied().flatten() {
+            Some(body) => body,
+            None => {
+                let [da, dz, dc] = shape.size.map(|x| x / 2.0);
+                let style = (!material.is_empty()).then(|| w.material_style(m, &material).1).flatten();
+                let body = if shape.is_cut() {
+                    let set = w.faceset(&shape.tris());
+                    if let Some(style) = style {
+                        w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
+                    }
+                    w.tessellated(&[set])
+                } else {
+                    let profile = w.profile(&[P2(-da, -dc), P2(da, -dc), P2(da, dc), P2(-da, dc)], &[]);
+                    w.bodies(&[(profile, -dz, shape.size[1])], &[], style)
+                };
+                if let Some(x) = shapes.get_mut(p.shape as usize) {
+                    *x = Some(body);
+                }
+                body
+            }
+        };
+        let [along, up, across] = p.centre;
+        let turned = (p.turn != 0.0).then(|| P2(p.turn.cos(), p.turn.sin()));
+        let place = w.place(Some(at), (along, plane + across, up), turned);
+        let global = s(&part_global(w.uid, guid_of_wall, p.address));
+        let name = s(&shape.type_name);
+        let part = match shape.kind {
+            PartKind::Panel => {
+                let part = w.add(format!("IFCPLATE({global},$,{name},$,{name},#{place},#{body},$,.CURTAIN_PANEL.)"));
+                w.typed("IFCPLATETYPE", ".CURTAIN_PANEL.", &shape.type_name, part);
+                part
+            }
+            PartKind::Mullion => {
+                let part = w.add(format!("IFCMEMBER({global},$,{name},$,{name},#{place},#{body},$,.MULLION.)"));
+                w.typed("IFCMEMBERTYPE", ".MULLION.", &shape.type_name, part);
+                part
+            }
+        };
+        parts.push(part);
+        if !material.is_empty() {
+            by_material.entry(material).or_default().push(part);
+        }
+    }
+    for (i, (name, parts)) in by_material.iter().enumerate() {
+        let material = w.material(m, name);
+        w.add(format!(
+            "IFCRELASSOCIATESMATERIAL({},$,$,$,({}),#{material})",
+            s(&guid(w.uid, CURTAIN_MATERIALS, w.part(id, i))),
+            refs(parts)
+        ));
+    }
+    if !parts.is_empty() {
+        w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, id), refs(&parts)));
+    }
+    ent
+}
+
+/// A curtain wall part's GlobalId, from a hash of the wall's GUID and the part's address (its kind, column and row), so it
+/// lasts while both do. Each is hashed whole: two addresses share one only by a 64-bit hash's chance, never as numbers packed
+/// into one's bits did.
+fn part_global(uid: u64, wall: u128, address: crate::curtain::Address) -> String {
+    use crate::curtain::Address;
+    let (kind, column, row) = match address {
+        Address::Cell { column, row } => (0, column, row),
+        Address::Vertical { column, row } => (1, column, row),
+        Address::Horizontal { column, row } => (2, column, row),
+        Address::Corner { column, row } => (3, column, row),
+        Address::VerticalGrid { column, row } => (4, column, row),
+        Address::HorizontalGrid { column, row } => (5, column, row),
+    };
+    guid(uid, CURTAIN_PART, key_of(&format!("{wall:032x}/{kind}/{column}/{row}")))
+}
 
 /// A 22-character IFC GlobalId, the same for the same model, role and element on every export.
 fn guid(uid: u64, role: u64, id: u64) -> String {
@@ -517,6 +757,11 @@ impl Step {
         mix(self.own.get(&id).map_or(id, |g| fold(*g))).wrapping_add(i as u64)
     }
 
+    /// A property of `kind` (an IFC measure or value type) whose value is `value` as STEP writes it.
+    fn typed_property(&mut self, name: &str, kind: &str, value: &str) -> u64 {
+        self.add(format!("IFCPROPERTYSINGLEVALUE({},$,{kind}({value}),$)", s(name)))
+    }
+
     /// A text property, `note` describing it.
     fn text_property(&mut self, name: &str, note: Option<&str>, value: &str) -> u64 {
         let note = note.map_or_else(|| "$".to_string(), s);
@@ -645,11 +890,17 @@ impl Step {
 
     /// The `IfcClassification` named `system`, one for each name whichever writer asks first; `edition` is the first asker's.
     fn classification(&mut self, system: &str, edition: Option<&str>) -> u64 {
+        self.classification_by(system, None, edition)
+    }
+
+    /// [`Step::classification`], with its publisher (`Source`) where the first asker knows it.
+    fn classification_by(&mut self, system: &str, source: Option<&str>, edition: Option<&str>) -> u64 {
         if let Some(&written) = self.systems.get(system) {
             return written;
         }
+        let source = source.map_or_else(|| "$".to_string(), s);
         let edition = edition.map_or_else(|| "$".to_string(), s);
-        let written = self.add(format!("IFCCLASSIFICATION($,{edition},$,{},$,$,$)", s(system)));
+        let written = self.add(format!("IFCCLASSIFICATION({source},{edition},$,{},$,$,$)", s(system)));
         self.systems.insert(system.to_string(), written);
         written
     }
@@ -933,8 +1184,9 @@ impl Step {
         self.shell(&b, &t)
     }
 
-    /// Landings: each a slab from `base` up to its top, placed in `at`.
-    fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id) -> Vec<u64> {
+    /// Landings: each a slab from `base` up to its top, placed in `at`; and the treads that are no run's (a curved
+    /// flight's, winders, a spiral's, one level with a floor), each a flight of one tread, of the kind `treads` says.
+    fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id, treads: &str) -> Vec<u64> {
         l.pads
             .iter()
             .enumerate()
@@ -942,6 +1194,10 @@ impl Step {
                 let pat = self.place(Some(at), (0.0, 0.0, 0.0), None);
                 let profile = self.profile(&p.ring, &[]);
                 let shape = self.body(profile, 0.0, p.z - base, &[]);
+                if p.tread {
+                    let guid = self.guid(FLIGHT, self.part(id, 10_000 + i));
+                    return self.add(format!("IFCSTAIRFLIGHT({guid},$,'Tread',$,$,#{pat},#{shape},$,1,1,$,$,.{treads}.)"));
+                }
                 self.add(format!("IFCSLAB({},$,'Landing',$,$,#{pat},#{shape},$,.LANDING.)", self.guid(LANDING, self.part(id, i))))
             })
             .collect()
@@ -1455,6 +1711,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     }
     for (&id, e) in &m.elements {
         match e {
+            Element::Wall(wl) if crate::curtain::pattern(m, wl).is_some() => {
+                let Some(&(_, storey)) = storeys.get(&wl.level) else { continue };
+                let ent = curtain_wall(&mut w, m, id, wl, storey);
+                contained.entry(wl.level).or_default().push(ent);
+                products.insert(id, ent);
+            }
             Element::Wall(wl) => {
                 let Some(&(_, storey)) = storeys.get(&wl.level) else { continue };
                 let (path, base) = (Axis::of(wl), m.own_base(wl));
@@ -1872,34 +2134,204 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             }
             Element::Stair(st) => {
                 let Some(&(_, storey)) = storeys.get(&st.level) else { continue };
-                let (_, each, _) = m.flight(st);
                 let (base, l) = (m.elevation(st.level), stairs::stair(m, st));
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
-                let ent =
-                    w.add(format!("IFCSTAIR({},$,'Stair',$,$,#{at},$,'{id}',{})", w.guid(ELEMENT, id), shape_of(&st.landings, "STAIR")));
+                let ent = w.add(format!("IFCSTAIR({},$,'Stair',$,$,#{at},$,'{id}',{})", w.guid(ELEMENT, id), stair_shape(st)));
                 contained.entry(st.level).or_default().push(ent);
                 products.insert(id, ent);
-                // Its flights, each tread a block from the floor up to it, as in 3D; its landings.
+                let (risers, riser, _) = m.flight(st);
+                let kind = m.types.stair.get(&st.type_name);
+                let nosing = kind.map_or(0.0, stairs::reach);
+                let waist = kind.map_or(0.0, |t| t.slab());
+                let held = crate::codes::limits(m, st).rules;
+                let treads = if st.spiral.is_some() {
+                    "SPIRAL"
+                } else if st.path.iter().any(|s| s.arc != 0.0) {
+                    "CURVED"
+                } else {
+                    "WINDER"
+                };
                 let mut parts = Vec::new();
-                for (i, run) in l.runs.iter().enumerate() {
-                    let fat = w.place(Some(at), (run.start.0, run.start.1, run.z.0 - base), Some(run.u));
-                    let steps: Vec<(u64, f64, f64)> = (1..run.risers)
-                        .map(|k| {
-                            let k = f64::from(k);
-                            (w.rectangle(P2((k - 0.5) * st.tread, 0.0), P2(st.tread, st.width)), base - run.z.0, run.z.0 - base + k * each)
-                        })
-                        .collect();
-                    let shape = w.bodies(&steps, &[], None);
-                    parts.push(w.add(format!(
-                        "IFCSTAIRFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
-                        w.guid(FLIGHT, w.part(id, i)),
-                        run.risers,
-                        run.risers.saturating_sub(1),
-                        real(each),
-                        real(st.tread)
-                    )));
+                let mut flights = Vec::new();
+                match stairs::parts_tagged(m, st) {
+                    // Built as its type builds it: each solid in the flight, the landing or the stringers it is part of.
+                    Some(solids) => {
+                        use stairs::PartKind as K;
+                        let inside = |ring: &[P2], q: P2| geom::contains(ring, q);
+                        let mut of_run: Vec<Vec<u64>> = vec![Vec::new(); l.runs.len()];
+                        let mut of_pad: Vec<Vec<u64>> = vec![Vec::new(); l.pads.len()];
+                        let mut members = Vec::new();
+                        for (k, ring, bottom, top) in &solids {
+                            let c = geom::centroid(ring);
+                            let brep = w.prism(ring, bottom, top, base);
+                            if *k == K::Supports {
+                                members.push(brep);
+                                continue;
+                            }
+                            // Its flight: the run it lies over (a nosing reaches a little past it), else the landing or tread under it.
+                            let run = l.runs.iter().position(|r| {
+                                let along = (c - r.start).dot(r.u);
+                                let across = (c - r.start).dot(r.u.perp()).abs();
+                                (-r.going() * 0.5..=r.length + 1.0).contains(&along) && across <= r.width / 2.0 + 1.0 && *k != K::Landings
+                            });
+                            let pad = l.pads.iter().position(|p| inside(&p.ring, c));
+                            match (run, pad) {
+                                (Some(i), _) => of_run.get_mut(i).map(|v| v.push(brep)),
+                                (None, Some(j)) => of_pad.get_mut(j).map(|v| v.push(brep)),
+                                (None, None) => of_run.first_mut().or(of_pad.first_mut()).map(|v| v.push(brep)),
+                            };
+                        }
+                        for (i, (run, breps)) in l.runs.iter().zip(of_run).enumerate() {
+                            if breps.is_empty() {
+                                continue;
+                            }
+                            let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
+                            let going = if run.risers > 1 { run.going() } else { st.tread };
+                            let shape = w.solid(&breps, &[]);
+                            let fat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                            let f = w.add(format!(
+                                "IFCSTAIRFLIGHT({},$,{},$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
+                                w.guid(FLIGHT, w.part(id, i)),
+                                s(&format!("Flight {}", i + 1)),
+                                run.risers,
+                                run.risers.saturating_sub(1),
+                                real(each),
+                                real(going)
+                            ));
+                            flights.push((f, run.risers, each, going, run.length, w.part(id, i)));
+                            parts.push(f);
+                        }
+                        for (j, (pad, breps)) in l.pads.iter().zip(of_pad).enumerate() {
+                            if breps.is_empty() {
+                                continue;
+                            }
+                            let shape = w.solid(&breps, &[]);
+                            let pat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                            parts.push(if pad.tread {
+                                let guid = w.guid(FLIGHT, w.part(id, 10_000 + j));
+                                w.add(format!("IFCSTAIRFLIGHT({guid},$,'Tread',$,$,#{pat},#{shape},$,1,1,{},$,.{treads}.)", real(riser)))
+                            } else {
+                                w.add(format!("IFCSLAB({},$,'Landing',$,$,#{pat},#{shape},$,.LANDING.)", w.guid(LANDING, w.part(id, j))))
+                            });
+                        }
+                        if !members.is_empty() {
+                            let shape = w.solid(&members, &[]);
+                            let mat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                            parts.push(
+                                w.add(format!("IFCMEMBER({},$,'Stringer',$,$,#{mat},#{shape},$,.STRINGER.)", w.guid(STAIR_MEMBERS, id))),
+                            );
+                        }
+                    }
+                    // A stair of no type: each tread a block from the floor up to it, as in 3D; its landings.
+                    None => {
+                        for (i, run) in l.runs.iter().enumerate() {
+                            let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
+                            let fat = w.place(Some(at), (run.start.0, run.start.1, run.z.0 - base), Some(run.u));
+                            let steps: Vec<(u64, f64, f64)> = (1..run.risers)
+                                .map(|k| {
+                                    let k = f64::from(k);
+                                    (
+                                        w.rectangle(P2((k - 0.5) * run.going(), 0.0), P2(run.going(), run.width)),
+                                        base - run.z.0,
+                                        run.z.0 - base + k * each,
+                                    )
+                                })
+                                .collect();
+                            let shape = w.bodies(&steps, &[], None);
+                            let going = if run.risers > 1 { run.going() } else { st.tread };
+                            let f = w.add(format!(
+                                "IFCSTAIRFLIGHT({},$,{},$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
+                                w.guid(FLIGHT, w.part(id, i)),
+                                s(&format!("Flight {}", i + 1)),
+                                run.risers,
+                                run.risers.saturating_sub(1),
+                                real(each),
+                                real(going)
+                            ));
+                            flights.push((f, run.risers, each, going, run.length, w.part(id, i)));
+                            parts.push(f);
+                        }
+                        parts.extend(w.landings(&l, at, base, id, treads));
+                    }
                 }
-                parts.extend(w.landings(&l, at, base, id));
+                // The finishes its type lays over its treads, risers and landings: a covering, one of its parts.
+                let covers = stairs::covers(m, st);
+                if !covers.is_empty() {
+                    let breps: Vec<u64> = covers.iter().map(|(ring, bottom, top)| w.prism(ring, bottom, top, base)).collect();
+                    let shape = w.solid(&breps, &[]);
+                    let cat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                    parts.push(
+                        w.add(format!("IFCCOVERING({},$,'Stair Finish',$,$,#{cat},#{shape},$,.FLOORING.)", w.guid(STAIR_COVERS, id))),
+                    );
+                }
+                // What every IFC reader looks for on a stair (Pset_StairCommon) and on each flight (Pset_StairFlightCommon),
+                // and its flights' lengths.
+                let len = |w: &mut Step, n: &str, v: f64| w.typed_property(n, "IFCPOSITIVELENGTHMEASURE", &real(v.max(0.001)));
+                let count = |w: &mut Step, n: &str, v: u32| w.typed_property(n, "IFCCOUNTMEASURE", &v.to_string());
+                let walk = match held.walk_line {
+                    crate::codes::WalkLine::Centre => st.width / 2.0,
+                    crate::codes::WalkLine::NarrowSide => held.walk_line_offset.min(st.width),
+                };
+                let mut common = vec![
+                    count(&mut w, "NumberOfRiser", risers),
+                    count(&mut w, "NumberOfTreads", risers.saturating_sub(1)),
+                    len(&mut w, "RiserHeight", riser),
+                    len(&mut w, "TreadLength", st.tread),
+                    w.typed_property("NosingLength", "IFCLENGTHMEASURE", &real(nosing)),
+                    len(&mut w, "WalkingLineOffset", walk),
+                    len(&mut w, "RequiredHeadroom", held.headroom),
+                    w.typed_property("IsExternal", "IFCBOOLEAN", ".F."),
+                ];
+                if waist > 0.0 {
+                    common.push(len(&mut w, "WaistThickness", waist));
+                }
+                if !st.type_name.is_empty() {
+                    common.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Reference',$,IFCIDENTIFIER({}),$)", s(&st.type_name))));
+                }
+                // Written once with the rest of its `Pset_StairCommon` (its phase's `Status`), as every element's common set is.
+                w.common.entry(id).or_insert((ent, "Pset_StairCommon", Vec::new())).2.extend(common);
+                for (f, n, each, going, length, key) in flights {
+                    let mut props = vec![
+                        count(&mut w, "NumberOfRiser", n),
+                        count(&mut w, "NumberOfTreads", n.saturating_sub(1)),
+                        len(&mut w, "RiserHeight", each),
+                        len(&mut w, "TreadLength", going),
+                        w.typed_property("NosingLength", "IFCLENGTHMEASURE", &real(nosing)),
+                        len(&mut w, "WalkingLineOffset", walk),
+                        len(&mut w, "Headroom", held.headroom),
+                    ];
+                    if waist > 0.0 {
+                        props.push(len(&mut w, "WaistThickness", waist));
+                    }
+                    w.define(f, "Pset_StairFlightCommon", &props, (FLIGHT_PSET, FLIGHT_PSET_DEFINES), key);
+                    w.quantities(f, "Qto_StairFlightBaseQuantities", &[("Length", "LENGTH", length)], key);
+                }
+                // Its own: the stair as BIMCraft holds it and its type, for an import to make it again.
+                let mut own = serde_json::to_value(st).unwrap_or_default();
+                if let Some(o) = own.as_object_mut() {
+                    o.remove("level");
+                    o.remove("top_level");
+                }
+                let mut props = vec![
+                    w.text_property("Definition", Some("The stair as BIMCraft holds it, as JSON"), &own.to_string()),
+                    w.typed_property("Level Elevation", "IFCLENGTHMEASURE", &real(base)),
+                ];
+                if let Some(top) = st.top_level {
+                    props.push(w.typed_property("Top Level Elevation", "IFCLENGTHMEASURE", &real(m.elevation(top))));
+                }
+                if let Some(t) = kind {
+                    props.push(w.text_property(
+                        "Type",
+                        Some("Its stair type as BIMCraft holds it, as JSON"),
+                        &serde_json::to_string(t).unwrap_or_default(),
+                    ));
+                }
+                w.define(ent, STAIR, &props, (STAIR_OWN, STAIR_OWN_DEFINES), id);
+                // Its structure's material.
+                if let Some(name) = kind.map(|t| t.material.clone()).filter(|n| !n.is_empty()) {
+                    let mat = w.material(m, &name);
+                    w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{mat})", w.guid(STAIR_MATERIALS, id)));
+                }
                 wholes.insert(id, (ent, at, base, parts));
             }
             Element::Ramp(r) => {
@@ -1914,14 +2346,14 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 for (i, run) in l.runs.iter().enumerate() {
                     let g = run.u * ((run.z.1 - run.z.0) / run.length.max(1e-9));
                     let top = walls::Plane { z: run.z.0 - g.dot(run.start), g };
-                    let brep = w.prism(&run.ring(r.width), &walls::Plane::flat(base), &top, base);
+                    let brep = w.prism(&run.ring(), &walls::Plane::flat(base), &top, base);
                     let shape = w.solid(&[brep], &[]);
                     let fat = w.place(Some(at), (0.0, 0.0, 0.0), None);
                     parts.push(
                         w.add(format!("IFCRAMPFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,.STRAIGHT.)", w.guid(FLIGHT, w.part(id, i)))),
                     );
                 }
-                parts.extend(w.landings(&l, at, base, id));
+                parts.extend(w.landings(&l, at, base, id, "STRAIGHT"));
                 wholes.insert(id, (ent, at, base, parts));
             }
             // On a stair or a ramp, it's one of its parts; see below.
@@ -2254,7 +2686,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.add(format!("IFCMATERIALLAYERSET(({}),{},$)", refs(&ids), s(name)))
     };
     let mut sets: BTreeMap<&str, u64> = BTreeMap::new();
-    let used: std::collections::BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
+    let used: BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
     for (name, t) in m.types.wall.iter().filter(|(name, t)| !t.layers.is_empty() && used.contains(name.as_str())) {
         sets.insert(name, layer_set(&mut w, name, &t.layers));
     }
@@ -2379,7 +2811,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         }
     }
     // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set
-    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references, below.
+    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references: a table's
+    // first (`classify`), then those of a parameter's own classification that no table wrote.
+    let by_tables = classify(&mut w, m, &products);
     let mut classified: BTreeMap<(&str, &str), Vec<u64>> = BTreeMap::new();
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };
@@ -2393,6 +2827,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         for (name, v) in params.iter().chain(of_type) {
             // The project's parameters for its category: a component's family's values are its family's.
             let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category())) else { continue };
+            if by_tables.contains(&(name.as_str(), ent)) {
+                continue;
+            }
             if p.classification.is_some() {
                 if let Some(code) = v.as_str().filter(|c| !c.trim().is_empty()) {
                     classified.entry((name.as_str(), code)).or_default().push(ent);
@@ -2400,7 +2837,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 continue;
             }
             let set = p.sets.get(e.category()).map_or(PARAMETERS, String::as_str);
-            if own_property(set, name) {
+            // A typed stair's `Reference` is its type's, written with it.
+            let typed = matches!(e, Element::Stair(st) if !st.type_name.is_empty());
+            if own_property(set, name) || (typed && set == "Pset_StairCommon" && name == "Reference") {
                 continue;
             }
             let value = match (p.kind, v, v.as_f64()) {
@@ -2474,6 +2913,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         for (&id, &ent) in &products {
             let Some(e) = m.elements.get(id) else { continue };
             let Some(pset) = common_pset(e) else { continue };
+            let curtain = matches!(e, Element::Wall(wl) if crate::curtain::pattern(m, wl).is_some());
+            let pset = if curtain { "Pset_CurtainWallCommon" } else { pset };
             let Some(status) = ifc_status(m, e) else { continue };
             let p = w.add(format!("IFCPROPERTYENUMERATEDVALUE('Status',$,(IFCLABEL('{status}')),$)"));
             w.common.entry(id).or_insert((ent, pset, Vec::new())).2.push(p);
@@ -2580,6 +3021,22 @@ mod tests {
     #[test]
     fn reals_always_carry_a_decimal_point() {
         assert_eq!([real(1500.0), real(0.00001), real(-0.0), real(-200.5), real(f64::NAN)], ["1500.", "0.00001", "0.", "-200.5", "0."]);
+    }
+
+    #[test]
+    fn curtain_parts_at_two_addresses_never_share_a_global_id() {
+        use crate::curtain::Address::{Cell, HorizontalGrid, Vertical, VerticalGrid};
+        let wall: u128 = 0x1234_5678_9abc_def0_0fed_cba9_8765_4321;
+        let g = |a| part_global(7, wall, a);
+        // Packed into one number, a column ran into the row's bits: these two shared a GlobalId.
+        assert_ne!(g(Cell { column: 0, row: 1 << 30 }), g(Cell { column: 1, row: 0 }));
+        // And a row past 32 bits lost its top ones.
+        assert_ne!(g(Cell { column: 0, row: 1 << 32 }), g(Cell { column: 0, row: 0 }));
+        assert_ne!(g(Cell { column: 2, row: 3 }), g(Vertical { column: 2, row: 3 }));
+        assert_ne!(g(VerticalGrid { column: 2, row: 0 }), g(HorizontalGrid { column: 2, row: 0 }));
+        // The same place on the same wall keeps its GlobalId; another wall's is another.
+        assert_eq!(g(Cell { column: 2, row: 3 }), g(Cell { column: 2, row: 3 }));
+        assert_ne!(g(Cell { column: 2, row: 3 }), part_global(7, wall + 1, Cell { column: 2, row: 3 }));
     }
 
     #[test]

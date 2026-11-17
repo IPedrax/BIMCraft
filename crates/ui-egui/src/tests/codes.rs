@@ -1,0 +1,426 @@
+//! Manage > Building Codes: the code stairs and railings are held to, and the rules the project changes of it.
+
+use super::*;
+
+#[test]
+fn building_codes_choose_a_code_and_change_its_rules() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    assert!(h.state().codes_dialog.is_some(), "the button opens the dialog");
+
+    // The IBC, with a width of the project's own.
+    {
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        d.selected = "ibc".into();
+        d.rules = serde_json::to_value(&bimcraft_core::codes::code("ibc").unwrap().stairs).unwrap().as_object().unwrap().clone();
+        d.rules.insert("width_min".into(), serde_json::json!(914.4));
+    }
+    h.run();
+    press(&mut h, "OK");
+    assert!(h.state().codes_dialog.is_none(), "OK closes it");
+    let m = &h.state().session.model;
+    assert_eq!(m.building_code().code, "ibc");
+    assert_eq!(m.stair_rules().width_min, 914.4);
+    assert_eq!(m.stair_rules().riser_max, 177.8, "the rest is the code's");
+
+    // Rules that cannot be keep the dialog open.
+    press(&mut h, "Building Codes");
+    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("riser_min".into(), serde_json::json!(500));
+    press(&mut h, "OK");
+    assert!(h.state().codes_dialog.is_some());
+    press(&mut h, "Cancel");
+    assert!(h.state().codes_dialog.is_none());
+}
+
+#[test]
+fn a_stair_outside_its_code_lists_the_rules_in_a_popup() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"set": "nbr"}));
+    let id =
+        h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90, "riser": 200, "tread": 240, "width": 1200})).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+    h.state_mut().selection = vec![id];
+    h.run();
+    // The row is far down a palette that scrolls: clicked as an assistive tool clicks it, wherever it is.
+    h.get_by_label("Outside 2 rules").click_accesskit();
+    h.run();
+    assert!(h.query_by_label("Building Code Check").is_some(), "the window");
+    assert_eq!(h.query_all_by_label("The rule:").count(), 2, "each with what the stair has and what the rule asks");
+    // Inside the rules again, the window goes.
+    h.state_mut().run("building_code", json!({"set": "generic"}));
+    h.run();
+    assert!(h.query_by_label("Building Code Check").is_none());
+}
+
+#[test]
+fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    {
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        d.selected = "nbr-9050".into();
+        d.rules = serde_json::to_value(&bimcraft_core::codes::code("nbr-9050").unwrap().stairs).unwrap().as_object().unwrap().clone();
+    }
+    h.run();
+    assert!(h.query_by_label("Custom").is_none(), "the code's own rules");
+    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("width_min".into(), json!(1100.0));
+    h.run();
+    assert!(h.query_by_label("Custom").is_some(), "a rule changed");
+    h.state_mut().codes_dialog.as_mut().unwrap().name = "City Hall".into();
+    h.run();
+    press(&mut h, "Save Code");
+    let m = &h.state().session.model;
+    assert_eq!(
+        (m.building_code().code.as_str(), m.building_code().based_on.as_str(), m.stair_rules().width_min),
+        ("City Hall", "nbr-9050", 1100.0)
+    );
+    assert_eq!(h.state().codes_dialog.as_ref().unwrap().selected, "City Hall");
+    assert!(h.query_by_label("Custom").is_none(), "saved, it is a code like the others");
+    // A name BIMCraft has is refused inside the dialog.
+    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("width_min".into(), json!(1000.0));
+    h.state_mut().codes_dialog.as_mut().unwrap().name = "ibc".into();
+    h.run();
+    press(&mut h, "Save Code");
+    assert!(h.state().codes_dialog.as_ref().unwrap().error.contains("another name"));
+    press(&mut h, "Reset to the Code's Rules");
+    press(&mut h, "Delete");
+    let m = &h.state().session.model;
+    assert!(m.building_codes.is_empty());
+    assert_eq!((m.building_code().code.as_str(), m.stair_rules().width_min), ("nbr-9050", 1100.0), "its rules stay, as the project's own");
+}
+
+#[test]
+fn a_stair_s_landings_and_turns_are_edited_in_properties() {
+    let mut h = app(BOX);
+    let id = h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(field(&h, id, "landings"), json!(null), "one run");
+    h.get_by_label("Add Landing").click_accesskit();
+    h.run();
+    // 3000 up in 17 risers: the landing where the run is halved.
+    assert_eq!(field(&h, id, "landings"), json!([{"at": 9.0, "turn": 0.0}]));
+    assert!(h.query_by_label("Turn 1").is_some());
+    h.get_by_label("Remove").click_accesskit();
+    h.run();
+    assert_eq!(field(&h, id, "landings"), json!(null));
+    // Under a code that asks a landing sooner than the stair has one.
+    h.state_mut().run("building_code", json!({"set": "generic", "stairs": {"flight_risers_max": 6}}));
+    h.run();
+    h.get_by_label("Add Landings Due").click_accesskit();
+    h.run();
+    assert_eq!(field(&h, id, "landings"), json!([{"at": 6.0, "turn": 0.0}, {"at": 11.0, "turn": 0.0}]));
+}
+
+#[test]
+fn a_stair_selected_flips_and_shows_its_code_check_from_the_ribbon() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"set": "nbr"}));
+    let id =
+        h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90, "riser": 200, "tread": 240, "width": 1200})).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+    h.run();
+    // Picked on the plan, on a riser.
+    click(&mut h, P2(1000.0, 1480.0));
+    assert_eq!(h.state().selection, [id]);
+    press(&mut h, "Flip");
+    assert_eq!(field(&h, id, "angle"), json!(-90.0), "it climbs the other way");
+    press(&mut h, "Code Check");
+    assert!(h.query_by_label("Building Code Check").is_some());
+}
+
+#[test]
+fn a_selected_stair_s_grips_drag_its_width_its_turn_and_its_foot() {
+    let mut h = app(BOX);
+    let p = json!({"start": [2000, 1000], "angle": 90, "width": 1000, "landings": [{"at": 6, "turn": -90}]});
+    let id = h.state_mut().run("stair", p).unwrap()["id"].as_u64().unwrap();
+    h.run();
+    click(&mut h, P2(2000.0, 1480.0));
+    assert_eq!(h.state().selection, [id]);
+    // Its right side, halfway up the first run, out 200: 400 wider about its middle.
+    drag(&mut h, P2(2500.0, 1700.0), P2(2700.0, 1700.0));
+    assert_eq!(field(&h, id, "width"), json!(1400.0));
+    // The end of the first run, two treads back: the landing after 4 risers.
+    drag(&mut h, P2(2000.0, 2400.0), P2(2000.0, 1840.0));
+    assert_eq!(field(&h, id, "landings"), json!([{"at": 4.0, "turn": -90.0}]));
+    // Its foot, to another place: the stair goes with it.
+    drag(&mut h, P2(2000.0, 1000.0), P2(3000.0, 1200.0));
+    let start = field(&h, id, "start");
+    let (x, y) = (start[0].as_f64().unwrap(), start[1].as_f64().unwrap());
+    assert!((x - 3000.0).abs() < 30.0 && (y - 1200.0).abs() < 30.0, "{start}");
+    assert_eq!(h.state().session.history(), ["Wall", "Stair", "Modify", "Modify", "Modify"], "a step for each drag");
+}
+
+#[test]
+fn building_codes_and_the_stair_tools_have_their_shortcuts_in_both_profiles() {
+    for rev in [false, true] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        shortcut(&mut h, "BC");
+        assert!(h.state().codes_dialog.is_some(), "BC opens Building Codes (rev {rev})");
+        h.state_mut().codes_dialog = None;
+        h.state_mut().run("building_code", json!({"set": "nbr"}));
+        let p = json!({"start": [1000, 1000], "angle": 90, "riser": 200, "tread": 240, "width": 1200, "top_level": "Level 2",
+            "top_offset": -3000, "multistorey": true});
+        let id = h.state_mut().run("stair", p).unwrap()["id"].as_u64().unwrap();
+        h.state_mut().selection = vec![id];
+        h.run();
+        shortcut(&mut h, "CK");
+        assert_eq!(h.state().code_findings, Some(id), "CK: its code check (rev {rev})");
+        h.state_mut().code_findings = None;
+        shortcut(&mut h, "SY");
+        assert_eq!(ids(&h, "stair").len(), 2, "SY: a stair for each storey (rev {rev})");
+        shortcut(&mut h, "TS");
+        assert!(field(&h, id, "sketch").as_array().is_some_and(|s| !s.is_empty()), "TS: a sketch of its risers (rev {rev})");
+        // Nothing selected, the core says why not.
+        h.state_mut().selection.clear();
+        shortcut(&mut h, "TS");
+        assert!(h.state().status.error, "rev {rev}");
+    }
+}
+
+#[test]
+fn the_code_check_window_offers_stairs_that_fit_and_applies_one() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"set": "nbr"}));
+    let id = h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90, "riser": 200, "tread": 240})).unwrap()["id"]
+        .as_u64()
+        .unwrap();
+    h.state_mut().code_findings = Some(id);
+    h.run();
+    assert!(h.query_by_label("Stairs that fit the rules, the nearest first:").is_some());
+    h.get_by_label("Apply 1").click_accesskit();
+    h.run();
+    assert_eq!(field(&h, id, "risers"), json!(17));
+    assert_eq!(field(&h, id, "width"), json!(1200.0));
+    assert!(h.query_by_label("Building Code Check").is_none(), "inside the rules, the window goes");
+}
+
+#[test]
+fn the_code_check_window_cuts_the_floor_over_a_stair_open() {
+    let mut h = app(BOX);
+    h.state_mut().run("floor", json!({"level": "Level 2", "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}));
+    let id = h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 0})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().code_findings = Some(id);
+    h.run();
+    assert!(h.query_by_label("Minimum Headroom").is_some(), "the floor over it leaves it no headroom");
+    let shafts = ids(&h, "shaft").len();
+    h.get_by_label("Cut Opening").click_accesskit();
+    h.run();
+    assert_eq!(ids(&h, "shaft").len(), shafts + 1);
+    assert!(h.query_by_label("Building Code Check").is_none(), "with its headroom, it is inside the rules");
+}
+
+#[test]
+fn the_stair_tool_draws_a_stair_by_hand_and_a_made_stair_becomes_a_sketch() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    press(&mut h, "By Risers");
+    // Four risers, each its left end and its right, going north and widening.
+    for (i, half) in [500.0, 550.0, 650.0, 800.0].into_iter().enumerate() {
+        let y = 1000.0 + 300.0 * i as f64;
+        click(&mut h, P2(3000.0 - half, y));
+        click(&mut h, P2(3000.0 + half, y));
+    }
+    assert!(ids(&h, "stair").is_empty(), "Enter makes it");
+    h.key_press(Key::Enter);
+    h.run();
+    let st = ids(&h, "stair");
+    assert_eq!(st.len(), 1);
+    let sketch = field(&h, st[0], "sketch");
+    assert_eq!(sketch.as_array().map(Vec::len), Some(4));
+    assert_eq!(field(&h, st[0], "risers"), json!(4));
+
+    // A stair made by runs, converted from the ribbon; then a riser's end dragged.
+    press(&mut h, "Straight");
+    let made = h.state_mut().run("stair", json!({"start": [6000, 1000], "angle": 90, "width": 1000})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().tool = Tool::Modify;
+    h.run();
+    click(&mut h, P2(6000.0, 1420.0));
+    assert_eq!(h.state().selection, [made]);
+    press(&mut h, "Convert to Sketch");
+    assert_eq!(field(&h, made, "sketch").as_array().map(Vec::len), Some(17));
+    drag(&mut h, P2(6500.0, 1560.0), P2(7000.0, 1560.0));
+    let riser = &field(&h, made, "sketch")[2]["riser"];
+    let x = riser[0][0].as_f64().unwrap().max(riser[1][0].as_f64().unwrap());
+    assert!((x - 7000.0).abs() < 30.0, "{riser}");
+}
+
+#[test]
+fn the_building_codes_dialog_writes_lengths_in_the_project_s_units() {
+    let mut h = app(BOX);
+    h.state_mut().run("units", json!({"length": "m"})).unwrap();
+    h.state_mut().run("building_code", json!({"set": "ibc"})).unwrap();
+    h.run();
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    // A rule changed: the code's own number beside it, seven inches as the project writes a length, on the row of the
+    // riser's least and most.
+    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("riser_max".into(), json!(200.0));
+    h.run();
+    let code = bimcraft_core::units::Units::Metres.with_unit(177.8);
+    assert!(code.ends_with(" m"), "{code}");
+    assert!(h.query_by_label(&format!("Changed: the code says max. {code}")).is_some(), "{code}");
+}
+
+#[test]
+fn a_stair_s_properties_say_the_location_line_it_has() {
+    let mut h = app(BOX);
+    let id = h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(field(&h, id, "line"), json!("centre"), "said, so Properties show it and not the first of the list");
+    assert_eq!(field(&h, id, "offset"), json!(0.0));
+}
+
+#[test]
+fn the_stair_tool_draws_a_stair_along_the_line_clicked_flights_and_landings() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    // A flight north; a landing east, 2500 long; a flight south: two flights standing 2500 apart.
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2400.0));
+    assert!(ids(&h, "stair").is_empty(), "short of its top, it goes on");
+    press(&mut h, "Landing");
+    click(&mut h, P2(3500.0, 2400.0));
+    press(&mut h, "Steps");
+    click(&mut h, P2(3500.0, 400.0));
+    assert!(ids(&h, "stair").is_empty(), "still short of its top");
+    // Enter finishes it as drawn: what was clicked stays, and its top is under Level 2 by the risers not drawn.
+    h.key_press(Key::Enter);
+    h.run();
+    let st = ids(&h, "stair");
+    assert_eq!(st.len(), 1);
+    assert_eq!(
+        field(&h, st[0], "path"),
+        json!([{"to": [1000.0, 2400.0]}, {"to": [3500.0, 2400.0], "landing": true}, {"to": [3500.0, 400.0]}])
+    );
+    assert_eq!((field(&h, st[0], "risers"), field(&h, st[0], "landings")), (json!(10), Value::Null));
+    let top = field(&h, st[0], "top_offset").as_f64().unwrap();
+    assert!((top - 7.0 * 3000.0 / 17.0).abs() < 1e-6, "{top}: below Level 2 by the risers not drawn");
+    let m = &h.state().session.model;
+    let Some(Element::Stair(made)) = m.elements.get(st[0]) else { panic!("no stair") };
+    let l = bimcraft_core::stairs::stair(m, made);
+    assert_eq!((l.runs.len(), l.pads.len(), l.runs.iter().map(|r| r.risers).sum::<u32>()), (2, 1, 10));
+    assert_eq!(h.state().tool, Tool::Stair(Vec::new()), "ready for the next one");
+}
+
+#[test]
+fn the_stair_tool_s_corner_is_a_landing_or_winders_and_a_long_flight_finishes_it() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    h.state_mut().stair_winders = 3;
+    h.state_mut().stair_line = bimcraft_core::model::StairLine::Left;
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2400.0));
+    assert!(ids(&h, "stair").is_empty());
+    // East, far past its top: the stair is done by that click.
+    click(&mut h, P2(7000.0, 2400.0));
+    let st = ids(&h, "stair");
+    assert_eq!(st.len(), 1);
+    assert_eq!(field(&h, st[0], "path"), json!([{"to": [1000.0, 2400.0]}, {"to": [7000.0, 2400.0], "winders": 3}]));
+    assert_eq!((field(&h, st[0], "line"), field(&h, st[0], "start")), (json!("left"), json!([1000.0, 1000.0])));
+    let m = &h.state().session.model;
+    let Some(Element::Stair(made)) = m.elements.get(st[0]) else { panic!("no stair") };
+    assert_eq!(bimcraft_core::stairs::stair(m, made).winders, 3);
+}
+
+#[test]
+fn the_stair_tool_draws_an_arc_that_leaves_the_stretch_before_it_smoothly() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2000.0));
+    press(&mut h, "Arc");
+    // From going north to a point up and to the right: a quarter turn to the right.
+    click(&mut h, P2(2500.0, 3500.0));
+    h.key_press(Key::Enter);
+    h.run();
+    let st = ids(&h, "stair");
+    assert_eq!(st.len(), 1);
+    let path = field(&h, st[0], "path");
+    assert!((path[1]["arc"].as_f64().unwrap() + 90.0).abs() < 1.0, "{path}");
+}
+
+#[test]
+fn the_stair_tool_makes_a_spiral_about_a_centre_clicked() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    press(&mut h, "Spiral");
+    click(&mut h, P2(4000.0, 3000.0));
+    assert!(ids(&h, "stair").is_empty());
+    // Its first riser 1500 east of the centre: it winds counter-clockwise, north first.
+    click(&mut h, P2(5500.0, 3000.0));
+    let st = ids(&h, "stair");
+    assert_eq!((st.len(), field(&h, st[0], "spiral"), field(&h, st[0], "angle")), (1, json!({"radius": 1500.0}), json!(90.0)));
+    press(&mut h, "Clockwise");
+    click(&mut h, P2(4000.0, 3000.0));
+    click(&mut h, P2(4000.0, 4200.0));
+    let other = *ids(&h, "stair").iter().find(|id| **id != st[0]).unwrap();
+    assert_eq!((field(&h, other, "spiral"), field(&h, other, "angle")), (json!({"radius": -1200.0}), json!(0.0)));
+}
+
+#[test]
+fn the_stair_tool_climbs_to_a_level_chosen_and_stands_on_each_on_the_way() {
+    let mut h = app(BOX);
+    let l3 = h.state_mut().run("level", json!({"name": "Level 3", "elevation": 6600})).unwrap()["id"].as_u64().unwrap();
+    h.run();
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    assert!(h.query_by_label("Multistorey").is_none(), "to the level above, there is one storey");
+    h.state_mut().stair_top = Some(Some(l3));
+    h.run();
+    press(&mut h, "Multistorey");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2960.0));
+    h.key_press(Key::Enter);
+    h.run();
+    let st = ids(&h, "stair");
+    assert_eq!((st.len(), field(&h, st[0], "multistorey"), field(&h, st[0], "top_level").is_null()), (1, json!(true), false));
+    // The stair of its first storey, 3000 up: 17 risers; the storey over it, 3600 up, has 20.
+    let storeys = field(&h, st[0], "storeys");
+    assert_eq!((storeys[0]["risers"].as_u64(), storeys[1]["risers"].as_u64()), (Some(17), Some(20)));
+}
+
+#[test]
+fn the_electrical_demand_tab_picks_the_methods_demand_and_building_demand_take_in_both_profiles() {
+    for rev in [true, false] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        h.state_mut().run("building_code", json!({"set": "nbr-9050"})).unwrap();
+        press(&mut h, "Manage");
+        h.get_by_label("Building Codes").click_accesskit();
+        h.run();
+        assert!(h.state().codes_dialog.is_some(), "Manage > Building Codes (rev {rev})");
+        press(&mut h, "Electrical Demand");
+        // A Brazilian code: Brazil's methods are offered, another country's are not.
+        h.get_by_role_and_label(Role::ComboBox, "Building Demand (dwellings)").click_accesskit();
+        h.run();
+        assert!(h.query_by_label("ITC-BT-10").is_none(), "Spain's (rev {rev})");
+        h.get_by_label("CELESC N-321.0003").click_accesskit();
+        h.run();
+        h.get_by_role_and_label(Role::ComboBox, "Demand (one installation)").click_accesskit();
+        h.run();
+        h.get_by_label("CPFL").click_accesskit();
+        h.run();
+        // What each cites, as its data has it; and the code no longer says so: Custom.
+        assert!(h.query_all_by_label_contains("GED 13").next().is_some(), "CPFL's standard (rev {rev})");
+        assert!(h.query_all_by_label_contains("Tabela 11").next().is_some(), "Celesc's entrance table (rev {rev})");
+        assert!(h.query_by_label("Custom").is_some(), "rev {rev}");
+        press(&mut h, "OK");
+        assert!(h.state().codes_dialog.is_none(), "rev {rev}");
+        let m = &h.state().session.model;
+        assert_eq!(m.building_code().code, "nbr-9050", "the code stays; the methods are the project's (rev {rev})");
+        assert_eq!(m.electrical_methods().demand.as_deref(), Some("CPFL"));
+        assert_eq!(m.electrical_methods().building_demand.as_deref(), Some("CELESC N-321.0003"));
+        let r = h.state_mut().run("demand", json!({"area": 40, "lighting_points": 4})).unwrap();
+        assert_eq!(r["utility"], "CPFL", "rev {rev}");
+    }
+}

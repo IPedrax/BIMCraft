@@ -49,4 +49,8 @@ What comes from the network is hostile, and what goes out is the user's:
   `Pays::Remote` in another window, which counts its own tokens. `wire.rs` is the chat as it goes between windows: the saved forms
   with pictures kept, read as strictly. Another payer or provider than the last starts the model afresh, told the earlier turns
   as text (`fold`). Tested in `shared_tests.rs`.
+- The Classification Manager (`crates/ui-egui/src/classification.rs`) asks through `complete` too, on the window's own key and the
+  chat's `Net`: one user message a batch, its tools sent and never run (a model that calls one is told the task has none), the
+  first message held to `MAX_HISTORY`. A change to `complete`, `SYSTEM` or the tools reaches it: its tests are in the desktop's
+  ([classification](../../docs/areas/classification.md#the-ai-step)).
 - `cargo test -p bimcraft-assistant` runs in about a second.

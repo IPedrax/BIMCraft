@@ -177,7 +177,11 @@ line from the last point touches a circle or an arc (`tangents`), else a scan's 
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
-grid point lying on it beats a rounded length), a wall's centre line or the nearest point of a detail line, else the nearest 10 mm.
+grid point lying on it beats a rounded length), a wall's own line (its exterior face, its centre line or its interior face, whichever the pointer is nearest: `Model::reference_lines`, the same three a dimension measures to), the nearest point of a detail line, else the nearest 10 mm.
+The walls the cursor reaches add their outlines as the plan draws them (`outlines`: the corners and the
+faces as lines), and a stair its corners, riser ends and landing edges (`stairs::reference_edges`); while the Stair
+tool drafts one, `Snaps::stair_corners` keeps a stair to its location line's corners (`stairs::line_corners`). In a section or an
+elevation, `snap` gives the corners and edges of a stair's steps as the view sees them, which its spot elevations and notes take.
 Annotation adds its anchors (`Kind::Anchor`, switched by `Snaps::annotation`): a note's insertion point and leader, a tag's head
 and, with a leader, its host's anchor, a dimension's line and stations, a spot elevation, section and elevation marks, detail
 groups and repeating details. A camera's mark is not a symbol to snap to: its body, lens and name all land on its eye, its target
@@ -190,8 +194,40 @@ Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Sna
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
 `show_snap` draw what a pick would land on (a line's or a wall's length is typed at the cursor, and after Tab its angle, degrees counter-clockwise from east, `line_angle_field`;
-Enter places the point along it; a point lined up with a wall says which: "Lines up with wall 100231", the core's
-`AlignmentResult::wall_id`), and a point that moves with the cursor goes through them. A selected wall's ends are
+Enter places the point along it; an alignment guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
+borrowed one is anchored at the point being drawn from and runs parallel or square to a straight run near it
+(`AlignmentAxis::Inferred`, `AlignmentGuideService::inferred`), so a line drawn beside a slanted wall comes out
+parallel to it. Where a guide comes from is the drawing's own context, not the whole model: the points of the chain
+being drawn, the wall face or line the chain started on, the structural grids near the cursor
+(`Snaps::guides_from_grids`), and the references a hand has marked. A reference is marked by resting the pointer on a
+point or an edge until the ring closes — 150 ms of dead zone, then 300 ms of fill (`guide_refs::{DEAD, FILL}`) — or by
+`Q` at once, before the first point as much as after it; `Q` again, `Esc`, finishing the command or changing tool or
+view clears them, and a view keeps three (`CAP`). A wall is three references — its exterior face, its centre line and
+its interior face, as `Model::reference_lines` gives them to dimensions — and a pick takes the one nearest the pointer,
+which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. `Tab`, while a line or a wall is being drawn,
+steps the pick through the three from the line it has now (`Canvas::wall_face`), and that line is drawn in the canvas's
+hover ink before a click, so a face and a centre line are told apart before they are taken; a number already typed keeps
+Tab for the field it belongs to. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
+wall lends one edge pin — marking another of its faces moves the pin (`Marked::Moved`) rather than spending a second of
+the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
+guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
+of the walls joined there, so a rotated corner gives its walls' directions and not the world's. A chain whose first point
+the snap put on a wall draws with that line's direction and extension (`Canvas::start_edge`). `Snaps::mark_on_hover` turns
+the ring off;
+`Q` stays. The rays are drawn only near the cursor: one enters at 8 px and leaves at 12 (`Canvas::alignments`), at most
+two run at once (`find_alignments`), and each fades out 100 px past the point it locks, so a plan is never crossed by a
+ray from an edge the hand has long left. Shift still squares the point against a collinear or grid ray, and the crossing
+says `Angle` and `On Line`. Guides from the whole model — every wall in it, as Revit does — is
+`Snaps::guides_from_whole_model`, off by default. Manage > Snaps picks how they are drawn (`GuideStyle`): Refined, the default, draws one-physical-pixel
+solid plum hairlines in the canvas's own ink (`style::guide_ink`) — a quiet ray edge to edge, the stronger segment from
+the source to the point it locks, a dot and ring on the source, a crosshair on a free cursor, a dot and a perpendicular
+tick on one guide, a bullseye where two cross (even on a point an angle step also holds), a pill badge and the live length
+beside the segment's middle; Classic keeps the dashed magenta, the blue squares and the tag at the cursor. The badge takes the
+corner round the glyph farthest from the guides through it, so a ray is never cut by the pill, and the live reading sits
+outside the corner's dotted arc in a pill of its own, on the guide ink's paper. The live ruler's graduations and the angle arc are
+finer in the refined look, and Measure's own ruler keeps its weight. Guides are drawn over the plan, never under it: the
+retained plan is one mesh, so there is no seam to hide a guide pass behind, and a marked face and the dwell ring are
+drawn again after the plan's own pass, so neither can be buried by a wall. A selected wall's ends are
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
 a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
@@ -243,6 +279,17 @@ mark, and the next start takes the next choice on `LADDER` (wgpu's own, DirectX 
 survives. `graphics.json` keeps the backend's name (`{"backend": "DirectX 12", "starting": false}`), never its place on the ladder, so
 reordering the ladder cannot change what a kept mark means; 0.8.0's marks (`"choice"`, a place on the old order) are read through that order. An error from `run_native` leaves the mark too, is logged, and on Windows shown in a message box (`startup::tell`: its words are
 entries in the interface's PO catalogs). `WGPU_BACKEND` set by the user switches all of it off. A new way for the start to fail goes through `startup::note`, not `eprintln!` alone.
+
+Frame pacing (`ui-egui/src/pacing.rs`). On Linux and macOS the system's vertical sync paces the window (wgpu's `AutoVsync`). On Windows it
+held the window to a fraction of the screen's rate: measured with `bimcraft --bench` on the highrise (Radeon RX 590, 59 Hz, 2026-11-15), a
+frame the window made in 2 to 4 ms came every 31 ms over Vulkan, every 33 to 47 ms over OpenGL and every 265 ms over DirectX 12, whatever the
+frame latency or the timer's resolution, and every 1.3 to 3.6 ms without vsync. So on Windows (`pacing::system_policy`) the window starts
+with `AutoNoVsync`, switches to Mailbox once its card is known to be DirectX 12 (`present_for`: it never tears; over Vulkan and OpenGL
+`AutoNoVsync` is Immediate, which may tear), and `BimApp::frames` sleeps at the start of each frame (`logic`, its first pass only: egui's
+sizing pass comes at once) so that frames come no closer than the monitor's refresh (`Pacer`, the rate asked of winit once a second,
+60 Hz where it doesn't say). eframe counts that wait in the frame's `cpu_usage`; the benchmark's `cpu_ms` leaves it out (`Pacer::slept`). Every step of the same benchmark then ran at 16.9 to 17.0 ms on every backend. `BIMCRAFT_VSYNC=1` keeps the
+driver's vsync, to compare. The tests have no pacer (`frames: None`). The core's own times on Windows matched Linux's (`docs/performance.md`), so
+a Windows-only slowness is to be looked for in presentation first: run the benchmark and compare the frames' interval with their `cpu_ms`.
 
 Tags. A `Tag` names an element at a `host` by a `label`: the name of one of the fields its category's schedule has (`schedule::field_text` reads it
 as the schedule shows it, in the project's units), or, with none, the category's usual one (`Tag::usual`: a door's or window's `Mark`, a room's `Name`, else

@@ -24,9 +24,38 @@ fn kinds(h: &Harness<BimApp>) -> Vec<&'static str> {
     ids(h, "line").into_iter().map(|id| curve(h, id).kind()).collect()
 }
 
+/// A detail line takes the guide its preview draws: the click lands on that line, not under the
+/// pointer, as a wall's does.
+#[test]
+fn a_detail_line_takes_the_alignment_guide_its_preview_draws() {
+    let mut h = app("wall {\"points\": [[0, 0], [5000, 0]]}");
+    // The wall's end is a model-wide reference: the detail line's guide is the preview's own look, tested here.
+    h.state_mut().snaps.guides_from_whole_model = true;
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    let start = P2(1000.0, -1000.0);
+    click(&mut h, start);
+    let level = h.state().session.model.levels()[0].0;
+    let scale = h.state().canvas.current_view(level).map_or(0.2, |v| v.scale);
+    // Four pixels to the right of the wall end's vertical guide, level with the start.
+    let off = P2(5000.0 + 4.0 / scale, -1000.0);
+    let shown = hover(&mut h, off).expect("the cursor is over the plan");
+    assert!((shown.at.0 - 5000.0).abs() < 0.01, "{:?}: the preview is on the guide it draws", shown.at);
+    click(&mut h, off);
+    key(&mut h, Key::Enter);
+
+    let line = ids(&h, "line").last().copied().expect("the detail line");
+    let end = curve(&h, line).end();
+    assert!((end.0 - 5000.0).abs() < 0.01, "{end:?}: on the wall end's guide, not under the pointer");
+    assert!((end.1 + 1000.0).abs() < 0.01, "{end:?}");
+}
+
 #[test]
 fn each_shape_of_the_draw_panel_makes_its_detail_lines_from_its_clicks() {
     let mut h = detailing();
+    // The shapes alone: detail lines are guide references, and the circle's radius point beside the polygon drawn
+    // just before it would take a guide (the guides have their own tests, in `tests.rs`).
+    h.state_mut().snaps.alignment_guides = false;
     let cases: [(&str, &[P2], &[&str]); 9] = [
         ("Rectangle", &[P2(1000.0, 1000.0), P2(3000.0, 2000.0)], &["line"; 4]),
         ("Inscribed Polygon", &[P2(4000.0, 3000.0), P2(5000.0, 3000.0)], &["line"; 6]),

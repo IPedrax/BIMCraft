@@ -178,6 +178,10 @@ const FLOOR: &[Group] = &[
 ];
 
 /// The cover's fields, and the steel's and the room between bars (blank is the command's usual).
+/// The standards the Check row offers: what `check` takes.
+const NBR6118: &str = "NBR 6118";
+const EN1992: &str = "EN 1992-1-1";
+
 const COVER: [(&str, &str); 4] =
     [("cover", msg!("Cover")), ("cover_top", msg!("Top")), ("cover_bottom", msg!("Bottom")), ("cover_sides", msg!("Sides"))];
 
@@ -310,12 +314,12 @@ impl ReinforceDialog {
             }
             None => {}
         }
-        for key in ["grade", "grade_stirrup", "check"] {
+        for key in ["grade", "grade_stirrup", "check", "exposure"] {
             if let Some(g) = p.get(key).and_then(Value::as_str) {
                 self.values.insert(key, g.to_string());
             }
         }
-        for key in ["aggressiveness", "fck"] {
+        for key in ["aggressiveness", "fck", "fyk"] {
             if let Some(v) = p.get(key).and_then(Value::as_f64) {
                 self.values.insert(key, format!("{v}"));
             }
@@ -365,8 +369,17 @@ impl ReinforceDialog {
         if !self.text("check").is_empty() {
             p["check"] = json!(self.text("check"));
         }
-        for (key, kind, label) in [("aggressiveness", Kind::Count, "Check: Aggressiveness class"), ("fck", Kind::Number, "Check: fck")] {
-            if let Some(v) = self.read(units, key, kind, t(label))? {
+        // Only what the standard takes: the other's fields may hold what was typed before it was changed.
+        let en = self.text("check") == EN1992;
+        if en && !self.text("exposure").trim().is_empty() {
+            p["exposure"] = json!(self.text("exposure").trim());
+        }
+        for (key, kind, label, own) in [
+            ("aggressiveness", Kind::Count, "Check: Aggressiveness class", !en),
+            ("fck", Kind::Number, "Check: fck", true),
+            ("fyk", Kind::Number, "Check: fyk", en),
+        ] {
+            if own && let Some(v) = self.read(units, key, kind, t(label))? {
                 p[key] = v;
             }
         }
@@ -506,13 +519,22 @@ impl BimApp {
                         if ui.selectable_label(now.is_empty(), t("None")).clicked() {
                             d.values.insert("check", String::new());
                         }
-                        if ui.selectable_label(now == "NBR 6118", "NBR 6118").clicked() {
-                            d.values.insert("check", "NBR 6118".into());
+                        for name in [NBR6118, EN1992] {
+                            if ui.selectable_label(now == name, name).clicked() {
+                                d.values.insert("check", name.into());
+                            }
                         }
                     });
                     c.response.labelled_by(l.id);
-                    labelled(ui, t("Aggressiveness class"), d.values.entry("aggressiveness").or_default(), t("Check: Aggressiveness class").to_string(), 40.0, "1 - 4");
+                    if now == EN1992 {
+                        labelled(ui, t("Exposure class"), d.values.entry("exposure").or_default(), t("Check: Exposure class").to_string(), 48.0, "XC1");
+                    } else {
+                        labelled(ui, t("Aggressiveness class"), d.values.entry("aggressiveness").or_default(), t("Check: Aggressiveness class").to_string(), 40.0, "1 - 4");
+                    }
                     labelled(ui, t("fck (MPa)"), d.values.entry("fck").or_default(), t("Check: fck").to_string(), 48.0, "");
+                    if now == EN1992 {
+                        labelled(ui, t("fyk (MPa)"), d.values.entry("fyk").or_default(), t("Check: fyk").to_string(), 48.0, "");
+                    }
                 });
             }
             if !d.notes.is_empty() {

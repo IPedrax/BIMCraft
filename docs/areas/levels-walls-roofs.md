@@ -225,7 +225,41 @@ are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
-its side (`stairs::railing`), so it goes wherever its host goes. `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
+its side (`stairs::railing`), so it goes wherever its host goes. A stair's `start` is on its location line
+(`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
+the line stays when the width changes. A turn is straight on, back beside the run, or any angle from 5 to 135 degrees (the runs then share the turn's inside
+corner). A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may
+wind instead (`winders` treads fanned round the turn's inside corner, `stairs::wind`; they are `Layout::pads` too, the last
+`Layout::winders` of a turn's). With `balance`, the winders run that many treads into the flight on each side and all of the
+turn's steps are equal along the walk line and the inside string (`stairs::balanced`), so none comes to a point. A `multistorey` stair with a top level several levels up is the stair of its first storey (`Model::flight`, `stairs::first`)
+standing again on each level on the way (`Model::storeys`, `stairs::storeys`; `stairs::stair` is all of them), each storey with
+its own count of risers. A stair's type (`Model::types.stair`, `StairType`; none for a stair solid to its level) is what it is built of: `stairs::parts`
+gives its solids, a slab of the type's `waist` under the steps or treads, risers and stringers standing free. A stair with a `sketch` is drawn by hand: a line for each riser and no runs (`stairs::sketched`), each tread the ground to the
+next riser or its own outline; `stair_sketch` (`stairs::as_sketch`) makes one of a stair made by runs and turns. A stair with a `spiral` (`radius` to its middle line, signed for the side its centre is on, and `sweep`) has no runs: its
+treads are pieces of a ring (`stairs::spiral`), all of them `Layout::pads`. A stair type's `construction` (`Construction`: monolithic, stringers, a centre
+stringer or treads fixed in a wall; none, read from its sizes by `StairType::built`) says what carries its treads, and
+`landing_stringers` runs a stringed stair's stringers round its landings' free edges; `stairs::parts_tagged` names each solid's
+part (`graphics::StairPart`: runs, risers, landings, supports, finishes, headroom), which a view's stair subcategories hide and
+override (Visibility/Graphics, `graphics::STAIR_SUBS`; Headroom, `stairs::clearance`, off until shown). A finish's front edge
+takes the type's `finish_profile` (`stairs::profiled`); its plan symbol, its `arrow`, `walk_start`, `cut_mark` and
+`walk_rounded`; a plan view may show every stair its own way (`stair_display`, `Graphics::stairs`). A stair's plan edges are
+references a dimension measures to (`Face::Edge`, `stairs::reference_edges`). IFC writes a stair's flights, landings, stringers
+(`IfcMember .STRINGER.`) and finishes as its type builds them, with `Pset_StairCommon`, `Pset_StairFlightCommon`, the flights'
+lengths and `BIMCraft_Stair` (the stair and its type as JSON), which an import makes a stair again. `stair_storeys` makes a
+multistorey stair a stair for each storey; `stair_sketch {back}` makes a converted stair the stair it was (`Stair::unsketched`).
+A project's **building code** is the rules its stairs are held to (the codes, their sources, a project's own, XML, and the
+rule that every check is fast and spatial: [building codes](building-codes.md)): a new stair starts with its riser, going and
+landing length, `landings: "auto"` places the landings due, and `stair_check` (and `code_check`, `code_findings` on a stair)
+lists what a stair is outside of, with the number and the fix.
+`flip` on a stair makes it climb the other way over the same ground (`stairs::flipped`). A stair's grips, where they are and
+what a drag of one makes of the stair, are `stairs::grips` and `stairs::dragged`; the desktop's `stairgrips.rs` draws them on
+the plan and runs `modify` on release.
+`stairs::headroom` finds the floors standing over a stair's steps with less than the code's headroom, which `stair_check` reports
+and `stair_opening` cuts open with a shaft through each (`stairs::united` is the outline round the steps). `stair_solve` (`codes::solve`) proposes the stairs nearest one that fit the rules, least change first, and makes one with `apply`.
+Nothing is ever refused for breaking a rule: winders under a
+code without them are built and reported. The desktop's is Manage > Building Codes (`ui-egui/src/codes.rs`), apart from
+Technical Standards, which is about drafting. Where stairs are going, and why: [an advanced stair
+tool](../stair-tool-plan.md). `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
 called `category`, the tag every element carries.
 
 Sketches (`sketch.rs`) are how an outline is drawn, the one solver everything with an outline and holes uses: floors,

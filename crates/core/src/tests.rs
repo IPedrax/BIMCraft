@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::engine::{Session, commands};
+use crate::engine::{Session, UNDO_LIMIT, commands};
 use crate::geom::P2;
 use crate::model::{Facing, Model};
 
@@ -46,6 +46,41 @@ fn schema_paths(value: &Value, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
+/// The keys a params doc written in prose lists at the top of its leading `{…}`: `{path, code?, name?} writes…` gives
+/// `path`, `code` and `name`; `{start: [x,y], end?: …} | …` gives `start` and `end`. None for a doc that starts otherwise.
+fn signature_keys(doc: &str) -> Vec<String> {
+    let (mut keys, mut piece, mut depth) = (Vec::new(), String::new(), 0i32);
+    for c in doc.trim_start().chars() {
+        depth += match c {
+            '{' | '[' | '(' => 1,
+            '}' | ']' | ')' => -1,
+            _ => 0,
+        };
+        // A piece ends at a `,` or a `|` of the top level, and the last at the brace that closes it.
+        if depth <= 0 || (depth == 1 && matches!(c, ',' | '|')) {
+            let key: String = piece.trim_start_matches(['{', ' ']).chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !key.is_empty() {
+                keys.push(key);
+            }
+            piece.clear();
+            if depth <= 0 {
+                break;
+            }
+            continue;
+        }
+        piece.push(c);
+    }
+    keys
+}
+
+#[test]
+fn a_prose_params_doc_lists_its_top_level_keys() {
+    assert_eq!(signature_keys("{path, code?, name?} writes a code"), ["path", "code", "name"]);
+    assert_eq!(signature_keys("{start: [x,y], end?: [x,y] | angle?, path?} a stair"), ["start", "end", "angle", "path"]);
+    assert_eq!(signature_keys("{id | ids: [id,…], …fields} change fields"), ["id", "ids"]);
+    assert!(signature_keys("set the view").is_empty());
+}
+
 /// A plugin only reaches the disk with the `files` permission, and what says a command reaches it is its own mark.
 /// So a command that takes a file's path cannot be left unmarked: a new command with a `path` (or a texture's
 /// picture, or a `save` file) fails here until it says [`crate::engine::Files::Read`] or `Write`, or
@@ -55,21 +90,23 @@ fn a_command_that_takes_a_path_is_marked_as_touching_files() {
     let mut unmarked = Vec::new();
     let mut conditional = Vec::new();
     for command in commands() {
-        let schema: Value = match serde_json::from_str(command.params) {
-            Ok(schema) => schema,
-            // A documented example with its own words (`{name?, language?: en|pt|…}`) isn't a JSON schema: there
-            // is no property to find, so nothing to miss.
-            Err(_) => continue,
+        let (paths, schema) = match serde_json::from_str::<Value>(command.params) {
+            Ok(schema) => {
+                let mut paths = Vec::new();
+                schema_paths(&schema, "", &mut paths);
+                (paths, true)
+            }
+            // A documented example with its own words (`{path, code?, name?} writes…`): the keys its leading `{…}` lists.
+            Err(_) => (signature_keys(command.params), false),
         };
-        let mut paths = Vec::new();
-        schema_paths(&schema, "", &mut paths);
         let kinds = ["path", "save", "texture.path"];
-        let takes = kinds.iter().find(|kind| paths.iter().any(|p| p == *kind));
+        // A stair's `path` is the line it is drawn along, not a file.
+        let takes = kinds.iter().find(|kind| paths.iter().any(|p| p == *kind)).filter(|_| command.id != "stair");
         let Some(kind) = takes else {
             // A command with no file parameter that is marked as a file one is a lie too: it would need the
-            // permission for nothing.
+            // permission for nothing. (One in prose may reach its file by another key: `reload`'s link, `publish`'s folder.)
             assert!(
-                command.files == crate::engine::Files::Conditional || command.files == crate::engine::Files::None,
+                !schema || command.files == crate::engine::Files::Conditional || command.files == crate::engine::Files::None,
                 "`{}` is marked {:?} but takes no path",
                 command.id,
                 command.files
@@ -959,6 +996,57 @@ fn an_atomic_script_is_one_undo_step_and_leaves_nothing_done_when_a_line_fails()
     let steps = s.history().len();
     s.script_atomic("inspect\n").unwrap();
     assert_eq!(s.history().len(), steps);
+}
+
+#[test]
+fn steps_since_a_mark_squash_into_one_and_a_new_project_or_nothing_done_leaves_them() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3000}));
+    let (history, levels) = (s.history().len(), count(&mut s, "level"));
+    // A run that spans many calls (a PyAddin's, a frame at a time) is one step when it is over.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 6000}));
+    run(&mut s, "inspect", json!({}));
+    run(&mut s, "level", json!({"elevation": 9000}));
+    assert_eq!(s.history().len(), history + 2);
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), history + 1);
+    assert_eq!(s.history().last(), Some(&"PyAddin"));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels, "one undo takes it all back");
+    run(&mut s, "redo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels + 2);
+    // One step, or none, is left as it is.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 12000}));
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().last(), Some(&"Level"));
+    let (mark, steps) = (s.mark(), s.history().len());
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), steps);
+    // A new project since the mark: its history is its own.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 15000}));
+    run(&mut s, "new", json!({}));
+    run(&mut s, "level", json!({"elevation": 6000}));
+    run(&mut s, "level", json!({"elevation": 9000}));
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history(), vec!["Level", "Level"]);
+    // A full history, its oldest steps dropped meanwhile, still squashes just what came after the mark.
+    let mut s = Session::new();
+    for i in 0..UNDO_LIMIT {
+        run(&mut s, "level", json!({"elevation": 3000.0 * (i as f64 + 2.0)}));
+    }
+    let mark = s.mark();
+    for i in 0..3 {
+        run(&mut s, "level", json!({"elevation": -3000.0 * (i as f64 + 1.0)}));
+    }
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), UNDO_LIMIT - 2);
+    assert_eq!(s.history().last(), Some(&"PyAddin"));
+    let before = count(&mut s, "level");
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "level"), before - 3);
 }
 
 #[test]
@@ -2220,6 +2308,45 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"category": "window", "name": "W", "width": 1e12, "height": 1}),
         json!({"boundary": [[0, 0], [1, 0], [0, 0]]}),
         json!({"start": [0, 0], "end": [0, 0]}),
+        json!({"start": [0, 0], "angle": 0, "line": 5, "offset": 1e300, "landings": [{"at": 4, "turn": 90, "winders": 1e9, "length": -1e300}]}),
+        json!({"start": [0, 0], "angle": 0, "width": 1e-300, "line": "left", "offset": -1e8, "landings": [{"at": 4, "turn": 180, "winders": 30, "length": 1e308}]}),
+        json!({"start": [0, 0], "angle": 0, "landings": [{"at": 8, "turn": 90, "winders": 3, "balance": 1e9}, {"at": 9, "turn": -180, "winders": 1, "balance": 30}]}),
+        json!({"start": [0, 0], "angle": 0, "spiral": {"radius": 1e-300, "sweep": 1e300}}),
+        json!({"start": [0, 0], "angle": 0, "width": 1e9, "spiral": {"radius": -1e6, "sweep": 3600}, "height": 1e9, "riser": 1e-3}),
+        json!({"category": "stair", "name": "S", "waist": 1e300, "tread_thickness": -1, "nosing": "x", "stringer_depth": 5e-324}),
+        json!({"category": "stair", "name": "S", "waist": 150, "rules": {"riser_min": 1e300, "pitch_max": "x"}, "plan": {"same": 5}}),
+        json!({"category": "stair", "name": "S", "waist": 150, "rules": [1], "plan": "x", "fill": 5, "line_hidden": "a\nb"}),
+        json!({"category": "stair", "name": "S", "waist": 150, "tread_cover": 1e300, "riser_cover": -5, "cover_material": "none", "post": 1e9}),
+        json!({"category": "stair", "name": "S", "waist": 150, "profile": "slanted", "nosing": 0, "numbers": "yes", "carriage_depth": 1e-300}),
+        json!({"category": "stair", "name": "S", "construction": "glass", "landing_stringers": 5, "finish_profile": [], "arrow": 1e300}),
+        json!({"category": "stair", "name": "S", "construction": "carriage", "walk_start": "x", "cut_mark": null, "walk_rounded": "yes"}),
+        json!({"category": "stair", "name": "S", "construction": "treads", "tread_thickness": 0, "landing_stringers": true, "finish_profile": "bullnose"}),
+        json!({"view": 100002, "below": 5, "same": "upside_down", "by_type": "x"}),
+        json!({"view": "nowhere", "above": "not_shown", "by_type": true}),
+        json!({"id": 100002, "back": "x"}),
+        json!({"id": 1e300, "back": true}),
+        json!({"start": [0, 0], "angle": 0, "type": 5, "landings": [{"at": 6, "turn": 77.7, "winders": 2}]}),
+        json!({"start": [0, 0], "angle": 0, "multistorey": "yes", "top_level": 1e300}),
+        json!({"start": [0, 0], "angle": 0, "multistorey": true, "top_level": 100002, "riser": 1e-9}),
+        json!({"sketch": [{"riser": [[0, 0], [1e300, 0]], "outline": [[0, 0]]}, {"riser": "x"}], "height": 1e9}),
+        json!({"sketch": [{"riser": [[0, 0], [1000, 0]]}, {"riser": [[0, 1e-9], [1000, 1e-9]], "outline": [[0, 0], [1, 0], [0, 1e300]]}], "spiral": {"radius": 5}}),
+        json!({"start": [0, 0], "angle": 0, "landings": [{"at": 6, "turn": 90, "width": 1e300}, {"at": 10, "turn": 180, "width": 5e-324}]}),
+        json!({"id": 100002, "headroom": 1e300}),
+        json!({"id": 100002, "headroom": 2000, "margin": 1e300}),
+        json!({"id": "x", "headroom": -1}),
+        json!({"id": 100002, "lock": ["risers", 5, "x"], "apply": 1e300}),
+        json!({"id": [], "lock": "width", "apply": -1}),
+        json!({"set": "nbr", "keep_rules": 5, "stairs": {"riser": 1e300, "going": -1, "flight_risers_max": 1e30, "walk_line": [], "winders": null}}),
+        json!({"set": [], "reset": true, "stairs": {"riser_min": 1e-300, "riser_max": 5e-324, "walk_line_offset": f64::MAX}}),
+        json!({"ids": [100002, 1e300, -1, "x"]}),
+        json!({"save": "x\ny", "delete": 5, "set": "nope"}),
+        json!({"save": "Ours", "delete": "Ours", "stairs": {"riser": 150}}),
+        json!({"electrical": {"demand": 5, "building_demand": []}, "set": "ibc", "keep_rules": true}),
+        json!({"electrical": {"demand": "CPFL", "building_demand": "x\ny", "lighting": 1}, "save": "Ours"}),
+        json!({"electrical": {"demand": null, "building_demand": "celesc"}, "reset": true, "dwellings": [{"count": 1e300}]}),
+        json!({"electrical": "NEC 220.84", "dwellings": [{"count": 30, "demand": 20}], "area": 40}),
+        json!({"electrical": {"demand": "ENEL", "building_demand": "celesc"}, "set": "din", "stairs": {"riser": 150}}),
+        json!({"path": "/nonexistent/code.xml", "name": "nbr", "set": "yes", "code": []}),
         json!({"level": "nowhere"}),
         json!({"name": "Level : nowhere", "offset": 1e300}),
         json!({"name": 5, "ref_plane": [], "dissociate": "x"}),
@@ -2235,7 +2362,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
         json!({"from": [], "into": 5, "overwrite": "x"}),
         json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
-        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "vary_by_group": "yes", "scope": "x", "dictionary": "d", "kind": "plasma"}),
         json!({"name": "P", "scope": 5, "categories": ["room"]}),
         json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
         json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
@@ -2755,6 +2882,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
     // A floor and a wall with a component on a face of each, and the payloads that place, move and host them.
     targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
+    // A model group of walls and a door, and the payloads that place, break, edit and mend groups.
+    targeted.extend(crate::groups::tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),
@@ -3031,6 +3160,9 @@ fn hostile_params_never_panic_or_break_the_model() {
             });
         }
     });
+    // A typed stair of two storeys, last so that no id moves, and the payloads aimed at it and at stairs along a path: made
+    // after the sweep of every command, which drawing it after each would slow by a sixth.
+    targeted.extend(crate::codes::tests::sweep_payloads(&mut base));
     for (cmd, p) in &targeted {
         let mut s = base.clone();
         let made = s.execute(cmd, p).is_ok();
@@ -4481,7 +4613,7 @@ fn stairs_turn_at_landings_into_several_runs() {
     for (landings, why) in [
         (json!([{"at": 1, "turn": 0}]), "risers"),
         (json!([{"at": 16, "turn": 0}]), "risers"),
-        (json!([{"at": 8, "turn": 45}]), "turn"),
+        (json!([{"at": 8, "turn": 150}]), "turn"),
         (json!([{"at": 9, "turn": 0}, {"at": 8, "turn": 0}]), "risers"),
         (json!([{"at": 8.5, "turn": 0}]), "whole"),
     ] {
@@ -6519,21 +6651,23 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
+fn a_file_of_the_family_editors_unreleased_formats_past_this_one_up_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
-    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
-    // to 32 are refused as any newer file is.
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's; 21 is
+    // the next release's, and what is past it, up to 32, is refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 20);
+    assert_eq!(FORMAT, 21);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 21..=32 {
+    for old in FORMAT + 1..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
+            e.contains("saved by a newer BIMCraft")
+                && e.contains(&format!("file format {old}"))
+                && e.contains(&format!("reads up to {FORMAT}")),
             "{old}: {e}"
         );
     }
