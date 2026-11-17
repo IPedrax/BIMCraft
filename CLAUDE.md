@@ -119,14 +119,14 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - `loads.rs`: the `load_points` command, a dwelling's lighting and outlets by room, by the electrical code's `load_points` (NBR 5410 9.5.2).
 - `dr.rs`: the `dr_check` command, which circuits NBR 5410 asks a 30 mA residual-current device for.
 - `bath.rs`: the `bath_volumes` command, the volumes around a bathtub or a shower and what may stand in each (NBR 5410 9.1).
-- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's GED 13; Enel's GRI-0017 and Celesc's N-321.0001 by installed load); `entrance.rs`: other utilities' categories, from their codes. `building_demand.rs`: `building_demand`, a building's demand by a utility's or a country's method.
+- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's, Enel's and Celesc's, from their codes); `entrance.rs`: other utilities' categories, from their codes. `building_demand.rs`: `building_demand`, a building's demand by a utility's or a country's method.
 - `dps.rs`: the `dps_check` command, surge protection of a power line by NBR 5410 (when, where, connection, currents).
 - Plumbing, sized by the project's plumbing code: `water.rs` (`water_size`), `reservoir.rs`, `plumbing.rs` (fixtures), `storm.rs` (abacuses), `drainage.rs` (`drain_size`, `vent_size`), `hydrant.rs` (IT 22).
 - `network.rs`: the `network` command, the pipe network worked out from pipes' ends and pipe connectors, never stored (nodes, edges, open ends, warnings).
-- `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410 (makers' catalogues in `conduit/tables.rs`).
+- `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410.
 - `panel_schedule.rs`, `sheet/panel.rs`: panel schedules, drawn on sheets.
-- `electrical.rs`: the electrical settings: voltages, distribution systems, wire types, panels and circuits (the `voltage`, `distribution_system`, `wire_type`, `panel` and `circuit` commands; starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
-- `nbr5410.rs`: the `circuit` command's sizing by NBR 5410 (tables in `nbr5410/tables.rs`; [structure and MEP](docs/areas/structure-and-mep.md)).
+- `electrical.rs`: the electrical settings: voltages, distribution systems, wire types, panels and circuits (the `voltage`, `distribution_system`, `wire_type`, `panel` and `circuit` commands; also rules of the electrical code; [structure and MEP](docs/areas/structure-and-mep.md)).
+- `nbr5410.rs`: the `circuit` command's sizing by NBR 5410 ([structure and MEP](docs/areas/structure-and-mep.md)).
 - `timber.rs`: the `timber_framing` command, a straight isolated wall's studs, plates and clear bays round one window, read and never built ([structure and MEP](docs/areas/structure-and-mep.md)).
 - `coordinates.rs`: the Project Base Point, the Survey Point and the project's locations, and the transform to shared coordinates ([coordinates](docs/areas/coordinates.md)).
 - `tests.rs`, `mep_tests.rs`, `structure_tests.rs`, `eberick_tests.rs`, `reinforce_tests.rs`, `autosave_tests.rs`: the engine driven through commands, as a front end drives it.

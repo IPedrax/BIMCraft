@@ -3,7 +3,7 @@
 //! Physical constants and the safety caps stay in Rust.
 
 /// The modules that read a code's rules: none may hold a numeric constant or table of its own, but those `ALLOWED` names.
-const READERS: [&str; 15] = [
+const READERS: [&str; 19] = [
     "codes.rs",
     "codes/stairs.rs",
     "codes/checks.rs",
@@ -19,10 +19,14 @@ const READERS: [&str; 15] = [
     "loads.rs",
     "building_demand.rs",
     "entrance.rs",
+    "nbr5410.rs",
+    "conduit.rs",
+    "dps.rs",
+    "demand.rs",
 ];
 
 /// What a reader may keep: caps on what it takes, tolerances, and physics.
-const ALLOWED: [&str; 13] = [
+const ALLOWED: [&str; 15] = [
     "MAX_OWN",
     "MAX_NAME",
     "MAX_XML",
@@ -35,21 +39,13 @@ const ALLOWED: [&str; 13] = [
     "KPA_PER_M",
     "NU",
     "G",
+    // Copper's temperature coefficient of resistance.
+    "COPPER_ALPHA",
+    // A cap on the circuits a grouping factor is looked up for.
+    "MAX_CIRCUITS",
     // Site and Climate's ranges, a guard on what a project types, not a code's numbers.
     "SITE_NUMBERS",
     "SITE_TEXTS",
-];
-
-/// The modules whose numbers are still in Rust, and who moves them: the electrical part of the plan whose numbers are tables in
-/// Rust (E2 to E4, E6, and E9's CPFL, Enel and Celesc categories), which its authors take (discussion #487). Each leaves this
-/// list when it reads its section.
-const MOVING: [(&str, &str); 6] = [
-    ("nbr5410.rs", "E2, E3"),
-    ("nbr5410/tables.rs", "E2"),
-    ("dps.rs", "E6"),
-    ("demand.rs", "E9: CPFL's, Enel's and Celesc's categories"),
-    ("conduit.rs", "E4"),
-    ("conduit/tables.rs", "E4 (the makers' catalogue stays a catalogue)"),
 ];
 
 /// A `const` or `static` of `text` whose value holds a number: its name, where it isn't allowed.
@@ -100,11 +96,6 @@ fn code_values_live_in_codes() {
             "{file} holds numbers of its own: {found:?}. A code's number goes in a section of data/codes/ with its source \
              (CLAUDE.md, \"No code values in code\"); physics and caps go in ALLOWED"
         );
-    }
-    // The modules still moving are named, and exist: one that moved leaves the list, and joins READERS.
-    for (file, part) in MOVING {
-        assert!(src.join(file).exists(), "{file} ({part}) is gone: take it off MOVING");
-        assert!(!READERS.contains(&file), "{file} reads its section: take it off MOVING");
     }
 }
 

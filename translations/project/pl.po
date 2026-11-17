@@ -133,7 +133,7 @@ msgstr "Gniazdo teleinformatyczne"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13812
+#: crates/core/src/commands.rs:13846
 msgid "Dependent"
 msgstr "Zależny"
 
@@ -218,9 +218,9 @@ msgstr "Instalacja oświetleniowa"
 msgid "Electrical Power"
 msgstr "Instalacja elektryczna – zasilanie"
 
-#: crates/core/src/commands.rs:13559
-#: crates/core/src/commands.rs:13574
-#: crates/core/src/commands.rs:18193
+#: crates/core/src/commands.rs:13593
+#: crates/core/src/commands.rs:13608
+#: crates/core/src/commands.rs:18227
 msgid "Elevation"
 msgstr "Widok elewacji"
 
@@ -350,7 +350,7 @@ msgstr "Szerokość nogi"
 msgid "Length"
 msgstr "Długość"
 
-#: crates/core/src/commands.rs:8559
+#: crates/core/src/commands.rs:8584
 #: crates/core/src/model.rs:4410
 msgid "Level"
 msgstr "Poziom"
@@ -391,7 +391,7 @@ msgstr "Oznaczenie"
 msgid "Masking"
 msgstr "Maskowanie"
 
-#: crates/core/src/commands.rs:11031
+#: crates/core/src/commands.rs:11065
 msgid "Mass"
 msgstr "Bryła"
 
@@ -408,7 +408,7 @@ msgid "Membrane"
 msgstr "Membrana"
 
 #: crates/core/src/commands.rs:3766
-#: crates/core/src/commands.rs:16771
+#: crates/core/src/commands.rs:16805
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:5907
 msgid "Metal"
@@ -508,7 +508,7 @@ msgstr ""
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:9286
+#: crates/core/src/commands.rs:9311
 msgid "Property Line"
 msgstr ""
 
@@ -540,7 +540,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dachówki"
 
-#: crates/core/src/commands.rs:11256
+#: crates/core/src/commands.rs:11290
 msgid "Room"
 msgstr "Pomieszczenie"
 
@@ -576,8 +576,8 @@ msgstr "Jastrych"
 msgid "Seat Height"
 msgstr "Wysokość siedziska"
 
-#: crates/core/src/commands.rs:13494
-#: crates/core/src/commands.rs:18192
+#: crates/core/src/commands.rs:13528
+#: crates/core/src/commands.rs:18226
 msgid "Section"
 msgstr "Przekrój"
 
@@ -748,7 +748,7 @@ msgstr "Wysokość nieograniczona"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:14048
+#: crates/core/src/commands.rs:14082
 msgid "Unnamed"
 msgstr "Bez nazwy"
 

@@ -15,6 +15,8 @@ use egui::{Align, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, Layou
 use serde_json::{Map, Value, json};
 
 use crate::BimApp;
+
+pub(crate) mod tree;
 use crate::lang::{t, tf};
 use crate::popup::{self, Modal};
 use crate::style::pal;
@@ -160,12 +162,8 @@ fn named(section: &str, rule: &str) -> (String, &'static str) {
     if let Some((_, _, label, unit)) = RULES.iter().find(|(s, r, _, _)| *s == section && *r == rule) {
         return (t(label).to_string(), unit);
     }
-    // Its key in words: `clear_width_min` is "Clear width min".
-    let mut words = rule.replace('_', " ");
-    if let Some(first) = words.get(..1) {
-        words = format!("{}{}", first.to_uppercase(), words.get(1..).unwrap_or(""));
-    }
-    (words, "")
+    // Its key in words: `clear_width_min` is "Clear width min", `breaker_a` "Breaker (A)".
+    (tree::human(rule), "")
 }
 
 /// What a stair rule that is a choice may be, as the core names each and as it is shown.
@@ -334,7 +332,10 @@ impl Tab {
     /// Whether the tab is not what the project has now.
     fn differs(&self, m: &Model) -> bool {
         let fresh = Tab::new(m, self.discipline);
-        fresh.code != self.code || fresh.amendments != self.amendments || fresh.rules != self.rules || !self.cleared.is_empty()
+        // The settings the project changed go into the amendment edited, when there is one.
+        let settings = self.target.is_some()
+            && bimcraft_core::electrical::SECTIONS.iter().any(|k| m.codes.choice(self.discipline).changes.contains_key(*k));
+        fresh.code != self.code || fresh.amendments != self.amendments || fresh.rules != self.rules || !self.cleared.is_empty() || settings
     }
 
     /// The `building_code` params that make the project's choice this tab's: its code, its amendments and its rules, into
@@ -518,7 +519,11 @@ fn rule_field(ui: &mut Ui, units: Units, key: &str, unit: &str, label: &str, v: 
             c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label));
         }
         Value::String(s) => {
-            let r = ui.add(egui::TextEdit::singleline(s).desired_width(220.0));
+            let r = if s.chars().count() > 40 {
+                ui.add(egui::TextEdit::multiline(s).desired_width(420.0).desired_rows(2))
+            } else {
+                ui.add(egui::TextEdit::singleline(s).desired_width(260.0))
+            };
             r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, label));
         }
         Value::Number(n) if (n.is_u64() || n.is_i64()) && unit.is_empty() => {
@@ -557,6 +562,47 @@ fn rule_field(ui: &mut Ui, units: Units, key: &str, unit: &str, label: &str, v: 
     open
 }
 
+/// What a section says about itself rather than a rule: who it is (the code's name and source say it already, beside each
+/// rule), and its notes, shown as text over the rules.
+fn about_key(k: &str) -> bool {
+    matches!(k, "standard" | "source" | "country" | "id" | "name" | "rule" | "notes" | "not_covered" | "columns") || k.ends_with("_source")
+}
+
+/// A section's words, as text: how it picks, its notes, and what it leaves out.
+fn about(ui: &mut Ui, rules: &Map<String, Value>) {
+    let text = |v: &Value| -> Vec<String> {
+        match v {
+            Value::String(s) if !s.is_empty() => vec![s.clone()],
+            Value::Array(a) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+            _ => Vec::new(),
+        }
+    };
+    for (k, head) in [("name", ""), ("rule", "How it works:"), ("notes", "Notes:"), ("not_covered", "Not covered:")] {
+        let lines = rules.get(k).map(text).unwrap_or_default();
+        if lines.is_empty() || (k == "name" && !rules.contains_key("id")) {
+            continue;
+        }
+        ui.horizontal_top(|ui| {
+            if !head.is_empty() {
+                ui.label(RichText::new(t(head)).strong().small());
+            }
+            ui.vertical(|ui| {
+                for l in &lines {
+                    ui.add(egui::Label::new(RichText::new(l).small()).wrap());
+                }
+            });
+        });
+    }
+}
+
+/// The source a section gives one of its rules beside it: `factor_source` is `factor`'s, `max_outlet_source` is `max_outlet_a`'s.
+fn own_source<'a>(rules: &'a Map<String, Value>, rule: &str) -> Option<&'a str> {
+    rules.iter().find_map(|(k, v)| {
+        let stem = k.strip_suffix("_source")?;
+        (rule == stem || rule.starts_with(&format!("{stem}_"))).then(|| v.as_str()).flatten()
+    })
+}
+
 /// The stair rules shown as one row with a least and a most side by side: the least's key, the most's, and the row's name.
 const PAIRS: [(&str, &str, &str); 5] = [
     ("riser_min", "riser_max", "Riser Height"),
@@ -592,7 +638,7 @@ fn rows(key: &str, rules: &Map<String, Value>) -> Vec<(String, Vec<String>)> {
         return out;
     }
     // The section's rules as the window names them first, the rest after, numbers before tables.
-    let mut keys: Vec<&String> = rules.keys().collect();
+    let mut keys: Vec<&String> = rules.keys().filter(|k| !about_key(k)).collect();
     let known = |k: &str| RULES.iter().position(|(s, r, _, _)| *s == key && *r == k).unwrap_or(usize::MAX);
     keys.sort_by_key(|k| (known(k), rules.get(*k).is_some_and(|v| v.is_array() || v.is_object()), k.to_string()));
     keys.into_iter().map(|k| (String::new(), vec![k.clone()])).collect()
@@ -790,107 +836,6 @@ fn room_kinds(ui: &mut Ui, units: Units, v: &mut Value) {
             }));
         }
     });
-}
-
-/// The table editor of rule `rule`: its cells edited in place, rows added and taken away, copied and pasted as text.
-fn table_editor(ui: &mut Ui, label: &str, v: &mut Value, pasted: &mut String) -> bool {
-    let mut close = false;
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(label).strong());
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                close = ui.small_button(t("Close Table")).clicked();
-                if ui.small_button(t("Copy")).on_hover_text(t("Copy the table to paste it into a spreadsheet")).clicked() {
-                    ui.ctx().copy_text(as_tsv(v));
-                }
-            });
-        });
-        // A map is edited as rows of its key and value.
-        if let Value::Object(o) = v {
-            let mut entries: Vec<(String, String)> = o.iter().map(|(k, x)| (k.clone(), cell_text(x))).collect();
-            let mut edited = false;
-            Grid::new(("code-table-map", label)).striped(true).num_columns(2).show(ui, |ui| {
-                for (k, x) in entries.iter_mut() {
-                    ui.label(k.as_str());
-                    edited |= ui.add(egui::TextEdit::singleline(x).desired_width(360.0)).changed();
-                    ui.end_row();
-                }
-            });
-            if edited {
-                *o = entries.into_iter().map(|(k, x)| (k, cell_value(&x))).collect();
-            }
-            return;
-        }
-        let Value::Array(rows) = v else { return };
-        let cols = columns(rows);
-        let mut gone = None;
-        ScrollArea::horizontal().id_salt(("code-table", label)).show(ui, |ui| {
-            Grid::new(("code-table-grid", label)).striped(true).show(ui, |ui| {
-                for c in &cols {
-                    ui.label(RichText::new(c).color(pal().muted).small());
-                }
-                ui.label("");
-                ui.end_row();
-                for (i, row) in rows.iter_mut().enumerate() {
-                    match row {
-                        Value::Object(o) => {
-                            for c in &cols {
-                                let mut text = o.get(c).map_or_else(String::new, cell_text);
-                                if ui.add(egui::TextEdit::singleline(&mut text).desired_width(90.0)).changed() {
-                                    o.insert(c.clone(), cell_value(&text));
-                                }
-                            }
-                        }
-                        Value::Array(a) => {
-                            for j in 0..cols.len() {
-                                let mut text = a.get(j).map_or_else(String::new, cell_text);
-                                if ui.add(egui::TextEdit::singleline(&mut text).desired_width(70.0)).changed() {
-                                    while a.len() <= j {
-                                        a.push(Value::Null);
-                                    }
-                                    a[j] = cell_value(&text);
-                                }
-                            }
-                        }
-                        other => {
-                            let mut text = cell_text(other);
-                            if ui.add(egui::TextEdit::singleline(&mut text).desired_width(200.0)).changed() {
-                                *other = cell_value(&text);
-                            }
-                        }
-                    }
-                    if ui.small_button("×").on_hover_text(t("Delete this row")).clicked() {
-                        gone = Some(i);
-                    }
-                    ui.end_row();
-                }
-            });
-        });
-        if let Some(i) = gone {
-            rows.remove(i);
-        }
-        ui.horizontal(|ui| {
-            if ui.small_button(t("Add Row")).clicked() {
-                let blank = match rows.last() {
-                    Some(Value::Object(o)) => Value::Object(o.keys().map(|k| (k.clone(), Value::Null)).collect()),
-                    Some(Value::Array(a)) => Value::Array(vec![Value::Null; a.len()]),
-                    _ => Value::Null,
-                };
-                rows.push(blank);
-            }
-            ui.label(RichText::new(t("Paste rows from a spreadsheet:")).color(pal().muted).small());
-        });
-        let mut take = false;
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::multiline(pasted).desired_rows(2).desired_width(420.0).hint_text(t("Paste rows here")));
-            take = ui.add_enabled(!pasted.trim().is_empty(), egui::Button::new(t("Use Pasted Rows"))).clicked();
-        });
-        if take && let Some(new) = from_tsv(pasted, &Value::Array(rows.clone())) {
-            *v = new;
-            pasted.clear();
-        }
-    });
-    close
 }
 
 /// Whether amendment `c` stands over code `base`: what it amends, and what that amends, comes down to it.
@@ -1139,7 +1084,7 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                 ui.add_space(4.0);
                 ui.label(RichText::new(t("Code Sections")).strong().small());
             }
-            for s in &sections {
+            for s in sections.iter().filter(|s| !(disc == Discipline::Electrical && bimcraft_core::electrical::SECTIONS.contains(&s.key))) {
                 let held = tab.rules.get(s.key).is_some_and(|r| !r.is_empty());
                 // A search shows the sections with a rule of that name, key or source.
                 if !search.is_empty() {
@@ -1174,7 +1119,7 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                 ui.label(RichText::new(crate::electrical::TABS.get(i).map_or("", |l| t(l))).strong().size(15.0));
                 ui.label(
                     RichText::new(t(
-                        "These belong to the project. Circuits and panels use them. OK or Apply saves them as one step that you can undo.",
+                        "These are part of the electrical code: the code chosen brings its own. A change is saved to the amendment marked \"save changes here\", or else to this project's changes. Circuits and panels use them. OK or Apply saves them as one step that you can undo.",
                     ))
                     .color(pal().muted)
                     .small(),
@@ -1206,6 +1151,8 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                 ui.label(RichText::new(t("None of the chosen codes has this section yet.")).color(pal().muted));
                 return;
             }
+            about(ui, rules);
+            ui.add_space(4.0);
             let mut open = None;
             Grid::new(("building-code-rules", disc.key(), key.as_str())).striped(true).num_columns(4).min_col_width(110.0).show(ui, |ui| {
                 ui.label(RichText::new(t("Rule")).color(pal().muted).small());
@@ -1267,7 +1214,10 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                                 take_out.extend(keys.iter().map(|k| (key.clone(), k.clone())));
                             }
                         });
-                        let from: Vec<String> = keys.iter().filter_map(|k| layered.sources.get(k).cloned()).collect();
+                        let from: Vec<String> = keys
+                            .iter()
+                            .filter_map(|k| own_source(rules, k).map(str::to_string).or_else(|| layered.sources.get(k).cloned()))
+                            .collect();
                         let mut from = from;
                         from.dedup();
                         if from.is_empty() {
@@ -1313,12 +1263,23 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                 room_kinds(ui, units, v);
             } else if let Some((s, r)) = d.table.clone()
                 && s == key
-                && let Some(v) = rules.get_mut(&r)
             {
-                // The table being edited, under the grid.
-                ui.add_space(6.0);
-                if table_editor(ui, &named(&key, &r).0, v, &mut d.pasted) {
-                    d.table = None;
+                // The rule being edited, under the grid, shown as what it is: a form, a table, cards.
+                let hints = tree::Hints { columns: rules.get("columns").and_then(Value::as_object).cloned().unwrap_or_default() };
+                if let Some(v) = rules.get_mut(&r) {
+                    ui.add_space(6.0);
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(named(&key, &r).0).strong());
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.small_button(t("Close Table")).clicked() {
+                                    d.table = None;
+                                }
+                            });
+                        });
+                        tree::editor(ui, &format!("{key}.{r}"), &r, v, &hints, &mut d.pasted);
+                    });
                 }
             }
             for (k, r) in take_out {
@@ -1789,6 +1750,15 @@ impl BimApp {
                 done = false;
                 if let Some(i) = Discipline::ALL.iter().position(|x| *x == Discipline::Electrical) {
                     d.tab = i + 1;
+                }
+            }
+            // The settings are rules of the electrical code: the tab takes them as the project now has them, so they go into the
+            // amendment edited, or stay the project's changes.
+            if done {
+                let now = self.session.model.clone();
+                let e = d.tab_mut(Discipline::Electrical);
+                for key in bimcraft_core::electrical::SECTIONS {
+                    e.rules.insert(key.to_string(), now.resolve_code(Discipline::Electrical, key).value);
                 }
             }
             for tab in d.tabs.clone().into_iter().filter(|_| done) {

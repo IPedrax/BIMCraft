@@ -666,3 +666,34 @@ fn building_codes_screenshots() {
         save(&mut h, "overview");
     }
 }
+
+#[test]
+fn a_section_shows_its_words_as_text_and_its_tables_as_tables() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["copel"]})).unwrap();
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    h.state_mut().codes_dialog.as_mut().unwrap().tab = 3;
+    h.run();
+    press(&mut h, "Service Categories");
+    // Who the section is and its source are the code's, beside each rule: not rules of their own.
+    for word in ["Standard", "Source", "Id", "Not covered"] {
+        assert!(h.query_by_label(word).is_none(), "{word} is no rule");
+    }
+    assert!(h.query_by_label("How it works:").is_some() && h.query_by_label("Not covered:").is_some());
+    // A table of tables: a card for each supply system and use, its rows a table with a column for each of the utility's.
+    h.state_mut().codes_dialog.as_mut().unwrap().table = Some(("entrance".into(), "tables".into()));
+    h.run();
+    assert!(h.query_by_label("127/220 · individual").is_some());
+    assert!(h.query_all_by_label("Breaker (A)").count() >= 1, "a column named in words, with its unit");
+    assert!(h.query_by_label("Delete this row").is_some() || h.query_all_by_label("×").count() > 0);
+}
+
+#[test]
+fn keys_are_said_in_words_with_their_units() {
+    use crate::codes::tree::human;
+    assert_eq!(human("breaker_a"), "Breaker (A)");
+    assert_eq!(human("connection_mm2"), "Connection (mm²)");
+    assert_eq!(human("up_to"), "Up to");
+    assert_eq!(human("installed_kw"), "Installed (kW)");
+}

@@ -6392,6 +6392,12 @@ fn held<T: serde::de::DeserializeOwned>(
     }
 }
 
+/// The rules of electrical section `key` a command follows: the project's, else BIMCraft's.
+fn rules_of<T: serde::de::DeserializeOwned>(s: &Session, c: &str, key: &str, all: &'static [T]) -> Result<Held<T>, String> {
+    held(s, c, &Value::Null, (key, ""), all, |_| "", false)?
+        .ok_or_else(|| bad(c, format!("the building codes have no `{key}` section (Manage > Building Codes > Electrical)")))
+}
+
 fn choice<'a>(c: &str, p: &'a Value, key: &str, names: &[&str], default: &'a str) -> Result<&'a str, String> {
     match p.get(key) {
         v if absent(v) => Ok(default),
@@ -6619,16 +6625,19 @@ fn circuit_of_model(s: &mut Session, p: &Value) -> R {
         && let Some(t) = electrical::circuit_totals(m, &x)
         && t.installed_va > 0.0
     {
-        let need = t.current_a.max(10.0);
-        x.rating_a = crate::nbr5410::BREAKERS.iter().copied().find(|b| *b >= need).unwrap_or(16.0);
+        if let Ok(r) = rules_of(s, "circuit", "circuits", crate::nbr5410::rule_sets()) {
+            let need = t.current_a.max(r.least_breaker);
+            x.rating_a = r.breakers.iter().copied().find(|b| *b >= need).unwrap_or(x.rating_a);
+        }
     }
     let id = s.model_mut().insert(Element::Circuit(x));
     Ok(json!({"id": id, "circuit": element_json(&s.model, id)}))
 }
 
-fn circuit_size(_: &mut Session, p: &Value) -> R {
+fn circuit_size(s: &mut Session, p: &Value) -> R {
     use crate::nbr5410::{self as e, Circuit, Insulation, Phases, Use};
     let c = "circuit";
+    let r = rules_of(s, c, "circuits", e::rule_sets())?;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = SIZING_KEYS;
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -6638,25 +6647,22 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
     if load <= 0.0 {
         return Err(bad(c, "`load` (W, or VA with `apparent`) is required"));
     }
-    let systems: Vec<&str> = e::SYSTEMS.iter().map(|s| s.0).collect();
-    let system = choice(c, p, "system", &systems, systems[0])?;
-    let methods = e::method_keys();
-    let sections_ok = |x: f64| e::SECTIONS.iter().any(|s| (s - x).abs() < 1e-9);
+    let systems: Vec<&str> = r.systems.iter().map(|s| s.name.as_str()).collect();
+    let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or_default())?;
+    let methods = r.method_keys();
+    let sections_ok = |x: f64| r.sections.iter().any(|s| (s - x).abs() < 1e-9);
     let section = within(c, p, "section", 0.0, 0.0, 1000.0)?;
     if section > 0.0 && !sections_ok(section) {
         return Err(bad(
             c,
-            format!(
-                "`section` must be one of the standard's: {}",
-                e::SECTIONS.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
-            ),
+            format!("`section` must be one of the standard's: {}", r.sections.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")),
         ));
     }
     let breaker = within(c, p, "breaker", 0.0, 0.0, 1000.0)?;
-    if breaker > 0.0 && !e::BREAKERS.iter().any(|b| (b - breaker).abs() < 1e-9) {
+    if breaker > 0.0 && !r.breakers.iter().any(|b| (b - breaker).abs() < 1e-9) {
         return Err(bad(
             c,
-            format!("`breaker` must be one of: {}", e::BREAKERS.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")),
+            format!("`breaker` must be one of: {}", r.breakers.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")),
         ));
     }
     let ambient = match p.get("ambient") {
@@ -6672,20 +6678,20 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
         system: systems.iter().position(|s| *s == system).unwrap_or(0),
         use_: if choice(c, p, "use", &["power", "lighting"], "power")? == "lighting" { Use::Lighting } else { Use::Power },
         length: within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0,
-        method: choice(c, p, "method", &methods, "7")?.to_string(),
+        method: choice(c, p, "method", &methods, &r.default_method)?.to_string(),
         insulation: Insulation::parse(choice(c, p, "insulation", &["pvc", "epr"], "pvc")?).unwrap_or(Insulation::Pvc),
         flexible: choice(c, p, "conductor", &["flexible", "rigid"], "flexible")? == "flexible",
         ambient,
         grouped: within(c, p, "grouped", 1.0, 1.0, 1000.0)?.round() as u32,
         bundle: flag(c, p, "bundle")?,
         spacing: within(c, p, "spacing", 0.0, 0.0, 100_000.0)? / 1000.0,
-        soil: within(c, p, "soil", 2.5, 0.0, 100.0)?,
+        soil: within(c, p, "soil", r.reference_soil_resistivity, 0.0, 100.0)?,
         section,
         breaker,
-        drop_limit: within(c, p, "drop_limit", e::DROP_LIMIT, f64::MIN_POSITIVE, 100.0)?,
+        drop_limit: within(c, p, "drop_limit", r.drop_limit, f64::MIN_POSITIVE, 100.0)?,
         reduced_neutral: flag(c, p, "reduced_neutral")?,
     };
-    let d = e::design(&circuit);
+    let d = e::design(&r, &circuit);
     if let Some(fault) = d.fault {
         return Err(bad(c, fault.message()));
     }
@@ -6705,16 +6711,18 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
         "breaker_a": n.breaker,
         "carries_a": round(n.carries, 100.0),
         "drop_percent": n.drop.map(|d| round(d.0, 100.0)),
-        "conductors": e::cable_text(circuit.phases, n.section, circuit.reduced_neutral),
+        "conductors": e::cable_text(&r, circuit.phases, n.section, circuit.reduced_neutral),
         "grew": section < n.section - 1e-9 || breaker < n.breaker - 1e-9,
         "chosen": d.chosen.as_ref().map(evaluation),
     }))
 }
 
-fn conduit_fill(_: &mut Session, p: &Value) -> R {
-    use crate::conduit::{self, FAMILIES};
+fn conduit_fill(s: &mut Session, p: &Value) -> R {
+    use crate::conduit;
     use crate::nbr5410::Phases;
     let c = "conduit_fill";
+    let r = rules_of(s, c, "conduit_fill", conduit::rule_sets())?;
+    let sizing = rules_of(s, c, "circuits", crate::nbr5410::rule_sets())?;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["section", "phases", "circuits", "reduced_neutral", "family", "size"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -6726,32 +6734,31 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
     }
     let phases = Phases::parse(choice(c, p, "phases", &["FN", "FF", "3F", "3FN"], "FN")?).unwrap_or(Phases::PhaseNeutral);
     let circuits = within(c, p, "circuits", 1.0, 1.0, 1000.0)?.round() as usize;
-    let keys: Vec<&str> = FAMILIES.iter().map(|f| f.key).collect();
-    let family = conduit::family(choice(c, p, "family", &keys, "pvc-thread")?).ok_or_else(|| bad(c, "no such family"))?;
-    let one = conduit::conductors(phases, section, flag(c, p, "reduced_neutral")?);
+    let keys: Vec<&str> = r.families.iter().map(|f| f.key.as_str()).collect();
+    let family = r.family(choice(c, p, "family", &keys, &r.default_family)?).ok_or_else(|| bad(c, "no such family"))?;
+    let one = conduit::conductors(&sizing, phases, section, flag(c, p, "reduced_neutral")?);
     let all: Vec<f64> = (0..circuits).flat_map(|_| one.iter().copied()).collect();
     let source = json!({"maker": family.maker, "document": family.document, "page": family.page, "url": family.url, "inside": "outside less twice the wall"});
-    if let Some(s) = one.iter().find(|s| conduit::cable_diameter(**s).is_none()) {
+    if let Some(s) = one.iter().find(|s| r.cable_diameter(**s).is_none()) {
         return Ok(
             json!({"conductors": all.len(), "pending": format!("the catalogue has no outside diameter for a cable of {s} mm²"), "source": source}),
         );
     }
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
-    let smallest = conduit::smallest(family, &all).map(|s| s.0);
-    let size =
-        match string(c, p, "size")? {
-            None => None,
-            Some(mark) => Some(family.sizes.iter().find(|s| s.0 == mark).ok_or_else(|| {
-                bad(c, format!("`size` must be one of {}", family.sizes.iter().map(|s| s.0).collect::<Vec<_>>().join(", ")))
-            })?),
-        };
-    let fill = size.and_then(|s| conduit::fill(s, &all));
+    let smallest = r.smallest(family, &all).map(|s| s.0.clone());
+    let size = match string(c, p, "size")? {
+        None => None,
+        Some(mark) => Some(family.sizes.iter().find(|s| s.0 == mark).ok_or_else(|| {
+            bad(c, format!("`size` must be one of {}", family.sizes.iter().map(|s| s.0.as_str()).collect::<Vec<_>>().join(", ")))
+        })?),
+    };
+    let fill = size.and_then(|s| r.fill(s, &all));
     Ok(json!({
         "conductors": all.len(),
         "circuits": circuits,
         "sections_mm2": one,
         "smallest": smallest,
-        "size": size.map(|s| s.0),
+        "size": size.map(|s| s.0.as_str()),
         "inside_mm": size.map(|s| round(conduit::inside(s), 100.0)),
         "fill_percent": fill.map(|f| round(f.ratio * 100.0, 10.0)),
         "limit_percent": fill.map(|f| round(f.limit * 100.0, 10.0)),
@@ -6863,63 +6870,68 @@ fn vent_size(s: &mut Session, p: &Value) -> R {
     Ok(Value::Object(out))
 }
 
-/// `demand` for Enel: GRI-0017 leaves the demand to the designer (Anexo A, note 11), so it frames the supply by the installed load,
-/// in its Anexos A, C, D and E (B by the demand current), and carries the designer's demand if one is given.
-fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
-    use crate::demand::{self as d, NETWORKS, Network};
+/// The phases a unit asks, if any.
+fn unit_phases(c: &str, p: &Value) -> Result<Option<u8>, String> {
+    match p.get("phases").filter(|v| !v.is_null()) {
+        None => Ok(None),
+        Some(v) => match v.as_u64() {
+            Some(n @ 1..=3) => Ok(Some(n as u8)),
+            _ => Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
+        },
+    }
+}
+
+/// `demand` by annexes (Enel's GRI-0017): the standard leaves the demand to the designer, so it frames the supply by the installed
+/// load in an annex for each network (one goes by the demand current), and carries the designer's demand if one is given.
+fn demand_by_annexes(p: &Value, utility: &str, source: &str, a: &crate::demand::ByAnnexes) -> R {
     let c = "demand";
     const KEYS: &[&str] = &["utility", "network", "installed_kw", "demand_current_a", "phases", "demand_kva"];
     if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
-        return Err(bad(c, format!("`{k}` isn't one of ENEL's parameters: {}", KEYS.join(", "))));
+        return Err(bad(c, format!("`{k}` isn't one of {utility}'s parameters: {}", KEYS.join(", "))));
     }
-    let name = choice(c, p, "network", NETWORKS, "")?;
+    let networks = a.network_names();
+    let name = choice(c, p, "network", &networks, "")?;
     if name.is_empty() {
-        return Err(bad(c, format!("`network` is required: {}", NETWORKS.join(", "))));
+        return Err(bad(c, format!("`network` is required: {}", networks.join(", "))));
     }
-    let phases = match p.get("phases").filter(|v| !v.is_null()) {
-        None => None,
-        Some(v) => match v.as_u64() {
-            Some(n @ 1..=3) => Some(n as u8),
-            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
-        },
-    };
+    let phases = unit_phases(c, p)?;
     let demand_kva = match p.get("demand_kva").filter(|v| !v.is_null()) {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let note_demand = "GRI-0017 leaves a three-phase supply's demand to the designer, up to 75 kW of installed load (Anexo A, note 11): it is carried as given, never worked out here";
-    let not_covered = "the conduits, the poles and the type of meter box of the annexes, the point of connection, Anexo A to E's other columns, Anexos F to H (Enel Ceará) and the limits of supply by motors, welding machines and X-ray sets";
-    if name == "aerial_delta" {
-        // Anexo B goes by the current the designer's demand draws, not by the installed load.
+    let by = &a.by_current;
+    if name == by.network {
+        // This annex goes by the current the designer's demand draws, not by the installed load.
         if p.get("installed_kw").is_some_and(|v| !v.is_null()) {
-            return Err(bad(c, "Anexo B (`aerial_delta`) goes by `demand_current_a`, not by `installed_kw`"));
+            return Err(bad(c, format!("Anexo {} (`{}`) goes by `demand_current_a`, not by `installed_kw`", by.annex, by.network)));
         }
         if absent(p.get("demand_current_a")) {
-            return Err(bad(c, "`demand_current_a` (the designer's demand current, A) is required for `aerial_delta`"));
+            return Err(bad(c, format!("`demand_current_a` (the designer's demand current, A) is required for `{}`", by.network)));
         }
         let amps = within(c, p, "demand_current_a", 0.0, 0.0, 1.0e6)?;
-        let rows = d::delta_pick(amps, phases);
-        let (category, note) = match &rows {
-            Some(rows) => {
-                let r = rows[0];
-                let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
-                let cat = json!({
+        let rows = a.by_current(amps, phases);
+        let (category, note) = match rows.as_ref().and_then(|r| r.first()) {
+            Some(r) => (
+                json!({
                     "names": r.names,
                     "breaker_a": r.breaker,
-                    "connection_mm2": conn,
+                    "connection_mm2": r.connection,
                     "entry_mm2": r.entry,
-                    "earthing_mm2": r.earth,
+                    "earthing_mm2": r.earthing,
                     "measurement": r.measurement,
-                });
-                (cat, Value::Null)
+                }),
+                Value::Null,
+            ),
+            None => {
+                let last = by.rows.iter().map(|r| r.breaker).fold(0.0, f64::max);
+                (Value::Null, json!(format!("above the last breaker of Anexo {}: {last} A", by.annex)))
             }
-            None => (Value::Null, json!("above the last breaker of Anexo B: 300 A")),
         };
-        let candidates: Vec<&str> = rows.iter().flatten().flat_map(|r| r.names.iter().copied()).collect();
+        let candidates: Vec<&str> = rows.iter().flatten().flat_map(|r| r.names.iter().map(String::as_str)).collect();
         return Ok(json!({
             "utility": utility,
             "source": source,
-            "annex": "B",
+            "annex": by.annex,
             "network": name,
             "installed_kw": Value::Null,
             "demand_current_a": amps,
@@ -6928,88 +6940,85 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
             "candidates": candidates,
             "category_note": note,
             "demand_kva": demand_kva,
-            "demand_note": note_demand,
-            "not_covered": not_covered,
+            "demand_note": a.demand_note,
+            "not_covered": a.not_covered,
         }));
     }
-    let network = Network::parse(name).ok_or_else(|| bad(c, format!("`network` is one of {}", NETWORKS.join(", "))))?;
+    let annex = a.annex(name).ok_or_else(|| bad(c, format!("`network` is one of {}", networks.join(", "))))?;
     if p.get("demand_current_a").is_some_and(|v| !v.is_null()) {
-        return Err(bad(c, "`demand_current_a` is for `aerial_delta` (Anexo B); the other networks go by `installed_kw`"));
+        return Err(bad(
+            c,
+            format!("`demand_current_a` is for `{}` (Anexo {}); the other networks go by `installed_kw`", by.network, by.annex),
+        ));
     }
     if absent(p.get("installed_kw")) {
         return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
     }
     let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
-    let pick = d::enel_pick(network, kw, phases);
-    let (category, candidates, note) = match &pick {
-        Some(k) => {
-            let r = k.rows[0];
-            let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
+    let pick = a.pick(annex, kw, phases);
+    let (category, candidates, note) = match pick.as_ref().and_then(|k| k.first().map(|r| (k, r))) {
+        Some((k, r)) => {
             let cat = json!({
                 "name": r.name,
                 "breaker_a": r.breaker,
-                "connection_mm2": conn,
-                "entry_mm2": {"phase": r.entry.0, "neutral": r.entry.1},
-                "earthing_mm2": r.earth,
+                "connection_mm2": r.connection,
+                "entry_mm2": r.entry,
+                "earthing_mm2": r.earthing,
                 "measurement": r.measurement,
                 "junction_box": r.junction_box,
             });
-            (cat, json!(k.rows.iter().map(|r| r.name).collect::<Vec<_>>()), Value::Null)
+            (cat, json!(k.iter().map(|r| r.name.as_str()).collect::<Vec<_>>()), Value::Null)
         }
-        None if kw > 75.0 && network != Network::Submersible => (
-            Value::Null,
-            json!([]),
-            json!("above 75 kW the unit is served at primary voltage (item 7.4), which this specification does not cover"),
-        ),
-        None => {
-            let last = match network {
-                Network::Aerial => 75,
-                Network::Aerial120240 => 12,
-                Network::Underground => 75,
-                Network::Submersible => 100,
-            };
-            (
-                Value::Null,
-                json!([]),
-                json!(format!("above the last category of Anexo {}: up to {last} kW of installed load", network.annex())),
-            )
-        }
+        None => match annex.primary_above.filter(|limit| kw > *limit) {
+            Some(limit) => (Value::Null, json!([]), json!(a.primary_note.replace("{kw}", &limit.to_string()))),
+            None => {
+                let last = annex.rows.iter().map(|r| r.up_to).fold(0.0, f64::max);
+                (
+                    Value::Null,
+                    json!([]),
+                    json!(format!("above the last category of Anexo {}: up to {last} kW of installed load", annex.annex)),
+                )
+            }
+        },
     };
     Ok(json!({
         "utility": utility,
         "source": source,
-        "annex": network.annex(),
-        "network": network.name(),
+        "annex": annex.annex,
+        "network": annex.network,
         "installed_kw": kw,
         "phases": phases,
         "category": category,
         "candidates": candidates,
         "category_note": note,
         "demand_kva": demand_kva,
-        "demand_note": note_demand,
-        "not_covered": not_covered,
+        "demand_note": a.demand_note,
+        "not_covered": a.not_covered,
     }))
 }
 
-/// `demand` for Celesc: N-321.0001 classes a unit by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01) and leaves a demand to
-/// the designer where a three-phase unit needs one (Tabela 01, note 1), so it frames the supply and carries the designer's demand.
-fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
-    use crate::demand::{self as d, CELESC_NETWORKS};
+/// `demand` by one table (Celesc's N-321.0001): a unit is classed by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01), and
+/// a demand where a three-phase unit needs one is the designer's (Tabela 01, note 1), so it frames the supply and carries the
+/// designer's demand.
+fn demand_by_table(p: &Value, utility: &str, source: &str, t: &crate::demand::ByTable) -> R {
     let c = "demand";
     const KEYS: &[&str] = &["utility", "network", "installed_kw", "phases", "demand_kva"];
     if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
-        return Err(bad(c, format!("`{k}` isn't one of CELESC's parameters: {}", KEYS.join(", "))));
+        return Err(bad(c, format!("`{k}` isn't one of {utility}'s parameters: {}", KEYS.join(", "))));
     }
-    let network = choice(c, p, "network", CELESC_NETWORKS, "220/380")?;
-    let phases = match p.get("phases").filter(|v| !v.is_null()) {
-        None => None,
-        Some(v) => match v.as_u64() {
-            Some(n @ 1..=3) => Some(n as u8),
-            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
-        },
-    };
-    if phases == Some(3) && network == "220/440" {
-        return Err(bad(c, "a 220/440 V network serves single-phase units only (Tabela 01: A and M); take `network: 220/380`"));
+    let names = t.network_names();
+    let name = choice(c, p, "network", &names, names.first().copied().unwrap_or_default())?;
+    let network =
+        t.networks.iter().find(|n| n.network == name).ok_or_else(|| bad(c, format!("`network` is one of {}", names.join(", "))))?;
+    let phases = unit_phases(c, p)?;
+    if let Some(ph) = phases
+        && !network.rows.iter().any(|r| r.phases == ph)
+    {
+        let served: Vec<&str> = t.networks.iter().filter(|n| n.rows.iter().any(|r| r.phases == ph)).map(|n| n.network.as_str()).collect();
+        return Err(bad(
+            c,
+            format!("a {name} V network serves no {ph}-phase unit (Tabela {}); take `network`: {}", t.table, served.join(" or ")),
+        ));
     }
     if absent(p.get("installed_kw")) {
         return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
@@ -7019,47 +7028,43 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let row = d::celesc_pick(network, kw, phases);
-    let (category, note) = match row {
+    let (category, note) = match t.pick(network, kw, phases) {
         Some(r) => {
+            let printed = r.demand_up_to.map(|hi| (r.demand_over.unwrap_or(0.0), hi));
             let cat = json!({
                 "name": r.name,
-                "installed_kw": {"over": r.lo, "up_to": r.hi},
-                "demand_kva": r.demand.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
+                "installed_kw": {"over": r.over, "up_to": r.up_to},
+                "demand_kva": printed.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
                 "breaker_a": r.breaker,
                 "phases": r.phases,
                 "wires": r.wires,
-                "connection_mm2": {"copper": r.connection.0, "aluminium": r.connection.1},
+                "connection_mm2": r.connection,
                 "entry_mm2": r.entry,
-                "earthing_mm2": {"copper": r.earth.0, "copper_clad_steel": r.earth.1},
+                "earthing_mm2": r.earthing,
             });
-            let note = match (r.demand, demand_kva) {
+            let note = match (printed, demand_kva) {
                 (Some((_, hi)), Some(dk)) if dk > hi => {
                     json!(format!("the designer's demand, {dk} kVA, is above the {hi} kVA printed beside {}", r.name))
                 }
-                _ if r.breaker >= 125.0 => json!("a 125 A three-phase supply asks the designer for a demand (Tabela 01, note 1)"),
+                _ if r.breaker >= t.asks_demand_from_breaker => json!(t.asks_demand_note),
                 _ => Value::Null,
             };
             (cat, note)
         }
-        None if network == "220/440" => (Value::Null, json!("above 50 kW a 220/440 V unit is past Tabela 01")),
-        None => (
-            Value::Null,
-            json!("above 75 kW the unit may be served in low voltage only as item 5.2.2.8 allows, with the designer's demand study"),
-        ),
+        None => (Value::Null, json!(network.beyond)),
     };
     Ok(json!({
         "utility": utility,
         "source": source,
-        "table": "01",
-        "network": network,
+        "table": t.table,
+        "network": name,
         "installed_kw": kw,
         "phases": phases,
         "category": category,
         "category_note": note,
         "demand_kva": demand_kva,
-        "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
-        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003: `building_demand`)",
+        "demand_note": t.demand_note,
+        "not_covered": t.not_covered,
     }))
 }
 
@@ -7283,7 +7288,7 @@ fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Opt
 }
 
 fn demand(s: &mut Session, p: &Value) -> R {
-    use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
+    use crate::demand::{self as d, Air, Load, Motor, OtherUse, Special};
     let c = "demand";
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
@@ -7316,7 +7321,8 @@ fn demand(s: &mut Session, p: &Value) -> R {
             "entrance",
         ],
     )?;
-    let utility = string(c, p, "utility")?.ok_or_else(|| bad(c, format!("`utility` is required: {}", d::UTILITIES.join(", "))))?;
+    let utility = string(c, p, "utility")?
+        .ok_or_else(|| bad(c, format!("`utility` is required: {}, {}", d::names().join(", "), crate::entrance::names().join(", "))))?;
     // The project's utility, as its amendment holds it and the project changed it; else BIMCraft's.
     if let Some((u, _)) =
         s.model.section_as::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance").filter(|(_, own)| *own)
@@ -7326,37 +7332,45 @@ fn demand(s: &mut Session, p: &Value) -> R {
             return demand_table(p, &utility, &u, member);
         }
     }
-    if let Some((u, member)) = crate::entrance::find(&utility) {
+    let r = s.model.resolve_code(crate::codes::Discipline::Electrical, "unit_demand");
+    let own = r.from.values().any(|l| !matches!(l, crate::codes::Layer::Library(_)));
+    let project = serde_json::from_value::<d::Standard>(Value::Object(r.value.clone()))
+        .ok()
+        .filter(|u| own && u.utility.eq_ignore_ascii_case(&utility))
+        .map(|u| (u, r.sources.get("method").cloned().unwrap_or_else(|| "changed in this project".into())));
+    if project.is_none()
+        && let Some((u, member)) = crate::entrance::find(&utility)
+    {
         return demand_table(p, &utility, u, member);
     }
-    let Some(source) = d::source(&utility) else {
+    let Some((standard, source)) = project.or_else(|| d::find(&utility).cloned()) else {
         return Err(bad(
             c,
             format!(
-                "there are no tables for `{utility}` yet, only {} and, as data, {}: they are the utility's own, and are added from its standard",
-                d::UTILITIES.join(", "),
+                "there are no tables for `{utility}` yet, only {} and {}: they are the utility's own, added as a building code from its standard",
+                d::names().join(", "),
                 crate::entrance::names().join(", ")
             ),
         ));
     };
+    let utility = standard.utility.clone();
+    let source = source.as_str();
+    let g = match &standard.method {
+        d::Method::Annexes(a) => return demand_by_annexes(p, &utility, source, a),
+        d::Method::Table(t) => return demand_by_table(p, &utility, source, t),
+        d::Method::Terms(g) => g,
+    };
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
-    if utility == "ENEL" {
-        return demand_enel(p, &utility, source);
-    }
-    if utility == "CELESC" {
-        return demand_celesc(p, &utility, source);
-    }
     if let Some(k) =
         ["network", "installed_kw", "demand_current_a", "phases", "demand_kva", "entrance"].iter().find(|k| p.get(**k).is_some())
     {
         return Err(bad(
             c,
-            format!(
-                "`{k}` is for utilities ENEL and CELESC: {utility}'s standard takes the loads of its examples, not a category by installed load"
-            ),
+            format!("`{k}` is for a utility that frames a supply by installed load: {utility}'s standard takes the loads of its examples"),
         ));
     }
-    let system = System::parse(choice(c, p, "system", &["127/220", "220/380"], "127/220")?).unwrap_or(System::S127_220);
+    let systems = g.systems();
+    let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or_default())?;
     let area = match p.get("area").filter(|v| !v.is_null()) {
         None => None,
         Some(_) => Some(within(c, p, "area", 0.0, 0.0, 1.0e6)?),
@@ -7418,9 +7432,10 @@ fn demand(s: &mut Session, p: &Value) -> R {
             if let Some(k) = o.keys().find(|k| !["use", "kw", "pf"].contains(&k.as_str())) {
                 return Err(bad(c, format!("`lighting_outlets`: unknown parameter `{k}`")));
             }
-            let kind = choice(c, v, "use", USES, "")?;
+            let uses = g.uses();
+            let kind = choice(c, v, "use", &uses, "")?;
             if kind.is_empty() {
-                return Err(bad(c, format!("`lighting_outlets`: `use` is one of {}", USES.join(", "))));
+                return Err(bad(c, format!("`lighting_outlets`: `use` is one of {}", uses.join(", "))));
             }
             let kw = within(c, v, "kw", f64::NAN, 0.0, 1.0e6)?;
             if kw.is_nan() {
@@ -7438,11 +7453,9 @@ fn demand(s: &mut Session, p: &Value) -> R {
         let n = count(&v, "count", 100_000.0)?;
         if o.get("btu").is_some_and(|x| !x.is_null()) {
             let btu = within(c, &v, "btu", 0.0, 0.0, 1.0e6)?;
-            let (va, w) = d::window_air(btu).ok_or_else(|| {
-                bad(
-                    c,
-                    format!("`btu` {btu} is not in Tabela 8: 7100, 8500, 10000, 12000, 14000, 18000, 21000 or 30000; or give `va` and `w`"),
-                )
+            let (va, w) = g.window_air(btu).ok_or_else(|| {
+                let listed: Vec<String> = g.window_air.iter().map(|r| r.0.to_string()).collect();
+                bad(c, format!("`btu` {btu} is not in Tabela 8: {}; or give `va` and `w`", listed.join(", ")))
             })?;
             air.push(Air { va, w, count: n });
         } else {
@@ -7466,8 +7479,9 @@ fn demand(s: &mut Session, p: &Value) -> R {
                 Some(x @ (1 | 3)) => x as u32,
                 _ => return Err(bad(c, "`motors`: `phases` is 1 or 3 with `cv`")),
             };
-            let (kva, kw) = d::motor(cv, phases).ok_or_else(|| {
-                bad(c, format!("no {cv} cv {}-phase motor in Tabela {}; give `kva` and `kw`", phases, if phases == 1 { 14 } else { 15 }))
+            let (kva, kw) = g.motor(cv, phases).ok_or_else(|| {
+                let table = if phases == 1 { "13" } else { "14" };
+                bad(c, format!("no {cv} cv {phases}-phase motor in Tabela {table}; give `kva` and `kw`"))
             })?;
             motors.push(Motor { kva, kw, count: n });
         } else {
@@ -7484,8 +7498,12 @@ fn demand(s: &mut Session, p: &Value) -> R {
         if let Some(k) = o.keys().find(|k| !["kind", "kw", "count"].contains(&k.as_str())) {
             return Err(bad(c, format!("`special`: unknown parameter `{k}`")));
         }
-        let kind = SpecialKind::parse(choice(c, &v, "kind", SPECIAL_KINDS, "")?)
-            .ok_or_else(|| bad(c, format!("`special`: `kind` is one of {}", SPECIAL_KINDS.join(", "))))?;
+        let kinds = g.special_kinds();
+        let kind = choice(c, &v, "kind", &kinds, "")?;
+        if kind.is_empty() {
+            return Err(bad(c, format!("`special`: `kind` is one of {}", kinds.join(", "))));
+        }
+        let kind = kind.to_string();
         let kw = within(c, &v, "kw", f64::NAN, 0.0, 1.0e6)?;
         if kw.is_nan() {
             return Err(bad(c, "`special`: `kw` is required"));
@@ -7508,17 +7526,18 @@ fn demand(s: &mut Session, p: &Value) -> R {
         hydro: loads("hydromassage", "w")?,
         commercial_air: choice(c, p, "air_use", &["residential", "commercial"], "residential")? == "commercial",
     };
-    let o = d::compute(&input).map_err(|e| bad(c, e))?;
+    let o = g.compute(&input).map_err(|e| bad(c, e))?;
     let r6 = |x: f64| (x * 1.0e6).round() / 1.0e6 + 0.0;
-    let cat = d::category(system, o.installed_kw, o.demand_kva);
+    let cat = g.category(system, o.installed_kw, o.demand_kva);
     let (category, note) = match cat {
         Some(k) => (
-            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
+            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earthing, "phases": k.phases}),
             Value::Null,
         ),
-        None if o.installed_kw > 75.0 => {
-            (Value::Null, json!("above 75 kW the utility serves at primary voltage, which this standard does not cover"))
-        }
+        None if o.installed_kw > g.primary_above => (
+            Value::Null,
+            json!(format!("above {} kW the utility serves at primary voltage, which this standard does not cover", g.primary_above)),
+        ),
         None => (Value::Null, json!("the demand is above the last category of the table")),
     };
     let t = &o.terms;
@@ -7533,14 +7552,17 @@ fn demand(s: &mut Session, p: &Value) -> R {
         "demand_kva_rounded_up": (o.demand_kva - 1.0e-9).ceil(),
         "category": category,
         "category_note": note,
-        "system": if system == System::S127_220 { "127/220" } else { "220/380" },
-        "not_covered": "the poles, boxes, earthing conduit and motor limits of Tabelas 1A to 1C, Tabela 1D (two clients on one pole), the starting of motors (Tabela 12) and the DPS and other requirements of the entry",
+        "system": system,
+        "not_covered": g.not_covered,
     }))
 }
 
-fn dps_check(_: &mut Session, p: &Value) -> R {
-    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, REGIONS, Region, SIGNALS};
+fn dps_check(s: &mut Session, p: &Value) -> R {
+    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, Region};
     let c = "dps_check";
+    let r = rules_of(s, c, "surge", dps::rule_sets())?;
+    let regions = r.region_names();
+    let signal_names: Vec<&str> = r.signals.iter().map(String::as_str).collect();
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
@@ -7563,8 +7585,8 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             "before_dr",
         ],
     )?;
-    let Some(region) = Region::parse(choice(c, p, "region", REGIONS, "")?) else {
-        return Err(bad(c, format!("`region` is required: {}", REGIONS.join(", "))));
+    let Some(region) = Region::parse(choice(c, p, "region", &regions, "")?) else {
+        return Err(bad(c, format!("`region` is required: {}", regions.join(", "))));
     };
     let line = dps::Line {
         overhead: flag(c, p, "overhead")?,
@@ -7589,9 +7611,9 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     let before_dr = flag(c, p, "before_dr")?;
     let system = match p.get("system").filter(|v| !v.is_null()) {
         None => None,
-        Some(v) => match v.as_str().filter(|x| dps::withstand(x).is_some()) {
+        Some(v) => match v.as_str().filter(|x| dps::withstand(&r, x).is_some()) {
             Some(x) => Some(x.to_string()),
-            None => return Err(bad(c, format!("`system` is one of {}, got {v}", dps::SYSTEMS.join(", ")))),
+            None => return Err(bad(c, format!("`system` is one of {}, got {v}", r.systems().join(", ")))),
         },
     };
     let uo = match p.get("uo").filter(|v| !v.is_null()) {
@@ -7603,34 +7625,34 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
         None => {}
         Some(Value::Array(a)) if a.len() <= 1000 => {
             for v in a {
-                let kind = v.as_str().filter(|k| dps::signal_required(k).is_some());
+                let kind = v.as_str().filter(|k| dps::signal_required(&r, k).is_some());
                 let Some(kind) = kind else {
-                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", SIGNALS.join(", "))));
+                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", signal_names.join(", "))));
                 };
                 signals.push(json!({
                     "kind": kind,
                     "required": true,
-                    "why": dps::signal_required(kind),
+                    "why": dps::signal_required(&r, kind),
                     "where": "at the building's entry or exit",
-                    "min_impulse_withstand_kv": dps::SIGNAL_ENTRY_WITHSTAND_KV,
+                    "min_impulse_withstand_kv": r.signal_entry_withstand,
                 }));
             }
         }
-        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", SIGNALS.join(", ")))),
+        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", signal_names.join(", ")))),
     }
-    let v = dps::required(&line);
+    let v = dps::required(&r, &line);
     let mut power = Map::new();
     power.insert("required".into(), json!(v.required));
     power.insert("exempt".into(), json!(v.exempt));
     power.insert("reasons".into(), json!(v.reasons));
     if v.required {
         power.insert("purpose".into(), json!(PURPOSES[purpose as usize]));
-        power.insert("where".into(), json!(dps::place(purpose, existing)));
+        power.insert("where".into(), json!(dps::place(&r, purpose, existing)));
         power.insert(
             "short_circuit".into(),
             json!("the DPS withstands the short-circuit current presumed where it is installed, with the overcurrent device that goes with it, and a DPS with spark gaps interrupts the follow current of that point (6.3.5.2.4 e)"),
         );
-        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(x).map(|w| (x, w))) {
+        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(&r, x).map(|w| (x, w))) {
             power.insert(
                 "up".into(),
                 json!({
@@ -7646,7 +7668,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             let list = if before_dr { dps::schemes_before_dr(e, neutral) } else { dps::schemes(e, neutral) };
             three = list.contains(&3);
             let text: Vec<Value> = list.iter().map(|s| json!({"scheme": s, "connects": dps::scheme_text(*s, e)})).collect();
-            let modes: Vec<Value> = dps::uc_min(e, neutral, uo.unwrap_or(1.0))
+            let modes: Vec<Value> = dps::uc_min(&r, e, neutral, uo.unwrap_or(1.0))
                 .iter()
                 .map(|u| match uo {
                     Some(_) => json!({"between": u.between, "formula": u.formula, "volts": (u.volts * 100.0).round() / 100.0}),
@@ -7654,7 +7676,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
                 })
                 .collect();
             power.insert("uc_min".into(), json!({"uo_v": uo, "modes": modes}));
-            match dps::subsequent_current(e) {
+            match dps::subsequent_current(&r, e) {
                 Some(dps::Subsequent::AtLeastA(a)) => {
                     power.insert("subsequent_current".into(), json!({"neutral_pe_min_a": a}));
                 }
@@ -7677,12 +7699,15 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             Value::Object(o)
         };
         if purpose != Purpose::Direct {
-            power.insert("discharge_ka".into(), extra(dps::discharge(purpose, false, phases), dps::discharge(purpose, true, phases)));
+            power.insert(
+                "discharge_ka".into(),
+                extra(dps::discharge(&r, purpose, false, phases), dps::discharge(&r, purpose, true, phases)),
+            );
         }
         if purpose != Purpose::Line {
-            power.insert("impulse_ka".into(), extra(dps::impulse(false, phases), dps::impulse(true, phases)));
+            power.insert("impulse_ka".into(), extra(dps::impulse(&r, false, phases), dps::impulse(&r, true, phases)));
         }
-        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(purpose), "max_length_m": dps::CONDUCTOR_LENGTH}));
+        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(&r, purpose), "max_length_m": r.conductor_length}));
     }
     Ok(json!({
         "power": power,
@@ -9771,6 +9796,7 @@ fn voltage(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("voltage `{name}` is one distribution system `{system}` supplies: change or delete that first")));
         }
         m.voltages.remove(&name);
+        crate::electrical::to_codes(m, "voltages", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.voltages.get(&name).cloned();
@@ -9796,6 +9822,7 @@ fn voltage(s: &mut Session, p: &Value) -> R {
             }
             m.voltages.remove(&name);
             rename_entry(m, &LibKind::Voltage, &name, &to);
+            crate::electrical::to_codes(m, "voltages", &name, None);
             to
         }
         _ => name,
@@ -9805,6 +9832,7 @@ fn voltage(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_VOLTAGES} voltages")));
     }
     m.voltages.insert(name.clone(), v.clone());
+    crate::electrical::to_codes(m, "voltages", &name, Some(json!(v)));
     Ok(json!({"name": name, "voltage": v}))
 }
 
@@ -9826,6 +9854,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("distribution system `{name}` is the one board {first}{more} is on: change that first")));
         }
         m.distribution_systems.remove(&name);
+        crate::electrical::to_codes(m, "distribution_systems", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.distribution_systems.get(&name).cloned();
@@ -9855,6 +9884,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
             }
             m.distribution_systems.remove(&name);
             rename_entry(m, &LibKind::DistributionSystem, &name, &to);
+            crate::electrical::to_codes(m, "distribution_systems", &name, None);
             to
         }
         _ => name,
@@ -9864,6 +9894,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_SYSTEMS} distribution systems")));
     }
     m.distribution_systems.insert(name.clone(), d.clone());
+    crate::electrical::to_codes(m, "distribution_systems", &name, Some(json!(d)));
     Ok(json!({"name": name, "distribution_system": d}))
 }
 
@@ -9879,6 +9910,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
         if m.wire_types.remove(&name).is_none() {
             return Err(bad(c, format!("there's no wire type `{name}`")));
         }
+        crate::electrical::to_codes(m, "wire_types", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.wire_types.get(&name).cloned();
@@ -9914,6 +9946,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
             }
             m.wire_types.remove(&name);
             rename_entry(m, &LibKind::WireType, &name, &to);
+            crate::electrical::to_codes(m, "wire_types", &name, None);
             to
         }
         _ => name,
@@ -9923,6 +9956,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_WIRE_TYPES} wire types")));
     }
     m.wire_types.insert(name.clone(), w.clone());
+    crate::electrical::to_codes(m, "wire_types", &name, Some(json!(w)));
     Ok(json!({"name": name, "wire_type": w}))
 }
 

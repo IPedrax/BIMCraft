@@ -166,6 +166,44 @@ fn valid_as<T: DeserializeOwned>(v: &Value) -> Result<Value, String> {
     Ok(v.clone())
 }
 
+/// A table by steps, as codes print a factor by a count or a load: the value of the first row whose bound `x` is up to, else
+/// `beyond`.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Steps {
+    /// (up to, value), the bounds rising.
+    pub rows: Vec<(f64, f64)>,
+    pub beyond: f64,
+}
+
+impl Steps {
+    pub fn at(&self, x: f64) -> f64 {
+        self.rows.iter().find(|r| x <= r.0).map_or(self.beyond, |r| r.1)
+    }
+
+    /// Finite numbers, and bounds that rise.
+    pub fn valid(&self, what: &str) -> Result<(), String> {
+        if self.rows.iter().flat_map(|r| [r.0, r.1]).chain([self.beyond]).any(|x| !x.is_finite()) {
+            return Err(format!("`{what}` holds a number that isn't finite"));
+        }
+        if self.rows.windows(2).any(|w| w[1].0 <= w[0].0) {
+            return Err(format!("`{what}`: each row's bound is above the one before"));
+        }
+        Ok(())
+    }
+}
+
+/// What a typed section's rules must be beyond their types: numbers that are finite and in range, lists that aren't empty.
+pub trait Valid {
+    fn valid(&self) -> Result<(), String>;
+}
+
+/// A section a module reads as a type of its own, with no form to write back, that checks what its types can't.
+fn valid_checked<T: DeserializeOwned + Valid>(v: &Value) -> Result<Value, String> {
+    serde_json::from_value::<T>(v.clone()).map_err(|e| e.to_string())?.valid()?;
+    Ok(v.clone())
+}
+
 /// A section nothing reads yet: any object of rules, shown as a reference.
 fn reference(v: &Value) -> Result<Value, String> {
     if v.is_object() { Ok(v.clone()) } else { Err("a section is an object of rules, by name".into()) }
@@ -297,6 +335,62 @@ pub fn sections() -> &'static [SectionDef] {
                 ui_msg!("The utility's service categories by supply system and use: the load or demand of each, with its breaker and cables."),
                 &["demand"],
                 valid_as::<crate::entrance::Utility>,
+            ),
+            s(
+                Electrical,
+                "voltages",
+                ui_msg!("Voltages"),
+                ui_msg!("The voltages the project uses, each with the lowest and highest a device may get."),
+                &["voltage", "panel", "circuit"],
+                crate::electrical::voltages_section,
+            ),
+            s(
+                Electrical,
+                "distribution_systems",
+                ui_msg!("Distribution Systems"),
+                ui_msg!("The systems that feed a board: the phases and wires, the voltages, and the earthing."),
+                &["distribution_system", "panel"],
+                crate::electrical::systems_section,
+            ),
+            s(
+                Electrical,
+                "wire_types",
+                ui_msg!("Wire Types"),
+                ui_msg!("The kinds of wire, by material and insulation, and the current each size carries."),
+                &["wire_type", "circuit"],
+                crate::electrical::wires_section,
+            ),
+            s(
+                Electrical,
+                "unit_demand",
+                ui_msg!("Unit Demand and Supply"),
+                ui_msg!("How a utility works out one unit's demand, and the supply category it gives for the load or demand."),
+                &["demand"],
+                valid_checked::<crate::demand::Standard>,
+            ),
+            s(
+                Electrical,
+                "circuits",
+                ui_msg!("Circuit Sizing"),
+                ui_msg!("The current each cable carries, the corrections for heat, grouping and soil, voltage drop, cable sizes and breakers."),
+                &["circuit"],
+                valid_checked::<crate::nbr5410::Rules>,
+            ),
+            s(
+                Electrical,
+                "conduit_fill",
+                ui_msg!("Conduit Fill"),
+                ui_msg!("How full a conduit may be, the conduits makers sell, and the outside size of each cable."),
+                &["conduit_fill"],
+                valid_checked::<crate::conduit::Rules>,
+            ),
+            s(
+                Electrical,
+                "surge",
+                ui_msg!("Surge Protection"),
+                ui_msg!("When a surge protective device is needed, where it goes, how it is connected, and the least currents and voltages."),
+                &["dps_check"],
+                valid_checked::<crate::dps::Rules>,
             ),
             s(
                 Electrical,

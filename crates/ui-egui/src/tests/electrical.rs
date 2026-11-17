@@ -175,3 +175,29 @@ fn apply_keeps_the_dialog_open_on_what_the_project_now_has() {
     assert_eq!(h.state().session.history().len(), steps);
     press(&mut h, "Cancel");
 }
+
+#[test]
+fn the_settings_are_saved_into_the_code_and_into_the_amendment_edited() {
+    let mut h = app(BOX);
+    // With no amendment, a voltage added is the project's change of its electrical code.
+    open(&mut h);
+    press(&mut h, "Add Voltage");
+    type_into(&mut h, "Voltage 8 name", "690 V");
+    type_role(&mut h, Role::SpinButton, "Voltage 8 nominal", "690");
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert!(m.codes.electrical.changes["voltages"].contains_key("690 V"), "{:?}", m.codes.electrical.changes);
+    // With an amendment marked to save into, the settings go there, and the project keeps none of its own.
+    h.state_mut().run("building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]})).unwrap();
+    open(&mut h);
+    press(&mut h, "Add Voltage");
+    type_into(&mut h, "Voltage 9 name", "600 V");
+    type_role(&mut h, Role::SpinButton, "Voltage 9 nominal", "600");
+    press(&mut h, "OK");
+    assert!(h.state().codes_dialog.is_none(), "{:?}", said(&h));
+    let m = &h.state().session.model;
+    let site = m.codes.own.iter().find(|c| c.code == "Site").expect("the amendment");
+    assert!(site.sections["voltages"].get("600 V").is_some() && site.sections["voltages"].get("690 V").is_some(), "{:?}", site.sections);
+    assert!(!m.codes.electrical.changes.contains_key("voltages"));
+    assert!(m.voltages.contains_key("600 V"));
+}

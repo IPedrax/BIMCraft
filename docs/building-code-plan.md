@@ -40,8 +40,9 @@ How it works now is in [docs/areas/building-codes.md](areas/building-codes.md).
     demand and service categories as each utility's amendment over it (Celesc, Cemig, Fecoergs, Hidropan, Energisa,
     Equatorial, Copel) and as Spain's, Portugal's, France's and the NEC's codes. The commands read the project's, as it
     or an amendment changed them. E1's starter set stays the project's Electrical Settings, now in the Electrical tab.
-  - **Left to their authors:** the electrical numbers still in Rust tables (E2 to E4, E6, and CPFL's, Enel's and Celesc's
-    categories in `demand.rs`), which ffishman offered to move (discussion #487). The rule's test names each module.
+  - **Moved on 2026-11-17, at the maintainer's request:** E2 to E4 and E6 (NBR 5410's `circuits`, `conduit_fill` and `surge`)
+    and CPFL's, Enel's and Celesc's `unit_demand`, each an amendment over NBR 5410; and the electrical settings as code
+    sections. No electrical number is left in Rust, and the rule's test reads every module.
 - **Step 4, done.** The rule is in `CLAUDE.md`, and `code_values_live_in_codes` and the data tests enforce it.
 - **Step 5.**
   - **Done:** ramps (slope by rise, run rise, width, landings), doors (clear width and height, the widest leaf, the

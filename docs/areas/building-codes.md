@@ -84,7 +84,9 @@ thunderstorm days, frost depth, climate zone, design temperatures. Each has the 
 and shared by every discipline. `storm_size` reads the rain when it isn't given.
 
 A module whose section is a type of its own with no form to write back (the electrical sections: `dr.rs`, `bath.rs`,
-`loads.rs`, `building_demand.rs`, `entrance.rs`) registers it with `valid_as`, reads the project's with
+`loads.rs`, `building_demand.rs`, `entrance.rs`, and with a check of their numbers by `codes::Valid`, `nbr5410.rs`
+(`circuits`), `conduit.rs` (`conduit_fill`), `dps.rs` (`surge`) and `demand.rs` (`unit_demand`)) registers it with `valid_as`
+or `valid_checked`, reads the project's with
 `Model::section_as` (and whether a layer of the project holds it or the library), and its library by a standard's or a
 utility's name with `codes::library_sections`.
 
@@ -212,3 +214,13 @@ its candidates from the lookup and culling by box and height brought it to under
 Stairs, what they check and why: [an advanced stair tool](../stair-tool-plan.md). Their geometry and commands:
 [levels, walls and roofs](levels-walls-roofs.md). The plumbing commands and the concrete check:
 [structure and MEP](structure-and-mep.md).
+
+**The electrical settings** (voltages, distribution systems, wire types) are sections of the electrical code too, an entry a
+rule by its name: a code chosen brings its own into the project, and what the project changes goes into the code (see
+[structure and MEP](structure-and-mep.md)). The dialog shows them as the Electrical Settings tables, not in the rules grid.
+
+**How the dialog shows a rule** that is more than a number (`codes/tree.rs`): an object as a small form, a list of plain values
+as a row of fields, a list of rows as a table whose columns are named (an object inside a row spread over columns of its own,
+the columns a utility explains saying so when pointed at), and rows that hold lists of their own as cards. A section's own
+words (`standard`, `source`, `id`, `name`, `country`, `*_source`, `rule`, `notes`, `not_covered`, `columns`) are not rules: the
+From and Source columns say who and where (a `factor_source` is `factor`'s source), and its notes show as text over the grid.

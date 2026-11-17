@@ -6,9 +6,10 @@
  "edition": "N-321.0003",
  "amends": "nbr-5410",
  "references": [
-  "Celesc Distribuição N-321.0003 (revision December 2023, RES. DCL 235/2023), item 5.6.2"
+  "Celesc Distribuição N-321.0003 (revision December 2023, RES. DCL 235/2023), item 5.6.2",
+  "Celesc Distribuição, Norma Técnica N-321.0001 'Fornecimento de Energia Elétrica em Tensão de Distribuição Baixa Tensão', revision of December 2025 (RES. DCL nº 143/2025, 12/11/2025): Tabela 01"
  ],
- "note": "The utility's own standard over NBR 5410. A building's demand by its method (`building_demand`).",
+ "note": "The utility's own standard over NBR 5410. A building's demand by its method (`building_demand`, N-321.0003), and a unit's category of supply by its installed load (`unit_demand`, N-321.0001 Tabela 01).",
  "sections": {
   "building_demand": {
    "standard": "CELESC N-321.0003",
@@ -113,7 +114,7 @@
      ],
      [
       92,
-      2.0
+      2
      ],
      [
       93,
@@ -769,7 +770,7 @@
      ],
      [
       256,
-      5.0
+      5
      ],
      [
       257,
@@ -1001,7 +1002,7 @@
      ],
      [
       314,
-      6.0
+      6
      ],
      [
       315,
@@ -1237,7 +1238,7 @@
      ],
      [
       373,
-      7.0
+      7
      ],
      [
       374,
@@ -1359,11 +1360,11 @@
     "steps": [
      [
       2,
-      2.0
+      2
      ],
      [
       3,
-      3.0
+      3
      ],
      [
       4,
@@ -2455,103 +2456,103 @@
      ],
      [
       276,
-      83.0
+      83
      ],
      [
       277,
-      83.0
+      83
      ],
      [
       278,
-      83.0
+      83
      ],
      [
       279,
-      83.0
+      83
      ],
      [
       280,
-      83.0
+      83
      ],
      [
       281,
-      83.0
+      83
      ],
      [
       282,
-      83.0
+      83
      ],
      [
       283,
-      83.0
+      83
      ],
      [
       284,
-      83.0
+      83
      ],
      [
       285,
-      83.0
+      83
      ],
      [
       286,
-      83.0
+      83
      ],
      [
       287,
-      83.0
+      83
      ],
      [
       288,
-      83.0
+      83
      ],
      [
       289,
-      83.0
+      83
      ],
      [
       290,
-      83.0
+      83
      ],
      [
       291,
-      83.0
+      83
      ],
      [
       292,
-      83.0
+      83
      ],
      [
       293,
-      83.0
+      83
      ],
      [
       294,
-      83.0
+      83
      ],
      [
       295,
-      83.0
+      83
      ],
      [
       296,
-      83.0
+      83
      ],
      [
       297,
-      83.0
+      83
      ],
      [
       298,
-      83.0
+      83
      ],
      [
       299,
-      83.0
+      83
      ],
      [
       300,
-      83.0
+      83
      ]
     ],
     "errata": [
@@ -2585,7 +2586,7 @@
      "bands": [
       {
        "up_to": 10,
-       "factor": 1.0
+       "factor": 1
       },
       {
        "factor": 0.25
@@ -2826,9 +2827,301 @@
     "the motors of the common areas, Tabela 04 (give their demand in `common_demand`)",
     "the commercial part, Tabelas 05 to 07 (give it in `commercial`)"
    ]
+  },
+  "unit_demand": {
+   "utility": "CELESC",
+   "method": {
+    "table": {
+     "table": "01",
+     "networks": [
+      {
+       "network": "220/380",
+       "rows": [
+        {
+         "name": "A1",
+         "phases": 1,
+         "wires": 2,
+         "over": 0,
+         "up_to": 11,
+         "breaker": 50,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "A2",
+         "phases": 1,
+         "wires": 2,
+         "over": 11,
+         "up_to": 13,
+         "breaker": 63,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "B1",
+         "phases": 2,
+         "wires": 3,
+         "over": 13,
+         "up_to": 20,
+         "breaker": 50,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "B2",
+         "phases": 2,
+         "wires": 3,
+         "over": 20,
+         "up_to": 25,
+         "breaker": 63,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "C1",
+         "phases": 3,
+         "wires": 4,
+         "over": 25,
+         "up_to": 30,
+         "demand_over": 0,
+         "demand_up_to": 30,
+         "breaker": 50,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "C2",
+         "phases": 3,
+         "wires": 4,
+         "over": 30,
+         "up_to": 42,
+         "demand_over": 30,
+         "demand_up_to": 40,
+         "breaker": 63,
+         "connection": {
+          "copper": 10,
+          "aluminium": 25
+         },
+         "entry": 16,
+         "earthing": {
+          "copper": 16,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "C3",
+         "phases": 3,
+         "wires": 4,
+         "over": 42,
+         "up_to": 50,
+         "demand_over": 40,
+         "demand_up_to": 45,
+         "breaker": 80,
+         "connection": {
+          "copper": 16,
+          "aluminium": 25
+         },
+         "entry": 16,
+         "earthing": {
+          "copper": 16,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "C4",
+         "phases": 3,
+         "wires": 4,
+         "over": 50,
+         "up_to": 65,
+         "demand_over": 45,
+         "demand_up_to": 60,
+         "breaker": 100,
+         "connection": {
+          "copper": 25,
+          "aluminium": 35
+         },
+         "entry": 25,
+         "earthing": {
+          "copper": 16,
+          "copper_clad_steel": 25
+         }
+        },
+        {
+         "name": "C5",
+         "phases": 3,
+         "wires": 4,
+         "over": 65,
+         "up_to": 75,
+         "demand_over": 60,
+         "demand_up_to": 75,
+         "breaker": 125,
+         "connection": {
+          "copper": 35,
+          "aluminium": 50
+         },
+         "entry": 50,
+         "earthing": {
+          "copper": 16,
+          "copper_clad_steel": 35
+         }
+        }
+       ],
+       "beyond": "above 75 kW the unit may be served in low voltage only as item 5.2.2.8 allows, with the designer's demand study"
+      },
+      {
+       "network": "220/440",
+       "rows": [
+        {
+         "name": "A1",
+         "phases": 1,
+         "wires": 2,
+         "over": 0,
+         "up_to": 11,
+         "breaker": 50,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "A2",
+         "phases": 1,
+         "wires": 2,
+         "over": 11,
+         "up_to": 13,
+         "breaker": 63,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "M1",
+         "phases": 2,
+         "wires": 3,
+         "over": 0,
+         "up_to": 22,
+         "breaker": 50,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "M2",
+         "phases": 2,
+         "wires": 3,
+         "over": 22,
+         "up_to": 28,
+         "breaker": 63,
+         "connection": {
+          "copper": 10,
+          "aluminium": 10
+         },
+         "entry": 10,
+         "earthing": {
+          "copper": 10,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "M3",
+         "phases": 2,
+         "wires": 3,
+         "over": 28,
+         "up_to": 37,
+         "breaker": 90,
+         "connection": {
+          "copper": 16,
+          "aluminium": 25
+         },
+         "entry": 16,
+         "earthing": {
+          "copper": 16,
+          "copper_clad_steel": 16
+         }
+        },
+        {
+         "name": "M4",
+         "phases": 2,
+         "wires": 3,
+         "over": 37,
+         "up_to": 50,
+         "breaker": 100,
+         "connection": {
+          "copper": 16,
+          "aluminium": 25
+         },
+         "entry": 25,
+         "earthing": {
+          "copper": 16,
+          "copper_clad_steel": 25
+         }
+        }
+       ],
+       "beyond": "above 50 kW a 220/440 V unit is past Tabela 01"
+      }
+     ],
+     "asks_demand_from_breaker": 125,
+     "asks_demand_note": "a 125 A three-phase supply asks the designer for a demand (Tabela 01, note 1)",
+     "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
+     "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003: `building_demand`)"
+    }
+   }
   }
  },
  "sources": {
-  "building_demand": "Celesc Distribuição N-321.0003 (revision December 2023, RES. DCL 235/2023), item 5.6.2: DP = k·(F·Da + Di + Dt + Dm) + De + Ds. Equivalents abroad multiply a dwelling's demand by a factor for the number of dwellings in the same way: Spain's ITC-BT-10 (in BIMCraft's codes), Germany's DIN 18015-1, France's NF C 14-100, the US NEC 220.84 and the UK's ADMD."
+  "building_demand": "Celesc Distribuição N-321.0003 (revision December 2023, RES. DCL 235/2023), item 5.6.2: DP = k·(F·Da + Di + Dt + Dm) + De + Ds. Equivalents abroad multiply a dwelling's demand by a factor for the number of dwellings in the same way: Spain's ITC-BT-10 (in BIMCraft's codes), Germany's DIN 18015-1, France's NF C 14-100, the US NEC 220.84 and the UK's ADMD.",
+  "unit_demand": "Celesc Distribuição, Norma Técnica N-321.0001 'Fornecimento de Energia Elétrica em Tensão de Distribuição Baixa Tensão', revision of December 2025 (RES. DCL nº 143/2025, 12/11/2025): Tabela 01"
  }
 }

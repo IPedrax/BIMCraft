@@ -291,7 +291,8 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
     for (key, rules) in patches {
         // Which rules a section has: what its layers, or the library, give it; a section of reference takes new ones.
         let known = resolve_in(&next, d, &key).value;
-        let reference = section_def(d, &key).is_some_and(|def| def.read_by.is_empty());
+        let reference = section_def(d, &key).is_some_and(|def| def.read_by.is_empty())
+            || (d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key.as_str()));
         let mut changed = next.choice(d).changes.get(&key).cloned().unwrap_or_default();
         for (k, v) in rules {
             if !known.contains_key(&k) && !reference {
@@ -371,7 +372,11 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
     }
     next.check().map_err(|e| bad(c, e))?;
     if next != unchanged {
-        s.model_mut().codes = Shared::new(next);
+        let m = s.model_mut();
+        m.codes = Shared::new(next);
+        if d == Discipline::Electrical {
+            crate::electrical::from_codes(m);
+        }
     }
     Ok(said(&s.model.codes, d))
 }
@@ -423,9 +428,13 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
         None => {}
     }
     for (key, rules) in patches {
-        let known = resolve_in(next, d, &key).value;
+        let resolved = resolve_in(next, d, &key);
+        let known = resolved.value.clone();
         let def = section_def(d, &key);
-        let reference = def.is_some_and(|def| def.read_by.is_empty());
+        // The electrical settings are entries by name: a new one is added, and one a code under it names is taken away as null.
+        let settings = d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key.as_str());
+        let reference = def.is_some_and(|def| def.read_by.is_empty()) || settings;
+        let mine = Layer::Amendment(next.own[i].code.clone());
         let mut section = next.own[i].sections.get(&key).and_then(Value::as_object).cloned().unwrap_or_default();
         let mut set = Vec::new();
         for (k, v) in rules {
@@ -436,7 +445,9 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
             if k.chars().count() > 128 {
                 return Err("a rule's name is 128 characters at most".into());
             }
-            if v.is_null() {
+            if v.is_null() && settings && resolved.from.get(&k).is_some_and(|l| *l != mine && *l != Layer::Project) {
+                section.insert(k.clone(), Value::Null);
+            } else if v.is_null() {
                 section.remove(&k);
             } else {
                 section.insert(k.clone(), v);
@@ -567,7 +578,9 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
     next.check().map_err(|e| bad(c, format!("{path}: {e}")))?;
     let first = read.first().map(|k| k.code.clone()).unwrap_or_default();
     let all: Vec<Value> = read.iter().map(|k| json!({"code": k.code, "discipline": k.discipline.key()})).collect();
-    s.model_mut().codes = Shared::new(next);
+    let m = s.model_mut();
+    m.codes = Shared::new(next);
+    crate::electrical::from_codes(m);
     Ok(json!({"code": first, "codes": all, "left_out": left_out, "set": set}))
 }
 

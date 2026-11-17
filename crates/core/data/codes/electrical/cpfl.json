@@ -1,0 +1,1006 @@
+{
+ "code": "cpfl",
+ "discipline": "electrical",
+ "name": "CPFL (São Paulo and Rio Grande do Sul)",
+ "region": "Brasil",
+ "edition": "GED 13 v46.0",
+ "amends": "nbr-5410",
+ "references": [
+  "CPFL Energia, Norma Técnica GED 13 (DIST-13-2026-RE-NOR) 'Fornecimento em Tensão Secundária de Distribuição', version 46.0, 19/03/2026"
+ ],
+ "note": "The utility's own standard over NBR 5410, for CPFL Paulista, Piratininga, Santa Cruz and RGE: a unit's demand D = a + b + c + d + e + f + g + h + i (item 6.22.1) and its category of service (Tabelas 1A and 1B).",
+ "sections": {
+  "unit_demand": {
+   "utility": "CPFL",
+   "method": {
+    "terms": {
+     "least_outlets": [
+      [
+       8,
+       1,
+       1
+      ],
+      [
+       15,
+       3,
+       1
+      ],
+      [
+       20,
+       4,
+       2
+      ],
+      [
+       30,
+       5,
+       2
+      ],
+      [
+       50,
+       6,
+       3
+      ],
+      [
+       70,
+       7,
+       3
+      ],
+      [
+       90,
+       8,
+       3
+      ],
+      [
+       110,
+       9,
+       3
+      ],
+      [
+       140,
+       10,
+       3
+      ],
+      [
+       170,
+       11,
+       3
+      ],
+      [
+       200,
+       12,
+       3
+      ],
+      [
+       220,
+       13,
+       3
+      ],
+      [
+       250,
+       14,
+       3
+      ]
+     ],
+     "outlet": 100,
+     "kitchen_outlet": 600,
+     "kitchen_outlets": 3,
+     "lighting_point": 100,
+     "lighting": {
+      "rows": [
+       [
+        1,
+        0.86
+       ],
+       [
+        2,
+        0.75
+       ],
+       [
+        3,
+        0.66
+       ],
+       [
+        4,
+        0.59
+       ],
+       [
+        5,
+        0.52
+       ],
+       [
+        6,
+        0.45
+       ],
+       [
+        7,
+        0.4
+       ],
+       [
+        8,
+        0.35
+       ],
+       [
+        9,
+        0.31
+       ],
+       [
+        10,
+        0.27
+       ]
+      ],
+      "beyond": 0.24
+     },
+     "heaters": {
+      "rows": [
+       [
+        1,
+        1
+       ],
+       [
+        2,
+        1
+       ],
+       [
+        3,
+        0.84
+       ],
+       [
+        4,
+        0.76
+       ],
+       [
+        5,
+        0.7
+       ],
+       [
+        6,
+        0.65
+       ],
+       [
+        7,
+        0.6
+       ],
+       [
+        8,
+        0.57
+       ],
+       [
+        9,
+        0.54
+       ],
+       [
+        10,
+        0.52
+       ],
+       [
+        11,
+        0.49
+       ],
+       [
+        12,
+        0.48
+       ],
+       [
+        13,
+        0.46
+       ],
+       [
+        14,
+        0.45
+       ],
+       [
+        15,
+        0.44
+       ],
+       [
+        16,
+        0.43
+       ],
+       [
+        17,
+        0.42
+       ],
+       [
+        18,
+        0.41
+       ],
+       [
+        19,
+        0.4
+       ],
+       [
+        20,
+        0.4
+       ],
+       [
+        21,
+        0.39
+       ],
+       [
+        22,
+        0.39
+       ],
+       [
+        23,
+        0.39
+       ],
+       [
+        24,
+        0.38
+       ],
+       [
+        25,
+        0.38
+       ]
+      ],
+      "beyond": 0.38
+     },
+     "heaters_by_table": [
+      "hotel",
+      "hospital",
+      "shop",
+      "church"
+     ],
+     "boilers": {
+      "rows": [
+       [
+        1,
+        1
+       ],
+       [
+        2,
+        0.72
+       ]
+      ],
+      "beyond": 0.62
+     },
+     "appliances": {
+      "rows": [
+       [
+        1,
+        1
+       ],
+       [
+        4,
+        0.7
+       ],
+       [
+        6,
+        0.6
+       ]
+      ],
+      "beyond": 0.5
+     },
+     "stoves": {
+      "rows": [
+       [
+        1,
+        1
+       ],
+       [
+        2,
+        0.6
+       ],
+       [
+        3,
+        0.48
+       ],
+       [
+        4,
+        0.4
+       ],
+       [
+        5,
+        0.37
+       ],
+       [
+        6,
+        0.35
+       ],
+       [
+        7,
+        0.33
+       ],
+       [
+        8,
+        0.32
+       ],
+       [
+        9,
+        0.31
+       ],
+       [
+        11,
+        0.3
+       ],
+       [
+        15,
+        0.28
+       ]
+      ],
+      "beyond": 0.26
+     },
+     "air": {
+      "rows": [
+       [
+        10,
+        1
+       ],
+       [
+        20,
+        0.9
+       ],
+       [
+        30,
+        0.82
+       ],
+       [
+        40,
+        0.8
+       ],
+       [
+        50,
+        0.77
+       ]
+      ],
+      "beyond": 0.75
+     },
+     "motors": {
+      "rows": [
+       [
+        1,
+        1
+       ],
+       [
+        2,
+        0.9
+       ],
+       [
+        5,
+        0.8
+       ]
+      ],
+      "beyond": 0.7
+     },
+     "window_air": [
+      [
+       7100,
+       1100,
+       900
+      ],
+      [
+       8500,
+       1550,
+       1300
+      ],
+      [
+       10000,
+       1650,
+       1400
+      ],
+      [
+       12000,
+       1900,
+       1600
+      ],
+      [
+       14000,
+       2100,
+       1900
+      ],
+      [
+       18000,
+       2860,
+       2600
+      ],
+      [
+       21000,
+       3080,
+       2800
+      ],
+      [
+       30000,
+       4000,
+       3600
+      ]
+     ],
+     "motors_single_phase": [
+      [
+       0.25,
+       0.42,
+       0.66
+      ],
+      [
+       0.3333333333333333,
+       0.51,
+       0.77
+      ],
+      [
+       0.5,
+       0.79,
+       1.18
+      ],
+      [
+       0.75,
+       0.9,
+       1.34
+      ],
+      [
+       1,
+       1.14,
+       1.56
+      ],
+      [
+       1.5,
+       1.67,
+       2.35
+      ],
+      [
+       2,
+       2.17,
+       2.97
+      ],
+      [
+       3,
+       3.22,
+       4.07
+      ],
+      [
+       5,
+       5.11,
+       6.16
+      ],
+      [
+       7.5,
+       7.07,
+       8.84
+      ],
+      [
+       10,
+       9.31,
+       11.64
+      ],
+      [
+       12.5,
+       11.58,
+       14.94
+      ],
+      [
+       15,
+       13.72,
+       16.94
+      ]
+     ],
+     "motors_three_phase": [
+      [
+       0.25,
+       0.35,
+       0.58
+      ],
+      [
+       0.3333333333333333,
+       0.39,
+       0.65
+      ],
+      [
+       0.5,
+       0.58,
+       0.87
+      ],
+      [
+       0.75,
+       0.83,
+       1.26
+      ],
+      [
+       1,
+       1.05,
+       1.52
+      ],
+      [
+       1.5,
+       1.54,
+       2.17
+      ],
+      [
+       2,
+       1.95,
+       2.7
+      ],
+      [
+       3,
+       2.95,
+       4.04
+      ],
+      [
+       4,
+       3.72,
+       5.03
+      ],
+      [
+       5,
+       4.51,
+       6.02
+      ],
+      [
+       6,
+       5.33,
+       7
+      ],
+      [
+       7.5,
+       6.57,
+       8.65
+      ],
+      [
+       10,
+       8.89,
+       11.54
+      ],
+      [
+       12.5,
+       10.85,
+       14.09
+      ],
+      [
+       15,
+       12.82,
+       16.65
+      ],
+      [
+       20,
+       17.01,
+       22.1
+      ],
+      [
+       25,
+       20.92,
+       25.83
+      ],
+      [
+       30,
+       25.03,
+       30.52
+      ],
+      [
+       40,
+       33.38,
+       39.74
+      ],
+      [
+       50,
+       40.93,
+       48.73
+      ],
+      [
+       60,
+       49.42,
+       58.15
+      ],
+      [
+       75,
+       61.44,
+       72.28
+      ],
+      [
+       100,
+       80.55,
+       97.05
+      ],
+      [
+       125,
+       96.23,
+       114.56
+      ],
+      [
+       150,
+       106.25,
+       128.02
+      ],
+      [
+       175,
+       140.13,
+       170.89
+      ],
+      [
+       200,
+       159.08,
+       196.39
+      ],
+      [
+       250,
+       196.69,
+       242.82
+      ],
+      [
+       300,
+       232.44,
+       286.97
+      ]
+     ],
+     "uses": [
+      {
+       "use": "auditorium",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      },
+      {
+       "use": "shop",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      },
+      {
+       "use": "barbershop",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      },
+      {
+       "use": "club",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      },
+      {
+       "use": "school",
+       "tiers": [
+        [
+         12,
+         1
+        ],
+        [
+         null,
+         0.5
+        ]
+       ]
+      },
+      {
+       "use": "office",
+       "tiers": [
+        [
+         20,
+         1
+        ],
+        [
+         null,
+         0.7
+        ]
+       ]
+      },
+      {
+       "use": "garage",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      },
+      {
+       "use": "hospital",
+       "tiers": [
+        [
+         50,
+         0.4
+        ],
+        [
+         null,
+         0.2
+        ]
+       ]
+      },
+      {
+       "use": "hotel",
+       "tiers": [
+        [
+         20,
+         0.5
+        ],
+        [
+         null,
+         0.4
+        ]
+       ]
+      },
+      {
+       "use": "church",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      },
+      {
+       "use": "industry",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      },
+      {
+       "use": "restaurant",
+       "tiers": [
+        [
+         null,
+         1
+        ]
+       ]
+      }
+     ],
+     "special_power_factor": 0.75,
+     "special": [
+      {
+       "kind": "arc_weld",
+       "factors": {
+        "rows": [
+         [
+          1,
+          1
+         ],
+         [
+          2,
+          0.7
+         ],
+         [
+          3,
+          0.4
+         ]
+        ],
+        "beyond": 0.3
+       }
+      },
+      {
+       "kind": "resistance_weld",
+       "factors": {
+        "rows": [
+         [
+          1,
+          1
+         ]
+        ],
+        "beyond": 0.6
+       }
+      },
+      {
+       "kind": "xray",
+       "factors": {
+        "rows": [
+         [
+          1,
+          1
+         ]
+        ],
+        "beyond": 0.7
+       }
+      }
+     ],
+     "categories": [
+      {
+       "system": "127/220",
+       "rows": [
+        {
+         "name": "A1",
+         "phases": 1,
+         "installed_up_to": 6,
+         "breaker": 32,
+         "cable": 6,
+         "aluminium": 10,
+         "conduit": 32,
+         "earthing": 6
+        },
+        {
+         "name": "A2",
+         "phases": 1,
+         "installed_up_to": 12,
+         "breaker": 63,
+         "cable": 16,
+         "aluminium": 16,
+         "conduit": 32,
+         "earthing": 10
+        },
+        {
+         "name": "B1",
+         "phases": 2,
+         "installed_up_to": 18,
+         "breaker": 63,
+         "cable": 16,
+         "aluminium": 16,
+         "conduit": 32,
+         "earthing": 10
+        },
+        {
+         "name": "B2",
+         "phases": 2,
+         "installed_up_to": 25,
+         "breaker": 80,
+         "cable": 25,
+         "aluminium": 25,
+         "conduit": 40,
+         "earthing": 10
+        },
+        {
+         "name": "C1",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 23,
+         "breaker": 63,
+         "cable": 16,
+         "aluminium": 25,
+         "conduit": 40,
+         "earthing": 10
+        },
+        {
+         "name": "C2",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 30,
+         "breaker": 80,
+         "cable": 25,
+         "aluminium": 25,
+         "conduit": 40,
+         "earthing": 10
+        },
+        {
+         "name": "C3",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 38,
+         "breaker": 100,
+         "cable": 35,
+         "aluminium": 35,
+         "conduit": 40,
+         "earthing": 10
+        },
+        {
+         "name": "C4",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 47,
+         "breaker": 125,
+         "cable": 50,
+         "aluminium": 50,
+         "conduit": 50,
+         "earthing": 16
+        },
+        {
+         "name": "C5",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 57,
+         "breaker": 150,
+         "cable": 70,
+         "aluminium": 70,
+         "conduit": 60,
+         "earthing": 25
+        },
+        {
+         "name": "C6",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 76,
+         "breaker": 200,
+         "cable": 95,
+         "aluminium": 95,
+         "conduit": 60,
+         "earthing": 35
+        }
+       ]
+      },
+      {
+       "system": "220/380",
+       "rows": [
+        {
+         "name": "A3",
+         "phases": 1,
+         "installed_up_to": 10,
+         "breaker": 32,
+         "cable": 6,
+         "aluminium": 10,
+         "conduit": 32,
+         "earthing": 6
+        },
+        {
+         "name": "A4",
+         "phases": 1,
+         "installed_up_to": 15,
+         "breaker": 63,
+         "cable": 16,
+         "aluminium": 16,
+         "conduit": 32,
+         "earthing": 10
+        },
+        {
+         "name": "B3",
+         "phases": 2,
+         "installed_up_to": 25,
+         "breaker": 63,
+         "cable": 16,
+         "aluminium": 16,
+         "conduit": 32,
+         "earthing": 10
+        },
+        {
+         "name": "C7",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 26,
+         "breaker": 40,
+         "cable": 10,
+         "aluminium": 16,
+         "conduit": 40,
+         "earthing": 6
+        },
+        {
+         "name": "C8",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 40,
+         "breaker": 63,
+         "cable": 16,
+         "aluminium": 16,
+         "conduit": 40,
+         "earthing": 10
+        },
+        {
+         "name": "C9",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 52,
+         "breaker": 80,
+         "cable": 25,
+         "aluminium": 25,
+         "conduit": 40,
+         "earthing": 10
+        },
+        {
+         "name": "C10",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 66,
+         "breaker": 100,
+         "cable": 35,
+         "aluminium": 35,
+         "conduit": 40,
+         "earthing": 10
+        },
+        {
+         "name": "C11",
+         "phases": 3,
+         "installed_up_to": 75,
+         "demand_up_to": 82,
+         "breaker": 125,
+         "cable": 50,
+         "aluminium": 50,
+         "conduit": 50,
+         "earthing": 16
+        }
+       ]
+      }
+     ],
+     "primary_above": 75,
+     "not_covered": "the poles, boxes, earthing conduit and motor limits of Tabelas 1A to 1C, Tabela 1D (two clients on one pole), the starting of motors (Tabela 12) and the DPS and other requirements of the entry"
+    }
+   }
+  }
+ },
+ "sources": {
+  "unit_demand": "CPFL Energia, Norma Técnica GED 13 (DIST-13-2026-RE-NOR) 'Fornecimento em Tensão Secundária de Distribuição', version 46.0, 19/03/2026: item 6.22.1 and Tabelas 1A, 1B, 2 to 11, 13 to 15"
+ }
+}

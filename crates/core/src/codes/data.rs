@@ -30,6 +30,8 @@ files! {
     "electrical/energisa.json",
     "electrical/equatorial.json",
     "electrical/copel.json",
+    "electrical/cpfl.json",
+    "electrical/enel.json",
     "electrical/rebt.json",
     "electrical/rtiebt.json",
     "electrical/nf-c-14-100.json",

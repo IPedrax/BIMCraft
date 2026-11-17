@@ -609,3 +609,44 @@ fn a_room_or_a_door_is_checked_in_the_same_time_however_tall_the_building() {
     // Generous, for a debug build on a busy machine: what matters is that it doesn't grow with the building.
     assert!(each[1] < each[0] * 3.0 + 0.002, "4 storeys {:.3} ms, 20 storeys {:.3} ms an element", each[0] * 1e3, each[1] * 1e3);
 }
+
+#[test]
+fn the_electrical_settings_are_rules_of_the_code_both_ways() {
+    let mut s = Session::new();
+    let e = Discipline::Electrical;
+    // A code chosen brings its voltages, systems and wire types into the project.
+    s.model_mut().voltages.remove("277 V");
+    s.model_mut().voltages.remove("480 V");
+    s.model_mut().distribution_systems.remove("277/480 V");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nec"}));
+    assert!(s.model.distribution_systems.contains_key("277/480 V") && s.model.voltages.contains_key("480 V"));
+    assert!(s.model.wire_types.contains_key("Cu THHN 90 °C"));
+    // One the project adds or changes is the project's change of its code; one it takes away, of the code's, is null there.
+    run(&mut s, "voltage", json!({"name": "240 V", "nominal": 240}));
+    let r = s.model.resolve_code(e, "voltages");
+    assert_eq!(r.from.get("240 V"), Some(&Layer::Project));
+    run(&mut s, "voltage", json!({"name": "277 V", "max": 300}));
+    assert_eq!(s.model.resolve_code(e, "voltages").value["277 V"]["max"], json!(300.0));
+    run(&mut s, "wire_type", json!({"name": "Cu THW 75 °C", "delete": true}));
+    assert_eq!(s.model.codes.electrical.changes["wire_types"]["Cu THW 75 °C"], Value::Null);
+    // Set back as the code has it, it is no change.
+    run(&mut s, "voltage", json!({"name": "277 V", "max": 304.7}));
+    assert!(!s.model.codes.electrical.changes["voltages"].contains_key("277 V"));
+    // A change made in an amendment is the amendment's, and the project takes it; saved, a code carries them all.
+    run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]}));
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "amend": "Site", "rules": {"voltages": {"600 V": {"nominal": 600, "min": 540, "max": 660}}}}),
+    );
+    assert_eq!(s.model.voltages.get("600 V").map(|v| v.nominal), Some(600.0));
+    let site = s.model.codes.own.iter().find(|c| c.code == "Site").unwrap();
+    assert!(site.sections["voltages"].get("600 V").is_some());
+    run(&mut s, "building_code", json!({"discipline": "electrical", "save": "Ours"}));
+    let ours = s.model.codes.own.iter().find(|c| c.code == "Ours").unwrap();
+    assert!(["240 V", "277 V", "600 V"].iter().all(|v| ours.sections["voltages"].get(*v).is_some()), "{:?}", ours.sections["voltages"]);
+    assert!(ours.sections["distribution_systems"].get("277/480 V").is_some());
+    // A setting that isn't one is refused in a code as in the project.
+    let bad = json!({"discipline": "electrical", "rules": {"voltages": {"1 V": {"nominal": -5, "min": 0, "max": 1}}}});
+    assert!(s.execute("building_code", &bad).is_err());
+}

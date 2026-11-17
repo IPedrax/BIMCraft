@@ -290,6 +290,128 @@ pub fn start_wire(units: Units) -> &'static str {
     if units.imperial() { "Cu THHN 90 °C" } else { "Cu PVC 70 °C" }
 }
 
+/// The electrical code's sections that hold the settings, an entry a rule by its name: what a project's code (its layers, then
+/// its changes) names comes into the project's settings when the code changes, and what the project changes in its settings
+/// goes into the code. An entry set to null is one the project took away.
+pub const SECTIONS: [&str; 3] = ["voltages", "distribution_systems", "wire_types"];
+
+/// A settings section of a code, read: each entry is the setting it names, or null.
+fn entries<T: serde::de::DeserializeOwned>(v: &serde_json::Value) -> Result<Vec<(String, Option<T>)>, String> {
+    let serde_json::Value::Object(o) = v else { return Err("the settings are entries by name".into()) };
+    o.iter()
+        .map(|(k, x)| match x {
+            serde_json::Value::Null => Ok((k.clone(), None)),
+            x => serde_json::from_value::<T>(x.clone()).map(|t| (k.clone(), Some(t))).map_err(|e| format!("`{k}`: {e}")),
+        })
+        .collect()
+}
+
+/// The check of a code's `voltages`.
+pub(crate) fn voltages_section(v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    for (k, x) in entries::<Voltage>(v)? {
+        x.map_or(Ok(()), |x| x.check(&k))?;
+    }
+    Ok(v.clone())
+}
+
+/// The check of a code's `distribution_systems`: the voltages each names are checked against the project's, once in it.
+pub(crate) fn systems_section(v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let all = BTreeMap::new();
+    for (k, x) in entries::<DistributionSystem>(v)? {
+        if let Some(x) = x {
+            match x.check(&k, &all) {
+                Err(e) if !e.contains("voltage") => return Err(e),
+                _ => {}
+            }
+        }
+    }
+    Ok(v.clone())
+}
+
+/// The check of a code's `wire_types`.
+pub(crate) fn wires_section(v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    for (k, x) in entries::<WireType>(v)? {
+        x.map_or(Ok(()), |x| x.check(&k))?;
+    }
+    Ok(v.clone())
+}
+
+/// Brings the settings the project's electrical code names into the project: an entry it names is added, or takes the code's
+/// values; one it doesn't name stays (the project's own, which elements may name). Voltages first, as systems name them.
+pub(crate) fn from_codes(m: &mut Model) {
+    use crate::codes::Discipline::Electrical;
+    let take = |m: &Model, key: &str| m.resolve_code(Electrical, key).value;
+    for (k, v) in take(m, "voltages") {
+        if let Ok(x) = serde_json::from_value::<Voltage>(v)
+            && x.check(&k).is_ok()
+            && (m.voltages.contains_key(&k) || m.voltages.len() < MAX_VOLTAGES)
+        {
+            m.voltages.insert(k, x);
+        }
+    }
+    for (k, v) in take(m, "distribution_systems") {
+        if let Ok(x) = serde_json::from_value::<DistributionSystem>(v)
+            && x.check(&k, &m.voltages).is_ok()
+            && (m.distribution_systems.contains_key(&k) || m.distribution_systems.len() < MAX_SYSTEMS)
+        {
+            m.distribution_systems.insert(k, x);
+        }
+    }
+    for (k, v) in take(m, "wire_types") {
+        if let Ok(x) = serde_json::from_value::<WireType>(v)
+            && x.check(&k).is_ok()
+            && (m.wire_types.contains_key(&k) || m.wire_types.len() < MAX_WIRE_TYPES)
+        {
+            m.wire_types.insert(k, x);
+        }
+    }
+}
+
+/// Whether two values are the same, a number by its value (`277` is `277.0`).
+fn same(a: &serde_json::Value, b: &serde_json::Value) -> bool {
+    use serde_json::Value::*;
+    match (a, b) {
+        (Number(x), Number(y)) => x.as_f64() == y.as_f64(),
+        (Array(x), Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same(x, y)),
+        (Object(x), Object(y)) => {
+            // A field left out is the one set to null.
+            let keys: std::collections::BTreeSet<&std::string::String> = x.keys().chain(y.keys()).collect();
+            keys.into_iter().all(|k| same(x.get(k).unwrap_or(&Null), y.get(k).unwrap_or(&Null)))
+        }
+        _ => a == b,
+    }
+}
+
+/// Writes a setting the project changed into its electrical code, as the project's change of rule `name` of `key`: its value,
+/// or none when it was taken away. A change that leaves it as the code's layers have it is no change; one taken away that no
+/// layer names leaves nothing behind.
+pub(crate) fn to_codes(m: &mut Model, key: &str, name: &str, value: Option<serde_json::Value>) {
+    use crate::codes::Discipline::Electrical;
+    let layered = crate::codes::layered(&m.codes, Electrical, key).value;
+    let mut codes = (*m.codes).clone();
+    let changes = codes.choice_mut(Electrical).changes.entry(key.to_string()).or_default();
+    match (value, layered.get(name)) {
+        (Some(v), Some(was)) if same(was, &v) => {
+            changes.remove(name);
+        }
+        (Some(v), _) => {
+            changes.insert(name.to_string(), v);
+        }
+        (None, Some(_)) => {
+            changes.insert(name.to_string(), serde_json::Value::Null);
+        }
+        (None, None) => {
+            changes.remove(name);
+        }
+    }
+    if changes.is_empty() {
+        codes.choice_mut(Electrical).changes.remove(key);
+    }
+    if codes != *m.codes {
+        m.codes = crate::shared::Shared::new(codes);
+    }
+}
+
 /// The settings are within what the project may hold, and a system names voltages it has.
 pub(crate) fn check(m: &Model) -> Result<(), String> {
     for (what, n, most) in [
