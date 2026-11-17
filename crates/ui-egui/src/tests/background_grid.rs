@@ -34,6 +34,8 @@ fn background_grid_menu_and_instance_editor_change_only_the_active_view() {
         modifiers: Modifiers::NONE,
     });
     h.run();
+    h.get_by_label("Edit Background Grids").scroll_to_me();
+    h.run();
     press(&mut h, "Edit Background Grids");
     assert!(h.state().background_grid_dialog.is_some());
     type_into(&mut h, "Main spacing X", "2.5 m");

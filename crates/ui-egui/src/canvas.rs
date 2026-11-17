@@ -1395,7 +1395,7 @@ fn alignment_pick(
 /// Degrees from the ray `centre`→`from` to the ray `centre`→`to`, counter-clockwise, in
 /// (-180, 180]; each ray onto the nearest multiple of `inc` degrees when it's within a few
 /// degrees of one.
-fn angle_between(centre: P2, from: P2, to: P2, inc: f64) -> f64 {
+pub(crate) fn angle_between(centre: P2, from: P2, to: P2, inc: f64) -> f64 {
     let (a, b) = (snap_angle(from - centre, inc), snap_angle(to - centre, inc));
     let d = (b.1.atan2(b.0) - a.1.atan2(a.0)).to_degrees();
     if d > 180.0 {
@@ -1649,7 +1649,7 @@ impl BimApp {
                 };
                 snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &snaps)
             }
-            None => snap::snap(m, view, v.mm(at), reach, from, square, &snaps),
+            None => snap::snap_with(m, view, v.mm(at), reach, from, square, &snaps, self.underlay.segments(view)),
         };
         if matches!(found.kind, Kind::Free | Kind::Angle)
             && !square
@@ -2269,10 +2269,13 @@ impl BimApp {
         self.spot_grip_drag(ui, &response, rect, &view, level);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
+        // Underlay Settings' Move or Rotate is picking here: the view's own clicks and drags wait.
+        let picking = self.underlay_edit.is_some();
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
             && !sketching
             && !writing
+            && !picking
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
             && self.canvas.view_grip.is_none()
@@ -2349,7 +2352,7 @@ impl BimApp {
         }
         // A click on a shape point's height label is the label's.
         let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
-        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at)) {
+        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !picking && !on_label(at)) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
@@ -2396,6 +2399,11 @@ impl BimApp {
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         self.paint_background_grid(&p, rect, view);
+        // The underlay, made once the plan is: behind it here, or over it below.
+        let hold = self.canvas.drawing.busy();
+        // A ceiling plan has none: the floor plan's is the level's.
+        let under = if up { None } else { self.underlay_now(ui.ctx(), &model, key, view, hold) };
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), false);
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
         // A group selected lights its members; a curtain wall selected stays as it is drawn, for the part Tab picks to be seen.
@@ -2455,6 +2463,8 @@ impl BimApp {
                 p.add(Shape::line(pts, Stroke::new(2.0, ink.core)));
             }
         }
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), true);
+        self.underlay_pick(ui, &response, &p, rect, &view, key, Some(level));
         let kind = if up { "ceiling" } else { "plan" };
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
         // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
@@ -5378,6 +5388,7 @@ impl BimApp {
                     reference: None,
                     mark: None,
                     graphics: Default::default(),
+                    underlay: None,
                 }));
                 return;
             }
@@ -5399,6 +5410,7 @@ impl BimApp {
                         reference,
                         mark: None,
                         graphics: Default::default(),
+                        underlay: None,
                     }));
                 }
                 return;

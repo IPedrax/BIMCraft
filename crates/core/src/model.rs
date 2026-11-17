@@ -247,6 +247,9 @@ pub struct Level {
     /// What its elevation is shown from: the Project Base Point or the Survey Point. It is stored internal.
     #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
     pub elevation_base: crate::coordinates::Origin,
+    /// What it shows under it, as Archicad's Trace & Reference ([`crate::underlay`]): kept while it is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub underlay: Option<crate::underlay::Underlay>,
 }
 
 fn computation_height() -> f64 {
@@ -269,6 +272,7 @@ impl Level {
             section_box: false,
             computation_height: CUT_HEIGHT,
             elevation_base: Default::default(),
+            underlay: None,
         }
     }
 }
@@ -1671,6 +1675,9 @@ pub struct PlanView {
     /// range and its sides as its crop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub section_box: bool,
+    /// What it shows under it, as Archicad's Trace & Reference ([`crate::underlay`]): kept while it is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub underlay: Option<crate::underlay::Underlay>,
 }
 
 /// A 3D view, seen from `azimuth` degrees round from east (counter-clockwise) and `elevation`
@@ -2357,6 +2364,9 @@ pub struct Section {
     /// What it hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
+    /// What it shows under it, as Archicad's Trace & Reference ([`crate::underlay`]): kept while it is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub underlay: Option<crate::underlay::Underlay>,
 }
 
 impl Section {
@@ -2516,7 +2526,9 @@ macro_rules! visit_refs {
         let f: &mut dyn FnMut(& $($m)? Guid) = $f;
         match $e {
             // A view's graphics, as `views_graphics` gives them.
-            Element::Level(_) | Element::Section(_) | Element::Elevation(_) => {}
+            Element::Level(Level { underlay, .. }) | Element::Section(Section { underlay, .. }) | Element::Elevation(Section { underlay, .. }) => {
+                if let Some(u) = underlay { f(& $($m)? u.view) }
+            }
             Element::View3D(v) => {
                 if let Some(wp) = & $($m)? v.work_plane {
                     if let Some(g) = & $($m)? wp.level {
@@ -2532,6 +2544,7 @@ macro_rules! visit_refs {
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
+                if let Some(u) = & $($m)? v.underlay { f(& $($m)? u.view) }
             }
             Element::Wall(w) => {
                 f(& $($m)? w.level);
@@ -8834,6 +8847,9 @@ impl Model {
         } = t;
         let who = format!("{} {id}", e.category());
         crate::curtain::check_element(self, id, e, panel_cells)?;
+        if let Some(u) = crate::underlay::of_element(e) {
+            crate::underlay::check(self, id, u)?;
+        }
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
         let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {

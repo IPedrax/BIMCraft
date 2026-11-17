@@ -246,6 +246,9 @@ pub mod titleblock;
 mod titleblock_tests;
 pub mod triad;
 pub mod triangulation;
+pub mod underlay;
+#[cfg(test)]
+mod underlay_tests;
 pub mod units;
 pub mod view3d;
 #[cfg(test)]

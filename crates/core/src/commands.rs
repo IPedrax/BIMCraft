@@ -1414,6 +1414,25 @@ other_files(
         duplicate_view,
     ),
     edit(
+        "underlay",
+        "Underlay",
+        &[],
+        "{view, source?: view | null, on?, color?: \"#rrggbb\" | [r, g, b], fills?, hide_annotation?, front?, offset?: [x, y], \
+         move?: [dx, dy], angle?, rotate?: degrees, about?: [x, y], reset?} another view drawn under plan, section or elevation \
+         `view`, as Archicad's Trace & Reference: any plan (a level's or a plan view), section or elevation but itself, as its own \
+         view range, graphics and crop draw it, in one colour (`color`, orange until given another), never picked, only snapped \
+         to. `source` picks it (by name or id) and turns it on; null takes the underlay off the view; `on` false hides it and \
+         keeps its settings. `fills` (true) draws its fills and patterns in a light wash of its colour; `hide_annotation` (true) \
+         leaves out its dimensions, tags, notes, grids, levels and other annotation; `front` draws it over the view instead of \
+         under it. It is fitted by the internal origin (in a section, where it falls along the line, at height 0); `offset` \
+         (mm, in the view's own axes: a plan's east and north, a section's along and up) and `angle` (degrees \
+         counter-clockwise) set where it is, `move` moves it by as much again, `rotate` turns it by that many degrees about \
+         `about` (the internal origin's place without one), and `reset` puts it back on the internal origin. The underlay is \
+         the view's, saved with it, and a duplicate of the view has it too. Without any of these it only says what the view \
+         has",
+        underlay_cmd,
+    ),
+    edit(
         "scale",
         "View Scale",
         &[],
@@ -13814,6 +13833,7 @@ fn section(s: &mut Session, p: &Value) -> R {
         reference: None,
         mark: None,
         graphics: Graphics::default(),
+        underlay: None,
     }));
     Ok(json!({"id": id, "name": name}))
 }
@@ -13878,6 +13898,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
             reference: Some([line.0, line.1]),
             mark: None,
             graphics: Graphics::default(),
+            underlay: None,
         };
         let id = s.model_mut().insert(Element::Elevation(v));
         return Ok(json!({"id": id, "name": name, "at": mid, "reference": [line.0, line.1]}));
@@ -13921,6 +13942,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
                     reference: None,
                     mark: None,
                     graphics: Graphics::default(),
+                    underlay: None,
                 })),
                 name,
             )
@@ -14141,6 +14163,8 @@ fn duplicate_view(s: &mut Session, p: &Value) -> R {
         graphics: if dependent { Graphics::default() } else { graphics },
         parent: dependent.then_some(source),
         section_box: section_box && !dependent,
+        // Its underlay as the view's own: a duplicate shows what the source does under it.
+        underlay: crate::underlay::of(m, view).cloned(),
     };
     // With detailing, what is annotated in the source itself (not in its parent) is copied into the new view.
     let notes: Vec<Element> =
@@ -14180,6 +14204,106 @@ fn not_dependent(c: &str, m: &Model, view: impl Key, what: &str) -> Result<(), S
         )),
         None => Ok(()),
     }
+}
+
+fn underlay_cmd(s: &mut Session, p: &Value) -> R {
+    use crate::underlay::{self, Underlay};
+    let c = "underlay";
+    only(
+        c,
+        p,
+        &["view", "source", "on", "color", "fills", "hide_annotation", "front", "offset", "move", "angle", "rotate", "about", "reset"],
+    )?;
+    let m = &s.model;
+    let view = view_param(c, m, p, false)?;
+    if underlay::kind(m, view).is_none() {
+        return Err(bad(c, format!("{} isn't a plan, a section or an elevation; only those show an underlay", view_title(m, view))));
+    }
+    let mut u = underlay::of(m, view).cloned();
+    match p.get("source") {
+        None => {}
+        Some(Value::Null) => u = None,
+        Some(v) => {
+            let source = view_param(c, m, &json!({"view": v}), false)?;
+            if source == view {
+                return Err(bad(c, format!("{} can't be its own underlay: pick another view", view_title(m, view))));
+            }
+            if underlay::kind(m, source).is_none() {
+                return Err(bad(c, format!("{} isn't a plan, a section or an elevation, which an underlay is", view_title(m, source))));
+            }
+            let g = m.guid(source);
+            match &mut u {
+                Some(u) => {
+                    u.view = g;
+                    u.on = true;
+                }
+                None => u = Some(Underlay::of(g)),
+            }
+        }
+    }
+    let settings = ["on", "color", "fills", "hide_annotation", "front", "offset", "move", "angle", "rotate", "about", "reset"];
+    if let Some(key) = settings.iter().find(|k| !absent(p.get(**k))) {
+        let Some(u) = u.as_mut() else {
+            return Err(bad(c, format!("{} has no underlay to set `{key}` of: give it a `source` first", view_title(m, view))));
+        };
+        if !absent(p.get("on")) {
+            u.on = flag(c, p, "on")?;
+        }
+        if let Some(v) = p.get("color").filter(|v| !v.is_null()) {
+            u.color = colour(v).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {v}")))?;
+        }
+        u.fills = flag_or(c, p, "fills", u.fills)?;
+        u.hide_annotation = flag_or(c, p, "hide_annotation", u.hide_annotation)?;
+        u.front = flag_or(c, p, "front", u.front)?;
+        if flag(c, p, "reset")? {
+            u.offset = P2(0.0, 0.0);
+            u.angle = 0.0;
+        }
+        if let Some(o) = point_opt(c, p, "offset")? {
+            u.offset = micron(o);
+        }
+        if let Some(a) = num(c, p, "angle")? {
+            u.angle = underlay::normal(a);
+        }
+        if let Some(d) = point_opt(c, p, "move")? {
+            let o = u.offset + d;
+            if o.0.abs() > MAX_COORD || o.1.abs() > MAX_COORD {
+                return Err(bad(c, format!("moved by {d:?} the underlay would lie out of reach (within {MAX_COORD} mm each way)")));
+            }
+            u.offset = micron(o);
+        }
+        match (num(c, p, "rotate")?, point_opt(c, p, "about")?) {
+            (Some(by), about) => {
+                let about = match about {
+                    Some(a) => a,
+                    None => underlay::origin(m, view).unwrap_or_default(),
+                };
+                u.turned(by, about);
+                u.offset = micron(u.offset);
+                if u.offset.0.abs() > MAX_COORD || u.offset.1.abs() > MAX_COORD {
+                    return Err(bad(c, "turned so, the underlay would lie out of reach: turn it about a nearer point"));
+                }
+            }
+            (None, Some(_)) => return Err(bad(c, "`about` is the point `rotate` turns about: give `rotate` too")),
+            (None, None) => {}
+        }
+    }
+    if underlay::of(m, view) != u.as_ref()
+        && let Some(slot) = s.model_mut().elements.get_mut(view).and_then(underlay::slot)
+    {
+        *slot = u;
+    }
+    let m = &s.model;
+    let said = underlay::of(m, view).map(|u| {
+        let source = m.elements.id(u.view);
+        json!({
+            "source": source, "source_name": source.and_then(|v| m.view_name(v)), "on": u.on,
+            "color": format!("#{:02x}{:02x}{:02x}", u.color[0], u.color[1], u.color[2]),
+            "fills": u.fills, "hide_annotation": u.hide_annotation, "front": u.front,
+            "offset": u.offset, "angle": u.angle, "missing": underlay::missing(m, view),
+        })
+    });
+    Ok(json!({"view": view, "name": m.view_name(view), "underlay": said}))
 }
 
 fn view_scale(s: &mut Session, p: &Value) -> R {
@@ -19997,10 +20121,10 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         .chain(["planview", "section", "elevation", "view3d"].into_iter().flat_map(|cat| lookup.rare(cat)))
         .filter(|id| !gone.contains(&m.guid(*id)))
         .filter(|id| {
-            m.elements
-                .get(*id)
-                .and_then(graphics::graphics_of_element)
+            let e = m.elements.get(*id);
+            e.and_then(graphics::graphics_of_element)
                 .is_some_and(|g| g.elements.keys().any(|id| gone.contains(id)) || g.linework.iter().any(|l| gone.contains(&l.element)))
+                || e.and_then(crate::underlay::of_element).is_some_and(|u| gone.contains(&u.view))
         })
         .collect();
     let m = s.model_mut();
@@ -20013,6 +20137,12 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         if let Some(g) = m.elements.get_mut(id).and_then(graphics::graphics_mut) {
             g.elements.retain(|id, _| !gone.contains(id));
             g.linework.retain(|l| !gone.contains(&l.element));
+        }
+        // A view whose underlay's view goes shows none.
+        if let Some(slot) = m.elements.get_mut(id).and_then(crate::underlay::slot)
+            && slot.as_ref().is_some_and(|u| gone.contains(&u.view))
+        {
+            *slot = None;
         }
     }
     for (id, d) in kept {
@@ -20173,6 +20303,11 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for g in m.elements.values_mut().filter_map(graphics::graphics_mut) {
         g.elements.retain(|id, _| !gone.contains(id));
         g.linework.retain(|l| !gone.contains(&l.element));
+    }
+    for slot in m.elements.values_mut().filter_map(crate::underlay::slot) {
+        if slot.as_ref().is_some_and(|u| gone.contains(&u.view)) {
+            *slot = None;
+        }
     }
     for (id, d) in kept {
         m.elements.insert(id, Element::Dimension(d));

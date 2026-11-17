@@ -142,7 +142,7 @@ impl Prim {
 
     /// What of it lies inside the box from pixel `lo` to `hi`: a fill's rings clipped, a line in
     /// the pieces inside, a picture's whole pixels inside.
-    fn cropped(self, lo: (f32, f32), hi: (f32, f32)) -> Vec<Prim> {
+    pub(crate) fn cropped(self, lo: (f32, f32), hi: (f32, f32)) -> Vec<Prim> {
         let mm = |p: (f32, f32)| P2(f64::from(p.0), f64::from(p.1));
         let px = |p: P2| (p.0 as f32, p.1 as f32);
         match self {

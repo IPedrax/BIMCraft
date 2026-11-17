@@ -105,6 +105,7 @@ mod titlebar;
 mod titleblocks;
 mod triad;
 mod typeprops;
+mod underlay;
 mod updates;
 mod view_worker;
 pub mod window;
@@ -628,6 +629,16 @@ pub struct BimApp {
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
     background_grid_dialog: Option<background_grid::GridDialog>,
+    /// The underlay of the view on screen, made and kept on the card (`underlay.rs`).
+    pub(crate) underlay: underlay::Layer,
+    /// Underlay Settings, open for this view.
+    pub(crate) underlay_dialog: Option<Id>,
+    /// Underlay Settings' Move or Rotate, picking in the view.
+    pub(crate) underlay_edit: Option<underlay::Edit>,
+    /// A colour being picked in Underlay Settings, set once the hand lets go.
+    pub(crate) underlay_color: Option<[u8; 3]>,
+    /// What Underlay Settings' last change was refused for.
+    pub(crate) underlay_error: Option<String>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
     /// How guides and the live drawing's aids are drawn (Manage > Snaps): the refined look, or the classic one to compare it with.
@@ -1609,6 +1620,11 @@ impl BimApp {
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
+            underlay: Default::default(),
+            underlay_dialog: None,
+            underlay_edit: None,
+            underlay_color: None,
+            underlay_error: None,
             grid_snapping: false,
             guide_style: style::GuideStyle::default(),
             compressed_save: false,
@@ -2552,7 +2568,8 @@ impl BimApp {
         }
         self.ctrl_waited(ctx);
         // Esc while a custom fill pattern is picked brings its dialog back.
-        if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
+        // And while Underlay Settings' Move or Rotate picks, it stops them and brings the dialog back.
+        if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() && !self.cancel_underlay_edit() {
             self.escape();
         }
         // Enter ends the 3D view's measured chain where it is.
@@ -3810,6 +3827,11 @@ impl BimApp {
             }
         }
         self.canvas.drawing.suspend();
+        if self.sheet != sheet {
+            self.underlay.suspend();
+            // Move or Rotate was picking in the view left.
+            self.underlay_edit = None;
+        }
         if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);
         }
@@ -6936,6 +6958,7 @@ impl BimApp {
         self.plugins_window(ctx);
         self.plugin_report_window(ctx);
         self.background_grid_window(ctx);
+        self.underlay_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.opening_box(ctx);
