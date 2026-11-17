@@ -243,8 +243,9 @@ fn a_slanted_wall_meets_walls_at_any_angle_in_a_corner_that_closes_at_every_heig
                 8000.0 * r.cos(),
                 8000.0 * r.sin()
             ));
-            // Nearly in line and leaning opposite ways, they part as they rise: no overlap and no spike, but no contact either.
-            let apart = degrees >= 150.0 && sa * sb < 0.0;
+            // Nearly in line and leaning unlike (opposite ways, or one at 165°), they part as they rise rather than meet in a spike
+            // metres long: no overlap, but no contact either.
+            let apart = (degrees >= 150.0 && sa * sb < 0.0) || (degrees >= 165.0 && sa != sb);
             joined(&s, 100002, 100003, &format!("an L of {degrees}°, leaning {sa}° and {sb}°"), !apart);
         }
     }
@@ -317,6 +318,19 @@ fn corners_at(s: &Session, id: Id, z: f64) -> Vec<P2> {
         .filter(|p| (p[2] - z).abs() < 1e-6)
         .map(|p| P2(p[0], p[1]))
         .collect()
+}
+
+#[test]
+fn a_short_return_still_closes_the_corner_of_a_steeply_slanted_wall() {
+    // Revit's three: a long wall leaning 30° with a 3 m return, leaning against it, with it, or upright. The corner moves 1.7 m by
+    // the top, more than half the return: it still closes.
+    for sb in [-30.0, 30.0, 0.0] {
+        let s = session(&format!(
+            r#"wall {{"points": [[8000, 0], [0, 0]], "height": 3000, "slant": 30}}
+               wall {{"points": [[0, 0], [0, 3000]], "height": 3000, "slant": {sb}}}"#
+        ));
+        joined(&s, 100002, 100003, &format!("a 3 m return leaning {sb}°"), true);
+    }
 }
 
 #[test]

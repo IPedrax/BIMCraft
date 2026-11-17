@@ -47,8 +47,9 @@ and bottom is a cone between a floor and a roof. The 3D view and sections draw t
 has leant to at its cut plane and sees its foot below in projection (and the top of one that stops under the plane), but where the
 cut covers it, and IFC writes them as face sets. A join a slanted wall takes part in is worked out one way at every height, so it
 keeps its shape as it rises: its corner is where the walls' centre lines cross there, the same point for every wall at the node, a
-face's crossing allowed twice the thickest wall's thickness from it; a corner farther off than half the shortest wall (walls nearly in
-line leaning apart) is no corner, and each ends square at its own end there. A wall ending on a slanted one is found ending on it at
+face's crossing allowed twice the thickest wall's thickness from it; a corner that moves off the node farther than three times as far as the walls lean at their
+tops and their thickness (walls nearly in line, leaning unlike, would meet in a spike metres long) is no corner, and each ends square
+at its own end there, at every height alike. A wall ending on a slanted one is found ending on it at
 their feet, and stops at its face, as far as that wall reaches, at every height. An upright wall joined at an end to a slanted one is
 lofted too (`slant::lofted`), so its end follows the slanted wall's face up the wall as Revit's does, an edited profile's included
 (each stretch between its edges' planes), and every lofted piece is held between its wall's own bottom and top corner by corner.

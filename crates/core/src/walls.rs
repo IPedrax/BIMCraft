@@ -480,13 +480,22 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
     // how near it a crossing of faces must be is measured from there, so a corner is the same shape at every height. It is the
     // same point for every wall at the node: where each two neighbours' centre lines cross, taken together. Walls leaning apart
     // may cross far off, which is no corner: then each ends at its own end, square, at that height.
-    // Half the shortest wall there: a corner farther off than that is a spike, not a corner.
+    // Half the shortest wall there: as far as a wall it ends on stops it.
     let half = arms.iter().filter_map(|a| m.wall(a.id)).map(|o| Axis::of(o).length() / 2.0).fold(f64::INFINITY, f64::min);
     // A join of slanted walls is worked out one way at every height, its foot too, so it keeps its shape as it rises: from where
     // the centre lines cross, a face's crossing allowed twice as far, as the corner moves among walls leaning unlike.
     let leaning = arms.iter().any(|a| a.leans);
+    // How far the corner may move off the node: three times as far as the walls lean at their tops, and their thickness. It moves
+    // as far again as they lean square to each other, more as they near parallel: past this it races off, a spike. Judged by
+    // their tops, it is the same answer at every height.
+    let top_lean = arms
+        .iter()
+        .filter(|a| a.leans)
+        .filter_map(|a| m.wall(a.id))
+        .map(|o| lean(m, o, m.top_z(o)).abs().max(lean(m, o, m.base_z(o)).abs()))
+        .fold(0.0, f64::max);
     let hub = if leaning {
-        let reach = half.max(limit);
+        let reach = 3.0 * (top_lean + limit);
         let pairs = if n > 2 { n } else { 1 };
         let crossings: Vec<P2> = (0..pairs)
             .filter_map(|k| {
