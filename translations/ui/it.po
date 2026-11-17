@@ -18488,6 +18488,20 @@ msgstr ""
 msgid "Use drawn detail shapes in this view; Pick Lines and Fillet are not supported yet."
 msgstr ""
 
+#: crates/core/src/commands.rs:677 crates/core/src/commands.rs:9333
+msgid "Toposolid"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category"
+msgid "Toposolid"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category-plural"
+msgid "Toposolids"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Un valore vuoto è quello dell'oggetto stesso, come nella scheda Parametri."

@@ -27,12 +27,13 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 47] = [
+pub const MODEL: [&str; 48] = [
     "wall",
     "floor",
     "ceiling",
     "shaft",
     "mass",
+    "toposolid",
     "door",
     "window",
     "room",

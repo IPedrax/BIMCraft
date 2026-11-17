@@ -80,6 +80,8 @@ struct Owner {
     edge: vec4<f32>,
     // rgb: the tint; w: 1 where the element is tinted.
     tint: vec4<f32>,
+    // The element's pattern frame: where its surface pattern starts (x, y, absolute mm) and its turn's sine and cosine.
+    frame: vec4<f32>,
 }
 
 struct Skin {
@@ -128,18 +130,30 @@ fn texel(s: Skin, x: i32, y: i32) -> vec3<f32> {
 
 // What `Sampler::at` gives: the texture laid over the face's plane at the point `world` (from the mesh's origin), across
 // the plane's level direction and up it, wrapping and blended between the four pixels round it.
-fn skin_color(id: u32, world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+// A face as high up as this is a ground's: its texture lies in plan, as the processor's `basis` has it.
+const PAVED: f32 = 0.5;
+
+fn skin_color(id: u32, world: vec3<f32>, n: vec3<f32>, frame: vec4<f32>) -> vec3<f32> {
     let s = skins[id];
     if s.level.y == 0u || s.level.z == 0u {
         return vec3<f32>(128.0);
     }
-    let level = vec3<f32>(-n.y, n.x, 0.0);
+    // A ground's top takes the plan's axes, turned by the element's pattern angle, so one paving runs over its folds;
+    // anything steeper takes the level across its own face. The processor's `basis` and `textured` ask it the same way.
     var across = vec3<f32>(1.0, 0.0, 0.0);
-    if dot(level, level) >= 0.0001 {
-        across = normalize(level);
+    var up = vec3<f32>(0.0, 1.0, 0.0);
+    var p = world + g.origin.xyz;
+    if n.z > PAVED {
+        across = vec3<f32>(frame.w, frame.z, 0.0);
+        up = vec3<f32>(-frame.z, frame.w, 0.0);
+        p = vec3<f32>(p.x - frame.x, p.y - frame.y, p.z);
+    } else {
+        let level = vec3<f32>(-n.y, n.x, 0.0);
+        if dot(level, level) >= 0.0001 {
+            across = normalize(level);
+        }
+        up = normalize(cross(n, across));
     }
-    let up = normalize(cross(n, across));
-    let p = world + g.origin.xyz;
     let ox = dot(p, across) - s.offset.x;
     let oy = dot(p, up) - s.offset.y;
     let x = ox * s.turn.y + oy * s.turn.x;
@@ -253,7 +267,11 @@ struct SceneTargets {
 fn shaded(in: SceneOut, front: bool) -> vec3<f32> {
     var c = in.base;
     if in.tex != 0u {
-        c = skin_color(in.tex, in.world, in.face);
+        var frame = vec4<f32>(0.0);
+        if in.ids.y != 0u {
+            frame = owners[in.ids.y - 1u].frame;
+        }
+        c = skin_color(in.tex, in.world, in.face, frame);
     }
     return floor(c * select(in.light.y, in.light.x, front) + vec3<f32>(0.5));
 }

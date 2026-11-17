@@ -231,6 +231,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a dimension may belong to a section or an elevation (its `view` and `level` both that view), measured between levels,
 /// grids and the view's detail lines in its drawing plane; a build that reads up to 20 would resolve its references in plan or
 /// drop it. A file of 20 needs no step: it holds none.
+/// And the site's ground may be a toposolid (`toposolid`, with types in `types.toposolid`, which a file of 20 is given:
+/// `Generic - 300mm`); a build that reads up to 20 would answer one with a serde error, not "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -349,6 +351,42 @@ pub struct PropertyLine {
     pub name: String,
     pub level: Guid,
     pub points: Vec<P2>,
+}
+
+/// A solid topographic element, Revit's Toposolid: a boundary on a level, a thickness under its top, and a top shaped by
+/// elevation points and split lines as a floor's is. `shape`'s points are above the flat top (`level` plus `offset`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Toposolid {
+    /// Its type: the layers it is made of, and so how thick it is (`Types::toposolid`).
+    #[serde(rename = "type")]
+    pub type_name: String,
+    pub level: Guid,
+    /// Its outline in plan, counter-clockwise; concave fine.
+    pub boundary: Vec<P2>,
+    /// How far its flat top is over its level, mm.
+    #[serde(default)]
+    pub offset: f64,
+    /// Points and split lines on its top, a floor's (`Floor::shape`).
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
+    /// The mm between the contour lines plans draw; 0 for none.
+    #[serde(default = "contour_interval")]
+    pub interval: f64,
+    /// Where its top's model pattern starts, and how far it's turned, degrees: Revit's aligned and rotated pattern.
+    #[serde(default, skip_serializing_if = "crate::fills::at_origin")]
+    pub pattern_origin: P2,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pattern_angle: f64,
+    #[serde(default)]
+    pub name: String,
+    /// Its values of the project's parameters, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+fn contour_interval() -> f64 {
+    1000.0
 }
 
 /// A reinforcing bar: a round bar of `diameter` mm bent along `path` (mm: x east, y north, z over `level`), of steel `grade`. It
@@ -860,6 +898,10 @@ type ShapeMesh = (crate::triangulation::Triangulation, Vec<[f64; 3]>, Vec<walls:
 /// The most points a shape has, and the most split lines.
 pub const MAX_SHAPE_POINTS: usize = 2_000;
 pub const MAX_SPLIT_LINES: usize = 2_000;
+/// The least mm between a toposolid's contour lines, the most levels its contours cut, and the most segments they have.
+pub const MIN_CONTOUR_INTERVAL: f64 = 10.0;
+pub const MAX_CONTOURS: usize = 1_000;
+pub const MAX_CONTOUR_SEGMENTS: usize = 20_000;
 
 /// A ceiling along `boundary` (counter-clockwise), open through its `openings` (holes inside it,
 /// apart), its underside `offset` mm above its level, its type's thickness over that.
@@ -2322,6 +2364,7 @@ impl Element {
         match self {
             Element::Floor(f) => Some(&mut f.shape),
             Element::Roof(r) => Some(&mut r.shape),
+            Element::Toposolid(t) => Some(&mut t.shape),
             _ => None,
         }
     }
@@ -2690,6 +2733,7 @@ macro_rules! visit_refs {
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
             Element::PropertyLine(pl) => f(& $($m)? pl.level),
+            Element::Toposolid(t) => f(& $($m)? t.level),
             Element::Circuit(c) => {
                 f(& $($m)? c.panel);
                 for g in & $($m)? c.devices {
@@ -2717,6 +2761,8 @@ pub enum Element {
     Ceiling(Ceiling),
     Shaft(Shaft),
     Mass(Mass),
+    /// A solid topographic element: the site's ground, on a level.
+    Toposolid(Toposolid),
     Door(Opening),
     Window(Opening),
     Room(Room),
@@ -2797,6 +2843,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposolid(Toposolid { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2821,6 +2868,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposolid(Toposolid { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2981,6 +3029,7 @@ impl Element {
             Element::Ceiling(_) => "ceiling",
             Element::Shaft(_) => "shaft",
             Element::Mass(_) => "mass",
+            Element::Toposolid(_) => "toposolid",
             Element::Door(_) => "door",
             Element::Window(_) => "window",
             Element::Room(_) => "room",
@@ -3819,6 +3868,10 @@ pub struct Types {
     pub ceiling: BTreeMap<String, CeilingType>,
     #[serde(default)]
     pub railing: BTreeMap<String, RailingType>,
+    /// The toposolid types: the layers each is made of, and so how thick it is (its layers' total, as Revit's Default
+    /// Thickness), from the top down.
+    #[serde(default)]
+    pub toposolid: BTreeMap<String, FloorType>,
     /// Room types: what floor and ceiling a room has of its own.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub room: BTreeMap<String, RoomType>,
@@ -3935,11 +3988,12 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 26] = [
+pub const PARAMETER_CATEGORIES: [&str; 27] = [
     "wall",
     "floor",
     "ceiling",
     "roof",
+    "toposolid",
     "door",
     "window",
     "room",
@@ -4483,6 +4537,7 @@ impl Model {
         ];
         m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None });
         m.types.floor.insert("Generic - 200mm".into(), FloorType { thickness: 200.0, layers: Vec::new() });
+        m.types.toposolid.insert("Generic - 300mm".into(), FloorType { thickness: 300.0, layers: Vec::new() });
         for (n, w) in [("Single 900 x 2100", 900.0), ("Single 800 x 2100", 800.0)] {
             m.types.door.insert(n.into(), OpeningType { width: w, height: 2100.0, sill: 0.0, operation: None });
         }
@@ -4605,7 +4660,8 @@ impl Model {
         let floors = t.floor.iter().map(|(n, x)| ("floor", n.as_str(), x.thickness, x.layers.as_slice()));
         let roofs = t.roof.iter().map(|(n, x)| ("roof", n.as_str(), x.thickness, x.layers.as_slice()));
         let ceilings = t.ceiling.iter().map(|(n, x)| ("ceiling", n.as_str(), x.thickness, x.layers.as_slice()));
-        walls.chain(floors).chain(roofs).chain(ceilings)
+        let toposolids = t.toposolid.iter().map(|(n, x)| ("toposolid", n.as_str(), x.thickness, x.layers.as_slice()));
+        walls.chain(floors).chain(roofs).chain(ceilings).chain(toposolids)
     }
 
     /// The layers of type `name` of `category`, a wall's from its exterior in, the others' from
@@ -4616,11 +4672,12 @@ impl Model {
 
     /// Every type's layers, to change.
     pub fn layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
-        let Types { wall, floor, roof, ceiling, .. } = &mut *self.types;
+        let Types { wall, floor, roof, ceiling, toposolid, .. } = &mut *self.types;
         (wall.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(floor.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(roof.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(ceiling.values_mut().flat_map(|t| t.layers.iter_mut()))
+            .chain(toposolid.values_mut().flat_map(|t| t.layers.iter_mut()))
     }
 
     /// Every material the types' layers name that the library hasn't, put in it: what a project
@@ -5302,6 +5359,10 @@ impl Model {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
+        // 20 to 21: a file of 20 or before has no toposolid type, the one a new toposolid is made of, which `default_type` names.
+        if self.format < 21 {
+            self.types.toposolid.entry("Generic - 300mm".into()).or_insert(FloorType { thickness: 300.0, layers: Vec::new() });
+        }
         self.settle_hosts(None);
         // 19 to 20: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
         if self.types.room.is_empty() {
@@ -5488,13 +5549,16 @@ impl Model {
 
     /// Where element `id`'s model pattern starts (its `pattern_origin`) once its pattern line `line` lies on `reference`:
     /// the origin moved across by the gap between the two, which must run the same way (plan mm, a line by its two ends).
-    /// What Align on a pattern asks of the model; set the answer with `modify`. A filled region or a floor has a pattern to
-    /// align; the error says what else is wrong.
+    /// What Align on a pattern asks of the model; set the answer with `modify`. A filled region, a floor or a toposolid has
+    /// a pattern to align; the error says what else is wrong.
     pub fn align_pattern(&self, id: Id, reference: (P2, P2), line: (P2, P2)) -> Result<P2, String> {
         let origin = match self.elements.get(id) {
             Some(Element::FilledRegion(r)) => r.pattern_origin,
             Some(Element::Floor(f)) => f.pattern_origin,
-            Some(e) => return Err(format!("{} {id} has no model pattern to align; a filled region or a floor has", e.category())),
+            Some(Element::Toposolid(t)) => t.pattern_origin,
+            Some(e) => {
+                return Err(format!("{} {id} has no model pattern to align; a filled region, a floor or a toposolid has", e.category()));
+            }
             None => return Err(format!("no element {id}")),
         };
         if [reference, line].iter().any(|(a, b)| !(a.is_finite() && b.is_finite()) || a.dist(*b) < TOL) {
@@ -6011,6 +6075,7 @@ impl Model {
             "roof" => names(&self.types.roof),
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
+            "toposolid" => names(&self.types.toposolid),
             "room" => names(&self.types.room),
             "stair" => names(&self.types.stair),
             "curtainpanel" => names(&self.types.curtain_panel),
@@ -6032,6 +6097,7 @@ impl Model {
                 return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
             }
             "wall" | "floor" => "Generic - 200mm",
+            "toposolid" => "Generic - 300mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",
             "roof" => "Generic - 300mm",
@@ -6332,6 +6398,7 @@ impl Model {
             Element::Ceiling(c) => Some(c.level),
             Element::Shaft(sh) => Some(sh.level),
             Element::Mass(ms) => Some(ms.level),
+            Element::Toposolid(t) => Some(t.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
             Element::PropertyLine(pl) => Some(pl.level),
@@ -6525,8 +6592,29 @@ impl Model {
         }
     }
 
-    /// Element `id` as shape editing works on it: a floor as it is, or a flat roof by footprint as `roof_as_floor` sees it.
-    /// None for anything else, or with why for a roof that can't take a shape.
+    /// A toposolid's top as shape editing sees it: a floor over its boundary, at its flat top (its level plus `offset`), with
+    /// its shape. Its points' heights, picks, labels and checks are then a floor's; `toposolid_solid` lays its bottom its
+    /// thickness under.
+    pub fn toposolid_as_floor(&self, t: &Toposolid) -> Floor {
+        Floor {
+            type_name: String::new(),
+            level: t.level,
+            boundary: ccw(&t.boundary),
+            openings: Vec::new(),
+            offset: t.offset,
+            slope: 0.0,
+            arrow: None,
+            structural: false,
+            pattern_origin: P2::default(),
+            pattern_angle: 0.0,
+            sketch: Vec::new(),
+            shape: t.shape.clone(),
+            params: BTreeMap::new(),
+        }
+    }
+
+    /// Element `id` as shape editing works on it: a floor as it is, a flat roof by footprint as `roof_as_floor` sees it, or
+    /// a toposolid as `toposolid_as_floor` sees it. None for anything else, or with why for a roof that can't take a shape.
     pub fn shapeable(&self, id: impl Key) -> Result<Floor, String> {
         match self.elements.get(id) {
             Some(Element::Floor(f)) => Ok(f.clone()),
@@ -6534,7 +6622,8 @@ impl Model {
                 Some(why) => Err(why.into()),
                 None => Ok(self.roof_as_floor(r)),
             },
-            _ => Err("only floors and flat roofs have shapes".into()),
+            Some(Element::Toposolid(t)) => Ok(self.toposolid_as_floor(t)),
+            _ => Err("only floors, flat roofs and toposolids have shapes".into()),
         }
     }
 
@@ -6866,11 +6955,113 @@ impl Model {
         self.shaped_solid(f, openings, self.floor_depth(f), self.floor_under(f).map(|(p, _)| p))
     }
 
+    /// A toposolid's thickness, mm: its type's, its layers' total (Revit's Default Thickness).
+    pub fn toposolid_thickness(&self, t: &Toposolid) -> f64 {
+        self.types.toposolid.get(&t.type_name).map_or(0.0, |x| x.thickness)
+    }
+
+    /// A toposolid's top in convex pieces, each counter-clockwise with the plane it lies in (`floor_faces` on its top).
+    pub fn toposolid_faces(&self, t: &Toposolid) -> Vec<(Vec<P2>, walls::Plane)> {
+        self.floor_faces(&self.toposolid_as_floor(t))
+    }
+
+    /// A toposolid's pieces in plan, each a bottom face and how far it rises to the top: what the 3D view draws as slabs.
+    pub fn toposolid_slabs(&self, t: &Toposolid) -> Vec<(Vec<[f64; 3]>, f64)> {
+        let thickness = self.toposolid_thickness(t);
+        self.toposolid_faces(t)
+            .into_iter()
+            .map(|(ring, top)| {
+                let bottom = walls::Plane { z: top.z - thickness, ..top };
+                (bottom.lift(&ring), thickness)
+            })
+            .collect()
+    }
+
+    /// A toposolid's slab as one closed solid: its top's planes, and its thickness under them plumb, its sides round its
+    /// boundary. None for a boundary that doesn't triangulate.
+    pub fn toposolid_solid(&self, t: &Toposolid) -> Option<Polyhedron> {
+        self.solid_under_shape(&self.toposolid_as_floor(t), &[], self.toposolid_thickness(t), None)
+    }
+
+    /// How much a toposolid holds, mm³.
+    pub fn toposolid_volume(&self, t: &Toposolid) -> f64 {
+        self.toposolid_solid(t).map_or(0.0, |p| volume(&p))
+    }
+
+    /// A toposolid's top's lowest and highest, mm.
+    pub fn toposolid_range(&self, t: &Toposolid) -> (f64, f64) {
+        self.toposolid_faces(t)
+            .iter()
+            .flat_map(|(ring, plane)| ring.iter().map(move |q| plane.at(*q)))
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)))
+    }
+
+    /// A toposolid's contour lines: at each multiple of its `interval` between its top's lowest and highest (not at either),
+    /// the segments where its top crosses that height. At most [`MAX_CONTOURS`] levels, and
+    /// [`MAX_CONTOUR_SEGMENTS`] segments in all.
+    pub fn toposolid_contours(&self, t: &Toposolid) -> Vec<(f64, Vec<(P2, P2)>)> {
+        if t.interval <= 0.0 || t.shape.is_empty() {
+            return Vec::new();
+        }
+        let (lo, hi) = self.toposolid_range(t);
+        if !(lo.is_finite() && hi.is_finite()) {
+            return Vec::new();
+        }
+        let first = (lo / t.interval).ceil() as i64;
+        let last = ((hi / t.interval).floor() as i64).min(first + MAX_CONTOURS as i64 - 1);
+        let f = self.toposolid_as_floor(t);
+        let Ok((mesh, lifted, _)) = self.shape_mesh(&f, &[]) else { return Vec::new() };
+        let mut out = Vec::new();
+        let mut drawn = 0usize;
+        for k in first..=last {
+            let z = k as f64 * t.interval;
+            let mut lines = Vec::new();
+            for tri in &mesh.triangles {
+                let (Some(a), Some(b), Some(c)) = (lifted.get(tri[0]), lifted.get(tri[1]), lifted.get(tri[2])) else {
+                    continue;
+                };
+                let p = [*a, *b, *c];
+                let mut hits = Vec::new();
+                for (a, b) in [(0, 1), (1, 2), (2, 0)] {
+                    let (pa, pb) = (p[a], p[b]);
+                    let (da, db) = (pa[2] - z, pb[2] - z);
+                    // A corner exactly at the height counts as above it: a line crosses an edge with one end below.
+                    if (da < 0.0) != (db < 0.0) {
+                        let s = da / (da - db);
+                        hits.push(P2(pa[0] + (pb[0] - pa[0]) * s, pa[1] + (pb[1] - pa[1]) * s));
+                    }
+                }
+                if let [a, b] = hits.as_slice()
+                    && a.dist(*b) > TOL
+                {
+                    lines.push((*a, *b));
+                    drawn += 1;
+                    if drawn >= MAX_CONTOUR_SEGMENTS {
+                        break;
+                    }
+                }
+            }
+            if !lines.is_empty() {
+                out.push((z, lines));
+            }
+            if drawn >= MAX_CONTOUR_SEGMENTS {
+                break;
+            }
+        }
+        out
+    }
+
     /// A shaped top's slab as one closed solid (`shape_solid_over`), `depth` under its top, plumb, or down to `under`.
     fn shaped_solid(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
         if f.shape.is_empty() {
             return None;
         }
+        self.solid_under_shape(f, openings, depth, under)
+    }
+
+    /// A shape's slab from its top's triangulation, flat or shaped (`shaped_solid` without the floor's "no shape, no
+    /// solid").
+    fn solid_under_shape(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
         let (t, lifted, planes) = self.shape_mesh(f, openings).ok()?;
         let n = lifted.len();
         let down = |p: &[f64; 3]| [p[0], p[1], under.map_or(p[2] - depth, |u| u.at(P2(p[0], p[1])))];
@@ -8729,7 +8920,7 @@ impl Model {
             }
             match layers.iter().filter(|l| l.variable).count() {
                 0 => {}
-                _ if matches!(cat, "wall" | "ceiling") => {
+                _ if matches!(cat, "wall" | "ceiling" | "toposolid") => {
                     return Err(format!("{who}: only a floor's or a roof's layer can be variable, to take up a shaped top's falls"));
                 }
                 1 => {}
@@ -9137,6 +9328,25 @@ impl Model {
                     return Err(format!("{who}: a property line needs a name"));
                 }
                 crate::site::check(&who, &pl.points)?;
+            }
+            Element::Toposolid(t) => {
+                point(&format!("{who} pattern origin"), t.pattern_origin)?;
+                coord(&format!("{who} pattern angle"), t.pattern_angle)?;
+                level_ok(t.level)?;
+                known(&who, &t.type_name, &self.types.toposolid)?;
+                boundary(&who, &t.boundary)?;
+                crate::site::check(&who, &t.boundary)?;
+                text(&who, "name", &t.name)?;
+                coord(&format!("{who} offset"), t.offset)?;
+                coord(&format!("{who} interval"), t.interval)?;
+                coord(&format!("{who} thickness"), self.toposolid_thickness(t))?;
+                if t.interval != 0.0 && t.interval < MIN_CONTOUR_INTERVAL {
+                    return Err(format!(
+                        "{who}: its contour interval is {} mm: it must be 0, or at least {MIN_CONTOUR_INTERVAL} mm",
+                        t.interval
+                    ));
+                }
+                shape_ok(&who, &self.toposolid_as_floor(t), None)?;
             }
             Element::RoomSeparator(rs) => {
                 level_ok(rs.level)?;

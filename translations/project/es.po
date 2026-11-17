@@ -823,3 +823,7 @@ msgstr "aseo"
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "sanitario"
+
+#: crates/core/src/commands.rs:9333
+msgid "Toposolid"
+msgstr ""

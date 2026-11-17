@@ -31,8 +31,8 @@ const GLOBALS: u64 = (11 + MARKS as u64 * 7) * 16;
 pub(crate) const MARKS: usize = 2;
 /// A section box: its least corner and its greatest, in the model.
 type Cut = Option<([f64; 3], [f64; 3])>;
-/// An owner's edge and tint colours, a skin's parts and a segment's ends and colour: 2, 3 and 3 vec4s.
-const OWNER: u64 = 32;
+/// An owner's edge, tint and pattern frame, a skin's parts and a segment's ends and colour: 3, 3 and 3 vec4s.
+const OWNER: u64 = 48;
 const SKIN: u64 = 48;
 const SEGMENT: u64 = 48;
 /// A copy of a shape (see `Instance`): where it is as three floats, its turn as two, its owner, where its planes are, and its
@@ -1334,7 +1334,23 @@ impl Gpu {
                 let (e, t) = (rgb(o.edge), tinted.get(&o.id));
                 let c = t.map_or([0.0; 3], |c| rgb(*c));
                 let shows = 1.0 - f32::from(o.transparency) / 100.0;
-                put(&mut owners, &[e[0], e[1], e[2], shows, c[0], c[1], c[2], if t.is_some() { 1.0 } else { 0.0 }]);
+                put(
+                    &mut owners,
+                    &[
+                        e[0],
+                        e[1],
+                        e[2],
+                        shows,
+                        c[0],
+                        c[1],
+                        c[2],
+                        if t.is_some() { 1.0 } else { 0.0 },
+                        o.frame[0],
+                        o.frame[1],
+                        o.frame[2],
+                        o.frame[3],
+                    ],
+                );
             }
             write(&up.owners, &owners);
             up.tints = Some(tints.to_vec());
