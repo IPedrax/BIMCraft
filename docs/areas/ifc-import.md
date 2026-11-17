@@ -150,3 +150,23 @@ goes back out where it came from (#223).
   (`{system, edition?}`, or `null`); `Model::check` holds both to what IFC can write.
 - **The file**: an older BIMCraft leaves `sets` and `classification` out (`lenient`), and the values stay as plain parameters,
   so it took no `FORMAT` step. Other kinds of property (enumerated, bounded, list, table, complex) are not read yet.
+
+## What a file holds: `ifc_survey`
+
+`ifc_survey {path}` (`survey.rs`) reads an `.ifc` the way `open` does (the same memory budget, `step::parse_within`) and
+answers with counts and the names the format writes, never a product's name, an id or a value, and no coordinate but a storey's
+elevation and heights. It exists so that a file that must not leave the machine can still be described: its owner runs the
+command and pastes the reply back, and what a structural program's files hold stops being a guess. The reply has:
+
+- `schema`, `encoding` (`valid_utf8`, `non_ascii_bytes`: whether the text is UTF-8 or a Windows exporter's Latin-1) and `units`
+  (the length, volume, mass and angle units, by the name the file gives them).
+- `storeys`: for each, its `elevation` attribute, the height of its `placement_z` and the `lowest_product_z` of what it contains
+  (a placement's height is the sum of the heights up its chain of placements, with no rotation taken into account), in the
+  file's length unit, so a file that writes the elevation one way and the placements another shows both.
+- `classes`: for each IFC class, its `count`, its `predefined` types, what its `bodies` are made of (the class of each item of a
+  `Body` representation), `items` (products whose body has 1, 2 or 3 and more items) and how many are `contained` in a storey,
+  `aggregated`, `nested` and `typed`.
+- `property_sets` and `quantity_sets`: each set's name and `count`, the classes it is `on`, and for each property or quantity
+  its name and the types it is written with, with counts.
+- `relations`: each `IFCREL*` class with a count; and `left_out`, the rows a cap held back (500 rows a list, 200 members a set,
+  and the whole reply under 256 KiB).

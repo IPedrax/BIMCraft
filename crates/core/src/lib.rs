@@ -290,6 +290,9 @@ mod plan_view_tests;
 mod purge_tests;
 #[cfg(test)]
 mod structure_tests;
+pub mod survey;
+#[cfg(test)]
+mod survey_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
