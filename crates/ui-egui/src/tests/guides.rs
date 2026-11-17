@@ -201,8 +201,8 @@ fn manage_snaps_toggles_alignment_guides() {
     assert!(!h.state().snaps.alignment_guides);
 }
 
-/// The refined guide is a hairline: a quiet ray, the stronger relation from its source to the point it locks, and a dot
-/// and ring on the source. The classic one keeps the dashed magenta and its blue square.
+/// The refined guide is a hairline: a quiet ray, the stronger relation fading in from its source over the last screen of
+/// it, and a dot and ring on the source. The classic one keeps the dashed magenta and its blue square.
 #[test]
 fn a_guide_draws_a_ray_a_relation_and_its_source() {
     use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult, GuideLine, ReferenceType};
@@ -227,12 +227,12 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
         .collect();
     // The horizontal guide is put on the physical pixel grid: y = 1000.5, a pixel's centre, so it is one crisp pixel.
     let (snapped, source) = (pos2(1000.0, 1000.5), pos2(0.0, 1000.5));
-    // The relation is in two inks since a guide's strong ink reaches only a screen back from the point it locks: a faint piece
-    // from the source and a strong one ending at the point, and then the three fading tail pieces.
-    assert_eq!(segments.len(), 5, "the relation in two inks and its three fading tail pieces: {shapes:?}");
-    // The relation runs from its source to the point it locks.
-    assert!(segments.iter().any(|[a, _]| a.distance(source) < 0.01), "it starts at its source: {segments:?}");
-    assert!(segments.iter().any(|[_, b]| b.distance(snapped) < 0.01), "and ends at the point it locks: {segments:?}");
+    assert_eq!(segments.len(), 7, "three fade pieces, the strong stretch and its three fading tail pieces: {shapes:?}");
+    // The strong ink is the last 100 px of the relation, and the rest fades in to the source, so a long guide has no hard
+    // cut where the strong end begins.
+    let near = pos2(900.0, 1000.5);
+    assert!(segments.iter().any(|[a, b]| a.distance(near) < 0.01 && b.distance(snapped) < 0.01), "{segments:?}");
+    assert!(segments.iter().any(|[a, _]| a.distance(source) < 0.01), "the fade starts at the source: {segments:?}");
     // The tail runs on past the point, 100 px in all, and no ray crosses the view.
     let tail: f32 = segments.iter().map(|[a, b]| a.distance(*b)).filter(|len| *len != 0.0).sum();
     assert!((tail - (1000.0 + 100.0)).abs() < 0.1, "the relation and a 100 px tail: {segments:?}");
@@ -349,8 +349,7 @@ fn a_guides_strong_segment_reaches_only_a_screen_from_the_point_it_locks() {
         })
         .expect("the relation's own ink");
     assert!((strong[1] - strong[0]).length() <= 100.01, "one screen's reach, not 20 m: {strong:?}");
-    // A horizontal hairline is put on the pixel grid, half a pixel off the point's own row.
-    assert!(strong[1].distance(to(at)) <= 0.5, "it ends on the point it locks: {strong:?}");
+    assert!((strong[1] - to(at)).length() <= 0.75, "it ends on the point it locks, on the pixel grid: {:?}", strong[1]);
 }
 
 /// The live reading sits clear of its own segment and its badge: a wide horizontal pill beside a steep one is pushed
