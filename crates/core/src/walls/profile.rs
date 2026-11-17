@@ -132,7 +132,7 @@ pub(crate) fn stack(ring: Vec<P2>, bottom: Plane, top: Plane, gaps: &[(f64, f64)
 
 /// `ring` parted where plane `p` crosses the level `z`: where `p` is the nearer (under `z` with `lower`, else over it) keeping
 /// `p`, elsewhere the level.
-fn split(ring: Vec<P2>, p: Plane, z: f64, lower: bool) -> Vec<(Vec<P2>, Plane)> {
+pub(super) fn split(ring: Vec<P2>, p: Plane, z: f64, lower: bool) -> Vec<(Vec<P2>, Plane)> {
     if ring.len() < 3 {
         return Vec::new();
     }

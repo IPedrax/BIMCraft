@@ -174,8 +174,11 @@ impl ProfileEditor {
         }
         let hint = t("Drag a point; click an edge to add one there.");
         p.text(rect.center_top() + vec2(0.0, 4.0), egui::Align2::CENTER_TOP, hint, egui::FontId::proportional(11.0), canvas_pal().muted);
+        // An edge clicked away from its points: under the handles, which take their own clicks.
+        let edges = ui.interact(rect, UiId::new("profile-edges"), Sense::click());
         // Each point a handle, named for tests and screen readers.
         let mut picked = None;
+        let mut on_handle = false;
         let mut moved = None;
         for (n, l) in self.loops.iter().enumerate() {
             for (i, q) in l.iter().enumerate() {
@@ -184,6 +187,7 @@ impl ProfileEditor {
                 let name = format!("{} {} {}", t("Point"), n + 1, i + 1);
                 let response = ui.interact(r, UiId::new(("profile-point", n, i)), Sense::click_and_drag());
                 response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &name));
+                on_handle |= response.hovered() || response.contains_pointer();
                 let on = self.picked == Some((n, i));
                 p.rect_filled(Rect::from_center_size(at, vec2(8.0, 8.0)), 0.0, if on { canvas_pal().accent } else { ink });
                 if response.clicked() || response.drag_started() {
@@ -198,8 +202,8 @@ impl ProfileEditor {
             }
         }
         // An edge clicked away from its points: a point there.
-        let edges = ui.interact(rect, UiId::new("profile-edges"), Sense::click());
         if picked.is_none()
+            && !on_handle
             && edges.clicked()
             && let Some(at) = edges.interact_pointer_pos()
         {
@@ -272,8 +276,44 @@ impl ProfileEditor {
     }
 }
 
+/// Whether view `sheet` looks square at wall `id`'s face, so its profile can be sketched there: the 3D view does from anywhere it
+/// isn't edge-on; a section or an elevation does when its line runs along the wall.
+pub(crate) fn faces_wall(m: &Model, sheet: crate::Sheet, id: Id) -> bool {
+    let Some(w) = m.wall(id) else { return false };
+    match sheet {
+        crate::Sheet::View3D => true,
+        crate::Sheet::Section(v) => m.section(v).is_some_and(|s| (s.end - s.start).unit().cross((w.end - w.start).unit()).abs() < 0.5),
+        _ => false,
+    }
+}
+
 impl BimApp {
-    /// Edit Profile on wall `id`, if it can have one.
+    /// Edit Profile on wall `id`: in a section or an elevation looking at it, or in the 3D view, its outline and holes as sketch
+    /// lines on its face, edited with the Draw panel's tools and Modify's grips until Finish Edit Mode; in a plan, which can't
+    /// show its shape, the dialog.
+    pub(crate) fn edit_profile(&mut self, id: Id) {
+        let m = Arc::clone(&self.session.model);
+        if !profile_editable(&m, id) {
+            return;
+        }
+        if !faces_wall(&m, self.sheet, id) {
+            self.open_profile_editor(id);
+            return;
+        }
+        let Some(e) = ProfileEditor::new(&m, id) else { return };
+        let lines = e
+            .loops
+            .iter()
+            .flat_map(|l| (0..l.len()).map(move |i| bimcraft_core::sketch::SketchLine::new(l[i], l[(i + 1) % l.len()])))
+            .collect();
+        self.start_sketch(crate::sketch::Of::Profile(id), lines);
+        self.status = crate::Status {
+            text: t("Edit Profile: drag the outline's points, draw lines for its shape and any holes, then Finish Edit Mode").into(),
+            error: false,
+        };
+    }
+
+    /// Edit Profile on wall `id` as a dialog, if it can have one.
     pub(crate) fn open_profile_editor(&mut self, id: Id) {
         if profile_editable(&self.session.model, id) {
             self.profile_editor = ProfileEditor::new(&self.session.model, id);

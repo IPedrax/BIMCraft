@@ -2592,7 +2592,8 @@ fn section_base_cancellable(
             return None;
         }
         let layers = m.type_layers("wall", &w.type_name);
-        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
+        // A slanted wall's layers lean across the section: it shows in poché, its layers not yet drawn.
+        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse || w.slant != 0.0 {
             continue;
         }
         d.owner = Some(wall);

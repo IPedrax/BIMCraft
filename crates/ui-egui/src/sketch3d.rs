@@ -22,27 +22,71 @@ use crate::{BimApp, Sheet, Status, Tool, draw};
 /// How near a grip, in points, a press takes it.
 const GRIP: f32 = 8.0;
 
-/// The sketch's plane as the 3D view shows it: the camera, where the view is on screen and the pixels a point holds, and the
-/// plane over the plan the lines lie on.
+/// What a sketch's lines lie on, and what its points mean: a plane over the plan, a point of the sketch a point of the plan; or a
+/// wall's upright face (Edit Profile), a point of the sketch `[along, up]` from the wall's start at its base.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Face {
+    Over(walls::Plane),
+    Upright { start: P2, u: P2, base: f64 },
+}
+
+impl Face {
+    /// Wall `id`'s face for Edit Profile: along it from its start, up from its base.
+    pub(crate) fn of_wall(m: &Model, id: Id) -> Option<Face> {
+        let w = m.wall(id)?;
+        let u = (w.end - w.start).unit();
+        (u.length() > 0.5).then(|| Face::Upright { start: w.start, u, base: m.own_base(w) })
+    }
+
+    /// The sketch's point `q` in the model.
+    pub(crate) fn world(&self, q: P2) -> [f64; 3] {
+        match *self {
+            Face::Over(plane) => [q.0, q.1, plane.at(q)],
+            Face::Upright { start, u, base } => {
+                let p = start + u * q.0;
+                [p.0, p.1, base + q.1]
+            }
+        }
+    }
+}
+
+/// The sketch's plane as a view shows it (the 3D view, or a section or an elevation looking at a wall): the camera, where the
+/// view is on screen and the pixels a point holds, and the face the lines lie on.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Plane {
     pub cam: Camera,
     pub rect: Rect,
     pub ppp: f32,
-    pub surface: walls::Plane,
+    pub surface: Face,
 }
 
 impl Plane {
     /// Where point `q` of the plane shows on screen.
     pub fn screen(&self, q: P2) -> Pos2 {
-        let (x, y, _) = self.cam.project([q.0, q.1, self.surface.at(q)]);
+        let (x, y, _) = self.cam.project(self.surface.world(q));
         self.rect.min + vec2(x as f32 / self.ppp, y as f32 / self.ppp)
     }
 
     /// The plane's point under `at` on screen; none where the view is edge-on to it.
     pub fn at(&self, at: Pos2) -> Option<P2> {
         let px = (f64::from((at.x - self.rect.min.x) * self.ppp), f64::from((at.y - self.rect.min.y) * self.ppp));
-        self.cam.on_slope(px, self.surface).map(|p| P2(p[0], p[1])).filter(|p| p.0.is_finite() && p.1.is_finite())
+        let found = match self.surface {
+            Face::Over(plane) => self.cam.on_slope(px, plane).map(|p| P2(p[0], p[1])),
+            Face::Upright { start, u, base } => {
+                // The pixel's ray through the wall's face.
+                let (a, b) = (self.cam.point_at(px, 0.0), self.cam.point_at(px, 1000.0));
+                let n = u.perp();
+                let side = |p: [f64; 3]| (P2(p[0], p[1]) - start).dot(n);
+                let (da, db) = (side(a), side(b));
+                if (da - db).abs() < 1e-9 {
+                    return None;
+                }
+                let t = da / (da - db);
+                let q = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+                Some(P2((P2(q[0], q[1]) - start).dot(u), q[2] - base))
+            }
+        };
+        found.filter(|p| p.0.is_finite() && p.1.is_finite())
     }
 
     /// The mm `points` on screen span, as the view is scaled: a reach on the plane, foreshortening aside.
@@ -100,11 +144,18 @@ fn to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 impl BimApp {
     /// The plane the sketch lies on while it is sketched in the 3D view: an Edit Boundary begun there, of what still has a
     /// plane, or a new one on the work plane it began on.
-    pub(crate) fn sketch_surface(&self) -> Option<walls::Plane> {
-        let sk = self.sketch.as_ref().filter(|sk| sk.plan == Sheet::View3D)?;
+    pub(crate) fn sketch_surface(&self) -> Option<Face> {
+        self.sketch_face_in(Sheet::View3D)
+    }
+
+    /// The face a sketch begun in `sheet` lies on: Edit Profile's, a wall's face, in a section or an elevation too.
+    pub(crate) fn sketch_face_in(&self, sheet: Sheet) -> Option<Face> {
+        let sk = self.sketch.as_ref().filter(|sk| sk.plan == sheet)?;
         match sk.of {
-            Of::Edit(id) => self.session.model.sketch_plane(id),
-            _ => sk.surface,
+            Of::Profile(id) => Face::of_wall(&self.session.model, id),
+            _ if sheet != Sheet::View3D => None,
+            Of::Edit(id) => self.session.model.sketch_plane(id).map(Face::Over),
+            _ => sk.surface.map(Face::Over),
         }
     }
 
@@ -113,10 +164,19 @@ impl BimApp {
     /// vertical.
     fn snap3(&self, m: &Model, plane: &Plane, raw: P2, from: &[P2], square: bool) -> P2 {
         let Some(sk) = &self.sketch else { return raw };
+        // A wall's profile: onto an end of its own lines, else to the nearest 10 mm along and up.
+        if let Of::Profile(_) = sk.of {
+            let reach = plane.mm(SNAP);
+            let ends = sk.lines.iter().flat_map(|l| l.curve.handles());
+            if let Some(end) = ends.filter(|q| q.dist(raw) <= reach).min_by(|a, b| a.dist(raw).total_cmp(&b.dist(raw))) {
+                return end;
+            }
+            return P2((raw.0 / 10.0).round() * 10.0 + 0.0, (raw.1 / 10.0).round() * 10.0 + 0.0);
+        }
         let (level, editing) = match sk.of {
             Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
-            Of::Region { .. } | Of::Form { .. } => (None, None),
+            Of::Region { .. } | Of::Form { .. } | Of::Profile(_) => (None, None),
         };
         let Some(level) = level else { return raw };
         let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };

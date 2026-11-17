@@ -495,15 +495,15 @@ pub(crate) fn cap_at_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>, 
 /// The cap at height `z`, joined to the walls standing at height `standing`: in a band of height whose joins are the same, its
 /// cap at each of its two ends, the same points moved as the walls lean.
 pub(crate) fn cap_with(m: &Model, id: Id, at_end: bool, index: Option<&Index>, z: f64, standing: f64) -> Vec<P2> {
-    let full = end_geometry(m, id, at_end, index, &|_| true, Some(z));
-    let Some(w) = m.wall(id) else { return full.outline };
     let stands = |o: &Wall| m.base_z(o) <= standing && standing < m.top_z(o);
-    let (arms_here, _) = arms(m, id, at_end, index, &stands, Some(z));
+    // Most ends join only walls standing at every height they do: their cap is the whole one.
     let (all_arms, _) = arms(m, id, at_end, index, &|_| true, Some(z));
-    if arms_here.len() == all_arms.len() {
-        return full.outline;
-    }
-    if arms_here.iter().filter(|a| !a.butts).count() >= 2 {
+    let missing = all_arms.iter().filter(|a| a.id != id && !m.wall(a.id).is_some_and(stands)).count();
+    let full = end_geometry(m, id, at_end, index, &|_| true, Some(z));
+    let Some(w) = m.wall(id).filter(|_| missing > 0) else { return full.outline };
+    // The arms left where some stop: an arm is a wall's end, or a wall it ends on twice (once each way).
+    let here = all_arms.iter().filter(|a| a.id == id || m.wall(a.id).is_some_and(stands)).filter(|a| !a.butts).count();
+    if here >= 2 {
         return end_geometry(m, id, at_end, index, &stands, Some(z)).outline;
     }
     // Free here: square, out to the farthest the corner below reaches (back from the way it leaves the node).
@@ -1169,20 +1169,52 @@ fn prisms_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&
         }
         ceilings.push(top.clone());
         let middle = axis.at(mid, (ext + int) / 2.0);
-        for (under, over) in floors.iter().zip(&ceilings) {
+        let last = ceilings.len().saturating_sub(1);
+        for (k, (under, over)) in floors.iter().zip(&ceilings).enumerate() {
             let ring = if ends && !bands.is_empty() { ring_at(Some((under.at(middle) + over.at(middle)) / 2.0)) } else { ring.clone() };
             for (part, bottom) in under.parts(ring) {
-                for (part, top) in over.parts(part) {
-                    // Only where it has some height.
-                    let part = geom::clip(&part, |q| top.at(q) - bottom.at(q));
-                    if part.len() >= 3 && geom::area(&part).abs() > 1.0 {
-                        out.push(Prism { ring: part, bottom, top, curve });
+                for (part, up) in over.parts(part) {
+                    let mut pieces = vec![(part, bottom, up)];
+                    // A level edge (an opening's, or where a wall it joins stops) holds only under the wall's own top and over its
+                    // base: where a roof it follows dips under it, the roof is the top there.
+                    if k < last {
+                        pieces =
+                            pieces.into_iter().flat_map(|(r, b, t)| below(&top, r, t.z).into_iter().map(move |(r, t)| (r, b, t))).collect();
+                    }
+                    if k > 0 {
+                        pieces = pieces
+                            .into_iter()
+                            .flat_map(|(r, b, t)| above(&base, r, b.z).into_iter().map(move |(r, b)| (r, b, t)))
+                            .collect();
+                    }
+                    for (part, bottom, top) in pieces {
+                        // Only where it has some height.
+                        let part = geom::clip(&part, |q| top.at(q) - bottom.at(q));
+                        if part.len() >= 3 && geom::area(&part).abs() > 1.0 {
+                            out.push(Prism { ring: part, bottom, top, curve });
+                        }
                     }
                 }
             }
         }
     }
     out
+}
+
+/// `ring` under the level `z`, but where `top` is lower: the parts, each with the plane over it, `top`'s or the level's.
+fn below(top: &Bound, ring: Vec<P2>, z: f64) -> Vec<(Vec<P2>, Plane)> {
+    if ring.iter().all(|q| top.at(*q) >= z - 1e-9) {
+        return vec![(ring, Plane::flat(z))];
+    }
+    top.parts(ring).into_iter().flat_map(|(r, real)| profile::split(r, real, z, true)).collect()
+}
+
+/// `ring` over the level `z`, but where `base` is higher: the parts, each with the plane under it, `base`'s or the level's.
+fn above(base: &Bound, ring: Vec<P2>, z: f64) -> Vec<(Vec<P2>, Plane)> {
+    if ring.iter().all(|q| base.at(*q) <= z + 1e-9) {
+        return vec![(ring, Plane::flat(z))];
+    }
+    base.parts(ring).into_iter().flat_map(|(r, real)| profile::split(r, real, z, false)).collect()
 }
 
 #[cfg(test)]

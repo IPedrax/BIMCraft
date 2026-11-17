@@ -253,10 +253,12 @@ mod tests {
         // Its run is those chords' length, a little less than the arc's.
         assert!((l.surface.length() - whole.iter().sum::<f64>()).abs() < 1e-3);
         assert!(l.surface.length() < PI * r);
-        // A panel's centre is on its chord, at the grid plane.
+        // A panel's centre is on its chord, at its offset from the grid plane: as far from the chord's line as those two.
         let panel = l.parts.iter().find(|p| l.shapes[p.shape as usize].kind == super::super::PartKind::Panel).unwrap_or_else(|| panic!());
         let c = l.surface.at(panel.centre[0], panel.centre[1], panel.centre[2]);
-        assert!(P2(c[0], c[1]).length() < r, "inside the arc, on a chord: {c:?}");
+        let ((_, a), (_, b)) = l.surface.chord(panel.centre[0]).unwrap_or_else(|| panic!("no chord"));
+        let off = (P2(c[0], c[1]) - a).dot((b - a).unit().perp());
+        assert!((off - (l.surface.plane + panel.centre[2])).abs() < 1e-6, "{off} {c:?}");
     }
 
     #[test]
@@ -272,8 +274,8 @@ mod tests {
         assert_eq!(l.rows.len(), 4);
         assert!((l.rows.last().map_or(0.0, |r| r.to) - face).abs() < 1e-6);
         // Its top row's top is at the wall's top, leant toward its exterior (north).
-        let top = l.surface.at(3000.0, face, 0.0);
-        assert!((top[2] - 3000.0).abs() < 1e-6 && top[1] > 1700.0, "{top:?}");
+        let (top, foot) = (l.surface.at(3000.0, face, 0.0), l.surface.at(3000.0, 0.0, 0.0));
+        assert!((top[2] - 3000.0).abs() < 1e-6 && (top[1] - foot[1] - 3000.0 * 30f64.to_radians().tan()).abs() < 1e-6, "{top:?}");
         // A ray at the face meets it where it was aimed.
         let aim = l.surface.at(2000.0, 1500.0, 0.0);
         let hit = l.surface.hit([aim[0], aim[1] - 5000.0, aim[2]], aim).unwrap_or_else(|| panic!("a hit"));

@@ -37,6 +37,9 @@ pub enum Of {
     Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
     Edit(Id),
+    /// A wall's shape in elevation (Edit Profile), sketched on its face in a section, an elevation or the 3D view: its points
+    /// `[along, up]` from its start at its base.
+    Profile(Id),
     /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
     /// `edit`, one it has already, redrawn.
     Form { revolve: bool, void: bool, edit: bool },
@@ -92,6 +95,7 @@ impl Sketch {
             Of::Region { masking: false, .. } => msg!("Create Filled Region Boundary"),
             Of::Region { masking: true, .. } => msg!("Create Masking Region Boundary"),
             Of::Edit(_) => "Edit Boundary",
+            Of::Profile(_) => msg!("Modify | Walls > Edit Profile"),
             Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
             Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
             Of::Form { revolve: false, void: true, edit: false } => msg!("Modify | Create Void Extrusion"),
@@ -460,8 +464,24 @@ impl BimApp {
                 ("filled_region", json!({"view": view, "sketch": lines, "type": sk.region.0, "line_style": sk.region.1}))
             }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
+            // Its outline and holes as the wall's profile; the wall's own rectangle, none.
+            Of::Profile(id) => {
+                let Ok(region) = solver::solve_one(&sk.lines) else { return };
+                let loops: Vec<Vec<P2>> = std::iter::once(region.outer).chain(region.holes).collect();
+                let plain = m.wall(id).is_some_and(|w| {
+                    let length = w.start.dist(w.end);
+                    let height = m.top_z(w) - m.base_z(w);
+                    w.profile.is_empty() && loops.len() == 1 && same_ring(&loops[0], &crate::profile::rectangle(length, height))
+                });
+                ("modify", json!({"id": id, "profile": if plain { json!([]) } else { json!(loops) }}))
+            }
             // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
             Of::Form { .. } => return,
+        };
+        // Edit Profile's wall stays selected.
+        let profiled = match self.sketch.as_ref().map(|sk| sk.of) {
+            Some(Of::Profile(wall)) => Some(wall),
+            _ => None,
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
         if let Some(made) = self.run(id, p) {
@@ -469,7 +489,7 @@ impl BimApp {
             self.tool = Tool::Modify;
             // The lines picked for a fillet were the sketch's: their places mean nothing in the next one.
             self.forget_picks();
-            self.selection = made["id"].as_u64().into_iter().collect();
+            self.selection = profiled.or_else(|| made["id"].as_u64()).into_iter().collect();
         }
     }
 
@@ -979,6 +999,11 @@ impl BimApp {
 }
 
 /// A line as Finish sends it: its curve's fields, and its id when it kept one, so it keeps it.
+/// Whether two rings go round the same points, from wherever and whichever way.
+fn same_ring(a: &[P2], b: &[P2]) -> bool {
+    a.len() == b.len() && a.iter().all(|p| b.iter().any(|q| p.dist(*q) < 1e-6))
+}
+
 fn sent(l: &SketchLine) -> serde_json::Value {
     let mut v = serde_json::to_value(bimcraft_core::curves::Fields::of(&l.curve)).unwrap_or_default();
     if l.id != 0 {
