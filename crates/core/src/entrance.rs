@@ -62,6 +62,9 @@ pub struct Table {
     pub use_: String,
     /// Where in the standard: its annex or table, and its page.
     pub source: String,
+    /// The members the table is for, when the standard names only some (empty: every one).
+    #[serde(default)]
+    pub members: Vec<String>,
     pub rows: Vec<Row>,
 }
 
@@ -114,12 +117,15 @@ struct Data {
     utilities: Vec<Utility>,
 }
 
-/// Every utility of the file.
+/// The file, read; its test holds it to reading.
+fn read() -> Result<Vec<Utility>, serde_json::Error> {
+    serde_json::from_str::<Data>(include_str!("../data/entrance-categories.json")).map(|d| d.utilities)
+}
+
+/// Every utility of the file (none if it failed to read, which `the_file_reads_and_every_utility_names_its_source` catches).
 pub fn utilities() -> &'static [Utility] {
     static ALL: OnceLock<Vec<Utility>> = OnceLock::new();
-    ALL.get_or_init(|| {
-        serde_json::from_str::<Data>(include_str!("../data/entrance-categories.json")).map(|d| d.utilities).unwrap_or_default()
-    })
+    ALL.get_or_init(|| read().unwrap_or_default())
 }
 
 /// A utility by its id or by a member's (in any case), and the member when it is one.
@@ -137,9 +143,9 @@ pub fn names() -> Vec<&'static str> {
 }
 
 impl Utility {
-    /// The systems a use has tables for, in the file's order.
-    pub fn systems(&self, use_: &str) -> Vec<&str> {
-        self.tables.iter().filter(|t| t.use_ == use_).map(|t| t.system.as_str()).collect()
+    /// The systems a use has tables for, in the file's order: for a member, only the tables that are its.
+    pub fn systems(&self, use_: &str, member: Option<&Member>) -> Vec<&str> {
+        self.tables.iter().filter(|t| t.use_ == use_ && t.is_for(member)).map(|t| t.system.as_str()).collect()
     }
 
     /// The uses its tables cover, in the file's order, each once.
@@ -155,6 +161,13 @@ impl Utility {
 
     pub fn table(&self, system: &str, use_: &str) -> Option<&Table> {
         self.tables.iter().find(|t| t.system == system && t.use_ == use_)
+    }
+}
+
+impl Table {
+    /// Whether a member may take this table: one it names, or any when it names none.
+    pub fn is_for(&self, member: Option<&Member>) -> bool {
+        member.is_none_or(|m| self.members.is_empty() || self.members.iter().any(|x| x.eq_ignore_ascii_case(&m.id)))
     }
 }
 

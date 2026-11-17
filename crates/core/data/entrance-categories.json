@@ -1270,6 +1270,7 @@
      "system": "127/220",
      "use": "individual",
      "source": "Tabela 16, the 127/220 V network (page 73)",
+     "members": ["EAC", "EMR", "EMS", "EMT", "ERO", "ESE", "ESS"],
      "rows": [
       {
        "name": "M1",

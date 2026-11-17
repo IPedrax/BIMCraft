@@ -11,9 +11,11 @@ fn table(utility: &str, system: &str, use_: &str) -> &'static Table {
 
 #[test]
 fn the_file_reads_and_every_utility_names_its_source() {
-    let all = utilities();
-    assert!(all.len() >= 2, "the file did not read: {}", all.len());
-    for u in all {
+    let all = read().unwrap_or_else(|e| panic!("data/entrance-categories.json does not read: {e}"));
+    let ids: Vec<&str> = all.iter().map(|u| u.id.as_str()).collect();
+    assert_eq!(ids, ["FECOERGS", "HIDROPAN", "ENERGISA", "EQUATORIAL", "COPEL"]);
+    assert_eq!(utilities().len(), all.len());
+    for u in &all {
         assert!(!u.source.is_empty() && !u.standard.is_empty() && !u.rule.is_empty(), "{} names no source", u.id);
         assert!(!u.tables.is_empty(), "{} has no table", u.id);
         for t in &u.tables {
@@ -21,6 +23,9 @@ fn the_file_reads_and_every_utility_names_its_source() {
             assert!(!t.rows.is_empty(), "{} {}: no rows", u.id, t.system);
             let same = u.tables.iter().filter(|o| o.system == t.system && o.use_ == t.use_).count();
             assert_eq!(same, 1, "{}: two tables for {} {}", u.id, t.system, t.use_);
+            for m in &t.members {
+                assert!(u.members.iter().any(|x| x.id == *m), "{} {}: `{m}` is not a member", u.id, t.system);
+            }
         }
     }
 }
@@ -107,6 +112,7 @@ fn members_change_only_categories_that_exist() {
             for c in &m.changes {
                 let t = u.table(&c.system, &c.use_);
                 assert!(t.is_some_and(|t| t.rows.iter().any(|r| r.name == c.category)), "{}: {} {} {}", m.id, c.system, c.use_, c.category);
+                assert!(t.is_some_and(|t| t.is_for(Some(m))), "{}: a change to a table not its own", m.id);
                 assert!(!c.source.is_empty(), "{}: a change with no source", m.id);
             }
         }
@@ -261,6 +267,23 @@ mod command {
         assert_eq!(r["category"]["measurement"], "indirect");
         let r = run(&mut s, json!({"utility": "FECOERGS", "entrance": "metering_centre", "demand_kva": 90}));
         assert_eq!((r["system"].as_str(), r["category"]["name"].as_str()), (Some("220/380"), Some("C22")));
+    }
+
+    #[test]
+    fn energisas_tabela_16_is_only_for_the_members_its_note_names() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "EMT", "installed_kw": 3}));
+        assert_eq!((r["system"].as_str(), r["category"]["name"].as_str()), (Some("127/220"), Some("M1")));
+        for m in ["ETO", "EPB"] {
+            // Not given a system: its own table, never Tabela 16.
+            let r = run(&mut s, json!({"utility": m, "installed_kw": 3}));
+            assert_eq!(r["system"], "220/380", "{m}");
+            let e = s.execute("demand", &json!({"utility": m, "system": "127/220", "installed_kw": 3})).unwrap_err();
+            assert!(e.contains("Tabela 16") && e.contains("EAC, EMR, EMS, EMT, ERO, ESE, ESS") && e.contains("220/380"), "{e}");
+        }
+        // The group itself, no member named, still reads either.
+        let r = run(&mut s, json!({"utility": "ENERGISA", "installed_kw": 3}));
+        assert_eq!(r["system"], "127/220");
     }
 
     #[test]

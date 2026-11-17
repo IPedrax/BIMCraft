@@ -3155,7 +3155,8 @@ other_files(
          with its own changes), HIDROPAN (RIC 2014), ENERGISA (NDU 001 version 7.0; a company such as EMT by its own name), \
          EQUATORIAL (NT.00001 revision 09) or COPEL (NTC 901100); any other is refused until its tables are added. A utility of the data takes \
          `{utility, system?, entrance?: individual|metering_centre, installed_kw?, demand_kva?, phases?: 1|2|3}`: `system` and \
-         `entrance` name its table (the first of the file by default), and the category is the first row whose installed load and \
+         `entrance` name its table (the first of the file by default; a table the standard gives only some `members`, as Energisa's \
+         Tabela 16, is refused to the others), and the category is the first row whose installed load and \
          demand hold the unit, with its breaker (two values where either will do), measurement and the other `columns` as printed, \
          each explained; `candidates` names every row that holds it, and a row that goes by what was not given is named in \
          `category_note`; `changed_by` cites a member's own document. CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
@@ -7315,7 +7316,17 @@ fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Opt
     }
     let uses = u.uses();
     let use_ = choice(c, p, "entrance", &uses, uses.first().copied().unwrap_or("individual"))?;
-    let systems = u.systems(use_);
+    let systems = u.systems(use_, member);
+    // A table the standard gives only some members is refused to the others, by name, rather than given them.
+    let refused = member
+        .zip(p.get("system").and_then(Value::as_str))
+        .and_then(|(m, asked)| u.table(asked, use_).filter(|t| !t.is_for(Some(m))).map(|t| (m, asked, t)));
+    if let Some((m, asked, t)) = refused {
+        return Err(bad(
+            c,
+            format!("{}'s {asked} table ({}) is only for {}; {}'s are {}", u.id, t.source, t.members.join(", "), m.id, systems.join(", ")),
+        ));
+    }
     let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or(""))?;
     let Some(table) = u.table(system, use_) else {
         return Err(bad(c, format!("{} has no table for {system} {use_}", u.id)));
@@ -7433,7 +7444,7 @@ fn demand(s: &mut Session, p: &Value) -> R {
             format!(
                 "`utility` is required: {}; or pick one for the project in Manage > Building Codes \
                  (`building_code {{electrical: {{demand}}}}`)",
-                d::UTILITIES.join(", ")
+                d::utilities().join(", ")
             ),
         )
     })?;
@@ -20391,7 +20402,7 @@ fn building_code(s: &mut Session, p: &Value) -> R {
             };
             match k.as_str() {
                 "demand" => {
-                    let known = crate::demand::UTILITIES;
+                    let known = crate::demand::utilities();
                     methods.demand = match name {
                         Some(u) if !known.contains(&u) => {
                             return Err(bad(c, format!("`demand` is a utility `demand` has tables for: {}", known.join(", "))));

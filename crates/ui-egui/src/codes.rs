@@ -409,7 +409,7 @@ fn electrical_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
     let code = methods_of(m, &d.selected);
     Grid::new("building-code-electrical").num_columns(3).min_col_width(150.0).show(ui, |ui| {
         let rows = [
-            ("demand", t("Demand (one installation)"), &mut d.electrical.demand, demand::UTILITIES.to_vec(), &code.demand),
+            ("demand", t("Demand (one installation)"), &mut d.electrical.demand, demand::utilities(), &code.demand),
             ("building_demand", t("Building Demand (dwellings)"), &mut d.electrical.building_demand, offered, &code.building_demand),
         ];
         for (salt, label, now, names, its) in rows {
