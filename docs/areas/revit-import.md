@@ -57,7 +57,18 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   edges, conduits, furniture systems (of the furniture category), site pads, masses, trusses, beam systems, stiffeners and
   connections come in as boxes of a family of their category, as fittings do, each saying so (a model group, class
   `ElementGroup`, and terrain, class `Toposolid` or `SiteSurface`, are left out instead: a group's members come in on their
-  own, and terrain's box is a solid block over the site), but a box is a fair stand-in only for
+  own, and terrain's box is a solid block over the site). Each component is of the Revit type its reference list names, as a door's
+  is (`openings::symbol_of`; `Imported` where none is named), in a family of the Revit family's name (`openings::family_of`, the
+  second list; else the family the type's other instances name; else the category's family). From 2025 a type has no record of its
+  own, only a name entry, which is why both lists are read (the provenance row says what was measured). Where the type's box, in the
+  family's own axes, placed by the instance's placement (`placement.rs`, read from at most 4 KiB of its data, never copied:
+  `Wants::placements`) gives the record's box to a millimetre, it comes in as that box, turned as placed, its middle set off from
+  the family's origin by `Offset X` and `Offset Y`. The type's box is its symbol's (before 2025), else the instance's own record box
+  taken back through a placement whose axes lie along the project's (exact), else the box its type's such instances agree on; a
+  placement upside down (a light hung from a ceiling) or on its side (one on a wall) is re-expressed upright where one of its axes
+  stands upright. Otherwise (no placement, one on a slope, no type, or a box that disagrees) it comes in as the record's box,
+  unturned, and the note says which. Snowdon 2025's architectural model brings in 3,312 of its 4,683 components turned so, in 133
+  families of 186 types. A box is a fair stand-in only for
   some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit) only where it runs along an axis, so one
   that turns a corner or runs across the axes, whose box is a block where there is none, is left out with that; and a whole (a stair,
   a truss, a beam system) is left out where its box holds a box of its parts' categories, which come in on their own. Conduits come

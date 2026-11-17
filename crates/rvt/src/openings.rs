@@ -78,13 +78,29 @@ pub(crate) fn wanted(f: &Facts, out: &mut BTreeSet<u32>) {
 
 /// The type of a family instance: the one family symbol of its category its reference list names that has a name entry of the
 /// category, and the name. None where it names none, or two with different names.
+///
+/// From Revit 2025 a type has no record of its own, so there is no symbol to find: there the type is the one id of the first list
+/// with a name entry that names the instance's own category (the entry says its category from 2024; one that says none is not
+/// taken, since it could be any family's or type's).
 pub(crate) fn symbol_of(r: &Record, symbols: &BTreeSet<u32>, g: &Gathered, category: i64) -> Option<(u32, String)> {
-    let mut named = r
-        .refs
+    one_named(r, &r.refs, g, |id, c| symbols.contains(&id) && c.is_none_or(|c| c == category))
+        .or_else(|| one_named(r, &r.refs, g, |_, c| c == Some(category)))
+}
+
+/// The family of a family instance as Revit 2025 writes it: the one id of the second reference list with a name entry of the
+/// instance's own category, and the name.
+pub(crate) fn family_of(r: &Record, g: &Gathered, category: i64) -> Option<(u32, String)> {
+    one_named(r, &r.refs2, g, |_, c| c == Some(category))
+}
+
+/// The one name among the ids of `list` (other than `r`'s own) that have a name entry `takes` takes, by id and the entry's category,
+/// with the first id of that name. None where none is, or two names are.
+fn one_named(r: &Record, list: &[u64], g: &Gathered, takes: impl Fn(u32, Option<i64>) -> bool) -> Option<(u32, String)> {
+    let mut named = list
         .iter()
         .filter_map(|&v| u32::try_from(v).ok())
-        .filter(|id| *id != r.id && symbols.contains(id))
-        .filter_map(|id| g.names.get(&id).filter(|(_, c)| c.is_none_or(|c| c == category)).map(|(n, _)| (id, n.clone())))
+        .filter(|id| *id != r.id)
+        .filter_map(|id| g.names.get(&id).filter(|(_, c)| takes(id, *c)).map(|(n, _)| (id, n.clone())))
         .collect::<Vec<_>>();
     named.sort();
     named.dedup();

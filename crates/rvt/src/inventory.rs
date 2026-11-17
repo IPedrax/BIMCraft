@@ -27,7 +27,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::data::{Data, category_materials, column_bottoms, column_nodes, element_data, material_names, newest, room_entries};
+use crate::data::{
+    Data, category_materials, column_bottoms, column_nodes, element_data, element_placements, material_names, newest, room_entries,
+};
 use crate::error::{Error, Result};
 use crate::names::{Latest, entries_32, entries_64};
 use crate::records::{
@@ -470,6 +472,8 @@ pub(crate) struct Gathered {
     pub column_bottoms: BTreeMap<u32, f64>,
     /// The number and the name of each room.
     pub rooms: BTreeMap<u32, (String, String)>,
+    /// The placement of each family instance asked for, as its newest partition holds it.
+    pub placements: BTreeMap<u32, crate::placement::Transform>,
 }
 
 /// What the second pass is asked for.
@@ -483,6 +487,8 @@ pub(crate) struct Wants {
     pub columns: BTreeMap<u32, [f64; 6]>,
     /// The rooms.
     pub rooms: BTreeSet<u32>,
+    /// The family instances whose placement alone is read from their data (the components).
+    pub placements: BTreeSet<u32>,
 }
 
 impl crate::Revit {
@@ -578,10 +584,12 @@ impl crate::Revit {
         let mut named = Latest::default();
         let mut nodes = BTreeMap::new();
         let mut room_names = Latest::default();
+        let mut placements = Latest::default();
         for name in names {
             let number = name.rsplit('/').next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0);
             let buf = self.inflate_all(&name)?.bytes;
             element_data(&buf, tags, wide, wanted, number, &mut data);
+            element_placements(&buf, tags, wide, &wants.placements, number, &mut placements);
             material_names(&buf, tags, wide, ids, &mut materials);
             category_materials(&buf, tags, release, &CATEGORY_MATERIAL_CATEGORIES, &mut styled);
             column_nodes(&buf, columns, &mut nodes);
@@ -630,6 +638,7 @@ impl crate::Revit {
             names: named.into_values(),
             column_bottoms: column_bottoms(nodes, columns),
             rooms: room_names.into_values(),
+            placements: placements.into_values(),
         })
     }
 
