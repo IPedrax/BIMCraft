@@ -115,6 +115,19 @@ other_files(
         open,
         Files::Read,
     ),
+    other_files(
+        "ifc_survey",
+        "IFC Survey",
+        "{path} what an .ifc file holds, counted: never a product's name, an id or a value, so a file that must not leave the machine can \
+         be described by running this and pasting the reply. `schema`, `encoding` (whether the text is UTF-8), `units`, `storeys` (each \
+         one's `elevation`, its `placement_z` and the `lowest_product_z` of what it contains, in the file's length unit), `classes` (each \
+         IFC class: `count`, `predefined` types, what its `bodies` are made of, `items` (bodies of 1, 2 or 3+ items), and how many are \
+         `contained`, `aggregated`, `nested` and `typed`), `property_sets` and `quantity_sets` (name, `count`, the classes they are `on`, \
+         the properties or quantities each carries with their types), `relations` by class, and `left_out`, the rows a cap held back (the \
+         reply stays under 256 KiB)",
+        ifc_survey,
+        Files::Read,
+    ),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other(
         "tower",
@@ -4268,6 +4281,30 @@ fn with_links(s: &mut Session, mut reply: Value) -> Value {
         reply["cads_not_reloaded"] = json!(failed);
     }
     reply
+}
+
+/// `ifc_survey`: what an IFC file holds, counted (`survey.rs`).
+fn ifc_survey(_s: &mut Session, p: &Value) -> R {
+    let c = "ifc_survey";
+    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
+    if ext(&path) != "ifc" {
+        return Err(bad(c, "`path` is an .ifc file"));
+    }
+    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+    // Held to the memory the machine has free, where the app measures it; else to a fixed size, as `open` is.
+    let budget = match memory::Budget::start(size, memory::IFC) {
+        Ok(Some(budget)) => budget,
+        Ok(None) => {
+            if size >= MAX_IFC {
+                return Err(bad(c, format!("{} is too large ({size} bytes; `ifc_survey` takes one under {MAX_IFC})", path.display())));
+            }
+            memory::Budget::none()
+        }
+        Err(e) => return Err(bad(c, format!("{}: {e}", path.display()))),
+    };
+    let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    let file = crate::step::parse_within(&bytes, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    Ok(crate::survey::of(&file, &bytes))
 }
 
 /// `open`, but for what its links read.
