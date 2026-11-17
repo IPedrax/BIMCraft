@@ -11,7 +11,7 @@ the crate is Apache-2.0 only, ported in part from rvt-rs and fenced by [docs/rvt
   gives a stand-in (a curtain wall as the plane of its box, a sloped slab level, a sketch that closes nothing as the footprint of
   its box, a beam along its box, a stair's run as its box) the element comes in as that stand-in and a note says what was not read: that is an approximation, never counted as
   read whole, and never a way to bring the "left out" count down.
-- **A module for each part of a file** (`container`, `gzip`, `records`, `schema`, `inventory`, `elem_table`, `atom`...) and **for
+- **A module for each part of a file** (`container`, `gzip`, `records`, `schema`, `inventory`, `elem_table`, `atom`, `graphics` and `shapes`, a family type's graphics read as its shape...) and **for
   each element kind** it imports (`walls`, `floors`, `roofs`, `columns`, `openings`, `rooms`, `pipes`, `ducts`, `framing`, `generic`), joined by `import.rs`. A new kind
   is a module with its own tests, a line in `import.rs`, and its place in the write-up
   [Revit files and the Revit import](../../docs/areas/revit-import.md).

@@ -151,6 +151,7 @@ mod records;
 mod roofs;
 mod rooms;
 mod rvt_rs;
+mod shapes;
 mod sketch;
 mod walls;
 
