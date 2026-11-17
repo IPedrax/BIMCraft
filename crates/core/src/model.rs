@@ -215,6 +215,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `demand` and `building_demand` would ask for a method again.
 /// And a PDF publishing entry may set or omit its Creator and Producer (`creator`, `producer`, written only then); a build
 /// that reads up to 20 would leave them out as fields it doesn't know, list them as left out and write its own.
+/// And a note's leader takes a kind (`leader_kind`: two segments or curved); a build that reads up to 20 would leave it out
+/// and draw the leader straight.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -1455,7 +1457,8 @@ impl Orient {
 
 /// A text note in a view: a level's plan, a section, an elevation or a sheet. `at` is the top left
 /// of its first line, in the view's own terms; lettered as its text type says (`crate::text`); turned
-/// `angle` degrees counter-clockwise; with a leader to `leader`. With `override_format`, its `runs`
+/// `angle` degrees counter-clockwise; with a leader to `leader`, straight, in two segments or curved as
+/// `leader_kind` says. With `override_format`, its `runs`
 /// make parts of it bold, italic or underlined, or not, whatever its type says; they stay when its type
 /// changes. `size` is a note's from before text types, which a file's reading gives a type of that size.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1472,10 +1475,39 @@ pub struct Note {
     pub angle: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader: Option<P2>,
+    #[serde(default, skip_serializing_if = "LeaderKind::is_straight")]
+    pub leader_kind: LeaderKind,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub override_format: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runs: Vec<crate::text::Run>,
+}
+
+/// How a note's leader reaches the point it names: straight from the note's side, in two segments (a shoulder level
+/// with the note, its lettering's height long, then to the point), or as an arc bowing from that shoulder's corner.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaderKind {
+    #[default]
+    Straight,
+    TwoSegment,
+    Curved,
+}
+
+impl LeaderKind {
+    /// Its name in a command or a file.
+    pub fn name(self) -> &'static str {
+        match self {
+            LeaderKind::Straight => "straight",
+            LeaderKind::TwoSegment => "two_segment",
+            LeaderKind::Curved => "curved",
+        }
+    }
+
+    /// Whether it is left out of a file: straight, the default.
+    fn is_straight(&self) -> bool {
+        *self == LeaderKind::Straight
+    }
 }
 
 /// A scan placed: the project's `cloud`, its middle at `at` in plan and `offset` mm over `level`, turned `angle` degrees
@@ -5460,6 +5492,20 @@ impl Model {
         self.elements.get(k)?.run()
     }
 
+    /// The element that `id` is hosted in or on: a door's or a window's wall, a component's face's element or its reference
+    /// plane, a reinforcing bar's beam, column, footing or floor, a railing's stair or ramp. None for one that stands on its
+    /// level or on nothing.
+    pub fn host_of(&self, id: impl Key) -> Option<Id> {
+        let host = match self.elements.get(id)? {
+            Element::Door(o) | Element::Window(o) => o.host,
+            Element::Component(c) => c.host.map(|h| h.host.guid())?,
+            Element::Rebar(rb) => rb.host?,
+            Element::Railing(r) => r.host?,
+            _ => return None,
+        };
+        self.elements.id(host)
+    }
+
     /// The rectangle level `id` stretches over in plan, south-west corner then north-east: its
     /// extent, else [`Model::model_extent`].
     pub fn level_extent(&self, id: impl Key) -> Option<[P2; 2]> {
@@ -6013,6 +6059,15 @@ impl Model {
     /// The type of a door or window.
     pub fn opening_type(&self, e: &Element) -> Option<OpeningType> {
         self.opening_dims(e).ok()
+    }
+
+    /// The hole a door or a window cuts in its wall, when the cut plane at height `cut` passes through it: what a plan or
+    /// a section shows of the opening at that height, and nothing for a window whose sill is over the plane or a door
+    /// whose head is under it. None too when its wall or its type is gone.
+    pub fn opening_hole(&self, e: &Element, cut: f64) -> Option<crate::walls::Hole> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return None };
+        let h = crate::walls::hole(self, self.wall(o.host)?, e, o)?;
+        (h.bottom <= cut && cut < h.top).then_some(h)
     }
 
     /// Where a door's or window's family's axes lie: the point in plan at the middle of the opening in the middle
@@ -10967,6 +11022,31 @@ mod tests {
         }
         let e = m.check().unwrap_err();
         assert!(e.contains(&format!("wall {id}")) && e.contains("Brick") && e.contains("Generic - 200mm"), "{e}");
+    }
+
+    /// A cut plane shows an opening only between its sill and its head, and through the hole its own type cuts: the one
+    /// question a plan's ink and a plan's snapping both ask.
+    #[test]
+    fn a_cut_plane_shows_an_opening_between_its_sill_and_its_head() {
+        let mut m = Model::new("t");
+        let host = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        let d = m.insert(door(m.guid(host), 2500.0));
+        let e = m.elements.get(d).expect("the door");
+        let h = m.opening_hole(e, 1000.0).expect("the cut plane passes through it");
+        assert!((h.s0 - 2050.0).abs() < 1e-6 && (h.s1 - 2950.0).abs() < 1e-6, "the hole along the wall: {:?}", (h.s0, h.s1));
+        assert_eq!((h.bottom, h.top), (0.0, 2100.0), "from the level's floor to its head");
+        assert!(m.opening_hole(e, 2100.0).is_none(), "its head is under the plane");
+        // One lifted over the plane, as a window is: nothing of it shows at 1200, all of it at its own height.
+        let mut lifted = door(m.guid(host), 4000.0);
+        if let Element::Door(o) = &mut lifted {
+            o.sill = 2000.0;
+        }
+        let w = m.insert(lifted);
+        let we = m.elements.get(w).expect("the lifted one");
+        assert!(m.opening_hole(we, 1200.0).is_none(), "under its sill");
+        assert_eq!(m.opening_hole(we, 2100.0).map(|h| (h.bottom, h.top)), Some((2000.0, 4100.0)));
+        // Only a door or a window has one.
+        assert!(m.opening_hole(&wall(m.guid(100000), P2(0.0, 0.0), P2(1000.0, 0.0)), 1000.0).is_none());
     }
 
     #[test]

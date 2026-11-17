@@ -144,7 +144,10 @@ A selected straight wall shows, besides its length, how far its centre line stan
 each side, square to it from its middle (`Model::wall_clearances`; `wall_dimensions` draws them a little along it): a typed one moves the
 wall by the difference, the walls joined to it stretching (`move`).
 The Text tool's Leader (Options Bar) makes the first click the point the note's leader reaches and the next the note's top left corner,
-in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first.
+in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first. Leader Type, beside it, is how that leader runs:
+Straight, Two Segment (a shoulder level with the note, its lettering's height long, then to the point) or Curved, an arc bowing from
+that shoulder's corner (`LeaderKind`, the note's `leader_kind`). The same row appears while a note with a leader is rewritten, so a
+placed note's leader changes its shape there.
 
 Align (AL) highlights the exact edge or axis under the cursor before either pick, leaving the selected reference as an
 extended dashed line. It searches the candidates under the pointer for a usable line rather than letting annotation mask
@@ -177,7 +180,7 @@ line from the last point touches a circle or an arc (`tangents`), else a scan's 
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
-grid point lying on it beats a rounded length), a wall's own line (its exterior face, its centre line or its interior face, whichever the pointer is nearest: `Model::reference_lines`, the same three a dimension measures to), the nearest point of a detail line, else the nearest 10 mm.
+grid point lying on it beats a rounded length), a wall's own line (its exterior face, its centre line or its interior face, whichever the pointer is nearest: `Model::reference_lines`, the same three a dimension measures to), the nearest point of a detail line, the ends of a door's or a window's two jambs (the lines its dimensions measure to, each across its wall) with the middle of the opening a point of its own, else the nearest 10 mm.
 The walls the cursor reaches add their outlines as the plan draws them (`outlines`: the corners and the
 faces as lines), and a stair its corners, riser ends and landing edges (`stairs::reference_edges`); while the Stair
 tool drafts one, `Snaps::stair_corners` keeps a stair to its location line's corners (`stairs::line_corners`). In a section or an

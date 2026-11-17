@@ -24,11 +24,11 @@ use crate::massing;
 use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
-    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
-    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, Railing, RailingType, Ramp, Rebar,
-    Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet, Side,
-    Spot, Stair, TOL, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind, Level, Line,
+    Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
+    ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, Railing,
+    RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section,
+    SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -1178,14 +1178,17 @@ other_files(
         "text",
         ui_msg!("Text"),
         &["TX"],
-        "{text, at: [x, y], view?, type?, angle?, leader?: [x, y], override_format?, runs?: [{from, to, bold?, italic?, \
-         underline?}, …]} a text note, its first line's top left at `at`, in a view by name or id: a level's plan (the lowest \
-         by default; `at` in plan mm), a section or an elevation (`at` along its line from its start, and up), or a sheet by \
-         number (`at` in paper mm). Lettered as its text `type` says (2.5mm unless told; `text_type` lists and makes them: \
-         its font, its size, its border), turned `angle` degrees counter-clockwise; with `leader`, a line to that point. \
-         Lines break at \\n. With `override_format`, each run makes characters `from` up to `to` (counted in characters, a \
-         line break one) bold, italic or underlined (true), or not (false), whatever the type says; they stay when the \
-         type changes, and `modify` with a new `text` alone keeps them on what didn't change. Font and size are the type's",
+        "{text, at: [x, y], view?, type?, angle?, leader?: [x, y], leader_kind?, override_format?, runs?: [{from, to, \
+         bold?, italic?, underline?}, …]} a text note, its first line's top left at `at`, in a view by name or id: a level's \
+         plan (the lowest by default; `at` in plan mm), a section or an elevation (`at` along its line from its start, and \
+         up), or a sheet by number (`at` in paper mm). Lettered as its text `type` says (2.5mm unless told; `text_type` \
+         lists and makes them: its font, its size, its border), turned `angle` degrees counter-clockwise; with `leader`, a \
+         line to that point, `leader_kind` being how it runs there: `straight` (the default), `two_segment` (a shoulder \
+         level with the note, its lettering's height long, then to the point) or `curved` (an arc bowing from that \
+         shoulder's corner). Lines break at \\n. With `override_format`, each run makes characters `from` up to `to` \
+         (counted in characters, a line break one) bold, italic or underlined (true), or not (false), whatever the type \
+         says; they stay when the type changes, and `modify` with a new `text` alone keeps them on what didn't change. Font \
+         and size are the type's",
         text_note,
     ),
     edit(
@@ -3312,12 +3315,16 @@ other_files(
     other(
         "elements",
         ui_msg!("Elements"),
-        "{category?, level?, field?, value?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
+        "{category?, level?, field?, value?, host?, room?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
          never changed), fields and derived values (length, height, area_m2…; a component's `room`, the GUID of the room \
          its family's room calculation point, else its insertion point, is in); what an element points at (its level, host, \
          view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do. `field` is one its category's \
          schedule has (`Type`, `Mark`, a project parameter), and `value` what it holds: text in any case, a number (mm, m² for \
-         an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset)",
+         an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset). \
+         `host` is an element (id or GUID) whose hosted elements to list: the doors and windows in a wall, a component on a \
+         wall's, floor's, ceiling's or roof's face or on a reference plane, the reinforcing bars in a beam, column, footing or \
+         floor, a railing along a stair or a ramp; `room` is a room (id or GUID) whose components to list: those its volume \
+         holds, as an element's `room` field shows",
         elements,
     ),
 ];
@@ -12369,7 +12376,7 @@ fn text_note(s: &mut Session, p: &Value) -> R {
     if p.get("size").is_some() {
         return Err(bad(c, "a note's size is its text type's: give `type` (`text_type` lists them, and makes one of a size)"));
     }
-    only(c, p, &["text", "at", "view", "type", "angle", "leader", "override_format", "runs"])?;
+    only(c, p, &["text", "at", "view", "type", "angle", "leader", "leader_kind", "override_format", "runs"])?;
     let m = &s.model;
     let text = note_text(c, p)?.ok_or_else(|| bad(c, "`text` is required"))?;
     let at = point_req(c, p, "at")?;
@@ -12377,6 +12384,11 @@ fn text_note(s: &mut Session, p: &Value) -> R {
     let type_name = match name_param(c, p, "type")? {
         Some(n) => n,
         None => crate::text::default_type(&m.text_types).cloned().ok_or_else(|| bad(c, "the project has no text type; make one first"))?,
+    };
+    let leader_kind = match name_param(c, p, "leader_kind")? {
+        None => LeaderKind::Straight,
+        Some(n) => serde_json::from_value(Value::String(n.clone()))
+            .map_err(|_| bad(c, format!("`leader_kind` is straight, two_segment or curved, not `{n}`")))?,
     };
     let runs = match p.get("runs") {
         v if absent(v) => Vec::new(),
@@ -12391,6 +12403,7 @@ fn text_note(s: &mut Session, p: &Value) -> R {
         size: None,
         angle: num(c, p, "angle")?.unwrap_or(0.0),
         leader: point_opt(c, p, "leader")?,
+        leader_kind,
         override_format: flag(c, p, "override_format")?,
         runs,
     };
@@ -21761,6 +21774,24 @@ fn elements(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let cat = string(c, p, "category")?.map(|k| category(&k));
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
+    // The element whose hosted elements are wanted: what a door, a window, a component, a bar or a railing says is its host.
+    let host = match p.get("host") {
+        v if absent(v) => None,
+        Some(v) => Some(element_id(c, m, v)?),
+        None => None,
+    };
+    // The room whose components are wanted: those its volume holds, as the `room` an element's JSON shows.
+    let room = match p.get("room") {
+        v if absent(v) => None,
+        Some(v) => Some(element_id(c, m, v)?),
+        None => None,
+    };
+    if let Some(r) = room
+        && !matches!(m.elements.get(r), Some(Element::Room(_)))
+    {
+        let what = m.elements.get(r).map_or("not an element", |e| e.category());
+        return Err(bad(c, format!("`room` must name a room, and {r} is a {what}")));
+    }
     let (limit, offset) = (count_opt(c, p, "limit", 500)?, count_opt(c, p, "offset", 0)?);
     // A field of a schedule of the category, and the value it holds.
     let field = string(c, p, "field")?.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
@@ -21810,6 +21841,8 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .iter()
         .filter(|(_, e)| cat.as_deref().is_none_or(|k| e.category() == k))
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
+        .filter(|(id, _)| host.is_none_or(|h| m.host_of(*id) == Some(h)))
+        .filter(|(_, e)| room.is_none_or(|r| matches!(e, Element::Component(c) if rooms.component(c) == Some(r))))
         .filter(|(id, e)| match &kinds {
             None => true,
             Some((name, kinds)) => kinds.get(e.category()).is_some_and(|kind| {

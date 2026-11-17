@@ -119,7 +119,9 @@ use bimcraft_core::dims::Placing as DimMode;
 use bimcraft_core::engine::{self, Session};
 use bimcraft_core::files;
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Id, Justify, Location, Model, RAMP_WIDTH, Reference, RoomArea, STAIR_WIDTH};
+use bimcraft_core::model::{
+    CEILING_HEIGHT, DimKind, Element, Id, Justify, LeaderKind, Location, Model, RAMP_WIDTH, Reference, RoomArea, STAIR_WIDTH,
+};
 use bimcraft_core::snap::{Kind as Snap, Snaps};
 use bimcraft_core::units::Units;
 use bimcraft_core::{element_json, render, schedule, stairs};
@@ -827,6 +829,8 @@ pub struct BimApp {
     note_text: String,
     /// Notes written with a leader: the Text tool's first click is the point it reaches, kept here with its view.
     pub(crate) note_leader: bool,
+    /// How that leader runs: straight, in two segments or curved.
+    pub(crate) note_leader_kind: LeaderKind,
     pub(crate) note_arrow: Option<(Id, P2)>,
     /// The note being written on the canvas.
     note_edit: Option<notes::NoteEdit>,
@@ -1735,6 +1739,7 @@ impl BimApp {
             tag_label: String::new(),
             note_text: String::new(),
             note_leader: false,
+            note_leader_kind: LeaderKind::Straight,
             note_arrow: None,
             note_edit: None,
             text_type_dialog: None,
@@ -6241,6 +6246,9 @@ impl BimApp {
                     if ui.checkbox(&mut self.note_leader, t("Leader")).changed() {
                         self.note_arrow = None;
                     }
+                    if self.note_leader {
+                        notes::leader_type(ui, &mut self.note_leader_kind);
+                    }
                 }
                 Tool::Attach => {
                     ui.label(t("Attach Wall:"));
@@ -6890,7 +6898,7 @@ impl BimApp {
         if let Some(id) = self.showing_panel_schedule() {
             return self.panel_schedule_view(ui, id);
         }
-        let Some((_, sc)) = self.shown_schedule() else { return };
+        let Some((id, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();
         let mut chosen = None;
@@ -6901,7 +6909,7 @@ impl BimApp {
             let name = self.view_name(self.sheet);
             ui.label(RichText::new(&name).heading());
             ui.add_space(8.0);
-            match schedule::table(&self.session.model, &sc) {
+            match schedule::table_kept(&self.session.model, id, &sc) {
                 Err(e) => {
                     ui.label(e);
                 }

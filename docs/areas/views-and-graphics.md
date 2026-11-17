@@ -217,7 +217,9 @@ use the separate font fallback below, so a character outside the drawing letteri
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
 rename): Revit's font, size (its capitals' height on paper, mm), bold, italic, underline, width factor, colour, and a border
-`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts. A project starts
+`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts: straight from
+there, in two segments (a shoulder level with the note, its lettering's height long, then to the point), or as an arc bowing from
+that shoulder's corner (`LeaderKind`, the note's `leader_kind`; straight unless told). A project starts
 with 2.5mm, 3.5mm and 5mm in Arial; `text_type` makes, renames and deletes them (none in use). A type's font is a name:
 any font the system has, or one we carry (IBM Plex Sans, IBM Plex Mono, BIMCraft Lettering: `font.rs`'s single-stroke
 capitals). `text/system.rs` lists the system's fonts once (`system::index`): it looks through the folders Linux, Windows
@@ -300,6 +302,11 @@ a plan clears the voids' slice at its cut plane within the wall's faces (`render
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
 surfaces meet at an angle or end, found once) drawn through the faces; a pixel within two of a line picks its element.
+
+A mesh form's faces are its own, not its planes: `facets` welds the triangles that share an edge, at a micron, and groups those that
+turn less than `SMOOTH` degrees there, so the side of a 24-sided post is one surface while two squares in one plane are two faces.
+`Scene::face_at` returns the triangles of the face clicked — the one a work plane is set on too — where before it took every
+triangle of the element lying in that face's plane.
 
 A view's graphics (`graphics.rs`; `Level`, `Section` and `View3D` each hold `graphics`) hide and override by category, by view
 filter (`Model::view_filters`: categories and a schedule filter's rules, `schedule::picks`) and by element: an element's own beats
