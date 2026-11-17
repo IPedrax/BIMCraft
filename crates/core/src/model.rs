@@ -213,6 +213,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a building code names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`,
 /// `building_demand`), and a project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and
 /// `demand` and `building_demand` would ask for a method again.
+/// And a component may lie tilted on no plane (`tilt`, its family's x and z in the model), as an imported bolt through a brace
+/// does; a build that reads up to 20 would leave it out without a word and stand the component up.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -1911,6 +1913,10 @@ pub struct Component {
     pub offset: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mirrored: bool,
+    /// Where it lies tilted on no plane (a bolt through a brace, as an IFC file places it): the directions in the model of its
+    /// family's x and z, before `angle` turns them about the vertical. None, it stands upright, or as its plane tilts it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tilt: Option<[[f64; 3]; 2]>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
     /// What a work plane-based component stands on, where that isn't its level: its place on a reference plane, which its
@@ -4683,6 +4689,17 @@ impl Model {
         placement.frames.iter().filter_map(|(n, f)| f.from_local(axes, c.mirrored).ok().map(|f| (*n, f))).collect()
     }
 
+    /// What component `c`'s shape in its own axes is built from: its family, type, mirroring, and of its own values those its
+    /// family evaluates, with its adaptive placement. Paint, phase, design-option and project parameters' values live in
+    /// `params` too, but no form reads them ([`crate::family::Family::values`] reads its own parameters by name), so copies
+    /// differing only in them, as an IFC's copies of one shape do, are built once.
+    pub(crate) fn shape_key(&self, c: &Component) -> crate::component_geometry::Key {
+        let params = self.families.get(&c.family).map(|family| {
+            c.params.iter().filter(|(name, _)| family.parameters.iter().any(|p| p.name == **name)).collect::<BTreeMap<_, _>>()
+        });
+        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&params, &c.adaptive)).unwrap_or_default())
+    }
+
     /// Component `c`'s solids in its own axes, mirrored if it is: each visible form's triangles, its
     /// outline seen from above, from its bottom to its top over its base, what it's made of; none
     /// for one that doesn't build.
@@ -5262,6 +5279,7 @@ impl Model {
             crate::curtain::corner_types(self);
         }
         // 20 to 21: classification tables and their bindings. A file of 20 holds none, so nothing to do.
+        // 20 to 21: a component's `tilt`. A file of 20 needs nothing: its components all stand upright or on their plane.
         self.format = FORMAT;
     }
 
@@ -9589,6 +9607,21 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
+                // Its tilt, where it has one: two unit directions square to each other, on no plane and placed by no points,
+                // which tilt a component themselves.
+                if let Some([x, z]) = c.tilt {
+                    let unit = |v: [f64; 3]| {
+                        v.iter().all(|k| k.is_finite()) && ((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt() - 1.0).abs() < 1e-6
+                    };
+                    if !(unit(x) && unit(z) && (x[0] * z[0] + x[1] * z[1] + x[2] * z[2]).abs() < 1e-6) {
+                        return Err(format!("{who}: its tilt's x and z must be unit directions square to each other, not {x:?} and {z:?}"));
+                    }
+                    if c.host.is_some() || self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is tilted, and stands on a work plane or is placed by its points, which tilt it themselves"
+                        ));
+                    }
+                }
                 // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
                 // by its own points.
                 if let Some(h) = &c.host {
@@ -9656,10 +9689,7 @@ impl Model {
                 }
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
-                let built = match serde_json::to_string(&c.params) {
-                    Ok(values) => shapes.entry((c.family.as_str(), c.type_name.as_str(), values)).or_insert_with(build).clone(),
-                    Err(_) => build(),
-                };
+                let built = shapes.entry(self.shape_key(c)).or_insert_with(build).clone();
                 built.map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
@@ -10266,7 +10296,7 @@ struct Tally<'a> {
     /// The members each view's detail groups and repeating details place.
     members_placed: BTreeMap<Guid, usize>,
     /// Whether components' shapes build, by family, type and values (as JSON).
-    shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
+    shapes: HashMap<crate::component_geometry::Key, Result<(), String>>,
     /// The project's information element, once seen.
     project_info: Option<Id>,
     /// Each group member: its group.

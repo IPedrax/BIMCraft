@@ -229,6 +229,7 @@ fn boxes(
                 params.insert(name.to_string(), size(k).into());
             }
             Ok(Component {
+                tilt: None,
                 family: family.to_string(),
                 type_name: "Imported".to_string(),
                 level,

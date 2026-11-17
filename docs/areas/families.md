@@ -111,6 +111,10 @@ command sets it (`ifc`, written in capitals, `null` to forget it) and `Family::c
 isn't `IFC` and capitals, a predefined type of anything but capitals, digits and `_`, an object type of more than a line. A
 family of another category keeps what it remembers but goes out as its category says. An older BIMCraft leaves `ifc` out of
 a project and opens it, its components going out as proxies, so the field took no `FORMAT` step.
+A generic family is full at `family::MAX_FORMS` forms or `MAX_PLANES` less three planes. Then its types go on in a family of
+the same name and class numbered on, `Bolt assembly (2)`, `(3)`, up to `import::MAX_NAMESAKES` (100); past that a product is
+left out, saying so. A fastener whose file gives its size (Tekla's `Bolt Name` property) comes in in a family named with it,
+`Bolt M20`, so a steel model's thousands of bolts fill families by size rather than one family in order.
 A material's `texture` (`texture.rs`) is a pattern drawn in code or a picture of `Model::images` (a PNG or JPEG comes in, is kept
 as a PNG of at most 1024 px, its header checked before the decoder makes room for it), laid on a face at its `size` in mm by the
 face's own axes (`view3d::basis`: across is level, up goes up it, east and north where it lies flat), sampled per pixel from the
@@ -942,6 +946,16 @@ Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC ke
 `IfcAxis2Placement3D` taking the tilt as its Axis and RefDirection; the project's reference planes aren't exported. FORMAT
 18 holds this change: a build that reads up to 17 would stand a tilted component upright and lose its plane; a file of 17
 holds neither.
+
+A component on no plane may lie tilted too (`Component::tilt`, two unit directions square to each other: its family's x and z
+in the model before `angle` turns them about the vertical), as an imported bolt through a brace does. `component_placement`
+reads it first, so the plan, the 3D view, sections and IFC place it as they place one on a plane; none, the component stands
+upright, and an upright one writes nothing. `Model::check` refuses a tilt that isn't two square unit directions and one on a
+component with a `host` or placed by its points, which tilt it themselves. Rotate turns it with `angle`; Mirror reflects it
+(its directions' y the other way, beside `mirrored`). `Model::shape_key` keys a component's shape by the values its family
+reads only, so a plan of thousands of tilted copies of few shapes builds each shape once and places its corners
+(`Components::corners`) for its heights and outline, and the 3D view takes its placed triangles without an outline
+(`Components::solids`). FORMAT 21 holds it: a build that reads up to 20 would leave it out and stand the component up.
 
 The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what

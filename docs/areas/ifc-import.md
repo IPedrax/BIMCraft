@@ -43,6 +43,25 @@ takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item b
 `Reader::give_up`'s, kept by item (`Reader::unread`): a product left out as having no body says it after `it has no body
 BIMCraft can read: `, and one that came in without part of its body has its own note, `part of its body was left out, …`.
 
+## Shared shapes
+
+A body an `IfcMappedItem` maps (as Tekla writes every bolt and Revit a type's geometry) is read once in its
+`IfcRepresentationMap`'s frame (`map_frame`), so copies of one shape, moved, turned or lying down, are one type of one family.
+Copies are told apart to a tenth of a millimetre and a thousandth of a degree (`identity`), as Tekla writes copies a few
+hundredths apart; the type keeps the first copy's values exactly. A copy that doesn't stand upright keeps its 3D orientation as
+the component's `tilt` ([families](families.md)); an upright one gets its turn as `angle`.
+
+Inside a mapped body, a straight extrusion of a circle or a profile of lines and arcs comes in as the form it is
+(`exact_form`): its profile on a plane, from and to, meshed only where it is drawn, as a family drawn by hand is. An arc
+(`IfcTrimmedCurve`) stays an arc, a line with a turn; an arc too small for the family's chords comes in as chords of its own,
+and a side under a millimetre joins its neighbours. Forms square to one direction share one reference plane through the
+family's origin, how far along it each stands kept in its from and to, so a family doesn't gather a plane for each copy. Any
+other item (a B-rep, a face set) stays a mesh. A family that is full goes on in `Name (2)` ([families](families.md)).
+
+On a steel model of 39,739 bolts (#264) this brings every bolt in, against 1,366 before. The 3D view has about 28 times
+the triangles to draw (45 M), building its scene in about 25 s and rotating at about 12 frames a second, as #423 measured
+it; holding each copy as a placement in the scene is left for later. Export still writes each component as a mesh of its own, no `IfcMappedItem`.
+
 ## Colours
 
 A material takes the colour a file shades it in: a surface style of its name, else its `IfcMaterialDefinitionRepresentation`'s

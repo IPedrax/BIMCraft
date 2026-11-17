@@ -1442,7 +1442,7 @@ fn solids_in_with(
             Element::Component(c) => {
                 let cut = m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views);
                 let x = m.component_placement(c).axes[0];
-                for piece in components.pieces(c) {
+                for piece in components.solids(c) {
                     let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     out.push(Solid::Mesh {
                         owner: id,
