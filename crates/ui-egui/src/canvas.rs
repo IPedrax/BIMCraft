@@ -6169,7 +6169,7 @@ pub(crate) fn snap_name(m: &Model, f: &Found) -> String {
 
 /// A snap's marker at `at` on screen, by what it snapped to (`kind`), its guide dashed from `from` (the point it runs from,
 /// on screen) on past it, and `name` beside it: the plan's and a family's sketch's alike. `lock` says what holds a free
-/// point, which changes its marker; `refined` draws the thin ink of Manage > Snaps instead of the classic one.
+/// point, which changes its marker; `look` is the frame's ink, refined or classic as Manage > Snaps chose.
 pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, lock: Lock, look: GuideLook, name: String) {
     let (ink, hair) = (look.ink, look.hair);
     let stroke = Stroke::new(if look.refined { 1.5 } else { 2.0 }, canvas_pal().accent);
