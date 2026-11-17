@@ -18108,6 +18108,14 @@ msgctxt "side"
 msgid "Top"
 msgstr "Boven"
 
+#: crates/ui-egui/src/context.rs:27 crates/ui-egui/src/context.rs:98
+msgid "In Entire Project"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:27 crates/ui-egui/src/context.rs:97
+msgid "Visible in View"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Een lege waarde is die van de familie zelf, zoals het tabblad Parameters ze toont."

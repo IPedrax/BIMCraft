@@ -18145,6 +18145,90 @@ msgstr ""
 msgid "select the detail lines, filled regions and text to group first"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:5425
+msgid "Click the start of the angle, or type an angle in the Options Bar."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4837
+msgid "Detach Top/Base: the walls' tops and bases their own again"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:807
+msgid "Edit Boundary: sketch its outline and holes again"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3924
+msgid "IFC…"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:27 crates/ui-egui/src/context.rs:98
+msgid "In Entire Project"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4600
+msgid "Links"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4250
+msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1276
+msgid "No fill"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:3267
+msgid "No project parameters yet: New makes one."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3928
+msgid "PNG image"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5409
+msgid "Pick a roof or a floor: the selected walls' bases stand on it."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5410
+msgid "Pick a roof or a floor: the selected walls' tops follow its underside."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3930
+msgid "Plan as SVG…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4502
+msgid "Project Parameters: values of your own each element of their categories holds, for schedules and IFC"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3931
+msgid "SVG drawing"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3933
+msgid "Sheets as PDF…"
+msgstr ""
+
+#: crates/ui-egui/src/settings.rs:629
+msgid "Show the origin marker in plans"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3927
+msgid "View as PNG…"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:27 crates/ui-egui/src/context.rs:97
+msgid "Visible in View"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3937
+msgid "glTF binary"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:2702
+msgid "select the walls to attach first"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Pusta wartość oznacza wartość rodziny, tak jak jest w zakładce Parametry."

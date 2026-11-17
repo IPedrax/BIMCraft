@@ -18109,6 +18109,22 @@ msgctxt "side"
 msgid "Top"
 msgstr ""
 
+#: crates/ui-egui/src/settings.rs:630
+msgid "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: never in a printed drawing, a sheet or an export"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:27 crates/ui-egui/src/context.rs:98
+msgid "In Entire Project"
+msgstr ""
+
+#: crates/ui-egui/src/settings.rs:629
+msgid "Show the origin marker in plans"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:27 crates/ui-egui/src/context.rs:97
+msgid "Visible in View"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Để trống là giá trị riêng của họ, như trong thẻ Tham số."

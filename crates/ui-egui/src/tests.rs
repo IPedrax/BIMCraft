@@ -8472,4 +8472,5 @@ mod highlight3d;
 mod industrial_doors;
 mod nested_families;
 mod preview_visibility;
+mod select_instances;
 mod sheet_fit;
