@@ -69,6 +69,7 @@ pub(crate) fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         }
         Element::Shaft(s) => path(&s.boundary, true),
         Element::Mass(ms) => path(&ms.boundary, true),
+        Element::Toposolid(t) => path(&t.boundary, true),
         Element::DetailLine(l) => curve_lines(&l.curve),
         Element::FilledRegion(r) => r.sketch.iter().filter(|l| !l.invisible).flat_map(|l| curve_lines(&l.curve)).collect(),
         // A group's members are elements of their own, with their own lines.
