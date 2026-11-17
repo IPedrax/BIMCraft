@@ -717,3 +717,13 @@ fn elevations_dont_change_how_a_drawing_draws() {
     };
     assert!(draw(true) == draw(false), "a drawing's elevations changed its plan");
 }
+
+#[test]
+fn a_sheet_drawn_in_paper_space_comes_in_and_the_reply_says_so() {
+    let mut s = Session::new();
+    let sheet = pairs(&[(0, "LINE"), (8, "BORDER"), (67, "1"), (10, "0"), (20, "0"), (11, "420"), (21, "297")]);
+    let r = s.execute("import_cad", &json!({"path": file("paper", "sheet.dxf", &dxf("4", &[("BORDER", "7", false)], &sheet))})).unwrap();
+    assert_eq!(r["entities"], 1, "{r}");
+    let notes = r["notes"].as_array().map(|n| n.iter().filter_map(Value::as_str).collect::<Vec<_>>()).unwrap_or_default();
+    assert!(notes.iter().any(|n| n.contains("paper space")), "{r}");
+}

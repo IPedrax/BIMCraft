@@ -91,7 +91,7 @@ impl Cad {
     pub fn new(source: &str, path: Option<String>, bytes: Vec<u8>) -> Result<Cad, String> {
         let dxf = dxf::read(&bytes)?;
         if dxf.entities.is_empty() {
-            return Err("it draws nothing in model space".into());
+            return Err("it draws nothing, in model space or in paper space".into());
         }
         let (bulk, far) = bulk(&dxf);
         Ok(Cad {

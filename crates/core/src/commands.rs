@@ -9079,6 +9079,9 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
         None if dxf.scale.is_some() => dxf.unit.clone(),
         None => format!("{} (read as mm unless `units` says)", dxf.unit),
     };
+    if dxf.paper {
+        notes.push("its model space draws nothing, so its paper space (the sheet laid out there) came in, in paper units".to_string());
+    }
     let (entities, layers, far, left_out) = (dxf.entities.len(), dxf.layers.len(), cad.far(), dxf.left_out.clone());
     let elevations = crate::cad::elevations(&cad, scale);
     let source = cad.source().to_string();
