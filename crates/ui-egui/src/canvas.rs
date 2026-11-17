@@ -5110,10 +5110,16 @@ impl BimApp {
         }
         let Some(&last) = chain.last() else { return Vec::new() };
         if names.is_empty() {
+            // The angle it turns from the line before, else from east: the reading every line, wall and polyline tool has.
+            let turning = match chain {
+                [.., prev, l] => snap::corner(*prev, *l, next),
+                _ => None,
+            };
+            let live = degrees(turning.unwrap_or_else(|| snap::ruler(last, next).angle));
             // The length and, once Tab has been pressed, the angle: the one being typed in brackets.
             let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
             let text = match (self.typed_length.is_empty(), angled) {
-                (true, false) => m.units.with_unit(last.dist(next)),
+                (true, false) => format!("{}  {live}", m.units.with_unit(last.dist(next))),
                 (false, false) => format!("{} (Enter)", self.typed_length.trim()),
                 _ => {
                     let (len, ang) = if self.drawing.field == 1 {
@@ -5121,13 +5127,8 @@ impl BimApp {
                     } else {
                         (&self.typed_length, &self.drawing.other)
                     };
-                    let d = next - last;
                     let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.trim().to_string() };
-                    let ang = if ang.is_empty() {
-                        format!("{:.0}°", d.1.atan2(d.0).to_degrees().rem_euclid(360.0))
-                    } else {
-                        format!("{}°", ang.trim())
-                    };
+                    let ang = if ang.is_empty() { live } else { format!("{}°", ang.trim()) };
                     match self.drawing.field {
                         1 => format!("{len}  [{ang}] (Enter)"),
                         _ => format!("[{len}]  {ang} (Enter)"),
@@ -5897,30 +5898,20 @@ impl BimApp {
                 p.extend(corner_arc(sc, *prev, *l, next, refined));
             }
         }
-        // The listening dimension: the length so far and the angle (at the corner it turns, else from
-        // east), or the length being typed. (An arc's radius is its shape's: `shape_texts`.)
-        let reading = |last: P2| {
-            let angle = match chain {
-                [.., prev, l] => snap::corner(*prev, *l, next),
-                _ => None,
-            };
-            format!("{}  {}", m.units.with_unit(last.dist(next)), degrees(angle.unwrap_or_else(|| snap::ruler(last, next).angle)))
-        };
-        if let Some(last) = chain.last() {
-            if !self.typed_length.is_empty() {
-                label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim()));
-            } else if refined {
-                // Beside the segment's middle, on the outside of the corner it turns at, and clear of the line by the pill's
-                // own width so a wide pill never crosses back over a steep segment; the badge it must keep off is known.
-                let (pl, pn) = (sc.screen(*last), sc.screen(next));
+        // The listening dimension: its length and the angle Tab is on, said as every other tool's numbers are. The refined
+        // look sets the plain reading (nothing typed, Tab not pressed) in a pill beside the segment's middle, on the outside of
+        // the corner it turns at and clear of the badge; anything typed or bracketed is said by the cursor.
+        let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
+        match chain {
+            [.., last] if refined && self.typed_length.is_empty() && !angled => {
                 let prev = match chain {
                     [.., prev, _] => Some(sc.screen(*prev)),
                     _ => None,
                 };
-                reading_pill(sc.p, pl, pn, prev, reading(*last), guide_ink(), self.canvas.badge.get());
-            } else {
-                label(sc.screen(next), reading(*last));
+                let reading = self.shape_texts(m, chain, next).into_iter().next().map(|(_, t)| t).unwrap_or_default();
+                reading_pill(sc.p, sc.screen(*last), sc.screen(next), prev, reading, guide_ink(), self.canvas.badge.get());
             }
+            _ => self.shape_dimensions(sc, chain, next),
         }
     }
 }
