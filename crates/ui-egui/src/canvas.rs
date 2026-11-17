@@ -338,6 +338,11 @@ pub struct Canvas {
     level: Option<Id>,
     /// The model point under the cursor.
     pub cursor: Option<P2>,
+    /// The pointer this frame, in points on the screen, and the typed angle last seen with the base it was typed from
+    /// and the pointer it was typed at: a typed angle is the direction until the pointer moves off that spot, and mirrors
+    /// into its other quadrants after.
+    pointer: Cell<Option<Pos2>>,
+    typed_angle: RefCell<Option<(String, P2, Pos2)>>,
     /// The model point a middle-button drag holds under the cursor.
     grab: Option<P2>,
     drag: Option<Drag>,
@@ -411,6 +416,8 @@ impl Default for Canvas {
             room: 0.0,
             level: None,
             cursor: None,
+            pointer: Cell::new(None),
+            typed_angle: RefCell::new(None),
             grab: None,
             drag: None,
             under: Vec::new(),
@@ -443,6 +450,12 @@ impl Default for Canvas {
 }
 
 impl Canvas {
+    /// The typed angle's place is forgotten: the same number typed again later is the direction until its own pointer is
+    /// swept, not one from the last session's.
+    pub(crate) fn forget_typed_angle(&self) {
+        self.typed_angle.borrow_mut().take();
+    }
+
     /// View `level` (a plan's key, a section or an elevation) as it was last shown: its zoom, its middle and its size.
     pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
@@ -1504,6 +1517,29 @@ pub(crate) fn parse_angle(text: &str) -> Option<f64> {
     text.parse::<f64>().ok().filter(|a| a.is_finite())
 }
 
+/// A direction in degrees from east, the reference the reading's numbers and its arc use.
+fn bearing(deg: f64) -> P2 {
+    let r = deg.rem_euclid(360.0).to_radians();
+    P2(r.cos(), r.sin())
+}
+
+/// A typed angle's four symmetric directions — 60 is also -60, 120 and -120 — and the one nearest the pointer: the
+/// angle mirrors across the reference axis (east) and its perpendicular. A tie keeps the typed one, offered first, so a
+/// pointer with no clear quadrant never turns the line; an explicit minus is the typed direction until it is swept.
+fn mirrored_angle(angle: f64, toward: P2) -> P2 {
+    let mut best = bearing(angle);
+    let mut best_dot = best.dot(toward);
+    for a in [-angle, 180.0 - angle, angle - 180.0] {
+        let u = bearing(a);
+        let dot = u.dot(toward);
+        // A near tie is a tie: the number stays the direction until the pointer is clearly in another quadrant.
+        if dot > best_dot + 1e-6 {
+            (best, best_dot) = (u, dot);
+        }
+    }
+    best
+}
+
 /// The point a tool picked first, while it has one.
 fn start_of(tool: &Tool) -> &[P2] {
     match tool {
@@ -2037,6 +2073,9 @@ impl BimApp {
         let look = crate::retained::Look::now(ui.ctx(), &ui.painter_at(rect), rect.min, self.writing(), self.thin);
         let c = &mut self.canvas;
         c.cursor = local.map(|q| view.mm(q));
+        // Screen points, not the view's own: a panel opening moves the view, and a pointer that has not moved with it
+        // must not read as swept.
+        c.pointer.set(local.map(|q| rect.min + vec2(q.0, q.1)));
         let d = match &pipeline {
             Some(pipeline) => c.drawing.moving(ui.ctx(), &model, key, view, up, pipeline, look),
             None => c.drawing.drawing(&model, key, view, up),
@@ -3419,7 +3458,15 @@ impl BimApp {
                             self.make_detail_lines(level, &[c]);
                         }
                     }
-                    _ => self.place_detail_line(level, p),
+                    _ => {
+                        // A click places what the preview shows: the reading's numbers lock the point as `Enter` does.
+                        let points = self.points().cloned().unwrap_or_default();
+                        let p = self.typed_end(&points, p);
+                        self.place_detail_line(level, p);
+                        if self.drawing.armed {
+                            self.clear_typed();
+                        }
+                    }
                 }
             }
             // On the level above, over this plan's walls; once made, selected, as a finished sketch is.
@@ -4224,7 +4271,8 @@ impl BimApp {
     /// The next point the reading's numbers put it at: a shape's own numbers through `draw::typed`, a line's or a wall's
     /// through the typed length along the typed angle (else the pointer's). `cursor` is the pointer's snapped point, so
     /// the direction is the snap's and the numbers only ever narrow it. What the preview draws, what `Enter` places and
-    /// what a click places is this one answer.
+    /// what a click places is this one answer. A typed angle not seen before is recorded here with the pointer it was typed
+    /// at, for [`BimApp::angle_swept`].
     pub(crate) fn typed_end(&self, points: &[P2], cursor: P2) -> P2 {
         let (len, ang) = self.typed_texts();
         // Nothing typed is the pointer's own point, exactly: the lock changes nothing until a number is in hand.
@@ -4246,7 +4294,11 @@ impl BimApp {
         }
         let Some(base) = self.base() else { return cursor };
         let toward = match parse_angle(ang) {
-            Some(a) => P2(a.to_radians().cos(), a.to_radians().sin()),
+            // The four directions the number names are offered, mirrored across the axes (60 is also -60, 120 and -120),
+            // and the pointer's nearest wins — but only once the pointer has left the spot the number was typed at, so
+            // `120` Enter is 120 and not the mirror nearest where the mouse happened to stop.
+            Some(a) if self.angle_swept(ang, base) => mirrored_angle(a, cursor - base),
+            Some(a) => bearing(a),
             None if ang.is_empty() => {
                 let d = cursor - base;
                 if d.length() <= TOL {
@@ -4257,13 +4309,30 @@ impl BimApp {
             None => return cursor,
         };
         let len = match (len.is_empty(), self.session.model.units.parse(len)) {
-            // The pointer's reach along the ray, either way: behind the locked direction it still slides the length, where a
-            // signed projection would jump the point off the ray and onto the pointer.
+            // The pointer's reach along the ray. Before it is swept the pointer may be behind the typed ray, and the reach
+            // is still a length along it; after, the mirror is the ray nearest the pointer, so the reach is positive.
             (true, _) => (cursor - base).dot(toward).abs(),
             (false, Some(l)) => l,
             (false, None) => return cursor,
         };
         if len.is_finite() && (0.0..=MAX_COORD).contains(&len) { base + toward * len } else { cursor }
+    }
+
+    /// Whether the pointer has moved off the spot a typed angle was typed at: until it has, the number is the direction;
+    /// after, the angle mirrors into the quadrant the pointer is in. A number, or a chain, seen for the first time is
+    /// recorded here, so the same angle typed again later starts as typed too.
+    fn angle_swept(&self, ang: &str, base: P2) -> bool {
+        let now = self.canvas.pointer.get();
+        let mut seen = self.canvas.typed_angle.borrow_mut();
+        match seen.as_ref() {
+            Some((text, at, pointer)) if text == ang && *at == base => now.is_some_and(|p| p.distance(*pointer) > 4.0),
+            _ => {
+                if let Some(p) = now {
+                    *seen = Some((ang.to_string(), base, p));
+                }
+                false
+            }
+        }
     }
 
     /// A shape's number as typed: an angle in degrees, else a length in the project's units.
@@ -5264,7 +5333,9 @@ impl BimApp {
             len,
             ang,
             focus,
-            caret: self.drawing.armed && (!self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty()),
+            caret: self.drawing.armed
+                && !self.drawing.selected
+                && (!self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty()),
             len_locked: !self.typed_texts().0.is_empty(),
             ang_locked: !self.typed_texts().1.is_empty(),
         })

@@ -510,6 +510,7 @@ impl BimApp {
         self.drawing.field = 0;
         self.drawing.armed = false;
         self.drawing.selected = false;
+        self.canvas.forget_typed_angle();
     }
 
     /// Enter with a shape's numbers typed: its next point where they say, toward the cursor at `cursor`. False when

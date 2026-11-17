@@ -194,8 +194,12 @@ Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Sna
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
 `show_snap` draw what a pick would land on (a line's or a wall's length is typed at the cursor; `Tab` arms the length and
-then its angle, both degrees counter-clockwise from east (`line_angle_field`), and the typed numbers draw the preview;
-Enter or a click places the point they show; an alignment guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
+then its angle, both degrees counter-clockwise from east (`line_angle_field`), and the typed numbers draw the preview; a
+typed angle stands as typed until the pointer is swept, then mirrors into the quadrant the pointer is in (60, -60, 120
+and -120 for 60), so a line is flipped without retyping it; while a length or angle is in hand, `Ctrl+A` selects that
+field for overwrite, its whole number replaced by the next digit or emptied by Backspace or Delete; Enter or a click places
+the point they show; an alignment
+guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
 borrowed one is anchored at the point being drawn from and runs parallel or square to a straight run near it
 (`AlignmentAxis::Inferred`, `AlignmentGuideService::inferred`), so a line drawn beside a slanted wall comes out
 parallel to it. Where a guide comes from is the drawing's own context, not the whole model: the points of the chain

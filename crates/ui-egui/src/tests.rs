@@ -1385,6 +1385,33 @@ fn dragging_a_wall_moves_it_and_the_walls_and_room_around_follow() {
     assert_eq!(h.state().session.history().last(), Some(&"Move"));
 }
 
+/// A typed distance is where the click commits, for Move and Copy too: the pointer 6000 away moves the door 1000, and the
+/// number is spent for the next gesture.
+#[test]
+fn a_typed_distance_moves_and_copies_by_it_when_clicked() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"));
+    let door = ids(&h, "door")[0];
+    click(&mut h, P2(2000.0, 0.0));
+    press(&mut h, "Move");
+    click(&mut h, P2(2000.0, 0.0));
+    hover(&mut h, P2(8000.0, 0.0));
+    h.event(Event::Text("1000".into()));
+    h.run();
+    click(&mut h, P2(8000.0, 0.0));
+    assert_eq!(field(&h, door, "at"), json!([3000.0, 0.0]), "moved by the typed 1000, not the 6000 under the pointer");
+    assert!(h.state().typed_length.is_empty(), "the number is spent");
+    press(&mut h, "Copy");
+    click(&mut h, P2(3000.0, 0.0));
+    hover(&mut h, P2(9000.0, 0.0));
+    h.event(Event::Text("1000".into()));
+    h.run();
+    click(&mut h, P2(9000.0, 0.0));
+    let doors = ids(&h, "door");
+    assert_eq!(doors.len(), 2);
+    assert_eq!(field(&h, doors[1], "at"), json!([4000.0, 0.0]), "copied by the typed 1000");
+    assert!(h.state().typed_length.is_empty());
+}
+
 #[test]
 fn move_and_copy_take_a_base_point_and_a_destination() {
     let mut h = app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"));
@@ -5111,6 +5138,7 @@ fn a_typed_length_draws_the_line_at_it_and_a_click_places_it() {
     assert!(end.dist(P2(0.0, 1500.0)) < 0.01, "still 500, turned north: {end:?}");
     // A click places what the preview shows.
     click(&mut h, P2(0.0, 4000.0));
+    assert!(h.state().typed_length.is_empty() && h.state().drawing.other.is_empty(), "the number is spent");
     let wall = ids(&h, "wall")[0];
     let m = &h.state().session.model;
     let length = bimcraft_core::walls::Axis::of(m.wall(wall).expect("the wall")).length();
@@ -5135,6 +5163,50 @@ fn tab_back_to_a_locked_length_replaces_it_on_the_first_digit() {
     assert_eq!(h.state().typed_length, "8", "the first digit replaced the 500");
 }
 
+/// `Ctrl+A` with a field in hand selects that field for overwrite, as a text field does: no shortcut starts, the other
+/// locked field is untouched, the selection carries no caret, and Backspace or Delete empties the field alone.
+#[test]
+fn ctrl_a_selects_the_field_in_hand_for_overwrite() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    hover(&mut h, P2(3000.0, 1000.0));
+    h.event(Event::Text("500".into()));
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(
+        (h.state().drawing.field, h.state().typed_length.as_str(), h.state().drawing.other.as_str()),
+        (1, "", "500"),
+        "the angle is in hand, the length locked"
+    );
+    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::A]);
+    h.run();
+    assert!(h.state().drawing.selected, "the field in hand is selected");
+    assert!(h.state().typed.is_empty(), "Ctrl+A neither starts nor joins a two-letter shortcut");
+    let chain = h.state().points().cloned().unwrap_or_default();
+    let reading = h.state().line_reading(&h.state().session.model, &chain, P2(3000.0, 1000.0)).expect("a reading");
+    assert!(!reading.caret, "the whole field is selected, so no caret");
+    // A digit replaces the field and leaves the locked length alone.
+    h.event(Event::Text("30".into()));
+    h.run();
+    assert_eq!((h.state().typed_length.as_str(), h.state().drawing.other.as_str(), h.state().drawing.selected), ("30", "500", false));
+    // Selected again, Backspace empties the angle only; Delete does the same.
+    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::A]);
+    h.run();
+    key(&mut h, Key::Backspace);
+    assert_eq!(
+        (h.state().typed_length.as_str(), h.state().drawing.other.as_str(), h.state().drawing.selected),
+        ("", "500", false),
+        "the angle went, the length is still locked"
+    );
+    h.event(Event::Text("45".into()));
+    h.run();
+    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::A]);
+    h.run();
+    key(&mut h, Key::Delete);
+    assert_eq!((h.state().typed_length.as_str(), h.state().drawing.selected), ("", false));
+}
+
 /// A typed angle locks the ray and the pointer slides the length along it, so the line is drawn at both before Enter.
 #[test]
 fn a_typed_angle_locks_the_direction_and_the_pointer_slides_the_length() {
@@ -5149,9 +5221,13 @@ fn a_typed_angle_locks_the_direction_and_the_pointer_slides_the_length() {
     let chain = h.state().points().cloned().unwrap_or_default();
     let end = h.state().typed_end(&chain, P2(2000.0, 2000.0));
     assert!(end.dist(P2(0.0, 2000.0)) < 0.01, "north, as far as the pointer reaches along the ray: {end:?}");
-    // A pointer behind the locked ray gives the length along it, not a jump off it.
+    // The pointer has not moved since the number was typed, so the typed ray stands, a pointer behind included.
     let end = h.state().typed_end(&chain, P2(0.0, -2000.0));
-    assert!(end.dist(P2(0.0, 2000.0)) < 0.01, "north 2000, as far as the pointer reaches behind: {end:?}");
+    assert!(end.dist(P2(0.0, 2000.0)) < 0.01, "north 2000 while the pointer has not been swept: {end:?}");
+    // Swept behind the base, the angle mirrors: 90 up is 90 down, and the length still slides along the ray.
+    hover(&mut h, P2(0.0, -2000.0));
+    let end = h.state().typed_end(&chain, P2(0.0, -2000.0));
+    assert!(end.dist(P2(0.0, -2000.0)) < 0.01, "the mirror: south, as far as the pointer reaches: {end:?}");
     // With nothing typed the pointer is the point, exactly: the lock never feeds back into the snap.
     h.state_mut().clear_typed();
     let p = P2(1234.0, 567.0);
@@ -5162,6 +5238,66 @@ fn a_typed_angle_locks_the_direction_and_the_pointer_slides_the_length() {
     h.event(Event::Text("-45".into()));
     h.run();
     assert_eq!(h.state().typed_length, "-45", "the angle takes its sign");
+}
+
+/// A typed angle offers its four symmetric directions — 60 is also -60, 120 and -120 — and the pointer chooses by
+/// sweeping: the number itself is the direction until the pointer moves off the spot it was typed at, so `120` Enter is
+/// 120, and an explicit minus is the bearing (-30, not 30).
+#[test]
+fn a_locked_angle_mirrors_to_the_quadrant_the_pointer_is_swept_into() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    hover(&mut h, P2(2000.0, 1000.0));
+    key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("60".into()));
+    h.run();
+    let chain = h.state().points().cloned().unwrap_or_default();
+    let bearing = |end: P2| end.1.atan2(end.0).to_degrees();
+    // The mouse stopped at 26.6 degrees: the typed 60 stands, unmirrored, until it is swept.
+    let end = h.state().typed_end(&chain, P2(2000.0, 1000.0));
+    assert!((bearing(end) - 60.0).abs() < 0.01, "typed 60, not the mirror nearest where the mouse stopped: {end:?}");
+    // Swept into each quadrant, the ray is the symmetric one nearest the pointer, and the length slides along it.
+    for (at, want) in
+        [(P2(1000.0, 2000.0), 60.0), (P2(1000.0, -2000.0), -60.0), (P2(-1000.0, 2000.0), 120.0), (P2(-1000.0, -2000.0), -120.0)]
+    {
+        hover(&mut h, at);
+        let end = h.state().typed_end(&chain, at);
+        assert!((bearing(end) - want).abs() < 0.01, "swept to {at:?}: {end:?} points {} not {want}", bearing(end));
+    }
+    // A pointer at a tie keeps the typed angle: 0 swept north has 0 and 180 equally near, so 500 and 0 make 500 east.
+    h.state_mut().clear_typed();
+    h.event(Event::Text("500".into()));
+    h.run();
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("0".into()));
+    h.run();
+    hover(&mut h, P2(0.0, 2000.0));
+    let end = h.state().typed_end(&chain, P2(0.0, 2000.0));
+    assert!(end.dist(P2(500.0, 0.0)) < 0.01, "a tie keeps the typed 0: {end:?}");
+    // An explicit minus is the direction while it is unswept, though the mouse is north of the base.
+    h.state_mut().clear_typed();
+    key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("-30".into()));
+    h.run();
+    let end = h.state().typed_end(&chain, P2(0.0, 2000.0));
+    assert!((bearing(end) + 30.0).abs() < 0.01, "-30 is south of east: {end:?} points {}", bearing(end));
+    // Typing the same angle again starts as typed: a sweep from before the field was cleared does not carry over.
+    h.state_mut().clear_typed();
+    key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("60".into()));
+    h.run();
+    hover(&mut h, P2(0.0, -2000.0));
+    h.state_mut().clear_typed();
+    key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("60".into()));
+    h.run();
+    let end = h.state().typed_end(&chain, P2(1000.0, -2000.0));
+    assert!((bearing(end) - 60.0).abs() < 0.01, "a fresh 60 is 60, not the mirror from the sweep before: {end:?}");
 }
 
 /// Move and Copy share the reading pill: the base point is the chain, so their distance and angle are read and typed as a
