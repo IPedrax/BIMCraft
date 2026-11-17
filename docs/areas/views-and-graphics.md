@@ -300,6 +300,11 @@ symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as b
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
 surfaces meet at an angle or end, found once) drawn through the faces; a pixel within two of a line picks its element.
 
+A mesh form's faces are its own, not its planes: `facets` welds the triangles that share an edge, at a micron, and groups those that
+turn less than `SMOOTH` degrees there, so the side of a 24-sided post is one surface while two squares in one plane are two faces.
+`Scene::face_at` returns the triangles of the face clicked — the one a work plane is set on too — where before it took every
+triangle of the element lying in that face's plane.
+
 A view's graphics (`graphics.rs`; `Level`, `Section` and `View3D` each hold `graphics`) hide and override by category, by view
 filter (`Model::view_filters`: categories and a schedule filter's rules, `schedule::picks`) and by element: an element's own beats
 the filters' (the first applied prevailing), which beat the category's, and hiding by any of them hides. `Look::of` resolves a
