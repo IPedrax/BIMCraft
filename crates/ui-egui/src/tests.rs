@@ -4553,8 +4553,8 @@ fn manage_snaps_toggles_alignment_guides() {
     assert!(!h.state().snaps.alignment_guides);
 }
 
-/// The refined guide is a hairline: a quiet ray, the stronger relation from its source to the point it locks, and a dot
-/// and ring on the source. The classic one keeps the dashed magenta and its blue square.
+/// The refined guide is a hairline: a quiet ray, the stronger relation fading in from its source over the last screen of
+/// it, and a dot and ring on the source. The classic one keeps the dashed magenta and its blue square.
 #[test]
 fn a_guide_draws_a_ray_a_relation_and_its_source() {
     use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult, GuideLine, ReferenceType};
@@ -4579,9 +4579,12 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
         .collect();
     // The horizontal guide is put on the physical pixel grid: y = 1000.5, a pixel's centre, so it is one crisp pixel.
     let (snapped, source) = (pos2(1000.0, 1000.5), pos2(0.0, 1000.5));
-    assert_eq!(segments.len(), 4, "the relation and its three fading tail pieces: {shapes:?}");
-    // The relation runs from its source to the point it locks.
-    assert!(segments.iter().any(|[a, b]| a.distance(source) < 0.01 && b.distance(snapped) < 0.01), "{segments:?}");
+    assert_eq!(segments.len(), 7, "three fade pieces, the strong stretch and its three fading tail pieces: {shapes:?}");
+    // The strong ink is the last 100 px of the relation, and the rest fades in to the source, so a long guide has no hard
+    // cut where the strong end begins.
+    let near = pos2(900.0, 1000.5);
+    assert!(segments.iter().any(|[a, b]| a.distance(near) < 0.01 && b.distance(snapped) < 0.01), "{segments:?}");
+    assert!(segments.iter().any(|[a, _]| a.distance(source) < 0.01), "the fade starts at the source: {segments:?}");
     // The tail runs on past the point, 100 px in all, and no ray crosses the view.
     let tail: f32 = segments.iter().map(|[a, b]| a.distance(*b)).filter(|len| *len != 0.0).sum();
     assert!((tail - (1000.0 + 100.0)).abs() < 0.1, "the relation and a 100 px tail: {segments:?}");
@@ -5146,6 +5149,9 @@ fn a_typed_angle_locks_the_direction_and_the_pointer_slides_the_length() {
     let chain = h.state().points().cloned().unwrap_or_default();
     let end = h.state().typed_end(&chain, P2(2000.0, 2000.0));
     assert!(end.dist(P2(0.0, 2000.0)) < 0.01, "north, as far as the pointer reaches along the ray: {end:?}");
+    // A pointer behind the locked ray gives the length along it, not a jump off it.
+    let end = h.state().typed_end(&chain, P2(0.0, -2000.0));
+    assert!(end.dist(P2(0.0, 2000.0)) < 0.01, "north 2000, as far as the pointer reaches behind: {end:?}");
     // With nothing typed the pointer is the point, exactly: the lock never feeds back into the snap.
     h.state_mut().clear_typed();
     let p = P2(1234.0, 567.0);
@@ -5156,6 +5162,24 @@ fn a_typed_angle_locks_the_direction_and_the_pointer_slides_the_length() {
     h.event(Event::Text("-45".into()));
     h.run();
     assert_eq!(h.state().typed_length, "-45", "the angle takes its sign");
+}
+
+/// Move and Copy share the reading pill: the base point is the chain, so their distance and angle are read and typed as a
+/// line's, and the ruler runs from the base to where the copy goes.
+#[test]
+fn a_move_reads_and_types_its_distance_in_the_same_pill() {
+    let mut h = app(BOX);
+    h.state_mut().tool = Tool::Move(Some(P2(0.0, 0.0)));
+    hover(&mut h, P2(3000.0, 4000.0));
+    let texts = painted_text(&h);
+    assert!(texts.iter().any(|t| t.contains("mm")), "the length: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains('°')), "the angle: {texts:?}");
+    key(&mut h, Key::Tab);
+    assert_eq!(painted_boxes(&h, crate::style::canvas_pal().accent), 1, "the field in hand");
+    h.event(Event::Text("1000".into()));
+    h.run();
+    let texts = painted_text(&h);
+    assert!(texts.iter().any(|t| t.trim() == "1000"), "the typed distance: {texts:?}");
 }
 
 /// A shape's own numbers lock its geometry too: a rectangle is previewed at its typed width, not the pointer's.

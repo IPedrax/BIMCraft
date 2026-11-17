@@ -193,8 +193,9 @@ on the ghost as "45° (Enter)", and Enter turns by it.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
-`show_snap` draw what a pick would land on (a line's or a wall's length is typed at the cursor, and after Tab its angle, degrees counter-clockwise from east, `line_angle_field`;
-Enter places the point along it; an alignment guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
+`show_snap` draw what a pick would land on (a line's or a wall's length is typed at the cursor; `Tab` arms the length and
+then its angle, both degrees counter-clockwise from east (`line_angle_field`), and the typed numbers draw the preview;
+Enter or a click places the point they show; an alignment guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
 borrowed one is anchored at the point being drawn from and runs parallel or square to a straight run near it
 (`AlignmentAxis::Inferred`, `AlignmentGuideService::inferred`), so a line drawn beside a slanted wall comes out
 parallel to it. Where a guide comes from is the drawing's own context, not the whole model: the points of the chain
@@ -204,10 +205,10 @@ point or an edge until the ring closes — 150 ms of dead zone, then 300 ms of f
 `Q` at once, before the first point as much as after it; `Q` again, `Esc`, finishing the command or changing tool or
 view clears them, and a view keeps three (`CAP`). A wall is three references — its exterior face, its centre line and
 its interior face, as `Model::reference_lines` gives them to dimensions — and a pick takes the one nearest the pointer,
-which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. `Tab`, while a line or a wall is being drawn,
-steps the pick through the three from the line it has now (`Canvas::wall_face`), and that line is drawn in the canvas's
-hover ink before a click, so a face and a centre line are told apart before they are taken; a number already typed keeps
-Tab for the field it belongs to. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
+which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. `Shift+Tab`, before the first point and mid-chain
+alike, steps the pick through the three from the line it has now (`Canvas::wall_face`), and that line is drawn in the canvas's
+hover ink before a click, so a face and a centre line are told apart before they are taken; plain `Tab` is the reading's
+fields once a chain has a base, and before it — where there are no fields — steps the lines too. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
 wall lends one edge pin — marking another of its faces moves the pin (`Marked::Moved`) rather than spending a second of
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
 guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
@@ -219,10 +220,11 @@ two run at once (`find_alignments`), and each fades out 100 px past the point it
 ray from an edge the hand has long left. Shift still squares the point against a collinear or grid ray, and the crossing
 says `Angle` and `On Line`. Guides from the whole model — every wall in it, as Revit does — is
 `Snaps::guides_from_whole_model`, off by default. Manage > Snaps picks how they are drawn (`GuideStyle`): Refined, the default, draws one-physical-pixel
-solid plum hairlines in the canvas's own ink (`style::guide_ink`) — a quiet ray edge to edge, the stronger segment from
-the source to the point it locks, a dot and ring on the source, a crosshair on a free cursor, a dot and a perpendicular
+solid plum hairlines in the canvas's own ink (`style::guide_ink`) — a quiet ray edge to edge, the stronger segment's last
+100 px with the relation fading in from its source, a dot and ring on the source, a crosshair on a free cursor, a dot and a perpendicular
 tick on one guide, a bullseye where two cross (even on a point an angle step also holds), a pill badge and the live length
-beside the segment's middle; Classic keeps the dashed magenta, the blue squares and the tag at the cursor. The badge takes the
+beside the segment's middle; Classic keeps the dashed magenta, the blue squares and the tag at the cursor. Every label is
+kept inside the view's edge, so a name over a point at the top is read a line lower. The badge takes the
 corner round the glyph farthest from the guides through it, so a ray is never cut by the pill, and the live reading sits
 outside the corner's dotted arc in a pill of its own, on the guide ink's paper. The live ruler's graduations and the angle arc are
 finer in the refined look, and Measure's own ruler keeps its weight. Guides are drawn over the plan, never under it: the

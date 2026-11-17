@@ -1143,7 +1143,15 @@ pub(crate) fn alignment_shapes(
             let reach = (at - source).length();
             let near = if reach > tail { at + (source - at) / reach * tail } else { source };
             if reach > tail {
-                out.push(Shape::line_segment([source, near], Stroke::new(hair, ink.ray.gamma_multiply(0.35))));
+                // The rest of the relation fades in toward the strong end, so a long one has no hard cut where the strong
+                // ink begins: a marked corner 200 px away still reads as one line from its halo to the point.
+                for k in 0..3 {
+                    let f0 = k as f32 / 3.0;
+                    let f1 = (k + 1) as f32 / 3.0;
+                    let a = source + (near - source) * f0;
+                    let b = source + (near - source) * f1;
+                    out.push(Shape::line_segment([a, b], Stroke::new(hair, ink.core.gamma_multiply(0.22 + 0.2 * k as f32))));
+                }
             }
             out.push(Shape::line_segment([near, at], Stroke::new(hair, ink.core)));
             // A short tail past the cursor, fading: the plan stays clear of rays that run to the view's edge.
@@ -1871,7 +1879,15 @@ impl BimApp {
         f.at = Self::on_guide(f, &alignments);
         let lock = self.show_alignments(sc, &alignments, from.last().copied());
         self.show_target_line(sc, &f);
-        self.show_snap(sc, &f, lock);
+        // With the reading's numbers in hand the point is not the pointer's: a dot where the click lands, and no marker or
+        // snap guide left behind at the pointer.
+        let points = self.points().cloned().unwrap_or_default();
+        let tip = self.typed_end(&points, f.at);
+        if (tip - f.at).length() > 0.01 {
+            sc.p.circle_filled(sc.screen(tip), 3.0, canvas_pal().accent);
+        } else {
+            self.show_snap(sc, &f, lock);
+        }
         match target {
             Some(target) => {
                 self.dwell_tick(sc, q, target);
@@ -4241,7 +4257,9 @@ impl BimApp {
             None => return cursor,
         };
         let len = match (len.is_empty(), self.session.model.units.parse(len)) {
-            (true, _) => (cursor - base).dot(toward),
+            // The pointer's reach along the ray, either way: behind the locked direction it still slides the length, where a
+            // signed projection would jump the point off the ray and onto the pointer.
+            (true, _) => (cursor - base).dot(toward).abs(),
             (false, Some(l)) => l,
             (false, None) => return cursor,
         };
@@ -5223,14 +5241,29 @@ impl BimApp {
     pub(crate) fn line_reading(&self, m: &Model, chain: &[P2], next: P2) -> Option<Reading> {
         let &last = chain.last()?;
         let (len, ang) = self.typed_texts();
-        let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.to_string() };
+        let focus = self.drawing.armed.then_some(self.drawing.field.min(1));
+        // The field in hand shows its digits alone, as a text field does; a number that is locked and now out of hand keeps
+        // its unit, so a dimmed 1500 cannot be read as the wrong kind of number.
+        let len = if len.is_empty() {
+            m.units.with_unit(last.dist(next))
+        } else if focus == Some(0) {
+            len.to_string()
+        } else {
+            m.units.parse(len).map_or_else(|| len.to_string(), |v| m.units.with_unit(v))
+        };
         // Degrees from east, the convention the field and its reference arc use, so the number in the pill is the number
         // to type. It showed the corner the chain turns at, which a typed angle could not reproduce.
-        let ang = if ang.is_empty() { degrees(snap::ruler(last, next).angle) } else { format!("{}°", ang) };
+        let ang = if ang.is_empty() {
+            degrees(snap::ruler(last, next).angle)
+        } else if focus == Some(1) {
+            ang.to_string()
+        } else {
+            format!("{}°", ang)
+        };
         Some(Reading {
             len,
             ang,
-            focus: self.drawing.armed.then_some(self.drawing.field.min(1)),
+            focus,
             caret: self.drawing.armed && (!self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty()),
             len_locked: !self.typed_texts().0.is_empty(),
             ang_locked: !self.typed_texts().1.is_empty(),
@@ -6014,7 +6047,9 @@ impl BimApp {
         // The ruler along the new line, and an arc at the corner it turns from the line before.
         if let Some(&last) = chain.last() {
             p.extend(ruler_shapes(sc, last, next, refined));
-            if let [.., prev, l] = chain {
+            if let [.., prev, l] = chain
+                && !(self.drawing.armed && self.drawing.field == 1)
+            {
                 p.extend(corner_arc(sc, sc.screen(*l), sc.screen(*prev) - sc.screen(*l), sc.screen(next) - sc.screen(*l), refined));
             }
         }
@@ -6026,9 +6061,13 @@ impl BimApp {
         {
             let c = sc.screen(base);
             let hair = 1.0 / sc.p.pixels_per_point();
-            let ink = if refined { guide_ink().arc } else { canvas_pal().accent };
-            p.extend(Shape::dashed_line(&[c, c + vec2(26.0, 0.0)], Stroke::new(hair, ink), 4.0, 3.0));
-            p.extend(corner_arc(sc, c, vec2(30.0, 0.0), sc.screen(next) - c, refined));
+            // East on the screen: a plan turned to true north turns the baseline with it, as the reading's number does.
+            let (ex, ey) = sc.v.along(P2(1.0, 0.0));
+            let e = vec2(ex as f32, ey as f32);
+            let east = if e.length() > f32::EPSILON { e / e.length() } else { vec2(1.0, 0.0) };
+            // A short, muted stub just past the arc's radius: the reference the angle is read from, not a guide.
+            p.extend(Shape::dashed_line(&[c, c + east * 40.0], Stroke::new(hair, guide_ink().arc), 4.0, 3.0));
+            p.extend(corner_arc(sc, c, east * 40.0, sc.screen(next) - c, refined));
         }
         // One reading in every state: `line_reading` is its numbers and the field that takes the digits, so Idle, armed,
         // typing and locked are the same pill in the same place.
@@ -6079,13 +6118,23 @@ impl Reading {
 /// measures and kept inside the painter's edge, so neither the line, the corner's arc nor the badge behind it cuts the number.
 fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, reading: &Reading, ink: GuideInk, avoid: Option<Rect>) -> Rect {
     let font = FontId::proportional(11.5);
-    let len = p.layout_no_wrap(reading.len.clone(), font.clone(), ink.badge_text);
-    let ang = p.layout_no_wrap(reading.ang.clone(), font.clone(), ink.badge_text);
-    let pad = vec2(6.0, 2.5);
-    let gap = 9.0;
-    let caret = if reading.caret { 1.5 } else { 0.0 };
+    // Laid out without a colour, so each token takes the tone it is drawn in: the field in hand is white on the accent.
+    let len = p.layout_no_wrap(reading.len.clone(), font.clone(), Color32::PLACEHOLDER);
+    let ang = p.layout_no_wrap(reading.ang.clone(), font.clone(), Color32::PLACEHOLDER);
+    // The selection fill keeps 4 px round its text and room for the caret; the pill keeps 4 px round the fill, so neither
+    // crowds the other's edge.
+    let box_pad = vec2(4.0, 2.0);
+    let pad = vec2(4.0, 3.0);
+    let gap = 8.0;
+    let caret = if reading.caret { 3.0 } else { 0.0 };
     let height = len.size().y.max(ang.size().y);
-    let size = vec2(len.size().x + gap + ang.size().x + caret + pad.x * 2.0, height + pad.y * 2.0);
+    let boxed = |w: f32| w + box_pad.x * 2.0 + caret;
+    let inner = match reading.focus {
+        Some(0) => boxed(len.size().x) + gap + ang.size().x,
+        Some(_) => len.size().x + gap + boxed(ang.size().x),
+        None => len.size().x + gap + ang.size().x,
+    };
+    let size = vec2(inner + pad.x * 2.0, height + box_pad.y * 2.0 + pad.y * 2.0);
     let at = reading_spot(from, to, prev, size, avoid);
     let clip = p.clip_rect();
     let c = pos2(
@@ -6102,14 +6151,15 @@ fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, reading: 
     // other keeps the pill's own ink, quieter while it is locked to a typed value and no longer follows the pointer.
     for (i, galley) in [(0usize, len), (1usize, ang)] {
         if reading.focus == Some(i) {
-            let box_rect = Rect::from_min_size(pos2(x - 2.5, y - 1.5), galley.size() + vec2(5.0, 3.0));
-            p.rect_filled(box_rect, 3.0, canvas_pal().accent);
-            p.galley(pos2(x, y), galley.clone(), Color32::WHITE);
+            let box_rect = Rect::from_min_size(pos2(x, y - box_pad.y), vec2(boxed(galley.size().x), height + box_pad.y * 2.0));
+            p.rect_filled(box_rect, 4.0, canvas_pal().accent);
+            let text_at = pos2(x + box_pad.x, y);
+            p.galley(text_at, galley.clone(), Color32::WHITE);
             if reading.caret {
-                let cx = x + galley.size().x + 0.8;
+                let cx = text_at.x + galley.size().x + 1.5;
                 p.line_segment([pos2(cx, y + 1.0), pos2(cx, y + height - 1.0)], Stroke::new(1.2, Color32::WHITE));
             }
-            x = box_rect.max.x + gap - 2.5;
+            x = box_rect.max.x + gap;
         } else {
             let locked = if i == 0 { reading.len_locked } else { reading.ang_locked };
             let tone = if locked { ink.badge_text.gamma_multiply(0.55) } else { ink.badge_text };
@@ -6303,7 +6353,7 @@ pub(crate) fn pin_shapes(pins: &[crate::guide_refs::Pin], to: impl Fn(P2) -> Pos
                 out.push(Shape::circle_filled(c, 2.5, ink.core));
             }
             crate::guide_refs::PinTarget::Edge { a, b, .. } => {
-                out.push(Shape::line_segment([to(a), to(b)], Stroke::new(2.5, ink.core)));
+                out.push(Shape::line_segment([to(a), to(b)], Stroke::new(1.5, ink.core.gamma_multiply(0.85))));
             }
         }
     }
