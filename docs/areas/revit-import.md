@@ -60,7 +60,7 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   own, and terrain's box is a solid block over the site). Each component is of the Revit type its reference list names, as a door's
   is (`openings::symbol_of`; `Imported` where none is named), in a family of the Revit family's name (`openings::family_of`, the
   second list; else the family the type's other instances name; else the category's family). From 2025 a type has no record of its
-  own, only a name entry, which is why both lists are read (the provenance row says what was measured). Where the type's box, in the
+  own, only a name entry, which is why both lists are read, from 2025 only (the provenance row says what was measured). Where the type's box, in the
   family's own axes, placed by the instance's placement (`placement.rs`, read from at most 4 KiB of its data, never copied:
   `Wants::placements`) gives the record's box to a millimetre, it comes in as that box, turned as placed, its middle set off from
   the family's origin by `Offset X` and `Offset Y`. The type's box is its symbol's (before 2025), else the instance's own record box

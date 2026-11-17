@@ -7,7 +7,7 @@
 //! is the Revit family the instance's second reference list names (`openings::family_of`), else the one its type's other instances
 //! name, else one family of the category; its type is the Revit type its first list names (`openings::symbol_of`), and `Imported`
 //! where the reader does not know which. From 2025 a type has no record of its own, only a name entry, which is why both lists are
-//! read.
+//! read; before 2025 only a family symbol names the type, and the second list is not read.
 //!
 //! A component comes in as **its type's box, turned as placed** where the file says enough: its placement in its data
 //! (`placement::transform`), with one axis upright (a light hung upside down, or one on a wall, is turned to stand upright, which
@@ -400,8 +400,8 @@ fn boxes(
     let mut type_family: BTreeMap<u32, Option<(u32, String)>> = BTreeMap::new();
     let mut type_box: BTreeMap<u32, Option<[f64; 6]>> = BTreeMap::new();
     for r in f.of_category(category) {
-        let Some((ty, _)) = symbol_of(r, &symbols, g, category) else { continue };
-        if let Some(fam) = family_of(r, g, category) {
+        let Some((ty, _)) = symbol_of(r, &symbols, g, category, f.release) else { continue };
+        if let Some(fam) = family_of(r, g, category, f.release) {
             let held = type_family.entry(ty).or_insert_with(|| Some(fam.clone()));
             if held.as_ref().is_some_and(|h| h.0 != fam.0) {
                 *held = None;
@@ -447,10 +447,10 @@ fn boxes(
                 }
             }
         }
-        let symbol = symbol_of(r, &symbols, g, category);
+        let symbol = symbol_of(r, &symbols, g, category, f.release);
         let type_name = symbol.as_ref().map(|(_, n)| clip(n)).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| IMPORTED.to_string());
         let ty = symbol.as_ref().map(|(id, _)| *id);
-        let revit_family = family_of(r, g, category).or_else(|| ty.and_then(|t| type_family.get(&t).cloned().flatten()));
+        let revit_family = family_of(r, g, category, f.release).or_else(|| ty.and_then(|t| type_family.get(&t).cloned().flatten()));
         let family = families.name(category, revit_family.as_ref(), family);
         let type_box = TypeBox {
             known: ty.is_some(),

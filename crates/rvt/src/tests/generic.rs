@@ -334,7 +334,7 @@ fn instance(
 
 #[test]
 fn a_type_and_a_family_named_only_by_name_entries_make_a_family_of_that_name_with_that_type() {
-    let mut p = base(2024);
+    let mut p = base(2025);
     named(&mut p, 700, "36\" Diameter");
     named(&mut p, 701, "Table-Dining Round");
     named(&mut p, 710, "Seat");
@@ -388,8 +388,23 @@ fn a_type_and_a_family_named_only_by_name_entries_make_a_family_of_that_name_wit
 }
 
 #[test]
+fn a_type_and_a_family_named_only_by_name_entries_are_read_from_2025_on() {
+    // The finding was measured on 2025 files alone: before that, a type is a family symbol, and a name entry alone names nothing.
+    for (release, want) in [(2024, ("Furniture", "Imported")), (2025, ("Chair-Breuer", "Seat"))] {
+        let mut p = base(release);
+        named(&mut p, 710, "Seat");
+        named(&mut p, 711, "Chair-Breuer");
+        instance(&mut p, (302, 710, Some(711)), [-1.0, 0.0, 0.0, 1.0, 1.5, 3.0], 0.0, [30.0, 5.0, 0.0]);
+        let i = import(&p);
+        let [c] = components(&i)[..] else { panic!("Revit {release}: {:?}", i.skipped) };
+        assert_eq!((c.family.as_str(), c.type_name.as_str()), want, "Revit {release}");
+        assert!(i.model.check().is_ok(), "Revit {release}: {:?}", i.model.check());
+    }
+}
+
+#[test]
 fn a_turned_instance_whose_type_no_square_instance_measures_comes_in_as_its_record_box() {
-    let mut p = base(2024);
+    let mut p = base(2025);
     named(&mut p, 710, "Seat");
     named(&mut p, 711, "Chair-Breuer");
     let chair = [-1.0, 0.0, 0.0, 1.0, 1.5, 3.0];
@@ -433,7 +448,7 @@ fn placed_by(local: [f64; 6], axes: [[f64; 3]; 3], origin: [f64; 3]) -> [f64; 6]
 
 #[test]
 fn a_component_hung_upside_down_or_on_a_wall_comes_in_turned_and_one_on_a_slope_as_its_record_box() {
-    let mut p = base(2024);
+    let mut p = base(2025);
     for (id, name) in [(700, "2x2"), (701, "Troffer"), (710, "Sconce"), (711, "Wall Light")] {
         p.names.push(crate::project_fixture::NameEntry { id, name: name.into(), category: LIGHTING });
     }
