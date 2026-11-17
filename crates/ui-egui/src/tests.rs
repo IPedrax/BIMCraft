@@ -315,6 +315,12 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
     h.run();
 }
 
+/// `Shift+Tab`: the wall's three lines, before the first point and mid-chain alike.
+fn shift_key(h: &mut Harness<BimApp>, k: Key) {
+    h.key_combination_modifiers(Modifiers::SHIFT, &[k]);
+    h.run();
+}
+
 /// Letters typed over the view: a two-letter shortcut.
 /// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
@@ -4894,19 +4900,21 @@ fn tab_cycles_a_walls_three_lines_until_a_number_is_typed() {
     let over = P2(2000.0, ext - 10.0);
     assert!(hover(&mut h, over).is_some(), "the pointer is over the plan");
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Left), "the nearest line first");
-    key(&mut h, Key::Tab);
+    shift_key(&mut h, Key::Tab);
     assert_eq!(h.state().canvas.wall_face, Some((id, Face::Centre)), "the next line along");
     hover(&mut h, over);
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Centre), "and the pick follows it");
-    key(&mut h, Key::Tab);
+    shift_key(&mut h, Key::Tab);
     hover(&mut h, over);
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Right));
-    // A number typed keeps either key: the field swaps, and the wall's line stays where it was.
+    // A number typed keeps the fields' key and the wall's: `Tab` swaps the field, `Shift+Tab` the line.
     h.event(Event::Text("3000".into()));
     h.run();
     assert_eq!(h.state().typed_length, "3000", "the number is being typed");
+    shift_key(&mut h, Key::Tab);
+    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Left)), "Shift+Tab still steps the lines");
     key(&mut h, Key::Tab);
-    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Right)), "the lines stay where they were");
+    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Left)), "Tab leaves the wall's line alone");
     assert_eq!(
         (h.state().typed_length.as_str(), h.state().drawing.other.as_str()),
         ("", "3000"),
@@ -4928,9 +4936,13 @@ fn tab_over_a_wall_steps_its_faces_and_away_from_it_the_numbers() {
     tool(&mut h, "Wall");
     click(&mut h, P2(0.0, 1000.0));
     assert_eq!(hover(&mut h, P2(2000.0, ext - 10.0)).and_then(|f| f.face), Some(Face::Left), "the wall is under the pointer");
+    // Mid-chain `Tab` is the reading's, even over a wall: the field must step, the wall must not take the key.
     key(&mut h, Key::Tab);
-    assert!(h.state().canvas.wall_face.is_some_and(|(w, _)| w == id), "the wall's face, not the field");
-    assert_eq!(h.state().drawing.field, 0, "the length still takes the digits");
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits");
+    assert_eq!(h.state().canvas.wall_face, None, "the wall kept its own line");
+    // `Shift+Tab` steps the wall's three lines from the one the pick has now.
+    shift_key(&mut h, Key::Tab);
+    assert!(h.state().canvas.wall_face.is_some_and(|(w, _)| w == id), "the wall's line, from the fields' key");
     // The face key never blocks typing: a number is still the length.
     h.event(Event::Text("350".into()));
     h.run();

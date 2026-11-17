@@ -1930,8 +1930,23 @@ impl BimApp {
             (c.under, c.cycle) = (under, 0);
         }
         // Without the app's input hook, as in a test, this frame's events still hold the Tab, so round it up here too.
-        let tab = ui.input(|i| i.key_pressed(Key::Tab)) && local.is_some();
-        if tab {
+        let (tab, face) = ui.input(|i| {
+            let mut found = (false, false);
+            if local.is_none() {
+                return found;
+            }
+            for e in &i.events {
+                if let Event::Key { key: Key::Tab, pressed: true, modifiers, .. } = e {
+                    if modifiers.shift {
+                        found.1 = true;
+                    } else {
+                        found.0 = true;
+                    }
+                }
+            }
+            found
+        });
+        if tab || face {
             ui.ctx().memory_mut(|m| {
                 if let Some(f) = m.focused() {
                     m.surrender_focus(f);
@@ -1939,6 +1954,7 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        let face = std::mem::take(&mut self.face_cycle) || face;
         // A dimension being picked or edited: Tab steps through the references of the element under the cursor, so the one a
         // click takes is seen first: its corners and ends, and its faces and centre lines.
         let reference_refs: Option<Vec<Reference>> = match (&self.dimension_refs_edit, &self.tool) {
@@ -1998,10 +2014,9 @@ impl BimApp {
         if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
-        // Tab over a wall, while a line or a wall is being drawn, steps through the wall's three references — its exterior
-        // face, its centre line and its interior face — starting from the one the pick has now, so the first press always
-        // moves the point. A number already typed keeps Tab for the field it belongs to, and off every wall Tab steps
-        // from the length to the angle.
+        // Tab steps the reading's fields; before the first point there are none, so it steps the wall's three references
+        // under the pointer — its exterior face, its centre line and its interior face. Shift+Tab steps those three
+        // anytime, mid-chain and while a number is typed too, so a wall face is never lost to the fields' key.
         let typing = !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty();
         let chain = matches!(
             self.tool,
@@ -2015,23 +2030,28 @@ impl BimApp {
                 | Tool::Column
                 | Tool::Run(..)
         );
+        let faces = face || (tabbed && self.base().is_none());
         let mut wall_tabbed = false;
-        if tabbed
+        if faces
             && !reference_tabbed
             && !segment_tabbed
-            && !typing
+            && (!typing || face)
             && !ui.ctx().egui_wants_keyboard_input()
             && chain
             && self.typed_fields() == 0
             && let Some(id) =
                 self.canvas.under_cursor.iter().copied().find(|id| model.wall(*id).is_some_and(|w| model.straight_at(w, level)))
         {
+            // The face the cycle starts from: the one it holds, else the wall's line nearest the pointer. Shift is also
+            // the square modifier, so the pick shown while the key is down is squared off the wall; the nearest line is
+            // asked again without it, or the first press would start from the middle instead of moving.
+            let nearest = local.and_then(|q| {
+                let f = self.snap(&model, level, &view, q, &[], false);
+                (f.source == Some(id)).then(|| f.face.unwrap_or(Face::Centre))
+            });
             let now = match self.canvas.wall_face {
                 Some((held, face)) if held == id => face,
-                _ => match self.canvas.found.get() {
-                    Some(f) if f.source == Some(id) => f.face.unwrap_or(Face::Centre),
-                    _ => Face::Centre,
-                },
+                _ => nearest.unwrap_or(Face::Centre),
             };
             let next = match now {
                 Face::Left => Face::Centre,
