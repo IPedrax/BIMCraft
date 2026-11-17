@@ -1328,10 +1328,10 @@ fn ruler_shapes(sc: &Scene, a: P2, b: P2, refined: bool) -> Vec<Shape> {
     shapes
 }
 
-/// The angle at `last` between the line back to `prev` and the line on to `next`, as a small arc: dotted and muted in the
-/// refined look, so it does not fight the walls.
-fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2, refined: bool) -> Vec<Shape> {
-    let (c, a, b) = (sc.screen(last), sc.screen(prev) - sc.screen(last), sc.screen(next) - sc.screen(last));
+/// The angle at `c` on the screen between the screen rays `a` and `b`, as a small arc: dotted and muted in the refined
+/// look, so it does not fight the walls. Screen vectors, because the arc is a screen size: a fixed model radius is a speck
+/// at 1:100 and a page across at 1:10.
+fn corner_arc(sc: &Scene, c: Pos2, a: Vec2, b: Vec2, refined: bool) -> Vec<Shape> {
     if a.length() < 30.0 || b.length() < 30.0 {
         return Vec::new();
     }
@@ -4245,7 +4245,7 @@ impl BimApp {
             (false, Some(l)) => l,
             (false, None) => return cursor,
         };
-        if len.is_finite() && len >= 0.0 && len <= MAX_COORD { base + toward * len } else { cursor }
+        if len.is_finite() && (0.0..=MAX_COORD).contains(&len) { base + toward * len } else { cursor }
     }
 
     /// A shape's number as typed: an angle in degrees, else a length in the project's units.
@@ -5218,21 +5218,15 @@ impl BimApp {
         }
     }
 
-    /// The line or wall being drawn: its length and its angle (the corner it turns from the one before, else from east),
-    /// the field that takes the digits boxed, and which numbers are typed.
+    /// The line or wall being drawn: its length and its angle from east — the angle a typed number places — the field
+    /// that takes the digits boxed, and which numbers are typed.
     pub(crate) fn line_reading(&self, m: &Model, chain: &[P2], next: P2) -> Option<Reading> {
         let &last = chain.last()?;
         let (len, ang) = self.typed_texts();
         let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.to_string() };
-        let ang = if ang.is_empty() {
-            let turn = match chain {
-                [.., prev, l] => snap::corner(*prev, *l, next),
-                _ => None,
-            };
-            degrees(turn.unwrap_or_else(|| snap::ruler(last, next).angle))
-        } else {
-            format!("{}°", ang)
-        };
+        // Degrees from east, the convention the field and its reference arc use, so the number in the pill is the number
+        // to type. It showed the corner the chain turns at, which a typed angle could not reproduce.
+        let ang = if ang.is_empty() { degrees(snap::ruler(last, next).angle) } else { format!("{}°", ang) };
         Some(Reading {
             len,
             ang,
@@ -6021,28 +6015,20 @@ impl BimApp {
         if let Some(&last) = chain.last() {
             p.extend(ruler_shapes(sc, last, next, refined));
             if let [.., prev, l] = chain {
-                p.extend(corner_arc(sc, *prev, *l, next, refined));
+                p.extend(corner_arc(sc, sc.screen(*l), sc.screen(*prev) - sc.screen(*l), sc.screen(next) - sc.screen(*l), refined));
             }
         }
-        // With the angle in hand, the baseline it is read from and the arc it turns through: degrees from east, as the
-        // reading and the command say, so the two are never at odds.
+        // With the angle in hand, the baseline it is read from (east) and the arc it turns through: degrees from east, as
+        // the reading and the command say, so the two are never at odds. The arc is `corner_arc`'s 26 px, a screen size.
         if self.drawing.armed
             && self.drawing.field == 1
             && let Some(&base) = chain.last()
         {
-            let d = next - base;
-            let r = d.length().min(1200.0);
-            let dotted = Stroke::new(1.0, guide_ink().core.gamma_multiply(0.6));
-            p.extend(Shape::dashed_line(&[sc.screen(base), sc.screen(base + P2(r, 0.0))], dotted, 6.0, 4.0));
-            let turn = d.1.atan2(d.0);
-            let steps = 16;
-            let arc: Vec<Pos2> = (0..=steps)
-                .map(|i| {
-                    let a = turn * i as f64 / steps as f64;
-                    sc.screen(base + P2(a.cos(), a.sin()) * r)
-                })
-                .collect();
-            p.extend(Shape::dashed_line(&arc, dotted, 6.0, 4.0));
+            let c = sc.screen(base);
+            let hair = 1.0 / sc.p.pixels_per_point();
+            let ink = if refined { guide_ink().arc } else { canvas_pal().accent };
+            p.extend(Shape::dashed_line(&[c, c + vec2(26.0, 0.0)], Stroke::new(hair, ink), 4.0, 3.0));
+            p.extend(corner_arc(sc, c, vec2(30.0, 0.0), sc.screen(next) - c, refined));
         }
         // One reading in every state: `line_reading` is its numbers and the field that takes the digits, so Idle, armed,
         // typing and locked are the same pill in the same place.

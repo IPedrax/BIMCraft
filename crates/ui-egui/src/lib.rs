@@ -2661,7 +2661,9 @@ impl BimApp {
         // without Ctrl are no shortcut.
         for ch in typed.chars() {
             let listening = self.base().is_some() || self.filleting() || self.rotating();
-            let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
+            // A bearing west of east is negative, so the angle field takes its sign; Rotate always has.
+            let negative_angle = self.drawing.field == 1 && self.line_angle_field();
+            let sign = ch == '-' && (self.rotating() || negative_angle) && self.typed_length.is_empty();
             if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
                 // The field `Tab` armed holds what is selected, so the first digit replaces it instead of appending.
                 if self.drawing.selected {

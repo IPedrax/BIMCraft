@@ -4698,7 +4698,7 @@ fn a_guides_strong_segment_reaches_only_a_screen_from_the_point_it_locks() {
         })
         .expect("the relation's own ink");
     assert!((strong[1] - strong[0]).length() <= 100.01, "one screen's reach, not 20 m: {strong:?}");
-    assert_eq!(strong[1], to(at), "it ends on the point it locks");
+    assert!((strong[1] - to(at)).length() <= 0.75, "it ends on the point it locks, on the pixel grid: {:?}", strong[1]);
 }
 
 /// The live reading sits clear of its own segment and its badge: a wide horizontal pill beside a steep one is pushed
@@ -5150,6 +5150,12 @@ fn a_typed_angle_locks_the_direction_and_the_pointer_slides_the_length() {
     h.state_mut().clear_typed();
     let p = P2(1234.0, 567.0);
     assert_eq!(h.state().typed_end(&chain, p), p);
+    // A bearing west of east is negative: the angle field takes the sign.
+    key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("-45".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "-45", "the angle takes its sign");
 }
 
 /// A shape's own numbers lock its geometry too: a rectangle is previewed at its typed width, not the pointer's.

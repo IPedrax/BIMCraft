@@ -462,6 +462,7 @@ fn a_rectangles_width_and_height_a_radius_and_a_sketchs_lengths_are_typed() {
     click(&mut h, P2(5000.0, 1000.0));
     hover(&mut h, P2(5800.0, 500.0));
     key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
     h.event(Event::Text("300".into()));
     h.run();
     key(&mut h, Key::Enter);
