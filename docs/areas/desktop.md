@@ -716,6 +716,15 @@ filled; its tooltip says what it does. The Type Selector's list is as
 wide as the selector, a long name cut short and whole in its tooltip; wall types show their layers by share and material
 (`layer_bands`), and a curtain wall's type, which writes a `curtain` pattern (`curtain_type`), goes under its own heading.
 
+Roof footprint pitches: selecting several sketch lines with Ctrl-click or a selection box shares Defines Slope and
+Slope in Properties. Mixed definitions show an indeterminate checkbox (click enables all); differing overrides show
+Varies. Edits change only those draft lines and Finish sends one `edit_boundary`; Cancel discards them. Overall roof Slope
+shows the common effective pitch or Varies, ignoring upright gables. With individual pitches involved, entering a value
+opens Roof slope change: keep individual pitches or apply to all defining edges, with actual before/after eave elevations
+and movement in project units. The core's `roof_with_pitch` and `roof_eave_height` supply the preview, and Apply sends the
+choice and explicit eave acknowledgment through `modify`. A project change invalidates the preview before it can apply.
+Tests and capture switches: `tests/sketch.rs`, `BIMCRAFT_ROOF_MULTI_DUMP` and `BIMCRAFT_ROOF_CHOICE_DUMP`.
+
 ## Background grids
 
 Each plan, section and elevation keeps its canvas grid in its `Graphics::background_grid`, saved with the project, copied

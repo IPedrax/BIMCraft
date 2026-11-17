@@ -2307,6 +2307,14 @@ impl Roof {
     }
 }
 
+/// The effective pitches of a footprint roof's defining edges, excluding its upright gables.
+pub struct RoofPitchSummary {
+    /// None when those edges have different pitches.
+    pub common: Option<f64>,
+    /// At least one defining edge has an explicit pitch of its own.
+    pub individual: bool,
+}
+
 /// An extrusion roof's shape: its underside's profile in the upright plane through `line`, points
 /// `[along, up]` mm along it from its start and up from the roof's base, swept square to it from
 /// `from` to `to` mm to its left.
@@ -6430,7 +6438,7 @@ impl Model {
                         }
                     })
                     .collect();
-                let eave = base - r.overhang * r.slope.to_radians().tan();
+                let eave = self.roof_eave_height(r);
                 let skeleton = crate::skeleton::faces(&rings, &speeds)?;
                 rings
                     .iter()
@@ -6481,6 +6489,44 @@ impl Model {
                 kept.into_iter().map(move |k| (vec![k], plane))
             })
             .collect())
+    }
+
+    /// A footprint roof's shared eave datum, including its overhang. Explicit edge pitches
+    /// change the planes' gradients, not this datum; changing the default can move them vertically.
+    pub fn roof_eave_height(&self, r: &Roof) -> f64 {
+        self.elevation(r.level) + r.offset - r.overhang * r.slope.to_radians().tan()
+    }
+
+    pub fn roof_pitch_summary(&self, r: &Roof) -> Result<RoofPitchSummary, String> {
+        if r.extrusion.is_some() {
+            return Err("an extrusion roof's pitch comes from its profile".into());
+        }
+        if r.slope == 0.0 {
+            return Ok(RoofPitchSummary { common: Some(0.0), individual: false });
+        }
+        let up = self.roof_uprights(r)?;
+        let pitches = r.edge_slopes();
+        let defining: Vec<_> = pitches.iter().enumerate().filter(|(i, _)| up.get(*i) == Some(&false)).collect();
+        let common = defining.first().map(|(_, p)| **p).filter(|p| defining.iter().all(|(_, s)| (*p - **s).abs() < 1e-9));
+        let individual = defining.iter().any(|(i, _)| r.slopes.get(*i).is_some_and(|p| *p > 0.0));
+        Ok(RoofPitchSummary { common, individual })
+    }
+
+    /// The same candidate the inspector previews and `modify` applies. Inherit markers and
+    /// upright edges keep their values; choosing all changes explicit defining pitches too.
+    /// Zero keeps the existing flat-roof rule: edge pitches are retained, unused.
+    pub fn roof_with_pitch(&self, r: &Roof, pitch: f64, all: bool) -> Result<Roof, String> {
+        let mut next = r.clone();
+        next.slope = pitch;
+        if all && pitch > 0.0 {
+            let up = self.roof_uprights(r)?;
+            for (i, own) in next.slopes.iter_mut().enumerate() {
+                if *own > 0.0 && up.get(i) == Some(&false) {
+                    *own = pitch;
+                }
+            }
+        }
+        Ok(next)
     }
 
     /// Which edges of a roof's footprint stand upright, gable ends, numbered as `gables` numbers

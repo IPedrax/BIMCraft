@@ -3,6 +3,7 @@
 
 use super::*;
 use bimcraft_core::sketch::SketchLine;
+use egui_kittest::kittest::NodeT;
 
 /// The plan with the box of walls floored, the floor selected.
 fn floored() -> (Harness<'static, BimApp>, Id) {
@@ -338,6 +339,82 @@ fn a_sketch_line_picked_alone_has_a_palette_of_what_can_be_done_to_it() {
 const SLOPED: &str = r#"roof {"boundary": [[0,0],[8000,0],[8000,6000],[0,6000]], "slope": 30, "slopes": [0, 45, 0, 45]}"#;
 
 #[test]
+fn several_roof_lines_show_mixed_slopes_and_edit_together_in_one_finish() {
+    for rev in [false, true] {
+        let script = r#"roof {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]], "slopes":[20,45,30,45], "gables":[2]}"#;
+        let mut h = if rev { app(script) } else { bimcraft(script) };
+        let roof = ids(&h, "roof")[0];
+        let original = h.state().session.model.clone();
+        let steps = h.state().session.history().len();
+        for cancel in [true, false] {
+            h.state_mut().selection = vec![roof];
+            h.state_mut().edit_boundary();
+            h.run();
+            key(&mut h, Key::Escape);
+            click(&mut h, P2(4000.0, 0.0));
+            click_with(&mut h, P2(4000.0, 6000.0), Modifiers::CTRL);
+            assert_eq!(h.state().sketch.as_ref().unwrap().picked, [0, 2].into());
+            assert_eq!(h.state().session.history().len(), steps);
+            if let Ok(folder) = std::env::var("BIMCRAFT_ROOF_MULTI_DUMP") {
+                std::fs::create_dir_all(&folder).unwrap();
+                for (look, dark, light) in [("light", false, false), ("dark", true, false), ("dark-light-canvas", true, true)] {
+                    h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+                    h.state_mut().light_canvas = light;
+                    h.run();
+                    h.render()
+                        .unwrap()
+                        .save(std::path::Path::new(&folder).join(format!("multi-{}-{look}.png", if rev { "rev" } else { "bimcraft" })))
+                        .unwrap();
+                }
+            }
+            assert_eq!(
+                h.get_by_role_and_label(Role::CheckBox, "Defines Slope").accesskit_node().toggled(),
+                Some(egui::accesskit::Toggled::Mixed)
+            );
+            pick(&mut h, Role::CheckBox, "Defines Slope");
+            assert!(h.state().sketch.as_ref().unwrap().lines.iter().all(|l| l.defines_slope == Some(true)));
+            assert_eq!(h.get_by_role_and_label(Role::TextInput, "Slope").value().as_deref(), Some("Varies"));
+            let draft = h.state().sketch.as_ref().unwrap().lines.clone();
+            type_into(&mut h, "Slope", "400%");
+            key(&mut h, Key::Enter);
+            assert!(h.state().status.error);
+            assert_eq!(h.state().sketch.as_ref().unwrap().lines, draft);
+            for typed in ["22.5", "6:12", "50%"] {
+                type_into(&mut h, "Slope", typed);
+                key(&mut h, Key::Enter);
+                let lines = &h.state().sketch.as_ref().unwrap().lines;
+                let expected = if typed == "22.5" { 22.5 } else { 0.5f64.atan().to_degrees() };
+                for i in [0, 2] {
+                    assert!((lines[i].slope.unwrap() - expected).abs() < 1e-10);
+                }
+                for i in [1, 3] {
+                    assert_eq!(lines[i], draft[i]);
+                }
+            }
+            assert_eq!(*h.state().session.model, *original);
+            press(&mut h, if cancel { "Cancel Edit Mode" } else { "Finish Edit Mode" });
+            assert!(h.state().sketch.is_none(), "{}", h.state().status.text);
+            if cancel {
+                assert_eq!(*h.state().session.model, *original);
+            }
+        }
+        assert_eq!(h.state().session.history().len(), steps + 1);
+        let edited = h.state().session.model.clone();
+        let Some(Element::Roof(r)) = edited.elements.get(roof) else { panic!("roof") };
+        assert!(r.gables.is_empty());
+        assert_eq!(r.slopes[1], 45.0);
+        assert_eq!(r.slopes[3], 45.0);
+        let (reopened, left) = bimcraft_core::model::Model::read(&edited.to_json().unwrap()).unwrap();
+        assert!(left.is_empty());
+        assert_eq!(reopened.roof_faces(r).unwrap(), edited.roof_faces(r).unwrap());
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        assert_eq!(*h.state().session.model, *original);
+        h.state_mut().session.execute("redo", &json!({})).unwrap();
+        assert_eq!(*h.state().session.model, *edited);
+    }
+}
+
+#[test]
 fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_both_profiles() {
     for rev in [false, true] {
         let script = format!("{BOX}\n{SLOPED}");
@@ -438,11 +515,78 @@ fn roof_pitch_in_the_3d_inspector_accepts_ratios_and_percentages_and_keeps_edge_
     ] {
         type_into(&mut h, "Slope (°)", typed);
         key(&mut h, Key::Enter);
+        if h.state().roof_slope_dialog.is_some() {
+            press(&mut h, "Apply slope");
+        }
         assert!((field(&h, roof, "slope").as_f64().unwrap() - expected).abs() < 1e-12, "{typed}");
         assert_eq!(field(&h, roof, "slopes"), overrides);
         if matches!(typed, "6:0" | "400%") {
             assert!(h.state().status.error);
         }
+    }
+}
+
+#[test]
+fn overall_roof_pitch_offers_each_choice_and_warns_before_changing_the_eave() {
+    for rev in [false, true] {
+        let script = r#"roof {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]], "slope":30, "slopes":[0,45,0,45], "overhang":600}"#;
+        let mut h = if rev { app(script) } else { bimcraft(script) };
+        let roof = ids(&h, "roof")[0];
+        h.state_mut().selection = vec![roof];
+        h.run();
+        let before = h.state().session.model.clone();
+        let steps = h.state().session.history().len();
+        for choice in ["Cancel", "Keep individual edge pitches", "Apply to all defining edges"] {
+            assert_eq!(h.get_by_role_and_label(Role::TextInput, "Slope (°)").value().as_deref(), Some("Varies"));
+            type_into(&mut h, "Slope (°)", "40");
+            key(&mut h, Key::Enter);
+            assert_eq!(*h.state().session.model, *before, "opening the choice never changes the roof");
+            assert_eq!(h.state().session.history().len(), steps);
+            assert!(h.query_by_label("Roof slope change").is_some());
+            assert!(h.query_by_label("Eaves move down 157 mm.").is_some());
+            if choice == "Cancel" {
+                press(&mut h, "Cancel");
+                continue;
+            }
+            pick(&mut h, Role::RadioButton, choice);
+            if let Ok(folder) = std::env::var("BIMCRAFT_ROOF_CHOICE_DUMP") {
+                std::fs::create_dir_all(&folder).unwrap();
+                for (look, dark, light) in [("light", false, false), ("dark", true, false), ("dark-light-canvas", true, true)] {
+                    h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+                    h.state_mut().light_canvas = light;
+                    h.run();
+                    h.render()
+                        .unwrap()
+                        .save(std::path::Path::new(&folder).join(format!(
+                            "choice-{}-{}-{look}.png",
+                            if rev { "rev" } else { "bimcraft" },
+                            if choice.starts_with("Keep") { "keep" } else { "all" }
+                        )))
+                        .unwrap();
+                }
+            }
+            press(&mut h, "Apply slope");
+            assert_eq!(field(&h, roof, "slope"), json!(40.0));
+            assert_eq!(
+                field(&h, roof, "slopes"),
+                if choice.starts_with("Keep") { json!([0.0, 45.0, 0.0, 45.0]) } else { json!([0.0, 40.0, 0.0, 40.0]) }
+            );
+            assert_eq!(h.state().session.history().len(), steps + 1);
+            assert_eq!(
+                h.get_by_role_and_label(Role::TextInput, "Slope (°)").value().as_deref(),
+                Some(if choice.starts_with("Keep") { "Varies" } else { "40" })
+            );
+            h.state_mut().session.execute("undo", &json!({})).unwrap();
+            h.run();
+            assert_eq!(*h.state().session.model, *before);
+        }
+        type_into(&mut h, "Slope (°)", "40");
+        key(&mut h, Key::Enter);
+        assert!(h.state().roof_slope_dialog.is_some());
+        h.state_mut().session.execute("modify", &json!({"id":roof,"offset":100})).unwrap();
+        h.run();
+        assert!(h.state().roof_slope_dialog.is_none(), "an external change invalidates the height preview");
+        assert_eq!(field(&h, roof, "slope"), json!(30.0));
     }
 }
 

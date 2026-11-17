@@ -939,6 +939,7 @@ pub struct BimApp {
     /// When the one letter in `typed` was typed, by the window's clock.
     typed_at: f64,
     pending: Option<Pending>,
+    roof_slope_dialog: Option<properties::RoofSlopeDialog>,
     /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
     deleting_rooms: Option<Vec<Id>>,
     type_dialog: Option<properties::TypeDialog>,
@@ -1781,6 +1782,7 @@ impl BimApp {
             typed: String::new(),
             typed_at: 0.0,
             pending: None,
+            roof_slope_dialog: None,
             deleting_rooms: None,
             type_dialog: None,
             materials_dialog: None,
@@ -2503,6 +2505,7 @@ impl BimApp {
             || self.show_shortcuts
             || self.show_snaps
             || self.pending.is_some()
+            || self.roof_slope_dialog.is_some()
             || self.autosave.show_recovery
             || self.installing()
             || self.importing()
@@ -6862,6 +6865,7 @@ impl BimApp {
     }
 
     fn dialogs(&mut self, ctx: &Context) {
+        self.roof_slope_window(ctx);
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
         self.group_conflict_window(ctx);

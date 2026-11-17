@@ -2015,7 +2015,10 @@ other_files(
          A filled region's or a floor's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
-         outline it sets is held to what `floor` says of it",
+         outline it sets is held to what `floor` says of it. For a footprint roof with individual pitches, changing `slope` requires \
+         `roof_slope_mode`: `inherited` keeps explicit edge pitches, `all` changes every defining edge to the new pitch (upright edges \
+         and inheritance markers stay). If that moves the shared eave datum, the first call refuses with the signed change in mm; \
+         repeat with `allow_eave_change: true` only after accepting that height change. No mutation or history on refusal",
         modify,
     ),
     edit(
@@ -17463,6 +17466,17 @@ fn room_finish(s: &mut Session, p: &Value) -> R {
 fn modify(s: &mut Session, p: &Value) -> R {
     let c = "modify";
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
+    let roof_mode = string(c, p, "roof_slope_mode")?;
+    if roof_mode.as_deref().is_some_and(|mode| !matches!(mode, "inherited" | "all")) {
+        return Err(bad(c, "`roof_slope_mode` must be `inherited` or `all`"));
+    }
+    let allow_eave = flag(c, p, "allow_eave_change")?;
+    if (roof_mode.is_some() || fields.contains_key("allow_eave_change")) && !fields.contains_key("slope") {
+        return Err(bad(c, "roof pitch choices require `slope`"));
+    }
+    if roof_mode.as_deref() == Some("all") && fields.contains_key("slopes") {
+        return Err(bad(c, "give `roof_slope_mode: all` or explicit `slopes`, not both"));
+    }
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
     let mut edited = Vec::new();
@@ -17481,6 +17495,9 @@ fn modify(s: &mut Session, p: &Value) -> R {
             ));
         }
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        if (roof_mode.is_some() || fields.contains_key("allow_eave_change")) && !matches!(e,Element::Roof(r) if r.extrusion.is_none()) {
+            return Err(bad(c, "roof pitch choices apply only to footprint roofs"));
+        }
         // A room's floor and ceiling are its room's: `room_finish` lets one go or makes it again, and one that follows a
         // room is where and what the room's type says.
         if matches!(e, Element::Room(_))
@@ -17503,7 +17520,7 @@ fn modify(s: &mut Session, p: &Value) -> R {
         let obj = v.as_object_mut().ok_or_else(|| bad(c, format!("element {id} can't be edited")))?;
         for (k, val) in fields {
             let val = match k.as_str() {
-                "id" | "ids" => continue,
+                "id" | "ids" | "roof_slope_mode" | "allow_eave_change" => continue,
                 // A component's Offset from Host: its host's offset on a plane, else its height over its level. Its Work Plane
                 // is what it is on, said, changed with `edit_work_plane`.
                 "offset_from_host" if matches!(e, Element::Component(_)) => {
@@ -17536,6 +17553,31 @@ fn modify(s: &mut Session, p: &Value) -> R {
             }
         }
         let mut e2 = serde_json::from_value::<Element>(v).map_err(|e| bad(c, format!("element {id}: {e}")))?;
+        if let (Element::Roof(old), Element::Roof(next)) = (e, &mut e2)
+            && old.extrusion.is_none()
+            && next.extrusion.is_none()
+            && fields.contains_key("slope")
+        {
+            *next = m.roof_with_pitch(next, next.slope, roof_mode.as_deref() == Some("all"))?;
+            let individual = m.roof_pitch_summary(old)?.individual || m.roof_pitch_summary(next)?.individual;
+            if old.slope != next.slope && individual {
+                let delta = m.roof_eave_height(next) - m.roof_eave_height(old);
+                if roof_mode.is_none() {
+                    return Err(bad(
+                        c,
+                        format!(
+                            "roof {id}: choose `roof_slope_mode` (`inherited` keeps individual pitches; `all` changes all defining pitches). Eave height change: {delta:+.3} mm"
+                        ),
+                    ));
+                }
+                if delta.abs() > 1e-6 && !allow_eave {
+                    return Err(bad(
+                        c,
+                        format!("roof {id}: eave height changes by {delta:+.3} mm; accept with `allow_eave_change: true` or cancel"),
+                    ));
+                }
+            }
+        }
         // A note's new text keeps its runs on what didn't change, unless it is given runs of its own.
         if let (Element::Text(old), Element::Text(n)) = (e, &mut e2)
             && old.text != n.text

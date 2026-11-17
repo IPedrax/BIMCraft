@@ -1,8 +1,9 @@
 # Roof footprint slope editing
 
-Select a footprint roof, choose **Edit Boundary**, and select one boundary line. **Defines Slope** controls whether
-that edge contributes a sloping face. Turn it off to leave the edge upright; its remembered pitch is kept.
-Enter the line's **Slope**, then choose **Finish Edit Mode** to apply the draft in one history step. **Cancel Edit Mode**
+Select a footprint roof, choose **Edit Boundary**, and select one or several boundary lines (Ctrl-click or a selection box).
+**Defines Slope** controls whether those edges contribute sloping faces. Turn it off to leave edges upright; their remembered pitches are kept.
+Mixed definitions show an indeterminate checkbox; clicking it enables all selected edges. Different pitch overrides show **Varies**.
+Enter a common **Slope**, then choose **Finish Edit Mode** to apply the draft in one history step. **Cancel Edit Mode**
 discards it. A rectangular footprint with only one defining edge makes a shed, rising inward from that low eave.
 
 Both a selected roof's **Slope** field and a selected footprint line's **Slope** field accept:
@@ -15,13 +16,48 @@ Both a selected roof's **Slope** field and a selected footprint line's **Slope**
 | `100%` | 45° |
 | `12.5%` | Approximately 7.125° |
 
-Stored commands and displayed values remain degrees. A roof's own pitch does not replace independent edge overrides.
+Stored commands and displayed values remain degrees. The selected roof reports its common effective pitch or **Varies**,
+ignoring upright gables. Entering a new overall value when individual pitches are involved opens **Roof slope change**:
+
+- **Keep individual edge pitches:** only inherited pitches change. Explicit pitches keep their angles.
+- **Apply to all defining edges:** explicit defining pitches change too; upright-edge settings and inheritance markers are retained.
+
+The dialog shows the before/after eave elevation and how far it moves, in project units. **Apply slope** commits once;
+**Cancel** leaves the roof untouched. A changed project invalidates the preview. For example, with a 24-inch overhang,
+changing the default from 6:12 to 8:12 lowers the common eave by 4 inches. An explicit 12:12 face keeps its angle and moves
+down under the first choice; under the second choice it becomes 8:12. Base level and offset stay unchanged, and attached
+walls follow the result. Roofs with only inherited pitches retain direct overall editing.
+
 Ratios and percentages must be positive and yield no more than 75°. Bare `0` makes a whole roof flat; on a boundary
 line, bare `0` or blank inherits the roof's pitch. A pitched roof with all edges disabled refuses Finish.
 The Roof creation Options Bar still accepts degrees. Project-wide slope display formats and extrusion **Edit Profile**
 UI are separate work; this change does not provide them.
 
 ## Actual before and after
+
+The November 17 follow-up adds multiple-line controls and the per-edit overall-pitch choice. Before is the merged
+baseline `0d36d580434a089b864b5e479d58ee5f849c05eb` with a capture test only; after is this revision. Both use the same
+synthetic two-line selection. The baseline has no slope controls for multiple lines; after shows mixed values.
+
+![Before: two selected lines without slope controls](images/roof-slope-multi-before.png)
+
+![After: two selected lines with mixed Defines Slope and Slope controls](images/roof-slope-multi-after.png)
+
+The two choices below preview the same overall 40° edit. Keeping individual pitches leaves the effective pitch summary
+at Varies; applying to all produces a common 40°. Both warn that this fixture's eave moves down 157 mm before Apply.
+
+![Keep individual pitches and preview eave movement](images/roof-slope-choice-keep.png)
+
+![Apply the pitch to all defining edges and preview eave movement](images/roof-slope-choice-all.png)
+
+All 18 follow-up captures were inspected across BIMCraft and Rev profiles in Light, Dark, and Dark UI with Light Canvas.
+These are automated egui harness renders, not manual desktop acceptance. Reproduce them with absolute output folders:
+
+```sh
+BIMCRAFT_ROOF_MULTI_DUMP=/absolute/output/multi BIMCRAFT_ROOF_CHOICE_DUMP=/absolute/output/choice cargo test -p bimcraft-ui-egui --lib roof_
+```
+
+The original single-line and percentage evidence below remains pinned to its original source.
 
 These are native egui harness renders of a synthetic 8000 × 6000 mm roof. They are automated UI evidence, not a manual
 desktop acceptance session. No Autodesk model, screenshot or graphic is included.
@@ -48,7 +84,7 @@ BIMCRAFT_ROOF_DUMP=/absolute/output/folder cargo test -p bimcraft-ui-egui roof_s
 This text is proposed for the wiki's **Roofs and Dormers → Changing a roof** section once this PR is accepted.
 The live wiki is not changed while the feature remains a draft.
 
-> Select a footprint roof and choose **Edit Boundary**. Select one boundary line, then use **Defines Slope** and
+> Select a footprint roof and choose **Edit Boundary**. Select one or several boundary lines with Ctrl-click or a box, then use **Defines Slope** and
 > **Slope** in Properties. Turn Defines Slope off for an upright edge. On a rectangular footprint, leaving just one
 > defining edge makes a shed that rises inward from that edge. **Finish Edit Mode** applies the draft as one undo step;
 > **Cancel Edit Mode** discards it.
@@ -57,13 +93,51 @@ The live wiki is not changed while the feature remains a draft.
 > and positive percentages (`50%`). 50% equals 6:12; 100% equals 45°. Values display in degrees and the 75° limit still
 > applies. Bare zero on the roof makes it flat; on a boundary line, blank or bare zero inherits the roof's slope.
 > The creation Options Bar still uses degrees. Extrusion profile editing is not part of this footprint workflow.
+>
+> A multi-line selection shows an indeterminate Defines Slope checkbox or Varies when its settings differ. Editing a
+> value applies to every selected line; unselected lines keep their settings. The overall roof Slope shows its common
+> effective pitch or Varies. When individual pitches are involved, entering a new overall pitch offers a per-edit choice:
+> keep individual pitches, or apply the new pitch to all defining edges. Review the eave-height change, then Apply slope
+> or Cancel. Base level and offset stay unchanged; attached walls follow the result.
 
 Also proposed for **Sketch Mode → For agents** and the roof command's `sketch` row: a roof line may include numeric
 `slope` in degrees and boolean `defines_slope`. `edit_boundary {id}` returns their effective values; sending the edited
 lines through `edit_boundary {id, sketch}` applies them through the normal model validation and history. These are
 command/draft properties, not new saved sketch fields. Percentage strings are UI input, not command values.
 
+Also proposed for **Roofs and Dormers → For agents**: an overall `modify {id, slope}` involving individual pitches
+requires `roof_slope_mode: "inherited"` to retain them or `"all"` to change all defining edges. A changed eave datum is
+refused with its signed movement in mm until `allow_eave_change: true` explicitly accepts it. Refusal adds no model
+change or history. The flags are not saved properties. Do not combine `all` with a separate `slopes` array.
+
+## Revit comparison and scope
+
+Reference version: Revit 2026, documentation reviewed November 17, 2026. References are
+[roof instance properties](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-ArchDesign/files/GUID-A5745932-897D-4F28-85B8-F5B70BB661DD.htm)
+and [boundary-line properties](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-ArchDesign/files/GUID-682B3B19-A4F7-4EE7-B994-F3EA3154BB08.htm).
+The table describes this implementation independently; it is not a native Revit acceptance result.
+
+| Workflow | This contribution |
+| --- | --- |
+| Select an existing footprint and edit its boundary | Supported through Edit Boundary and existing selection tools |
+| Set slope definition and pitch on selected edges | Supported for one or several lines, with mixed states |
+| Numeric pitch entry | Degrees, ratios and percentages supported in these Properties fields; global display formats remain separate |
+| Overall pitch versus individual pitches | Common pitch/Varies summary; per-edit choice and height warning are an intentional adaptation requested by the contributor |
+| Cancel, validation and history | Draft cancellation, atomic shared commands, one Finish/Apply Undo/Redo |
+| Hosts, persistence and output | Synthetic attached-wall, save/reopen and independently measured GLB cases verified |
+| Broader roof tools | Extrusion profile editing and general sketch-tool expansion are separate work; no full Revit parity claim |
+
 ## Verification and attribution
+
+The November 17 refinement on merged baseline `0d36d580` passed `cargo test --workspace`: 4,872 passed, 0 failed,
+21 ignored, exit 0. Formatting, workspace/all-target Clippy with warnings denied, and `cargo i18n check` passed.
+The final capture run passed all 11 roof UI tests, including the explicit metric-unit warning assertion, and rendered
+18 captures. The new tests failed before implementation on unconfirmed plane movement, missing command choices,
+immediate UI mutation and missing multi-line controls. Real stdio MCP replay verified both choices, refusal, Undo/Redo
+and save/reopen; independent GLB measurements verified the 4-inch eave movement and retained/changed explicit pitch.
+The existing synthetic shed still rises 24 inches over 48 inches. Initial workspace execution inside the restricted
+sandbox stopped at a local-server permission error; the unrestricted rerun completed successfully. Native desktop
+user acceptance remains pending.
 
 Implementation head `683aeda63181ba9a3f3f917836623d34af7ee58c` passed `cargo test --workspace --no-fail-fast`:
 4,405 passed, 0 failed, 21 ignored, exit 0. It also passed `cargo clippy --workspace --all-targets -- -D warnings`,
@@ -74,6 +148,7 @@ Real CLI/MCP replay and independent GLB measurements also passed for a synthetic
 after save/reopen. Those command inputs remain numeric degrees; percentage input is tested through egui.
 
 Agent: **Codex desktop, `gpt-6-astra`, high effort**, verified from the owner chat's runtime metadata.
-Live issues, PRs and discussions were audited before implementation. No separate pre-start public coordination
-announcement was posted; this draft is the public review point. Manual desktop acceptance and wiki publication remain
+Live issues, PRs and discussions were audited before implementation. The original single-line contribution had no separate
+pre-start announcement; the November 17 multiple-line/overall-pitch follow-up was publicly coordinated before implementation
+in [PR #489](https://github.com/IPedrax/BIMCraft/pull/489#issuecomment-6952630156). Manual desktop acceptance and wiki publication remain
 pending. The implementation and visual fixtures are independent, synthetic work; no Autodesk prose or assets are included.

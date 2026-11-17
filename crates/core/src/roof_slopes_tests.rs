@@ -48,6 +48,93 @@ fn tan(degrees: f64) -> f64 {
 }
 
 #[test]
+fn an_overall_pitch_edit_cannot_translate_explicit_roof_planes_without_confirmation() {
+    let mut moved = Vec::new();
+    for (name, slopes, gables) in [
+        ("uniform", json!([30, 30, 30, 30]), json!([])),
+        ("unequal", json!([30, 45, 30, 45]), json!([])),
+        ("mixed", json!([0, 45, 0, 45]), json!([])),
+        ("shed", json!([30, 0, 0, 0]), json!([1, 2, 3])),
+    ] {
+        let mut s = Session::new();
+        let id = run(
+            &mut s,
+            "roof",
+            json!({"boundary":rect(), "slope":30, "slopes":slopes,
+            "gables":gables, "overhang":600, "offset":250}),
+        )["id"]
+            .as_u64()
+            .unwrap();
+        let before = s.model.clone();
+        let r = roof_of(&s, id);
+        assert_eq!(s.model.roof_pitch_summary(r).unwrap().common, if matches!(name, "uniform" | "shed") { Some(30.0) } else { None });
+        let planes = s.model.roof_faces(r).unwrap();
+        let base = s.model.elevation(r.level) + r.offset;
+        let eave = planes[0].1.at(r.boundary[0]);
+        let result = s.execute("modify", &json!({"id":id, "slope":45}));
+        let r = roof_of(&s, id);
+        let after = s.model.roof_faces(r).unwrap();
+        let shifted = planes
+            .iter()
+            .zip(&after)
+            .filter(|((_, a), (_, b))| {
+                // The east/west planes are the explicit ones in the mixed fixture.
+                (name != "mixed" || a.g.0.abs() > 0.0) && !near(a.z, b.z)
+            })
+            .count();
+        eprintln!(
+            "{name}: base={base}, eave_before={eave}, eave_after={}, shifted_explicit={shifted}, accepted={}",
+            after[0].1.at(r.boundary[0]),
+            result.is_ok()
+        );
+        assert_eq!(r.offset, 250.0);
+        if shifted > 0 {
+            moved.push(name);
+        }
+        if result.is_err() {
+            assert_eq!(*s.model, *before);
+        }
+        assert!(result.is_err(), "an unconfirmed overall edit must be refused");
+    }
+    assert!(moved.is_empty(), "overall slope translated explicit roof planes: {moved:?}");
+}
+
+#[test]
+fn overall_roof_pitch_choices_warn_then_apply_atomically_and_reopen() {
+    for mode in ["inherited", "all"] {
+        let mut s = Session::new();
+        let id = run(&mut s, "roof", json!({"boundary":rect(), "slope":30, "slopes":[0,45,0,45], "overhang":600}))["id"].as_u64().unwrap();
+        let wall = run(&mut s, "wall", json!({"points":[[7900,1000],[7900,5000]], "attach_top":id}))["ids"][0].as_u64().unwrap();
+        let before = s.model.clone();
+        let history = s.history().len();
+        let error = fails(&mut s, "modify", json!({"id":id, "slope":40, "roof_slope_mode":mode}));
+        assert!(error.contains("eave") && error.contains("allow_eave_change"), "{error}");
+        assert_eq!(s.history().len(), history);
+        run(&mut s, "modify", json!({"id":id, "slope":40, "roof_slope_mode":mode, "allow_eave_change":true}));
+        let r = roof_of(&s, id);
+        assert_eq!(r.offset, 0.0);
+        assert_eq!(r.slopes, if mode == "all" { vec![0.0, 40.0, 0.0, 40.0] } else { vec![0.0, 45.0, 0.0, 45.0] });
+        assert_eq!(s.model.guid(id), before.guid(id));
+        let faces = s.model.roof_faces(r).unwrap();
+        assert!(near(faces[0].1.at(r.boundary[0]), 3000.0 - 600.0 * tan(40.0)));
+        let slopes = pitches(&s, id);
+        assert!(near(slopes[0], tan(40.0)) && near(slopes[3], tan(if mode == "all" { 40.0 } else { 45.0 })));
+        let edited = s.model.clone();
+        let (opened, left) = crate::model::Model::read(&edited.to_json().unwrap()).unwrap();
+        assert!(left.is_empty());
+        assert_eq!(opened.roof_faces(r).unwrap(), faces);
+        assert_eq!(opened.elements.get(wall), edited.elements.get(wall));
+        assert_eq!(s.history().len(), history + 1);
+        run(&mut s, "undo", json!({}));
+        assert_eq!(*s.model, *before);
+        run(&mut s, "redo", json!({}));
+        assert_eq!(*s.model, *edited);
+        fails(&mut s, "modify", json!({"id":id,"slope":50,"roof_slope_mode":"secret"}));
+        fails(&mut s, "modify", json!({"id":id,"slope":50,"allow_eave_change":"yes"}));
+    }
+}
+
+#[test]
 fn roof_sketch_defines_slope_makes_a_shed_and_edits_in_one_history_step() {
     let mut s = Session::new();
     let id = run(&mut s, "roof", json!({"boundary": [[0,0],[3048,0],[3048,1219.2],[0,1219.2]], "slope": 20}))["id"].as_u64().unwrap();
@@ -165,7 +252,7 @@ fn a_roofs_slopes_are_changed_with_modify_and_zero_is_the_roofs_own() {
     let g = pitches(&s, id);
     assert!(near(g[0], tan(30.0)) && near(g[3], tan(45.0)), "{g:?}");
     // Edges with none of their own follow the roof when its slope changes.
-    run(&mut s, "modify", json!({"id": id, "slope": 20}));
+    run(&mut s, "modify", json!({"id": id, "slope": 20, "roof_slope_mode": "inherited"}));
     let g = pitches(&s, id);
     assert!(near(g[0], tan(20.0)) && near(g[1], tan(20.0)) && near(g[2], tan(45.0)), "{g:?}");
     // An empty list is every edge at `slope` again.
