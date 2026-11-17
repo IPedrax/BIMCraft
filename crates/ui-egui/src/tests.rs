@@ -4643,6 +4643,50 @@ fn a_point_held_by_guides_says_so_whatever_else_it_snapped_to() {
     assert_eq!(lock_glyph(Kind::Free, Lock::Cross, false), None, "the classic look has its own markers");
 }
 
+/// A label at the view's edge is moved inside it: a snap's name over a point at the very top is read a line lower, not
+/// cut in half by the edge.
+#[test]
+fn a_label_at_the_views_edge_is_kept_inside_it() {
+    use crate::canvas::inside;
+    let clip = egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(800.0, 600.0));
+    let size = vec2(120.0, 20.0);
+    let top = inside(egui::Rect::from_min_size(pos2(400.0, -8.0), size), clip);
+    assert_eq!(top.min, pos2(400.0, 2.0), "the name came down by the margin");
+    let right = inside(egui::Rect::from_min_size(pos2(760.0, 300.0), size), clip);
+    assert_eq!(right.max.x, 798.0, "and a name at the right edge came left");
+    let free = egui::Rect::from_min_size(pos2(300.0, 300.0), size);
+    assert_eq!(inside(free, clip), free, "a label with room stays where it is");
+}
+
+/// A guide's strong segment is the last screen-wide stretch of the relation, however far its source is: a 40 m grid's
+/// source would otherwise paint a bright line across the whole plan.
+#[test]
+fn a_guides_strong_segment_reaches_only_a_screen_from_the_point_it_locks() {
+    use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult, GuideLine, ReferenceType};
+    let (at, far) = (P2(0.0, 0.0), P2(-20_000.0, 0.0));
+    let res = AlignmentResult {
+        snapped_point: at,
+        guide_line: GuideLine { from: far, to: at },
+        reference_point: far,
+        axis: AlignmentAxis::Y,
+        kind: ReferenceType::Endpoint,
+        wall_id: None,
+    };
+    let to = |p: P2| pos2(p.0 as f32, p.1 as f32);
+    let along = |d: P2| vec2(d.0 as f32, d.1 as f32);
+    let shapes = crate::canvas::alignment_shapes(&[res], to, along, 100.0, 1.0, true);
+    let core = crate::style::guide_ink().core;
+    let strong = shapes
+        .iter()
+        .find_map(|s| match s {
+            egui::Shape::LineSegment { points, stroke } if stroke.color == core => Some(*points),
+            _ => None,
+        })
+        .expect("the relation's own ink");
+    assert!((strong[1] - strong[0]).length() <= 100.01, "one screen's reach, not 20 m: {strong:?}");
+    assert_eq!(strong[1], to(at), "it ends on the point it locks");
+}
+
 /// The live reading sits clear of its own segment and its badge: a wide horizontal pill beside a steep one is pushed
 /// out by its box's projection on the normal, where a fixed offset let it cross back over the line.
 #[test]
