@@ -47,7 +47,7 @@ fn edges_at(w: &Wall, s: f64) -> Vec<(Edge, Edge)> {
         }
     }
     crossing.sort_by(|a, b| a.at(s).total_cmp(&b.at(s)));
-    crossing.chunks_exact(2).map(|p| (p[0], p[1])).collect()
+    crossing.as_chunks::<2>().0.iter().map(|[a, b]| (*a, *b)).collect()
 }
 
 /// The planes over the plan between which wall `w` stands at `s` along it: each stretch its profile covers there, its bottom
@@ -85,7 +85,7 @@ pub(crate) fn spans_at_height(w: &Wall, up: f64) -> Vec<(f64, f64)> {
         along.extend(crate::view3d::crossings(ring, P2(up, 0.0), P2(0.0, 1.0)).into_iter().flat_map(|(a, b)| [a, b]));
     }
     along.sort_by(f64::total_cmp);
-    along.chunks_exact(2).map(|p| (p[0], p[1])).filter(|(a, b)| b - a > 1e-6).collect()
+    along.as_chunks::<2>().0.iter().map(|[a, b]| (*a, *b)).filter(|(a, b)| b - a > 1e-6).collect()
 }
 
 /// `ring`, of wall `w` in plan, cut to where its profile reaches height `up` above its base: a part for each stretch, its caps
