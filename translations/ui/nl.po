@@ -18206,6 +18206,26 @@ msgstr ""
 msgid "Defines Origin"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:5885
+msgid "Click a wall to place the door. Space flips the hinge; the pointer's side of the wall sets the swing."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5888
+msgid "Click a wall to place the window. Space flips its face; the pointer's side sets which face is out."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5875
+msgid "Space flips the hand or facing; the flip controls on the plan do the same."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5877
+msgid "This door has no swing to flip."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5883
+msgid "This door has no swing to flip. Click a wall to place it."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Een lege waarde is die van de familie zelf, zoals het tabblad Parameters ze toont."

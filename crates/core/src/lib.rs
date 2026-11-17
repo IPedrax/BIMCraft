@@ -111,6 +111,8 @@ mod file_tests;
 pub mod files;
 pub mod fills;
 mod fixtures;
+#[cfg(test)]
+mod flip_tests;
 mod font;
 #[cfg(test)]
 mod formula_visibility_tests;
