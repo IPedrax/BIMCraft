@@ -187,7 +187,7 @@ fn after_the_grant_the_plugin_checks_its_channel_from_memory() {
     write_plugin(root.path(), "caller", "0.2.1", FEED, None);
     let publisher = Publisher::new();
     let archive = normal_archive("caller", "0.3.0", FEED, None);
-    let feed = signed("demo", "0.3.0", &archive, &publisher);
+    let feed = signed("caller", "0.3.0", &archive, &publisher);
     let net = network(feed, archive);
     let mut plugins = loaded(root.path(), net);
     plugins.set_permission("caller", "update", true).unwrap();
@@ -320,8 +320,8 @@ fn a_path_out_of_the_folder_and_a_symbolic_link_are_refused() {
     let plain = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
     writer.start_file("plugin.json", plain).unwrap();
     writer.write_all(&manifest).unwrap();
-    writer.start_file("plugin.wasm", plain.unix_permissions(0o120777)).unwrap();
-    writer.write_all(b"target").unwrap();
+    // `unix_permissions` keeps only 0o777, so the writer's own symlink entry is what marks the type.
+    writer.add_symlink("plugin.wasm", "target", plain).unwrap();
     let linked = writer.finish().unwrap().into_inner();
     let feed = signed("demo", "0.3.0", &linked, &publisher);
     let plugins = loaded(root.path(), network(feed, linked));
