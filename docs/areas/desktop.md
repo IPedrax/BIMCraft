@@ -462,6 +462,12 @@ view goes back where it was (`section_box::Was`: closed, its tab at its place, o
 window ends the link. The selection is the model's, so the plan and the 3D view share it already. The plan's own Section Box flag reads the
 project's box, never the link's, so a plan that follows the box and a 3D view that follows the plan never chase each other.
 
+Extrusion roof **Edit Profile** uses the same 3D sketch interaction in an upright frame (`workplane::roof_profile`).
+`sketch3d::Surface` distinguishes world-XY boundary coordinates from the profile's local along/up coordinates. It maps
+profile picks with `Camera::on` and `Frame::coordinates`, and draws with `Frame::point`. The view initially faces the
+profile so rotated roofs are immediately editable. Finish calls existing `modify`, with one history step; Cancel leaves
+the model unchanged. [Scope, properties and tests](levels-walls-roofs.md).
+
 Sketching in 3D (`sketch3d.rs`). Edit Boundary on a floor, ceiling, roof by footprint or shaft selected in the 3D view keeps the
 sketch there, as Revit does: the lines are drawn over the picture on the element's own plane, `Model::sketch_plane` (a floor's
 top, sloped with it; a ceiling's underside; a roof's base; a shaft's bottom), and `Sketch::plan` is

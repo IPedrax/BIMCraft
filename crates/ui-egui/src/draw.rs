@@ -193,6 +193,13 @@ impl BimApp {
 
     /// The shape `target` draws from now, its points so far dropped: a chain going on from where it is.
     pub(crate) fn set_shape(&mut self, target: Target, shape: Shape) {
+        if target == Target::Sketch && self.editing_roof_profile() && !matches!(shape, Shape::Line | Shape::Polyline) {
+            self.status = crate::Status {
+                text: crate::lang::t("An extrusion roof profile supports straight lines and polylines").into(),
+                error: true,
+            };
+            return;
+        }
         let slot = match target {
             Target::Detail => &mut self.drawing.detail,
             Target::Sketch => &mut self.drawing.sketch,
@@ -289,8 +296,10 @@ impl BimApp {
 
     /// The Draw panel for `target`: a button for each shape it draws, two rows of them as Revit's are.
     pub(crate) fn draw_panel(&mut self, ui: &mut Ui, target: Target) {
+        let profile = target == Target::Sketch && self.editing_roof_profile();
         let shapes: Vec<Shape> = Shape::ALL
             .into_iter()
+            .filter(|s| !profile || matches!(s, Shape::Line | Shape::Polyline))
             .filter(|s| match target {
                 Target::Wall => s.for_walls(),
                 Target::Detail | Target::Sketch => s.for_lines(),
@@ -315,7 +324,7 @@ impl BimApp {
                                 self.set_shape(target, s);
                             }
                         }
-                        if target == Target::Sketch && k == 1 {
+                        if target == Target::Sketch && k == 1 && !profile {
                             let tip = msg!("Pick Walls: a boundary line along each wall clicked");
                             if small_button(ui, Icon::Wall, "Pick Walls", picking_walls, tip).clicked() {
                                 self.tool = Tool::SketchPick;
