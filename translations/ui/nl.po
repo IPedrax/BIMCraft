@@ -18568,6 +18568,14 @@ msgstr "{} (niet gevonden)"
 msgid "{} more in Settings > Templates; move one up to list it here."
 msgstr "Nog {} in Instellingen > Sjablonen; schuif er een omhoog om het hier te tonen."
 
+#: crates/ui-egui/src/plugins.rs:82
+msgid "The report was cut: it is over the 256 KiB limit."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:89
+msgid "The report's Markdown couldn't be read: {}"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Een lege waarde is die van de familie zelf, zoals het tabblad Parameters ze toont."

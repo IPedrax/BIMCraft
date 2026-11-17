@@ -6,6 +6,8 @@ use bimcraft_core::sample::SAMPLE;
 use bimcraft_plugin::Plugins;
 use serde_json::json;
 
+use crate::plugins::{ReportFormat, report_parts};
+
 use super::*;
 
 /// A folder whose module is the sample plugin's build named beside it: the app's own `refresh` then finds it,
@@ -185,6 +187,122 @@ fn a_new_project_keeps_the_plugins_their_tab_and_their_commands() {
     assert_eq!(h.state().plugins.plugins[0].status, bimcraft_plugin::Status::Loaded);
     assert!(h.state().session.external_command("plugin:sample:summary").is_some(), "its commands stay registered");
     assert!(h.query_by_label("Areas").is_some(), "and the tab is drawn again");
+}
+
+fn open_report(h: &mut Harness<'static, BimApp>, title: &str, text: &str, format: ReportFormat) {
+    h.state_mut().open_plugin_report(title.to_string(), text, format);
+    h.run();
+}
+
+fn opened_pages(h: &Harness<BimApp>) -> Vec<String> {
+    h.output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|c| if let egui::OutputCommand::OpenUrl(u) = c { Some(u.url.clone()) } else { None })
+        .collect()
+}
+
+#[test]
+fn a_plain_string_report_is_still_text() {
+    let mut h = app(SAMPLE);
+    open_report(&mut h, "Report", "Levels: 2\nWalls: 12", ReportFormat::Text);
+    assert!(h.query_by_label("Levels: 2").is_some());
+    assert!(h.query_by_label("Walls: 12").is_some());
+}
+
+#[test]
+fn markdown_report_renders_headings_lists_and_tables() {
+    let mut h = app(SAMPLE);
+    let source = "# Report\n\n## Levels\n\n- Ground\n- First\n\n| Category | Count |\n|---|---:|\n| Walls | 12 |\n";
+    open_report(&mut h, "Report", source, ReportFormat::Markdown);
+    // The dialog's title and the H1 both read `Report`.
+    assert!(h.query_all_by_label("Report").count() >= 2);
+    assert!(h.query_by_label("Levels").is_some());
+    assert!(h.query_by_label("Ground").is_some());
+    assert!(h.query_by_label("Category").is_some(), "the table's header is a cell, not a line of its source");
+    assert!(h.query_by_label("Walls").is_some());
+    assert!(h.query_by_label("| Category | Count |").is_none(), "the source is not drawn as monospace lines");
+}
+
+#[test]
+fn an_unknown_report_format_is_refused_and_only_a_string_or_an_object_is_a_report() {
+    assert!(report_parts(&json!({"text": "x", "format": "html"})).is_err());
+    assert!(report_parts(&json!({})).is_err(), "an empty object has no text");
+    assert!(report_parts(&json!({"text": 7})).is_err());
+    assert!(report_parts(&json!(7)).is_err());
+    let (text, format) = report_parts(&json!("plain")).unwrap();
+    assert_eq!((text.as_str(), format), ("plain", ReportFormat::Text));
+    let (text, format) = report_parts(&json!({"text": "# Report", "format": "markdown"})).unwrap();
+    assert_eq!((text.as_str(), format), ("# Report", ReportFormat::Markdown));
+    let (_, format) = report_parts(&json!({"text": "plain"})).unwrap();
+    assert_eq!(format, ReportFormat::Text, "a missing format is text");
+}
+
+#[test]
+fn report_text_longer_than_the_limit_is_cut_once_and_warned() {
+    let mut h = app(SAMPLE);
+    let source = "a".repeat(300 * 1024);
+    open_report(&mut h, "Report", &source, ReportFormat::Text);
+    let report = h.state().plugin_report.as_ref().expect("the report is open");
+    assert_eq!(report.source().len(), 256 * 1024);
+    assert!(h.query_by_label_contains("cut").is_some(), "the window says it was cut");
+}
+
+#[test]
+fn broken_markdown_falls_back_to_plain_text() {
+    let mut h = app(SAMPLE);
+    open_report(&mut h, "Report", "```\nnever closed\n", ReportFormat::Markdown);
+    assert!(h.query_by_label_contains("couldn't be read").is_some());
+    assert!(h.query_by_label("```").is_some(), "the source is shown as text");
+}
+
+#[test]
+fn copy_takes_the_source_markdown_not_the_rendered_text() {
+    let mut h = app(SAMPLE);
+    let source = "# Report\n\n| Category | Count |\n|---|---:|\n| Walls | 12 |\n";
+    open_report(&mut h, "Report", source, ReportFormat::Markdown);
+    // The ribbon has a Copy tool too: the report's button is the one below it.
+    let copy = h.get_all_by_label("Copy").max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap();
+    copy.click();
+    h.step();
+    let copied = h
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .find_map(|c| if let egui::OutputCommand::CopyText(text) = c { Some(text.clone()) } else { None });
+    assert_eq!(copied.as_deref(), Some(source));
+}
+
+#[test]
+fn report_links_with_javascript_or_file_scheme_are_not_active() {
+    let mut h = app(SAMPLE);
+    open_report(&mut h, "Report", "[click](javascript:alert(1)) and [file](file:///etc/passwd)", ReportFormat::Markdown);
+    h.get_by_label("click").click();
+    h.step();
+    assert!(opened_pages(&h).is_empty(), "javascript: is never opened");
+    h.get_by_label("file").click();
+    h.step();
+    assert!(opened_pages(&h).is_empty(), "file: is never opened");
+}
+
+#[test]
+fn report_links_with_https_open_on_a_click() {
+    let mut h = app(SAMPLE);
+    open_report(&mut h, "Report", "[site](https://example.org/report)", ReportFormat::Markdown);
+    h.get_by_label("site").click();
+    h.step();
+    assert_eq!(opened_pages(&h), ["https://example.org/report"]);
+}
+
+#[test]
+fn report_html_and_images_stay_text() {
+    let mut h = app(SAMPLE);
+    open_report(&mut h, "Report", "<script>alert(1)</script> ![alt](https://example.org/a.png)", ReportFormat::Markdown);
+    assert!(h.query_by_label_contains("<script>alert(1)</script>").is_some());
+    assert!(h.query_by_label_contains("![alt](https://example.org/a.png)").is_some());
+    assert!(opened_pages(&h).is_empty());
 }
 
 #[test]

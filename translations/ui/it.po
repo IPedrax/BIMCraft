@@ -18583,6 +18583,14 @@ msgstr "{} (non trovato)"
 msgid "{} more in Settings > Templates; move one up to list it here."
 msgstr "Altri {} in Impostazioni > Modelli; spostane uno in alto per elencarlo qui."
 
+#: crates/ui-egui/src/plugins.rs:82
+msgid "The report was cut: it is over the 256 KiB limit."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:89
+msgid "The report's Markdown couldn't be read: {}"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Un valore vuoto è quello dell'oggetto stesso, come nella scheda Parametri."

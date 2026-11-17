@@ -18567,6 +18567,14 @@ msgstr "{}（未找到）"
 msgid "{} more in Settings > Templates; move one up to list it here."
 msgstr "「設置 > 樣板」中還有 {} 個；將其上移即可在此列出。"
 
+#: crates/ui-egui/src/plugins.rs:82
+msgid "The report was cut: it is over the 256 KiB limit."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:89
+msgid "The report's Markdown couldn't be read: {}"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "留空的值表示使用族自身的值，如“參數”選項卡中所示。"

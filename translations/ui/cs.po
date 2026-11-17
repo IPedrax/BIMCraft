@@ -18567,6 +18567,14 @@ msgstr "{} (nenalezeno)"
 msgid "{} more in Settings > Templates; move one up to list it here."
 msgstr "Dalších {} v Nastavení > Šablony; posuňte jednu nahoru, aby se zde zobrazila."
 
+#: crates/ui-egui/src/plugins.rs:82
+msgid "The report was cut: it is over the 256 KiB limit."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:89
+msgid "The report's Markdown couldn't be read: {}"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Prázdná hodnota znamená výchozí hodnotu rodiny, jak je uvedeno na kartě Parametry."
