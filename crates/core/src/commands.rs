@@ -2179,6 +2179,42 @@ other_files(
         "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
         copy,
     ),
+    other(
+        "copy_to_clipboard",
+        msg!("Copy to Clipboard"),
+        "{ids: [id,…], view?} Revit's Copy to Clipboard (Ctrl+C): elements of any view (with the doors and windows of copied \
+         walls, a stair's railings) kept as text for `paste`, here or in another BIMCraft. `view` is the one they're copied in \
+         (a level's plan, a plan view, a section, an elevation, a sheet or a 3D view), which a paste by hand measures from. \
+         Levels, sheets, viewports, views and schedules can't be copied and are left out. Returns {clipboard, count, left_out}; \
+         the session keeps the text for a `paste` without `clipboard`",
+        copy_to_clipboard,
+    ),
+    edit(
+        "cut_to_clipboard",
+        msg!("Cut to Clipboard"),
+        &[],
+        "{ids: [id,…], view?} Revit's Cut (Ctrl+X): `copy_to_clipboard`, and the elements deleted, in one step. Returns \
+         {clipboard, count, left_out, deleted}",
+        cut_to_clipboard,
+    ),
+    edit(
+        "paste",
+        msg!("Paste"),
+        &[],
+        "{clipboard?, mode?, view?, at?: [x, y], by?: [dx, dy], levels?: [level,…], level?, views?: [view,…]} Revit's Paste \
+         (Ctrl+V) of what `copy_to_clipboard` kept (or the text `clipboard` gives, from another BIMCraft), into `view` (the open \
+         one: a level's plan, a plan view, a section, an elevation, a sheet or a 3D view). `mode`: `manual` (Paste from \
+         Clipboard, the default with `at` or `by`): moved `by`, or with its middle `at`, in the view's terms (a plan's x and y; a \
+         section's along and up, the height taking model elements to the nearest level; a 3D view's x and y, with `level` the \
+         level model elements go onto, else their own); `current_view`: view-specific \
+         elements where they were in theirs, model elements onto the plan's level; `same_place`: where they were, on their \
+         levels (by name or height in another project); `levels`: model elements onto each of `levels`, at the same place and \
+         height over the level; `views`: view-specific elements into each of `views`; `picked_level`: model elements onto \
+         `level`. `view` `{3D}` is the default 3D view, made if need be. Between views that look the same way (two plans, parallel sections) a view-specific element keeps its place \
+         in the model; between others, its place in the view. A door or window copied without its wall goes into a wall there; \
+         a tag, a dimension or a railing without what it names, measures or follows is left out. Returns {ids, left_out}",
+        paste,
+    ),
     edit(
         "rotate",
         ui_msg!("Rotate"),
@@ -20195,6 +20231,125 @@ fn copy(s: &mut Session, p: &Value) -> R {
     let ids = ids_param(c, &s.model, p)?;
     let by = point_req(c, p, "by")?;
     duplicate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false })
+}
+
+fn copy_to_clipboard(s: &mut Session, p: &Value) -> R {
+    let c = "copy_to_clipboard";
+    only(c, p, &["ids", "id", "view"])?;
+    let (made, _) = clipboard_of(c, s, p)?;
+    Ok(json!({"clipboard": &*made.text, "count": made.count, "left_out": made.left_out}))
+}
+
+/// What `copy_to_clipboard` and `cut_to_clipboard` keep: the clipboard of `ids` in `view`, kept by the session; and the ids
+/// it holds.
+fn clipboard_of(c: &str, s: &mut Session, p: &Value) -> Result<(crate::clipboard::Copied, Vec<Id>), String> {
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    let view = match p.get("view") {
+        v if absent(v) => None,
+        Some(_) => Some(view_param(c, m, p, true)?),
+        None => None,
+    };
+    let made = crate::clipboard::copy(m, &ids, view).map_err(|e| bad(c, e))?;
+    let held = crate::clipboard::read(&made.text).map(|clip| clip.source.ids).map_err(|e| bad(c, e))?;
+    s.clipboard = Some(Arc::from(made.text.as_str()));
+    Ok((made, held))
+}
+
+fn cut_to_clipboard(s: &mut Session, p: &Value) -> R {
+    let c = "cut_to_clipboard";
+    only(c, p, &["ids", "id", "view"])?;
+    let (made, held) = clipboard_of(c, s, p)?;
+    refuse_pinned(c, &s.model, &held, "cut")?;
+    delete(s, &json!({"ids": held})).map_err(|e| bad(c, e.trim_start_matches("delete: ")))?;
+    Ok(json!({"clipboard": &*made.text, "count": made.count, "left_out": made.left_out, "deleted": held}))
+}
+
+fn paste(s: &mut Session, p: &Value) -> R {
+    use crate::clipboard::Mode;
+    let c = "paste";
+    only(c, p, &["clipboard", "mode", "view", "at", "by", "levels", "level", "views"])?;
+    let text: Arc<str> = match p.get("clipboard") {
+        v if absent(v) => {
+            s.clipboard.clone().ok_or_else(|| bad(c, "the clipboard is empty: `copy_to_clipboard` first, or give `clipboard`"))?
+        }
+        Some(Value::String(t)) => Arc::from(t.as_str()),
+        Some(_) => return Err(bad(c, "`clipboard` is the text `copy_to_clipboard` gave")),
+        None => return Err(bad(c, "the clipboard is empty")),
+    };
+    let clip = crate::clipboard::read(&text).map_err(|e| bad(c, e))?;
+    // The default 3D view by its name: made when nothing has made it yet, as a camera or a section box makes it.
+    let default_3d = matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    let view = match p.get("view") {
+        _ if default_3d => Some(match s.model.default_3d() {
+            Some(v) => v,
+            None => s.model_mut().insert(Element::View3D(View3D::default_view())),
+        }),
+        v if absent(v) => None,
+        Some(_) => Some(view_param(c, &s.model, p, true)?),
+        None => None,
+    };
+    let m = &s.model;
+    let (at, by) = (point_opt(c, p, "at")?, point_opt(c, p, "by")?);
+    let level_of = |v: &Value| -> Result<Guid, String> {
+        let id = match v {
+            Value::String(n) if Guid::parse(n).is_none() => m
+                .levels()
+                .into_iter()
+                .find(|(_, l)| l.name == *n)
+                .map(|(id, _)| id)
+                .ok_or_else(|| bad(c, format!("no level named `{n}`")))?,
+            v => element_id(c, m, v)?,
+        };
+        m.level(id).map(|_| m.guid(id)).ok_or_else(|| bad(c, format!("{id} is not a level")))
+    };
+    let list = |key: &str| -> Result<&Vec<Value>, String> {
+        match p.get(key) {
+            Some(Value::Array(a)) if a.len() <= MAX_POINTS => Ok(a),
+            _ => Err(bad(c, format!("`{key}` is a list"))),
+        }
+    };
+    let mode = match string(c, p, "mode")?.as_deref() {
+        None if at.is_none() && by.is_none() => {
+            return Err(bad(
+                c,
+                "give `mode` (manual, current_view, same_place, levels, views or picked_level), or `at` or `by` to paste by hand",
+            ));
+        }
+        None | Some("manual") => {
+            let by = match (at, by) {
+                (_, Some(by)) => by,
+                (Some(at), None) => {
+                    let v = view.ok_or_else(|| bad(c, "a paste by hand needs `view`"))?;
+                    let frame = crate::clipboard::Frame::of(m, v).ok_or_else(|| bad(c, format!("{v} is not a view a paste goes into")))?;
+                    let middle = clip.middle_in(&frame).ok_or_else(|| bad(c, "nothing on the clipboard has a place in that view"))?;
+                    at - middle
+                }
+                (None, None) => return Err(bad(c, "a paste by hand needs `at` or `by`")),
+            };
+            if !(by.0.is_finite() && by.1.is_finite() && by.0.abs() <= MAX_COORD && by.1.abs() <= MAX_COORD) {
+                return Err(bad(c, "`at` or `by` is out of range"));
+            }
+            let level = match p.get("level") {
+                v if absent(v) => None,
+                Some(v) => Some(level_of(v)?),
+                None => None,
+            };
+            Mode::Manual { by: micron(by), level }
+        }
+        Some("current_view") => Mode::CurrentView,
+        Some("same_place") => Mode::SamePlace,
+        Some("levels") => Mode::Levels(list("levels")?.iter().map(level_of).collect::<Result<_, _>>()?),
+        Some("picked_level") => Mode::PickedLevel(level_of(p.get("level").ok_or_else(|| bad(c, "`picked_level` needs `level`"))?)?),
+        Some("views") => Mode::Views(
+            list("views")?.iter().map(|v| view_param(c, m, &json!({"view": v}), true).map(|id| m.guid(id))).collect::<Result<_, _>>()?,
+        ),
+        Some(other) => {
+            return Err(bad(c, format!("`mode` is manual, current_view, same_place, levels, views or picked_level, not `{other}`")));
+        }
+    };
+    let made = crate::clipboard::paste(s.model_mut(), &clip, &mode, view).map_err(|e| bad(c, e))?;
+    Ok(json!({"ids": made.ids, "left_out": made.left_out}))
 }
 
 fn rotate(s: &mut Session, p: &Value) -> R {

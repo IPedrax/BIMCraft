@@ -20,6 +20,7 @@ mod cad;
 mod camera;
 mod canvas;
 mod classification;
+mod clipboard;
 mod clouds;
 mod codes;
 mod context;
@@ -195,6 +196,10 @@ pub enum Tool {
     },
     /// Copy the selection: its base point, once clicked.
     Copy(Option<P2>),
+    /// Paste from Clipboard: what's pasted follows the cursor until a click puts it down (`clipboard.rs`).
+    Paste,
+    /// Aligned to Picked Level: a click on a level line in a section or an elevation pastes onto it.
+    PickLevel,
     /// Rotate the selection about `centre`: the start of the angle, once clicked; with `place`, the
     /// next click moves the centre.
     Rotate {
@@ -1081,6 +1086,18 @@ pub struct BimApp {
     selection_filter: Option<filter::SelectionFilter>,
     /// What was last put on the clipboard.
     pub copied: Option<String>,
+    /// What Copy to Clipboard last kept, for a paste the system clipboard has nothing of BIMCraft's for.
+    pub(crate) clip_text: Option<Arc<str>>,
+    /// The clipboard Paste from Clipboard or Aligned to Picked Level places, while its tool is on.
+    pub(crate) pasting: Option<clipboard::Pasting>,
+    /// What the right-click menu asked of the clipboard, for the next frame.
+    pub(crate) clip_request: Option<clipboard::Request>,
+    /// A paste the ribbon asked the system clipboard's text for, and when.
+    pub(crate) paste_asked: Option<(clipboard::PasteMode, f64)>,
+    /// Aligned to Selected Levels' or Selected Views' list, while it's open.
+    pub(crate) paste_choose: Option<clipboard::Choose>,
+    /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.
+    pub(crate) paste_where: Option<clipboard::Pasting>,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
@@ -1899,6 +1916,12 @@ impl BimApp {
             ids_of_selection: None,
             selection_filter: None,
             copied: None,
+            clip_text: None,
+            pasting: None,
+            paste_asked: None,
+            clip_request: None,
+            paste_choose: None,
+            paste_where: None,
             active_option: None,
             new_schedule: None,
             component: None,
@@ -2077,6 +2100,8 @@ impl BimApp {
             | Tool::PatternCorner(_)
             | Tool::SpecifyPoint
             | Tool::ExportRegion(_)
+            | Tool::Paste
+            | Tool::PickLevel
             | Tool::Acquire => None,
             Tool::CurtainGrid { .. } => Some(msg!("Place Curtain Grid")),
             Tool::CurtainSegment { .. } => Some(msg!("Add/Remove Segments")),
@@ -2639,6 +2664,10 @@ impl BimApp {
         }
         if self.sketch.is_none() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
             self.run("redo", json!({}));
+        }
+        // Ctrl+C, Ctrl+X and Ctrl+V: the selection to the clipboard, and back.
+        if self.sketch.is_none() {
+            self.clipboard_events(ctx);
         }
         // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
         for letter in ctrl_letters(ctx) {
@@ -3372,6 +3401,9 @@ impl BimApp {
 
     fn set_tool(&mut self, mut tool: Tool) {
         self.adaptive_clicks.clear();
+        if !matches!(tool, Tool::Paste | Tool::PickLevel) {
+            self.pasting = None;
+        }
         self.note_arrow = None;
         // Another tool takes the Options Bar: Walls' Outline's own closes, putting no outline in the sketch. The Modify
         // arrow is the one Walls' Outline itself uses, so choosing it leaves the mode on.
@@ -5655,6 +5687,7 @@ impl BimApp {
                 self.edit_type();
             }
         });
+        self.clipboard_panel(ui);
         // Create Group, and with a group or a member selected, Revit's Group panel.
         self.group_panels(ui);
         // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
@@ -5676,8 +5709,9 @@ impl BimApp {
             });
         }
         // Hide in View, and Override Graphics: what the selection does in the view on screen.
+        // Kept whole while the ribbon makes room: what it offers depends on the selection (Unhide only for what's hidden).
         if !self.selection.is_empty() && self.graphic_view().is_some() {
-            panel(ui, "View", |ui| {
+            ribbon::kept(ui, "View", |ui| {
                 let tip = msg!("Hide Element (EH): leave the selected elements out of this view");
                 if big_button(ui, Icon::Visibility, "Hide Element", false, tip).clicked() {
                     self.hide_selection(false);
@@ -6064,7 +6098,8 @@ impl BimApp {
             self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
             return;
         }
-        if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
+        // Nothing to set: Modify, and a paste being placed.
+        if self.context().is_none() && matches!(self.tool, Tool::Modify | Tool::Paste | Tool::PickLevel) && self.note_edit.is_none() {
             self.options_rect = Rect::NOTHING;
             return;
         }
@@ -6642,6 +6677,9 @@ impl BimApp {
                 );
             }
             (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
+            (Sheet::View3D, Tool::Paste) => return msg!("Click on the work plane where the pasted elements go. Esc cancels."),
+            // A paste follows the cursor in these views as in a plan; a section's level lines are picked.
+            (Sheet::Section(_) | Sheet::Paper(_), Tool::Paste) | (Sheet::Section(_), Tool::PickLevel) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }
@@ -6692,6 +6730,8 @@ impl BimApp {
                 msg!("Click a stretch of a grid line in a section, an elevation or the 3D view to take it off or put it back. Esc ends.")
             }
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
+            Tool::Paste => msg!("Click where the pasted elements go. Esc cancels."),
+            Tool::PickLevel => msg!("Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Rotate { place: true, .. } => msg!("Click the centre of rotation."),
@@ -7163,6 +7203,7 @@ impl BimApp {
         self.run_script_window(ctx);
         self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
+        self.paste_window(ctx);
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
