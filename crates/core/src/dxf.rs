@@ -219,6 +219,56 @@ pub struct Entity {
     /// Its line weight, mm, when it has one of its own.
     pub weight: Option<f64>,
     pub shape: Shape,
+    /// Its elevation, drawing units, when its file gives one: a contour's height. Drawing stays in plan; only what reads
+    /// heights (an import's report, a query) looks at it.
+    pub z: Option<Z>,
+}
+
+/// An entity's elevation in drawing units: one for all of it, or one for each of its shape's points, in order.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Z {
+    Flat(f64),
+    Each(Vec<f64>),
+}
+
+impl Z {
+    /// One elevation when they are all the same, else each.
+    fn of(each: Vec<f64>) -> Z {
+        match each.first() {
+            Some(&first) if each.iter().all(|&z| z == first) => Z::Flat(first),
+            _ => Z::Each(each),
+        }
+    }
+
+    /// The lowest and the highest; none when there is no elevation at all.
+    pub fn range(&self) -> Option<(f64, f64)> {
+        match self {
+            Z::Flat(z) => Some((*z, *z)),
+            Z::Each(each) => each.iter().fold(None, |r, &z| match r {
+                None => Some((z, z)),
+                Some((lo, hi)) => Some((lo.min(z), hi.max(z))),
+            }),
+        }
+    }
+
+    /// Whether every elevation is finite and within [`MAX_FILE_COORD`].
+    fn fits(&self) -> bool {
+        let ok = |z: &f64| z.is_finite() && z.abs() <= MAX_FILE_COORD;
+        match self {
+            Z::Flat(z) => ok(z),
+            Z::Each(each) => each.iter().all(ok),
+        }
+    }
+}
+
+impl Entity {
+    /// The elevation of its shape's `i`th point, when it has one.
+    pub fn z_at(&self, i: usize) -> Option<f64> {
+        match self.z.as_ref()? {
+            Z::Flat(z) => Some(*z),
+            Z::Each(each) => each.get(i).copied(),
+        }
+    }
 }
 
 /// A DXF file read: what it draws, in its own unit.
@@ -461,6 +511,15 @@ impl<'a> Ent<'a> {
 
     fn num(&self, code: i32) -> Result<Option<f64>, String> {
         self.str(code).map(|v| number(self.line, v)).transpose()
+    }
+
+    /// An elevation at `code`: none where the file gives none, and none, with `bad` set, where it gives one no drawing can
+    /// hold. Drawing never needed one, so a file that drew before elevations were read still does.
+    fn z(&self, code: i32, bad: &mut bool) -> Option<f64> {
+        self.num(code).unwrap_or_else(|_| {
+            *bad = true;
+            None
+        })
     }
 
     fn int(&self, code: i32) -> Result<Option<i64>, String> {
@@ -742,12 +801,20 @@ struct Xf {
     o: P2,
     x: P2,
     y: P2,
+    /// Elevations go through it apart from the plan: `zo + zs · z`, as an INSERT's z and z scale place a block's.
+    zo: f64,
+    zs: f64,
 }
 
 impl Xf {
-    const ID: Xf = Xf { o: P2(0.0, 0.0), x: P2(1.0, 0.0), y: P2(0.0, 1.0) };
+    const ID: Xf = Xf { o: P2(0.0, 0.0), x: P2(1.0, 0.0), y: P2(0.0, 1.0), zo: 0.0, zs: 1.0 };
     /// What an extrusion pointing down does: x the other way.
-    const MIRROR_X: Xf = Xf { o: P2(0.0, 0.0), x: P2(-1.0, 0.0), y: P2(0.0, 1.0) };
+    const MIRROR_X: Xf = Xf { o: P2(0.0, 0.0), x: P2(-1.0, 0.0), y: P2(0.0, 1.0), zo: 0.0, zs: 1.0 };
+
+    /// An elevation placed.
+    fn z(self, z: f64) -> f64 {
+        self.zo + self.zs * z
+    }
 
     fn at(self, p: P2) -> P2 {
         self.o + self.x * p.0 + self.y * p.1
@@ -759,7 +826,7 @@ impl Xf {
 
     /// `self` after `inner`: a point goes through `inner` first.
     fn then(self, inner: Xf) -> Xf {
-        Xf { o: self.at(inner.o), x: self.vec(inner.x), y: self.vec(inner.y) }
+        Xf { o: self.at(inner.o), x: self.vec(inner.x), y: self.vec(inner.y), zo: self.zo + self.zs * inner.zo, zs: self.zs * inner.zs }
     }
 
     /// When circles stay circles: the scale, the turn in degrees, and whether it mirrors.
@@ -792,7 +859,7 @@ impl Out {
 
     fn push(&mut self, e: Entity) -> Result<(), String> {
         // Blocks scaled inside blocks can carry a point past any drawing, or past any number.
-        if !e.shape.fits() {
+        if !e.shape.fits() || e.z.as_ref().is_some_and(|z| !z.fits()) {
             self.left("past what a drawing holds");
             return Ok(());
         }
@@ -852,7 +919,31 @@ impl<'a> Reader<'a> {
                 continue;
             }
             let style = Style::of(e, inh)?;
-            let xf = if e.num(230)?.is_some_and(|z| z < 0.0) { xf.then(Xf::MIRROR_X) } else { xf };
+            let down = e.num(230)?.is_some_and(|z| z < 0.0);
+            let xf = if down { xf.then(Xf::MIRROR_X) } else { xf };
+            // An INSERT is in its own coordinate system too: extruded down, its z and its block's run along -z.
+            let xf = if down && e.kind == "INSERT" { xf.then(Xf { zs: -1.0, ..Xf::ID }) } else { xf };
+            let mut bad = false;
+            let mut z = match e.kind {
+                "LWPOLYLINE" => e.z(38, &mut bad).map(Z::Flat),
+                "LINE" => match (e.z(30, &mut bad), e.z(31, &mut bad)) {
+                    (None, None) => None,
+                    (a, b) => Some(Z::of(vec![a.unwrap_or(0.0), b.unwrap_or(0.0)])),
+                },
+                "POINT" => e.z(30, &mut bad).map(Z::Flat),
+                // A 2D polyline's elevation is its own point's z; a 3D one's, its vertices' (below).
+                "POLYLINE" => e.z(30, &mut bad).map(Z::Flat),
+                _ => None,
+            };
+            // An LWPOLYLINE's and a 2D polyline's elevation is in its object coordinate system, which a downward
+            // extrusion turns over; lines, points and 3D polylines are in the world's.
+            let ocs = e.kind == "LWPOLYLINE" || (e.kind == "POLYLINE" && e.int(70)?.unwrap_or(0) & 8 == 0);
+            if ocs && e.num(230)?.is_some_and(|z| z < 0.0) {
+                z = z.map(|z| match z {
+                    Z::Flat(z) => Z::Flat(-z),
+                    Z::Each(each) => Z::Each(each.into_iter().map(|z| -z).collect()),
+                });
+            }
             let shape = match e.kind {
                 "LINE" => match (e.point(10)?, e.point(11)?) {
                     (Some(a), Some(b)) => Some(Shape::Line(a, b)),
@@ -875,7 +966,9 @@ impl<'a> Reader<'a> {
                 }
                 "POLYLINE" => {
                     let flags = e.int(70)?.unwrap_or(0);
+                    let three_d = flags & 8 != 0;
                     let mut pts = Vec::new();
+                    let mut each = Vec::new();
                     while let Some(v) = ents.get(i).filter(|v| v.kind == "VERTEX") {
                         i += 1;
                         let vflags = v.int(70)?.unwrap_or(0);
@@ -884,7 +977,9 @@ impl<'a> Reader<'a> {
                             continue;
                         }
                         if let Some(p) = v.point(10)? {
-                            pts.push((p, v.num(42)?.unwrap_or(0.0)));
+                            // A 3D polyline's segments are straight: a bulge on its vertex means nothing.
+                            pts.push((p, if three_d { 0.0 } else { v.num(42)?.unwrap_or(0.0) }));
+                            each.push(v.z(30, &mut bad).unwrap_or(0.0));
                         }
                     }
                     if ents.get(i).is_some_and(|v| v.kind == "SEQEND") {
@@ -893,6 +988,9 @@ impl<'a> Reader<'a> {
                     if flags & (16 | 64) != 0 {
                         out.left("POLYLINE mesh");
                         continue;
+                    }
+                    if three_d {
+                        z = Some(Z::of(each));
                     }
                     polyline(pts, flags & 1 != 0)
                 }
@@ -916,6 +1014,7 @@ impl<'a> Reader<'a> {
                             linetype: style.linetype.clone(),
                             weight: style.weight,
                             shape: transformed(line, xf),
+                            z: None,
                         })?;
                     }
                     continue;
@@ -948,6 +1047,10 @@ impl<'a> Reader<'a> {
                     continue;
                 }
             };
+            if bad {
+                z = None;
+                out.left("an elevation it can't read");
+            }
             match shape {
                 Some(shape) => out.push(Entity {
                     layer: style.layer,
@@ -955,6 +1058,10 @@ impl<'a> Reader<'a> {
                     linetype: style.linetype,
                     weight: style.weight,
                     shape: transformed(shape, xf),
+                    z: z.map(|z| match z {
+                        Z::Flat(z) => Z::Flat(xf.z(z)),
+                        Z::Each(each) => Z::Each(each.into_iter().map(|z| xf.z(z)).collect()),
+                    }),
                 })?,
                 None => out.left("empty"),
             }
@@ -969,8 +1076,9 @@ impl<'a> Reader<'a> {
             return Ok(());
         };
         let at = e.point(10)?.unwrap_or(P2(0.0, 0.0));
-        let (sx, sy) = (e.num(41)?.unwrap_or(1.0), e.num(42)?.unwrap_or(1.0));
-        if sx == 0.0 || sy == 0.0 {
+        let (sx, sy, sz) = (e.num(41)?.unwrap_or(1.0), e.num(42)?.unwrap_or(1.0), e.num(43)?.unwrap_or(1.0));
+        let iz = e.num(30)?.unwrap_or(0.0);
+        if sx == 0.0 || sy == 0.0 || sz == 0.0 {
             out.left("empty");
             return Ok(());
         }
@@ -981,7 +1089,7 @@ impl<'a> Reader<'a> {
         for row in 0..rows {
             for col in 0..cols {
                 let o = at + ex * (dx * col as f64) + ey * (dy * row as f64);
-                let local = Xf { o, x: ex * sx, y: ey * sy };
+                let local = Xf { o, x: ex * sx, y: ey * sy, zo: iz, zs: sz };
                 self.block(out, name, style, xf.then(local), depth)?;
             }
         }
@@ -1551,6 +1659,272 @@ mod tests {
 
     fn shapes(d: &Dxf) -> Vec<&Shape> {
         d.entities.iter().map(|e| &e.shape).collect()
+    }
+
+    #[test]
+    fn an_lwpolylines_elevation_is_kept_for_all_its_points() {
+        // 38 = 2881.5, two vertices, one bulge: the arc's points all share it.
+        let d = drawing(&pairs(&[
+            (0, "LWPOLYLINE"),
+            (90, "2"),
+            (70, "0"),
+            (38, "2881.5"),
+            (10, "0"),
+            (20, "0"),
+            (42, "1"),
+            (10, "100"),
+            (20, "0"),
+        ]));
+        assert_eq!(d.entities[0].z, Some(Z::Flat(2881.5)));
+        let Shape::Polyline { pts, .. } = &d.entities[0].shape else { panic!("{:?}", d.entities[0]) };
+        assert!(pts.len() > 10, "{pts:?}");
+        assert_eq!(d.entities[0].z_at(pts.len() - 1), Some(2881.5));
+        assert_eq!(d.entities[0].z.as_ref().and_then(Z::range), Some((2881.5, 2881.5)));
+    }
+
+    #[test]
+    fn a_line_keeps_both_ends_elevations_and_a_point_its_own() {
+        let d = drawing(&pairs(&[
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "10"),
+            (11, "5"),
+            (21, "0"),
+            (31, "12"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "7"),
+            (11, "5"),
+            (21, "0"),
+            (31, "7"),
+            (0, "POINT"),
+            (10, "9"),
+            (20, "9"),
+            (30, "-3.25"),
+        ]));
+        assert_eq!(d.entities[0].z, Some(Z::Each(vec![10.0, 12.0])));
+        assert_eq!(d.entities[0].z_at(1), Some(12.0));
+        assert_eq!(d.entities[0].z.as_ref().and_then(Z::range), Some((10.0, 12.0)));
+        // Equal ends are one elevation.
+        assert_eq!(d.entities[1].z, Some(Z::Flat(7.0)));
+        assert_eq!(d.entities[2].z, Some(Z::Flat(-3.25)));
+    }
+
+    #[test]
+    fn a_3d_polylines_vertices_keep_each_elevation() {
+        // Flag 8: a 3D polyline. Its second vertex carries a bulge, which a 3D polyline ignores.
+        let d = drawing(&pairs(&[
+            (0, "POLYLINE"),
+            (66, "1"),
+            (70, "8"),
+            (0, "VERTEX"),
+            (10, "0"),
+            (20, "0"),
+            (30, "10"),
+            (70, "32"),
+            (0, "VERTEX"),
+            (10, "5"),
+            (20, "0"),
+            (30, "11"),
+            (42, "1"),
+            (70, "32"),
+            (0, "VERTEX"),
+            (10, "5"),
+            (20, "5"),
+            (30, "12.5"),
+            (70, "32"),
+            (0, "SEQEND"),
+        ]));
+        assert_eq!(d.entities[0].shape, Shape::Polyline { pts: vec![P2(0.0, 0.0), P2(5.0, 0.0), P2(5.0, 5.0)], closed: false });
+        assert_eq!(d.entities[0].z, Some(Z::Each(vec![10.0, 11.0, 12.5])));
+    }
+
+    #[test]
+    fn a_2d_polylines_elevation_is_its_own_point_z() {
+        let d = drawing(&pairs(&[
+            (0, "POLYLINE"),
+            (66, "1"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (30, "2900"),
+            (0, "VERTEX"),
+            (10, "0"),
+            (20, "0"),
+            (0, "VERTEX"),
+            (10, "5"),
+            (20, "0"),
+            (0, "SEQEND"),
+        ]));
+        assert_eq!(d.entities[0].z, Some(Z::Flat(2900.0)));
+    }
+
+    #[test]
+    fn a_mirrored_ocs_negates_only_ocs_elevations() {
+        // Extrusion (0, 0, -1): an LWPOLYLINE's 38 is measured along -z; a LINE is in world coordinates.
+        let d = drawing(&pairs(&[
+            (0, "LWPOLYLINE"),
+            (90, "2"),
+            (70, "0"),
+            (38, "5"),
+            (210, "0"),
+            (220, "0"),
+            (230, "-1"),
+            (10, "0"),
+            (20, "0"),
+            (10, "1"),
+            (20, "0"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "5"),
+            (11, "1"),
+            (21, "0"),
+            (31, "5"),
+            (210, "0"),
+            (220, "0"),
+            (230, "-1"),
+        ]));
+        assert_eq!(d.entities[0].z, Some(Z::Flat(-5.0)));
+        assert_eq!(d.entities[1].z, Some(Z::Flat(5.0)));
+    }
+
+    #[test]
+    fn a_blocks_elevations_go_through_its_inserts_z_and_z_scale() {
+        // B holds a point at z 2; C places B at z 100, three times as tall; the drawing places C at z 10: 10 + 100 + 3 × 2.
+        let blocks = pairs(&[
+            (0, "BLOCK"),
+            (8, "0"),
+            (2, "B"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (0, "POINT"),
+            (8, "0"),
+            (10, "1"),
+            (20, "1"),
+            (30, "2"),
+            (0, "ENDBLK"),
+            (0, "BLOCK"),
+            (8, "0"),
+            (2, "C"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (0, "INSERT"),
+            (8, "0"),
+            (2, "B"),
+            (10, "0"),
+            (20, "0"),
+            (30, "100"),
+            (43, "3"),
+            (0, "ENDBLK"),
+        ]);
+        let entities = pairs(&[(0, "INSERT"), (8, "0"), (2, "C"), (10, "0"), (20, "0"), (30, "10")]);
+        let d = read_text(&file("", "", &blocks, &entities)).unwrap();
+        assert_eq!(d.entities.len(), 1, "{d:?}");
+        assert_eq!(d.entities[0].z, Some(Z::Flat(116.0)));
+    }
+
+    #[test]
+    fn a_mirrored_insert_turns_its_blocks_elevations_over() {
+        // An INSERT is in its own coordinate system: extruded down (230 -1), its z and its block's are along -z.
+        let blocks = pairs(&[
+            (0, "BLOCK"),
+            (8, "0"),
+            (2, "B"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (0, "POINT"),
+            (8, "0"),
+            (10, "1"),
+            (20, "1"),
+            (30, "2"),
+            (0, "ENDBLK"),
+        ]);
+        let entities = pairs(&[(0, "INSERT"), (8, "0"), (2, "B"), (10, "0"), (20, "0"), (30, "10"), (210, "0"), (220, "0"), (230, "-1")]);
+        let d = read_text(&file("", "", &blocks, &entities)).unwrap();
+        assert_eq!(d.entities[0].z, Some(Z::Flat(-12.0)), "{d:?}");
+    }
+
+    #[test]
+    fn a_hostile_elevation_is_refused_or_left_out() {
+        // An elevation no number a drawing holds (as a buggy exporter writes) loses the elevation, not the file: these drew
+        // before elevations were read, and still do.
+        let bad = pairs(&[
+            (0, "POINT"),
+            (10, "0"),
+            (20, "0"),
+            (30, "nan"),
+            (0, "LWPOLYLINE"),
+            (90, "2"),
+            (38, "1e400"),
+            (10, "0"),
+            (20, "0"),
+            (10, "1"),
+            (20, "0"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "-1.#IND"),
+            (11, "1"),
+            (21, "0"),
+            (31, "3"),
+        ]);
+        let d = read_text(&file("", "", "", &bad)).unwrap();
+        assert_eq!(d.entities.len(), 3, "{d:?}");
+        assert!(d.entities.iter().all(|e| e.z.is_none()), "{d:?}");
+        assert_eq!(d.left_out.get("an elevation it can't read"), Some(&3), "{d:?}");
+        // A plan point that isn't a number still refuses the file, as it did.
+        assert!(read_text(&file("", "", "", &pairs(&[(0, "POINT"), (10, "nan"), (20, "0")]))).is_err());
+        // Within the file's limit, scaled past it by an INSERT: left out, not kept.
+        let blocks = pairs(&[
+            (0, "BLOCK"),
+            (8, "0"),
+            (2, "B"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (0, "POINT"),
+            (8, "0"),
+            (10, "0"),
+            (20, "0"),
+            (30, "1e11"),
+            (0, "ENDBLK"),
+        ]);
+        let entities = pairs(&[(0, "INSERT"), (8, "0"), (2, "B"), (10, "0"), (20, "0"), (43, "1e6")]);
+        let d = read_text(&file("", "", &blocks, &entities)).unwrap();
+        assert!(d.entities.is_empty() && d.left_out.contains_key("past what a drawing holds"), "{d:?}");
+    }
+
+    #[test]
+    fn an_entity_without_a_third_coordinate_has_no_elevation() {
+        let d = drawing(&pairs(&[
+            (0, "LWPOLYLINE"),
+            (90, "2"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (10, "1"),
+            (20, "0"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (11, "5"),
+            (21, "0"),
+            // Circles carry none in this slice, whatever their centre's z.
+            (0, "CIRCLE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "4"),
+            (40, "1"),
+        ]));
+        assert_eq!(d.entities.len(), 3);
+        assert!(d.entities.iter().all(|e| e.z.is_none()), "{:?}", d.entities);
+        assert_eq!(d.entities[0].z_at(0), None);
     }
 
     #[test]
