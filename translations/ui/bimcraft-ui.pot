@@ -2428,7 +2428,7 @@ msgstr ""
 msgid "Checking for updates…"
 msgstr ""
 
-#: crates/core/src/commands.rs:4366
+#: crates/core/src/commands.rs:4374
 msgid "Checking the model"
 msgstr ""
 
@@ -4426,7 +4426,7 @@ msgstr ""
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:14124
+#: crates/core/src/commands.rs:14237
 msgid "Dependent"
 msgstr ""
 
@@ -5381,7 +5381,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:3291
+#: crates/core/src/commands.rs:3299
 msgid "Elements"
 msgstr ""
 
@@ -11464,7 +11464,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr ""
 
 #: crates/core/src/commands.rs:665
-#: crates/core/src/commands.rs:9254
+#: crates/core/src/commands.rs:9367
 msgid "Property Line"
 msgstr ""
 
@@ -11652,7 +11652,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4323
+#: crates/core/src/commands.rs:4331
 msgid "Reading the file"
 msgstr ""
 
@@ -15840,11 +15840,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:14360
+#: crates/core/src/commands.rs:14473
 msgid "Unnamed"
 msgstr ""
 
-#: crates/core/src/commands.rs:4340
+#: crates/core/src/commands.rs:4348
 msgid "Unpacking the project"
 msgstr ""
 

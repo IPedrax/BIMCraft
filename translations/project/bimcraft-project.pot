@@ -40,7 +40,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/commands.rs:5821
+#: crates/core/src/commands.rs:5829
 msgid "Camera"
 msgstr ""
 
@@ -133,7 +133,7 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:14124
+#: crates/core/src/commands.rs:14237
 msgid "Dependent"
 msgstr ""
 
@@ -218,9 +218,9 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:13871
-#: crates/core/src/commands.rs:13886
-#: crates/core/src/commands.rs:18598
+#: crates/core/src/commands.rs:13984
+#: crates/core/src/commands.rs:13999
+#: crates/core/src/commands.rs:18711
 msgid "Elevation"
 msgstr ""
 
@@ -350,7 +350,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:8527
+#: crates/core/src/commands.rs:8640
 #: crates/core/src/model.rs:4509
 msgid "Level"
 msgstr ""
@@ -391,7 +391,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:11038
+#: crates/core/src/commands.rs:11151
 msgid "Mass"
 msgstr ""
 
@@ -407,8 +407,8 @@ msgstr ""
 msgid "Membrane"
 msgstr ""
 
-#: crates/core/src/commands.rs:3935
-#: crates/core/src/commands.rs:17161
+#: crates/core/src/commands.rs:3943
+#: crates/core/src/commands.rs:17274
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:6041
@@ -505,11 +505,11 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4231
+#: crates/core/src/commands.rs:4239
 msgid "Project"
 msgstr ""
 
-#: crates/core/src/commands.rs:9254
+#: crates/core/src/commands.rs:9367
 msgid "Property Line"
 msgstr ""
 
@@ -541,7 +541,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:11568
+#: crates/core/src/commands.rs:11681
 msgid "Room"
 msgstr ""
 
@@ -577,8 +577,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:13806
-#: crates/core/src/commands.rs:18597
+#: crates/core/src/commands.rs:13919
+#: crates/core/src/commands.rs:18710
 msgid "Section"
 msgstr ""
 
@@ -749,7 +749,7 @@ msgstr ""
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:14360
+#: crates/core/src/commands.rs:14473
 msgid "Unnamed"
 msgstr ""
 
