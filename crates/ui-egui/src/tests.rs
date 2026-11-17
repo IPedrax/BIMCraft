@@ -4601,9 +4601,12 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
         .collect();
     // The horizontal guide is put on the physical pixel grid: y = 1000.5, a pixel's centre, so it is one crisp pixel.
     let (snapped, source) = (pos2(1000.0, 1000.5), pos2(0.0, 1000.5));
-    assert_eq!(segments.len(), 4, "the relation and its three fading tail pieces: {shapes:?}");
+    // The relation is in two inks since a guide's strong ink reaches only a screen back from the point it locks: a faint piece
+    // from the source and a strong one ending at the point, and then the three fading tail pieces.
+    assert_eq!(segments.len(), 5, "the relation in two inks and its three fading tail pieces: {shapes:?}");
     // The relation runs from its source to the point it locks.
-    assert!(segments.iter().any(|[a, b]| a.distance(source) < 0.01 && b.distance(snapped) < 0.01), "{segments:?}");
+    assert!(segments.iter().any(|[a, _]| a.distance(source) < 0.01), "it starts at its source: {segments:?}");
+    assert!(segments.iter().any(|[_, b]| b.distance(snapped) < 0.01), "and ends at the point it locks: {segments:?}");
     // The tail runs on past the point, 100 px in all, and no ray crosses the view.
     let tail: f32 = segments.iter().map(|[a, b]| a.distance(*b)).filter(|len| *len != 0.0).sum();
     assert!((tail - (1000.0 + 100.0)).abs() < 0.1, "the relation and a 100 px tail: {segments:?}");

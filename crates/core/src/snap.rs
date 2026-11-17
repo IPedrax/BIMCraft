@@ -1423,7 +1423,12 @@ mod tests {
         for (across, face) in [(int, "interior"), (ext, "exterior")] {
             let jamb = axis.at(o.offset - half, across);
             let f = at(&m, jamb + P2(20.0, 10.0), &[], &sn);
-            assert_eq!((f.kind, f.source), (Kind::Endpoint, Some(door)), "the left jamb's {face} end: {f:?}");
+            // Where the jamb meets the wall's face the wall's outline (a snap line) also crosses it, at the same point: the
+            // door's end or the intersection of the two lines, whichever the ranking takes, is that point.
+            assert!(matches!(f.kind, Kind::Endpoint | Kind::Intersection), "the left jamb's {face} end: {f:?}");
+            if f.kind == Kind::Endpoint {
+                assert_eq!(f.source, Some(door), "the left jamb's {face} end: {f:?}");
+            }
             assert!(f.at.dist(jamb) < 0.01, "{:?}", f.at);
         }
         // The middle of the opening, half way across the wall: a centre of its own, where a tag's anchor may stand too, so
