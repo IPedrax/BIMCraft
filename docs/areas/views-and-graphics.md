@@ -130,7 +130,10 @@ terms, and goes with it. `render::detail_line` draws it in its style's pen with 
 pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
 any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
 Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again; the Options Bar's Line Style and
-Chain; the Draw panel's other shapes, below) and Manage > Line Styles (`linestyles.rs`: styles and patterns on two tabs of one
+Chain; the Draw panel's other shapes, below). While a wall or a detail line chains, Backspace and Ctrl+Z take back its last point
+and the segment built to it (`BimApp::undo_chain_point`), so a point cannot outlive its wall or line; a shape still being clicked (an
+arc, a spline, a polyline or a revision cloud's line) has made nothing yet, so it loses the point alone. Manage > Line Styles
+(`linestyles.rs`: styles and patterns on two tabs of one
 draft, applied as one undo step). Patterns > New Pattern or Edit opens the separate Line Pattern Creator
 (`linestyles/creator.rs`), with a live straight/curved preview and segment controls, add, reorder and delete. Save Pattern
 updates the library draft; Cancel Pattern discards just the creator, and the parent Cancel discards the whole draft.

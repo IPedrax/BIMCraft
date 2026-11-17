@@ -18625,6 +18625,22 @@ msgstr ""
 msgid "Line Pattern"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:6616
+msgid "Click its next point; Enter finishes it, the first point again closes it; Tab steps length and angle; Backspace or Ctrl+Z takes back the last point and line; Q pins a guide. Esc cancels."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6461
+msgid "Click the next point; Enter or Esc ends the chain, Shift keeps it square. Tab steps length and angle, or the wall's lines; Backspace or Ctrl+Z takes back the last point and wall; Q pins a guide."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6459
+msgid "Click to enter the wall's start point; Q pins a guide there."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6614
+msgid "Click where the detail line starts; Q pins a guide there."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Để trống là giá trị riêng của họ, như trong thẻ Tham số."
