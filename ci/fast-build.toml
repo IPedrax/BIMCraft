@@ -1,9 +1,47 @@
 # Read by the Windows and macOS jobs' `cargo test` (`--config ci/fast-build.toml`, in ci.yml). The workspace's own crates are built
 # without debug info: bimcraft-core is optimised even in a debug build, and on those runners its debug info made the compile the
-# longest part of the job (macOS: 3 cores and 7 GB). The dependencies keep the profile main's build cache was made with, so the
-# cache stays valid.
-[profile.dev]
+# longest part of the job (macOS: 3 cores and 7 GB).
+#
+# Only the workspace's crates are named, one by one. A `[profile.dev.package."*"]` entry, or a `[profile.dev]` one, also changes the
+# debug info of the build scripts and proc macros, and with it the fingerprint of nearly every dependency, so the build cache main
+# saves would no longer fit and all of them would compile again (163 crates did, on Windows). The Scripts job checks that every
+# crate of the workspace is named here.
+
+[profile.dev.package.bimcraft]
 debug = 0
 
-[profile.dev.package."*"]
-debug = true
+[profile.dev.package.bimcraft-assistant]
+debug = 0
+
+[profile.dev.package.bimcraft-cli]
+debug = 0
+
+[profile.dev.package.bimcraft-core]
+debug = 0
+
+[profile.dev.package.bimcraft-cowork]
+debug = 0
+
+[profile.dev.package.bimcraft-dwg]
+debug = 0
+
+[profile.dev.package.bimcraft-i18n]
+debug = 0
+
+[profile.dev.package.bimcraft-plugin]
+debug = 0
+
+[profile.dev.package.bimcraft-plugin-sdk]
+debug = 0
+
+[profile.dev.package.bimcraft-pyaddins]
+debug = 0
+
+[profile.dev.package.bimcraft-rvt]
+debug = 0
+
+[profile.dev.package.bimcraft-ui-egui]
+debug = 0
+
+[profile.dev.package.bimcraft-update]
+debug = 0

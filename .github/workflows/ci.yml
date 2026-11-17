@@ -146,6 +146,13 @@ jobs:
       - name: Discord release post
         run: python3 ci/discord_release.py --self-test
 
+      # ci/fast-build.toml names the workspace's crates one by one (see its header): a new crate not named there keeps its debug info.
+      - name: Build config names every crate
+        run: |
+          while read -r name; do
+            grep -q "^\[profile.dev.package.$name\]" ci/fast-build.toml || { echo "ci/fast-build.toml does not name $name"; exit 1; }
+          done < <(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(*(p["name"] for p in json.load(sys.stdin)["packages"]), sep="\n")')
+
       - name: actionlint
         run: |
           curl -sSfL -o actionlint.tar.gz https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
