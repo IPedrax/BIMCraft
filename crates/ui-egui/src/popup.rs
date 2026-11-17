@@ -56,7 +56,7 @@ impl Modal {
         if let Some(position) = position {
             area = area.current_pos(position);
         }
-        let (mut close, mut delta) = (false, egui::Vec2::ZERO);
+        let mut delta = egui::Vec2::ZERO;
         let response = egui::Modal::new(self.id).area(area).show(ctx, |ui| {
             ui.set_width(self.width.min((ctx.content_rect().width() - FRAME_MARGIN).max(120.0)));
             // At most the window less a margin; above that the body scrolls (`body`). At least the dialog's own minimum,
@@ -69,34 +69,40 @@ impl Modal {
             ui.data_mut(|d| d.insert_temp(ui.id().with(MIN_HEIGHT), least));
             let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), TITLE_HEIGHT), Sense::hover());
             ui.painter().rect_filled(bar, 3.0, pal().panel);
-            let close_rect = egui::Rect::from_min_max(egui::pos2(bar.right() - TITLE_HEIGHT, bar.top()), bar.right_bottom());
-            let title_rect = egui::Rect::from_min_max(bar.left_top(), close_rect.left_bottom());
-            let drag = ui.interact(title_rect, self.id.with("title"), Sense::drag()).on_hover_cursor(CursorIcon::Grab);
+            let drag = ui.interact(bar, self.id.with("title"), Sense::drag()).on_hover_cursor(CursorIcon::Grab);
             if drag.dragged() {
                 delta = drag.drag_delta();
             }
-            ui.put(title_rect.shrink2(vec2(6.0, 0.0)), Label::new(RichText::new(&self.title).heading()).truncate().selectable(false));
-            // The × drawn as two strokes across most of its square, as big as a window's own close button.
-            let sense = if self.closable { Sense::click() } else { Sense::hover() };
-            let r = ui.interact(close_rect.shrink(3.0), self.id.with("close"), sense);
-            let ink = match (self.closable, r.hovered()) {
-                (false, _) => pal().muted.gamma_multiply(0.5),
-                (true, true) => pal().text,
-                (true, false) => pal().muted,
-            };
-            if self.closable && r.hovered() {
-                ui.painter().rect_filled(r.rect, 4.0, pal().hover_fill);
-            }
-            let (c, arm) = (r.rect.center(), 6.5);
-            for (a, b) in [(vec2(-arm, -arm), vec2(arm, arm)), (vec2(-arm, arm), vec2(arm, -arm))] {
-                ui.painter().line_segment([c + a, c + b], Stroke::new(1.8, ink));
-            }
-            let label = t("Close dialog");
-            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, self.closable, label));
-            close = r.on_hover_text(t("Close")).clicked();
+            ui.put(bar.shrink2(vec2(6.0, 0.0)), Label::new(RichText::new(&self.title).heading()).truncate().selectable(false));
             ui.add_space(4.0);
             content(ui)
         });
+        // The × sits on the frame's outer corner, not in the content's inner margin where the title bar is laid
+        // out: its own layer above the modal, so the corner is the first thing that reads as "close".
+        let side = TITLE_HEIGHT;
+        let corner = response.response.rect.right_top() + vec2(-side - 2.0, 2.0);
+        let close = egui::Area::new(self.id.with("close-area"))
+            .order(Order::Tooltip)
+            .fixed_pos(corner)
+            .show(ctx, |ui| {
+                let (rect, r) = ui.allocate_exact_size(vec2(side, side), if self.closable { Sense::click() } else { Sense::hover() });
+                let ink = match (self.closable, r.hovered()) {
+                    (false, _) => pal().muted.gamma_multiply(0.5),
+                    (true, true) => pal().text,
+                    (true, false) => pal().muted,
+                };
+                if self.closable && r.hovered() {
+                    ui.painter().rect_filled(rect, 4.0, pal().hover_fill);
+                }
+                let (c, arm) = (rect.center(), 6.5);
+                for (a, b) in [(vec2(-arm, -arm), vec2(arm, arm)), (vec2(-arm, arm), vec2(arm, -arm))] {
+                    ui.painter().line_segment([c + a, c + b], Stroke::new(1.8, ink));
+                }
+                let label = t("Close dialog");
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, self.closable, label));
+                r.on_hover_text(t("Close")).clicked()
+            })
+            .inner;
         if previous.is_some_and(|rect| (rect.size() - response.response.rect.size()).length() > 0.5) {
             ctx.request_repaint();
         }
