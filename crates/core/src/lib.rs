@@ -304,6 +304,9 @@ mod panel_tests;
 mod plan_view_tests;
 #[cfg(test)]
 mod purge_tests;
+pub mod steel;
+#[cfg(test)]
+mod steel_tests;
 #[cfg(test)]
 mod structure_tests;
 pub mod survey;
