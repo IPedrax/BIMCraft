@@ -520,6 +520,27 @@ fn a_guide_is_entered_at_8_px_and_left_at_12() {
     assert!(h.state().alignments(m, level, &v, at(13.0), &chain).is_empty(), "left past 12 px");
 }
 
+/// One guide alone may not take a point off a line it has snapped to (two crossing may), so it is never drawn — and a
+/// guide that was not drawn is not held for the 12 px a drawn one is: leaving the line must not land back on a guide
+/// nobody saw. The held guide is what `alignments_for` drew, not what the service found before its filter.
+#[test]
+fn a_guide_that_was_not_drawn_is_not_held_for_the_leave() {
+    let mut h = app("detail_line {\"start\": [0, 0], \"end\": [0, 5000]}");
+    let level = h.state().session.model.levels()[0].0;
+    // The whole-model guides, so the line's ends are references: a point may be led by the model, not only the chain.
+    h.state_mut().snaps.guides_from_whole_model = true;
+    h.state_mut().canvas.set_view(level, 0.0, 2500.0, 0.05);
+    let m = &h.state().session.model;
+    let v = h.state().canvas.current_view(level).expect("a view");
+    // Four pixels inside the line's pick, as SpecifyPoint asks a landing: the snap is the line's own, and the one
+    // guide in reach (its own line, collinear) may not take the point off it alone.
+    let on_it = h.state().snap_point(m, level, &v, v.px(P2(80.0, 3000.0)), &[], false);
+    assert!(on_it.0.abs() < 1.0, "the first landing stays on the line: {on_it:?}");
+    // Ten pixels off: past the 8 a guide is entered at, inside the 12 a drawn one is held to.
+    let landed = h.state().snap_point(m, level, &v, v.px(P2(200.0, 3000.0)), &[], false);
+    assert!(landed.0.abs() > 100.0, "not back on the guide that was never drawn: {landed:?}");
+}
+
 /// A structural grid near the cursor lends its own line, unless Manage > Snaps says otherwise; a grid out of reach lends
 /// nothing, so a plan is not crossed by every grid in it.
 #[test]
