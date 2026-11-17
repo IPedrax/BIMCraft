@@ -34,9 +34,9 @@ jobs:
         include:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
           - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
-          - { name: Windows, runner: windows-latest, timeout: 100 }
-          # macOS's tests took 64 to 86 minutes on main: 35 of them compiling (Linux 13), 25 running the tests (as Linux). Its crates
-          # are built without debug info and the timings are kept (below), so the next slow run shows what is left to cut.
+          # Windows and macOS compile slowly (Windows 32 minutes, macOS 35, Linux 13) and took 74 to 92 and 64 to 86 minutes in all on
+          # main. Their crates are built without debug info and the timings are kept (below), so a slow run shows what is left to cut.
+          - { name: Windows, runner: windows-latest, timeout: 100, test_flags: '--config ci/fast-build.toml --timings' }
           - { name: macOS, runner: macos-15, timeout: 120, test_flags: '--config ci/fast-build.toml --timings' }
     steps:
       - uses: actions/checkout@v4
@@ -81,9 +81,9 @@ jobs:
         run: cargo test --workspace ${{ matrix.test_flags }}
 
       - uses: actions/upload-artifact@v4
-        if: runner.os == 'macOS' && always()
+        if: runner.os != 'Linux' && always()
         with:
-          name: macos-timings
+          name: ${{ matrix.name }}-timings
           path: target/cargo-timings/cargo-timing.html
           if-no-files-found: ignore
 
