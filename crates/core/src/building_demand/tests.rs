@@ -119,6 +119,24 @@ fn fecoergs_grows_the_units_only() {
 }
 
 #[test]
+fn hidropan_prints_a_factor_for_each_count_under_ten_and_fecoergs_does_not() {
+    // Hidropan RIC BT 2014 Tabela 4 prints nine rows with no count above its 'up to 10' = 9.64, 1.00 and then 0.96 more each:
+    // 1 to 9 units, as they step to 9.64 at 10 and equal Cemig's and Celesc's 4 to 9.
+    // Fecoergs's Anexo U leaves those rows blank and its own examples take 9.64 for 6 and 8 units.
+    let hidropan = method_of("HIDROPAN RIC BT 2014");
+    let fecoergs = method_of("FECOERGS REGD 035.01.06");
+    let printed = [1.96, 2.92, 3.88, 4.84, 5.80, 6.76, 7.72, 8.68, 9.64];
+    for (n, f) in (2..=10).zip(printed) {
+        assert_eq!(hidropan.diversity(n, false).map(|d| d.0), Some(f), "Hidropan, {n} units");
+        assert_eq!(fecoergs.diversity(n, false).map(|d| d.0), Some(9.64), "Fecoergs, {n} units");
+    }
+    let o = compute(hidropan, &Input { dwellings: vec![alike(4, 120.0)], ..Input::default() }).unwrap();
+    assert_eq!((o.per_dwelling, o.diversity), (2.54, 3.88));
+    assert!(near(o.demand, 1.2 * 3.88 * 2.54, 1e-9), "{o:?}");
+    assert!(compute(hidropan, &Input { dwellings: vec![alike(1, 120.0)], ..Input::default() }).is_err(), "a building of 2 or more");
+}
+
+#[test]
 fn spain_s_itc_bt_10_takes_the_mean_of_declared_powers() {
     let m = method_of("ITC-BT-10");
     assert_eq!(m.unit, "kW");
@@ -249,14 +267,14 @@ fn every_table_is_in_order_once_its_errata_are_taken() {
 #[test]
 fn the_brazilian_utilities_share_one_diversity_table() {
     // CODI's RTD-027: with the errata taken, Celesc's Tabela 01, Cemig's Tabela 12, Fecoergs's Anexo U (past its 'up to 10') and
-    // Hidropan's Tabela 4 are one table.
+    // Hidropan's Tabela 4 (from 4: its 2 and 3 are 1.96 and 2.92, against Celesc's 2.00 and 3.00) are one table.
     let table = |n: &str| {
         let m = method_of(n);
         corrected(&m.diversity.steps, &m.diversity.errata).into_iter().collect::<Vec<_>>()
     };
     let celesc = table("CELESC N-321.0003");
     let at = |t: &[(f64, f64)], k: f64| t.iter().find(|s| s.0 == k).map(|s| s.1);
-    for (name, from) in [("CEMIG ND-5.2", 4.0), ("FECOERGS REGD 035.01.06", 11.0), ("HIDROPAN RIC BT 2014", 11.0)] {
+    for (name, from) in [("CEMIG ND-5.2", 4.0), ("FECOERGS REGD 035.01.06", 11.0), ("HIDROPAN RIC BT 2014", 4.0)] {
         for (k, v) in table(name).into_iter().filter(|s| s.0 >= from) {
             assert_eq!(at(&celesc, k), Some(v), "{name} at {k}");
         }

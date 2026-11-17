@@ -17,7 +17,7 @@
     "HIDROPAN"
    ],
    "country": "BR",
-   "source": "Hidropan RIC BT (5th edition, August 2014), item 6.7.4.1: the demand by floor area × the diversity factor × 1.20, plus the condominium; the same tables as Fecoergs's Anexos T and U, up to 217 units. Equivalents abroad multiply a dwelling's demand by a factor for the number of dwellings in the same way: Spain's ITC-BT-10 (in BIMCraft's codes), Germany's DIN 18015-1, France's NF C 14-100, the US NEC 220.84 and the UK's ADMD.",
+   "source": "Hidropan RIC BT (5th edition, August 2014), item 6.7.4.1: the demand by floor area × the diversity factor × 1.20, plus the condominium; the same area table as Fecoergs's Anexo T, and the same diversity table as its Anexo U from 10 units up to 217, with a factor for each of 2 to 9 units where Fecoergs takes 9.64. Equivalents abroad multiply a dwelling's demand by a factor for the number of dwellings in the same way: Spain's ITC-BT-10 (in BIMCraft's codes), Germany's DIN 18015-1, France's NF C 14-100, the US NEC 220.84 and the UK's ADMD.",
    "unit": "kVA",
    "min_dwellings": 2,
    "mean_of": "area",
@@ -1147,8 +1147,40 @@
     ]
    },
    "diversity": {
-    "source": "Tabela 4 (page 76): the diversity factor, an equivalent number of units; it prints 'up to 10' = 9.64, so 1 to 10 units take 9.64; it ends at 217",
+    "source": "Tabela 4 (page 76): the diversity factor, an equivalent number of units; above 'up to 10' = 9.64 it prints nine rows with no count, 1.00 and then 0.96 more each, read as 1 to 9 units since they step to 9.64 at 10 and equal Cemig's and Celesc's 4 to 9 (one unit, a single consumer, is not a building of multiple units, items 3.4 and 6.7.4); it ends at 217",
     "steps": [
+     [
+      2,
+      1.96
+     ],
+     [
+      3,
+      2.92
+     ],
+     [
+      4,
+      3.88
+     ],
+     [
+      5,
+      4.84
+     ],
+     [
+      6,
+      5.8
+     ],
+     [
+      7,
+      6.76
+     ],
+     [
+      8,
+      7.72
+     ],
+     [
+      9,
+      8.68
+     ],
      [
       10,
       9.64
@@ -2251,7 +2283,7 @@
   }
  },
  "sources": {
-  "building_demand": "Hidropan RIC BT (5th edition, August 2014), item 6.7.4.1: the demand by floor area × the diversity factor × 1.20, plus the condominium; the same tables as Fecoergs's Anexos T and U, up to 217 units. Equivalents abroad multiply a dwelling's demand by a factor for the number of dwellings in the same way: Spain's ITC-BT-10 (in BIMCraft's codes), Germany's DIN 18015-1, France's NF C 14-100, the US NEC 220.84 and the UK's ADMD.",
+  "building_demand": "Hidropan RIC BT (5th edition, August 2014), item 6.7.4.1: the demand by floor area × the diversity factor × 1.20, plus the condominium; the same area table as Fecoergs's Anexo T, and the same diversity table as its Anexo U from 10 units up to 217, with a factor for each of 2 to 9 units where Fecoergs takes 9.64. Equivalents abroad multiply a dwelling's demand by a factor for the number of dwellings in the same way: Spain's ITC-BT-10 (in BIMCraft's codes), Germany's DIN 18015-1, France's NF C 14-100, the US NEC 220.84 and the UK's ADMD.",
   "entrance": "Hidropan, Regulamento de Instalações Consumidoras – Fornecimento em Tensão Secundária, 5th edition, August 2014: Tabela 11"
  }
 }
