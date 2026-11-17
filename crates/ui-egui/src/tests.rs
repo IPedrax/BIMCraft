@@ -81,10 +81,16 @@ fn cmd_n(h: &Harness<BimApp>) -> String {
     h.ctx.format_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::N))
 }
 
-/// File > New > Project.
+/// File > New > Project, then Empty Project in the popup that asks what to start from.
 fn new_project(h: &mut Harness<BimApp>) {
     let n = cmd_n(h);
     file_menu(h, "New", &format!("Project {n}"));
+    empty_project(h);
+}
+
+/// Empty Project, in the New Project popup, in the interface's language.
+fn empty_project(h: &mut Harness<BimApp>) {
+    press(h, crate::lang::t("Empty Project"));
 }
 
 /// One of Manage > Annotation Settings' dialogs (Line Weights, Line Styles, Line Patterns, Fill Patterns), from its list.
@@ -3175,6 +3181,7 @@ fn the_interface_speaks_portuguese() {
         h.get_by_label_contains(&n).click();
     }
     h.run();
+    empty_project(&mut h);
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nível 1", "Nível 2"]);
     assert!(h.query_by_label("Plantas de piso").is_some());
@@ -3203,6 +3210,7 @@ fn the_interface_speaks_spanish() {
         h.get_by_label_contains(&n).click();
     }
     h.run();
+    empty_project(&mut h);
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nivel 1", "Nivel 2"]);
 }
@@ -3228,6 +3236,7 @@ fn the_interface_speaks_dutch() {
         h.get_by_label_contains(&n).click();
     }
     h.run();
+    empty_project(&mut h);
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Niveau 1", "Niveau 2"]);
 }
@@ -6054,6 +6063,7 @@ fn new_keeps_the_snaps_as_they_were_set() {
     h.state_mut().snaps.midpoint = false;
     h.key_press_modifiers(Modifiers::COMMAND, Key::N);
     h.run();
+    empty_project(&mut h);
     assert!(h.state().session.model.elements.values().all(|e| e.category() == "level"), "a new project");
     assert_eq!((h.state().snaps.angle, h.state().snaps.midpoint), (5.0, false));
 }
@@ -7638,6 +7648,7 @@ mod popup;
 mod presets;
 mod printsets;
 mod profile;
+mod project_templates;
 mod projectinfo;
 mod publisher;
 mod purge;

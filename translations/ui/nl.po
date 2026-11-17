@@ -1823,9 +1823,10 @@ msgstr ""
 msgid "Brought in {} objects as Generic Model families."
 msgstr "{} objecten binnengehaald als families van Generiek model."
 
+#: crates/ui-egui/src/project_templates.rs:222
 #: crates/ui-egui/src/publisher.rs:413
 msgid "Browse…"
-msgstr ""
+msgstr "Bladeren…"
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Build"
@@ -18492,6 +18493,80 @@ msgstr "Rechts"
 msgctxt "side"
 msgid "Top"
 msgstr "Boven"
+
+#: crates/ui-egui/src/lib.rs:4087
+msgid "A new project from the template {}: Save asks where to put it."
+msgstr "Een nieuw project uit het sjabloon {}: Opslaan vraagt waar het heen moet."
+
+#: crates/ui-egui/src/project_templates.rs:289
+msgid "Add…"
+msgstr "Toevoegen…"
+
+#: crates/ui-egui/src/project_templates.rs:222
+msgid "Another template, which New lists from then on."
+msgstr "Een ander sjabloon, dat Nieuw vanaf dan toont."
+
+#: crates/ui-egui/src/project_templates.rs:183
+#: crates/ui-egui/src/project_templates.rs:244
+#: crates/ui-egui/src/project_templates.rs:290
+msgid "BIMCraft template"
+msgstr "BIMCraft-sjabloon"
+
+#: crates/ui-egui/src/project_templates.rs:219
+msgid "Empty Project"
+msgstr "Leeg project"
+
+#: crates/ui-egui/src/project_templates.rs:257
+msgid "New lists the first {} of these; move one up to list it. A template is a .bimt file: Save As > Template… makes one."
+msgstr "Nieuw toont de eerste {} hiervan; schuif er een omhoog om het te tonen. Een sjabloon is een .bimt-bestand: Opslaan als > Sjabloon… maakt er een."
+
+#: crates/ui-egui/src/project_templates.rs:267
+msgid "No templates yet."
+msgstr "Nog geen sjablonen."
+
+#: crates/ui-egui/src/project_templates.rs:202
+msgid "No templates yet: Browse… picks one, and New lists it from then on."
+msgstr "Nog geen sjablonen: Bladeren… kiest er een, en Nieuw toont het vanaf dan."
+
+#: crates/ui-egui/src/project_templates.rs:276
+msgid "Not listed by New:"
+msgstr "Niet getoond door Nieuw:"
+
+#: crates/ui-egui/src/project_templates.rs:254
+msgid "Project Templates"
+msgstr "Projectsjablonen"
+
+#: crates/ui-egui/src/lib.rs:4661
+msgid "Save As"
+msgstr "Opslaan als"
+
+#: crates/ui-egui/src/lib.rs:3986
+msgid "Saved the template {}; New lists it."
+msgstr "Sjabloon {} opgeslagen; Nieuw toont het."
+
+#: crates/ui-egui/src/project_templates.rs:199
+msgid "Start from a template"
+msgstr "Beginnen met een sjabloon"
+
+#: crates/ui-egui/src/settings.rs:348
+msgid "Templates"
+msgstr "Sjablonen"
+
+#: crates/ui-egui/src/lib.rs:4665
+msgid "Template…"
+msgstr "Sjabloon…"
+
+#: crates/ui-egui/src/project_templates.rs:175
+msgid "The template {} isn't there any more; it was taken off the list."
+msgstr "Het sjabloon {} is er niet meer; het is van de lijst gehaald."
+
+#: crates/ui-egui/src/project_templates.rs:279
+msgid "{} (not found)"
+msgstr "{} (niet gevonden)"
+
+#: crates/ui-egui/src/project_templates.rs:213
+msgid "{} more in Settings > Templates; move one up to list it here."
+msgstr "Nog {} in Instellingen > Sjablonen; schuif er een omhoog om het hier te tonen."
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

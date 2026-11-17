@@ -73,6 +73,7 @@ mod phasing;
 mod plugins;
 mod popup;
 mod presets;
+pub mod project_templates;
 mod projectinfo;
 mod properties;
 mod purge;
@@ -404,7 +405,10 @@ fn tab_key(tab: Tab) -> u64 {
 #[derive(Clone, Debug, PartialEq)]
 enum Pending {
     Recover(bimcraft_core::autosave::Backup),
+    /// An empty project.
     New,
+    /// A new project from the template at the path (`project_templates.rs`).
+    Template(PathBuf),
     Open,
     /// The sample house, as a project nobody has saved ([`bimcraft_core::sample::SAMPLE`]).
     Sample,
@@ -1007,6 +1011,13 @@ pub struct BimApp {
     /// The files File > Open Recent lists, and where they are kept (see [`BimApp::keep_recent_in`]; none until the app is told).
     recent: recent::Recent,
     recent_path: Option<std::path::PathBuf>,
+    /// The templates New lists, and where they are kept (see [`BimApp::keep_templates_in`]; none until the app is told).
+    templates: project_templates::Templates,
+    templates_path: Option<std::path::PathBuf>,
+    /// The New Project popup is up (`project_templates.rs`).
+    new_project_popup: bool,
+    /// The template picked in Settings > Templates.
+    template_picked: Option<usize>,
     /// The start page: up when the window opens on no project, and from the quick access bar's Home.
     home: start::Home,
     parameter_manager: Option<parameters::ParameterManager>,
@@ -1858,6 +1869,10 @@ impl BimApp {
             favorites_path: None,
             recent: recent::Recent::default(),
             recent_path: None,
+            templates: project_templates::Templates::default(),
+            templates_path: None,
+            new_project_popup: false,
+            template_picked: None,
             home: start::Home::default(),
             paint_material: String::new(),
             parameter_manager: None,
@@ -2817,7 +2832,7 @@ impl BimApp {
         match letter {
             'S' => self.save(ctx, None),
             'O' => self.guard(Pending::Open, ctx),
-            'N' => self.guard(Pending::New, ctx),
+            'N' => self.new_project(),
             'K' => self.find = Some(String::new()),
             'P' => self.open_export(Some("pdf")),
             'D' => self.toggle_home(),
@@ -4170,6 +4185,13 @@ impl BimApp {
             p["compress"] = json!(self.compressed_save);
         }
         let saved = self.run("save", p).is_some();
+        // A template saved is listed for New, and the project's own file is still the one it saves to.
+        if saved && ext == files::TEMPLATE {
+            self.note_template(path);
+            let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            self.status = Status { text: tf("Saved the template {}; New lists it.", &[&name]), error: false };
+            return true;
+        }
         // Exports (IFC, glTF, the sheets' PDF) leave the project unsaved.
         if saved && !matches!(ext.as_str(), "ifc" | "glb" | "pdf") {
             self.saved = Arc::clone(&self.session.model);
@@ -4196,7 +4218,9 @@ impl BimApp {
     fn save_as(&mut self, ctx: &Context, then: Option<Pending>) {
         let later = ctx.clone();
         self.ask_path(ctx, msg!("BIMCraft project"), &files::SAVED, move |app, p| {
+            // A template saved leaves the project unsaved, so what waited on the save waits on.
             if app.save_to(&p)
+                && !app.dirty()
                 && let Some(then) = then
             {
                 app.proceed(then, &later);
@@ -4206,7 +4230,7 @@ impl BimApp {
 
     /// Asks, in the system's file dialog, where to save, and calls `then` with the path in a later frame: the first of `exts` is
     /// what it offers and what a path with none of them gets.
-    fn ask_path(&mut self, ctx: &Context, what: &str, exts: &[&str], then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
+    pub(crate) fn ask_path(&mut self, ctx: &Context, what: &str, exts: &[&str], then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
         let name = files::file_name(&self.session.model.name, exts.first().copied().unwrap_or_default());
         let exts: Vec<String> = exts.iter().map(|e| e.to_string()).collect();
         let dialog = rfd::AsyncFileDialog::new().add_filter(t(what), &exts).set_file_name(name);
@@ -4226,13 +4250,22 @@ impl BimApp {
             }
             return self.active_family().is_some();
         }
+        self.open_project_file(path, false)
+    }
+
+    /// Open a project or an IFC file, or with `template` start a new project from one: its content with no file.
+    pub(crate) fn open_project_file(&mut self, path: &Path, template: bool) -> bool {
         // A big file is read on a thread of its own, the window drawing meanwhile, with a box and Cancel (`opening.rs`). A Co-Work
         // guest's commands go to the host, so it opens as it always did.
         let big = std::fs::metadata(path).is_ok_and(|m| m.len() >= opening::IN_BACKGROUND);
         if big && !matches!(self.cowork, Some(cowork::Live::Guest(_))) {
-            return self.open_in_background(path);
+            return self.open_in_background(path, template);
         }
-        let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else {
+        let mut p = json!({"path": path.to_string_lossy()});
+        if template {
+            p["as_template"] = json!(true);
+        }
+        let Some(reply) = self.run("open", p) else {
             self.open_failed(path);
             return false;
         };
@@ -4253,9 +4286,15 @@ impl BimApp {
     pub(crate) fn opened(&mut self, path: &Path, reply: &Value) {
         self.retire_autosave();
         self.reopened();
-        self.note_recent(path);
-        self.autosave_document();
         let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        // A template is let go once read: it is listed among the templates, not the recent projects, and the project is new.
+        if reply["template"] == json!(true) {
+            self.note_template(path);
+            self.status = Status { text: tf("A new project from the template {}: Save asks where to put it.", &[&name]), error: false };
+        } else {
+            self.note_recent(path);
+        }
+        self.autosave_document();
         if reply["format"].is_string() {
             self.status = Status { text: import_note(&name, reply), error: false };
         } else if let Some(left_out) = reply["left_out"].as_array() {
@@ -4322,6 +4361,7 @@ impl BimApp {
         (fresh.bench, fresh.opening) = (self.bench.take(), self.opening.take());
         fresh.swapping = std::mem::take(&mut self.swapping);
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
+        (fresh.templates, fresh.templates_path) = (std::mem::take(&mut self.templates), self.templates_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
         fresh.pyaddins = self.pyaddins.carried();
@@ -4390,6 +4430,9 @@ impl BimApp {
                     self.reopened();
                     self.autosave_document();
                 }
+            }
+            Pending::Template(path) => {
+                self.open_template(&path);
             }
             Pending::Sample => self.open_sample(),
             Pending::OpenPath(path) => {
@@ -4794,7 +4837,7 @@ impl BimApp {
         // As Revit's: New and Open, each of a project or a family.
         SubMenuButton::new(t("New")).ui(ui, |ui| {
             if item(ui, msg!("Project"), cmd(Key::N)) {
-                self.guard(Pending::New, ctx);
+                self.new_project();
             }
             if item(ui, msg!("Family…"), None) {
                 self.new_family_dialog = Some(bimcraft_core::family::Category::Generic);
@@ -4822,9 +4865,15 @@ impl BimApp {
             if item(ui, "Save", cmd(Key::S)) {
                 self.save(ctx, None);
             }
-            if item(ui, msg!("Save As…"), save_as) {
-                self.save_as(ctx, None);
-            }
+            // As Revit's: Save As a project, or as a template New starts projects from.
+            SubMenuButton::new(t("Save As")).ui(ui, |ui| {
+                if item(ui, msg!("Project…"), save_as) {
+                    self.save_as(ctx, None);
+                }
+                if item(ui, msg!("Template…"), None) {
+                    self.save_as_template(ctx);
+                }
+            });
             // As in Settings > Files: kept for every save after.
             ui.checkbox(&mut self.compressed_save, t("Compressed save"))
                 .on_hover_text(t("⚠ A compressed project is much smaller, but saving and opening it take longer."));
@@ -7166,6 +7215,7 @@ impl BimApp {
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
+        self.new_project_window(ctx);
         self.plugins_window(ctx);
         self.plugin_report_window(ctx);
         self.background_grid_window(ctx);

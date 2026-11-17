@@ -1822,9 +1822,10 @@ msgstr ""
 msgid "Brought in {} objects as Generic Model families."
 msgstr "{} objets importés comme familles de Modèle générique."
 
+#: crates/ui-egui/src/project_templates.rs:222
 #: crates/ui-egui/src/publisher.rs:413
 msgid "Browse…"
-msgstr ""
+msgstr "Parcourir…"
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Build"
@@ -18491,6 +18492,80 @@ msgstr "Droite"
 msgctxt "side"
 msgid "Top"
 msgstr "Dessus"
+
+#: crates/ui-egui/src/lib.rs:4087
+msgid "A new project from the template {}: Save asks where to put it."
+msgstr "Un nouveau projet à partir du gabarit {} : Enregistrer demande où le mettre."
+
+#: crates/ui-egui/src/project_templates.rs:289
+msgid "Add…"
+msgstr "Ajouter…"
+
+#: crates/ui-egui/src/project_templates.rs:222
+msgid "Another template, which New lists from then on."
+msgstr "Un autre gabarit, que Nouveau liste ensuite."
+
+#: crates/ui-egui/src/project_templates.rs:183
+#: crates/ui-egui/src/project_templates.rs:244
+#: crates/ui-egui/src/project_templates.rs:290
+msgid "BIMCraft template"
+msgstr "Gabarit BIMCraft"
+
+#: crates/ui-egui/src/project_templates.rs:219
+msgid "Empty Project"
+msgstr "Projet vide"
+
+#: crates/ui-egui/src/project_templates.rs:257
+msgid "New lists the first {} of these; move one up to list it. A template is a .bimt file: Save As > Template… makes one."
+msgstr "Nouveau liste les {} premiers ; montez-en un pour le lister. Un gabarit est un fichier .bimt : Enregistrer sous > Gabarit… en crée un."
+
+#: crates/ui-egui/src/project_templates.rs:267
+msgid "No templates yet."
+msgstr "Pas encore de gabarit."
+
+#: crates/ui-egui/src/project_templates.rs:202
+msgid "No templates yet: Browse… picks one, and New lists it from then on."
+msgstr "Pas encore de gabarit : Parcourir… en choisit un, et Nouveau le liste ensuite."
+
+#: crates/ui-egui/src/project_templates.rs:276
+msgid "Not listed by New:"
+msgstr "Non listés par Nouveau :"
+
+#: crates/ui-egui/src/project_templates.rs:254
+msgid "Project Templates"
+msgstr "Gabarits de projet"
+
+#: crates/ui-egui/src/lib.rs:4661
+msgid "Save As"
+msgstr "Enregistrer sous"
+
+#: crates/ui-egui/src/lib.rs:3986
+msgid "Saved the template {}; New lists it."
+msgstr "Gabarit {} enregistré ; Nouveau le liste."
+
+#: crates/ui-egui/src/project_templates.rs:199
+msgid "Start from a template"
+msgstr "Partir d'un gabarit"
+
+#: crates/ui-egui/src/settings.rs:348
+msgid "Templates"
+msgstr "Gabarits"
+
+#: crates/ui-egui/src/lib.rs:4665
+msgid "Template…"
+msgstr "Gabarit…"
+
+#: crates/ui-egui/src/project_templates.rs:175
+msgid "The template {} isn't there any more; it was taken off the list."
+msgstr "Le gabarit {} n'existe plus ; il a été retiré de la liste."
+
+#: crates/ui-egui/src/project_templates.rs:279
+msgid "{} (not found)"
+msgstr "{} (introuvable)"
+
+#: crates/ui-egui/src/project_templates.rs:213
+msgid "{} more in Settings > Templates; move one up to list it here."
+msgstr "{} de plus dans Paramètres > Gabarits ; montez-en un pour le lister ici."
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

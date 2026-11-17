@@ -43,6 +43,7 @@ fn the_start_page_offers_new_and_open_and_says_where_the_source_is() {
     h.get_by_label("This copy doesn't look for updates.");
     assert!(h.query_by_label("Back to Project").is_none(), "an empty project is nothing to go back to");
     press(&mut h, "New Project");
+    empty_project(&mut h);
     assert!(!h.state().home.shown);
     h.get_by_label("Architecture");
     // Home brings it back over the project, which Back leaves as it was.
@@ -67,6 +68,7 @@ fn ctrl_d_and_the_back_arrow_go_between_the_start_page_and_the_project() {
     assert!(h.state().home.shown);
     assert!(h.query_by_label("Back").is_none());
     press(&mut h, "New Project");
+    empty_project(&mut h);
     h.state_mut().run("wall", json!({"points": [[0, 0], [3000, 0]]}));
     h.key_press_modifiers(Modifiers::COMMAND, Key::D);
     h.run();

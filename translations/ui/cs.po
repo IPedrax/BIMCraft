@@ -1822,9 +1822,10 @@ msgstr ""
 msgid "Brought in {} objects as Generic Model families."
 msgstr "Načteno {} objektů jako rodiny Obecný model."
 
+#: crates/ui-egui/src/project_templates.rs:222
 #: crates/ui-egui/src/publisher.rs:413
 msgid "Browse…"
-msgstr ""
+msgstr "Procházet…"
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Build"
@@ -18491,6 +18492,80 @@ msgstr "Pravý"
 msgctxt "side"
 msgid "Top"
 msgstr "Horní"
+
+#: crates/ui-egui/src/lib.rs:4087
+msgid "A new project from the template {}: Save asks where to put it."
+msgstr "Nový projekt ze šablony {}: Uložit se zeptá, kam ho uložit."
+
+#: crates/ui-egui/src/project_templates.rs:289
+msgid "Add…"
+msgstr "Přidat…"
+
+#: crates/ui-egui/src/project_templates.rs:222
+msgid "Another template, which New lists from then on."
+msgstr "Jiná šablona, kterou Nový od té doby nabízí."
+
+#: crates/ui-egui/src/project_templates.rs:183
+#: crates/ui-egui/src/project_templates.rs:244
+#: crates/ui-egui/src/project_templates.rs:290
+msgid "BIMCraft template"
+msgstr "Šablona BIMCraft"
+
+#: crates/ui-egui/src/project_templates.rs:219
+msgid "Empty Project"
+msgstr "Prázdný projekt"
+
+#: crates/ui-egui/src/project_templates.rs:257
+msgid "New lists the first {} of these; move one up to list it. A template is a .bimt file: Save As > Template… makes one."
+msgstr "Nový nabízí prvních {} z nich; posuňte jednu nahoru, aby se zobrazila. Šablona je soubor .bimt: Uložit jako > Šablona… ji vytvoří."
+
+#: crates/ui-egui/src/project_templates.rs:267
+msgid "No templates yet."
+msgstr "Zatím žádné šablony."
+
+#: crates/ui-egui/src/project_templates.rs:202
+msgid "No templates yet: Browse… picks one, and New lists it from then on."
+msgstr "Zatím žádné šablony: Procházet… jednu vybere a Nový ji od té doby nabízí."
+
+#: crates/ui-egui/src/project_templates.rs:276
+msgid "Not listed by New:"
+msgstr "Nový nenabízí:"
+
+#: crates/ui-egui/src/project_templates.rs:254
+msgid "Project Templates"
+msgstr "Šablony projektu"
+
+#: crates/ui-egui/src/lib.rs:4661
+msgid "Save As"
+msgstr "Uložit jako"
+
+#: crates/ui-egui/src/lib.rs:3986
+msgid "Saved the template {}; New lists it."
+msgstr "Šablona {} uložena; Nový ji nabízí."
+
+#: crates/ui-egui/src/project_templates.rs:199
+msgid "Start from a template"
+msgstr "Začít ze šablony"
+
+#: crates/ui-egui/src/settings.rs:348
+msgid "Templates"
+msgstr "Šablony"
+
+#: crates/ui-egui/src/lib.rs:4665
+msgid "Template…"
+msgstr "Šablona…"
+
+#: crates/ui-egui/src/project_templates.rs:175
+msgid "The template {} isn't there any more; it was taken off the list."
+msgstr "Šablona {} už neexistuje; byla odebrána ze seznamu."
+
+#: crates/ui-egui/src/project_templates.rs:279
+msgid "{} (not found)"
+msgstr "{} (nenalezeno)"
+
+#: crates/ui-egui/src/project_templates.rs:213
+msgid "{} more in Settings > Templates; move one up to list it here."
+msgstr "Dalších {} v Nastavení > Šablony; posuňte jednu nahoru, aby se zde zobrazila."
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

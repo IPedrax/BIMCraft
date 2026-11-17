@@ -110,9 +110,11 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
+        "{path, as_template?} a .bimc project (and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
          machine has free allows (8 times a project's size, 14 times an IFC's; without the apps' meter, under 256 and 512 MiB) (its `elements` by \
-         category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
+         category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why). A .bimt \
+         template, or any project with `as_template: true`, is read and let go: its content is a new project with no file, so `save` \
+         needs a `path` and never writes over the template; the reply says `template: true`",
         open,
         Files::Read,
     ),
@@ -201,7 +203,8 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?, ifc_origin?, compress?} .bimc saves the project (Save As with a path), as does .bimt (a template): compact JSON, \
+        "{path?, ifc_origin?, compress?} .bimc saves the project (Save As with a path); .bimt saves it as a template, which `open` starts \
+         a new project from, and the project keeps its own file (the reply says `template: true`): compact JSON, \
          or with `compress: true` the same JSON in a zip of one entry, `project.json`, deflated on every core (several times \
          smaller, slower to save and open; a .json path is always plain; `open` reads either); .ifc exports IFC4, its \
          coordinates' origin at `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or \
@@ -4618,6 +4621,13 @@ fn ifc_survey(_s: &mut Session, p: &Value) -> R {
 fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
+    // A template's content comes in as a new project: the file is let go once it is read.
+    let template = match p.get("as_template") {
+        v if absent(v) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`as_template` is true or false, not {v}"))),
+        None => false,
+    } || ext(&path) == crate::files::TEMPLATE;
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
     let ifc = ext(&path) == "ifc";
     // Held to the memory the machine has free, where the app measures it; else to a fixed size.
@@ -4712,8 +4722,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     m.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     budget.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     let name = m.name.clone();
-    s.reset(m, Some(path.clone()));
+    s.reset(m, (!template).then(|| path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    if template {
+        reply["template"] = json!(true);
+    }
     // A formula saying a name its family lacks, which this BIMCraft refuses a command making: the file opens, saying so.
     let warnings: Vec<String> =
         s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))).collect();
@@ -5030,6 +5043,10 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": format}));
     }
     let compressed = write_project(s, c, p, &path)?;
+    // A template is a copy for new projects to start from: the project still saves to its own file.
+    if format == crate::files::TEMPLATE {
+        return Ok(json!({"path": path, "format": "bimcraft", "compressed": compressed, "template": true}));
+    }
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft", "compressed": compressed}))
 }

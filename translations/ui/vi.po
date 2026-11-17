@@ -1824,9 +1824,10 @@ msgstr ""
 msgid "Brought in {} objects as Generic Model families."
 msgstr "Đã đưa vào {} đối tượng dưới dạng họ Mô hình chung."
 
+#: crates/ui-egui/src/project_templates.rs:222
 #: crates/ui-egui/src/publisher.rs:413
 msgid "Browse…"
-msgstr ""
+msgstr "Duyệt…"
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Build"
@@ -18493,6 +18494,80 @@ msgstr ""
 msgctxt "side"
 msgid "Top"
 msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4087
+msgid "A new project from the template {}: Save asks where to put it."
+msgstr "Một dự án mới từ mẫu {}: Lưu sẽ hỏi đặt nó ở đâu."
+
+#: crates/ui-egui/src/project_templates.rs:289
+msgid "Add…"
+msgstr "Thêm…"
+
+#: crates/ui-egui/src/project_templates.rs:222
+msgid "Another template, which New lists from then on."
+msgstr "Một mẫu khác, mà Mới sẽ liệt kê từ đó."
+
+#: crates/ui-egui/src/project_templates.rs:183
+#: crates/ui-egui/src/project_templates.rs:244
+#: crates/ui-egui/src/project_templates.rs:290
+msgid "BIMCraft template"
+msgstr "Mẫu BIMCraft"
+
+#: crates/ui-egui/src/project_templates.rs:219
+msgid "Empty Project"
+msgstr "Dự án trống"
+
+#: crates/ui-egui/src/project_templates.rs:257
+msgid "New lists the first {} of these; move one up to list it. A template is a .bimt file: Save As > Template… makes one."
+msgstr "Mới liệt kê {} mẫu đầu tiên; chuyển một mẫu lên để liệt kê nó. Mẫu là tệp .bimt: Lưu thành > Mẫu… tạo một mẫu."
+
+#: crates/ui-egui/src/project_templates.rs:267
+msgid "No templates yet."
+msgstr "Chưa có mẫu nào."
+
+#: crates/ui-egui/src/project_templates.rs:202
+msgid "No templates yet: Browse… picks one, and New lists it from then on."
+msgstr "Chưa có mẫu nào: Duyệt… chọn một mẫu, và Mới sẽ liệt kê nó từ đó."
+
+#: crates/ui-egui/src/project_templates.rs:276
+msgid "Not listed by New:"
+msgstr "Không được Mới liệt kê:"
+
+#: crates/ui-egui/src/project_templates.rs:254
+msgid "Project Templates"
+msgstr "Mẫu dự án"
+
+#: crates/ui-egui/src/lib.rs:4661
+msgid "Save As"
+msgstr "Lưu thành"
+
+#: crates/ui-egui/src/lib.rs:3986
+msgid "Saved the template {}; New lists it."
+msgstr "Đã lưu mẫu {}; Mới liệt kê nó."
+
+#: crates/ui-egui/src/project_templates.rs:199
+msgid "Start from a template"
+msgstr "Bắt đầu từ một mẫu"
+
+#: crates/ui-egui/src/settings.rs:348
+msgid "Templates"
+msgstr "Mẫu"
+
+#: crates/ui-egui/src/lib.rs:4665
+msgid "Template…"
+msgstr "Mẫu…"
+
+#: crates/ui-egui/src/project_templates.rs:175
+msgid "The template {} isn't there any more; it was taken off the list."
+msgstr "Mẫu {} không còn nữa; nó đã được bỏ khỏi danh sách."
+
+#: crates/ui-egui/src/project_templates.rs:279
+msgid "{} (not found)"
+msgstr "{} (không tìm thấy)"
+
+#: crates/ui-egui/src/project_templates.rs:213
+msgid "{} more in Settings > Templates; move one up to list it here."
+msgstr "Thêm {} mẫu trong Cài đặt > Mẫu; chuyển một mẫu lên để liệt kê ở đây."
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

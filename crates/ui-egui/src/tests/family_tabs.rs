@@ -156,6 +156,7 @@ fn a_new_project_asks_about_the_open_documents_first() {
     // From the project's tab, where its keys work.
     press(&mut h, "Level 1");
     chord(&mut h, Modifiers::COMMAND, Key::N);
+    empty_project(&mut h);
     assert!(h.query_by_label("Save changes to Box E?").is_some(), "the document first");
     press(&mut h, "Close Without Loading");
     assert!(h.state().families.is_empty());

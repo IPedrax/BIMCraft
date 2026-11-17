@@ -1822,9 +1822,10 @@ msgstr ""
 msgid "Brought in {} objects as Generic Model families."
 msgstr "{} oggetti importati come famiglie di Modello generico."
 
+#: crates/ui-egui/src/project_templates.rs:222
 #: crates/ui-egui/src/publisher.rs:413
 msgid "Browse…"
-msgstr ""
+msgstr "Sfoglia…"
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Build"
@@ -18507,6 +18508,80 @@ msgstr ""
 #: crates/ui-egui/src/sketch.rs:846
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4087
+msgid "A new project from the template {}: Save asks where to put it."
+msgstr "Un nuovo progetto dal modello {}: Salva chiede dove metterlo."
+
+#: crates/ui-egui/src/project_templates.rs:289
+msgid "Add…"
+msgstr "Aggiungi…"
+
+#: crates/ui-egui/src/project_templates.rs:222
+msgid "Another template, which New lists from then on."
+msgstr "Un altro modello, che Nuovo elenca da allora."
+
+#: crates/ui-egui/src/project_templates.rs:183
+#: crates/ui-egui/src/project_templates.rs:244
+#: crates/ui-egui/src/project_templates.rs:290
+msgid "BIMCraft template"
+msgstr "Modello BIMCraft"
+
+#: crates/ui-egui/src/project_templates.rs:219
+msgid "Empty Project"
+msgstr "Progetto vuoto"
+
+#: crates/ui-egui/src/project_templates.rs:257
+msgid "New lists the first {} of these; move one up to list it. A template is a .bimt file: Save As > Template… makes one."
+msgstr "Nuovo elenca i primi {}; spostane uno in alto per elencarlo. Un modello è un file .bimt: Salva con nome > Modello… ne crea uno."
+
+#: crates/ui-egui/src/project_templates.rs:267
+msgid "No templates yet."
+msgstr "Ancora nessun modello."
+
+#: crates/ui-egui/src/project_templates.rs:202
+msgid "No templates yet: Browse… picks one, and New lists it from then on."
+msgstr "Ancora nessun modello: Sfoglia… ne sceglie uno, e Nuovo lo elenca da allora."
+
+#: crates/ui-egui/src/project_templates.rs:276
+msgid "Not listed by New:"
+msgstr "Non elencati da Nuovo:"
+
+#: crates/ui-egui/src/project_templates.rs:254
+msgid "Project Templates"
+msgstr "Modelli di progetto"
+
+#: crates/ui-egui/src/lib.rs:4661
+msgid "Save As"
+msgstr "Salva con nome"
+
+#: crates/ui-egui/src/lib.rs:3986
+msgid "Saved the template {}; New lists it."
+msgstr "Modello {} salvato; Nuovo lo elenca."
+
+#: crates/ui-egui/src/project_templates.rs:199
+msgid "Start from a template"
+msgstr "Inizia da un modello"
+
+#: crates/ui-egui/src/settings.rs:348
+msgid "Templates"
+msgstr "Modelli"
+
+#: crates/ui-egui/src/lib.rs:4665
+msgid "Template…"
+msgstr "Modello…"
+
+#: crates/ui-egui/src/project_templates.rs:175
+msgid "The template {} isn't there any more; it was taken off the list."
+msgstr "Il modello {} non c'è più; è stato tolto dall'elenco."
+
+#: crates/ui-egui/src/project_templates.rs:279
+msgid "{} (not found)"
+msgstr "{} (non trovato)"
+
+#: crates/ui-egui/src/project_templates.rs:213
+msgid "{} more in Settings > Templates; move one up to list it here."
+msgstr "Altri {} in Impostazioni > Modelli; spostane uno in alto per elencarlo qui."
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

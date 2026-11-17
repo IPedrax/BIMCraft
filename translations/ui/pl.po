@@ -1823,9 +1823,10 @@ msgstr ""
 msgid "Brought in {} objects as Generic Model families."
 msgstr "Wczytano {} obiektów jako rodziny Model ogólny."
 
+#: crates/ui-egui/src/project_templates.rs:222
 #: crates/ui-egui/src/publisher.rs:413
 msgid "Browse…"
-msgstr ""
+msgstr "Przeglądaj…"
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Build"
@@ -11065,9 +11066,9 @@ msgstr ""
 msgid "Projection/Surface"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4804
+#: crates/ui-egui/src/lib.rs:4639 crates/ui-egui/src/lib.rs:4662
 msgid "Project…"
-msgstr ""
+msgstr "Projekt…"
 
 #: crates/ui-egui/src/editor/document.rs:793
 #: crates/ui-egui/src/editor/document.rs:794 crates/ui-egui/src/lib.rs:5646
@@ -18538,6 +18539,76 @@ msgstr ""
 #: crates/ui-egui/src/sketch.rs:846
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4087
+msgid "A new project from the template {}: Save asks where to put it."
+msgstr "Nowy projekt z szablonu {}: Zapisz zapyta, gdzie go umieścić."
+
+#: crates/ui-egui/src/project_templates.rs:289
+msgid "Add…"
+msgstr "Dodaj…"
+
+#: crates/ui-egui/src/project_templates.rs:222
+msgid "Another template, which New lists from then on."
+msgstr "Inny szablon, który Nowy pokazuje od tej pory."
+
+#: crates/ui-egui/src/project_templates.rs:183
+#: crates/ui-egui/src/project_templates.rs:244
+#: crates/ui-egui/src/project_templates.rs:290
+msgid "BIMCraft template"
+msgstr "Szablon BIMCraft"
+
+#: crates/ui-egui/src/project_templates.rs:219
+msgid "Empty Project"
+msgstr "Pusty projekt"
+
+#: crates/ui-egui/src/project_templates.rs:257
+msgid "New lists the first {} of these; move one up to list it. A template is a .bimt file: Save As > Template… makes one."
+msgstr "Nowy pokazuje pierwsze {} z nich; przesuń jeden wyżej, aby go pokazać. Szablon to plik .bimt: Zapisz jako > Szablon… tworzy go."
+
+#: crates/ui-egui/src/project_templates.rs:267
+msgid "No templates yet."
+msgstr "Brak szablonów."
+
+#: crates/ui-egui/src/project_templates.rs:202
+msgid "No templates yet: Browse… picks one, and New lists it from then on."
+msgstr "Brak szablonów: Przeglądaj… wybiera jeden, a Nowy pokazuje go od tej pory."
+
+#: crates/ui-egui/src/project_templates.rs:276
+msgid "Not listed by New:"
+msgstr "Niepokazywane przez Nowy:"
+
+#: crates/ui-egui/src/project_templates.rs:254
+msgid "Project Templates"
+msgstr "Szablony projektów"
+
+#: crates/ui-egui/src/lib.rs:3986
+msgid "Saved the template {}; New lists it."
+msgstr "Zapisano szablon {}; Nowy go pokazuje."
+
+#: crates/ui-egui/src/project_templates.rs:199
+msgid "Start from a template"
+msgstr "Zacznij od szablonu"
+
+#: crates/ui-egui/src/settings.rs:348
+msgid "Templates"
+msgstr "Szablony"
+
+#: crates/ui-egui/src/lib.rs:4665
+msgid "Template…"
+msgstr "Szablon…"
+
+#: crates/ui-egui/src/project_templates.rs:175
+msgid "The template {} isn't there any more; it was taken off the list."
+msgstr "Szablonu {} już nie ma; usunięto go z listy."
+
+#: crates/ui-egui/src/project_templates.rs:279
+msgid "{} (not found)"
+msgstr "{} (nie znaleziono)"
+
+#: crates/ui-egui/src/project_templates.rs:213
+msgid "{} more in Settings > Templates; move one up to list it here."
+msgstr "Jeszcze {} w Ustawienia > Szablony; przesuń jeden wyżej, aby go tu pokazać."
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

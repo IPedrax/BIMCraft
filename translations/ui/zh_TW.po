@@ -1822,9 +1822,10 @@ msgstr ""
 msgid "Brought in {} objects as Generic Model families."
 msgstr "已將 {} 個物件作為一般模型族導入。"
 
+#: crates/ui-egui/src/project_templates.rs:222
 #: crates/ui-egui/src/publisher.rs:413
 msgid "Browse…"
-msgstr ""
+msgstr "瀏覽…"
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Build"
@@ -18491,6 +18492,80 @@ msgstr "右"
 msgctxt "side"
 msgid "Top"
 msgstr "上"
+
+#: crates/ui-egui/src/lib.rs:4087
+msgid "A new project from the template {}: Save asks where to put it."
+msgstr "由樣板 {} 新建的項目：儲存時會詢問儲存位置。"
+
+#: crates/ui-egui/src/project_templates.rs:289
+msgid "Add…"
+msgstr "新增…"
+
+#: crates/ui-egui/src/project_templates.rs:222
+msgid "Another template, which New lists from then on."
+msgstr "另一個樣板，之後「新建」會列出它。"
+
+#: crates/ui-egui/src/project_templates.rs:183
+#: crates/ui-egui/src/project_templates.rs:244
+#: crates/ui-egui/src/project_templates.rs:290
+msgid "BIMCraft template"
+msgstr "BIMCraft 樣板"
+
+#: crates/ui-egui/src/project_templates.rs:219
+msgid "Empty Project"
+msgstr "空項目"
+
+#: crates/ui-egui/src/project_templates.rs:257
+msgid "New lists the first {} of these; move one up to list it. A template is a .bimt file: Save As > Template… makes one."
+msgstr "「新建」列出其中前 {} 個；上移一個即可列出。樣板是 .bimt 檔案：「另存為 > 樣板…」可建立。"
+
+#: crates/ui-egui/src/project_templates.rs:267
+msgid "No templates yet."
+msgstr "還沒有樣板。"
+
+#: crates/ui-egui/src/project_templates.rs:202
+msgid "No templates yet: Browse… picks one, and New lists it from then on."
+msgstr "還沒有樣板：用「瀏覽…」選擇一個，之後「新建」會列出它。"
+
+#: crates/ui-egui/src/project_templates.rs:276
+msgid "Not listed by New:"
+msgstr "「新建」不列出："
+
+#: crates/ui-egui/src/project_templates.rs:254
+msgid "Project Templates"
+msgstr "項目樣板"
+
+#: crates/ui-egui/src/lib.rs:4661
+msgid "Save As"
+msgstr "另存為"
+
+#: crates/ui-egui/src/lib.rs:3986
+msgid "Saved the template {}; New lists it."
+msgstr "已儲存樣板 {}；「新建」會列出它。"
+
+#: crates/ui-egui/src/project_templates.rs:199
+msgid "Start from a template"
+msgstr "從樣板開始"
+
+#: crates/ui-egui/src/settings.rs:348
+msgid "Templates"
+msgstr "樣板"
+
+#: crates/ui-egui/src/lib.rs:4665
+msgid "Template…"
+msgstr "樣板…"
+
+#: crates/ui-egui/src/project_templates.rs:175
+msgid "The template {} isn't there any more; it was taken off the list."
+msgstr "樣板 {} 已不存在，已從列表中移除。"
+
+#: crates/ui-egui/src/project_templates.rs:279
+msgid "{} (not found)"
+msgstr "{}（未找到）"
+
+#: crates/ui-egui/src/project_templates.rs:213
+msgid "{} more in Settings > Templates; move one up to list it here."
+msgstr "「設置 > 樣板」中還有 {} 個；將其上移即可在此列出。"
 
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
