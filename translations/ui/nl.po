@@ -5551,7 +5551,7 @@ msgstr "Geef elke stijl en elk patroon een naam."
 msgid "Enter a name for every type and pattern."
 msgstr "Geef elk type en elk patroon een naam."
 
-#: crates/ui-egui/src/section/tools.rs:218
+#: crates/ui-egui/src/section/tools.rs:221
 msgid "Enter a positive length."
 msgstr ""
 
@@ -10671,7 +10671,7 @@ msgstr ""
 msgid "Pick levels, perpendicular grids or detail lines in this view, then click to place the dimension."
 msgstr ""
 
-#: crates/ui-egui/src/section/tools.rs:120
+#: crates/ui-egui/src/section/tools.rs:123
 msgid "Pick levels, perpendicular grids or detail lines in this view."
 msgstr ""
 
@@ -15566,7 +15566,7 @@ msgstr ""
 msgid "Tread:"
 msgstr ""
 
-#: crates/ui-egui/src/section/tools.rs:175
+#: crates/ui-egui/src/section/tools.rs:178
 msgid "Trim in this view supports its detail lines; model edges are not supported yet."
 msgstr ""
 
@@ -15996,7 +15996,7 @@ msgstr "Projectinstellingen gebruiken"
 msgid "Use a drawing area for automatic placement"
 msgstr ""
 
-#: crates/ui-egui/src/section/tools.rs:159
+#: crates/ui-egui/src/section/tools.rs:162
 msgid "Use drawn detail shapes in this view; Pick Lines and Fillet are not supported yet."
 msgstr ""
 

@@ -21,7 +21,10 @@ impl BimApp {
         clicked: Option<(f32, f32)>,
         hovered: Option<Id>,
     ) -> bool {
-        if !matches!(self.tool, Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }) {
+        // Move with a curtain grid picked moves that grid, on the wall's face (`curtain_face_tool`).
+        if !matches!(self.tool, Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. })
+            || self.curtain_face_tool()
+        {
             return false;
         }
         let model = Arc::clone(&self.session.model);
