@@ -474,6 +474,11 @@ pub(crate) struct Gathered {
     pub rooms: BTreeMap<u32, (String, String)>,
     /// The placement of each family instance asked for, as its newest partition holds it.
     pub placements: BTreeMap<u32, crate::placement::Transform>,
+    /// What each family instance asked for draws, as its own graphics say (the newest partition's): the symbol and the transform
+    /// it is drawn by; or why that is not read.
+    pub drawn: BTreeMap<u32, std::result::Result<(u32, crate::placement::Transform), String>>,
+    /// The shape of each symbol those instances draw, where the file holds its graphics; or why it is not read.
+    pub shapes: BTreeMap<u32, std::result::Result<crate::shapes::Shape, String>>,
 }
 
 /// What the second pass is asked for.
@@ -489,6 +494,8 @@ pub(crate) struct Wants {
     pub rooms: BTreeSet<u32>,
     /// The family instances whose placement alone is read from their data (the components).
     pub placements: BTreeSet<u32>,
+    /// The family instances whose own graphics are read for what they draw, and the shapes of what they draw.
+    pub drawings: BTreeSet<u32>,
 }
 
 impl crate::Revit {
@@ -585,15 +592,33 @@ impl crate::Revit {
         let mut nodes = BTreeMap::new();
         let mut room_names = Latest::default();
         let mut placements = Latest::default();
-        for name in names {
+        let mut drawn = Latest::default();
+        // The graphics are read by the classes the file's own schema gives, and found by the ids of the file's elements; where
+        // each one's start is kept (its newest partition's), for the symbols drawn, which are read after this pass.
+        let schema = if wants.drawings.is_empty() { None } else { self.schema().ok() };
+        let layouts = schema.as_ref().and_then(crate::graphics::Layouts::of);
+        let every: BTreeSet<u32> = if layouts.is_some() { ids.iter().copied().collect() } else { BTreeSet::new() };
+        let mut trees: BTreeMap<u32, (u32, usize, usize)> = BTreeMap::new();
+        for (k, name) in names.iter().enumerate() {
             let number = name.rsplit('/').next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0);
-            let buf = self.inflate_all(&name)?.bytes;
+            let buf = self.inflate_all(name)?.bytes;
             element_data(&buf, tags, wide, wanted, number, &mut data);
             element_placements(&buf, tags, wide, &wants.placements, number, &mut placements);
             material_names(&buf, tags, wide, ids, &mut materials);
             category_materials(&buf, tags, release, &CATEGORY_MATERIAL_CATEGORIES, &mut styled);
             column_nodes(&buf, columns, &mut nodes);
             room_entries(&buf, wide, &wants.rooms, number, &mut room_names);
+            if let Some(layouts) = &layouts {
+                for (id, at) in crate::graphics::roots(&buf, layouts, &every) {
+                    if trees.get(&id).is_none_or(|(held, ..)| *held <= number) {
+                        trees.insert(id, (number, k, at));
+                    }
+                    if wants.drawings.contains(&id) {
+                        let draws = crate::graphics::read(&buf, at, layouts).and_then(|tree| crate::graphics::instance(&tree, layouts));
+                        drawn.offer(id, number, draws);
+                    }
+                }
+            }
             let mut entries = Vec::new();
             if wide {
                 entries_64(&buf, ids, &mut entries);
@@ -602,6 +627,24 @@ impl crate::Revit {
             }
             for e in entries {
                 named.offer(e.id, number, (e.name, e.category));
+            }
+        }
+        // The shapes of the symbols drawn, each partition that holds one inflated again.
+        let drawn = drawn.into_values();
+        let mut shapes = BTreeMap::new();
+        if let Some(layouts) = &layouts {
+            let mut by_partition: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
+            for symbol in drawn.values().filter_map(|d| d.as_ref().ok().map(|(s, _)| *s)) {
+                if let Some((_, k, at)) = trees.get(&symbol) {
+                    by_partition.entry(*k).or_default().push((symbol, *at));
+                }
+            }
+            for (k, symbols) in by_partition {
+                let Some(name) = names.get(k) else { continue };
+                let buf = self.inflate_all(name)?.bytes;
+                for (symbol, at) in symbols {
+                    shapes.insert(symbol, crate::graphics::read(&buf, at, layouts).and_then(|tree| crate::shapes::shape(&tree, layouts)));
+                }
             }
         }
         if !wide {
@@ -639,6 +682,8 @@ impl crate::Revit {
             column_bottoms: column_bottoms(nodes, columns),
             rooms: room_names.into_values(),
             placements: placements.into_values(),
+            drawn,
+            shapes,
         })
     }
 

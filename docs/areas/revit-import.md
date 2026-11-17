@@ -67,8 +67,18 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   taken back through a placement whose axes lie along the project's (exact), else the box its type's such instances agree on; a
   placement upside down (a light hung from a ceiling) or on its side (one on a wall) is re-expressed upright where one of its axes
   stands upright. Otherwise (no placement, one on a slope, no type, or a box that disagrees) it comes in as the record's box,
-  unturned, and the note says which. Snowdon 2025's architectural model brings in 3,312 of its 4,683 components turned so, in 133
-  families of 186 types. A box is a fair stand-in only for
+  unturned, and the note says which. A component comes in with **its shape** where the file holds it: its own graphics
+  (`graphics.rs`, a tree read breadth first by the fields the file's own schema gives, found by its id) name the symbol it
+  draws and the transform it is drawn by, and that symbol's solids (`shapes.rs`: faces on planes, cylinders and surfaces of
+  revolution) read whole, meet along every edge and fill the box the graphics give round them; the symbol's whole box, placed,
+  must be the record's box to a millimetre. Its family then shows that shape for its type, a mesh form only that type shows (the
+  type parameter `Shape`, 0 for the box), and each symbol a Revit type's instances draw is a type of its own (`Desk`, `Desk (2)`
+  for one Revit made for an instance's own parameters; those that come in as boxes beside them a type of their own too), placed at
+  the transform's origin and turned by it. The graphics are found in the second pass and the symbols drawn read after it, each
+  partition that holds one inflated again (`Gathered::drawn`, `Gathered::shapes`); the provenance rows say what was measured, and
+  what is not read (a cone, a Hermite or ruled surface, a nested family, a mesh, a mirrored or tilted instance, which come in as
+  boxes saying why). Snowdon 2025's architectural model brings in 3,526 of its 4,683 components turned so, 2,104 of them with their
+  shape, in 133 families of 504 types. A box is a fair stand-in only for
   some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit) only where it runs along an axis, so one
   that turns a corner or runs across the axes, whose box is a block where there is none, is left out with that; and a whole (a stair,
   a truss, a beam system) is left out where its box holds a box of its parts' categories, which come in on their own. Conduits come
