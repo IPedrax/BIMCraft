@@ -13,7 +13,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use super::{
-    P3, Scene, ShapeKey, Span, Tri, bounds, corner_normals, layered, local_curves, painted, rules_of, skins_for, solids_in, whole_model,
+    P3, Scene, ShapeKey, Span, Tri, bounds, corner_normals, layered, local_surfaces, painted, rules_of, skins_for, solids_in, whole_model,
 };
 use crate::component_geometry::ComponentInstance;
 use crate::ids::Changed;
@@ -348,7 +348,7 @@ fn element_tris(m: &Model, elements: &[(Id, &Element)], index: &crate::walls::In
         out.entry(t.owner).or_default().push(t);
     }
     for own in out.values_mut() {
-        local_curves(own);
+        local_surfaces(own);
     }
     out
 }
