@@ -402,6 +402,8 @@ fn host_info(mut caller: Caller<'_, HostState>) -> Result<i64, Error> {
             "abi": ABI,
             "units": "mm",
             "project": state.session.as_ref().map(|s| s.model.name.clone()).unwrap_or_default(),
+            // What this host can do with a report: a plugin may answer `{"text": …, "format": "markdown"}`.
+            "markdown_reports": true,
         })
     };
     let text = serde_json::to_string(&info).map_err(|e| Error::new(format!("the host info isn't JSON: {e}")))?;

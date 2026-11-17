@@ -56,6 +56,7 @@ pub mod lang;
 mod linestyles;
 mod lineweights;
 mod links;
+mod markdown;
 mod mep;
 mod mesh;
 mod minimap;
