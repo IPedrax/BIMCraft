@@ -18135,6 +18135,18 @@ msgstr ""
 msgid "Producer"
 msgstr ""
 
+#: crates/ui-egui/src/orbit/placement.rs:147
+msgid "Sill locked: {}"
+msgstr ""
+
+#: crates/ui-egui/src/orbit/placement.rs:147
+msgid "Sill: {}"
+msgstr ""
+
+#: crates/ui-egui/src/orbit/placement.rs:127
+msgid "The drag plane is edge-on to this view."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Um valor em branco é o da própria família, como a aba Parâmetros o tem."
