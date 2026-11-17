@@ -4973,6 +4973,45 @@ fn tab_over_a_wall_steps_its_faces_and_away_from_it_the_numbers() {
     assert!(text.contains("[") && text.contains("°"), "one field is bracketed, the angle being the other: {text}");
 }
 
+/// In the app the `Tab` never reaches the canvas: the input hook takes the key and leaves `tab_cycle` for the next
+/// frame. This is that path.
+#[test]
+fn tab_taken_by_the_apps_input_hook_steps_the_fields_off_a_wall() {
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 1000.0));
+    hover(&mut h, P2(2000.0, 1000.0));
+    // What `raw_input_hook` does: the key is not in this frame's events, only the flag is.
+    h.state_mut().tab_cycle = true;
+    h.run();
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits");
+    h.state_mut().tab_cycle = true;
+    h.run();
+    assert_eq!(h.state().drawing.field, 0, "and the length takes them again");
+}
+
+/// The line's reading is painted with the field `Tab` is on in brackets, as a shape's numbers are. The preview drew
+/// a reading of its own once, so `Tab` moved the field and nothing on screen said so whatever `shape_texts` answered.
+#[test]
+fn the_reading_a_line_paints_brackets_the_field_tab_is_on() {
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 1000.0));
+    hover(&mut h, P2(2000.0, 1000.0));
+    let reading = |h: &Harness<BimApp>| {
+        painted_text(h)
+            .into_iter()
+            .find(|t| t.contains("mm") && t.contains('['))
+            .unwrap_or_else(|| panic!("no bracketed reading among {:?}", painted_text(h)))
+    };
+    let before = reading(&h);
+    assert!(before.trim_start().starts_with('['), "the length takes the digits first: {before}");
+    key(&mut h, Key::Tab);
+    let after = reading(&h);
+    assert!(after.find('[') > before.find('['), "the angle takes them now: {before} -> {after}");
+    assert!(after.contains('°'), "the angle is still read: {after}");
+}
+
 /// Before Point 1 there is no number to type, so `Tab` has the faces to itself.
 #[test]
 fn tab_cycles_a_walls_faces_before_the_first_point() {
