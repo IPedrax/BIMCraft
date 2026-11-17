@@ -650,3 +650,55 @@ fn the_electrical_settings_are_rules_of_the_code_both_ways() {
     let bad = json!({"discipline": "electrical", "rules": {"voltages": {"1 V": {"nominal": -5, "min": 0, "max": 1}}}});
     assert!(s.execute("building_code", &bad).is_err());
 }
+
+#[test]
+fn nbr_5410_and_the_electrical_settings_go_out_as_xml_and_come_back_whole() {
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410"}));
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "rules": {"voltages": {"My 500 V": {"nominal": 500, "min": 450, "max": 550}}}}),
+    );
+    let d = dir("nbr5410");
+    let path = d.join("nbr5410.xml").to_string_lossy().to_string();
+    run(&mut s, "building_code_export", json!({"path": path, "discipline": "electrical", "name": "Obra X"}));
+    let mut other = Session::new();
+    // A rule written as text that reads like a number ("7", the default method) comes back as text.
+    let r = run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+    assert!(r["left_out"].as_array().is_none_or(|a| a.is_empty()), "nothing left out: {r}");
+    let e = Discipline::Electrical;
+    assert_eq!(other.model.resolve_code(e, "circuits").value, s.model.resolve_code(e, "circuits").value);
+    // The settings are named by the user, so any name comes back.
+    assert!(other.model.resolve_code(e, "voltages").value.contains_key("My 500 V"));
+    assert_eq!(other.model.resolve_code(e, "voltages").value, s.model.resolve_code(e, "voltages").value);
+}
+
+#[test]
+fn two_utilities_layered_each_answer_by_their_own_method() {
+    let flats = |u: &str| json!({"utility": u, "dwellings": [{"count": 20, "area": 100}, {"count": 16, "area": 80}]});
+    let mut lib = Session::new();
+    let fecoergs = run(&mut lib, "building_demand", flats("FECOERGS"));
+    let hidropan = run(&mut lib, "building_demand", flats("HIDROPAN"));
+    let mut s = Session::new();
+    // Cemig's or Celesc's rules never fill in what Fecoergs's or Hidropan's method leaves out.
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cemig", "fecoergs"]}));
+    assert_eq!(run(&mut s, "building_demand", flats("FECOERGS")), fecoergs);
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["celesc", "hidropan"]}));
+    assert_eq!(run(&mut s, "building_demand", flats("HIDROPAN")), hidropan);
+}
+
+#[test]
+fn a_utility_s_method_goes_out_as_xml_and_comes_back_as_it_was() {
+    // Cemig's method has no common areas' factors (null): it must not come back with another utility's.
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cemig", "equatorial"]}));
+    let e = Discipline::Electrical;
+    let before = s.model.resolve_code(e, "building_demand").value;
+    let d = dir("cemig");
+    let path = d.join("cemig.xml").to_string_lossy().to_string();
+    run(&mut s, "building_code_export", json!({"path": path, "discipline": "electrical", "name": "W1"}));
+    let mut other = Session::new();
+    run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+    assert_eq!(other.model.resolve_code(e, "building_demand").value, before);
+}

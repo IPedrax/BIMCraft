@@ -6624,11 +6624,10 @@ fn circuit_of_model(s: &mut Session, p: &Value) -> R {
     if rating.is_none()
         && let Some(t) = electrical::circuit_totals(m, &x)
         && t.installed_va > 0.0
+        && let Ok(r) = rules_of(s, "circuit", "circuits", crate::nbr5410::rule_sets())
     {
-        if let Ok(r) = rules_of(s, "circuit", "circuits", crate::nbr5410::rule_sets()) {
-            let need = t.current_a.max(r.least_breaker);
-            x.rating_a = r.breakers.iter().copied().find(|b| *b >= need).unwrap_or(x.rating_a);
-        }
+        let need = t.current_a.max(r.least_breaker);
+        x.rating_a = r.breakers.iter().copied().find(|b| *b >= need).unwrap_or(x.rating_a);
     }
     let id = s.model_mut().insert(Element::Circuit(x));
     Ok(json!({"id": id, "circuit": element_json(&s.model, id)}))
@@ -7081,9 +7080,17 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     // the project's own; else BIMCraft's by the standard's or the utility's name.
     let project = s.model.section_as::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand").filter(|(_, own)| *own);
     let project = project.map(|(m, _)| m);
+    // Each of the project's amendments' own method, wherever it stands: named, a utility under another answers by its own.
+    let held: Vec<bd::Method> = s
+        .model
+        .held_wholes::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
+        .into_iter()
+        .filter(|(_, _, own)| *own)
+        .map(|(m, _, _)| m)
+        .collect();
     let m: Held<bd::Method> = match (string(c, p, "standard")?, string(c, p, "utility")?) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
-        (Some(s), None) => match project.filter(|m| m.standard == s) {
+        (Some(s), None) => match project.filter(|m| m.standard == s).or_else(|| held.into_iter().find(|m| m.standard == s)) {
             Some(m) => Held::Project(Box::new(m)),
             None => Held::Library(
                 bd::methods()
@@ -7093,7 +7100,8 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
             ),
         },
         (None, Some(u)) => {
-            match project.filter(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))) {
+            let named = |m: &bd::Method| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u));
+            match project.filter(|m| named(m)).or_else(|| held.into_iter().find(|m| named(m))) {
                 Some(m) => Held::Project(Box::new(m)),
                 None => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
                     || bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())),
@@ -7324,20 +7332,21 @@ fn demand(s: &mut Session, p: &Value) -> R {
     let utility = string(c, p, "utility")?
         .ok_or_else(|| bad(c, format!("`utility` is required: {}, {}", d::names().join(", "), crate::entrance::names().join(", "))))?;
     // The project's utility, as its amendment holds it and the project changed it; else BIMCraft's.
-    if let Some((u, _)) =
-        s.model.section_as::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance").filter(|(_, own)| *own)
-    {
+    // Each amendment's own entrance, wherever it stands: one utility's never answers for another's.
+    for (u, _, own) in s.model.held_wholes::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance", "rule") {
         let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
-        if u.id.eq_ignore_ascii_case(&utility) || member.is_some() {
+        if own && (u.id.eq_ignore_ascii_case(&utility) || member.is_some()) {
             return demand_table(p, &utility, &u, member);
         }
     }
-    let r = s.model.resolve_code(crate::codes::Discipline::Electrical, "unit_demand");
-    let own = r.from.values().any(|l| !matches!(l, crate::codes::Layer::Library(_)));
-    let project = serde_json::from_value::<d::Standard>(Value::Object(r.value.clone()))
-        .ok()
-        .filter(|u| own && u.utility.eq_ignore_ascii_case(&utility))
-        .map(|u| (u, r.sources.get("method").cloned().unwrap_or_else(|| "changed in this project".into())));
+    // The utility's own unit demand, as its amendment holds it, wherever it stands among the project's amendments: never
+    // the rules of another utility layered with it.
+    let project = s
+        .model
+        .held_wholes::<d::Standard>(crate::codes::Discipline::Electrical, "unit_demand", "method")
+        .into_iter()
+        .find(|(u, _, own)| *own && u.utility.eq_ignore_ascii_case(&utility))
+        .map(|(u, source, _)| (u, source.unwrap_or_else(|| "changed in this project".into())));
     if project.is_none()
         && let Some((u, member)) = crate::entrance::find(&utility)
     {

@@ -791,3 +791,65 @@ mod celesc_command {
         }
     }
 }
+
+mod project_s_utility {
+    use crate::engine::Session;
+    use serde_json::{Value, json};
+
+    fn run(s: &mut Session, id: &str, p: Value) -> Value {
+        s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
+    }
+
+    /// CPFL's unit demand with its first category's A1 breaker changed to `a`.
+    fn cpfl_with_a1(a: u32) -> Value {
+        let c = crate::codes::find(crate::codes::Discipline::Electrical, "cpfl").unwrap();
+        let mut u = c.sections["unit_demand"].clone();
+        let rows = u["method"]["terms"]["categories"][0]["rows"].as_array_mut().unwrap();
+        let a1 = rows.iter_mut().find(|r| r["name"] == "A1").unwrap();
+        a1["breaker"] = json!(a);
+        u
+    }
+
+    fn breaker(s: &mut Session, utility: &str) -> Value {
+        let r = run(s, "demand", json!({"utility": utility, "area": 40}));
+        r["category"]["breaker_a"].clone()
+    }
+
+    #[test]
+    fn an_amendment_s_change_reaches_its_utility_wherever_it_stands_and_no_other() {
+        let mut s = Session::new();
+        let library = breaker(&mut s, "CPFL");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cpfl", "enel"]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "cpfl", "rules": {"unit_demand": cpfl_with_a1(40)}}));
+        assert_eq!(breaker(&mut s, "CPFL"), json!(40.0), "CPFL's amendment holds 40 A though Enel stands over it");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["enel", "cpfl"]}));
+        assert_eq!(breaker(&mut s, "CPFL"), json!(40.0), "in either order");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["enel"]}));
+        assert_eq!(breaker(&mut s, "CPFL"), library, "CPFL no longer chosen: the library's");
+    }
+
+    #[test]
+    fn a_utility_s_tables_are_never_another_s() {
+        let mut s = Session::new();
+        let library = run(&mut s, "demand", json!({"utility": "CPFL", "area": 40}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cpfl"]}));
+        // Taking CPFL's method out of its amendment leaves CPFL's own, never Celesc's.
+        let _ =
+            s.execute("building_code", &json!({"discipline": "electrical", "amend": "cpfl", "rules": {"unit_demand": {"method": null}}}));
+        let r = run(&mut s, "demand", json!({"utility": "CPFL", "area": 40}));
+        assert_eq!(r["category"], library["category"], "{r}");
+        assert!(!r.to_string().contains("N-321"), "no Celesc source: {r}");
+    }
+
+    #[test]
+    fn a_change_to_a_utility_s_tables_is_made_in_its_amendment() {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cpfl"]}));
+        // The project's own change has no utility it belongs to once another is chosen: it is refused, and says how.
+        let e = s.execute("building_code", &json!({"discipline": "electrical", "rules": {"unit_demand": cpfl_with_a1(40)}})).unwrap_err();
+        assert!(e.contains("amend"), "{e}");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["enel"]}));
+        let r = run(&mut s, "demand", json!({"utility": "ENEL", "network": "aerial", "installed_kw": 10}));
+        assert!(r.get("category").is_some() || r.get("annex").is_some(), "{r}");
+    }
+}

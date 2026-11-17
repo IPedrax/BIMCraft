@@ -289,6 +289,14 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         patches = Vec::new();
     }
     for (key, rules) in patches {
+        // A utility's or a country's method whole is changed in its amendment: the project's own change would have no
+        // utility it belongs to once another is chosen.
+        if super::is_whole(d, &key) {
+            return Err(bad(
+                c,
+                format!("`{key}` is a utility's or a country's method: change it in its amendment, with `amend: \"<its code>\"`"),
+            ));
+        }
         // Which rules a section has: what its layers, or the library, give it; a section of reference takes new ones.
         let known = resolve_in(&next, d, &key).value;
         let reference = section_def(d, &key).is_some_and(|def| def.read_by.is_empty())

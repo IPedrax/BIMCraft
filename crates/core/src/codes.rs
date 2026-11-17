@@ -849,6 +849,10 @@ pub fn complete(code: &mut BuildingCode) {
         if section_def(code.discipline, key).is_none_or(|d| d.read_by.is_empty()) {
             continue;
         }
+        // A utility's or a country's method is the file's whole: never filled in from another utility's.
+        if is_whole(code.discipline, key) {
+            continue;
+        }
         let (Some(have), Some(theirs)) =
             (v.as_object_mut(), base.section(key).or_else(|| library(code.discipline, key).and_then(|c| c.section(key))))
         else {
@@ -1286,13 +1290,41 @@ pub fn resolve_in(codes: &Codes, d: Discipline, key: &str) -> Resolved {
     out
 }
 
+/// The sections that are one utility's or one country's method whole: an amendment holding one replaces the one under it
+/// instead of being laid over it rule by rule, so one utility's rules never answer for another's.
+pub const WHOLE: [(Discipline, &str); 3] =
+    [(Discipline::Electrical, "unit_demand"), (Discipline::Electrical, "building_demand"), (Discipline::Electrical, "entrance")];
+
+/// Whether section `key` of discipline `d` is a method whole (`WHOLE`).
+pub fn is_whole(d: Discipline, key: &str) -> bool {
+    WHOLE.iter().any(|(wd, k)| *wd == d && *k == key)
+}
+
+/// Section `key` of `c` as a method whole: what `c` holds, over what the code it was made from holds (a project's copy of
+/// one of BIMCraft's utilities keeps that utility's rules it took out), never another code's.
+pub fn whole_section(c: &BuildingCode, key: &str) -> Option<Map<String, Value>> {
+    let own = c.section(key)?;
+    let origin = [c.based_on.as_str(), c.code.as_str()].into_iter().find_map(|n| find(c.discipline, n)).filter(|o| !std::ptr::eq(*o, c));
+    let mut out = origin.and_then(|o| o.section(key)).cloned().unwrap_or_default();
+    // A null is a value here (a method with no common areas' factors says so): `amend` takes a rule out by leaving it out.
+    for (k, v) in own {
+        out.insert(k.clone(), v.clone());
+    }
+    Some(out)
+}
+
 /// Section `key` as the project's layers have it, without the project's changes.
 pub fn layered(codes: &Codes, d: Discipline, key: &str) -> Resolved {
     let mut out = Resolved::default();
     let layers = codes.layers(d);
+    let whole_key = is_whole(d, key);
     let take = |c: &BuildingCode, layer: Layer, out: &mut Resolved| {
-        let Some(rules) = c.section(key) else { return };
-        for (k, v) in rules {
+        let Some(rules) = (if whole_key { whole_section(c, key) } else { c.section(key).cloned() }) else { return };
+        // A method whole replaces the one under it.
+        if whole_key {
+            *out = Resolved::default();
+        }
+        for (k, v) in &rules {
             out.value.insert(k.clone(), v.clone());
             out.from.insert(k.clone(), layer.clone());
             match c.source(key, k) {
@@ -1313,7 +1345,8 @@ pub fn layered(codes: &Codes, d: Discipline, key: &str) -> Resolved {
     // rules they leave out, is the library's under what they change of it.
     let whole = |r: &Resolved| section_def(d, key).is_none_or(|def| def.check(&Value::Object(r.value.clone())).is_ok());
     let base_has = layers.first().is_some_and(|b| b.section(key).is_some());
-    if (out.value.is_empty() || (!base_has && !whole(&out)))
+    // A method whole is never laid over another code's: only none held at all is the library's.
+    if (out.value.is_empty() || (!whole_key && !base_has && !whole(&out)))
         && let Some(lib) = library(d, key)
     {
         out = Resolved::default();
@@ -1433,6 +1466,23 @@ impl Model {
         }
         let own = r.from.values().any(|l| !matches!(l, Layer::Library(_)));
         serde_json::from_value(Value::Object(r.value)).ok().map(|t| (t, own))
+    }
+
+    /// A method whole (`WHOLE`) as each of the project's layers holds it, the last first, read as `T`, with the source of
+    /// its rule `about` and whether it is the project's (an amendment changed in it, or its own code): what a command
+    /// naming a utility reads, so a utility held under another answers by its own rules.
+    pub fn held_wholes<T: DeserializeOwned>(&self, d: Discipline, key: &str, about: &str) -> Vec<(T, Option<String>, bool)> {
+        self.codes
+            .layers(d)
+            .iter()
+            .rev()
+            .filter_map(|c| {
+                let rules = whole_section(c, key)?;
+                let t = serde_json::from_value(Value::Object(rules)).ok()?;
+                let own = find(d, &c.code).is_none_or(|lib| !std::ptr::eq(lib, *c));
+                Some((t, c.source(key, about).or_else(|| find(d, &c.based_on).and_then(|o| o.source(key, about))), own))
+            })
+            .collect()
     }
 
     /// The rules the project's stairs and railings are held to.

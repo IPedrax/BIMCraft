@@ -89,7 +89,8 @@ pub(super) fn write(codes: &[BuildingCode]) -> String {
             for (rule, v) in rules {
                 let at = format!("{key}.{rule}");
                 let said = match v {
-                    Value::String(t) => format!("value=\"{}\"", esc(t)),
+                    // A text that would read back as a number or a truth ("7", "true") is written as JSON, so it comes back a text.
+                    Value::String(t) if value_of(t) == *v => format!("value=\"{}\"", esc(t)),
                     Value::Number(_) | Value::Bool(_) => format!("value=\"{v}\""),
                     other => format!("json=\"{}\"", esc(&other.to_string())),
                 };
@@ -133,15 +134,25 @@ fn value_of(t: &str) -> Value {
 /// None for a section of rules for reference, which takes any.
 fn known(d: Discipline, section: &str) -> Option<Vec<String>> {
     let def = section_def(d, section)?;
-    if def.read_by.is_empty() {
+    // The electrical settings are named by the user (a voltage, a system, a wire type): any name is one of their rules.
+    if def.read_by.is_empty() || (d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&section)) {
         return None;
     }
-    let lib = super::library(d, section)?;
-    // As the section types it: every rule it has, those with a default too.
-    match (def.read)(lib.sections.get(section)?) {
-        Ok(Value::Object(o)) => Some(o.keys().cloned().collect()),
-        _ => Some(lib.section(section)?.keys().cloned().collect()),
+    // Every code that holds the section, not only the first: a utility's `unit_demand` has parts another's hasn't.
+    let mut keys: Vec<String> = Vec::new();
+    for lib in super::of(d).filter(|c| c.sections.contains_key(section)) {
+        // As the section types it: every rule it has, those with a default too.
+        let mine: Vec<String> = match (def.read)(&lib.sections[section]) {
+            Ok(Value::Object(o)) => o.keys().cloned().collect(),
+            _ => lib.section(section).map(|s| s.keys().cloned().collect()).unwrap_or_default(),
+        };
+        for k in mine {
+            if !keys.contains(&k) {
+                keys.push(k);
+            }
+        }
     }
+    (!keys.is_empty()).then_some(keys)
 }
 
 /// The codes the file holds and what it holds that this version doesn't know.

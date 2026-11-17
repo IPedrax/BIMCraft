@@ -132,7 +132,7 @@ msgstr "Datenanschluss"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13846
+#: crates/core/src/commands.rs:13855
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -217,9 +217,9 @@ msgstr "Elektro Beleuchtung"
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:13593
-#: crates/core/src/commands.rs:13608
-#: crates/core/src/commands.rs:18227
+#: crates/core/src/commands.rs:13602
+#: crates/core/src/commands.rs:13617
+#: crates/core/src/commands.rs:18236
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -349,7 +349,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:8584
+#: crates/core/src/commands.rs:8593
 #: crates/core/src/model.rs:4410
 msgid "Level"
 msgstr "Geschoss"
@@ -390,7 +390,7 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:11065
+#: crates/core/src/commands.rs:11074
 msgid "Mass"
 msgstr "Volumenkörper"
 
@@ -407,7 +407,7 @@ msgid "Membrane"
 msgstr "Membran"
 
 #: crates/core/src/commands.rs:3766
-#: crates/core/src/commands.rs:16805
+#: crates/core/src/commands.rs:16814
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:5907
 msgid "Metal"
@@ -507,7 +507,7 @@ msgstr ""
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:9311
+#: crates/core/src/commands.rs:9320
 msgid "Property Line"
 msgstr ""
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:11290
+#: crates/core/src/commands.rs:11299
 msgid "Room"
 msgstr "Raum"
 
@@ -575,8 +575,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:13528
-#: crates/core/src/commands.rs:18226
+#: crates/core/src/commands.rs:13537
+#: crates/core/src/commands.rs:18235
 msgid "Section"
 msgstr "Schnitt"
 
@@ -747,7 +747,7 @@ msgstr "Unbegrenzte Höhe"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:14082
+#: crates/core/src/commands.rs:14091
 msgid "Unnamed"
 msgstr "Unbenannt"
 

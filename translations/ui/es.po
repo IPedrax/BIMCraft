@@ -4219,7 +4219,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolición"
 
-#: crates/core/src/commands.rs:13846
+#: crates/core/src/commands.rs:13855
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -11126,7 +11126,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propiedades sobre el Navegador de proyectos, a la izquierda, como al principio"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:9311
+#: crates/core/src/commands.rs:9320
 msgid "Property Line"
 msgstr ""
 
@@ -15417,7 +15417,7 @@ msgstr "Desbloquear"
 msgid "Unlock alignment"
 msgstr "Desbloquear alineación"
 
-#: crates/core/src/commands.rs:14082
+#: crates/core/src/commands.rs:14091
 msgid "Unnamed"
 msgstr "Sin nombre"
 
