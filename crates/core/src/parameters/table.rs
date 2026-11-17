@@ -56,7 +56,7 @@ pub fn stem(path: &str) -> String {
     s.chars().take(MAX_TEXT).collect()
 }
 
-fn bytes_of(path: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn bytes_of(path: &str) -> Result<Vec<u8>, String> {
     let size = std::fs::metadata(path).map_err(|e| format!("{path}: {e}"))?.len();
     if size >= MAX_FILE {
         return Err(format!("{path} is {size} bytes; a parameter file holds up to {MAX_FILE}"));
@@ -100,7 +100,7 @@ pub fn read_dictionary_file(path: &str) -> Result<Dictionary, String> {
 }
 
 /// Text from what a file holds: UTF-8 or UTF-16 by its mark (Revit writes either), else UTF-8 and then Windows-1252.
-fn decode(bytes: &[u8]) -> String {
+pub(crate) fn decode(bytes: &[u8]) -> String {
     if let Some((enc, _)) = encoding_rs::Encoding::for_bom(bytes) {
         return enc.decode(bytes).0.into_owned();
     }
@@ -210,6 +210,7 @@ pub fn from_rows(rows: &[Vec<String>]) -> Read {
             group: clip(&cell(row, group_at)),
             read_only: said(&cell(row, user_at)).map(|y| !y),
             scope: scope_from(&cell(row, scope_at)),
+            vary_by_group: None,
             categories: cell(row, cats_at).split([';', '|', '\n']).map(clip).filter(|c| !c.is_empty()).collect(),
         });
     }
@@ -334,6 +335,7 @@ pub fn read_shared(text: &str, name: &str) -> Result<Read, String> {
                     read_only: said(at("USERMODIFIABLE")).map(|y| !y),
                     // A shared parameter file doesn't say: the import asks.
                     scope: None,
+                    vary_by_group: None,
                     categories: Vec::new(),
                 });
             }

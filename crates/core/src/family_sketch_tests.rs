@@ -156,7 +156,9 @@ fn a_file_of_17_reads_as_sketches_and_builds_the_same_triangles_and_ifc() {
 fn a_sketch_saved_and_read_again_is_the_same_each_line_keeping_its_id_and_guid() {
     let (m, _) = Model::read(&file_of_17()).unwrap();
     let text = m.to_json().unwrap();
-    assert!(!text.contains("\"profile\"") && !text.contains("\"circle\"") && text.contains("\"sketch\""));
+    // The families' forms, that is: a mullion type has a profile of its own.
+    let families = serde_json::from_str::<Value>(&text).unwrap()["families"].to_string();
+    assert!(!families.contains("\"profile\"") && !families.contains("\"circle\"") && families.contains("\"sketch\""));
     let (again, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty());
     assert_eq!(again.families["Legacy"], m.families["Legacy"]);

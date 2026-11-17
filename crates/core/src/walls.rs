@@ -263,6 +263,8 @@ pub(crate) struct Arm {
     pub(crate) cw: P2,
     pub(crate) centre: P2,
     pub(crate) thick: f64,
+    /// A curtain wall ending where a plain wall does: it doesn't mitre, the plain wall ends square against it.
+    pub(crate) butts: bool,
 }
 
 /// Wall `w` leaving the node at its start, or with `at_end`, at its end.
@@ -273,7 +275,17 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
     let t = axis.tangent(s);
     // Leaving from its end, it goes back: its interior face is on the counter-clockwise side.
     let (way, ccw, cw) = if at_end { (t * -1.0, int, ext) } else { (t, ext, int) };
-    Arm { id, at_end, mine, way, ccw: axis.at(s, ccw), cw: axis.at(s, cw), centre: axis.at(s, (ext + int) / 2.0), thick: ext - int }
+    Arm {
+        id,
+        at_end,
+        mine,
+        way,
+        ccw: axis.at(s, ccw),
+        cw: axis.at(s, cw),
+        centre: axis.at(s, (ext + int) / 2.0),
+        thick: ext - int,
+        butts: false,
+    }
 }
 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
@@ -283,6 +295,10 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, id, w, at_end, true)];
+    // A wall standing in a curtain wall's cell joins nothing, and nothing it.
+    if w.panel_of.is_some() {
+        return (arms, false);
+    }
     let mut through = false;
     // A wall that refuses to join meets nothing at this end: its own square end is its whole cap.
     if !w.join {
@@ -290,6 +306,8 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
     }
     // A wall that refuses to join is no candidate for anyone either: neither side is mitred.
     let joins = |o: &Wall| o.join && stacked(m, w, o);
+    let plain = crate::curtain::pattern(m, w).is_none();
+    let butts = |o: &Wall| plain && crate::curtain::pattern(m, o).is_some();
     let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
         Some(index) => Box::new(index.neighbours_at(id, node).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
         // The walls whose location lines come within the thickest wall's thickness of the node (those that end at it,
@@ -304,16 +322,16 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
     // Where they meet is asked first: whether they overlap in height takes both walls' heights, under any roof or floor
     // they're attached to.
     for (other, o) in candidates {
-        if other == id || !keep(o) {
+        if other == id || !keep(o) || o.panel_of.is_some() {
             continue;
         }
         if o.start.dist(node) <= TOL {
             if joins(o) {
-                arms.push(arm(m, other, o, false, false));
+                arms.push(Arm { butts: butts(o), ..arm(m, other, o, false, false) });
             }
         } else if o.end.dist(node) <= TOL {
             if joins(o) {
-                arms.push(arm(m, other, o, true, false));
+                arms.push(Arm { butts: butts(o), ..arm(m, other, o, true, false) });
             }
         } else {
             // A wall it ends on: the node within its thickness, between its ends.
@@ -323,8 +341,18 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
             if s > TOL && s < ax.length() - TOL && (int - TOL..=ext + TOL).contains(&across) && ax.distance(node, across) <= TOL && joins(o)
             {
                 let (t, (e, i), c) = (ax.tangent(s), (ax.at(s, ext), ax.at(s, int)), ax.at(s, (ext + int) / 2.0));
-                arms.push(Arm { id: other, at_end: false, mine: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int });
-                arms.push(Arm { id: other, at_end: false, mine: false, way: t * -1.0, ccw: i, cw: e, centre: c, thick: ext - int });
+                arms.push(Arm { id: other, at_end: false, mine: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int, butts: false });
+                arms.push(Arm {
+                    id: other,
+                    at_end: false,
+                    mine: false,
+                    way: t * -1.0,
+                    ccw: i,
+                    cw: e,
+                    centre: c,
+                    thick: ext - int,
+                    butts: false,
+                });
                 through = true;
             }
         }
@@ -338,7 +366,8 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
 /// it at any angle, their faces running on until they cross (no farther from the node than the
 /// thickest is thick, either way: past that, the end is square); a wall it ends on stops it at its
 /// face. At a square compound Butt the shared cap follows the structure around the corner.
-/// Where three or more walls meet, the node itself fills between them.
+/// Where three or more walls meet, the node itself fills between them. A curtain wall takes no part in a mitre: its parts are
+/// laid out on their own, and a plain wall ending at the end of one ends square at its far face.
 pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
     cap_in(m, id, at_end, None)
 }
@@ -363,11 +392,22 @@ impl WallEnd {
 fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> WallEnd {
     let Some(w) = m.wall(id) else { return WallEnd::default() };
     let (arms, through) = arms(m, id, at_end, index, keep);
+    let (against, arms): (Vec<Arm>, Vec<Arm>) = arms.into_iter().partition(|a| a.butts);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
     let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
     if n < 2 {
-        return WallEnd::plain(vec![me.cw, me.ccw]);
+        // Square, and against a curtain wall run on or back to its far face: its parts stand clear of any mitre.
+        let reach = |a: &Arm| {
+            [a.cw, a.ccw]
+                .into_iter()
+                .filter_map(|face| geom::line_intersection(me.centre, me.centre + me.way, face, face + a.way))
+                .map(|c| (c - me.centre).dot(me.way))
+                .filter(|d| d.abs() <= 2.0 * me.thick.max(a.thick))
+                .fold(f64::MAX, f64::min)
+        };
+        let d = against.iter().map(reach).fold(f64::MAX, f64::min);
+        return WallEnd::plain(if d < f64::MAX { vec![me.cw + me.way * d, me.ccw + me.way * d] } else { vec![me.cw, me.ccw] });
     }
     if n == 2
         && !through

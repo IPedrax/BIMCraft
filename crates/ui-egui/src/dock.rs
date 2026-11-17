@@ -32,10 +32,22 @@ pub enum Palette {
     Tools,
     /// The chat with a model that manages the project (`assistant.rs`): closed until the user opens it.
     Assistant,
+    /// PyAddins > Player: the user's Python scripts, each to run with a form of its inputs.
+    Scripts,
 }
 
 impl Palette {
-    pub const ALL: [Palette; 4] = [Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant];
+    pub const ALL: [Palette; 5] = [Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts];
+
+    /// Whether it is open in a window that starts afresh (and in one whose settings are from before it came).
+    fn opens_at_start(self) -> bool {
+        self != Palette::Scripts
+    }
+
+    /// The side it docks on when it is first opened.
+    fn first_side(self) -> Side {
+        if self == Palette::Scripts { Side::Right } else { Side::Left }
+    }
 
     /// Its name: what its tab says (in the interface's language) and what the settings file keeps it as.
     pub fn name(self) -> &'static str {
@@ -44,6 +56,7 @@ impl Palette {
             Palette::Browser => msg!("Project Browser"),
             Palette::Tools => msg!("Tools"),
             Palette::Assistant => msg!("Assistant"),
+            Palette::Scripts => msg!("Script Automation"),
         }
     }
 
@@ -332,7 +345,7 @@ impl Docking {
     pub fn show(&mut self, p: Palette, on: bool) {
         match (on, self.shown(p)) {
             (true, false) => {
-                let side = self.home.get(&p).copied().unwrap_or(Side::Left);
+                let side = self.home.get(&p).copied().unwrap_or(p.first_side());
                 // A chat wants height: the Assistant opens as a tab of the Project Browser's stack, unless it was last put on another side.
                 match self.docked(Palette::Browser) {
                     Some(b) if p == Palette::Assistant && self.home.get(&p).is_none_or(|s| *s == b) => {
@@ -379,7 +392,7 @@ impl Docking {
 
     /// Reads back what [`to_json`](Self::to_json) wrote, as hostile as any file: a palette it doesn't know or names
     /// twice is left out, numbers are finite and in range, and a palette it neither places nor closes (one added since)
-    /// docks on the left. Anything but an object is the default layout.
+    /// docks on the left, unless it is one that starts closed (Script Automation). Anything but an object is the default layout.
     pub fn from_json(v: &Value) -> Docking {
         if !v.is_object() {
             return Docking::default();
@@ -416,7 +429,7 @@ impl Docking {
         let closed: BTreeSet<Palette> = v["closed"].as_array().into_iter().flatten().filter_map(|n| Palette::named(n.as_str()?)).collect();
         for p in Palette::ALL {
             // The Assistant opens when the user asks: a file from before it was added leaves it closed.
-            if !d.shown(p) && !closed.contains(&p) && p != Palette::Assistant {
+            if !d.shown(p) && !closed.contains(&p) && p != Palette::Assistant && p.opens_at_start() {
                 // First on the left: the Tools palette, which a file from before it holds nothing of, stands where it would have.
                 d.put(p, Target::Side(Side::Left));
                 d.left.rotate_right(1);
@@ -624,7 +637,7 @@ impl BimApp {
     /// A palette's title: the Project Browser's names the project, as Revit's does.
     fn palette_title(&self, p: Palette) -> String {
         match p {
-            Palette::Properties | Palette::Tools | Palette::Assistant => t(p.label()).to_string(),
+            Palette::Properties | Palette::Tools | Palette::Assistant | Palette::Scripts => t(p.label()).to_string(),
             Palette::Browser => match self.active_family() {
                 Some(ed) => format!("{} · {}", t(p.label()), ed.title()),
                 _ => format!("{} · {}", t(p.label()), self.session.model.name),
@@ -647,6 +660,7 @@ impl BimApp {
             Palette::Browser => self.browser_palette(ui),
             Palette::Tools => self.tool_column(ui),
             Palette::Assistant => self.assistant_palette(ui),
+            Palette::Scripts => self.scripts_palette(ui),
         }
     }
 

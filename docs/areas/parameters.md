@@ -26,6 +26,18 @@ decision, 2026-11-03). The window says which before Apply, and undo brings them 
 (`type_value_rows`, for the types with such a dialog); Properties shows only instance parameters. A type duplicated in that dialog keeps
 its values (`copy_to`).
 
+## In groups
+
+As Revit's Values are aligned per group type and Values can vary by group instance: `vary_by_group` on an instance parameter
+(`ProjectParameter::vary_by_group`, off unless said) makes a grouped element's value its own in each group. `groups::keep_own`
+keeps it when a group is placed again from its type and `groups::conflicts` doesn't see it, so `modify` sets it on a member
+without Edit Group; a copy of a group takes its original's (`groups::commands::copy_own`). Aligned, a member's value is its group
+type's: set alone it is a change from inside (a conflict), and it changes in Edit Group, every group of the type with it. Turned
+back to aligned, each group's members take their type's value (`groups::align`, the reply's `aligned`). A rename, a delete, a
+category taken off and a change of scope reach the types' members too (`groups::member_elements_mut`), so no group breaks. The
+window's Group Values column sets it (greyed for a type parameter); in Properties, a member Tab-selected outside Edit Group of its
+group (`groups::held`) sets only those that vary, the rest greyed under a note that says so.
+
 ## Dictionaries
 
 A dictionary is a plain JSON file (`.bimparams`: `format`, `guid`, `name`, `version`, `revision`, `changed`, `parameters`) of definitions. BIMCraft
@@ -35,7 +47,11 @@ uses and records where each dictionary was and at which version (`Model::diction
 file changes nothing until it's imported: Dictionaries > Check shows what it would change, as a dry run. The `dictionary` command
 edits a file; the project isn't touched. `revision` counts up with each real change to the file and `changed` dates it; a project keeps the
 revision it took (`DictionaryRef::revision`), which is how it can say it's behind. `version` is only a label of the team's own: nothing
-compares it, and what would change is always worked out from the definitions. A definition holds a default `scope`. A file of a newer `format` is refused.
+compares it, and what would change is always worked out from the definitions. A definition holds a default `scope`, and
+`vary_by_group`, its Group Values: where a file doesn't say, a parameter here keeps its own and a new one is aligned per group
+type; an import that aligns one is a `modify` whose note says each group's elements take their type's values. The open
+dictionary's table picks it in its Group Values column, greyed for a type parameter. An older BIMCraft passes it over, so the
+file's `format` stays 1. A file of a newer `format` is refused.
 
 A project keeps the dictionaries it has loaded (`dictionary_mount`, `Model::dictionaries`), any number, in its own file: they are there when the
 window opens again and when the project does. Loading takes nothing in. A moved file is the same dictionary by its GUID and takes the new path, a
@@ -132,6 +148,9 @@ Text in a table's narrow column goes through `wrapped`, which knows its height f
 
 - A value for each type in the tools that have no Type Properties yet; the Families tab's Modify (existing parameters are changed in the Family
   Editor) and Discipline, which has no meaning here yet.
+- Group Values in a table's columns (`.xlsx`, `.csv`, Revit's shared parameter files): a parameter that comes in from one
+  keeps its own, or is aligned per group type when it's new. `parameter_merge` doesn't reach group types' members yet, so a
+  merge that changes grouped elements' values is refused as a group conflict.
 - Renaming a project parameter a family is tied to.
 - Nested family parameters: they wait for family nesting ([ROADMAP](../../ROADMAP.md)).
 - Dragging categories between parameters: Copy Categories From does that job.

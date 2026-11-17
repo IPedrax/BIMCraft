@@ -190,6 +190,31 @@ fn a_guest_edits_the_hosts_model_and_both_keep_the_same_one() {
 }
 
 #[test]
+fn a_guests_edit_group_is_the_hosts_and_the_copy_follows_it() {
+    let host = Host::start();
+    let (mut bo, mut copy) = join(&host, "Bo");
+    let w = bo.exec(&mut copy, "wall", &wall(40000)).unwrap()["ids"][0].as_u64().unwrap();
+    let g = bo.exec(&mut copy, "create_group", &json!({"ids": [w]})).unwrap()["id"].as_u64().unwrap();
+    let guid = copy.model.guid(g);
+    // The edit is the host session's, which his next commands run in; his copy follows it, to show it as the host's does.
+    bo.exec(&mut copy, "edit_group", &json!({"id": g})).unwrap();
+    assert_eq!(host.on(|s, _| s.editing_group()), Some(guid));
+    assert_eq!(copy.editing_group(), Some(guid));
+    // His change to its wall is no conflict there, and Finish ends the edit in both.
+    bo.exec(&mut copy, "move", &json!({"ids": [w], "by": [0, 500]})).unwrap();
+    bo.exec(&mut copy, "finish_group", &json!({})).unwrap();
+    assert_eq!(host.on(|s, _| s.editing_group()), None);
+    assert_eq!(copy.editing_group(), None);
+    assert_eq!(json_of(&copy.model), json_of(&host.model()));
+    // A Cancel with no edit on the host leaves none in the copy either.
+    bo.exec(&mut copy, "edit_group", &json!({"id": g})).unwrap();
+    host.on(|s, _| s.execute("cancel_group", &json!({})).map(|_| ()).unwrap());
+    assert!(bo.exec(&mut copy, "cancel_group", &json!({})).is_err());
+    assert_eq!(copy.editing_group(), None);
+    host.end("done");
+}
+
+#[test]
 fn guests_coming_in_at_once_share_one_welcome_and_each_knows_who_it_is() {
     // The welcome is the same for everyone who comes in on one model, packed once; who each guest is goes ahead of it.
     let host = Host::start();

@@ -449,6 +449,11 @@ pub fn faces(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
     faces_of(split(segs, tol), tol)
 }
 
+/// `p` to the micron: what a point meant to be exact is, without float noise.
+pub(crate) fn micron(p: P2) -> P2 {
+    P2((p.0 * 1e3).round() / 1e3, (p.1 * 1e3).round() / 1e3)
+}
+
 /// [`faces`], the segments cut by every other: its twin, which tests hold it to.
 #[cfg(test)]
 pub(crate) fn faces_everywhere(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {

@@ -95,7 +95,9 @@ mod tests {
             .collect();
         let unique: std::collections::HashSet<_> = globals.iter().collect();
         assert_eq!(globals.len(), unique.len());
-        assert_eq!(ifc, bimcraft_core::ifc::export(&s.model));
+        // The header's FILE_NAME carries the clock, which may tick between the two exports.
+        let body = |f: &str| f.lines().filter(|l| !l.starts_with("FILE_NAME(")).collect::<Vec<_>>().join("\n");
+        assert_eq!(body(&ifc), body(&bimcraft_core::ifc::export(&s.model)));
     }
 
     #[test]

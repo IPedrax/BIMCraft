@@ -354,7 +354,9 @@ view lets show (a tinted one at least 35%). Edges and level lines stay the opaqu
 with its walls 60% see-through differs from the processor's picture in 255 pixels of 307,200, with a mass in it 192.
 
 This was measured before the mesh cap was removed. The several-million-triangle measurement and current limits are in the
-[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards, macOS and Windows remain unmeasured here.
+[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards and macOS remain unmeasured here. On Windows (2026-11-15, Radeon RX 590, Ryzen, 12 threads) the core's numbers above
+matched Linux's (plan redrawn 7.6 ms, the scene built in 260 ms, a changing-camera frame 132 ms); the window was slow only because the
+driver's vsync held it to 32 frames a second or fewer, which the window now paces itself ([the desktop](areas/desktop.md), Frame pacing).
 
 ## Verification
 

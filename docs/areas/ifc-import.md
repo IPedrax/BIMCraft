@@ -141,9 +141,11 @@ goes back out where it came from (#223).
 - **Classification** (`ProjectParameter::classification`): an `IfcRelAssociatesClassification` to an
   `IfcClassificationReference` gives each related element (a type's occurrences, unless they have their own) the reference's
   code (IFC4's `Identification`, IFC2x3's `ItemReference`, else its name) as a text parameter named for the system, the
-  `IfcClassification` at the top of the references (its name and edition). Export writes an `IfcClassification` for each such
-  parameter and a reference for each code, associated with the elements holding it. The reference's own name and the system's
-  source and location aren't kept yet.
+  `IfcClassification` at the top of the references (its name and edition). A system the classification tables know comes
+  into the parameters they fill instead, `Uniclass Ss Number` with the reference's name in `Uniclass Ss Title`
+  ([classification](classification.md#ifc)), remembering the system all the same. Export writes an `IfcClassification` for
+  each such parameter and a reference for each code, associated with the elements holding it. Another system's reference
+  name, and the system's source and location, aren't kept yet.
 - **The command** `parameter` takes `sets` (a category's set, `null` back to `Project Parameters`) and `classification`
   (`{system, edition?}`, or `null`); `Model::check` holds both to what IFC can write.
 - **The file**: an older BIMCraft leaves `sets` and `classification` out (`lenient`), and the values stay as plain parameters,

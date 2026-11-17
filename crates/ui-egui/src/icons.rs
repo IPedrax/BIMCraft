@@ -140,6 +140,7 @@ icon_names! {
     LinkCad,
     Parameters,
     ProjectInfo,
+    Classify,
     Measure,
     Snaps,
     Visibility,
@@ -180,6 +181,12 @@ icon_names! {
     Circumscribed,
     CentreArc,
     TangentArc,
+    Landing,
+    TreadLock,
+    StairFromTop,
+    StairCheck,
+    StairSketch,
+    StairLevels,
     Fillet,
     Spline,
     FitSpline,
@@ -189,6 +196,9 @@ icon_names! {
     PickLines,
     JoinPolyline,
     ExplodePolyline,
+    CurtainGridVertical,
+    CurtainGridHorizontal,
+    CurtainSegment,
     TrimSingle,
     TrimMultiple,
     Insulation,
@@ -196,6 +206,13 @@ icon_names! {
     Linework,
     DetailGroup,
     CreateGroup,
+    ModelGroup,
+    EditGroup,
+    Ungroup,
+    ExcludeMember,
+    RestoreExcluded,
+    AddToGroup,
+    RemoveFromGroup,
     RepeatingDetail,
     PickFaces,
     AddVertex,
@@ -208,6 +225,10 @@ icon_names! {
     LoadIntoProject,
     LoadIntoProjectClose,
     Cowork,
+    Script,
+    Player,
+    Reload,
+    Stop,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -221,6 +242,28 @@ pub struct Outline {
 pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
     let mut g = Glyph::default();
     match icon {
+        Icon::Script => {
+            // A page with a folded corner and code's angle brackets on it.
+            g.closed(&[(5.0, 3.0), (15.0, 3.0), (19.0, 7.0), (19.0, 21.0), (5.0, 21.0)]);
+            if !compact {
+                g.line(&[(15.0, 3.0), (15.0, 7.0), (19.0, 7.0)]);
+            }
+            g.line(&[(10.0, 11.0), (8.0, 14.0), (10.0, 17.0)]);
+            g.line(&[(14.0, 11.0), (16.0, 14.0), (14.0, 17.0)]);
+        }
+        Icon::Player => {
+            // A panel with a play triangle: run what is in it.
+            g.closed(&[(3.0, 4.5), (21.0, 4.5), (21.0, 19.5), (3.0, 19.5)]);
+            g.closed(&[(10.0, 8.5), (16.0, 12.0), (10.0, 15.5)]);
+        }
+        Icon::Reload => {
+            // A circle that comes back round on itself, its arrow at the open end.
+            g.arc((12.0, 12.0), 7.5, 30.0, 330.0);
+            g.line(&[(18.2, 3.9), (18.5, 8.25), (14.2, 8.0)]);
+        }
+        Icon::Stop => {
+            g.closed(&[(6.0, 6.0), (18.0, 6.0), (18.0, 18.0), (6.0, 18.0)]);
+        }
         Icon::Modify => {
             // A pointer with a clear tip, one diagonal axis and an attached tail.
             g.closed(&[(5.0, 3.0), (5.0, 20.0), (10.0, 15.0), (13.0, 21.0), (16.0, 19.5), (13.0, 13.5), (20.0, 13.5)]);
@@ -481,6 +524,49 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             } else {
                 g.line(&[(15.0, 16.0), (18.0, 16.0)]);
             }
+        }
+        Icon::ModelGroup | Icon::EditGroup | Icon::ExcludeMember | Icon::RestoreExcluded | Icon::AddToGroup | Icon::RemoveFromGroup => {
+            // A dashed frame round what is grouped, and at its corner what the tool does to it.
+            for (a, b) in [((3.0, 3.0), (21.0, 3.0)), ((21.0, 3.0), (21.0, 21.0)), ((21.0, 21.0), (3.0, 21.0)), ((3.0, 21.0), (3.0, 3.0))] {
+                let (dx, dy) = ((b.0 - a.0) / 7.0, (b.1 - a.1) / 7.0);
+                for k in [0.0, 2.0, 4.0, 6.0] {
+                    g.line(&[(a.0 + dx * k, a.1 + dy * k), (a.0 + dx * (k + 1.0), a.1 + dy * (k + 1.0))]);
+                }
+            }
+            // Two walls in plan, one beside the other: a model group's members.
+            g.closed(&[(6.0, 7.0), (12.0, 7.0), (12.0, 10.0), (6.0, 10.0)]);
+            g.closed(&[(6.0, 10.0), (9.0, 10.0), (9.0, 16.0), (6.0, 16.0)]);
+            match icon {
+                // A pencil over it.
+                Icon::EditGroup => {
+                    g.closed(&[(13.0, 20.0), (21.0, 12.0), (19.0, 10.0), (11.0, 18.0)]);
+                    g.line(&[(11.0, 18.0), (11.0, 20.0), (13.0, 20.0)]);
+                }
+                // A member struck out.
+                Icon::ExcludeMember => {
+                    g.closed(&[(14.0, 13.0), (19.0, 13.0), (19.0, 18.0), (14.0, 18.0)]);
+                    g.line(&[(13.0, 12.0), (20.0, 19.0)]);
+                }
+                // A turn back.
+                Icon::RestoreExcluded => {
+                    g.arc((16.5, 15.5), 3.5, -60.0, 210.0);
+                    g.line(&[(12.0, 12.5), (13.5, 15.0), (16.0, 13.5)]);
+                }
+                Icon::AddToGroup => {
+                    g.line(&[(16.5, 12.0), (16.5, 20.0)]);
+                    g.line(&[(12.5, 16.0), (20.5, 16.0)]);
+                }
+                Icon::RemoveFromGroup => g.line(&[(12.5, 16.0), (20.5, 16.0)]),
+                _ => {}
+            }
+        }
+        Icon::Ungroup => {
+            // The frame broken open: its two halves apart, their members going with them.
+            g.line(&[(9.0, 3.0), (3.0, 3.0), (3.0, 21.0), (9.0, 21.0)]);
+            g.line(&[(15.0, 3.0), (21.0, 3.0), (21.0, 21.0), (15.0, 21.0)]);
+            g.closed(&[(6.0, 9.0), (10.0, 9.0), (10.0, 15.0), (6.0, 15.0)]);
+            g.closed(&[(14.0, 9.0), (18.0, 9.0), (18.0, 15.0), (14.0, 15.0)]);
+            g.line(&[(12.0, 6.0), (12.0, 18.0)]);
         }
         Icon::PickFaces => {
             // A mass in plan, one of its faces picked: a wall standing on it, its two faces along the edge.
@@ -865,6 +951,43 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(3.0, 9.0), (8.0, 9.0), (14.0, 15.0), (21.0, 15.0)]);
             g.line(&[(3.0, 15.0), (8.0, 15.0), (14.0, 21.0), (21.0, 21.0)]);
         }
+        // Treads of one depth, locked: two steps with a padlock over them.
+        Icon::TreadLock => {
+            g.line(&[(3.0, 21.0), (3.0, 18.0), (8.0, 18.0), (8.0, 15.0), (13.0, 15.0), (13.0, 12.0)]);
+            g.closed(&[(13.0, 9.0), (21.0, 9.0), (21.0, 16.0), (13.0, 16.0)]);
+            g.arc((17.0, 9.0), 2.5, 180.0, 360.0);
+            g.line(&[(17.0, 12.0), (17.0, 13.5)]);
+        }
+        Icon::StairFromTop => {
+            // Steps, and an arrow coming down them from the top.
+            g.line(&[(3.0, 21.0), (3.0, 17.0), (8.0, 17.0), (8.0, 13.0), (13.0, 13.0), (13.0, 9.0), (21.0, 9.0)]);
+            g.line(&[(18.0, 3.0), (18.0, 7.0)]);
+            g.line(&[(15.5, 4.5), (18.0, 7.0), (20.5, 4.5)]);
+            g.line(&[(18.0, 7.0), (10.0, 15.0)]);
+        }
+        Icon::StairCheck => {
+            // Steps, and a tick.
+            g.line(&[(3.0, 21.0), (3.0, 17.0), (7.0, 17.0), (7.0, 13.0), (11.0, 13.0), (11.0, 9.0), (15.0, 9.0)]);
+            g.line(&[(13.0, 17.0), (16.0, 20.0), (21.0, 13.0)]);
+        }
+        Icon::StairSketch => {
+            // Risers as loose lines, each with its two ends.
+            for x in [5.0, 10.0, 15.0, 20.0] {
+                g.line(&[(x, 5.0), (x, 19.0)]);
+                g.closed(&[(x - 1.0, 4.0), (x + 1.0, 4.0), (x + 1.0, 6.0), (x - 1.0, 6.0)]);
+                g.closed(&[(x - 1.0, 18.0), (x + 1.0, 18.0), (x + 1.0, 20.0), (x - 1.0, 20.0)]);
+            }
+        }
+        Icon::StairLevels => {
+            // Two levels, a stair between them.
+            g.line(&[(2.0, 21.0), (22.0, 21.0)]);
+            g.line(&[(2.0, 5.0), (22.0, 5.0)]);
+            g.line(&[(5.0, 21.0), (5.0, 17.0), (9.0, 17.0), (9.0, 13.0), (13.0, 13.0), (13.0, 9.0), (17.0, 9.0), (17.0, 5.0)]);
+        }
+        Icon::Landing => {
+            g.closed(&[(3.0, 20.0), (3.0, 17.0), (6.0, 17.0), (6.0, 13.0), (17.0, 13.0), (17.0, 9.0), (21.0, 9.0), (21.0, 20.0)]);
+            g.line(&[(8.0, 10.0), (15.0, 10.0)]);
+        }
         Icon::Stair => {
             g.closed(&[
                 (4.0, 20.0),
@@ -1216,6 +1339,15 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(4.0, 21.0), (4.0, 9.0), (12.0, 3.0), (20.0, 9.0), (20.0, 21.0)]);
             g.circle((12.0, 10.5), 1.0);
             g.line(&[(12.0, 14.0), (12.0, 18.5)]);
+        }
+        Icon::Classify => {
+            // A tree of codes: a table's box at the root, its branches to two codes and their titles.
+            g.closed(&[(3.0, 3.0), (9.0, 3.0), (9.0, 9.0), (3.0, 9.0)]);
+            g.line(&[(12.0, 6.0), (21.0, 6.0)]);
+            g.line(&[(6.0, 9.0), (6.0, 18.0), (10.0, 18.0)]);
+            g.line(&[(6.0, 13.0), (10.0, 13.0)]);
+            g.line(&[(13.0, 13.0), (21.0, 13.0)]);
+            g.line(&[(13.0, 18.0), (19.0, 18.0)]);
         }
         Icon::Measure => {
             // A diagonal ruler with ticks perpendicular to its top edge, distinct from Units.
@@ -1675,6 +1807,34 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             if !compact {
                 g.line(&[(5.0, 4.0), (8.0, 6.5)]);
                 g.line(&[(19.0, 4.0), (16.0, 6.5)]);
+            }
+        }
+        Icon::CurtainGridVertical => {
+            // A panel of a curtain wall, a new line up through it.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(12.0, 3.0), (12.0, 21.0)]);
+            if !compact {
+                g.line(&[(8.0, 12.0), (10.5, 12.0)]);
+                g.line(&[(13.5, 12.0), (16.0, 12.0)]);
+            }
+        }
+        Icon::CurtainGridHorizontal => {
+            // A panel of a curtain wall, a new line across it.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(4.0, 12.0), (20.0, 12.0)]);
+            if !compact {
+                g.line(&[(12.0, 6.5), (12.0, 10.5)]);
+                g.line(&[(12.0, 13.5), (12.0, 17.5)]);
+            }
+        }
+        Icon::CurtainSegment => {
+            // A panel of a curtain wall, a stretch gone from the line up through it.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(12.0, 3.0), (12.0, 8.0)]);
+            g.line(&[(12.0, 16.0), (12.0, 21.0)]);
+            if !compact {
+                g.line(&[(9.5, 10.0), (14.5, 14.0)]);
+                g.line(&[(14.5, 10.0), (9.5, 14.0)]);
             }
         }
         Icon::ExplodePolyline => {
