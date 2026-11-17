@@ -788,3 +788,27 @@ samples are the ones to fix. Measured with it on the annotated 100-storey tower 
 File > Settings > Files has **Compressed save** (a tick in the File menu too), off at first and kept in `settings.json`: on, Save
 and Save As write the project as `save {compress: true}` does, its JSON in a zip (`bimcraft_core::bimc`), several times smaller
 and slower to save and open, as the box says; off, plain JSON. Exports take no such choice, and Open reads either.
+
+## Project templates
+
+A project template is a `.bimt`: the same content as a `.bimc`. The core's `open` reads one (or any project given
+`as_template: true`) and lets the file go: the session has no path, its undo history is empty, and the reply says `template:
+true`, so Save asks where to put the new project and the template is never written over. `save` of a `.bimt` writes a template
+and leaves the session's path as it was: the project still saves to its own file.
+
+New Project (File > New > Project, Ctrl+N, the start page's New Project) shows a popup first (`project_templates.rs`,
+`BimApp::new_project_window`): the templates by file name (with their folder when two share one), the first `MAX_SHOWN` (10)
+of the list, a line saying how many more Settings holds, then **Empty Project** (`Pending::New`, the empty project New always
+made) and **Browse…** (the system's dialog, `.bimt` only). A template picked goes through `guard` as `Pending::Template`, so
+unsaved changes are asked about first; `open_template` opens it, and one that is gone is said and taken off the list. A template
+opened (Browse…, Open, the system's open event) or saved is put first on the list when it isn't on it already, so New shows it;
+one already listed keeps its place. Templates are not added to Open Recent.
+
+The list is the user's, not a project's: `templates.json` beside `recent.json` in the configuration folder (`Templates::load`
+reads it kindly, capped at `MAX_KEPT` entries and 256 KiB; a window made in a test keeps none until `keep_templates_in`).
+Settings > Templates (`Page::Templates`) shows all of it, a line under the tenth marking those New doesn't list, a template
+whose file is gone marked "(not found)", and Add… (at the end), Remove (the entry, never the file), Move Up and Move Down.
+
+File > Save As is a submenu, as Revit's: **Project…** (Ctrl+Shift+S, as before) and **Template…**, which asks for a `.bimt` and
+lists it. A `.bimt` typed in the project's dialog saves a template the same way, and what waited on the save (closing, New)
+waits on, the project still being unsaved.

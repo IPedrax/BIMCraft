@@ -1,5 +1,7 @@
 # Project templates: plan
 
+Status: all seven steps built (PR #503); how it works now is in [the desktop](areas/desktop.md#project-templates).
+
 A project template is a `.bimt` file: the same content as a `.bimc` project. Opening one doesn't open the file. It is read
 and let go, and its content becomes a new, unsaved project to start work in, as Revit's New Project from a template does.
 Save asks where to put the result, so a template is never overwritten by accident.

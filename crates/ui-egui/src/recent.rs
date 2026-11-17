@@ -81,21 +81,27 @@ impl Recent {
 
     /// What the menu shows for each file: its name, with the folder it is in for a name two of them share.
     pub fn labels(&self) -> Vec<String> {
-        let name = |p: &Path| p.file_name().map_or_else(|| p.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());
-        self.paths
-            .iter()
-            .map(|p| {
-                let n = name(p);
-                if self.paths.iter().filter(|q| name(q) == n).count() < 2 {
-                    return n;
-                }
-                match p.parent().and_then(Path::file_name) {
-                    Some(folder) => format!("{n} ({})", folder.to_string_lossy()),
-                    None => n,
-                }
-            })
-            .collect()
+        labels(&self.paths)
     }
+}
+
+/// What a list of files shows for each: its name, with the folder it is in for a name two of them share (Open Recent, and the
+/// templates New lists).
+pub fn labels(paths: &[PathBuf]) -> Vec<String> {
+    let name = |p: &Path| p.file_name().map_or_else(|| p.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());
+    paths
+        .iter()
+        .map(|p| {
+            let n = name(p);
+            if paths.iter().filter(|q| name(q) == n).count() < 2 {
+                return n;
+            }
+            match p.parent().and_then(Path::file_name) {
+                Some(folder) => format!("{n} ({})", folder.to_string_lossy()),
+                None => n,
+            }
+        })
+        .collect()
 }
 
 impl BimApp {
