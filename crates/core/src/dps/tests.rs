@@ -3,6 +3,46 @@
 
 use super::*;
 
+fn rules() -> &'static Rules {
+    &rule_sets()[0]
+}
+
+fn required(l: &Line) -> Verdict {
+    super::required(rules(), l)
+}
+
+fn signal_required(kind: &str) -> Option<&'static str> {
+    super::signal_required(rules(), kind)
+}
+
+fn place(p: Purpose, existing: bool) -> Vec<String> {
+    super::place(rules(), p, existing)
+}
+
+fn subsequent_current(e: Earthing) -> Option<Subsequent> {
+    super::subsequent_current(rules(), e)
+}
+
+fn uc_min(e: Earthing, neutral: bool, uo: f64) -> Vec<Uc> {
+    super::uc_min(rules(), e, neutral, uo)
+}
+
+fn withstand(system: &str) -> Option<[f64; 4]> {
+    super::withstand(rules(), system)
+}
+
+fn discharge(p: Purpose, neutral_pe: bool, phases: u32) -> f64 {
+    super::discharge(rules(), p, neutral_pe, phases)
+}
+
+fn impulse(neutral_pe: bool, phases: u32) -> f64 {
+    super::impulse(rules(), neutral_pe, phases)
+}
+
+fn conductor_section(p: Purpose) -> f64 {
+    super::conductor_section(rules(), p)
+}
+
 fn line(overhead: bool, region: Region) -> Line {
     Line { overhead, region, accepted_risk: false, risk_to_people: false }
 }
@@ -50,7 +90,7 @@ fn a_calculated_risk_may_be_taken_only_if_no_one_is_put_at_risk() {
 
 #[test]
 fn every_external_signal_line_asks_for_it_at_its_entry() {
-    for kind in SIGNALS {
+    for kind in &rules().signals {
         assert!(signal_required(kind).is_some(), "{kind}");
     }
     assert!(signal_required("coax").is_none());
@@ -100,7 +140,7 @@ fn the_least_discharge_and_impulse_currents_by_purpose() {
 fn the_connecting_conductors() {
     assert_eq!(conductor_section(Purpose::Line), 4.0);
     assert_eq!(conductor_section(Purpose::Direct), 16.0);
-    assert_eq!(CONDUCTOR_LENGTH, 0.5);
+    assert_eq!(rules().conductor_length, 0.5);
 }
 
 #[test]
@@ -139,7 +179,7 @@ fn tabela_31_is_as_printed() {
     }
     assert_eq!(withstand("400/690"), Some([8.0, 6.0, 4.0, 2.5]));
     assert_eq!(withstand("110/190"), None);
-    assert_eq!(SIGNAL_ENTRY_WITHSTAND_KV, 1.5);
+    assert_eq!(rules().signal_entry_withstand, 1.5);
 }
 
 #[test]

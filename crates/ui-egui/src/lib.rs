@@ -121,9 +121,7 @@ use bimcraft_core::dims::Placing as DimMode;
 use bimcraft_core::engine::{self, Session};
 use bimcraft_core::files;
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{
-    CEILING_HEIGHT, DimKind, Element, Id, Justify, LeaderKind, Location, Model, RAMP_WIDTH, Reference, RoomArea, STAIR_WIDTH,
-};
+use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Id, Justify, LeaderKind, Location, Model, Reference, RoomArea, STAIR_WIDTH};
 use bimcraft_core::snap::{Kind as Snap, Snaps};
 use bimcraft_core::units::Units;
 use bimcraft_core::{element_json, render, schedule, stairs};
@@ -1060,8 +1058,6 @@ pub struct BimApp {
     pub(crate) plugin_pick: Option<(String, serde_json::Map<String, serde_json::Value>)>,
     /// The folder being read on a thread of its own, so the first frame isn't kept waiting by it.
     plugins_job: Option<std::sync::mpsc::Receiver<bimcraft_plugin::Plugins>>,
-    /// Manage > Electrical Settings, while open.
-    electrical_dialog: Option<electrical::ElectricalDialog>,
     /// Manage > Coordinates, while it is open.
     coordinates_dialog: Option<coordinates::CoordinatesDialog>,
     /// How the Survey Point goes when it's dragged, moved or typed in Properties: clipped (the point alone, the world staying)
@@ -1730,7 +1726,7 @@ impl BimApp {
             railings: true,
             ramp_top: Some(None),
             ramp_height: units.length(600.0),
-            ramp_width: units.length(RAMP_WIDTH),
+            ramp_width: units.length(bimcraft_core::codes::library_rules::<bimcraft_core::codes::checks::RampRules>().width),
             ramp_slope: "8.33".into(),
             ceiling_height: units.length(CEILING_HEIGHT),
             floor_slope: "5".into(),
@@ -1887,7 +1883,6 @@ impl BimApp {
             plugin_report: None,
             plugin_pick: None,
             plugins_job: None,
-            electrical_dialog: None,
             coordinates_dialog: None,
             survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
@@ -2547,7 +2542,6 @@ impl BimApp {
             || self.project_info_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
-            || self.electrical_dialog.is_some()
             || self.coordinates_dialog.as_ref().is_some_and(|d| !d.picking())
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
@@ -5519,8 +5513,10 @@ impl BimApp {
             let tip = msg!(
                 "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
             );
-            if big_button(ui, Icon::Wire, "Electrical Settings", self.electrical_dialog.is_some(), tip).clicked() {
-                self.electrical_dialog = Some(electrical::ElectricalDialog::new(&self.session.model));
+            // The settings are the first sections of the Building Codes' Electrical tab.
+            let open = self.codes_dialog.as_ref().is_some_and(codes::CodesDialog::on_electrical_settings);
+            if big_button(ui, Icon::Wire, "Electrical Settings", open, tip).clicked() {
+                self.codes_dialog = Some(codes::CodesDialog::electrical_settings(&self.session.model));
             }
             // Object styles, snaps and units, stacked.
             stacked(ui, |ui| {
@@ -7138,7 +7134,6 @@ impl BimApp {
         self.standards_window(ctx);
         self.codes_window(ctx);
         self.findings_window(ctx);
-        self.electrical_window(ctx);
         self.coordinates_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);

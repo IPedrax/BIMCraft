@@ -1,0 +1,107 @@
+{
+ "code": "rtiebt",
+ "discipline": "electrical",
+ "name": "RTIEBT, Regras Técnicas das Instalações Eléctricas de Baixa Tensão (Portugal)",
+ "region": "Portugal",
+ "edition": "2006",
+ "references": [
+  "Portugal's Regras Técnicas das Instalações Eléctricas de Baixa Tensão (RTIEBT, Portaria 949-A/2006, Diário da República 1.ª série no. 175, 1st supplement, 11/09/2006), section 803.2.4.3"
+ ],
+ "note": "A building's demand by this country's method (`building_demand`). The rest of the discipline comes from BIMCraft's library, and says so.",
+ "sections": {
+  "building_demand": {
+   "standard": "RTIEBT 803.2.4.3",
+   "utilities": [
+    "E-REDES"
+   ],
+   "country": "PT",
+   "source": "Portugal's Regras Técnicas das Instalações Eléctricas de Baixa Tensão (RTIEBT, Portaria 949-A/2006, Diário da República 1.ª série no. 175, 1st supplement, 11/09/2006), section 803.2.4.3: the power of the collective installations and entries of a building is the sum of the installations' powers times a simultaneity factor by their number downstream. E-REDES's connection manual (9th edition, 2018, Quadro 2.3) takes the same factors.",
+   "unit": "kVA",
+   "min_dwellings": 2,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "RTIEBT 801.5.2.2 and 803.2.4.3.1 a) (p. 6682-(163) and (185)): a dwelling's least power by its number of rooms, single-phase at 230 V",
+    "grades": [
+     {
+      "name": "1 room",
+      "demand": 3.45,
+      "source": "RTIEBT 801.5.2.2: one room, 3.45 kVA (15 A at 230 V)"
+     },
+     {
+      "name": "2-6 rooms",
+      "demand": 6.9,
+      "source": "RTIEBT 801.5.2.2: two to six rooms, 6.90 kVA (30 A)"
+     },
+     {
+      "name": "7+ rooms",
+      "demand": 10.35,
+      "source": "RTIEBT 801.5.2.2: more than six rooms, 10.35 kVA (45 A)"
+     }
+    ],
+    "least": 3.45
+   },
+   "diversity": {
+    "source": "RTIEBT Quadro 803A (p. 6682-(185)), called by 803.2.4.3.2 a) and 803.4.6.6: the simultaneity factor for dwellings and their annexes by the number of installations downstream, 1.00 for 2 to 4 and 0.34 from 50",
+    "kind": "per_dwelling",
+    "steps": [
+     [
+      4,
+      1.0
+     ],
+     [
+      9,
+      0.75
+     ],
+     [
+      14,
+      0.56
+     ],
+     [
+      19,
+      0.48
+     ],
+     [
+      24,
+      0.43
+     ],
+     [
+      29,
+      0.4
+     ],
+     [
+      34,
+      0.38
+     ],
+     [
+      39,
+      0.37
+     ],
+     [
+      49,
+      0.36
+     ],
+     [
+      50,
+      0.34
+     ]
+    ]
+   },
+   "factor": 1.0,
+   "factor_source": "RTIEBT 803.2.4.3 applies no growth factor",
+   "factor_on_common": false,
+   "notes": [
+    "A dwelling's power is the one its project gives, never under its grade (803.2.4.3.1 a)); a dwelling three-phase only for three-phase equipment takes 10.35 kVA at least.",
+    "Annexes take 3.45 kVA (803.2.4.3.1 b)) and count as installations downstream: give them as a group with their `demand`, so that they are weighted with the dwellings.",
+    "Installations other than dwellings (shops, the common services) take the designer's factor, 1 without one (803.2.4.3.2 b)): give them in `commercial` or `common_demand`."
+   ],
+   "not_covered": [
+    "the conductors, protections and voltage drops of the risers and entries (803.4)",
+    "the connection to the network: E-REDES's DIT-C14-100 (portinhola, branch cables and fuses)",
+    "electric vehicle charging (Portaria 128/2026/1: 3 680 VA a point, its number by the parking spaces)"
+   ]
+  }
+ },
+ "sources": {
+  "building_demand": "Portugal's Regras Técnicas das Instalações Eléctricas de Baixa Tensão (RTIEBT, Portaria 949-A/2006, Diário da República 1.ª série no. 175, 1st supplement, 11/09/2006), section 803.2.4.3: the power of the collective installations and entries of a building is the sum of the installations' powers times a simultaneity factor by their number downstream. E-REDES's connection manual (9th edition, 2018, Quadro 2.3) takes the same factors."
+ }
+}

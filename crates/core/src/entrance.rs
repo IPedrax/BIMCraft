@@ -1,6 +1,7 @@
 //! The categories of a low-voltage supply, as data: what a utility's table gives a unit for its installed load or its demand (the
-//! breaker, the branches, the earthing, the measurement). Read from `data/entrance-categories.json`; the `demand` command is the only
-//! caller, for a utility it finds there. `demand.rs` keeps the utilities whose tables came before this file (CPFL, ENEL, CELESC).
+//! breaker, the branches, the earthing, the measurement). Each utility's are the `entrance` section of its building code, an amendment over
+//! NBR 5410 (`data/codes/electrical/`); the `demand` command is the only caller, for the project's utility as it changed it, or
+//! one named. `demand.rs` keeps the utilities whose tables came before (CPFL, ENEL, CELESC), still in Rust.
 //!
 //! The utilities' tables agree on a shape, which is what lets them be data:
 //!
@@ -13,7 +14,7 @@
 //!   is found by its own name and may change a category by a document of its own.
 //!
 //! A row holds a unit when every range it prints holds it and its phases are those asked, if any. The demand is the designer's,
-//! carried as given: a utility that works one out has its own module. A utility is added as an entry of the file, never as code.
+//! carried as given: a utility that works one out has its own module. A utility is added as a building code, never as code.
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -111,21 +112,11 @@ pub struct Utility {
     pub not_covered: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Data {
-    utilities: Vec<Utility>,
-}
-
-/// The file, read; its test holds it to reading.
-fn read() -> Result<Vec<Utility>, serde_json::Error> {
-    serde_json::from_str::<Data>(include_str!("../data/entrance-categories.json")).map(|d| d.utilities)
-}
-
-/// Every utility of the file (none if it failed to read, which `the_file_reads_and_every_utility_names_its_source` catches).
+/// Every utility of BIMCraft's electrical codes, each one's amendment's `entrance` section, in the library's order: a project
+/// reads its own (`Model::section_as`), and a utility named reads the library's.
 pub fn utilities() -> &'static [Utility] {
     static ALL: OnceLock<Vec<Utility>> = OnceLock::new();
-    ALL.get_or_init(|| read().unwrap_or_default())
+    ALL.get_or_init(|| crate::codes::library_sections(crate::codes::Discipline::Electrical, "entrance"))
 }
 
 /// A utility by its id or by a member's (in any case), and the member when it is one.

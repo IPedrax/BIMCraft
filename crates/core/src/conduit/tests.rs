@@ -2,6 +2,38 @@
 
 use super::*;
 
+fn rules() -> &'static Rules {
+    &rule_sets()[0]
+}
+
+fn sizing() -> &'static nbr5410::Rules {
+    &nbr5410::rule_sets()[0]
+}
+
+fn family(key: &str) -> Option<&'static Family> {
+    rules().family(key)
+}
+
+fn limit(cables: usize) -> f64 {
+    rules().limit(cables)
+}
+
+fn cable_diameter(section: f64) -> Option<f64> {
+    rules().cable_diameter(section)
+}
+
+fn fill(size: &Size, sections: &[f64]) -> Option<Fill> {
+    rules().fill(size, sections)
+}
+
+fn smallest(f: &'static Family, sections: &[f64]) -> Option<&'static Size> {
+    rules().smallest(f, sections)
+}
+
+fn conductors(phases: Phases, section: f64, reduced: bool) -> Vec<f64> {
+    super::conductors(sizing(), phases, section, reduced)
+}
+
 fn near(a: f64, b: f64, e: f64) -> bool {
     (a - b).abs() <= e
 }
@@ -25,8 +57,8 @@ fn the_catalogues_are_as_printed() {
     );
     assert!(row("steel-rir").starts_with("1/2\" 15 21.3 2.25 | 3/4\" 20 26.9 2.25 | 1\" 25 33.7 2.65"));
     assert!(row("steel-rir").ends_with("5\" 125 141.3 5 | 6\" 150 168.3 5.3"));
-    assert!(FAMILIES.iter().all(|f| f.url.starts_with("https://") && !f.page.is_empty() && !f.document.is_empty()));
-    assert_eq!(CABLE_OD.len(), 18);
+    assert!(rules().families.iter().all(|f| f.url.starts_with("https://") && !f.page.is_empty() && !f.document.is_empty()));
+    assert_eq!(rules().cable_diameters.len(), 18);
     assert_eq!(cable_diameter(2.5), Some(3.55));
     assert_eq!(cable_diameter(35.0), Some(10.15));
     assert_eq!(cable_diameter(240.0), Some(24.2));
@@ -65,7 +97,7 @@ fn a_protective_conductor_is_a_standard_section_so_its_diameter_is_known() {
 #[test]
 fn the_fill_is_worked_by_hand() {
     let pvc = family("pvc-thread");
-    let sizes = pvc.map(|f| f.sizes).unwrap_or(&[]);
+    let sizes = pvc.map(|f| f.sizes.as_slice()).unwrap_or(&[]);
     let f = sizes.first().and_then(|s| fill(s, &[2.5, 2.5, 2.5]));
     assert!(f.is_some_and(|f| near(f.ratio, 3.0 * 3.55 * 3.55 / (16.4 * 16.4), 1e-12)
         && near(f.ratio, 0.1406, 1e-4)

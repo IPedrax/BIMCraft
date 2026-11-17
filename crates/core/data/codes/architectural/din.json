@@ -1,0 +1,58 @@
+{
+ "code": "din",
+ "discipline": "architectural",
+ "name": "DIN 18065",
+ "edition": "2020-08",
+ "region": "Deutschland",
+ "references": [
+  "DIN 18065:2020-08, Gebäudetreppen (buildings in general)"
+ ],
+ "note": "The row for buildings in general; a house of up to two dwellings may have a width of 800, a riser of 200 and a going from 230. The European Union has no stair code of its own: each country has one, and this is Germany's. DIN counts risers, 18 in a flight at most, so `flight_rise_max` is a forgiving number, and so is `nosing_max`.",
+ "sections": {
+  "stairs": {
+   "riser": 180,
+   "going": 270,
+   "riser_min": 140,
+   "riser_max": 190,
+   "going_min": 260,
+   "going_max": 370,
+   "step_min": 590,
+   "step_max": 650,
+   "width_min": 1000,
+   "headroom": 2000,
+   "flight_rise_max": 4000,
+   "flight_risers_max": 18,
+   "landing_rule": "step",
+   "landing_length": 0,
+   "winders": true,
+   "walk_line": "centre",
+   "walk_line_offset": 300,
+   "winder_going_min": 260,
+   "winder_narrow_min": 100,
+   "nosing_max": 50,
+   "open_risers": true,
+   "uniformity": 5,
+   "handrail_min": 800,
+   "handrail_max": 1150,
+   "guard_min": 900
+  }
+ },
+ "sources": {
+  "stairs.riser": "DIN 18065:2020-08, Tabelle 1 (unchecked)",
+  "stairs.going": "DIN 18065:2020-08, Tabelle 1 (unchecked)",
+  "stairs.riser_min": "DIN 18065:2020-08, Tabelle 1 (unchecked)",
+  "stairs.riser_max": "DIN 18065:2020-08, Tabelle 1 (unchecked)",
+  "stairs.going_min": "DIN 18065:2020-08, Tabelle 1 (unchecked)",
+  "stairs.going_max": "DIN 18065:2020-08, Tabelle 1 (unchecked)",
+  "stairs.width_min": "DIN 18065:2020-08, Tabelle 1 (unchecked)",
+  "stairs.step_min": "DIN 18065:2020-08, the step rule 2s + a (unchecked)",
+  "stairs.step_max": "DIN 18065:2020-08, the step rule 2s + a (unchecked)",
+  "stairs.flight_rise_max": "Not in the code: a forgiving number",
+  "stairs.flight_risers_max": "DIN 18065:2020-08, 18 risers to a flight (unchecked)",
+  "stairs.nosing_max": "Not in the code: a forgiving number"
+ },
+ "kinds": {
+  "stairs.flight_rise_max": "forgiving",
+  "stairs.nosing_max": "forgiving"
+ }
+}
