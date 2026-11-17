@@ -56,6 +56,28 @@ pub const WINDOW: usize = 0x4_0000;
 
 /// The data of the `wanted` elements in a partition.
 pub(crate) fn element_data(buf: &[u8], tags: &Tags, wide: bool, wanted: &BTreeSet<u32>, partition: u32, out: &mut Data) {
+    each_data(buf, tags, wide, wanted, WINDOW, |id, bytes| out.entry(id).or_default().push(Copy { partition, bytes: bytes.to_vec() }));
+}
+
+/// The placement of each of the `wanted` family instances in a partition, read from the first [`crate::placement::WINDOW`] bytes of
+/// its data, which are never copied: an instance's placement is all a component needs of its data, and a project has thousands.
+pub(crate) fn element_placements(
+    buf: &[u8],
+    tags: &Tags,
+    wide: bool,
+    wanted: &BTreeSet<u32>,
+    partition: u32,
+    out: &mut Latest<crate::placement::Transform>,
+) {
+    each_data(buf, tags, wide, wanted, crate::placement::WINDOW, |id, bytes| {
+        if let Some(t) = crate::placement::transform(bytes) {
+            out.offer(id, partition, t);
+        }
+    });
+}
+
+/// Each of the `wanted` elements' data in a partition, at most `window` bytes past its header.
+fn each_data(buf: &[u8], tags: &Tags, wide: bool, wanted: &BTreeSet<u32>, window: usize, mut found: impl FnMut(u32, &[u8])) {
     if wanted.is_empty() {
         return;
     }
@@ -65,9 +87,9 @@ pub(crate) fn element_data(buf: &[u8], tags: &Tags, wide: bool, wanted: &BTreeSe
         let at = hit + header.len();
         let id = if wide { u64_at(buf, at).and_then(|v| u32::try_from(v).ok()) } else { u32_at(buf, at) };
         let Some(id) = id.filter(|id| wanted.contains(id)) else { continue };
-        let end = hits.get(index + 1).copied().unwrap_or(buf.len()).min(hit.saturating_add(WINDOW)).min(buf.len());
+        let end = hits.get(index + 1).copied().unwrap_or(buf.len()).min(hit.saturating_add(window)).min(buf.len());
         if let Some(bytes) = buf.get(at + 8..end) {
-            out.entry(id).or_default().push(Copy { partition, bytes: bytes.to_vec() });
+            found(id, bytes);
         }
     }
 }

@@ -59,7 +59,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 let (width, depth, at, angle) = match placed.filter(|_| !quarter) {
                     Some(t) => {
                         // A turned column's box is the one round it, so a symbol whose size the file does not give comes in as its box.
-                        match symbol_of(r, &symbols, g, category).and_then(|(id, _)| f.symbol_boxes.get(&id)) {
+                        match symbol_of(r, &symbols, g, category, f.release).and_then(|(id, _)| f.symbol_boxes.get(&id)) {
                             Some(sym) => (mm(sym[3] - sym[0]), mm(sym[4] - sym[1]), point(t.origin[0], t.origin[1]), micron(angle)),
                             None => {
                                 fell_back = true;
@@ -79,7 +79,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         0.0,
                     ),
                 };
-                let name = symbol_name(r, &symbols, g, category).unwrap_or_else(|| "Imported column".to_string());
+                let name = symbol_name(r, &symbols, g, category, f.release).unwrap_or_else(|| "Imported column".to_string());
                 let types = if structural { &mut cx.model.types.structural_column } else { &mut cx.model.types.column };
                 let type_name = kind(
                     types,
