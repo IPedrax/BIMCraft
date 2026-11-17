@@ -739,12 +739,7 @@ fn rank(k: Kind) -> u8 {
 /// point at an angle, a wall's centre line, else the nearest 10 mm. `square` keeps the step from
 /// the last of `from` horizontal or vertical.
 pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps) -> Found {
-    let look = Look::of(m, level);
-    let window = reach.point.max(reach.line) + MAX_HALF_THICKNESS;
-    let mut scene = Scene::of(m, level, p, window, &look, None, o.stair_corners);
-    // The faces of the walls near: a stair or a wall drawn along a room's side starts at its face, not at the wall's middle.
-    outlines(m, level, p, window, &look, None, false, &mut scene);
-    solve(scene, p, reach, from, square, o, false)
+    snap_with(m, level, p, reach, from, square, o, &[])
 }
 
 /// [`snap`], with `under` too: the lines of the view's underlay ([`crate::underlay`]), whose ends, middles and crossings (with
@@ -752,9 +747,12 @@ pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool
 #[allow(clippy::too_many_arguments)]
 pub fn snap_with(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps, under: &[(P2, P2)]) -> Found {
     let look = Look::of(m, level);
-    let mut scene = Scene::of(m, level, p, reach.point.max(reach.line) + MAX_HALF_THICKNESS, &look, None);
-    let window = reach.point.max(reach.line);
-    for (a, b) in under.iter().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= window).take(MAX_UNDER) {
+    let window = reach.point.max(reach.line) + MAX_HALF_THICKNESS;
+    let mut scene = Scene::of(m, level, p, window, &look, None, o.stair_corners);
+    // The faces of the walls near: a stair or a wall drawn along a room's side starts at its face, not at the wall's middle.
+    outlines(m, level, p, window, &look, None, false, &mut scene);
+    let near = reach.point.max(reach.line);
+    for (a, b) in under.iter().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= near).take(MAX_UNDER) {
         scene.segment(*a, *b, None);
     }
     solve(scene, p, reach, from, square, o, false)
