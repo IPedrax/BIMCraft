@@ -302,6 +302,22 @@ fn a_folder_of_an_older_version_keeps_its_switched_off_plugins() {
 }
 
 #[test]
+fn the_updaters_backup_and_temp_folders_are_not_plugins() {
+    let root = folder();
+    let source = root.path().join("good");
+    for name in ["good.backup-2026-11-17-05-50-50", ".update-good-1-2"] {
+        let copy = root.path().join(name);
+        std::fs::create_dir_all(&copy).unwrap();
+        std::fs::copy(source.join("plugin.json"), copy.join("plugin.json")).unwrap();
+        std::fs::copy(source.join("plugin.wasm"), copy.join("plugin.wasm")).unwrap();
+    }
+    let plugins = Plugins::load_from(Some(root.path()));
+    assert_eq!(plugins.plugins.len(), 1, "the working folder alone is a plugin");
+    assert!(plugins.broken.is_empty(), "a backup isn't a duplicate: {:?}", plugins.broken);
+    assert_eq!(plugins.plugins[0].manifest.id, "good");
+}
+
+#[test]
 fn a_plugin_in_the_folder_registers_its_command_and_the_catalog_marks_it() {
     let root = folder();
     let plugins = Plugins::load_from(Some(root.path()));

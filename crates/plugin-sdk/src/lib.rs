@@ -16,8 +16,9 @@
 //!
 //! The host calls `bimcraft_run` with the function's name and its parameters as JSON, both in the guest's linear memory.
 //! What the handler returns is the call's JSON; an `Err` comes back to the caller as a failed call and, inside the
-//! plugin's transaction, as nothing changed. `execute` is the only way to the model: the plugin has no files, no clock,
-//! no randomness and no network, because the host doesn't import them.
+//! plugin's transaction, as nothing changed. `execute` is the way to the model: the plugin has no files, no clock and
+//! no randomness, because the host doesn't import them. Its only network is the update channel it declares, and even
+//! there the host does the request ([`check_update`], [`apply_update`]).
 //!
 //! The module is the first version of the contract ([`ABI`]); a manifest whose `abi` isn't this one is refused at load.
 
@@ -54,6 +55,10 @@ unsafe extern "C" {
     fn host_log(level: i32, ptr: u32, len: u32);
     #[link_name = "info"]
     fn host_info_raw() -> i64;
+    #[link_name = "update_check"]
+    fn host_update_check_raw() -> i64;
+    #[link_name = "update_apply"]
+    fn host_update_apply_raw() -> i64;
 }
 
 /// Runs a BIMCraft command with JSON parameters and gives its result, exactly as `Session::execute` would: the model's
@@ -114,6 +119,46 @@ pub fn host_info() -> Result<Value, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn host_info() -> Result<Value, String> {
     Err("a plugin runs inside WebAssembly; build it for wasm32-unknown-unknown".to_string())
+}
+
+/// Asks the channel the manifest declares for its newest version. The answer has `current`, `available` (equal to
+/// `current` when there is nothing newer), `released`, `size`, `notes`, `host` and `key`. It needs the user's
+/// `update` permission, and the host answers from memory when this session already checked.
+#[cfg(target_arch = "wasm32")]
+pub fn check_update() -> Result<Value, String> {
+    let packed = unsafe { host_update_check_raw() };
+    envelope(packed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn check_update() -> Result<Value, String> {
+    Err("a plugin runs inside WebAssembly; build it for wasm32-unknown-unknown".to_string())
+}
+
+/// Installs the version `check_update` found. The host asks the user when the channel is new, the publisher's key
+/// changed or the new version asks for more; a refusal is an `Err`. On success the new version takes effect at the
+/// next start, and the answer is `{"installed": "0.3.0", "restart": true}`.
+#[cfg(target_arch = "wasm32")]
+pub fn apply_update() -> Result<Value, String> {
+    let packed = unsafe { host_update_apply_raw() };
+    envelope(packed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn apply_update() -> Result<Value, String> {
+    Err("a plugin runs inside WebAssembly; build it for wasm32-unknown-unknown".to_string())
+}
+
+/// The `{"ok": true, "result": …}` envelope the update functions answer with.
+#[cfg(target_arch = "wasm32")]
+fn envelope(packed: i64) -> Result<Value, String> {
+    let reply = take(packed)?;
+    let envelope: Value = serde_json::from_slice(&reply).map_err(|e| format!("the host's reply isn't JSON: {e}"))?;
+    if envelope["ok"].as_bool() == Some(true) {
+        Ok(envelope.get("result").cloned().unwrap_or(Value::Null))
+    } else {
+        Err(envelope["error"].as_str().unwrap_or("the update failed").to_string())
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -94,6 +94,49 @@ fn the_plugins_window_asks_for_file_access_and_the_user_grants_it() {
 }
 
 #[test]
+fn the_plugins_window_allows_updating_and_shows_the_channel() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(()) = folder(dir.path()) else { return };
+    let manifest = dir.path().join("sample").join("plugin.json");
+    let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    value["permissions"] = json!(["update"]);
+    value["update"] = json!({
+        "feed": "https://example.org/sample/latest.json",
+        "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    });
+    std::fs::write(&manifest, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+    let mut h = app(SAMPLE);
+    h.state_mut().use_plugins(Plugins::load_from(Some(dir.path())));
+    h.run();
+    press(&mut h, "Manage");
+    press(&mut h, "Plugins");
+    h.run();
+    // The row names the channel and the key before anything is allowed, and says what allowing means.
+    assert!(h.query_by_label("Plugin updates").is_some());
+    assert!(h.query_by_label_contains("example.org").is_some());
+    assert!(h.query_by_label_contains("ed25519:").is_some());
+    assert!(h.query_by_label_contains("replace its own code").is_some());
+    assert!(!h.state().plugins.permission_granted("sample", "update"));
+    press(&mut h, "Enable automatic updates");
+    h.run();
+    h.run();
+    assert!(h.state().plugins.permission_granted("sample", "update"));
+    assert!(h.query_by_label("Check for update").is_some());
+    assert!(h.query_by_label("Disable automatic updates").is_some());
+    assert!(h.query_by_label_contains("Automatic updates: on").is_some());
+    let kept = std::fs::read_to_string(dir.path().join("state.json")).unwrap();
+    assert!(kept.contains("update"), "{kept}");
+    // Turning it off writes the state at once; a restart then has no grant to act on.
+    press(&mut h, "Disable automatic updates");
+    h.run();
+    h.run();
+    assert!(!h.state().plugins.permission_granted("sample", "update"));
+    assert!(h.query_by_label_contains("Automatic updates: off").is_some());
+    let kept: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.path().join("state.json")).unwrap()).unwrap();
+    assert!(kept["permissions"].as_object().unwrap().is_empty(), "{kept}");
+}
+
+#[test]
 fn find_lists_a_plugin_s_function_and_runs_it_as_its_button_does() {
     let dir = tempfile::tempdir().unwrap();
     folder(dir.path());

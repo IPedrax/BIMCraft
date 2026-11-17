@@ -1,9 +1,11 @@
 # bimcraft-plugin-sdk: the guest side
 
-The SDK a plugin author builds against (`src/lib.rs`): `execute`, `note`, `host_info`, `export!`, and the linear-memory
-entry points the host looks for. It is compiled into a plugin module (`wasm32-unknown-unknown`), not into BIMCraft.
+The SDK a plugin author builds against (`src/lib.rs`): `execute`, `note`, `host_info`, `check_update`, `apply_update`,
+`export!`, and the linear-memory entry points the host looks for. It is compiled into a plugin module
+(`wasm32-unknown-unknown`), not into BIMCraft.
 
-- **The ABI is fixed in `crates/plugin/src/runtime.rs`.** `execute`, `log` and `info` are the only host imports; the
+- **The ABI is fixed in `crates/plugin/src/runtime.rs`.** `execute`, `log`, `info`, `update_check` and `update_apply` are
+  the only host imports; the
   module exports `memory`, `bimcraft_alloc`, `bimcraft_free` and `bimcraft_run`, and a reply packs the pointer in the high
   32 bits and the length in the low 32. A change on one side is a change on both, with `manifest::ABI` bumped, a WAT test
   in `crates/plugin/tests/fixtures` and a paragraph in `docs/areas/plugins.md`.

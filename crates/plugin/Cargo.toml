@@ -8,8 +8,14 @@ description = "The WASM sandbox BIMCraft runs its plugins in: manifests, the hos
 
 [dependencies]
 bimcraft-core.workspace = true
+bimcraft-update.workspace = true
+base64.workspace = true
+# Ed25519 signatures of an update feed: the same ring the app's updater already brings.
+ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The update archive: a zip of `plugin.json` and the module, as the delivery puts them.
+zip.workspace = true
 # The interpreter the plugins run in: pure Rust, MIT/Apache-2.0, fuel metering and a memory limiter.
 wasmi = { version = "2", default-features = false, features = ["std", "validate", "auto-dispatch"] }
 
@@ -18,6 +24,11 @@ wasmi = { version = "2", default-features = false, features = ["std", "validate"
 wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "auto-dispatch"] }
 wat = "1"
 tempfile.workspace = true
+# The update tests sign a feed and build an archive without a network or a publisher.
+bimcraft-update = { workspace = true, features = ["testing"] }
+ring.workspace = true
+base64.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true
