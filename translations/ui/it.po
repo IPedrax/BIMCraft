@@ -18111,6 +18111,10 @@ msgstr ""
 msgid "Lines up with wall {}"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:5853
+msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Un valore vuoto è quello dell'oggetto stesso, come nella scheda Parametri."

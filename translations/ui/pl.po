@@ -18129,6 +18129,22 @@ msgstr ""
 msgid "stair: `{}` is not a width"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:5853
+msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+msgstr ""
+
+#: crates/ui-egui/src/draw.rs:687
+msgid "Create Group (GP): the selected detail lines, filled regions and text made one detail group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:34
+msgid "select a detail group to ungroup"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:19
+msgid "select the detail lines, filled regions and text to group first"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Pusta wartość oznacza wartość rodziny, tak jak jest w zakładce Parametry."
