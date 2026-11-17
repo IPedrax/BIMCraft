@@ -49,6 +49,7 @@ mod stairgrips;
 mod stairtype;
 pub use gpu::limits_for;
 mod graphics;
+mod gridtypes;
 mod groups;
 mod guide_refs;
 pub mod icons;
@@ -879,6 +880,7 @@ pub struct BimApp {
     curtain_seen: Option<Arc<Model>>,
     curtain_known: std::collections::BTreeSet<Id>,
     curtain_asking: std::collections::BTreeSet<Id>,
+    grid_type_dialog: Option<gridtypes::GridTypeDialog>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -1794,6 +1796,7 @@ impl BimApp {
             curtain_seen: None,
             curtain_known: Default::default(),
             curtain_asking: Default::default(),
+            grid_type_dialog: None,
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
@@ -2547,6 +2550,7 @@ impl BimApp {
             || self.spot_type_dialog.is_some()
             || self.curtain_editor.is_some()
             || !self.curtain_asking.is_empty()
+            || self.grid_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -7205,6 +7209,7 @@ impl BimApp {
         self.spot_type_window(ctx);
         self.curtain_editor_window(ctx);
         self.curtain_message(ctx);
+        self.grid_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.codes_window(ctx);

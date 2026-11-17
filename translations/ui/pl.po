@@ -18618,6 +18618,82 @@ msgstr ""
 msgid "The report's Markdown couldn't be read: {}"
 msgstr ""
 
+#: crates/core/src/grids.rs:29 crates/core/src/lines.rs:186
+msgid "Grid - ASME Chain"
+msgstr ""
+
+#: crates/core/src/grids.rs:20
+msgid "Grid - ASME Y14.2"
+msgstr ""
+
+#: crates/core/src/grids.rs:21
+msgid "Grid - Architectural"
+msgstr ""
+
+#: crates/core/src/grids.rs:30 crates/core/src/lines.rs:187
+msgid "Grid - Architectural Chain"
+msgstr ""
+
+#: crates/core/src/grids.rs:23
+msgid "Grid - Compact"
+msgstr ""
+
+#: crates/core/src/grids.rs:31 crates/core/src/lines.rs:188
+msgid "Grid - Compact Dash Dot"
+msgstr ""
+
+#: crates/core/src/grids.rs:22
+msgid "Grid - Continuous"
+msgstr ""
+
+#: crates/core/src/grids.rs:19
+msgid "Grid - DIN 1356"
+msgstr ""
+
+#: crates/core/src/grids.rs:28 crates/core/src/lines.rs:185
+msgid "Grid - DIN Dash Dot"
+msgstr ""
+
+#: crates/core/src/grids.rs:17
+msgid "Grid - ISO 128"
+msgstr ""
+
+#: crates/core/src/grids.rs:27 crates/core/src/lines.rs:184
+msgid "Grid - ISO Dash Dot"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4190
+msgid "IFC…"
+msgstr ""
+
+#: crates/ui-egui/src/gridtypes.rs:74
+msgid "Line Pattern"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4194
+msgid "PNG image"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4196
+msgid "Plan as SVG…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4197
+msgid "SVG drawing"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4199
+msgid "Sheets as PDF…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4193
+msgid "View as PNG…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4203
+msgid "glTF binary"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Pusta wartość oznacza wartość rodziny, tak jak jest w zakładce Parametry."

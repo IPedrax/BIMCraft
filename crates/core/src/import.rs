@@ -4329,6 +4329,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
 
     // Grids: each axis a grid line.
     let mut grid_names = BTreeSet::new();
+    let grid_type = m.default_type("grid").map(String::from).unwrap_or_default();
     for id in named(&["IFCGRID"]) {
         let Some(g) = e(id) else { continue };
         let f = r.frame(g);
@@ -4343,7 +4344,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 (start, end) = (end, start);
             }
             let tag = text(axis.args.first()).map_or_else(|| next_number(grid_names.iter().map(String::as_str)), String::from);
-            let gid = m.insert(Element::Grid(Grid { name: fresh(&mut grid_names, &tag), start, end }));
+            let gid = m.insert(Element::Grid(Grid { name: fresh(&mut grid_names, &tag), type_name: grid_type.clone(), start, end }));
             from.insert(gid, who(id));
             origin.entry(id).or_insert(gid);
             elements_from.entry(id).or_default().push(gid);
@@ -4360,7 +4361,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let (Some(p), Some(q)) = (pts.first(), pts.last()) else { continue };
         let (start, end) = (micron(r.flat(*p)), micron(r.flat(*q)));
         let tag = text(g.args.get(2)).map_or_else(|| next_number(grid_names.iter().map(String::as_str)), String::from);
-        let gid = m.insert(Element::Grid(Grid { name: fresh(&mut grid_names, &tag), start, end }));
+        let gid = m.insert(Element::Grid(Grid { name: fresh(&mut grid_names, &tag), type_name: grid_type.clone(), start, end }));
         from.insert(gid, who(id));
         origin.insert(id, gid);
         elements_from.entry(id).or_default().push(gid);

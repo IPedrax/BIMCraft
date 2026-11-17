@@ -64,8 +64,8 @@ impl Tab {
 }
 
 /// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
-const SYSTEM_FAMILIES: [&str; 11] =
-    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing"];
+const SYSTEM_FAMILIES: [&str; 12] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing", "grid"];
 
 /// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -697,7 +697,7 @@ impl BimApp {
     }
 
     /// Families, each its types: one picked, the Component tool places it. Folded but on its own tab.
-    /// Families: each category of the system's (walls, floors, doors…) with its types, then the project's component families.
+    /// Families: each category of the system's (walls, floors, doors, grids…) with its types, then the project's component families.
     /// A right click on a type or a family has Delete, which the project refuses while something uses it.
     fn families_node(&self, open: bool) -> Node {
         let m = &self.session.model;
