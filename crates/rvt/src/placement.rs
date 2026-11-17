@@ -9,7 +9,7 @@
 use crate::records::f64_at;
 
 /// How far into an instance's data its transform is looked for.
-const WINDOW: usize = 0x1000;
+pub(crate) const WINDOW: usize = 0x1000;
 /// How closely the nine values must form a rotation.
 const TOLERANCE: f64 = 1e-9;
 

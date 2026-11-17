@@ -269,6 +269,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     rooms::wanted(&facts, &mut wants);
     pipes::wanted(&facts, &mut wants.data);
     ducts::wanted(&facts, &mut wants.data);
+    generic::wanted(&facts, &mut wants);
     let gathered = revit.gather(release, &facts.tags, &facts.ids, &wants).map_err(e)?;
     walls::import(&mut cx, &facts, &gathered);
     floors::import(&mut cx, &facts, &gathered);
@@ -280,7 +281,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     pipes::import(&mut cx, &facts, &gathered);
     ducts::import(&mut cx, &facts, &gathered);
     framing::import(&mut cx, &facts);
-    generic::import(&mut cx, &facts, &inv);
+    generic::import(&mut cx, &facts, &gathered, &inv);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))
 }
