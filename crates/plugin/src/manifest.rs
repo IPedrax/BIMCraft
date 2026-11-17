@@ -18,7 +18,7 @@ pub const MAX_FUNCTIONS: usize = 256;
 /// The longest id, name or version.
 pub const MAX_TEXT: usize = 200;
 /// The permissions the ABI knows. Anything else fails the load.
-pub const PERMISSIONS: &[&str] = &["files"];
+pub const PERMISSIONS: &[&str] = &["files", "update"];
 
 /// A plugin's manifest, as its `plugin.json` holds it.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -41,10 +41,26 @@ pub struct Manifest {
     pub license: Option<String>,
     #[serde(default)]
     pub link: Option<String>,
-    /// What the plugin asks for beyond changing the model: `files` alone in ABI 1.
+    /// What the plugin asks for beyond changing the model: `files` and `update` in ABI 1.
     #[serde(default)]
     pub permissions: Vec<String>,
+    /// Where its updates are announced, and the key that signs them. It is present exactly when the manifest asks
+    /// for the `update` permission.
+    #[serde(default)]
+    pub update: Option<UpdateFeed>,
     pub functions: Vec<Function>,
+}
+
+/// The channel a plugin is updated through: the URL of its feed, and the publisher's Ed25519 key.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateFeed {
+    /// The https address of the JSON feed. Empty is allowed for a local build, and then no channel is declared.
+    #[serde(default)]
+    pub feed: String,
+    /// `ed25519:BASE64` of the 32-byte publisher key. None: the feed isn't signed, which the user must allow.
+    #[serde(default)]
+    pub public_key: Option<String>,
 }
 
 fn default_module() -> String {
@@ -129,6 +145,17 @@ impl Manifest {
                 ));
             }
         }
+        let asks_update = self.asks_for("update");
+        match (&self.update, asks_update) {
+            (Some(update), true) => update.check()?,
+            (None, true) => {
+                return Err("it asks for the `update` permission but has no `update` block: the feed is where updates are read from".into());
+            }
+            (Some(_), false) => {
+                return Err("it has an `update` block but doesn't ask for the `update` permission".into());
+            }
+            (None, false) => {}
+        }
         let mut seen = Vec::new();
         for f in &self.functions {
             check_id("a function id", &f.id)?;
@@ -166,6 +193,16 @@ impl Manifest {
         self.asks_for("files")
     }
 
+    /// Whether the manifest asks to update itself from its channel.
+    pub fn asks_for_update(&self) -> bool {
+        self.asks_for("update")
+    }
+
+    /// The channel the plugin would update through, when it declares one: an empty feed is no channel.
+    pub fn update_feed(&self) -> Option<&UpdateFeed> {
+        self.update.as_ref().filter(|u| !u.feed.trim().is_empty())
+    }
+
     /// Whether the plugin declared no ribbon tab: its functions go in the common Plugins section.
     pub fn tab_name(&self, f: &Function) -> Option<String> {
         f.tab.clone().filter(|t| !t.trim().is_empty())
@@ -174,6 +211,69 @@ impl Manifest {
     pub fn panel_name(&self, f: &Function) -> String {
         f.panel.clone().filter(|p| !p.trim().is_empty()).unwrap_or_else(|| self.name.clone())
     }
+}
+
+impl UpdateFeed {
+    /// Whether the channel is sound: an https address without a login, a fragment or a space, and an Ed25519 key of
+    /// the right length when one is given. An empty feed is allowed only for a local build.
+    pub fn check(&self) -> Result<(), String> {
+        check_text("the update feed", &self.feed)?;
+        if !self.feed.trim().is_empty() {
+            check_https_url("the update feed", &self.feed)?;
+        }
+        if let Some(key) = &self.public_key {
+            check_text("the update public key", key)?;
+            check_public_key(key)?;
+        }
+        Ok(())
+    }
+
+    /// The key with the `ed25519:` prefix, or an empty string when the feed isn't signed.
+    pub fn key(&self) -> &str {
+        self.public_key.as_deref().unwrap_or_default()
+    }
+}
+
+/// A URL the update channel may be read from: https, a host, no login and no fragment.
+pub(crate) fn check_https_url(what: &str, url: &str) -> Result<(), String> {
+    if url.chars().any(char::is_whitespace) || url.chars().any(char::is_control) {
+        return Err(format!("{what} `{url}` has a space or a control character"));
+    }
+    if !url.starts_with("https://") {
+        return Err(format!("{what} `{url}` isn't https: an update is only read over HTTPS"));
+    }
+    let rest = &url["https://".len()..];
+    if rest.contains('#') {
+        return Err(format!("{what} `{url}` has a fragment"));
+    }
+    let authority = rest.split(['/', '?']).next().unwrap_or_default();
+    if authority.is_empty() {
+        return Err(format!("{what} `{url}` has no host"));
+    }
+    if authority.contains('@') {
+        return Err(format!("{what} `{url}` has a login in it"));
+    }
+    Ok(())
+}
+
+/// An Ed25519 public key as `ed25519:BASE64`, of exactly 32 bytes.
+pub(crate) fn check_public_key(key: &str) -> Result<(), String> {
+    let bytes = decode_prefixed(key, "ed25519:")?;
+    if bytes.len() != 32 {
+        return Err(format!("the update public key is {} bytes; an Ed25519 key is 32", bytes.len()));
+    }
+    Ok(())
+}
+
+/// The bytes of a `prefix:BASE64` field.
+pub(crate) fn decode_prefixed(field: &str, prefix: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    let body = field
+        .strip_prefix(prefix)
+        .ok_or_else(|| format!("`{}` doesn't start with `{prefix}`", field.chars().take(24).collect::<String>()))?;
+    base64::engine::general_purpose::STANDARD
+        .decode(body)
+        .map_err(|e| format!("`{}` isn't base64: {e}", field.chars().take(24).collect::<String>()))
 }
 
 fn check_text(what: &str, text: &str) -> Result<(), String> {
@@ -218,6 +318,8 @@ fn check_relative(what: &str, path: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use base64::Engine as _;
+
     use super::*;
 
     fn sample() -> serde_json::Value {
@@ -258,6 +360,44 @@ mod tests {
         let mut v = sample();
         v["module"] = serde_json::json!("../evil.wasm");
         assert!(check(v).unwrap_err().contains("relative"));
+    }
+
+    #[test]
+    fn the_update_permission_and_its_channel_come_together() {
+        let key = format!("ed25519:{}", base64::engine::general_purpose::STANDARD.encode([7u8; 32]));
+        let mut v = sample();
+        v["permissions"] = serde_json::json!(["update"]);
+        assert!(check(v.clone()).unwrap_err().contains("no `update` block"));
+        v["update"] = serde_json::json!({"feed": "https://example.org/latest.json", "public_key": key});
+        assert!(check(v.clone()).is_ok());
+        // The block without the permission is refused too.
+        let mut v2 = sample();
+        v2["update"] = serde_json::json!({"feed": "https://example.org/latest.json"});
+        assert!(check(v2).unwrap_err().contains("doesn't ask"));
+        // Only https, no login, no fragment.
+        for feed in ["http://example.org/latest.json", "https://user:pw@example.org/latest.json", "https://example.org/latest.json#x"] {
+            let mut v3 = sample();
+            v3["permissions"] = serde_json::json!(["update"]);
+            v3["update"] = serde_json::json!({"feed": feed});
+            assert!(check(v3).is_err(), "{feed}");
+        }
+        // A key is Ed25519: 32 bytes in base64.
+        for bad in ["ed25519:AAAA", "rsa:AAAA", "not-a-key"] {
+            let mut v4 = sample();
+            v4["permissions"] = serde_json::json!(["update"]);
+            v4["update"] = serde_json::json!({"feed": "https://example.org/latest.json", "public_key": bad});
+            assert!(check(v4).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn an_empty_feed_is_no_channel_and_a_local_build_may_say_so() {
+        let mut v = sample();
+        v["permissions"] = serde_json::json!(["update"]);
+        v["update"] = serde_json::json!({"feed": ""});
+        let m = check(v).unwrap();
+        assert!(m.asks_for_update());
+        assert!(m.update_feed().is_none());
     }
 
     #[test]

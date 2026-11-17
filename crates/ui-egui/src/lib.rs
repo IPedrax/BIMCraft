@@ -1012,6 +1012,8 @@ pub struct BimApp {
     pub(crate) plugins_dialog: bool,
     /// A report a plugin's function asked the window to show, while it is open.
     pub(crate) plugin_report: Option<plugins::PluginReport>,
+    /// The confirmation before installing a plugin's newer version, while it is open.
+    pub(crate) plugin_update_prompt: Option<plugins::UpdatePrompt>,
     /// A plugin's function whose path the user is choosing in the system's dialog: its command, and the parameters with
     /// the path left to set. Running a function is one click on the ribbon, and a function that needs a file asks for
     /// it there.
@@ -1824,6 +1826,7 @@ impl BimApp {
             plugin_tabs: Vec::new(),
             plugins_dialog: false,
             plugin_report: None,
+            plugin_update_prompt: None,
             plugin_pick: None,
             plugins_job: None,
             electrical_dialog: None,
@@ -4125,6 +4128,7 @@ impl BimApp {
         (fresh.plugins, fresh.plugin_tabs) = (std::mem::take(&mut self.plugins), std::mem::take(&mut self.plugin_tabs));
         fresh.plugins_job = self.plugins_job.take();
         fresh.plugins_dialog = self.plugins_dialog;
+        fresh.plugin_update_prompt = self.plugin_update_prompt.take();
         fresh.plugins.register(&mut fresh.session);
         fresh.plugin_tabs = fresh.plugins.tabs();
         *self = fresh;
@@ -6935,6 +6939,7 @@ impl BimApp {
         self.settings_window(ctx);
         self.plugins_window(ctx);
         self.plugin_report_window(ctx);
+        self.plugin_update_window(ctx);
         self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);

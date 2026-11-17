@@ -331,11 +331,13 @@ fn a_file_is_hashed_as_it_is_checked_before_it_runs() {
 }
 
 /// The manifests (path from the root, text) that break the network rule: `ureq` and the other HTTP clients belong to the two crates
-/// that reach the network by HTTPS, the updater and the assistant, and those two and Co-Work's transport are dependencies of the
-/// desktop (`apps/bimcraft`, which attaches them, and `crates/ui-egui`, which draws them) and of nothing else.
+/// that reach the network by HTTPS, the updater and the assistant. The updater's `Net` is also used by the plugin sandbox
+/// (`crates/plugin`), which has no network of its own — its only request is the installed manifest's update channel. The assistant,
+/// Co-Work's transport and the updater's app-side use are dependencies of the desktop (`apps/bimcraft` and `crates/ui-egui`).
 fn network_offenders(manifests: &[(String, String)]) -> Vec<String> {
     let owners = ["crates/update/", "crates/assistant/"];
     let desktop = ["apps/bimcraft/", "crates/ui-egui/"];
+    let plugin = ["crates/plugin/"];
     let depends = |text: &str, dep: &str| text.lines().any(|l| l.trim_start().starts_with(dep));
     let mut bad = Vec::new();
     for (path, text) in manifests {
@@ -344,7 +346,10 @@ fn network_offenders(manifests: &[(String, String)]) -> Vec<String> {
                 bad.push(format!("{path} depends on {dep}: only the updater and the assistant reach the network"));
             }
         }
-        for dep in ["bimcraft-update", "bimcraft-assistant", "bimcraft-cowork"] {
+        if depends(text, "bimcraft-update") && !desktop.iter().chain(plugin.iter()).any(|d| path.starts_with(d)) {
+            bad.push(format!("{path} depends on bimcraft-update: only the plugin sandbox and the desktop reach the network"));
+        }
+        for dep in ["bimcraft-assistant", "bimcraft-cowork"] {
             if depends(text, dep) && !desktop.iter().any(|d| path.starts_with(d)) {
                 bad.push(format!("{path} depends on {dep}: the core, the CLI and the MCP server never reach the network"));
             }
@@ -354,7 +359,7 @@ fn network_offenders(manifests: &[(String, String)]) -> Vec<String> {
 }
 
 #[test]
-fn only_the_desktop_app_can_reach_the_network() {
+fn only_the_desktop_app_and_the_plugin_sandbox_reach_the_network() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut manifests = Vec::new();
     for folder in ["crates", "apps"] {
@@ -377,6 +382,7 @@ fn the_network_rule_catches_a_manifest_that_breaks_it() {
         m("crates/assistant/Cargo.toml", "[dependencies]\nureq = { workspace = true }\nbimcraft-core = { workspace = true }\n"),
         m("crates/ui-egui/Cargo.toml", "bimcraft-update = { workspace = true }\nbimcraft-assistant = { workspace = true }\n"),
         m("apps/bimcraft/Cargo.toml", "bimcraft-update = { workspace = true }\nbimcraft-assistant = { workspace = true }\n"),
+        m("crates/plugin/Cargo.toml", "bimcraft-update = { workspace = true }\n"),
         m("crates/ui-egui/Cargo.toml", "bimcraft-cowork = { workspace = true }\n"),
         m("crates/core/Cargo.toml", "name = \"bimcraft-core\"\n"),
     ];

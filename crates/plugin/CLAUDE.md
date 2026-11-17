@@ -1,11 +1,15 @@
 # bimcraft-plugin: the sandbox
 
-The plugin folder (`lib.rs`), the manifest (`manifest.rs`) and the WASM runtime (`runtime.rs`). The core knows nothing of
-WASM: this crate fills `Session`'s external command registry and calls `Session::execute` for everything a plugin does.
+The plugin folder (`lib.rs`), the manifest (`manifest.rs`), the WASM runtime (`runtime.rs`) and the update channel
+(`update.rs`). The core knows nothing of WASM: this crate fills `Session`'s external command registry and calls
+`Session::execute` for everything a plugin does.
 
-- **Everything a plugin gets is a command.** A new host function is a change to the ABI: bump `manifest::ABI`, add it to
-  `runtime::HOST` and `install`, its limit and its log line, cover it with a test in `tests/plugins.rs` (a WAT module in
-  `tests/fixtures`), and write it in `docs/areas/plugins.md`. The guest side goes in `crates/plugin-sdk`.
+- **Everything a plugin gets is a command, except its update channel.** A new host function is a change to the ABI: bump
+  `manifest::ABI`, add it to `runtime::HOST` and `install`, its limit and its log line, cover it with a test in
+  `tests/plugins.rs` (a WAT module in `tests/fixtures`), and write it in `docs/areas/plugins.md`. The guest side goes in
+  `crates/plugin-sdk`. `update_check` and `update_apply` are the exception to "everything is a command": the host reads
+  the installed manifest's `update.feed`, and `update.rs` owns the network, the signature, the archive and the atomic
+  folder swap; the guest never receives a URL, a file or a socket.
 - **No global state.** Plugins belong to a `Plugins` value and its commands to one `Session`; tests make a folder in a
   temporary directory, so two tests and two sessions never share a plugin.
 - **The disk is the core's word, not a list here.** A command that reads or writes files is marked on `Command.files`
@@ -21,7 +25,9 @@ WASM: this crate fills `Session`'s external command registry and calls `Session:
 - **The module is compiled once and instantiated per call.** A guest gets no state between calls; the compiled `Engine`
   and `Module` are shared through an `Arc`. Keep it that way unless persistent state is designed and documented.
 - **Tests first.** `tests/plugins.rs` holds the sandbox (forwarded command, hang, trap, memory, bad reply, command storm,
-  permissions, folder, disabled state) and `tests/sample.rs` runs a plugin built with the guest SDK — the fixture in
+  permissions, folder, disabled state), `tests/update.rs` holds the channel (signature, archive, version, atomic swap,
+  backup, rollback, lock; `bimcraft_update::testing::Fake` is the network), and `tests/sample.rs` runs a plugin built with
+  the guest SDK — the fixture in
   `tests/sample-plugin`, which isn't in the repository as a module: `cargo build --manifest-path
   crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release` before the tests. Without
   the build they skip with the command to run; in CI (`CI=1`) a skip is a failure.

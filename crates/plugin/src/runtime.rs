@@ -10,6 +10,7 @@
 //! parameters, each log line, `info` — with the fuel left when each began: a stopped call's error names the last,
 //! and the plugin log keeps the whole trail, which says what the fuel went on.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -19,6 +20,7 @@ use bimcraft_core::engine::{self, Session};
 
 use crate::Log;
 use crate::manifest::ABI;
+use crate::update::{NOT_ALLOWED, UpdateCall};
 
 /// Fuel of one call: wasmi counts an instruction as about one, so this is a second or so of interpreted work.
 pub const FUEL: u64 = 20_000_000;
@@ -47,7 +49,7 @@ const MAX_STEP: usize = 160;
 /// The exports a plugin module must have.
 const EXPORTS: [&str; 3] = ["memory", "bimcraft_alloc", "bimcraft_run"];
 /// The host functions ABI 1 provides.
-const HOST: [&str; 3] = ["execute", "log", "info"];
+const HOST: [&str; 5] = ["execute", "log", "info", "update_check", "update_apply"];
 
 /// The commands that touch the disk are marked on the [`bimcraft_core::engine::Command`] itself, next to their
 /// parameters, and [`engine::touches_files`] reads the mark and, for a command that only sometimes takes a path,
@@ -62,6 +64,15 @@ pub struct Runtime {
     module: Module,
 }
 
+/// What one plugin call brings: its permissions, its parameters, the log and, when the user allowed it, its
+/// update channel.
+pub struct Call<'a> {
+    pub files: bool,
+    pub update: Option<Arc<UpdateCall>>,
+    pub params: &'a Value,
+    pub log: &'a std::sync::Arc<Log>,
+}
+
 /// What a host function sees of the call: the session the plugin works on, its permissions, how many commands
 /// it has run, and the log.
 struct HostState {
@@ -70,6 +81,8 @@ struct HostState {
     session: Option<Session>,
     plugin: String,
     files: bool,
+    /// The plugin's update channel, when the user let it update itself: the host does the network and the disk.
+    update: Option<Arc<UpdateCall>>,
     calls: usize,
     started: Instant,
     log: std::sync::Arc<Log>,
@@ -182,6 +195,13 @@ impl Runtime {
         params: &Value,
         log: &std::sync::Arc<Log>,
     ) -> Result<Value, String> {
+        self.invoke_call(session, plugin, function, Call { files, update: None, params, log })
+    }
+
+    /// A call with everything it carries: a plugin whose user allowed updating gets its channel, one that didn't
+    /// gets none and its update functions answer not allowed. A module that never imports them is unchanged.
+    pub fn invoke_call(&self, session: &mut Session, plugin: &str, function: &str, call: Call<'_>) -> Result<Value, String> {
+        let Call { files, update, params, log } = call;
         let limits = StoreLimitsBuilder::new()
             .memory_size(MEMORY)
             .table_elements(TABLE_ELEMENTS)
@@ -194,6 +214,7 @@ impl Runtime {
             session: None,
             plugin: plugin.to_string(),
             files,
+            update,
             calls: 0,
             started: Instant::now(),
             log: std::sync::Arc::clone(log),
@@ -317,7 +338,56 @@ fn install(linker: &mut Linker<HostState>) -> Result<(), String> {
     linker.func_wrap("bimcraft", "execute", host_execute).map_err(|e| format!("bimcraft.execute: {e}"))?;
     linker.func_wrap("bimcraft", "log", host_log).map_err(|e| format!("bimcraft.log: {e}"))?;
     linker.func_wrap("bimcraft", "info", host_info).map_err(|e| format!("bimcraft.info: {e}"))?;
+    linker.func_wrap("bimcraft", "update_check", host_update_check).map_err(|e| format!("bimcraft.update_check: {e}"))?;
+    linker.func_wrap("bimcraft", "update_apply", host_update_apply).map_err(|e| format!("bimcraft.update_apply: {e}"))?;
     Ok(())
+}
+
+/// `bimcraft.update_check`: the channel's newest version, from memory when this session already checked.
+fn host_update_check(mut caller: Caller<'_, HostState>) -> Result<i64, Error> {
+    update_reply(&mut caller, false)
+}
+
+/// `bimcraft.update_apply`: install the version the check found. It asks [`crate::update::Consent`] when the
+/// channel is new, the key changed or the version asks for more; a refusal is the call's envelope, not a trap.
+fn host_update_apply(mut caller: Caller<'_, HostState>) -> Result<i64, Error> {
+    update_reply(&mut caller, true)
+}
+
+fn update_reply(caller: &mut Caller<'_, HostState>, apply: bool) -> Result<i64, Error> {
+    let fuel = caller.get_fuel().unwrap_or(0);
+    remember(caller.data_mut(), if apply { "update_apply".to_string() } else { "update_check".to_string() }, fuel);
+    let update = caller.data().update.clone();
+    let reply = match update {
+        Some(call) => {
+            let result = if apply {
+                call.service
+                    .apply(&call.target, false, crate::update::By::Manual)
+                    .map(|installed| json!({"installed": installed.installed, "restart": installed.restart}))
+            } else {
+                call.service.check(&call.target, false, false).map(|check| {
+                    json!({
+                        "current": check.current,
+                        "available": check.available,
+                        "released": check.released,
+                        "size": check.size,
+                        "notes": check.notes,
+                        "host": check.host,
+                        "key": check.key,
+                    })
+                })
+            };
+            match result {
+                Ok(value) => json!({"ok": true, "result": value}),
+                Err(e) => json!({"ok": false, "error": e}),
+            }
+        }
+        None => json!({"ok": false, "error": NOT_ALLOWED}),
+    };
+    // A feed's network wait is not the plugin's real-time budget: the call's five seconds start again here.
+    caller.data_mut().started = Instant::now();
+    let text = serde_json::to_string(&reply).map_err(|e| Error::new(format!("the reply isn't JSON: {e}")))?;
+    allocate_reply(caller, &text)
 }
 
 fn host_execute(mut caller: Caller<'_, HostState>, ptr: i32, len: i32) -> Result<i64, Error> {
