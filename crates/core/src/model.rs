@@ -210,6 +210,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a project holds classification tables and what their parameters take codes from (`classification`, library entries
 /// of kind `classification`); a build that reads up to 20 would answer one with a serde error ("isn't a kind of library
 /// entry"), not "saved by a newer BIMCraft". A file of 20 needs no step for them: it holds no tables.
+/// And a building code names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`,
+/// `building_demand`), and a project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and
+/// `demand` and `building_demand` would ask for a method again.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -4135,6 +4138,9 @@ pub struct Model {
     /// Its own rules for stairs and railings, once it changed any of its code's ([`Model::stair_rules`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stair_rules: Option<crate::codes::StairRules>,
+    /// The methods its electrical demand is worked out by, once it named any its code doesn't ([`Model::electrical_methods`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub electrical_methods: Option<crate::codes::Electrical>,
     /// Building codes of the project's own, saved under names it gave them (`building_code {save}`), or read from a file.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub building_codes: Vec<crate::codes::BuildingCode>,
@@ -4267,6 +4273,11 @@ impl Model {
         self.stair_rules.as_ref().unwrap_or(&self.building_code().stairs)
     }
 
+    /// The methods `demand` and `building_demand` take when not given one: its own, else its building code's.
+    pub fn electrical_methods(&self) -> &crate::codes::Electrical {
+        self.electrical_methods.as_ref().unwrap_or(&self.building_code().electrical)
+    }
+
     /// What its pens draw on paper: its own line weights, or those a project in its units starts with.
     pub fn line_weights(&self) -> std::borrow::Cow<'_, crate::pen::LineWeights> {
         match &self.line_weights {
@@ -4314,6 +4325,7 @@ impl Model {
             standard,
             building_code: None,
             stair_rules: None,
+            electrical_methods: None,
             building_codes: Vec::new(),
             object_styles: BTreeMap::new(),
             line_patterns: lines::patterns(language),
@@ -5101,7 +5113,8 @@ impl Model {
         self.next_id = self.next_id.max(FIRST_ID);
         // 20 to 21: a file from before stair types has none: it gets the ones a project starts with. Its stairs stay solid. The
         // rest of 21 (stairs along a path, spirals, sketches, multistorey, offsets, landing edges and turns, dimensions to a
-        // stair's edge, its subcategories and plan display, the building code) needs nothing of a file of 20, which holds none.
+        // stair's edge, its subcategories and plan display, the building code and its electrical methods) needs nothing of a
+        // file of 20, which holds none.
         if self.types.stair.is_empty() {
             self.types.stair = stair_types();
         }
@@ -8228,6 +8241,9 @@ impl Model {
         if let Some(rules) = &self.stair_rules {
             rules.check()?;
         }
+        if let Some(e) = &self.electrical_methods {
+            e.check()?;
+        }
         if self.building_code.as_ref().is_some_and(|c| c.chars().count() > 64) {
             return Err("the building code's name is 64 characters at most".into());
         }
@@ -10129,6 +10145,7 @@ impl Model {
             standard,
             building_code,
             stair_rules,
+            electrical_methods,
             building_codes,
             object_styles,
             line_patterns,
@@ -10183,6 +10200,7 @@ impl Model {
             && *standard == o.standard
             && *building_code == o.building_code
             && *stair_rules == o.stair_rules
+            && *electrical_methods == o.electrical_methods
             && *building_codes == o.building_codes
             && *object_styles == o.object_styles
             && *line_patterns == o.line_patterns

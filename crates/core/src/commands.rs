@@ -2607,22 +2607,26 @@ other_files(
         "building_code",
         "Building Codes",
         &[],
-        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, reset?: bool} the project's building code, \
-         which its stairs and railings are held to (apart from its technical standard, which is about drafting): `generic` (none, wide \
-         ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, \
-         `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
+        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, electrical?: {demand?, building_demand?}, \
+         reset?: bool} the project's building code, which its stairs and railings are held to (apart from its technical standard, \
+         which is about drafting): `generic` (none, wide ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it \
+         too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
          rules, unless `keep_rules` keeps the project's own. `stairs` changes rules of the project's own (a state's or a city's \
          numbers), each by name, mm: `riser` and `going` a new stair starts with; `riser_min`, `riser_max`, `going_min`, `going_max`; \
          `step_min`, `step_max` (two risers and a going); `width_min`; `headroom`; `flight_rise_max` and `flight_risers_max` (a \
          landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
          (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
-         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the project's own \
-         rules away, back to its code's. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
+         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `electrical` names the \
+         methods the project's electrical demand is worked out by, which `demand` and `building_demand` take when not given one: \
+         `demand` a utility (CPFL, ENEL or CELESC) and `building_demand` a method of data/building-demand.json (its standard, or a \
+         utility that follows it), each null to leave it to the command; the IBC names NEC 220.84, the others none (a country's \
+         utilities differ by region). `reset` takes the project's own rules and methods away, back to its code's; `set` too, \
+         unless `keep_rules`. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
          (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
          one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
-         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, and `all` \
-         the codes. The NBR codes' numbers were checked against their texts by a contributor; the IBC's, DIN's and Japan's were \
-         typed from memory of the documents named and are unchecked, as each rule's source says",
+         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, the methods \
+         in force (`electrical`), and `all` the codes. The NBR codes' numbers were checked against their texts by a contributor; \
+         the IBC's, DIN's and Japan's were typed from memory of the documents named and are unchecked, as each rule's source says",
         building_code,
     )
     .menu("Manage > Building Codes"),
@@ -3139,37 +3143,62 @@ other_files(
     other(
         "demand",
         "Demand and Service Category",
-        "{utility: CPFL|ENEL|CELESC, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
+        "{utility?: CPFL|ENEL|CELESC, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
          lighting_outlets?: {use, kw, pf?}, heaters?, boilers?, appliances?, stoves?: [{w, count?}], air_conditioners?: [{btu | va and w, \
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
-         required: CPFL (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (ET 1569 version 01, \
-         29/01/2024) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
+         the project's building code's when not given (`building_code {electrical: {demand}}`), and required when it names none: \
+         CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
+         06/03/2025) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
          CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
          1|2|3, demand_kva?}` gives the category of Tabela 01 by the installed load (A single-phase 220 V, M single-phase \
          220/440 V, B two-phase, C three-phase), its breaker, phases and wires, the connection and entry branches and the \
          earthing conductor; `phases` picks the supply an appliance asks for whatever the load. ENEL does not work out a \
          demand, for its specification leaves it \
-         to the designer (item 7.7.2): `{utility: ENEL, network: aerial|aerial_120_240|underground|underground_submersible, installed_kw, \
+         to the designer (Anexo A, note 11): `{utility: ENEL, network: aerial|aerial_120_240|underground|underground_submersible, installed_kw, \
          phases?: 1|2|3, demand_kva?}` frames the supply by the installed load in kW: Anexo A (aerial, 127/220 V), C (aerial, 120/240 V), \
-         D (underground, surface, 127/220 V) or E (underground, submersible): the category, the power it makes available (E prints none and \
-         gives the junction box), the breaker, the connection and entry branches, the earthing conductor and the measurement; where two \
-         categories hold the load (B2 and C1 of A) `candidates` names both and `phases` picks one. `network: aerial_delta` (Anexo B, 120/240 V \
+         D (underground, surface, 127/220 V) or E (underground, submersible): the category (E with its junction box), the breaker, the connection and entry branches, the earthing conductor and the measurement; where two \
+         categories hold the load (B1 and C1 of A, from 10 to 11 kW) `candidates` names both and `phases` picks one. `network: aerial_delta` (Anexo B, 120/240 V \
          delta with a neutral) goes by `demand_current_a`, the designer's demand current in A, and gives the smallest breaker that holds it. \
          `demand_kva` is carried as the designer gives it. For CPFL: `D = a + b + c + d + e + f + g + h + i`: a lighting and outlets (in a dwelling, `area` m² \
          gives the least outlets of Tabela 2, or `outlets` above 250 m² (100 W each, and the kitchen's 3 of 600 W), and `lighting_points` of \
          100 W; in another building `lighting_outlets` declares its `use` (auditorium, shop, barbershop, club, school, office, garage, hospital, \
-         hotel, church, industry, restaurant), kW and power factor, by Tabela 18), b `heaters` (showers, taps, instant heaters, irons: Tabela 4 \
+         hotel, church, industry, restaurant), kW and power factor, by Tabela 15), b `heaters` (showers, taps, instant heaters, irons: Tabela 4 \
          by their number in all), c `boilers` (Tabela 5), d `appliances` (dryers, ovens, dishwashers, microwaves: Tabela 6), e `stoves` \
          (Tabela 7), f `air_conditioners` (a `btu` of Tabela 8, or `va` and `w`; a factor of 1, or Tabela 9 for `air_use` commercial), g \
-         `motors` (a `cv` of Tabela 14 or 15 with its `phases`, or `kva` and `kw`; Tabela 10 by rank, the biggest first), h `special` \
+         `motors` (a `cv` of Tabela 13 or 14 with its `phases`, or `kva` and `kw`; Tabela 10 by rank, the biggest first), h `special` \
          equipment (Tabela 11, power factor 0.75), i `hydromassage` (Tabela 10). `w` is the power of one appliance in watts. It replies the \
-         installed load (kW), each term, D, and the `category` of Tabela 1A (`system` 127/220, the default) or 1B (220/380) with its breaker, \
-         cable, conduit and earthing conductor: by the installed load up to 25 kW, by D above, `null` where the table ends (75 kW; D of 76 \
-         or 82 kVA). Not covered: the other columns of Tabela 1, the cables of Tabelas 1D and 1E, and the starting of motors (Tabela 13) \
+         installed load (kW), each term, D, and the `category` of Tabelas 1A to 1C (`system` 127/220, the default, or 220/380) with its breaker, \
+         copper cable and its aluminium alternative, conduit and earthing conductor: by the installed load up to 25 kW, by D above, `null` where the table ends (75 kW; D of 76 \
+         or 82 kVA). Not covered: the poles, boxes and motor limits of Tabela 1, Tabela 1D, and the starting of motors (Tabela 12) \
          (`not_covered`). It has no shortcut: Revit has no tool for it. It changes nothing",
         demand,
+    ),
+    other(
+        "building_demand",
+        "Building Demand",
+        "{utility? | standard?, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
+         premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
+         `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
+         Spain's ITC-BT-10, Portugal's RTIEBT 803.2.4.3, France's NF C 14-100 (SéQuélec GP 16) and the US NEC 220.84; any other is \
+         refused until its entry is added). Given neither, it is the method the project's building code names \
+         (`building_code {electrical: {building_demand}}`), and refused when it names none. D = factor · F(n) · d + common + special + \
+         commercial + premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, \
+         looked up in the method's table, an area between two rows taking the next one up) or, where the method takes it, each group's `demand` or a \
+         `grade` naming one (ITC-BT-10: basic, elevated; RTIEBT: 1 room, 2-6 rooms, 7+ rooms; GP 16: student, 1-2 rooms, 3-5 rooms, \
+         6+ rooms); F(n) the method's diversity factor, an equivalent number of dwellings, or n times a `coefficient` for each \
+         dwelling where the method prints one (RTIEBT, GP 16, NEC 220.84, which so weigh the sum of the dwellings' demands); factor \
+         its constant (1.2 for Celesc, Fecoergs and Hidropan, 1.4 for Cemig), on the common areas too where the method says (Celesc). \
+         `common` is the common areas' installed load in kW by class (Celesc: lighting, outlets), turned into demand by the method's \
+         bands; `common_demand` the common areas' demand worked out apart (lifts, pumps), `special` loads that count whole (an electric \
+         vehicle charging station), `commercial` the shops' demand and `premises` floor areas by use where the method gives a load \
+         per m² (ITC-BT-10: commercial, garage_natural, garage_forced), all in the method's `unit` (kVA, or kW for ITC-BT-10). Tables \
+         are as printed, with errata where other standards print the same table otherwise (`errata` says which were taken; \
+         `as_printed` uses the printed values). It replies each term, the demand, the `entrance` its table gives for it (breaker and \
+         conductors; `null` without a table or outside it), the `sources`, `notes` and `not_covered`. It has no shortcut: Revit has \
+         no tool for it. It changes nothing",
+        building_demand,
     ),
     other(
         "water_size",
@@ -6947,8 +6976,8 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
     Ok(Value::Object(out))
 }
 
-/// `demand` for Enel: ET 1569 leaves the demand to the designer (item 7.7.2), so it frames the supply by the installed load, in its
-/// Anexo A (aerial) or D (underground), and carries the designer's demand if one is given.
+/// `demand` for Enel: GRI-0017 leaves the demand to the designer (Anexo A, note 11), so it frames the supply by the installed load,
+/// in its Anexos A, C, D and E (B by the demand current), and carries the designer's demand if one is given.
 fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
     use crate::demand::{self as d, NETWORKS, Network};
     let c = "demand";
@@ -6971,8 +7000,8 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let note_demand = "ET 1569 (item 7.7.2) leaves the demand to the designer, who may use the methods the utilities recommend: it is carried as given, never worked out here";
-    let not_covered = "the conduits, the poles and the type of meter box of the annexes, Anexo A to E's other columns, and the limits of supply of Tabela 2 by motors, welding machines and X-ray sets";
+    let note_demand = "GRI-0017 leaves a three-phase supply's demand to the designer, up to 75 kW of installed load (Anexo A, note 11): it is carried as given, never worked out here";
+    let not_covered = "the conduits, the poles and the type of meter box of the annexes, the point of connection, Anexo A to E's other columns, Anexos F to H (Enel Ceará) and the limits of supply by motors, welding machines and X-ray sets";
     if name == "aerial_delta" {
         // Anexo B goes by the current the designer's demand draws, not by the installed load.
         if p.get("installed_kw").is_some_and(|v| !v.is_null()) {
@@ -7031,7 +7060,6 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
             let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
             let cat = json!({
                 "name": r.name,
-                "available_kw": if r.available_kw.is_nan() { Value::Null } else { json!(r.available_kw) },
                 "breaker_a": r.breaker,
                 "connection_mm2": conn,
                 "entry_mm2": {"phase": r.entry.0, "neutral": r.entry.1},
@@ -7044,13 +7072,13 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
         None if kw > 75.0 && network != Network::Submersible => (
             Value::Null,
             json!([]),
-            json!("above 75 kW the unit is served at primary voltage (item 7.3.2), which this specification does not cover"),
+            json!("above 75 kW the unit is served at primary voltage (item 7.4), which this specification does not cover"),
         ),
         None => {
             let last = match network {
-                Network::Aerial => 63,
-                Network::Aerial120240 => 11,
-                Network::Underground => 72,
+                Network::Aerial => 75,
+                Network::Aerial120240 => 12,
+                Network::Underground => 75,
                 Network::Submersible => 100,
             };
             (
@@ -7144,11 +7172,132 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
         "category_note": note,
         "demand_kva": demand_kva,
         "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
-        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003)",
+        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003: `building_demand`)",
     }))
 }
 
-fn demand(_: &mut Session, p: &Value) -> R {
+fn building_demand(s: &mut Session, p: &Value) -> R {
+    use crate::building_demand::{self as bd, Group, Input};
+    let c = "building_demand";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(c, p, &["standard", "utility", "dwellings", "common", "common_demand", "special", "commercial", "premises", "as_printed"])?;
+    let names = || bd::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
+    let utilities = || bd::methods().iter().flat_map(|m| m.utilities.iter().map(String::as_str)).collect::<Vec<_>>().join(", ");
+    let m = match (string(c, p, "standard")?, string(c, p, "utility")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
+        (Some(s), None) => bd::methods()
+            .iter()
+            .find(|m| m.standard == s)
+            .ok_or_else(|| bad(c, format!("no method `{s}` in data/building-demand.json: {}", names())))?,
+        (None, Some(u)) => bd::methods()
+            .iter()
+            .find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u)))
+            .ok_or_else(|| bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())))?,
+        // Neither: the method the project's building code names.
+        (None, None) => match &s.model.electrical_methods().building_demand {
+            Some(n) => bd::method(n).ok_or_else(|| {
+                bad(c, format!("the project's building code names `{n}`, which data/building-demand.json doesn't have: {}", names()))
+            })?,
+            None => {
+                return Err(bad(
+                    c,
+                    format!(
+                        "give the `utility` ({}) or the `standard` ({}), or pick a method for the project in Manage > Building Codes \
+                         (`building_code {{electrical: {{building_demand}}}}`)",
+                        utilities(),
+                        names()
+                    ),
+                ));
+            }
+        },
+    };
+    let list = match p.get("dwellings") {
+        Some(Value::Array(a)) if !a.is_empty() && a.len() <= 1000 => a,
+        _ => return Err(bad(c, "`dwellings` is a list of 1 to 1000 groups of dwellings alike, each {count, area | demand | grade}")),
+    };
+    let mut dwellings = Vec::new();
+    for (i, g) in list.iter().enumerate() {
+        let at = |e: String| format!("dwellings[{i}]: {e}");
+        if !g.is_object() {
+            return Err(bad(c, at("it must be an object".into())));
+        }
+        only(c, g, &["count", "area", "demand", "grade"]).map_err(at)?;
+        let count = g
+            .get("count")
+            .and_then(Value::as_u64)
+            .filter(|n| (1..=100_000).contains(n))
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or_else(|| bad(c, at("`count` is a whole number from 1 to 100000".into())))?;
+        let number = |key: &str, hi: f64| -> Result<Option<f64>, String> {
+            match g.get(key).filter(|v| !v.is_null()) {
+                None => Ok(None),
+                Some(_) => within(c, g, key, 0.0, f64::MIN_POSITIVE, hi).map(Some).map_err(at),
+            }
+        };
+        dwellings.push(Group {
+            count,
+            area: number("area", 1.0e5)?,
+            demand: number("demand", 1.0e4)?,
+            grade: string(c, g, "grade").map_err(at)?,
+        });
+    }
+    let by_key = |key: &str, hi: f64| -> Result<Vec<(String, f64)>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(Vec::new()),
+            Some(Value::Object(o)) if o.len() <= 100 => {
+                o.keys().map(|k| within(c, &p[key], k, 0.0, 0.0, hi).map(|x| (k.clone(), x)).map_err(|e| format!("{key}: {e}"))).collect()
+            }
+            _ => Err(bad(c, format!("`{key}` is an object of at most 100 entries, each a name and a number"))),
+        }
+    };
+    let input = Input {
+        dwellings,
+        common: by_key("common", 1.0e6)?,
+        common_demand: within(c, p, "common_demand", 0.0, 0.0, 1.0e6)?,
+        special: within(c, p, "special", 0.0, 0.0, 1.0e6)?,
+        commercial: within(c, p, "commercial", 0.0, 0.0, 1.0e6)?,
+        premises: by_key("premises", 1.0e7)?,
+        as_printed: flag(c, p, "as_printed")?,
+    };
+    let o = bd::compute(m, &input).map_err(|e| bad(c, e))?;
+    let r3 = |x: f64| (x * 1000.0).round() / 1000.0 + 0.0;
+    let mut sources = vec![m.source.clone(), m.dwelling.source.clone(), m.diversity.source.clone(), m.factor_source.clone()];
+    if o.mean_area.is_some_and(|a| m.dwelling.by_area.last().is_some_and(|l| a > l.0)) {
+        sources.extend(m.dwelling.above.iter().map(|a| a.source.clone()));
+    }
+    sources.extend(m.common.iter().filter(|x| input.common.iter().any(|(k, _)| *k == x.class)).map(|x| x.source.clone()));
+    sources.extend(m.premises.iter().filter(|x| input.premises.iter().any(|(k, _)| *k == x.use_)).map(|x| x.source.clone()));
+    sources.extend(m.entrance.iter().map(|e| e.source.clone()));
+    Ok(json!({
+        "standard": m.standard,
+        "country": m.country,
+        "unit": m.unit,
+        "dwellings": o.dwellings,
+        "mean_area": o.mean_area.map(r3),
+        "per_dwelling": r3(o.per_dwelling),
+        "raised_to_least": o.raised,
+        "diversity": r3(o.diversity),
+        "coefficient": o.coefficient,
+        "factor": m.factor,
+        "terms": {
+            "dwellings": r3(o.terms.dwellings),
+            "common": r3(o.terms.common),
+            "special": r3(o.terms.special),
+            "commercial": r3(o.terms.commercial),
+            "premises": r3(o.terms.premises),
+        },
+        "demand": r3(o.demand),
+        "entrance": o.entrance.map(|e| json!({"over": e.over, "up_to": e.up_to, "breaker_a": e.breaker_a, "columns": e.columns})),
+        "errata": o.errata.iter().map(|e| json!({"at": e.at, "printed": e.printed, "value": e.value, "why": e.why})).collect::<Vec<_>>(),
+        "sources": sources,
+        "notes": m.notes,
+        "not_covered": m.not_covered,
+    }))
+}
+
+fn demand(s: &mut Session, p: &Value) -> R {
     use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
     let c = "demand";
     if !p.is_object() {
@@ -7181,7 +7330,17 @@ fn demand(_: &mut Session, p: &Value) -> R {
             "demand_kva",
         ],
     )?;
-    let utility = string(c, p, "utility")?.ok_or_else(|| bad(c, format!("`utility` is required: {}", d::UTILITIES.join(", "))))?;
+    // Not given: the utility the project's building code names.
+    let utility = string(c, p, "utility")?.or_else(|| s.model.electrical_methods().demand.clone()).ok_or_else(|| {
+        bad(
+            c,
+            format!(
+                "`utility` is required: {}; or pick one for the project in Manage > Building Codes \
+                 (`building_code {{electrical: {{demand}}}}`)",
+                d::UTILITIES.join(", ")
+            ),
+        )
+    })?;
     let Some(source) = d::source(&utility) else {
         return Err(bad(
             c,
@@ -7323,7 +7482,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
         } else {
             let (kva, kw) = (within(c, &v, "kva", f64::NAN, 0.0, 1.0e6)?, within(c, &v, "kw", f64::NAN, 0.0, 1.0e6)?);
             if kva.is_nan() || kw.is_nan() {
-                return Err(bad(c, "`motors`: give `cv` and `phases` (Tabela 14 or 15), or `kva` and `kw`"));
+                return Err(bad(c, "`motors`: give `cv` and `phases` (Tabela 13 or 14), or `kva` and `kw`"));
             }
             motors.push(Motor { kva, kw, count: n });
         }
@@ -7363,7 +7522,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
     let cat = d::category(system, o.installed_kw, o.demand_kva);
     let (category, note) = match cat {
         Some(k) => (
-            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
+            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
             Value::Null,
         ),
         None if o.installed_kw > 75.0 => {
@@ -7384,7 +7543,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
         "category": category,
         "category_note": note,
         "system": if system == System::S127_220 { "127/220" } else { "220/380" },
-        "not_covered": "the other columns of Tabela 1 (poles, pontalete, ramal de ligação), the cables of Tabelas 1D and 1E, the starting of motors (Tabela 13) and the DPS and other requirements of the entry",
+        "not_covered": "the poles, boxes, earthing conduit and motor limits of Tabelas 1A to 1C, Tabela 1D (two clients on one pole), the starting of motors (Tabela 12) and the DPS and other requirements of the entry",
     }))
 }
 
@@ -20080,7 +20239,7 @@ fn standard(s: &mut Session, p: &Value) -> R {
 fn building_code(s: &mut Session, p: &Value) -> R {
     use crate::codes;
     let c = "building_code";
-    only(c, p, &["set", "keep_rules", "stairs", "reset", "save", "delete"])?;
+    only(c, p, &["set", "keep_rules", "stairs", "electrical", "reset", "save", "delete"])?;
     let names: Vec<String> = codes::codes().iter().chain(&s.model.building_codes).map(|k| k.code.clone()).collect();
     let set = match p.get("set") {
         v if absent(v) => None,
@@ -20104,12 +20263,52 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         Some(_) => return Err(bad(c, "`stairs` is the rules to change, by name: {width_min: 1100, …}")),
         None => None,
     };
-    if reset && patch.is_some() {
-        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs`"));
+    let named = match p.get("electrical") {
+        v if absent(v) => None,
+        Some(Value::Object(o)) => Some(o),
+        Some(_) => {
+            return Err(bad(c, "`electrical` is the methods to name, by command: {demand: \"CPFL\", building_demand: \"NEC 220.84\"}"));
+        }
+        None => None,
+    };
+    if reset && (patch.is_some() || named.is_some()) {
+        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs` or `electrical`"));
     }
     // The project's own rules after this: kept across a change of code only when asked, then changed by `stairs`.
     let mut own = if reset || (set.is_some() && !keep) { None } else { s.model.stair_rules.clone() };
+    let mut own_methods = if reset || (set.is_some() && !keep) { None } else { s.model.electrical_methods.clone() };
     let code = set.clone().or_else(|| s.model.building_code.clone());
+    if let Some(named) = named {
+        let base = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
+        let mut methods = own_methods.clone().unwrap_or_else(|| base.electrical.clone());
+        for (k, v) in named {
+            let name = match v {
+                Value::Null => None,
+                Value::String(t) => Some(t.trim()),
+                _ => return Err(bad(c, format!("`electrical.{k}` is a method's name, or null to leave it to the command"))),
+            };
+            match k.as_str() {
+                "demand" => {
+                    let known = crate::demand::UTILITIES;
+                    methods.demand = match name {
+                        Some(u) if !known.contains(&u) => {
+                            return Err(bad(c, format!("`demand` is a utility `demand` has tables for: {}", known.join(", "))));
+                        }
+                        u => u.map(String::from),
+                    };
+                }
+                "building_demand" => {
+                    let all = || crate::building_demand::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
+                    methods.building_demand = match name.map(|n| (n, crate::building_demand::method(n))) {
+                        Some((n, None)) => return Err(bad(c, format!("no method `{n}` in data/building-demand.json: {}", all()))),
+                        found => found.and_then(|(_, m)| m).map(|m| m.standard.clone()),
+                    };
+                }
+                _ => return Err(bad(c, format!("`electrical.{k}` names no command's method; they are demand and building_demand"))),
+            }
+        }
+        own_methods = Some(methods);
+    }
     if let Some(patch) = patch {
         let base = own.as_ref().unwrap_or(&code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic()).stairs);
         let Ok(Value::Object(mut all)) = serde_json::to_value(base) else { return Err(bad(c, "the rules could not be read")) };
@@ -20130,6 +20329,7 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
         let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
         let stairs = own.take().unwrap_or_else(|| from.stairs.clone());
+        let electrical = own_methods.take().unwrap_or_else(|| from.electrical.clone());
         // A rule kept is still from where the code it came from says; one changed is the project's.
         let mut sources = from.sources.clone();
         for rule in stairs.changed(&from.stairs) {
@@ -20144,7 +20344,9 @@ fn building_code(s: &mut Session, p: &Value) -> R {
             based_on,
             sources,
             checked: String::new(),
+            country: from.country.clone(),
             stairs,
+            electrical,
         };
         kept.retain(|k| k.code != name);
         kept.push(new);
@@ -20157,22 +20359,26 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         let gone = kept.remove(i);
         if code.as_deref() == Some(name.as_str()) {
             own = own.or(Some(gone.stairs));
+            own_methods = own_methods.or(Some(gone.electrical));
             code = codes::code(&gone.based_on).map(|k| k.code.clone());
         }
     }
-    // Rules that are the code's own are not the project's.
-    let its = code
-        .as_deref()
-        .and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k)))
-        .unwrap_or(codes::generic())
-        .stairs
-        .clone();
-    if own.as_ref() == Some(&its) {
+    // Rules and methods that are the code's own are not the project's.
+    let its = code.as_deref().and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k))).unwrap_or(codes::generic());
+    if own.as_ref() == Some(&its.stairs) {
         own = None;
     }
-    if own != s.model.stair_rules || code != s.model.building_code || kept != s.model.building_codes {
+    if own_methods.as_ref() == Some(&its.electrical) {
+        own_methods = None;
+    }
+    if own != s.model.stair_rules
+        || own_methods != s.model.electrical_methods
+        || code != s.model.building_code
+        || kept != s.model.building_codes
+    {
         let m = s.model_mut();
         m.stair_rules = own;
+        m.electrical_methods = own_methods;
         m.building_code = code;
         m.building_codes = kept;
     }
@@ -20186,6 +20392,7 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         "note": code.note,
         "stairs": m.stair_rules(),
         "changed": m.stair_rules().changed(&code.stairs),
+        "electrical": m.electrical_methods(),
         "custom": m.building_codes.iter().any(|k| k.code == code.code),
         "based_on": code.based_on,
         "all": codes::codes().iter().map(|k| (k, false)).chain(m.building_codes.iter().map(|k| (k, true))).map(|(k, own)| json!({
@@ -20204,7 +20411,9 @@ fn building_code_export(s: &mut Session, p: &Value) -> R {
     let mut code = match string(c, p, "code")? {
         Some(k) => m.code(&k).cloned().ok_or_else(|| bad(c, format!("no building code `{k}`")))?,
         // The project's, as it is held to it: with the rules it changed.
-        None => codes::BuildingCode { stairs: m.stair_rules().clone(), ..m.building_code().clone() },
+        None => {
+            codes::BuildingCode { stairs: m.stair_rules().clone(), electrical: m.electrical_methods().clone(), ..m.building_code().clone() }
+        }
     };
     if let Some(name) = string(c, p, "name")? {
         code.name = codes::own_name(&name).map_err(|e| bad(c, e))?;
@@ -20238,6 +20447,7 @@ fn building_code_import(s: &mut Session, p: &Value) -> R {
     if set {
         m.building_code = Some(name.clone());
         m.stair_rules = None;
+        m.electrical_methods = None;
     }
     Ok(json!({"code": name, "left_out": left_out, "set": set}))
 }

@@ -389,3 +389,38 @@ fn the_stair_tool_climbs_to_a_level_chosen_and_stands_on_each_on_the_way() {
     let storeys = field(&h, st[0], "storeys");
     assert_eq!((storeys[0]["risers"].as_u64(), storeys[1]["risers"].as_u64()), (Some(17), Some(20)));
 }
+
+#[test]
+fn the_electrical_demand_tab_picks_the_methods_demand_and_building_demand_take_in_both_profiles() {
+    for rev in [true, false] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        h.state_mut().run("building_code", json!({"set": "nbr-9050"})).unwrap();
+        press(&mut h, "Manage");
+        h.get_by_label("Building Codes").click_accesskit();
+        h.run();
+        assert!(h.state().codes_dialog.is_some(), "Manage > Building Codes (rev {rev})");
+        press(&mut h, "Electrical Demand");
+        // A Brazilian code: Brazil's methods are offered, another country's are not.
+        h.get_by_role_and_label(Role::ComboBox, "Building Demand (dwellings)").click_accesskit();
+        h.run();
+        assert!(h.query_by_label("ITC-BT-10").is_none(), "Spain's (rev {rev})");
+        h.get_by_label("CELESC N-321.0003").click_accesskit();
+        h.run();
+        h.get_by_role_and_label(Role::ComboBox, "Demand (one installation)").click_accesskit();
+        h.run();
+        h.get_by_label("CPFL").click_accesskit();
+        h.run();
+        // What each cites, as its data has it; and the code no longer says so: Custom.
+        assert!(h.query_all_by_label_contains("GED 13").next().is_some(), "CPFL's standard (rev {rev})");
+        assert!(h.query_all_by_label_contains("Tabela 11").next().is_some(), "Celesc's entrance table (rev {rev})");
+        assert!(h.query_by_label("Custom").is_some(), "rev {rev}");
+        press(&mut h, "OK");
+        assert!(h.state().codes_dialog.is_none(), "rev {rev}");
+        let m = &h.state().session.model;
+        assert_eq!(m.building_code().code, "nbr-9050", "the code stays; the methods are the project's (rev {rev})");
+        assert_eq!(m.electrical_methods().demand.as_deref(), Some("CPFL"));
+        assert_eq!(m.electrical_methods().building_demand.as_deref(), Some("CELESC N-321.0003"));
+        let r = h.state_mut().run("demand", json!({"area": 40, "lighting_points": 4})).unwrap();
+        assert_eq!(r["utility"], "CPFL", "rev {rev}");
+    }
+}

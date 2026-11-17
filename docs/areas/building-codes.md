@@ -4,7 +4,8 @@ A project's **building code** is the set of rules its elements are held to by la
 riser may be, how deep a going, how much headroom there is over a step. It is apart from the **technical standard**
 (`standards.rs`, Manage > Technical Standards), which is about drafting: line weights, sheets, object styles.
 
-Today a code holds rules for stairs (and the handrail and guard heights that go with them). It is meant to grow past them:
+Today a code holds rules for stairs (and the handrail and guard heights that go with them), and names the methods its
+electrical demand is worked out by (below). It is meant to grow past them:
 ramps, doors and corridors, escape routes, guards at an edge, rooms' areas and openings. What follows holds for every
 category a code comes to cover, not only stairs.
 
@@ -26,7 +27,40 @@ category a code comes to cover, not only stairs.
   `code_check` (in short) and `code_findings` (each finding).
 
 A project names a code (`Model::building_code`) and may change any of its rules (`Model::stair_rules`: a state's or a
-city's own numbers). It keeps codes of its own too (`Model::building_codes`, found with BIMCraft's by `Model::code`).
+city's own numbers) and its methods (`Model::electrical_methods`). It keeps codes of its own too (`Model::building_codes`,
+found with BIMCraft's by `Model::code`).
+
+## Electrical demand
+
+A code is one place for a project's rules, by topic: beside `stairs` it has an `electrical` part (`codes::Electrical`), which
+names the methods the electrical commands take when not given one, each by what its command takes:
+
+```json
+{"code": "ibc", "country": "US", "electrical": {"building_demand": "NEC 220.84"}, "stairs": {…}}
+```
+
+- `demand`: the utility whose standard `demand` reads (`CPFL`, `ENEL`, `CELESC`: `demand.rs`).
+- `building_demand`: the method of `data/building-demand.json` that `building_demand` reads, by its `standard` (Celesc,
+  Cemig, Fecoergs, Hidropan, ITC-BT-10, RTIEBT, GP 16, NEC 220.84).
+
+Either may be left out, and is then the project's to pick: a country's utilities differ by region. A command given a method
+(`utility`, `standard`) uses it; given none, it takes the project's (`Model::electrical_methods`: its own, else its code's);
+with neither, it says to pick one in Manage > Building Codes or to pass it. The project names its own with `building_code
+{electrical: {demand, building_demand}}` (null leaves one to the command; `reset` and `set` without `keep_rules` take them
+away, as they do its stair rules), `save` keeps them in a code of its own, and the XML carries them (`<electrical demand
+building-demand/>`). `country` (ISO 3166, beside `region`) picks which methods the desktop offers: those of the code's
+country, where the data has any.
+
+What the shipped codes name, and why no more: the IBC names NEC 220.84, the one method of its country. The NBR codes name
+none. Brazil's methods are each a utility's (Celesc, Cemig, Fecoergs, Hidropan, all after CODI's RTD-027 but each with its
+own tables and factor), and its utilities differ by state, so both are left to the project; there is no CODI entry, and one
+would be invented. DIN and Japan's code have no method in the data. Spain, Portugal and France have methods but no code
+yet: a code for them would name ITC-BT-10, RTIEBT 803.2.4.3 and GP 16.
+
+Manage > Building Codes has an Electrical Demand tab: the method chosen for each command, a list to pick another (the
+building's methods filtered by the code's country), the code's own beside one the project changed, and the sources each
+method cites, as its data has them. The tables' numbers are the methods' own, read and never edited here: editing them,
+and keeping a project's own tables, is left to the Building Codes overhaul that comes after this.
 
 ## Principles
 
@@ -79,6 +113,9 @@ its candidates from the lookup and culling by box and height brought it to under
 - It is fast and spatial from the start, timed on the highrise, with a test.
 - The desktop shows it where the element is drawn and edited, as the stair tool does, and Manage > Building Codes gets a tab
   for its rules.
+
+A part that names methods rather than rules (as `electrical` does) holds names only: the method's numbers and sources stay in
+its own data, which its command reads; `Model::check` checks the names' size, and the command whether it knows them.
 
 Stairs, what they check and why: [an advanced stair tool](../stair-tool-plan.md); their geometry and commands:
 [levels, walls and roofs](levels-walls-roofs.md).
