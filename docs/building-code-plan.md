@@ -25,7 +25,9 @@ How it works now is in [docs/areas/building-codes.md](areas/building-codes.md).
   - XML format 2, one discipline or all five, with format 1 still read.
 - **Step 2, done.** Manage > Building Codes has:
   - the Overview with region presets and Site and Climate;
-  - a tab for each discipline: its code, amendment chips, Import, Export, Save As, Delete and Reset Tab;
+  - a tab for each discipline: its code, its amendments (a list in order, dragged; ticked from all there are; one made of
+    the project's own; the one edited), Import, Export, Save As, Delete and Reset Tab;
+  - on the Electrical tab, the project's Electrical Settings, which the old dialog held;
   - the sections with search, and the rules grid with From and Source;
   - the table editor with Copy and Paste, and the rule card.
 
@@ -34,12 +36,17 @@ How it works now is in [docs/areas/building-codes.md](areas/building-codes.md).
   - **Done:** stairs; ramps (a new ramp's slope and width); plumbing (fixtures, cold water, reservation, drainage and
     vents, storm drainage with the rain from Site and Climate, hydrants as IT 22's amendment); and NBR 6118's concrete
     limits.
-  - **Left to their authors:** the electrical modules (E1 to E9), which ffishman offered to move (discussion #487). The
-    rule's test names each module still to move.
+  - **Electrical, done:** E5 (`rcd`), E7 (`bath_volumes`) and E8 (`load_points`) in NBR 5410's code; E9's building
+    demand and service categories as each utility's amendment over it (Celesc, Cemig, Fecoergs, Hidropan, Energisa,
+    Equatorial, Copel) and as Spain's, Portugal's, France's and the NEC's codes. The commands read the project's, as it
+    or an amendment changed them. E1's starter set stays the project's Electrical Settings, now in the Electrical tab.
+  - **Left to their authors:** the electrical numbers still in Rust tables (E2 to E4, E6, and CPFL's, Enel's and Celesc's
+    categories in `demand.rs`), which ffishman offered to move (discussion #487). The rule's test names each module.
 - **Step 4, done.** The rule is in `CLAUDE.md`, and `code_values_live_in_codes` and the data tests enforce it.
 - **Step 5.**
   - **Done:** ramps (slope by rise, run rise, width, landings), doors (clear width and height, the widest leaf, the
-    exempt) and rooms (area, narrower side and height by the kind their name says). They are timed on the highrise.
+    exempt) and rooms (area, narrower side, height and natural light by the kind their name says). They are timed on the
+    highrise.
   - **Not yet:** the window and escape-opening checks, guards on their own, and electrical panels' working space.
 - **Step 6, partly.**
   - **Done:** the Brasil data that was already there; the IBC's ramps, doors, rooms, egress and accessibility; NBR 9050's

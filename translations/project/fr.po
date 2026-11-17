@@ -40,7 +40,7 @@ msgstr "Brique"
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
-#: crates/core/src/commands.rs:5641
+#: crates/core/src/commands.rs:5648
 msgid "Camera"
 msgstr "Caméra"
 
@@ -133,7 +133,7 @@ msgstr "Prise de données"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13722
+#: crates/core/src/commands.rs:13812
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -218,9 +218,9 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:13469
-#: crates/core/src/commands.rs:13484
-#: crates/core/src/commands.rs:18103
+#: crates/core/src/commands.rs:13559
+#: crates/core/src/commands.rs:13574
+#: crates/core/src/commands.rs:18193
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -350,7 +350,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:8469
+#: crates/core/src/commands.rs:8559
 #: crates/core/src/model.rs:4410
 msgid "Level"
 msgstr "Niveau"
@@ -391,7 +391,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:10941
+#: crates/core/src/commands.rs:11031
 msgid "Mass"
 msgstr "Volume"
 
@@ -407,8 +407,8 @@ msgstr "Lignes moyennes"
 msgid "Membrane"
 msgstr "Membrane"
 
-#: crates/core/src/commands.rs:3759
-#: crates/core/src/commands.rs:16681
+#: crates/core/src/commands.rs:3766
+#: crates/core/src/commands.rs:16771
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:5907
 msgid "Metal"
@@ -504,11 +504,11 @@ msgstr "Porcelaine"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4051
+#: crates/core/src/commands.rs:4058
 msgid "Project"
 msgstr "Projet"
 
-#: crates/core/src/commands.rs:9196
+#: crates/core/src/commands.rs:9286
 msgid "Property Line"
 msgstr ""
 
@@ -540,7 +540,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:11166
+#: crates/core/src/commands.rs:11256
 msgid "Room"
 msgstr "Pièce"
 
@@ -576,8 +576,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:13404
-#: crates/core/src/commands.rs:18102
+#: crates/core/src/commands.rs:13494
+#: crates/core/src/commands.rs:18192
 msgid "Section"
 msgstr "Coupe"
 
@@ -748,7 +748,7 @@ msgstr "Hauteur non délimitée"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13958
+#: crates/core/src/commands.rs:14048
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -826,15 +826,15 @@ msgstr "Plan de travail"
 msgid "Yes"
 msgstr "Oui"
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "bath"
 msgstr "salle de bain"
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "bwc"
 msgstr "sdb wc"
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "wc"
 msgstr "wc"
 

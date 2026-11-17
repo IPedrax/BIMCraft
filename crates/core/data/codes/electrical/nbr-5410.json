@@ -1,0 +1,328 @@
+{
+ "code": "nbr-5410",
+ "discipline": "electrical",
+ "name": "ABNT NBR 5410 (low-voltage installations)",
+ "region": "Brasil",
+ "edition": "2004",
+ "references": [
+  "ABNT NBR 5410:2004 (corrected version 2008), Instalações elétricas de baixa tensão"
+ ],
+ "note": "Brazil's low-voltage installations: the circuits that need a 30 mA residual-current device (item 5.1.3.2.2), the volumes round a bathtub or a shower and what may stand in each (9.1), and a dwelling's least lighting and outlets (9.5.2). The numbers are the standard's, the words are ours. A utility's own standard (its service categories, a building's demand) is an amendment over this code. The conductors' tables, voltage drop, conduit fill and surge protection are still the modules' own (nbr5410.rs, conduit.rs, dps.rs), to move here.",
+ "sections": {
+  "rcd": {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 5.1.3.2.2, additional protection by a residual-current device. Equivalents: IEC 60364-4-41 (411.3.3) and BS 7671 (411.3.3) ask it for outlets up to 32 A whatever the room, and IEC 60364-7-701 and BS 7671 section 701 for every circuit of a room with a bath or a shower; the US NEC (210.8) asks a GFCI, a device of its own, by a list of places much like this one.",
+   "max_residual_ma": 30,
+   "max_outlet_a": 32,
+   "max_outlet_source": "NBR 5410:2004, 5.1.3.2.2, note 1: an outlet is reached up to a rated current of 32 A",
+   "it_exempt": true,
+   "it_source": "NBR 5410:2004, 5.1.3.2.2, note 2: a circuit or sector of an IT scheme that must not be cut, for the safety of persons or to keep lives, is left out",
+   "rules": [
+    {
+     "reason": "bath",
+     "says": "a point in a place with a bathtub or a shower",
+     "places": [
+      "bath"
+     ],
+     "source": "NBR 5410:2004, 5.1.3.2.2 a)"
+    },
+    {
+     "reason": "external",
+     "says": "an outlet in an external area",
+     "places": [
+      "external"
+     ],
+     "kinds": [
+      "outlet"
+     ],
+     "source": "NBR 5410:2004, 5.1.3.2.2 b)"
+    },
+    {
+     "reason": "outdoor",
+     "says": "an internal outlet that may feed equipment outdoors",
+     "kinds": [
+      "outlet"
+     ],
+     "outdoor": true,
+     "source": "NBR 5410:2004, 5.1.3.2.2 c)"
+    },
+    {
+     "reason": "wet",
+     "says": "a point in a kitchen, laundry, service area, garage or other wet internal area of a dwelling",
+     "places": [
+      "kitchen",
+      "laundry",
+      "service",
+      "garage",
+      "wet"
+     ],
+     "building": "residential",
+     "lights_from_mm": 2500,
+     "source": "NBR 5410:2004, 5.1.3.2.2 d), and its note 3 for lights 2.5 m up or more"
+    },
+    {
+     "reason": "wet",
+     "says": "an outlet in a kitchen, laundry, service area, garage or other wet internal area",
+     "places": [
+      "kitchen",
+      "laundry",
+      "service",
+      "garage",
+      "wet"
+     ],
+     "kinds": [
+      "outlet"
+     ],
+     "building": "other",
+     "source": "NBR 5410:2004, 5.1.3.2.2 e)"
+    }
+   ],
+   "not_covered": "the further rules for the volumes of a bathroom and for swimming pools, and the other protections against shock, which the device does not replace"
+  },
+  "bath_volumes": {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 9.1, places with a bathtub or a shower (Figures 16 to 18). Equivalents: IEC 60364-7-701 and BS 7671 section 701 answer the same question, but their present editions draw zones 0 to 2 only, with other reaches, so they would be a set of their own rows; the US NEC (410.10(D), 406.9(C)) keeps luminaires and receptacles out of a space over the tub or shower instead.",
+   "max_rcd_ma": 30,
+   "volumes": [
+    {
+     "name": "0",
+     "reach_mm": 0,
+     "to_rim": true,
+     "ip": 7,
+     "ip_public": 7,
+     "selv_max_v": 12,
+     "source": "NBR 5410:2004, 9.1.2.1 a) (the inside of the tub, tray or recess), 9.1.3.1.1 (SELV up to 12 V only, its source outside) and 9.1.4.1 (IPX7)",
+     "allows": [
+      {
+       "kinds": [
+        "box"
+       ],
+       "serving": true,
+       "source": "NBR 5410:2004, 9.1.4.2.4"
+      },
+      {
+       "kinds": [
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment as 9.1.3.1.1 asks is left out of 9.1.4.4.1)"
+      }
+     ]
+    },
+    {
+     "name": "1",
+     "reach_mm": 0,
+     "shower_reach_mm": 600,
+     "top_mm": 2250,
+     "ip": 4,
+     "ip_public": 4,
+     "source": "NBR 5410:2004, 9.1.2.1 b) (over volume 0 to the vertical face around the tub or tray, or 0.6 m around a shower with no tray, up to 2.25 m) and 9.1.4.1 (IPX4)",
+     "allows": [
+      {
+       "kinds": [
+        "box"
+       ],
+       "serving": true,
+       "source": "NBR 5410:2004, 9.1.4.2.4"
+      },
+      {
+       "kinds": [
+        "heater"
+       ],
+       "classes": [
+        "I",
+        "II"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4.2"
+      },
+      {
+       "kinds": [
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment left out)"
+      },
+      {
+       "kinds": [
+        "switch"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3.1 and its note (controls at SELV)"
+      }
+     ]
+    },
+    {
+     "name": "2",
+     "reach_mm": 600,
+     "shower_reach_mm": 1200,
+     "top_mm": 3000,
+     "ip": 3,
+     "ip_public": 5,
+     "source": "NBR 5410:2004, 9.1.2.1 c) (0.60 m out from volume 1, from the floor up to 3 m, so over volume 1 too) and 9.1.4.1 (IPX3, IPX5 in a public bathroom)",
+     "allows": [
+      {
+       "kinds": [
+        "box"
+       ],
+       "serving": true,
+       "source": "NBR 5410:2004, 9.1.4.2.4"
+      },
+      {
+       "kinds": [
+        "luminaire"
+       ],
+       "classes": [
+        "II"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4.3"
+      },
+      {
+       "kinds": [
+        "heater"
+       ],
+       "classes": [
+        "I",
+        "II"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4.3"
+      },
+      {
+       "kinds": [
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment left out)"
+      },
+      {
+       "kinds": [
+        "switch"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3.1 and its note (controls at SELV)"
+      }
+     ]
+    },
+    {
+     "name": "3",
+     "reach_mm": 3000,
+     "shower_reach_mm": 3600,
+     "top_mm": 2250,
+     "ip": 1,
+     "ip_public": 5,
+     "source": "NBR 5410:2004, 9.1.2.1 d) (2.40 m out from volume 2, from the floor up to 2.25 m) and 9.1.4.1 (IPX1, IPX5 in a public bathroom)",
+     "allows": [
+      {
+       "kinds": [
+        "outlet"
+       ],
+       "any_of": [
+        "separation",
+        "selv",
+        "rcd"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3.2 a) to c)"
+      },
+      {
+       "kinds": [
+        "switch",
+        "box",
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3 and 9.1.4.4 (no further limit in volume 3)"
+      }
+     ]
+    }
+   ],
+   "not_covered": "fixed walls and partitions, which the volumes go around (note 1 of 9.1.2.1: here the reach is measured straight, so what stands behind one is taken as inside, on the safe side); the space under a tub or tray (note 2); the 0.60 m around the door of a prefabricated shower cabin (9.1.4.3.3); the wiring (9.1.4.2.1 to 9.1.4.2.3); the supplementary equipotential bonding (9.1.3.1.2); and the circuits' own residual-current device, which dr_check asks"
+  },
+  "load_points": {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 9.5.2, dwellings. Equivalents: IEC 60364 leaves the number of outlets of a dwelling to national rules; the US NEC, article 210.52, places receptacles by spacing along the walls instead; BS 7671 sets no count.",
+   "lighting": {
+    "va": 100,
+    "up_to_m2": 6,
+    "step_m2": 4,
+    "step_va": 60,
+    "source": "NBR 5410:2004, 9.5.2.1.2 a) and b)"
+   },
+   "alternative": {
+    "above": 6,
+    "first": 2,
+    "source": "NBR 5410:2004, 9.5.2.2.2 a), the alternative allowed where those rooms together have more than six points"
+   },
+   "rooms": [
+    {
+     "kind": "bath",
+     "least": 1,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 a) (count) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "kitchen",
+     "least": 1,
+     "per_perimeter_m": 3.5,
+     "counter": 2,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count, two over the sink's counter) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "service",
+     "least": 1,
+     "per_perimeter_m": 3.5,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "dry",
+     "least": 1,
+     "per_perimeter_m": 5,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 d) (count) and 9.5.2.2.2 b) (power)"
+    },
+    {
+     "kind": "veranda",
+     "least": 1,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 c) (count) and 9.5.2.2.2 b) (power)"
+    },
+    {
+     "kind": "other",
+     "least": 1,
+     "above_m2": 6,
+     "per_perimeter_m": 5,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 e) (count) and 9.5.2.2.2 b) (power)"
+    }
+   ]
+  }
+ },
+ "sources": {
+  "rcd": "ABNT NBR 5410:2004 (corrected version 2008), item 5.1.3.2.2, additional protection by a residual-current device. Equivalents: IEC 60364-4-41 (411.3.3) and BS 7671 (411.3.3) ask it for outlets up to 32 A whatever the room, and IEC 60364-7-701 and BS 7671 section 701 for every circuit of a room with a bath or a shower; the US NEC (210.8) asks a GFCI, a device of its own, by a list of places much like this one.",
+  "bath_volumes": "ABNT NBR 5410:2004 (corrected version 2008), item 9.1, places with a bathtub or a shower (Figures 16 to 18). Equivalents: IEC 60364-7-701 and BS 7671 section 701 answer the same question, but their present editions draw zones 0 to 2 only, with other reaches, so they would be a set of their own rows; the US NEC (410.10(D), 406.9(C)) keeps luminaires and receptacles out of a space over the tub or shower instead.",
+  "load_points": "ABNT NBR 5410:2004 (corrected version 2008), item 9.5.2, dwellings. Equivalents: IEC 60364 leaves the number of outlets of a dwelling to national rules; the US NEC, article 210.52, places receptacles by spacing along the walls instead; BS 7671 sets no count."
+ }
+}

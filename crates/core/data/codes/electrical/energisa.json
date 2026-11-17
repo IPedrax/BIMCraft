@@ -1,0 +1,708 @@
+{
+ "code": "energisa",
+ "discipline": "electrical",
+ "name": "Energisa, the group's distribution companies",
+ "region": "Brasil",
+ "edition": "NDU 001",
+ "amends": "nbr-5410",
+ "references": [
+  "Energisa, NDU 001 'Fornecimento de Energia Elétrica em Tensão Secundária a Edificações Individuais', version 7.0, November 2024: Tabelas 16 and 18"
+ ],
+ "note": "The utility's own standard over NBR 5410. Its service categories: M (single-phase) and B (two-phase) go by the installed load in kW; T (three-phase) by the demand in kVA the designer works out. The ranges take a power factor of 0.92 (note XII); a two-phase supply only above 8.8 kW at 127/220 V (note X).",
+ "sections": {
+  "entrance": {
+   "id": "ENERGISA",
+   "name": "Energisa, the group's distribution companies",
+   "standard": "NDU 001",
+   "source": "Energisa, NDU 001 'Fornecimento de Energia Elétrica em Tensão Secundária a Edificações Individuais', version 7.0, November 2024: Tabelas 16 and 18",
+   "rule": "M (single-phase) and B (two-phase) go by the installed load in kW; T (three-phase) by the demand in kVA the designer works out. The ranges take a power factor of 0.92 (note XII); a two-phase supply only above 8.8 kW at 127/220 V (note X).",
+   "members": [
+    {
+     "id": "EAC",
+     "seat": "Rio Branco"
+    },
+    {
+     "id": "EMR",
+     "seat": "Cataguases"
+    },
+    {
+     "id": "EMS",
+     "seat": "Campo Grande"
+    },
+    {
+     "id": "EMT",
+     "seat": "Cuiabá"
+    },
+    {
+     "id": "ERO",
+     "seat": "Porto Velho"
+    },
+    {
+     "id": "ESE",
+     "seat": "Aracaju"
+    },
+    {
+     "id": "ESS",
+     "seat": "Presidente Prudente"
+    },
+    {
+     "id": "ETO",
+     "seat": "Palmas"
+    },
+    {
+     "id": "EPB",
+     "seat": "João Pessoa"
+    }
+   ],
+   "columns": {
+    "connection_multiplex_mm2": "the connection branch, aluminium multiplex, phase section in mm²",
+    "connection_concentric_mm2": "the connection branch, aluminium concentric, mm², where the table allows it",
+    "connection_neutral_mm2": "the connection branch's neutral, mm²",
+    "entry_pvc_mm2": "the entry branch, copper PVC, phase and neutral in mm²",
+    "entry_xlpe_mm2": "the entry branch, copper XLPE, phase and neutral in mm²; 'XX(YY)' is XX embedded and YY underground (note 1)",
+    "earthing_mm2": "the earthing conductor, copper, mm²; 'A ou B' as the table prints either",
+    "conduit_in": "the entry conduit's nominal size, inches",
+    "earth_rods": "the earth electrodes: 1H one rod, 3H three rods",
+    "box": "the meter box type"
+   },
+   "tables": [
+    {
+     "system": "127/220",
+     "use": "individual",
+     "source": "Tabela 16, the 127/220 V network (page 73)",
+     "rows": [
+      {
+       "name": "M1",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 3.8
+       },
+       "breaker_a": [
+        30.0,
+        32.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01"
+       }
+      },
+      {
+       "name": "M2",
+       "phases": 1,
+       "installed_kw": {
+        "over": 3.8,
+        "up_to": 6.3
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6 ou 10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01"
+       }
+      },
+      {
+       "name": "M3",
+       "phases": 1,
+       "installed_kw": {
+        "over": 6.3,
+        "up_to": 8.8
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "connection_concentric_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-01"
+       }
+      },
+      {
+       "name": "B1",
+       "phases": 2,
+       "installed_kw": {
+        "up_to": 10.1
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "B2",
+       "phases": 2,
+       "installed_kw": {
+        "over": 10.1,
+        "up_to": 12.7
+       },
+       "breaker_a": [
+        60.0,
+        63.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": "10(16)",
+         "neutral": "10(16)"
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "B3",
+       "phases": 2,
+       "installed_kw": {
+        "over": 12.7,
+        "up_to": 17.7
+       },
+       "breaker_a": [
+        80
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": "16(25)",
+         "neutral": "16(25)"
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "1H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T1",
+       "phases": 3,
+       "demand_kva": {
+        "up_to": 15.2
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": "6(10)",
+         "neutral": "6(10)"
+        },
+        "earthing_mm2": "10",
+        "conduit_in": "3/4",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T2",
+       "phases": 3,
+       "demand_kva": {
+        "over": 15.2,
+        "up_to": 19.0
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T3",
+       "phases": 3,
+       "demand_kva": {
+        "over": 19.0,
+        "up_to": 26.6
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": "16(25)",
+         "neutral": "16(25)"
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T4",
+       "phases": 3,
+       "demand_kva": {
+        "over": 26.6,
+        "up_to": 38.1
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 35,
+        "connection_neutral_mm2": 25,
+        "entry_xlpe_mm2": {
+         "phase": "25(35)",
+         "neutral": 25
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/2",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T5",
+       "phases": 3,
+       "demand_kva": {
+        "over": 38.1,
+        "up_to": 57.1
+       },
+       "breaker_a": [
+        150
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 70,
+        "connection_neutral_mm2": 35,
+        "entry_xlpe_mm2": {
+         "phase": "50(70)",
+         "neutral": "25(35)"
+        },
+        "earthing_mm2": "25(35)",
+        "conduit_in": "2",
+        "earth_rods": "3H",
+        "box": "CMD-BT 200"
+       }
+      },
+      {
+       "name": "T6",
+       "phases": 3,
+       "demand_kva": {
+        "over": 57.1,
+        "up_to": 81.5
+       },
+       "breaker_a": [
+        200
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 120,
+        "connection_neutral_mm2": 70,
+        "entry_xlpe_mm2": {
+         "phase": 95,
+         "neutral": 50
+        },
+        "earthing_mm2": "50",
+        "conduit_in": "2 1/2",
+        "earth_rods": "3H",
+        "box": "CMD-BT 200"
+       }
+      }
+     ]
+    },
+    {
+     "system": "220/380",
+     "use": "individual",
+     "source": "Tabela 18, the 220/380 V network (page 78)",
+     "rows": [
+      {
+       "name": "M1",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 6.0
+       },
+       "breaker_a": [
+        30.0,
+        32.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01/CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "M2",
+       "phases": 1,
+       "installed_kw": {
+        "over": 6.0,
+        "up_to": 11.0
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6 ou 10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01/CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "M3",
+       "phases": 1,
+       "installed_kw": {
+        "over": 11.0,
+        "up_to": 15.4
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-01/CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "B1",
+       "phases": 2,
+       "installed_kw": {
+        "up_to": 17.6
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "B2",
+       "phases": 2,
+       "installed_kw": {
+        "over": 17.6,
+        "up_to": 22.0
+       },
+       "breaker_a": [
+        60.0,
+        63.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": "10(16)",
+         "neutral": "10(16)"
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "B3",
+       "phases": 2,
+       "installed_kw": {
+        "over": 22.0,
+        "up_to": 26.3
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "1H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T1",
+       "phases": 3,
+       "demand_kva": {
+        "up_to": 26.1
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6 ou 10",
+        "conduit_in": "3/4",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T2",
+       "phases": 3,
+       "demand_kva": {
+        "over": 26.1,
+        "up_to": 35.4
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T3",
+       "phases": 3,
+       "demand_kva": {
+        "over": 35.4,
+        "up_to": 46.1
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": "16(25)",
+         "neutral": "16(25)"
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T4",
+       "phases": 3,
+       "demand_kva": {
+        "over": 46.1,
+        "up_to": 65.8
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 35,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 50,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": 35,
+         "neutral": 25
+        },
+        "earthing_mm2": "25",
+        "conduit_in": "1 1/2",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T5",
+       "phases": 3,
+       "demand_kva": {
+        "over": 65.8,
+        "up_to": 81.5
+       },
+       "breaker_a": [
+        125
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 70,
+        "connection_neutral_mm2": 35,
+        "entry_pvc_mm2": {
+         "phase": 70,
+         "neutral": 35
+        },
+        "entry_xlpe_mm2": {
+         "phase": "50(70)",
+         "neutral": "25(35)"
+        },
+        "earthing_mm2": "25(35)",
+        "conduit_in": "2",
+        "earth_rods": "3H",
+        "box": "CMD-BT 200"
+       }
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "A breaker printed '30/32' or '60/63' may be either.",
+    "Tabela 16 applies to EAC, EMR, EMS, EMT, ERO, ESE and ESS (note I).",
+    "The protection is sized at the top of each range; the breaker of the unit follows its own demand (notes IV and V)."
+   ],
+   "not_covered": "the building-entrance tables (collective units), the poles and posts, and the demand itself, which the designer works out"
+  }
+ },
+ "sources": {
+  "entrance": "Energisa, NDU 001 'Fornecimento de Energia Elétrica em Tensão Secundária a Edificações Individuais', version 7.0, November 2024: Tabelas 16 and 18"
+ }
+}

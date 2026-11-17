@@ -2397,14 +2397,18 @@ other_files(
         "Building Codes",
         &[],
         "{discipline?: architectural|structural|electrical|mechanical|plumbing, set?, amendments?: [code, …], keep_rules?: bool, \
-         rules?: {section: {rule: value, …}, …}, stairs?: {…}, reset?: true|section, save?: name, delete?: name} the project's \
+         rules?: {section: {rule: value, …}, …}, stairs?: {…}, reset?: true|section, save?: name, delete?: name, amend?: code, \
+         create?: name, over?: code} the project's \
          building code for one discipline (architectural where none is named), apart from its technical standard, which is about \
          drafting. A code is BIMCraft's (`data/codes/`) or one of the project's own; its rules are grouped in sections (`code_rules` \
          lists them: stairs, ramps, rooms…; plumbing's fixtures, cold_water, drainage…). `set` chooses the base code and brings its \
-         rules, unless `keep_rules` keeps the project's changes; `amendments` lays codes over it in order (a fire brigade's \
-         instruction over a standard, a member's document over its group's), each amending the base or one before it. `rules` \
-         changes rules for the project (a state's or a city's numbers), each by its name in its section, whole: a table is given \
-         whole; `stairs` is `rules.stairs`. The architectural stairs' rules, mm: `riser` and `going` a new stair starts with; \
+         rules, unless `keep_rules` keeps the project's changes; `amendments` lays codes over it in the order given, the last \
+         winning (a fire brigade's instruction over a standard, a member's document over its group's), each amending the base or \
+         another amendment given. `rules` changes rules for the project (a state's or a city's numbers), each by its name in its \
+         section, whole: a table is given whole; `stairs` is `rules.stairs`. With `amend` (one of the amendments held), `rules` \
+         and `reset` change that amendment instead: one of BIMCraft's becomes the project's copy under its name (reset whole, the \
+         library's again), and a rule set to null leaves it. `create` makes an empty amendment of the project's own over the \
+         base (or the code `over` names), which `amendments` then chooses. The architectural stairs' rules, mm: `riser` and `going` a new stair starts with; \
          `riser_min`, `riser_max`, `going_min`, `going_max`; `step_min`, `step_max` (two risers and a going); `width_min`; \
          `headroom`; `flight_rise_max` and `flight_risers_max`; `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; \
          `winders`, `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
@@ -2878,9 +2882,9 @@ other_files(
         "load_points",
         "Residential Load Points",
         "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
-         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are data \
-         (`data/load-points.json`, one rule set for each standard, every row naming its source): `standard` names the set, \
-         `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source`, `lighting_source` and \
+         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are the \
+         project's electrical code's `load_points` section (Manage > Building Codes, NBR 5410 in BIMCraft's codes; every row naming \
+         its source), as the project or an amendment changed them; `standard` names a set of BIMCraft's instead, and the answer gives `standard`, `standard_source`, `lighting_source` and \
          each room's `source`. The rooms are `rooms` (`area` in m², \
          `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
          model, measured inside the walls' finish, with the power outlets and the luminaires that stand in each (the room a \
@@ -2903,8 +2907,8 @@ other_files(
         "Check Residual-Current Protection",
         "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other, standard?} \
          which circuits NBR 5410:2004 asks additional protection by a high-sensitivity residual-current device (DR, 30 mA at most) \
-         for. The rules are data (`data/dr-check.json`, one rule set for each standard, every rule naming its source): `standard` \
-         names the set, `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source` and, \
+         for. The rules are the project's electrical code's `rcd` section (NBR 5410 in BIMCraft's codes, every rule naming its \
+         source), as the project or an amendment changed them; `standard` names a set of BIMCraft's instead, and the answer gives `standard`, `standard_source` and, \
          for each circuit, the `sources` of its `reasons`. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
          pantry-kitchen), laundry, service (service area), garage, wet (another wet internal area) or dry; `kind` is outlet, lighting or \
          fixed (another point of use); `rating` an outlet's rated current in A (32 A at most is covered; unknown, it is taken as covered), \
@@ -2923,8 +2927,9 @@ other_files(
         "Check Bathroom Volumes",
         "{fixture: {outline?: [[x, y], …], shower?: [x, y], floor?, rim?}, things: [{name?, kind, at: [x, y, z], ip?, class?, supply?, voltage?, rcd?, serving?}], public?, standard?} \
          which of the volumes around a bathtub or a shower each thing stands in, and whether it may stand there, as NBR 5410:2004 \
-         item 9.1 asks. The numbers are data (`data/bath-volumes.json`, one rule set for each standard, every volume and every thing \
-         it allows naming its source): `standard` names the set, `NBR 5410:2004` the default and only one so far. `fixture` is the \
+         item 9.1 asks. The numbers are the project's electrical code's `bath_volumes` section (NBR 5410 in BIMCraft's codes, every \
+         volume and every thing it allows naming its source), as the project or an amendment changed them; `standard` names a set of \
+         BIMCraft's instead. `fixture` is the \
          tub, tray or recess in plan (`outline`, mm) or the outlet of a shower with no tray (`shower`), `floor` the level one stands on \
          (mm, 0 by default) and `rim` the tub's rim above it (mm, 0 by default). Volume 0 is the inside up to the rim (none for a shower \
          with no tray); 1 over it up to 2.25 m (0.6 m round a shower with no tray); 2 out 0.60 m more, up to 3 m, so over volume 1 \
@@ -2972,7 +2977,8 @@ other_files(
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
          required: CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
-         06/03/2025) or CELESC (N-321.0001, revision of December 2025), or one whose categories are data (data/entrance-categories.json): \
+         06/03/2025) or CELESC (N-321.0001, revision of December 2025), or one whose categories are a building code's (the `entrance` section of its amendment over NBR 5410, as the project \
+         changed it where the project holds it): \
          FECOERGS (the RIC BT REGD 035.01.06 of Rio Grande do Sul's cooperatives; a member such as COPREL or CERTEL by its own name, \
          with its own changes), HIDROPAN (RIC 2014), ENERGISA (NDU 001 version 7.0; a company such as EMT by its own name), \
          EQUATORIAL (NT.00001 revision 09) or COPEL (NTC 901100); any other is refused until its tables are added. A utility of the data takes \
@@ -3009,7 +3015,8 @@ other_files(
         "Building Demand",
         "{utility | standard, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
          premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
-         `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
+         `standard` (each the `building_demand` section of a utility's amendment or a country's code; the project's own, as it \
+         changed it, where neither is given: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
          Spain's ITC-BT-10, Portugal's RTIEBT 803.2.4.3, France's NF C 14-100 (SéQuélec GP 16) and the US NEC 220.84; any other is \
          refused until its entry is added). D = factor · F(n) · d + common + special + commercial + \
          premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, looked up in the \
@@ -6335,6 +6342,56 @@ fn within(c: &str, p: &Value, key: &str, default: f64, lo: f64, hi: f64) -> Resu
 }
 
 /// A choice among `names`, as text; `default` when absent.
+/// A set of rules an electrical command follows: the project's (its code, amendments and changes), or one of BIMCraft's library.
+enum Held<T: 'static> {
+    Project(Box<T>),
+    Library(&'static T),
+}
+
+impl<T> std::ops::Deref for Held<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        match self {
+            Held::Project(t) => t,
+            Held::Library(t) => t,
+        }
+    }
+}
+
+/// The rules of electrical section `key` a command follows: the project's where `param` names none or names the project's own
+/// (`name` says a set's name), else BIMCraft's of that name, from `all`. `own_only` takes the project's only where one of its
+/// codes or changes holds the section, not the library's (a utility's method, which no project follows by default).
+fn held<T: serde::de::DeserializeOwned>(
+    s: &Session,
+    c: &str,
+    p: &Value,
+    (key, param): (&str, &str),
+    all: &'static [T],
+    name: fn(&T) -> &str,
+    own_only: bool,
+) -> Result<Option<Held<T>>, String> {
+    let project = s.model.section_as::<T>(crate::codes::Discipline::Electrical, key).filter(|(_, own)| *own || !own_only);
+    match p.get(param) {
+        v if absent(v) => Ok(match project {
+            Some((t, _)) => Some(Held::Project(Box::new(t))),
+            None if own_only => None,
+            None => all.first().map(Held::Library),
+        }),
+        Some(Value::String(n)) => {
+            if let Some((t, _)) = project.filter(|(t, _)| name(t) == n) {
+                return Ok(Some(Held::Project(Box::new(t))));
+            }
+            let names: Vec<&str> = all.iter().map(name).collect();
+            all.iter()
+                .find(|t| name(t) == n)
+                .map(|t| Some(Held::Library(t)))
+                .ok_or_else(|| bad(c, format!("`{param}` must be one of {}, got \"{n}\"", names.join(", "))))
+        }
+        Some(v) => Err(bad(c, format!("`{param}` is a name, not {v}"))),
+        None => Ok(None),
+    }
+}
+
 fn choice<'a>(c: &str, p: &'a Value, key: &str, names: &[&str], default: &'a str) -> Result<&'a str, String> {
     match p.get(key) {
         v if absent(v) => Ok(default),
@@ -7006,7 +7063,7 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
     }))
 }
 
-fn building_demand(_: &mut Session, p: &Value) -> R {
+fn building_demand(s: &mut Session, p: &Value) -> R {
     use crate::building_demand::{self as bd, Group, Input};
     let c = "building_demand";
     if !p.is_object() {
@@ -7015,18 +7072,44 @@ fn building_demand(_: &mut Session, p: &Value) -> R {
     only(c, p, &["standard", "utility", "dwellings", "common", "common_demand", "special", "commercial", "premises", "as_printed"])?;
     let names = || bd::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
     let utilities = || bd::methods().iter().flat_map(|m| m.utilities.iter().map(String::as_str)).collect::<Vec<_>>().join(", ");
-    let m = match (string(c, p, "standard")?, string(c, p, "utility")?) {
+    // The project's method (its utility's amendment or its country's code, as it changed them) where it names none, or names
+    // the project's own; else BIMCraft's by the standard's or the utility's name.
+    let project = s.model.section_as::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand").filter(|(_, own)| *own);
+    let project = project.map(|(m, _)| m);
+    let m: Held<bd::Method> = match (string(c, p, "standard")?, string(c, p, "utility")?) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
-        (Some(s), None) => bd::methods()
-            .iter()
-            .find(|m| m.standard == s)
-            .ok_or_else(|| bad(c, format!("no method `{s}` in data/building-demand.json: {}", names())))?,
-        (None, Some(u)) => bd::methods()
-            .iter()
-            .find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u)))
-            .ok_or_else(|| bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())))?,
-        (None, None) => return Err(bad(c, format!("give the `utility` ({}) or the `standard` ({})", utilities(), names()))),
+        (Some(s), None) => match project.filter(|m| m.standard == s) {
+            Some(m) => Held::Project(Box::new(m)),
+            None => Held::Library(
+                bd::methods()
+                    .iter()
+                    .find(|m| m.standard == s)
+                    .ok_or_else(|| bad(c, format!("no method `{s}` in the building codes: {}", names())))?,
+            ),
+        },
+        (None, Some(u)) => {
+            match project.filter(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))) {
+                Some(m) => Held::Project(Box::new(m)),
+                None => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
+                    || bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())),
+                )?),
+            }
+        }
+        (None, None) => match project {
+            Some(m) => Held::Project(Box::new(m)),
+            None => {
+                return Err(bad(
+                    c,
+                    format!(
+                        "give the `utility` ({}) or the `standard` ({}), or hold the project to a utility's or a country's code in Building Codes",
+                        utilities(),
+                        names()
+                    ),
+                ));
+            }
+        },
     };
+    let m = &*m;
     let list = match p.get("dwellings") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 1000 => a,
         _ => return Err(bad(c, "`dwellings` is a list of 1 to 1000 groups of dwellings alike, each {count, area | demand | grade}")),
@@ -7111,7 +7194,7 @@ fn building_demand(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-/// `demand` for a utility whose categories are data (`data/entrance-categories.json`, `entrance.rs`): its table for the supply system
+/// `demand` for a utility whose categories are data (a building code's `entrance` section, `entrance.rs`): its table for the supply system
 /// and the use frames the unit by the installed load and the designer's demand, as the table prints them, with a member's own changes.
 fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Option<&crate::entrance::Member>) -> R {
     use crate::entrance::{self as e, Unit};
@@ -7199,7 +7282,7 @@ fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Opt
     }))
 }
 
-fn demand(_: &mut Session, p: &Value) -> R {
+fn demand(s: &mut Session, p: &Value) -> R {
     use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
     let c = "demand";
     if !p.is_object() {
@@ -7234,6 +7317,15 @@ fn demand(_: &mut Session, p: &Value) -> R {
         ],
     )?;
     let utility = string(c, p, "utility")?.ok_or_else(|| bad(c, format!("`utility` is required: {}", d::UTILITIES.join(", "))))?;
+    // The project's utility, as its amendment holds it and the project changed it; else BIMCraft's.
+    if let Some((u, _)) =
+        s.model.section_as::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance").filter(|(_, own)| *own)
+    {
+        let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
+        if u.id.eq_ignore_ascii_case(&utility) || member.is_some() {
+            return demand_table(p, &utility, &u, member);
+        }
+    }
     if let Some((u, member)) = crate::entrance::find(&utility) {
         return demand_table(p, &utility, u, member);
     }
@@ -7641,9 +7733,9 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     }
     only(c, p, &["rooms", "alternative", "standard"])?;
     let alternative = flag(c, p, "alternative")?;
-    let names: Vec<&str> = loads::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, loads::DEFAULT)?;
-    let set = loads::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/load-points.json")))?;
+    // The project's electrical code's, as it changed them, or a standard named.
+    let set = held(s, c, p, ("load_points", "standard"), loads::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no load points in the building codes"))?;
     let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
     // (name, kind, area m2, perimeter m, points, kind given)
     let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
@@ -7779,16 +7871,15 @@ fn drawn_points(m: &Model, rooms: &crate::rooms::Rooms) -> (Option<PerRoom>, Opt
     (outlets, lights)
 }
 
-fn dr_check(_: &mut Session, p: &Value) -> R {
+fn dr_check(s: &mut Session, p: &Value) -> R {
     use crate::dr::{self, KINDS, PLACES, Place};
     let c = "dr_check";
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
     only(c, p, &["circuits", "building", "standard"])?;
-    let names: Vec<&str> = dr::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, dr::DEFAULT)?;
-    let set = dr::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/dr-check.json")))?;
+    let set = held(s, c, p, ("rcd", "standard"), dr::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no residual-current device rules in the building codes"))?;
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
     let list = match p.get("circuits") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
@@ -7867,7 +7958,7 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn bath_volumes(_: &mut Session, p: &Value) -> R {
+fn bath_volumes(s: &mut Session, p: &Value) -> R {
     use crate::bath::{self, Bath, CLASSES, Fixture, KINDS, SUPPLIES, Thing};
     let c = "bath_volumes";
     if !p.is_object() {
@@ -7875,9 +7966,8 @@ fn bath_volumes(_: &mut Session, p: &Value) -> R {
     }
     only(c, p, &["fixture", "things", "public", "standard"])?;
     let public = flag(c, p, "public")?;
-    let names: Vec<&str> = bath::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, bath::DEFAULT)?;
-    let set = bath::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/bath-volumes.json")))?;
+    let set = held(s, c, p, ("bath_volumes", "standard"), bath::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no bathroom volumes in the building codes"))?;
     let f = p.get("fixture").filter(|v| v.is_object()).ok_or_else(|| bad(c, "`fixture` {outline | shower, floor?, rim?} is required"))?;
     let at = |e: String| format!("fixture: {e}");
     only(c, f, &["outline", "shower", "floor", "rim"]).map_err(at)?;

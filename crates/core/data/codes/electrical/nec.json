@@ -1,0 +1,140 @@
+{
+ "code": "nec",
+ "discipline": "electrical",
+ "name": "NFPA 70, National Electrical Code (USA)",
+ "region": "USA",
+ "edition": "2014",
+ "references": [
+  "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units)"
+ ],
+ "note": "A building's demand by this country's method (`building_demand`). The rest of the discipline comes from BIMCraft's library, and says so.",
+ "sections": {
+  "building_demand": {
+   "standard": "NEC 220.84",
+   "utilities": [],
+   "country": "US",
+   "source": "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units): the connected load of all the units, each worked out as 220.84(C) says, times a demand factor by their number; the house loads apart, by Part III. The 2026 edition moves Article 220's load calculations to Article 120 (120.84).",
+   "unit": "kVA",
+   "min_dwellings": 3,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "NEC 220.84(C): each unit's connected load (general lighting and receptacles by floor area, small-appliance and laundry circuits, appliances, cooking, heating or air conditioning), worked out by the designer and given here as its `demand`",
+    "least": 0.0
+   },
+   "diversity": {
+    "source": "NEC Table 220.84 (2014): the demand factor by the number of dwelling units, 45 % for 3 to 5 down to 23 % for 62 and over",
+    "kind": "per_dwelling",
+    "steps": [
+     [
+      5,
+      0.45
+     ],
+     [
+      7,
+      0.44
+     ],
+     [
+      10,
+      0.43
+     ],
+     [
+      11,
+      0.42
+     ],
+     [
+      13,
+      0.41
+     ],
+     [
+      15,
+      0.4
+     ],
+     [
+      17,
+      0.39
+     ],
+     [
+      20,
+      0.38
+     ],
+     [
+      21,
+      0.37
+     ],
+     [
+      23,
+      0.36
+     ],
+     [
+      25,
+      0.35
+     ],
+     [
+      27,
+      0.34
+     ],
+     [
+      30,
+      0.33
+     ],
+     [
+      31,
+      0.32
+     ],
+     [
+      33,
+      0.31
+     ],
+     [
+      36,
+      0.3
+     ],
+     [
+      38,
+      0.29
+     ],
+     [
+      42,
+      0.28
+     ],
+     [
+      45,
+      0.27
+     ],
+     [
+      50,
+      0.26
+     ],
+     [
+      55,
+      0.25
+     ],
+     [
+      61,
+      0.24
+     ],
+     [
+      62,
+      0.23
+     ]
+    ]
+   },
+   "factor": 1.0,
+   "factor_source": "NEC 220.84 applies no growth factor",
+   "factor_on_common": false,
+   "notes": [
+    "Only where no unit is fed by more than one feeder, each unit has electric cooking and each has electric space heating, air conditioning or both (220.84(A)).",
+    "The house loads (corridor lighting, lifts, pumps) go in `common_demand`, worked out by Part III with its own demand factors (220.84(B)).",
+    "The 2026 edition changed what a unit's load counts (general lighting 2 VA/ft², a charger at its nameplate), not this table's bands as far as checked; give the unit's `demand` by the edition the jurisdiction adopted."
+   ],
+   "not_covered": [
+    "each unit's load itself (220.84(C), or 120.84 in the 2026 edition), which comes in as its `demand`",
+    "two dwelling units (220.85) and the exception for units without electric cooking (220.84(A)(2))",
+    "the neutral (220.61) and the service conductors and equipment the load asks"
+   ]
+  }
+ },
+ "sources": {
+  "building_demand": "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units): the connected load of all the units, each worked out as 220.84(C) says, times a demand factor by their number; the house loads apart, by Part III. The 2026 edition moves Article 220's load calculations to Article 120 (120.84)."
+ }
+}

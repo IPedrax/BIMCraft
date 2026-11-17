@@ -5,7 +5,7 @@
 //! project, and a tab is imported, exported and saved as a code on its own. Nothing is ever refused for breaking a rule:
 //! what is outside one is built and marked, and the window a Properties sign opens lists what to change.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bimcraft_core::codes::{self, BuildingCode, Codes, Discipline, Layer, ORDER};
 use bimcraft_core::model::{Element, Model};
@@ -18,6 +18,9 @@ use crate::BimApp;
 use crate::lang::{t, tf};
 use crate::popup::{self, Modal};
 use crate::style::pal;
+
+/// The Electrical tab's first sections, the project's electrical settings (`electrical.rs`), as `Tab::section` names them.
+pub(crate) const SETTINGS: [&str; 3] = ["@voltages", "@systems", "@wires"];
 
 /// The colour of what is outside a rule, or changed from the code's.
 pub(crate) const OUTSIDE: Color32 = Color32::from_rgb(0xC8, 0x7A, 0x00);
@@ -34,9 +37,9 @@ const LABELS: [(&str, &str, &str); 26] = [
     ("step_max", "Risers and treads", "Maximum Step (2 risers + 1 tread)"),
     ("width_min", "Risers and treads", "Minimum Width"),
     ("headroom", "Risers and treads", "Minimum Headroom"),
-    ("flight_rise_max", "Landings", "Landing Due After a Rise of"),
-    ("flight_risers_max", "Landings", "Landing Due After Risers"),
-    ("landing_rule", "Landings", "Landing Length By"),
+    ("flight_rise_max", "Landings", "Landing Needed After a Rise of"),
+    ("flight_risers_max", "Landings", "Landing Needed After This Many Risers"),
+    ("landing_rule", "Landings", "Landing Length Based On"),
     ("landing_length", "Landings", "Landing Length"),
     ("winders", "Winders", "Winders Allowed"),
     ("walk_line", "Winders", "Walk Line Measured"),
@@ -46,7 +49,7 @@ const LABELS: [(&str, &str, &str); 26] = [
     ("nosing_min", "Treads", "Minimum Nosing"),
     ("nosing_max", "Treads", "Maximum Nosing"),
     ("open_risers", "Treads", "Open Risers Allowed"),
-    ("uniformity", "Treads", "Most Difference Between Steps"),
+    ("uniformity", "Treads", "Largest Difference Between Steps"),
     ("handrail_min", "Railings", "Minimum Handrail Height"),
     ("handrail_max", "Railings", "Maximum Handrail Height"),
     ("guard_min", "Railings", "Minimum Guard Height"),
@@ -64,27 +67,31 @@ const TYPE_LABELS: [(&str, &str); 6] = [
 
 /// What the rules of the other sections are called, by section and rule, and how their numbers read: `mm` a length in the
 /// project's units, `%`, `m²`, or a plain number.
-const RULES: [(&str, &str, &str, &str); 20] = [
+const RULES: [(&str, &str, &str, &str); 24] = [
     ("ramps", "slope", "New Ramp Slope", "%"),
     ("ramps", "width", "New Ramp Width", "mm"),
     ("ramps", "slope_max", "Steepest Slope", "%"),
-    ("ramps", "slope_by_rise", "Steepest Slope by a Run's Rise", ""),
-    ("ramps", "run_rise_max", "Most Rise of a Run", "mm"),
+    ("ramps", "slope_by_rise", "Steepest Slope by Height", ""),
+    ("ramps", "run_rise_max", "Highest Rise Without a Landing", "mm"),
     ("ramps", "width_min", "Minimum Width", "mm"),
     ("ramps", "landing_length_min", "Minimum Landing Length", "mm"),
     ("doors", "clear_width_min", "Minimum Clear Width", "mm"),
     ("doors", "clear_height_min", "Minimum Clear Height", "mm"),
-    ("doors", "leaf_width_max", "Widest Leaf (0: none)", "mm"),
+    ("doors", "leaf_width_max", "Widest Door Leaf (0 = no limit)", "mm"),
     ("doors", "frame_allowance", "Frame Allowance", "mm"),
-    ("doors", "exempt", "Doors Not Held (by type name)", ""),
+    ("doors", "exempt", "Doors Not Checked (by type name)", ""),
     ("rooms", "kinds", "Kinds of Room", ""),
-    ("cold_water", "max_speed", "Most Speed (m/s)", ""),
-    ("cold_water", "min_use_kpa", "Least Pressure at a Point of Use (kPa)", ""),
-    ("drainage", "main_min_dn", "Least Building Drain DN", ""),
+    ("rooms", "area_min", "Minimum Area", "m²"),
+    ("rooms", "side_min", "Minimum Width", "mm"),
+    ("rooms", "height_min", "Minimum Height", "mm"),
+    ("rooms", "light_min", "Natural Light", "%"),
+    ("cold_water", "max_speed", "Maximum Speed (m/s)", ""),
+    ("cold_water", "min_use_kpa", "Minimum Pressure at a Fixture (kPa)", ""),
+    ("drainage", "main_min_dn", "Minimum Building Drain DN", ""),
     ("storm", "default_rain", "Rainfall for a Small Roof (mm/h)", ""),
-    ("storm", "min_downpipe", "Least Downpipe (mm inside)", ""),
-    ("hydrants", "max_speed", "Most Speed (m/s)", ""),
-    ("hydrants", "max_nozzle_head", "Most Head at a Nozzle (mca)", ""),
+    ("storm", "min_downpipe", "Minimum Downpipe (inside, mm)", ""),
+    ("hydrants", "max_speed", "Maximum Speed (m/s)", ""),
+    ("hydrants", "max_nozzle_head", "Maximum Pressure at a Nozzle (mca)", ""),
 ];
 
 /// What to do about an element outside rule `rule` of its kind, as a person would say it.
@@ -92,16 +99,17 @@ fn advice(category: &str, rule: &str) -> Option<&'static str> {
     Some(match (category, rule) {
         ("ramp", "width_min") => msg!("The ramp is too narrow. Make it wider."),
         ("ramp", "slope_max") | ("ramp", "slope_by_rise") => {
-            msg!("The ramp is too steep for how far it climbs. Make its slope gentler, or break it with landings.")
+            msg!("The ramp is too steep for its height. Make the slope gentler, or add landings.")
         }
-        ("ramp", "run_rise_max") => msg!("A run of the ramp climbs too far without a rest. Add a landing."),
+        ("ramp", "run_rise_max") => msg!("A part of the ramp rises too high without a landing. Add a landing."),
         ("ramp", "landing_length_min") => msg!("A landing of the ramp is too short. Make it longer."),
         ("door", "clear_width_min") => msg!("The door is too narrow to pass through. Use a wider door type."),
         ("door", "clear_height_min") => msg!("The door is too low. Use a taller door type."),
         ("door", "leaf_width_max") => msg!("The leaf is too wide. Use a pair of narrower leaves."),
         ("room", "area_min") => msg!("The room is too small for its kind. Move a wall to enlarge it, or rename it if it is another kind."),
         ("room", "side_min") => msg!("The room is too narrow for its kind. Move a wall to widen it."),
-        ("room", "height_min") => msg!("The room is too low. Raise its upper limit, or what is over it."),
+        ("room", "light_min") => msg!("The room's windows are too small for its floor. Add a window, or use larger windows."),
+        ("room", "height_min") => msg!("The room's ceiling is too low. Raise the room's upper limit, or what is above it."),
         (_, "riser_max") => msg!("The risers are too high. Add more risers so each one is lower, or lower the Riser in the Options Bar."),
         (_, "riser_min") => msg!("The risers are too low. Use fewer, higher risers."),
         (_, "going_min") => msg!("The treads are too shallow. Make them deeper."),
@@ -113,7 +121,7 @@ fn advice(category: &str, rule: &str) -> Option<&'static str> {
             msg!("Something overhead is too low. Cut it open over the stair with Cut Opening below, or raise what is in the way.")
         }
         (_, "flight_rise_max") | (_, "flight_risers_max") => {
-            msg!("This flight climbs too far without a rest. Add a landing to break it up; Add Landings Due in Properties does it for you.")
+            msg!("This flight is too tall without a landing. Add a landing. Add Landings Due in Properties can do it for you.")
         }
         (_, "landing_length") => msg!("A landing is too short. Make it longer."),
         (_, "winders") => msg!("This code doesn't allow winders. Use a landing at the turn instead."),
@@ -121,7 +129,7 @@ fn advice(category: &str, rule: &str) -> Option<&'static str> {
             msg!("The winders are too shallow on the walk line. Use fewer of them, or spread them into the flights.")
         }
         (_, "winder_narrow_min") => {
-            msg!("The winders come too close to a point at the inside. Spread them into the flights so each keeps some depth.")
+            msg!("The winders are too narrow at the inside of the turn. Spread them into the flights so each one keeps some depth.")
         }
         (_, "nosing_min") => {
             msg!("The treads don't stand out enough over the risers. Give the stair type a longer nosing or finish nosing.")
@@ -183,8 +191,8 @@ fn said(units: Units, key: &str, unit: &str, v: &Value) -> String {
         Value::Number(n) if unit == "mm" => length(units, n.as_f64().unwrap_or(0.0)),
         Value::Number(n) if unit.is_empty() => n.to_string(),
         Value::Number(n) => format!("{n} {unit}"),
-        Value::Array(a) => tf("a table of {} rows", &[&a.len().to_string()]),
-        Value::Object(o) => tf("{} entries", &[&o.len().to_string()]),
+        Value::Array(a) => tf("{} rows", &[&a.len().to_string()]),
+        Value::Object(o) => tf("{} items", &[&o.len().to_string()]),
         Value::Null => "—".to_string(),
     }
 }
@@ -199,14 +207,14 @@ fn from_said(layer: Option<&Layer>) -> String {
     match layer {
         Some(Layer::Base(_)) => t("code").to_string(),
         Some(Layer::Amendment(c)) => c.clone(),
-        Some(Layer::Library(c)) => tf("library: {}", &[c]),
+        Some(Layer::Library(c)) => tf("built-in: {}", &[c]),
         Some(Layer::Project) => t("project").to_string(),
         None => String::new(),
     }
 }
 
-/// One discipline's tab: the base code and amendments chosen in the dialog, and the rules as they would be applied, by
-/// section.
+/// One discipline's tab: the base code and amendments chosen in the dialog, the rules as they would be applied, by section,
+/// and where a change goes: into the amendment `target` while one is chosen, else the project's own.
 #[derive(Clone, Debug)]
 pub(crate) struct Tab {
     pub(crate) discipline: Discipline,
@@ -215,28 +223,49 @@ pub(crate) struct Tab {
     pub(crate) rules: BTreeMap<String, Map<String, Value>>,
     /// The section shown.
     pub(crate) section: String,
+    /// The amendment the rules changed go into; none, the project's own.
+    pub(crate) target: Option<String>,
+    /// Rules taken out of `target`, by (section, rule): the layers under it give them again.
+    pub(crate) cleared: BTreeSet<(String, String)>,
 }
 
-/// The project's codes as they would be with tab `tab`'s choice: what the layers say before any change of the project's.
+/// The project's codes as they would be with tab `tab`'s choice: what the layers say before any change of the project's, with
+/// the rules taken out of the amendment edited.
 fn with_choice(m: &Model, tab: &Tab) -> Codes {
     let mut c = (*m.codes).clone();
-    let choice = c.choice_mut(tab.discipline);
+    let d = tab.discipline;
+    let choice = c.choice_mut(d);
     choice.code = Some(tab.code.clone());
     choice.amendments = tab.amendments.clone();
     choice.changes.clear();
+    if let Some(target) = tab.target.as_deref().filter(|_| !tab.cleared.is_empty()) {
+        if !c.own.iter().any(|k| k.code == target && k.discipline == d)
+            && let Some(lib) = c.library_of(d, target)
+        {
+            c.own.push(lib.clone());
+        }
+        if let Some(own) = c.own.iter_mut().find(|k| k.code == target && k.discipline == d) {
+            for (key, rule) in &tab.cleared {
+                if let Some(Value::Object(o)) = own.sections.get_mut(key) {
+                    o.remove(rule);
+                }
+            }
+        }
+    }
     c
 }
 
 impl Tab {
     fn new(m: &Model, d: Discipline) -> Tab {
         let base = m.codes.base(d).code.clone();
-        let amendments = m.codes.layers(d).iter().skip(1).map(|c| c.code.clone()).collect();
+        let amendments: Vec<String> = m.codes.layers(d).iter().skip(1).map(|c| c.code.clone()).collect();
         let mut rules = BTreeMap::new();
         for s in codes::sections().iter().filter(|s| s.discipline == d) {
             rules.insert(s.key.to_string(), m.resolve_code(d, s.key).value);
         }
         let section = codes::sections().iter().find(|s| s.discipline == d).map_or_else(String::new, |s| s.key.to_string());
-        Tab { discipline: d, code: base, amendments, rules, section }
+        let target = amendments.last().cloned();
+        Tab { discipline: d, code: base, amendments, rules, section, target, cleared: BTreeSet::new() }
     }
 
     /// The rules of section `key` as the chosen layers have them, before the dialog's changes.
@@ -253,12 +282,38 @@ impl Tab {
         self.reload(m);
     }
 
+    /// The amendments are now `list`: the one edited stays while it is among them, else it is the last.
+    pub(crate) fn amend(&mut self, m: &Model, list: Vec<String>) {
+        self.amendments = list;
+        if self.target.as_ref().is_none_or(|t| !self.amendments.contains(t)) {
+            self.target = self.amendments.last().cloned();
+            self.cleared.clear();
+        }
+        self.reload(m);
+    }
+
     /// The rules the chosen layers have, with nothing changed.
     fn reload(&mut self, m: &Model) {
         let keys: Vec<String> = self.rules.keys().cloned().collect();
         for key in keys {
             let v = self.layered(m, &key).value;
             self.rules.insert(key, v);
+        }
+    }
+
+    /// Rule `rule` of section `key` taken out of the amendment edited: its value is the layers' under it again.
+    fn clear(&mut self, m: &Model, key: &str, rule: &str) {
+        self.cleared.insert((key.to_string(), rule.to_string()));
+        let under = self.layered(m, key).value;
+        if let Some(rules) = self.rules.get_mut(key) {
+            match under.get(rule) {
+                Some(v) => {
+                    rules.insert(rule.to_string(), v.clone());
+                }
+                None => {
+                    rules.remove(rule);
+                }
+            }
         }
     }
 
@@ -279,10 +334,11 @@ impl Tab {
     /// Whether the tab is not what the project has now.
     fn differs(&self, m: &Model) -> bool {
         let fresh = Tab::new(m, self.discipline);
-        fresh.code != self.code || fresh.amendments != self.amendments || fresh.rules != self.rules
+        fresh.code != self.code || fresh.amendments != self.amendments || fresh.rules != self.rules || !self.cleared.is_empty()
     }
 
-    /// The `building_code` params that make the project's choice this tab's: its code, its amendments and its rules.
+    /// The `building_code` params that make the project's choice this tab's: its code, its amendments and its rules, into
+    /// the amendment edited while there is one.
     fn params(&self, m: &Model) -> Value {
         let mut rules = Map::new();
         for (key, moved) in self.changes(m) {
@@ -290,7 +346,18 @@ impl Tab {
             let only: Map<String, Value> = moved.iter().filter_map(|k| all.get(k).map(|v| (k.clone(), v.clone()))).collect();
             rules.insert(key, Value::Object(only));
         }
-        json!({"discipline": self.discipline.key(), "set": self.code, "amendments": self.amendments, "rules": rules})
+        let mut p = json!({"discipline": self.discipline.key(), "set": self.code, "amendments": self.amendments});
+        if let Some(target) = self.target.as_ref().filter(|t| self.amendments.contains(t)) {
+            for (key, rule) in &self.cleared {
+                let section = rules.entry(key.clone()).or_insert_with(|| json!({}));
+                if let Some(o) = section.as_object_mut() {
+                    o.entry(rule.clone()).or_insert(Value::Null);
+                }
+            }
+            p["amend"] = json!(target);
+        }
+        p["rules"] = Value::Object(rules);
+        p
     }
 }
 
@@ -312,6 +379,10 @@ pub(crate) struct CodesDialog {
     pub(crate) pasted: String,
     /// How many elements are outside a rule, by discipline, counted when the dialog opened.
     pub(crate) outside: BTreeMap<Discipline, usize>,
+    /// The name a new amendment is being given.
+    pub(crate) amendment: String,
+    /// Manage > Electrical Settings, which the Electrical tab holds: the voltages, distribution systems and wire types.
+    pub(crate) electrical: crate::electrical::ElectricalDialog,
 }
 
 impl CodesDialog {
@@ -336,7 +407,33 @@ impl CodesDialog {
             table: None,
             pasted: String::new(),
             outside,
+            amendment: String::new(),
+            electrical: crate::electrical::ElectricalDialog::new(m),
         }
+    }
+
+    /// Opened on the Electrical tab's settings: Manage > Electrical Settings.
+    pub(crate) fn electrical_settings(m: &Model) -> CodesDialog {
+        let mut d = CodesDialog::new(m);
+        d.tab = Discipline::ALL.iter().position(|x| *x == Discipline::Electrical).map_or(1, |i| i + 1);
+        d.tab_mut(Discipline::Electrical).section = SETTINGS[0].to_string();
+        d
+    }
+
+    /// Whether it shows the electrical settings.
+    pub(crate) fn on_electrical_settings(&self) -> bool {
+        self.shown().is_some_and(|t| t.discipline == Discipline::Electrical && SETTINGS.contains(&t.section.as_str()))
+    }
+
+    /// The region preset whose codes and amendments the five tabs are, if they are one's.
+    pub(crate) fn region(&self) -> Option<usize> {
+        codes::presets().iter().position(|p| {
+            self.tabs.iter().all(|tab| {
+                let pick = p.choices.get(&tab.discipline);
+                let code = pick.map_or_else(|| codes::default_of(tab.discipline).code.clone(), |k| k.code.clone());
+                tab.code == code && tab.amendments == pick.map(|k| k.amendments.clone()).unwrap_or_default()
+            })
+        })
     }
 
     /// The tab of discipline `d`.
@@ -361,7 +458,7 @@ impl CodesDialog {
 /// the element has, what the rule asks, and what would bring it inside.
 pub(crate) fn findings(ui: &mut Ui, m: &Model, category: &str, list: &Value) {
     ui.label(RichText::new(t(&m.building_code().name)).strong());
-    ui.label(RichText::new(t("It is built as drawn. These rules it is outside of:")).color(pal().muted));
+    ui.label(RichText::new(t("It is built as drawn, but it breaks these rules:")).color(pal().muted));
     for f in list.as_array().into_iter().flatten() {
         ui.separator();
         let rule = f["rule"].as_str().unwrap_or("");
@@ -376,7 +473,9 @@ pub(crate) fn findings(ui: &mut Ui, m: &Model, category: &str, list: &Value) {
         // What it has and what the rule asks; a yes or no rule has no numbers.
         if rule != "winders" {
             let (has, asks) = (f["value"].as_f64().unwrap_or(0.0), f["limit"].as_f64().unwrap_or(0.0));
-            let unit = if category == "room" && rule == "area_min" { "m²" } else { unit };
+            // Natural light is a share of the floor, read as a percentage.
+            let (has, asks) =
+                if rule == "light_min" { ((has * 1000.0).round() / 10.0, (asks * 1000.0).round() / 10.0) } else { (has, asks) };
             let shown = |x: f64| said(m.units, rule, unit, &json!(x));
             Grid::new(("finding", rule)).num_columns(2).show(ui, |ui| {
                 ui.label(RichText::new(t("It has:")).color(pal().muted));
@@ -398,7 +497,7 @@ pub(crate) fn findings(ui: &mut Ui, m: &Model, category: &str, list: &Value) {
         ui.add(egui::Label::new(RichText::new(fix).small()).wrap());
     }
     ui.separator();
-    ui.label(RichText::new(t("Manage > Building Codes changes a rule for this project.")).color(pal().muted).small());
+    ui.label(RichText::new(t("To change a rule for this project, open Manage > Building Codes.")).color(pal().muted).small());
 }
 
 /// The field of one rule's value: a tick, a choice, a count, a length or a number; a table opens the table editor.
@@ -585,6 +684,114 @@ pub(crate) fn from_tsv(text: &str, like: &Value) -> Option<Value> {
     Some(Value::Array(rows.collect()))
 }
 
+/// The kinds of room, a row each: what the kind is called, the room names that make a room of it (any of them, in any
+/// case, within its name), its least area, width and height, and its natural light: the least area of its windows as a
+/// share of its floor's. Rows are added and taken away.
+fn room_kinds(ui: &mut Ui, units: Units, v: &mut Value) {
+    let Value::Array(rows) = v else { return };
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        ui.label(RichText::new(t("Kinds of Room")).strong());
+        ui.label(
+            RichText::new(t(
+                "A room gets the first kind whose room names appear in the room's name. A value of 0 means no limit. Natural light is the window area divided by the floor area.",
+            ))
+            .color(pal().muted)
+            .small(),
+        );
+        let mut gone = None;
+        Grid::new("room-kinds").striped(true).num_columns(7).spacing([8.0, 4.0]).show(ui, |ui| {
+            for h in [
+                msg!("Kind"),
+                msg!("Room Names"),
+                msg!("Min. Area"),
+                msg!("Min. Width"),
+                msg!("Min. Height"),
+                msg!("Natural Light"),
+                "",
+            ] {
+                ui.label(RichText::new(t(h)).color(pal().muted).small());
+            }
+            ui.end_row();
+            for (i, row) in rows.iter_mut().enumerate() {
+                let Value::Object(o) = row else { continue };
+                let n = (i + 1).to_string();
+                let mut kind = o.get("kind").and_then(Value::as_str).unwrap_or("").to_string();
+                let r = ui.add(egui::TextEdit::singleline(&mut kind).desired_width(130.0));
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, tf("Kind {} name", &[&n])));
+                if r.changed() {
+                    o.insert("kind".into(), json!(kind));
+                }
+                // The names as a list typed with commas, kept as typed while it is being typed.
+                let names: Vec<String> =
+                    o.get("names").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(String::from).collect();
+                let id = ui.id().with(("room-kind-names", i));
+                let mut text = ui.data(|d| d.get_temp::<String>(id)).unwrap_or_else(|| names.join(", "));
+                let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(240.0).hint_text(t("bedroom, dormitório")));
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, tf("Kind {} room names", &[&n])));
+                if r.changed() {
+                    let list: Vec<String> = text.split(',').map(str::trim).filter(|x| !x.is_empty()).map(String::from).collect();
+                    o.insert("names".into(), json!(list));
+                }
+                if r.has_focus() {
+                    ui.data_mut(|d| d.insert_temp(id, text));
+                } else {
+                    ui.data_mut(|d| d.remove::<String>(id));
+                }
+                // An area in m², or a length in the project's units.
+                let mut number = |ui: &mut Ui, key: &str, label: String| {
+                    let mut x = o.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+                    let v = DragValue::new(&mut x).range(0.0..=100_000.0);
+                    let v = if key == "area_min" {
+                        v.speed(0.1).max_decimals(2).suffix(" m²")
+                    } else {
+                        v.speed(1.0)
+                            .custom_formatter(|x, _| length(units, x))
+                            .custom_parser(|typed| units.parse(typed.trim().trim_end_matches("mm").trim()))
+                    };
+                    let r = ui.add(v);
+                    r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, label.as_str()));
+                    if r.changed() {
+                        o.insert(key.into(), json!(x));
+                    }
+                };
+                number(ui, "area_min", tf("Kind {} least area", &[&n]));
+                number(ui, "side_min", tf("Kind {} least width", &[&n]));
+                number(ui, "height_min", tf("Kind {} least height", &[&n]));
+                // A share of the floor, typed as a percentage: 1/6 is 16.67 %.
+                let mut pc = o.get("light_min").and_then(Value::as_f64).unwrap_or(0.0) * 100.0;
+                ui.horizontal(|ui| {
+                    let r = ui.add(DragValue::new(&mut pc).range(0.0..=100.0).speed(0.1).max_decimals(2).suffix(" %"));
+                    r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, tf("Kind {} natural light", &[&n])));
+                    if r.changed() {
+                        o.insert("light_min".into(), json!((pc / 100.0 * 1.0e6).round() / 1.0e6));
+                    }
+                    if pc > 0.0 {
+                        ui.label(RichText::new(format!("≈ 1/{}", (100.0 / pc * 10.0).round() / 10.0)).color(pal().muted).small());
+                    }
+                });
+                if ui.small_button("×").on_hover_text(t("Delete this row")).clicked() {
+                    gone = Some(i);
+                }
+                ui.end_row();
+            }
+        });
+        if let Some(i) = gone {
+            rows.remove(i);
+        }
+        if ui.button(t("Add Row")).on_hover_text(t("Add a kind of room")).clicked() {
+            let n = rows.len() + 1;
+            rows.push(json!({
+                "kind": tf("Kind {}", &[&n.to_string()]),
+                "names": [],
+                "area_min": 0.0,
+                "side_min": 0.0,
+                "height_min": 0.0,
+                "light_min": 0.0,
+            }));
+        }
+    });
+}
+
 /// The table editor of rule `rule`: its cells edited in place, rows added and taken away, copied and pasted as text.
 fn table_editor(ui: &mut Ui, label: &str, v: &mut Value, pasted: &mut String) -> bool {
     let mut close = false;
@@ -593,7 +800,7 @@ fn table_editor(ui: &mut Ui, label: &str, v: &mut Value, pasted: &mut String) ->
             ui.label(RichText::new(label).strong());
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 close = ui.small_button(t("Close Table")).clicked();
-                if ui.small_button(t("Copy")).on_hover_text(t("Copy the table as tab-separated text, for a spreadsheet")).clicked() {
+                if ui.small_button(t("Copy")).on_hover_text(t("Copy the table to paste it into a spreadsheet")).clicked() {
                     ui.ctx().copy_text(as_tsv(v));
                 }
             });
@@ -652,7 +859,7 @@ fn table_editor(ui: &mut Ui, label: &str, v: &mut Value, pasted: &mut String) ->
                             }
                         }
                     }
-                    if ui.small_button("×").on_hover_text(t("Take this row away")).clicked() {
+                    if ui.small_button("×").on_hover_text(t("Delete this row")).clicked() {
                         gone = Some(i);
                     }
                     ui.end_row();
@@ -675,8 +882,8 @@ fn table_editor(ui: &mut Ui, label: &str, v: &mut Value, pasted: &mut String) ->
         });
         let mut take = false;
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::multiline(pasted).desired_rows(2).desired_width(420.0).hint_text(t("Tab-separated rows")));
-            take = ui.add_enabled(!pasted.trim().is_empty(), egui::Button::new(t("Take Pasted Rows"))).clicked();
+            ui.add(egui::TextEdit::multiline(pasted).desired_rows(2).desired_width(420.0).hint_text(t("Paste rows here")));
+            take = ui.add_enabled(!pasted.trim().is_empty(), egui::Button::new(t("Use Pasted Rows"))).clicked();
         });
         if take && let Some(new) = from_tsv(pasted, &Value::Array(rows.clone())) {
             *v = new;
@@ -684,6 +891,157 @@ fn table_editor(ui: &mut Ui, label: &str, v: &mut Value, pasted: &mut String) ->
         }
     });
     close
+}
+
+/// Whether amendment `c` stands over code `base`: what it amends, and what that amends, comes down to it.
+fn stands_over(all: &[(BuildingCode, bool)], c: &BuildingCode, base: &str) -> bool {
+    let mut over = c.amends.clone();
+    for _ in 0..32 {
+        if over == base {
+            return true;
+        }
+        match all.iter().find(|(k, _)| k.code == over) {
+            Some((k, _)) if !k.amends.is_empty() => over = k.amends.clone(),
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// The amendments of a tab: laid over the code in the order listed, the lower winning over the higher, each dragged by its
+/// handle (or moved by its arrows) into another order and taken away by its cross; more are ticked from those that stand
+/// over the code, or one of the project's own is made. While one is on, the rules changed go into the one picked as edited.
+fn amendments(ui: &mut Ui, m: &Model, d: &mut CodesDialog, tab: &mut Tab, all: &[(BuildingCode, bool)], actions: &mut Actions) {
+    let disc = tab.discipline;
+    let name_of = |a: &str| all.iter().find(|(c, _)| c.code == a).map_or((a.to_string(), false), |(c, own)| (c.name.clone(), *own));
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(t("Amendments:")).strong());
+        let hint = if tab.amendments.len() > 1 {
+            t("Applied on top of the code in this order. A lower one wins over a higher one. Drag to change the order.")
+        } else {
+            t("Applied on top of the code. A rule in an amendment replaces the code's rule.")
+        };
+        ui.label(RichText::new(hint).color(pal().muted).small());
+    });
+    let mut list = tab.amendments.clone();
+    let mut drop: Option<(usize, usize)> = None;
+    let mut target = tab.target.clone();
+    let n = tab.amendments.len();
+    for (k, a) in tab.amendments.iter().enumerate() {
+        let (name, own) = name_of(a);
+        let row = egui::Frame::group(ui.style()).inner_margin(egui::Margin::symmetric(6, 2)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                // A grip of six dots, drawn: no letter of the interface's fonts is one.
+                let handle = ui.dnd_drag_source(UiId::new(("amendment-drag", disc.key(), k)), k, |ui| {
+                    let (rect, r) = ui.allocate_exact_size(egui::vec2(10.0, 16.0), egui::Sense::hover());
+                    let colour = if r.hovered() { pal().accent } else { pal().muted };
+                    for (x, y) in [(3.0, 4.0), (7.0, 4.0), (3.0, 8.0), (7.0, 8.0), (3.0, 12.0), (7.0, 12.0)] {
+                        ui.painter().circle_filled(rect.min + egui::vec2(x, y), 1.3, colour);
+                    }
+                });
+                handle.response.on_hover_text(t("Drag to change the order"));
+                ui.add_enabled_ui(k > 0, |ui| {
+                    if ui.small_button("↑").on_hover_text(t("Move up")).clicked() {
+                        drop = Some((k, k - 1));
+                    }
+                });
+                ui.add_enabled_ui(k + 1 < n, |ui| {
+                    if ui.small_button("↓").on_hover_text(t("Move down")).clicked() {
+                        drop = Some((k, k + 1));
+                    }
+                });
+                ui.allocate_ui_with_layout(egui::vec2(280.0, 18.0), Layout::left_to_right(Align::Center), |ui| {
+                    ui.set_width(280.0);
+                    ui.add(egui::Label::new(RichText::new(&name)).truncate()).on_hover_text(&name);
+                });
+                let whose = if own { t("the project's") } else { t("BIMCraft's") };
+                ui.label(RichText::new(whose).color(pal().muted).small());
+                let r = ui.radio(target.as_deref() == Some(a.as_str()), t("save changes here"));
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::RadioButton, true, tf("Save changes in {}", &[&name])));
+                if r.clicked() {
+                    target = Some(a.clone());
+                }
+                if ui.small_button("×").on_hover_text(t("Remove this amendment")).clicked() {
+                    list.retain(|x| x != a);
+                }
+            });
+        });
+        if let Some(from) = row.response.dnd_release_payload::<usize>() {
+            drop = Some((*from, k));
+        } else if row.response.dnd_hover_payload::<usize>().is_some() {
+            ui.painter().hline(row.response.rect.x_range(), row.response.rect.bottom(), egui::Stroke::new(2.0, pal().accent));
+        }
+    }
+    if let Some((from, to)) = drop
+        && from < list.len()
+        && to < list.len()
+        && from != to
+    {
+        let x = list.remove(from);
+        list.insert(to, x);
+    }
+    if target != tab.target {
+        tab.target = target;
+        tab.cleared.clear();
+        tab.reload(m);
+    }
+    ui.horizontal_wrapped(|ui| {
+        // Those that stand over the code, ticked on and off; one ticked whose own code isn't on brings it along.
+        let open: Vec<&BuildingCode> =
+            all.iter().map(|(c, _)| c).filter(|c| !c.amends.is_empty() && stands_over(all, c, &tab.code)).collect();
+        if open.is_empty() && tab.amendments.is_empty() {
+            ui.label(RichText::new(t("none for this code")).color(pal().muted).small());
+        }
+        if !open.is_empty() {
+            let c = ComboBox::from_id_salt(("building-code-amend", disc.key()))
+                .selected_text(t("Choose Amendments…"))
+                .width(220.0)
+                .show_ui(ui, |ui| {
+                    for c in &open {
+                        let mut on = list.contains(&c.code);
+                        let label = if c.edition.is_empty() { c.title() } else { format!("{} · {}", c.title(), c.edition) };
+                        if ui.checkbox(&mut on, label).clicked() {
+                            if on {
+                                // What it stands over first, where that is an amendment not chosen yet.
+                                let mut chain = vec![c.code.clone()];
+                                let mut over = c.amends.clone();
+                                while let Some((k, _)) = all.iter().find(|(k, _)| k.code == over && !k.amends.is_empty()) {
+                                    if list.contains(&k.code) || chain.contains(&k.code) {
+                                        break;
+                                    }
+                                    chain.push(k.code.clone());
+                                    over = k.amends.clone();
+                                }
+                                list.extend(chain.into_iter().rev());
+                            } else {
+                                list.retain(|x| *x != c.code);
+                            }
+                        }
+                    }
+                });
+            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Choose Amendments")));
+        }
+        let l = ui.label(t("New amendment:"));
+        ui.add(egui::TextEdit::singleline(&mut d.amendment).desired_width(160.0).hint_text(t("Name"))).labelled_by(l.id);
+        actions.create = ui
+            .add_enabled(!d.amendment.trim().is_empty(), egui::Button::new(t("Create Amendment")))
+            .on_hover_text(t("Make a new, empty amendment for this project. Your changes will be saved in it."))
+            .clicked();
+    });
+    // Those taken away that the chosen ones stood over go too, as the core would leave them out.
+    if list != tab.amendments {
+        let held: Vec<String> = {
+            let mut probe = tab.clone();
+            probe.amendments = list.clone();
+            with_choice(m, &probe).layers(disc).iter().skip(1).map(|k| k.code.clone()).collect()
+        };
+        list.retain(|a| held.contains(a));
+        tab.amend(m, list);
+    }
+    if let Some(target) = &tab.target {
+        let (name, _) = name_of(target);
+        ui.label(RichText::new(tf("Your changes are saved in {}, not in the code.", &[&name])).color(OUTSIDE).small());
+    }
 }
 
 /// A discipline's tab: its header (code, amendments, actions), the section list, the rules grid and the card.
@@ -697,7 +1055,7 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
     let all: Vec<(BuildingCode, bool)> = m.codes.all(disc).map(|(c, own)| (c.clone(), own)).collect();
     let base = all.iter().find(|(c, _)| c.code == tab.code).map(|(c, _)| c.clone()).unwrap_or_default();
     let moved = tab.changes(m);
-    let custom = !moved.is_empty();
+    let custom = !moved.is_empty() && tab.target.is_none();
     ui.horizontal(|ui| {
         ui.label(RichText::new(t("Code:")).strong());
         let now = if custom { tf("Custom (based on {})", &[t(&base.name)]) } else { base.title() };
@@ -711,8 +1069,8 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
         });
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Building Code")));
         if base.checked.is_empty() {
-            ui.label(RichText::new(t("unchecked numbers")).color(OUTSIDE).small()).on_hover_text(t(
-                "These numbers haven't been checked against the documents yet. Check one against a copy before you rely on it.",
+            ui.label(RichText::new(t("not checked yet")).color(OUTSIDE).small()).on_hover_text(t(
+                "Nobody has checked these numbers against the official documents yet. Check a number before you rely on it.",
             ));
         } else {
             ui.label(RichText::new(t("✔ checked")).color(pal().muted).small()).on_hover_text(&base.checked);
@@ -721,56 +1079,20 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
             ui.label(RichText::new(t("Custom")).color(OUTSIDE).strong());
         }
     });
-    // Amendments: a chip each, taken away by its cross; one more added from those that stand over the layers.
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(t("Amendments:")).strong());
-        let mut gone = None;
-        for (k, a) in tab.amendments.iter().enumerate() {
-            let name = all.iter().find(|(c, _)| c.code == *a).map_or(a.clone(), |(c, _)| c.name.clone());
-            egui::Frame::group(ui.style()).inner_margin(egui::Margin::symmetric(6, 2)).show(ui, |ui| {
-                ui.label(name);
-                if ui.small_button("×").on_hover_text(t("Take this amendment away")).clicked() {
-                    gone = Some(k);
-                }
-            });
-        }
-        if let Some(k) = gone {
-            tab.amendments.remove(k);
-            tab.reload(m);
-        }
-        let held: Vec<String> = std::iter::once(tab.code.clone()).chain(tab.amendments.iter().cloned()).collect();
-        let open: Vec<&BuildingCode> =
-            all.iter().map(|(c, _)| c).filter(|c| !c.amends.is_empty() && held.contains(&c.amends) && !held.contains(&c.code)).collect();
-        if open.is_empty() {
-            if tab.amendments.is_empty() {
-                ui.label(RichText::new(t("none for this code")).color(pal().muted).small());
-            }
-        } else {
-            ComboBox::from_id_salt(("building-code-amend", disc.key())).selected_text(t("+ Add…")).width(220.0).show_ui(ui, |ui| {
-                for c in open {
-                    if ui.selectable_label(false, c.title()).clicked() {
-                        tab.amendments.push(c.code.clone());
-                        tab.reload(m);
-                    }
-                }
-            });
-        }
-    });
+    amendments(ui, m, d, &mut tab, &all, actions);
     ui.horizontal(|ui| {
-        actions.import =
-            ui.button(t("Import…")).on_hover_text(t("Read a building code from an XML file, as one of the project's own")).clicked();
-        actions.export = ui
-            .button(t("Export…"))
-            .on_hover_text(t("Write this tab's rules as an XML file, to hand to another project or office"))
-            .clicked();
+        actions.import = ui.button(t("Import…")).on_hover_text(t("Load a building code from an XML file into this project")).clicked();
+        actions.export =
+            ui.button(t("Export…")).on_hover_text(t("Save this tab's rules to an XML file, to use in another project")).clicked();
         if all.iter().any(|(c, own)| *own && c.code == tab.code) && !custom {
             actions.delete = ui
                 .button(t("Delete"))
-                .on_hover_text(t("Take this code of the project's own away; a project held to it keeps its rules"))
+                .on_hover_text(t("Delete this code from the project. If the project uses it, its rules are kept."))
                 .clicked();
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.add_enabled(custom, egui::Button::new(t("Reset Tab to the Code's Rules"))).clicked() {
+            if ui.add_enabled(!moved.is_empty() || !tab.cleared.is_empty(), egui::Button::new(t("Undo Changes in This Tab"))).clicked() {
+                tab.cleared.clear();
                 tab.reload(m);
             }
         });
@@ -779,16 +1101,16 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
     if custom {
         ui.horizontal(|ui| {
             let l = ui.label(t("Save as:"));
-            ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(240.0).hint_text(t("A name of your own"))).labelled_by(l.id);
+            ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(240.0).hint_text(t("Name"))).labelled_by(l.id);
             actions.save = ui.add_enabled(!d.name.trim().is_empty(), egui::Button::new(t("Save Code"))).clicked();
-            ui.label(RichText::new(t("Unsaved, the rules are still the project's when applied.")).color(pal().muted).small());
+            ui.label(RichText::new(t("If you don't save it, your changes still apply to this project.")).color(pal().muted).small());
         });
     }
     let gone: Vec<(String, String, String)> = m.codes.editions_gone(disc);
     for (code, pinned, now) in gone {
         ui.label(
             RichText::new(tf(
-                "{} was chosen in its edition {}, which this BIMCraft no longer has: it is held to {}.",
+                "{} was chosen in edition {}, which this version of BIMCraft no longer has. Edition {} is used instead.",
                 &[&code, &pinned, &now],
             ))
             .color(OUTSIDE)
@@ -805,6 +1127,18 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
             let r = ui.add(egui::TextEdit::singleline(&mut d.search).hint_text(t("🔍 find a rule…")).desired_width(220.0));
             r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, t("Find a rule")));
             ui.add_space(4.0);
+            if disc == Discipline::Electrical {
+                ui.label(RichText::new(t("Electrical Settings")).strong().small());
+                for (i, key) in SETTINGS.iter().enumerate() {
+                    let label = crate::electrical::TABS.get(i).map_or("", |l| t(l));
+                    if ui.selectable_label(tab.section == *key, label).clicked() {
+                        tab.section = key.to_string();
+                        d.table = None;
+                    }
+                }
+                ui.add_space(4.0);
+                ui.label(RichText::new(t("Code Sections")).strong().small());
+            }
             for s in &sections {
                 let held = tab.rules.get(s.key).is_some_and(|r| !r.is_empty());
                 // A search shows the sections with a rule of that name, key or source.
@@ -830,28 +1164,46 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                 }
             }
             ui.add_space(6.0);
-            ui.label(RichText::new(t("• changed for this project")).color(pal().muted).small());
-            ui.label(RichText::new(t("(ref.) reference only: nothing checks these yet")).color(pal().muted).small());
+            ui.label(RichText::new(t("• changed in this project")).color(pal().muted).small());
+            ui.label(RichText::new(t("(ref.) for reference only: no check uses these yet")).color(pal().muted).small());
         });
         ui.separator();
         ui.vertical(|ui| {
             let key = tab.section.clone();
+            if let Some(i) = SETTINGS.iter().position(|k| *k == key) {
+                ui.label(RichText::new(crate::electrical::TABS.get(i).map_or("", |l| t(l))).strong().size(15.0));
+                ui.label(
+                    RichText::new(t(
+                        "These belong to the project. Circuits and panels use them. OK or Apply saves them as one step that you can undo.",
+                    ))
+                    .color(pal().muted)
+                    .small(),
+                );
+                ui.add_space(4.0);
+                crate::electrical::table(ui, &mut d.electrical, i);
+                return;
+            }
             let Some(def) = codes::section_def(disc, &key) else { return };
             let layered = tab.layered(m, &key);
             ui.horizontal(|ui| {
                 ui.label(RichText::new(t(def.label)).strong().size(15.0));
                 if def.read_by.is_empty() {
-                    ui.label(RichText::new(t("reference only")).color(pal().muted).small());
+                    ui.label(RichText::new(t("for reference only")).color(pal().muted).small());
                 }
             });
             ui.label(RichText::new(t(def.about)).color(pal().muted).small());
             if !def.read_by.is_empty() {
-                ui.label(RichText::new(tf("Read by: {}", &[&def.read_by.join(", ")])).color(pal().muted).small());
+                ui.label(RichText::new(tf("Used by: {}", &[&def.read_by.join(", ")])).color(pal().muted).small());
             }
             ui.add_space(4.0);
+            // A rule is taken out of the amendment edited only where the base holds its section: else nothing but the library
+            // is under it, another code's section.
+            let base_holds = all.iter().any(|(c, _)| c.code == tab.code && c.section(&key).is_some());
+            let tab_target = tab.target.clone();
+            let mut take_out: Vec<(String, String)> = Vec::new();
             let Some(rules) = tab.rules.get_mut(&key) else { return };
             if rules.is_empty() {
-                ui.label(RichText::new(t("None of the codes chosen holds this section yet.")).color(pal().muted));
+                ui.label(RichText::new(t("None of the chosen codes has this section yet.")).color(pal().muted));
                 return;
             }
             let mut open = None;
@@ -900,7 +1252,21 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                         })
                         .collect();
                     if moved.is_empty() {
-                        ui.label(RichText::new(from_said(layered.from.get(&keys[0]))).color(pal().muted).small());
+                        let from = layered.from.get(&keys[0]);
+                        let edited = base_holds && tab_target.as_ref().is_some_and(|t| from == Some(&Layer::Amendment(t.clone())));
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(from_said(from)).color(pal().muted).small());
+                            if edited
+                                && ui
+                                    .small_button(t("Remove"))
+                                    .on_hover_text(t(
+                                        "Remove this rule from the amendment. The value from the code below it is used again.",
+                                    ))
+                                    .clicked()
+                            {
+                                take_out.extend(keys.iter().map(|k| (key.clone(), k.clone())));
+                            }
+                        });
                         let from: Vec<String> = keys.iter().filter_map(|k| layered.sources.get(k).cloned()).collect();
                         let mut from = from;
                         from.dedup();
@@ -911,7 +1277,7 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                             ui.add(egui::Label::new(RichText::new(&said).color(pal().muted).small()).truncate()).on_hover_text(&said);
                         }
                     } else {
-                        ui.label(RichText::new(t("project")).color(OUTSIDE).small());
+                        ui.label(RichText::new(tab_target.as_deref().unwrap_or(t("project"))).color(OUTSIDE).small());
                         ui.horizontal(|ui| {
                             let was: Vec<String> = moved.iter().map(|(k, code)| said(units, k, named(&key, k).1, code)).collect();
                             let was = if pair.is_some() && moved.len() == 1 {
@@ -920,7 +1286,7 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                             } else {
                                 was.join(" – ")
                             };
-                            ui.label(RichText::new(tf("Changed: the code says {}", &[&was])).color(OUTSIDE));
+                            ui.label(RichText::new(tf("Changed. The code says {}", &[&was])).color(OUTSIDE));
                             if ui.small_button(t("Reset")).clicked() {
                                 for (k, code) in moved {
                                     if code.is_null() {
@@ -939,15 +1305,24 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                 d.table = Some((key.clone(), k.clone()));
                 d.card = Some((key.clone(), k));
             }
-            // The table being edited, under the grid.
-            if let Some((s, r)) = d.table.clone()
+            // The kinds of room, always open: a row each.
+            if key == "rooms"
+                && let Some(v) = rules.get_mut("kinds")
+            {
+                ui.add_space(6.0);
+                room_kinds(ui, units, v);
+            } else if let Some((s, r)) = d.table.clone()
                 && s == key
                 && let Some(v) = rules.get_mut(&r)
             {
+                // The table being edited, under the grid.
                 ui.add_space(6.0);
                 if table_editor(ui, &named(&key, &r).0, v, &mut d.pasted) {
                     d.table = None;
                 }
+            }
+            for (k, r) in take_out {
+                tab.clear(m, &k, &r);
             }
             // The card: the rule picked, with its full source, kind and where it comes from.
             if let Some((s, r)) = d.card.clone()
@@ -980,9 +1355,12 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
 fn overview_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Actions) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(t("Region preset:")).strong());
-        let c = ComboBox::from_id_salt("building-code-preset").selected_text(t("Pick a region…")).width(260.0).show_ui(ui, |ui| {
+        let region = d.region();
+        let shown =
+            region.and_then(|i| codes::presets().get(i)).map_or_else(|| t("Pick a region…").to_string(), |p| t(&p.name).to_string());
+        let c = ComboBox::from_id_salt("building-code-preset").selected_text(shown).width(260.0).show_ui(ui, |ui| {
             for (i, p) in codes::presets().iter().enumerate() {
-                if ui.selectable_label(false, t(&p.name)).on_hover_text(t(&p.note)).clicked() {
+                if ui.selectable_label(region == Some(i), t(&p.name)).on_hover_text(t(&p.note)).clicked() {
                     actions.preset = Some(i);
                 }
             }
@@ -990,9 +1368,9 @@ fn overview_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Actio
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Region Preset")));
         ui.label(RichText::new(t("sets all five tabs")).color(pal().muted).small());
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            actions.export_all = ui.button(t("Export All…")).on_hover_text(t("Write all five tabs' rules as one XML file")).clicked();
+            actions.export_all = ui.button(t("Export All…")).on_hover_text(t("Save the rules of all five tabs to one XML file")).clicked();
             actions.import_all =
-                ui.button(t("Import All…")).on_hover_text(t("Read building codes from an XML file and hold the project to them")).clicked();
+                ui.button(t("Import All…")).on_hover_text(t("Load building codes from an XML file and use them in this project")).clicked();
         });
     });
     ui.add_space(8.0);
@@ -1012,7 +1390,7 @@ fn overview_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Actio
                         );
                     }
                     let changes: usize = tab.changes(m).values().map(Vec::len).sum();
-                    let status = if base.checked.is_empty() { t("unchecked numbers").to_string() } else { t("✔ checked").to_string() };
+                    let status = if base.checked.is_empty() { t("not checked yet").to_string() } else { t("✔ checked").to_string() };
                     let status = match changes {
                         0 => status,
                         1 => format!("{status} · {}", t("1 change")),
@@ -1020,7 +1398,7 @@ fn overview_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Actio
                     };
                     ui.label(RichText::new(status).color(pal().muted).small());
                     if let Some(n) = d.outside.get(&tab.discipline).filter(|n| **n > 0) {
-                        ui.label(RichText::new(tf("{} findings in the project", &[&n.to_string()])).color(OUTSIDE).small());
+                        ui.label(RichText::new(tf("{} rule problems in the project", &[&n.to_string()])).color(OUTSIDE).small());
                     }
                 });
             });
@@ -1033,7 +1411,7 @@ fn overview_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Actio
     ui.label(RichText::new(t("Site and Climate")).strong());
     ui.label(
         RichText::new(t(
-            "The numbers a code's maps give for the project's place, each with the map it was read from. Storm drains read the rain.",
+            "Numbers for the project's location, taken from the code's maps. Write where each number comes from. Storm drain sizing uses the rainfall.",
         ))
         .color(pal().muted)
         .small(),
@@ -1054,7 +1432,7 @@ fn overview_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Actio
             ui.label(t(label));
             ui.horizontal(|ui| {
                 let mut on = d.site.contains_key(key);
-                if ui.checkbox(&mut on, "").on_hover_text(t("Given for this project")).changed() {
+                if ui.checkbox(&mut on, "").on_hover_text(t("Set for this project")).changed() {
                     if on {
                         d.site.insert(key.to_string(), json!(0.0));
                     } else {
@@ -1115,7 +1493,7 @@ fn site_source(ui: &mut Ui, d: &mut CodesDialog, key: &str) {
     let sources = d.site.entry("sources").or_insert_with(|| json!({}));
     let Some(o) = sources.as_object_mut() else { return };
     let mut text = o.get(key).and_then(Value::as_str).unwrap_or("").to_string();
-    if ui.add(egui::TextEdit::singleline(&mut text).desired_width(260.0).hint_text(t("the map or table it is from"))).changed() {
+    if ui.add(egui::TextEdit::singleline(&mut text).desired_width(260.0).hint_text(t("where this number comes from"))).changed() {
         if text.trim().is_empty() {
             o.remove(key);
         } else {
@@ -1137,6 +1515,8 @@ struct Actions {
     import_all: bool,
     export_all: bool,
     preset: Option<usize>,
+    /// Make a new amendment of the project's own, called what `CodesDialog::amendment` says.
+    create: bool,
 }
 
 impl BimApp {
@@ -1176,14 +1556,14 @@ impl BimApp {
                     let head = if fits {
                         "Stairs that fit the rules, the nearest first:"
                     } else {
-                        "No stair near it fits every rule. The nearest:"
+                        "No similar stair follows every rule. The closest ones:"
                     };
                     ui.label(RichText::new(t(head)).strong());
                     for (i, p) in proposals.iter().enumerate() {
                         ui.separator();
                         ui.horizontal(|ui| {
                             let label = tf("Apply {}", &[&(i + 1).to_string()]);
-                            if ui.button(label).on_hover_text(t("Make the stair this one, in one step that Undo takes back")).clicked() {
+                            if ui.button(label).on_hover_text(t("Change the stair to this one. You can undo it.")).clicked() {
                                 apply = Some(i + 1);
                             }
                             ui.vertical(|ui| {
@@ -1193,10 +1573,8 @@ impl BimApp {
                                 if !p.findings.is_empty() {
                                     let left: Vec<&str> = p.findings.iter().map(|f| rule_label(f.rule)).collect();
                                     ui.add(
-                                        egui::Label::new(
-                                            RichText::new(tf("Still outside: {}", &[&left.join(", ")])).color(OUTSIDE).small(),
-                                        )
-                                        .wrap(),
+                                        egui::Label::new(RichText::new(tf("Still breaks: {}", &[&left.join(", ")])).color(OUTSIDE).small())
+                                            .wrap(),
                                     );
                                 }
                             });
@@ -1209,12 +1587,12 @@ impl BimApp {
                     if low
                         && ui
                             .button(t("Cut Opening"))
-                            .on_hover_text(t("Cut the floor over the stair open where it leaves less than the headroom over its steps"))
+                            .on_hover_text(t("Cut an opening in the floor above the stair where the headroom is too low"))
                             .clicked()
                     {
                         open_floor = true;
                     }
-                    if ui.button(t("Building Codes…")).on_hover_text(t("Open the project's building code and its rules")).clicked() {
+                    if ui.button(t("Building Codes…")).on_hover_text(t("Open the project's building codes")).clicked() {
                         self.codes_dialog = Some(CodesDialog::new(&m));
                         close = true;
                     }
@@ -1269,7 +1647,7 @@ impl BimApp {
                 d.error = if left.is_empty() {
                     String::new()
                 } else {
-                    tf("Left out of the file, unknown to this version: {}", &[&left.join(", ")])
+                    tf("Skipped, because this version doesn't know them: {}", &[&left.join(", ")])
                 };
             }
             Err(e) => d.error = e,
@@ -1314,7 +1692,7 @@ impl BimApp {
         let r = Modal::new(UiId::new("building-codes-dialog"), t("Building Codes")).width(1000.0).min_height(560.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.label(RichText::new(t(
-                    "The building codes this project is held to, one tab for each discipline. Any rule can be changed, for a state's or a city's own; what is outside a rule is still built, and marked.",
+                    "The building codes this project follows, one tab for each discipline. You can change any rule, for example to match a state or city rule. Elements that break a rule are still built, and they are marked.",
                 )).color(pal().muted));
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
@@ -1366,8 +1744,24 @@ impl BimApp {
             for tab in d.tabs.iter_mut() {
                 let pick = p.choices.get(&tab.discipline);
                 tab.code = pick.map_or_else(|| codes::default_of(tab.discipline).code.clone(), |k| k.code.clone());
-                tab.amendments = pick.map(|k| k.amendments.clone()).unwrap_or_default();
-                tab.reload(m);
+                tab.amend(m, pick.map(|k| k.amendments.clone()).unwrap_or_default());
+            }
+        }
+        // A new amendment of the project's own: made now, and laid over the tab's code, last, as the one edited.
+        if a.create
+            && let Some(tab) = &shown
+        {
+            let name = d.amendment.trim().to_string();
+            let p = json!({"discipline": tab.discipline.key(), "create": name, "over": tab.code});
+            if tried(self, &mut d, "building_code", p).is_some() {
+                let m = self.session.model.clone();
+                let t = d.tab_mut(tab.discipline);
+                let mut list = t.amendments.clone();
+                list.push(name.clone());
+                t.amend(&m, list);
+                t.target = Some(name);
+                t.reload(&m);
+                d.amendment.clear();
             }
         }
         if a.save
@@ -1390,8 +1784,14 @@ impl BimApp {
                 *d.tab_mut(tab.discipline) = Tab { section: tab.section.clone(), ..fresh };
             }
         } else if a.ok || a.apply {
-            // Each tab the project doesn't have yet, then the site's numbers.
-            for tab in d.tabs.clone() {
+            // The electrical settings, then each tab the project doesn't have yet, then the site's numbers.
+            if !self.apply_electrical(&mut d.electrical, a.apply) {
+                done = false;
+                if let Some(i) = Discipline::ALL.iter().position(|x| *x == Discipline::Electrical) {
+                    d.tab = i + 1;
+                }
+            }
+            for tab in d.tabs.clone().into_iter().filter(|_| done) {
                 let now = self.session.model.clone();
                 if !tab.differs(&now) {
                     continue;
@@ -1417,11 +1817,16 @@ impl BimApp {
             }
             if done && a.apply {
                 let tab = d.tab;
-                let sections: Vec<String> = d.tabs.iter().map(|t| t.section.clone()).collect();
+                let kept: Vec<(String, Option<String>)> = d.tabs.iter().map(|t| (t.section.clone(), t.target.clone())).collect();
+                let electrical = std::mem::replace(&mut d.electrical, crate::electrical::ElectricalDialog::new(&self.session.model));
                 d = CodesDialog::new(&self.session.model);
                 d.tab = tab;
-                for (t, s) in d.tabs.iter_mut().zip(sections) {
+                d.electrical = electrical;
+                for (t, (s, target)) in d.tabs.iter_mut().zip(kept) {
                     t.section = s;
+                    if target.as_ref().is_some_and(|x| t.amendments.contains(x)) {
+                        t.target = target;
+                    }
                 }
             }
         }

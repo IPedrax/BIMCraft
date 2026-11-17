@@ -1,4 +1,4 @@
-//! A building's demand by each method of `data/building-demand.json`, against the standards' own examples and worked by hand, and
+//! A building's demand by each method of BIMCraft's electrical codes, against the standards' own examples and worked by hand, and
 //! the data itself: every table sourced, in order, and the tables the standards share alike.
 
 use super::*;

@@ -239,6 +239,9 @@ pub struct RoomKind {
     pub area_min: f64,
     pub side_min: f64,
     pub height_min: f64,
+    /// The least area of its windows as a share of its floor's (natural light: 0.08 is 8 %), 0 for none.
+    #[serde(default)]
+    pub light_min: f64,
 }
 
 /// The rules rooms are held to, by kind.
@@ -268,6 +271,9 @@ impl Section for RoomRules {
                     return Err(format!("rooms: kind `{}`'s `{what}` is from 0 to a million, not {v}", k.kind));
                 }
             }
+            if !k.light_min.is_finite() || !(0.0..=1.0).contains(&k.light_min) {
+                return Err(format!("rooms: kind `{}`'s `light_min` is a share of the floor, from 0 to 1, not {}", k.kind, k.light_min));
+            }
         }
         Ok(())
     }
@@ -279,6 +285,35 @@ impl RoomRules {
         let name = name.to_lowercase();
         self.kinds.iter().find(|k| k.names.iter().any(|n| name.contains(&n.to_lowercase())))
     }
+}
+
+/// The area of the windows that light a room, mm²: those in a wall near its outline in plan, whose middle lies on its
+/// boundary (within half the wall's thickness, as rooms are measured at the finish faces or the centre lines), and whose
+/// height is the room's. The walls come from the lookup by tile and height, so this costs what is round the room.
+fn window_area(m: &Model, r: &Room, ring: &[crate::geom::P2]) -> f64 {
+    let (lo, hi) = m.room_span(r);
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for p in ring {
+        (x0, y0, x1, y1) = (x0.min(p.0), y0.min(p.1), x1.max(p.0), y1.max(p.1));
+    }
+    let look = m.lookup();
+    let mut total = 0.0;
+    for wall in look.walls_near_at(&[([x0, y0, x1, y1], lo, hi)], 1000.0) {
+        let Some(w) = m.wall(wall) else { continue };
+        let half = m.thickness(w) / 2.0 + 1.0;
+        let Some(g) = m.elements.guid(wall) else { continue };
+        for id in look.referrers(&g) {
+            let Some(e @ crate::model::Element::Window(o)) = m.elements.get(id) else { continue };
+            let Some((at, _, sill)) = m.opening_frame(o) else { continue };
+            let Ok(t) = m.opening_dims(e) else { continue };
+            let n = ring.len();
+            let on = (0..n).any(|i| crate::geom::dist_to_segment(at, ring[i], ring[(i + 1) % n]) <= half);
+            if on && sill < hi && sill + t.height > lo {
+                total += t.width * t.height;
+            }
+        }
+    }
+    total
 }
 
 /// The narrower side of an outline: across its longest edge, the width of what it covers.
@@ -327,6 +362,25 @@ pub fn room_findings(m: &Model, r: &Room) -> Vec<Finding> {
                     kind.kind,
                     mm(side),
                     kind.side_min,
+                    kind.kind
+                ),
+            });
+        }
+    }
+    if kind.light_min > 0.0 && closed && ring.len() >= 3 {
+        let floor = crate::geom::area(&ring).abs();
+        let share = if floor > EPS { window_area(m, r, &ring) / floor } else { 0.0 };
+        if share < kind.light_min - 1e-9 {
+            let pc = |x: f64| (x * 1000.0).round() / 10.0;
+            out.push(Finding {
+                rule: "light_min",
+                value: (share * 1.0e4).round() / 1.0e4,
+                limit: kind.light_min,
+                message: format!(
+                    "room ({}): windows of {} % of its floor, under the {} % a {} has at least",
+                    kind.kind,
+                    pc(share),
+                    pc(kind.light_min),
                     kind.kind
                 ),
             });

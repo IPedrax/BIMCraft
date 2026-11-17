@@ -55,12 +55,25 @@ The rules in force are the layers', the last one winning rule by rule (`codes::r
 2. each amendment;
 3. the project's changes.
 
-An amendment's `amends` names the base, or an amendment before it: a member of a group of utilities over the group's
-standard, over the national standard. Examples: São Paulo's IT 22 over NBR 5626/8160/10844; a city's code over the IBC.
+An amendment's `amends` names the base, or another amendment chosen: a member of a group of utilities over the group's
+standard, over the national standard. Examples: São Paulo's IT 22 over NBR 5626/8160/10844; a city's code over the IBC; a
+utility's standard (Cemig, Copel, Fecoergs…) over NBR 5410. The amendments go in the order the project gives (the dialog's
+list, dragged), the last winning rule by rule.
+
+**A change goes into the amendment edited.** With `amend` (in the dialog, the amendment marked "changes go here", the last
+one by default), `building_code`'s `rules` and `reset` change that amendment, not the project's own changes:
+- one of the project's own amendments is changed in place;
+- one of BIMCraft's becomes the project's copy under its name (`Codes::library_of` is what it was taken from); each number
+  changed says so in its source, and a reset of the whole copy takes it away, so the library's is there again;
+- a rule set to null leaves the amendment, so the layers under it give it again (the dialog's Take Out).
+
+`create` makes an empty amendment of the project's own over the base (or `over`), which `amendments` then chooses.
 
 **A section none of the layers has comes from BIMCraft's library**: the first code of its discipline that holds it, the
 default first (`codes::library`). So a command works whatever the project chose. Its `from` says so (`library`). A
-project's changes still apply over it.
+project's changes still apply over it. A section only amendments hold, that is not whole without the rules they leave out
+(an amendment of the project's own that changes one door width), is the library's under what they change; one an amendment
+holds whole (a utility's method) is that amendment's alone.
 
 **Editions are pinned.** When a project chooses a code, its edition is kept (`Choice::editions`). A newer edition in the
 library changes nothing until the code is chosen again. Where the library no longer has the edition pinned, the project is
@@ -69,6 +82,11 @@ held to the one there is, and `building_code` (`editions_gone`) and the dialog s
 **Site and Climate** (`codes::Site`) are the numbers a code's maps give for the project's place: rain, wind, snow,
 thunderstorm days, frost depth, climate zone, design temperatures. Each has the map it was read from. They are the project's
 and shared by every discipline. `storm_size` reads the rain when it isn't given.
+
+A module whose section is a type of its own with no form to write back (the electrical sections: `dr.rs`, `bath.rs`,
+`loads.rs`, `building_demand.rs`, `entrance.rs`) registers it with `valid_as`, reads the project's with
+`Model::section_as` (and whether a layer of the project holds it or the library), and its library by a standard's or a
+utility's name with `codes::library_sections`.
 
 Reading a section is cheap: `Model::rules::<S>()` resolves it once and keeps it until the project's codes change (the
 model's `code_cache`, keyed by the identity of `Model::codes`, a copy-on-write `Shared`). `codes::library_rules::<S>()` is
@@ -91,7 +109,10 @@ the library's, for a module's functions that have no project.
 - `code_check`: every finding of the elements given, or of all. `stair_check` and `stair_solve` stay for stairs.
 
 An element a section checks has `code_check` (in short) and `code_findings` in its JSON. Today that is stairs, ramps, doors
-and rooms (`codes/stairs.rs`, `codes/checks.rs`).
+and rooms (`codes/stairs.rs`, `codes/checks.rs`). A room is of the first kind (`rooms.kinds`) one of whose names its name
+holds, and is held to the kind's least area, width and height and its natural light (`light_min`: the area of its windows
+over its floor's, the IBC's 8 % for a habitable room). Its windows are those in the walls the lookup finds round it whose
+middle lies on its boundary and whose height is the room's.
 
 ## Manage > Building Codes
 
@@ -103,15 +124,22 @@ The desktop's dialog (`crates/ui-egui/src/codes.rs`) has an **Overview** and a t
   - Site and Climate, each number with its source.
 - **A discipline's tab** has:
   - its code picker;
-  - its amendments as chips, one more added from those that stand over its layers;
+  - its amendments as a list in the order they are laid, each dragged by its handle (or moved by its arrows), taken away
+    by its cross and marked as the one changes go into; more ticked from Choose Amendments (one ticked brings what it
+    stands over), and Create Amendment makes one of the project's own. While one is on, a changed rule's From says it;
   - Import, Export, Save As, Delete and Reset Tab, for that discipline alone;
   - the sections down the left: `•` marks the project's changes, `(ref.)` a reference, and a search box looks through
     every rule;
   - the rules grid: Rule, Value, From and Source. A changed rule shows "Changed: the code says …" and Reset;
   - a table editor for a rule that is a table: cells edited in place, rows added and taken away, Copy and Paste as
-    tab-separated text for a spreadsheet;
+    tab-separated text for a spreadsheet; the kinds of room have rows of their own (kind, room names, least area, width
+    and height, natural light as a percentage);
   - the rule card: its full source, kind and layer.
-- OK and Apply send one `building_code` for each tab that changed, then `site_climate`.
+- The Electrical tab's first sections are the project's Electrical Settings (`electrical.rs`: voltages, distribution
+  systems, wire types), which Manage > Electrical Settings opens.
+- The Overview's region preset says the region whose codes the tabs are.
+- OK and Apply send the electrical settings (one undo step), then one `building_code` for each tab that changed (with
+  `amend` while an amendment is edited), then `site_climate`.
 
 ## Principles
 

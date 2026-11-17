@@ -40,7 +40,7 @@ msgstr "Ladrillo"
 msgid "Brick 225 x 75"
 msgstr "Ladrillo 225 x 75"
 
-#: crates/core/src/commands.rs:5641
+#: crates/core/src/commands.rs:5648
 msgid "Camera"
 msgstr "Cámara"
 
@@ -133,7 +133,7 @@ msgstr "Punto de datos"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13722
+#: crates/core/src/commands.rs:13812
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -218,9 +218,9 @@ msgstr "Iluminación eléctrica"
 msgid "Electrical Power"
 msgstr "Fuerza eléctrica"
 
-#: crates/core/src/commands.rs:13469
-#: crates/core/src/commands.rs:13484
-#: crates/core/src/commands.rs:18103
+#: crates/core/src/commands.rs:13559
+#: crates/core/src/commands.rs:13574
+#: crates/core/src/commands.rs:18193
 msgid "Elevation"
 msgstr "Elevación"
 
@@ -350,7 +350,7 @@ msgstr "Ancho de la pata"
 msgid "Length"
 msgstr "Longitud"
 
-#: crates/core/src/commands.rs:8469
+#: crates/core/src/commands.rs:8559
 #: crates/core/src/model.rs:4410
 msgid "Level"
 msgstr "Nivel"
@@ -391,7 +391,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:10941
+#: crates/core/src/commands.rs:11031
 msgid "Mass"
 msgstr "Masa"
 
@@ -407,8 +407,8 @@ msgstr "Líneas medias"
 msgid "Membrane"
 msgstr "Lámina impermeable"
 
-#: crates/core/src/commands.rs:3759
-#: crates/core/src/commands.rs:16681
+#: crates/core/src/commands.rs:3766
+#: crates/core/src/commands.rs:16771
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:5907
 msgid "Metal"
@@ -504,11 +504,11 @@ msgstr "Porcelana"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4051
+#: crates/core/src/commands.rs:4058
 msgid "Project"
 msgstr "Proyecto"
 
-#: crates/core/src/commands.rs:9196
+#: crates/core/src/commands.rs:9286
 msgid "Property Line"
 msgstr ""
 
@@ -540,7 +540,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tejas"
 
-#: crates/core/src/commands.rs:11166
+#: crates/core/src/commands.rs:11256
 msgid "Room"
 msgstr "Habitación"
 
@@ -576,8 +576,8 @@ msgstr "Recrecido"
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
-#: crates/core/src/commands.rs:13404
-#: crates/core/src/commands.rs:18102
+#: crates/core/src/commands.rs:13494
+#: crates/core/src/commands.rs:18192
 msgid "Section"
 msgstr "Sección"
 
@@ -748,7 +748,7 @@ msgstr "Altura no delimitada"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13958
+#: crates/core/src/commands.rs:14048
 msgid "Unnamed"
 msgstr "Sin nombre"
 
@@ -826,15 +826,15 @@ msgstr "Encimera"
 msgid "Yes"
 msgstr "Sí"
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "bath"
 msgstr "baño"
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "bwc"
 msgstr "aseo"
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "wc"
 msgstr "sanitario"
 

@@ -1,17 +1,17 @@
-//! Manage > Electrical Settings: the voltages, distribution systems and wire types, edited as a draft and applied as one undo
-//! step; a refusal said inside the dialog.
+//! Manage > Electrical Settings, the first sections of the Building Codes' Electrical tab: the voltages, distribution systems
+//! and wire types, edited as a draft and applied as one undo step; a refusal said inside the dialog.
 
 use super::*;
 
 /// The error the open dialog says, if it says one.
 fn said(h: &Harness<BimApp>) -> Option<String> {
-    h.state().electrical_dialog.as_ref().and_then(|d| d.error()).map(String::from)
+    h.state().codes_dialog.as_ref().and_then(|d| d.electrical.error()).map(String::from)
 }
 
 fn open(h: &mut Harness<BimApp>) {
     press(h, "Manage");
     press(h, "Electrical Settings");
-    assert!(h.state().electrical_dialog.is_some(), "the button opens the dialog");
+    assert!(h.state().codes_dialog.as_ref().is_some_and(|d| d.on_electrical_settings()), "the button opens the Electrical tab's settings");
 }
 
 #[test]
@@ -28,7 +28,7 @@ fn the_dialog_lists_the_projects_voltages_systems_and_wire_types() {
     press(&mut h, "Wire Types");
     assert!(h.query_by_label("Size 1 section").is_some(), "the first wire type's table");
     press(&mut h, "Cancel");
-    assert!(h.state().electrical_dialog.is_none());
+    assert!(h.state().codes_dialog.is_none());
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn a_voltage_and_a_system_that_names_it_are_applied_as_one_undo_step() {
     // Nothing is the project's until OK.
     assert!(!h.state().session.model.voltages.contains_key("690 V"));
     press(&mut h, "OK");
-    assert!(h.state().electrical_dialog.is_none(), "OK closes it");
+    assert!(h.state().codes_dialog.is_none(), "OK closes it");
     let m = &h.state().session.model;
     let v = &m.voltages["690 V"];
     assert_eq!((v.nominal, v.min, v.max), (690.0, 621.0, 759.0));
@@ -71,7 +71,7 @@ fn rows_renamed_and_taken_away_are_applied_in_an_order_the_core_accepts() {
     pick(&mut h, Role::Button, "Delete voltage 7");
     pick(&mut h, Role::Button, "Delete voltage 4");
     press(&mut h, "OK");
-    assert!(h.state().electrical_dialog.is_none(), "{:?}", said(&h));
+    assert!(h.state().codes_dialog.is_none(), "{:?}", said(&h));
     let m = &h.state().session.model;
     assert!(m.voltages.contains_key("Mains 230") && !m.voltages.contains_key("230 V"));
     assert!(!m.voltages.contains_key("480 V") && !m.voltages.contains_key("277 V"));
@@ -99,7 +99,7 @@ fn a_name_left_blank_or_used_twice_is_said_in_the_dialog_and_nothing_changes() {
     press(&mut h, "Add Voltage");
     type_into(&mut h, "Voltage 8 name", "230 V");
     press_near(&mut h, "OK", "Cancel");
-    assert!(h.state().electrical_dialog.is_some(), "a refusal keeps the dialog open");
+    assert!(h.state().codes_dialog.is_some(), "a refusal keeps the dialog open");
     assert!(said(&h).is_some_and(|e| e.contains("230 V")), "{:?}", said(&h));
     assert_eq!((h.state().session.model.voltages.len(), h.state().session.history().len()), (7, steps));
     type_into(&mut h, "Voltage 8 name", "  ");
@@ -116,14 +116,14 @@ fn what_the_core_refuses_is_said_in_the_dialog_and_nothing_changes() {
     // 400 V between lines is not root three times 380 V to the neutral.
     choose(&mut h, "System 3 line to neutral", "380 V");
     press_near(&mut h, "OK", "Cancel");
-    assert!(h.state().electrical_dialog.is_some());
+    assert!(h.state().codes_dialog.is_some());
     assert!(said(&h).is_some_and(|e| e.contains("1.73")), "{:?}", said(&h));
     let m = &h.state().session.model;
     assert_eq!(m.distribution_systems["230/400 V"].l_n.as_deref(), Some("230 V"));
     assert_eq!(h.state().session.history().len(), steps);
     // Cancel drops the draft.
     press(&mut h, "Cancel");
-    assert!(h.state().electrical_dialog.is_none());
+    assert!(h.state().codes_dialog.is_none());
     assert_eq!(h.state().session.model.distribution_systems["230/400 V"].l_n.as_deref(), Some("230 V"));
 }
 
@@ -144,7 +144,7 @@ fn a_wire_type_is_a_table_of_sections_and_ampacities() {
     type_role(&mut h, Role::SpinButton, "Size 2 ampacity", "79");
     type_into(&mut h, "Size 2 label", "AA 25");
     press(&mut h, "OK");
-    assert!(h.state().electrical_dialog.is_none(), "{:?}", said(&h));
+    assert!(h.state().codes_dialog.is_none(), "{:?}", said(&h));
     let w = &h.state().session.model.wire_types["Al 90"];
     assert_eq!((w.material.as_str(), w.temperature, w.insulation.as_str()), ("aluminium", 90.0, "XLPE"));
     assert_eq!(w.sizes.len(), 2);
@@ -167,7 +167,7 @@ fn apply_keeps_the_dialog_open_on_what_the_project_now_has() {
     press(&mut h, "Add Voltage");
     type_into(&mut h, "Voltage 8 name", "690 V");
     press_near(&mut h, "Apply", "Cancel");
-    assert!(h.state().electrical_dialog.is_some(), "Apply keeps it open");
+    assert!(h.state().codes_dialog.is_some(), "Apply keeps it open");
     assert!(h.state().session.model.voltages.contains_key("690 V"));
     // Applied again with nothing changed: no new step.
     let steps = h.state().session.history().len();

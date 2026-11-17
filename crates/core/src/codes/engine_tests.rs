@@ -90,6 +90,65 @@ fn own(name: &str, d: Discipline, amends: &str, section: &str, rules: Value) -> 
     c
 }
 
+/// Amendments go in any order the user drags them to, the last one winning; a change made with one of them on is that
+/// amendment's (`amend`), not the project's; and a new amendment of the project's own starts empty over the base (`create`).
+#[test]
+fn amendments_go_in_any_order_and_a_change_goes_into_the_amendment_edited() {
+    let mut s = Session::new();
+    let a = Discipline::Architectural;
+    {
+        let codes = &mut *s.model_mut().codes;
+        codes.own.push(own("Fire brigade", a, "nbr-9077", "stairs", json!({"width_min": 1200.0, "guard_min": 1100.0})));
+        codes.own.push(own("City", a, "Fire brigade", "stairs", json!({"guard_min": 1300.0})));
+    }
+    run(&mut s, "building_code", json!({"set": "nbr-9077", "amendments": ["City", "Fire brigade"]}));
+    assert_eq!(s.model.stair_rules().guard_min, 1100.0, "the last one wins");
+    run(&mut s, "building_code", json!({"amendments": ["Fire brigade", "City"]}));
+    assert_eq!(s.model.stair_rules().guard_min, 1300.0);
+
+    // A change made in an amendment is the amendment's, not the project's.
+    let r = run(&mut s, "building_code", json!({"amend": "City", "rules": {"stairs": {"headroom": 2300}}}));
+    assert!(s.model.codes.architectural.changes.is_empty(), "{r}");
+    let city = s.model.codes.own.iter().find(|c| c.code == "City").unwrap();
+    assert_eq!(city.sections["stairs"]["headroom"], json!(2300.0), "as the section types it");
+    assert_eq!(s.model.resolve_code(a, "stairs").from["headroom"], Layer::Amendment("City".into()));
+    assert_eq!(r["amendments"][1]["custom"], json!(true));
+    // null takes a rule out of it: the layers under it give it again.
+    run(&mut s, "building_code", json!({"amend": "City", "rules": {"stairs": {"headroom": null}}}));
+    assert_eq!(s.model.resolve_code(a, "stairs").from["headroom"], Layer::Base("nbr-9077".into()));
+    // Only an amendment the project has, and what can't be rules is refused as ever.
+    assert!(s.execute("building_code", &json!({"amend": "nbr-9077", "rules": {"stairs": {"headroom": 2300}}})).is_err());
+    let e = s.execute("building_code", &json!({"amend": "City", "rules": {"stairs": {"riser_min": 250}}})).unwrap_err();
+    assert!(e.contains("riser"), "{e}");
+    // The project's own changes, made before, go into the amendment when it is edited.
+    run(&mut s, "building_code", json!({"rules": {"stairs": {"landing_length": 1300}}}));
+    run(&mut s, "building_code", json!({"amend": "City", "rules": {"stairs": {"landing_length": 1300}}}));
+    assert!(s.model.codes.architectural.changes.is_empty(), "no longer the project's own");
+
+    // One of BIMCraft's amendments is changed as the project's copy, listed once; reset gives the library's back.
+    let p = Discipline::Plumbing;
+    run(&mut s, "building_code", json!({"discipline": "plumbing", "set": "nbr", "amendments": ["cbpmesp-it22"]}));
+    let before = s.model.resolve_code(p, "hydrants").value["max_speed"].clone();
+    run(&mut s, "building_code", json!({"discipline": "plumbing", "amend": "cbpmesp-it22", "rules": {"hydrants": {"max_speed": 4.5}}}));
+    let now = s.model.resolve_code(p, "hydrants");
+    assert_eq!((now.value["max_speed"].clone(), now.from["max_speed"].clone()), (json!(4.5), Layer::Amendment("cbpmesp-it22".into())));
+    assert_eq!(s.model.codes.all(p).filter(|(c, _)| c.code == "cbpmesp-it22").count(), 1, "listed once, as the project's");
+    run(&mut s, "building_code", json!({"discipline": "plumbing", "amend": "cbpmesp-it22", "reset": true}));
+    assert_eq!(s.model.resolve_code(p, "hydrants").value["max_speed"], before);
+    assert!(s.model.codes.own.iter().all(|c| c.code != "cbpmesp-it22"));
+
+    // A new amendment, empty, over the base; chosen with it in one go, and then edited.
+    run(&mut s, "building_code", json!({"create": "Our office", "amendments": ["Fire brigade", "City", "Our office"]}));
+    let ours = s.model.codes.own.iter().find(|c| c.code == "Our office").unwrap();
+    assert_eq!((ours.amends.as_str(), ours.sections.len()), ("nbr-9077", 0));
+    run(&mut s, "building_code", json!({"amend": "Our office", "rules": {"doors": {"clear_width_min": 900}}}));
+    assert_eq!(s.model.rules::<checks::DoorRules>().clear_width_min, 900.0);
+    assert!(s.execute("building_code", &json!({"create": "City"})).unwrap_err().contains("City"), "a name taken");
+    // Reset of a section takes it out of an amendment of the project's own.
+    run(&mut s, "building_code", json!({"amend": "Our office", "reset": "doors"}));
+    assert!(s.model.codes.own.iter().find(|c| c.code == "Our office").unwrap().sections.is_empty());
+}
+
 #[test]
 fn layers_go_base_then_amendments_in_order_then_the_project_and_say_where_each_rule_is_from() {
     let mut s = Session::new();
@@ -112,10 +171,10 @@ fn layers_go_base_then_amendments_in_order_then_the_project_and_say_where_each_r
     assert_eq!(res.kinds["riser"], Kind::Assumption);
     assert!(res.sources["going"].contains("NBR 9077"), "{:?}", res.sources["going"]);
 
-    // An amendment over a code that isn't under it is refused, and so is one before what it amends.
+    // An amendment over a code that isn't under it is refused.
     let e = s.execute("building_code", &json!({"amendments": ["Elsewhere"]})).unwrap_err();
     assert!(e.contains("amends `ibc`"), "{e}");
-    assert!(s.execute("building_code", &json!({"amendments": ["City", "Fire brigade"]})).is_err());
+    assert!(s.execute("building_code", &json!({"amendments": ["City"]})).unwrap_err().contains("amends `Fire brigade`"));
     assert!(s.execute("building_code", &json!({"set": "Fire brigade"})).unwrap_err().contains("amendments"));
     // Another base takes the amendments away with the project's changes.
     run(&mut s, "building_code", json!({"set": "ibc"}));
@@ -419,13 +478,96 @@ fn ramps_doors_and_rooms_are_held_to_the_project_s_code() {
     run(&mut s, "wall", json!({"points": [[0, 22000], [1500, 22000], [1500, 20000]]}));
     let small = run(&mut s, "room", json!({"point": [700, 21000], "name": "Bedroom 2"}))["id"].as_u64().unwrap();
     let big = run(&mut s, "room", json!({"point": [5000, 24000], "name": "Kitchen"}))["id"].as_u64().unwrap();
-    assert_eq!(outside(&mut s, small), ["area_min", "side_min"]);
+    assert_eq!(outside(&mut s, small), ["area_min", "side_min", "light_min"], "and it has no window");
     assert!(outside(&mut s, big).is_empty());
     let all = run(&mut s, "code_check", json!({}));
     assert!(all["count"].as_u64().unwrap() >= 5, "{all}");
     // The generic code has no kinds of room: nothing is reported.
     run(&mut s, "building_code", json!({"set": "generic"}));
     assert!(outside(&mut s, small).is_empty());
+}
+
+/// A room of a kind with `light_min` has windows of that share of its floor at least: the windows in the walls round it,
+/// and only those.
+#[test]
+fn a_room_is_held_to_the_window_area_its_kind_asks_for() {
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"set": "ibc"}));
+    // A 4 by 3 m bedroom: 12 m², so the IBC's 8 % is 0.96 m² of glass.
+    run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 3000], [0, 0]]}));
+    let room = run(&mut s, "room", json!({"point": [2000, 1500], "name": "Bedroom"}))["id"].as_u64().unwrap();
+    assert_eq!(outside(&mut s, room), ["light_min"], "no window at all");
+    // A window in the next room's wall is no light of this one.
+    run(&mut s, "wall", json!({"points": [[4000, 0], [8000, 0], [8000, 3000], [4000, 3000]]}));
+    run(&mut s, "type", json!({"category": "window", "name": "Small 600", "width": 600, "height": 600, "sill": 1200}));
+    run(&mut s, "type", json!({"category": "window", "name": "Wide 1200", "width": 1200, "height": 1000, "sill": 1000}));
+    run(&mut s, "window", json!({"at": [6000, 0], "type": "Wide 1200"}));
+    assert_eq!(outside(&mut s, room), ["light_min"]);
+    // 0.36 m² is 3 % of the floor: still short.
+    run(&mut s, "window", json!({"at": [2000, 0], "type": "Small 600"}));
+    let r = run(&mut s, "code_check", json!({"ids": [room]}));
+    let f = &r["elements"][0]["findings"][0];
+    assert_eq!((f["rule"].as_str(), f["limit"].as_f64()), (Some("light_min"), Some(0.08)), "{r}");
+    assert!((f["value"].as_f64().unwrap() - 0.03).abs() < 1e-9, "{f}");
+    // 1.2 m² more is 13 %: inside.
+    run(&mut s, "window", json!({"at": [0, 1500], "type": "Wide 1200"}));
+    assert!(outside(&mut s, room).is_empty());
+    // The project asks for a sixth: 1.56 m² of 12 is 13 %, under 16.7 %.
+    let mut kinds = s.model.rules::<crate::codes::checks::RoomRules>().kinds.clone();
+    kinds.iter_mut().for_each(|k| k.light_min = if k.kind == "habitable" { 1.0 / 6.0 } else { k.light_min });
+    run(&mut s, "building_code", json!({"rules": {"rooms": {"kinds": kinds}}}));
+    assert_eq!(outside(&mut s, room), ["light_min"]);
+}
+
+/// The electrical commands follow the project's electrical code: NBR 5410's sections, a utility's amendment for a building's
+/// demand and its categories, and what the project or an amendment changed of them.
+#[test]
+fn the_electrical_commands_follow_the_project_s_code_and_what_it_changed() {
+    let mut s = Session::new();
+    let e = Discipline::Electrical;
+    let room = json!({"rooms": [{"name": "Sala", "area": 20, "perimeter": 18000, "points": 2}]});
+    assert_eq!(run(&mut s, "load_points", room.clone())["rooms"][0]["tug_minimum"], json!(4), "the library's NBR 5410");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410"}));
+    // A living room's outlet every 3 m of its perimeter, not 5: the project's own.
+    let mut rooms = s.model.resolve_code(e, "load_points").value["rooms"].clone();
+    for r in rooms.as_array_mut().unwrap().iter_mut().filter(|r| r["kind"] == "dry") {
+        r["per_perimeter_m"] = json!(3.0);
+    }
+    run(&mut s, "building_code", json!({"discipline": "electrical", "rules": {"load_points": {"rooms": rooms}}}));
+    assert_eq!(run(&mut s, "load_points", room.clone())["rooms"][0]["tug_minimum"], json!(6));
+    // A residual-current device of 10 mA at most.
+    run(&mut s, "building_code", json!({"discipline": "electrical", "rules": {"rcd": {"max_residual_ma": 10}}}));
+    let r = run(&mut s, "dr_check", json!({"circuits": [{"name": "1", "points": [{"place": "bath", "kind": "outlet"}]}]}));
+    assert!(r.to_string().contains("10"), "{r}");
+
+    // A building's demand: the utility is an amendment over NBR 5410; with none, a utility is named.
+    let flats = json!({"dwellings": [{"count": 3, "area": 60}]});
+    assert!(s.execute("building_demand", &flats).unwrap_err().contains("Building Codes"));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["cemig"]}));
+    let e2 = s.execute("building_demand", &flats).unwrap_err();
+    assert!(e2.contains("CEMIG ND-5.2 covers 4 dwellings or more"), "{e2}");
+    // The project's copy of Cemig's standard takes three.
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "cemig", "rules": {"building_demand": {"min_dwellings": 3}}}));
+    let r = run(&mut s, "building_demand", flats.clone());
+    assert_eq!(r["standard"], "CEMIG ND-5.2");
+    // Named, BIMCraft's: the project's copy is the one by that name.
+    assert!(s.execute("building_demand", &json!({"utility": "CEMIG", "dwellings": [{"count": 3, "area": 60}]})).is_ok());
+    assert!(s.execute("building_demand", &json!({"utility": "CELESC", "dwellings": [{"count": 3, "area": 60}]})).is_ok());
+
+    // Service categories: the utility's amendment, changed, is what `demand` reads for it.
+    let lib = crate::entrance::find("COPEL").unwrap().0;
+    let rows = serde_json::to_string(&s.model.codes).unwrap();
+    assert!(!rows.contains("NTC 901100"), "not the project's yet");
+    assert!(!lib.tables.is_empty());
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["copel"]}));
+    let (held, own) = s.model.section_as::<crate::entrance::Utility>(e, "entrance").unwrap();
+    assert!(own && held.id == "COPEL");
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "amend": "copel", "rules": {"entrance": {"rule": "the project's own"}}}),
+    );
+    assert_eq!(s.model.section_as::<crate::entrance::Utility>(e, "entrance").unwrap().0.rule, "the project's own");
 }
 
 /// Every element's check costs what is near it, never what is in the building: a room or a door of a 20-storey tower is

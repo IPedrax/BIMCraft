@@ -73,7 +73,8 @@
      ],
      "area_min": 0.0,
      "side_min": 0.0,
-     "height_min": 2133.6
+     "height_min": 2133.6,
+     "light_min": 0.0
     },
     {
      "kind": "kitchen",
@@ -82,7 +83,8 @@
      ],
      "area_min": 0.0,
      "side_min": 0.0,
-     "height_min": 2133.6
+     "height_min": 2133.6,
+     "light_min": 0.0
     },
     {
      "kind": "corridor",
@@ -92,7 +94,8 @@
      ],
      "area_min": 0.0,
      "side_min": 0.0,
-     "height_min": 2286.0
+     "height_min": 2286.0,
+     "light_min": 0.0
     },
     {
      "kind": "habitable",
@@ -107,7 +110,8 @@
      ],
      "area_min": 6.5032128,
      "side_min": 2133.6,
-     "height_min": 2286.0
+     "height_min": 2286.0,
+     "light_min": 0.08
     }
    ]
   },
@@ -203,7 +207,7 @@
   "doors.leaf_width_max": "IBC 2021 1010.1.1, 48 inches for a swinging leaf (unchecked)",
   "doors.frame_allowance": "The project's: what a door type's width loses to its frame and stops",
   "doors.exempt": "IBC 2021 1010.1.1's exceptions, by name: the project's to say",
-  "rooms": "IBC 2021 1208.1 (7 ft in any plan dimension), 1208.2 (7 ft 6 in ceilings; 7 ft for bathrooms, toilets, kitchens, storage and laundry), 1208.3 (70 square feet) (unchecked). Rooms are of a kind by their name.",
+  "rooms": "IBC 2021 1208.1 (7 ft in any plan dimension), 1208.2 (7 ft 6 in ceilings; 7 ft for bathrooms, toilets, kitchens, storage and laundry), 1208.3 (70 square feet), 1204.2 (natural light: glazing of 8 % of the floor of a habitable room) (unchecked). Rooms are of a kind by their name.",
   "egress": "IBC 2021 chapter 10 (unchecked): 1005.3 capacity, 1006.3 exits by load, 1017.2 travel distance, 1020.2 and 1020.5 corridors, 1003.2 headroom",
   "accessibility": "2010 ADA Standards and ICC A117.1 (unchecked): 304 turning space, 305 clear floor space, 308 reach, 404 doors, 403 routes"
  },

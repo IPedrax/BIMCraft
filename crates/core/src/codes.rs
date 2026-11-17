@@ -10,8 +10,10 @@
 //! - A project ([`Codes`], `Model::codes`) picks a **base** code for each discipline, any **amendments** over it (a state's
 //!   fire brigade, a city's own code, a utility), and may change any rule (`changes`). The rules in force are those
 //!   layers, the last one winning, rule by rule ([`Model::resolve_code`], [`Model::rules`], kept until the codes change).
-//!   A section none of the layers has is taken from the first code BIMCraft has that holds it (the library), so a
-//!   command works whatever the project chose, and says where its numbers came from.
+//!   A section the base hasn't is taken from the first code BIMCraft has that holds it (the library), under what the
+//!   amendments change of it, so a command works whatever the project chose, and says where its numbers came from.
+//!   Amendments go in the order chosen, each over the base or another amendment held; a change made with `amend` is
+//!   that amendment's (one of BIMCraft's becomes the project's copy, under its name).
 //! - Site and Climate ([`Site`]) are the numbers a code's maps give for the project's place, shared by every tab.
 //!
 //! The area, and the rule that every check is fast and spatial: `docs/areas/building-codes.md`; the plan:
@@ -157,6 +159,13 @@ fn check_as<S: Section>(v: &Value) -> Result<Value, String> {
     serde_json::to_value(&s).map_err(|e| e.to_string())
 }
 
+/// A section a module reads as a type of its own that has no form to write back: it can be the rules if it reads as one, and
+/// it is kept as it is.
+fn valid_as<T: DeserializeOwned>(v: &Value) -> Result<Value, String> {
+    serde_json::from_value::<T>(v.clone()).map_err(|e| e.to_string())?;
+    Ok(v.clone())
+}
+
 /// A section nothing reads yet: any object of rules, shown as a reference.
 fn reference(v: &Value) -> Result<Value, String> {
     if v.is_object() { Ok(v.clone()) } else { Err("a section is an object of rules, by name".into()) }
@@ -181,7 +190,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Architectural,
                 "ramps",
                 ui_msg!("Ramps"),
-                ui_msg!("A new ramp's slope and width, the steepest slope by a run's rise, run rises, widths and landings."),
+                ui_msg!("The slope and width of new ramps, the steepest slope allowed, the height between landings, widths and landings."),
                 &["ramp", "code_check"],
                 check_as::<checks::RampRules>,
             ),
@@ -189,7 +198,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Architectural,
                 "doors",
                 ui_msg!("Doors and Openings"),
-                ui_msg!("The least clear width and height of doors, the widest leaf, and the doors not held to them."),
+                ui_msg!("The minimum clear width and height of doors, the widest leaf, and the doors that are not checked."),
                 &["code_check"],
                 check_as::<checks::DoorRules>,
             ),
@@ -197,7 +206,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Architectural,
                 "rooms",
                 ui_msg!("Rooms and Habitability"),
-                ui_msg!("Least areas, sides and heights of rooms, by the kind their name says."),
+                ui_msg!("Minimum area, width, height and natural light of rooms, by the kind of room its name shows."),
                 &["code_check"],
                 check_as::<checks::RoomRules>,
             ),
@@ -245,9 +254,49 @@ pub fn sections() -> &'static [SectionDef] {
                 Structural,
                 "concrete",
                 ui_msg!("Concrete"),
-                ui_msg!("Covers by exposure class, steel ratios, bars, stirrups and skin bars the bar check holds reinforcement to."),
+                ui_msg!("Concrete cover by exposure class, steel ratios, bars, stirrups and skin bars, used by the reinforcement check."),
                 &["reinforce"],
                 check_as::<crate::reinforce::norm::ConcreteRules>,
+            ),
+            s(
+                Electrical,
+                "rcd",
+                ui_msg!("Residual-Current Devices"),
+                ui_msg!("Which circuits need a high-sensitivity residual-current device (RCD), by place and type of point, and the highest residual current allowed."),
+                &["dr_check"],
+                valid_as::<crate::dr::RuleSet>,
+            ),
+            s(
+                Electrical,
+                "bath_volumes",
+                ui_msg!("Bathroom Volumes"),
+                ui_msg!("The zones around a bathtub or shower, their size, the IP rating, and what may be installed in each."),
+                &["bath_volumes"],
+                valid_as::<crate::bath::RuleSet>,
+            ),
+            s(
+                Electrical,
+                "load_points",
+                ui_msg!("Dwelling Lighting and Outlets"),
+                ui_msg!("The minimum lighting and outlets for each room of a home, and the power of each point."),
+                &["load_points"],
+                valid_as::<crate::loads::RuleSet>,
+            ),
+            s(
+                Electrical,
+                "building_demand",
+                ui_msg!("Building Demand"),
+                ui_msg!("How a utility or a country calculates a building's demand: the demand of one home, the factor for the number of homes, and the shared loads."),
+                &["building_demand"],
+                valid_as::<crate::building_demand::Method>,
+            ),
+            s(
+                Electrical,
+                "entrance",
+                ui_msg!("Service Categories"),
+                ui_msg!("The utility's service categories by supply system and use: the load or demand of each, with its breaker and cables."),
+                &["demand"],
+                valid_as::<crate::entrance::Utility>,
             ),
             s(
                 Electrical,
@@ -277,7 +326,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Mechanical,
                 "ducts",
                 ui_msg!("Ducts and Piping"),
-                ui_msg!("The most air and water velocities and friction losses."),
+                ui_msg!("The maximum air and water speeds, and friction losses."),
                 &[],
                 reference,
             ),
@@ -293,7 +342,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Plumbing,
                 "fixtures",
                 ui_msg!("Fixtures"),
-                ui_msg!("Each fixture's design flows, weight, fixture units and least drain."),
+                ui_msg!("Each fixture's design flows, weight, fixture units and minimum drain."),
                 &["water_size", "drain_size"],
                 check_as::<crate::plumbing::Fixtures>,
             ),
@@ -302,7 +351,7 @@ pub fn sections() -> &'static [SectionDef] {
                 "cold_water",
                 ui_msg!("Cold Water"),
                 ui_msg!(
-                    "The flow method, the most speed, the least pressure at a point of use, the pipes and fittings' equivalent lengths."
+                    "The flow method, the maximum speed, the minimum pressure at a fixture, and the equivalent lengths of pipes and fittings."
                 ),
                 &["water_size"],
                 check_as::<crate::water::WaterRules>,
@@ -311,7 +360,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Plumbing,
                 "reservoir",
                 ui_msg!("Reservation"),
-                ui_msg!("Days of consumption kept, refill time, compartments and pumps."),
+                ui_msg!("Days of water stored, refill time, compartments and pumps."),
                 &["reservoir_size"],
                 check_as::<crate::reservoir::ReservoirRules>,
             ),
@@ -319,7 +368,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Plumbing,
                 "drainage",
                 ui_msg!("Sanitary Drainage and Vents"),
-                ui_msg!("The fixture units branches, stacks and building drains carry by size and slope, vents and trap distances."),
+                ui_msg!("How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."),
                 &["drain_size", "vent_size"],
                 check_as::<crate::drainage::DrainageRules>,
             ),
@@ -327,7 +376,7 @@ pub fn sections() -> &'static [SectionDef] {
                 Plumbing,
                 "storm",
                 ui_msg!("Storm Drainage"),
-                ui_msg!("Rain, slopes, roughness, the least downpipe and the downpipe abacuses."),
+                ui_msg!("Rainfall, slopes, roughness, the minimum downpipe and the downpipe charts."),
                 &["storm_size"],
                 check_as::<crate::storm::StormRules>,
             ),
@@ -335,15 +384,15 @@ pub fn sections() -> &'static [SectionDef] {
                 Plumbing,
                 "hydrants",
                 ui_msg!("Hydrants and Hose Reels"),
-                ui_msg!("Fire hydrant systems by type, the fire reserve, pipe roughness and the limits on speed and head."),
+                ui_msg!("Fire hydrant systems by type, the fire water reserve, pipe roughness, and the limits on speed and pressure."),
                 &["hydrant_size"],
                 check_as::<crate::hydrant::HydrantRules>,
             ),
             s(
                 Plumbing,
                 "fixture_counts",
-                ui_msg!("Least Fixtures by Use"),
-                ui_msg!("Water closets, lavatories and other fixtures a building needs for its occupants."),
+                ui_msg!("Minimum Fixtures by Use"),
+                ui_msg!("Toilets, washbasins and other fixtures a building needs for the people in it."),
                 &[],
                 reference,
             ),
@@ -649,6 +698,11 @@ impl BuildingCode {
 
     /// One of a project's own: a name that can be, and rules that can be.
     pub fn check(&self) -> Result<(), String> {
+        // The project's copy of one of BIMCraft's amendments, changed for it, keeps that one's name.
+        let copy = self.based_on == self.code && !self.amends.is_empty() && find(self.discipline, &self.code).is_some();
+        if copy {
+            return self.check_rules();
+        }
         if own_name(&self.code)? != self.code {
             return Err(format!("the building code `{}` has spaces round its name", self.code));
         }
@@ -780,6 +834,12 @@ pub fn library_rules<S: Section>() -> Arc<S> {
         map.insert(TypeId::of::<S>(), Arc::clone(&made) as Arc<dyn Any + Send + Sync>);
     }
     made
+}
+
+/// Section `key` of every one of BIMCraft's codes of discipline `d` that holds it, read as `T`, in the library's order: where a
+/// module that knows its rules by a standard's or a utility's own name looks them up.
+pub fn library_sections<T: DeserializeOwned>(d: Discipline, key: &str) -> Vec<T> {
+    of(d).filter_map(|c| c.section(key)).filter_map(|o| serde_json::from_value(Value::Object(o.clone())).ok()).collect()
 }
 
 /// A region's codes, one for each discipline, picked at once on the Overview.
@@ -998,8 +1058,17 @@ impl Codes {
     }
 
     /// Every code of discipline `d` there is for this project: BIMCraft's, then its own.
+    /// One of BIMCraft's that the project changed (an amendment edited) is its own copy, listed once.
     pub fn all(&self, d: Discipline) -> impl Iterator<Item = (&BuildingCode, bool)> {
-        of(d).map(|c| (c, false)).chain(self.own.iter().filter(move |c| c.discipline == d).map(|c| (c, true)))
+        let shadowed = move |c: &BuildingCode| self.own.iter().any(|o| o.discipline == d && o.code == c.code);
+        of(d).filter(move |c| !shadowed(c)).map(|c| (c, false)).chain(self.own.iter().filter(move |c| c.discipline == d).map(|c| (c, true)))
+    }
+
+    /// BIMCraft's code of discipline `d` called `name`, in the edition the project pinned while the library keeps it: what
+    /// a copy of the project's own of it was taken from.
+    pub fn library_of(&self, d: Discipline, name: &str) -> Option<&'static BuildingCode> {
+        let pinned = self.choice(d).editions.get(name).and_then(|e| find_edition(d, name, e));
+        pinned.or_else(|| find(d, name))
     }
 
     /// The base code of discipline `d`: the one chosen, if it is still there and a base, else the default.
@@ -1007,20 +1076,29 @@ impl Codes {
         self.choice(d).code.as_deref().and_then(|k| self.find(d, k)).filter(|c| c.amends.is_empty()).unwrap_or_else(|| default_of(d))
     }
 
-    /// The layers of discipline `d` in order: the base, then each amendment that is still there and amends the base or an
-    /// amendment before it (a member of a group over the group's standard).
+    /// The layers of discipline `d` in order: the base, then the amendments in the order chosen, the last winning, each one
+    /// that is still there and amends the base or another amendment held (a member of a group over the group's standard).
     pub fn layers(&self, d: Discipline) -> Vec<&BuildingCode> {
-        let mut out = vec![self.base(d)];
-        for a in &self.choice(d).amendments {
-            if let Some(c) = self.find(d, a)
-                && !c.amends.is_empty()
-                && out.iter().any(|l| l.code == c.amends)
-                && !out.iter().any(|l| l.code == c.code)
-            {
-                out.push(c);
+        let base = self.base(d);
+        let chosen: Vec<&BuildingCode> =
+            self.choice(d).amendments.iter().filter_map(|a| self.find(d, a)).filter(|c| !c.amends.is_empty()).collect();
+        let mut held: Vec<&str> = vec![base.code.as_str()];
+        let mut on = vec![false; chosen.len()];
+        // What stands over the base, then over what stands, until nothing more does: so order is the user's to choose.
+        loop {
+            let mut grew = false;
+            for (i, c) in chosen.iter().enumerate() {
+                if !on[i] && held.contains(&c.amends.as_str()) && !held.contains(&c.code.as_str()) {
+                    on[i] = true;
+                    held.push(c.code.as_str());
+                    grew = true;
+                }
+            }
+            if !grew {
+                break;
             }
         }
-        out
+        std::iter::once(base).chain(chosen.into_iter().zip(on).filter(|(_, on)| *on).map(|(c, _)| c)).collect()
     }
 
     /// Whether everything chosen can be: own codes few and each one that can be, amendments few, each change a rule of a
@@ -1130,14 +1208,23 @@ pub fn layered(codes: &Codes, d: Discipline, key: &str) -> Resolved {
             out.kinds.insert(k.clone(), c.kind(key, k));
         }
     };
-    for (i, c) in layers.iter().enumerate() {
-        let layer = if i == 0 { Layer::Base(c.code.clone()) } else { Layer::Amendment(c.code.clone()) };
-        take(c, layer, &mut out);
-    }
-    if out.value.is_empty()
+    let lay = |out: &mut Resolved| {
+        for (i, c) in layers.iter().enumerate() {
+            let layer = if i == 0 { Layer::Base(c.code.clone()) } else { Layer::Amendment(c.code.clone()) };
+            take(c, layer, out);
+        }
+    };
+    lay(&mut out);
+    // A section none of the layers has is the library's; one only amendments have, and that isn't whole without the
+    // rules they leave out, is the library's under what they change of it.
+    let whole = |r: &Resolved| section_def(d, key).is_none_or(|def| def.check(&Value::Object(r.value.clone())).is_ok());
+    let base_has = layers.first().is_some_and(|b| b.section(key).is_some());
+    if (out.value.is_empty() || (!base_has && !whole(&out)))
         && let Some(lib) = library(d, key)
     {
+        out = Resolved::default();
         take(lib, Layer::Library(lib.code.clone()), &mut out);
+        lay(&mut out);
     }
     out
 }
@@ -1241,6 +1328,17 @@ impl Model {
         }
         let c = self.codes.find(S::DISCIPLINE, name)?;
         typed::<S>(c.section(S::KEY)?.clone()).map(Arc::new)
+    }
+
+    /// Section `key` of discipline `d` in force for the project, read as a module's own type `T`, and whether one of the
+    /// project's layers or changes holds it (false: it is BIMCraft's library's). Read each time: for commands, not for checks.
+    pub fn section_as<T: DeserializeOwned>(&self, d: Discipline, key: &str) -> Option<(T, bool)> {
+        let r = self.resolve_code(d, key);
+        if r.value.is_empty() {
+            return None;
+        }
+        let own = r.from.values().any(|l| !matches!(l, Layer::Library(_)));
+        serde_json::from_value(Value::Object(r.value)).ok().map(|t| (t, own))
     }
 
     /// The rules the project's stairs and railings are held to.

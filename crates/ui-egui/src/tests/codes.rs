@@ -86,7 +86,7 @@ fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
     h.run();
     press(&mut h, "Save Code");
     assert!(h.state().codes_dialog.as_ref().unwrap().error.contains("another name"));
-    press(&mut h, "Reset Tab to the Code's Rules");
+    press(&mut h, "Undo Changes in This Tab");
     press(&mut h, "Delete");
     let m = &h.state().session.model;
     assert!(m.codes.own.is_empty());
@@ -238,7 +238,7 @@ fn the_building_codes_dialog_writes_lengths_in_the_project_s_units() {
     h.run();
     let code = bimcraft_core::units::Units::Metres.with_unit(177.8);
     assert!(code.ends_with(" m"), "{code}");
-    assert!(h.query_by_label(&format!("Changed: the code says max. {code}")).is_some(), "{code}");
+    assert!(h.query_by_label(&format!("Changed. The code says max. {code}")).is_some(), "{code}");
 }
 
 #[test]
@@ -385,7 +385,7 @@ fn each_discipline_has_its_tab_its_sections_and_a_search() {
     h.run();
     assert!(h.query_all_by_label("Fixtures").count() >= 1 && h.query_all_by_label("Storm Drainage").count() >= 1);
     press(&mut h, "Cold Water");
-    assert!(h.query_all_by_label("Most Speed (m/s)").count() >= 1, "the section's rules, by name");
+    assert!(h.query_all_by_label("Maximum Speed (m/s)").count() >= 1, "the section's rules, by name");
 
     // A plumbing rule of the project's own, and an amendment: OK makes them the project's.
     {
@@ -412,8 +412,13 @@ fn the_overview_picks_a_region_and_keeps_the_site_s_numbers() {
     press(&mut h, "Building Codes");
     press(&mut h, "Overview");
     assert!(h.query_by_label("Site and Climate").is_some());
+    // A new project's codes are the "no building code" preset's; the drop-down says the region picked, not "Pick a region…".
+    let brasil = bimcraft_core::codes::presets().iter().position(|p| p.name == "Brasil");
+    assert_ne!(h.state().codes_dialog.as_ref().unwrap().region(), brasil);
     press(&mut h, "Region Preset");
     press(&mut h, "Brasil");
+    assert_eq!(h.state().codes_dialog.as_ref().unwrap().region(), brasil);
+    assert!(h.query_all_by_label("Pick a region…").next().is_none());
     {
         let d = h.state_mut().codes_dialog.as_mut().unwrap();
         d.site.insert("rain_intensity".into(), json!(172.0));
@@ -427,6 +432,90 @@ fn the_overview_picks_a_region_and_keeps_the_site_s_numbers() {
     assert_eq!(m.codes.plumbing.amendments, ["cbpmesp-it22"]);
     assert_eq!(m.codes.site.rain_intensity, Some(172.0));
     assert_eq!(m.codes.site.sources["rain_intensity"], "NBR 10844 Tabela 5");
+}
+
+/// The kinds of room are rows: a name, the room names that make one, the least area, width and height, and natural light.
+#[test]
+fn the_kinds_of_room_are_rows_with_their_area_height_and_natural_light() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"set": "ibc"}));
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    h.state_mut().codes_dialog.as_mut().unwrap().tab_mut(Discipline::Architectural).section = "rooms".into();
+    h.run();
+    assert!(h.query_by_label("Kind 4 name").is_some(), "the IBC's four kinds, a row each");
+    press(&mut h, "Add Row");
+    type_into(&mut h, "Kind 5 name", "office");
+    type_into(&mut h, "Kind 5 room names", "office, study room");
+    type_role(&mut h, Role::SpinButton, "Kind 5 least area", "9");
+    type_role(&mut h, Role::SpinButton, "Kind 5 natural light", "12.5");
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    let rules = m.rules::<bimcraft_core::codes::checks::RoomRules>();
+    let k = rules.kinds.iter().find(|k| k.kind == "office").expect("the new kind");
+    assert_eq!((k.names.clone(), k.area_min, k.light_min), (vec!["office".to_string(), "study room".to_string()], 9.0, 0.125));
+    assert_eq!(rules.kinds.iter().find(|k| k.kind == "habitable").map(|k| k.light_min), Some(0.08), "the IBC's 8 %");
+}
+
+/// Amendments are ticked from a list, put in order (the lower wins), and a rule changed goes into the one edited; a new
+/// one of the project's own is made empty over the code.
+#[test]
+fn amendments_are_chosen_ordered_and_hold_the_rules_changed() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"discipline": "plumbing", "set": "nbr"}));
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    h.state_mut().codes_dialog.as_mut().unwrap().tab = 5;
+    h.run();
+    h.get_by_role_and_label(Role::ComboBox, "Choose Amendments").click_accesskit();
+    h.run();
+    h.get_all_by(|n| n.role() == Role::CheckBox && n.label().is_some_and(|l| l.starts_with("CBPMESP IT 22")))
+        .next()
+        .unwrap()
+        .click_accesskit();
+    h.run();
+    h.get_by_role_and_label(Role::ComboBox, "Choose Amendments").click_accesskit();
+    h.run();
+    assert_eq!(h.state().codes_dialog.as_ref().unwrap().tabs[4].target.as_deref(), Some("cbpmesp-it22"), "the one edited");
+    // A new amendment of the project's own, last, and so the one edited.
+    type_into(&mut h, "New amendment:", "Our city");
+    press(&mut h, "Create Amendment");
+    let tab = h.state().codes_dialog.as_ref().unwrap().tabs[4].clone();
+    assert_eq!(
+        (tab.amendments.clone(), tab.target.clone()),
+        (vec!["cbpmesp-it22".to_string(), "Our city".to_string()], Some("Our city".into()))
+    );
+    // Put first: IT 22 is laid over it now.
+    h.get_all_by_label("↑").last().unwrap().click_accesskit();
+    h.run();
+    assert_eq!(h.state().codes_dialog.as_ref().unwrap().tabs[4].amendments, ["Our city", "cbpmesp-it22"]);
+    {
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        d.tabs[4].rules.get_mut("cold_water").unwrap().insert("max_speed".into(), json!(2.5));
+    }
+    h.run();
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!(m.codes.plumbing.amendments, ["Our city", "cbpmesp-it22"]);
+    assert!(m.codes.plumbing.changes.is_empty(), "not the project's own: the amendment's");
+    let ours = m.codes.own.iter().find(|c| c.code == "Our city").unwrap();
+    assert_eq!((ours.amends.as_str(), ours.sections["cold_water"]["max_speed"].clone()), ("nbr", json!(2.5)));
+    assert_eq!(m.rules::<bimcraft_core::water::WaterRules>().max_speed, 2.5);
+
+    // Taken out of the amendment again: the code's number.
+    press(&mut h, "Building Codes");
+    {
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        d.tab = 5;
+        d.tabs[4].target = Some("Our city".into());
+        d.tabs[4].section = "cold_water".into();
+    }
+    h.run();
+    press(&mut h, "Remove");
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_ne!(m.rules::<bimcraft_core::water::WaterRules>().max_speed, 2.5);
+    assert!(m.codes.own.iter().find(|c| c.code == "Our city").unwrap().sections.is_empty());
 }
 
 #[test]
@@ -491,7 +580,7 @@ fn a_table_is_edited_and_rows_are_pasted_from_a_spreadsheet() {
     }
     h.run();
     // Below the rules, where the dialog scrolls: clicked as an assistive tool clicks it.
-    h.get_by_label("Take Pasted Rows").click_accesskit();
+    h.get_by_label("Use Pasted Rows").click_accesskit();
     h.run();
     let d = h.state_mut().codes_dialog.as_mut().unwrap();
     assert_eq!(d.tab_mut(Discipline::Plumbing).rules["cold_water"]["pipes"], json!([[20, 1.5], [25, 1.7], [32, 2.1]]));
@@ -544,12 +633,35 @@ fn building_codes_screenshots() {
             d.tab = 5;
             let tab = d.tab_mut(Discipline::Plumbing);
             tab.set(&m, "nbr");
-            tab.amendments.push("cbpmesp-it22".into());
+            tab.amend(&m, vec!["cbpmesp-it22".into()]);
             tab.section = "cold_water".into();
             d.table = Some(("cold_water".into(), "equivalent_lengths".into()));
             d.card = Some(("cold_water".into(), "max_speed".into()));
         }
         save(&mut h, "plumbing");
+        {
+            let m = h.state().session.model.clone();
+            let d = h.state_mut().codes_dialog.as_mut().unwrap();
+            d.tab = 1;
+            let tab = d.tab_mut(Discipline::Architectural);
+            tab.set(&m, "ibc");
+            tab.section = "rooms".into();
+            d.card = None;
+            d.table = None;
+        }
+        save(&mut h, "rooms");
+        {
+            let m = h.state().session.model.clone();
+            let d = h.state_mut().codes_dialog.as_mut().unwrap();
+            d.tab = 3;
+            let tab = d.tab_mut(Discipline::Electrical);
+            tab.set(&m, "nbr-5410");
+            tab.amend(&m, vec!["fecoergs".into(), "cemig".into()]);
+            tab.section = "building_demand".into();
+        }
+        save(&mut h, "electrical");
+        h.state_mut().codes_dialog.as_mut().unwrap().tab_mut(Discipline::Electrical).section = "@systems".into();
+        save(&mut h, "electrical-settings");
         h.state_mut().codes_dialog.as_mut().unwrap().tab = 0;
         save(&mut h, "overview");
     }

@@ -113,7 +113,10 @@ pub fn said(codes: &Codes, d: Discipline) -> Value {
         "based_on": base.based_on,
         "checked": base.checked,
         "custom": codes.own.iter().any(|k| k.code == base.code && k.discipline == d),
-        "amendments": layers.iter().skip(1).map(|c| json!({"code": c.code, "name": c.name, "edition": c.edition, "amends": c.amends})).collect::<Vec<_>>(),
+        "amendments": layers.iter().skip(1).map(|c| json!({
+            "code": c.code, "name": c.name, "edition": c.edition, "amends": c.amends,
+            "custom": codes.own.iter().any(|k| k.code == c.code && k.discipline == d),
+        })).collect::<Vec<_>>(),
         "editions": codes.choice(d).editions,
         "editions_gone": gone,
         "sections": in_force,
@@ -132,12 +135,38 @@ pub fn said(codes: &Codes, d: Discipline) -> Value {
     out
 }
 
-/// `building_code`: a discipline's code chosen, its amendments, its rules changed, kept under a name, or one taken away.
+/// `building_code`: a discipline's code chosen, its amendments, its rules changed (the project's, or an amendment's), kept
+/// under a name, an amendment made, or one taken away.
 pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
     let c = "building_code";
-    only(c, p, &["discipline", "set", "amendments", "keep_rules", "rules", "stairs", "reset", "save", "delete"])?;
+    only(
+        c,
+        p,
+        &["discipline", "set", "amendments", "keep_rules", "rules", "stairs", "reset", "save", "delete", "amend", "create", "over"],
+    )?;
     let d = discipline(c, p)?;
-    let now = (*s.model.codes).clone();
+    let mut now = (*s.model.codes).clone();
+    let unchanged = now.clone();
+    // A new amendment of the project's own, empty, over the base: chosen by `amendments`, edited by `amend`.
+    let create = string(c, p, "create")?.map(|n| own_name(&n).map_err(|e| bad(c, e))).transpose()?;
+    if let Some(name) = &create {
+        if now.all(d).any(|(k, _)| k.code == *name) {
+            return Err(bad(c, format!("`create`: there is a {} code called `{name}` already", d.key())));
+        }
+        let over = match string(c, p, "over")? {
+            Some(o) if now.all(d).any(|(k, _)| k.code == o) => o,
+            Some(o) => return Err(bad(c, format!("`over` is the {} code the new amendment amends, and `{o}` is none", d.key()))),
+            None => now.base(d).code.clone(),
+        };
+        now.own.push(BuildingCode {
+            code: name.clone(),
+            name: name.clone(),
+            discipline: d,
+            amends: over.clone(),
+            note: format!("The project's own amendment over {over}."),
+            ..BuildingCode::default()
+        });
+    }
     let names: Vec<String> = now.all(d).map(|(k, _)| k.code.clone()).collect();
     let bases: Vec<String> = now.all(d).filter(|(k, _)| k.amends.is_empty()).map(|(k, _)| k.code.clone()).collect();
     let set = match p.get("set") {
@@ -150,6 +179,13 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         Some(v) => return Err(bad(c, format!("`set` is one of {}, not {v}", bases.join(", ")))),
         None => None,
     };
+    // A new amendment stands over the base chosen with it.
+    if let (Some(name), Some(set)) = (&create, &set)
+        && let Some(k) = now.own.iter_mut().find(|k| k.code == *name && k.discipline == d)
+    {
+        k.amends = set.clone();
+        k.note = format!("The project's own amendment over {set}.");
+    }
     let amendments = match p.get("amendments") {
         v if absent(v) => None,
         Some(Value::Array(a)) if a.len() <= super::MAX_AMENDMENTS => {
@@ -182,7 +218,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     // The rules to change, by section: `stairs` is the architectural `rules.stairs`.
-    let mut patches: Vec<(String, Map<String, Value>)> = Vec::new();
+    let mut patches: Patches = Vec::new();
     match p.get("rules") {
         v if absent(v) => {}
         Some(Value::Object(o)) => {
@@ -207,6 +243,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
     if reset.is_some() && !patches.is_empty() {
         return Err(bad(c, "`reset` takes the project's own rules away: give it without rules to change"));
     }
+    let amend = string(c, p, "amend")?;
 
     let mut next = now.clone();
     {
@@ -225,6 +262,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
             choice.amendments = a.clone();
         }
         match &reset {
+            _ if amend.is_some() => {}
             Some(None) => choice.changes.clear(),
             Some(Some(k)) => {
                 choice.changes.remove(k);
@@ -232,13 +270,23 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
             None => {}
         }
     }
-    // An amendment over a code that isn't one of the layers before it would be left out: said, not done quietly.
+    // An amendment over a code that isn't one of the layers would be left out: said, not done quietly.
     if let Some(a) = &amendments {
         let held: Vec<String> = next.layers(d).iter().map(|k| k.code.clone()).collect();
         if let Some(gone) = a.iter().find(|x| !held.contains(x)) {
             let over = next.find(d, gone).map_or(String::new(), |k| k.amends.clone());
-            return Err(bad(c, format!("`{gone}` amends `{over}`, which is neither the base nor an amendment before it")));
+            return Err(bad(c, format!("`{gone}` amends `{over}`, which is neither the base nor another amendment chosen")));
         }
+    }
+    // The rules changed in an amendment are its own: one of BIMCraft's becomes the project's copy of it.
+    if let Some(target) = &amend {
+        let held: Vec<String> = next.layers(d).iter().skip(1).map(|k| k.code.clone()).collect();
+        if !held.contains(target) {
+            let what = if held.is_empty() { "it has none".to_string() } else { held.join(", ") };
+            return Err(bad(c, format!("`amend` is one of the project's {} amendments ({what}), not `{target}`", d.key())));
+        }
+        amend_rules(&mut next, d, target, reset.clone(), patches).map_err(|e| bad(c, e))?;
+        patches = Vec::new();
     }
     for (key, rules) in patches {
         // Which rules a section has: what its layers, or the library, give it; a section of reference takes new ones.
@@ -294,6 +342,8 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
             Vec::new()
         };
         let gone = next.own.remove(i);
+        // The project's copy of one of BIMCraft's: the library's is there again, and still chosen.
+        let held = held && next.library_of(d, name).is_none();
         if held {
             let choice = next.choice_mut(d);
             choice.amendments.retain(|a| a != name);
@@ -320,10 +370,117 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         next.choice_mut(d).editions = pins;
     }
     next.check().map_err(|e| bad(c, e))?;
-    if next != now {
+    if next != unchanged {
         s.model_mut().codes = Shared::new(next);
     }
     Ok(said(&s.model.codes, d))
+}
+
+/// Rules to change, by section.
+type Patches = Vec<(String, Map<String, Value>)>;
+
+/// `patches` laid into amendment `target` of discipline `d`, or `reset` taken out of it: a rule set to null leaves it, so the
+/// layers under it give it again. One of BIMCraft's is copied as the project's own first, under its name; a reset of the
+/// whole of such a copy takes the copy away, and of a section gives it the library's section back.
+fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Option<String>>, patches: Patches) -> Result<(), String> {
+    let library = next.library_of(d, target);
+    if !next.own.iter().any(|k| k.code == target && k.discipline == d) {
+        let Some(lib) = library else { return Err(format!("no {} code `{target}`", d.key())) };
+        let mut copy = lib.clone();
+        copy.default = false;
+        copy.superseded_by.clear();
+        copy.based_on = lib.code.clone();
+        next.own.push(copy);
+    }
+    let i = next.own.iter().position(|k| k.code == target && k.discipline == d).ok_or_else(|| format!("no code `{target}`"))?;
+    match reset {
+        Some(None) => {
+            if library.is_some() {
+                next.own.remove(i);
+            } else {
+                let own = &mut next.own[i];
+                own.sections.clear();
+                own.sources.clear();
+                own.kinds.clear();
+            }
+            return Ok(());
+        }
+        Some(Some(key)) => {
+            let own = &mut next.own[i];
+            let of = |at: &String| at == &key || at.starts_with(&format!("{key}."));
+            own.sources.retain(|at, _| !of(at));
+            own.kinds.retain(|at, _| !of(at));
+            own.sections.remove(&key);
+            if let Some(lib) = library
+                && let Some(v) = lib.sections.get(&key)
+            {
+                own.sections.insert(key.clone(), v.clone());
+                own.sources.extend(lib.sources.iter().filter(|(at, _)| of(at)).map(|(k, v)| (k.clone(), v.clone())));
+                own.kinds.extend(lib.kinds.iter().filter(|(at, _)| of(at)).map(|(k, v)| (k.clone(), *v)));
+            }
+            return Ok(());
+        }
+        None => {}
+    }
+    for (key, rules) in patches {
+        let known = resolve_in(next, d, &key).value;
+        let def = section_def(d, &key);
+        let reference = def.is_some_and(|def| def.read_by.is_empty());
+        let mut section = next.own[i].sections.get(&key).and_then(Value::as_object).cloned().unwrap_or_default();
+        let mut set = Vec::new();
+        for (k, v) in rules {
+            if !known.contains_key(&k) && !reference && !v.is_null() {
+                let names: Vec<&str> = known.keys().map(String::as_str).collect();
+                return Err(format!("`{k}` is no rule of {key}; they are {}", names.join(", ")));
+            }
+            if k.chars().count() > 128 {
+                return Err("a rule's name is 128 characters at most".into());
+            }
+            if v.is_null() {
+                section.remove(&k);
+            } else {
+                section.insert(k.clone(), v);
+                set.push(k);
+            }
+        }
+        // As the section types its rules, so `1100` is the `1100.0` the code has.
+        if let Some(def) = def {
+            let mut all = known.clone();
+            all.extend(section.clone());
+            if let Ok(Value::Object(canon)) = (def.read)(&Value::Object(all)) {
+                for (k, v) in section.iter_mut() {
+                    if let Some(x) = canon.get(k) {
+                        *v = x.clone();
+                    }
+                }
+            }
+        }
+        let own = &mut next.own[i];
+        // A number of BIMCraft's copy that is changed is no longer its document's: said so where it is.
+        for k in &set {
+            let at = format!("{key}.{k}");
+            if library.is_some_and(|lib| lib.section(&key).and_then(|o| o.get(k)) != section.get(k)) {
+                own.sources.insert(at.clone(), Source::Text(format!("{target}: changed in this project")));
+                own.kinds.insert(at, Kind::Assumption);
+            }
+        }
+        let gone: Vec<String> = own
+            .sources
+            .keys()
+            .filter(|at| at.split_once('.').is_some_and(|(s, r)| s == key && !section.contains_key(r)))
+            .cloned()
+            .collect();
+        for at in gone {
+            own.sources.remove(&at);
+            own.kinds.remove(&at);
+        }
+        if section.is_empty() {
+            own.sections.remove(&key);
+        } else {
+            own.sections.insert(key, Value::Object(section));
+        }
+    }
+    Ok(())
 }
 
 /// `building_code_export`: a discipline's rules in force, a code named, or all five disciplines', as an XML file.

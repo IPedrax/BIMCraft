@@ -116,10 +116,10 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - The spatial core ([plan](docs/spatial-core-plan.md); each module in [crates/core/CLAUDE.md](crates/core/CLAUDE.md)): `derived.rs`, `rooms.rs`, `shared.rs`, `bounds.rs`, `family/bounds.rs`, `ids/revisions.rs`, `view3d/update.rs`, `view3d/fragments.rs`, `oracle_tests.rs`, `crosscheck.rs`.
 - `symbol_set.rs`: symbol sets, families of plan symbols loaded on demand by the `symbol_set` command (the AREI/RGIE's, `data/arei-symbols.json`; [families](docs/areas/families.md)).
 - `project_info.rs`: the project's information (Revit's Project Information), an element of category `project` ([parameters](docs/areas/parameters.md)).
-- `loads.rs`: the `load_points` command, a dwelling's lighting and outlets by room, by rule sets in `data/load-points.json` (NBR 5410 item 9.5.2 first).
+- `loads.rs`: the `load_points` command, a dwelling's lighting and outlets by room, by the electrical code's `load_points` (NBR 5410 9.5.2).
 - `dr.rs`: the `dr_check` command, which circuits NBR 5410 asks a 30 mA residual-current device for.
-- `bath.rs`: the `bath_volumes` command, the volumes around a bathtub or a shower and what may stand in each (NBR 5410 item 9.1, `data/bath-volumes.json`).
-- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's GED 13; Enel's GRI-0017 and Celesc's N-321.0001 by installed load); `entrance.rs`: other utilities' categories as data. `building_demand.rs`: `building_demand`, a building's demand by a utility's or a country's method (`data/building-demand.json`).
+- `bath.rs`: the `bath_volumes` command, the volumes around a bathtub or a shower and what may stand in each (NBR 5410 9.1).
+- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's GED 13; Enel's GRI-0017 and Celesc's N-321.0001 by installed load); `entrance.rs`: other utilities' categories, from their codes. `building_demand.rs`: `building_demand`, a building's demand by a utility's or a country's method.
 - `dps.rs`: the `dps_check` command, surge protection of a power line by NBR 5410 (when, where, connection, currents).
 - Plumbing, sized by the project's plumbing code: `water.rs` (`water_size`), `reservoir.rs`, `plumbing.rs` (fixtures), `storm.rs` (abacuses), `drainage.rs` (`drain_size`, `vent_size`), `hydrant.rs` (IT 22).
 - `network.rs`: the `network` command, the pipe network worked out from pipes' ends and pipe connectors, never stored (nodes, edges, open ends, warnings).
