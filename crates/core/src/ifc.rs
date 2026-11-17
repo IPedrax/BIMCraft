@@ -14,7 +14,7 @@ use bimcraft_i18n::ui_msg;
 pub mod classes;
 mod v2x3;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
 use crate::family::ConnectorKind;
@@ -108,6 +108,10 @@ const FLIGHT_PSET_DEFINES: u64 = 95;
 const STAIR_OWN: u64 = 96;
 const STAIR_OWN_DEFINES: u64 = 97;
 const STAIR_MATERIALS: u64 = 98;
+const CURTAIN_PART: u64 = 99;
+const CURTAIN_MATERIALS: u64 = 100;
+/// The project's classification tables' codes (`classify`).
+const CODES_CLASSIFIED: u64 = 101;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -277,6 +281,61 @@ fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
     format!(".{shape}_{kind}.")
 }
 
+/// The codes elements and their types hold from the project's classification tables, as ISO 16739's classification resource
+/// has them: an `IfcClassification` for each system (its publisher, edition and name), an `IfcClassificationReference` for
+/// each code held (its code, title and system), and an `IfcRelAssociatesClassification` from each code to the elements
+/// that hold it, theirs or their type's. What it wrote, each product's parameters (the code's and its title's), which the
+/// export then writes neither as properties nor as references of the parameter's own classification.
+fn classify<'m>(w: &mut Step, m: &'m Model, products: &BTreeMap<Id, u64>) -> BTreeSet<(&'m str, u64)> {
+    use crate::classification::{self as cls, Target};
+    let mut codes: BTreeMap<(String, String), (u64, Vec<u64>)> = BTreeMap::new();
+    let mut written = BTreeSet::new();
+    for b in &m.classification.bindings {
+        let (Some(table), Some(q)) = (m.classification.tables.get(&b.table), m.parameters.get(&b.parameter)) else { continue };
+        let def = cls::system(&table.system);
+        // One classification a system: Uniclass's Ss and Pr are both Uniclass 2015.
+        let name = def.map_or_else(|| b.table.clone(), |d| d.name.to_string());
+        for (&id, &ent) in products {
+            let Some(e) = m.elements.get(id) else { continue };
+            if !q.categories.iter().any(|c| c == e.category()) {
+                continue;
+            }
+            let Some(item) = cls::current(m, b, &Target::Element(id)).and_then(|c| table.find(c)) else { continue };
+            // One for each system, shared with a family's OmniClass and a parameter's own classification; one edition for
+            // it, or none when its tables disagree: NBR 15965's parts came out years apart.
+            let mut editions = m
+                .classification
+                .tables
+                .values()
+                .filter(|t| if def.is_some() { t.system == table.system } else { std::ptr::eq(*t, table) })
+                .map(|t| t.edition.as_str());
+            let first = editions.next().unwrap_or_default();
+            let edition = (!first.is_empty() && editions.all(|e| e == first)).then_some(first);
+            let system = w.classification_by(&name, def.map(|d| d.publisher), edition);
+            let entry = codes.entry((name.clone(), item.code.clone())).or_insert_with(|| {
+                let r = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{},#{system},$,$)", s(&item.code), s(&item.title)));
+                (r, Vec::new())
+            });
+            if !entry.1.contains(&ent) {
+                entry.1.push(ent);
+            }
+            written.insert((b.parameter.as_str(), ent));
+            if let Some(title) = &b.title {
+                written.insert((title.as_str(), ent));
+            }
+        }
+    }
+    for ((name, code), (r, ents)) in codes {
+        let key = name
+            .bytes()
+            .chain([0])
+            .chain(code.bytes())
+            .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{r})", w.guid(CODES_CLASSIFIED, key), refs(&ents)));
+    }
+    written
+}
+
 /// A STEP string literal: `'` doubled, `\` doubled, anything outside printable ASCII as `\X2\…\X0\`
 /// (UCS-2), or past it as `\X4\…\X0\` (UCS-4).
 fn s(text: &str) -> String {
@@ -312,6 +371,98 @@ pub(crate) fn ratio(x: f64) -> String {
 
 /// The digits of an IFC GlobalId, in order.
 const DIGITS: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+
+/// A curtain wall: no body of its own, the sum of its mullions (`IfcMember`) and panels (`IfcPlate`), placed from it. Parts of
+/// the same shape share one `IfcProductDefinitionShape`, so identical parts are written once. A part's GlobalId is made from
+/// the wall's GUID and its address on the pattern, so it stays through every export while the wall does. Returns the wall.
+fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey: u64) -> u64 {
+    use crate::curtain::{self, PartKind};
+    let u = Axis::of(wl).tangent(0.0);
+    let at = w.place(Some(storey), (wl.start.0, wl.start.1, wl.base_offset), Some(u));
+    let ent =
+        w.add(format!("IFCCURTAINWALL({},$,{},$,{},#{at},$,'{id}',.NOTDEFINED.)", w.guid(ELEMENT, id), s(&wl.type_name), s(&wl.type_name)));
+    w.typed("IFCCURTAINWALLTYPE", ".NOTDEFINED.", &wl.type_name, ent);
+    let l = curtain::layout(m, wl);
+    let plane = curtain::grid_plane(m, wl);
+    let mut shapes: Vec<Option<u64>> = vec![None; l.shapes.len()];
+    let mut parts = Vec::with_capacity(l.parts.len());
+    let mut by_material: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+    let guid_of_wall = w.own.get(&id).map_or(u128::from(id), |g| g.as_u128());
+    for p in &l.parts {
+        let Some(shape) = l.shapes.get(p.shape as usize) else { continue };
+        let material = shape.material_in(m).unwrap_or_default().to_string();
+        let body = match shapes.get(p.shape as usize).copied().flatten() {
+            Some(body) => body,
+            None => {
+                let [da, dz, dc] = shape.size.map(|x| x / 2.0);
+                let style = (!material.is_empty()).then(|| w.material_style(m, &material).1).flatten();
+                let body = if shape.is_cut() {
+                    let set = w.faceset(&shape.tris());
+                    if let Some(style) = style {
+                        w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
+                    }
+                    w.tessellated(&[set])
+                } else {
+                    let profile = w.profile(&[P2(-da, -dc), P2(da, -dc), P2(da, dc), P2(-da, dc)], &[]);
+                    w.bodies(&[(profile, -dz, shape.size[1])], &[], style)
+                };
+                if let Some(x) = shapes.get_mut(p.shape as usize) {
+                    *x = Some(body);
+                }
+                body
+            }
+        };
+        let [along, up, across] = p.centre;
+        let turned = (p.turn != 0.0).then(|| P2(p.turn.cos(), p.turn.sin()));
+        let place = w.place(Some(at), (along, plane + across, up), turned);
+        let global = s(&part_global(w.uid, guid_of_wall, p.address));
+        let name = s(&shape.type_name);
+        let part = match shape.kind {
+            PartKind::Panel => {
+                let part = w.add(format!("IFCPLATE({global},$,{name},$,{name},#{place},#{body},$,.CURTAIN_PANEL.)"));
+                w.typed("IFCPLATETYPE", ".CURTAIN_PANEL.", &shape.type_name, part);
+                part
+            }
+            PartKind::Mullion => {
+                let part = w.add(format!("IFCMEMBER({global},$,{name},$,{name},#{place},#{body},$,.MULLION.)"));
+                w.typed("IFCMEMBERTYPE", ".MULLION.", &shape.type_name, part);
+                part
+            }
+        };
+        parts.push(part);
+        if !material.is_empty() {
+            by_material.entry(material).or_default().push(part);
+        }
+    }
+    for (i, (name, parts)) in by_material.iter().enumerate() {
+        let material = w.material(m, name);
+        w.add(format!(
+            "IFCRELASSOCIATESMATERIAL({},$,$,$,({}),#{material})",
+            s(&guid(w.uid, CURTAIN_MATERIALS, w.part(id, i))),
+            refs(parts)
+        ));
+    }
+    if !parts.is_empty() {
+        w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, id), refs(&parts)));
+    }
+    ent
+}
+
+/// A curtain wall part's GlobalId, from a hash of the wall's GUID and the part's address (its kind, column and row), so it
+/// lasts while both do. Each is hashed whole: two addresses share one only by a 64-bit hash's chance, never as numbers packed
+/// into one's bits did.
+fn part_global(uid: u64, wall: u128, address: crate::curtain::Address) -> String {
+    use crate::curtain::Address;
+    let (kind, column, row) = match address {
+        Address::Cell { column, row } => (0, column, row),
+        Address::Vertical { column, row } => (1, column, row),
+        Address::Horizontal { column, row } => (2, column, row),
+        Address::Corner { column, row } => (3, column, row),
+        Address::VerticalGrid { column, row } => (4, column, row),
+        Address::HorizontalGrid { column, row } => (5, column, row),
+    };
+    guid(uid, CURTAIN_PART, key_of(&format!("{wall:032x}/{kind}/{column}/{row}")))
+}
 
 /// A 22-character IFC GlobalId, the same for the same model, role and element on every export.
 fn guid(uid: u64, role: u64, id: u64) -> String {
@@ -739,11 +890,17 @@ impl Step {
 
     /// The `IfcClassification` named `system`, one for each name whichever writer asks first; `edition` is the first asker's.
     fn classification(&mut self, system: &str, edition: Option<&str>) -> u64 {
+        self.classification_by(system, None, edition)
+    }
+
+    /// [`Step::classification`], with its publisher (`Source`) where the first asker knows it.
+    fn classification_by(&mut self, system: &str, source: Option<&str>, edition: Option<&str>) -> u64 {
         if let Some(&written) = self.systems.get(system) {
             return written;
         }
+        let source = source.map_or_else(|| "$".to_string(), s);
         let edition = edition.map_or_else(|| "$".to_string(), s);
-        let written = self.add(format!("IFCCLASSIFICATION($,{edition},$,{},$,$,$)", s(system)));
+        let written = self.add(format!("IFCCLASSIFICATION({source},{edition},$,{},$,$,$)", s(system)));
         self.systems.insert(system.to_string(), written);
         written
     }
@@ -1554,6 +1711,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     }
     for (&id, e) in &m.elements {
         match e {
+            Element::Wall(wl) if crate::curtain::pattern(m, wl).is_some() => {
+                let Some(&(_, storey)) = storeys.get(&wl.level) else { continue };
+                let ent = curtain_wall(&mut w, m, id, wl, storey);
+                contained.entry(wl.level).or_default().push(ent);
+                products.insert(id, ent);
+            }
             Element::Wall(wl) => {
                 let Some(&(_, storey)) = storeys.get(&wl.level) else { continue };
                 let (path, base) = (Axis::of(wl), m.own_base(wl));
@@ -2523,7 +2686,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.add(format!("IFCMATERIALLAYERSET(({}),{},$)", refs(&ids), s(name)))
     };
     let mut sets: BTreeMap<&str, u64> = BTreeMap::new();
-    let used: std::collections::BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
+    let used: BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
     for (name, t) in m.types.wall.iter().filter(|(name, t)| !t.layers.is_empty() && used.contains(name.as_str())) {
         sets.insert(name, layer_set(&mut w, name, &t.layers));
     }
@@ -2648,7 +2811,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         }
     }
     // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set
-    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references, below.
+    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references: a table's
+    // first (`classify`), then those of a parameter's own classification that no table wrote.
+    let by_tables = classify(&mut w, m, &products);
     let mut classified: BTreeMap<(&str, &str), Vec<u64>> = BTreeMap::new();
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };
@@ -2662,6 +2827,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         for (name, v) in params.iter().chain(of_type) {
             // The project's parameters for its category: a component's family's values are its family's.
             let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category())) else { continue };
+            if by_tables.contains(&(name.as_str(), ent)) {
+                continue;
+            }
             if p.classification.is_some() {
                 if let Some(code) = v.as_str().filter(|c| !c.trim().is_empty()) {
                     classified.entry((name.as_str(), code)).or_default().push(ent);
@@ -2745,6 +2913,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         for (&id, &ent) in &products {
             let Some(e) = m.elements.get(id) else { continue };
             let Some(pset) = common_pset(e) else { continue };
+            let curtain = matches!(e, Element::Wall(wl) if crate::curtain::pattern(m, wl).is_some());
+            let pset = if curtain { "Pset_CurtainWallCommon" } else { pset };
             let Some(status) = ifc_status(m, e) else { continue };
             let p = w.add(format!("IFCPROPERTYENUMERATEDVALUE('Status',$,(IFCLABEL('{status}')),$)"));
             w.common.entry(id).or_insert((ent, pset, Vec::new())).2.push(p);
@@ -2851,6 +3021,22 @@ mod tests {
     #[test]
     fn reals_always_carry_a_decimal_point() {
         assert_eq!([real(1500.0), real(0.00001), real(-0.0), real(-200.5), real(f64::NAN)], ["1500.", "0.00001", "0.", "-200.5", "0."]);
+    }
+
+    #[test]
+    fn curtain_parts_at_two_addresses_never_share_a_global_id() {
+        use crate::curtain::Address::{Cell, HorizontalGrid, Vertical, VerticalGrid};
+        let wall: u128 = 0x1234_5678_9abc_def0_0fed_cba9_8765_4321;
+        let g = |a| part_global(7, wall, a);
+        // Packed into one number, a column ran into the row's bits: these two shared a GlobalId.
+        assert_ne!(g(Cell { column: 0, row: 1 << 30 }), g(Cell { column: 1, row: 0 }));
+        // And a row past 32 bits lost its top ones.
+        assert_ne!(g(Cell { column: 0, row: 1 << 32 }), g(Cell { column: 0, row: 0 }));
+        assert_ne!(g(Cell { column: 2, row: 3 }), g(Vertical { column: 2, row: 3 }));
+        assert_ne!(g(VerticalGrid { column: 2, row: 0 }), g(HorizontalGrid { column: 2, row: 0 }));
+        // The same place on the same wall keeps its GlobalId; another wall's is another.
+        assert_eq!(g(Cell { column: 2, row: 3 }), g(Cell { column: 2, row: 3 }));
+        assert_ne!(g(Cell { column: 2, row: 3 }), part_global(7, wall + 1, Cell { column: 2, row: 3 }));
     }
 
     #[test]

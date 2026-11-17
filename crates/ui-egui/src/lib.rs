@@ -19,12 +19,14 @@ mod browser;
 mod cad;
 mod camera;
 mod canvas;
+mod classification;
 mod clouds;
 mod codes;
 mod context;
 pub mod control;
 mod coordinates;
 pub mod cowork;
+mod curtain;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -62,6 +64,7 @@ mod notes;
 mod objectstyles;
 mod opening;
 mod orbit;
+pub mod pacing;
 mod panelsched;
 mod paper;
 mod parameters;
@@ -72,6 +75,7 @@ mod presets;
 mod projectinfo;
 mod properties;
 mod purge;
+mod pyaddins;
 pub mod recent;
 mod reinforce;
 mod renames;
@@ -176,6 +180,15 @@ pub enum Tool {
     ReferencePlane(Option<P2>),
     /// Move the selection: its base point, once clicked.
     Move(Option<P2>),
+    /// Place grid lines on a curtain wall: hover to see where, click to place, Esc to stop.
+    CurtainGrid {
+        wall: Id,
+        way: bimcraft_core::curtain::GridWay,
+    },
+    /// Take stretches of a curtain wall's grid lines off, or put them back: hover to see which, click, Esc to stop.
+    CurtainSegment {
+        wall: Id,
+    },
     /// Copy the selection: its base point, once clicked.
     Copy(Option<P2>),
     /// Rotate the selection about `centre`: the start of the angle, once clicked; with `place`, the
@@ -229,6 +242,8 @@ pub enum Tool {
     Linework,
     /// Place Detail Group: the Options Bar's group type where clicked.
     DetailGroup,
+    /// Place Model Group: the Options Bar's model group type where clicked, on the view's level.
+    ModelGroup,
     /// Repeating Detail: the Options Bar's group along a line, its start once clicked.
     RepeatingDetail(Option<P2>),
     /// Lay the material in the Options Bar over the face clicked in the 3D view, as Revit's Paint does.
@@ -351,6 +366,8 @@ enum Tab {
     Collaborate,
     View,
     Manage,
+    /// The user's Python scripts: the Player, and the buttons made of them.
+    PyAddins,
     Modify,
     Context,
     /// A tab a plugin declared, by its place in [`BimApp::plugin_tabs`].
@@ -374,6 +391,7 @@ fn tab_key(tab: Tab) -> u64 {
         Tab::Modify => 11,
         Tab::Context => 12,
         Tab::Collaborate => 13,
+        Tab::PyAddins => 14,
         Tab::Plugin(i) => 100 + i as u64,
     }
 }
@@ -413,7 +431,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 62] = [
+const SHORTCUTS: [(&str, &str); 68] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -479,6 +497,14 @@ const SHORTCUTS: [(&str, &str); 62] = [
     ("CK", "Code Check"),
     ("TS", "Convert to Sketch"),
     ("SY", "Separate Storeys"),
+    // Revit has no PyAddins: letters free in both, Reload as Load Scripts and Stop as eXit Script.
+    ("PY", "Player"),
+    ("RS", "Run Script"),
+    ("LS", "Reload"),
+    ("NS", "New Script"),
+    ("XS", "Stop"),
+    // Revit has no Classification Manager; CI is free there and here.
+    ("CI", "Classification Manager"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -551,12 +577,17 @@ pub struct BimApp {
     pub session: Session,
     /// A scenario being run on the window (`bimcraft --bench`): it drives the window and times its frames.
     pub bench: Option<bench::Bench>,
+    /// The window's own pacing of its frames where the system's vsync doesn't (Windows: `pacing.rs`). None where it doesn't
+    /// pace them (other systems, the tests).
+    pub frames: Option<pacing::Pacer>,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
     /// The window draws its own title bar (`titlebar.rs`): the desktop's `main` says so where the system lets it (Windows and
     /// Linux), unless `system_title_bar`, the user's ask for the system's (Settings > User Interface, kept in `settings.json`).
     pub own_title_bar: bool,
     pub system_title_bar: bool,
+    /// Manage > Classification Manager, while it's open.
+    classification: Option<classification::ClassificationManager>,
     /// The active view, which takes the tools: a tab of `views`, or one of `floating`.
     pub sheet: Sheet,
     pub tool: Tool,
@@ -787,6 +818,23 @@ pub struct BimApp {
     spot_type_dialog: Option<spots::SpotTypeDialog>,
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
+    curtain_editor: Option<curtain::CurtainEditor>,
+    /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
+    curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// With a mullion's whole grid picked, the other places on it.
+    curtain_more: Vec<bimcraft_core::curtain::Address>,
+    /// Where the Curtain Grid tool would place a line: the wall, how far, and the way.
+    curtain_hover: Option<(Id, f64, bimcraft_core::curtain::GridWay)>,
+    /// The part of the selected curtain wall a Tab would go to next, under the cursor.
+    curtain_aim: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The stretch of a grid line Add/Remove Segments would take off or put back.
+    curtain_segment_hover: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The layout of the curtain wall a frame works with, kept while the model is the same.
+    curtain_laid: curtain::Laid,
+    /// The model the malformed curtain walls were last looked for in, those it had, and those being asked about.
+    curtain_seen: Option<Arc<Model>>,
+    curtain_known: std::collections::BTreeSet<Id>,
+    curtain_asking: std::collections::BTreeSet<Id>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -794,6 +842,15 @@ pub struct BimApp {
     linework_style: String,
     /// The detail group type Place Detail Group places.
     group_type: String,
+    /// The model group type Place Model Group places, and whether what it places is flexible.
+    model_group_type: String,
+    group_flexible: bool,
+    /// Create Group's question for a selection that can't make one group: what each kind would take of it.
+    group_split: Option<bimcraft_core::groups::Split>,
+    /// Edit Group's Add or Remove, picking.
+    group_pick: Option<groups::GroupPick>,
+    /// A command refused because it would change a group from inside, while the window asks what to do with it.
+    group_conflict: Option<groups::Conflict>,
     /// The Repeating Detail tool's spacing, as typed.
     repeat_spacing: String,
     /// The Detail Line tool's Chain: each click ends a line and starts the next; off, two clicks make one line.
@@ -1041,6 +1098,8 @@ pub struct BimApp {
     cowork_ai: cowork::Ai,
     /// A host with guests in that was asked to close: asking whether to end the session (false), or told to (true).
     cowork_quit: Option<bool>,
+    /// The user's Python scripts: the folder, the Player's forms, the run going on.
+    pub(crate) pyaddins: pyaddins::PyAddins,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// A big project being read on a thread of its own (`opening.rs`).
@@ -1468,7 +1527,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 const FLOATING_CARD: f32 = 30.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
-const TABS: [(Tab, &str, Icon); 13] = [
+const TABS: [(Tab, &str, Icon); 14] = [
     (Tab::Architecture, msg!("Architecture"), Icon::Wall),
     (Tab::Structure, msg!("Structure"), Icon::Beam),
     (Tab::Plumbing, msg!("Plumbing"), Icon::Pipe),
@@ -1481,6 +1540,7 @@ const TABS: [(Tab, &str, Icon); 13] = [
     (Tab::Collaborate, msg!("Collaborate"), Icon::Cowork),
     (Tab::View, msg!("View"), Icon::View3D),
     (Tab::Manage, msg!("Manage"), Icon::Settings),
+    (Tab::PyAddins, "PyAddins", Icon::Script),
     (Tab::Modify, "Modify", Icon::Modify),
 ];
 
@@ -1503,6 +1563,9 @@ fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
     r.on_hover_text(label)
 }
 
+/// The ribbon's name for the Wall tool drawing a curtain wall type.
+const CURTAIN_TOOL: &str = msg!("Curtain Wall");
+
 impl BimApp {
     pub fn new(session: Session) -> BimApp {
         let first = Sheet::Plan(session.model.levels().first().map_or(0, |(id, _)| *id));
@@ -1515,6 +1578,7 @@ impl BimApp {
             os_events: None,
             own_title_bar: false,
             system_title_bar: false,
+            classification: None,
             sheet: first,
             tool: Tool::Modify,
             selection: Vec::new(),
@@ -1648,10 +1712,25 @@ impl BimApp {
             dimension_type_dialog: None,
             spot_type_dialog: None,
             spot_grip: None,
+            curtain_editor: None,
+            curtain_part: None,
+            curtain_more: Vec::new(),
+            curtain_hover: None,
+            curtain_aim: None,
+            curtain_segment_hover: None,
+            curtain_laid: Default::default(),
+            curtain_seen: None,
+            curtain_known: Default::default(),
+            curtain_asking: Default::default(),
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
             group_type: String::new(),
+            model_group_type: String::new(),
+            group_flexible: false,
+            group_split: None,
+            group_pick: None,
+            group_conflict: None,
             repeat_spacing: "200".into(),
             line_chain: true,
             drawing: draw::Drawing::default(),
@@ -1690,6 +1769,7 @@ impl BimApp {
             options_rect: Rect::NOTHING,
             canvas: canvas::Canvas::default(),
             bench: None,
+            frames: None,
             orbit: orbit::Orbit::default(),
             active_3d: None,
             card: gpu::Card::default(),
@@ -1789,6 +1869,7 @@ impl BimApp {
             cowork_seen: cowork::Seen::default(),
             cowork_ai: cowork::Ai::default(),
             cowork_quit: None,
+            pyaddins: pyaddins::PyAddins::default(),
             revit_job: None,
             opening: None,
             swapping: swap::Swapping::default(),
@@ -1825,6 +1906,7 @@ impl BimApp {
     pub(crate) fn pump(&mut self, ctx: &Context) {
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(ctx);
+        self.poll_pyaddins(ctx);
         self.pump_cowork(ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them, and joining a Co-Work session puts the host's there) starts it over, as File > New
@@ -1845,6 +1927,8 @@ impl BimApp {
                 self.status = Status::default();
                 Some(v)
             }
+            // A group conflict is asked about in its own dialog (`group_conflict_window`), not said again in the corner.
+            Err(e) if self.group_conflict.is_some() && bimcraft_core::groups::is_conflict(&e) => None,
             Err(e) => {
                 self.status = Status { text: e, error: true };
                 None
@@ -1868,6 +1952,10 @@ impl BimApp {
             self.canvas.pins.borrow_mut().clear();
             self.canvas.start_edge = None;
             self.canvas.wall_face = None;
+        }
+        // A change that would break a group from inside: the window asks what to do (Ungroup, Create New Type, Cancel).
+        if let Err(e) = &result {
+            self.conflict_refused(id, params, e);
         }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
@@ -1928,6 +2016,8 @@ impl BimApp {
             | Tool::SpecifyPoint
             | Tool::ExportRegion(_)
             | Tool::Acquire => None,
+            Tool::CurtainGrid { .. } => Some(msg!("Place Curtain Grid")),
+            Tool::CurtainSegment { .. } => Some(msg!("Add/Remove Segments")),
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1941,6 +2031,7 @@ impl BimApp {
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
+            Tool::ModelGroup => Some(msg!("Place Model Group")),
             Tool::RepeatingDetail(_) => Some(msg!("Place Repeating Detail")),
             Tool::DetailLine(_) if self.drawing.insulation.is_some() => Some(msg!("Place Insulation")),
             Tool::DetailLine(_) if self.drawing.cloud.is_some() => Some(msg!("Place Revision Cloud")),
@@ -2281,6 +2372,7 @@ impl BimApp {
             self.view_control_bar(ui);
         }
         self.temp_frame(ui);
+        self.edit_group_frame(ui);
     }
 
     /// Properties (PP): shown, or hidden.
@@ -2326,6 +2418,15 @@ impl BimApp {
         let m = &self.session.model;
         // What's selected is the model's elements, and Site's points (by their library ids).
         self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
+        let selected = self.selection.as_slice();
+        self.curtain_part = self.curtain_part.filter(|(id, at)| selected == [*id] && self.curtain_laid.of(m, *id).has(*at));
+        if self.curtain_part.is_none() {
+            self.curtain_more.clear();
+        }
+        if matches!(self.tool, Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } if !m.wall(wall).is_some_and(|w| bimcraft_core::curtain::pattern(m, w).is_some()))
+        {
+            self.tool = Tool::Modify;
+        }
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
         let docs: Vec<editor::tabs::DocId> = self.families.iter().map(|d| d.id).collect();
         let exists = |s: &Sheet| match s {
@@ -2367,6 +2468,8 @@ impl BimApp {
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
+            || self.curtain_editor.is_some()
+            || !self.curtain_asking.is_empty()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -2758,6 +2861,20 @@ impl BimApp {
                 self.run(command, json!({"id": self.selection.first()}));
                 return true;
             }
+            "PY" | "RS" | "LS" | "NS" | "XS" => {
+                match self.typed.as_str() {
+                    "PY" => self.toggle_player(),
+                    "RS" => self.run_open_pyaddin(),
+                    "LS" => self.reload_pyaddins(),
+                    "NS" => self.pyaddins.new_script = Some(self.pyaddins.free_name()),
+                    _ => self.stop_pyaddin(),
+                }
+                return true;
+            }
+            "CI" => {
+                self.open_classification();
+                return true;
+            }
             "EU" | "UE" => {
                 if self.hidden_selection().0.is_empty() {
                     self.open_graphics(graphics::ELEMENTS_TAB);
@@ -2824,6 +2941,7 @@ impl BimApp {
                 Some("split") => Tool::Split,
                 Some("linework") => Tool::Linework,
                 Some("detail_group") => Tool::DetailGroup,
+                Some("model_group") => Tool::ModelGroup,
                 Some("repeating_detail") => Tool::RepeatingDetail(None),
                 Some("create_group") => {
                     self.create_group();
@@ -2831,6 +2949,18 @@ impl BimApp {
                 }
                 Some("ungroup") => {
                     self.ungroup();
+                    return true;
+                }
+                Some("edit_group") => {
+                    self.edit_group();
+                    return true;
+                }
+                Some("exclude_member") => {
+                    self.exclude_selected();
+                    return true;
+                }
+                Some("restore_excluded") => {
+                    self.restore_excluded();
                     return true;
                 }
                 Some("dimension") => Tool::Dimension(DimMode::Aligned, Vec::new()),
@@ -2899,6 +3029,23 @@ impl BimApp {
                 }
                 Some("explode") => {
                     self.explode_polyline();
+                    return true;
+                }
+                // A curtain wall's tools, on the one alone selected; Replace Panel with Wall, on the panel Tab picked.
+                Some("curtain_grid") => {
+                    if let Some(wall) = self.curtain_alone() {
+                        self.set_tool(Tool::CurtainGrid { wall, way: bimcraft_core::curtain::GridWay::Vertical });
+                    }
+                    return true;
+                }
+                Some("curtain_segment") => {
+                    if let Some(wall) = self.curtain_alone() {
+                        self.set_tool(Tool::CurtainSegment { wall });
+                    }
+                    return true;
+                }
+                Some("curtain_panel_wall") => {
+                    self.replace_panel_with_wall();
                     return true;
                 }
                 // Revit's opens the Project Units dialog; BIMCraft's is the Manage tab's menu.
@@ -3144,7 +3291,8 @@ impl BimApp {
             self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
         }
         let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
-        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits {
+        let placing_grid = matches!(tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. });
+        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits && !placing_grid {
             self.selection.clear();
         }
         if tool != Tool::Modify && !picks {
@@ -3461,6 +3609,10 @@ impl BimApp {
         if self.dimension_refs_edit.take().is_some() {
             return;
         }
+        // Edit Group's Add or Remove picking stops, the edit going on.
+        if self.group_pick.take().is_some() {
+            return;
+        }
         // A dimension segment picked goes, leaving its dimension as it was.
         if self.dimension_segment.take().is_some() || self.dimension_segment_hover.take().is_some() {
             return;
@@ -3554,6 +3706,11 @@ impl BimApp {
             if self.run("dimension_segment", json!({"id": id, "segment": segment})).is_some() {
                 self.selection = if self.session.model.elements.get(id).is_some() { vec![id] } else { Vec::new() };
             }
+            return;
+        }
+        // With one part of a curtain wall picked, that part, and never the wall.
+        if let Some((id, at)) = self.curtain_part {
+            self.delete_curtain_part(id, at);
             return;
         }
         // Under Modify Sub Elements, what of the shape is selected.
@@ -3669,8 +3826,12 @@ impl BimApp {
         // Elevation in sections, Demolish in sections and 3D); any other view takes clicks to select.
         let works = match sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) => true,
-            Sheet::Section(_) => matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish),
-            Sheet::View3D => matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint),
+            Sheet::Section(_) => {
+                matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
+            Sheet::View3D => {
+                matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
             Sheet::Paper(_) => self.tool == Tool::Text,
             _ => false,
         };
@@ -3957,6 +4118,7 @@ impl BimApp {
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
+        fresh.pyaddins = self.pyaddins.carried();
         fresh.home = self.home.put_away();
         // A new or opened project keeps the plugins and their tabs: they are the user's folder, not the project's, and the
         // session's external commands were already registered. Re-registering puts them back if the project replaced them.
@@ -4328,6 +4490,7 @@ impl BimApp {
             Tab::View => self.view_tab(ui),
             Tab::Collaborate => self.collaborate_tab(ui),
             Tab::Manage => self.manage_tab(ui),
+            Tab::PyAddins => self.pyaddins_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
         }
@@ -4506,13 +4669,35 @@ impl BimApp {
                 }
             }
         });
+        // Edit Group's Add, Remove, Finish and Cancel, beside Select on every tab while a group is edited.
+        self.edit_group_panel(ui);
     }
 
     fn tools(&mut self, ui: &mut Ui, name: &str, tools: Tools) {
         panel(ui, name, |ui| {
             for (icon, label, tip, tool) in tools {
-                let active = structure::same_tool(&self.tool, tool);
+                // In the panel's list and the palette only: the ribbon has no width to spare for it, and the Wall tool's Type
+                // Selector offers the same types.
+                if *label == CURTAIN_TOOL && !ribbon::listing() {
+                    continue;
+                }
+                // Wall and Curtain Wall are one tool, told apart by the type it draws.
+                let curtain_type =
+                    self.types.get("wall").is_some_and(|n| self.session.model.types.wall.get(n).is_some_and(|t| t.curtain.is_some()));
+                let wall = matches!(tool, Tool::Wall(_));
+                let active = structure::same_tool(&self.tool, tool) && (!wall || curtain_type == (*label == CURTAIN_TOOL));
                 if big_button(ui, *icon, label, active, tip).clicked() {
+                    if wall && curtain_type != (*label == CURTAIN_TOOL) {
+                        let m = &self.session.model;
+                        let name = if *label == CURTAIN_TOOL {
+                            m.types.wall.iter().find(|(_, t)| t.curtain.is_some()).map(|(n, _)| n.clone())
+                        } else {
+                            m.default_type("wall").map(String::from)
+                        };
+                        if let Some(name) = name {
+                            self.types.insert("wall", name);
+                        }
+                    }
                     self.set_tool(tool.clone());
                 }
             }
@@ -4592,6 +4777,12 @@ impl BimApp {
             msg!("Build"),
             &[
                 (Icon::Wall, "Wall", msg!("Wall (WA): each click builds a wall; Enter or Esc ends the chain"), Tool::Wall(Vec::new())),
+                (
+                    Icon::Wall,
+                    CURTAIN_TOOL,
+                    msg!("Curtain Wall: a wall divided by its type's pattern into panels and mullions"),
+                    Tool::Wall(Vec::new()),
+                ),
                 (Icon::Door, "Door", msg!("Door (DR): click a wall"), Tool::Door),
                 (Icon::Window, "Window", msg!("Window (WN): click a wall"), Tool::Window),
                 (Icon::Column, "Column", msg!("Column (CL): click where it stands"), Tool::Column),
@@ -5174,6 +5365,13 @@ impl BimApp {
                     }
                 }
             });
+            // New and seldom wanted: the first of Settings' tools handed over when the window is narrow.
+            let tip = msg!(
+                "Classification Manager (CI): a classification system's tables and parameters, codes picked by hand for the selection, or proposed by the AI assistant"
+            );
+            if big_button(ui, Icon::Classify, "Classification Manager", self.classification.is_some(), tip).clicked() {
+                self.open_classification();
+            }
         });
         // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
         // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
@@ -5249,6 +5447,8 @@ impl BimApp {
                 self.edit_type();
             }
         });
+        // Create Group, and with a group or a member selected, Revit's Group panel.
+        self.group_panels(ui);
         // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
         let dimension = matches!(self.selection.as_slice(), [id]
             if matches!(self.session.model.elements.get(*id), Some(Element::Dimension(d)) if !d.alignment));
@@ -5536,6 +5736,7 @@ impl BimApp {
                 }
             });
         }
+        self.curtain_grid_panel(ui);
         // Walls selected: Revit's Modify Wall panel.
         let walls = self.selected_walls();
         let attachable = self.selected_attachable();
@@ -5711,6 +5912,7 @@ impl BimApp {
                 Tool::Wall(_) => self.wall_options(ui),
                 Tool::Linework => self.linework_options(ui),
                 Tool::DetailGroup => self.group_options(ui),
+                Tool::ModelGroup => self.model_group_options(ui),
                 Tool::RepeatingDetail(_) => {
                     self.group_options(ui);
                     let l = ui.label(t("Spacing:"));
@@ -6161,6 +6363,20 @@ impl BimApp {
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
+        match self.group_pick() {
+            Some(groups::GroupPick::Add) if self.tool == Tool::Modify => {
+                return msg!("Add to Group: click a greyed element, or drag a box, to add it to the group. Esc or Add again stops.");
+            }
+            Some(groups::GroupPick::Remove) if self.tool == Tool::Modify => {
+                return msg!("Remove from Group: click a member, or drag a box, to take it out of the group. Esc or Remove again stops.");
+            }
+            _ if self.editing_group().is_some() && self.tool == Tool::Modify => {
+                return msg!(
+                    "Edit Group: only the group's members can be picked and changed; the rest is greyed. Finish Edit Group keeps it."
+                );
+            }
+            _ => {}
+        }
         if self.picking_pattern_lines() {
             return msg!("Select fill pattern lines then press Enter");
         }
@@ -6172,7 +6388,7 @@ impl BimApp {
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
                 return msg!(
-                    "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+                    "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms. Alt (Option on a Mac) and the left button stand in for the middle one."
                 );
             }
             (Sheet::Paper(_), Tool::Modify) => {
@@ -6233,6 +6449,15 @@ impl BimApp {
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
             Tool::ReferencePlane(None) => msg!("Click to enter the reference plane's start point."),
             Tool::ReferencePlane(Some(_)) => msg!("Click to enter the reference plane's end point."),
+            Tool::CurtainGrid { way: bimcraft_core::curtain::GridWay::Vertical, .. } => {
+                msg!("Click on the curtain wall to place a vertical grid. Esc ends.")
+            }
+            Tool::CurtainGrid { .. } => {
+                msg!("Click on the curtain wall in a section, an elevation or the 3D view to place a horizontal grid. Esc ends.")
+            }
+            Tool::CurtainSegment { .. } => {
+                msg!("Click a stretch of a grid line in a section, an elevation or the 3D view to take it off or put it back. Esc ends.")
+            }
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
@@ -6274,7 +6499,7 @@ impl BimApp {
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
             Tool::Linework => msg!("Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."),
-            Tool::DetailGroup => msg!("Click where the group's origin goes."),
+            Tool::DetailGroup | Tool::ModelGroup => msg!("Click where the group's origin goes."),
             Tool::RepeatingDetail(None) => msg!("Click where the repeating detail starts."),
             Tool::RepeatingDetail(Some(_)) => msg!("Click where it ends: the group repeats along the line every spacing."),
             Tool::Paint => msg!("Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever."),
@@ -6639,6 +6864,9 @@ impl BimApp {
     fn dialogs(&mut self, ctx: &Context) {
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
+        self.group_conflict_window(ctx);
+        self.group_split_window(ctx);
+        self.keep_to_group();
         self.family_type_properties(ctx);
         self.materials_window(ctx);
         self.favorites_window(ctx);
@@ -6653,6 +6881,7 @@ impl BimApp {
         self.family_closed_from_home();
         self.snaps_window(ctx);
         self.parameters_window(ctx);
+        self.classification_window(ctx);
         self.new_schedule_window(ctx);
         self.schedule_window(ctx);
         self.graphics_window(ctx);
@@ -6670,6 +6899,8 @@ impl BimApp {
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
+        self.curtain_editor_window(ctx);
+        self.curtain_message(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.codes_window(ctx);
@@ -6682,6 +6913,7 @@ impl BimApp {
         self.lend_window(ctx);
         self.quit_window(ctx);
         self.knock_window(ctx);
+        self.pyaddins_windows(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }
@@ -6766,12 +6998,40 @@ impl BimApp {
     }
 }
 
+impl BimApp {
+    /// Where the window paces its own frames: the present mode for its card, set once, and the wait that keeps frames from
+    /// coming closer than the monitor's refresh. Only a frame's first pass waits: a sizing pass egui asks for comes at once.
+    fn pace_frame(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        let Some(pacer) = self.frames.as_mut() else { return };
+        if ctx.current_pass_index() > 0 {
+            return;
+        }
+        if !pacer.configured {
+            if let Some(state) = frame.wgpu_render_state() {
+                let mut config = state.surface_config;
+                config.present_mode = pacing::present_for(state.adapter.get_info().backend, config.present_mode);
+                frame.set_wgpu_surface_config(config);
+            }
+            pacer.configured = true;
+        }
+        let now = std::time::Instant::now();
+        let every = pacer.every(now, || frame.winit_window()?.current_monitor()?.refresh_rate_millihertz());
+        let wait = pacer.wait(now, every);
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+        }
+    }
+}
+
 impl eframe::App for BimApp {
     /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
     /// window is minimised.
     fn logic(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        self.pace_frame(ctx, frame);
         if let Some(mut bench) = self.bench.take() {
-            bench.step(self, ctx, frame.info().cpu_usage.unwrap_or(0.0));
+            // eframe counts the frame before's wait as its processor time.
+            let slept = self.frames.as_ref().map_or(0.0, |p| p.slept.0.as_secs_f32());
+            bench.step(self, ctx, (frame.info().cpu_usage.unwrap_or(0.0) - slept).max(0.0));
             self.bench = Some(bench);
         }
         self.pump(ctx);

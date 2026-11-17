@@ -449,3 +449,27 @@ fn dictionaries_stay_loaded_after_the_window_closes_and_one_is_picked_from_a_dro
     assert_eq!(h.state().session.model.dictionaries.keys().collect::<Vec<_>>(), ["two"]);
     assert!(h.query_by_role_and_label(Role::TextInput, "Name of Mark").is_some(), "the other is shown");
 }
+
+#[test]
+fn a_dictionary_s_group_values_are_picked_in_its_table_and_greyed_for_a_type_parameter() {
+    use egui_kittest::kittest::NodeT;
+    let path = temp("group-values.bimparams");
+    let mut h = app(BOX);
+    h.state_mut().run("dictionary", json!({"path": path, "add": [{"name": "Code", "kind": "text", "categories": ["wall"]}]}));
+    h.state_mut().run("parameter_import", json!({"path": path}));
+    h.run();
+    open(&mut h);
+    h.state_mut().parameters_open_dictionary(&path);
+    h.run();
+    pick_in(&mut h, "Group values of Code", "Vary by group instance");
+    press(&mut h, "Save Dictionary");
+    let read = bimcraft_core::parameters::table::read_dictionary_file(&path).unwrap();
+    assert_eq!(read.parameters[0].vary_by_group, Some(true));
+    press(&mut h, "Update Project");
+    press(&mut h, "Import");
+    assert!(h.state().session.model.parameters["Code"].vary_by_group, "the project takes it");
+
+    pick_in(&mut h, "Instance or Type of Code", "Type");
+    let combo = h.get_by_role_and_label(Role::ComboBox, "Group values of Code");
+    assert!(combo.accesskit_node().is_disabled(), "a type's value is the same in every group anyway");
+}

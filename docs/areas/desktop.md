@@ -243,8 +243,9 @@ move and its box, so only a press let go within `QUICK` (0.2 s) is a click where
 finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's views, the plan's move and box) and the selection
 that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
 a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
-Revit, Shift and the middle button orbit, round the point under the pointer, and the middle button alone pans; a primary drag never
-moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
+Revit, Shift and the middle button orbit, round the point under the pointer, and the middle button alone pans. Alt (Option on a
+Mac) and the primary button are the middle button, which a Mac's trackpad and mouse don't have (`Orbit::navigate`, issue 459). A
+primary drag alone never moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
 them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
@@ -278,6 +279,17 @@ mark, and the next start takes the next choice on `LADDER` (wgpu's own, DirectX 
 survives. `graphics.json` keeps the backend's name (`{"backend": "DirectX 12", "starting": false}`), never its place on the ladder, so
 reordering the ladder cannot change what a kept mark means; 0.8.0's marks (`"choice"`, a place on the old order) are read through that order. An error from `run_native` leaves the mark too, is logged, and on Windows shown in a message box (`startup::tell`: its words are
 entries in the interface's PO catalogs). `WGPU_BACKEND` set by the user switches all of it off. A new way for the start to fail goes through `startup::note`, not `eprintln!` alone.
+
+Frame pacing (`ui-egui/src/pacing.rs`). On Linux and macOS the system's vertical sync paces the window (wgpu's `AutoVsync`). On Windows it
+held the window to a fraction of the screen's rate: measured with `bimcraft --bench` on the highrise (Radeon RX 590, 59 Hz, 2026-11-15), a
+frame the window made in 2 to 4 ms came every 31 ms over Vulkan, every 33 to 47 ms over OpenGL and every 265 ms over DirectX 12, whatever the
+frame latency or the timer's resolution, and every 1.3 to 3.6 ms without vsync. So on Windows (`pacing::system_policy`) the window starts
+with `AutoNoVsync`, switches to Mailbox once its card is known to be DirectX 12 (`present_for`: it never tears; over Vulkan and OpenGL
+`AutoNoVsync` is Immediate, which may tear), and `BimApp::frames` sleeps at the start of each frame (`logic`, its first pass only: egui's
+sizing pass comes at once) so that frames come no closer than the monitor's refresh (`Pacer`, the rate asked of winit once a second,
+60 Hz where it doesn't say). eframe counts that wait in the frame's `cpu_usage`; the benchmark's `cpu_ms` leaves it out (`Pacer::slept`). Every step of the same benchmark then ran at 16.9 to 17.0 ms on every backend. `BIMCRAFT_VSYNC=1` keeps the
+driver's vsync, to compare. The tests have no pacer (`frames: None`). The core's own times on Windows matched Linux's (`docs/performance.md`), so
+a Windows-only slowness is to be looked for in presentation first: run the benchmark and compare the frames' interval with their `cpu_ms`.
 
 Tags. A `Tag` names an element at a `host` by a `label`: the name of one of the fields its category's schedule has (`schedule::field_text` reads it
 as the schedule shows it, in the project's units), or, with none, the category's usual one (`Tag::usual`: a door's or window's `Mark`, a room's `Name`, else

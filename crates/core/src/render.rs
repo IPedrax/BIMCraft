@@ -694,6 +694,8 @@ fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, ind
         .iter()
         .filter(|(id, _)| look.shows(*id))
         .filter_map(|&(id, e)| match e {
+            // A curtain wall is drawn part by part: nothing fills it as a whole.
+            Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => None,
             Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, index))),
             _ => stands(m, id, e, index).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
         })
@@ -723,6 +725,7 @@ fn seen_below(m: &Model, elements: &[(Id, &Element)], r: &PlanRange, look: &Look
             // A footing or a run hangs under the level it is drawn on, its top flush with the view's bottom: that is seen.
             let flush = if matches!(e, Element::Footing(_) | crate::model::run_arm!(_)) { TOL } else { 0.0 };
             let (outline, top) = match e {
+                Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => return None,
                 Element::Wall(w) => {
                     let top = m.top_z(w);
                     // Joining a wall scans its neighbours. Reject other storeys before
@@ -889,6 +892,8 @@ fn plan_filter<'a>(
             | Element::Spot(_)
             | Element::DetailGroup(_)
             | Element::RepeatingDetail(_) => m.annotation_in(e, key),
+            // A model group draws nothing of its own: its members are drawn as themselves.
+            Element::ModelGroup(_) => false,
             _ if e.column().is_some() => stands(m, *id, e, None).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
             _ if e.run().is_some() => m.run_geom(e).is_none_or(|g| {
                 let (bottom, top) = g.z_span();
@@ -911,6 +916,103 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
         }
     }
     unions
+}
+
+/// A curtain wall a plan draws, with its layout.
+type CurtainInPlan<'a> = (Id, &'a crate::model::Wall, crate::curtain::Layout);
+
+/// The curtain walls among `shown` the view's range reaches.
+fn curtains_in_plan<'a>(m: &'a Model, range: &PlanRange, shown: impl Fn(Id) -> bool) -> Vec<CurtainInPlan<'a>> {
+    let reached = |w: &crate::model::Wall| range.depth < m.own_top(w) && m.own_base(w) <= range.cut;
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| match e {
+            Element::Wall(w) if shown(id) && crate::curtain::pattern(m, w).is_some() && reached(w) => {
+                Some((id, w, crate::curtain::layout(m, w)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A curtain wall in a plan, in two passes, as the rest of a plan is. With `seen`, what stands under the cut plane as seen from
+/// above, each place once however many parts stand there: every wall's goes before any wall's cut, so what the plan cuts hides it,
+/// whichever wall holds either (a corner mullion stands on one of its two walls, over the mitre of both). Without, the mullions the
+/// cut plane passes through filled and inked, and the panels it passes through thin (at coarse detail, a line down their middle).
+fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, range: &PlanRange, seen: bool) {
+    use crate::curtain::{self, PartKind};
+    let (id, w, l) = (wall.0, wall.1, &wall.2);
+    let (axis, plane, cut) = (walls::Axis::of(w), curtain::grid_plane(m, w), range.cut - m.own_base(w));
+    let ring = |p: &curtain::Part, s: &curtain::Shape| -> Vec<P2> {
+        if p.turn != 0.0 || s.plan.is_some() {
+            return p.corners(s).iter().map(|q| axis.at(q[0], plane + q[1])).collect();
+        }
+        let [along, _, across] = p.centre;
+        let [da, _, dc] = s.size.map(|x| x / 2.0);
+        let c = plane + across;
+        vec![axis.at(along - da, c - dc), axis.at(along + da, c - dc), axis.at(along + da, c + dc), axis.at(along - da, c + dc)]
+    };
+    let coarse = d.detail == Detail::Coarse;
+    let style = |kind: PartKind| m.object_style(crate::graphics::part_row(kind));
+    // A line in the part's row's pen, colour and dash, where the view's row gives them.
+    let ink = |d: &mut Drawing, pts: &[P2], kind: PartKind, cut: bool, closed: bool| {
+        let row = look.part(kind);
+        let (own, pen) = if cut { (&row.cut, style(kind).cut) } else { (&row.projection, style(kind).projection) };
+        let color = own.color.map_or(INK, |[r, g, b]| Rgb(r, g, b));
+        d.line(pts, own.weight.unwrap_or(pen), if row.halftone { crate::graphics::halftoned(color) } else { color }, closed);
+        let paper = d.paper();
+        if let (Some(k), Some(Prim::Line { dash, .. })) = (own.dash, d.prims.last_mut()) {
+            *dash = k.pattern(paper);
+        }
+    };
+    d.owner = Some(id);
+    if seen {
+        let mut places = std::collections::HashSet::new();
+        d.part(Part::Projection);
+        for piece in l.pieces() {
+            let Some(p) = l.parts.get(piece.first) else { continue };
+            let Some(s) = l.shapes.get(p.shape as usize).filter(|s| look.shows_curtain_part(s.kind)) else { continue };
+            if piece.centre[1] + piece.size[1] / 2.0 <= cut {
+                // One piece, however many parts: no joint where a mullion runs on.
+                let whole = curtain::Part { centre: piece.centre, ..*p };
+                let r = if s.plan.is_some() { ring(p, s) } else { ring(&whole, &curtain::Shape { size: piece.size, ..s.clone() }) };
+                let key = (s.kind, r.iter().map(|q| ((q.0 * 10.0) as i64, (q.1 * 10.0) as i64)).collect::<Vec<_>>());
+                if places.insert(key) {
+                    ink(d, &r, s.kind, false, true);
+                }
+            }
+        }
+        return;
+    }
+    d.part(Part::Cut);
+    let crossing = |p: &curtain::Part, s: &curtain::Shape| (p.centre[1] - s.size[1] / 2.0 <= cut) && (cut < p.centre[1] + s.size[1] / 2.0);
+    // The panels first, for the mullions to stand over where they touch.
+    for p in &l.parts {
+        let Some(s) =
+            l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Panel && look.shows_curtain_part(s.kind) && crossing(p, s))
+        else {
+            continue;
+        };
+        if coarse {
+            let [along, _, across] = p.centre;
+            let c = plane + across;
+            ink(d, &[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], PartKind::Panel, true, false);
+        } else {
+            ink(d, &ring(p, s), PartKind::Panel, true, true);
+        }
+    }
+    for p in &l.parts {
+        let Some(s) =
+            l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Mullion && look.shows_curtain_part(s.kind) && crossing(p, s))
+        else {
+            continue;
+        };
+        let r = ring(p, s);
+        let own = look.part(PartKind::Mullion);
+        let filled = own.cut.fill.map_or_else(|| look.cut_fill(id, POCHE), |[r, g, b]| Rgb(r, g, b));
+        d.fill(std::slice::from_ref(&r), if own.halftone { crate::graphics::halftoned(filled) } else { filled });
+        ink(d, &r, PartKind::Mullion, true, true);
+    }
 }
 
 /// The object style of `owner`'s category; with no owner, what a project's categories start with.
@@ -1270,6 +1372,16 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             extent.extend(m.opening_pieces(e).into_iter().flat_map(|p| p.outline));
         }
     }
+    // A curtain wall is drawn part by part, so neither pass above has it.
+    for &(id, e) in elements.iter().filter(|(id, _)| look.shows(*id)) {
+        if let Element::Wall(w) = e
+            && crate::curtain::pattern(m, w).is_some()
+            && r.depth < m.top_z(w)
+            && m.base_z(w) <= r.cut
+        {
+            extent.extend(walls::outline_in(m, id, index));
+        }
+    }
     // What it shows besides what is cut and seen: of its level, in it, or of the kinds a plan looks for among all.
     let rest: Vec<(Id, &Element)> = if among {
         let lookup = m.lookup();
@@ -1359,8 +1471,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Text(n) => note(&mut d, m, n),
         Element::DetailLine(l) => detail_line(&mut d, m, l),
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
-        Element::DetailGroup(g) => detail_group(&mut d, m, g),
-        Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+        Element::RepeatingDetail(r) => detail_members(&mut d, m, &r.members(m)),
         Element::Spot(sp) if sp.slope => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
         Element::Spot(sp) if sp.coordinate => spots::spot_coordinate(&mut d, m, sp),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_reads(sp), m.units),
@@ -1816,7 +1927,7 @@ impl SectionWork {
 
     /// The solids `look` shows, but the components'.
     fn shown<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = &'a view3d::Solid> + 'a {
-        self.solids.iter().filter(|s| look.shows_part(s.owner(), s.part()))
+        self.solids.iter().filter(|s| s.seen_in(look))
     }
 
     /// The lowest and highest of each element `look` shows: its box's, which are its points'.
@@ -2904,8 +3015,7 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
-            Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
-            Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::RepeatingDetail(r) if m.same(r.view, id) => detail_members(&mut d, m, &r.members(m)),
             // A spot slope reads a plan's floor or roof; a section has none to show.
             Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
@@ -3362,6 +3472,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
     }
+    let curtains = curtains_in_plan(m, &range, shown);
+    for wall in curtains.iter().filter(|_| !up) {
+        curtain_plan(&mut d, m, &look, wall, &range, true);
+    }
     d.part(Part::Cut);
     let outlines = cut_outlines(m, &elements, range.cut, &look, index);
     // Poché first, then the outlines over it, but for where walls meet at their joins: only the edge
@@ -3409,6 +3523,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 d.line(hole, Pen::HEAVY, INK, true);
             }
         }
+    }
+    for wall in &curtains {
+        curtain_plan(&mut d, m, &look, wall, &range, false);
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
     // else lighter where it isn't the wall's structure; a thin line between each two. A column the plan cuts stands in the wall's
@@ -3655,8 +3772,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Circuit(c) if !up && m.level_of(e) == Some(level) => circuit_mark(&mut d, m, c),
             Element::Text(n) if m.annotation_in(e, key) && inside(n.at) => note(&mut d, m, n),
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
-            Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
-            Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::RepeatingDetail(r) if m.annotation_in(e, key) => detail_members(&mut d, m, &r.members(m)),
             Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
             Element::Spot(sp) if sp.coordinate && m.annotation_in(e, key) && inside(sp.at) => spots::spot_coordinate(&mut d, m, sp),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_reads(sp), m.units),
@@ -5523,15 +5639,14 @@ fn keep(d: &mut Drawing, prim: Prim, owner: Option<Id>, part: Part, pen: Option<
     d.pens.push(pen);
 }
 
-/// A detail group's members where it puts them: its regions under its lines and notes.
-pub(crate) fn detail_group(d: &mut Drawing, m: &Model, g: &crate::groups::DetailGroup) {
-    let members = crate::groups::placed(m, g);
-    for e in &members {
+/// A repeating detail's members where it puts them: its regions under its lines and notes.
+pub(crate) fn detail_members(d: &mut Drawing, m: &Model, members: &[Element]) {
+    for e in members {
         if let Element::FilledRegion(r) = e {
             filled_region(d, m, r);
         }
     }
-    for e in &members {
+    for e in members {
         match e {
             Element::DetailLine(l) => detail_line(d, m, l),
             Element::Text(n) => note(d, m, n),

@@ -164,13 +164,25 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
             }
             continue;
         }
-        if to.library.id(&e.kind, &e.name).is_some() || !copy_definition(to, from, &e.kind, &e.name) {
+        // A group's places are in its own type's members, never another's: a group type whose name this project has for
+        // another comes in apart, as `name 2`.
+        let name = match to.library.id(&e.kind, &e.name) {
+            None => e.name.clone(),
+            Some(_) if matches!(e.kind, Kind::DetailGroup | Kind::ModelGroup) => {
+                (2..).map(|k| format!("{} {k}", e.name)).find(|n| to.library.id(&e.kind, n).is_none()).unwrap_or_default()
+            }
+            Some(_) => continue,
+        };
+        if !copy_definition(to, from, &e.kind, &e.name, &name) {
             continue;
         }
+        if name != e.name {
+            renames.insert((e.kind.clone(), e.name.clone()), name.clone());
+        }
         let id = to.fresh_library_id();
-        to.library.insert(id, Entry { kind: e.kind.clone(), name: e.name.clone(), guid: e.guid })?;
-        out.library.push(format!("{}: {}", e.kind.label(), e.name));
-        copied.push((e.kind.clone(), e.name.clone()));
+        to.library.insert(id, Entry { kind: e.kind.clone(), name: name.clone(), guid: e.guid })?;
+        out.library.push(format!("{}: {}", e.kind.label(), name));
+        copied.push((e.kind.clone(), name));
     }
     // A family that came in brings its types and parameters, with their GUIDs.
     let came: BTreeSet<String> = copied.iter().filter(|(k, _)| *k == Kind::Family).map(|(_, n)| n.clone()).collect();
@@ -207,8 +219,9 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     here(&Kind::LinePattern, p);
                 }
             }
-            Kind::DetailGroup => {
-                for m in to.detail_groups.get_mut(&name).into_iter().flat_map(|g| g.members.iter_mut()) {
+            k @ (Kind::DetailGroup | Kind::ModelGroup) => {
+                let groups = if k == Kind::DetailGroup { &mut to.detail_groups } else { &mut to.model_groups };
+                for m in groups.get_mut(&name).into_iter().flat_map(|g| g.members.iter_mut()) {
                     m.element.lib_refs_mut(&mut |k: &Kind, n: &mut String| here(k, n));
                 }
             }
@@ -246,6 +259,24 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 }
                 if let Some(r) = t.runs.get_mut(&c).and_then(|r| r.get_mut(&name)) {
                     here(&Kind::Material, &mut r.material);
+                }
+                if let Some(l) = t.wall.get_mut(&name).filter(|_| c == "wall").and_then(|x| x.curtain.as_mut()) {
+                    l.names_mut(&mut |k, n| here(k, n));
+                }
+                if c == "curtainpanel"
+                    && let Some(x) = t.curtain_panel.get_mut(&name)
+                {
+                    here(&Kind::Material, &mut x.material);
+                }
+                if c == "mullion"
+                    && let Some(x) = t.mullion.get_mut(&name)
+                {
+                    here(&Kind::Material, &mut x.material);
+                }
+                if c == "cornermullion"
+                    && let Some(x) = t.corner_mullion.get_mut(&name)
+                {
+                    here(&Kind::Material, &mut x.material);
                 }
             }
             _ => {}
@@ -427,11 +458,12 @@ fn values_here(to: &Model, from: &Model, id: Id, e: &mut Element) -> Vec<String>
     why
 }
 
-/// Entry `kind` `name` of `from`, put in `to` as it is there: whether it was one to put.
-fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> bool {
-    fn one<T: Clone>(to: &mut BTreeMap<String, T>, from: Option<&BTreeMap<String, T>>, name: &str) -> bool {
-        from.and_then(|f| f.get(name)).map(|v| to.insert(name.to_string(), v.clone())).is_some()
+/// Entry `kind` `name` of `from`, put in `to` as it is there, as `as_name`: whether it was one to put.
+fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str, as_name: &str) -> bool {
+    fn one<T: Clone>(to: &mut BTreeMap<String, T>, from: Option<&BTreeMap<String, T>>, (name, as_name): (&str, &str)) -> bool {
+        from.and_then(|f| f.get(name)).map(|v| to.insert(as_name.to_string(), v.clone())).is_some()
     }
+    let name = (name, as_name);
     let (t, f) = (&mut to.types, &from.types);
     match kind {
         Kind::Type(c) => match c.as_str() {
@@ -447,6 +479,9 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
             "railing" => one(&mut t.railing, Some(&f.railing), name),
             "room" => one(&mut t.room, Some(&f.room), name),
             "stair" => one(&mut t.stair, Some(&f.stair), name),
+            "curtainpanel" => one(&mut t.curtain_panel, Some(&f.curtain_panel), name),
+            "mullion" => one(&mut t.mullion, Some(&f.mullion), name),
+            "cornermullion" => one(&mut t.corner_mullion, Some(&f.corner_mullion), name),
             run => one(t.runs.entry(run.to_string()).or_default(), f.runs.get(run), name),
         },
         Kind::Material => one(&mut to.materials, Some(&from.materials), name),
@@ -460,6 +495,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::FillPattern => one(&mut to.fill_patterns, Some(&from.fill_patterns), name),
         Kind::FilledRegionType => one(&mut to.region_types, Some(&from.region_types), name),
         Kind::DetailGroup => one(&mut to.detail_groups, Some(&from.detail_groups), name),
+        Kind::ModelGroup => one(&mut to.model_groups, Some(&from.model_groups), name),
         Kind::TextType => one(&mut to.text_types, Some(&from.text_types), name),
         Kind::ReinforcementPreset => one(&mut to.reinforcement, Some(&from.reinforcement), name),
         Kind::DimensionType => one(&mut to.dimension_types, Some(&from.dimension_types), name),
@@ -471,6 +507,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::PrintSet => one(&mut to.print_sets, Some(&from.print_sets), name),
         Kind::PublishSet => one(&mut to.publish_sets, Some(&from.publish_sets), name),
         Kind::Dictionary => one(&mut to.dictionaries, Some(&from.dictionaries), name),
+        Kind::Classification => one(&mut to.classification.tables, Some(&from.classification.tables), name),
         _ => false,
     }
 }
@@ -671,6 +708,32 @@ mod tests {
         assert_eq!(v.camera, Some(crate::model::ViewCamera { eye: [-5000.0, -4000.0, 1600.0], target: [4000.0, 3000.0, 1200.0] }));
         assert_eq!(v.perspective.filter(|p| p.on).map(|p| p.lens), Some(24.0));
         assert!(v.name.starts_with("Camera 1") && v.name != "Camera 1", "named apart from this project's: {}", v.name);
+        assert_eq!(s.model.check(), Ok(()));
+    }
+
+    #[test]
+    fn a_model_group_comes_in_with_its_type_apart_from_another_of_its_name_here() {
+        let group = |s: &mut Session, points: Value| {
+            let walls = run(s, "wall", json!({"points": points}))["ids"].clone();
+            run(s, "create_group", json!({"ids": walls}))["id"].as_u64().unwrap()
+        };
+        let mut other = Session::new();
+        let there = group(&mut other, json!([[0, 0], [4000, 0], [4000, 3000]]));
+        let path = std::env::temp_dir().join(format!("bimcraft-insert-group-{}.bimcraft", std::process::id()));
+        let path = path.to_string_lossy().into_owned();
+        run(&mut other, "save", json!({"path": path}));
+        // This project has a Model Group 1 of its own, of one wall: the other's comes in as Model Group 1 2, its walls with it.
+        let mut s = Session::new();
+        group(&mut s, json!([[0, -9000], [2000, -9000]]));
+        let r = run(&mut s, "insert", json!({"path": path, "ids": [there]}));
+        let _ = std::fs::remove_file(&path);
+        let here = r["ids"][there.to_string()].as_u64().unwrap();
+        let Some(Element::ModelGroup(g)) = s.model.elements.get(here) else { panic!("the group came in: {r}") };
+        assert_eq!(g.type_name, "Model Group 1 2");
+        assert_eq!(s.model.model_groups["Model Group 1 2"].members.len(), 2);
+        assert_eq!(s.model.model_groups["Model Group 1"].members.len(), 1, "this project's own stays as it was");
+        assert_eq!(crate::groups::members(&s.model, here).len(), 2);
+        assert_eq!(crate::groups::conflicts(&s.model, here), Vec::<String>::new());
         assert_eq!(s.model.check(), Ok(()));
     }
 }

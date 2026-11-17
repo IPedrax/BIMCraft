@@ -39,6 +39,11 @@ pub enum Place {
     Refused(String),
 }
 
+/// The commands that are no undo step of their own but change what the host's session does next, so a guest's go there: undo
+/// and redo, Edit Group's (the group being edited is the session's, `Session::editing_group`), and `resolve_group`, whose
+/// command makes the step.
+pub const ON_HOST: [&str; 7] = ["undo", "redo", "edit_group", "add_to_group", "remove_from_group", "cancel_group", "resolve_group"];
+
 /// Where a guest runs `command` with `params`: what changes the project goes to the host, what only reads runs on the copy, and
 /// what would replace the project, or bring a file of the guest's into it, isn't done.
 pub fn place(command: &str, params: &Value) -> Place {
@@ -53,7 +58,7 @@ pub fn place(command: &str, params: &Value) -> Place {
             c.id
         ));
     }
-    if (c.undoable || matches!(c.id, "undo" | "redo")) && !files { Place::Host } else { Place::Here }
+    if (c.undoable || ON_HOST.contains(&c.id)) && !files { Place::Host } else { Place::Here }
 }
 
 /// The whole of `m`, for a guest that joins or has lost step.
@@ -247,7 +252,7 @@ fn may(command: &str, edit: bool) -> Result<(), String> {
     if let Some(c) = found.filter(|c| REPLACES.contains(&c.id)) {
         return Err(format!("`{}` would replace the project the host has open: a guest leaves the session to open another", c.id));
     }
-    if !edit && found.is_none_or(|c| c.undoable || matches!(c.id, "undo" | "redo")) {
+    if !edit && found.is_none_or(|c| c.undoable || ON_HOST.contains(&c.id)) {
         return Err(format!("`{command}` would change the project, and {LOOK}"));
     }
     Ok(())

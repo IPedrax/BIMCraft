@@ -509,6 +509,6 @@ fn the_detail_panels_create_group_button_groups_what_is_selected() {
     click(&mut h, P2(2000.0, 1000.0));
     press(&mut h, "Annotate");
     press(&mut h, "Create Group");
-    assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "line").len()), (1, 0));
+    assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "line").len()), (1, 1), "the line stays, its member");
     assert_eq!(h.state().selection, ids(&h, "detailgroup"));
 }

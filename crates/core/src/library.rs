@@ -20,7 +20,7 @@ use crate::ids::{Guid, Id};
 
 /// Where the library's ids start, counting down.
 pub const LAST_ID: Id = 999_999;
-use crate::model::{Element, Model};
+use crate::model::{Element, Model, Wall};
 use serde_json::Value;
 
 /// What a library entry is.
@@ -52,6 +52,7 @@ pub enum Kind {
     FillPattern,
     FilledRegionType,
     DetailGroup,
+    ModelGroup,
     TextType,
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
@@ -76,6 +77,8 @@ pub enum Kind {
     PrintSet,
     /// A publishing set: print sets in folders, each written as a format.
     PublishSet,
+    /// A classification table loaded into the project.
+    Classification,
 }
 
 impl Kind {
@@ -102,6 +105,7 @@ impl Kind {
             Kind::FillPattern => "fill pattern".into(),
             Kind::FilledRegionType => "filled region type".into(),
             Kind::DetailGroup => "detail group".into(),
+            Kind::ModelGroup => "model group".into(),
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
@@ -115,6 +119,7 @@ impl Kind {
             Kind::CoordinatePoint => "coordinate point".into(),
             Kind::PrintSet => ui_msg!("print set").into(),
             Kind::PublishSet => ui_msg!("publishing set").into(),
+            Kind::Classification => "classification table".into(),
         }
     }
 
@@ -127,6 +132,7 @@ impl Kind {
             "family" => Kind::Family,
             "parameter" => Kind::Parameter,
             "dictionary" => Kind::Dictionary,
+            "classification" => Kind::Classification,
             "view-filter" => Kind::ViewFilter,
             "view-template" => Kind::ViewTemplate,
             "phase" => Kind::Phase,
@@ -140,6 +146,7 @@ impl Kind {
             "fill-pattern" => Kind::FillPattern,
             "filled-region-type" => Kind::FilledRegionType,
             "detail-group" => Kind::DetailGroup,
+            "model-group" => Kind::ModelGroup,
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
@@ -180,6 +187,7 @@ impl fmt::Display for Kind {
             Kind::FillPattern => f.write_str("fill-pattern"),
             Kind::FilledRegionType => f.write_str("filled-region-type"),
             Kind::DetailGroup => f.write_str("detail-group"),
+            Kind::ModelGroup => f.write_str("model-group"),
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
@@ -193,6 +201,7 @@ impl fmt::Display for Kind {
             Kind::CoordinatePoint => f.write_str("coordinate-point"),
             Kind::PrintSet => f.write_str("print-set"),
             Kind::PublishSet => f.write_str("publish-set"),
+            Kind::Classification => f.write_str("classification"),
         }
     }
 }
@@ -686,6 +695,9 @@ impl Model {
                 "railing" => self.types.railing.remove(name).is_some(),
                 "room" => self.types.room.remove(name).is_some(),
                 "stair" => self.types.stair.remove(name).is_some(),
+                "curtainpanel" => self.types.curtain_panel.remove(name).is_some(),
+                "mullion" => self.types.mullion.remove(name).is_some(),
+                "cornermullion" => self.types.corner_mullion.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
@@ -729,6 +741,9 @@ impl Model {
                 "railing" => mv(&mut self.types.railing, from, to),
                 "room" => mv(&mut self.types.room, from, to),
                 "stair" => mv(&mut self.types.stair, from, to),
+                "curtainpanel" => mv(&mut self.types.curtain_panel, from, to),
+                "mullion" => mv(&mut self.types.mullion, from, to),
+                "cornermullion" => mv(&mut self.types.corner_mullion, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| mv(t, from, to)),
@@ -823,6 +838,9 @@ impl Model {
         add(Kind::Type("railing".into()), &mut t.railing.keys());
         add(Kind::Type("room".into()), &mut t.room.keys());
         add(Kind::Type("stair".into()), &mut t.stair.keys());
+        add(Kind::Type("curtainpanel".into()), &mut t.curtain_panel.keys());
+        add(Kind::Type("mullion".into()), &mut t.mullion.keys());
+        add(Kind::Type("cornermullion".into()), &mut t.corner_mullion.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -835,6 +853,7 @@ impl Model {
         add(Kind::Family, &mut self.families.keys());
         add(Kind::Parameter, &mut self.parameters.keys());
         add(Kind::Dictionary, &mut self.dictionaries.keys());
+        add(Kind::Classification, &mut self.classification.tables.keys());
         add(Kind::ViewFilter, &mut self.view_filters.keys());
         add(Kind::ViewTemplate, &mut self.view_templates.keys());
         add(Kind::Phase, &mut self.phases.iter());
@@ -853,6 +872,7 @@ impl Model {
         add(Kind::FillPattern, &mut self.fill_patterns.keys());
         add(Kind::FilledRegionType, &mut self.region_types.keys());
         add(Kind::DetailGroup, &mut self.detail_groups.keys());
+        add(Kind::ModelGroup, &mut self.model_groups.keys());
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
@@ -987,6 +1007,9 @@ impl Model {
         }
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
+        }
+        for (n, g) in &self.model_groups {
+            add("member", "model group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
         }
         // An element's sketch lines, then a floor's or a roof's shape's points and split lines, the element named by its GUID,
         // which never changes.
@@ -1138,7 +1161,7 @@ impl Model {
                 f.resolve_dimension_refs(&parts);
             }
         }
-        for g in self.detail_groups.values_mut() {
+        for g in self.detail_groups.values_mut().chain(self.model_groups.values_mut()) {
             g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
         for e in self.elements.values_mut() {
@@ -1357,10 +1380,16 @@ impl Model {
             f.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
-        for g in self.detail_groups.values_mut() {
+        for g in self.detail_groups.values_mut().chain(self.model_groups.values_mut()) {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for e in self.elements.values_mut() {
+            if let crate::model::Element::Wall(w) = e
+                && let Some(c) = &mut w.curtain
+            {
+                c.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+                c.grids.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            }
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             }
@@ -1497,7 +1526,12 @@ impl crate::model::Element {
         use crate::model::{Element, run_arm};
         let category = self.category().to_string();
         match self {
-            Element::Wall(w) => f(&Kind::Type(category), &mut w.type_name),
+            Element::Wall(w) => {
+                f(&Kind::Type(category), &mut w.type_name);
+                if let Some(c) = &mut w.curtain {
+                    c.names_mut(f);
+                }
+            }
             Element::Floor(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
@@ -1535,6 +1569,7 @@ impl crate::model::Element {
             }
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
             Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
+            Element::ModelGroup(g) => f(&Kind::ModelGroup, &mut g.type_name),
             Element::RepeatingDetail(r) => f(&Kind::DetailGroup, &mut r.type_name),
             Element::FilledRegion(r) => {
                 f(&Kind::FilledRegionType, &mut r.type_name);
@@ -1599,6 +1634,7 @@ impl Model {
         for d in self.parameters.values_mut().filter_map(|p| p.dictionary.as_mut()) {
             f(&Kind::Dictionary, d);
         }
+        self.classification.lib_refs_mut(f);
         let t = &mut *self.types;
         let layers = t
             .wall
@@ -1620,6 +1656,15 @@ impl Model {
             }
             if let Some(ceiling) = &mut r.ceiling {
                 f(&Kind::Type("ceiling".into()), ceiling);
+            }
+        }
+        for l in t.wall.values_mut().filter_map(|x| x.curtain.as_mut()) {
+            l.names_mut(f);
+        }
+        let mullions = t.mullion.values_mut().chain(t.corner_mullion.values_mut()).map(|x| &mut x.material);
+        for material in t.curtain_panel.values_mut().map(|x| &mut x.material).chain(mullions) {
+            if !material.is_empty() {
+                f(&Kind::Material, material);
             }
         }
         for m in self.materials.values_mut() {
@@ -1652,7 +1697,7 @@ impl Model {
         for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
             f(&Kind::LinePattern, p);
         }
-        for m in self.detail_groups.values_mut().flat_map(|g| g.members.iter_mut()) {
+        for m in self.detail_groups.values_mut().chain(self.model_groups.values_mut()).flat_map(|g| g.members.iter_mut()) {
             m.element.lib_refs_mut(f);
         }
         for x in self.materials.values_mut() {
@@ -1752,10 +1797,11 @@ impl Model {
 }
 
 /// The kinds of part an element holds, as [`element_parts`] names them.
-const ELEMENT_PARTS: [&str; 3] = ["sketch line", "shape point", "split line"];
+const ELEMENT_PARTS: [&str; 5] = ["sketch line", "shape point", "split line", "curtain part", "curtain grid"];
 
 /// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
-/// points and its split lines, each with what it is, its place in its list, its id and its GUID.
+/// points and its split lines, then a curtain wall's edited parts, each with what it is, its place in its list, its id and its
+/// GUID.
 fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     let mut out: Vec<(&'static str, usize, Id, Guid)> = Vec::new();
     if let Some(lines) = e.sketch() {
@@ -1764,6 +1810,10 @@ fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     if let Some(sh) = e.shape().filter(|sh| !sh.is_empty()) {
         out.extend(sh.points.iter().enumerate().map(|(k, x)| ("shape point", k, x.id, x.guid)));
         out.extend(sh.lines.iter().enumerate().map(|(k, x)| ("split line", k, x.id, x.guid)));
+    }
+    if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
+        out.extend(c.parts.iter().enumerate().map(|(k, x)| ("curtain part", k, x.id, x.guid)));
+        out.extend(c.grids.iter().enumerate().map(|(k, x)| ("curtain grid", k, x.id, x.guid)));
     }
     out
 }
@@ -1776,6 +1826,10 @@ fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
     if let Some(sh) = e.shape_mut().filter(|sh| !sh.is_empty()) {
         sh.points.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
         sh.lines.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+    }
+    if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
+        c.parts.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+        c.grids.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
     }
 }
 

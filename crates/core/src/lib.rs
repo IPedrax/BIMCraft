@@ -21,6 +21,9 @@ pub mod cad;
 mod cad_tests;
 #[cfg(test)]
 mod circuit_tests;
+pub mod classification;
+#[cfg(test)]
+mod classification_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;
@@ -40,6 +43,11 @@ mod cowork_tests;
 pub mod crosscheck;
 pub mod crs;
 mod csg;
+pub mod curtain;
+#[cfg(test)]
+mod curtain_grid_tests;
+#[cfg(test)]
+mod curtain_tests;
 pub mod curves;
 pub mod demand;
 pub mod derived;

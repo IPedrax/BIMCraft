@@ -96,8 +96,11 @@ fn annotation(h: &mut Harness<BimApp>, item: &str) {
     press(h, item);
 }
 
-/// A tool from the Architecture tab: a tool's contextual tab takes the ribbon, as in Revit.
+/// A tool from the Architecture tab: a tool's contextual tab takes the ribbon, as in Revit. With a contextual tab the tabs are
+/// wider than the window and scrolled to it, so the Architecture tab is scrolled back into view first, as a user would.
 fn tool(h: &mut Harness<BimApp>, label: &str) {
+    h.get_by_label("Architecture").scroll_to_me();
+    h.run();
     press(h, "Architecture");
     press(h, label);
 }
@@ -1050,8 +1053,22 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting =
-        ["Graphic Display Options", "Pin", "Unpin", "Co-Work", "Building Codes", "Code Check", "Convert to Sketch", "Separate Storeys"];
+    let awaiting = [
+        "Graphic Display Options",
+        "Pin",
+        "Unpin",
+        "Co-Work",
+        "Building Codes",
+        "Code Check",
+        "Convert to Sketch",
+        "Separate Storeys",
+        "Curtain Grid",
+        "Add/Remove Segments",
+        "Replace Panel with Wall",
+        "Player",
+        "Run Script",
+        "New Script",
+    ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -1108,7 +1125,8 @@ fn ma_gives_the_walls_selected_after_the_first_its_type_in_one_undo_step() {
 
 #[test]
 fn keys_for_tools_bimcraft_lacks_are_bound_to_nothing_rather_than_to_another_tool() {
-    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD"] {
+    // RL is Revit's Reload Latest and SX its Snap to Points, so PyAddins' Reload is LS and its Stop XS.
+    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD", "RL", "SX"] {
         let mut app = BimApp::new(Session::new());
         app.typed = keys.into();
         assert!(!app.shortcut(), "{keys}");
@@ -2080,6 +2098,26 @@ fn in_3d_a_primary_drag_boxes_shift_and_the_middle_button_orbit_the_middle_butto
     // Zoom to Fit: the whole model again, from where the camera is now.
     press(&mut h, "Zoom to Fit");
     assert!(cam(&h).scale < zoomed.scale && cam(&h).azimuth == zoomed.azimuth);
+}
+
+#[test]
+fn in_3d_alt_and_a_primary_drag_pan_and_with_shift_orbit_where_there_is_no_middle_button() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    let cam = |h: &Harness<BimApp>| h.state().orbit.camera.unwrap();
+    let (start, mid) = (cam(&h), h.state().orbit.rect.center());
+    // Alt (Option on a Mac) and the primary button are the middle button, which a Mac's trackpad and mouse lack: it pans.
+    h.event(Event::ModifiersChanged(Modifiers { alt: true, ..Modifiers::NONE }));
+    drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Primary);
+    let panned = cam(&h);
+    assert!(panned.target != start.target && panned.azimuth == start.azimuth, "{panned:?}");
+    // With Shift too it orbits, as Shift and the middle button do: 100 px to the right turns the model 40°.
+    h.event(Event::ModifiersChanged(Modifiers { alt: true, shift: true, ..Modifiers::NONE }));
+    drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    let turned = cam(&h);
+    assert!((turned.azimuth - (panned.azimuth - 40.0)).abs() < 0.5 && turned.elevation == panned.elevation, "{turned:?}");
 }
 
 #[test]
@@ -5069,12 +5107,14 @@ fn a_guide_crossing_beats_a_wall_face_and_one_guide_alone_does_not() {
     let m = &h.state().session.model;
     let at = P2(2234.7, ext);
     let f = h.state().snap(m, level, &v, v.px(at), &[], false);
-    assert_eq!(f.kind, Kind::Nearest, "the pointer is on the wall's face: {f:?}");
+    // The grid crosses the wall's face, which the plan's outline of the wall gives as a line (#386): a crossing of the two.
+    assert_eq!(f.kind, Kind::Intersection, "the grid crosses the wall's face here: {f:?}");
     let p = h.state().snap_point(m, level, &v, v.px(at), &[], false);
     assert!(p.dist(at) < 0.01, "the crossing is exact, not the face's 10 mm point: {p:?}");
-    let one = P2(2134.7, ext);
+    // Out of reach of the grid's crossing with the face, which is a snap of its own (#386's outline).
+    let one = P2(1734.7, ext);
     let p = h.state().snap_point(m, level, &v, v.px(one), &[], false);
-    assert!((p.0 - 2130.0).abs() < 0.01 && (p.1 - ext).abs() < 0.01, "one guide does not take the face's point: {p:?}");
+    assert!((p.0 - 1730.0).abs() < 0.01 && (p.1 - ext).abs() < 0.01, "one guide does not take the face's point: {p:?}");
 }
 
 /// A passive 15° step does not take a pick off the wall face under the pointer; Shift's step, which was asked for, does.
@@ -6572,7 +6612,16 @@ fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
     let mut h = app(BOX);
     h.set_size(vec2(crate::window::MIN_SIZE[0], crate::window::MIN_SIZE[1]));
     h.run();
-    shortcut(&mut h, "UN");
+    // The Manage tab takes about a hundred frames to fit its Settings panel in the smallest window (measured on CI, 2026-11-16),
+    // past the harness's 32: frames until the ribbon has settled, then the list.
+    let keys: Vec<Key> = "UN".chars().filter_map(|c| Key::from_name(&c.to_string())).collect();
+    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
+    for _ in 0..400 {
+        h.step();
+        if !h.ctx.has_requested_repaint() {
+            break;
+        }
+    }
     assert!(egui::Popup::is_any_open(&h.ctx), "the panel's list is open");
     let row = h.get_by_label("Project Units").rect().center();
     click_at(&mut h, row);
@@ -7328,11 +7377,13 @@ mod autosave;
 mod browser;
 mod cad;
 mod chinese;
+mod classification;
 mod clouds;
 mod codes;
 mod control;
 mod coordinates;
 mod cowork;
+mod curtain;
 mod dialog;
 mod dimensions;
 mod dims3d;
@@ -7373,6 +7424,7 @@ mod profile;
 mod projectinfo;
 mod publisher;
 mod purge;
+mod pyaddins;
 mod qol;
 mod reinforce;
 mod revit;

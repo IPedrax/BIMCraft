@@ -278,6 +278,16 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation (°)", Number),
             ("Other", "mirrored", msg!("Mirrored"), Flag),
             ("Other", "at", "Origin", Point),
+            ("Other", "excluded", msg!("Excluded Members"), Shown),
+        ],
+        "modelgroup" => &[
+            ("Constraints", "level", msg!("Reference Level"), Level),
+            ("Constraints", "flexible", msg!("Flexible"), Flag),
+            ("Identity Data", "type", "Group", Shown),
+            ("Other", "angle", "Rotation (°)", Number),
+            ("Other", "mirrored", msg!("Mirrored"), Flag),
+            ("Other", "at", "Origin", Point),
+            ("Other", "excluded", msg!("Excluded Members"), Shown),
         ],
         "repeatingdetail" => &[
             ("Identity Data", "type", "Group", Shown),
@@ -542,6 +552,8 @@ fn wall_type_sample(ui: &Ui, rect: Rect, model: &Model, name: &str) {
 fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
     let of = match category {
         "structuralcolumn" => &types["structural_column"],
+        "curtainpanel" => &types["curtain_panel"],
+        "cornermullion" => &types["corner_mullion"],
         run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &types["runs"][category],
         other => &types[other],
     };
@@ -577,6 +589,20 @@ fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static 
             (F, "riser_cover", msg!("Riser Cover Thickness")),
             (F, "cover_nosing", msg!("Cover Nosing")),
             (F, "cover_side", msg!("Cover Side Overhang")),
+        ],
+        "curtainpanel" => &[(D, "thickness", msg!("Thickness")), (D, "offset", msg!("Offset"))],
+        "mullion" => &[
+            (D, "width", msg!("Width")),
+            (D, "depth", msg!("Depth")),
+            (D, "offset_x", msg!("X Offset")),
+            (D, "offset_y", msg!("Y Offset")),
+        ],
+        "cornermullion" => &[
+            (D, "width", msg!("Width")),
+            (D, "depth", msg!("Depth")),
+            (D, "offset_x", msg!("X Offset")),
+            (D, "offset_y", msg!("Y Offset")),
+            (D, "rotation", msg!("Rotation")),
         ],
         _ => &[],
     }
@@ -1022,6 +1048,8 @@ pub(crate) struct TypeDialog {
     /// The elements that were on the type when the dialog opened; OK puts them on the type shown.
     elements: Vec<Id>,
     fields: Vec<TypeField>,
+    /// A corner mullion type's Auto Rotation; none for the rest.
+    auto_rotation: Option<bool>,
     /// A new name being typed, for a duplicate or a rename.
     naming: Naming,
     /// What stopped OK, Apply, Duplicate or Rename.
@@ -1031,6 +1059,7 @@ pub(crate) struct TypeDialog {
     layers: Vec<LayerRow>,
     layers_were: Vec<LayerRow>,
     /// A run type's section: whether it is round (then it has a diameter and no depth) and what it is made of ("" for nothing).
+    /// A curtain panel's or a mullion's too, which is never round.
     shape: Option<(bool, String)>,
     /// A room type's own: its rooms' floor and ceiling, and their colour on plans.
     pub(crate) room: Option<RoomRows>,
@@ -1038,6 +1067,8 @@ pub(crate) struct TypeDialog {
     project: Vec<TypeValue>,
     /// A stair type's rules and how its stairs show in plan.
     stair: Option<crate::stairtype::StairDraft>,
+    /// A curtain wall type's pattern and how thick that makes it: it has no fields or layers to type.
+    curtain: Option<(bimcraft_core::curtain::CurtainLayout, f64)>,
 }
 
 /// A room type's parameters, as picked and typed: the floor type and the ceiling type its rooms have of their own ("" for
@@ -1137,15 +1168,26 @@ const GRAPHICS: &str = msg!("Graphics");
 impl TypeDialog {
     pub(crate) fn new(m: &Model, category: &'static str, name: String, elements: Vec<Id>) -> TypeDialog {
         let (fields, layers) = (TypeDialog::fields(m, category, &name), TypeDialog::layers(m, category, &name));
+        let auto_rotation = (category == "cornermullion").then(|| m.types.corner_mullion.get(&name).is_some_and(|t| t.auto_rotation));
         let shape = bimcraft_core::model::RUN_CATEGORIES.contains(&category).then(|| {
             let t = m.types.runs.get(category).and_then(|t| t.get(&name));
             (t.is_some_and(|t| t.round), t.map(|t| t.material.clone()).unwrap_or_default())
         });
+        let shape = match category {
+            "curtainpanel" => m.types.curtain_panel.get(&name).map(|t| (false, t.material.clone())),
+            "mullion" => m.types.mullion.get(&name).map(|t| (false, t.material.clone())),
+            "cornermullion" => m.types.corner_mullion.get(&name).map(|t| (false, t.material.clone())),
+            _ => shape,
+        };
+        let curtain =
+            (category == "wall").then(|| m.types.wall.get(&name)).flatten().and_then(|t| t.curtain.clone().map(|l| (l, t.thickness)));
+        let fields = if curtain.is_some() { Vec::new() } else { fields };
         let name_of = name.clone();
         let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name));
         let stair = (category == "stair").then(|| crate::stairtype::StairDraft::new(m, &name_of));
         TypeDialog {
             category,
+            auto_rotation,
             name,
             elements,
             fields,
@@ -1157,6 +1199,7 @@ impl TypeDialog {
             room: (category == "room").then(|| RoomRows::new(m, &name_of)),
             project,
             stair,
+            curtain,
         }
     }
 
@@ -1173,15 +1216,37 @@ impl TypeDialog {
         *self = TypeDialog::new(m, self.category, name, std::mem::take(&mut self.elements));
     }
 
+    /// The type shown as the model has it now, what Edit Pattern changed among it.
+    pub(crate) fn refresh(&mut self, m: &Model) {
+        let name = self.name.clone();
+        self.show(m, name);
+    }
+
+    /// What's typed in a field, by its key.
+    #[cfg(test)]
+    pub(crate) fn field_text(&self, key: &str) -> Option<&str> {
+        self.fields.iter().find(|f| f.1 == key).map(|f| f.3.as_str())
+    }
+
     /// A type's sizes, as typed: lengths in the project's units.
     fn fields(m: &Model, category: &str, name: &str) -> Vec<TypeField> {
         let types = serde_json::to_value(&m.types).unwrap_or_default();
-        // A size the file leaves out (a finish of none) is 0.
-        let size = |k: &str| match &type_json(&types, category, name)[k] {
-            Value::Null => json!(0.0),
-            v => v.clone(),
-        };
-        type_rows(category).iter().map(|(g, k, l)| (*g, *k, *l, shown(Length, &size(k), m.units))).collect()
+        type_rows(category)
+            .iter()
+            .map(|(g, k, l)| {
+                // A mullion's width and depth are its profile's; a size the file leaves out (a finish of none) is 0.
+                let t = type_json(&types, category, name);
+                let value = match (&t[k], &t["profile"][k]) {
+                    (Value::Null, Value::Null) => json!(0.0),
+                    (Value::Null, v) | (v, _) => v.clone(),
+                };
+                // A rotation is an angle, in degrees whatever the project's units, and none is 0.
+                if *k == "rotation" {
+                    return (*g, *k, *l, format!("{}°", value.as_f64().unwrap_or(0.0)));
+                }
+                (*g, *k, *l, shown(Length, &value, m.units))
+            })
+            .collect()
     }
 
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
@@ -1194,10 +1259,18 @@ impl TypeDialog {
         }
     }
 
+    /// A curtain panel's or a mullion's type.
+    fn curtain_part(&self) -> bool {
+        matches!(self.category, "curtainpanel" | "mullion" | "cornermullion")
+    }
+
     /// The `type` command's parameters for the type as typed, or why they aren't lengths. Changed
     /// layers make the type, and how thick it is; `copy` sends them anyway, as a duplicate has them.
     fn params(&self, name: &str, units: Units, copy: bool) -> Result<Value, String> {
         let mut p = json!({"category": self.category, "name": name});
+        if let Some(on) = self.auto_rotation {
+            p["auto_rotation"] = json!(on);
+        }
         let layered = copy || self.layers != self.layers_were;
         if layered {
             let layers = self.layers.iter().map(|(function, material, typed, variable)| {
@@ -1214,10 +1287,17 @@ impl TypeDialog {
         for (_, key, label, typed) in self.fields.iter().filter(|(_, key, ..)| {
             !(layered && *key == "thickness") && !(round && *key == "depth") && self.stair.as_ref().is_none_or(|s| s.used(key))
         }) {
+            if *key == "rotation" {
+                let angle = typed.trim().trim_end_matches('°').trim().parse::<f64>().ok().filter(|a| a.is_finite());
+                p[*key] = json!(angle.ok_or_else(|| tf("`{}` is not an angle", &[typed.trim()]))?);
+                continue;
+            }
             p[*key] = json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
         }
         if let Some((round, material)) = &self.shape {
-            p["round"] = json!(round);
+            if !self.curtain_part() {
+                p["round"] = json!(round);
+            }
             p["material"] = json!(material);
         }
         if let Some(room) = &self.room {
@@ -1225,6 +1305,10 @@ impl TypeDialog {
         }
         if let Some(stair) = &self.stair {
             stair.params(&mut p, units)?;
+        }
+        if let Some((l, _)) = &self.curtain {
+            p["curtain"] = json!(l);
+            p.as_object_mut().map(|o| o.remove("layers"));
         }
         Ok(p)
     }
@@ -1471,7 +1555,11 @@ impl BimApp {
             _ => false,
         };
         let active_3d = self.active_3d();
-        self.type_selector(ui, &model, subject);
+        // A group's member, Tab-selected outside Edit Group of it, is its group type's: only its values of the parameters that
+        // vary by group instance change here, the rest greyed.
+        let group_scope = self.session.group_scope();
+        let held = bimcraft_core::groups::held(&model, &self.selection, group_scope.as_ref());
+        ui.add_enabled_ui(held.is_none(), |ui| self.type_selector(ui, &model, subject));
         self.held_by_others(ui);
         let (filter, ids, rows) = match subject {
             Subject::Element(id) => match model.elements.get(id) {
@@ -1530,26 +1618,41 @@ impl BimApp {
             });
         });
         ui.add_space(4.0);
-        if let Subject::Element(id) = subject {
-            self.connected_finishes(ui, &model, id);
+        if let Some(name) = held.and_then(|g| model.elements.get(g)).and_then(bimcraft_core::groups::instance).map(|i| i.type_name) {
+            ui.add(egui::Label::new(tf(
+                "A member of group {}: only the parameters that vary by group instance change here. The rest change in Edit Group.",
+                &[name],
+            )))
+            .on_hover_text(t(crate::parameters::GROUP_VALUES_TIP));
+            ui.add_space(4.0);
         }
-        self.layer_picture(ui, &model);
-        self.opening_picker(ui, &model);
-        self.floor_slope(ui, &model);
-        self.sketch_slope(ui);
-        if !ids.is_empty() {
-            self.parameters(ui, &model, &ids, rows);
+        ui.add_enabled_ui(held.is_none(), |ui| {
             if let Subject::Element(id) = subject {
-                self.stair_turns(ui, &model, id);
-                self.stair_flights(ui, &model, id);
-                self.ties(ui, &model, id);
+                self.connected_finishes(ui, &model, id);
             }
-            self.component_parameters(ui, &model, &ids);
-            self.panel_parameters(ui, &model, &ids);
-            self.circuit_parameters(ui, &model, &ids);
-            self.project_parameters(ui, &model, &ids);
-            self.sheet_title_block(ui, &model, &ids);
-            self.element_phasing(ui, &model, &ids);
+            self.curtain_part_panel(ui, &model);
+            self.layer_picture(ui, &model);
+            self.opening_picker(ui, &model);
+            self.floor_slope(ui, &model);
+            self.sketch_slope(ui);
+            if !ids.is_empty() {
+                self.parameters(ui, &model, &ids, rows);
+                if let Subject::Element(id) = subject {
+                    self.stair_turns(ui, &model, id);
+                    self.stair_flights(ui, &model, id);
+                    self.ties(ui, &model, id);
+                }
+                self.component_parameters(ui, &model, &ids);
+                self.panel_parameters(ui, &model, &ids);
+                self.circuit_parameters(ui, &model, &ids);
+            }
+        });
+        if !ids.is_empty() {
+            self.project_parameters(ui, &model, &ids, held.is_some());
+            ui.add_enabled_ui(held.is_none(), |ui| {
+                self.sheet_title_block(ui, &model, &ids);
+                self.element_phasing(ui, &model, &ids);
+            });
         }
         if subject == Subject::Schedule {
             self.schedule_parameters(ui);
@@ -1642,6 +1745,10 @@ impl BimApp {
     fn layer_picture(&mut self, ui: &mut Ui, model: &Model) {
         let Some((category, name, ids)) = self.type_subject() else { return };
         let Some((.., thickness, layers)) = model.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return };
+        // A curtain wall has no layers, only its panels and mullions, and stands on a face its pattern's editor doesn't move.
+        if category == "wall" && model.types.wall.get(&name).is_some_and(|w| w.curtain.is_some()) {
+            return;
+        }
         if !LAYERED.contains(&category) || thickness.is_nan() || thickness <= 0.0 {
             return;
         }
@@ -2080,6 +2187,11 @@ impl BimApp {
                     };
                     let label = t(label);
                     let name = ui.label(label);
+                    // A row whose name doesn't say all it does: what it means, on hover.
+                    let name = match model.elements.get(id) {
+                        Some(Element::ModelGroup(_)) if key == "flexible" => name.on_hover_text(t(crate::groups::FLEXIBLE_TIP)),
+                        _ => name,
+                    };
                     match kind {
                         // A component's Work Plane, `Level : Level 1`: what it is on in the interface's words, its name as it is.
                         Shown if key == "work_plane" => {
@@ -2871,8 +2983,9 @@ impl BimApp {
 
     /// The selected elements' values of the project's parameters for their category, in a group of
     /// their own: a field for each, a checkbox for yes or no. An edit sets them all; emptied, a
-    /// field takes their values away.
-    fn project_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+    /// field takes their values away. Of a group's members held to their type (`held`), only those
+    /// that vary by group instance are set here; the rest are shown, as their group type has them.
+    fn project_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id], held: bool) {
         let cats: BTreeSet<&str> = ids.iter().filter_map(|id| model.elements.get(id)).map(Element::category).collect();
         let (Some(&id), Some(&cat)) = (ids.first(), cats.first()) else { return };
         // Blank across a selection may be values that differ, not none.
@@ -2909,14 +3022,20 @@ impl BimApp {
             grid(ui, ("project-parameters", id, group), |ui| {
                 for &(name, p) in &params {
                     let val = value(name);
-                    let label = if p.description.is_empty() {
-                        ui.label(name.as_str())
-                    } else {
-                        ui.label(name.as_str()).on_hover_text(&p.description)
-                    };
+                    // Its group type's, for a held member: greyed, name and value.
+                    let theirs = held && !p.vary_by_group;
+                    let label = ui.add_enabled(!theirs, egui::Label::new(name.as_str()));
+                    let label = if p.description.is_empty() { label } else { label.on_hover_text(&p.description) };
                     if p.read_only {
                         // Shown, and changed only by a command.
                         ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)));
+                        ui.end_row();
+                        continue;
+                    }
+                    if theirs {
+                        // Its group type's: changed in Edit Group.
+                        ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)))
+                            .on_disabled_hover_text(t("Aligned per group type: change it in Edit Group."));
                         ui.end_row();
                         continue;
                     }
@@ -3102,23 +3221,25 @@ impl BimApp {
         let model = Arc::clone(&self.session.model);
         let names: Vec<String> = model.type_names(d.category).into_iter().map(String::from).collect();
         let (mut ok, mut cancel, mut apply, mut asked) = (false, false, false, None);
+        let mut edit_pattern = false;
         let r = Modal::new(UiId::new("type-properties"), t("Type Properties")).width(crate::typeprops::WIDTH).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 let family = tf("System Family: {}", &[&lang::category(d.category, true)]);
                 asked = typeprops::head(ui, "type", &family, &names, &d.name, &mut d.naming, true);
                 let below = typeprops::foot_height(ui, d.error.is_some());
                 let materials: Vec<String> = model.materials.keys().cloned().collect();
-                let layered = LAYERED.contains(&d.category);
+                let layered = LAYERED.contains(&d.category) && d.curtain.is_none();
                 let round = d.shape.as_ref().is_some_and(|(round, _)| *round);
                 // The groups in the order their first row comes; a run's roundness is a dimension, its material its own group.
                 let mut groups: Vec<&str> = Vec::new();
                 let extra = [
-                    (layered, "Construction"),
+                    (layered || d.curtain.is_some(), "Construction"),
                     (d.shape.is_some(), "Dimensions"),
                     (d.shape.is_some(), msg!("Materials and Finishes")),
                     (d.room.is_some(), ROOM_FINISHES),
                     (d.room.is_some(), GRAPHICS),
                 ];
+                let part = d.curtain_part();
                 for g in d.fields.iter().map(|f| f.0).chain(extra.iter().filter(|(on, _)| *on).map(|(_, g)| *g)) {
                     if !groups.contains(&g) {
                         groups.push(g);
@@ -3167,16 +3288,31 @@ impl BimApp {
                                             .labelled_by(l)
                                     });
                                 }
-                                None => tb.text(label, typed, model.units.name()),
+                                None => tb.text(label, typed, if *key == "rotation" { "°" } else { model.units.name() }),
                             }
                         }
+                        if g == "Dimensions"
+                            && let Some(on) = &mut d.auto_rotation
+                        {
+                            tb.check(t(msg!("Auto Rotation")), on);
+                        }
                         match (g, &mut d.shape) {
-                            ("Dimensions", Some((round, _))) => tb.check(t("Round"), round),
+                            ("Dimensions", Some((round, _))) if !part => tb.check(t("Round"), round),
                             ("Materials and Finishes", Some((_, material))) => tb.pick(t("Material"), material, &materials),
                             _ => {}
                         }
                         if let Some(room) = &mut d.room {
                             room.rows(tb, g, &model);
+                        }
+                        if g == "Construction"
+                            && let Some((_, thickness)) = &d.curtain
+                        {
+                            tb.row(t("Layout"), |ui, _| {
+                                if wide_button(ui, t("Edit…")).clicked() {
+                                    edit_pattern = true;
+                                }
+                            });
+                            tb.shown(t("Thickness"), &model.units.length(*thickness));
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
@@ -3192,6 +3328,10 @@ impl BimApp {
                 (ok, cancel, apply) = typeprops::foot(ui);
             });
         });
+        if edit_pattern {
+            let name = d.name.clone();
+            self.open_curtain_editor(&name);
+        }
         let switch = match &asked {
             Some(Head::Switch(n)) => Some(n.clone()),
             _ => None,

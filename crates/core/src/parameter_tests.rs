@@ -950,3 +950,54 @@ fn a_table_that_doesnt_say_whether_a_parameter_can_be_changed_leaves_it_as_it_is
     run(&mut s, "parameter_import", json!({"path": path}));
     assert!(!s.model.parameters["Rating"].read_only, "yes says it can be changed");
 }
+
+#[test]
+fn a_dictionary_carries_whether_values_vary_by_group_instance_and_an_import_sets_it() {
+    let (mut s, _) = walled();
+    let path = file("groups.bimparams");
+    run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [
+            {"name": "Comments", "kind": "text", "categories": ["wall"], "vary_by_group": true},
+            {"name": "Code", "kind": "text", "categories": ["wall"]},
+        ]}),
+    );
+    let r = run(&mut s, "parameter_import", json!({"path": path}));
+    assert_eq!(r["create"], 2, "{r}");
+    assert!(s.model.parameters["Comments"].vary_by_group, "the file says it varies");
+    assert!(!s.model.parameters["Code"].vary_by_group, "a file that doesn't say is aligned per group type");
+
+    // Exported, the project's choice goes with each parameter.
+    let out = file("out.bimparams");
+    run(&mut s, "parameter_export", json!({"path": out}));
+    let d = crate::parameters::table::read_dictionary_file(&out).unwrap();
+    let vary = |n: &str| d.parameters.iter().find(|q| q.name == n).unwrap().vary_by_group;
+    assert_eq!((vary("Comments"), vary("Code")), (Some(true), Some(false)));
+
+    // A new revision that aligns it is a change, said before it's made.
+    let d = crate::parameters::table::read_dictionary_file(&path).unwrap();
+    let comments = d.parameters.iter().find(|q| q.name == "Comments").unwrap().guid.unwrap();
+    run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [{"guid": comments, "name": "Comments", "kind": "text", "categories": ["wall"], "vary_by_group": false}]}),
+    );
+    let r = run(&mut s, "parameter_import", json!({"path": path, "dry_run": true}));
+    assert_eq!(r["modify"], 1, "{r}");
+    let notes = r.to_string();
+    assert!(notes.contains("aligned per group type"), "{r}");
+    run(&mut s, "parameter_import", json!({"path": path}));
+    assert!(!s.model.parameters["Comments"].vary_by_group);
+
+    // And one that doesn't say leaves the project's choice as it is.
+    run(&mut s, "parameter", json!({"name": "Comments", "vary_by_group": true}));
+    run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [{"guid": comments, "name": "Comments", "kind": "text", "categories": ["wall"]}]}),
+    );
+    let r = run(&mut s, "parameter_import", json!({"path": path}));
+    assert_eq!(r["modify"], 0, "{r}");
+    assert!(s.model.parameters["Comments"].vary_by_group);
+}

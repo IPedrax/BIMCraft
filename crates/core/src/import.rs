@@ -2142,7 +2142,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 &mut m.types.wall,
                 &base,
                 |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
-                WallType { thickness: t, layers: layers.clone() },
+                WallType { thickness: t, layers: layers.clone(), curtain: None },
             );
             let location = located(id).filter(|_| !turned);
             let on = |x: P2| micron(if location.is_some() { x } else { c + (x - c).unit() * ((r0 + r1) / 2.0) });
@@ -2200,7 +2200,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             &mut m.types.wall,
             &base,
             |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
-            WallType { thickness: t, layers: layers.clone() },
+            WallType { thickness: t, layers: layers.clone(), curtain: None },
         );
         raw.push(RawWall {
             ifc: id,
@@ -2237,6 +2237,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             attach_base: None,
             room_bounding: true,
             join: true,
+            curtain: None,
+            panel_of: None,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
@@ -4289,6 +4291,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     // Classification references: each system's codes, a text parameter of it, named for the system. A reference within a
     // reference is of the system at the top; a type's, its occurrences' unless they have their own.
     let mut systems: BTreeMap<u64, Option<Classification>> = BTreeMap::new();
+    // The parameters of systems the classification tables know, by their number's name: their title's, and whose value the
+    // table makes it (Uniclass's Systems are a type's), which they are made once the types have their GUIDs.
+    let mut known: BTreeMap<String, (Option<String>, crate::model::Scope)> = BTreeMap::new();
     'classified: for rel in named(&["IFCRELASSOCIATESCLASSIFICATION"]).into_iter().filter_map(e) {
         let Some(item) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCCLASSIFICATIONREFERENCE") else { continue };
         // IFC4's `Identification`, IFC2x3's `ItemReference`; else its name.
@@ -4314,7 +4319,22 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             Some(Classification { system: said(3)?.to_string(), edition: said(1).map(String::from) })
         });
         let Some(c) = c.clone() else { continue };
-        let Some(name) = parameter_name(&c.system) else { continue };
+        // A system the classification tables know comes in as the parameters its tables fill (`Uniclass Ss Number`, and its
+        // title beside it when the reference has one); another's as the parameter named for it. Either is of its system, so it
+        // goes out again as the references it came in as.
+        let (name, title) = if crate::classification::known_system(&c.system).is_some() {
+            let (number, title) = crate::classification::imported_parameters(&c.system, &code);
+            let said = text(item.args.get(1)).and(text(item.args.get(2))).map(clip).filter(|t| !t.trim().is_empty());
+            let (number, title) = (parameter_name(&number), parameter_name(&title));
+            if let Some(n) = &number {
+                let scope = crate::classification::imported_scope(&c.system, &code);
+                known.entry(n.clone()).or_insert((title.clone(), scope));
+            }
+            (number, title.zip(said))
+        } else {
+            (parameter_name(&c.system), None)
+        };
+        let Some(name) = name else { continue };
         // A type's code is its occurrences', unless they have their own: the associations with the occurrences first.
         let related = refs(rel.args.get(4));
         let (types, products): (Vec<u64>, Vec<u64>) = related.into_iter().partition(|x| occurrences.contains_key(x));
@@ -4322,6 +4342,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         for (on, weak) in [(products, false), (on_types, true)] {
             let how = How { classification: Some(&c), weak, ..How::default() };
             if !on.is_empty() && !put(&mut m, &mut skipped, &on, &name, ParameterKind::Text, &json!(code), &how) {
+                break 'classified;
+            }
+            let how = How { weak, ..How::default() };
+            if let (false, Some((title, said))) = (on.is_empty(), &title)
+                && !put(&mut m, &mut skipped, &on, title, ParameterKind::Text, &json!(said), &how)
+            {
                 break 'classified;
             }
         }
@@ -4459,11 +4485,20 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     m.library = crate::library::Library::default();
     m.forget_parts();
     m.sync_library_with(&mut |_, kind, name| {
+        // A known system's parameters are its own, with the GUIDs its tables give them in every project.
+        let of_system = |n: &str| known.iter().any(|(number, (title, _))| number == n || title.as_deref() == Some(n));
+        if kind == Some(&Kind::Parameter) && of_system(name) {
+            return crate::classification::parameter_guid(name);
+        }
         let n = format!("{}/{name}", kind.map_or_else(|| "part".to_string(), Kind::to_string))
             .bytes()
             .fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
         Guid::seeded(seed, n)
     });
+    // A table that classifies types: its codes, read on the elements, are their types' now that the types have GUIDs.
+    for (number, (title, _)) in known.iter().filter(|(_, (_, scope))| *scope == crate::model::Scope::Type) {
+        skipped.extend(crate::classification::onto_types(&mut m, number, title.as_deref()));
+    }
     // What breaks a rule is left out, with the rule; a wall takes its doors and windows along.
     for _ in 0..=m.elements.len() {
         let Err(error) = m.check() else { break };

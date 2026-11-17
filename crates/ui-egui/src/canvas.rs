@@ -330,7 +330,7 @@ pub struct Canvas {
     /// (`render::view_angle`); none, not turned.
     turns: BTreeMap<Id, f64>,
     /// Where the plan was last shown, in points.
-    rect: Rect,
+    pub(crate) rect: Rect,
     /// How much of its height the cards floating over the view (its tabs at the top, its view control bar at the foot) take
     /// between them, points: a view is fitted into the rest.
     pub(crate) room: f32,
@@ -342,7 +342,7 @@ pub struct Canvas {
     grab: Option<P2>,
     drag: Option<Drag>,
     /// What's under the cursor, as `Drawing::pick_all` orders it, and how far Tab has gone.
-    under: Vec<Id>,
+    pub(crate) under: Vec<Id>,
     cycle: usize,
     /// A crop region's grip being dragged: the view, and which edge (see [`grips`]).
     crop_drag: Option<(Id, usize)>,
@@ -884,6 +884,79 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
         k.insert(key, t.clone());
     });
     t
+}
+
+/// Edit Group's plan: everything washed with the paper's colour, so it reads greyed, and the primitives of `keep` drawn again
+/// over the wash as they are (`selected` and `hovered` lit as ever).
+#[allow(clippy::too_many_arguments)]
+fn grey_outside(p: &Painter, rect: Rect, at: Place, d: &Drawing, keep: &HashSet<Id>, selected: &[Id], hovered: Option<Id>, thin: bool) {
+    p.rect_filled(rect, 0.0, color(render::PAPER).gamma_multiply(GREYED));
+    let set: HashSet<Id> = selected.iter().copied().collect();
+    let clip = p.clip_rect();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        // A picture (a scan's) isn't drawn again: none is a group's.
+        if owner.is_some_and(|o| keep.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &set, hovered, thin, &mut [].iter());
+        }
+    }
+}
+
+/// The primitives of `ids` drawn again in the hover colour: a hovered group's members, which the drawing doesn't own as the group.
+fn paint_hovered(p: &Painter, at: Place, d: &Drawing, ids: &HashSet<Id>, thin: bool) {
+    if ids.is_empty() {
+        return;
+    }
+    let clip = p.clip_rect();
+    let none = HashSet::new();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        if owner.is_some_and(|o| ids.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &none, *owner, thin, &mut [].iter());
+        }
+    }
+}
+
+/// How much of the paper's colour Edit Group washes the rest of a plan with: enough to read as greyed, not gone.
+const GREYED: f32 = 0.72;
+
+/// A dashed frame round the members of each group among `lit` (the first `hovered` of them hovered, the rest selected), and a
+/// cross at its origin.
+fn group_frames(p: &Painter, m: &Model, d: &Shown, lit: &[Id], hovered: usize) {
+    for (i, id) in lit.iter().enumerate() {
+        let Some(inst) = m.elements.get(*id).and_then(bimcraft_core::groups::instance) else { continue };
+        let members: HashSet<Id> = bimcraft_core::groups::members(m, *id).into_iter().collect();
+        let mut lo = Pos2::new(f32::INFINITY, f32::INFINITY);
+        let mut hi = Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut take = |q: &(f32, f32)| {
+            let q = d.place.pos(*q);
+            (lo, hi) = (lo.min(q), hi.max(q));
+        };
+        for (prim, owner) in d.prims.iter().zip(&d.owners) {
+            if !owner.is_some_and(|o| members.contains(&o)) {
+                continue;
+            }
+            match prim {
+                Prim::Fill { rings, .. } => rings.iter().flatten().for_each(&mut take),
+                Prim::Line { pts, .. } => pts.iter().for_each(&mut take),
+                _ => {}
+            }
+        }
+        let colour = if i < hovered { canvas_pal().hover } else { canvas_pal().accent };
+        let stroke = Stroke::new(1.0, colour);
+        if lo.x.is_finite() && hi.x.is_finite() {
+            let r = Rect::from_min_max(lo, hi).expand(6.0);
+            let ring = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+            p.extend(Shape::dashed_line(&ring, stroke, 6.0, 4.0));
+        }
+        let o = d.place.pos(d.view.px(inst.placement.at));
+        p.line_segment([o - vec2(6.0, 0.0), o + vec2(6.0, 0.0)], Stroke::new(1.5, colour));
+        p.line_segment([o - vec2(0.0, 6.0), o + vec2(0.0, 6.0)], Stroke::new(1.5, colour));
+    }
 }
 
 /// The selected elements' outlines taken by `f` (on screen): where a move, a turn or a mirror
@@ -1582,6 +1655,8 @@ impl BimApp {
             && !square
             && self.snap_once.is_none()
             && self.grid_snapping
+            // A wall of a Fixed Grid has its pattern's lengths: a background grid would fight them.
+            && self.drawing_fixed_curtain().is_none()
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
             // The lattice is a place for a free point, not a crossing of two model lines: a guide may still take it.
@@ -1927,7 +2002,15 @@ impl BimApp {
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
         let sketching = self.sketch.is_some();
-        let under = if matches!(self.tool, Tool::Modify) && !sketching { picked } else { Vec::new() };
+        // A member of a group is picked as its group first; Tab steps on to the member (Revit's groups).
+        // In Edit Group only the group's own pick (and with Add, only what may join it).
+        let scope = self.session.group_scope();
+        let pick_mode = self.group_pick.filter(|_| scope.is_some());
+        let picks = |ids: &[Id], boxed: bool| crate::groups::picks(&model, ids, scope.as_ref(), pick_mode, boxed);
+        let under = match (&self.tool, local) {
+            (Tool::Modify, Some(q)) if !sketching => picks(&d.pick_all(q, PICK), false),
+            _ => Vec::new(),
+        };
         // A dimension under the cursor: Tab steps through its segments before its element.
         let dim_under = under.iter().copied().find(|id| {
             matches!(model.elements.get(*id), Some(Element::Dimension(d))
@@ -2012,7 +2095,20 @@ impl BimApp {
                 segment_tabbed = true;
             }
         }
-        if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
+        // On a curtain wall that's selected and under the cursor, Tab goes through its parts there; else through what's under it.
+        let free = self.tool == Tool::Modify;
+        let on_cursor = c.under.get(c.cycle % c.under.len().max(1)).copied();
+        let parts = local.filter(|_| tabbed && !reference_tabbed && !segment_tabbed).and_then(|q| {
+            let id = crate::curtain::tab_wall(&model, &self.selection, &c.under, on_cursor, free)?;
+            crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, view.mm(q), view.scale)
+        });
+        if let Some((id, list)) = parts {
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
+            self.curtain_more.clear();
+            if self.curtain_part.is_some() {
+                self.selection = vec![id];
+            }
+        } else if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
         // Tab over a wall, while a line or a wall is being drawn from a point, steps through the wall's three references —
@@ -2076,7 +2172,7 @@ impl BimApp {
         let tool = self.tool.clone();
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
-            Tool::Modify => d.pick(q, PICK),
+            Tool::Modify => picks(&d.pick_all(q, PICK), false).first().copied(),
             Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             // A line to draw along, or to round.
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
@@ -2214,7 +2310,10 @@ impl BimApp {
                         };
                     }
                 }
-                Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
+                Drag::Box(from) => {
+                    let found = picks(&d.in_box(from, q, q.0 < from.0), true);
+                    self.pick_up(found, click_modifiers(ui))
+                }
             }
         }
         // A double click on a section's or an elevation's mark opens its view, as in Revit; on a note, writes in it.
@@ -2299,7 +2398,11 @@ impl BimApp {
         self.paint_background_grid(&p, rect, view);
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
-        let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
+        // A group selected lights its members; a curtain wall selected stays as it is drawn, for the part Tab picks to be seen.
+        let mut marked: Vec<Id> = crate::curtain::tinted_selection(&model, &bimcraft_core::groups::with_members(&model, &self.selection))
+            .into_iter()
+            .filter(|id| Some(*id) != shaped)
+            .collect();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
@@ -2310,13 +2413,27 @@ impl BimApp {
             draw::Picked::Sketch(_) => None,
         }));
         let sketch_trim = self.sketch.is_some() && matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. });
-        let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim { None } else { hovered };
+        let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim {
+            None
+        } else {
+            crate::curtain::tinted_hover(&model, &self.selection, hovered)
+        };
         let place = Place { hide: self.writing(), ..d.place };
         let kept = pipeline.as_ref().is_some_and(|pipeline| {
             self.canvas.drawing.retained.paint(ui.ctx(), pipeline, &p, place, rect.min, &d.drawing, &marked, painted_hover, self.thin)
         });
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
+        }
+        // Edit Group: the rest of the plan greyed under a wash of the paper, the group's own (and what Add points at) over it.
+        if let Some(scope) = &scope {
+            let keep: HashSet<Id> = scope.members.iter().copied().chain(painted_hover).collect();
+            grey_outside(&p, rect, place, &d, &keep, &marked, painted_hover, self.thin);
+        }
+        // A group under the pointer (a click takes it, Tab steps into it) has no lines of its own: its members light instead.
+        if let Some(g) = painted_hover.filter(|g| model.elements.get(*g).and_then(bimcraft_core::groups::instance).is_some()) {
+            let members: HashSet<Id> = bimcraft_core::groups::members(&model, g).into_iter().filter(|id| !marked.contains(id)).collect();
+            paint_hovered(&p, place, &d, &members, self.thin);
         }
         // The guides' marks and the dwell ring are aids over the plan, not part of it: the retained plan is painted
         // after the preview pass, so they are drawn again here, on top.
@@ -2340,6 +2457,48 @@ impl BimApp {
         }
         let kind = if up { "ceiling" } else { "plan" };
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
+        // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
+        if self.curtain_part.is_none() {
+            for w in self.selection.iter().filter_map(|id| model.wall(*id).filter(|_| crate::curtain::is_curtain(&model, *id))) {
+                let ring = bimcraft_core::curtain::outline_on_plan(&model, w).iter().map(|q| pos(rect.min, view.px(*q))).collect();
+                crate::curtain::mark_wall(&p, ring);
+            }
+        }
+        let under_cursor = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool)
+            .zip(self.canvas.cursor)
+            .and_then(|(id, q)| crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, q, view.scale));
+        self.curtain_part_aim(under_cursor);
+        let plan_mark = |p: &egui::Painter, id: Id, at, picked: bool| {
+            let l = self.curtain_laid.of(&model, id);
+            if let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::plan_ring(&l, &model, w, at)) {
+                crate::curtain::mark_part(p, ring.iter().map(|q| pos(rect.min, view.px(*q))).collect(), picked);
+            }
+        };
+        if let Some((id, at)) = self.curtain_aim {
+            plan_mark(&p, id, at, false);
+        }
+        if let Some((id, _)) = self.curtain_part {
+            for at in self.curtain_parts_picked() {
+                plan_mark(&p, id, at, true);
+            }
+        }
+        // The Curtain Grid tool: where the cursor would place a line.
+        if let Tool::CurtainGrid { wall, way } = self.tool {
+            let aim = self.canvas.cursor.zip(model.wall(wall)).and_then(|(q, w)| {
+                let (along, off) = bimcraft_core::walls::Axis::of(w).project(q);
+                let (ext, int) = bimcraft_core::walls::faces(&model, w);
+                let reach = f64::from(PICK) / view.scale;
+                let near = off >= int - reach && off <= ext + reach && way == bimcraft_core::curtain::GridWay::Vertical;
+                near.then_some((along, 0.0))
+            });
+            self.curtain_hover = crate::curtain::grid_aim(&model, &self.tool, aim);
+            if let Some((id, at, _)) = self.curtain_grid_hover()
+                && let Some(w) = model.wall(id)
+            {
+                let ends = bimcraft_core::curtain::line_on_plan(&model, w, at).map(|q| pos(rect.min, view.px(q)));
+                p.line_segment(ends, Stroke::new(2.0, pal().accent));
+            }
+        }
         // The working aid: which view this is. On the screen only; no drawing is made of it. (Where the project's 0, 0 is, is
         // the Internal Origin's mark, Site's in Visibility/Graphics.)
         if self.show_view_name {
@@ -2384,6 +2543,8 @@ impl BimApp {
                 }
             }
         }
+        // A group hovered or selected: a dashed frame round its members and a cross at its origin, as Revit draws one.
+        group_frames(&p, &model, &d, &lit, hover_lit);
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
                 let by = self.dragged(&model, &view, from, view.mm(q));
@@ -2622,6 +2783,10 @@ impl BimApp {
 
     /// Add `found` to the selection with Ctrl, take it away with Shift, else select just it.
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
+        // Edit Group's Add or Remove: what is picked joins the group or leaves it, and isn't selected.
+        if self.group_pick_up(&found) {
+            return;
+        }
         if mods.shift {
             self.selection.retain(|id| !found.contains(id));
         } else if mods.command {
@@ -2699,6 +2864,19 @@ impl BimApp {
             self.dimension_refs_click(m, key, v, at, hovered);
             return;
         }
+        if let Tool::CurtainSegment { .. } = self.tool {
+            self.status = Status { text: t("a segment is picked in a section, an elevation or the 3D view").into(), error: true };
+            return;
+        }
+        if let Tool::CurtainGrid { way, .. } = self.tool {
+            if way == bimcraft_core::curtain::GridWay::Horizontal {
+                self.status =
+                    Status { text: t("a horizontal grid is placed in a section, an elevation or the 3D view").into(), error: true };
+            } else {
+                self.curtain_grid_click();
+            }
+            return;
+        }
         match &self.tool {
             &Tool::Vertex { delete } if self.sketch.is_some() => self.vertex_click(None, v.mm(at), f64::from(PICK) / v.scale, delete),
             Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
@@ -2716,6 +2894,7 @@ impl BimApp {
             }
             // A sketch tool with the sketch gone: nothing to draw into.
             Tool::SketchLine(_) | Tool::SketchPick => self.tool = Tool::Modify,
+            Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. } => {}
             // A click on the stair already selected, one drawn along a line, picks the flight or landing under it.
             Tool::Modify
                 if !mods.shift
@@ -3015,6 +3194,10 @@ impl BimApp {
             Tool::DetailGroup => {
                 let p = self.snap_point(m, level, v, at, &[], false);
                 self.place_group(key, p)
+            }
+            Tool::ModelGroup => {
+                let p = self.snap_point(m, level, v, at, &[], false);
+                self.place_model_group(level, p)
             }
             &Tool::RepeatingDetail(start) => {
                 let p = self.snap_point(m, level, v, at, start.as_slice(), mods.shift);
@@ -3810,6 +3993,9 @@ impl BimApp {
                     if self.options_refused() {
                         return;
                     }
+                    // A Fixed Grid ends the wall at its pattern's nearest length, and the chain goes on from there.
+                    let fixed = self.drawing_fixed_curtain().cloned();
+                    let p = self.fixed_end(fixed.as_ref(), last, p);
                     if self.build_walls(level, &draw::offset_line(last, p, self.draw_options().offset), false, 0.0) {
                         let Tool::Wall(chain) = &mut self.tool else { return };
                         // Back on its start, the chain closes; without Chain, every wall stands alone.
@@ -3892,6 +4078,10 @@ impl BimApp {
     /// The Move and Copy tools' second point: the selection moved or copied by `to - from`. A copy
     /// is selected afterwards; with Multiple, the tool goes on copying from the same base point.
     fn shift_selection(&mut self, from: P2, to: P2) {
+        if self.curtain_grid_moving().is_some() {
+            self.move_grid_on_plan(from, to);
+            return;
+        }
         let copy = matches!(self.tool, Tool::Copy(_));
         let again = if copy { Tool::Copy(Some(from)) } else { Tool::Move(Some(from)) };
         if from.dist(to) <= TOL {
@@ -3981,6 +4171,16 @@ impl BimApp {
         });
         if let Some(t) = self.types.get("wall") {
             p["type"] = json!(t);
+            // A curtain wall stands on its exterior or interior face: the command puts it on one unless one is asked for.
+            let curtain = self.session.model.types.wall.get(t).is_some_and(|w| w.curtain.is_some());
+            if curtain
+                && !matches!(
+                    self.wall_location,
+                    bimcraft_core::model::Location::ExteriorFinish | bimcraft_core::model::Location::InteriorFinish
+                )
+            {
+                p.as_object_mut().map(|o| o.remove("location"));
+            }
         }
         // Drawn in the 3D view, on the face their base stands on.
         if let Some(offset) = self.orbit.wall_base {
@@ -4130,6 +4330,10 @@ impl BimApp {
         } else {
             found.at
         };
+        // A wall of a Fixed Grid stays in its pattern's lengths.
+        let wall = self.gripped().and_then(|id| m.wall(id));
+        let pattern = wall.and_then(|w| m.types.wall.get(&w.type_name)).and_then(|t| t.curtain.as_ref()).map(|l| &l.columns);
+        let at = self.fixed_end(pattern.filter(|d| d.fit == bimcraft_core::curtain::Fit::Fixed), fixed, at);
         (found, at)
     }
 
@@ -5020,7 +5224,13 @@ impl BimApp {
             Tool::SketchPick => &[],
             // The group a click would place.
             Tool::DetailGroup => {
-                if let Some(e) = self.group_at(m, key, self.found(sc, q, &[], false)) {
+                for e in self.group_at(m, key, self.found(sc, q, &[], false)) {
+                    sketched(&e);
+                }
+                return;
+            }
+            Tool::ModelGroup => {
+                for e in self.model_group_at(m, level, self.found(sc, q, &[], false)) {
                     sketched(&e);
                 }
                 return;

@@ -16,6 +16,8 @@ bimcraft-plugin = { workspace = true }
 bimcraft-update = { workspace = true }
 bimcraft-assistant = { workspace = true }
 bimcraft-cowork = { workspace = true }
+# The user's Python scripts (PyAddins): their folder, their forms and their runs.
+bimcraft-pyaddins = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
 quick-xml = { version = "0.41", features = ["serialize"] }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::engine::{Session, commands};
+use crate::engine::{Session, UNDO_LIMIT, commands};
 use crate::geom::P2;
 use crate::model::{Facing, Model};
 
@@ -996,6 +996,57 @@ fn an_atomic_script_is_one_undo_step_and_leaves_nothing_done_when_a_line_fails()
     let steps = s.history().len();
     s.script_atomic("inspect\n").unwrap();
     assert_eq!(s.history().len(), steps);
+}
+
+#[test]
+fn steps_since_a_mark_squash_into_one_and_a_new_project_or_nothing_done_leaves_them() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3000}));
+    let (history, levels) = (s.history().len(), count(&mut s, "level"));
+    // A run that spans many calls (a PyAddin's, a frame at a time) is one step when it is over.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 6000}));
+    run(&mut s, "inspect", json!({}));
+    run(&mut s, "level", json!({"elevation": 9000}));
+    assert_eq!(s.history().len(), history + 2);
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), history + 1);
+    assert_eq!(s.history().last(), Some(&"PyAddin"));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels, "one undo takes it all back");
+    run(&mut s, "redo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels + 2);
+    // One step, or none, is left as it is.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 12000}));
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().last(), Some(&"Level"));
+    let (mark, steps) = (s.mark(), s.history().len());
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), steps);
+    // A new project since the mark: its history is its own.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 15000}));
+    run(&mut s, "new", json!({}));
+    run(&mut s, "level", json!({"elevation": 6000}));
+    run(&mut s, "level", json!({"elevation": 9000}));
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history(), vec!["Level", "Level"]);
+    // A full history, its oldest steps dropped meanwhile, still squashes just what came after the mark.
+    let mut s = Session::new();
+    for i in 0..UNDO_LIMIT {
+        run(&mut s, "level", json!({"elevation": 3000.0 * (i as f64 + 2.0)}));
+    }
+    let mark = s.mark();
+    for i in 0..3 {
+        run(&mut s, "level", json!({"elevation": -3000.0 * (i as f64 + 1.0)}));
+    }
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), UNDO_LIMIT - 2);
+    assert_eq!(s.history().last(), Some(&"PyAddin"));
+    let before = count(&mut s, "level");
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "level"), before - 3);
 }
 
 #[test]
@@ -2311,7 +2362,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
         json!({"from": [], "into": 5, "overwrite": "x"}),
         json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
-        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "vary_by_group": "yes", "scope": "x", "dictionary": "d", "kind": "plasma"}),
         json!({"name": "P", "scope": 5, "categories": ["room"]}),
         json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
         json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
@@ -2831,6 +2882,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
     // A floor and a wall with a component on a face of each, and the payloads that place, move and host them.
     targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
+    // A model group of walls and a door, and the payloads that place, break, edit and mend groups.
+    targeted.extend(crate::groups::tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),
@@ -3072,8 +3125,6 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
     let exports = temp("sweep-exports");
     targeted.extend(crate::export_tests::sweep_payloads(&exports));
-    // A typed stair of two storeys, last so that no id moves, and the payloads aimed at it and at stairs along a path.
-    targeted.extend(crate::codes::tests::sweep_payloads(&mut base));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -3109,6 +3160,9 @@ fn hostile_params_never_panic_or_break_the_model() {
             });
         }
     });
+    // A typed stair of two storeys, last so that no id moves, and the payloads aimed at it and at stairs along a path: made
+    // after the sweep of every command, which drawing it after each would slow by a sixth.
+    targeted.extend(crate::codes::tests::sweep_payloads(&mut base));
     for (cmd, p) in &targeted {
         let mut s = base.clone();
         let made = s.execute(cmd, p).is_ok();

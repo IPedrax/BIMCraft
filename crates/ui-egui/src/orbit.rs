@@ -243,12 +243,13 @@ pub(crate) struct Input {
     pub(crate) rect: Rect,
     pub(crate) ppp: f32,
     pub(crate) size: (u32, u32),
-    /// The pointer over the view (none off it, or over the triad), the wheel's and a pinch's zoom, Shift held, and where the
-    /// pointer was last, on the view or off it.
+    /// The pointer over the view (none off it, or over the triad), the wheel's and a pinch's zoom, Shift and Alt (Option on a
+    /// Mac) held, and where the pointer was last, on the view or off it.
     pub(crate) hover: Option<Pos2>,
     pub(crate) wheel: f32,
     pub(crate) pinch: f32,
     pub(crate) shift: bool,
+    pub(crate) alt: bool,
     pub(crate) latest: Option<Pos2>,
     /// What a click on the triad asked for.
     pub(crate) asked: Option<Ask>,
@@ -276,13 +277,15 @@ impl Input {
         device: Option<crate::spacemouse::Motion>,
     ) -> Input {
         let side = |v: f32| ((v * ppp).round().max(1.0) as u32).min(MAX_SIDE);
-        let (hover, wheel, pinch, shift, latest, focused, frame) = ui.input(|i| {
+        let (hover, wheel, pinch, (shift, alt), latest, focused, frame) = ui.input(|i| {
             let hover = i.pointer.hover_pos().filter(|_| response.hovered());
-            (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos(), i.focused, f64::from(i.stable_dt))
+            let held = (i.modifiers.shift, i.modifiers.alt);
+            (hover, i.smooth_scroll_delta.y, i.zoom_delta(), held, i.pointer.latest_pos(), i.focused, f64::from(i.stable_dt))
         });
         let motion = device.filter(|_| focused);
         let wheel = if motion.is_some() { 0.0 } else { wheel };
-        Input { rect, ppp, size: (side(rect.width()), side(rect.height())), hover, wheel, pinch, shift, latest, asked, motion, frame }
+        let size = (side(rect.width()), side(rect.height()));
+        Input { rect, ppp, size, hover, wheel, pinch, shift, alt, latest, asked, motion, frame }
     }
 
     /// Screen point `p` as a pixel of the picture.
@@ -733,6 +736,12 @@ fn inside(poly: &[Pos2], p: Pos2) -> bool {
 /// The ViewCube, which turns a view's camera: where it stands, its faces, what a click on it asks for and how it is drawn. It
 /// needs only a camera and the view's rect, so any 3D view may show one.
 impl Orbit {
+    /// The tints the picture on screen was drawn with: what is lit, under the pointer and greyed.
+    #[cfg(test)]
+    pub(crate) fn tints_shown(&self) -> Vec<(Id, Rgb)> {
+        self.shown.as_ref().map(|s| s.2.clone()).unwrap_or_default()
+    }
+
     /// Where the ViewCube stands in view `rect`: its top right corner, 84 px across.
     pub(crate) fn cube_rect(rect: Rect) -> Rect {
         Rect::from_min_size(rect.right_top() + vec2(-98.0, 14.0), vec2(84.0, 84.0))
@@ -1167,7 +1176,8 @@ impl Orbit {
     /// The hand's drag, from `cam` (zoomed already): Shift and the middle button orbit, 0.4° a point, round the point under the
     /// pointer where the drag began (found in `scene` as [`zoom`](Self::zoom) finds it; the target, where nothing is); the
     /// middle button alone pans. The primary button drags a selection box with `boxes`, and orbits only where
-    /// [`hand_orbits`](Self::hand_orbits): the project's 3D view never moves the camera with it.
+    /// [`hand_orbits`](Self::hand_orbits): the project's 3D view never moves the camera with it. Alt (Option on a Mac) and the
+    /// primary button are the middle button, for a trackpad or a mouse that has none.
     /// A drag that a view's tool `held` this frame (a grip's) is the tool's. A drag that turns out a `quick` click puts the camera
     /// back. Then a click on the triad's end turns the camera to look from that side. The camera is the view's from here on.
     #[allow(clippy::too_many_arguments)]
@@ -1186,10 +1196,12 @@ impl Orbit {
             && !held
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            let primary = response.dragged_by(PointerButton::Primary);
+            let (primary, middle) = (response.dragged_by(PointerButton::Primary), response.dragged_by(PointerButton::Middle));
+            // A Mac's trackpad and mouse have no middle button (#459): Alt and the primary one stand in for it.
+            let (primary, middle) = (primary && !input.alt, middle || (primary && input.alt));
             if primary && boxes {
                 self.select = Some(origin);
-            } else if (primary && self.hand_orbits) || response.dragged_by(PointerButton::Middle) {
+            } else if (primary && self.hand_orbits) || middle {
                 let orbit = (primary && self.hand_orbits) || input.shift;
                 let pivot = orbit.then(|| self.picker.as_ref()?.surface(scene, &cam, input.px(origin))).flatten().map(|s| s.at);
                 self.drag = Some((orbit, origin, pivot));
@@ -1585,7 +1597,9 @@ impl BimApp {
         let placing_on_face = matches!(self.tool, Tool::Component) && self.place_on_face && self.placing_on_work_plane();
         // Site's points the view shows, and which is selected: read before the view's state is borrowed.
         let shown_points = self.points_in_3d();
-        let lit_ids = self.selection.clone();
+        let lit_ids = self.lit_selection();
+        // In Edit Group only the group's own lights and picks, and the rest is greyed.
+        let (scope, pick_mode) = (self.session.group_scope(), self.group_pick());
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -1855,14 +1869,41 @@ impl BimApp {
             .map(|h| h.id)
             .filter(|id| !attaching || attach_target(&model, *id))
             .filter(|id| !trimming || model.wall(*id).is_some());
+        // On the selected curtain wall under the cursor, Tab goes through its parts there.
+        let tab = ui.input(|i| i.key_pressed(egui::Key::Tab));
+        if (std::mem::take(&mut self.tab_cycle) || tab)
+            && let (Some(at), Some(id)) = (hover, hovered)
+            && crate::curtain::tab_wall(&model, &selection, &[id], Some(id), self.tool == Tool::Modify) == Some(id)
+            && let Some(w) = model.wall(id)
+            && let Some((along, up)) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))
+        {
+            let reach = crate::curtain::REACH.max(f64::from(crate::canvas::PICK) * wall_mm_per_pixel(&cam, &model, w, along, up));
+            let list = self.curtain_laid.of(&model, id).at(along, up, reach);
+            let list = match model.default_3d() {
+                Some(view) => crate::curtain::shown_parts(&model, view, list),
+                None => list,
+            };
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
+            self.curtain_more.clear();
+            if self.curtain_part.is_some() {
+                self.selection = vec![id];
+            }
+        }
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
-        let tints: Vec<(Id, Rgb)> = selection
+        // A group selected lights its members, and one under the pointer (as a click would take it) does too; a curtain wall
+        // selected stays as it is drawn, for the part Tab picks to be seen on it.
+        let hover_lit: Vec<Id> =
+            if modify { crate::groups::hover_lit(&model, hovered, scope.as_ref(), pick_mode) } else { hovered.into_iter().collect() };
+        let tinted = crate::curtain::tinted_selection(&model, &lit_ids);
+        let mut tints: Vec<(Id, Rgb)> = tinted
             .iter()
             .chain(trim_first.iter())
             .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
-            .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
+            .chain(hover_lit.iter().filter(|id| !lit_ids.contains(id)).map(|id| (*id, rgb(canvas_pal().hover))))
             .collect();
+        let lit_now: Vec<Id> = tints.iter().map(|(id, _)| *id).collect();
+        tints.extend(crate::groups::greyed(&model, scope.as_ref(), &lit_now).into_iter().map(|id| (id, crate::groups::grey())));
         // The work plane and its patch, drawn into the picture so what stands in front of them hides them: the plane while it's
         // being set, shown (Show) or a new outline is sketched on it; the patch in Modify, lit while the pointer is on it where
         // it is seen.
@@ -2031,6 +2072,69 @@ impl BimApp {
         }
         // The section box's frame, as the held grip would leave it.
         let screen = |p: P3| on_screen(&cam, rect, ppp, p);
+        // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
+        if self.curtain_part.is_none() {
+            for w in selection.iter().filter_map(|i| model.wall(*i).filter(|_| crate::curtain::is_curtain(&model, *i))) {
+                let ring = bimcraft_core::curtain::outline_on_face(&model, w).iter().map(|q| screen(*q)).collect();
+                crate::curtain::mark_wall(&p, ring);
+            }
+        }
+        let under_cursor = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool).zip(hover).and_then(|(id, at)| {
+            let w = model.wall(id)?;
+            let (along, up) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))?;
+            let reach = crate::curtain::REACH.max(f64::from(crate::canvas::PICK) * wall_mm_per_pixel(&cam, &model, w, along, up));
+            let list = self.curtain_laid.of(&model, id).at(along, up, reach);
+            Some((
+                id,
+                match model.default_3d() {
+                    Some(view) => crate::curtain::shown_parts(&model, view, list),
+                    None => list,
+                },
+            ))
+        });
+        self.curtain_aim = under_cursor.and_then(|(id, list)| crate::curtain::next_part(self.curtain_part, id, &list));
+        if let Some((id, part)) = self.curtain_aim {
+            let l = self.curtain_laid.of(&model, id);
+            for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&l, &model, w, part)) {
+                crate::curtain::mark_part(&p, ring.iter().map(|q| screen(*q)).collect(), false);
+            }
+        }
+        if let Some((id, first)) = self.curtain_part {
+            let l = self.curtain_laid.of(&model, id);
+            for part in std::iter::once(first).chain(self.curtain_more.iter().copied().filter(|a| *a != first)) {
+                for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&l, &model, w, part)) {
+                    crate::curtain::mark_part(&p, ring.iter().map(|q| screen(*q)).collect(), true);
+                }
+            }
+        }
+        // The Curtain Grid tool: where the cursor would place a line on the wall's plane.
+        let face_wall = match self.tool {
+            Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } => Some(wall),
+            Tool::Move(_) => self.curtain_part.filter(|(_, at)| at.is_grid()).map(|(id, _)| id),
+            _ => None,
+        };
+        let face_at = |at: Pos2| {
+            bimcraft_core::curtain::on_plane(&model, model.wall(face_wall?)?, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))
+        };
+        if matches!(self.tool, Tool::CurtainGrid { .. }) {
+            let aim = hover.and_then(face_at);
+            self.curtain_hover = crate::curtain::grid_aim(&model, &self.tool, aim);
+            if let Some((id, at, way)) = self.curtain_hover
+                && let Some(w) = model.wall(id)
+            {
+                let [a, b] = bimcraft_core::curtain::line_on_face(&model, w, way, at);
+                p.line_segment([screen(a), screen(b)], egui::Stroke::new(2.0, pal().accent));
+            }
+        }
+        if matches!(self.tool, Tool::CurtainSegment { .. }) {
+            let aim = hover.and_then(face_at);
+            self.curtain_segment_hover = crate::curtain::segment_aim(&model, &self.tool, aim);
+            if let Some((id, at)) = self.curtain_segment_hover
+                && let Some([a, b]) = model.wall(id).and_then(|w| bimcraft_core::curtain::segment_on_face(&model, w, at))
+            {
+                p.line_segment([screen(a), screen(b)], egui::Stroke::new(3.0, pal().accent));
+            }
+        }
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, (o.boxing.map(|(k, _)| k), o.hot_grip), screen);
         }
@@ -2261,7 +2365,15 @@ impl BimApp {
         });
         let target = click.filter(|_| drawing && !on_face).and_then(|at| aimed(&o.picker, at));
         match clicked {
-            Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
+            Some(_) if self.curtain_face_tool() => {
+                let on = click.and_then(face_at);
+                self.curtain_face_click(on);
+            }
+            // A member of a group is picked as its group, as in a plan.
+            Some(found) if modify => {
+                let found = self.group_picks(&model, &found.into_iter().collect::<Vec<_>>(), true);
+                self.pick_up(found, click_modifiers(ui))
+            }
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
@@ -2322,6 +2434,7 @@ impl BimApp {
             p.extend(crate::canvas::box_shapes(rect, local(from), local(now)));
         }
         if let Some(found) = boxed_ids {
+            let found = self.group_picks(&model, &found, true);
             self.pick_up(found, click_modifiers(ui));
         }
         if let Some(surface) = sketch_z {
@@ -2466,6 +2579,26 @@ impl BimApp {
             }
         });
     }
+}
+
+/// How many mm of wall `w`'s face, near `along` and `up` on it, one pixel of a 3D view covers: for reaching a thin line from afar.
+fn wall_mm_per_pixel(
+    cam: &bimcraft_core::view3d::Camera,
+    m: &bimcraft_core::model::Model,
+    w: &bimcraft_core::model::Wall,
+    along: f64,
+    up: f64,
+) -> f64 {
+    let axis = bimcraft_core::walls::Axis::of(w);
+    let (plane, base) = (bimcraft_core::curtain::grid_plane(m, w), m.own_base(w));
+    let point = |a: f64| {
+        let q = axis.at(a, plane);
+        [q.0, q.1, base + up]
+    };
+    let (x0, y0, _) = cam.project(point(along));
+    let (x1, y1, _) = cam.project(point(along + 100.0));
+    let pixels = (x1 - x0).hypot(y1 - y0);
+    if pixels.is_finite() && pixels > 1e-6 { 100.0 / pixels } else { 1.0 }
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ pub use crate::fills::FilledRegion;
 use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
-pub use crate::groups::{DetailGroup, RepeatingDetail};
+pub use crate::groups::{DetailGroup, ModelGroup, RepeatingDetail};
 pub use crate::hosting::{FaceRole, HostRef, Hosted, ReferencePlane};
 use crate::language::Language;
 pub use crate::lines::DetailLine;
@@ -195,11 +195,24 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// view's graphics, a view template and the object styles may name a stair's subcategories (`stairrun` to `stairheadroom`)
 /// and say how stairs show in a plan (`stairs`). A build that reads up to 20 would refuse the edge ("unknown variant"), the
 /// subcategories ("isn't a category views draw") and the turned landing, and leave the rest out as fields it doesn't know,
-/// drawing such a stair straight, solid, shifted or a storey high, not say "saved by a newer BIMCraft". And a building code
-/// names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`, `building_demand`), and a
-/// project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and `demand` and `building_demand`
-/// would ask for a method again. A file of 20 needs no step but the stair types a project starts with, which
-/// [`Model::migrate`] gives a file without any.
+/// drawing such a stair straight, solid, shifted or a storey high, not say "saved by a newer BIMCraft". A file of 20 needs
+/// no step but the stair types a project starts with, which [`Model::migrate`] gives a file without any. And model groups
+/// (`model_groups`, library entries of kind `model-group`, and the `modelgroup` category) and detail groups whose members are
+/// elements of their own (a group's `members`, each a slot of its type's member and the element that is it); a build that
+/// reads up to 20 would leave the members out as a field it doesn't know and draw each detail group's type over its own
+/// elements, twice over, and leave model groups out, not say "saved by a newer BIMCraft"; a file of 20 gets its detail
+/// groups' members made after it is read (`Model::place_old_groups`).
+/// And a wall's type may be a curtain wall's (`curtain`, its pattern), with curtain panel, mullion and corner mullion types
+/// (`curtain_panel`, `mullion`, `corner_mullion`), and a wall may hold its curtain wall's edits (`curtain`: manual grids,
+/// segments, panels and mullions changed) or stand in place of one's panel (`panel_of`); a build that reads up to 20 would read
+/// a curtain wall as a solid wall and drop its edits, not say "saved by a newer BIMCraft". A file of 20 gets the starter
+/// panels, mullions and corner mullions.
+/// And a project holds classification tables and what their parameters take codes from (`classification`, library entries
+/// of kind `classification`); a build that reads up to 20 would answer one with a serde error ("isn't a kind of library
+/// entry"), not "saved by a newer BIMCraft". A file of 20 needs no step for them: it holds no tables.
+/// And a building code names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`,
+/// `building_demand`), and a project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and
+/// `demand` and `building_demand` would ask for a method again.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -382,6 +395,12 @@ pub struct Wall {
     /// its ends stretch with what they meet; an unjoined wall's ends stay square and follow no one.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub join: bool,
+    /// A curtain wall's edits, apart from its type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curtain: Option<crate::curtain::CurtainEdits>,
+    /// The curtain wall and cell it stands in place of a panel in: kept fitted to that, it joins nothing and bounds no room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_of: Option<crate::curtain::PanelOf>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -2519,6 +2538,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.top_level { f(g) }
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
+                if let Some(p) = & $($m)? w.panel_of { f(& $($m)? p.host) }
             }
             Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
             Element::Room(Room { level, top_level, floor, ceiling, .. }) => {
@@ -2578,7 +2598,21 @@ macro_rules! visit_refs {
             Element::Text(n) => f(& $($m)? n.view),
             Element::DetailLine(l) => f(& $($m)? l.view),
             Element::FilledRegion(r) => f(& $($m)? r.view),
-            Element::DetailGroup(g) => f(& $($m)? g.view),
+            Element::DetailGroup(g) => {
+                f(& $($m)? g.view);
+                for s in & $($m)? g.members {
+                    if !s.element.is_nil() { f(& $($m)? s.element) }
+                }
+            }
+            Element::ModelGroup(g) => {
+                f(& $($m)? g.level);
+                for l in & $($m)? g.levels {
+                    f(l)
+                }
+                for s in & $($m)? g.members {
+                    if !s.element.is_nil() { f(& $($m)? s.element) }
+                }
+            }
             Element::RepeatingDetail(r) => f(& $($m)? r.view),
             Element::Spot(s) => {
                 f(& $($m)? s.view);
@@ -2665,6 +2699,9 @@ pub enum Element {
     /// A detail group placed in one view: its type's lines, regions and notes, moved and turned; of Revit's Detail Groups.
     #[serde(rename = "detailgroup")]
     DetailGroup(DetailGroup),
+    /// A model group placed on a level: its members model elements, held to its type; of Revit's Model Groups.
+    #[serde(rename = "modelgroup")]
+    ModelGroup(ModelGroup),
     /// A detail group repeated along a line in one view; of Revit's Repeating Detail.
     #[serde(rename = "repeatingdetail")]
     RepeatingDetail(RepeatingDetail),
@@ -2860,6 +2897,7 @@ impl Element {
             Element::DetailLine(_) => "line",
             Element::FilledRegion(_) => "region",
             Element::DetailGroup(_) => "detailgroup",
+            Element::ModelGroup(_) => "modelgroup",
             Element::RepeatingDetail(_) => "repeatingdetail",
             Element::Spot(sp) if sp.coordinate => "spotcoordinate",
             Element::Spot(_) => "spot",
@@ -2924,6 +2962,9 @@ pub struct WallType {
     pub thickness: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<Layer>,
+    /// A curtain wall's pattern: its panels and mullions make it up, and its `thickness` is theirs, worked out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curtain: Option<crate::curtain::CurtainLayout>,
 }
 
 /// A floor type: how thick its floors are and, a compound one, its layers from the top down.
@@ -3710,6 +3751,15 @@ pub struct Types {
     /// The types of the runs, by category, then name: `runs["beam"]["Beam 200 x 500"]`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub runs: BTreeMap<String, BTreeMap<String, RunType>>,
+    /// The types of the Generic Panel system family, what fills a curtain wall's cells.
+    #[serde(default)]
+    pub curtain_panel: BTreeMap<String, crate::curtain::CurtainPanelType>,
+    /// The types of the mullion system families, what runs along a curtain wall's grid lines.
+    #[serde(default)]
+    pub mullion: BTreeMap<String, crate::curtain::MullionType>,
+    /// The types of the Corner Mullion system family, what stands where two curtain walls meet.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub corner_mullion: BTreeMap<String, crate::curtain::MullionType>,
 }
 
 /// What a project parameter holds: text, a number, a length (mm), or yes or no.
@@ -3767,6 +3817,10 @@ pub struct ProjectParameter {
     /// Each element's, or its type's.
     #[serde(default, skip_serializing_if = "Scope::is_instance")]
     pub scope: Scope,
+    /// Revit's Values can vary by group instance: a grouped element's value is its own in each group, set without Edit Group
+    /// and never a change to the group. Off (Values are aligned per group type), it is its group type's, changed in Edit Group.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vary_by_group: bool,
     /// A type parameter's values, by the GUID of the type (a library entry), so a type renamed keeps its value.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub type_values: BTreeMap<Guid, serde_json::Value>,
@@ -4048,6 +4102,9 @@ pub struct Model {
     /// What the files imported call categories, each to one of ours or, none, left out: asked once.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parameter_map: BTreeMap<String, Option<String>>,
+    /// The classification tables it holds and the parameters they fill ([`crate::classification`]).
+    #[serde(default, skip_serializing_if = "crate::classification::Classification::is_empty")]
+    pub classification: crate::classification::Classification,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -4112,9 +4169,12 @@ pub struct Model {
     /// Its spot coordinate types, by name: how the spot coordinates of each draw their leader and read their point.
     #[serde(default = "crate::spots::types")]
     pub spot_coordinate_types: BTreeMap<String, crate::spots::SpotCoordinateType>,
-    /// Its detail group types, by name: the members each one placed draws.
+    /// Its detail group types, by name: the members each one placed holds.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
+    /// Its model group types, by name: the members each one placed holds.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_groups: BTreeMap<String, crate::groups::GroupType>,
     /// Its title blocks, by name: what a sheet that names one draws in its bottom right corner, and the fields it fills in.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub title_blocks: BTreeMap<String, crate::titleblock::TitleBlock>,
@@ -4253,6 +4313,7 @@ impl Model {
             families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
             dictionaries: BTreeMap::new(),
+            classification: Default::default(),
             parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: graphics::starter_templates(language),
@@ -4275,6 +4336,7 @@ impl Model {
             dimension_types: crate::dims::types(),
             spot_coordinate_types: crate::spots::types(),
             detail_groups: BTreeMap::new(),
+            model_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
             pinned: BTreeSet::new(),
@@ -4319,7 +4381,7 @@ impl Model {
         }
         m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
-            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new() });
+            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new(), curtain: None });
         }
         // An exterior wall's layers, outside in: brick, insulation, a block core, plaster.
         let layer = |function, material: &str, thickness| Layer {
@@ -4334,7 +4396,7 @@ impl Model {
             layer(Function::Structure, "Concrete block", 140.0),
             layer(Function::Finish, "Plaster", 10.0),
         ];
-        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers });
+        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None });
         m.types.floor.insert("Generic - 200mm".into(), FloorType { thickness: 200.0, layers: Vec::new() });
         for (n, w) in [("Single 900 x 2100", 900.0), ("Single 800 x 2100", 800.0)] {
             m.types.door.insert(n.into(), OpeningType { width: w, height: 2100.0, sill: 0.0, operation: None });
@@ -4443,6 +4505,7 @@ impl Model {
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
         m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         m.types.stair = stair_types();
+        crate::curtain::starter_types(&mut m);
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
         m.insert(Element::Level(Level::new(format!("{level} 2"), 3000.0)));
@@ -4869,7 +4932,7 @@ impl Model {
         }
         let Ok(mut rest) = Model::read_rest(&mut v, left_out, budget) else { return Ok(None) };
         rest.0.elements = elements;
-        Model::after_read(rest).map(Some)
+        Model::after_read(rest, budget).map(Some)
     }
 
     /// [`Model::read_within`] the way it always was: the whole file as JSON values, every element looked into.
@@ -4911,7 +4974,7 @@ impl Model {
             o.insert("elements".into(), elements);
         }
         let read = Model::read_rest(&mut v, left_out, budget)?;
-        Model::after_read(read)
+        Model::after_read(read, budget)
     }
 
     /// A model of what file `v` holds but its elements, kept as they are (the whole read's, or none, the elements being read on
@@ -4924,7 +4987,8 @@ impl Model {
         use crate::lenient;
         use serde_json::Value;
         // A detail group's members are elements too, held by their type, and are looked into the same way.
-        if let Some(Value::Object(groups)) = v.get_mut("detail_groups") {
+        for key in ["detail_groups", "model_groups"] {
+            let Some(Value::Object(groups)) = v.get_mut(key) else { continue };
             for (name, group) in groups.iter_mut() {
                 let Some(Value::Array(members)) = group.get_mut("members") else { continue };
                 for (i, member) in members.iter_mut().enumerate() {
@@ -4933,7 +4997,7 @@ impl Model {
                     let category = bare.as_object_mut().and_then(|o| o.remove("category"));
                     for p in lenient::element(category.as_ref().and_then(Value::as_str).unwrap_or(""), &bare) {
                         lenient::remove(e, &p);
-                        left_out.push(format!("/detail_groups/{}/members/{i}/element{p}", lenient::escaped(name)));
+                        left_out.push(format!("/{key}/{}/members/{i}/element{p}", lenient::escaped(name)));
                     }
                 }
             }
@@ -4954,10 +5018,46 @@ impl Model {
         Ok((m, left_out))
     }
 
+    /// Each detail group with no members (of a file from before FORMAT 21) given its members, made from its type. A file whose
+    /// groups and repeating details would place more than [`crate::groups::MAX_PLACED`] members in one view is refused, as 0.12
+    /// refused it, before any is made; `budget` stops one that would make too many in all.
+    fn place_old_groups(&mut self, budget: &crate::memory::Budget) -> Result<(), String> {
+        let placed: Vec<Id> =
+            self.elements.iter().filter(|(_, e)| matches!(e, Element::DetailGroup(g) if g.members.is_empty())).map(|(id, _)| *id).collect();
+        if placed.is_empty() {
+            return Ok(());
+        }
+        // Counted first, as 0.12 drew them: a few bytes of a group would otherwise make its type's members whatever the view holds.
+        let mut tally = BTreeMap::new();
+        let size = |name: &str| self.detail_groups.get(name).map_or(0, |t| t.members.len());
+        for (id, e) in self.elements.iter() {
+            let (view, n) = match e {
+                Element::DetailGroup(g) if g.members.is_empty() => (g.view, size(&g.type_name)),
+                Element::DetailGroup(g) => (g.view, g.members.len()),
+                Element::RepeatingDetail(r) => (r.view, size(&r.type_name).saturating_mul(r.count())),
+                _ => continue,
+            };
+            placing(&format!("{} {id}", e.category()), &mut tally, view, n)?;
+        }
+        // Its type's members have their GUIDs, which its places in it are kept by: `names_from_file` gave them.
+        for id in placed {
+            budget.check()?;
+            // One whose type is gone is said by the check.
+            let _ = crate::groups::regenerate(self, id);
+        }
+        Ok(())
+    }
+
     /// A model just read brought up to this version, with what can't stand in it left out.
-    fn after_read((mut m, mut left_out): (Model, Vec<String>)) -> Result<(Model, Vec<String>), String> {
+    fn after_read((mut m, mut left_out): (Model, Vec<String>), budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
+        let was = m.format;
         m.migrate();
         m.names_from_file();
+        // A detail group of a file of 20 had no members of its own, its type's being drawn in its place (FORMAT 21, with model
+        // groups): its members are made, elements of its view where it drew them, once its type is named.
+        if was <= 20 {
+            m.place_old_groups(budget)?;
+        }
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
         // read kindly, and a command that would leave one is refused.
         for (name, f) in m.families.iter_mut() {
@@ -5152,6 +5252,16 @@ impl Model {
                 }
             }
         }
+        // 20 to 21: a detail group's members are elements of its own. Its type names what its members are made of by name,
+        // so they are made once the names are names again, after this (`Model::place_old_groups`, in `after_read`). Model
+        // groups need nothing: a file of 20 has none.
+        // 20 to 21: curtain walls, which 20 would read as solid walls. A file of 20 gets the starter panels, mullions and
+        // corner mullions.
+        if self.format < 21 {
+            crate::curtain::starter_types(self);
+            crate::curtain::corner_types(self);
+        }
+        // 20 to 21: classification tables and their bindings. A file of 20 holds none, so nothing to do.
         self.format = FORMAT;
     }
 
@@ -5780,6 +5890,9 @@ impl Model {
             "railing" => names(&self.types.railing),
             "room" => names(&self.types.room),
             "stair" => names(&self.types.stair),
+            "curtainpanel" => names(&self.types.curtain_panel),
+            "mullion" => names(&self.types.mullion),
+            "cornermullion" => names(&self.types.corner_mullion),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -5803,6 +5916,9 @@ impl Model {
             "railing" => "Railing - 1000mm",
             "room" => ROOM_TYPE,
             "stair" => "Monolithic 150mm",
+            "curtainpanel" => crate::curtain::GLAZED,
+            "mullion" => crate::curtain::RECTANGULAR_MULLION,
+            "cornermullion" => crate::curtain::RECTANGULAR_CORNER,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -5818,7 +5934,9 @@ impl Model {
             _ => "Fixed 1200 x 1500",
         };
         let names = self.type_names(category);
-        names.iter().find(|n| **n == preferred).or(names.first()).copied()
+        // A wall that names no type is a plain one, whatever curtain wall sorts first.
+        let plain = |n: &&&str| !self.types.wall.get(**n).is_some_and(|t| t.curtain.is_some());
+        names.iter().find(|n| **n == preferred).or(names.iter().find(plain)).or(names.first()).copied()
     }
 
     /// The family and type a new door or window gets in an interface that places families: the project's single door or fixed window
@@ -6027,6 +6145,7 @@ impl Model {
         match e {
             Element::PointCloud(pc) => Some(pc.level),
             Element::CadImport(ci) => Some(ci.level),
+            Element::ModelGroup(g) => Some(g.level),
             Element::Wall(w) => Some(w.level),
             Element::Floor(f) => Some(f.level),
             Element::Ceiling(c) => Some(c.level),
@@ -8038,6 +8157,7 @@ impl Model {
             )
         }));
         out.extend(crate::electrical::circuit_warnings(self));
+        out.extend(crate::curtain::malformed_walls(self).into_iter().map(|id| format!("curtain wall {id}: {}", crate::curtain::MALFORMED)));
         out
     }
 
@@ -8114,6 +8234,7 @@ impl Model {
         if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
             return Err(format!("`pinned` names an element that is gone ({g})"));
         }
+        self.classification.check()?;
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
@@ -8212,24 +8333,40 @@ impl Model {
                 }
             }
         }
-        for (n, g) in &self.detail_groups {
-            text(&format!("detail group `{n}`"), "name", n)?;
-            if g.members.is_empty() || g.members.len() > crate::groups::MAX_MEMBERS {
-                return Err(format!(
-                    "detail group `{n}`: it holds {} members; it holds 1 to {}",
-                    g.members.len(),
-                    crate::groups::MAX_MEMBERS
-                ));
-            }
-            for (i, m) in g.members.iter().enumerate() {
-                let who = format!("detail group `{n}` member {i}");
-                if !crate::groups::holds(&m.element) {
-                    return Err(format!(
-                        "{who}: a {} can't be in a detail group; it holds detail lines, filled regions and text",
-                        m.element.category()
-                    ));
+        for (kind, groups) in [(crate::groups::Kind::Detail, &self.detail_groups), (crate::groups::Kind::Model, &self.model_groups)] {
+            for (n, g) in groups {
+                let what = format!("{} group `{n}`", kind.name());
+                text(&what, "name", n)?;
+                if g.members.is_empty() || g.members.len() > crate::groups::MAX_MEMBERS {
+                    return Err(format!("{what}: it holds {} members; it holds 1 to {}", g.members.len(), crate::groups::MAX_MEMBERS));
                 }
-                self.annotation_ok(&who, &m.element)?;
+                let mut seen = BTreeSet::new();
+                for (i, m) in g.members.iter().enumerate() {
+                    let who = format!("{what} member {i}");
+                    match crate::groups::kind_of(&m.element) {
+                        Ok(k) if k == kind => {}
+                        Ok(_) => return Err(format!("{who}: a {} can't be in a {} group", m.element.category(), kind.name())),
+                        Err(why) => return Err(format!("{who}: a {} can't be in a group: {why}", m.element.category())),
+                    }
+                    if !m.guid.is_nil() && !seen.insert(m.guid) {
+                        return Err(format!("{who}: its GUID {} is another member's", m.guid));
+                    }
+                    if kind == crate::groups::Kind::Detail {
+                        self.annotation_ok(&who, &m.element)?;
+                    }
+                }
+                if kind == crate::groups::Kind::Detail && !g.levels.is_empty() {
+                    return Err(format!("{what}: a detail group stands in a view, and has no storeys"));
+                }
+                for (k, st) in g.levels.iter().enumerate() {
+                    coord(&format!("{what} storey {k}"), st.height)?;
+                    if st.above > 10_000 {
+                        return Err(format!("{what} storey {k}: {} levels above is past any project", st.above));
+                    }
+                }
+                if g.levels.first().is_some_and(|st| st.above != 0 || st.height != 0.0) {
+                    return Err(format!("{what}: its first storey is its own level, 0 above it"));
+                }
             }
         }
         for (cat, map) in [("door", &self.types.door), ("window", &self.types.window)] {
@@ -8386,6 +8523,7 @@ impl Model {
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;
+        crate::curtain::check(self)?;
         for (cat, n, thickness, layers) in self.layered_types() {
             let who = format!("{cat} type `{n}`");
             size(&format!("{who} thickness"), thickness)?;
@@ -8560,6 +8698,7 @@ impl Model {
                     | Element::Grid(_)
                     | Element::Link(_)
                     | Element::DetailGroup(_)
+                    | Element::ModelGroup(_)
                     | Element::RepeatingDetail(_)
                     | Element::Mass(_)
                     | Element::PointCloud(_)
@@ -8638,6 +8777,11 @@ impl Model {
                 }
             }
         }
+        // The walls in the cells of the curtain walls their cell walls are in: one to a cell.
+        let curtains: BTreeSet<Guid> = affected.iter().filter_map(|id| self.wall(*id)?.panel_of.map(|p| p.host)).collect();
+        for host in &curtains {
+            affected.extend(lookup.referrers(host).filter(|id| self.wall(*id).is_some_and(|w| w.panel_of.is_some())));
+        }
         // A view, a sheet or a viewport: the drawing set's names, numbers and places are kept apart, so all of it is
         // checked, with the levels whose names the views' keep apart from theirs.
         let drawing_set = |e: &Element| crate::derived::DRAWING_SET.contains(&e.category());
@@ -8685,8 +8829,11 @@ impl Model {
             members_placed,
             shapes,
             project_info,
+            grouped,
+            panel_cells,
         } = t;
         let who = format!("{} {id}", e.category());
+        crate::curtain::check_element(self, id, e, panel_cells)?;
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
         let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
@@ -9186,11 +9333,17 @@ impl Model {
                 view_ok(g.view, true)?;
                 point(&who, g.at)?;
                 coord(&format!("{who} angle"), g.angle)?;
-                let Some(t) = self.detail_groups.get(&g.type_name) else {
-                    let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
-                    return Err(format!("{who}: there's no detail group `{}` (there are: {})", g.type_name, there.join(", ")));
-                };
-                placing(&who, members_placed, g.view, t.members.len())?;
+                crate::groups::check_instance(self, id, &who, e, grouped)?;
+                placing(&who, members_placed, g.view, g.members.len())?;
+            }
+            Element::ModelGroup(g) => {
+                level_ok(g.level)?;
+                point(&who, g.at)?;
+                coord(&format!("{who} angle"), g.angle)?;
+                for l in &g.levels {
+                    level_ok(*l)?;
+                }
+                crate::groups::check_instance(self, id, &who, e, grouped)?;
             }
             Element::RepeatingDetail(r) => {
                 view_ok(r.view, true)?;
@@ -10003,6 +10156,7 @@ impl Model {
             dimension_types,
             spot_coordinate_types,
             detail_groups,
+            model_groups,
             title_blocks,
             title_values,
             reinforcement,
@@ -10015,6 +10169,7 @@ impl Model {
             pinned,
             demand_factors,
             coordinates,
+            classification,
             elements: _,
             library,
             loaded,
@@ -10056,6 +10211,7 @@ impl Model {
             && *dimension_types == o.dimension_types
             && *spot_coordinate_types == o.spot_coordinate_types
             && *detail_groups == o.detail_groups
+            && *model_groups == o.model_groups
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values
             && *reinforcement == o.reinforcement
@@ -10068,6 +10224,7 @@ impl Model {
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors
             && *coordinates == o.coordinates
+            && *classification == o.classification
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
@@ -10112,6 +10269,10 @@ struct Tally<'a> {
     shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
     /// The project's information element, once seen.
     project_info: Option<Id>,
+    /// Each group member: its group.
+    grouped: BTreeMap<Guid, Id>,
+    /// The curtain wall cells a wall stands in so far.
+    panel_cells: BTreeSet<(Guid, i64, i64)>,
 }
 
 #[cfg(test)]
@@ -10148,8 +10309,14 @@ impl<'a> Tally<'a> {
             *total = total.saturating_add(n);
             (*total <= crate::groups::MAX_PLACED).then_some(())?;
         }
+        for cell in other.panel_cells {
+            self.panel_cells.insert(cell).then_some(())?;
+        }
         if let Some(id) = other.project_info {
             self.project_info.replace(id).is_none().then_some(())?;
+        }
+        for (member, group) in other.grouped {
+            self.grouped.insert(member, group).is_none().then_some(())?;
         }
         // Each wall's openings in the order they start along it, those that start together in the order of their ids: as each,
         // inserted after those that start where it does or before, leaves them.
@@ -10660,6 +10827,8 @@ mod tests {
             attach_base: None,
             room_bounding: true,
             join: true,
+            curtain: None,
+            panel_of: None,
         })
     }
 

@@ -366,3 +366,23 @@ fn a_check_keeps_its_notes_in_the_dialog_while_the_bars_are_made() {
     press(&mut h, "Remove Bars");
     assert!(bars(&h).is_empty() && h.state().reinforce_dialog.is_none());
 }
+
+#[test]
+fn the_eurocode_check_takes_an_exposure_class_and_fyk_and_leaves_the_other_standards_class_out() {
+    let mut h = app(&format!("{BOX}\n{BEAM}"));
+    let beam = ids(&h, "beam")[0];
+    select(&mut h, beam);
+    shortcut(&mut h, "RF");
+    fill(&mut h, &[("Cover", "25"), ("Bottom bars: Count", "3"), ("Bottom bars: Diameter", "16")]);
+    choose(&mut h, "Standard", "NBR 6118");
+    type_into(&mut h, "Check: Aggressiveness class", "2");
+    // Changing the standard leaves the first one's class out of what is sent, so the command doesn't refuse it.
+    choose(&mut h, "Standard", "EN 1992-1-1");
+    type_into(&mut h, "Check: Exposure class", "XC4");
+    type_into(&mut h, "Check: fck", "25");
+    type_into(&mut h, "Check: fyk", "500");
+    press(&mut h, "OK");
+    assert_eq!(bars(&h).len(), 3);
+    let d = h.state().reinforce_dialog.as_ref().expect("notes keep the dialog open");
+    assert!(d.error.is_empty() && d.notes.iter().any(|n| n.contains("4.4.1.2") && n.contains("XC4")), "{:?} {}", d.notes, d.error);
+}
