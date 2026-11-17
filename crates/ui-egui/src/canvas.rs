@@ -2298,7 +2298,7 @@ impl BimApp {
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
         // From Idle the first Tab arms the length (nothing is typed yet, so there is nothing to move away from); after
         // that it swaps, and the field it moves onto is selected, so the first digit replaces rather than appends.
-        if tabbed && !wall_tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
+        if tabbed && !wall_tabbed && !stair_tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
             if self.drawing.armed {
                 std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
                 self.drawing.field = 1 - self.drawing.field.min(1);
