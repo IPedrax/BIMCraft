@@ -7377,6 +7377,7 @@ mod assistant;
 mod autosave;
 mod browser;
 mod cad;
+mod camera_views;
 mod chinese;
 mod classification;
 mod clouds;
