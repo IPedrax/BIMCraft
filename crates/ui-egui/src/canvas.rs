@@ -910,9 +910,18 @@ fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
 /// what's drawn: `text` anchored at `at` as `align` says.
 pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>) {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(12.0), pal().accent);
-    let rect = align.anchor_size(at, galley.size());
+    let rect = inside(align.anchor_size(at, galley.size()), p.clip_rect());
     p.rect_filled(rect.expand2(vec2(3.0, 1.0)), 2.0, pal().surface.gamma_multiply(0.85));
     p.galley(rect.min, galley, pal().accent);
+}
+
+/// `rect` moved inside `clip`, never cut by the view's edge: a snap's name over a point at the top is read a line lower,
+/// not as half a name.
+pub(crate) fn inside(rect: Rect, clip: Rect) -> Rect {
+    let clip = clip.shrink(2.0);
+    let dx = (clip.left() - rect.left()).max(0.0) - (rect.right() - clip.right()).max(0.0);
+    let dy = (clip.top() - rect.top()).max(0.0) - (rect.bottom() - clip.bottom()).max(0.0);
+    rect.translate(vec2(dx, dy))
 }
 
 /// What the guides at a point say: the one inference, or the two that cross there, so a point both
@@ -1039,8 +1048,15 @@ pub(crate) fn alignment_shapes(
             (at.y, source.y) = (on_grid(at.y), on_grid(at.y));
         }
         if refined {
-            // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks.
-            out.push(Shape::line_segment([source, at], Stroke::new(hair, ink.core)));
+            // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks — but
+            // only the last screen-wide stretch of it in the strong ink. A 40 m grid's source is 200 px away at 1:100, and
+            // its whole length would run across the plan as if the guide were the element.
+            let reach = (at - source).length();
+            let near = if reach > tail { at + (source - at) / reach * tail } else { source };
+            if reach > tail {
+                out.push(Shape::line_segment([source, near], Stroke::new(hair, ink.ray.gamma_multiply(0.35))));
+            }
+            out.push(Shape::line_segment([near, at], Stroke::new(hair, ink.core)));
             // A short tail past the cursor, fading: the plan stays clear of rays that run to the view's edge.
             for (i, alpha) in [0.5f32, 0.28, 0.12].into_iter().enumerate() {
                 let (a, b) = (at + d * (tail * i as f32 / 3.0), at + d * (tail * (i + 1) as f32 / 3.0));
