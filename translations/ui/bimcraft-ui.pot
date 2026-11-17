@@ -1981,7 +1981,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5686
+#: crates/ui-egui/src/canvas.rs:5683
 msgid "Centreline"
 msgstr ""
 
@@ -4749,7 +4749,7 @@ msgstr ""
 msgid "Elev"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4925
+#: crates/ui-egui/src/canvas.rs:4929
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 #: crates/ui-egui/src/coordinates.rs:1192
@@ -5012,7 +5012,7 @@ msgstr ""
 msgid "Extents"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5684
+#: crates/ui-egui/src/canvas.rs:5681
 msgid "Exterior Face"
 msgstr ""
 
@@ -6407,7 +6407,7 @@ msgstr ""
 msgid "Interface scale"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5685
+#: crates/ui-egui/src/canvas.rs:5682
 msgid "Interior Face"
 msgstr ""
 
@@ -10182,8 +10182,8 @@ msgstr ""
 msgid "Project Name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5021
-#: crates/ui-egui/src/canvas.rs:5033
+#: crates/ui-egui/src/canvas.rs:5025
+#: crates/ui-egui/src/canvas.rs:5037
 #: crates/ui-egui/src/graphics.rs:589
 msgid "Project North"
 msgstr ""
@@ -12095,15 +12095,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5536
+#: crates/ui-egui/src/canvas.rs:5533
 msgid "Snap reference cleared"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5535
+#: crates/ui-egui/src/canvas.rs:5532
 msgid "Snap reference marked"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5537
+#: crates/ui-egui/src/canvas.rs:5534
 msgid "Snap reference moved"
 msgstr ""
 
@@ -13815,8 +13815,8 @@ msgstr ""
 msgid "Trip"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5022
-#: crates/ui-egui/src/canvas.rs:5034
+#: crates/ui-egui/src/canvas.rs:5026
+#: crates/ui-egui/src/canvas.rs:5038
 #: crates/ui-egui/src/graphics.rs:590
 msgid "True North"
 msgstr ""
@@ -14967,8 +14967,8 @@ msgstr ""
 #: crates/ui-egui/src/canvas.rs:4280
 #: crates/ui-egui/src/canvas.rs:4651
 #: crates/ui-egui/src/canvas.rs:4666
-#: crates/ui-egui/src/canvas.rs:4763
-#: crates/ui-egui/src/canvas.rs:4783
+#: crates/ui-egui/src/canvas.rs:4767
+#: crates/ui-egui/src/canvas.rs:4787
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -15486,7 +15486,7 @@ msgstr ""
 msgid "the next free name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4762
+#: crates/ui-egui/src/canvas.rs:4766
 msgid "the opening has to stay on its wall"
 msgstr ""
 
@@ -15825,11 +15825,11 @@ msgstr ""
 msgid "{} of {} pages ({} × {})"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4855
+#: crates/ui-egui/src/canvas.rs:4859
 msgid "{} of {} risers"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5689
+#: crates/ui-egui/src/canvas.rs:5686
 #: crates/ui-egui/src/orbit.rs:2099
 msgid "{} of {} {}"
 msgstr ""
@@ -15903,7 +15903,7 @@ msgstr ""
 msgid "{} triangles, from a file"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4857
+#: crates/ui-egui/src/canvas.rs:4861
 msgid "{} up"
 msgstr ""
 

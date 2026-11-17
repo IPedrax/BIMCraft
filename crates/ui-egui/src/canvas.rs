@@ -4705,10 +4705,14 @@ impl BimApp {
                     } else {
                         (&self.typed_length, &self.drawing.other)
                     };
-                    let d = next - last;
                     let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.trim().to_string() };
+                    // The angle a segment is read at: the corner it turns from the one before, else from east.
                     let ang = if ang.is_empty() {
-                        format!("{:.0}°", d.1.atan2(d.0).to_degrees().rem_euclid(360.0))
+                        let turn = match chain {
+                            [.., prev, l] => snap::corner(*prev, *l, next),
+                            _ => None,
+                        };
+                        degrees(turn.unwrap_or_else(|| snap::ruler(last, next).angle))
                     } else {
                         format!("{}°", ang.trim())
                     };
@@ -5433,29 +5437,22 @@ impl BimApp {
                 p.extend(corner_arc(sc, *prev, *l, next, refined));
             }
         }
-        // The listening dimension: the length so far and the angle (at the corner it turns, else from
-        // east), or the length being typed. (An arc's radius is its shape's: `shape_texts`.)
-        let reading = |last: P2| {
-            let angle = match chain {
-                [.., prev, l] => snap::corner(*prev, *l, next),
-                _ => None,
-            };
-            format!("{}  {}", m.units.with_unit(last.dist(next)), degrees(angle.unwrap_or_else(|| snap::ruler(last, next).angle)))
-        };
-        if let Some(last) = chain.last() {
-            if !self.typed_length.is_empty() {
-                label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim()));
-            } else if refined {
+        // The listening dimension is `shape_texts`'s, the same text a shape's numbers are, so the field `Tab` is on is
+        // bracketed and the digits are seen to go there. Drawn on its own once, the preview left `Tab`'s move unseen.
+        if let Some(&last) = chain.last()
+            && let Some((_, text)) = self.shape_texts(m, chain, next).into_iter().next()
+        {
+            if refined && self.typed_length.is_empty() {
                 // Beside the segment's middle, on the outside of the corner it turns at, and clear of the line by the pill's
                 // own width so a wide pill never crosses back over a steep segment; the badge it must keep off is known.
-                let (pl, pn) = (sc.screen(*last), sc.screen(next));
+                let (pl, pn) = (sc.screen(last), sc.screen(next));
                 let prev = match chain {
                     [.., prev, _] => Some(sc.screen(*prev)),
                     _ => None,
                 };
-                reading_pill(sc.p, pl, pn, prev, reading(*last), guide_ink(), self.canvas.badge.get());
+                reading_pill(sc.p, pl, pn, prev, text, guide_ink(), self.canvas.badge.get());
             } else {
-                label(sc.screen(next), reading(*last));
+                label(sc.screen(next), text);
             }
         }
     }
