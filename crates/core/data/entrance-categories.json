@@ -1,0 +1,3077 @@
+{
+ "utilities": [
+  {
+   "id": "FECOERGS",
+   "name": "Fecoergs, the federation of Rio Grande do Sul's electrification cooperatives",
+   "standard": "REGD 035.01.06",
+   "source": "Fecoergs, Regulamento de Instalações Consumidoras – Fornecimento em Tensão Secundária (RIC BT), REGD 035.01.06, issued 10/05/2007, revision of 23/08/2024: Anexo J",
+   "rule": "A and B (and A2 at 220/440 V) go by the installed load in kW; C, and B3 to B5 at 220/440 V, by the demand the designer works out by item 7.2, which the RIC asks for above 15 kW at 127/220 V and above 25 kW at 220/380 V.",
+   "members": [
+    {
+     "id": "CERTEL",
+     "seat": "Teutônia"
+    },
+    {
+     "id": "CERMISSOES",
+     "seat": "Caibaté"
+    },
+    {
+     "id": "CRELUZ",
+     "seat": "Pinhal"
+    },
+    {
+     "id": "CERILUZ",
+     "seat": "Ijuí"
+    },
+    {
+     "id": "COPREL",
+     "seat": "Ibirubá",
+     "changes": [
+      {
+       "system": "220/380",
+       "use": "individual",
+       "category": "C18",
+       "measurement": "direct or indirect",
+       "source": "Coprel, Orientação Técnica OTD 006.01 'Orientações Técnicas para Fornecimento de Energia – Padrão C18', version 01, 24/09/2025, items 5 to 7: C18 may be measured directly, the current transformers left out"
+      }
+     ]
+    },
+    {
+     "id": "CERFOX",
+     "seat": "Fontoura Xavier",
+     "changes": [
+      {
+       "system": "220/380",
+       "use": "individual",
+       "category": "C18",
+       "source": "Cerfox, Informes técnicos 07-22 (16/08/2022) and 08-22 (18/08/2022), and OT_NIC_019 version 3.0 (30/07/2026), item 4: C18 stays measured indirectly; direct measurement only as an exception, asked of Cerfox beforehand with the load proven, for an installed load up to 75 kW, and never for a unit that only connects distributed generation"
+      }
+     ]
+    },
+    {
+     "id": "CRERAL",
+     "seat": "Erechim"
+    },
+    {
+     "id": "CELETRO",
+     "seat": "Cachoeira do Sul"
+    },
+    {
+     "id": "CERTAJA",
+     "seat": "Taquari"
+    },
+    {
+     "id": "CERTHIL",
+     "seat": "Três de Maio"
+    },
+    {
+     "id": "COOPERLUZ",
+     "seat": "Santa Rosa"
+    },
+    {
+     "id": "COOPERSUL",
+     "seat": "Bagé"
+    },
+    {
+     "id": "CERVALE",
+     "seat": "Santa Maria"
+    },
+    {
+     "id": "COOPERNORTE",
+     "seat": "Viamão"
+    },
+    {
+     "id": "COSEL",
+     "seat": "Encruzilhada do Sul"
+    }
+   ],
+   "columns": {
+    "connection": "the connection branch, aluminium multiplex: D duplex, T triplex, Q quadruplex, and its section in mm²; C7 to C9, C22 and C23 are fed underground (note 9)",
+    "entry_mm2": "the entry branch, insulated copper, mm²",
+    "earthing_mm2": "the earthing conductor, insulated copper, mm²",
+    "protective_mm2": "the protective conductor, insulated copper, mm²",
+    "entry_conduit_steel_mm": "the entry branch's conduit, steel, nominal diameter in mm (light type I, NBR 5624, note 7)",
+    "entry_conduit_pvc_mm": "the entry branch's conduit, PVC, nominal diameter in mm",
+    "earthing_conduit_pvc_mm": "the earthing and protective conductors' conduit, PVC, nominal diameter in mm",
+    "motor_cv": "the largest motor or welding motor, cv: fn phase to neutral, ff phase to phase, fff three-phase (note 8)",
+    "resistive_kw": "the largest single resistive load (shower, boiler, electric tap), kW: fn phase to neutral, ff phase to phase (note 13); from C5 on the breaker limits it",
+    "busbar_mm": "the general busbar's least width x thickness, mm"
+   },
+   "tables": [
+    {
+     "system": "127/220",
+     "use": "individual",
+     "source": "Anexo J, J.1 'Entrada de Serviço Individual' (page 68)",
+     "rows": [
+      {
+       "name": "A1",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 10
+       },
+       "breaker_a": [
+        50
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "D-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 1
+        },
+        "resistive_kw": {
+         "fn": 5.4
+        }
+       }
+      },
+      {
+       "name": "B1",
+       "phases": 2,
+       "installed_kw": {
+        "over": 10,
+        "up_to": 15
+       },
+       "breaker_a": [
+        50
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "T-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2,
+         "ff": 3
+        },
+        "resistive_kw": {
+         "fn": 5.4,
+         "ff": 8.8
+        }
+       }
+      },
+      {
+       "name": "C1",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "up_to": 10
+       },
+       "breaker_a": [
+        30,
+        32
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 1,
+         "ff": 2,
+         "fff": 3
+        },
+        "resistive_kw": {
+         "fn": 3.5,
+         "ff": 6.5
+        }
+       }
+      },
+      {
+       "name": "C2",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 10,
+        "up_to": 15
+       },
+       "breaker_a": [
+        40
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 1,
+         "ff": 2,
+         "fff": 5
+        },
+        "resistive_kw": {
+         "fn": 4.6,
+         "ff": 8.0
+        }
+       }
+      },
+      {
+       "name": "C3",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 15,
+        "up_to": 19
+       },
+       "breaker_a": [
+        50
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-16",
+        "entry_mm2": 16,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2,
+         "ff": 3,
+         "fff": 15
+        },
+        "resistive_kw": {
+         "fn": 5.4,
+         "ff": 8.8
+        }
+       }
+      },
+      {
+       "name": "C4",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 19,
+        "up_to": 27
+       },
+       "breaker_a": [
+        63,
+        70
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-25",
+        "entry_mm2": 25,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 32,
+        "entry_conduit_pvc_mm": 40,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2,
+         "ff": 5,
+         "fff": 20
+        },
+        "resistive_kw": {
+         "fn": 7.5,
+         "ff": 13.0
+        }
+       }
+      },
+      {
+       "name": "C5",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 27,
+        "up_to": 38
+       },
+       "breaker_a": [
+        100
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-35",
+        "entry_mm2": 35,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 40,
+        "entry_conduit_pvc_mm": 50,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 7.5,
+         "fff": 25
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      },
+      {
+       "name": "C6",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 38,
+        "up_to": 47
+       },
+       "breaker_a": [
+        125
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "Q-50",
+        "entry_mm2": 50,
+        "earthing_mm2": 16,
+        "protective_mm2": 25,
+        "entry_conduit_steel_mm": 50,
+        "entry_conduit_pvc_mm": 60,
+        "earthing_conduit_pvc_mm": 25,
+        "motor_cv": {
+         "fn": 5,
+         "ff": 7.5,
+         "fff": 30
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      },
+      {
+       "name": "C7",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 47,
+        "up_to": 57
+       },
+       "breaker_a": [
+        150
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "underground (note 9)",
+        "entry_mm2": 70,
+        "earthing_mm2": 25,
+        "protective_mm2": 35,
+        "entry_conduit_steel_mm": 50,
+        "entry_conduit_pvc_mm": 60,
+        "earthing_conduit_pvc_mm": 25,
+        "motor_cv": {
+         "fn": 7.5,
+         "ff": 10,
+         "fff": 30
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      },
+      {
+       "name": "C8",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 57,
+        "up_to": 66
+       },
+       "breaker_a": [
+        175
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "underground (note 9)",
+        "entry_mm2": 95,
+        "earthing_mm2": 25,
+        "protective_mm2": 50,
+        "entry_conduit_steel_mm": 65,
+        "entry_conduit_pvc_mm": 75,
+        "earthing_conduit_pvc_mm": 32,
+        "motor_cv": {
+         "fn": 7.5,
+         "ff": 12,
+         "fff": 30
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      },
+      {
+       "name": "C9",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 66,
+        "up_to": 75
+       },
+       "breaker_a": [
+        200
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "underground (note 9)",
+        "entry_mm2": 120,
+        "earthing_mm2": 35,
+        "protective_mm2": 70,
+        "entry_conduit_steel_mm": 65,
+        "entry_conduit_pvc_mm": 75,
+        "earthing_conduit_pvc_mm": 40,
+        "motor_cv": {
+         "fn": 7.5,
+         "ff": 15,
+         "fff": 30
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      }
+     ]
+    },
+    {
+     "system": "220/380",
+     "use": "individual",
+     "source": "Anexo J, J.1 'Entrada de Serviço Individual' (page 68)",
+     "rows": [
+      {
+       "name": "A2",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 15
+       },
+       "breaker_a": [
+        40
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "D-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3
+        },
+        "resistive_kw": {
+         "fn": 8.0
+        }
+       }
+      },
+      {
+       "name": "B2",
+       "phases": 2,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 25
+       },
+       "breaker_a": [
+        50
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "T-16",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 5
+        },
+        "resistive_kw": {
+         "fn": 8.8
+        }
+       }
+      },
+      {
+       "name": "C13",
+       "phases": 3,
+       "installed_kw": {
+        "over": 25,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "up_to": 19
+       },
+       "breaker_a": [
+        30,
+        32
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2,
+         "ff": 3,
+         "fff": 15
+        },
+        "resistive_kw": {
+         "fn": 6.5
+        }
+       }
+      },
+      {
+       "name": "C14",
+       "phases": 3,
+       "installed_kw": {
+        "over": 25,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 19,
+        "up_to": 26
+       },
+       "breaker_a": [
+        40
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 5,
+         "fff": 20
+        },
+        "resistive_kw": {
+         "fn": 8.0
+        }
+       }
+      },
+      {
+       "name": "C15",
+       "phases": 3,
+       "installed_kw": {
+        "over": 25,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 26,
+        "up_to": 32
+       },
+       "breaker_a": [
+        50
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-16",
+        "entry_mm2": 16,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 5,
+         "fff": 25
+        },
+        "resistive_kw": {
+         "fn": 8.8
+        }
+       }
+      },
+      {
+       "name": "C16",
+       "phases": 3,
+       "installed_kw": {
+        "over": 25,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 32,
+        "up_to": 46
+       },
+       "breaker_a": [
+        63,
+        70
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-25",
+        "entry_mm2": 25,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 32,
+        "entry_conduit_pvc_mm": 40,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 5,
+         "ff": 10,
+         "fff": 30
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      },
+      {
+       "name": "C17",
+       "phases": 3,
+       "installed_kw": {
+        "over": 25,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 46,
+        "up_to": 66
+       },
+       "breaker_a": [
+        100
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q-35",
+        "entry_mm2": 35,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 40,
+        "entry_conduit_pvc_mm": 50,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 7.5,
+         "ff": 12,
+         "fff": 40
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      },
+      {
+       "name": "C18",
+       "phases": 3,
+       "installed_kw": {
+        "over": 25,
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 66,
+        "up_to": 82
+       },
+       "breaker_a": [
+        125
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "Q-50",
+        "entry_mm2": 50,
+        "earthing_mm2": 16,
+        "protective_mm2": 25,
+        "entry_conduit_steel_mm": 50,
+        "entry_conduit_pvc_mm": 60,
+        "earthing_conduit_pvc_mm": 25,
+        "motor_cv": {
+         "fn": 7.5,
+         "ff": 12,
+         "fff": 50
+        },
+        "resistive_kw": "limited by the breaker"
+       }
+      }
+     ]
+    },
+    {
+     "system": "220/440",
+     "use": "individual",
+     "source": "Anexo J, J.1 'Entrada de Serviço Individual', the two-phase rural network (page 68)",
+     "rows": [
+      {
+       "name": "A2",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 15
+       },
+       "breaker_a": [
+        40
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "D-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3
+        },
+        "resistive_kw": {
+         "fn": 8.0
+        }
+       }
+      },
+      {
+       "name": "B3",
+       "phases": 2,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 50
+       },
+       "demand_kva": {
+        "up_to": 18
+       },
+       "breaker_a": [
+        40
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "T-10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "protective_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 7.5
+        },
+        "resistive_kw": {
+         "fn": 8.0
+        }
+       }
+      },
+      {
+       "name": "B4",
+       "phases": 2,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 50
+       },
+       "demand_kva": {
+        "over": 18,
+        "up_to": 22
+       },
+       "breaker_a": [
+        50
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "T-16",
+        "entry_mm2": 16,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 25,
+        "entry_conduit_pvc_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 7.5
+        },
+        "resistive_kw": {
+         "fn": 8.8
+        }
+       }
+      },
+      {
+       "name": "B5",
+       "phases": 2,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 50
+       },
+       "demand_kva": {
+        "over": 22,
+        "up_to": 30
+       },
+       "breaker_a": [
+        63,
+        70
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "T-25",
+        "entry_mm2": 25,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 32,
+        "entry_conduit_pvc_mm": 40,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 7.5
+        },
+        "resistive_kw": {
+         "fn": 8.8
+        }
+       }
+      }
+     ]
+    },
+    {
+     "system": "220/380",
+     "use": "metering_centre",
+     "source": "Anexo J, J.2 'Entrada de Serviço para Centro de Medição' (page 69)",
+     "rows": [
+      {
+       "name": "C19",
+       "phases": 3,
+       "demand_kva": {
+        "over": 32,
+        "up_to": 46
+       },
+       "breaker_a": [
+        63,
+        70
+       ],
+       "columns": {
+        "connection": "Q-25",
+        "entry_mm2": 25,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 32,
+        "entry_conduit_pvc_mm": 40,
+        "earthing_conduit_pvc_mm": 20,
+        "busbar_mm": "12.7 x 1.59"
+       }
+      },
+      {
+       "name": "C20",
+       "phases": 3,
+       "demand_kva": {
+        "over": 46,
+        "up_to": 66
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection": "Q-35",
+        "entry_mm2": 35,
+        "earthing_mm2": 10,
+        "protective_mm2": 16,
+        "entry_conduit_steel_mm": 40,
+        "entry_conduit_pvc_mm": 50,
+        "earthing_conduit_pvc_mm": 20,
+        "busbar_mm": "12.7 x 3.18"
+       }
+      },
+      {
+       "name": "C21",
+       "phases": 3,
+       "demand_kva": {
+        "over": 66,
+        "up_to": 82
+       },
+       "breaker_a": [
+        125
+       ],
+       "columns": {
+        "connection": "Q-50",
+        "entry_mm2": 50,
+        "earthing_mm2": 16,
+        "protective_mm2": 25,
+        "entry_conduit_steel_mm": 50,
+        "entry_conduit_pvc_mm": 60,
+        "earthing_conduit_pvc_mm": 25,
+        "busbar_mm": "25.4 x 1.59"
+       }
+      },
+      {
+       "name": "C22",
+       "phases": 3,
+       "demand_kva": {
+        "over": 82,
+        "up_to": 99
+       },
+       "breaker_a": [
+        150
+       ],
+       "columns": {
+        "connection": "underground (note 9)",
+        "entry_mm2": 70,
+        "earthing_mm2": 25,
+        "protective_mm2": 35,
+        "entry_conduit_steel_mm": 50,
+        "entry_conduit_pvc_mm": 60,
+        "earthing_conduit_pvc_mm": 25,
+        "busbar_mm": "19.0 x 3.18"
+       }
+      },
+      {
+       "name": "C23",
+       "phases": 3,
+       "demand_kva": {
+        "over": 99,
+        "up_to": 115
+       },
+       "breaker_a": [
+        175
+       ],
+       "columns": {
+        "connection": "underground (note 9)",
+        "entry_mm2": 95,
+        "earthing_mm2": 35,
+        "protective_mm2": 50,
+        "entry_conduit_steel_mm": 65,
+        "entry_conduit_pvc_mm": 75,
+        "earthing_conduit_pvc_mm": 32,
+        "busbar_mm": "19.0 x 3.18"
+       }
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "A breaker printed '30/32' or '63/70' may be either.",
+    "C18 is measured indirectly only (note 14), save where a member's own document says otherwise."
+   ],
+   "not_covered": "the meter boxes and protection boxes (items 8.4 and 8.5), the poles and posts, and the demand of item 7.2 itself, which the designer works out"
+  },
+  {
+   "id": "HIDROPAN",
+   "name": "Hidropan (Panambi, Rio Grande do Sul)",
+   "standard": "RIC 2014",
+   "source": "Hidropan, Regulamento de Instalações Consumidoras – Fornecimento em Tensão Secundária, 5th edition, August 2014: Tabela 11",
+   "rule": "A (single-phase) goes by the installed load up to 15 kW; C1 to C8 by the demand the designer works out (item 6.7.1), for an installed load up to 75 kW.",
+   "members": [],
+   "columns": {
+    "connection": "the connection branch, aluminium multiplex: D duplex, Q quadruplex, and its section in mm²; C7 and C8 are fed underground",
+    "entry_mm2": "the entry branch, copper (PVC 70 °C), mm²; the neutral as the phases (note 3)",
+    "earthing_mm2": "the earthing conductor, copper, mm²",
+    "entry_conduit_steel_mm": "the entry branch's conduit, steel, nominal diameter in mm",
+    "earthing_conduit_pvc_mm": "the earthing conductor's conduit, PVC, nominal diameter in mm",
+    "motor_cv": "the largest motor or welding motor, cv: fn phase to neutral, ff phase to phase, fff three-phase"
+   },
+   "tables": [
+    {
+     "system": "220/380",
+     "use": "individual",
+     "source": "Tabela 11 'Dimensionamento da entrada de serviço' (page 80)",
+     "rows": [
+      {
+       "name": "A",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 15
+       },
+       "breaker_a": [
+        35
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "D10",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "entry_conduit_steel_mm": 20,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2
+        }
+       }
+      },
+      {
+       "name": "C1",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "up_to": 19
+       },
+       "breaker_a": [
+        30
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q10",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "entry_conduit_steel_mm": 20,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2,
+         "ff": 3,
+         "fff": 5
+        }
+       }
+      },
+      {
+       "name": "C2",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 19,
+        "up_to": 26
+       },
+       "breaker_a": [
+        40
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2,
+         "ff": 5,
+         "fff": 10
+        }
+       }
+      },
+      {
+       "name": "C3",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 26,
+        "up_to": 32
+       },
+       "breaker_a": [
+        50
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q10",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "entry_conduit_steel_mm": 25,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 2,
+         "ff": 5,
+         "fff": 10
+        }
+       }
+      },
+      {
+       "name": "C4",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 32,
+        "up_to": 46
+       },
+       "breaker_a": [
+        70
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q16",
+        "entry_mm2": 25,
+        "earthing_mm2": 10,
+        "entry_conduit_steel_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 3,
+         "ff": 10,
+         "fff": 15
+        }
+       }
+      },
+      {
+       "name": "C5",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 46,
+        "up_to": 66
+       },
+       "breaker_a": [
+        100
+       ],
+       "measurement": "direct",
+       "columns": {
+        "connection": "Q25",
+        "entry_mm2": 35,
+        "earthing_mm2": 10,
+        "entry_conduit_steel_mm": 32,
+        "earthing_conduit_pvc_mm": 20,
+        "motor_cv": {
+         "fn": 5,
+         "ff": 12,
+         "fff": 20
+        }
+       }
+      },
+      {
+       "name": "C6",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 66,
+        "up_to": 82
+       },
+       "breaker_a": [
+        125
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "Q35",
+        "entry_mm2": 50,
+        "earthing_mm2": 16,
+        "entry_conduit_steel_mm": 40,
+        "earthing_conduit_pvc_mm": 25,
+        "motor_cv": {
+         "fn": 5,
+         "ff": 12,
+         "fff": 20
+        }
+       }
+      },
+      {
+       "name": "C7",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 82,
+        "up_to": 99
+       },
+       "breaker_a": [
+        150
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "underground entry",
+        "entry_mm2": 70,
+        "earthing_mm2": 25,
+        "entry_conduit_steel_mm": 50,
+        "earthing_conduit_pvc_mm": 25
+       }
+      },
+      {
+       "name": "C8",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 75
+       },
+       "demand_kva": {
+        "over": 99,
+        "up_to": 115
+       },
+       "breaker_a": [
+        200
+       ],
+       "measurement": "indirect",
+       "columns": {
+        "connection": "underground entry",
+        "entry_mm2": 95,
+        "earthing_mm2": 35,
+        "entry_conduit_steel_mm": 65,
+        "earthing_conduit_pvc_mm": 32
+       }
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "Tabela 11 prints C7 and C8 (82 to 115 kVA) under the same installed load of up to 75 kW as C1 to C6, as printed."
+   ],
+   "not_covered": "the poles and posts (Tabelas 12 and 13), the breaker types of item 9 and the demand of item 6.7.1 itself, which the designer works out"
+  },
+  {
+   "id": "ENERGISA",
+   "name": "Energisa, the group's distribution companies",
+   "standard": "NDU 001",
+   "source": "Energisa, NDU 001 'Fornecimento de Energia Elétrica em Tensão Secundária a Edificações Individuais', version 7.0, November 2024: Tabelas 16 and 18",
+   "rule": "M (single-phase) and B (two-phase) go by the installed load in kW; T (three-phase) by the demand in kVA the designer works out. The ranges take a power factor of 0.92 (note XII); a two-phase supply only above 8.8 kW at 127/220 V (note X).",
+   "members": [
+    {
+     "id": "EAC",
+     "seat": "Rio Branco"
+    },
+    {
+     "id": "EMR",
+     "seat": "Cataguases"
+    },
+    {
+     "id": "EMS",
+     "seat": "Campo Grande"
+    },
+    {
+     "id": "EMT",
+     "seat": "Cuiabá"
+    },
+    {
+     "id": "ERO",
+     "seat": "Porto Velho"
+    },
+    {
+     "id": "ESE",
+     "seat": "Aracaju"
+    },
+    {
+     "id": "ESS",
+     "seat": "Presidente Prudente"
+    },
+    {
+     "id": "ETO",
+     "seat": "Palmas"
+    },
+    {
+     "id": "EPB",
+     "seat": "João Pessoa"
+    }
+   ],
+   "columns": {
+    "connection_multiplex_mm2": "the connection branch, aluminium multiplex, phase section in mm²",
+    "connection_concentric_mm2": "the connection branch, aluminium concentric, mm², where the table allows it",
+    "connection_neutral_mm2": "the connection branch's neutral, mm²",
+    "entry_pvc_mm2": "the entry branch, copper PVC, phase and neutral in mm²",
+    "entry_xlpe_mm2": "the entry branch, copper XLPE, phase and neutral in mm²; 'XX(YY)' is XX embedded and YY underground (note 1)",
+    "earthing_mm2": "the earthing conductor, copper, mm²; 'A ou B' as the table prints either",
+    "conduit_in": "the entry conduit's nominal size, inches",
+    "earth_rods": "the earth electrodes: 1H one rod, 3H three rods",
+    "box": "the meter box type"
+   },
+   "tables": [
+    {
+     "system": "127/220",
+     "use": "individual",
+     "source": "Tabela 16, the 127/220 V network (page 73)",
+     "rows": [
+      {
+       "name": "M1",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 3.8
+       },
+       "breaker_a": [
+        30.0,
+        32.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01"
+       }
+      },
+      {
+       "name": "M2",
+       "phases": 1,
+       "installed_kw": {
+        "over": 3.8,
+        "up_to": 6.3
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6 ou 10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01"
+       }
+      },
+      {
+       "name": "M3",
+       "phases": 1,
+       "installed_kw": {
+        "over": 6.3,
+        "up_to": 8.8
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "connection_concentric_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-01"
+       }
+      },
+      {
+       "name": "B1",
+       "phases": 2,
+       "installed_kw": {
+        "up_to": 10.1
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "B2",
+       "phases": 2,
+       "installed_kw": {
+        "over": 10.1,
+        "up_to": 12.7
+       },
+       "breaker_a": [
+        60.0,
+        63.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": "10(16)",
+         "neutral": "10(16)"
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "B3",
+       "phases": 2,
+       "installed_kw": {
+        "over": 12.7,
+        "up_to": 17.7
+       },
+       "breaker_a": [
+        80
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": "16(25)",
+         "neutral": "16(25)"
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "1H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T1",
+       "phases": 3,
+       "demand_kva": {
+        "up_to": 15.2
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": "6(10)",
+         "neutral": "6(10)"
+        },
+        "earthing_mm2": "10",
+        "conduit_in": "3/4",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T2",
+       "phases": 3,
+       "demand_kva": {
+        "over": 15.2,
+        "up_to": 19.0
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T3",
+       "phases": 3,
+       "demand_kva": {
+        "over": 19.0,
+        "up_to": 26.6
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": "16(25)",
+         "neutral": "16(25)"
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T4",
+       "phases": 3,
+       "demand_kva": {
+        "over": 26.6,
+        "up_to": 38.1
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 35,
+        "connection_neutral_mm2": 25,
+        "entry_xlpe_mm2": {
+         "phase": "25(35)",
+         "neutral": 25
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/2",
+        "earth_rods": "3H",
+        "box": "CMI-02"
+       }
+      },
+      {
+       "name": "T5",
+       "phases": 3,
+       "demand_kva": {
+        "over": 38.1,
+        "up_to": 57.1
+       },
+       "breaker_a": [
+        150
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 70,
+        "connection_neutral_mm2": 35,
+        "entry_xlpe_mm2": {
+         "phase": "50(70)",
+         "neutral": "25(35)"
+        },
+        "earthing_mm2": "25(35)",
+        "conduit_in": "2",
+        "earth_rods": "3H",
+        "box": "CMD-BT 200"
+       }
+      },
+      {
+       "name": "T6",
+       "phases": 3,
+       "demand_kva": {
+        "over": 57.1,
+        "up_to": 81.5
+       },
+       "breaker_a": [
+        200
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 120,
+        "connection_neutral_mm2": 70,
+        "entry_xlpe_mm2": {
+         "phase": 95,
+         "neutral": 50
+        },
+        "earthing_mm2": "50",
+        "conduit_in": "2 1/2",
+        "earth_rods": "3H",
+        "box": "CMD-BT 200"
+       }
+      }
+     ]
+    },
+    {
+     "system": "220/380",
+     "use": "individual",
+     "source": "Tabela 18, the 220/380 V network (page 78)",
+     "rows": [
+      {
+       "name": "M1",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 6.0
+       },
+       "breaker_a": [
+        30.0,
+        32.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01/CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "M2",
+       "phases": 1,
+       "installed_kw": {
+        "over": 6.0,
+        "up_to": 11.0
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "connection_concentric_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6 ou 10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-01/CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "M3",
+       "phases": 1,
+       "installed_kw": {
+        "over": 11.0,
+        "up_to": 15.4
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-01/CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "B1",
+       "phases": 2,
+       "installed_kw": {
+        "up_to": 17.6
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10",
+        "conduit_in": "3/4",
+        "earth_rods": "1H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "B2",
+       "phases": 2,
+       "installed_kw": {
+        "over": 17.6,
+        "up_to": 22.0
+       },
+       "breaker_a": [
+        60.0,
+        63.0
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": "10(16)",
+         "neutral": "10(16)"
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "1H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "B3",
+       "phases": 2,
+       "installed_kw": {
+        "over": 22.0,
+        "up_to": 26.3
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "1H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T1",
+       "phases": 3,
+       "demand_kva": {
+        "up_to": 26.1
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 10,
+        "connection_neutral_mm2": 10,
+        "entry_pvc_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry_xlpe_mm2": {
+         "phase": 6,
+         "neutral": 6
+        },
+        "earthing_mm2": "6 ou 10",
+        "conduit_in": "3/4",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T2",
+       "phases": 3,
+       "demand_kva": {
+        "over": 26.1,
+        "up_to": 35.4
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 16,
+        "connection_neutral_mm2": 16,
+        "entry_pvc_mm2": {
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry_xlpe_mm2": {
+         "phase": 10,
+         "neutral": 10
+        },
+        "earthing_mm2": "10 ou 16",
+        "conduit_in": "1",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T3",
+       "phases": 3,
+       "demand_kva": {
+        "over": 35.4,
+        "up_to": 46.1
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 25,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": "16(25)",
+         "neutral": "16(25)"
+        },
+        "earthing_mm2": "16",
+        "conduit_in": "1 1/4",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T4",
+       "phases": 3,
+       "demand_kva": {
+        "over": 46.1,
+        "up_to": 65.8
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 35,
+        "connection_neutral_mm2": 25,
+        "entry_pvc_mm2": {
+         "phase": 50,
+         "neutral": 25
+        },
+        "entry_xlpe_mm2": {
+         "phase": 35,
+         "neutral": 25
+        },
+        "earthing_mm2": "25",
+        "conduit_in": "1 1/2",
+        "earth_rods": "3H",
+        "box": "CMI-02/CMI-03"
+       }
+      },
+      {
+       "name": "T5",
+       "phases": 3,
+       "demand_kva": {
+        "over": 65.8,
+        "up_to": 81.5
+       },
+       "breaker_a": [
+        125
+       ],
+       "columns": {
+        "connection_multiplex_mm2": 70,
+        "connection_neutral_mm2": 35,
+        "entry_pvc_mm2": {
+         "phase": 70,
+         "neutral": 35
+        },
+        "entry_xlpe_mm2": {
+         "phase": "50(70)",
+         "neutral": "25(35)"
+        },
+        "earthing_mm2": "25(35)",
+        "conduit_in": "2",
+        "earth_rods": "3H",
+        "box": "CMD-BT 200"
+       }
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "A breaker printed '30/32' or '60/63' may be either.",
+    "Tabela 16 applies to EAC, EMR, EMS, EMT, ERO, ESE and ESS (note I).",
+    "The protection is sized at the top of each range; the breaker of the unit follows its own demand (notes IV and V)."
+   ],
+   "not_covered": "the building-entrance tables (collective units), the poles and posts, and the demand itself, which the designer works out"
+  },
+  {
+   "id": "EQUATORIAL",
+   "name": "Equatorial, the group's distribution companies",
+   "standard": "NT.00001.EQTL",
+   "source": "Equatorial, NT.00001.EQTL 'Fornecimento de Energia Elétrica em Baixa Tensão', revision 09, approved 22/05/2025: Tabelas 1 and 2",
+   "rule": "Every row goes by the installed load in kW, single-phase, two-phase (127/220 V only) or three-phase; the table prints no names, so a row is named here by the phases and breaker printed in its breaker column ('25 (MONO)' is 'MONO 25 A'). A range printed 'de 5,1 a 8' is taken from 5.",
+   "members": [],
+   "columns": {
+    "connection_copper_concentric_mm2": "the connection branch up to 2 km from the sea, copper concentric, mm²",
+    "connection_copper_multiplex_mm2": "the connection branch up to 2 km from the sea, copper multiplex, mm²",
+    "connection_aluminium_multiplex_mm2": "the connection branch from 2 km from the sea on, aluminium multiplex (duplex, triplex or quadruplex), mm²",
+    "entry_conduit_steel_in": "the entry conduit, galvanised steel, nominal size in inches",
+    "entry_mm2": "the customer's least insulated copper conductor, phase and neutral in mm² (note 26); 'X(Y)' is phase X and neutral Y",
+    "earthing_mm2": "the earthing conductor, copper-clad steel, mm²",
+    "earthing_conduit_in": "the earthing conductor's conduit, nominal size in inches"
+   },
+   "tables": [
+    {
+     "system": "220/380",
+     "use": "individual",
+     "source": "Tabela 1 'Dimensionamento do Ramal de Conexão e Entrada das Instalações em 220/380V' (pages 29 and 30)",
+     "rows": [
+      {
+       "name": "MONO 25 A",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 5
+       },
+       "breaker_a": [
+        25
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 4,
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": 4,
+        "earthing_mm2": 4,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 40 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 5,
+        "up_to": 8
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 6,
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 63 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 8,
+        "up_to": 12
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 10,
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": 10,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 20 A",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 12
+       },
+       "breaker_a": [
+        20
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 10
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 40 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 12,
+        "up_to": 24
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 10
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 63 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 24,
+        "up_to": 38
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 16,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 25
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 80 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 38,
+        "up_to": 48
+       },
+       "breaker_a": [
+        80
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 25,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 35
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": 16,
+        "earthing_mm2": 16,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 100 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 48,
+        "up_to": 60
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 25,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 50
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": 25,
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 125 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 60,
+        "up_to": 75
+       },
+       "breaker_a": [
+        125
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 35,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 70
+        },
+        "entry_conduit_steel_in": "2 1/2",
+        "entry_mm2": 35,
+        "earthing_mm2": 35,
+        "earthing_conduit_in": "1"
+       }
+      }
+     ]
+    },
+    {
+     "system": "127/220",
+     "use": "individual",
+     "source": "Tabela 2 'Dimensionamento do Ramal de Conexão e Entrada das Instalações em 127/220V' (pages 31 and 32)",
+     "rows": [
+      {
+       "name": "MONO 32 A",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 3.5
+       },
+       "breaker_a": [
+        32
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 6,
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": "6(6)",
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 63 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 3.5,
+        "up_to": 7
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 10,
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 80 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 7,
+        "up_to": 10
+       },
+       "breaker_a": [
+        80
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 16
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "BI 50 A",
+       "phases": 2,
+       "installed_kw": {
+        "up_to": 10
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "triplex": 10
+        },
+        "entry_conduit_steel_in": "1",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "BI 63 A",
+       "phases": 2,
+       "installed_kw": {
+        "over": 10,
+        "up_to": 12
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "triplex": 16
+        },
+        "entry_conduit_steel_in": "1",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "BI 70 A",
+       "phases": 2,
+       "installed_kw": {
+        "over": 12,
+        "up_to": 15
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "triplex": 16
+        },
+        "entry_conduit_steel_in": "1",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 40 A",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 15
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 10
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": "6(6)",
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 50 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 17
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 16
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 70 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 17,
+        "up_to": 24
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 16,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 25
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": "16(16)",
+        "earthing_mm2": 16,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 100 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 24,
+        "up_to": 35
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 25,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 50
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": "25(25)",
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 125 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 35,
+        "up_to": 44
+       },
+       "breaker_a": [
+        125
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 35,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 70
+        },
+        "entry_conduit_steel_in": "2 1/2",
+        "entry_mm2": "35(25)",
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 150 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 44,
+        "up_to": 52
+       },
+       "breaker_a": [
+        150
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 50,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 70
+        },
+        "entry_conduit_steel_in": "3",
+        "entry_mm2": "50(25)",
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 175 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 52,
+        "up_to": 61
+       },
+       "breaker_a": [
+        175
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 70,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 95
+        },
+        "entry_conduit_steel_in": "3",
+        "entry_mm2": "70(35)",
+        "earthing_mm2": 35,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 200 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 61,
+        "up_to": 75
+       },
+       "breaker_a": [
+        200
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 70,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 120
+        },
+        "entry_conduit_steel_in": "3",
+        "entry_mm2": "70(35)",
+        "earthing_mm2": 35,
+        "earthing_conduit_in": "1"
+       }
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "A consumer who takes a two-phase or three-phase connection below the single-phase limit pays the difference (notes 19 to 21).",
+    "The tables take a demand factor of 80 % and a 2 % voltage drop at the meter; power factor 1 single-phase and two-phase, 0.92 three-phase (note 23)."
+   ],
+   "not_covered": "Tabelas 11 and 12 that Nota Técnica 004/2026 adds for a unit fed by its own single-phase transformer (published 27/10/2026, binding from 24/02/2027), the collective units of NT.00004, and the poles and posts"
+  },
+  {
+   "id": "COPEL",
+   "name": "Copel Distribuição (Paraná)",
+   "standard": "NTC 901100",
+   "source": "Copel, NTC 901100 'Fornecimento em Tensão Secundária de Distribuição', revision 01/07/2020: item 4.3 and Tabela 2",
+   "rule": "A category goes by the maximum demand in kVA (Tabela 2), the designer's; each range runs from the category before it of the same phases. Categories 19, 22, 25, 46, 47 and 48 are the rural ones, single-phase three-wire at 127/254 V (the notes on page 34, and note 6 of Tabela 2).",
+   "members": [],
+   "columns": {
+    "wires": "the number of wires",
+    "meter": "the meter (note 8): M single-phase two-wire 127 V, M3 single-phase three-wire 240 V, B two-phase three-wire 127/220 V, T three-phase four-wire 127/220 V; Tabela 2 prints T for categories 46 to 48",
+    "connection_mm2": "the connection branch, multiplex, copper or aluminium, mm²",
+    "entry_embedded_mm2": "the entry branch embedded (method B1), copper, phase and neutral, PVC 70 °C or EPR/XLPE 90 °C, mm²",
+    "entry_underground_mm2": "the entry branch underground (method D), copper, phase and neutral, PVC 70 °C or EPR/XLPE 90 °C, mm²; categories 45 and 48 take EPR or XLPE only (note 11)",
+    "entry_conduit": "the entry conduit's nominal diameter, mm and inches",
+    "earthing_mm2": "the earthing conductor, copper, bare or covered, mm²",
+    "earthing_conduit_pvc_mm": "the earthing conductor's conduit, PVC, nominal diameter in mm",
+    "pole_dan": "the pole's load 200 mm from its top, daN"
+   },
+   "tables": [
+    {
+     "system": "127/220",
+     "use": "individual",
+     "source": "Tabela 2, item 9.2 (page 35)",
+     "rows": [
+      {
+       "name": "12",
+       "phases": 1,
+       "demand_kva": {
+        "up_to": 6
+       },
+       "breaker_a": [
+        50.0
+       ],
+       "columns": {
+        "wires": 2,
+        "meter": "M",
+        "connection_mm2": {
+         "copper": 10,
+         "aluminium": 16
+        },
+        "entry_embedded_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_underground_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 10,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 75
+       }
+      },
+      {
+       "name": "14",
+       "phases": 1,
+       "demand_kva": {
+        "over": 6,
+        "up_to": 8
+       },
+       "breaker_a": [
+        63.0,
+        70.0
+       ],
+       "columns": {
+        "wires": 2,
+        "meter": "M",
+        "connection_mm2": {
+         "copper": 10,
+         "aluminium": 16
+        },
+        "entry_embedded_mm2": {
+         "pvc": 16,
+         "epr_xlpe": 10
+        },
+        "entry_underground_mm2": {
+         "pvc": 16,
+         "epr_xlpe": 10
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 16,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 75
+       }
+      },
+      {
+       "name": "28",
+       "phases": 2,
+       "demand_kva": {
+        "up_to": 11
+       },
+       "breaker_a": [
+        50.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "B",
+        "connection_mm2": {
+         "copper": 10,
+         "aluminium": 16
+        },
+        "entry_embedded_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_underground_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 10,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 75
+       }
+      },
+      {
+       "name": "29",
+       "phases": 2,
+       "demand_kva": {
+        "over": 11,
+        "up_to": 14
+       },
+       "breaker_a": [
+        63.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "B",
+        "connection_mm2": {
+         "copper": 10,
+         "aluminium": 16
+        },
+        "entry_embedded_mm2": {
+         "pvc": 16,
+         "epr_xlpe": 10
+        },
+        "entry_underground_mm2": {
+         "pvc": 16,
+         "epr_xlpe": 16
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 16,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 75
+       }
+      },
+      {
+       "name": "36",
+       "phases": 3,
+       "demand_kva": {
+        "up_to": 19
+       },
+       "breaker_a": [
+        50.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 10,
+         "aluminium": 16
+        },
+        "entry_embedded_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_underground_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 10,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 75
+       }
+      },
+      {
+       "name": "37",
+       "phases": 3,
+       "demand_kva": {
+        "over": 19,
+        "up_to": 24
+       },
+       "breaker_a": [
+        63.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 16,
+         "aluminium": 16
+        },
+        "entry_embedded_mm2": {
+         "pvc": 16,
+         "epr_xlpe": 10
+        },
+        "entry_underground_mm2": {
+         "pvc": 16,
+         "epr_xlpe": 16
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 16,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 75
+       }
+      },
+      {
+       "name": "38",
+       "phases": 3,
+       "demand_kva": {
+        "over": 24,
+        "up_to": 30
+       },
+       "breaker_a": [
+        80.0,
+        70.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 16,
+         "aluminium": 25
+        },
+        "entry_embedded_mm2": {
+         "pvc": 25,
+         "epr_xlpe": 16
+        },
+        "entry_underground_mm2": {
+         "pvc": 25,
+         "epr_xlpe": 16
+        },
+        "entry_conduit": {
+         "mm": 40,
+         "in": "1 1/4"
+        },
+        "earthing_mm2": 16,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 200
+       }
+      },
+      {
+       "name": "41",
+       "phases": 3,
+       "demand_kva": {
+        "over": 30,
+        "up_to": 38
+       },
+       "breaker_a": [
+        100.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 16,
+         "aluminium": 25
+        },
+        "entry_embedded_mm2": {
+         "pvc": 35,
+         "epr_xlpe": 25
+        },
+        "entry_underground_mm2": {
+         "pvc": 35,
+         "epr_xlpe": 25
+        },
+        "entry_conduit": {
+         "mm": 40,
+         "in": "1 1/4"
+        },
+        "earthing_mm2": 16,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 200
+       }
+      },
+      {
+       "name": "42",
+       "phases": 3,
+       "demand_kva": {
+        "over": 38,
+        "up_to": 48
+       },
+       "breaker_a": [
+        125.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 25,
+         "aluminium": 35
+        },
+        "entry_embedded_mm2": {
+         "pvc": 50,
+         "epr_xlpe": 35
+        },
+        "entry_underground_mm2": {
+         "pvc": 50,
+         "epr_xlpe": 50
+        },
+        "entry_conduit": {
+         "mm": 60,
+         "in": "2"
+        },
+        "earthing_mm2": 25,
+        "earthing_conduit_pvc_mm": 25,
+        "pole_dan": 200
+       }
+      },
+      {
+       "name": "43",
+       "phases": 3,
+       "demand_kva": {
+        "over": 48,
+        "up_to": 57
+       },
+       "breaker_a": [
+        150.0,
+        160.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 35,
+         "aluminium": 50
+        },
+        "entry_embedded_mm2": {
+         "pvc": 70,
+         "epr_xlpe": 50
+        },
+        "entry_underground_mm2": {
+         "pvc": 70,
+         "epr_xlpe": 70
+        },
+        "entry_conduit": {
+         "mm": 60,
+         "in": "2"
+        },
+        "earthing_mm2": 35,
+        "earthing_conduit_pvc_mm": 25,
+        "pole_dan": 300
+       }
+      },
+      {
+       "name": "44",
+       "phases": 3,
+       "demand_kva": {
+        "over": 57,
+        "up_to": 67
+       },
+       "breaker_a": [
+        175.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 50,
+         "aluminium": 70
+        },
+        "entry_embedded_mm2": {
+         "pvc": 95,
+         "epr_xlpe": 70
+        },
+        "entry_underground_mm2": {
+         "pvc": 95,
+         "epr_xlpe": 70
+        },
+        "entry_conduit": {
+         "mm": 75,
+         "in": "2 1/2"
+        },
+        "earthing_mm2": 50,
+        "earthing_conduit_pvc_mm": 25,
+        "pole_dan": 300
+       }
+      },
+      {
+       "name": "45",
+       "phases": 3,
+       "demand_kva": {
+        "over": 67,
+        "up_to": 76
+       },
+       "breaker_a": [
+        200.0
+       ],
+       "columns": {
+        "wires": 4,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 50,
+         "aluminium": 70
+        },
+        "entry_embedded_mm2": {
+         "pvc": 95,
+         "epr_xlpe": 70
+        },
+        "entry_underground_mm2": {
+         "pvc": "see note 11",
+         "epr_xlpe": 95
+        },
+        "entry_conduit": {
+         "mm": 75,
+         "in": "2 1/2"
+        },
+        "earthing_mm2": 50,
+        "earthing_conduit_pvc_mm": 25,
+        "pole_dan": 300
+       }
+      }
+     ]
+    },
+    {
+     "system": "127/254",
+     "use": "individual",
+     "source": "Tabela 2, item 9.2, the rural categories (page 35)",
+     "rows": [
+      {
+       "name": "19",
+       "phases": 1,
+       "demand_kva": {
+        "up_to": 10
+       },
+       "breaker_a": [
+        50.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "M3",
+        "connection_mm2": {
+         "copper": 10,
+         "aluminium": 16
+        },
+        "entry_embedded_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_underground_mm2": {
+         "pvc": 10,
+         "epr_xlpe": 10
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 10,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 75
+       }
+      },
+      {
+       "name": "22",
+       "phases": 1,
+       "demand_kva": {
+        "over": 10,
+        "up_to": 15
+       },
+       "breaker_a": [
+        70.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "M3",
+        "connection_mm2": {
+         "copper": 10,
+         "aluminium": 25
+        },
+        "entry_embedded_mm2": {
+         "pvc": 25,
+         "epr_xlpe": 16
+        },
+        "entry_underground_mm2": {
+         "pvc": 25,
+         "epr_xlpe": 16
+        },
+        "entry_conduit": {
+         "mm": 32,
+         "in": "1"
+        },
+        "earthing_mm2": 16,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 100
+       }
+      },
+      {
+       "name": "25",
+       "phases": 1,
+       "demand_kva": {
+        "over": 15,
+        "up_to": 25
+       },
+       "breaker_a": [
+        100.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "M3",
+        "connection_mm2": {
+         "copper": 16,
+         "aluminium": 35
+        },
+        "entry_embedded_mm2": {
+         "pvc": 35,
+         "epr_xlpe": 25
+        },
+        "entry_underground_mm2": {
+         "pvc": 35,
+         "epr_xlpe": 25
+        },
+        "entry_conduit": {
+         "mm": 40,
+         "in": "1 1/4"
+        },
+        "earthing_mm2": 16,
+        "earthing_conduit_pvc_mm": 19,
+        "pole_dan": 200
+       }
+      },
+      {
+       "name": "46",
+       "phases": 1,
+       "demand_kva": {
+        "over": 25,
+        "up_to": 37
+       },
+       "breaker_a": [
+        150.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 35,
+         "aluminium": 50
+        },
+        "entry_embedded_mm2": {
+         "pvc": 70,
+         "epr_xlpe": 50
+        },
+        "entry_underground_mm2": {
+         "pvc": 70,
+         "epr_xlpe": 70
+        },
+        "entry_conduit": {
+         "mm": 60,
+         "in": "2"
+        },
+        "earthing_mm2": 35,
+        "earthing_conduit_pvc_mm": 25,
+        "pole_dan": 300
+       }
+      },
+      {
+       "name": "47",
+       "phases": 1,
+       "demand_kva": {
+        "over": 37,
+        "up_to": 44
+       },
+       "breaker_a": [
+        175.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 50,
+         "aluminium": 70
+        },
+        "entry_embedded_mm2": {
+         "pvc": 95,
+         "epr_xlpe": 70
+        },
+        "entry_underground_mm2": {
+         "pvc": 95,
+         "epr_xlpe": 70
+        },
+        "entry_conduit": {
+         "mm": 75,
+         "in": "2 1/2"
+        },
+        "earthing_mm2": 50,
+        "earthing_conduit_pvc_mm": 25,
+        "pole_dan": 300
+       }
+      },
+      {
+       "name": "48",
+       "phases": 1,
+       "demand_kva": {
+        "over": 44,
+        "up_to": 50
+       },
+       "breaker_a": [
+        200.0
+       ],
+       "columns": {
+        "wires": 3,
+        "meter": "T",
+        "connection_mm2": {
+         "copper": 50,
+         "aluminium": 70
+        },
+        "entry_embedded_mm2": {
+         "pvc": 95,
+         "epr_xlpe": 95
+        },
+        "entry_underground_mm2": {
+         "pvc": "see note 11",
+         "epr_xlpe": 95
+        },
+        "entry_conduit": {
+         "mm": 75,
+         "in": "2 1/2"
+        },
+        "earthing_mm2": 50,
+        "earthing_conduit_pvc_mm": 25,
+        "pole_dan": 300
+       }
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "Category 14 may take a 70 A single-pole breaker and category 38 a 70 A three-pole one (note 9); category 43's 150 A may be a 160 A (note 10).",
+    "The sections and conduits are the least (note 3); the neutral of the entry branch is as the phases (note 4)."
+   ],
+   "not_covered": "the motors of Tabela 1, the collective units of NTC 901110, and the demand itself, which the designer works out (Tabela 3)"
+  }
+ ]
+}
