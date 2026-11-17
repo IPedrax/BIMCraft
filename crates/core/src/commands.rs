@@ -1137,8 +1137,10 @@ other_files(
         "dimension",
         ui_msg!("Aligned Dimension"),
         &["DI"],
-        "{refs: [ref, …], at: [x, y], level?, kind?: aligned|linear|angular|radial|diameter|arc_length, orient?: \
-         horizontal|vertical} aligned (the default): the distances between parallel references, along a line through `at` \
+        "{refs: [ref, …], at: [x, y], level?, view?, kind?: aligned|linear|angular|radial|diameter|arc_length, orient?: \
+         horizontal|vertical} With a section/elevation `view`, `at` is [along, height] and aligned/linear dimensions take \
+         explicit references to levels, perpendicular grids or detail lines of that view; constraints and driving values are not yet supported. \
+         aligned (the default): the distances between parallel references, along a line through `at` \
          (between points, along the first two; points and lines, square to the lines); linear: the same with its line \
          horizontal or vertical as `orient` says, or without one as `at` lies: east or west of the points, vertical, else \
          horizontal (its lines must run square to it); angular: the angle between two references that meet, on the side \
@@ -2113,7 +2115,10 @@ other_files(
         "move",
         ui_msg!("Move"),
         &["MV"],
-        "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
+        "{ids: [id,…], by: [dx, dy], view?, end?: start|end} With a section/elevation `view`, `by` is [along, up]: moves \
+         its annotations in drawing coordinates, straight-wall openings in their host (refusing motion off the host), and \
+         unhosted non-adaptive components in world coordinates. Other model kinds and `end` are refused in this mode. \
+         Without `view`, moves elements in plan; walls joined to a moved wall stretch to stay \
          joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
          section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
          looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
@@ -12382,7 +12387,12 @@ fn dimension(s: &mut Session, p: &Value) -> R {
         return dimension_edit(s, p, g);
     }
     let m = &s.model;
-    let (level, view) = plan_param(c, m, p, "level")?;
+    let (level, view) = if !absent(p.get("view")) {
+        let id = view_param(c, m, p, false)?;
+        if m.section(id).is_some() { (m.guid(id), Some(m.guid(id))) } else { plan_param(c, m, &json!({"level":id}), "level")? }
+    } else {
+        plan_param(c, m, p, "level")?
+    };
     let at = point_req(c, p, "at")?;
     let kind = match string(c, p, "kind")? {
         None => DimKind::Aligned,
@@ -12397,7 +12407,8 @@ fn dimension(s: &mut Session, p: &Value) -> R {
     let refs = dimension_refs(c, m, level, view, kind, given)?;
     if kind == DimKind::Linear && orient.is_none() {
         // East or west of everything it measures, vertical; else horizontal.
-        let xs: Vec<f64> = refs.iter().filter_map(|r| m.reference_geometry(r).ok()).flat_map(|(a, b)| [a.0, b.0]).collect();
+        let xs: Vec<f64> =
+            refs.iter().filter_map(|r| crate::drawing_plane::reference(m, view, r).ok()).flat_map(|(a, b)| [a.0, b.0]).collect();
         let beside = xs.iter().all(|&x| x < at.0) || xs.iter().all(|&x| x > at.0);
         orient = Some(if beside && !xs.is_empty() { Orient::Vertical } else { Orient::Horizontal });
     }
@@ -12436,6 +12447,18 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
         return Err(bad(c, format!("`refs` has more than {MAX_POINTS} references")));
     }
     let mut refs: Vec<Reference> = Vec::new();
+    if view.is_some_and(|v| m.section(v).is_some()) {
+        return given
+            .iter()
+            .map(|v| {
+                let r: Reference = serde_json::from_value(v.clone())
+                    .map_err(|_| bad(c, "a section/elevation dimension needs explicit {id, face?, point?} references"))?;
+                let r = resolved_reference(m, r);
+                crate::drawing_plane::reference(m, view, &r).map_err(|e| bad(c, e))?;
+                Ok(r)
+            })
+            .collect();
+    }
     for v in given {
         let near = |q: P2, what: &str| bad(c, format!("no {what} at [{}, {}] on {}", q.0, q.1, level_name(m, level)));
         let endpoint = v.get("endpoint").filter(|_| v.as_object().is_some_and(|o| o.len() == 1));
@@ -12764,6 +12787,9 @@ fn dimension_constraint(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
     };
     let mut d = d.clone();
+    if d.view.is_some_and(|v| s.model.section(v).is_some()) {
+        return Err(bad(c, "section/elevation dimension constraints are not supported yet"));
+    }
     let before_equal = d.equal;
     let values = s.model.dimension_values(&d);
     if !absent(p.get("equal")) {
@@ -19533,6 +19559,9 @@ fn dimension_value(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("dimension {id} isn't an aligned or a linear one: only their lengths are typed")));
     }
     let mut d = d.clone();
+    if d.view.is_some_and(|v| s.model.section(v).is_some()) {
+        return Err(bad(c, "section/elevation dimensions measure only; use Move or Properties to edit their references"));
+    }
     let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value`, the length in mm, is required"))?;
     if !(value > TOL && value <= MAX_COORD) {
         return Err(bad(c, format!("`value` is a length above 0 and at most {MAX_COORD} mm, not {value}")));
@@ -19886,10 +19915,72 @@ pub(crate) fn move_by(s: &mut Session, id: Id, by: P2) -> Result<(), String> {
     move_elements(s, &json!({"ids": [id], "by": [by.0, by.1]})).map(|_| ())
 }
 
+/// All members are checked before mutation; Session owns rollback and one history entry.
+/// An annotation moves in drawing coordinates; an opening in its host; a free component in world space.
+fn move_in_view(s: &mut Session, view: Id, ids: &[Id], by: P2) -> R {
+    let c = "move";
+    let m = &s.model;
+    refuse_pinned(c, m, ids, "move")?;
+    let plane = crate::drawing_plane::DrawingPlane::of(m, view).ok_or_else(|| bad(c, "no drawing plane"))?;
+    let delta = plane.vector(by);
+    let xy = P2(delta[0], delta[1]);
+    let mut edits = Vec::new();
+    let mut annotations = Vec::new();
+    for &id in ids {
+        let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        if let Some(own) = m.annotation_plan(e) {
+            if !m.same(own, view) {
+                return Err(bad(c, format!("annotation {id} belongs to another view")));
+            }
+            annotations.push(id);
+            continue;
+        }
+        match e {
+            Element::Door(o) | Element::Window(o) => {
+                let w = m
+                    .wall(o.host)
+                    .filter(|w| w.arc == 0.0)
+                    .ok_or_else(|| bad(c, "Move in a vertical view needs a straight opening host"))?;
+                let u = (w.end - w.start).unit();
+                if xy.cross(u).abs() > TOL {
+                    return Err(bad(c, "the opening cannot move off its host plane; use a view parallel to the wall"));
+                }
+                edits.push(json!({"id":id,"offset":o.offset+xy.dot(u),"sill":o.sill+delta[2]}));
+            }
+            Element::Component(cmp) if cmp.host.is_none() && !m.placed_by_points(cmp) => {
+                edits.push(json!({"id":id,"at":[cmp.at.0+xy.0,cmp.at.1+xy.1],"offset":cmp.offset+delta[2]}));
+            }
+            _ => {
+                return Err(bad(
+                    c,
+                    format!(
+                        "{} {id}: Move in sections/elevations currently supports own-view annotations, straight-wall openings and unhosted components",
+                        e.category()
+                    ),
+                ));
+            }
+        }
+    }
+    if !annotations.is_empty() {
+        relocate(c, s, &annotations, &Motion { map: &|q| micron(q + by), slide: Some(by), mirror: false }, None)?;
+    }
+    for p in edits {
+        modify(s, &p)?;
+    }
+    Ok(json!({"moved":ids}))
+}
+
 fn move_elements(s: &mut Session, p: &Value) -> R {
     let c = "move";
     let ids = ids_param(c, &s.model, p)?;
     let by = point_req(c, p, "by")?;
+    if !absent(p.get("view")) {
+        let view = view_param(c, &s.model, p, false)?;
+        if !absent(p.get("end")) || s.model.section(view).is_none() {
+            return Err(bad(c, "`view` moves whole elements in a section or elevation; do not give `end`"));
+        }
+        return move_in_view(s, view, &ids, by);
+    }
     // Moving one end: `Some(true)` the start, `Some(false)` the end.
     let end = match string(c, p, "end")? {
         None => None,

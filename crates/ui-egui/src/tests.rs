@@ -7667,6 +7667,7 @@ mod trim;
 mod typed;
 mod typeprops;
 mod underlay;
+mod vertical_tools;
 mod view_controls;
 mod window;
 mod work_plane_based;

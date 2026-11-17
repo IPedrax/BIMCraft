@@ -12,6 +12,7 @@ use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::snap::{self, Reach};
 use bimcraft_core::view3d::Camera;
 use bimcraft_core::walls;
+use bimcraft_core::workplane::{self, Frame};
 use egui::{PointerButton, Pos2, Rect, Response, Shape, Stroke, Ui, vec2};
 
 use crate::canvas::{PICK, SNAP, click_modifiers};
@@ -29,20 +30,34 @@ pub(crate) struct Plane {
     pub cam: Camera,
     pub rect: Rect,
     pub ppp: f32,
-    pub surface: walls::Plane,
+    pub surface: Surface,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Surface {
+    Plan(walls::Plane),
+    Profile(Frame),
 }
 
 impl Plane {
     /// Where point `q` of the plane shows on screen.
     pub fn screen(&self, q: P2) -> Pos2 {
-        let (x, y, _) = self.cam.project([q.0, q.1, self.surface.at(q)]);
+        let point = match self.surface {
+            Surface::Plan(p) => [q.0, q.1, p.at(q)],
+            Surface::Profile(frame) => frame.point(q),
+        };
+        let (x, y, _) = self.cam.project(point);
         self.rect.min + vec2(x as f32 / self.ppp, y as f32 / self.ppp)
     }
 
     /// The plane's point under `at` on screen; none where the view is edge-on to it.
     pub fn at(&self, at: Pos2) -> Option<P2> {
         let px = (f64::from((at.x - self.rect.min.x) * self.ppp), f64::from((at.y - self.rect.min.y) * self.ppp));
-        self.cam.on_slope(px, self.surface).map(|p| P2(p[0], p[1])).filter(|p| p.0.is_finite() && p.1.is_finite())
+        match self.surface {
+            Surface::Plan(p) => self.cam.on_slope(px, p).map(|p| P2(p[0], p[1])),
+            Surface::Profile(frame) => self.cam.on(px, frame.origin, frame.normal).map(|p| frame.coordinates(p)),
+        }
+        .filter(|p| p.0.is_finite() && p.1.is_finite())
     }
 
     /// The mm `points` on screen span, as the view is scaled: a reach on the plane, foreshortening aside.
@@ -100,11 +115,12 @@ pub(crate) fn to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 impl BimApp {
     /// The plane the sketch lies on while it is sketched in the 3D view: an Edit Boundary begun there, of what still has a
     /// plane, or a new one on the work plane it began on.
-    pub(crate) fn sketch_surface(&self) -> Option<walls::Plane> {
+    pub(crate) fn sketch_surface(&self) -> Option<Surface> {
         let sk = self.sketch.as_ref().filter(|sk| sk.plan == Sheet::View3D)?;
         match sk.of {
-            Of::Edit(id) => self.session.model.sketch_plane(id),
-            _ => sk.surface,
+            Of::Edit(id) => self.session.model.sketch_plane(id).map(Surface::Plan),
+            Of::RoofProfile(id) => workplane::roof_profile(&self.session.model, id).map(Surface::Profile),
+            _ => sk.surface.map(Surface::Plan),
         }
     }
 
@@ -113,13 +129,17 @@ impl BimApp {
     /// vertical.
     fn snap3(&self, m: &Model, plane: &Plane, raw: P2, from: &[P2], square: bool) -> P2 {
         let Some(sk) = &self.sketch else { return raw };
+        let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };
+        if matches!(sk.of, Of::RoofProfile(_)) {
+            let curves: Vec<_> = sk.lines.iter().map(|l| l.curve.clone()).collect();
+            return snap::among(&[], &[], &curves, raw, reach, from, square, &self.snaps_now()).at;
+        }
         let (level, editing) = match sk.of {
             Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
-            Of::Region { .. } | Of::Form { .. } => (None, None),
+            Of::Region { .. } | Of::Form { .. } | Of::RoofProfile(_) => (None, None),
         };
         let Some(level) = level else { return raw };
-        let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };
         let sketch = snap::Sketch { view: level, lines: &sk.lines, editing };
         snap::in_sketch(m, sketch, raw, reach, from, square, &self.snaps_now()).at
     }

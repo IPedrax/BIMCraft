@@ -738,6 +738,12 @@ To do: shared coordinates, a link's graphics overrides and visibility per view, 
 
 ## Dimensions
 
+Sections/elevations use `drawing_plane::reference` for aligned/linear dimensions: levels, grids perpendicular to the
+view line and detail references owned by that view. Their placement is `[along,height]`, and both `level` and `view`
+hold the view GUID. Format 21 protects that interpretation; format 20 needs no data conversion. These dimensions
+measure only: locks, equality and driving values are refused. The plan reference/constraint behavior below remains
+unchanged. See [vertical drawing tools](desktop.md#drawing-tools-in-sections-and-elevations) for the supported input.
+
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines
 (`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a column's or structural column's two
 centre lines, along its angle and across it (`Face::Across`, file format 18), its left and right faces and its start and end caps (`Model::column_reference_line`;

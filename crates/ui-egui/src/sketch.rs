@@ -38,6 +38,8 @@ pub enum Of {
     Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
     Edit(Id),
+    /// An existing extrusion roof's open profile, in its upright reference plane.
+    RoofProfile(Id),
     /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
     /// `edit`, one it has already, redrawn.
     Form { revolve: bool, void: bool, edit: bool },
@@ -157,6 +159,7 @@ impl Sketch {
             Of::Region { masking: false, .. } => msg!("Create Filled Region Boundary"),
             Of::Region { masking: true, .. } => msg!("Create Masking Region Boundary"),
             Of::Edit(_) => "Edit Boundary",
+            Of::RoofProfile(_) => msg!("Edit Profile"),
             Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
             Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
             Of::Form { revolve: false, void: true, edit: false } => msg!("Modify | Create Void Extrusion"),
@@ -657,6 +660,45 @@ impl BimApp {
         }
     }
 
+    pub(crate) fn roof_profile_selected(&self) -> Option<Id> {
+        let &[id] = self.selection.as_slice() else { return None };
+        bimcraft_core::workplane::roof_profile(&self.session.model, id).map(|_| id)
+    }
+
+    pub(crate) fn editing_roof_profile(&self) -> bool {
+        self.sketch.as_ref().is_some_and(|sk| matches!(sk.of, Of::RoofProfile(_)))
+    }
+
+    /// Edit the existing open profile on its own upright plane, using the shared sketch tools and `modify` on Finish.
+    pub(crate) fn edit_roof_profile(&mut self) {
+        let Some(id) = self.roof_profile_selected() else { return };
+        let Some(Element::Roof(r)) = self.session.model.elements.get(id) else { return };
+        let Some(x) = &r.extrusion else { return };
+        let lines = x.profile.windows(2).map(|p| SketchLine::new(p[0], p[1])).collect();
+        let Some(frame) = bimcraft_core::workplane::roof_profile(&self.session.model, id) else { return };
+        let min = x.profile.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, b| P2(a.0.min(b.0), a.1.min(b.1)));
+        let max = x.profile.iter().fold(P2(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, b| P2(a.0.max(b.0), a.1.max(b.1)));
+        self.open_sheet(Sheet::View3D);
+        // Face the profile so even a roof whose plane was edge-on can be edited immediately. Navigation remains free.
+        let (width, height) = if self.view_rect.is_positive() {
+            ((self.view_rect.width() * self.orbit.ppp).max(1.0) as u32, (self.view_rect.height() * self.orbit.ppp).max(1.0) as u32)
+        } else {
+            self.orbit.camera.map_or((800, 500), |c| (c.width, c.height))
+        };
+        self.orbit.camera = Some(bimcraft_core::view3d::Camera {
+            azimuth: frame.normal[1].atan2(frame.normal[0]).to_degrees(),
+            elevation: 0.0,
+            scale: (f64::from(width) / (max.0 - min.0).max(1000.0)).min(f64::from(height) / (max.1 - min.1).max(1000.0)) * 0.7,
+            target: frame.point((min + max) * 0.5),
+            width,
+            height,
+            lens: None,
+        });
+        self.start_sketch(Of::RoofProfile(id), lines);
+        self.drawing.sketch = draw::Shape::Line;
+        self.tool = Tool::Modify;
+    }
+
     /// The one element selected, when it has an outline Edit Boundary redraws.
     pub(crate) fn boundary_selected(&self) -> bool {
         match self.selection.as_slice() {
@@ -691,6 +733,23 @@ impl BimApp {
             return;
         }
         let Some(sk) = &mut self.sketch else { return };
+        if let Of::RoofProfile(id) = sk.of {
+            let profile = match solver::extrusion_profile(&sk.lines) {
+                Ok(profile) => profile,
+                Err(text) => {
+                    sk.wrong = (0..sk.lines.len()).collect();
+                    self.status = Status { text, error: true };
+                    return;
+                }
+            };
+            if self.run("modify", json!({"id": id, "extrusion": {"profile": profile}})).is_some() {
+                self.sketch = None;
+                self.tool = Tool::Modify;
+                self.forget_picks();
+                self.selection = vec![id];
+            }
+            return;
+        }
         // A region is any number of outlines; the rest, one.
         let many = match sk.of {
             Of::Region { .. } => true,
@@ -751,7 +810,7 @@ impl BimApp {
             }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
             // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
-            Of::Form { .. } => return,
+            Of::Form { .. } | Of::RoofProfile(_) => return,
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
         if let Some(made) = self.run(id, p) {
@@ -795,7 +854,7 @@ impl BimApp {
     pub(crate) fn cancel_sketch(&mut self) {
         self.leave_walls_outline();
         let edited = match self.sketch.take() {
-            Some(Sketch { of: Of::Edit(id), .. }) => Some(id),
+            Some(Sketch { of: Of::Edit(id) | Of::RoofProfile(id), .. }) => Some(id),
             _ => None,
         };
         self.tool = Tool::Modify;
@@ -907,6 +966,13 @@ impl BimApp {
     /// the first, the loop is closed and the next line starts anew), Rectangle's corner, Arc's ends then the point it
     /// passes through, Pick Walls' wall (`wall`), or with Modify a line picked.
     pub(crate) fn sketch_click(&mut self, m: &Model, p: P2, raw: P2, reach: f64, wall: Option<Id>, mods: Modifiers) {
+        if self.editing_roof_profile()
+            && (matches!(self.tool, Tool::SketchPick)
+                || (matches!(self.tool, Tool::SketchLine(_)) && !matches!(self.shape(), draw::Shape::Line | draw::Shape::Polyline)))
+        {
+            self.status = Status { text: t("An extrusion roof profile supports straight lines and polylines").into(), error: true };
+            return;
+        }
         // The Draw panel's other shapes: Fillet Arc picks two of the sketch's lines, Pick Lines a line of the model's;
         // the rest gather their points.
         if matches!(self.tool, Tool::SketchLine(_)) {
@@ -1168,10 +1234,13 @@ impl BimApp {
             (Icon::Split, msg!("Split Element"), msg!("Split Element (SL): click a wall or a line where to split it"), Tool::Split),
             (Icon::Offset, msg!("Offset"), msg!("Offset (OF): pick a wall or a line; a copy goes to the cursor's side"), Tool::Offset),
         ];
+        let profile = self.editing_roof_profile();
+        let tools: Vec<_> = tools.into_iter().filter(|(_, _, _, tool)| !profile || !matches!(tool, Tool::Align(_))).collect();
+        let columns = if profile && ribbon::listing() { 1 } else { 3 };
         panel(ui, "Modify", |ui| {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                for row in tools.chunks(3) {
+                for row in tools.chunks(columns) {
                     ui.horizontal(|ui| {
                         for (icon, label, tip, tool) in row {
                             let active = match (&self.tool, tool) {
@@ -1193,11 +1262,12 @@ impl BimApp {
     pub(crate) fn mode_panel(&mut self, ui: &mut Ui) {
         let sketching = self.sketch.is_some();
         let boundary = self.boundary_selected() && self.tool == Tool::Modify;
+        let profile = self.roof_profile_selected().is_some() && self.tool == Tool::Modify;
         // Placing a component: Load Family and Edit Family (Modify | Place Component); a family's instance selected, Edit
         // Family (Modify | <Category>).
         let placing = !sketching && matches!(self.tool, Tool::Component | Tool::Fixture(_));
         let family = if !sketching && (placing || self.tool == Tool::Modify) { self.family_in_hand() } else { None };
-        if !sketching && !boundary && !placing && family.is_none() {
+        if !sketching && !boundary && !profile && !placing && family.is_none() {
             return;
         }
         // Pushed to the right end by the room the rest leaves: its width as it was last drawn.
@@ -1205,13 +1275,22 @@ impl BimApp {
         let drawn = ui.scope(|ui| {
             panel(ui, "Mode", |ui| {
                 if sketching {
-                    let tip = msg!("Finish Edit Mode: the lines, closed into loops, become the outline and its holes");
+                    let tip = if self.editing_roof_profile() {
+                        msg!("Finish Edit Mode: apply the open profile to the extrusion roof")
+                    } else {
+                        msg!("Finish Edit Mode: the lines, closed into loops, become the outline and its holes")
+                    };
                     if inked_button(ui, Icon::Check, "Finish Edit Mode", false, tip, Some(pal().context)).clicked() {
                         self.finish_sketch();
                     }
                     let tip = "Cancel Edit Mode: drop the lines, keep it as it was";
                     if inked_button(ui, Icon::Close, "Cancel Edit Mode", false, tip, Some(pal().error)).clicked() {
                         self.cancel_sketch();
+                    }
+                } else if profile {
+                    let tip = msg!("Edit Profile: change the extrusion roof's open profile on its upright plane");
+                    if big_button(ui, Icon::Line, msg!("Edit Profile"), false, tip).clicked() {
+                        self.edit_roof_profile();
                     }
                 } else if boundary {
                     // A floor or a ceiling that follows a room has the room's outline.
@@ -1555,11 +1634,17 @@ impl BimApp {
             Tool::TrimTo { .. } => msg!("Pick a sketch line to trim or extend, on the part to keep. Esc clears the boundary."),
             Tool::SketchLine(_) if self.shape() != draw::Shape::Line => return self.shape_prompt(),
             Tool::SketchLine(chain) if chain.is_empty() => "Click where the line starts.",
+            Tool::SketchLine(_) if self.editing_roof_profile() => {
+                msg!("Click the next profile point. Keep the profile open; Esc stops drawing.")
+            }
             Tool::SketchLine(_) => msg!("Click the line's end; the next starts there. The first point again closes the loop; Esc stops."),
             Tool::SketchPick if self.pick_core => {
                 msg!("Pick Walls: a boundary line on the wall's core face under the pointer.")
             }
             Tool::SketchPick => msg!("Pick Walls: a boundary line on the wall's finish face under the pointer."),
+            Tool::Modify if self.editing_roof_profile() => msg!(
+                "Pick a profile line; drag its end grips or edit Along and Height in Properties. Finish applies the open profile; Cancel discards it."
+            ),
             Tool::Modify if self.sketch_surface().is_some() => {
                 msg!(
                     "Pick sketch lines (a box picks several); drag a picked line's end over its plane to move it; Shift and the middle button orbit; Delete removes them. Finish Edit Mode when every loop is closed."

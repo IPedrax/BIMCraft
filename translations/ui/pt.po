@@ -18404,6 +18404,82 @@ msgstr ""
 msgid "Underlay View"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:1923
+msgid "Along the reference line; height above the roof base."
+msgstr ""
+
+#: crates/ui-egui/src/draw.rs:198 crates/ui-egui/src/sketch.rs:656
+msgid "An extrusion roof profile supports straight lines and polylines"
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1045
+msgid "Click the next profile point. Keep the profile open; Esc stops drawing."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:880
+msgid "Edit Profile: change the extrusion roof's open profile on its upright plane"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1938
+msgid "End Along"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1939
+msgid "End Height"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1957
+msgid "Enter a length in the project's units."
+msgstr ""
+
+#: crates/ui-egui/src/section/tools.rs:221
+msgid "Enter a positive length."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:868
+msgid "Finish Edit Mode: apply the open profile to the extrusion roof"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6425
+msgid "Pick a base and destination in this view. Move supports its annotations, straight-wall openings and unhosted components."
+msgstr ""
+
+#: crates/ui-egui/src/sketch.rs:1050
+msgid "Pick a profile line; drag its end grips or edit Along and Height in Properties. Finish applies the open profile; Cancel discards it."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6421
+msgid "Pick levels, perpendicular grids or detail lines in this view, then click to place the dimension."
+msgstr ""
+
+#: crates/ui-egui/src/section/tools.rs:123
+msgid "Pick levels, perpendicular grids or detail lines in this view."
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1539
+msgid "Roof Profile"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1927
+msgid "Select a profile line to edit its end coordinates."
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1936
+msgid "Start Along"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1937
+msgid "Start Height"
+msgstr ""
+
+#: crates/ui-egui/src/section/tools.rs:178
+msgid "Trim in this view supports its detail lines; model edges are not supported yet."
+msgstr ""
+
+#: crates/ui-egui/src/section/tools.rs:162
+msgid "Use drawn detail shapes in this view; Pick Lines and Fillet are not supported yet."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Um valor em branco é o da própria família, como a aba Parâmetros o tem."

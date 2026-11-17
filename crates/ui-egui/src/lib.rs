@@ -2666,6 +2666,10 @@ impl BimApp {
         }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        if enter && let Sheet::Section(view) = self.sheet {
+            self.vertical_enter(view);
+            enter = false;
+        }
         if enter && self.dimension_refs_edit.is_some() {
             self.commit_dimension_refs();
             enter = false;
@@ -3977,6 +3981,7 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        let changed_vertical_plane = self.sheet != sheet && (matches!(self.sheet, Sheet::Section(_)) || matches!(sheet, Sheet::Section(_)));
         // A family document's view: its tab after the document's others (after the project's and the documents' before it),
         // and the document showing it. The project's tool, selection and views are left as they are.
         if let Sheet::Family(id, view) = sheet {
@@ -4014,6 +4019,12 @@ impl BimApp {
         }
         // The selection is the model's, not the view's: it stays, whatever view comes up.
         self.clear_typed();
+        if changed_vertical_plane
+            && matches!(self.tool, Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. })
+        {
+            self.tool = Tool::Modify;
+            self.dimension_reference_hover = None;
+        }
         self.snap_once = None;
         // A ruler belongs to the view it was laid in.
         self.measured = None;
@@ -4719,7 +4730,9 @@ impl BimApp {
             });
         });
         ui.scope_builder(UiBuilder::new().max_rect(rows), |ui| {
-            ScrollArea::both().id_salt("tool-column").auto_shrink([false, false]).show(ui, |ui| {
+            // Edit Profile can be reached near the bottom of this column. Its draft opens with the editing tools visible.
+            let scroll = if self.editing_roof_profile() { "roof-profile-tools" } else { "tool-column" };
+            ScrollArea::both().id_salt(scroll).auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(rows.width() - 12.0);
                 let edit = if self.editing_tools { msg!("Done") } else { msg!("Edit Tools") };
                 let tip = msg!("Tick the tools this palette shows; Find still has the others");
@@ -6606,6 +6619,15 @@ impl BimApp {
                 return msg!("Type the note in the Options Bar, then click where it goes.");
             }
             (Sheet::Section(_), Tool::Spot) => return msg!("Click a point to mark its height."),
+            (Sheet::Section(_), Tool::Dimension(..)) => {
+                return msg!("Pick levels, perpendicular grids or detail lines in this view, then click to place the dimension.");
+            }
+            (Sheet::Section(_), Tool::Move(_)) => {
+                return msg!(
+                    "Pick a base and destination in this view. Move supports its annotations, straight-wall openings and unhosted components."
+                );
+            }
+            (Sheet::Section(_), Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
             // Demolish picks in these views as it does in a plan; Paint in the 3D view alone.
             (Sheet::View3D | Sheet::Section(_), Tool::Demolish) | (Sheet::View3D, Tool::Paint | Tool::Unpaint) => {}
             // Shape Editing works on the floor's top in the 3D view too.

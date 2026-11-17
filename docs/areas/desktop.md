@@ -503,6 +503,12 @@ view goes back where it was (`section_box::Was`: closed, its tab at its place, o
 window ends the link. The selection is the model's, so the plan and the 3D view share it already. The plan's own Section Box flag reads the
 project's box, never the link's, so a plan that follows the box and a 3D view that follows the plan never chase each other.
 
+Extrusion roof **Edit Profile** uses the same 3D sketch interaction in an upright frame (`workplane::roof_profile`).
+`sketch3d::Surface` distinguishes world-XY boundary coordinates from the profile's local along/up coordinates. It maps
+profile picks with `Camera::on` and `Frame::coordinates`, and draws with `Frame::point`. The view initially faces the
+profile so rotated roofs are immediately editable. Finish calls existing `modify`, with one history step; Cancel leaves
+the model unchanged. [Scope, properties and tests](levels-walls-roofs.md).
+
 Sketching in 3D (`sketch3d.rs`). Edit Boundary on a floor, ceiling, roof by footprint or shaft selected in the 3D view keeps the
 sketch there, as Revit does: the lines are drawn over the picture on the element's own plane, `Model::sketch_plane` (a floor's
 top, sloped with it; a ceiling's underside; a roof's base; a shaft's bottom), and `Sketch::plan` is
@@ -722,6 +728,9 @@ pattern geometry (including font outlines) and can follow a curve. The creator s
 Cancel, so OK/Apply remains one undoable Line Styles transaction. See [views and graphics](views-and-graphics.md) for the
 seven segment kinds, paper units, text fitting and centerline semantics.
 
+The following interaction details describe plan dimensions; [vertical drawing tools](#drawing-tools-in-sections-and-elevations)
+have their own supported references and restrictions.
+
 Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
 them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
 it ends (`canvas::dimension_pick`), marked with a square; a click on a reference already picked takes it out, Backspace the last, and Esc starts the chain over; after two, a click away places the dimension the Options Bar's Place says (Auto,
@@ -789,6 +798,17 @@ there is nothing to snap to. Show grids only controls display: snapping can rema
 constraints keep priority; grid snapping replaces the free-point fallback and automatic angle guides. Sections and
 elevations snap annotation placement in their local horizontal/height coordinates. Model validation rejects invalid
 spacing, divisions, pens or rotation, and commands roll back the whole edit.
+
+## Drawing tools in sections and elevations
+
+Aligned/Linear Dimension picks levels, grids perpendicular to the view line, and that view's detail-line references or endpoints. Pick references, then click away to place; Space cycles placement modes. Dimension types and instance text use the existing Properties controls. These dimensions follow their references but do not drive geometry, lock it or impose equality yet. Wall/mesh silhouettes, oblique grids and datum display endpoints are not dimension references in this first slice.
+
+Detail Line draws in along/up coordinates with the existing Draw shapes (Pick Lines and Fillet are not yet available). Move uses a base and destination, Shift/Constrain and typed lengths. It moves annotations only within their owning view, straight-wall openings along the host and in height, and unhosted non-adaptive components in world coordinates. Unsupported categories or motion off an opening's host refuse the whole command. Trim/Extend Corner and Single/Multiple work on the view's detail lines through the same core operations as plan tools. Failed Trim retains its first pick. Escape and view switching cancel partial input. A point snaps to a reference near the cursor, else to the background grid when
+grid snapping is on, else to the nearest 10 mm, grid snapping off or not.
+
+Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids, by:[along,up]}`; all other mutations retain existing commands. A vertical dimension's `level` anchor is its view GUID, also stored in `view`. Format 21 prevents older readers from resolving it as a plan dimension or dropping it. Format 20 needs no data conversion.
+
+Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
 
 ## Benchmarking the window
 
