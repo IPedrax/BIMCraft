@@ -24,11 +24,11 @@ use crate::massing;
 use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind, Level, Line,
-    Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
-    ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, Railing,
-    RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section,
-    SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind,
+    Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
+    PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE,
+    RAMP_WIDTH, Railing, RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule,
+    Scope, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -1431,6 +1431,26 @@ other_files(
         duplicate_view,
     ),
     edit(
+        "underlay",
+        "Underlay",
+        &[],
+        "{view, source?: view | null, on?, color?: \"#rrggbb\" | [r, g, b], fills?, hide_annotation?, front?, offset?: [x, y], \
+         move?: [dx, dy], angle?, rotate?: degrees, about?: [x, y], reset?} another view drawn under plan, section or elevation \
+         `view`, as Archicad's Trace & Reference: any plan (a level's or a plan view), section or elevation but itself, as its own \
+         view range, graphics and crop draw it, in one colour (`color`, orange until given another), never picked, only snapped \
+         to. `source` picks it (by name or id) and turns it on; null takes the underlay off the view; `on` false hides it and \
+         keeps its settings. `fills` (true) draws its fills and patterns in a light wash of its colour; `hide_annotation` (true) \
+         leaves out its dimensions, tags, notes, grids, levels and other annotation; `front` draws it over the view instead of \
+         under it. It is fitted by the internal origin (in a section, where it falls along the line, at height 0); `offset` \
+         (mm, in the view's own axes: a plan's east and north, a section's along and up) and `angle` (degrees \
+         counter-clockwise) set where it is, `move` moves it by as much again, `rotate` turns it by that many degrees about \
+         `about` (the internal origin's place without one), and `reset` puts it back on the internal origin. The underlay is \
+         the view's, saved with it, and a duplicate of the view has it too. It is not Revit's Underlay (a plan's range of \
+         levels), and a working aid: it is not printed, exported or put on sheets. Without any of these it only says what the \
+         view has",
+        underlay_cmd,
+    ),
+    edit(
         "scale",
         "View Scale",
         &[],
@@ -1919,7 +1939,9 @@ other_files(
          `start` to `end` it is drawn as and `up`, its other direction (normal (end - start) × up; its axes x along the line, y \
          up made square to it, its origin the point of it nearest the family's origin); names are unique, each of left \
          through top is one plane's or line's, and `defines_origin` (one plane square to each of x, y and z; the datums \
-         until another takes it) is kept but doesn't move the origin yet. `ref_lines` are reference lines drawn on a `host` \
+         until another takes it) makes where those planes cross the insertion point the family is placed by, its forms left \
+         where they are and what is placed of it (components, nested instances, doors and windows) moved so it stays put. \
+         `ref_lines` are reference lines drawn on a `host` \
          (lying on it), each with four planes a form may be drawn on: `horizontal` (its host's, through it), `vertical` \
          (square to that through it), `start` and `end` (square to it at each end), their origin its start (`end`'s its \
          end). A line or a plane may carry a `pivot` (F7d; `ref_line`/`ref_plane` patch it, `null` takes it off): it keeps \
@@ -2014,9 +2036,13 @@ other_files(
         "flip",
         "Flip",
         &[],
-        "{ids: [wall | stair,…]} turns walls round about their location lines, as Revit's flip arrows do: their exterior sides go to the \
-         other side, their doors and windows stay where they are. A stair climbs the other way: from where its top was, down the \
-         same runs, landings and winders, to where its foot was",
+        "{ids: [wall | stair | door | window, …], hand?, facing?, cycle?} turns walls round about their location lines, as Revit's \
+         flip arrows do: their exterior sides go to the other side, their doors and windows stay where they are. A stair climbs the \
+         other way: from where its top was, down the same runs, landings and winders, to where its foot was. A door or a window in \
+         `ids` turns over as `hand` (the hinge) or `facing` (the side it opens to or faces) says, or by `cycle`: `hand` steps a \
+         door's four Opens positions, `facing` turns its face, `auto` turns each opening by what it can flip (a swing door's hand, a \
+         window's face); a sliding or fixed door flips nothing. One call is one Undo step. Returns {flipped: [id,…], states: {id: \
+         {hand, facing}}}",
         flip,
     ),
     edit(
@@ -3412,11 +3438,16 @@ pub(crate) fn num(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> 
 }
 
 pub(crate) fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
+    Ok(optional_flag(c, p, key)?.unwrap_or(false))
+}
+
+/// [`flag`], or `None` where it isn't given.
+pub(crate) fn optional_flag(c: &str, p: &Value, key: &str) -> Result<Option<bool>, String> {
     match p.get(key) {
-        v if absent(v) => Ok(false),
-        Some(Value::Bool(b)) => Ok(*b),
+        v if absent(v) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
         Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
-        None => Ok(false),
+        None => Ok(None),
     }
 }
 
@@ -5244,6 +5275,9 @@ fn family_preview(s: &mut Session, p: &Value) -> R {
         if !box_[0].is_finite() || box_[2] < box_[0] || box_[3] < box_[1] {
             box_ = [-1000.0, -1000.0, 1000.0, 1000.0];
         }
+        // The component stands by its insertion point, its family's origin, at the project's (O1).
+        let [ox, oy, _] = family.origin();
+        box_ = [box_[0] - ox, box_[1] - oy, box_[2] - ox, box_[3] - oy];
         let pad = 500.0;
         let (x0, y0, x1, y1) = (box_[0] - pad, box_[1] - pad, box_[2] + pad, box_[3] + pad);
         made(scratch.execute("floor", &json!({"boundary": [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]})), "a floor under it")?;
@@ -5313,7 +5347,8 @@ fn render_view(s: &mut Session, p: &Value) -> R {
     if let Some(three) = three_d {
         let (azimuth, elevation) = (num(c, p, "azimuth")?.unwrap_or(view3d::AZIMUTH), num(c, p, "elevation")?.unwrap_or(view3d::ELEVATION));
         let scene = view3d::Scene::new(m);
-        let look = Look::of_3d(m);
+        // As the view asked for says: what it hides, its filters and template, its section box.
+        let look = Look::of_3d_view(m, three);
         // Through the view's lens, if it's in perspective, and from as high as the eye is put.
         let held = three.and_then(|v| match m.elements.get(v) {
             Some(Element::View3D(v3)) => Some(v3.clone()),
@@ -5336,7 +5371,7 @@ fn render_view(s: &mut Session, p: &Value) -> R {
         let mut image = scene.render_in(&cam, &[], &look);
         // What its section box cuts, filled.
         if look.section_box().is_some() {
-            image.capped(&cam, &view3d::CapSource::new(m).caps_in(m, m.default_3d(), &look), &[], &look);
+            image.capped(&cam, &view3d::CapSource::new(m).caps_in(m, three, &look), &[], &look);
         }
         // Its dimensions, over the picture.
         if let Some(v) = three {
@@ -11100,18 +11135,84 @@ fn location_names(n: &str) -> String {
     format!("`location` is one of {}, not `{n}`", names.join(", "))
 }
 
+/// Which way `flip` turns an opening: the hand cycle, the face, or each opening's own rule.
+#[derive(Clone, Copy)]
+enum Cycle {
+    Hand,
+    Facing,
+    Auto,
+}
+
+/// `cycle`, one of `hand`, `facing` or `auto`: relative on, or each opening by what it can flip.
+fn cycle_param(c: &str, p: &Value) -> Result<Option<Cycle>, String> {
+    let Some(name) = string(c, p, "cycle")? else { return Ok(None) };
+    match name.trim() {
+        "hand" => Ok(Some(Cycle::Hand)),
+        "facing" => Ok(Some(Cycle::Facing)),
+        "auto" => Ok(Some(Cycle::Auto)),
+        other => Err(bad(c, format!("`cycle` is one of `hand`, `facing` or `auto`, not `{other}`"))),
+    }
+}
+
+/// Why an opening can't flip `flag`, and what it can flip instead.
+fn unsupported(name: &str, id: Id, flag: &str, flips: Flips) -> String {
+    let can = match flips {
+        Flips { hand: true, facing: true } => "`hand` and `facing`",
+        Flips { hand: false, facing: true } => "`facing`",
+        Flips { hand: true, facing: false } => "`hand`",
+        _ => "nothing",
+    };
+    format!("{name} {id} can't flip `{flag}`: it can flip {can}")
+}
+
 /// Walls turned round about their location lines: they run the other way, so their exterior sides
 /// go to the other side; their doors and windows stay where they are, swinging and hinged as they were.
+/// Doors and windows in `ids` are turned over as `hand`, `facing` or `cycle` say.
 fn flip(s: &mut Session, p: &Value) -> R {
     let c = "flip";
+    only(c, p, &["ids", "hand", "facing", "cycle"])?;
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    let hand = optional_flag(c, p, "hand")?;
+    let facing = optional_flag(c, p, "facing")?;
+    let cycle = cycle_param(c, p)?;
+    if cycle.is_some() && (hand.is_some() || facing.is_some()) {
+        return Err(bad(c, "`cycle` turns an opening by its own rule, so it takes neither `hand` nor `facing`"));
+    }
     let stair = |id: &Id| matches!(m.elements.get(id), Some(Element::Stair(_)));
-    if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none() && !stair(id)) {
-        return Err(bad(c, format!("{} {id} isn't a wall or a stair", m.elements.get(id).map_or("element", Element::category))));
+    let walls: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_some()).collect();
+    let openings: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_none() && !stair(id)).collect();
+    if let Some(id) = openings.iter().find(|id| m.elements.get(**id).is_none_or(|e| m.opening_flips(e).is_none())) {
+        let what = m.elements.get(*id).map_or("nothing", Element::category);
+        return Err(bad(c, format!("{what} {id} isn't a wall, a stair, a door or a window")));
+    }
+    // What each opening can turn: a flag it doesn't have is refused, and one given without `cycle` needs its own.
+    let mut capable: BTreeMap<Id, Flips> = BTreeMap::new();
+    for &id in &openings {
+        let Some(e) = m.elements.get(id) else { continue };
+        let flips = m.opening_flips(e).unwrap_or_default();
+        let name = e.category();
+        if cycle.is_none() && hand.is_none() && facing.is_none() {
+            return Err(bad(c, format!("{name} {id}: give `hand`, `facing` or `cycle` to flip it")));
+        }
+        if hand.is_some() && !flips.hand {
+            return Err(bad(c, unsupported(name, id, "hand", flips)));
+        }
+        if facing.is_some() && !flips.facing {
+            return Err(bad(c, unsupported(name, id, "facing", flips)));
+        }
+        match cycle {
+            Some(Cycle::Hand) if !flips.hand => return Err(bad(c, unsupported(name, id, "hand", flips))),
+            Some(Cycle::Facing) if !flips.facing => return Err(bad(c, unsupported(name, id, "facing", flips))),
+            _ => {}
+        }
+        capable.insert(id, flips);
+    }
+    if ids.is_empty() {
+        return Ok(json!({"flipped": [], "states": {}}));
     }
     // A flipped wall's doors and windows turn round with it: a pinned one stops it.
-    let guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    let guids: BTreeSet<Guid> = walls.iter().map(|id| m.guid(*id)).collect();
     let mut blocked = ids.clone();
     blocked.extend(hosted_openings(m, &guids));
     refuse_pinned(c, m, &blocked, "flip")?;
@@ -11123,22 +11224,26 @@ fn flip(s: &mut Session, p: &Value) -> R {
             _ => None,
         })
         .collect();
+    let explicit: BTreeSet<Id> = openings.iter().copied().collect();
     let m = s.model_mut();
     for (id, st) in flipped {
         if let Some(Element::Stair(old)) = m.elements.get_mut(id) {
             *old = st;
         }
     }
-    let lengths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
+    let lengths: BTreeMap<Guid, f64> = walls.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
     for (id, e) in m.elements.iter_mut() {
         match e {
-            Element::Wall(w) if ids.contains(id) => {
+            Element::Wall(w) if walls.contains(id) => {
                 std::mem::swap(&mut w.start, &mut w.end);
                 w.arc = -w.arc + 0.0;
             }
             Element::Door(o) | Element::Window(o) if lengths.contains_key(&o.host) => {
                 o.offset = lengths.get(&o.host).copied().unwrap_or_default() - o.offset;
-                (o.flip_facing, o.flip_hand) = (!o.flip_facing, !o.flip_hand);
+                // One listed as well takes its own flip below: the wall moves it, but doesn't turn it.
+                if !explicit.contains(id) {
+                    (o.flip_facing, o.flip_hand) = (!o.flip_facing, !o.flip_hand);
+                }
             }
             // On a side of the flipped wall: the same face, which is now its other side, as far from its other end.
             Element::Component(cp) => {
@@ -11175,7 +11280,41 @@ fn flip(s: &mut Session, p: &Value) -> R {
             }
         }
     }
-    Ok(json!({"flipped": ids}))
+    // The listed openings turn by the rule asked for, their own where `cycle` is `auto`.
+    let mut states = Map::new();
+    for &id in &openings {
+        let Some(Element::Door(o) | Element::Window(o)) = m.elements.get_mut(id) else { continue };
+        let flips = capable.get(&id).copied().unwrap_or_default();
+        match cycle {
+            Some(Cycle::Auto) => {
+                if flips.hand {
+                    let was = o.flip_hand;
+                    o.flip_hand = !was;
+                    if flips.facing {
+                        o.flip_facing ^= was;
+                    }
+                } else if flips.facing {
+                    o.flip_facing = !o.flip_facing;
+                }
+            }
+            Some(Cycle::Hand) => {
+                let was = o.flip_hand;
+                o.flip_hand = !was;
+                o.flip_facing ^= was;
+            }
+            Some(Cycle::Facing) => o.flip_facing = !o.flip_facing,
+            None => {
+                if let Some(hand) = hand {
+                    o.flip_hand = hand;
+                }
+                if let Some(facing) = facing {
+                    o.flip_facing = facing;
+                }
+            }
+        }
+        states.insert(id.to_string(), json!({"hand": o.flip_hand, "facing": o.flip_facing}));
+    }
+    Ok(json!({"flipped": ids, "states": states}))
 }
 
 fn door(s: &mut Session, p: &Value) -> R {
@@ -14246,6 +14385,7 @@ fn section(s: &mut Session, p: &Value) -> R {
         reference: None,
         mark: None,
         graphics: Graphics::default(),
+        underlay: None,
     }));
     Ok(json!({"id": id, "name": name}))
 }
@@ -14310,6 +14450,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
             reference: Some([line.0, line.1]),
             mark: None,
             graphics: Graphics::default(),
+            underlay: None,
         };
         let id = s.model_mut().insert(Element::Elevation(v));
         return Ok(json!({"id": id, "name": name, "at": mid, "reference": [line.0, line.1]}));
@@ -14353,6 +14494,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
                     reference: None,
                     mark: None,
                     graphics: Graphics::default(),
+                    underlay: None,
                 })),
                 name,
             )
@@ -14573,6 +14715,8 @@ fn duplicate_view(s: &mut Session, p: &Value) -> R {
         graphics: if dependent { Graphics::default() } else { graphics },
         parent: dependent.then_some(source),
         section_box: section_box && !dependent,
+        // Its underlay as the view's own: a duplicate shows what the source does under it.
+        underlay: crate::underlay::of(m, view).cloned(),
     };
     // With detailing, what is annotated in the source itself (not in its parent) is copied into the new view.
     let notes: Vec<Element> =
@@ -14612,6 +14756,106 @@ fn not_dependent(c: &str, m: &Model, view: impl Key, what: &str) -> Result<(), S
         )),
         None => Ok(()),
     }
+}
+
+fn underlay_cmd(s: &mut Session, p: &Value) -> R {
+    use crate::underlay::{self, Underlay};
+    let c = "underlay";
+    only(
+        c,
+        p,
+        &["view", "source", "on", "color", "fills", "hide_annotation", "front", "offset", "move", "angle", "rotate", "about", "reset"],
+    )?;
+    let m = &s.model;
+    let view = view_param(c, m, p, false)?;
+    if underlay::kind(m, view).is_none() {
+        return Err(bad(c, format!("{} isn't a plan, a section or an elevation; only those show an underlay", view_title(m, view))));
+    }
+    let mut u = underlay::of(m, view).cloned();
+    match p.get("source") {
+        None => {}
+        Some(Value::Null) => u = None,
+        Some(v) => {
+            let source = view_param(c, m, &json!({"view": v}), false)?;
+            if source == view {
+                return Err(bad(c, format!("{} can't be its own underlay: pick another view", view_title(m, view))));
+            }
+            if underlay::kind(m, source).is_none() {
+                return Err(bad(c, format!("{} isn't a plan, a section or an elevation, which an underlay is", view_title(m, source))));
+            }
+            let g = m.guid(source);
+            match &mut u {
+                Some(u) => {
+                    u.view = g;
+                    u.on = true;
+                }
+                None => u = Some(Underlay::of(g)),
+            }
+        }
+    }
+    let settings = ["on", "color", "fills", "hide_annotation", "front", "offset", "move", "angle", "rotate", "about", "reset"];
+    if let Some(key) = settings.iter().find(|k| !absent(p.get(**k))) {
+        let Some(u) = u.as_mut() else {
+            return Err(bad(c, format!("{} has no underlay to set `{key}` of: give it a `source` first", view_title(m, view))));
+        };
+        if !absent(p.get("on")) {
+            u.on = flag(c, p, "on")?;
+        }
+        if let Some(v) = p.get("color").filter(|v| !v.is_null()) {
+            u.color = colour(v).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {v}")))?;
+        }
+        u.fills = flag_or(c, p, "fills", u.fills)?;
+        u.hide_annotation = flag_or(c, p, "hide_annotation", u.hide_annotation)?;
+        u.front = flag_or(c, p, "front", u.front)?;
+        if flag(c, p, "reset")? {
+            u.offset = P2(0.0, 0.0);
+            u.angle = 0.0;
+        }
+        if let Some(o) = point_opt(c, p, "offset")? {
+            u.offset = micron(o);
+        }
+        if let Some(a) = num(c, p, "angle")? {
+            u.angle = underlay::normal(a);
+        }
+        if let Some(d) = point_opt(c, p, "move")? {
+            let o = u.offset + d;
+            if o.0.abs() > MAX_COORD || o.1.abs() > MAX_COORD {
+                return Err(bad(c, format!("moved by {d:?} the underlay would lie out of reach (within {MAX_COORD} mm each way)")));
+            }
+            u.offset = micron(o);
+        }
+        match (num(c, p, "rotate")?, point_opt(c, p, "about")?) {
+            (Some(by), about) => {
+                let about = match about {
+                    Some(a) => a,
+                    None => underlay::origin(m, view).unwrap_or_default(),
+                };
+                u.turned(by, about);
+                u.offset = micron(u.offset);
+                if u.offset.0.abs() > MAX_COORD || u.offset.1.abs() > MAX_COORD {
+                    return Err(bad(c, "turned so, the underlay would lie out of reach: turn it about a nearer point"));
+                }
+            }
+            (None, Some(_)) => return Err(bad(c, "`about` is the point `rotate` turns about: give `rotate` too")),
+            (None, None) => {}
+        }
+    }
+    if underlay::of(m, view) != u.as_ref()
+        && let Some(slot) = s.model_mut().elements.get_mut(view).and_then(underlay::slot)
+    {
+        *slot = u;
+    }
+    let m = &s.model;
+    let said = underlay::of(m, view).map(|u| {
+        let source = m.elements.id(u.view);
+        json!({
+            "source": source, "source_name": source.and_then(|v| m.view_name(v)), "on": u.on,
+            "color": format!("#{:02x}{:02x}{:02x}", u.color[0], u.color[1], u.color[2]),
+            "fills": u.fills, "hide_annotation": u.hide_annotation, "front": u.front,
+            "offset": u.offset, "angle": u.angle, "missing": underlay::missing(m, view),
+        })
+    });
+    Ok(json!({"view": view, "name": m.view_name(view), "underlay": said}))
 }
 
 fn view_scale(s: &mut Session, p: &Value) -> R {
@@ -15898,6 +16142,8 @@ fn nested_edits(c: &str, name: &str, f: &mut crate::family::Family, p: &Value, p
 
 /// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
 pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
+    // What stands of the family was placed against its origin as it was: kept, so it stays put where the origin moves (O1).
+    incoming.placed_origin = old.placed_origin;
     let compatible = |p: &crate::family::Parameter| {
         old.parameters.iter().find(|q| {
             q.name == p.name
@@ -19808,10 +20054,11 @@ fn split(s: &mut Session, p: &Value) -> R {
             continue;
         }
         let half = m.opening_type(e).map_or(0.0, |t| t.width / 2.0);
-        if o.offset + half <= along + TOL {
+        let (middle, _) = m.opening_middle(o);
+        if middle + half <= along + TOL {
             continue;
         }
-        if o.offset - half < along - TOL {
+        if middle - half < along - TOL {
             return Err(bad(c, format!("{} {oid} is in the way; split elsewhere", e.category())));
         }
         later.push(oid);
@@ -20433,10 +20680,10 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         .chain(["planview", "section", "elevation", "view3d"].into_iter().flat_map(|cat| lookup.rare(cat)))
         .filter(|id| !gone.contains(&m.guid(*id)))
         .filter(|id| {
-            m.elements
-                .get(*id)
-                .and_then(graphics::graphics_of_element)
+            let e = m.elements.get(*id);
+            e.and_then(graphics::graphics_of_element)
                 .is_some_and(|g| g.elements.keys().any(|id| gone.contains(id)) || g.linework.iter().any(|l| gone.contains(&l.element)))
+                || e.and_then(crate::underlay::of_element).is_some_and(|u| gone.contains(&u.view))
         })
         .collect();
     let m = s.model_mut();
@@ -20449,6 +20696,12 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         if let Some(g) = m.elements.get_mut(id).and_then(graphics::graphics_mut) {
             g.elements.retain(|id, _| !gone.contains(id));
             g.linework.retain(|l| !gone.contains(&l.element));
+        }
+        // A view whose underlay's view goes shows none.
+        if let Some(slot) = m.elements.get_mut(id).and_then(crate::underlay::slot)
+            && slot.as_ref().is_some_and(|u| gone.contains(&u.view))
+        {
+            *slot = None;
         }
     }
     for (id, d) in kept {
@@ -20609,6 +20862,11 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for g in m.elements.values_mut().filter_map(graphics::graphics_mut) {
         g.elements.retain(|id, _| !gone.contains(id));
         g.linework.retain(|l| !gone.contains(&l.element));
+    }
+    for slot in m.elements.values_mut().filter_map(crate::underlay::slot) {
+        if slot.as_ref().is_some_and(|u| gone.contains(&u.view)) {
+            *slot = None;
+        }
     }
     for (id, d) in kept {
         m.elements.insert(id, Element::Dimension(d));

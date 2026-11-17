@@ -118,6 +118,8 @@ enum Act {
     /// A type's Select All Instances submenu, followed by its chosen scope.
     Instances(serde_json::Value),
     SelectInstances(serde_json::Value, crate::context::InstanceScope),
+    /// Show as Underlay: the view under the one on screen.
+    Underlay(Id),
 }
 
 /// An entry of the tree, or a group of them.
@@ -408,6 +410,7 @@ impl BimApp {
                 self.set_tool(Tool::Component);
             }
             Some(Act::Duplicate(view, mode)) => self.duplicate_view_of(view, mode),
+            Some(Act::Underlay(source)) => self.show_as_underlay(source),
             Some(Act::Delete(ids)) => {
                 self.delete_elements(ids);
             }
@@ -589,6 +592,9 @@ impl BimApp {
             if view {
                 menu.push(("Delete", Act::Delete(vec![id])));
             }
+            if self.underlay_target().is_some_and(|on| on != id) {
+                menu.push((msg!("Show as Underlay"), Act::Underlay(id)));
+            }
             self.view_leaf(name, sheet).with_menu(menu)
         };
         let plans = keyed.iter().map(|(id, name, view)| plan_leaf(*id, name, *view, Sheet::Plan(*id))).collect();
@@ -619,7 +625,15 @@ impl BimApp {
         {
             let views = views(category);
             if !views.is_empty() {
-                kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| self.view_leaf(name, Sheet::Section(*id))).collect()));
+                let leaf = |id: Id, name: &str| {
+                    let node = self.view_leaf(name, Sheet::Section(id));
+                    if self.underlay_target().is_some_and(|on| on != id) {
+                        node.with_menu(vec![(msg!("Show as Underlay"), Act::Underlay(id))])
+                    } else {
+                        node
+                    }
+                };
+                kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| leaf(*id, name)).collect()));
             }
         }
         Node::group(t("Views (all)"), true, kids)

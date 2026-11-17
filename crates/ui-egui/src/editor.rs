@@ -12,6 +12,7 @@ mod extrusion;
 pub(crate) mod lit3d;
 mod nested;
 pub(crate) mod options;
+mod origin_mark;
 mod pivot;
 pub(crate) mod sketch;
 pub(crate) mod tabs;
@@ -865,21 +866,39 @@ impl FamilyEditor {
                 .insert(GHOST.into(), bimcraft_core::model::Material { color: [150, 150, 150], transparency: 65, ..Default::default() });
             m.families.insert(name.to_string(), family.clone());
         }
-        let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p).map(|_| ());
+        let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p);
+        // Its forms stand where its planes are drawn: its insertion point at its origin (O1).
+        let [x, y, z] = family.origin();
         if family.category.hosted() {
-            place(&mut s, "wall", json!({"points": [[-2500, 0], [2500, 0]]}))?;
+            // Its origin in the middle of the wall, which fixes it across, and on the wall's base, a sill of 0 up it.
+            place(&mut s, "wall", json!({"points": [[-2500, y], [2500, y]], "base_offset": z}))?;
             // A window's sill on Ref. Level: its forms are drawn in axes whose z is up from the sill, as its planes are.
             let kind = if family.category == Category::Door { "door" } else { "window" };
-            let mut p = json!({"at": [0, 0], "family": name, "type": type_name});
+            let mut p = json!({"at": [x, y], "family": name, "type": type_name});
             if kind == "window" {
                 p["sill"] = json!(0);
             }
             place(&mut s, kind, p)?;
         } else {
-            place(&mut s, "component", json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params}))?;
+            let mut p = json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params});
+            at_origin(family, &mut p);
+            place(&mut s, "component", p)?;
         }
         Ok(Arc::unwrap_or_clone(s.model))
     }
+}
+
+/// `place`, the `component` command's parameters putting family `f`'s axes' zero at its `at` and `offset` (none: its Default
+/// Elevation) in the document's scratch project, moved so the family's insertion point, its origin, is where its origin is
+/// drawn (O1): so its forms stand where its planes are.
+pub(super) fn at_origin(f: &Family, place: &mut Value) {
+    let [x, y, z] = f.origin();
+    if [x, y, z] == [0.0; 3] {
+        return;
+    }
+    let at = |k: usize| place["at"][k].as_f64().unwrap_or(0.0);
+    let offset = place["offset"].as_f64().unwrap_or(if f.work_plane_based { 0.0 } else { f.default_elevation });
+    (place["at"], place["offset"]) = (json!([at(0) + x, at(1) + y]), json!(offset + z));
 }
 
 /// The material the preview draws a ghosted form in: grey and see-through. The scratch project's own, never the family's.

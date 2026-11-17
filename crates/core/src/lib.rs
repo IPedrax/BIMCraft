@@ -20,6 +20,8 @@ pub mod cad;
 #[cfg(test)]
 mod cad_tests;
 #[cfg(test)]
+mod camera_view_tests;
+#[cfg(test)]
 mod circuit_tests;
 pub mod classification;
 #[cfg(test)]
@@ -110,6 +112,8 @@ mod file_tests;
 pub mod files;
 pub mod fills;
 mod fixtures;
+#[cfg(test)]
+mod flip_tests;
 mod font;
 #[cfg(test)]
 mod formula_visibility_tests;
@@ -163,6 +167,8 @@ mod opening_subcategory_tests;
 mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
+#[cfg(test)]
+mod origin_tests;
 pub mod paint;
 pub mod panel_schedule;
 #[cfg(test)]
@@ -249,6 +255,9 @@ pub mod titleblock;
 mod titleblock_tests;
 pub mod triad;
 pub mod triangulation;
+pub mod underlay;
+#[cfg(test)]
+mod underlay_tests;
 pub mod units;
 pub mod view3d;
 #[cfg(test)]

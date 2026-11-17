@@ -18275,6 +18275,132 @@ msgstr ""
 msgid "{} m/s"
 msgstr ""
 
+#: crates/ui-egui/src/underlay.rs:313 crates/ui-egui/src/underlay.rs:372
+msgid "<Missing>"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:463
+msgid "A working aid: an underlay is not printed or exported."
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:423
+msgid "Annotation"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:431
+msgid "Behind the view"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6520
+msgid "Click a wall to place the door. Space flips the hinge; the pointer's side of the wall sets the swing."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6523
+msgid "Click a wall to place the window. Space flips its face; the pointer's side sets which face is out."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:922
+#: crates/ui-egui/src/editor/document.rs:925
+msgid "Defines Origin"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:322
+msgid "Edit Underlay Settings"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:425
+msgid "Hide annotation"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:434
+msgid "In front of the view"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:243
+msgid "Move Underlay: click a point to move it from (Esc to stop)"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:244
+msgid "Move Underlay: click where that point goes"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:441
+msgid "Move the underlay by two points picked in the view"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:456
+msgid "Moved {}, {}; turned {}°"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:447
+msgid "Reset Position"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:246
+msgid "Rotate Underlay: click a point on the line to turn from"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:247
+msgid "Rotate Underlay: click a point on the line to turn to"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:245
+msgid "Rotate Underlay: click the centre of rotation (Esc to stop)"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:301 crates/ui-egui/src/underlay.rs:304
+#: crates/ui-egui/src/underlay.rs:362 crates/ui-egui/src/underlay.rs:365
+msgid "Show Underlay"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:303
+msgid "Show another view under this one"
+msgstr ""
+
+#: crates/ui-egui/src/browser.rs:597 crates/ui-egui/src/browser.rs:632
+msgid "Show as Underlay"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:419
+msgid "Show fills and patterns"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6510
+msgid "Space flips the hand or facing; the flip controls on the plan do the same."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6512
+msgid "This door has no swing to flip."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6518
+msgid "This door has no swing to flip. Click a wall to place it."
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:444
+msgid "Turn the underlay about a point picked in the view"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:290
+msgid "Underlay"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:320
+msgid "Underlay Settings"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:2905
+msgid "Underlay Settings is for a plan, a section or an elevation"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:356
+msgid "Underlay Settings: {}"
+msgstr ""
+
+#: crates/ui-egui/src/underlay.rs:311
+msgid "Underlay View"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Ein leerer Wert ist der der Familie, wie ihn die Registerkarte Parameter führt."

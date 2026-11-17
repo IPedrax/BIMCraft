@@ -1074,6 +1074,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
         "Player",
         "Run Script",
         "New Script",
+        "Underlay Settings",
     ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
@@ -7591,6 +7592,7 @@ mod assistant;
 mod autosave;
 mod browser;
 mod cad;
+mod camera_views;
 mod chinese;
 mod classification;
 mod clouds;
@@ -7664,6 +7666,7 @@ mod triad;
 mod trim;
 mod typed;
 mod typeprops;
+mod underlay;
 mod view_controls;
 mod window;
 mod work_plane_based;
@@ -8671,6 +8674,7 @@ mod family_document;
 mod family_exit;
 mod family_nav3d;
 mod family_open;
+mod family_origin;
 mod family_pivots;
 mod family_properties;
 mod family_sketch;
