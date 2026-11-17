@@ -200,16 +200,20 @@ fn save_as_template_writes_a_bimt_lists_it_and_the_project_keeps_its_own_file() 
 fn templates_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_TEMPLATES_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
-    let dir = tempfile::tempdir().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    // In a folder of a person's name, as the labels show a folder for a name two templates share.
+    let dir = temp.path().join("Templates");
+    std::fs::create_dir_all(&dir).unwrap();
+    let dir = dir.as_path();
     let names = ["Residential", "Office", "Structure", "MEP", "Interiors", "Site", "Landscape", "School", "Hospital", "Retail"];
-    let mut paths: Vec<PathBuf> = names.iter().map(|n| template(dir.path(), &format!("{n}.bimt"), 1)).collect();
-    paths.push(template(dir.path(), "Warehouse.bimt", 1));
-    let other = dir.path().join("other");
+    let mut paths: Vec<PathBuf> = names.iter().map(|n| template(dir, &format!("{n}.bimt"), 1)).collect();
+    paths.push(template(dir, "Warehouse.bimt", 1));
+    let other = temp.path().join("Shared");
     std::fs::create_dir_all(&other).unwrap();
     paths.push(template(&other, "Office.bimt", 1));
     let refs: Vec<&Path> = paths.iter().map(PathBuf::as_path).collect();
     for (look, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-light-canvas", true, true)] {
-        let mut h = with_templates(dir.path(), &refs);
+        let mut h = with_templates(dir, &refs);
         h.state_mut().light_canvas = light_canvas;
         h.ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
         h.run();
