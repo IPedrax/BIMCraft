@@ -217,10 +217,16 @@ Stairs, what they check and why: [an advanced stair tool](../stair-tool-plan.md)
 
 **The electrical settings** (voltages, distribution systems, wire types) are sections of the electrical code too, an entry a
 rule by its name: a code chosen brings its own into the project, and what the project changes goes into the code (see
-[structure and MEP](structure-and-mep.md)). The dialog shows them as the Electrical Settings tables, not in the rules grid.
+[structure and MEP](structure-and-mep.md)). An entry the codes set to null leaves the project, and one they no longer name
+goes back to what a new project has (or away, if a new project has none), unless an element still names it; one taken away
+that a new project has is written as null, so an import doesn't bring it back. Renaming a voltage renames it in the code's
+systems too, and a system naming a voltage the project wouldn't have is refused, as is taking away a voltage a system names
+or a setting an element names (a board's system, a circuit's voltage or wire type). Taken away in an amendment, an entry is
+null there, whoever had it.
+The dialog shows them as the Electrical Settings tables, not in the rules grid.
 
 **How the dialog shows a rule** that is more than a number (`codes/tree.rs`): an object as a small form, a list of plain values
-as a row of fields, a list of rows as a table whose columns are named (an object inside a row spread over columns of its own,
+as a row of fields, a list of rows as a table whose columns are named (an object inside a row, and one inside that, spread over columns of its own,
 the columns a utility explains saying so when pointed at), and rows that hold lists of their own as cards. A section's own
 words (`standard`, `source`, `id`, `name`, `country`, `*_source`, `rule`, `notes`, `not_covered`, `columns`) are not rules: the
 From and Source columns say who and where (a `factor_source` is `factor`'s source), and its notes show as text over the grid.

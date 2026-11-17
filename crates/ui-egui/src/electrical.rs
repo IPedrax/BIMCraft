@@ -297,7 +297,12 @@ pub(crate) fn voltages_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
         for (i, r) in d.voltages.iter_mut().enumerate() {
             let n = (i + 1).to_string();
             text_field(ui, &mut r.name, 180.0, tf("Voltage {} name", &[&n]));
+            let was = r.value.clone();
             number_field(ui, &mut r.value.nominal, 1.0..=100_000.0, " V", tf("Voltage {} nominal", &[&n]));
+            // A band still the 10 per cent around the nominal follows it, so a nominal typed alone is one the project takes.
+            if r.value.nominal != was.nominal && was == Voltage::around(was.nominal) {
+                r.value = Voltage::around(r.value.nominal);
+            }
             number_field(ui, &mut r.value.min, 1.0..=100_000.0, " V", tf("Voltage {} minimum", &[&n]));
             number_field(ui, &mut r.value.max, 1.0..=100_000.0, " V", tf("Voltage {} maximum", &[&n]));
             if delete_button(ui, tf("Delete voltage {}", &[&n])) {

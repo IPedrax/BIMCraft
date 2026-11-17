@@ -702,3 +702,253 @@ fn a_utility_s_method_goes_out_as_xml_and_comes_back_as_it_was() {
     run(&mut other, "building_code_import", json!({"path": path, "set": true}));
     assert_eq!(other.model.resolve_code(e, "building_demand").value, before);
 }
+
+#[test]
+fn setting_the_base_in_force_again_keeps_its_amendments_for_every_base() {
+    let e = Discipline::Electrical;
+    for base in of(e).filter(|c| c.amends.is_empty()) {
+        // The default, chosen by default: an own amendment over it, changed, stays when it is named.
+        let mut s = Session::new();
+        let mut started = run(&mut s, "building_code", json!({"discipline": "electrical", "set": base.code}));
+        if base.code == default_of(e).code {
+            s = Session::new();
+            started = run(&mut s, "building_code", json!({"discipline": "electrical"}));
+        }
+        assert_eq!(started["code"], json!(base.code), "{}", base.code);
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Site", "rules": {"surge": {"follow_current": 50}}}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": base.code}));
+        assert_eq!(s.model.codes.electrical.amendments, vec!["Site".to_string()], "{}", base.code);
+        assert_eq!(s.model.resolve_code(e, "surge").value["follow_current"], json!(50), "{}", base.code);
+        // Each of BIMCraft's amendments over it, as well.
+        for a in of(e).filter(|c| c.amends == base.code) {
+            let mut s = Session::new();
+            run(&mut s, "building_code", json!({"discipline": "electrical", "set": base.code, "amendments": [a.code]}));
+            run(&mut s, "building_code", json!({"discipline": "electrical", "set": base.code}));
+            assert_eq!(s.model.codes.electrical.amendments, vec![a.code.clone()], "{} over {}", a.code, base.code);
+        }
+    }
+}
+
+/// The project's voltages, systems and wire types, by name.
+fn settings(s: &Session) -> [Vec<String>; 3] {
+    let m = &s.model;
+    [m.voltages.keys().cloned().collect(), m.distribution_systems.keys().cloned().collect(), m.wire_types.keys().cloned().collect()]
+}
+
+#[test]
+fn every_setting_the_code_takes_away_leaves_the_project_and_stays_away() {
+    use crate::electrical;
+    let e = Discipline::Electrical;
+    let lists = [
+        ("voltages", electrical::voltages().into_keys().collect::<Vec<_>>()),
+        ("distribution_systems", electrical::distribution_systems().into_keys().collect()),
+        ("wire_types", electrical::wire_types().into_keys().collect()),
+    ];
+    for (i, (key, names)) in lists.iter().enumerate() {
+        for name in names {
+            let mut s = Session::new();
+            let r = s.execute("building_code", &json!({"discipline": "electrical", "rules": {*key: {name.as_str(): null}}}));
+            let supplied = *key == "voltages" && s.model.distribution_systems.values().any(|d| d.voltage_names().any(|v| v == name));
+            if supplied {
+                // A voltage a system supplies is refused, in the code as in the dialog.
+                assert!(r.is_err(), "{key} {name}: {r:?}");
+                assert!(s.model.voltages.contains_key(name));
+                continue;
+            }
+            r.unwrap_or_else(|e| panic!("{key} {name}: {e}"));
+            assert!(!settings(&s)[i].contains(name), "{key} {name} taken away by the code is out of the project");
+            // Out, into a new project: it doesn't come back.
+            let path = dir("away").join(format!("{i}-{}.xml", name.replace(['/', ' ', '°'], "_"))).to_string_lossy().to_string();
+            run(&mut s, "building_code_export", json!({"path": path, "discipline": "electrical", "name": "Away"}));
+            let mut other = Session::new();
+            run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+            assert_eq!(settings(&other), settings(&s), "{key} {name} after export and import");
+            assert_eq!(other.model.resolve_code(e, key).value, s.model.resolve_code(e, key).value);
+        }
+    }
+    // Taken away by the dialog's commands where no code names it: the same.
+    for name in electrical::wire_types().into_keys() {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nec"}));
+        run(&mut s, "wire_type", json!({"name": name, "delete": true}));
+        let path = dir("deleted").join(format!("{}.xml", name.replace(['/', ' ', '°'], "_"))).to_string_lossy().to_string();
+        run(&mut s, "building_code_export", json!({"path": path, "discipline": "electrical", "name": "Deleted"}));
+        let mut other = Session::new();
+        run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+        assert!(!other.model.wire_types.contains_key(&name), "{name} deleted comes back on import");
+    }
+}
+
+#[test]
+fn a_setting_no_code_names_any_more_goes_back_to_what_a_new_project_has() {
+    let e = Discipline::Electrical;
+    for base in of(e).filter(|c| c.amends.is_empty()) {
+        let mut s = Session::new();
+        // One of the project's, then another base: the code no longer names it, so the project no longer has it.
+        run(&mut s, "voltage", json!({"name": "690 V", "nominal": 690}));
+        run(
+            &mut s,
+            "wire_type",
+            json!({"name": "Al X", "material": "aluminium", "temperature": 90, "insulation": "XLPE",
+            "sizes": [{"section": 16, "ampacity": 60}]}),
+        );
+        run(&mut s, "voltage", json!({"name": "230 V", "nominal": 231}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": base.code}));
+        assert!(!s.model.voltages.contains_key("690 V"), "{}", base.code);
+        assert!(!s.model.wire_types.contains_key("Al X"), "{}", base.code);
+        let named = s.model.resolve_code(e, "voltages").value;
+        let want = match named.get("230 V") {
+            Some(v) => serde_json::from_value(v.clone()).unwrap(),
+            None => crate::electrical::voltages()["230 V"].clone(),
+        };
+        assert_eq!(s.model.voltages["230 V"], want, "{}: 230 V as the code or a new project has it", base.code);
+    }
+}
+
+#[test]
+fn a_voltage_renamed_is_renamed_in_the_code_s_systems_too() {
+    let e = Discipline::Electrical;
+    for (name, supplied) in crate::electrical::voltages().into_keys().map(|v| {
+        let s = Session::new();
+        let by: Vec<String> =
+            s.model.distribution_systems.iter().filter(|(_, d)| d.voltage_names().any(|x| *x == v)).map(|(k, _)| k.clone()).collect();
+        (v, by)
+    }) {
+        let mut s = Session::new();
+        let to = format!("{name} new");
+        run(&mut s, "voltage", json!({"name": name, "rename": to}));
+        let code = s.model.resolve_code(e, "distribution_systems").value;
+        for system in &supplied {
+            let names: Vec<String> = s.model.distribution_systems[system].voltage_names().cloned().collect();
+            assert!(names.contains(&to), "{system} in the project names {to}");
+            assert_eq!(code.get(system), Some(&json!(s.model.distribution_systems[system])), "{system} in the code as in the project");
+        }
+        // And another base after it leaves no system naming a voltage the project hasn't.
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410"}));
+        for (k, d) in &s.model.distribution_systems {
+            assert!(d.voltage_names().all(|v| s.model.voltages.contains_key(v)), "{k} after renaming {name}");
+        }
+    }
+}
+
+#[test]
+fn a_system_naming_a_voltage_nobody_has_is_refused() {
+    let mut s = Session::new();
+    let bad = json!({"discipline": "electrical", "rules": {"distribution_systems": {"48 DC": {"phases": 1, "wires": 2, "l_n": "48 V"}}}});
+    assert!(s.execute("building_code", &bad).is_err());
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "rules": {"voltages": {"48 V": {"nominal": 48, "min": 43, "max": 53}}}}),
+    );
+    run(&mut s, "building_code", bad);
+    assert!(s.model.distribution_systems.contains_key("48 DC"));
+    // Its voltage taken away under it: refused.
+    let away = json!({"discipline": "electrical", "rules": {"voltages": {"48 V": null}}});
+    assert!(s.execute("building_code", &away).is_err());
+}
+
+#[test]
+fn a_code_of_the_project_s_holding_a_utility_s_method_is_not_taken_away_while_the_project_is_held_to_it() {
+    let e = Discipline::Electrical;
+    let whole: Vec<&str> = WHOLE.iter().filter(|(d, _)| *d == e).map(|(_, k)| *k).collect();
+    for a in of(e).filter(|c| !c.amends.is_empty() && whole.iter().any(|k| c.sections.contains_key(*k))) {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": a.amends, "amendments": [a.code]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "save": "Ours"}));
+        let before: Vec<Value> = whole.iter().map(|k| json!(s.model.resolve_code(e, k).value)).collect();
+        let r = s.execute("building_code", &json!({"discipline": "electrical", "delete": "Ours"}));
+        assert!(r.is_err(), "{}: {r:?}", a.code);
+        let after: Vec<Value> = whole.iter().map(|k| json!(s.model.resolve_code(e, k).value)).collect();
+        assert_eq!(after, before, "{}: refused, nothing moved", a.code);
+        // Held to another, it goes.
+        run(&mut s, "building_code", json!({"discipline": "electrical", "save": "Ours 2"}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "delete": "Ours"}));
+        assert!(s.model.codes.own.iter().all(|c| c.code != "Ours"), "{}", a.code);
+    }
+}
+
+#[test]
+fn an_amendment_s_few_settings_go_over_the_library_s_on_every_base() {
+    let e = Discipline::Electrical;
+    let lib = |key: &str| library(e, key).and_then(|c| c.section(key)).cloned().unwrap_or_default();
+    for base in of(e).filter(|c| c.amends.is_empty()) {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": base.code}));
+        let before = s.model.resolve_code(e, "wire_types").value;
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]}));
+        let al = json!({"material": "aluminium", "temperature": 90, "insulation": "XLPE", "sizes": [{"section": 16, "ampacity": 60}]});
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Site", "rules": {"wire_types": {"Al X": al}}}));
+        let now = s.model.resolve_code(e, "wire_types").value;
+        assert!(now.contains_key("Al X"), "{}", base.code);
+        for k in before.keys().chain(if base.section("wire_types").is_none() { lib("wire_types") } else { Default::default() }.keys()) {
+            assert!(now.contains_key(k), "{}: {k} is still in force", base.code);
+        }
+    }
+}
+
+#[test]
+fn a_setting_taken_away_in_an_amendment_leaves_the_project_whoever_had_it() {
+    use crate::electrical;
+    let e = Discipline::Electrical;
+    let site = |s: &mut Session| {
+        run(s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410"}));
+        run(s, "building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]}));
+    };
+    // What a new project has, whether the code names it or not.
+    for name in electrical::wire_types().into_keys() {
+        let mut s = Session::new();
+        site(&mut s);
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Site", "rules": {"wire_types": {name.as_str(): null}}}));
+        assert!(!s.model.wire_types.contains_key(&name), "{name}");
+        assert_eq!(s.model.resolve_code(e, "wire_types").value.get(&name), Some(&Value::Null), "{name}");
+    }
+    // The project's own.
+    let mut s = Session::new();
+    site(&mut s);
+    run(&mut s, "voltage", json!({"name": "690 V", "nominal": 690}));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Site", "rules": {"voltages": {"690 V": null}}}));
+    assert!(!s.model.voltages.contains_key("690 V"));
+    assert!(s.model.resolve_code(e, "voltages").value.get("690 V").is_none_or(Value::is_null));
+}
+
+#[test]
+fn a_setting_an_element_names_is_not_taken_away_by_a_code() {
+    for system in crate::electrical::distribution_systems().into_keys() {
+        let mut s = Session::new();
+        let b = run(&mut s, "component", json!({"family": "Distribution Board", "type": "12 circuits", "at": [0, 0]}))["id"].clone();
+        run(&mut s, "panel", json!({"id": b, "distribution": system}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]}));
+        for p in [
+            json!({"discipline": "electrical", "rules": {"distribution_systems": {system.as_str(): null}}}),
+            json!({"discipline": "electrical", "amend": "Site", "rules": {"distribution_systems": {system.as_str(): null}}}),
+        ] {
+            let codes = s.model.codes.clone();
+            assert!(s.execute("building_code", &p).is_err(), "{p}");
+            assert_eq!(s.model.codes, codes, "{p}: refused, nothing changed");
+            assert!(s.model.distribution_systems.contains_key(&system));
+        }
+    }
+}
+
+#[test]
+fn a_system_naming_a_voltage_an_older_project_took_away_is_refused() {
+    let e = Discipline::Electrical;
+    let mut s = Session::new();
+    run(&mut s, "distribution_system", json!({"name": "127/220 V", "delete": true}));
+    run(&mut s, "voltage", json!({"name": "127 V", "delete": true}));
+    // Saved before a starter's entry taken away was written down: the project lacks it, and its code says nothing.
+    let mut codes = (*s.model.codes).clone();
+    for key in crate::electrical::SECTIONS {
+        if let Some(c) = codes.choice_mut(e).changes.get_mut(key) {
+            c.retain(|_, v| !v.is_null());
+        }
+    }
+    codes.choice_mut(e).changes.retain(|_, c| !c.is_empty());
+    s.model_mut().codes = crate::shared::Shared::new(codes);
+    let system =
+        json!({"discipline": "electrical", "rules": {"distribution_systems": {"127 DC": {"phases": 1, "wires": 2, "l_n": "127 V"}}}});
+    assert!(s.execute("building_code", &system).is_err());
+    assert!(!s.model.distribution_systems.contains_key("127 DC"));
+}

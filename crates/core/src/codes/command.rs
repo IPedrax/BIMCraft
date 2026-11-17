@@ -246,11 +246,13 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
     let amend = string(c, p, "amend")?;
 
     let mut next = now.clone();
+    // The base in force: the one chosen, or the default where none is.
+    let base = now.base(d).code.clone();
     {
         let choice = next.choice_mut(d);
         if let Some(set) = &set {
             // Another base brings its own amendments; any `set` brings its rules, unless the project's are kept.
-            if choice.code.as_ref() != Some(set) && amendments.is_none() {
+            if base != *set && amendments.is_none() {
                 choice.amendments.clear();
             }
             choice.code = Some(set.clone());
@@ -350,9 +352,20 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         } else {
             Vec::new()
         };
-        let gone = next.own.remove(i);
         // The project's copy of one of BIMCraft's: the library's is there again, and still chosen.
         let held = held && next.library_of(d, name).is_none();
+        // A utility's or a country's method is no rule of the project's own: it would be laid over whatever code holds the
+        // section then, and answer as that one. The project chooses another code first.
+        if held && let Some(key) = next.own[i].sections.keys().find(|k| super::is_whole(d, k)) {
+            return Err(bad(
+                c,
+                format!(
+                    "the project is held to `{name}`, whose `{key}` is a utility's or a country's method and can't be kept as the \
+                     project's own: choose another code first (or `save` the rules in force under another name)"
+                ),
+            ));
+        }
+        let gone = next.own.remove(i);
         if held {
             let choice = next.choice_mut(d);
             choice.amendments.retain(|a| a != name);
@@ -379,11 +392,14 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         next.choice_mut(d).editions = pins;
     }
     next.check().map_err(|e| bad(c, e))?;
+    if d == Discipline::Electrical {
+        crate::electrical::settings_fit(&s.model, &unchanged, &next).map_err(|e| bad(c, e))?;
+    }
     if next != unchanged {
         let m = s.model_mut();
-        m.codes = Shared::new(next);
+        let before = std::mem::replace(&mut m.codes, Shared::new(next));
         if d == Discipline::Electrical {
-            crate::electrical::from_codes(m);
+            crate::electrical::from_codes(m, &before);
         }
     }
     Ok(said(&s.model.codes, d))
@@ -453,8 +469,17 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
             if k.chars().count() > 128 {
                 return Err("a rule's name is 128 characters at most".into());
             }
-            if v.is_null() && settings && resolved.from.get(&k).is_some_and(|l| *l != mine && *l != Layer::Project) {
+            // A setting taken away that a code under it names, or that a new project has, is null here, so it stays away;
+            // the project's own change of it goes with it.
+            let under = resolved.from.get(&k).is_some_and(|l| *l != mine && *l != Layer::Project);
+            if v.is_null()
+                && settings
+                && (under || crate::electrical::starter_has(&key, &k) || resolved.from.get(&k) == Some(&Layer::Project))
+            {
                 section.insert(k.clone(), Value::Null);
+                if let Some(changes) = next.choice_mut(d).changes.get_mut(&key) {
+                    changes.remove(&k);
+                }
             } else if v.is_null() {
                 section.remove(&k);
             } else {
@@ -584,11 +609,12 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
         next.choice_mut(d).editions = pins;
     }
     next.check().map_err(|e| bad(c, format!("{path}: {e}")))?;
+    crate::electrical::settings_fit(&s.model, &s.model.codes, &next).map_err(|e| bad(c, format!("{path}: {e}")))?;
     let first = read.first().map(|k| k.code.clone()).unwrap_or_default();
     let all: Vec<Value> = read.iter().map(|k| json!({"code": k.code, "discipline": k.discipline.key()})).collect();
     let m = s.model_mut();
-    m.codes = Shared::new(next);
-    crate::electrical::from_codes(m);
+    let before = std::mem::replace(&mut m.codes, Shared::new(next));
+    crate::electrical::from_codes(m, &before);
     Ok(json!({"code": first, "codes": all, "left_out": left_out, "set": set}))
 }
 

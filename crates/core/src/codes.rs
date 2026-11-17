@@ -1345,8 +1345,10 @@ pub fn layered(codes: &Codes, d: Discipline, key: &str) -> Resolved {
     // rules they leave out, is the library's under what they change of it.
     let whole = |r: &Resolved| section_def(d, key).is_none_or(|def| def.check(&Value::Object(r.value.clone())).is_ok());
     let base_has = layers.first().is_some_and(|b| b.section(key).is_some());
-    // A method whole is never laid over another code's: only none held at all is the library's.
-    if (out.value.is_empty() || (!whole_key && !base_has && !whole(&out)))
+    // A method whole is never laid over another code's: only none held at all is the library's. The electrical settings are
+    // entries by name, so an amendment's few are laid over the library's others, never in place of them.
+    let entries = d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key);
+    if (out.value.is_empty() || (!whole_key && !base_has && (entries || !whole(&out))))
         && let Some(lib) = library(d, key)
     {
         out = Resolved::default();

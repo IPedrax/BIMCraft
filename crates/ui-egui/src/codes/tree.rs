@@ -97,9 +97,9 @@ fn short_list(v: &Value) -> bool {
     v.as_array().is_some_and(|a| a.len() <= 8 && a.iter().all(scalar))
 }
 
-/// A value that fits a table's cell, once an object of plain values is flattened.
+/// A value that fits a table's cell, once an object of plain values (and of such objects) is flattened.
 fn cell_like(v: &Value) -> bool {
-    scalar(v) || short_list(v) || v.as_object().is_some_and(|o| o.values().all(|x| scalar(x) || short_list(x)))
+    scalar(v) || short_list(v) || v.as_object().is_some_and(|o| o.values().all(cell_like))
 }
 
 /// A row of plain lists, flattened: `[0.5, [7, 7, …]]` is `0.5, 7, 7, …`.
@@ -129,30 +129,36 @@ fn set_flat(row: &mut Value, i: usize, to: Value) -> bool {
     walk(row, &mut i, &to)
 }
 
-/// The columns of a list of objects: a key a row has, or `key.inner` for an object of plain values inside it; a row's
-/// `source` last.
+/// The columns of a list of objects: a key a row has, or `key.inner` (`key.inner.deeper`, …) for an object inside it; a
+/// row's `name` first and its `source` last.
 fn object_columns(rows: &[Value]) -> Vec<String> {
-    let mut cols: Vec<String> = Vec::new();
-    for r in rows {
-        for (k, v) in r.as_object().into_iter().flatten() {
-            let names: Vec<String> = match v {
-                Value::Object(o) => o.keys().map(|x| format!("{k}.{x}")).collect(),
-                _ => vec![k.clone()],
-            };
-            for n in names {
-                if !cols.contains(&n) {
-                    cols.push(n);
+    fn names(prefix: &str, v: &Value, out: &mut Vec<String>) {
+        match v {
+            Value::Object(o) => {
+                for (k, x) in o {
+                    names(&format!("{prefix}.{k}"), x, out);
+                }
+            }
+            _ => {
+                if !out.iter().any(|n| n == prefix) {
+                    out.push(prefix.to_string());
                 }
             }
         }
     }
-    cols.sort_by_key(|c| c == "source");
+    let mut cols: Vec<String> = Vec::new();
+    for r in rows {
+        for (k, v) in r.as_object().into_iter().flatten() {
+            names(k, v, &mut cols);
+        }
+    }
+    cols.sort_by_key(|c| (c != "name", c == "source"));
     cols
 }
 
 fn get<'a>(row: &'a Value, col: &str) -> Option<&'a Value> {
     match col.split_once('.') {
-        Some((a, b)) if row.get(col).is_none() => row.get(a).and_then(|x| x.get(b)),
+        Some((a, b)) if row.get(col).is_none() => row.get(a).and_then(|x| get(x, b)),
         _ => row.get(col),
     }
 }
@@ -161,8 +167,8 @@ fn put(row: &mut Value, col: &str, to: Value) {
     let Value::Object(o) = row else { return };
     match col.split_once('.') {
         Some((a, b)) if !o.contains_key(col) => {
-            if let Some(Value::Object(inner)) = o.get_mut(a) {
-                inner.insert(b.to_string(), to);
+            if let Some(inner) = o.get_mut(a) {
+                put(inner, b, to);
             }
         }
         _ => {
@@ -391,7 +397,8 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
             for c in &cols {
                 let leaf = c.strip_prefix("columns.").unwrap_or(c);
                 let head = ui.label(RichText::new(column_name(leaf)).color(pal().muted).small());
-                if let Some(Value::String(meaning)) = hints.columns.get(leaf) {
+                let explained = leaf.split('.').next().unwrap_or(leaf);
+                if let Some(Value::String(meaning)) = hints.columns.get(explained) {
                     head.on_hover_text(meaning);
                 }
             }
@@ -423,10 +430,10 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
     table_tools(ui, rows, pasted);
 }
 
-/// A table's column in words: `demand_kva.over` is "Demand (kVA) over".
+/// A table's column in words: `demand_kva.over` is "Demand (kVA) over", `connection_mm2.copper` "Connection (mm²) copper".
 fn column_name(col: &str) -> String {
     match col.split_once('.') {
-        Some((a, b)) => format!("{} {}", human(a), human(b).to_lowercase()),
+        Some((a, b)) => format!("{} {}", human(a), column_name(b).to_lowercase()),
         None => human(col),
     }
 }

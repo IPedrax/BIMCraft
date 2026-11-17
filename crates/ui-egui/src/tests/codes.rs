@@ -677,9 +677,10 @@ fn a_section_shows_its_words_as_text_and_its_tables_as_tables() {
     h.run();
     press(&mut h, "Service Categories");
     // Who the section is and its source are the code's, beside each rule: not rules of their own.
-    for word in ["Standard", "Source", "Id", "Not covered"] {
+    for word in ["Standard", "Id", "Not covered"] {
         assert!(h.query_by_label(word).is_none(), "{word} is no rule");
     }
+    assert_eq!(h.query_all_by_label("Source").count(), 1, "Source is the column of each rule's source, no rule");
     assert!(h.query_by_label("How it works:").is_some() && h.query_by_label("Not covered:").is_some());
     // A table of tables: a card for each supply system and use, its rows a table with a column for each of the utility's.
     h.state_mut().codes_dialog.as_mut().unwrap().table = Some(("entrance".into(), "tables".into()));

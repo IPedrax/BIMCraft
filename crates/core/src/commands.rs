@@ -2414,7 +2414,8 @@ other_files(
          `winders`, `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
          `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the \
          project's changes away, all or a section's. `save`: \"name\" keeps the rules in force as a code of the project's own and \
-         holds the project to it; `delete`: \"name\" takes one away (a project held to it keeps its rules). The editions of the \
+         holds the project to it; `delete`: \"name\" takes one away (a project held to it keeps its rules; one holding a \
+         utility's or a country's method is refused while the project is held to it). The editions of the \
          codes chosen are pinned: a newer edition in the library changes nothing until the code is chosen again \
          (`editions_gone` says where the library no longer has the edition pinned). Nothing is refused for breaking a rule: \
          `code_check` reports it. The reply gives the base `code`, `name`, `edition`, `references`, `note`, `amendments`, the \
@@ -9830,8 +9831,16 @@ fn voltage(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("there's already a voltage `{to}`")));
             }
             m.voltages.remove(&name);
+            let supplying: Vec<String> =
+                m.distribution_systems.iter().filter(|(_, d)| d.voltage_names().any(|v| *v == name)).map(|(k, _)| k.clone()).collect();
             rename_entry(m, &LibKind::Voltage, &name, &to);
             crate::electrical::to_codes(m, "voltages", &name, None);
+            // The systems that name it name it again in the code, as they do in the project.
+            for k in supplying {
+                if let Some(d) = m.distribution_systems.get(&k).cloned() {
+                    crate::electrical::to_codes(m, "distribution_systems", &k, Some(json!(d)));
+                }
+            }
             to
         }
         _ => name,
