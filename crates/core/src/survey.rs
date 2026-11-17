@@ -200,7 +200,7 @@ pub fn of(file: &File, bytes: &[u8]) -> Value {
         class.nested += usize::from(nested.contains(id));
         class.typed += usize::from(typed.contains(id));
         let shape = refs(e.args.get(6)).first().and_then(|s| get(*s)).filter(|s| s.name == "IFCPRODUCTDEFINITIONSHAPE");
-        for rep in refs(shape.and_then(|s| s.args.get(2))).into_iter().filter_map(|r| get(r)) {
+        for rep in refs(shape.and_then(|s| s.args.get(2))).into_iter().filter_map(get) {
             if text(rep.args.get(1)) != Some("Body") {
                 continue;
             }
@@ -208,14 +208,14 @@ pub fn of(file: &File, bytes: &[u8]) -> Value {
             if !items.is_empty() {
                 class.items[items.len().min(3) - 1] += 1;
             }
-            for item in items.into_iter().filter_map(|i| get(i)) {
+            for item in items.into_iter().filter_map(get) {
                 *class.bodies.entry(item.name.clone()).or_default() += 1;
             }
         }
     }
     let mut units = Map::new();
     for assignment in ids.iter().filter_map(|i| get(*i)).filter(|e| e.name == "IFCUNITASSIGNMENT") {
-        for unit in refs(assignment.args.first()).into_iter().filter_map(|r| get(r)) {
+        for unit in refs(assignment.args.first()).into_iter().filter_map(get) {
             let (unit_type, name) = match unit.name.as_str() {
                 "IFCSIUNIT" => (word(unit.args.get(1)), format!("{}{}", word(unit.args.get(2)), word(unit.args.get(3)))),
                 "IFCCONVERSIONBASEDUNIT" => (word(unit.args.get(1)), word(unit.args.get(2))),
@@ -253,7 +253,7 @@ pub fn of(file: &File, bytes: &[u8]) -> Value {
         let Some(name) = text(e.args.get(2)) else { continue };
         let set = target.entry(name.to_string()).or_default();
         set.count += 1;
-        for member in refs(e.args.get(list)).into_iter().filter_map(|r| get(r)) {
+        for member in refs(e.args.get(list)).into_iter().filter_map(get) {
             let Some(member_name) = text(member.args.first()) else { continue };
             let type_name = if member.name == "IFCPROPERTYSINGLEVALUE" { kind(member.args.get(2)) } else { member.name.clone() };
             if set.members.len() >= MAX_PROPS && !set.members.contains_key(member_name) {
