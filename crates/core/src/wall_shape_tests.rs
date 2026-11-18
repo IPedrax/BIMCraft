@@ -73,7 +73,7 @@ fn a_slanted_wall_leans_in_3d_and_a_plan_cuts_it_where_it_has_leant_to() {
 fn a_slanted_wall_with_a_window_goes_to_ifc_as_face_sets_and_its_window_leans_with_it() {
     let s = session(
         r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": -15}
-           window {"wall": 100002, "offset": 3000}"#,
+           window {"wall": 100002, "offset": 3000, "slanted": true}"#,
     );
     let ifc = crate::ifc::export(&s.model);
     assert!(ifc.contains("IFCWALL("), "a wall");
@@ -417,11 +417,11 @@ fn triangles_of(s: &Session, id: Id) -> Vec<[[f64; 3]; 3]> {
 }
 
 #[test]
-fn doors_and_windows_cut_a_slanted_wall_and_lean_with_it() {
+fn slanted_doors_and_windows_cut_a_slanted_wall_and_lean_with_it() {
     let mut s = session(
         r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 20}
-           door {"wall": 100002, "offset": 1500}
-           window {"wall": 100002, "offset": 4500}"#,
+           door {"wall": 100002, "offset": 1500, "slanted": true}
+           window {"wall": 100002, "offset": 4500, "slanted": true}"#,
     );
     let wall = 100002;
     let (door, window) = (100003, 100004);
@@ -449,6 +449,58 @@ fn doors_and_windows_cut_a_slanted_wall_and_lean_with_it() {
     s.execute("modify", &serde_json::json!({"id": door, "offset": 2500})).unwrap_or_else(|e| panic!("{e}"));
     let w = triangles_of(&s, wall);
     assert!(!inside(&w, on(2500.0, 1000.0)) && inside(&w, on(1500.0, 1000.0)));
+}
+
+#[test]
+fn doors_and_windows_stand_upright_in_a_slanted_wall_unless_slanted_and_cut_it_the_same_either_way() {
+    let mut s = session(
+        r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 20}
+           door {"wall": 100002, "offset": 1500}
+           window {"wall": 100002, "offset": 4500}"#,
+    );
+    let wall = 100002;
+    let (door, window) = (100003, 100004);
+    let tan = 20f64.to_radians().tan();
+    let on = |x: f64, z: f64| [x, z * tan, z];
+    let holed = |s: &Session| {
+        let w = triangles_of(s, wall);
+        !inside(&w, on(1500.0, 1000.0))
+            && !inside(&w, on(4500.0, 1600.0))
+            && inside(&w, on(3000.0, 1000.0))
+            && inside(&w, on(4500.0, 400.0))
+            && inside(&w, on(4500.0, 2700.0))
+    };
+    // By default each stands upright, as Revit's Vertical: its parts reach as far across at its head as at its foot,
+    // centred where the wall has leant to halfway up it.
+    for id in [door, window] {
+        let pts: Vec<[f64; 3]> = triangles_of(&s, id).into_iter().flatten().collect();
+        assert!(!pts.is_empty(), "{id} is drawn");
+        let (lo, hi) = pts.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), p| (a.min(p[2]), b.max(p[2])));
+        let across = |z: f64| {
+            let ys: Vec<f64> = pts.iter().filter(|p| (p[2] - z).abs() < 1e-6).map(|p| p[1]).collect();
+            (ys.iter().copied().fold(f64::INFINITY, f64::min), ys.iter().copied().fold(f64::NEG_INFINITY, f64::max))
+        };
+        let (foot, head) = (across(lo), across(hi));
+        assert!((foot.0 - head.0).abs() < 1e-6 && (foot.1 - head.1).abs() < 1e-6, "{id} upright: {foot:?} at foot, {head:?} at head");
+        let mid = (foot.0 + foot.1) / 2.0;
+        assert!((mid - (lo + hi) / 2.0 * tan).abs() < 1.0, "{id} centred at {mid}, the wall at {}", (lo + hi) / 2.0 * tan);
+    }
+    assert!(holed(&s), "the wall cut round them");
+    let ifc = crate::ifc::export(&s.model);
+    assert_eq!(ifc.matches("IFCOPENINGELEMENT(").count(), 2);
+    // Slanted, the same holes, and the door leans with the wall.
+    s.execute("modify", &serde_json::json!({"ids": [door, window], "slanted": true})).unwrap_or_else(|e| panic!("{e}"));
+    assert!(holed(&s), "the same holes");
+    let pts: Vec<[f64; 3]> = triangles_of(&s, door).into_iter().flatten().collect();
+    assert!(pts.iter().all(|p| (p[1] - p[2] * tan).abs() <= 60.0), "the door leans with the wall");
+    // In an upright wall the box changes nothing.
+    let mut u = session(
+        r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000}
+           door {"wall": 100002, "offset": 1500, "slanted": true}"#,
+    );
+    let leaning = triangles_of(&u, door);
+    u.execute("modify", &serde_json::json!({"id": door, "slanted": false})).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(triangles_of(&u, door).len(), leaning.len());
 }
 
 #[test]

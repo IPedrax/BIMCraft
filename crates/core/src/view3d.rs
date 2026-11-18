@@ -1591,10 +1591,12 @@ fn solids_in_with(
                     let tex = if matches!(e, Element::Door(_)) { 0 } else { skin(m, m.language.word("Glass")) & !TEXTURE };
                     let axis = Axis::of(w);
                     let u = axis.tangent(o.offset);
-                    let frame = Frame { o: axis.at(o.offset, walls::centre(m, w)), u, n: u.perp() };
+                    let at = m.opening_frame(o).map_or_else(|| axis.at(o.offset, walls::centre(m, w)), |f| f.0);
+                    let frame = Frame { o: at, u, n: u.perp() };
                     let a = (h.s0 - o.offset, h.s1 - o.offset);
-                    if w.slant != 0.0 {
-                        // In a slanted wall it leans with it, staying in the wall all the way up.
+                    if o.slanted && w.slant != 0.0 {
+                        // Slanted in a slanted wall, it leans with it, staying in the wall all the way up.
+                        let frame = Frame { o: axis.at(o.offset, walls::centre(m, w)), ..frame };
                         let at = |x: f64, c: f64, z: f64| {
                             let q = frame.o + frame.u * x + frame.n * (c + walls::lean(m, w, z));
                             [q.0, q.1, z]

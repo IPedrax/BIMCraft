@@ -27,6 +27,25 @@ fn a_walls_angle_from_vertical_slants_it_from_properties() {
     assert_eq!(wall(&h).1.slant, 12.0);
 }
 
+#[test]
+fn a_door_in_a_slanted_wall_stands_upright_until_slanted_with_wall_is_checked_in_properties() {
+    let mut h = app(r#"wall {"points": [[0, 0], [5000, 0]], "height": 3000, "slant": 15}
+           door {"wall": 100002, "offset": 2500}"#);
+    let door = {
+        let m = &h.state().session.model;
+        m.elements.iter().find_map(|(id, e)| matches!(e, Element::Door(_)).then_some(*id)).unwrap_or_else(|| panic!("no door"))
+    };
+    let slanted = |h: &Harness<BimApp>| matches!(h.state().session.model.elements.get(door), Some(Element::Door(o)) if o.slanted);
+    assert!(!slanted(&h), "vertical by default");
+    h.state_mut().selection = vec![door];
+    h.run();
+    let steps = h.state().session.history().len();
+    h.get_by_label("Slanted with Wall").click_accesskit();
+    h.run();
+    assert!(slanted(&h), "{}", h.state().status.text);
+    assert_eq!(h.state().session.history().len(), steps + 1, "one step");
+}
+
 /// Where a point of wall `id`'s face, `[along, up]`, shows in section `view` as last drawn.
 fn on_face(h: &Harness<BimApp>, view: Id, id: Id, q: P2) -> egui::Pos2 {
     let m = &h.state().session.model;

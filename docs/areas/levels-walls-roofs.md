@@ -55,11 +55,14 @@ lofted too (`slant::lofted`), so its end follows the slanted wall's face up the 
 (each stretch between its edges' planes), and every lofted piece is held between its wall's own bottom and top corner by corner.
 `wall_shape_tests` sweeps corners from 30° to 165° and T-junctions at many leans.
 
-Doors and windows in a slanted wall cut it with upright jambs and a level sill and head, through its lean; a plain one's leaf or glass,
-a family's forms and its voids lean with the wall (`opening_lean`), so they stay in it all the way up; an opening whose family cuts
-with voids of its own leaves its rectangle to them, as in an upright wall (`slant::pieces`, `pieces_rect` where cutting fails); a plan
-cuts the gap where the wall has leant to; IFC deepens the opening's void by the lean. A door or a window stands where the wall has leant to at its sill and
-leans with it (`Model::opening_frame`, `opening_lean`); its hole is cut with upright jambs and a level sill and head.
+Doors and windows in a slanted wall cut it with upright jambs and a level sill and head, through its lean, whichever way they stand:
+an opening whose family cuts with voids of its own leaves its rectangle to them, as in an upright wall, and the voids always lean
+with the wall (`Model::host_lean`), so they cut the same hole either way (`slant::pieces`, `pieces_rect` where cutting fails); a plan
+cuts the gap where the wall has leant to; IFC deepens the opening's void by the lean and leans a family's voids with the wall. How the
+door or window itself stands is Revit's Orientation, an instance check box (`slanted`, Slanted with Wall in Properties): by default
+Vertical, upright where the wall has leant to halfway up it, so its leaf or glass and a family's forms stand plumb across the leaning
+wall; slanted, it stands where the wall has leant to at its sill and leans on with it (`Model::opening_frame`, `opening_lean`), staying
+in the wall all the way up. In an upright wall the two are the same.
 
 A straight, upright, unattached wall can have its shape in elevation edited (Revit's Edit Profile): `profile` holds loops of
 `[along, up]` mm from its start and its base, the first its outline and the others holes, which `modify {id, profile}` sets and

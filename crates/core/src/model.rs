@@ -967,6 +967,10 @@ pub struct Opening {
     /// Hinge on the other jamb.
     #[serde(default)]
     pub flip_hand: bool,
+    /// Revit's Orientation in a slanted wall: Slanted, leaning with the wall; else Vertical (the default), standing upright where
+    /// the wall has leant to halfway up it. The wall is cut the same either way. Nothing changes in an upright wall.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slanted: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -6019,16 +6023,49 @@ impl Model {
     /// Where a door's or window's family's axes lie: the point in plan at the middle of the opening in the middle
     /// of its wall, the way the wall runs there, and the height of its sill.
     /// In a slanted wall, where the wall has leant to at its sill ([`Model::opening_lean`] says how it leans on above it).
+    /// A vertical one ([`Opening::slanted`] false) stands where the wall has leant to halfway up it, its sill still the third.
     pub fn opening_frame(&self, o: &Opening) -> Option<(P2, P2, f64)> {
-        let w = self.wall(o.host)?;
-        let axis = walls::Axis::of(w);
-        let sill = self.own_base(w) + o.sill;
-        Some((axis.at(o.offset, walls::centre(self, w) + walls::lean(self, w, sill)), axis.tangent(o.offset), sill))
+        self.opening_frame_as(o, o.slanted)
     }
 
-    /// How far a door or window moves across its wall for each mm it rises: a slanted wall's lean, which it leans with, so it
-    /// stays in the wall all the way up; 0 in an upright one.
+    /// [`Model::opening_frame`] for `o` slanted or not.
+    fn opening_frame_as(&self, o: &Opening, slanted: bool) -> Option<(P2, P2, f64)> {
+        let w = self.wall(o.host)?;
+        let sill = self.own_base(w) + o.sill;
+        let at = if slanted || w.slant == 0.0 { sill } else { sill + self.opening_rise(o) / 2.0 };
+        let axis = walls::Axis::of(w);
+        Some((axis.at(o.offset, walls::centre(self, w) + walls::lean(self, w, at)), axis.tangent(o.offset), sill))
+    }
+
+    /// [`Model::opening_frame`] where the wall has leant to at the sill, whatever the opening's orientation: what its voids
+    /// stand in, leaning with the wall so they cut it the same either way.
+    fn opening_frame_leaning(&self, o: &Opening) -> Option<(P2, P2, f64)> {
+        self.opening_frame_as(o, true)
+    }
+
+    /// A door's or window's height, as its type or family says; 0 where neither does.
+    fn opening_rise(&self, o: &Opening) -> f64 {
+        let Some(name) = &o.family else {
+            return self.types.door.get(&o.type_name).or_else(|| self.types.window.get(&o.type_name)).map_or(0.0, |t| t.height);
+        };
+        let wall = self.wall(o.host).map_or(crate::family::DEFAULT_WALL, |w| self.thickness(w));
+        match self.families.get(name).and_then(|f| f.values_in(&o.type_name, &o.params, wall).ok()) {
+            Some(v) => match v.get(crate::family::HEIGHT) {
+                Some(crate::family::Val::Number(h)) => *h,
+                _ => 0.0,
+            },
+            None => 0.0,
+        }
+    }
+
+    /// How far a door or window moves across its wall for each mm it rises: a slanted one, its slanted wall's lean, which it
+    /// leans with, so it stays in the wall all the way up; 0 for a vertical one and in an upright wall.
     pub fn opening_lean(&self, o: &Opening) -> f64 {
+        if o.slanted { self.host_lean(o) } else { 0.0 }
+    }
+
+    /// How far door or window `o`'s wall moves across for each mm it rises: 0 upright.
+    pub fn host_lean(&self, o: &Opening) -> f64 {
         self.wall(o.host).map_or(0.0, |w| walls::lean(self, w, self.own_base(w) + 1.0) - walls::lean(self, w, self.own_base(w)))
     }
 
@@ -6108,8 +6145,8 @@ impl Model {
     /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
     pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let Some((at, u, z)) = self.opening_frame(o) else { return Vec::new() };
-        let lean = self.opening_lean(o);
+        let Some((at, u, z)) = self.opening_frame_leaning(o) else { return Vec::new() };
+        let lean = self.host_lean(o);
         let place = |p: [f64; 3]| {
             let q = at + u * p[0] + u.perp() * (p[1] + lean * p[2]);
             [q.0, q.1, z + p[2]]
@@ -10924,6 +10961,7 @@ mod tests {
             mark: String::new(),
             flip_facing: false,
             flip_hand: false,
+            slanted: false,
         })
     }
 

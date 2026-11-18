@@ -2605,9 +2605,15 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         });
         // Of a family whose voids cut the wall, those voids, closed face sets standing at the middle of the opening as its
         // forms do; else the rectangle of its width and height.
-        let voids = m.opening_voids_local(e);
+        // In a slanted wall they lean with it from its base, where `at` stands, so they cut it whichever way the opening stands.
+        let rate = m.host_lean(o);
+        let voids: Vec<Vec<[P3; 3]>> = m
+            .opening_voids_local(e)
+            .into_iter()
+            .map(|v| v.iter().map(|t| t.map(|p| [p[0], p[1] + rate * (o.sill + p[2]), p[2]])).collect())
+            .collect();
         // Through a slanted wall, as deep again as it leans over the opening's height, either way, so it cuts all of it.
-        let lean = m.opening_lean(o).abs() * (2.0 * (o.sill.abs() + t.height));
+        let lean = rate.abs() * (2.0 * (o.sill.abs() + t.height));
         let (thick, _) = walls::faces_at(m, wl, Some(m.own_base(wl)));
         let thick = (thick - walls::faces_at(m, wl, Some(m.own_base(wl))).1).max(m.thickness(wl));
         let (opening_at, shape) = if voids.is_empty() {
@@ -2622,12 +2628,18 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.add(format!("IFCRELVOIDSELEMENT({},$,$,$,#{wall},#{opening})", w.guid(VOIDS, id)));
         // The door or window itself: a 50 mm panel centred in the wall; of a family, its forms as a component's are,
         // closed face sets in their materials' colours, standing at the middle of the opening.
+        // In a slanted wall, across it where the wall has leant to: a slanted one at each height, a vertical one halfway up.
+        let across = |p: P3| {
+            let up = if o.slanted { p[2] } else { t.height / 2.0 };
+            [p[0], p[1] + rate * (o.sill + up), p[2]]
+        };
+        let leant = |tris: &[[P3; 3]]| -> Vec<[P3; 3]> { tris.iter().map(|t| t.map(across)).collect() };
         let mut made_of: Vec<u64> = Vec::new();
         let (fill_at, shape) = match m.opening_local(e) {
             Some((pieces, _)) => {
                 let mut items = Vec::new();
                 for piece in &pieces {
-                    let set = w.faceset(&piece.tris);
+                    let set = w.faceset(&leant(&piece.tris));
                     if !piece.material.trim().is_empty() {
                         let (material, style) = w.material_style(m, piece.material.trim());
                         if let Some(style) = style {
@@ -2641,6 +2653,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 }
                 let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&items)));
                 (w.place(Some(at), (t.width / 2.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+            }
+            None if rate != 0.0 => {
+                let ring = |z: f64| [[0.0, -25.0], [t.width, -25.0], [t.width, 25.0], [0.0, 25.0]].map(|[x, y]| across([x, y, z])).to_vec();
+                let set = w.faceset(&walls::slant::closed(ring(0.0), ring(t.height)));
+                let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','Tessellation',(#{set}))", w.body));
+                (w.place(Some(at), (0.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
             }
             None => {
                 let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, 50.0));

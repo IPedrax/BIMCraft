@@ -160,6 +160,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", msg!("Flip Facing"), Flag),
             ("Other", "flip_hand", msg!("Flip Hand"), Flag),
+            ("Other", "slanted", msg!("Slanted with Wall"), Flag),
         ],
         "window" => &[
             ("Constraints", "level", "Level", LevelName),
@@ -168,6 +169,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "host", "Host Wall", Link),
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", "Flip Facing", Flag),
+            ("Other", "slanted", "Slanted with Wall", Flag),
         ],
         "room" => &[
             ("Constraints", "level", "Level", Level),

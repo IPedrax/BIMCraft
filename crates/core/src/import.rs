@@ -3836,6 +3836,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             mark,
             flip_facing,
             flip_hand,
+            slanted: false,
         };
         let oid = m.insert(if is_door { Element::Door(op) } else { Element::Window(op) });
         from.insert(oid, who(id));
