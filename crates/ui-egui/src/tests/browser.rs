@@ -81,6 +81,7 @@ fn the_families_list_curtain_panels_and_mullions_under_their_system_families() {
 
 #[test]
 fn the_families_categories_are_listed_alphabetically_by_their_names() {
+    use egui_kittest::kittest::NodeT;
     let mut h = app(&format!("{BOX}\nfloor {{\"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}}\ndoor {{\"at\": [2000, 0]}}"));
     press(&mut h, "List Families");
     let find = h.get_by_label(FIND).rect();
