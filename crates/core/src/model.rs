@@ -5300,6 +5300,10 @@ impl Model {
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
         self.codes_from_386();
+        // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
+        if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
+            self.codes.methods_into_layers();
+        }
         if self.format < 1 {
             self.resolve();
             if self.elements.keys().next().is_some_and(|&first| first < FIRST_ID) {
