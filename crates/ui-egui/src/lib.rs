@@ -96,6 +96,7 @@ pub mod spacemouse;
 mod spots;
 mod standards;
 mod start;
+mod steel;
 mod structure;
 mod style;
 mod swap;
@@ -1023,6 +1024,7 @@ pub struct BimApp {
     project_info_dialog: Option<projectinfo::ProjectInfoDialog>,
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
+    steel_dialog: Option<steel::SteelDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
     /// The slot picked in the panel schedule on screen.
     panel_slot: Option<u32>,
@@ -1869,6 +1871,7 @@ impl BimApp {
             display_dialog: None,
             project_info_dialog: None,
             reinforce_dialog: None,
+            steel_dialog: None,
             reinforce_kept: BTreeMap::new(),
             panel_slot: None,
             line_weights_dialog: None,
@@ -2546,6 +2549,7 @@ impl BimApp {
             || self.display_dialog.is_some()
             || self.project_info_dialog.is_some()
             || self.reinforce_dialog.is_some()
+            || self.steel_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.electrical_dialog.is_some()
             || self.coordinates_dialog.as_ref().is_some_and(|d| !d.picking())
@@ -2902,6 +2906,11 @@ impl BimApp {
             // Reinforce the element selected.
             "RF" => {
                 self.open_reinforce();
+                return true;
+            }
+            // The steel list and the cut plan: commands with these aliases, and one dialog.
+            "BL" | "CU" => {
+                self.open_steel(self.typed == "CU");
                 return true;
             }
             "VV" | "VG" => {
@@ -7124,6 +7133,7 @@ impl BimApp {
         self.display_window(ctx);
         self.project_info_window(ctx);
         self.reinforce_window(ctx);
+        self.steel_window(ctx);
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);

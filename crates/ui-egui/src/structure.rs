@@ -105,6 +105,19 @@ impl BimApp {
                 self.open_reinforce();
             }
         });
+        panel(ui, msg!("Quantities"), |ui| {
+            let open = self.steel_dialog.as_ref().map(|d| d.cut);
+            let tip = msg!(
+                "Steel List (BL): every bar's mark, shape, count, length and weight, by level or for the project, as a list or as schedules"
+            );
+            if big_button(ui, Icon::Schedule, "Steel List", open == Some(false), tip).clicked() {
+                self.open_steel(false);
+            }
+            let tip = msg!("Cut Plan (CU): how many stock bars of the length you type to buy for the bars, and which pieces go in each");
+            if big_button(ui, Icon::Rebar, "Cut Plan", open == Some(true), tip).clicked() {
+                self.open_steel(true);
+            }
+        });
         panel(ui, msg!("Foundation"), |ui| {
             let tools: [(Icon, &str, &str, Tool); 2] = [
                 (Icon::Footing, "Isolated Footing", msg!("Isolated Footing (FI): click where the footing goes"), Tool::Stand("footing")),

@@ -7657,6 +7657,7 @@ mod spacemouse;
 mod spots;
 mod standards;
 mod start;
+mod steel;
 mod templates;
 mod themes;
 mod titlebar;

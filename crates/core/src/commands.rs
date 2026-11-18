@@ -772,8 +772,8 @@ other_files(
     Command {
         id: "steel_list",
         label: "Steel List",
-        // BL comes with the dialog: a shortcut is listed in KS and must do something in the window.
-        aliases: &[],
+        // The desktop's Steel List dialog answers BL (`BimApp::shortcut`), as a listed shortcut must.
+        aliases: &["BL"],
         params: "{level?, ids?, coil_to?, stock_length?, path?} the steel list of the project's bars: each bar's mark (N1, N2, numbered inside its host: bottom \
                  bars first, bars drawn by hand last, bars of one grade, diameter and shape sharing one), its shape (the legs in mm and the angles it turns), \
                  and rows by host and mark with count, length, total length and weight. `level` is a level's name or id and `ids` hosts or bars (a host \
@@ -790,9 +790,8 @@ other_files(
     },
     Command {
         id: "cut_plan",
-        label: "Cut Plan",
-        // CU comes with the dialog, with BL.
-        aliases: &[],
+        label: ui_msg!("Cut Plan"),
+        aliases: &["CU"],
         params: "{stock_length, level?, ids?, kerf?, min_offcut?, coil_to?, path?} how many stock bars of `stock_length` mm to buy for the project's bars \
                  and which pieces go in which: each grade and diameter on its own, longest piece first into the stock bar whose free length is the \
                  smallest that holds it (best fit decreasing; it claims no optimum). There is no default `stock_length`: it is a purchase, and the engineer \
