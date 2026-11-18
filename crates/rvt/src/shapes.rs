@@ -41,14 +41,21 @@ const MM: f64 = 304.8;
 /// millimetre of its units, and a family's detail is finer than that.
 const FINE: f64 = 100.0;
 
-/// The classes whose objects hold geometry this module does not read: a type whose graphics hold one has no shape here.
-const UNREAD: [&str; 3] = ["GInstance", "GPolyMesh", "FacetedTopol"];
+use std::collections::BTreeSet;
 
 type P3 = [f64; 3];
 type Step<T> = std::result::Result<T, String>;
 
 fn add(a: P3, b: P3) -> P3 {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn sub(a: P3, b: P3) -> P3 {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn cross(a: P3, b: P3) -> P3 {
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
 fn scale(k: f64, a: P3) -> P3 {
@@ -405,6 +412,17 @@ pub(crate) struct Shape {
     /// The box its graphics give round all they draw (`m_bBox`: its solids, and the lines and controls drawn with them), feet in
     /// the family's axes.
     pub whole: [f64; 6],
+    /// The points its lines, arcs and points drawn with its solids pass through ([`marks`]), millimetres in the family's axes.
+    pub marks: Vec<P3>,
+    /// The material each triangle is drawn in, as its face or mesh names it (an element id); none where it names none (it is
+    /// drawn as its category says). One for each triangle.
+    pub materials: Vec<Option<u32>>,
+}
+
+/// The material an object names in field `field` (an `ElementId`): none where it names none (unset, or one of Revit's own below
+/// zero).
+fn material_of(r: &Reader, o: &Obj, field: &str) -> Option<u32> {
+    r.layouts.get(o, field).and_then(crate::graphics::element_id).and_then(|id| u32::try_from(id).ok()).filter(|id| *id != u32::MAX)
 }
 
 /// How far a side of the box round a shape's triangles may lie from the box its graphics give round its solids, feet: a curved
@@ -424,18 +442,70 @@ fn bounds(v: Option<&Value>) -> Option<[f64; 6]> {
     }
 }
 
-/// The shape of a type whose tree is `tree`; or why it has none.
-pub(crate) fn shape(tree: &Tree, layouts: &Layouts) -> Step<Shape> {
-    let r = Reader { tree, layouts, walked: std::cell::Cell::new(0) };
-    let root = tree.objects.values().next().ok_or("the tree is empty")?;
-    let whole = bounds(layouts.get(root, "m_bBox")).ok_or("its graphics give no box")?;
-    let tight = bounds(layouts.get(root, "m_tightbBox")).ok_or("its graphics give no box round their solids")?;
-    if let Some(o) = tree.objects.values().find(|o| UNREAD.contains(&r.name(o))) {
-        return Err(format!("its graphics hold a {}, which is not read", r.name(o)));
+/// The triangles of the meshes of `tree` (`GPolyMesh`) into `out`, millimetres in the tree's axes: each mesh's faceted topology,
+/// its points (feet, four-byte or eight-byte numbers, moved by its `m_offset` where it has one) and its facets, three indices each,
+/// each facet turned to face the way its normal says where the mesh gives one a facet. A mesh that reaches outside `tight`, the
+/// box the graphics give round their solids, is none of them (a light's photometric web) and is left out. The meshes read.
+fn meshes(r: &Reader, tight: &[f64; 6], out: &mut Vec<[P3; 3]>, materials: &mut Vec<Option<u32>>) -> Step<usize> {
+    let mut count = 0;
+    for mesh in r.tree.objects.values().filter(|o| r.name(o) == "GPolyMesh") {
+        let t = r.owned(mesh, "m_pFacetedTopology")?.ok_or("a mesh has no facets")?;
+        let points = r.get(t, "m_pointsArr")?.list().ok_or("a mesh's points are no list")?;
+        let offset = match r.layouts.get(t, "m_offset") {
+            Some(v) => v.point().ok_or("a mesh's offset is no point")?,
+            None => [0.0; 3],
+        };
+        let points: Vec<P3> = points
+            .iter()
+            .map(|p| p.point().map(|p| scale(MM, add(p, offset))).ok_or("a mesh's point is not three numbers"))
+            .collect::<Result<_, _>>()?;
+        let inside = points.iter().all(|p| {
+            (0..3).all(|k| {
+                let s = slack(tight[k + 3] - tight[k]);
+                p[k] / MM >= tight[k] - s && p[k] / MM <= tight[k + 3] + s
+            })
+        });
+        if !inside {
+            continue;
+        }
+        count += 1;
+        let facets = r.get(t, "m_facetsArr")?.list().ok_or("a mesh's facets are no list")?;
+        let normals = r.layouts.get(t, "m_normalsArr").and_then(Value::list).filter(|n| n.len() == facets.len());
+        for (k, facet) in facets.iter().enumerate() {
+            if out.len() >= MAX_TRIANGLES {
+                return Err(format!("its meshes hold more than {MAX_TRIANGLES} triangles"));
+            }
+            let index = |v: &Value| match v {
+                Value::Int(i) => {
+                    points.get(*i as usize).copied().ok_or_else(|| format!("a facet names point {i}, which the mesh does not have"))
+                }
+                _ => Err("a facet's corner is no index".to_string()),
+            };
+            let [a, b, c] = match facet.list() {
+                Some([a, b, c]) => [index(a)?, index(b)?, index(c)?],
+                _ => return Err("a facet is not three corners".to_string()),
+            };
+            let n = cross(sub(b, a), sub(c, a));
+            let flip = normals.and_then(|ns| ns.get(k)?.point()).is_some_and(|w| n[0] * w[0] + n[1] * w[1] + n[2] * w[2] < 0.0);
+            out.push(if flip { [a, c, b] } else { [a, b, c] });
+        }
+        materials.resize(out.len(), material_of(r, mesh, "m_materialID"));
     }
-    let mut out = Shape { whole, ..Shape::default() };
+    Ok(count)
+}
+
+/// Whether an object of class `name` holds geometry this module does not read: a faceted topology that is no mesh's.
+fn unread(name: &str) -> bool {
+    name == "FacetedTopol"
+}
+
+/// The solids of `tree` (its `Geometry` objects) as triangles into `out`, millimetres in the tree's axes: whether every face reads,
+/// and both faces of every edge put its points in one place. The solids and faces read.
+fn solids(r: &Reader, out: &mut Vec<[P3; 3]>, materials: &mut Vec<Option<u32>>) -> Step<(usize, usize)> {
+    let tree = r.tree;
+    let (mut count, mut faces_read) = (0, 0);
     for solid in tree.objects.values().filter(|o| r.name(o) == "Geometry") {
-        out.solids += 1;
+        count += 1;
         let faces: Vec<u32> = match r.get(solid, "m_pFaces")?.list() {
             Some(l) => l.iter().filter_map(|v| if let Value::Owned(i, _) = v { Some(*i) } else { None }).collect(),
             None => return Err("a solid's faces are no list".to_string()),
@@ -465,31 +535,142 @@ pub(crate) fn shape(tree: &Tree, layouts: &Layouts) -> Step<Shape> {
             let face = tree.get(i).ok_or_else(|| format!("face {i} is not in the tree"))?;
             let surface = surfaces.get(&i).ok_or("a face has no surface")?;
             let loops = r.loops(face, i)?;
-            triangles(surface, &loops, &mut out.triangles).map_err(|why| format!("a face is not cut into triangles: {why}"))?;
-            out.faces += 1;
+            triangles(surface, &loops, out).map_err(|why| format!("a face is not cut into triangles: {why}"))?;
+            materials.resize(out.len(), material_of(r, face, "m_renderStyleId"));
+            faces_read += 1;
         }
     }
-    if out.triangles.is_empty() {
-        return Err("its graphics hold no solid".to_string());
+    Ok((count, faces_read))
+}
+
+/// The points, lines and arcs a tree draws (`GPoint`, `GLine`, `GArc`: nodes of its groups, not a surface's profile), as points
+/// millimetres in its axes: a point, a line's ends, an arc's ends and its points every [`STEP`]. The box a tree gives round its
+/// solids may take them in (a stair's support's, the points of its path).
+fn marks(r: &Reader) -> Step<Vec<P3>> {
+    let nodes: BTreeSet<u32> = r
+        .tree
+        .objects
+        .values()
+        .filter_map(|o| r.layouts.get(o, "m_subNodes")?.list())
+        .flatten()
+        .filter_map(|v| if let Value::Owned(i, _) = v { Some(*i) } else { None })
+        .collect();
+    let mut out = Vec::new();
+    for o in nodes.iter().filter_map(|i| r.tree.get(*i)) {
+        match r.name(o) {
+            "GPoint" => out.push(r.point(o, "m_coord")?),
+            "GLine" | "GArc" => {
+                let curve = r.curve(o)?;
+                let [t0, t1] = r.get(o, "m_endParams")?.pair().ok_or("a curve's ends are no pair")?;
+                out.push(curve.at(t0));
+                out.push(curve.at(t1));
+                if matches!(curve, Curve::Arc { .. }) {
+                    let n = ((t1 - t0).abs() / STEP).ceil().min(64.0) as usize;
+                    out.extend((1..n).map(|k| curve.at(t0 + (t1 - t0) * k as f64 / n as f64)));
+                }
+            }
+            _ => {}
+        }
     }
-    // A family's mesh form is refused (and with it the whole import) for a corner that is no number or lies past the model's reach.
-    if out.triangles.iter().flatten().flatten().any(|x| !x.is_finite() || x.abs() > bimcraft_core::model::MAX_COORD) {
-        return Err("a corner of it is not a usable number".to_string());
-    }
-    // The solids read must fill the box the graphics give round their solids: a solid left unread would leave it short.
+    Ok(out.into_iter().map(|p| scale(MM, p)).collect())
+}
+
+/// Whether triangles `tris` and points `marks` (millimetres) fill box `tight` (feet), the box the graphics give round their
+/// solids, to [`slack`]: the triangles lie in it, and each of its sides is reached by a triangle or a mark (a mark past it counts
+/// as at it, since the box need not take in every line). A solid left unread would leave them short of it.
+pub(crate) fn fills(tris: &[[P3; 3]], marks: &[P3], tight: &[f64; 6]) -> bool {
     let mut b = [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
-    for p in out.triangles.iter().flatten() {
+    for p in tris.iter().flatten() {
         for k in 0..3 {
             b[k] = b[k].min(p[k] / MM);
             b[k + 3] = b[k + 3].max(p[k] / MM);
         }
     }
-    let fills = (0..3).all(|k| {
+    let inside = (0..3).all(|k| {
         let s = slack(tight[k + 3] - tight[k]);
-        (b[k] - tight[k]).abs() <= s && (b[k + 3] - tight[k + 3]).abs() <= s
+        b[k] >= tight[k] - s && b[k + 3] <= tight[k + 3] + s
     });
-    if !fills {
+    for p in marks {
+        for k in 0..3 {
+            let v = (p[k] / MM).clamp(tight[k].min(tight[k + 3]), tight[k + 3].max(tight[k]));
+            b[k] = b[k].min(v);
+            b[k + 3] = b[k + 3].max(v);
+        }
+    }
+    inside
+        && (0..3).all(|k| {
+            let s = slack(tight[k + 3] - tight[k]);
+            (b[k] - tight[k]).abs() <= s && (b[k + 3] - tight[k + 3]).abs() <= s
+        })
+}
+
+/// The two boxes a tree's root gives: round all it draws (`m_bBox`) and round its solids (`m_tightbBox`), feet.
+fn boxes(tree: &Tree, layouts: &Layouts) -> Step<([f64; 6], [f64; 6])> {
+    let root = tree.objects.values().next().ok_or("the tree is empty")?;
+    let whole = bounds(layouts.get(root, "m_bBox")).ok_or("its graphics give no box")?;
+    let tight = bounds(layouts.get(root, "m_tightbBox")).ok_or("its graphics give no box round their solids")?;
+    Ok((whole, tight))
+}
+
+/// Whether every corner of `triangles` is a number the model reaches: a family's mesh form is refused, and with it the whole import,
+/// for a corner that is not.
+fn usable(triangles: &[[P3; 3]]) -> Step<()> {
+    if triangles.iter().flatten().flatten().any(|x| !x.is_finite() || x.abs() > bimcraft_core::model::MAX_COORD) {
+        return Err("a corner of it is not a usable number".to_string());
+    }
+    Ok(())
+}
+
+/// The shape of a type whose tree is `tree`; or why it has none.
+pub(crate) fn shape(tree: &Tree, layouts: &Layouts) -> Step<Shape> {
+    let r = Reader { tree, layouts, walked: std::cell::Cell::new(0) };
+    let (whole, tight) = boxes(tree, layouts)?;
+    if let Some(o) = tree.objects.values().find(|o| r.name(o) == "GInstance" || unread(r.name(o))) {
+        return Err(format!("its graphics hold a {}, which is not read", r.name(o)));
+    }
+    let mut out = Shape { whole, marks: marks(&r)?, ..Shape::default() };
+    (out.solids, out.faces) = solids(&r, &mut out.triangles, &mut out.materials)?;
+    out.solids += meshes(&r, &tight, &mut out.triangles, &mut out.materials)?;
+    if out.triangles.is_empty() {
+        return Err("its graphics hold no solid".to_string());
+    }
+    usable(&out.triangles)?;
+    if !fills(&out.triangles, &out.marks, &tight) {
         return Err("its solids read are not the box its graphics give round them".to_string());
     }
     Ok(out)
+}
+
+/// What an element's own graphics draw: the symbols it places (`GInstance`: each symbol and the transform it is drawn by), and
+/// solids of its own (a stair's run, a wall sweep, a rail, drawn where they stand), with the two boxes its root gives round them.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Drawing {
+    pub placed: Vec<(u32, crate::placement::Transform)>,
+    /// Its own solids, millimetres in the project's axes; none where it has none.
+    pub body: Option<Shape>,
+    /// The points its own lines, arcs and points pass through ([`marks`]), millimetres in the project's axes.
+    pub marks: Vec<P3>,
+    /// The box round all it draws and the box round its solids, feet in the project's axes.
+    pub whole: [f64; 6],
+    pub tight: [f64; 6],
+}
+
+/// What the tree of an element, `tree`, draws; or why it is not read.
+pub(crate) fn drawing(tree: &Tree, layouts: &Layouts) -> Step<Drawing> {
+    let r = Reader { tree, layouts, walked: std::cell::Cell::new(0) };
+    let (whole, tight) = boxes(tree, layouts)?;
+    if let Some(o) = tree.objects.values().find(|o| unread(r.name(o))) {
+        return Err(format!("its graphics hold a {}, which is not read", r.name(o)));
+    }
+    let placed = crate::graphics::placed(tree, layouts)?;
+    let mut body = Shape { whole, marks: marks(&r)?, ..Shape::default() };
+    (body.solids, body.faces) = solids(&r, &mut body.triangles, &mut body.materials)?;
+    body.solids += meshes(&r, &tight, &mut body.triangles, &mut body.materials)?;
+    usable(&body.triangles)?;
+    let marks = std::mem::take(&mut body.marks);
+    let body = (!body.triangles.is_empty()).then_some(body);
+    if placed.is_empty() && body.is_none() {
+        return Err("its graphics hold no solid and no instance".to_string());
+    }
+    Ok(Drawing { placed, body, marks, whole, tight })
 }

@@ -1,8 +1,8 @@
 //! The other placed elements (fittings, fixtures, equipment, terminals, generic models): each comes in as a box-shaped component of
 //! a family of its category.
 //!
-//! The file's record says where an element is and the box that holds it, in project axes; its shape and its connectors are not read
-//! here. A component is of a family of the category's kind (`Category::PipeFitting`, `Plumbing`, `Generic`...): a box whose width,
+//! The file's record says where an element is and the box that holds it, in project axes; its connectors are not read here, and its
+//! shape only from its graphics (below). A component is of a family of the category's kind (`Category::PipeFitting`, `Plumbing`, `Generic`...): a box whose width,
 //! depth and height, and where its middle sits from the family's origin (`Offset X`, `Offset Y`), are instance parameters. The family
 //! is the Revit family the instance's second reference list names (`openings::family_of`), else the one its type's other instances
 //! name, else one family of the category; its type is the Revit type its first list names (`openings::symbol_of`), and `Imported`
@@ -17,6 +17,11 @@
 //! millimetre, which checks the lot: then the component stands at the placement's origin, turned by its angle. Otherwise it comes in
 //! as **the record's box**, unturned: its middle in plan, its bottom on the level at or below it, and its width, depth and height the
 //! box's. A turned element's record box is the one round it, so that box is the element's envelope. The notes say which, and why.
+//!
+//! A component comes in with **its shape** where its own graphics name the symbol it draws and the transform it is drawn by
+//! (`shapes::drawing`), the symbol's solids read (`shapes.rs`), and the symbol's whole box, placed, is the record's box to a
+//! millimetre: its family shows that shape for its type alone (`SHOWS`), placed at the transform's origin, turned in plan where its z
+//! is up, else tilted (`Component::tilt`), and mirrored where the transform is a mirror's (`pose`).
 //!
 //! A category the table has no name for (`inventory::category_name`) is read the same way, its elements as boxes of a family named
 //! after its id (`Category -2008123`): the reader does not guess what Revit calls it, and the note says its category has no name here.
@@ -46,7 +51,7 @@ use crate::inventory::{Gathered, Inventory, Wants, category_name};
 use crate::openings::{family_of, symbol_of};
 use crate::placement::Transform;
 use crate::records::Record;
-use crate::shapes::Shape as Solid;
+use crate::shapes::{MAX_TRIANGLES, Shape as Solid};
 
 /// How a category's box stands for its elements: as their envelope, as a path's only where it runs along an axis, or as a whole
 /// only where it holds no box of its parts' categories.
@@ -138,6 +143,9 @@ const TURNED: &str = "comes in as a box of its type's box, turned as placed: its
 /// What is said of a component that came in with its type's shape.
 const SHAPED: &str = "comes in with its type's shape, read from the file and turned as placed: its connectors are not read";
 
+/// What is said of an element that came in with a shape of its own, the solids and symbols its graphics draw where it stands.
+const DRAWN: &str = "comes in with its shape, read from the file where it stands: its connectors are not read";
+
 /// The type parameter that says which of a family's forms its type shows: 0 the box, `k` its `k`th form.
 const SHOWS: &str = "Shape";
 
@@ -223,18 +231,43 @@ fn same_box(a: &[f64; 6], b: &[f64; 6]) -> bool {
 /// How closely a placement's axis must lie along a project axis to be taken as lying along it.
 const ALONG: f64 = 1e-9;
 
-/// Whether a placement stands its family upright as drawn: its z the project's, so its shape turns only in plan, and its y to the
-/// left of its x (a mirrored instance's runs the other way, and its shape would be drawn the wrong way round).
-fn standing(t: &Transform) -> bool {
+/// How far a placement's axes may be from unit lengths square to each other and still be taken as a turn (and a mirror).
+const SQUARE: f64 = 1e-6;
+
+/// A component's angle in plan (degrees), whether it is mirrored, and its tilt ([`pose`]).
+type Pose = (f64, bool, Option<[[f64; 3]; 2]>);
+
+/// How a component stands as placement `t` places its family: turned `angle` degrees in plan, mirrored (its family's y flipped)
+/// where `t` mirrors, and tilted (`Component::tilt`: where its family's x and z go) where its z is not the project's. None where `t`'s
+/// axes are not unit lengths square to each other, which no turn and mirror gives.
+fn pose(t: &Transform) -> Option<Pose> {
     let [x, y, z] = t.axes;
-    z[0].abs() <= ALONG && z[1].abs() <= ALONG && z[2] > 0.0 && x[2].abs() <= ALONG && x[0] * y[1] - x[1] * y[0] > 0.0
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let square = [x, y, z].iter().all(|a| (dot(*a, *a) - 1.0).abs() <= SQUARE)
+        && [dot(x, y), dot(y, z), dot(z, x)].iter().all(|d| d.abs() <= SQUARE);
+    if !square {
+        return None;
+    }
+    let mirrored = dot(cross(x, y), z) < 0.0;
+    let unit = |a: [f64; 3]| a.map(|v| v / dot(a, a).sqrt());
+    if z[0].abs() <= ALONG && z[1].abs() <= ALONG && z[2] > 0.0 {
+        return Some((x[1].atan2(x[0]).to_degrees(), mirrored, None));
+    }
+    // Tilted: its x made square to its z exactly, as the model checks a tilt to be.
+    let z = unit(z);
+    let x = unit(std::array::from_fn(|k| x[k] - dot(x, z) * z[k]));
+    Some((0.0, mirrored, Some([x, z])))
+}
+
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
 /// Whether the symbol of shape `shape`, placed by `t`, stands where instance box `b` says: the box its graphics give round all
 /// they draw, placed, is the instance's record box to a millimetre; or why not.
 fn fits(shape: &Solid, t: &Transform, b: &[f64; 6]) -> Result<(), String> {
-    if !standing(t) {
-        return Err("it stands on its side, upside down or mirrored, and its shape is drawn upright".to_string());
+    if pose(t).is_none() {
+        return Err("its transform is no turn: its axes are not unit lengths square to each other".to_string());
     }
     if !same_box(&placed_box(&shape.whole, t), b) {
         return Err("the symbol it draws, placed, is not its record's box".to_string());
@@ -403,11 +436,14 @@ struct Plan<'a> {
     draws: Result<Drawn<'a>, String>,
 }
 
-/// What an instance draws: the symbol, the transform it is drawn by, and its shape.
+/// What an element draws: a shape (a symbol's, which its type shares, or its own), keyed by the symbol or the element, and the
+/// transform it is drawn by.
 struct Drawn<'a> {
+    /// Whether the shape is the element's own, not a symbol's its type shares.
+    own: bool,
     symbol: u32,
-    at: &'a Transform,
-    shape: &'a Solid,
+    at: Transform,
+    shape: std::borrow::Cow<'a, Solid>,
 }
 
 /// A reason with the offset in the file it was found at left out, so the notes of many elements read alike.
@@ -415,20 +451,61 @@ fn short(why: &str) -> &str {
     why.split(" at 0x").next().unwrap_or(why)
 }
 
-/// What instance `r` draws, where its own graphics name a symbol whose shape is read and, placed, gives its record's box.
+/// What element `r` draws, where its own graphics read and, placed, give its record's box: one symbol placed (its type's shape,
+/// shared), or its own shape, the solids it draws where they stand and the symbols it places, each where its transform puts it.
 fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
-    let (symbol, at) = match g.drawn.get(&r.id) {
+    let d = match g.drawn.get(&r.id) {
         None => return Err("the file holds no graphics of it".to_string()),
         Some(Err(why)) => return Err(format!("its graphics are not read: {}", short(why))),
-        Some(Ok((symbol, at))) => (*symbol, at),
+        Some(Ok(d)) => d,
     };
-    let shape = match g.shapes.get(&symbol) {
-        None => return Err("the file holds no graphics of the symbol it draws".to_string()),
-        Some(Err(why)) => return Err(format!("the shape it draws is not read: {}", short(why))),
-        Some(Ok(shape)) => shape,
+    let shape_of = |symbol: &u32| match g.shapes.get(symbol) {
+        None => Err("the file holds no graphics of the symbol it draws".to_string()),
+        Some(Err(why)) => Err(format!("the shape it draws is not read: {}", short(why))),
+        Some(Ok(shape)) => Ok(shape),
     };
-    fits(shape, at, &r.bbox)?;
-    Ok(Drawn { symbol, at, shape })
+    if let ([(symbol, at)], None) = (&d.placed[..], &d.body) {
+        let shape = shape_of(symbol)?;
+        fits(shape, at, &r.bbox)?;
+        return Ok(Drawn { own: false, symbol: *symbol, at: *at, shape: std::borrow::Cow::Borrowed(shape) });
+    }
+    // Its own: the solids it draws and each symbol placed, in the project's axes, then moved to the corner of the box round all
+    // it draws, so two alike elements are one shape.
+    let mut tris: Vec<[[f64; 3]; 3]> = d.body.as_ref().map(|b| b.triangles.clone()).unwrap_or_default();
+    let mut materials: Vec<Option<u32>> = d.body.as_ref().map(|b| b.materials.clone()).unwrap_or_default();
+    let mut marks = d.marks.clone();
+    for (symbol, t) in &d.placed {
+        let shape = shape_of(symbol)?;
+        let (_, mirrored, _) = pose(t).ok_or("a symbol it places is placed by no turn")?;
+        if tris.len() + shape.triangles.len() > MAX_TRIANGLES {
+            return Err(format!("it draws more than {MAX_TRIANGLES} triangles"));
+        }
+        let place = |p: [f64; 3]| -> [f64; 3] {
+            std::array::from_fn(|k| t.origin[k] * 304.8 + p[0] * t.axes[0][k] + p[1] * t.axes[1][k] + p[2] * t.axes[2][k])
+        };
+        tris.extend(
+            shape
+                .triangles
+                .iter()
+                .map(|[a, b, c]| if mirrored { [place(*a), place(*c), place(*b)] } else { [place(*a), place(*b), place(*c)] }),
+        );
+        marks.extend(shape.marks.iter().map(|p| place(*p)));
+        materials.extend(&shape.materials);
+    }
+    if !crate::shapes::fills(&tris, &marks, &d.tight) {
+        return Err("what it draws is not the box its graphics give round their solids".to_string());
+    }
+    let corner = [d.whole[0], d.whole[1], d.whole[2]];
+    let micron = |v: f64| (v * 1000.0).round() / 1000.0;
+    let triangles = tris.iter().map(|t| t.map(|p| std::array::from_fn(|k| micron(p[k] - corner[k] * 304.8)))).collect();
+    let whole = std::array::from_fn(|k| d.whole[k] - corner[k % 3]);
+    let solids = d.body.as_ref().map_or(0, |b| b.solids) + d.placed.len();
+    let faces = d.body.as_ref().map_or(0, |b| b.faces);
+    materials.resize(tris.len(), None);
+    let shape = Solid { triangles, solids, faces, whole, marks: Vec::new(), materials };
+    let at = Transform { axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], origin: corner };
+    fits(&shape, &at, &r.bbox)?;
+    Ok(Drawn { own: true, symbol: r.id, at, shape: std::borrow::Cow::Owned(shape) })
 }
 
 /// The box round a shape, millimetres in its family's axes.
@@ -443,15 +520,22 @@ fn extent(shape: &Solid) -> [f64; 6] {
     b
 }
 
-/// Gives type `type_name` of `family` its shape `solid`, as a form only it shows (the family's box shows for its types without
-/// one); whether it is drawn so. A family past [`MAX_FORMS`], or whose types would build more than [`MAX_BUILT`] triangles
-/// together (its shapes, and a box of a dozen or so for each type that may be added), keeps the box for its type.
-fn show(family: &mut Family, type_name: &str, solid: &Solid) -> bool {
+/// Gives type `type_name` of `family` its shape `solid`, as forms only it shows (the family's box shows for its types without
+/// one): a mesh for each material its triangles are drawn in, named as `names` names the file's materials (none, or one the import
+/// has no name for: the family's own, as its category says). Whether it is drawn so. A family that would hold more than
+/// [`MAX_FORMS`] forms, or whose types would build more than [`MAX_BUILT`] triangles together (its shapes, and a box of a dozen or so
+/// for each type that may be added), keeps the box for its type.
+fn show(family: &mut Family, type_name: &str, solid: &Solid, names: &BTreeMap<u32, String>) -> bool {
     if let Some(k) = family.types.get(type_name).and_then(|t| t.get(SHOWS)) {
         return k.as_u64().is_some_and(|k| k > 0);
     }
+    let mut by_material: BTreeMap<&str, Vec<[[f64; 3]; 3]>> = BTreeMap::new();
+    for (k, t) in solid.triangles.iter().enumerate() {
+        let name = solid.materials.get(k).copied().flatten().and_then(|m| names.get(&m)).map_or("", String::as_str);
+        by_material.entry(name).or_default().push(*t);
+    }
     let held: usize = family.forms.iter().map(|f| f.mesh.len()).sum();
-    if family.forms.len() >= MAX_FORMS || held + solid.triangles.len() + 16 * MAX_TYPES > MAX_BUILT {
+    if family.forms.len() + by_material.len() > MAX_FORMS || held + solid.triangles.len() + 16 * MAX_TYPES > MAX_BUILT {
         family.types.entry(type_name.to_string()).or_default();
         return false;
     }
@@ -461,9 +545,12 @@ fn show(family: &mut Family, type_name: &str, solid: &Solid) -> bool {
             form.visible = Some(Expr::Formula(format!("{SHOWS} = 0")));
         }
     }
-    let k = family.forms.len();
-    let visible = Some(Expr::Formula(format!("{SHOWS} = {k}")));
-    family.forms.push(Form { mesh: Arc::new(solid.triangles.clone()), visible, ..Form::default() });
+    // The next shape's number: one past the greatest a type shows.
+    let k = family.types.values().filter_map(|t| t.get(SHOWS)?.as_u64()).max().unwrap_or(0) + 1;
+    for (material, mesh) in by_material {
+        let visible = Some(Expr::Formula(format!("{SHOWS} = {k}")));
+        family.forms.push(Form { mesh: Arc::new(mesh), visible, material: material.to_string(), ..Form::default() });
+    }
     family.types.entry(type_name.to_string()).or_default().insert(SHOWS.to_string(), k.into());
     true
 }
@@ -541,9 +628,11 @@ fn boxes(
             cx.left_out(label, r.id, why);
             continue;
         }
+        // What it draws, where its own graphics say: a path whose graphics draw its body comes in with it, whatever its box.
+        let draws = drawing(g, r);
         match taken {
             Shape::Envelope => {}
-            Shape::Path if runs_along(&r.bbox) => {}
+            Shape::Path if runs_along(&r.bbox) || draws.is_ok() => {}
             Shape::Path => {
                 let why = "its box is the envelope of a path that turns or runs across the axes, not its body, and the path is not read";
                 cx.left_out(label, r.id, why);
@@ -570,7 +659,7 @@ fn boxes(
             Ok(stand) => (stand, None),
             Err(why) => (Stand::of_box(&r.bbox), Some(why)),
         };
-        plans.push(Plan { r, family, type_name, stand, why, draws: drawing(g, r) });
+        plans.push(Plan { r, family, type_name, stand, why, draws });
     }
     // A type is each shape its instances draw (symbols drawn alike are one): the first its Revit type's name, the next numbered
     // on from 2. Instances that come in as boxes are a type of their own beside them, so a box never shows a shape it was not
@@ -581,9 +670,10 @@ fn boxes(
         if same_as.contains_key(&d.symbol) {
             continue;
         }
-        let first = alike.iter().find(|(_, s)| s.triangles == d.shape.triangles).map_or(d.symbol, |(k, _)| *k);
+        let first =
+            alike.iter().find(|(_, s)| s.triangles == d.shape.triangles && s.materials == d.shape.materials).map_or(d.symbol, |(k, _)| *k);
         if first == d.symbol {
-            alike.push((d.symbol, d.shape));
+            alike.push((d.symbol, &d.shape));
         }
         same_as.insert(d.symbol, first);
     }
@@ -608,7 +698,7 @@ fn boxes(
             continue;
         }
         let drawn = match &p.draws {
-            Ok(d) if show(made, &type_name, d.shape) => Some(d),
+            Ok(d) if show(made, &type_name, &d.shape, &g.materials) => Some(d),
             _ => {
                 made.types.entry(type_name.clone()).or_default();
                 None
@@ -617,31 +707,31 @@ fn boxes(
         let built = (|| -> Result<Component, String> {
             let (level, elevation) = level_at(cx, f, r.bbox[2].min(p.stand.bottom))?;
             let mut params = BTreeMap::new();
-            let (at, angle, base, lengths) = match drawn {
+            let (at, angle, base, lengths, mirrored, tilt) = match drawn {
                 Some(d) => {
-                    let b = extent(d.shape);
+                    let b = extent(&d.shape);
                     let sizes = [b[3] - b[0], b[4] - b[1], b[5] - b[2], (b[0] + b[3]) / 2.0, (b[1] + b[4]) / 2.0];
-                    let angle = d.at.axes[0][1].atan2(d.at.axes[0][0]).to_degrees();
-                    ([d.at.origin[0], d.at.origin[1]], angle, d.at.origin[2], sizes)
+                    let (angle, mirrored, tilt) = pose(&d.at).ok_or("its transform is no turn")?;
+                    ([d.at.origin[0], d.at.origin[1]], angle, d.at.origin[2], sizes, mirrored, tilt)
                 }
                 None => {
                     let s = &p.stand;
                     let feet = [s.size[0], s.size[1], s.size[2], s.middle[0], s.middle[1]];
-                    (s.at, s.angle, s.bottom, feet.map(mm))
+                    (s.at, s.angle, s.bottom, feet.map(mm), false, None)
                 }
             };
             for (name, length) in ["Width", "Depth", "Height", "Offset X", "Offset Y"].into_iter().zip(lengths) {
                 params.insert(name.to_string(), micron(length).into());
             }
             Ok(Component {
-                tilt: None,
+                tilt,
                 family: p.family.clone(),
                 type_name: type_name.clone(),
                 level,
                 at: point(at[0], at[1]),
                 angle: micron(angle),
                 offset: micron(mm(base) - mm(elevation)),
-                mirrored: false,
+                mirrored,
                 params,
                 adaptive: None,
                 host: None,
@@ -653,7 +743,7 @@ fn boxes(
                 let id = cx.model.insert(Element::Component(component));
                 cx.from.insert(id, format!("{label} {}", r.id));
                 match (drawn, p.why, &p.draws) {
-                    (Some(_), ..) => cx.note(label, r.id, SHAPED),
+                    (Some(d), ..) => cx.note(label, r.id, if d.own { DRAWN } else { SHAPED }),
                     (None, None, Err(not)) => cx.note(label, r.id, &format!("{turned_so}; {not}")),
                     (None, None, Ok(_)) => cx.note(label, r.id, &format!("{turned_so}; its family holds as many shapes as one family may")),
                     (None, Some(why), _) => cx.note(label, r.id, &format!("{box_so}; {why}")),

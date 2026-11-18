@@ -274,7 +274,7 @@ pub struct Ty<'a> {
 }
 
 impl Ty<'_> {
-    /// A plain kind: `1` and `2` a byte, `4` and `5` a `u32`, `6` and `7` an `f64`, `11` a `u64`.
+    /// A plain kind: `1` and `2` a byte, `3` a `u16`, `4` and `5` a `u32`, `6` an `f32`, `7` an `f64`, `11` a `u64`.
     pub const fn plain(kind: u8) -> Ty<'static> {
         Ty { kind, modifier: 0, count: None, inner: None, class: None }
     }
