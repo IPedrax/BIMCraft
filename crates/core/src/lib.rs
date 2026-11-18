@@ -268,6 +268,8 @@ pub mod units;
 mod vertical_tools_tests;
 pub mod view3d;
 #[cfg(test)]
+mod wall_mitre_tests;
+#[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;
