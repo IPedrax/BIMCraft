@@ -852,6 +852,15 @@ impl Orbit {
         }
     }
 
+    /// A fit asked for and not yet done, given up: the camera is being set otherwise (Previous Pan/Zoom), and the fit must not
+    /// come back over it.
+    pub(crate) fn cancel_fit(&mut self) {
+        self.fit_worker = None;
+        self.fit_target = None;
+        self.fit_requested = None;
+        self.fit_from = None;
+    }
+
     /// Home: the camera turned to Revit's default orientation and fitted over the model on the worker, through `lens`.
     pub(crate) fn home(&mut self, lens: Option<f64>) {
         if let Some(c) = self.camera {

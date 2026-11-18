@@ -1233,6 +1233,8 @@ impl BimApp {
         } else {
             self.family_3d(ui, &mut ed, pane);
         }
+        // Zoom In Region's drag, over the view (`zoom.rs`).
+        ed.zoom_region_drag(ui, pane);
         // The window's tabs, the project's and each family document's, over the view's top left corner.
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
@@ -1263,8 +1265,17 @@ impl BimApp {
                 }
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
-                    ed.modeller.camera = None;
-                    ed.orbit.fit();
+                    ed.zoom_to_fit();
+                }
+                // FE-3: the rest of Revit's zoom commands, beside it.
+                if icon_button(ui, Icon::ZoomRegion, "Zoom In Region").clicked() {
+                    ed.zoom_region_tool();
+                }
+                if icon_button(ui, Icon::ZoomOut, "Zoom Out (2x)").clicked() {
+                    ed.zoom_out();
+                }
+                if icon_button(ui, Icon::ZoomPrevious, "Previous Pan/Zoom").clicked() {
+                    ed.previous_zoom();
                 }
                 // Revit's Preview Visibility: the family as placed, the forms its type hides left out rather than ghosted.
                 if ed.adaptive.is_none() {
@@ -1387,6 +1398,10 @@ impl BimApp {
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.active_family()?;
+        // Zoom In Region armed (FE-3), over whatever else is in hand.
+        if ed.zoom_region_armed() {
+            return Some(msg!("Zoom In Region: drag a rectangle over the view to fit it. Esc cancels."));
+        }
         if let Some(s) = ed.sketch.as_ref() {
             // Align on the sketch's lines (F7b).
             if ed.views.aligning.is_some() {
@@ -1451,7 +1466,7 @@ impl BimApp {
     }
 
     /// What Find lists on a family tab, by name in `shortcuts::ACTIONS`: what the family document does itself (Delete, Align and
-    /// Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in {3D}, its {3D} view) and what is the
+    /// Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in the view shown, its {3D} view) and what is the
     /// window's (Properties, Project Browser, Keyboard Shortcuts). The project's tools are left out: from a family tab they
     /// would change the project out of sight.
     pub(crate) fn family_find_actions(&self) -> Vec<&'static str> {
@@ -1468,9 +1483,7 @@ impl BimApp {
             "Reset Temporary Hide/Isolate",
             "3D View",
         ]);
-        if matches!(self.sheet, crate::Sheet::Family(_, None)) {
-            out.push("Zoom to Fit");
-        }
+        out.push("Zoom to Fit");
         out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
         out
     }
@@ -1563,6 +1576,11 @@ impl BimApp {
             self.family_typed(ctx);
         }
         let Some(ed) = self.active_family_mut() else { return };
+        // Zoom In Region armed: Escape gives it up, and nothing else.
+        if ed.zoom_region_armed() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            ed.cancel_zoom_region();
+            return;
+        }
         // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
         // the sketch's own last change. The document's history waits for Finish.
         if let Some(s) = ed.sketch.as_mut() {

@@ -1297,6 +1297,20 @@ data URI is decoded. What the reader can't use (textures, lines and points, spar
 which refuse the file) is listed in `left_out`; a file with nothing to bring in is an error that says what was left out.
 Generic components go to IFC as `IfcBuildingElementProxy`.
 
+## Zooming the family's views (FE-3)
+
+The zoom commands work in each of the document's views, plans, the ceiling plan, elevations and {3D} (an adaptive family's
+modelling view or the preview), on the view shown and never on the project's (`editor/zoom.rs`, over the window's own
+`zoom.rs`). The view control bar has three beside Zoom to Fit. Zoom to Fit (and its keys, ZF, ZE and ZA, and Find) fits the
+view shown afresh: before, it left a plan or an elevation as it was. Zoom Out (2x) halves the view about its middle. Zoom In
+Region arms a drag over the view, drawn over it so the view's own drag neither turns, pans nor selects, and the view fits the
+rectangle let go; while it is armed the status bar asks for the rectangle, and Escape or another view shown gives it up.
+Previous Pan/Zoom steps back through a short history each view keeps, a step left by each of those commands and none by the
+wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never
+comes back over the camera it restored. The three new commands have no keys yet: the project has no such commands, so they
+are not in `shortcuts::ACTIONS` or `SHORTCUTS`, and their keys (ZR and ZZ, ZO and ZV, ZP and ZC) wait for a family document
+to have keys of its own. Tests: `tests/family_zoom.rs`.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
@@ -1325,6 +1339,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+- `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
