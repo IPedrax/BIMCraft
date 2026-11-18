@@ -213,7 +213,7 @@ impl BimApp {
             _ => By::Name,
         };
         let name = choices.iter().find(|(_, l)| *l == current).or(choices.first()).map(|(_, l)| l.clone()).unwrap_or_default();
-        self.work_plane = Some(Draft { by, name, offset: m.units.length(wp.offset), picking: None, error: None, components: Vec::new() });
+        self.work_plane = Some(Draft { by, name, offset: m.units.field(wp.offset), picking: None, error: None, components: Vec::new() });
     }
 
     /// The selection's components that Edit Work Plane can put on another plane: each of a work plane-based family placed by

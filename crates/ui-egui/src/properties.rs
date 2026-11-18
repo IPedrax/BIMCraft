@@ -701,7 +701,8 @@ fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
 pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
     match kind {
         ParameterKind::Area => area_shown(v, units),
-        ParameterKind::Length => shown(Length, v, units),
+        // Read whole by the dialog's OK: what the units round away is said in mm, so a value left alone keeps itself.
+        ParameterKind::Length => v.as_f64().map_or_else(String::new, |x| units.field(x)),
         ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => shown(Number, v, units),
         ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, units),
     }
@@ -1109,9 +1110,9 @@ impl RoomRows {
         let t = m.types.room.get(name).cloned().unwrap_or_default();
         RoomRows {
             floor: t.floor.unwrap_or_default(),
-            floor_offset: m.units.length(t.floor_offset),
+            floor_offset: m.units.field(t.floor_offset),
             ceiling: t.ceiling.unwrap_or_default(),
-            ceiling_offset: m.units.length(t.ceiling_offset),
+            ceiling_offset: m.units.field(t.ceiling_offset),
             fill: t.colour.is_some(),
             colour: t.colour.unwrap_or(SWATCHES[0].1),
         }
@@ -1256,7 +1257,7 @@ impl TypeDialog {
                 if *k == "rotation" {
                     return (*g, *k, *l, format!("{}°", value.as_f64().unwrap_or(0.0)));
                 }
-                (*g, *k, *l, shown(Length, &value, m.units))
+                (*g, *k, *l, value.as_f64().map_or_else(String::new, |x| m.units.field(x)))
             })
             .collect()
     }
@@ -1264,9 +1265,9 @@ impl TypeDialog {
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
     fn layers(m: &Model, category: &str, name: &str) -> Vec<LayerRow> {
         let Some((.., thickness, layers)) = m.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return Vec::new() };
-        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length(l.thickness), l.variable);
+        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.field(l.thickness), l.variable);
         match layers {
-            [] => vec![(Function::Structure, String::new(), m.units.length(thickness), false)],
+            [] => vec![(Function::Structure, String::new(), m.units.field(thickness), false)],
             layers => layers.iter().map(typed).collect(),
         }
     }
@@ -3869,7 +3870,7 @@ impl FamilyDialog {
             .map(|f| {
                 let values = f.values(&name, &Default::default()).unwrap_or_default();
                 let typed = |p: &bimcraft_core::family::Parameter| match values.get(&p.name) {
-                    Some(Val::Number(x)) if p.kind == Holds::Length => m.units.length(*x),
+                    Some(Val::Number(x)) if p.kind == Holds::Length => m.units.field(*x),
                     Some(Val::Number(x)) if p.kind == Holds::YesNo => (if *x != 0.0 { "1" } else { "0" }).to_string(),
                     Some(Val::Number(x)) => format!("{}", (x * 1e6).round() / 1e6),
                     Some(Val::Text(t)) => t.clone(),

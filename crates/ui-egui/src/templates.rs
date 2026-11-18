@@ -607,7 +607,7 @@ fn settings(ui: &mut Ui, d: &mut TemplatesDialog, m: &Model) -> Option<Ask> {
         let r = d.current(m).and_then(|t| t.view_range).unwrap_or_default();
         let units = m.units;
         d.range =
-            Some([r.top.map(|v| units.length(v)).unwrap_or_default(), units.length(r.cut), units.length(r.bottom), units.length(r.depth)]);
+            Some([r.top.map(|v| units.field(v)).unwrap_or_default(), units.field(r.cut), units.field(r.bottom), units.field(r.depth)]);
         return None;
     }
     ask

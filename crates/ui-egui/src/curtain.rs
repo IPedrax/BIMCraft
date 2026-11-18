@@ -72,12 +72,12 @@ fn choice<T: Copy + PartialEq>(ui: &mut Ui, label: &str, value: &mut T, options:
 impl CurtainEditor {
     fn new(m: &Model, name: &str) -> Option<CurtainEditor> {
         let l = m.types.wall.get(name)?.curtain.clone()?;
-        let typed = |d: &Direction, u: Units| d.segments.iter().map(|s| u.length(*s)).collect::<Vec<_>>();
+        let typed = |d: &Direction, u: Units| d.segments.iter().map(|s| u.field(*s)).collect::<Vec<_>>();
         Some(CurtainEditor {
             name: name.to_string(),
             columns: typed(&l.columns, m.units),
             rows: typed(&l.rows, m.units),
-            smallest: m.units.length(l.min_panel),
+            smallest: m.units.field(l.min_panel),
             l,
             selected: Vec::new(),
             error: None,

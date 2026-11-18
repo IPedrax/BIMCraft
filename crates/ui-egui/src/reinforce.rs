@@ -293,7 +293,7 @@ impl ReinforceDialog {
                     let text = match f.kind {
                         Kind::Count => format!("{}", v.round()),
                         Kind::Diameter | Kind::Number => format!("{v}"),
-                        Kind::Length => units.length(v),
+                        Kind::Length => units.field(v),
                     };
                     self.values.insert(f.path, text);
                 }
@@ -303,13 +303,13 @@ impl ReinforceDialog {
             Some(Value::Object(o)) => {
                 for (face, key) in [("top", "cover_top"), ("bottom", "cover_bottom"), ("sides", "cover_sides")] {
                     if let Some(v) = o.get(face).and_then(Value::as_f64) {
-                        self.values.insert(key, units.length(v));
+                        self.values.insert(key, units.field(v));
                     }
                 }
             }
             Some(v) => {
                 if let Some(x) = v.as_f64() {
-                    self.values.insert("cover", units.length(x));
+                    self.values.insert("cover", units.field(x));
                 }
             }
             None => {}
@@ -325,7 +325,7 @@ impl ReinforceDialog {
             }
         }
         if let Some(v) = p.get("clearance").and_then(Value::as_f64) {
-            self.values.insert("clearance", units.length(v));
+            self.values.insert("clearance", units.field(v));
         }
     }
 

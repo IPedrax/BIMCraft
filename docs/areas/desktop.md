@@ -819,6 +819,16 @@ Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids,
 
 Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
 
+## Lengths in fields
+
+A dialog that fills a field from the model and reads every field back when OK or Apply is pressed (Type Properties, a room type's
+offsets, a stair type's rules, Edit Pattern, a view range, Reinforce, a project parameter's value, a family's type parameters)
+fills a length with `Units::field`, never `Units::length`. `length` is what drawings show, rounded (3 mm in metres is `0.00`), so
+a field left alone would be read back as 0. In mm, cm and m, `field` is `length` while that reads back as the value, else the
+value in mm with its unit (`3 mm`), which `Units::parse` reads. Inches and feet round to a sixteenth of an inch and a hundredth
+of a foot by design, so `field` is `length` there. A field that commits only when its text changes (the Properties palette)
+keeps `length`.
+
 ## Benchmarking the window
 
 `bimcraft --bench SCENARIO [--bench-out REPORT.json] [FILE]` runs a scenario on the real window and times every frame

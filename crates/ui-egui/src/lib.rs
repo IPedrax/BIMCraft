@@ -2514,7 +2514,7 @@ impl BimApp {
             ];
             for field in fields {
                 if let Some(mm) = from.parse(field) {
-                    *field = to.length(mm);
+                    *field = to.field(mm);
                 }
             }
             self.units = to;
@@ -3528,7 +3528,7 @@ impl BimApp {
         }
         if tool == Tool::Level {
             let top = self.session.model.levels().last().map_or(0.0, |(_, l)| l.elevation);
-            self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
+            self.new_level = (self.session.model.units.field(top + 3000.0), String::new());
         }
         let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
         let placing_grid = matches!(tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. });

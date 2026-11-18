@@ -93,6 +93,16 @@ impl Units {
         }
     }
 
+    /// A length as a field to edit is filled: as [`Units::length`], unless that reads back as another length (3 mm in metres
+    /// is `0.00`), and then in mm with its unit, so a field left alone keeps its value. Inches and feet round as drawings do.
+    pub fn field(self, mm: f64) -> String {
+        let shown = self.length(mm);
+        if self.imperial() || self.parse(&shown) == self.parse(&format!("{mm} mm")) {
+            return shown;
+        }
+        format!("{} mm", (mm * 1e3).round() / 1e3 + 0.0)
+    }
+
     /// A length with its unit, as the desktop labels one: 3000 mm, 3.00 m, 9'-10 1/8".
     pub fn with_unit(self, mm: f64) -> String {
         match self {
@@ -287,6 +297,29 @@ mod tests {
         assert_eq!(Units::FeetInches.with_unit(3000.0), "9'-10 1/8\"");
         let (ft2, unit) = Units::FeetInches.area(18e6);
         assert_eq!((format!("{ft2:.2}"), unit), ("193.75".to_string(), "ft²"));
+    }
+
+    #[test]
+    fn a_field_is_filled_with_what_reads_back_as_the_value() {
+        // What the units round away is said in mm, so Apply on a field left alone changes nothing.
+        assert_eq!(Units::Metres.field(3.0), "3 mm");
+        assert_eq!(Units::Metres.field(55.0), "55 mm");
+        assert_eq!(Units::Metres.field(-12.5), "-12.5 mm");
+        assert_eq!(Units::Centimetres.field(3005.4), "3005.4 mm");
+        assert_eq!(Units::Millimetres.field(3.5), "3.5 mm");
+        // What they show exactly is shown as drawings show it.
+        assert_eq!(Units::Metres.field(2950.0), "2.95");
+        assert_eq!(Units::Metres.field(0.0), "0.00");
+        assert_eq!(Units::Centimetres.field(3005.0), "300.5");
+        assert_eq!(Units::Millimetres.field(3000.0), "3000");
+        // Inches and feet round by design, to a sixteenth of an inch and a hundredth of a foot.
+        assert_eq!(Units::FeetInches.field(3000.0), "9'-10 1/8\"");
+        assert_eq!(Units::Feet.field(3000.0), "9.84'");
+        for u in [Units::Millimetres, Units::Centimetres, Units::Metres] {
+            for mm in [0.0, 3.0, 55.0, 2950.0, 3213.1, -12.5, 0.0004] {
+                assert_eq!(u.parse(&u.field(mm)), Some((mm * 1e3).round() / 1e3 + 0.0), "{u:?} {mm}");
+            }
+        }
     }
 
     #[test]
