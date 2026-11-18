@@ -35,11 +35,25 @@ All ten states passed the independent geometry comparison and remain below the u
 The largest observed coordinate discrepancy was below 0.00011 mm, from GLB float32 conversion; this is a sampled
 mesh comparison, not a certified continuous-surface tolerance.
 
+## Final local validation
+
+- macOS 27.0.1 / Apple silicon; Rust 1.99.1; implementation commit `bf482d87fcef4cc4133bd0a09d414cc19090bef9`.
+- Formatting, workspace/all-targets Clippy with `-D warnings`, translation catalogs and sample WebAssembly plugin build: passed.
+- `cargo test --offline --workspace -- --skip tests::hostile_params_never_panic_or_break_the_model`: **5340 passed, 0 failed, 27 ignored, 1 filtered**.
+- The one filtered exhaustive test already passed in the preceding full core run: **2,899 passed, 0 failed, 13 ignored**. Only documentation changed afterward. The rerun fixed the root guidance word-budget check (now 2,999 words); no code changes followed that core run.
+- Four opt-in native evaluator tests: **4 passed, 0 failed**. All ten before/after geometry states passed.
+- The linker emitted a nonfatal compact-unwind-table size warning for the UI test binary; this did not affect the test results.
+- Initial sandbox-only attempts could not bind the assistant test socket or initialize Metal. Successful runs used the normal host permissions required for those tests.
+- Cross-platform GitHub checks are separate; this local record does not claim their completion.
+
+[Machine-readable validation record](validation.json).
+
 ## Test scope and limitations
 
 - New evaluator configuration/encoded-source-budget test was recorded failing to compile before its helper/limit
   implementation existed; the focused filter then passed 6 tests with 1 external integration test ignored.
   This is test-first compile-failure evidence, not a fabricated behavioral red result.
+  [Recorded compiler output](config-red.txt) (checkout path redacted).
 - Native integration tests exercise drawer counts 1–4, shelf counts 0/1/3/6, front/hardware flags, positions,
   type/instance separation, source-bound rename/delete refusals, and Family Editor save/reload/history.
 - Window, door and light change a native Properties input, Undo/Redo, and preserve source through editor save.
