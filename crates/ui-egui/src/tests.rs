@@ -6667,6 +6667,7 @@ mod dimensions;
 mod dims3d;
 mod display;
 mod dock;
+mod dock_policy;
 mod draw;
 mod electrical;
 mod export;
