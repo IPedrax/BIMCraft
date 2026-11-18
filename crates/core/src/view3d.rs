@@ -141,7 +141,7 @@ pub(crate) struct Tri {
     /// is in the library, 0 for none; in the next 2 the part of a curtain wall it is of ([`part_of`]), 0 for none; in the high
     /// 8, how see-through the material is, percent.
     tex: u32,
-    curve: Option<(Id, usize)>,
+    pub(crate) curve: Option<(Id, usize)>,
     /// Its form's Visibility Settings, packed with its component's x axis ([`crate::family::visibility::packed`]); 0 for
     /// anything drawn in every view.
     vis: u32,
@@ -246,13 +246,15 @@ impl Frame {
 /// slope); a prism: a ring in plan from one plane up to another (a wall's part; of a curved wall,
 /// with its centre and its centre line's radius, its faces being one surface each); or triangles
 /// (a component's form, which sections show and don't cut; a round run's tube, convex, which they do, as `cut` says): a round
-/// one's sides, past `caps`, are one curved surface; any other's facets that turn little where they meet are ([`facets`]).
+/// one's sides, past `caps`, are one curved surface; any other's facets that turn little where they meet are ([`facets`]). A
+/// `shared` round one's sides are one surface with the sides of its owner's other shared meshes: a lofted curved wall's faces,
+/// each strip of it a piece of its own, shade and edge as one, as an upright curved wall's do.
 #[derive(Clone)]
 pub(crate) enum Solid {
     Box { owner: Id, color: Rgb, tex: u32, frame: Frame, a: (f64, f64), c: (f64, f64), z: (f64, f64) },
     Slab { owner: Id, color: Rgb, tex: u32, face: Vec<P3>, rise: f64 },
     Prism { owner: Id, color: Rgb, tex: u32, ring: Vec<P2>, bottom: Plane, top: Plane, curve: Option<(P2, f64)>, part: u8 },
-    Mesh { owner: Id, color: Rgb, tex: u32, tris: Vec<[P3; 3]>, caps: usize, round: bool, cut: bool, vis: u32 },
+    Mesh { owner: Id, color: Rgb, tex: u32, tris: Vec<[P3; 3]>, caps: usize, round: bool, shared: bool, cut: bool, vis: u32 },
 }
 
 /// Retained geometry with per-snapshot appearance. Copying prepared work shares
@@ -580,8 +582,9 @@ impl Solid {
             }
             // Each surface keyed by its first triangle's place in `out`, which no other form's shares.
             // ponytail: worked out again for each component of a family; keep it per form if many big meshes slow a scene.
-            Solid::Mesh { owner, color, tex, tris, caps, round, vis, .. } => {
-                let first = out.len();
+            Solid::Mesh { owner, color, tex, tris, caps, round, shared, vis, .. } => {
+                // A shared surface's key is past any triangle's place, so no other surface's is the same.
+                let first = if *shared { usize::MAX - *caps } else { out.len() };
                 let surfaces = if *round { (0..tris.len()).map(|i| (i >= *caps).then_some(*caps)).collect() } else { facets(tris) };
                 for (p, s) in tris.iter().zip(surfaces) {
                     out.push(Tri {
@@ -1076,22 +1079,54 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
         let pieces = if voided { walls::slant::pieces(m, id, true, index) } else { walls::slant::pieces_rect(m, id, index) };
         pieces
             .into_iter()
-            .map(|tris| Solid::Mesh { owner: id, color: WALL, tex: 0, caps: 0, round: false, cut: true, tris, vis: 0 })
+            .map(|tris| Solid::Mesh { owner: id, color: WALL, tex: 0, caps: 0, round: false, shared: false, cut: true, tris, vis: 0 })
             .collect()
     };
     // Slanted, or joined to a slanted wall at an end: its ends move as it rises.
     if walls::slant::lofted(m, id, index) {
         let solids = leaning(true);
-        if voids.is_empty() {
-            return solids;
-        }
-        return cut_by_voids(id, WALL, solids, &voids).unwrap_or_else(|| leaning(false));
+        let solids = if voids.is_empty() { solids } else { cut_by_voids(id, WALL, solids, &voids).unwrap_or_else(|| leaning(false)) };
+        return solids.into_iter().map(|s| shared_faces(m, s)).collect();
     }
     let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
     if voids.is_empty() {
         return prisms;
     }
     cut_by_voids(id, WALL, prisms, &voids).unwrap_or_else(|| walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect())
+}
+
+/// A lofted curved wall's piece, its triangles on the wall's faces (cones round its arc, leaning as it leans) put last and
+/// `shared`, so its strips' faces are one smooth surface, shaded across and drawn with no edge between them, as an upright
+/// curved wall's are, though each strip is a piece of its own. A straight wall's, which are flat and one plane already, and any
+/// other solid, as they are.
+fn shared_faces(m: &Model, solid: Solid) -> Solid {
+    let Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis } = solid else { return solid };
+    let as_it_was = |tris| Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis };
+    let Some(w) = m.wall(owner) else { return as_it_was(tris) };
+    let axis = Axis::of(w);
+    if axis.centre().is_none() {
+        return as_it_was(tris);
+    }
+    let base = m.own_base(w);
+    let rate = walls::lean(m, w, base + 1.0) - walls::lean(m, w, base);
+    let limit = 10f64.to_radians().cos();
+    let on_face = |t: &[P3; 3]| {
+        let n = unit(cross(sub(t[1], t[0]), sub(t[2], t[0])));
+        if dot(n, n) < 0.5 {
+            return false;
+        }
+        let (s, _) = axis.project(P2((t[0][0] + t[1][0] + t[2][0]) / 3.0, (t[0][1] + t[1][1] + t[2][1]) / 3.0));
+        // The face there runs along the wall and up it, leaning `rate` across for each mm it rises.
+        let (along, across) = (axis.tangent(s), axis.at(s, 1.0) - axis.at(s, 0.0));
+        let face = unit(cross([along.0, along.1, 0.0], [across.0 * rate, across.1 * rate, 1.0]));
+        dot(n, face).abs() > limit
+    };
+    let (faces, rest): (Vec<[P3; 3]>, Vec<[P3; 3]>) = tris.into_iter().partition(on_face);
+    if faces.is_empty() {
+        return as_it_was(rest);
+    }
+    let caps = rest.len();
+    Solid::Mesh { owner, color, tex, tris: rest.into_iter().chain(faces).collect(), caps, round: true, shared: true, cut, vis }
 }
 
 /// `solids`, element `owner`'s, less `voids`: each solid a void's box reaches as its triangles less them, a mesh in `color`
@@ -1115,7 +1150,7 @@ fn cut_by_voids(owner: Id, color: Rgb, solids: Vec<Solid>, voids: &[Vec<[P3; 3]>
             tris = crate::csg::subtract(&tris, &voids[k], &mut meter).ok()?;
         }
         if !tris.is_empty() {
-            out.push(Solid::Mesh { owner, color, tex: 0, caps: 0, round: false, cut: true, tris, vis: 0 });
+            out.push(Solid::Mesh { owner, color, tex: 0, caps: 0, round: false, shared: false, cut: true, tris, vis: 0 });
         }
     }
     Some(out)
@@ -1278,7 +1313,7 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
         let world = |c: [f64; 3]| std::array::from_fn(|k| o3[k] + ax[0][k] * c[0] + ax[1][k] * c[1] + ax[2][k] * c[2]);
         if s.is_cut() {
             let tris = s.tris().into_iter().map(|t| t.map(world)).collect();
-            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
+            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, shared: false, cut: true, vis: 0 });
             continue;
         }
         if f.leans() {
@@ -1293,7 +1328,7 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
                 (-dz, dz),
             );
             let tris = made.into_iter().map(|t| t.p.map(world)).collect();
-            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
+            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, shared: false, cut: true, vis: 0 });
             continue;
         }
         // Round its own centre, which is what makes its triangles a shape placed, to the last bit: see `curtain_copies`.
@@ -1417,7 +1452,7 @@ fn solids_in_with(
                                     Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None, part: 0 }
                                 }
                                 crate::runs::Swept::Mesh(tris, caps) => {
-                                    Solid::Mesh { owner: id, color, tex, tris, caps, round: false, cut: true, vis: 0 }
+                                    Solid::Mesh { owner: id, color, tex, tris, caps, round: false, shared: false, cut: true, vis: 0 }
                                 }
                             });
                         }
@@ -1429,7 +1464,7 @@ fn solids_in_with(
                             .flatten()
                             .collect();
                         let (tris, caps) = if cuts.is_empty() { (tris, caps) } else { crate::runs::clip_tube(tris, caps, &cuts) };
-                        out.push(Solid::Mesh { owner: id, color, tex, tris, caps, round: true, cut: true, vis: 0 });
+                        out.push(Solid::Mesh { owner: id, color, tex, tris, caps, round: true, shared: false, cut: true, vis: 0 });
                     } else {
                         let (_, bottom, top) = g.prism();
                         let ring = crate::runs::outline_in(m, id, index);
@@ -1442,13 +1477,13 @@ fn solids_in_with(
                 let base = m.elevation(rb.level);
                 let path: Vec<P3> = rb.path.iter().map(|q| [q[0], q[1], q[2] + base]).collect();
                 for (tris, caps) in crate::rebar::tubes(&path, rb.diameter) {
-                    out.push(Solid::Mesh { owner: id, color: REBAR, tex: 0, tris, caps, round: true, cut: true, vis: 0 });
+                    out.push(Solid::Mesh { owner: id, color: REBAR, tex: 0, tris, caps, round: true, shared: false, cut: true, vis: 0 });
                 }
             }
             // Lofted, a skin of triangles from the footprint to the top outline.
             Element::Mass(ms) if ms.lofted() => {
                 let tris = crate::massing::tris(&ms.footprint(), &ms.top_ring(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height));
-                out.push(Solid::Mesh { owner: id, color: MASS, tex: 0, tris, caps: 0, round: false, cut: false, vis: 0 });
+                out.push(Solid::Mesh { owner: id, color: MASS, tex: 0, tris, caps: 0, round: false, shared: false, cut: false, vis: 0 });
             }
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
@@ -1464,6 +1499,7 @@ fn solids_in_with(
                         tris: piece.tris,
                         caps: piece.caps,
                         round: piece.round,
+                        shared: false,
                         cut,
                         vis: crate::family::visibility::packed(piece.vis, P2(x[0], x[1])),
                     });
@@ -1580,6 +1616,7 @@ fn solids_in_with(
                             tris: piece.tris,
                             caps: piece.caps,
                             round: piece.round,
+                            shared: false,
                             cut,
                             vis: crate::family::visibility::packed(piece.vis, x),
                         });
@@ -1603,7 +1640,7 @@ fn solids_in_with(
                         };
                         let ring = |z: f64| vec![at(a.0, -25.0, z), at(a.1, -25.0, z), at(a.1, 25.0, z), at(a.0, 25.0, z)];
                         let tris = walls::slant::closed(ring(h.bottom), ring(h.top));
-                        out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
+                        out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, shared: false, cut: true, vis: 0 });
                     } else {
                         out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (h.bottom, h.top) });
                     }
@@ -1820,7 +1857,9 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
         }
         // A wall's piece a door's or a window's voids cut: each layer the part of it between two of the wall's boundaries
         // in plan, as a prism's are. Should cutting fail, the piece in one.
-        Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis } if matches!(m.elements.get(owner), Some(Element::Wall(_))) => {
+        Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis }
+            if matches!(m.elements.get(owner), Some(Element::Wall(_))) =>
+        {
             let lines = walls::layer_lines(m, owner);
             let (lo, hi) = tri_box(&tris);
             let mut meter = crate::csg::Meter::default();
@@ -1848,18 +1887,19 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                     if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
                 });
                 let Ok(inside) = inside else {
-                    return vec![(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }, None)];
+                    return vec![(Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis }, None)];
                 };
                 if !inside.is_empty() {
                     let (color, tex) = (colour(l, color), over(skin(m, &l.material), tex));
-                    out.push((Solid::Mesh { owner, color, tex, tris: inside, caps: 0, round: false, cut, vis }, Some(k)));
+                    let layer = Solid::Mesh { owner, color, tex, tris: inside, caps: 0, round: false, shared: false, cut, vis };
+                    out.push((if shared { shared_faces(m, layer) } else { layer }, Some(k)));
                 }
             }
             out
         }
         // A floor's, a ceiling's or a roof's piece the voids of what is on its faces cut: each layer the piece within that layer
         // of its uncut solids, in its material. Should cutting fail, the piece in one.
-        Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }
+        Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis }
             if let Some(e @ (Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_))) = m.elements.get(owner) =>
         {
             let (lo, hi) = tri_box(&tris);
@@ -1879,11 +1919,21 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                     if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
                 });
                 let Ok(inside) = inside else {
-                    return vec![(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }, None)];
+                    return vec![(Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis }, None)];
                 };
                 if !inside.is_empty() {
                     out.push((
-                        Solid::Mesh { owner, color: layer_color, tex: layer_tex, tris: inside, caps: 0, round: false, cut, vis },
+                        Solid::Mesh {
+                            owner,
+                            color: layer_color,
+                            tex: layer_tex,
+                            tris: inside,
+                            caps: 0,
+                            round: false,
+                            shared: false,
+                            cut,
+                            vis,
+                        },
                         place,
                     ));
                 }
@@ -5109,6 +5159,7 @@ mod tests {
             tex: 0,
             caps: tris.len(),
             round: false,
+            shared: false,
             cut: false,
             tris,
             vis: 0,
@@ -5235,8 +5286,18 @@ mod tests {
     fn a_curves_corners_take_the_normals_of_the_surface_they_are_on() {
         let n = 24;
         let mut out = Vec::new();
-        Solid::Mesh { owner: 1, color: EDGE, tex: 0, caps: 0, round: false, cut: false, tris: cylinder(n, 200.0, 450.0), vis: 0 }
-            .tris(&mut out);
+        Solid::Mesh {
+            owner: 1,
+            color: EDGE,
+            tex: 0,
+            caps: 0,
+            round: false,
+            shared: false,
+            cut: false,
+            tris: cylinder(n, 200.0, 450.0),
+            vis: 0,
+        }
+        .tris(&mut out);
         let normals = corner_normals(&out);
         // Its caps are flat faces: none. Each corner of its sides points straight out from the axis, the top
         // ones as the bottom ones (two triangles meet at some corners, one at others).
@@ -5255,7 +5316,8 @@ mod tests {
         let mut roofed = cylinder(n, 200.0, 450.0);
         roofed.extend((0..n).map(|k| [ring(k), ring(k + 1), [0.0, 0.0, 850.0]]));
         let mut out = Vec::new();
-        Solid::Mesh { owner: 1, color: EDGE, tex: 0, caps: 0, round: false, cut: false, tris: roofed, vis: 0 }.tris(&mut out);
+        Solid::Mesh { owner: 1, color: EDGE, tex: 0, caps: 0, round: false, shared: false, cut: false, tris: roofed, vis: 0 }
+            .tris(&mut out);
         let normals = corner_normals(&out);
         let normal = |i: usize| normals[i].as_deref().unwrap();
         assert!((2 * n..4 * n).all(|i| normal(i).iter().all(|v| v[2].abs() < 1e-9)));
@@ -6094,7 +6156,7 @@ mod tests {
         // A pipe 200 across along east at 500 up, from x = 0 to 4000, and a section 2000 along it, level and then at 45°.
         let g = Geom { a: [0.0, 0.0, 500.0], b: [4000.0, 0.0, 500.0], width: 200.0, depth: 200.0, round: true };
         let (tris, caps) = g.tube();
-        let tube = |cut| Solid::Mesh { owner: 1, color: EDGE, tex: 0, tris: tris.clone(), caps, round: true, cut, vis: 0 };
+        let tube = |cut| Solid::Mesh { owner: 1, color: EDGE, tex: 0, tris: tris.clone(), caps, round: true, shared: false, cut, vis: 0 };
         let extent = |rings: &[Vec<P2>]| {
             let pts: Vec<P2> = rings.iter().flatten().copied().collect();
             let (lo, hi) = pts.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), q| {
@@ -6144,7 +6206,7 @@ mod tests {
             [d, a, e],
             [d, e, h],
         ];
-        let cube = Solid::Mesh { owner: 1, color: EDGE, tex: 0, tris, caps: 0, round: false, cut: true, vis: 0 };
+        let cube = Solid::Mesh { owner: 1, color: EDGE, tex: 0, tris, caps: 0, round: false, shared: false, cut: true, vis: 0 };
         let (w, h, ..) = extent(&cube.cuts(P2(0.0, 100.0), P2(1.0, 0.0), 1000.0));
         assert!((w - 200.0).abs() < 1e-6 && (h - 200.0).abs() < 1e-6, "{w} {h}");
         // A section along the pipe cuts it lengthwise: a strip as long as the pipe is and as high as it is round.

@@ -43,7 +43,9 @@ wall's ends takes the height (`arms`, `end_geometry`, `cap_with`), so slanted wa
 every height. Its solid is `walls/slant.rs`: pieces lofted between its outlines at their bottoms and tops, cut along it as an
 upright wall's prisms are (an arc's chords, its openings' jambs) and up it at its openings and its joins' heights; each corner's
 bottom and top follow what its base and top are attached to at the point it has leant to, so a curved slanted wall attached top
-and bottom is a cone between a floor and a roof. The 3D view and sections draw those meshes (a section in poché, its layers not drawn yet), a plan cuts the wall where it
+and bottom is a cone between a floor and a roof. The 3D view and sections draw those meshes (a section in poché, its layers not drawn yet); in 3D a curved one's faces are one
+smooth surface across its pieces (`view3d::shared_faces`), shaded across them with no edge where one piece meets the next, as an
+upright curved wall's are. A plan cuts the wall where it
 has leant to at its cut plane and sees its foot below in projection (and the top of one that stops under the plane), but where the
 cut covers it, and IFC writes them as face sets. A join a slanted wall takes part in is worked out one way at every height, so it
 keeps its shape as it rises: its corner is where the walls' centre lines cross there, the same point for every wall at the node, a

@@ -452,6 +452,47 @@ fn slanted_doors_and_windows_cut_a_slanted_wall_and_lean_with_it() {
 }
 
 #[test]
+fn a_curved_slanted_walls_faces_are_one_smooth_surface_in_3d_across_its_pieces() {
+    // Lofted in strips round its arc, and round its window: each face is still one surface, which the 3D view shades smoothly
+    // and draws no edge across, as an upright curved wall's.
+    for script in [
+        r#"wall {"points": [[-5000, 0], [5000, 0]], "arc": 120, "height": 3000, "slant": 15}"#,
+        r#"wall {"points": [[-5000, 0], [5000, 0]], "arc": 120, "height": 3000, "slant": -20}
+           window {"wall": 100002, "offset": 3000}"#,
+    ] {
+        let s = session(script);
+        let id = walls(&s)[0];
+        let w = s.model.wall(id).unwrap_or_else(|| panic!("no wall"));
+        let centre = crate::walls::Axis::of(w).centre().unwrap_or_else(|| panic!("an arc"));
+        let mut tris = Vec::new();
+        for solid in solids(&s.model).iter().filter(|x| x.owner() == id) {
+            solid.tris(&mut tris);
+        }
+        let mut keys = std::collections::BTreeSet::new();
+        let mut faces = 0;
+        for t in &tris {
+            let [a, b, c] = t.p;
+            let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if len < 1e-6 {
+                continue;
+            }
+            let mid = P2((a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0);
+            let radial = (mid - centre).unit();
+            // On a face: its normal mostly across the wall, as a cone's is.
+            if ((n[0] * radial.0 + n[1] * radial.1) / len).abs() > 0.5 {
+                faces += 1;
+                keys.insert(t.curve);
+            }
+        }
+        assert!(faces > 20, "{faces} face triangles");
+        assert_eq!(keys.len(), 1, "one surface, not one per piece: {} in {script}", keys.len());
+        assert!(keys.iter().all(Option::is_some), "a curved one");
+    }
+}
+
+#[test]
 fn doors_and_windows_stand_upright_in_a_slanted_wall_unless_slanted_and_cut_it_the_same_either_way() {
     let mut s = session(
         r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 20}
