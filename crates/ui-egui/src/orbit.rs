@@ -852,6 +852,21 @@ impl Orbit {
         }
     }
 
+    /// Whether a fit asked for (Zoom to Fit, Home) is still to come.
+    pub(crate) fn fitting(&self) -> bool {
+        self.fit_target.is_some()
+    }
+
+    /// `cam`, of a picture in `rect` at `ppp` pixels a point, zoomed by the wheel and turned or panned by the middle button (Shift
+    /// orbits, Alt and the primary button stand in for it) over `response`, a widget lying over the view's own (Zoom In Region's),
+    /// as [`zoom`](Self::zoom) and [`navigate`](Self::navigate) do over the view's. The primary button alone is that widget's.
+    pub(crate) fn wheel_and_middle(&mut self, ui: &Ui, rect: Rect, ppp: f32, response: &egui::Response, cam: Camera) -> Camera {
+        let input = Input::read(ui, rect, response, ppp, None, None);
+        let cam = self.zoom(ui.ctx(), &input, cam, None);
+        let held = response.dragged_by(PointerButton::Primary) && !input.alt;
+        self.navigate(ui, response, &input, cam, held, false, false, None).cam
+    }
+
     /// A fit asked for and not yet done, given up: the camera is being set otherwise (Previous Pan/Zoom), and the fit must not
     /// come back over it.
     pub(crate) fn cancel_fit(&mut self) {

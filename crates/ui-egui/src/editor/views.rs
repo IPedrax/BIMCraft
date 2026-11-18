@@ -1243,7 +1243,7 @@ impl FamilyEditor {
 
 impl FamilyEditor {
     /// How close view `which` is, by the wheel over it, and where, moved by the middle button (its `scale`, pixels a mm).
-    fn zoom_and_pan(&mut self, ui: &Ui, response: &egui::Response, which: Which, scale: f64) {
+    pub(super) fn zoom_and_pan(&mut self, ui: &Ui, response: &egui::Response, which: Which, scale: f64) {
         let mut frame = self.views.frames.get(&which).copied().unwrap_or((1.0, (0.0, 0.0)));
         let before = frame;
         if response.hovered() {

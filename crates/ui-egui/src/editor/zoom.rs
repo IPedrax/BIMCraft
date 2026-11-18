@@ -7,7 +7,7 @@ use crate::zoom::{self, Previous};
 use bimcraft_core::family::views::Which;
 use bimcraft_core::geom::P2;
 use bimcraft_core::view3d::Camera;
-use egui::{Pos2, Rect, Ui};
+use egui::{Pos2, Rect, Response, Ui};
 use std::collections::BTreeMap;
 
 /// How a view of the document is looked at: a plan's or an elevation's frame (times as close as fitted, and moved mm), or
@@ -25,13 +25,48 @@ const CLOSEST: (f64, f64) = (0.05, 50.0);
 /// What the zoom commands keep of the document's views.
 #[derive(Default)]
 pub(crate) struct Zoom {
-    /// Zoom In Region, armed: the view it was armed in (another view shown gives it up), and where its drag began, once it has.
-    region: Option<(Option<Which>, Option<Pos2>)>,
+    /// Zoom In Region, armed.
+    region: Option<Armed>,
     /// Each view's steps back ({3D} under none).
     previous: BTreeMap<Option<Which>, Previous<Look>>,
+    /// The view Zoom to Fit last fitted, and how it looked once fitted (none while {3D}'s fit is still to come): Fit again on it,
+    /// unmoved, leaves no step.
+    fitted: Option<(Option<Which>, Option<Look>)>,
+    /// The window's pass the views were last drawn in.
+    drawn: u64,
 }
 
+/// Zoom In Region, armed: the view it was armed in, where its drag began once it has, the tools in hand then, and the pass the
+/// view was last drawn in with it. Another view shown, another tool picked, or the document's tab left gives it up.
+struct Armed {
+    view: Option<Which>,
+    from: Option<Pos2>,
+    tools: Tools,
+    pass: u64,
+}
+
+/// The tools of the document's views in hand, as far as they tell one from another: a tool picked changes it.
+type Tools = ([bool; 8], Option<(Option<bimcraft_core::draw::Shape>, bool, bool)>, crate::adaptive_view::Draw);
+
 impl FamilyEditor {
+    /// The tools in hand: a plane or a line being drawn, a pick, a dimension, Align, a pivot, a component, a sketch and its shape,
+    /// the modelling view's tool.
+    fn tools(&self) -> Tools {
+        let v = &self.views;
+        let flags = [
+            v.drawing.is_some(),
+            v.picking.is_some(),
+            v.dimensioning.is_some(),
+            v.aligning.is_some(),
+            v.pivoting.is_some(),
+            self.placing.is_some(),
+            self.sketch.is_some(),
+            self.modeller.picking_plane,
+        ];
+        let sketch = self.sketch.as_ref().map(|s| (s.tool, s.axis_tool, s.trim.is_some()));
+        (flags, sketch, self.modeller.tool.clone())
+    }
+
     /// How the view shown is looked at now.
     fn look(&self) -> Look {
         match self.views.shown {
@@ -67,9 +102,18 @@ impl FamilyEditor {
         self.zoom.previous.entry(self.views.shown).or_default().push(now);
     }
 
-    /// The view control bar's Zoom to Fit (ZF, ZE, ZA): the view shown fitted afresh, a plan, an elevation or {3D}.
+    /// The view control bar's Zoom to Fit (ZF, ZE, ZA): the view shown fitted afresh, a plan, an elevation or {3D}. A step for
+    /// Previous unless the view is fitted already (or its fit is still to come).
     pub(crate) fn zoom_to_fit(&mut self) {
-        self.step();
+        let now = self.look();
+        let fitted = match self.zoom.fitted {
+            Some((view, look)) if view == self.views.shown => look.is_none_or(|l| l == now),
+            _ => now == Look::Flat(FITTED.0, FITTED.1),
+        };
+        if !fitted {
+            self.step();
+        }
+        self.zoom.fitted = Some((self.views.shown, None));
         match self.views.shown {
             Some(which) => {
                 self.views.frames.remove(&which);
@@ -95,12 +139,12 @@ impl FamilyEditor {
 
     /// Zoom In Region: the next drag in the view shown is a rectangle it fits. Escape gives it up.
     pub(crate) fn zoom_region_tool(&mut self) {
-        self.zoom.region = Some((self.views.shown, None));
+        self.zoom.region = Some(Armed { view: self.views.shown, from: None, tools: self.tools(), pass: self.zoom.drawn });
     }
 
-    /// Whether Zoom In Region is armed in the view shown.
+    /// Whether Zoom In Region is armed in the view shown, with the tools it was armed with.
     pub(crate) fn zoom_region_armed(&self) -> bool {
-        self.zoom.region.is_some_and(|(view, _)| view == self.views.shown)
+        self.zoom.region.as_ref().is_some_and(|a| a.view == self.views.shown && a.tools == self.tools())
     }
 
     /// Zoom In Region given up (Escape).
@@ -115,21 +159,64 @@ impl FamilyEditor {
         }
     }
 
-    /// While Zoom In Region is armed, its drag over the view in `pane`, drawn over the view after it (so the view's own drag
-    /// doesn't take it); let go, the view fits the rectangle and the command is done. A click leaves it armed.
+    /// Each frame the document's view is drawn in `pane`: Zoom to Fit's fit noted once done, and while Zoom In Region is armed, its
+    /// drag over the view, drawn over the view after it (so the primary button's drag neither turns, pans nor selects); let go,
+    /// the view fits the rectangle and the command is done. A click leaves it armed. The wheel and the middle button go on
+    /// zooming, panning and turning the view meanwhile.
     pub(crate) fn zoom_region_drag(&mut self, ui: &Ui, pane: Rect) {
-        if !self.zoom_region_armed() {
-            // Another view shown since it was armed: given up.
+        let pass = ui.ctx().cumulative_pass_nr();
+        self.zoom.drawn = pass;
+        self.note_fit();
+        // Another view shown, another tool picked, or the tab left (a pass the view wasn't drawn in) since it was armed: given up.
+        if !self.zoom_region_armed() || self.zoom.region.as_ref().is_some_and(|a| a.pass + 1 < pass) {
             self.zoom.region = None;
             return;
         }
-        let Some((_, from)) = self.zoom.region.as_mut() else { return };
-        if let Some(r) = zoom::drag(ui, pane, from)
+        let Some(armed) = self.zoom.region.as_mut() else { return };
+        armed.pass = pass;
+        let (rect, response) = zoom::drag(ui, pane, &mut armed.from);
+        self.wheel_and_middle(ui, &response);
+        if let Some(r) = rect
             && let Some(look) = self.region(r)
         {
-            self.step();
-            self.set_look(look);
+            if look != self.look() {
+                self.step();
+                self.set_look(look);
+            }
             self.zoom.region = None;
+        }
+    }
+
+    /// Zoom to Fit's fit, once done, as the view shown then looks.
+    fn note_fit(&mut self) {
+        let done = match self.views.shown {
+            Some(_) => true,
+            None if self.adaptive.is_some() => self.modeller.camera.is_some(),
+            None => !self.orbit.fitting() && self.orbit.camera.is_some(),
+        };
+        match self.zoom.fitted {
+            Some((view, None)) if view == self.views.shown && done => self.zoom.fitted = Some((view, Some(self.look()))),
+            Some((view, _)) if view != self.views.shown => self.zoom.fitted = None,
+            _ => {}
+        }
+    }
+
+    /// The wheel and the middle button over Zoom In Region's `response`, which lies over the view shown: handed to the view's own
+    /// navigation, as they would be without it.
+    fn wheel_and_middle(&mut self, ui: &Ui, response: &Response) {
+        match self.views.shown {
+            Some(which) => {
+                if let Some(scale) = self.views.cache.as_ref().filter(|c| c.which == which).map(|c| c.view.scale) {
+                    self.zoom_and_pan(ui, response, which, scale);
+                }
+            }
+            None if self.adaptive.is_some() => self.modeller.wheel_and_middle(ui, response),
+            None => {
+                if let Some(cam) = self.orbit.camera {
+                    let (rect, ppp) = (self.orbit.rect, self.orbit.ppp);
+                    self.orbit.camera = Some(self.orbit.wheel_and_middle(ui, rect, ppp, response, cam));
+                }
+            }
         }
     }
 
