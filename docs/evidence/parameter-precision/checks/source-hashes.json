@@ -1,0 +1,21 @@
+{
+  "README.md": "365245ea84f2593ef11669984270bde5eeafd24a4e4539a4fa300023da280b1e",
+  "crates/core/src/units.rs": "b8fe095e2007a209efc6a1abf2a2b3ae5f4ca9f4fdee2a51828d6e7fe4fe8404",
+  "crates/ui-egui/src/properties.rs": "0dc13d372681b693b12dd5e83e6647d35d0075eabd4061e2b0cbf5eda2e6aa82",
+  "crates/ui-egui/src/stairtype.rs": "a3b8174f3a10bb7ddcb1bdddd574a8117eae21b1f30fbbd897ae3374df8a3d57",
+  "crates/ui-egui/src/tests.rs": "2602735484683d6ebf1413346efe8592222b3586911d10496b00519dfa819d34",
+  "docs/areas/desktop.md": "803d43bd73bd9498c4eb0809055ece9a6ee8cdfcf059bf83be138ff15500ce4b",
+  "translations/ui/bimcraft-ui.pot": "672e4e6f8c9e406fa5e1434b45bbce9f059f3680af25a857124729eb18979db8",
+  "translations/ui/cs.po": "341d264d4fe5fc201078d95a52329a18e82c6738545d58b98fc46b9e4435f708",
+  "translations/ui/de.po": "2b701434db9621925b6688161e2eca5a320701fe91a94e1b98b6bf490cdde9c4",
+  "translations/ui/es.po": "313d5c8c0f8bcd4ccfebf7cd44fac100bdf018dc702ebe65c40e7f5860319b6e",
+  "translations/ui/fr.po": "8d837e4861a75116f5e13a441a245cd79df4a518959fb51b7584acdbb43c392b",
+  "translations/ui/it.po": "d1153a519e88c036b332db20a3e2faba62df74ca4b1997eb84db48a479d38ad7",
+  "translations/ui/nl.po": "5c117fb17327ee21b649ce2643e8e41f8fc99716760bf04d0bb420d761a0bdf6",
+  "translations/ui/pl.po": "3270013e4e47249df33b4c24ee721b8e9b86d9d7258f1139b5d919248aea8a95",
+  "translations/ui/pt.po": "827223d182346a183ad8f343c5e1fb1e04c2f1b180d570b90069c156db317eb0",
+  "translations/ui/vi.po": "143b508abc3ea1a9714797f61cb9687b2a9aa4e31dacbffa4ce35417bd749f03",
+  "translations/ui/zh.po": "88736545bc568d6c7687761bf307b0aef8faf6e859086b703604eeb428f6d149",
+  "translations/ui/zh_TW.po": "d73b759dee1b2b26193c393cee02ab12120ddcfe484ac5942c984fe1219573fb",
+  "crates/ui-egui/src/tests/parameter_precision.rs": "245a8f2f29d41c6510ab558ae3502defbf298c7bb13304851934139c5503e52a"
+}

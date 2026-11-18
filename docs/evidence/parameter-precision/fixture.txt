@@ -1,0 +1,5 @@
+units {"length":"m"}
+type {"category":"wall","name":"Precision Wall","layers":[{"function":"finish","thickness":3},{"function":"structure","thickness":55}]}
+wall {"points":[[0,0],[4000,0]],"type":"Precision Wall"}
+family {"name":"Precision Block","category":"generic","parameters":[{"name":"Gap","value":3},{"name":"Width","value":55},{"name":"Height","value":2000,"instance":true}],"types":{"A":{}},"forms":[{"profile":[[0,0],["Width",0],["Width",500],[0,500]],"to":"Height"}]}
+component {"family":"Precision Block","at":[3000,2000]}

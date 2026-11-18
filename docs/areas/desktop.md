@@ -349,6 +349,13 @@ state and its commands: the project's own types and a family's in `properties.rs
 pattern's … opens the Patterns tab. The dialogs are one width, and the table's body one height where the window has room, known from the first frame:
 a body that fitted its rows grew over a few frames, and a click meant for one row landed on the next. A refusal is said in the dialog.
 
+Family type lengths and native type dimension fields use `Units::length_input`, which adds digits when the drawing format
+would round the value. Their staged fields retain the original numeric length; Apply/OK and Duplicate reuse it when its
+text is untouched, including layer rows moved or changed in another column and room finish offsets. Changed text still
+uses `Units::parse` (explicit units accepted, 0.001 mm input precision) and the existing `family`/`type` command routes.
+Drawing/schedule formatting remains `Units::length`. Instance Properties and project type parameters already submit only
+changed text; this fix does not change their display formatting. Regression coverage is `tests/parameter_precision.rs`.
+
 BIMCraft's tools and Find. BIMCraft has no ribbon: its tools are the Tools palette (`dock::Palette::Tools`, `BimApp::tool_column`), a
 palette like the others, so it docks on any side, floats and closes, and the settings file keeps where (one a file from before it never
 named docks first on the left). Down its left a rail of the ribbon's tabs (`TABS`, each with an icon); beside it, as rows under their panels'

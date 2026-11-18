@@ -93,6 +93,24 @@ impl Units {
         }
     }
 
+    /// A length for an editable field. Keep the familiar drawing format when it represents the
+    /// value; otherwise use decimal project units instead of rounding away small lengths.
+    /// Callers that submit unchanged fields must retain their original numeric values too:
+    /// parsing typed input intentionally rounds to a micron.
+    pub fn length_input(self, mm: f64) -> String {
+        let shown = self.length(mm);
+        if self.parse_exact(&shown) == Some(mm) {
+            return shown;
+        }
+        match self {
+            Units::Millimetres => mm.to_string(),
+            Units::Centimetres => (mm / 10.0).to_string(),
+            Units::Metres => (mm / 1000.0).to_string(),
+            Units::Feet => format!("{}'", mm / FOOT),
+            Units::Inches | Units::FeetInches => format!("{}\"", mm / INCH),
+        }
+    }
+
     /// A length with its unit, as the desktop labels one: 3000 mm, 3.00 m, 9'-10 1/8".
     pub fn with_unit(self, mm: f64) -> String {
         match self {
@@ -313,5 +331,21 @@ mod tests {
             let shown = u.length(3213.1);
             assert!((u.parse(&shown).unwrap() - 3213.1).abs() <= 5.0, "{u:?} {shown}");
         }
+    }
+
+    #[test]
+    fn editable_lengths_keep_small_values_in_every_unit() {
+        for units in Units::ALL {
+            for mm in [0.0, 0.001, -0.001, 0.125, 3.0, 55.0, 58.0, 304.8, -457.2, 1234567.891] {
+                let text = units.length_input(mm);
+                assert_eq!(units.parse(&text), Some(mm), "{units:?}: {text}");
+            }
+        }
+        assert_eq!(Units::Metres.length_input(3.0), "0.003");
+        assert_eq!(Units::Metres.length_input(55.0), "0.055");
+        assert_eq!(Units::Millimetres.length_input(3.125), "3.125");
+        assert_eq!(Units::Inches.length_input(12.7), "1/2\"");
+        assert_eq!(Units::FeetInches.length_input(304.8), "1'-0\"");
+        assert_eq!(Units::Metres.length(3.0), "0.00", "drawing precision is unchanged");
     }
 }

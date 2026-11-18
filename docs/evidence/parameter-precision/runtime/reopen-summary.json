@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "gap_mm": 3.0,
+  "width_mm": 125.0,
+  "wall_mm": 128.0,
+  "layers_mm": [
+    3.0,
+    125.0
+  ]
+}

@@ -285,7 +285,7 @@ impl StairDraft {
     pub(crate) fn show(&mut self, tb: &mut Table, m: &Model, fields: &mut [crate::properties::TypeField]) {
         let hint = m.units.name();
         let mut size = |tb: &mut Table, key: &str, label: &str, about: &str| {
-            if let Some((.., typed)) = fields.iter_mut().find(|f| f.1 == key) {
+            if let Some((_, _, _, typed, _)) = fields.iter_mut().find(|f| f.1 == key) {
                 tb.text_about(t(label), typed, hint, t(about));
             }
         };

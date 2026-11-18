@@ -1,0 +1,43 @@
+    Blocking waiting for file lock on build directory
+   Compiling serde_core v1.0.229
+   Compiling write-fonts v0.48.1
+   Compiling naga-types v30.0.1
+   Compiling bimcraft-core v0.12.0 (/private/tmp/parameter-precision-src/crates/core)
+   Compiling bimcraft-i18n v0.12.0 (/private/tmp/parameter-precision-src/crates/i18n)
+   Compiling read-fonts v0.41.0
+   Compiling vello_cpu v0.1.0
+   Compiling ahash v0.8.12
+   Compiling arboard v3.6.1
+   Compiling webbrowser v1.2.4
+   Compiling accesskit_winit v0.32.2
+   Compiling acadrust v0.6.6
+   Compiling bimcraft-ui-egui v0.12.0 (/private/tmp/parameter-precision-src/crates/ui-egui)
+   Compiling wgpu-types v30.0.1
+   Compiling naga v30.0.1
+   Compiling serde_json v1.0.154
+   Compiling serde v1.0.229
+   Compiling quick-xml v0.41.0
+   Compiling bimcraft-update v0.12.0 (/private/tmp/parameter-precision-src/crates/update)
+   Compiling subsetter v0.2.6
+   Compiling krilla v0.8.2
+   Compiling skrifa v0.44.0
+   Compiling harfrust v0.12.0
+   Compiling wgpu-naga-bridge v30.0.1
+   Compiling wgpu-hal v30.0.1
+   Compiling epaint v0.36.2
+   Compiling wgpu-core-deps-apple v30.0.1
+   Compiling wgpu-core v30.0.1
+   Compiling egui v0.36.2
+   Compiling egui-winit v0.36.2
+   Compiling wgpu v30.0.1
+   Compiling egui-wgpu v0.36.2
+   Compiling eframe v0.36.2
+   Compiling bimcraft-pyaddins v0.12.0 (/private/tmp/parameter-precision-src/crates/pyaddins)
+   Compiling bimcraft-plugin v0.12.0 (/private/tmp/parameter-precision-src/crates/plugin)
+   Compiling bimcraft-rvt v0.12.0 (/private/tmp/parameter-precision-src/crates/rvt)
+   Compiling bimcraft-dwg v0.12.0 (/private/tmp/parameter-precision-src/crates/dwg)
+   Compiling bimcraft-cowork v0.12.0 (/private/tmp/parameter-precision-src/crates/cowork)
+   Compiling bimcraft-assistant v0.12.0 (/private/tmp/parameter-precision-src/crates/assistant)
+   Compiling bimcraft-cli v0.12.0 (/private/tmp/parameter-precision-src/apps/bimcraft-cli)
+   Compiling bimcraft v0.12.0 (/private/tmp/parameter-precision-src/apps/bimcraft)
+    Finished `dev` profile [unoptimized] target(s) in 6m 21s

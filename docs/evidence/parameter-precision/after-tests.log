@@ -1,0 +1,20 @@
+   Compiling bimcraft-ui-egui v0.12.0 (/Users/austinhartt/Documents/ChatGPT/BimCraft Test/bimcraft-rust-parameter-precision/crates/ui-egui)
+    Finished `test` profile [unoptimized] target(s) in 56.43s
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_ui_egui-41097187b197fa1a)
+
+running 13 tests
+test tests::parameter_precision::precision_screenshots ... ok
+test tests::parameter_precision::precision_wall_noop_apply_keeps_total_and_layers ... ok
+test tests::parameter_precision::precision_family_typed_value_survives_repeat_apply ... ok
+test tests::parameter_precision::precision_instance_fields_are_change_only_controls ... ok
+test tests::parameter_precision::precision_invalid_type_input_does_not_commit_other_fields ... ok
+test tests::parameter_precision::precision_project_type_parameter_is_a_change_only_control ... ok
+test tests::parameter_precision::precision_room_type_offsets_survive_other_field_edit ... ok
+test tests::parameter_precision::precision_layer_reorder_and_duplicate_keep_original_values ... ok
+test tests::parameter_precision::precision_wall_layer_edit_keeps_other_layers_and_repeated_apply ... ok
+test tests::parameter_precision::precision_untouched_family_value_keeps_submicron_source_precision ... ok
+test tests::parameter_precision::precision_family_other_field_cancel_history_and_reopen ... ok
+test tests::parameter_precision::precision_family_noop_apply_keeps_stored_lengths ... ok
+test tests::parameter_precision::precision_typed_lengths_are_exact_in_metric_and_imperial_projects ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 1630 filtered out; finished in 8.50s
