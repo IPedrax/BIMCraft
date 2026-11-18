@@ -752,6 +752,7 @@ fn outside(prim: &Prim, at: Place, thin: bool, clip: Rect) -> bool {
             on_screen(*width, at.k, thin) * 8.0 + 4.0
         }
         // A picture's place has more to it; it is few, and drawn.
+        Prim::Text { fallback, .. } => return fallback.iter().all(|p| outside(p, at, thin, clip)),
         Prim::Image { .. } => return false,
     };
     // Comparisons a number that isn't finite fails say nothing is outside.
@@ -790,6 +791,12 @@ pub(crate) fn paint_prim(
     thin: bool,
     pictures: &mut std::slice::Iter<TextureId>,
 ) {
+    if let Prim::Text { fallback, .. } = prim {
+        for p in fallback {
+            paint_prim(out, clip, at, (p, owner, part), selected, hovered, thin, pictures);
+        }
+        return;
+    }
     let color = |c: Rgb| if at.paper { Color32::from_rgb(c.0, c.1, c.2) } else { color(c) };
     if owner.is_some() && owner == at.hide {
         return;
@@ -803,6 +810,7 @@ pub(crate) fn paint_prim(
         _ => None,
     };
     match prim {
+        Prim::Text { .. } => {}
         // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
         // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
         Prim::Fill { rings, color: c } if part == render::Part::Text || (part == render::Part::LinePattern && rings.len() > 1) => {
@@ -959,7 +967,8 @@ fn group_frames(p: &Painter, m: &Model, d: &Shown, lit: &[Id], hovered: usize) {
             let q = d.place.pos(*q);
             (lo, hi) = (lo.min(q), hi.max(q));
         };
-        for (prim, owner) in d.prims.iter().zip(&d.owners) {
+        for (i, prim) in d.paint_prims() {
+            let owner = &d.owners[i];
             if !owner.is_some_and(|o| members.contains(&o)) {
                 continue;
             }
@@ -988,7 +997,8 @@ fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
     let stroke = Stroke::new(1.0, pal().accent);
     let at = |q: &(f32, f32)| f(place.pos(*q));
     let selected: HashSet<Id> = selected.iter().copied().collect();
-    for (prim, owner) in d.prims.iter().zip(&d.owners) {
+    for (i, prim) in d.paint_prims() {
+        let owner = &d.owners[i];
         if !owner.is_some_and(|id| selected.contains(&id)) {
             continue;
         }
@@ -1004,7 +1014,7 @@ fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
             Prim::Line { pts, .. } => {
                 p.add(Shape::line(pts.iter().map(at).collect(), stroke));
             }
-            Prim::Image { .. } => {}
+            Prim::Image { .. } | Prim::Text { .. } => {}
         }
     }
 }
@@ -6816,5 +6826,41 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, l
     }
     if !matches!(kind, Kind::Free | Kind::Angle) {
         tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
+    }
+}
+
+#[cfg(test)]
+mod text_carrier_tests {
+    use super::*;
+
+    #[test]
+    fn text_carrier_canvas_shapes_match_fallback() {
+        let mut s = bimcraft_core::engine::Session::new();
+        let id = s.execute("text", &json!({"text":"AV note", "at":[0,0]})).unwrap()["id"].as_u64().unwrap();
+        let d = render::plan(&s.model, 100000, 400, 300);
+        let text = d.prims.iter().find(|p| matches!(p, Prim::Text { .. })).unwrap();
+        let Prim::Text { fallback, .. } = text else { panic!("no text") };
+        let clip = Rect::from_min_max(pos2(180.0, 130.0), pos2(230.0, 180.0));
+        for (selected, hovered) in [(HashSet::new(), None), (HashSet::from([id]), None), (HashSet::new(), Some(id))] {
+            let shapes = |prims: &[Prim]| {
+                let mut out = Vec::new();
+                for p in prims {
+                    paint_prim(
+                        &mut |s| out.push(s),
+                        clip,
+                        Place::at(Pos2::ZERO),
+                        (p, Some(id), render::Part::Text),
+                        &selected,
+                        hovered,
+                        false,
+                        &mut [].iter(),
+                    );
+                }
+                out
+            };
+            let actual = shapes(std::slice::from_ref(text));
+            assert!(!actual.is_empty());
+            assert_eq!(actual, shapes(fallback));
+        }
     }
 }

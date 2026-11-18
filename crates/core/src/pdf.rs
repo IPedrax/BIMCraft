@@ -273,8 +273,9 @@ fn draw(surface: &mut Surface, d: &Drawing, place: Option<Place>, opaque: bool) 
     let s = (k * PT) as f32;
     surface.push_transform(&Transform::from_row(s, 0.0, 0.0, s, (at.0 * PT) as f32, (at.1 * PT) as f32));
     pushed += 1;
-    for (i, p) in d.prims.iter().enumerate() {
+    for (i, p) in d.paint_prims() {
         match p {
+            Prim::Text { .. } => continue,
             Prim::Fill { rings, color } => {
                 let rings: Vec<&[(f32, f32)]> = rings.iter().map(Vec::as_slice).collect();
                 let Some(path) = path(&rings, true) else { continue };
@@ -440,6 +441,25 @@ pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<u8>) {
 mod tests {
     use super::*;
     use crate::engine::Session;
+
+    #[test]
+    fn text_carrier_sheet_pdf_matches_before() {
+        let mut s = Session::new();
+        s.script(
+            r#"text_type {"name": "2.5mm", "font": "IBM Plex Sans"}
+            title_block {"name": "Carrier", "font": "IBM Plex Sans", "texts": [{"at": [4,20], "text": "TITLE {SHEET_NUMBER}", "size": 3.5}]}
+            sheet {"name": "Lettering", "title_block": "Carrier"}
+            text {"view": "A101", "text": "Review note AV 123", "at": [30,40], "angle": 17}"#,
+        )
+        .unwrap();
+        let id = s.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Sheet(_))).unwrap().0;
+        let d = crate::sheet::draw(&s.model, id).unwrap();
+        assert_eq!(d.prims.iter().filter(|p| matches!(p, Prim::Text { .. })).count(), 2);
+        let bytes = pdf(&[(&d, P2(420.0, 297.0))]);
+        // Captured from the unwrapped drawing on text/glyph-identity (443af8e8), with bundled fonts.
+        let hash = bytes.iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x100000001b3));
+        assert_eq!((bytes.len(), hash), (12526, 410781871219496634));
+    }
 
     fn house() -> Drawing {
         let mut s = Session::new();

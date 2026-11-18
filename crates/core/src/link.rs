@@ -300,11 +300,11 @@ mod tests {
         let own = render::draw(&direct.model, level, view);
         let linked = render::draw(&seen(&s.model), level, view);
         let darkest = |d: &render::Drawing| {
-            d.prims
-                .iter()
+            d.paint_prims()
+                .map(|(_, p)| p)
                 .map(|p| match p {
                     Prim::Fill { color, .. } | Prim::Line { color, .. } => color.0.min(color.1).min(color.2),
-                    Prim::Image { .. } => 255,
+                    Prim::Image { .. } | Prim::Text { .. } => 255,
                 })
                 .min()
         };

@@ -472,6 +472,11 @@ fn outside(prim: &Prim, view: View, rings: &[Vec<P2>], boxes: &[Option<Extent>])
                 *color,
             )
         }
+        Prim::Text { frame, layout, fallback } => vec![Prim::Text {
+            frame: *frame,
+            layout: layout.clone(),
+            fallback: fallback.iter().flat_map(|p| outside(p, view, rings, boxes)).collect(),
+        }],
         Prim::Image { .. } => Vec::new(),
     }
 }
@@ -609,7 +614,7 @@ fn reach(prim: &Prim, view: View, stroke: f32) -> Option<Extent> {
             bounds(&points).map(|(lo, hi)| (P2(lo.0 - grow, lo.1 - grow), P2(hi.0 + grow, hi.1 + grow)))
         }
         Prim::Fill { .. } => bounds(&points),
-        Prim::Image { .. } => None,
+        Prim::Image { .. } | Prim::Text { .. } => None,
     }
 }
 
@@ -677,6 +682,11 @@ impl<'a> Area<'a> {
                 }
                 fill(parts, view, *color)
             }
+            Prim::Text { frame, layout, fallback } => vec![Prim::Text {
+                frame: *frame,
+                layout: layout.clone(),
+                fallback: fallback.iter().flat_map(|p| self.clip(p, view, stroke)).collect(),
+            }],
             Prim::Image { .. } => Vec::new(),
         }
     }
