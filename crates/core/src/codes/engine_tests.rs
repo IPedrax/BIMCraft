@@ -2,6 +2,7 @@
 
 use serde_json::{Value, json};
 
+use super::matrix_tests::{breakers_up, method_probe};
 use super::*;
 use crate::engine::Session;
 
@@ -951,49 +952,6 @@ fn a_system_naming_a_voltage_an_older_project_took_away_is_refused() {
         json!({"discipline": "electrical", "rules": {"distribution_systems": {"127 DC": {"phases": 1, "wires": 2, "l_n": "127 V"}}}});
     assert!(s.execute("building_code", &system).is_err());
     assert!(!s.model.distribution_systems.contains_key("127 DC"));
-}
-
-/// The command that answers by a utility's or a country's method, with a load inside the method's first row.
-fn method_probe(code: &BuildingCode, key: &str, method: &Value) -> (&'static str, Value) {
-    match key {
-        "unit_demand" => match code.code.as_str() {
-            "cpfl" => ("demand", json!({"utility": "CPFL", "area": 40})),
-            "enel" => ("demand", json!({"utility": "ENEL", "network": "aerial", "installed_kw": 8})),
-            _ => ("demand", json!({"utility": method["utility"], "installed_kw": 8})),
-        },
-        "building_demand" => {
-            let group = if method["mean_of"] == "area" { json!({"count": 20, "area": 120}) } else { json!({"count": 20, "demand": 10}) };
-            ("building_demand", json!({"standard": method["standard"], "dwellings": [group]}))
-        }
-        _ => {
-            let table = &method["tables"][0];
-            let row = &table["rows"][0];
-            let mut p = json!({"utility": method["id"], "system": table["system"], "entrance": table["use"], "phases": row["phases"]});
-            for f in ["installed_kw", "demand_kva"] {
-                if let Some(up) = row[f]["up_to"].as_f64() {
-                    p[f] = json!((row[f]["over"].as_f64().unwrap_or(0.0) + up) / 2.0);
-                }
-            }
-            ("demand", p)
-        }
-    }
-}
-
-/// Every breaker of a method one ampere up, so an answer by it differs from the library's.
-fn breakers_up(v: &mut Value) {
-    match v {
-        Value::Object(o) => {
-            for (k, x) in o.iter_mut() {
-                match (k.as_str(), &mut *x) {
-                    ("breaker", Value::Number(n)) => *x = json!(n.as_f64().unwrap_or(0.0) + 1.0),
-                    ("breaker_a", Value::Array(a)) => a.iter_mut().for_each(|b| *b = json!(b.as_f64().unwrap_or(0.0) + 1.0)),
-                    _ => breakers_up(x),
-                }
-            }
-        }
-        Value::Array(a) => a.iter_mut().for_each(breakers_up),
-        _ => {}
-    }
 }
 
 #[test]

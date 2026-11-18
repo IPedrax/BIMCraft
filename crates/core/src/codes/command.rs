@@ -70,6 +70,75 @@ pub fn in_force(codes: &Codes, d: Discipline, name: &str) -> BuildingCode {
     out
 }
 
+/// The rules in force for discipline `d` as codes of the project's own, the first called `name`: `in_force`, whole as it
+/// was, and where more than one layer holds a utility's or a country's method whole (`WHOLE`), each of those layers' methods
+/// as an amendment over it, in the layers' order, so that one utility held under another keeps its own method once exported
+/// or saved (one code keeps one method a section). The last of them is the method in force, which the first holds too.
+pub fn in_force_layered(codes: &Codes, d: Discipline, name: &str) -> Result<Vec<BuildingCode>, String> {
+    let base = in_force(codes, d, name);
+    let layers = codes.layers(d);
+    let split: Vec<&str> = super::WHOLE
+        .iter()
+        .filter(|(wd, k)| *wd == d && layers.iter().filter(|c| c.sections.contains_key(*k)).count() > 1)
+        .map(|(_, k)| *k)
+        .collect();
+    if split.is_empty() {
+        return Ok(vec![base]);
+    }
+    let of_key = |at: &str, key: &str| at == key || at.starts_with(&format!("{key}."));
+    // Each amendment is named after the code and the layer it keeps, never a name the project or BIMCraft has.
+    let mut taken: Vec<String> = codes.own.iter().filter(|k| k.discipline == d).map(|k| k.code.to_lowercase()).collect();
+    taken.push(base.name.to_lowercase());
+    let mut out = Vec::new();
+    for layer in &layers {
+        let mut a = BuildingCode {
+            discipline: d,
+            region: layer.region.clone(),
+            note: format!("{} as the project holds it under {}.", layer.named(), base.name),
+            based_on: if layer.based_on.is_empty() { layer.code.clone() } else { layer.based_on.clone() },
+            amends: base.name.clone(),
+            documents: layer.documents.clone(),
+            ..BuildingCode::default()
+        };
+        for key in split.iter().filter(|k| layer.sections.contains_key(**k)) {
+            let Some(w) = super::whole_section(layer, key) else { continue };
+            a.sections.insert((*key).to_string(), Value::Object(w));
+            a.sources.extend(layer.sources.iter().filter(|(at, _)| of_key(at, key)).map(|(k, s)| (k.clone(), s.clone())));
+            a.kinds.extend(layer.kinds.iter().filter(|(at, _)| of_key(at, key)).map(|(k, s)| (k.clone(), *s)));
+        }
+        if a.sections.is_empty() {
+            continue;
+        }
+        // No name left that fits beside the others: refused, rather than one amendment taking another's place.
+        a.code = amendment_name(&base.name, &layer.code, &taken).ok_or_else(|| {
+            format!(
+                "no name of {} characters is left for {}'s method beside `{}`: give a shorter name",
+                super::MAX_NAME,
+                layer.code,
+                base.name
+            )
+        })?;
+        a.name = a.code.clone();
+        taken.push(a.code.to_lowercase());
+        out.push(a);
+    }
+    Ok(std::iter::once(base).chain(out).collect())
+}
+
+/// A name for the amendment that keeps layer `layer` of the code called `base`: `<base> · <layer>`, the base's part cut to
+/// fit, numbered past any name `taken` or BIMCraft's, so it never stands for another code.
+pub(super) fn amendment_name(base: &str, layer: &str, taken: &[String]) -> Option<String> {
+    for n in 1..1000 {
+        let tail = if n == 1 { format!(" · {layer}") } else { format!(" · {layer} ({n})") };
+        let room = super::MAX_NAME.saturating_sub(tail.chars().count());
+        let name = format!("{}{tail}", base.chars().take(room).collect::<String>().trim_end());
+        if !taken.contains(&name.to_lowercase()) && own_name(&name).is_ok_and(|ok| ok == name) {
+            return Some(name);
+        }
+    }
+    None
+}
+
 /// The rules of section `key` the project changed, with their values, that are no longer its layers' own.
 fn trimmed(codes: &Codes, d: Discipline, key: &str, changed: Map<String, Value>) -> Map<String, Value> {
     let own = layered(codes, d, key).value;
@@ -340,13 +409,21 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
     }
     // The rules in force, kept as a code of the project's own, which it is then held to.
     if let Some(name) = &save {
-        let mut own = in_force(&next, d, name);
-        own.code = name.clone();
-        next.own.retain(|k| !(k.code == *name && k.discipline == d));
-        next.own.push(own);
+        // Each utility's method held under another's stays its own, as an amendment over the saved code.
+        let saved = in_force_layered(&next, d, name).map_err(|e| bad(c, e))?;
+        let mut amendments = Vec::new();
+        for (i, mut own) in saved.into_iter().enumerate() {
+            if i == 0 {
+                own.code = name.clone();
+            } else {
+                amendments.push(own.code.clone());
+            }
+            next.own.retain(|k| !(k.code == own.code && k.discipline == d));
+            next.own.push(own);
+        }
         let choice = next.choice_mut(d);
         choice.code = Some(name.clone());
-        choice.amendments.clear();
+        choice.amendments = amendments;
         choice.changes.clear();
     }
     // One taken away: a project held to it keeps its rules, as its own, over the code it was based on.
@@ -549,34 +626,44 @@ pub(crate) fn building_code_export(s: &mut Session, p: &Value) -> R {
             .iter()
             .map(|d| {
                 let base = codes.base(*d);
-                let mut k = in_force(codes, *d, name.as_deref().unwrap_or(&base.name));
-                k.note = base.note.clone();
-                k.checked = base.checked.clone();
-                k
-            })
-            .collect()
-    } else {
-        let one = match string(c, p, "code")? {
-            Some(k) => codes.find(d, &k).cloned().ok_or_else(|| bad(c, format!("no {} building code `{k}`", d.key())))?,
-            // The project's, as it is held to it: with the rules it changed.
-            None => {
-                let base = codes.base(d);
-                let mut k = in_force(codes, d, &base.name);
-                if codes.layers(d).len() == 1 && codes.choice(d).changes.is_empty() {
+                let mut ks = in_force_layered(codes, *d, name.as_deref().unwrap_or(&base.name)).map_err(|e| bad(c, e))?;
+                if let Some(k) = ks.first_mut() {
                     k.note = base.note.clone();
                     k.checked = base.checked.clone();
                 }
-                k
+                Ok(ks)
+            })
+            .collect::<Result<Vec<Vec<BuildingCode>>, String>>()?
+            .into_iter()
+            .flatten()
+            .collect()
+    } else {
+        let mut out = match string(c, p, "code")? {
+            Some(k) => vec![codes.find(d, &k).cloned().ok_or_else(|| bad(c, format!("no {} building code `{k}`", d.key())))?],
+            // The project's, as it is held to it: with the rules it changed, and each utility's method under another's
+            // as an amendment of its own (`in_force_layered`).
+            None => {
+                let base = codes.base(d);
+                let mut ks = in_force_layered(codes, d, name.as_deref().unwrap_or(&base.name)).map_err(|e| bad(c, e))?;
+                if let Some(k) = ks.first_mut()
+                    && codes.layers(d).len() == 1
+                    && codes.choice(d).changes.is_empty()
+                {
+                    k.note = base.note.clone();
+                    k.checked = base.checked.clone();
+                }
+                ks
             }
         };
-        let mut one = one;
-        if let Some(n) = &name {
-            one.name = n.clone();
+        if let Some(one) = out.first_mut() {
+            if let Some(n) = &name {
+                one.name = n.clone();
+            }
+            if one.based_on.is_empty() {
+                one.based_on = one.code.clone();
+            }
         }
-        if one.based_on.is_empty() {
-            one.based_on = one.code.clone();
-        }
-        vec![one]
+        out
     };
     std::fs::write(&path, super::xml::write(&out)).map_err(|e| bad(c, format!("{path}: {e}")))?;
     let first = out.first().map(|k| (k.name.clone(), k.based_on.clone())).unwrap_or_default();
@@ -598,6 +685,15 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
     let renamed = string(c, p, "name")?;
     let (read, left_out) = super::read_xml(&text, renamed.as_deref()).map_err(|e| bad(c, format!("{path}: {e}")))?;
     let mut next = (*s.model.codes).clone();
+    // A code the file lays over its first, named as one the project has over another, would take that one's place: refused.
+    for k in read.iter().skip(1).filter(|k| !k.amends.is_empty()) {
+        if next.own.iter().any(|o| o.code == k.code && o.discipline == k.discipline && o.amends != k.amends) {
+            return Err(bad(
+                c,
+                format!("{path}: `{}` is a code the project has over `{}`: import it under another `name`", k.code, k.amends),
+            ));
+        }
+    }
     for k in &read {
         next.own.retain(|o| !(o.code == k.code && o.discipline == k.discipline));
         next.own.push(k.clone());
