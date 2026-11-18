@@ -72,10 +72,12 @@ fn the_browsers_families_list_the_systems_types_and_a_right_click_deletes_an_unu
     let mut h = with_spare_types();
     press(&mut h, "List Families");
     type_into(&mut h, FIND, "generic - 200");
-    // A type in use is refused, saying so. Floors list a "Generic - 200mm" too and come before Walls, so take the last one.
+    // A type in use is refused, saying so. Floors list a "Generic - 200mm" too and come before Walls: take the entry just under
+    // the Walls header.
+    let walls = in_browser(&h, "Walls").rect().center().y;
     h.get_all_by_label("Generic - 200mm")
-        .filter(|n| n.rect().center().x < 290.0 && n.accesskit_node().role() == Role::Button)
-        .max_by(|a, b| a.rect().center().y.total_cmp(&b.rect().center().y))
+        .filter(|n| n.rect().center().x < 290.0 && n.accesskit_node().role() == Role::Button && n.rect().center().y > walls)
+        .min_by(|a, b| a.rect().center().y.total_cmp(&b.rect().center().y))
         .unwrap()
         .click_secondary();
     h.run();
