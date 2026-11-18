@@ -773,6 +773,14 @@ filled; its tooltip says what it does. The Type Selector's list is as
 wide as the selector, a long name cut short and whole in its tooltip; wall types show their layers by share and material
 (`layer_bands`), and a curtain wall's type, which writes a `curtain` pattern (`curtain_type`), goes under its own heading.
 
+**Edit roof pitches** in the selected footprint roof's Properties enters a pitch-only selection mode in plan/3D.
+`roof_edges.rs` maps numbered eaves to their source planes, draws edge/plane outlines with the canvas palette in
+both 3D painters, and shows an explicit selection count. Ctrl/Command-click toggles edges; Shift-click removes.
+The ordinary whole-element hover/selection is suppressed. Selected pitch stages changes; all pending edge numbers
+are listed before Apply pitches sends one shared `modify` command. Cancel/Escape discards them. The mode ends on
+another tool, unsupported view, external selection or model revision. Undo/Redo asks to Apply/Cancel first. Geometry
+updates after Apply; Edit Boundary remains the way to change slope definition or footprint geometry.
+
 Roof footprint pitches: selecting several sketch lines with Ctrl-click or a selection box shares Defines Slope and
 Slope in Properties. Mixed definitions show an indeterminate checkbox (click enables all); differing overrides show
 Varies. Edits change only those draft lines and Finish sends one `edit_boundary`; Cancel discards them. Overall roof Slope

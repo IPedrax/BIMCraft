@@ -722,6 +722,174 @@ fn roof_pitch_in_the_3d_inspector_accepts_ratios_and_percentages_and_keeps_edge_
 }
 
 #[test]
+fn roof_edge_selection_names_the_scope_and_changes_only_picked_planes() {
+    for rev in [false, true] {
+        let script =
+            r#"roof {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]], "slope":30, "slopes":[0,0,45,0], "gables":[1,3], "overhang":600}"#;
+        let mut h = if rev { app(script) } else { bimcraft(script) };
+        let roof = ids(&h, "roof")[0];
+        h.state_mut().selection = vec![roof];
+        h.run();
+        let before = h.state().session.model.clone();
+        let steps = h.state().session.history().len();
+        if let Ok(folder) = std::env::var("BIMCRAFT_ROOF_EDGE_BEFORE") {
+            std::fs::create_dir_all(&folder).unwrap();
+            h.render().unwrap().save(std::path::Path::new(&folder).join("whole-roof-before.png")).unwrap();
+        }
+        press(&mut h, "Edit roof pitches");
+        assert!(h.query_by_label("Roof edges: 0 selected").is_some());
+        assert!(h.state().selection.is_empty(), "the roof body is not the selected sub-element");
+        click(&mut h, P2(4000.0, -600.0));
+        assert!(h.query_by_label("Roof edges: 1 selected").is_some());
+        roof_edge_capture(&mut h, rev, "one");
+        assert!(h.query_by_role_and_label(Role::TextInput, "Slope (°)").is_none(), "no competing overall field");
+        type_into(&mut h, "Selected pitch", "8:12");
+        key(&mut h, Key::Enter);
+        assert_eq!(*h.state().session.model, *before, "draft until Apply");
+        press(&mut h, "Apply pitches");
+        let slopes = field(&h, roof, "slopes");
+        assert!((slopes[0].as_f64().unwrap() - (2.0_f64 / 3.0).atan().to_degrees()).abs() < 1e-9);
+        assert_eq!(slopes[2], json!(45.0));
+        assert_eq!(field(&h, roof, "slope"), json!(30.0), "the common eave datum is unchanged");
+        assert_eq!(h.state().session.history().len(), steps + 1);
+        h.state_mut().run("undo", json!({}));
+        h.run();
+        assert_eq!(*h.state().session.model, *before);
+        press(&mut h, "Edit roof pitches");
+        click(&mut h, P2(4000.0, -600.0));
+        click_with(&mut h, P2(4000.0, 6600.0), Modifiers::CTRL);
+        assert!(h.query_by_label("Roof edges: 2 selected").is_some());
+        roof_edge_capture(&mut h, rev, "two");
+        type_into(&mut h, "Selected pitch", "50%");
+        key(&mut h, Key::Enter);
+        press(&mut h, "Cancel pitch edit");
+        assert_eq!(*h.state().session.model, *before);
+        assert_eq!(h.state().session.history().len(), steps);
+    }
+}
+
+#[test]
+fn roof_edge_edits_keep_pending_scope_and_cancel_without_touching_project_history() {
+    let mut h = app(r#"roof {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]], "slope":30, "gables":[1,3]}"#);
+    let roof = ids(&h, "roof")[0];
+    h.state_mut().selection = vec![roof];
+    h.run();
+    let before = h.state().session.model.clone();
+    press(&mut h, "Edit roof pitches");
+    click(&mut h, P2(4000.0, 0.0));
+    type_into(&mut h, "Selected pitch", "6:12");
+    key(&mut h, Key::Enter);
+    click(&mut h, P2(4000.0, 6000.0));
+    assert!(h.query_by_label("Pending pitch edits: edges 1").is_some());
+    type_into(&mut h, "Selected pitch", "12:12");
+    key(&mut h, Key::Enter);
+    assert!(h.query_by_label("Pending pitch edits: edges 1, 3").is_some());
+    press(&mut h, "Undo");
+    assert_eq!(*h.state().session.model, *before, "project Undo waits for Apply or Cancel");
+    press(&mut h, "Apply pitches");
+    let after = h.state().session.model.clone();
+    assert_eq!(field(&h, roof, "slopes")[2], json!(45.0));
+    assert!((field(&h, roof, "slopes")[0].as_f64().unwrap() - (0.5_f64).atan().to_degrees()).abs() < 1e-9);
+    press(&mut h, "Undo");
+    assert_eq!(*h.state().session.model, *before);
+    press(&mut h, "Redo");
+    assert_eq!(*h.state().session.model, *after);
+    press(&mut h, "Edit roof pitches");
+    click(&mut h, P2(4000.0, 0.0));
+    type_into(&mut h, "Selected pitch", "40");
+    key(&mut h, Key::Enter);
+    key(&mut h, Key::Escape);
+    assert!(h.state().roof_edge_edit.is_none());
+    assert_eq!(*h.state().session.model, *after);
+    press(&mut h, "Edit roof pitches");
+    h.state_mut().selection = vec![roof];
+    h.run();
+    assert!(h.state().roof_edge_edit.is_none());
+    assert_eq!(h.state().selection, vec![roof]);
+    press(&mut h, "Edit roof pitches");
+    h.state_mut().session.execute("modify", &json!({"id":roof,"offset":100})).unwrap();
+    h.run();
+    assert!(h.state().roof_edge_edit.is_none());
+    assert!(h.state().status.error);
+}
+
+#[test]
+fn roof_edge_selection_tracks_actual_eaves_in_3d_on_both_painters() {
+    for rev in [false, true] {
+        for card in [false, true] {
+            let script = r#"roof {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]], "slope":30,"slopes":[0,0,45,0],"gables":[1,3],"overhang":600,"offset":3000}"#;
+            let mut h = if std::env::var_os("BIMCRAFT_ROOF_EDGE_DUMP").is_some() {
+                let state = egui_kittest::wgpu::create_render_state(
+                    egui_kittest::wgpu::default_wgpu_setup(),
+                    eframe::egui_wgpu::RendererOptions::PREDICTABLE,
+                );
+                let mut session = Session::new();
+                session.script(script).unwrap();
+                let mut app = BimApp::new(session);
+                if rev {
+                    (app.profile, app.docking) = (crate::style::Profile::Rev, crate::dock::Docking::revit());
+                }
+                if card {
+                    app.card = crate::gpu::Card::with(crate::gpu::Gpu::new(&state).unwrap());
+                }
+                let mut h = Harness::builder()
+                    .with_size([1280.0, 800.0])
+                    .with_max_steps(32)
+                    .with_step_dt(0.25)
+                    .renderer(egui_kittest::wgpu::WgpuTestRenderer::from_render_state(state))
+                    .build_ui_state(|ui, app: &mut BimApp| app.show(ui), app);
+                h.run();
+                h
+            } else {
+                let mut h = if rev { app(script) } else { bimcraft(script) };
+                if card {
+                    let Some(gpu) = crate::gpu::headless() else {
+                        eprintln!("no graphics adapter: roof edge GPU picking not exercised");
+                        continue;
+                    };
+                    h.state_mut().card = crate::gpu::Card::with(gpu);
+                }
+                h
+            };
+            shortcut(&mut h, "3D");
+            assert_eq!(h.state().orbit.on_card, card);
+            let roof = ids(&h, "roof")[0];
+            h.state_mut().selection = vec![roof];
+            h.run();
+            press(&mut h, "Edit roof pitches");
+            let model = &h.state().session.model;
+            let Some(Element::Roof(r)) = model.elements.get(roof) else { panic!("roof") };
+            let plane = model.roof_faces_by_edge(r).unwrap().into_iter().find(|(i, _)| *i == 0).unwrap().1.1;
+            let at = h.state().screen3([4000.0, -600.0, plane.at(P2(4000.0, -600.0)) + model.roof_rise(r, &plane)]);
+            click_at(&mut h, at);
+            assert!(h.query_by_label("Roof edges: 1 selected").is_some(), "rev={rev},card={card},at={at:?}");
+            assert!(h.state().selection.is_empty());
+            roof_edge_capture(&mut h, rev, if card { "3d-card" } else { "3d-software" });
+            type_into(&mut h, "Selected pitch", "8:12");
+            key(&mut h, Key::Enter);
+            press(&mut h, "Apply pitches");
+            assert!((field(&h, roof, "slopes")[0].as_f64().unwrap() - (2.0_f64 / 3.0).atan().to_degrees()).abs() < 1e-9);
+            assert_eq!(field(&h, roof, "slopes")[2], json!(45.0));
+        }
+    }
+}
+
+fn roof_edge_capture(h: &mut Harness<BimApp>, rev: bool, which: &str) {
+    if let Ok(folder) = std::env::var("BIMCRAFT_ROOF_EDGE_DUMP") {
+        std::fs::create_dir_all(&folder).unwrap();
+        for (look, dark, light) in [("light", false, false), ("dark", true, false), ("dark-light-canvas", true, true)] {
+            h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+            h.state_mut().light_canvas = light;
+            h.run();
+            h.render()
+                .unwrap()
+                .save(std::path::Path::new(&folder).join(format!("edge-{}-{which}-{look}.png", if rev { "rev" } else { "bimcraft" })))
+                .unwrap();
+        }
+    }
+}
+
+#[test]
 fn overall_roof_pitch_offers_each_choice_and_warns_before_changing_the_eave() {
     for rev in [false, true] {
         let script = r#"roof {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]], "slope":30, "slopes":[0,45,0,45], "overhang":600}"#;

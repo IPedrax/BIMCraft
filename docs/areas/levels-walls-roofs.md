@@ -186,6 +186,19 @@ The checkbox is indeterminate when definitions differ; the pitch says Varies for
 Unselected lines keep their settings; selecting alone adds no history. The shared `roof` / `edit_boundary` commands resolve it into
 the existing `gables` list and clear automatic `gable` when explicit choices are supplied. Reading the boundary returns
 the effective choice, including automatic gables. These line properties are command/draft data only, not new saved fields.
+A selected pitched footprint roof also offers **Edit roof pitches** in Properties. `roof_edges.rs` keeps a transient
+selection of source-edge indices and a draft `slopes` array. Numbered physical eaves are picked in plan or 3D;
+selected eaves and their plane perimeters are outlined, with a count and a single Selected pitch field. Ctrl/Command
+adds/removes an edge and Shift removes one. Pending edits remain listed when selection changes. Apply sends one
+existing `modify {id, slopes}`; Cancel/Escape discards the draft. Default slope and shared underside eave datum are
+unchanged, though plane thickness, intersections and attached geometry still follow their normal rules. The drawing
+updates on Apply. Undo/Redo waits until Apply/Cancel; changing tools, leaving plan/3D, external selection or a changed
+model ends the draft. This mode edits pitches only; Defines Slope and boundary geometry remain in Edit Boundary.
+`Model::roof_faces_by_edge` carries each source edge through winding normalization and joined-face clipping; dropping
+those indices produces the existing `roof_faces` geometry. Gables, flat and extrusion roofs supply no selectable sloping
+footprint face. The mode outlines source face perimeters, not opening/shaft cutouts, and overlays them through other
+geometry for explicit selection. It does not offer ridge/valley dragging or face-interior picking.
+
 The selected roof's Slope field and its sketch-line Slope field accept degrees, positive rise:run / rise/run
 (`6:12`, `6/12`, `1/2`), or positive percentages (`50%`, `12.5%`), storing and displaying degrees.
 Percentage means 100 × rise/run: `50%` equals `6:12`, and `100%` equals 45°. The existing 75° limit still applies.

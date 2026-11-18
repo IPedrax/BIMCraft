@@ -695,7 +695,7 @@ pub(crate) fn number(s: &str) -> Option<f64> {
 
 /// Roof instances and footprint edges store degrees. Zero is an edge's inherit sentinel, so
 /// ratios and percentages must stay positive even at floating-point limits. Plain zero still means flat/inherit.
-fn roof_pitch(input: &str) -> Option<f64> {
+pub(crate) fn roof_pitch(input: &str) -> Option<f64> {
     let degrees = if let Some(percent) = input.trim().strip_suffix('%') {
         let percent = number(percent).filter(|n| *n > 0.0)?;
         Some(percent.atan2(100.0).to_degrees()).filter(|n| *n > 0.0)?
@@ -1574,6 +1574,13 @@ impl BimApp {
     }
 
     pub(crate) fn properties(&mut self, ui: &mut Ui) {
+        if self.roof_edge_edit.is_some() {
+            self.roof_edge_properties(ui);
+            return;
+        }
+        if self.roof_edge_launcher(ui) {
+            return;
+        }
         if self.editing_roof_profile() {
             ui.heading(t("Roof Profile"));
             self.roof_profile_coordinates(ui);

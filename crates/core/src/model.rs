@@ -6688,6 +6688,17 @@ impl Model {
     /// courtyards too; or its extrusion's profile, each stretch swept across. Where it runs into
     /// the roof it joins, it ends at that one's top.
     pub fn roof_faces(&self, r: &Roof) -> Result<Vec<Slope>, String> {
+        self.roof_faces_indexed(r).map(|faces| faces.into_iter().map(|(_, face)| face).collect())
+    }
+
+    /// A pitched footprint's faces with the source edge that defines each plane. The index follows
+    /// `Roof::edges`, including courtyards, regardless of winding; joined pieces keep the same owner.
+    /// Flat, shaped and extrusion roofs have no slope-defining footprint edge.
+    pub fn roof_faces_by_edge(&self, r: &Roof) -> Result<Vec<(usize, Slope)>, String> {
+        self.roof_faces_indexed(r).map(|faces| faces.into_iter().filter_map(|(edge, face)| edge.map(|edge| (edge, face))).collect())
+    }
+
+    fn roof_faces_indexed(&self, r: &Roof) -> Result<Vec<(Option<usize>, Slope)>, String> {
         let base = self.elevation(r.level) + r.offset;
         let faces = match &r.extrusion {
             Some(x) => {
@@ -6699,7 +6710,7 @@ impl Model {
                             let k = (b.1 - a.1) / (b.0 - a.0);
                             let plane = walls::Plane { z: base + a.1 - k * (a.0 + o.dot(u)), g: u * k };
                             let ring = [(a.0, x.from), (b.0, x.from), (b.0, x.to), (a.0, x.to)].map(|(s, c)| o + u * s + u.perp() * c);
-                            Some((vec![ring.to_vec()], plane))
+                            Some((None, (vec![ring.to_vec()], plane)))
                         }
                         _ => None,
                     })
@@ -6711,11 +6722,11 @@ impl Model {
                 && let Ok(planes) = self.shape_planes(&self.roof_as_floor(r)) =>
             {
                 let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
-                planes.into_iter().map(|(loops, plane)| (loops, walls::Plane { z: plane.z - thickness, ..plane })).collect()
+                planes.into_iter().map(|(loops, plane)| (None, (loops, walls::Plane { z: plane.z - thickness, ..plane }))).collect()
             }
             None if r.slope == 0.0 => {
                 let courtyards = r.courtyards.iter().map(|c| ccw(c).into_iter().rev().collect());
-                vec![(std::iter::once(ccw(&r.boundary)).chain(courtyards).collect(), walls::Plane::flat(base))]
+                vec![(None, (std::iter::once(ccw(&r.boundary)).chain(courtyards).collect(), walls::Plane::flat(base)))]
             }
             None => {
                 // Its outline counter-clockwise and its courtyards clockwise, the roof to the left of
@@ -6763,11 +6774,12 @@ impl Model {
                     .flat_map(|ring| geom::ring_edges(ring))
                     .zip(skeleton)
                     .zip(tans)
-                    .filter_map(|(((a, b), face), tan)| {
+                    .zip(numbers)
+                    .filter_map(|((((a, b), face), tan), edge)| {
                         let inward = (b - a).unit().perp();
                         let plane = walls::Plane { z: eave - tan * a.dot(inward), g: inward * tan };
                         let loops: Vec<Vec<P2>> = face.into_iter().map(|l| l.into_iter().map(|(p, _)| p).collect()).collect();
-                        loops.first().is_some_and(|l| l.len() >= 3).then_some((loops, plane))
+                        loops.first().is_some_and(|l| l.len() >= 3).then_some((Some(edge), (loops, plane)))
                     })
                     .collect()
             }
@@ -6788,7 +6800,7 @@ impl Model {
             .collect();
         Ok(faces
             .into_iter()
-            .flat_map(|(loops, plane)| {
+            .flat_map(|(edge, (loops, plane))| {
                 let mine = walls::Plane { z: plane.z + self.roof_rise(r, &plane), ..plane };
                 let mut kept = Vec::new();
                 let mut rest = solid(&loops, &[]);
@@ -6804,7 +6816,7 @@ impl Model {
                     rest = out;
                 }
                 kept.extend(rest);
-                kept.into_iter().map(move |k| (vec![k], plane))
+                kept.into_iter().map(move |k| (edge, (vec![k], plane)))
             })
             .collect())
     }

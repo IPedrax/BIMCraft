@@ -1,5 +1,18 @@
 # Roof footprint slope editing
 
+Select a pitched footprint roof and use **Edit roof pitches** in Properties for pitch-only changes. Click its numbered
+eave edge: the thicker edge and the outline of its sloping plane identify the selection. Ctrl/Command-click toggles
+additional edges; Shift-click removes. Properties says **Roof edges: N selected** and shows **Selected pitch**, with
+**Varies** for different pitches. Enter degrees, a ratio or a percentage. All pending edge numbers are listed;
+**Apply pitches** commits them together, **Cancel pitch edit** or Escape discards them. The drawing changes on Apply.
+This works in plan and 3D; entry from a section opens the roof's level plan. The shared underside eave datum and
+default pitch stay unchanged. The separate overall Slope field still offers Keep individual / Apply to all below.
+
+This pitch-only mode does not change gable definitions, footprint geometry, ridge/valley grips or opening outlines.
+Use Edit Boundary for definitions and geometry. Outlines are selection overlays through other geometry, not rendered
+visibility or a geometry preview. Switching tools, leaving plan/3D, external selection or a model revision cancels the
+draft. Apply/Cancel before Undo/Redo; after Apply the single command supports normal Undo/Redo and save/reopen.
+
 Select a footprint roof, choose **Edit Boundary**, and select one or several boundary lines (Ctrl-click or a selection box).
 **Defines Slope** controls whether those edges contribute sloping faces. Turn it off to leave edges upright; their remembered pitches are kept.
 Mixed definitions show an indeterminate checkbox; clicking it enables all selected edges. Different pitch overrides show **Varies**.
@@ -85,6 +98,13 @@ BIMCRAFT_ROOF_DUMP=/absolute/output/folder cargo test -p bimcraft-ui-egui roof_s
 This text is proposed for the wiki's **Roofs and Dormers → Changing a roof** section once this PR is accepted.
 The live wiki is not changed while the feature remains a draft.
 
+> For pitch-only edits, select a pitched footprint roof and choose **Edit roof pitches** in Properties. Click a numbered
+> eave edge to select its sloping plane; Ctrl/Command-click adds/removes edges and Shift-click removes. Properties shows
+> the selection count and Selected pitch. Apply pitches commits all listed pending edge edits; Cancel pitch edit or
+> Escape discards them. Plan and 3D show selected edge/plane outlines; the drawing updates after Apply. This leaves
+> the roof default and shared underside eave datum unchanged. Use the overall Slope field for Keep individual / Apply
+> to all; use Edit Boundary to change slope definition or geometry.
+>
 > Select a footprint roof and choose **Edit Boundary**. Select one or several boundary lines with Ctrl-click or a box, then use **Defines Slope** and
 > **Slope** in Properties. Turn Defines Slope off for an upright edge. On a rectangular footprint, leaving just one
 > defining edge makes a shed that rises inward from that edge. **Finish Edit Mode** applies the draft as one undo step;
@@ -121,6 +141,7 @@ The table describes this implementation independently; it is not a native Revit 
 | Workflow | This contribution |
 | --- | --- |
 | Select an existing footprint and edit its boundary | Supported through Edit Boundary and existing selection tools |
+| Direct eave/plane pitch selection | Intentional contributor-requested adaptation: numbered physical eaves, plane outlines and selected count in plan/3D; no native Revit observation or parity claim |
 | Set slope definition and pitch on selected edges | Supported for one or several lines, with mixed states |
 | Numeric pitch entry | Degrees, ratios and percentages supported in these Properties fields; global display formats remain separate |
 | Overall pitch versus individual pitches | Common pitch/Varies summary; per-edit choice and height warning are an intentional adaptation requested by the contributor |
@@ -160,3 +181,28 @@ Live issues, PRs and discussions were audited before implementation. The origina
 pre-start announcement; the November 17 multiple-line/overall-pitch follow-up was publicly coordinated before implementation
 in [PR #489](https://github.com/IPedrax/BIMCraft/pull/489#issuecomment-6952630156). Manual desktop acceptance and wiki publication remain
 pending. The implementation and visual fixtures are independent, synthetic work; no Autodesk prose or assets are included.
+
+## November 18 selection follow-up
+
+User testing found ordinary whole-roof highlighting misleading when only an individual pitch changed. The bounded
+follow-up was [announced before implementation](https://github.com/IPedrax/BIMCraft/pull/489#issuecomment-6992159220),
+after screening open PRs/issues/discussions and adjacent roof framing work. The original regression failed because
+**Edit roof pitches** did not exist. Subsequent UI journeys cover single/multiple edge scope, pending edits across
+selection changes, cancellation, stale model, Undo/Redo and 3D picking on both painters. The core regression preserves
+source-edge identities across reversed winding and joined-face clipping. Captures use synthetic roofs only; the
+contributor's private recording is neither copied nor published. Agent attribution remains Codex desktop,
+`gpt-6-astra`, high effort, verified for this turn. Automated captures do not constitute manual user acceptance.
+
+Selection captures (automated egui harness, synthetic 8 × 6 m roof, mixed 30°/45° pitches, 600 mm overhang).
+Before is the original whole-roof selection on `17ddd76e`; after is this follow-up's explicit edge selection. The 3D
+capture shares the app's actual GPU render state; both renderers, both profiles and all three looks were inspected.
+
+![Before: the whole roof is selected](images/roof-edge-selection-before.png)
+![After: edge 1 and its plane selected in plan](images/roof-edge-selection-plan.png)
+![After: edge 1 and its plane selected in 3D](images/roof-edge-selection-3d.png)
+
+Reproduce the selection captures with native graphics access:
+
+```sh
+BIMCRAFT_ROOF_EDGE_DUMP=/absolute/output/folder cargo test -p bimcraft-ui-egui --lib roof_edge_ -- --test-threads=1
+```

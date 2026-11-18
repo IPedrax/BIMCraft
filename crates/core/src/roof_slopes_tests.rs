@@ -48,6 +48,65 @@ fn tan(degrees: f64) -> f64 {
 }
 
 #[test]
+fn roof_faces_keep_their_defining_edge_identity_through_winding_and_joining() {
+    for clockwise in [false, true] {
+        let mut s = Session::default();
+        let mut boundary = vec![P2(0.0, 0.0), P2(8000.0, 0.0), P2(8000.0, 6000.0), P2(0.0, 6000.0)];
+        if clockwise {
+            boundary.reverse();
+        }
+        let id = run(&mut s, "roof", json!({"boundary":boundary,"slope":30,"slopes":[20,30,40,50],"overhang":600}))["id"].as_u64().unwrap();
+        let r = roof_of(&s, id);
+        let indexed = s.model.roof_faces_by_edge(r).unwrap();
+        assert_eq!(indexed.len(), 4);
+        assert_eq!(indexed.iter().map(|(_, face)| face.clone()).collect::<Vec<_>>(), s.model.roof_faces(r).unwrap());
+        for (edge, (_, plane)) in &indexed {
+            assert!(near(plane.g.length(), tan(r.edge_slopes()[*edge])));
+            let (a, b) = r.edges().nth(*edge).unwrap();
+            assert!(near(plane.at(a), s.model.roof_eave_height(r)));
+            assert!(near(plane.at(b), s.model.roof_eave_height(r)));
+        }
+        run(&mut s, "modify", json!({"id":id,"gables":[1,3]}));
+        let indexed = s.model.roof_faces_by_edge(roof_of(&s, id)).unwrap();
+        assert_eq!(indexed.iter().map(|(edge, _)| *edge).collect::<std::collections::BTreeSet<_>>(), [0, 2].into_iter().collect());
+        let host = run(&mut s, "roof", json!({"boundary":[[3000,-1000],[10000,-1000],[10000,7000],[3000,7000]],"slope":25}))["id"]
+            .as_u64()
+            .unwrap();
+        run(&mut s, "modify", json!({"id":id,"join":host}));
+        let r = roof_of(&s, id);
+        let indexed = s.model.roof_faces_by_edge(r).unwrap();
+        assert!(!indexed.is_empty());
+        assert_eq!(indexed.iter().map(|(_, face)| face.clone()).collect::<Vec<_>>(), s.model.roof_faces(r).unwrap());
+        assert!(indexed.iter().all(|(edge, _)| [0, 2].contains(edge)));
+    }
+}
+
+#[test]
+fn roof_faces_keep_courtyard_edge_numbers_with_opposite_ring_windings() {
+    for reverse in [false, true] {
+        let mut s = Session::new();
+        let mut outer = vec![P2(0.0, 0.0), P2(20000.0, 0.0), P2(20000.0, 20000.0), P2(0.0, 20000.0)];
+        let mut inner = vec![P2(8000.0, 8000.0), P2(12000.0, 8000.0), P2(12000.0, 12000.0), P2(8000.0, 12000.0)];
+        if reverse {
+            outer.reverse();
+            inner.reverse();
+        }
+        let id = run(&mut s, "roof", json!({"boundary":outer,"courtyards":[inner],"slope":30,"slopes":[25,30,35,40,26,31,36,41]}))["id"]
+            .as_u64()
+            .unwrap();
+        let r = roof_of(&s, id);
+        let faces = s.model.roof_faces_by_edge(r).unwrap();
+        assert_eq!(faces.iter().map(|(i, _)| *i).collect::<std::collections::BTreeSet<_>>(), (0..8).collect());
+        for (edge, (_, plane)) in faces {
+            let (a, b) = r.edges().nth(edge).unwrap();
+            assert!(near(plane.g.length(), tan(r.edge_slopes()[edge])));
+            assert!(near(plane.at(a), s.model.roof_eave_height(r)));
+            assert!(near(plane.at(b), s.model.roof_eave_height(r)));
+        }
+    }
+}
+
+#[test]
 fn an_overall_pitch_edit_cannot_translate_explicit_roof_planes_without_confirmation() {
     let mut moved = Vec::new();
     for (name, slopes, gables) in [

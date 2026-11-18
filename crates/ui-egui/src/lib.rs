@@ -87,6 +87,7 @@ mod renames;
 mod retained;
 pub mod revit;
 mod ribbon;
+mod roof_edges;
 mod script;
 mod section;
 mod section_box;
@@ -994,6 +995,7 @@ pub struct BimApp {
     typed_at: f64,
     pending: Option<Pending>,
     roof_slope_dialog: Option<properties::RoofSlopeDialog>,
+    roof_edge_edit: Option<roof_edges::RoofEdgeEdit>,
     /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
     deleting_rooms: Option<Vec<Id>>,
     type_dialog: Option<properties::TypeDialog>,
@@ -1875,6 +1877,7 @@ impl BimApp {
             typed_at: 0.0,
             pending: None,
             roof_slope_dialog: None,
+            roof_edge_edit: None,
             deleting_rooms: None,
             type_dialog: None,
             materials_dialog: None,
@@ -2027,6 +2030,11 @@ impl BimApp {
 
     /// Run a command; when it fails, say why.
     fn run(&mut self, id: &str, params: Value) -> Option<Value> {
+        if self.roof_edge_edit.is_some() && matches!(id, "undo" | "redo") {
+            self.status =
+                Status { text: t("Apply or cancel the pending roof pitch edits before using Undo or Redo.").into(), error: false };
+            return None;
+        }
         match self.exec(id, &params) {
             Ok(v) => {
                 self.status = Status::default();
@@ -3466,6 +3474,9 @@ impl BimApp {
     }
 
     fn set_tool(&mut self, mut tool: Tool) {
+        if tool != Tool::Modify {
+            self.cancel_roof_edge_edit();
+        }
         self.adaptive_clicks.clear();
         if !matches!(tool, Tool::Paste | Tool::PickLevel) {
             self.pasting = None;
@@ -3873,6 +3884,9 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        if self.cancel_roof_edge_edit() {
+            return;
+        }
         // A number being typed, or a field armed with Tab, goes first, and the field back to Length: the point it is for
         // is still wanted, and a stale locked length must not linger. The next Esc drops the chain.
         if !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty() || self.drawing.armed {
@@ -7246,6 +7260,7 @@ impl BimApp {
 
     fn dialogs(&mut self, ctx: &Context) {
         self.roof_slope_window(ctx);
+        self.check_roof_edge_edit();
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
         self.group_conflict_window(ctx);
