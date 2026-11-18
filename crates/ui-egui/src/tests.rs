@@ -5908,11 +5908,13 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
 #[test]
 fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list_their_tools() {
     let mut h = app(BOX);
-    // Narrow enough that Manage folds its last panels; the fit is judged on each tool's average width, a few pixels out.
-    h.set_size(vec2(1020.0, 800.0));
+    // Narrow enough that Manage folds its last panels: at 1020 Settings, handing its last tools over, makes room enough for
+    // Design Options to stay whole.
+    h.set_size(vec2(990.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
-    press(&mut h, "Manage");
+    h.state_mut().tab = Tab::Manage;
+    h.run();
     assert!(h.query_by_label("Design Options").is_none(), "the last panel is folded at {window}");
     assert!(h.get_by_label("Design Options ▾").rect().right() <= window, "to one button, in the window");
     assert!(h.get_by_label("Materials").rect().left() >= 0.0, "and the first panel is as it was");
@@ -6802,6 +6804,7 @@ mod pyaddins;
 mod qol;
 mod reinforce;
 mod revit;
+mod ribbon_fit;
 mod rooms;
 mod section_box;
 mod shape3d;
