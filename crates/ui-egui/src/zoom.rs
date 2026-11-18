@@ -5,7 +5,7 @@
 use bimcraft_core::geom::P2;
 use bimcraft_core::render::View;
 use bimcraft_core::view3d::Camera;
-use egui::{CursorIcon, Id, Pos2, Rect, Sense, Ui};
+use egui::{CursorIcon, Id, Pos2, Rect, Response, Sense, Ui};
 
 /// Zoom Out (2x): half as close.
 pub(crate) const OUT: f64 = 0.5;
@@ -13,15 +13,21 @@ pub(crate) const OUT: f64 = 0.5;
 /// The steps Previous Pan/Zoom keeps of each view.
 pub(crate) const STEPS: usize = 20;
 
-/// A rectangle smaller than this, points across, is a click rather than a region.
+/// A rectangle narrower or shorter than this, in points, is a click rather than a region.
 const LEAST: f32 = 4.0;
 
+/// The rectangle dragged from `a` to `b` (points on screen), if it is one: both its sides [`LEAST`] or more; else a click.
+fn rectangle(a: Pos2, b: Pos2) -> Option<Rect> {
+    let r = Rect::from_two_pos(a, b);
+    (r.width() >= LEAST && r.height() >= LEAST).then_some(r)
+}
+
 /// How much closer the rectangle from pixel `a` to pixel `b` has to come to fill a picture `width` by `height` as far as it can
-/// without being cut, and the pixel at its middle; none for a rectangle too small to be one.
+/// without being cut, and the pixel at its middle; none for one with no width or no height.
 fn fill(a: (f64, f64), b: (f64, f64), width: f64, height: f64) -> Option<(f64, (f64, f64))> {
     let (dx, dy) = ((b.0 - a.0).abs(), (b.1 - a.1).abs());
-    let f = (width / dx.max(1e-9)).min(height / dy.max(1e-9));
-    (f.is_finite() && f > 0.0 && dx.max(dy) >= f64::from(LEAST)).then_some((f, ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0)))
+    let f = (width / dx).min(height / dy);
+    (dx > 0.0 && dy > 0.0 && f.is_finite() && f > 0.0).then_some((f, ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0)))
 }
 
 /// A 3D camera after Zoom In Region over the rectangle from pixel `a` to pixel `b` of its picture: its middle brought to the
@@ -75,10 +81,11 @@ impl<T: PartialEq> Previous<T> {
 }
 
 /// Zoom In Region's drag over `pane`, while it is armed: `from` holds where the drag began. Over the view's own interaction (call
-/// it after the view is drawn) so the drag neither turns, pans nor selects; the rectangle drawn as a window selection's. The
-/// rectangle once let go, in points.
-pub(crate) fn drag(ui: &Ui, pane: Rect, from: &mut Option<Pos2>) -> Option<Rect> {
-    let response = ui.interact(pane, Id::new("zoom-in-region"), Sense::drag());
+/// it after the view is drawn) so the primary button neither turns, pans nor selects; the rectangle drawn as a window
+/// selection's. The rectangle once let go, in points (none for a click, which leaves the region armed), and the response, which
+/// the view's own wheel and middle button are handed (`editor::zoom`).
+pub(crate) fn drag(ui: &Ui, pane: Rect, from: &mut Option<Pos2>) -> (Option<Rect>, Response) {
+    let response = ui.interact(pane, Id::new("zoom-in-region"), Sense::click_and_drag());
     if response.hovered() || response.dragged() {
         ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
     }
@@ -87,7 +94,8 @@ pub(crate) fn drag(ui: &Ui, pane: Rect, from: &mut Option<Pos2>) -> Option<Rect>
     }
     let at = ui.input(|i| i.pointer.latest_pos());
     if response.drag_stopped() {
-        return from.take().zip(at).map(|(a, b)| Rect::from_two_pos(a, b));
+        let r = from.take().zip(at).and_then(|(a, b)| rectangle(a, b));
+        return (r, response);
     }
     if let (Some(a), Some(b)) = (*from, at) {
         // Drawn left to right whichever way it goes: a region has no crossing.
@@ -95,7 +103,7 @@ pub(crate) fn drag(ui: &Ui, pane: Rect, from: &mut Option<Pos2>) -> Option<Rect>
         let local = |p: Pos2| (p.x - pane.min.x, p.y - pane.min.y);
         ui.painter_at(pane).extend(crate::canvas::box_shapes(pane, local(r.min), local(r.max)));
     }
-    None
+    (None, response)
 }
 
 #[cfg(test)]
@@ -109,7 +117,16 @@ mod tests {
         let (scale, middle) = region_2d(&view, (50.0, 0.0), (150.0, 100.0)).unwrap();
         assert!((scale - 4.0).abs() < 1e-9);
         assert_eq!(middle, view.mm((100.0, 50.0)));
-        assert!(region_2d(&view, (10.0, 10.0), (11.0, 12.0)).is_none(), "a click");
+        assert!(region_2d(&view, (10.0, 10.0), (60.0, 10.0)).is_none(), "no height");
+    }
+
+    #[test]
+    fn a_drag_thinner_than_four_points_either_way_is_a_click() {
+        let at = |x, y| Pos2::new(x, y);
+        assert!(rectangle(at(10.0, 10.0), at(16.0, 10.0)).is_none(), "six by none");
+        assert!(rectangle(at(10.0, 10.0), at(110.0, 13.0)).is_none(), "a hundred by three");
+        assert!(rectangle(at(10.0, 10.0), at(11.0, 12.0)).is_none(), "one by two");
+        assert_eq!(rectangle(at(20.0, 30.0), at(10.0, 10.0)), Some(Rect::from_min_max(at(10.0, 10.0), at(20.0, 30.0))));
     }
 
     #[test]

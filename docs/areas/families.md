@@ -1304,9 +1304,11 @@ modelling view or the preview), on the view shown and never on the project's (`e
 `zoom.rs`). The view control bar has three beside Zoom to Fit. Zoom to Fit (and its keys, ZF, ZE and ZA, and Find) fits the
 view shown afresh: before, it left a plan or an elevation as it was. Zoom Out (2x) halves the view about its middle. Zoom In
 Region arms a drag over the view, drawn over it so the view's own drag neither turns, pans nor selects, and the view fits the
-rectangle let go; while it is armed the status bar asks for the rectangle, and Escape or another view shown gives it up.
-Previous Pan/Zoom steps back through a short history each view keeps, a step left by each of those commands and none by the
-wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never
+rectangle let go (a drag under 4 points either way is a click, and leaves it armed); while it is armed the status bar asks for
+the rectangle, the wheel and the middle button still zoom, pan and turn the view (handed to its own navigation from the
+region's widget), and Escape, another view shown, another tool picked or the tab left gives it up. Previous Pan/Zoom steps
+back through a short history each view keeps, a step left by each of those commands that changes the view (Zoom to Fit on a
+view fitted already leaves none) and none by the wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never
 comes back over the camera it restored. The three new commands have no keys yet: the project has no such commands, so they
 are not in `shortcuts::ACTIONS` or `SHORTCUTS`, and their keys (ZR and ZZ, ZO and ZV, ZP and ZC) wait for a family document
 to have keys of its own. Tests: `tests/family_zoom.rs`.

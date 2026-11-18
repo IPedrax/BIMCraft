@@ -932,7 +932,7 @@ msgstr "Cota alineada (DI): elija caras de muro paralelas, extremos de muro, pue
 msgid "Aligned Dimension in 3D"
 msgstr "Cota alineada en 3D"
 
-#: crates/ui-egui/src/orbit.rs:1558
+#: crates/ui-egui/src/orbit.rs:1573
 msgid "Aligned dimension: {}"
 msgstr "Cota alineada: {}"
 
@@ -1906,7 +1906,7 @@ msgid "Build"
 msgstr "Construir"
 
 #: crates/ui-egui/src/editor/document.rs:2042
-#: crates/ui-egui/src/orbit.rs:1743
+#: crates/ui-egui/src/orbit.rs:1758
 msgid "Building 3D view…"
 msgstr ""
 
@@ -2463,7 +2463,7 @@ msgstr "Buscando actualizaciones…"
 msgid "Checking the model"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:846
+#: crates/ui-egui/src/adaptive_view.rs:856
 msgid "Choose Point and click on the work plane."
 msgstr ""
 
@@ -2822,7 +2822,7 @@ msgstr "Haga clic en el modelo: un punto de su superficie."
 msgid "Click on the top: a point there, the Options Bar's offset over the surface, or at its Absolute elevation."
 msgstr "Haz clic en la cara superior: un punto ahí, con el desfase de la barra de opciones sobre la superficie o a su elevación Absoluta."
 
-#: crates/ui-egui/src/adaptive_view.rs:223
+#: crates/ui-egui/src/adaptive_view.rs:233
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr ""
 
@@ -2838,7 +2838,7 @@ msgstr "Haz clic en planos de referencia paralelos, extremos de extrusiones o l�
 msgid "Click points along what to measure: each length and the total read beside them. Click the first point again to close it and read its area; Enter ends the chain, Esc clears it."
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:224
+#: crates/ui-egui/src/adaptive_view.rs:234
 msgid "Click points or the work plane; click the first point again to close the profile."
 msgstr ""
 
@@ -2934,7 +2934,7 @@ msgstr "Haz clic en la siguiente esquina; Enter, o la primera esquina otra vez, 
 msgid "Click the next point it passes through; Enter finishes it. Esc cancels."
 msgstr "Haga clic en el siguiente punto por el que pasa; Intro termina. Esc cancela."
 
-#: crates/ui-egui/src/adaptive_view.rs:225
+#: crates/ui-egui/src/adaptive_view.rs:235
 msgid "Click the next point; the first again closes the profile; Enter or Escape finishes it open."
 msgstr ""
 
@@ -3090,7 +3090,7 @@ msgstr ""
 msgid "Click to select what the view cuts or sees; the middle button pans, the wheel zooms."
 msgstr "Haz clic para seleccionar lo que la vista corta o ve; el botón central desplaza la vista, la rueda hace zoom."
 
-#: crates/ui-egui/src/adaptive_view.rs:221
+#: crates/ui-egui/src/adaptive_view.rs:231
 msgid "Click to select, Ctrl adds; drag a box to select (left to right what is inside it, right to left what it touches); drag a point or a gizmo arrow to move it; Shift and the middle button orbit."
 msgstr ""
 
@@ -3142,7 +3142,7 @@ msgstr "Haga clic donde termina: el grupo se repite a lo largo de la línea a ca
 msgid "Click where it ends: the top folds along it. Esc cancels."
 msgstr "Haz clic donde termina: la cara superior se pliega a lo largo de ella. Esc cancela."
 
-#: crates/ui-egui/src/adaptive_view.rs:228
+#: crates/ui-egui/src/adaptive_view.rs:238
 msgid "Click where it goes."
 msgstr ""
 
@@ -3158,7 +3158,7 @@ msgstr "Haga clic donde termina la directriz. Esc cancela."
 msgid "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
 msgstr "Haz clic donde termina el tramo: más allá de su parte superior, un tramo, a la altura que indica la barra de opciones; antes, un descanso. Esc cancela."
 
-#: crates/ui-egui/src/adaptive_view.rs:230
+#: crates/ui-egui/src/adaptive_view.rs:240
 msgid "Click where the angle ends."
 msgstr ""
 
@@ -3808,7 +3808,7 @@ msgstr "Copiar informe"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Copiar su ID, GUID y GlobalId IFC"
 
-#: crates/ui-egui/src/adaptive_view.rs:227
+#: crates/ui-egui/src/adaptive_view.rs:237
 msgid "Copy: click the point to copy from."
 msgstr ""
 
@@ -3837,7 +3837,7 @@ msgid "Corner Mullion"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2046
-#: crates/ui-egui/src/orbit.rs:1747
+#: crates/ui-egui/src/orbit.rs:1762
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -4619,7 +4619,7 @@ msgstr "Línea de detalle (DL): cada clic crea una línea desde la anterior, con
 msgid "Detail elements only ({})"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1752
+#: crates/ui-egui/src/orbit.rs:1767
 msgid "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is."
 msgstr ""
 
@@ -6987,7 +6987,7 @@ msgstr "Resaltar lo que está bajo el cursor"
 msgid "Home"
 msgstr "Inicio"
 
-#: crates/ui-egui/src/orbit.rs:2763
+#: crates/ui-egui/src/orbit.rs:2778
 msgid "Home View"
 msgstr "Vista inicial"
 
@@ -8281,7 +8281,7 @@ msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2111
-#: crates/ui-egui/src/orbit.rs:2028
+#: crates/ui-egui/src/orbit.rs:2043
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -9181,7 +9181,7 @@ msgstr "Mover las coordenadas compartidas con él"
 msgid "Move the underlay by two points picked in the view"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:226
+#: crates/ui-egui/src/adaptive_view.rs:236
 msgid "Move: click the point to move from."
 msgstr ""
 
@@ -10678,11 +10678,11 @@ msgstr ""
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Designa un círculo o un arco y luego haz clic donde va la cota."
 
-#: crates/ui-egui/src/orbit.rs:1562
+#: crates/ui-egui/src/orbit.rs:1577
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "Elige una esquina, una arista o una cara del modelo para acotar."
 
-#: crates/ui-egui/src/orbit.rs:2611
+#: crates/ui-egui/src/orbit.rs:2626
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -10690,7 +10690,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "Elija un muro curvo o un arco."
 
-#: crates/ui-egui/src/orbit.rs:2568
+#: crates/ui-egui/src/orbit.rs:2583
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "Elige una cara de un muro, un piso, un cielo raso o una cubierta donde colocarlo."
 
@@ -10752,7 +10752,7 @@ msgstr "Designar un plano: tras Aceptar, haz clic en una cara del modelo en la v
 msgid "Pick a plane: click a reference plane or a datum in the view."
 msgstr "Designar un plano: haz clic en un plano de referencia o una referencia en la vista."
 
-#: crates/ui-egui/src/adaptive_view.rs:217
+#: crates/ui-egui/src/adaptive_view.rs:227
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
 msgstr ""
 
@@ -11026,12 +11026,12 @@ msgid "Place Centre"
 msgstr "Colocar centro"
 
 #: crates/ui-egui/src/lib.rs:2110
-#: crates/ui-egui/src/orbit.rs:1577
+#: crates/ui-egui/src/orbit.rs:1592
 msgid "Place Column"
 msgstr "Colocar columna"
 
 #: crates/ui-egui/src/lib.rs:2112
-#: crates/ui-egui/src/orbit.rs:1579
+#: crates/ui-egui/src/orbit.rs:1594
 msgid "Place Component"
 msgstr "Colocar componente"
 
@@ -11188,7 +11188,7 @@ msgid "Place Voice Outlet"
 msgstr "Colocar punto de voz"
 
 #: crates/ui-egui/src/lib.rs:2084
-#: crates/ui-egui/src/orbit.rs:1576
+#: crates/ui-egui/src/orbit.rs:1591
 msgid "Place Wall"
 msgstr "Colocar muro"
 
@@ -12714,7 +12714,7 @@ msgstr ""
 msgid "Rotate with Component"
 msgstr "Girar con componente"
 
-#: crates/ui-egui/src/adaptive_view.rs:229
+#: crates/ui-egui/src/adaptive_view.rs:239
 msgid "Rotate: click where the angle starts, about the centre shown."
 msgstr ""
 
@@ -15329,7 +15329,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "La vista está de canto respecto al plano del boceto: gírela para elegir en él."
 
-#: crates/ui-egui/src/orbit.rs:1548
+#: crates/ui-egui/src/orbit.rs:1563
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "La vista mira a lo largo de la cota: gírala para colocar su línea."
 
@@ -17189,7 +17189,7 @@ msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:2806
 #: crates/ui-egui/src/editor/document.rs:1267
-#: crates/ui-egui/src/orbit.rs:2766
+#: crates/ui-egui/src/orbit.rs:2781
 msgid "Zoom to Fit"
 msgstr "Zoom para ajustar"
 
@@ -17386,7 +17386,7 @@ msgstr ""
 msgid "click on the curtain wall"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:2691
+#: crates/ui-egui/src/orbit.rs:2706
 msgid "click on the floor's top"
 msgstr "haz clic en la cara superior del piso"
 
@@ -17841,7 +17841,7 @@ msgstr "ya hay un parámetro `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "aún no hay grupo de detalle: seleccione líneas de detalle y Crear grupo"
 
-#: crates/ui-egui/src/orbit.rs:1496
+#: crates/ui-egui/src/orbit.rs:1511
 msgid "there's no face to paint there"
 msgstr "no hay cara que pintar ahí"
 
@@ -17857,7 +17857,7 @@ msgstr ""
 msgid "this machine"
 msgstr "esta máquina"
 
-#: crates/ui-egui/src/orbit.rs:2585
+#: crates/ui-egui/src/orbit.rs:2600
 #: crates/ui-egui/src/paper.rs:172
 #: crates/ui-egui/src/section.rs:575
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -18226,7 +18226,7 @@ msgid "{} of {} risers"
 msgstr "{} de {} contrahuellas"
 
 #: crates/ui-egui/src/canvas.rs:6350
-#: crates/ui-egui/src/orbit.rs:2379
+#: crates/ui-egui/src/orbit.rs:2394
 msgid "{} of {} {}"
 msgstr "{} de {} {}"
 
@@ -18484,11 +18484,11 @@ msgstr "{}: `{}` no es un número"
 msgid "{}: column {}, row {}"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1590
+#: crates/ui-egui/src/orbit.rs:1605
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}: en la vista 3D se apoya en una cara horizontal (la parte superior de un piso, una cubierta plana o un nivel): señala una"
 
-#: crates/ui-egui/src/orbit.rs:1586
+#: crates/ui-egui/src/orbit.rs:1601
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}: en la vista 3D sus puntos van sobre una cara horizontal (la parte superior de un piso, una columna, una cubierta plana o un nivel): señala una"
 
