@@ -6738,6 +6738,9 @@ impl BimApp {
 
     /// What the tool wants next, in the status bar as Revit puts it.
     fn prompt(&self) -> &'static str {
+        if self.roof_edge_edit.is_some() {
+            return msg!("Edit roof pitches: click an eave; Ctrl/Command-click toggles edges. Apply pitches commits; Escape cancels.");
+        }
         if let Some(hint) = self.family_prompt() {
             return hint;
         }

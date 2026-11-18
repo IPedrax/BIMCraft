@@ -737,6 +737,7 @@ fn roof_edge_selection_names_the_scope_and_changes_only_picked_planes() {
             h.render().unwrap().save(std::path::Path::new(&folder).join("whole-roof-before.png")).unwrap();
         }
         press(&mut h, "Edit roof pitches");
+        assert!(h.state().prompt().contains("roof pitch"), "the status bar explains edge editing, not whole-object box selection");
         assert!(h.query_by_label("Roof edges: 0 selected").is_some());
         assert!(h.state().selection.is_empty(), "the roof body is not the selected sub-element");
         click(&mut h, P2(4000.0, -600.0));

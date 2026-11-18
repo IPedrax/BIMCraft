@@ -3,7 +3,7 @@
 Select a pitched footprint roof and use **Edit roof pitches** in Properties for pitch-only changes. Click its numbered
 eave edge: the thicker edge and the outline of its sloping plane identify the selection. Ctrl/Command-click toggles
 additional edges; Shift-click removes. Properties says **Roof edges: N selected** and shows **Selected pitch**, with
-**Varies** for different pitches. Enter degrees, a ratio or a percentage. All pending edge numbers are listed;
+**Varies** for different pitches. Enter degrees, a ratio or a percentage and press Enter. All pending edge numbers are listed;
 **Apply pitches** commits them together, **Cancel pitch edit** or Escape discards them. The drawing changes on Apply.
 This works in plan and 3D; entry from a section opens the roof's level plan. The shared underside eave datum and
 default pitch stay unchanged. The separate overall Slope field still offers Keep individual / Apply to all below.

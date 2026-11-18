@@ -39,9 +39,11 @@ impl RoofEdgeEdit {
             let lift = |q: P2| [q.0, q.1, plane.at(q) + rise];
             let edge = edges.entry(index).or_insert_with(|| Edge { rings: Vec::new(), eaves: Vec::new() });
             for ring in loops {
-                edge.eaves.extend(geom::ring_edges(&ring).filter_map(|(c, d)| {
-                    (geom::dist_to_segment(c, a, b) < 1e-5 && geom::dist_to_segment(d, a, b) < 1e-5).then(|| [lift(c), lift(d)])
-                }));
+                edge.eaves.extend(
+                    geom::ring_edges(&ring)
+                        .filter(|(c, d)| geom::dist_to_segment(*c, a, b) < 1e-5 && geom::dist_to_segment(*d, a, b) < 1e-5)
+                        .map(|(c, d)| [lift(c), lift(d)]),
+                );
                 edge.rings.push(ring.into_iter().map(lift).collect());
             }
         }
@@ -202,7 +204,7 @@ impl BimApp {
                     None => edit.error = Some(t("Enter degrees from 0 to 75, or a positive pitch such as 6:12 or 50%.").into()),
                 }
             }
-            ui.label(t("Degrees, 6:12 or 50%. Blank or 0 uses the roof default."));
+            ui.label(t("Degrees, 6:12 or 50%. Press Enter, then Apply. Blank/0 uses the default."));
         }
         let pending = edit.pending();
         if !pending.is_empty() {
