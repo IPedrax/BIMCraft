@@ -1,0 +1,14 @@
+{
+  "examples/solidcraft/Door.mapping.json": "5d29847bdc558b0de7e7eca95b32832b595599a1df5d02661127fe14955ced55",
+  "examples/solidcraft/Door.sc": "8e143046c95e84ea145c6654a96f8ace01f73543b9dd468ddd3df26bf3ee30f1",
+  "examples/solidcraft/DrawerBase.mapping.json": "ece561ae5c8538a06e505e50fc2c30966dc3fc8f54709d4af56867c3140f6f15",
+  "examples/solidcraft/DrawerBase.sc": "e5f8d7d886736feb608c1080c2c6a657e79f374d31b88db6fea46294c0ecd61a",
+  "examples/solidcraft/Light.mapping.json": "041abf603943096f500b81669711c905c414efc34870e093cf9e528ebf569cd3",
+  "examples/solidcraft/Light.sc": "cab5b8521692386cfa9fbfb39482d137b68b7550105ef396f2ba006090bd6659",
+  "examples/solidcraft/README.md": "2485c2aa5176348e06a47b23fe5a704ce8a8acae324df8afc8c2c1c3f95dc4f1",
+  "examples/solidcraft/TwoDoorBase.mapping.json": "e138ee2cb960c83f7f2bb6ca31dfc90915d27ccd5654fbb5c690326e74e7a26e",
+  "examples/solidcraft/TwoDoorBase.sc": "3e5f01707659a70a7d37b7d1aac264d88fcb3e3e131f770deb03c4a660fa440f",
+  "examples/solidcraft/WOODWORK-LICENSE.txt": "5ed1a38472339b2fe5f40d739d0aad50b06cbfde201bae94312ae53e473a934d",
+  "examples/solidcraft/Window.mapping.json": "536a8a11a9f2a77947587a8aff9ddd7346329c3257ff55b6cd7dda9d3fabeaa8",
+  "examples/solidcraft/Window.sc": "d7fc1fe293c3f2b3412f1ca6138e3e7c5864686bf91e23068f52d1da8a44fdff"
+}

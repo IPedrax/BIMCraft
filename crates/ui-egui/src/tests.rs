@@ -7797,4 +7797,5 @@ mod preview_visibility;
 mod select_instances;
 mod sheet_fit;
 
+mod source_editor;
 mod window_drag;

@@ -498,6 +498,10 @@ pub(crate) struct FamilyEditor {
     pub(crate) dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
     kind: Option<String>,
+    /// External geometry stays authoritative; the editor only changes its published inputs.
+    solidcraft: Option<Arc<bimcraft_core::family::solidcraft::Source>>,
+    /// Explicit schedule roles, independent of display groups and parameter scope.
+    dimension_parameters: BTreeMap<String, String>,
     /// The IFC class a generic family from IFC remembers: set with the `family` command or by the import, kept as it is here.
     ifc: Option<IfcClass>,
     /// How a door's or a window's leaves open; none, not said.
@@ -633,6 +637,8 @@ impl FamilyEditor {
             lines: f.lines.clone(),
             dimensions: f.dimensions.clone(),
             kind: f.kind.clone(),
+            solidcraft: f.solidcraft.clone(),
+            dimension_parameters: f.dimension_parameters.clone(),
             ifc: f.ifc.clone(),
             operation: f.operation,
             options: options::OptionsText::of(f),
@@ -770,6 +776,9 @@ impl FamilyEditor {
     /// The family as typed, or the first thing that isn't what it should be.
     fn family(&self) -> Result<Family, String> {
         let parameters: Vec<Parameter> = self.params.iter().map(ParamText::parameter).collect::<Result<_, _>>()?;
+        if let Some(source) = &self.solidcraft {
+            source.check_parameters(&parameters)?;
+        }
         let own: BTreeMap<&str, Holds> =
             parameters.iter().filter(|p| !p.instance && p.formula.is_none()).map(|p| (p.name.as_str(), p.kind)).collect();
         let mut types = BTreeMap::new();
@@ -792,6 +801,8 @@ impl FamilyEditor {
         let operation = self.operation.filter(|_| self.category.hosted());
         let mut family = Family {
             category: self.category,
+            solidcraft: self.solidcraft.clone(),
+            dimension_parameters: self.dimension_parameters.clone(),
             // A kind the category it now is has no row for goes with the change of category.
             kind: self.kind.clone().filter(|k| self.category.kinds().iter().any(|(n, _)| n == k)),
             ifc: self.ifc.clone(),
@@ -1609,6 +1620,32 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
+
+    #[test]
+    fn external_source_survives_editor_reconstruction_and_document_history() {
+        let family: Family = serde_json::from_value(json!({
+            "parameters": [{"name":"Span","kind":"length","value":100,"instance":true}],
+            "types":{"Standard":{}},
+            "solidcraft":{"document":"UEsDBA==","inputs":{"Span":{"unit":"mm","original":100}}},
+            "dimension_parameters":{"Width":"Span"}
+        }))
+        .unwrap();
+        let mut ed = FamilyEditor::of("Source family", &family);
+        assert_eq!(ed.family().unwrap().solidcraft, family.solidcraft, "source payload dropped by editor");
+        assert_eq!(ed.family().unwrap().dimension_parameters, family.dimension_parameters);
+        let ctx = Context::default();
+        ed.history(&ctx, &Asked::default());
+        ed.params[0].value = "200".into();
+        ed.history(&ctx, &Asked::default());
+        ed.history(&ctx, &Asked { undo: true, ..Asked::default() });
+        assert_eq!(ed.family().unwrap().parameters[0].value.as_f64(), Some(100.0));
+        assert_eq!(ed.family().unwrap().solidcraft, family.solidcraft);
+        ed.history(&ctx, &Asked { redo: true, ..Asked::default() });
+        let restored = ed.family().unwrap();
+        assert_eq!(restored.parameters[0].value, json!(200.0));
+        assert_eq!(restored.solidcraft, family.solidcraft);
+        assert_eq!(restored.dimension_parameters, family.dimension_parameters);
+    }
 
     #[test]
     fn adaptive_editor_roundtrip_preserves_identity_and_independent_preview_frames() {

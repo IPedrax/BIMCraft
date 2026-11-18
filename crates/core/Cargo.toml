@@ -10,6 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+base64 = "0.23.1"
 bimcraft-i18n = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
