@@ -47,6 +47,11 @@ A roof's body is read by `Reader::body_out`: each item whose faces close a body 
 whose signed volume is negative is wound inside out, so its faces are turned the other way before its top and underside are
 told apart. A mesh that does not close is read as the file winds it.
 
+An `IfcOpeningElement` through a slab, a covering or a roof comes in as a shaft over its body's height, which cuts every floor,
+ceiling and roof it passes through. When its host is a roof (an `IfcRoof`, a roof slab, or a part of an `IfcRoof`), the shaft
+reaches no higher or lower than that roof and its parts, because an exporter's opening often runs on past the roof it voids,
+and the shaft would take a hole out of the roof above it (a dormer's).
+
 ## Shared shapes
 
 A body an `IfcMappedItem` maps (as Tekla writes every bolt and Revit a type's geometry) is read once in its

@@ -2500,15 +2500,34 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     // The openings through floors, ceilings and roofs: what each voids, its outline in plan at its
     // top, and how high it reaches. Each comes in as a shaft, which takes the hole it cuts in what
     // it voids: a mesh carries the holes cut in it.
+    // An opening in a roof voids that roof only, but its body often runs past it, and a shaft as long would cut the roof over it
+    // too (a dormer's): so its shaft reaches only as high and as low as the roof and its parts do.
+    let mut roof_reach: HashMap<u64, Option<(f64, f64)>> = HashMap::new();
     let cuts: Vec<(u64, u64, Vec<P2>, f64, f64)> = named(&["IFCOPENINGELEMENT", "IFCOPENINGSTANDARDCASE"])
         .into_iter()
         .filter_map(|id| {
             let h = *l.host.get(&id)?;
-            let host = e(h)?.name.as_str();
+            let hx = e(h)?;
+            let host = hx.name.as_str();
             let o = e(id).filter(|_| SLABS.contains(&host) || matches!(host, "IFCCOVERING" | "IFCROOF"))?;
             let faces = r.body(o);
             let (z0, z1) = span(faces.iter().flatten().map(|p| p[2]))?;
             let ring = outline(&faces, Plane::flat(z1), true)?.outer;
+            let in_roof = host == "IFCROOF"
+                || enumeration(hx.args.get(8)) == Some("ROOF")
+                || l.whole.get(&h).and_then(|w| e(*w)).is_some_and(|w| w.name == "IFCROOF");
+            let reach = if in_roof {
+                *roof_reach.entry(h).or_insert_with(|| {
+                    let parts = l.parts.get(&h).into_iter().flatten().copied();
+                    span(std::iter::once(h).chain(parts).filter_map(e).flat_map(|x| r.body(x)).flatten().map(|p| p[2]))
+                })
+            } else {
+                None
+            };
+            let (z0, z1) = match reach {
+                Some((lo, hi)) if z0.max(lo) < z1.min(hi) => (z0.max(lo), z1.min(hi)),
+                _ => (z0, z1),
+            };
             Some((id, h, ring.into_iter().map(|p| micron(r.flat([p.0, p.1, 0.0]))).collect(), z0, z1))
         })
         .collect();
@@ -6000,6 +6019,51 @@ ENDSEC;END-ISO-10303-21;"
         let right = read(outward);
         assert_eq!((right.0, right.1), (18.43, 3000.0), "its underside 3000 high at its eaves, rising 2 m over 6");
         assert_eq!(read(inward), right);
+    }
+
+    #[test]
+    fn an_opening_through_one_roof_leaves_the_roof_over_it_whole() {
+        // A roof from -200 to 0 with an opening whose body runs on to 900, and a small roof from 800 to 1000 over it that the
+        // opening doesn't void: the hole is the lower roof's alone, and its shaft is as high as that roof.
+        let canopy = "#60=IFCCARTESIANPOINT((0.,0.,800.));
+#61=IFCAXIS2PLACEMENT3D(#60,$,$);
+#62=IFCLOCALPLACEMENT($,#61);
+#63=IFCCARTESIANPOINT((4500.,1500.));
+#64=IFCAXIS2PLACEMENT2D(#63,$);
+#65=IFCRECTANGLEPROFILEDEF(.AREA.,$,#64,2000.,2000.);
+#66=IFCEXTRUDEDAREASOLID(#65,$,#31,200.);
+#67=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#66));
+#68=IFCPRODUCTDEFINITIONSHAPE($,$,(#67));
+#69=IFCROOF('c',$,'Canopy',$,$,#62,#68,$,.FLAT_ROOF.);";
+        let file = holed("#35=IFCROOF('f',$,'Roof',$,$,#6,#34,$,.FLAT_ROOF.);", 35)
+            .replace("(#35),#7)", "(#35,#69),#7)")
+            .replace("#43=IFCEXTRUDEDAREASOLID(#42,$,#31,200.);", "#43=IFCEXTRUDEDAREASOLID(#42,$,#31,1100.);")
+            .replace("ENDSEC;END", &format!("{canopy}\nENDSEC;END"));
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert_eq!(i.skipped, Vec::<String>::new());
+        let Some(Element::Shaft(sh)) = only(&i.model, "shaft").first().copied() else { panic!("no shaft") };
+        assert_eq!(sh.height, 200.0, "no higher than the roof it voids");
+        // Each roof's plan, less its openings and the shafts through it.
+        let left = |roof: &crate::model::Roof| -> f64 {
+            let m = &i.model;
+            m.roof_slabs(roof)
+                .iter()
+                .map(|(face, rise)| m.less_shafts(face, *rise).0.iter().map(|p| geom::area(p).abs()).sum::<f64>())
+                .sum()
+        };
+        let mut areas: Vec<(f64, f64)> = only(&i.model, "roof")
+            .into_iter()
+            .filter_map(|e| match e {
+                Element::Roof(r) => Some((geom::area(&r.boundary).abs(), left(r))),
+                _ => None,
+            })
+            .collect();
+        areas.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert_eq!(areas.len(), 2, "{areas:?}");
+        let ((small, small_left), (big, big_left)) = (areas[0], areas[1]);
+        assert!((small - 4e6).abs() < 100.0 && (big - 24e6).abs() < 100.0, "{areas:?}");
+        assert!((big_left - 21.5e6).abs() < 100.0, "6 x 4 less 1.5 and 1: {areas:?}");
+        assert!((small_left - 4e6).abs() < 100.0, "the roof over the opening is whole: {areas:?}");
     }
 
     #[test]
