@@ -495,13 +495,11 @@ impl BimApp {
 
     /// The body of a tab every panel of which is hidden: says so, and brings them all back with a button.
     pub(crate) fn empty_tab_notice(&mut self, ui: &mut Ui, tab: &str) {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(t("Every panel of this tab is hidden.")).color(pal().muted));
-            if ui.button(t("Show the panels")).clicked() {
-                let prefix = format!("tab:{tab}/");
-                self.panels_hidden.retain(|key| !key.starts_with(&prefix));
-            }
-        });
+        ui.label(RichText::new(t("Every panel of this tab is hidden.")).color(pal().muted));
+        if ui.button(t("Show the panels")).clicked() {
+            let prefix = format!("tab:{tab}/");
+            self.panels_hidden.retain(|key| !key.starts_with(&prefix));
+        }
     }
 }
 

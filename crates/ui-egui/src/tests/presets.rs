@@ -200,6 +200,8 @@ fn a_panel_taken_out_in_edit_tools_leaves_the_tab_and_comes_back() {
             press(&mut h, "Team");
         }
         press(&mut h, "Edit Tools");
+        h.get_by_role_and_label(Role::CheckBox, "Build").scroll_to_me();
+        h.run();
         let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
         click_at(&mut h, at);
         press(&mut h, "Done");
@@ -219,6 +221,8 @@ fn a_panel_taken_out_in_edit_tools_leaves_the_tab_and_comes_back() {
             press(&mut h, "Team");
         }
         press(&mut h, "Edit Tools");
+        h.get_by_role_and_label(Role::CheckBox, "Build").scroll_to_me();
+        h.run();
         let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
         click_at(&mut h, at);
         press(&mut h, "Done");
@@ -250,6 +254,8 @@ fn a_tab_whose_panels_are_all_hidden_says_so_and_the_button_brings_them_back() {
     }
     h.run();
     assert!(h.query_by_label("Every panel of this tab is hidden.").is_some());
+    h.get_by_label("Show the panels").scroll_to_me();
+    h.run();
     let at = h.get_by_label("Show the panels").rect().center();
     click_at(&mut h, at);
     assert!(h.state().panels_hidden.iter().all(|k| !k.starts_with("tab:Architecture/")));
@@ -413,6 +419,8 @@ fn edit_tools_done_keeps_the_palette_layout_and_panels_in_the_selected_preset() 
     // The user moves a palette and takes a panel out, then presses Done: both go into the preset the window wears.
     h.state_mut().docking.put(Palette::Browser, Target::Side(Side::Bottom));
     press(&mut h, "Edit Tools");
+    h.get_by_role_and_label(Role::CheckBox, "Build").scroll_to_me();
+    h.run();
     let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
     click_at(&mut h, at);
     press(&mut h, "Done");
