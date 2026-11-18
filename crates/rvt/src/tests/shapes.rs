@@ -13,6 +13,15 @@ fn schema() -> Schema {
     Schema::parse(&Project::schema_bytes())
 }
 
+/// The one symbol a tree places and its transform, where it places one and draws nothing of its own.
+fn instance(tree: &graphics::Tree, l: &Layouts) -> Result<(u32, crate::placement::Transform), String> {
+    let d = crate::shapes::drawing(tree, l)?;
+    match (&d.placed[..], &d.body) {
+        ([one], None) => Ok(*one),
+        _ => Err(format!("it places {} symbols, and {} of its own", d.placed.len(), if d.body.is_some() { "solids" } else { "nothing" })),
+    }
+}
+
 fn shape_of(objects: &Objects) -> Result<Shape, String> {
     let s = schema();
     let l = Layouts::of(&s).ok_or("no GElement")?;
@@ -79,15 +88,15 @@ fn an_instances_graphics_name_the_symbol_it_draws_and_the_transform_it_draws_it_
     let axes = [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
     let bytes = tree_bytes(&instance_tree(600, 500, axes, [10.0, 20.0, 3.0], [7.0, 20.0, 3.0, 10.0, 22.0, 7.0]));
     let tree = graphics::read(&bytes, 0, &l).unwrap();
-    let (symbol, t) = graphics::instance(&tree, &l).unwrap();
+    let (symbol, t) = instance(&tree, &l).unwrap();
     assert_eq!((symbol, t.axes, t.origin), (500, axes, [10.0, 20.0, 3.0]));
     // An instance's tree holds no solid of its own: what it draws is another's.
     let why = crate::shapes::shape(&tree, &l).unwrap_err();
     assert!(why.contains("GInstance"), "{why}");
-    // A symbol's tree is no instance.
+    // A symbol's tree places nothing: it draws solids of its own.
     let bytes = tree_bytes(&box_tree(500, [1.0, 1.0, 1.0], None));
-    let why = graphics::instance(&graphics::read(&bytes, 0, &l).unwrap(), &l).unwrap_err();
-    assert!(why.contains("not an instance"), "{why}");
+    let d = crate::shapes::drawing(&graphics::read(&bytes, 0, &l).unwrap(), &l).unwrap();
+    assert!(d.placed.is_empty() && d.body.is_some_and(|b| b.triangles.len() == 12));
 }
 
 #[test]
@@ -210,4 +219,165 @@ fn a_face_whose_loops_bound_two_regions_and_a_hole_is_cut_as_each() {
     let mm2 = 304.8 * 304.8;
     let surface: f64 = out.iter().map(area).sum::<f64>() / mm2;
     assert!((surface - (4.0 + 4.0 - 1.0)).abs() < 1e-6, "{surface}");
+}
+
+#[test]
+fn an_inline_object_follows_the_last_object_queued_when_its_owner_is_written() {
+    // Two instances side by side under the root, each owning only its info, inline: neither info follows its own instance, both
+    // follow the second, the last queued when either is written (the layout of a symbol's image beside the filters after it).
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut objects = instance_tree(600, 500, axes, [1.0, 2.0, 3.0], [0.0; 6]);
+    let second = instance_tree(600, 501, axes, [4.0, 5.0, 6.0], [0.0; 6]);
+    objects.insert(4, second[&3].clone());
+    objects.insert(2, root(600, vec![V::Own(3, "GInstance"), V::Own(4, "GInstance")], [0.0; 6], [0.0; 6]));
+    let tree = graphics::read(&tree_bytes(&objects), 0, &l).unwrap();
+    for (index, symbol) in [(3, 500), (4, 501)] {
+        let info = &tree.get(index).unwrap().inline[0];
+        let named = format!("{:?}", l.get(info, "m_symbolId"));
+        assert!(named.contains(&format!("Int({symbol})")), "{index}: {named}");
+    }
+}
+
+#[test]
+fn an_inline_object_may_own_inline_objects_of_its_own() {
+    // A fill's pattern, inline, owns its grids inline (the layout of a filled region drawn in a family), beside an instance whose
+    // info is inline too: the pattern and the info follow the instance, the last queued, and the grids follow it too, after them.
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut objects = instance_tree(600, 501, axes, [4.0, 5.0, 6.0], [0.0; 6]);
+    objects.insert(4, objects[&3].clone());
+    let grids = V::Counted(vec![V::Inline("FillGrid", vec![V::F64(0.5)]), V::Inline("FillGrid", vec![V::F64(1.5)])]);
+    objects.insert(3, ("GFilling", vec![crate::project_fixture::ginfo(0), V::Inline("FillPatternData", vec![V::F64(2.0), grids])]));
+    objects.insert(2, root(600, vec![V::Own(3, "GFilling"), V::Own(4, "GInstance")], [0.0; 6], [0.0; 6]));
+    let tree = graphics::read(&tree_bytes(&objects), 0, &l).unwrap();
+    let pattern = &tree.get(3).unwrap().inline[0];
+    assert_eq!(l.get(pattern, "m_scale"), Some(&graphics::Value::Real(2.0)));
+    let angles: Vec<_> = pattern.inline.iter().map(|g| l.get(g, "m_angle").cloned()).collect();
+    assert_eq!(angles, [Some(graphics::Value::Real(0.5)), Some(graphics::Value::Real(1.5))]);
+    let named = format!("{:?}", l.get(&tree.get(4).unwrap().inline[0], "m_symbolId"));
+    assert!(named.contains("Int(501)"), "{named}");
+}
+
+#[test]
+fn a_meshs_points_are_four_byte_floats_and_its_facets_two_byte_indices() {
+    // Kind 6 is a four-byte float and kind 3 a two-byte integer: a mesh's points and facets (the layout of a light's mesh), read
+    // right, leave the stream where the next object starts.
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let points =
+        V::Counted(vec![V::Seq(vec![V::F32(0.5), V::F32(1.5), V::F32(-2.0)]), V::Seq(vec![V::F32(1.0), V::F32(0.0), V::F32(0.25)])]);
+    let facets = V::Counted(vec![V::Seq(vec![V::U16(0), V::U16(1), V::U16(65535)])]);
+    let mut objects = Objects::new();
+    objects.insert(2, root(600, vec![V::Own(3, "GInstance")], [0.0; 6], [0.0; 6]));
+    objects.insert(3, ("GInstance", vec![crate::project_fixture::ginfo(0), V::Inline("FloatMesh", vec![points, facets])]));
+    let bytes = tree_bytes(&objects);
+    let tree = graphics::read(&bytes, 0, &l).unwrap();
+    let mesh = &tree.get(3).unwrap().inline[0];
+    let point = |k: usize| l.get(mesh, "m_pointsArr").and_then(|p| p.list()?.get(k)?.point());
+    assert_eq!((point(0), point(1)), (Some([0.5, 1.5, -2.0]), Some([1.0, 0.0, 0.25])));
+    let facet = format!("{:?}", l.get(mesh, "m_facetsArr"));
+    assert!(facet.contains("Int(0), Int(1), Int(65535)"), "{facet}");
+}
+
+#[test]
+fn an_elements_tree_draws_the_symbols_it_places_and_the_solids_it_holds_whatever_else_it_holds() {
+    // A light's tree: a group (of the point its light leaves from) beside the instance; read as the instance alone.
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let axes = [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+    let draws = |objects: &Objects| crate::shapes::drawing(&graphics::read(&tree_bytes(objects), 0, &l).unwrap(), &l);
+    let mut objects = instance_tree(600, 500, axes, [1.0, 2.0, 3.0], [0.0; 6]);
+    objects.insert(4, objects[&3].clone());
+    objects.insert(3, ("GGroup", vec![crate::project_fixture::ginfo(0), V::Counted(vec![])]));
+    objects.insert(2, root(600, vec![V::Own(3, "GGroup"), V::Own(4, "GInstance")], [0.0; 6], [0.0; 6]));
+    let d = draws(&objects).unwrap();
+    assert_eq!((d.placed.len(), d.placed[0].0, d.placed[0].1.origin, d.body.is_none()), (1, 500, [1.0, 2.0, 3.0], true));
+    // A rail's tree: a solid of its own where it stands beside the symbol it places.
+    let mut objects = box_tree(600, [1.0, 1.0, 1.0], None);
+    objects.insert(1000, instance_tree(600, 500, axes, [1.0, 2.0, 3.0], [0.0; 6])[&3].clone());
+    objects.insert(2, root(600, vec![V::Own(3, "Geometry"), V::Own(1000, "GInstance")], [0.0; 6], [0.0; 6]));
+    let d = draws(&objects).unwrap();
+    assert_eq!((d.placed.len(), d.body.map(|b| b.triangles.len())), (1, Some(12)));
+    // Two symbols placed (a railing's balusters).
+    let mut objects = instance_tree(600, 500, axes, [1.0, 2.0, 3.0], [0.0; 6]);
+    objects.insert(4, instance_tree(600, 501, axes, [4.0, 2.0, 3.0], [0.0; 6])[&3].clone());
+    objects.insert(2, root(600, vec![V::Own(3, "GInstance"), V::Own(4, "GInstance")], [0.0; 6], [0.0; 6]));
+    let d = draws(&objects).unwrap();
+    let placed: Vec<(u32, [f64; 3])> = d.placed.iter().map(|(s, t)| (*s, t.origin)).collect();
+    assert_eq!(placed, [(500, [1.0, 2.0, 3.0]), (501, [4.0, 2.0, 3.0])]);
+    // A tree with neither is no drawing.
+    objects.insert(2, root(600, vec![], [0.0; 6], [0.0; 6]));
+    let why = draws(&objects).unwrap_err();
+    assert!(why.contains("no solid and no instance"), "{why}");
+}
+
+#[test]
+fn the_box_round_a_trees_solids_may_take_in_the_points_and_lines_drawn_with_them() {
+    // A stair's support: its solid, a point above it and a line reaching west of it, the box its graphics give round its solids
+    // taking in both. What is read, its solid and its marks, fills that box; a solid alone would not.
+    let tight = [-1.0, 0.0, 0.0, 2.0, 3.0, 6.0];
+    let mut objects = box_tree(500, [2.0, 3.0, 4.0], None);
+    let point = ("GPoint", vec![crate::project_fixture::ginfo(0), p3([1.0, 1.0, 6.0]), V::U32(6), V::U32(2), V::U32(0)]);
+    let line = (
+        "GLine",
+        vec![crate::project_fixture::ginfo(0), V::Seq(vec![V::F64(-1.0), V::F64(2.0)]), p3([0.0, 0.0, 0.0]), p3([1.0, 0.0, 0.0])],
+    );
+    objects.insert(1000, point);
+    objects.insert(1001, line);
+    objects.insert(2, root(500, vec![V::Own(3, "Geometry"), V::Own(1000, "GPoint"), V::Own(1001, "GLine")], tight, tight));
+    let s = shape_of(&objects).unwrap();
+    assert_eq!(s.triangles.len(), 12);
+    let marks = extents(&[[s.marks[0], s.marks[1], s.marks[2]]]);
+    assert!(s.marks.len() >= 3 && marks[2] < 0.01 && (marks[5] - 1828.8).abs() < 0.01, "{:?}", s.marks);
+    // Raised further than its marks reach, the box holds something unread.
+    objects.insert(
+        2,
+        root(500, vec![V::Own(3, "Geometry"), V::Own(1000, "GPoint"), V::Own(1001, "GLine")], tight, [-1.0, 0.0, 0.0, 2.0, 3.0, 7.0]),
+    );
+    let why = shape_of(&objects).unwrap_err();
+    assert!(why.contains("not the box"), "{why}");
+}
+
+#[test]
+fn a_symbol_drawn_as_a_mesh_reads_as_its_facets() {
+    // A tetrahedron as a mesh (`GPolyMesh` over its faceted topology): four points, feet, and four facets of three indices.
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let corners = [[0.0f32, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]];
+    let tetra = |facets: Vec<[u16; 3]>| {
+        let points = V::Counted(corners.iter().map(|p| V::Seq(p.iter().map(|v| V::F32(*v)).collect())).collect());
+        let facets = V::Counted(facets.iter().map(|f| V::Seq(f.iter().map(|i| V::U16(*i)).collect())).collect());
+        let mut objects = Objects::new();
+        let b = [0.0, 0.0, 0.0, 2.0, 3.0, 4.0];
+        objects.insert(2, root(500, vec![V::Own(3, "GPolyMesh")], b, b));
+        objects.insert(3, ("GPolyMesh", vec![crate::project_fixture::ginfo(0), V::Inline("FloatMesh", vec![points, facets])]));
+        graphics::read(&tree_bytes(&objects), 0, &l).and_then(|t| crate::shapes::shape(&t, &l))
+    };
+    let shape = tetra(vec![[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]).unwrap();
+    assert_eq!(shape.triangles.len(), 4);
+    let b = extents(&shape.triangles);
+    assert!(b.iter().zip([0.0, 0.0, 0.0, 609.6, 914.4, 1219.2]).all(|(a, w)| (a - w).abs() < 0.01), "{b:?}");
+    // A facet naming a point the mesh does not have is refused.
+    let why = tetra(vec![[0, 2, 1], [0, 1, 9]]).unwrap_err();
+    assert!(why.contains("point 9"), "{why}");
+}
+
+#[test]
+fn a_mesh_reaching_outside_the_box_round_the_solids_is_none_of_them() {
+    // A light: its solid, and a mesh (its photometric web) reaching above the box its graphics give round its solids.
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let mut objects = box_tree(500, [2.0, 3.0, 4.0], None);
+    let points = V::Counted(
+        [[0.0f32, 0.0, 0.0], [1.0, 0.0, 9.0], [0.0, 1.0, 9.0]].iter().map(|p| V::Seq(p.iter().map(|v| V::F32(*v)).collect())).collect(),
+    );
+    let facets = V::Counted(vec![V::Seq(vec![V::U16(0), V::U16(1), V::U16(2)])]);
+    objects.insert(1000, ("GPolyMesh", vec![crate::project_fixture::ginfo(0), V::Inline("FloatMesh", vec![points, facets])]));
+    let b = [0.0, 0.0, 0.0, 2.0, 3.0, 4.0];
+    objects.insert(2, root(500, vec![V::Own(3, "Geometry"), V::Own(1000, "GPolyMesh")], [0.0, 0.0, 0.0, 2.0, 3.0, 9.0], b));
+    let shape = graphics::read(&tree_bytes(&objects), 0, &l).and_then(|t| crate::shapes::shape(&t, &l)).unwrap();
+    assert_eq!((shape.solids, shape.triangles.len()), (1, 12));
 }

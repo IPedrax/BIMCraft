@@ -109,11 +109,13 @@ pub struct NameEntry {
     pub category: i64,
 }
 
-/// A material object, which names itself.
+/// A material object, which names itself, and where it has one its look: its shading colour (red, green, blue) and its
+/// transparency (0 to 1), written after its name as the fixture's `Material` class lists them.
 #[derive(Clone, Debug)]
 pub struct Mat {
     pub id: u32,
     pub name: String,
+    pub look: Option<([u8; 3], f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -320,14 +322,23 @@ impl Project {
     }
 
     fn element_classes() -> Vec<u8> {
-        fixture::schema(&[
+        let mut out = fixture::schema(&[
             Class { name: "Outline", fields: &["m_min"], base: None },
             Class { name: "ElementParents", fields: &["m_ids"], base: None },
             Class { name: "ElementHeader", fields: &[], base: None },
             Class { name: "Plane", fields: &["m_origin"], base: None },
             Class { name: "CellList", fields: &["m_cells"], base: None },
             Class { name: "VerticalRegionsStructure", fields: &["m_layers"], base: None },
-            Class { name: "Material", fields: &["m_name"], base: None },
+        ]);
+        // `Material` with typed fields, a few of the real class's in its order: its name, transparency and shading colour.
+        out.truncate(out.len() - 2);
+        let name = Ty { kind: 8, modifier: 0x60, count: None, inner: None, class: None };
+        out.extend_from_slice(&fixture::typed_classes(&[TypedClass {
+            name: "Material",
+            base: None,
+            fields: &[("m_name", name), ("m_transparency", Ty::plain(6)), ("m_color", Ty::plain(5))],
+        }]));
+        out.extend_from_slice(&fixture::schema(&[
             Class { name: "PhysicalParamSet", fields: &["m_set"], base: None },
             Class { name: "PatternHelper", fields: &["m_pattern"], base: None },
             Class { name: "ProfileRoof", fields: &["m_sketch"], base: None },
@@ -335,7 +346,8 @@ impl Project {
             Class { name: "ElementGroup", fields: &["m_members"], base: None },
             Class { name: "Toposolid", fields: &["m_surface"], base: None },
             Class { name: "SiteSurface", fields: &["m_points"], base: None },
-        ])
+        ]));
+        out
     }
 
     /// The container as a Revit file.
@@ -625,7 +637,12 @@ fn category_material(category: i64, material: u32, release: u32) -> Vec<u8> {
 fn material_object(m: &Mat, wide: bool, style: NameStyle) -> Vec<u8> {
     let mut f = vec![0x55; 3];
     f.extend_from_slice(&[1, 0, 0, 0]);
-    let units: Vec<u8> = m.name.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut units: Vec<u8> = m.name.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    // Its transparency (an `f32`) and its colour (a `u32`, red in the low byte) follow its name, in place of the filler.
+    if let Some(([r, g, b], t)) = m.look {
+        units.extend_from_slice(&t.to_le_bytes());
+        units.extend_from_slice(&u32::from_le_bytes([r, g, b, 0]).to_le_bytes());
+    }
     let count = (m.name.encode_utf16().count() as u32).to_le_bytes();
     let name = match style {
         NameStyle::Own => [&[0u8; 8][..], &count, &units, &[0x66; 40]].concat(),
@@ -772,7 +789,7 @@ fn room_object(id: u32, number: &str, name: &str, wide: bool) -> Vec<u8> {
 
 /// The graphics classes the fixture's schema has after the ones above, in order (their tags from 26), named and laid out as
 /// Revit's own schema has them, but for fields the reader skips.
-pub const GRAPHICS: [&str; 23] = [
+pub const GRAPHICS: [&str; 31] = [
     "Identifier",
     "ElementId",
     "GInfo",
@@ -796,6 +813,14 @@ pub const GRAPHICS: [&str; 23] = [
     "InstInfoBase",
     "InstanceInfo",
     "GInstance",
+    "GFilling",
+    "FillPatternData",
+    "FillGrid",
+    "FloatMesh",
+    "GPoint",
+    "GCurve",
+    "GLine",
+    "GPolyMesh",
 ];
 
 /// The tag of a graphics class of the fixture's schema.
@@ -807,6 +832,8 @@ fn graphics_classes() -> Vec<u8> {
     let t = |n: &str| Some(tag(n));
     let three = Ty::fixed(7, 3);
     let two = Ty::fixed(7, 2);
+    let floats = Ty::fixed(6, 3);
+    let shorts = Ty::fixed(3, 3);
     let corners = Ty { kind: 0x0d, modifier: 0x10, count: Some(2), inner: Some(&three), class: None };
     let rows = Ty { kind: 0x0d, modifier: 0x10, count: Some(3), inner: Some(&three), class: None };
     let uv = Ty { kind: 0x0d, modifier: 0x10, count: Some(2), inner: Some(&two), class: None };
@@ -842,7 +869,7 @@ fn graphics_classes() -> Vec<u8> {
         class("GBRep", Some("GNode"), &[("m_pFaces", list)]),
         class("Geometry", Some("GBRep"), &[("m_flags", Ty::plain(4)), ("m_pEdges", list)]),
         class("GFace", Some("GNode"), &[("m_pFirstLoop", owned)]),
-        class("Face", Some("GFace"), &[("m_pSurf", owned)]),
+        class("Face", Some("GFace"), &[("m_pSurf", owned), ("m_renderStyleId", by("ElementId"))]),
         class("EdgePnt", None, &[("uv", uv)]),
         class(
             "GEdge",
@@ -868,6 +895,25 @@ fn graphics_classes() -> Vec<u8> {
         class("InstInfoBase", None, &[("m_Trf", by("Trf")), ("m_symbolId", by("ElementId")), ("m_GRepId", Ty::plain(4))]),
         class("InstanceInfo", Some("InstInfoBase"), &[]),
         class("GInstance", Some("GNode"), &[("m_instanceInfo", owned)]),
+        class("GFilling", Some("GNode"), &[("m_pattern", owned)]),
+        class("FillPatternData", None, &[("m_scale", Ty::plain(7)), ("m_grids", list)]),
+        class("FillGrid", None, &[("m_angle", Ty::plain(7))]),
+        class(
+            "FloatMesh",
+            None,
+            &[
+                ("m_pointsArr", Ty { kind: 0x0d, modifier: 0x50, count: None, inner: Some(&floats), class: None }),
+                ("m_facetsArr", Ty { kind: 0x0d, modifier: 0x50, count: None, inner: Some(&shorts), class: None }),
+            ],
+        ),
+        class(
+            "GPoint",
+            Some("GNode"),
+            &[("m_coord", three), ("m_size", Ty::plain(4)), ("m_borderSize", Ty::plain(4)), ("m_pointFlags", Ty::plain(4))],
+        ),
+        class("GCurve", Some("GNode"), &[("m_endParams", two)]),
+        class("GLine", Some("GCurve"), &[("m_origin", three), ("m_dirVec", three)]),
+        class("GPolyMesh", Some("GNode"), &[("m_pFacetedTopology", owned)]),
     ])
 }
 
@@ -877,6 +923,8 @@ pub enum V {
     Byte(u8),
     U32(u32),
     U64(u64),
+    U16(u16),
+    F32(f32),
     F64(f64),
     /// Side by side: a fixed array, or an object by value.
     Seq(Vec<V>),
@@ -909,13 +957,16 @@ pub fn ginfo(tag: u32) -> V {
 pub type Objects = BTreeMap<u32, (&'static str, Vec<V>)>;
 
 /// A tree's bytes, from its root object (index 2) on, breadth first: each object's owned objects in turn, and its inline ones
-/// right after the last object it owns (after itself where it owns none).
+/// right after the last object queued once it is written (the last it owns, else the queue's last, else itself). An inline
+/// object's own inline objects follow the same rule, next where nothing is queued.
 pub fn tree_bytes(objects: &Objects) -> Vec<u8> {
     fn put(v: &V, out: &mut Vec<u8>, kids: &mut Vec<u32>, inline: &mut Vec<(&'static str, Vec<V>)>) {
         match v {
             V::Byte(b) => out.push(*b),
             V::U32(x) => out.extend_from_slice(&x.to_le_bytes()),
             V::U64(x) => out.extend_from_slice(&x.to_le_bytes()),
+            V::U16(x) => out.extend_from_slice(&x.to_le_bytes()),
+            V::F32(x) => out.extend_from_slice(&x.to_le_bytes()),
             V::F64(x) => out.extend_from_slice(&x.to_le_bytes()),
             V::Seq(vs) => vs.iter().for_each(|v| put(v, out, kids, inline)),
             V::Counted(vs) => {
@@ -943,12 +994,15 @@ pub fn tree_bytes(objects: &Objects) -> Vec<u8> {
         let Some((_, fields)) = objects.get(&i) else { continue };
         let (mut kids, mut inline) = (Vec::new(), Vec::new());
         fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut inline));
-        if !inline.is_empty() {
-            pending.entry(kids.last().copied().unwrap_or(i)).or_default().extend(inline);
-        }
-        for (_, fields) in pending.remove(&i).unwrap_or_default() {
+        pending.entry(kids.last().or(queue.back()).copied().unwrap_or(i)).or_default().extend(inline);
+        let mut work: VecDeque<_> = pending.remove(&i).unwrap_or_default().into();
+        while let Some((_, fields)) = work.pop_front() {
             let mut nested = Vec::new();
             fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut nested));
+            match kids.last().or(queue.back()).copied() {
+                Some(after) => pending.entry(after).or_default().extend(nested),
+                None => work.extend(nested),
+            }
         }
         queue.extend(kids);
     }
@@ -1022,7 +1076,7 @@ pub fn box_tree(id: u32, size: [f64; 3], whole: Option<[f64; 6]>) -> Objects {
     objects.insert(geometry, ("Geometry", vec![ginfo(0), V::Counted(face_list), V::U32(0), V::Counted(edge_list)]));
     for (f, (o, x, y)) in faces.iter().enumerate() {
         let plane = V::Inline("Plane", vec![V::Byte(0), p3(*o), p3(*x), p3(*y)]);
-        objects.insert(face0 + f as u32, ("Face", vec![ginfo(0), V::Own(loop0 + f as u32, "EdgeLoop"), plane]));
+        objects.insert(face0 + f as u32, ("Face", vec![ginfo(0), V::Own(loop0 + f as u32, "EdgeLoop"), plane, element_id(u64::MAX)]));
         let lp = loop0 + f as u32;
         objects.insert(lp, ("EdgeLoop", vec![ginfo(0), V::Null, V::Weak(face0 + f as u32), V::Weak(edge_of(f, 0))]));
     }
