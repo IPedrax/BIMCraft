@@ -2377,6 +2377,7 @@ impl BimApp {
                 Tool::TrimTo { .. } => {
                     d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
                 }
+                Tool::PickNewHost => d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some()),
                 Tool::Door | Tool::Window => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
                 Tool::Demolish | Tool::Linework => d.pick(q, PICK),
                 // Search all candidates: a non-alignable annotation must not hide a model edge.
@@ -3214,6 +3215,7 @@ impl BimApp {
                 self.canvas.stair_part = None;
                 self.pick_up(hovered.into_iter().collect(), mods);
             }
+            Tool::PickNewHost => self.rehost_click(hovered, v.mm(at), SNAP / v.scale),
             Tool::Door | Tool::Window => {
                 let door = matches!(self.tool, Tool::Door);
                 let cat = if door { "door" } else { "window" };
@@ -5686,6 +5688,24 @@ impl BimApp {
         let ghost_of = |ids: &[Id], f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, ids, f);
         let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost_of(&self.selection, f);
         let chain = match &self.tool {
+            Tool::PickNewHost => {
+                match self.rehost_params(hovered, v.mm(q), SNAP / v.scale).and_then(|params| self.rehost_preview(&params)) {
+                    Ok(scratch) => {
+                        if let Some(&id) = self.selection.first()
+                            && let Some(e) = scratch.elements.get(id)
+                        {
+                            sketched(e);
+                            if let Element::Door(o) | Element::Window(o) = e {
+                                for (at, text, _) in opening_dimensions(p, &scratch, v, o) {
+                                    tag(p, at, Align2::CENTER_CENTER, text);
+                                }
+                            }
+                        }
+                    }
+                    Err(error) => label(cursor, error),
+                }
+                return;
+            }
             Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
                 chain.as_slice()
             }

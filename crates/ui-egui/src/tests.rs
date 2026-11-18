@@ -19,6 +19,8 @@ use std::sync::Arc;
 use crate::context::Action;
 use crate::{BimApp, Sheet, Tab, Tool};
 
+mod rehost;
+
 const BOX: &str = r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}"#;
 
 fn app(script: &str) -> Harness<'static, BimApp> {

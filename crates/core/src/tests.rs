@@ -3069,6 +3069,7 @@ fn hostile_params_never_panic_or_break_the_model() {
     // A sloped reference plane and a work plane-based component on it, after the roof, so that no id moves; and the payloads
     // that name them.
     targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
+    targeted.extend(crate::rehost_tests::sweep_payloads(&mut base));
     // A floor and a wall with a component on a face of each, and the payloads that place, move and host them.
     targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
     // A model group of walls and a door, and the payloads that place, break, edit and mend groups.

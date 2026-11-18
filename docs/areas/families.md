@@ -1351,3 +1351,32 @@ In `crates/ui-egui`, the Family Editor:
   overlay drawn through a view's projection alone).
 - `editor/origin_mark.rs`: the insertion point's mark over plans and elevations and, as a point in space, {3D}; Defines Origin ticked on a plane.
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+
+
+## Pick New Host for an existing opening
+
+`pick_new_host {id, wall, offset}` changes an ordinary door or window's host and its insertion-point distance from the target
+wall's start, in millimetres (the opening centre while the family origin is at its datums). Both references accept an id or GUID. It delegates to `modify`; `Model::check` remains the
+single source of fit, overlap and family-parameter validation. One successful call adds one undo step. Refusal preserves
+the model and history. The element is never deleted/recreated: its id/GUID, mark, family/type, instance/project parameters,
+sill and hand/facing flags remain. Tags and references continue to name the same opening. Families evaluate against the
+new wall's thickness. Old/new wall cuts and their derived graphics follow the changed host reference.
+
+The integrated family-origin semantics apply unchanged: `offset`/`sill` place the family's origin; `opening_middle` derives
+the physical opening centre/bottom. A moved origin can give a valid door a negative stored sill. Rehosting keeps that sill,
+the family origin and both flips, so its physical height is preserved on equal-base hosts. It neither recentres the family
+nor settles an origin a second time. Mirrored and rotated targets use the existing placement transform.
+
+`rehost.rs` limits eligibility to unpinned, ungrouped ordinary openings with ordinary straight source/target walls on the
+same level and at the same `own_base` elevation (within 0.000001 mm). Curtain walls, panel replacement walls, curved walls,
+grouped source or target walls, and any Edit Group session are refused. The original wall is not a new host: use Move
+for same-wall changes. Different levels/bases are deferred rather than silently changing the sill datum. Existing policy
+permitting a head above the wall top is retained. Flips stay relative to the target wall's interior/exterior faces;
+reversing its axis may reverse the opening's world orientation. This is the agreed behavior, not a claim of native Revit parity.
+
+The desktop exposes this in plans only ([desktop](desktop.md)); CLI and MCP execute the same command. No saved fields or
+FORMAT change. `rehost_tests.rs` covers identity, parameters, flips, fit/refusal, group/curtain/curved controls, raised bases,
+read-only, history, save/open, tags/dimensions, family thickness and fresh/incremental geometry. Source-backed external
+family evaluators are not part of upstream main and need their own compatibility replay.
+Slanted/profiled wall PR #504 is not part of the tested base; its `slant` and `profile` fields remain refused. If those
+forms enter main, extend the eligibility guard and regression controls before offering them as rehost targets.

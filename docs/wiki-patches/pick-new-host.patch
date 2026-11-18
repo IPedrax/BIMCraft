@@ -1,0 +1,35 @@
+diff --git a/Doors-and-Windows.md b/Doors-and-Windows.md
+index 3bdb64d..1b8a7fb 100644
+--- a/Doors-and-Windows.md
++++ b/Doors-and-Windows.md
+@@ -99 +99,16 @@ and type the distance you want.
+-**Move it to another wall:** delete it and place a new one, or use Copy and then delete the original.
++### Pick New Host
++
++In a floor or ceiling plan, select one door or window and choose **Pick New Host** from its contextual Modify tools or
++right-click menu. Point at another wall to preview the placement, then click. **Esc** cancels. One **Undo** restores the
++old host and position. A project edit or a view change cancels a pending placement.
++
++The opening keeps its identity, mark, type/family, instance values and sill. Its hand and facing remain relative to the
++new wall's interior/exterior faces, so reversing the target wall can reverse its orientation in world coordinates.
++A family's geometry follows the new wall thickness. The old wall's hole closes and the new wall is cut.
++For a family with a moved origin, offset and sill still locate that insertion point. Rehosting preserves the family's
++origin and the opening's physical height; a valid stored sill can be negative when its physical bottom is above the base.
++
++This first version supports ordinary straight walls on the **same level and base elevation**. Unpin the opening first.
++Curved/curtain walls, curtain panel replacement walls, grouped openings/walls and Edit Group are unsupported. The action
++is disabled outside plans. This is an explicit command, not dragging between walls. Invalid placement leaves the model
++unchanged; existing width, overlap and sill-fit rules apply.
+@@ -181,0 +197,12 @@ window {"wall": "@box.ids.1", "offset": 2000, "family": "Casement Window", "type
++### `pick_new_host` — Pick New Host
++
++```text
++pick_new_host {"id": "@w1", "wall": "@box.ids.2", "offset": 3000}
++```
++
++`id` is the existing door/window; `wall` is an explicit different target wall. Both accept an id or GUID. `offset` is the
++family insertion point's distance from the target wall's start, in millimetres (the opening centre for a default origin).
++It changes only the host and offset through the
++shared command engine and returns the updated element. The restrictions and preservation rules above apply equally to
++MCP and scripts. It adds one Undo step, or none if refused.
++

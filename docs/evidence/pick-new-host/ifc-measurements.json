@@ -1,0 +1,30 @@
+{
+  "before": {
+    "express_findings": 0,
+    "volumes": {
+      "source": {
+        "volume_m3": 2.861999999999999,
+        "expected_m3": 2.862
+      },
+      "target": {
+        "volume_m3": 7.200000000000026,
+        "expected_m3": 7.2
+      }
+    },
+    "opening_host_relations": true
+  },
+  "after": {
+    "express_findings": 0,
+    "volumes": {
+      "source": {
+        "volume_m3": 3.5999999999999996,
+        "expected_m3": 3.6
+      },
+      "target": {
+        "volume_m3": 5.724000000000027,
+        "expected_m3": 5.724
+      }
+    },
+    "opening_host_relations": true
+  }
+}
