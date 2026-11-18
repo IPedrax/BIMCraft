@@ -3317,6 +3317,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::survey_tests::sweep_payloads(&exports));
     // A clipboard of everything the base has, pasted every way (`clipboard_tests::sweep_payloads`).
     targeted.extend(crate::clipboard_tests::sweep_payloads(&mut base));
+    // A beam armed after everything else, so that no id the payloads name moves, and the steel list's and cut plan's payloads.
+    targeted.extend(crate::steel_tests::sweep_payloads(&mut base));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();

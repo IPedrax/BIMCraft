@@ -346,6 +346,13 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
+        // A bar's mark among its host's, the host's mark and its shape, worked out and not stored: read only.
+        "rebar" => &[
+            ("Identity Data", "mark", "Mark", Shown),
+            ("Identity Data", "host_mark", "Host Mark", Shown),
+            ("Dimensions", "length", "Length", LengthShown),
+            ("Other", "shape_label", "Shape", Shown),
+        ],
         "footing" => &[
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "base_offset", "Base Offset", Length),

@@ -1881,10 +1881,10 @@ pub struct Tag {
 }
 
 impl Tag {
-    /// The field a tag of category `cat` shows unless it names one: a door's or window's mark, a room's name, else the type.
+    /// The field a tag of category `cat` shows unless it names one: a door's, window's or bar's mark, a room's name, else the type.
     pub fn usual(cat: &str) -> &'static str {
         match cat {
-            "door" | "window" => msg!("Mark"),
+            "door" | "window" | "rebar" => msg!("Mark"),
             "room" => msg!("Name"),
             _ => msg!("Type"),
         }

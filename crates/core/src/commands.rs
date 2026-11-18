@@ -40,6 +40,7 @@ use crate::walls::{self, Axis, Face as WallFace, stacked};
 use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
+mod bars;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -778,6 +779,42 @@ other_files(
          and the refusal names it. Returns ids, count, hosts, removed, weight_kg and notes",
         reinforce_host,
     ),
+    Command {
+        id: "steel_list",
+        label: "Steel List",
+        // The desktop's Steel List dialog answers BL (`BimApp::shortcut`), as a listed shortcut must.
+        aliases: &["BL"],
+        params: "{level?, ids?, coil_to?, stock_length?, path?} the steel list of the project's bars: each bar's mark (N1, N2, numbered inside its host: bottom \
+                 bars first, bars drawn by hand last, bars of one grade, diameter and shape sharing one), its shape (the legs in mm and the angles it turns), \
+                 and rows by host and mark with count, length, total length and weight. `level` is a level's name or id and `ids` hosts or bars (a host \
+                 stands for its bars; none: the whole project). `coil_to` is the thickest diameter in mm that comes off a coil: its summary line has weight \
+                 and count and no stock bars. `stock_length` (mm) adds `stock_bars` to each straight diameter's summary line and notes the pieces longer \
+                 than it. `path` writes the rows as a .csv, or an .xlsx workbook for a path ending .xlsx. Reads the project; changes nothing. Returns \
+                 rows (host, host_mark, level, mark, grade, diameter, shape, count, length, total_length, weight_kg, bars), summary (per grade and \
+                 diameter: form bar or coil, count, total_length, weight_kg, stock_bars), totals and notes. `schedule` with `template` \
+                 \"steel_list\" or \"steel_summary\" makes the same as a schedule in the project",
+        run: bars::steel_list,
+        undoable: false,
+        menu: None,
+        files: Files::Conditional,
+    },
+    Command {
+        id: "cut_plan",
+        label: ui_msg!("Cut Plan"),
+        aliases: &["CU"],
+        params: "{stock_length, level?, ids?, kerf?, min_offcut?, coil_to?, path?} how many stock bars of `stock_length` mm to buy for the project's bars \
+                 and which pieces go in which: each grade and diameter on its own, longest piece first into the stock bar whose free length is the \
+                 smallest that holds it (best fit decreasing; it claims no optimum). There is no default `stock_length`: it is a purchase, and the engineer \
+                 says it. `kerf` (mm, 0) is what a cut wastes; `min_offcut` (mm, 0) is the shortest leftover worth keeping, which is not counted as waste; \
+                 `coil_to` is the thickest diameter in mm that comes off a coil and is not planned in stock bars. `level` and `ids` pick the bars as in \
+                 `steel_list`. A piece longer than a stock bar is a note, not a plan: a lap is design. `path` writes the patterns as a .csv or an .xlsx \
+                 workbook. Reads the project; changes nothing. Returns diameters (grade, diameter, stock_bars, pieces, used_mm, waste_mm, waste_percent, \
+                 bought_kg, used_kg, reusable_offcuts, patterns: count, pieces {host_mark, mark, length, ids}, offcut), coil, totals and notes",
+        run: bars::cut_plan,
+        undoable: false,
+        menu: None,
+        files: Files::Conditional,
+    },
     edit(
         "reinforcement_preset",
         "Reinforcement Presets",
@@ -2915,7 +2952,7 @@ other_files(
         "schedule",
         ui_msg!("Schedule"),
         &[],
-        "{name?, category?, categories?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
+        "{name?, category?, categories?, fields?, filters?, sort?, grouped?, template?, host?, level?, show?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path, or an .xlsx workbook for a path ending .xlsx). A new one needs `name` and `category`: rooms, \
          doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, components, \
          stairs, ramps, railings, levels or sheets, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
@@ -2933,7 +2970,12 @@ other_files(
          keep (text in any case, numbers as the schedule shows them, an unset yes or no as no). `sort`: [field or {field, descending?}, …], in turn (its first column unless it says; Phase Created \
          and Phase Demolished in the project's order of phases, a phase never demolished after the last); \
          `grouped`, a row for each set of the sort fields' values: Count and totals summed, and a field whose values differ \
-         left empty. Each one given replaces the last; `fields: []` goes back to its category's",
+         left empty. Each one given replaces the last; `fields: []` goes back to its category's. `template` \"steel_list\" (the bars by host and \
+         mark, with shape, count, length, total length and weight) or \"steel_summary\" (by level, grade and diameter) makes a schedule of \
+         the project's bars, grouped, named in the project's language (`name` says otherwise): `host` (an element's id) and `level` (a name \
+         or id) keep one host's or one level's bars, and put the host's id or the level's name in the default name; `show` is \
+         `count`, `weight` or `both` (both) and takes the weight or the count column out; `fields`, `filters`, `sort` and `grouped` \
+         given with it replace the template's",
         schedule,
         Files::Write,
     ),
@@ -4278,6 +4320,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             let length = rebar::length(&rb.path);
             extra.insert("length".into(), json!(hundredth(length)));
             extra.insert("weight_kg".into(), json!((rebar::weight_kg(rb.diameter, length) * 1000.0).round() / 1000.0));
+            // Its mark among its host's bars, its host's mark, and its shape (`steel.rs`).
+            for (key, value) in crate::steel::describe(m, rooms.takeoff(), id, rb) {
+                extra.insert(key.into(), value);
+            }
         }
         Element::PointCloud(pc) => {
             if let Some(cloud) = m.clouds.get(&pc.cloud) {
@@ -5656,6 +5702,32 @@ fn with_notes(mut reply: Value, notes: &[String]) -> Value {
 
 fn schedule(s: &mut Session, p: &Value) -> R {
     let c = "schedule";
+    // A steel template is this same call, a schedule of bars, with its fields, filters and sort filled in where the call gives none.
+    let template = choice(c, p, "template", &["steel_list", "steel_summary"], "")?;
+    if !template.is_empty() {
+        let m = &s.model;
+        if string(c, p, "category")?.is_some_and(|k| category(&k) != "rebar") {
+            return Err(bad(c, format!("`{template}` is a schedule of rebars")));
+        }
+        let host = if absent(p.get("host")) { None } else { Some(element_id(c, m, &p["host"])?) };
+        let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
+        let level = level.and_then(|l| match m.elements.get(l) {
+            Some(Element::Level(l)) => Some(l.name.clone()),
+            _ => None,
+        });
+        let t = crate::steel::template(m, template, host, level.as_deref(), choice(c, p, "show", &["count", "weight", "both"], "both")?);
+        let mut q = p.as_object().cloned().unwrap_or_default();
+        for key in ["template", "host", "level", "show"] {
+            q.remove(key);
+        }
+        q.entry("name").or_insert_with(|| json!(t.name));
+        q.insert("category".into(), json!("rebar"));
+        q.entry("fields").or_insert_with(|| serde_json::to_value(&t.fields).unwrap_or_default());
+        q.entry("filters").or_insert_with(|| serde_json::to_value(&t.filters).unwrap_or_default());
+        q.entry("sort").or_insert_with(|| serde_json::to_value(&t.sort).unwrap_or_default());
+        q.entry("grouped").or_insert_with(|| json!(true));
+        return schedule(s, &Value::Object(q));
+    }
     let m = &s.model;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     let cat = match string(c, p, "category")? {

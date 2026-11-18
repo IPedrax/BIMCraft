@@ -39,6 +39,8 @@ pub struct Rooms<'a> {
     placed: RefCell<HashMap<Guid, Placed<'a>>>,
     /// Each room's boundary at its walls' centre lines, found once: what [`Rooms::room_at`] asks of many points.
     regions: RefCell<HashMap<Id, Option<Rc<Region>>>>,
+    /// The bars of the model by what they are marked among, found once and only when a bar is asked about.
+    takeoff: OnceCell<crate::steel::Bars>,
 }
 
 impl<'a> Rooms<'a> {
@@ -49,7 +51,13 @@ impl<'a> Rooms<'a> {
             plans: RefCell::new(HashMap::new()),
             placed: RefCell::new(HashMap::new()),
             regions: RefCell::new(HashMap::new()),
+            takeoff: OnceCell::new(),
         }
+    }
+
+    /// The bars of the model by what they are marked among ([`crate::steel::Bars`]): found by one look at every element, the first time.
+    pub fn takeoff(&self) -> &crate::steel::Bars {
+        self.takeoff.get_or_init(|| crate::steel::Bars::new(self.m))
     }
 
     fn plan(&self, level: Guid, at: RoomArea) -> Arc<Plan> {
