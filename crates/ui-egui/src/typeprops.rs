@@ -271,11 +271,13 @@ impl Table<'_> {
         });
     }
 
-    /// A row of text typed, with what it does when hovered.
-    pub(crate) fn text_about(&mut self, label: &str, typed: &mut String, hint: &str, about: &str) {
+    /// Whether the user edited this field, even by retyping the same rounded text.
+    pub(crate) fn text_changed(&mut self, label: &str, typed: &mut String, hint: &str, about: &str) -> bool {
         self.row(label, |ui, l| {
-            ui.add(TextEdit::singleline(typed).hint_text(hint).desired_width(ui.available_width())).labelled_by(l).on_hover_text(about)
-        });
+            let response = ui.add(TextEdit::singleline(typed).hint_text(hint).desired_width(ui.available_width())).labelled_by(l);
+            if about.is_empty() { response } else { response.on_hover_text(about) }
+        })
+        .is_some_and(|r| r.changed())
     }
 
     /// A row of yes or no, with what it does when hovered.
@@ -290,7 +292,7 @@ impl Table<'_> {
 
     /// A row of text typed: a length, a number, a name.
     pub(crate) fn text(&mut self, label: &str, typed: &mut String, hint: &str) {
-        self.row(label, |ui, l| ui.add(TextEdit::singleline(typed).hint_text(hint).desired_width(ui.available_width())).labelled_by(l));
+        self.text_changed(label, typed, hint, "");
     }
 
     /// A row of yes or no.

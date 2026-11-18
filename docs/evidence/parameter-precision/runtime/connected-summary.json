@@ -1,0 +1,8 @@
+{
+  "mode": "connected",
+  "passed": true,
+  "gap_mm": 3.0,
+  "width_mm": 125.0,
+  "wall_mm": 128.0,
+  "saved": "/private/tmp/parameter-precision-refresh-final-runtime/connected.bimc"
+}

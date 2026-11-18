@@ -836,6 +836,14 @@ Code that has a `Model` shows a length with `Model::length`, `Model::with_unit` 
 `Units::length` is for code that has only the units (so it shows the fewest places), and dimension types and schedules take
 the places as `DimensionType::length` and `schedule::shown_to` do. Typed lengths are read exactly whatever places are shown.
 
+Type Properties additionally stages the raw value, initial text and edit state of native dimension fields, layer thicknesses,
+room offsets and family type lengths (`OriginalLength` in `properties.rs`). An untouched field keeps its raw value, even when
+imperial display rounds or the value is finer than the typed-input parser's 0.001 mm precision. An actual text edit uses that
+parser, including deliberately retyping the same rounded text. The snapshot travels with a reordered layer; Apply refreshes it.
+An unchanged Apply/OK skips the type command, so one Undo reaches the real edit. Validation and history still belong to the
+existing `type`, `family` and `type_parameter` commands. Instance/project-parameter change-only controls retain their existing
+paths. Family Editor, the separate stair-rule table and other dialogs are outside this bounded staging repair.
+
 ## Benchmarking the window
 
 `bimcraft --bench SCENARIO [--bench-out REPORT.json] [FILE]` runs a scenario on the real window and times every frame

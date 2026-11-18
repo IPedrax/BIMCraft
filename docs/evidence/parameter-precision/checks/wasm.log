@@ -1,0 +1,8 @@
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.154
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling bimcraft-plugin-sdk v0.12.0 (/Users/austinhartt/Documents/ChatGPT/BimCraft Test/bimcraft-rust-parameter-precision/crates/plugin-sdk)
+   Compiling sample-plugin v0.1.0 (/Users/austinhartt/Documents/ChatGPT/BimCraft Test/bimcraft-rust-parameter-precision/crates/plugin/tests/sample-plugin)
+    Finished `release` profile [optimized] target(s) in 2.09s

@@ -16,6 +16,8 @@ use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+mod parameter_precision;
+
 use crate::context::Action;
 use crate::{BimApp, Sheet, Tab, Tool};
 

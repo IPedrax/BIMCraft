@@ -1,0 +1,74 @@
+{
+  "ifcopenshell": "0.8.4.post1",
+  "exports": [
+    {
+      "file": "connected-reopened.ifc",
+      "schema": "IFC4",
+      "findings": 0,
+      "elements": [
+        {
+          "class": "IfcBuildingElementProxy",
+          "size_m": [
+            0.125,
+            0.5,
+            2.0
+          ]
+        },
+        {
+          "class": "IfcWall",
+          "size_m": [
+            4.0,
+            0.128,
+            3.0
+          ]
+        }
+      ]
+    },
+    {
+      "file": "connected.ifc",
+      "schema": "IFC4",
+      "findings": 0,
+      "elements": [
+        {
+          "class": "IfcBuildingElementProxy",
+          "size_m": [
+            0.125,
+            0.5,
+            2.0
+          ]
+        },
+        {
+          "class": "IfcWall",
+          "size_m": [
+            4.0,
+            0.128,
+            3.0
+          ]
+        }
+      ]
+    },
+    {
+      "file": "standalone.ifc",
+      "schema": "IFC4",
+      "findings": 0,
+      "elements": [
+        {
+          "class": "IfcBuildingElementProxy",
+          "size_m": [
+            0.125,
+            0.5,
+            2.0
+          ]
+        },
+        {
+          "class": "IfcWall",
+          "size_m": [
+            4.0,
+            0.128,
+            3.0
+          ]
+        }
+      ]
+    }
+  ]
+}
