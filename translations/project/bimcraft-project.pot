@@ -415,7 +415,7 @@ msgstr ""
 #: crates/core/src/commands.rs:18113
 #: crates/core/src/curtain.rs:133
 #: crates/core/src/family.rs:3436
-#: crates/core/src/model.rs:6354
+#: crates/core/src/model.rs:6353
 msgid "Metal"
 msgstr ""
 
