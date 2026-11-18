@@ -295,10 +295,10 @@ fn every_utilitys_method_held_every_way_comes_through_every_operation_as_a_plain
         }
     }
     assert!(failed.is_empty(), "{} of {asked} cases failed:\n{}", failed.len(), failed.join("\n"));
-    // A method changed under another is checked against the rules of the one over it (G9): listed until it is fixed.
+    // Every case's change is one a project may make: none refused (a method changed under another is its own, G9).
     refused.sort();
     refused.dedup();
-    assert!(refused.len() <= 4, "refused: {refused:#?}");
+    assert!(refused.is_empty(), "refused: {refused:#?}");
     assert!(asked >= 300, "cases asked ({asked})");
 }
 
@@ -464,4 +464,160 @@ fn names_at_the_limit_are_refused_or_kept_never_one_code_in_anothers_place() {
         check(&mut t, "building_code_import", json!({"path": path, "set": false, "name": long('O')}), &held, "read again under another 64");
         check(&mut t, "building_code_import", json!({"path": path, "set": false, "name": "Other"}), &held, "read again under a short name");
     }
+}
+
+/// What a refusal must leave as it was: the codes and the electrical settings.
+fn state(s: &Session) -> String {
+    let m = &s.model;
+    serde_json::to_string(&(&*m.codes, &m.voltages, &m.distribution_systems, &m.wire_types)).unwrap()
+}
+
+#[test]
+fn a_method_that_would_not_be_valid_is_refused_on_the_layer_it_is_given_wherever_that_lies() {
+    // Each utility's method broken in its own amendment, alone, under another and over it: refused, nothing changes, and
+    // a whole valid change of the same layer is taken (G4, G9).
+    let all: Vec<&BuildingCode> = of(Discipline::Electrical).collect();
+    let mut asked = 0;
+    for code in all.iter().copied().filter(|c| !c.amends.is_empty()) {
+        for key in ["unit_demand", "building_demand", "entrance"] {
+            if !code.sections.contains_key(key) {
+                continue;
+            }
+            let Some(other) = all.iter().copied().find(|o| o.code != code.code && o.amends == code.amends && o.sections.contains_key(key))
+            else {
+                continue;
+            };
+            let broken = match key {
+                "unit_demand" => json!({"method": "oops"}),
+                "building_demand" => json!({"diversity": "oops"}),
+                _ => json!({"tables": "oops"}),
+            };
+            for place in [Place::Alone, Place::Under, Place::Over] {
+                let case = Case { code, other, key, place, older: false };
+                let mut s = case.plain(&case.amendments(), 0).unwrap();
+                let before = (state(&s), case.answers(&mut s));
+                let r =
+                    s.execute("building_code", &json!({"discipline": "electrical", "amend": code.code, "rules": {key: broken.clone()}}));
+                assert!(r.is_err(), "{}: a broken method was taken", case.name());
+                assert_eq!((state(&s), case.answers(&mut s)), before, "{}: refused, and nothing changed", case.name());
+                let r = s.execute(
+                    "building_code",
+                    &json!({"discipline": "electrical", "amend": code.code, "rules": {key: changed(code, key, 1)}}),
+                );
+                assert!(r.is_ok(), "{}: its own whole method changed was refused: {r:?}", case.name());
+                asked += 1;
+            }
+        }
+    }
+    assert!(asked >= 15, "cases asked ({asked})");
+}
+
+#[test]
+fn a_distribution_system_is_taken_by_the_codes_exactly_when_the_command_would_take_it() {
+    // The same systems given to `distribution_system` and to `building_code`'s rules, with the voltages they name: the same
+    // answer, and what is taken is in both the code and the project's settings (G8).
+    let volts = [("127 V", 127.0), ("220 V", 220.0), ("230 V", 230.0), ("380 V", 380.0), ("400 V", 400.0), ("440 V", 440.0)];
+    let mut systems = Vec::new();
+    for (phases, wires) in [(1, 2), (2, 3), (3, 3), (3, 4), (3, 5), (0, 2)] {
+        for ll in [None, Some("380 V"), Some("400 V"), Some("440 V")] {
+            for ln in [None, Some("127 V"), Some("220 V"), Some("230 V")] {
+                let mut x = json!({"phases": phases, "wires": wires});
+                if let Some(v) = ll {
+                    x["l_l"] = json!(v);
+                }
+                if let Some(v) = ln {
+                    x["l_n"] = json!(v);
+                }
+                systems.push(x);
+            }
+        }
+    }
+    let base = || {
+        let mut s = Session::new();
+        for (n, v) in volts {
+            if !s.model.voltages.contains_key(n) {
+                run(&mut s, "voltage", json!({"name": n, "nominal": v}));
+            }
+        }
+        s
+    };
+    let mut took = 0;
+    for (i, x) in systems.iter().enumerate() {
+        let name = format!("S{i}");
+        let mut direct = base();
+        let mut p = x.clone();
+        p["name"] = json!(name);
+        let by_command = direct.execute("distribution_system", &p).is_ok();
+        let mut s = base();
+        let before = state(&s);
+        let by_codes =
+            s.execute("building_code", &json!({"discipline": "electrical", "rules": {"distribution_systems": {&name: x}}})).is_ok();
+        assert_eq!(by_codes, by_command, "{x}: taken by the codes {by_codes}, by the command {by_command}");
+        if by_codes {
+            took += 1;
+            let in_code = s.model.resolve_code(Discipline::Electrical, "distribution_systems").value.contains_key(&name);
+            assert!(in_code && s.model.distribution_systems.contains_key(&name), "{x}: in the code {in_code} and the project");
+        } else {
+            assert_eq!(state(&s), before, "{x}: refused, and nothing changed");
+        }
+    }
+    assert!(took >= 5 && took < systems.len(), "both kinds asked ({took} of {})", systems.len());
+}
+
+#[test]
+fn a_refused_change_leaves_the_history_as_it_was() {
+    let mut s = cpfl_under_enel();
+    let start = state(&s);
+    let cpfl = find(Discipline::Electrical, "cpfl").unwrap();
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "amend": "cpfl", "rules": {"unit_demand": changed(cpfl, "unit_demand", 2)}}),
+    );
+    let edited = state(&s);
+    assert!(
+        s.execute("building_code", &json!({"discipline": "electrical", "amend": "cpfl", "rules": {"unit_demand": {"method": "oops"}}}))
+            .is_err()
+    );
+    assert_eq!(state(&s), edited, "refused: as it was");
+    run(&mut s, "undo", json!({}));
+    assert_eq!(state(&s), start, "an undo after a refusal takes back the edit before it");
+}
+
+#[test]
+fn a_file_holding_a_broken_method_under_another_still_opens_and_takes_other_edits() {
+    // A file saved before a method was checked on its own layer may hold a broken one under another utility's: it opens,
+    // the project takes other edits, the broken method changed and still broken is refused, and its reset is taken.
+    let mut s = cpfl_under_enel();
+    let cpfl = s.model_mut().codes.own.iter_mut().find(|c| c.code == "cpfl").unwrap();
+    cpfl.sections.get_mut("unit_demand").and_then(Value::as_object_mut).unwrap().insert("method".into(), json!("oops"));
+    let path = dir().join("broken-under.bimc");
+    run(&mut s, "save", json!({"path": path}));
+    let mut s = Session::new();
+    run(&mut s, "open", json!({"path": path}));
+    run(&mut s, "voltage", json!({"name": "Other V", "nominal": 200}));
+    run(&mut s, "level", json!({"name": "Above", "elevation": 3000}));
+    let r = s.execute("building_code", &json!({"discipline": "electrical", "amend": "cpfl", "rules": {"unit_demand": {"method": "nope"}}}));
+    assert!(r.is_err(), "the broken method changed and still broken was taken");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "cpfl", "reset": "unit_demand"}));
+    let path = dir().join("broken-under.xml");
+    run(&mut s, "building_code_export", json!({"path": path, "discipline": "electrical"}));
+}
+
+#[test]
+fn a_system_is_checked_with_the_voltages_a_new_code_brings_back() {
+    // A voltage the project changed and the new code no longer names comes back as a new project has it: a system the codes
+    // take is checked with that one, not the one before.
+    let mut s = Session::new();
+    run(&mut s, "voltage", json!({"name": "480 V", "nominal": 468, "min": 468, "max": 468}));
+    let r = s.execute(
+        "building_code",
+        &json!({"discipline": "electrical", "set": "generic", "rules": {
+            "voltages": {"Review V": {"nominal": 282, "min": 282, "max": 282}},
+            "distribution_systems": {"Review": {"phases": 3, "wires": 4, "l_l": "480 V", "l_n": "Review V"}}
+        }}),
+    );
+    assert!(r.is_ok(), "refused with the voltage before: {r:?}");
+    assert_eq!(s.model.voltages["480 V"].nominal, 480.0, "back as a new project has it");
+    assert!(s.model.distribution_systems.contains_key("Review"), "taken by the codes and in the project");
 }

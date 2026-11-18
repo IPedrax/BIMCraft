@@ -538,7 +538,12 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
     }
     for (key, rules) in patches {
         let resolved = resolve_in(next, d, &key);
-        let known = resolved.value.clone();
+        // A utility's or a country's method is the amendment's own whole, whatever another's over it holds.
+        let known = if super::is_whole(d, &key) {
+            super::whole_section(&next.own[i], &key).unwrap_or_else(|| resolved.value.clone())
+        } else {
+            resolved.value.clone()
+        };
         let def = section_def(d, &key);
         // The electrical settings are entries by name: a new one is added, and one a code under it names is taken away as null.
         let settings = d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key.as_str());
@@ -606,7 +611,15 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
         if section.is_empty() {
             own.sections.remove(&key);
         } else {
-            own.sections.insert(key, Value::Object(section));
+            own.sections.insert(key.clone(), Value::Object(section));
+        }
+        // A utility's or a country's method answers for its own utility wherever it lies, under another's too: the one
+        // changed is checked whole on its layer, not only the one in force. Only here, as it is changed: a file that holds
+        // one broken still opens, and takes other edits.
+        if super::is_whole(d, &key)
+            && let (Some(def), Some(whole)) = (def, super::whole_section(&next.own[i], &key))
+        {
+            def.check(&Value::Object(whole)).map_err(|e| format!("{} {key} of {target}: {e}", d.key()))?;
         }
     }
     Ok(())
