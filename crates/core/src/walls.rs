@@ -379,7 +379,7 @@ pub(crate) fn joined_at(m: &Model, id: Id, at_end: bool, index: Option<&Index>) 
     if !w.join {
         return false;
     }
-    let (arms, _) = arms(m, id, at_end, index, &|_| true);
+    let (arms, _) = arms(m, id, at_end, index, &|_| true, true);
     arms.iter().any(|a| a.id != id)
 }
 
@@ -456,8 +456,8 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
 /// among them: those ending there, and a wall it ends on, both ways from where it does. Whether it
-/// ends on one, too.
-fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> (Vec<Arm>, bool) {
+/// ends on one, too. With `physical`, respect Allow Join; plain-wall centre-line boundaries meet regardless.
+fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool, physical: bool) -> (Vec<Arm>, bool) {
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, id, w, at_end, true)];
@@ -467,12 +467,12 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
     }
     let mut through = false;
     // A wall that refuses to join meets nothing at this end: its own square end is its whole cap.
-    if !w.join {
+    if physical && !w.join {
         return (arms, false);
     }
     // A wall that refuses to join is no candidate for anyone either: neither side is mitred.
-    let joins = |o: &Wall| o.join && stacked(m, w, o);
     let plain = crate::curtain::pattern(m, w).is_none();
+    let joins = |o: &Wall| ((w.join && o.join) || (!physical && plain && crate::curtain::pattern(m, o).is_none())) && stacked(m, w, o);
     let butts = |o: &Wall| plain && crate::curtain::pattern(m, o).is_some();
     let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
         Some(index) => Box::new(index.neighbours_at(id, node).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
@@ -557,7 +557,7 @@ impl WallEnd {
 /// [`cap`] and how a compound corner shares it, joined only to walls `keep` keeps.
 fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> WallEnd {
     let Some(w) = m.wall(id) else { return WallEnd::default() };
-    let (arms, through) = arms(m, id, at_end, index, keep);
+    let (arms, through) = arms(m, id, at_end, index, keep, true);
     let (against, arms): (Vec<Arm>, Vec<Arm>) = arms.into_iter().partition(|a| a.butts);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
@@ -595,7 +595,8 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
 }
 
 /// Wall `id`'s centre line, an arc as chords: each end it joins others at run on (or back) to the
-/// nearest of their centre lines, so rooms close at the centre lines whatever line walls stand on.
+/// nearest of their centre lines, so rooms close at the centre lines whatever line walls stand on. Plain walls' centre
+/// lines meet whether or not they allow joins: Allow Join decides only their physical caps.
 pub fn centre_line(m: &Model, id: Id) -> Vec<P2> {
     centre_line_in(m, id, None)
 }
@@ -611,7 +612,7 @@ pub(crate) fn centre_line_filtered(m: &Model, id: Id, index: Option<&Index>, kee
     let axis = Axis::of(w);
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
-        let (arms, _) = arms(m, id, at_end, index, keep);
+        let (arms, _) = arms(m, id, at_end, index, keep, false);
         let Some(me) = arms.iter().find(|a| a.id == id) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms
