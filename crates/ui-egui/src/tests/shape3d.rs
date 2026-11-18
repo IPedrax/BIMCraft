@@ -118,8 +118,10 @@ fn in_3d_a_click_picks_what_the_elevation_then_sets_and_adds_points_and_split_li
 
 #[test]
 fn a_flat_roof_by_footprint_is_shaped_as_a_floor_is_and_a_pitched_one_isnt() {
-    let mut h = wide(r#"roof {"level": 100001, "slope": 0, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}
-roof {"level": 100001, "boundary": [[10000, 0], [18000, 0], [18000, 6000], [10000, 6000]]}"#);
+    let mut h = wide(
+        r#"roof {"level": 100001, "slope": 0, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}
+roof {"level": 100001, "boundary": [[10000, 0], [18000, 0], [18000, 6000], [10000, 6000]]}"#,
+    );
     let roofs = ids(&h, "roof");
     topmost(&mut h, "Level 2");
     // The pitched one: Gable Edge, but no shape.
