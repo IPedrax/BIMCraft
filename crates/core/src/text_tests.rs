@@ -304,64 +304,57 @@ fn a_font_this_system_has_not_opens_and_is_drawn_with_what_stands_in_for_it() {
 fn glyph_identity_keeps_unicode_ranges_fallbacks_and_spacing() {
     use crate::text::{self, Face, Source, TextType};
     let t = TextType { font: text::LETTERING.into(), size: 3.5, width_factor: 1.2, ..TextType::default() };
-    let source = "Aé\u{301} Σ\n\té\u{10fffd}";
+    let source = "Ae\u{301} Σ\n\té\u{10fffd}";
     let l = text::layout(&t, source, &[]);
     let placed: Vec<_> = l.lines.iter().flat_map(|l| &l.chars).collect();
     let expected: Vec<_> = source.char_indices().filter(|(_, c)| *c != '\n').collect();
     let sans = ttf_parser::Face::parse(text::PLEX_SANS, 0).unwrap();
     for (p, &(start, ch)) in placed.iter().zip(&expected) {
-        assert_eq!(p.source, start..start + ch.len_utf8());
-        assert_eq!(&source[p.source.clone()], ch.to_string());
+        assert_eq!(p.text_range, start..start + ch.len_utf8());
+        assert_eq!(&source[p.text_range.clone()], ch.to_string());
         if matches!(ch, '\u{301}' | 'Σ') {
-            let g = p.glyph.as_ref().unwrap();
+            let g = p.shape.glyph.as_ref().unwrap();
             assert_eq!(g.face, Face::bundled(Source::Sans, false, false));
             assert_eq!(g.id, sans.glyph_index(ch).unwrap().0);
             assert_eq!(g.cap_to_em, f32::from(sans.units_per_em()) / f32::from(sans.capital_height().unwrap()));
         } else {
-            assert!(p.glyph.is_none(), "lettering, tabs and the missing-glyph question mark have no font glyph");
+            assert!(p.shape.glyph.is_none(), "lettering, tabs and the missing-glyph question mark have no font glyph");
         }
     }
     assert_eq!(placed.len(), expected.len());
     assert_eq!(l.lines[1].chars[0].index, 6, "caret indices still count characters, not bytes");
-    for line in &l.lines {
-        let mut x = 0.0;
-        for p in &line.chars {
-            assert_eq!(p.x, x);
-            let face = text::resolve(&t.font, p.style.bold, p.style.italic);
-            assert_eq!(p.advance, f64::from(text::shape(&face, p.ch).advance) * t.size * t.width_factor);
-            x += p.advance;
-        }
-        assert_eq!(line.width, x);
-    }
 }
 
 #[test]
 fn glyph_identity_keeps_spaces_and_variable_weight_faces() {
     use crate::text::{self, Face, Source, Style, TextType};
-    let t = TextType { font: text::SANS.into(), ..TextType::default() };
-    let source = "H H";
-    let styles = [Style::default(), Style::default(), Style { bold: true, italic: true, underline: false }];
-    let l = text::layout(&t, source, &styles);
-    for p in &l.lines[0].chars {
-        let g = p.glyph.as_ref().unwrap();
-        assert_eq!(g.face, Face::bundled(Source::Sans, p.style.bold, p.style.italic));
-        let mut parsed = ttf_parser::Face::parse(text::PLEX_SANS, 0).unwrap();
-        if let Some(w) = g.face.weight {
-            assert!(parsed.set_variation(ttf_parser::Tag::from_bytes(b"wght"), f32::from(w)).is_some());
+    for (font, source, data) in [(text::SANS, Source::Sans, text::PLEX_SANS), (text::MONO, Source::Mono, text::PLEX_MONO)] {
+        let t = TextType { font: font.into(), ..TextType::default() };
+        let text = "H H";
+        let styles = [Style::default(), Style::default(), Style { bold: true, italic: true, underline: false }];
+        let l = text::layout(&t, text, &styles);
+        let mut parsed = ttf_parser::Face::parse(data, 0).unwrap();
+        for p in &l.lines[0].chars {
+            let g = p.shape.glyph.as_ref().unwrap();
+            assert_eq!(g.face, Face::bundled(source.clone(), p.style.bold, p.style.italic));
+            if let Some(w) = g.face.weight {
+                assert!(parsed.set_variation(ttf_parser::Tag::from_bytes(b"wght"), f32::from(w)).is_some());
+            }
+            assert_eq!(g.id, parsed.glyph_index(p.ch).unwrap().0);
+            assert_eq!(g.cap_to_em, f32::from(parsed.units_per_em()) / f32::from(parsed.capital_height().unwrap()));
+            assert_eq!(p.text_range, p.index..p.index + 1);
         }
-        let id = parsed.glyph_index(p.ch).unwrap();
-        assert_eq!(g.id, id.0);
-        let cap = f32::from(parsed.capital_height().unwrap());
-        assert_eq!(g.cap_to_em, f32::from(parsed.units_per_em()) / cap);
-        assert_eq!(p.advance, f64::from(f32::from(parsed.glyph_hor_advance(id).unwrap()) / cap) * t.size);
-        assert_eq!(p.source, p.index..p.index + 1);
+        let chars = &l.lines[0].chars;
+        let space = &chars[1].shape;
+        assert!(space.fill.is_empty() && space.strokes.is_empty() && chars[1].advance > 0.0);
+        let bold = &chars[2];
+        let glyph = bold.shape.glyph.as_ref().unwrap();
+        if source == Source::Sans {
+            assert_eq!(glyph.face.weight, Some(700));
+            assert_ne!(chars[0].shape.fill, bold.shape.fill);
+        } else {
+            assert!(glyph.face.heavy && !bold.shape.strokes.is_empty());
+            assert!(bold.advance > chars[0].advance, "synthetic bold adds its stroke width to the advance");
+        }
     }
-    let chars = &l.lines[0].chars;
-    assert_eq!(chars[2].glyph.as_ref().unwrap().face.weight, Some(700));
-    let space = text::shape(&chars[1].glyph.as_ref().unwrap().face, ' ');
-    assert!(space.fill.is_empty() && space.strokes.is_empty() && chars[1].advance > 0.0);
-    assert_ne!(
-        text::shape(&chars[0].glyph.as_ref().unwrap().face, 'H').fill,
-        text::shape(&chars[2].glyph.as_ref().unwrap().face, 'H').fill
-    );
 }

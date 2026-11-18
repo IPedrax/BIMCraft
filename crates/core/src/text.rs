@@ -426,6 +426,7 @@ pub fn styles(t: &TextType, text: &str, override_format: bool, runs: &[Run]) -> 
 }
 
 /// A font glyph's resolved face and ID. `cap_to_em` multiplies a capital height to give the font's em size.
+/// The drawn advance is [`Placed::advance`], not the font's hmtx: synthetic bold adds its stroke width.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Glyph {
     pub face: Face,
@@ -576,8 +577,10 @@ impl ttf_parser::OutlineBuilder for Outline {
 pub struct Placed {
     pub index: usize,
     /// UTF-8 byte range in the original text, separate from the character index used by the editor.
-    pub source: std::ops::Range<usize>,
-    pub glyph: Option<Glyph>,
+    pub text_range: std::ops::Range<usize>,
+    pub shape: Arc<Shape>,
+    /// The requested face's slant, also applied to lettering and fallback outlines.
+    pub slant: bool,
     pub ch: char,
     pub x: f64,
     pub advance: f64,
@@ -620,10 +623,11 @@ pub fn layout(t: &TextType, text: &str, styles: &[Style]) -> Layout {
         let mut chars = Vec::new();
         for (byte, ch) in line.char_indices() {
             let style = styles.get(index).copied().unwrap_or_default();
-            let s = shape(&resolve(&font, style.bold, style.italic), ch);
-            let advance = f64::from(s.advance) * size * wf;
-            let source = byte_start + byte..byte_start + byte + ch.len_utf8();
-            chars.push(Placed { index, source, glyph: s.glyph.clone(), ch, x, advance, style });
+            let face = resolve(&font, style.bold, style.italic);
+            let shape = shape(&face, ch);
+            let advance = f64::from(shape.advance) * size * wf;
+            let text_range = byte_start + byte..byte_start + byte + ch.len_utf8();
+            chars.push(Placed { index, text_range, shape, slant: face.slant, ch, x, advance, style });
             x += advance;
             index += 1;
         }
@@ -691,9 +695,8 @@ impl Layout {
         let (size, wf) = (self.size as f32, self.width_factor as f32);
         for l in &self.lines {
             for c in &l.chars {
-                let face = resolve(&self.font, c.style.bold, c.style.italic);
-                let s = shape(&face, c.ch);
-                let slant = if face.slant { SLANT } else { 0.0 };
+                let s = &c.shape;
+                let slant = if c.slant { SLANT } else { 0.0 };
                 let (x0, base) = (c.x as f32, l.baseline as f32);
                 let at = |&(gx, gy): &(f32, f32)| (x0 + (gx * wf + slant * gy) * size, base - gy * size);
                 if !s.fill.is_empty() {
