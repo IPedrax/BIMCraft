@@ -1680,8 +1680,9 @@ impl BimApp {
         // Pick in View, taking the work plane's surface or points: clicks are its, not the selection's.
         let picking = self.work_plane_picking().is_some();
         // The work plane's patch, in Modify while nothing is sketched: a click on it opens the Work Plane dialog.
-        let patch =
-            (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
+        let patch = (self.tool == Tool::Modify && self.sketch.is_none() && self.roof_edge_edit.is_none() && !picking)
+            .then(|| self.work_plane_ring(last, rect, ppp))
+            .flatten();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         let attaching = self.tool == Tool::Attach;
@@ -2025,6 +2026,7 @@ impl BimApp {
             && !placement_captured
             && !picking
             && self.sketch.is_none()
+            && self.roof_edge_edit.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
             && !on_patch(&o.picker, &cam, origin)
             && !active.is_some_and(|v| {
@@ -2050,13 +2052,13 @@ impl BimApp {
             &input,
             cam,
             grabbed || placement_captured || o.placement_drag.is_some(),
-            modify,
+            modify && self.roof_edge_edit.is_none(),
             self.canvas.quick(),
             fresh.then_some(scene),
         );
         // A box let go: what it picks, as the picture is now.
         let boxed_ids = selected_box
-            .filter(|_| sketch_z.is_none())
+            .filter(|_| sketch_z.is_none() && self.roof_edge_edit.is_none())
             .map(|(from, to)| scene.in_box(&cam, px(from), px(to), to.x < from.x, &o.look(&model)));
         // On the card when the user asked for it and it can draw what the view shows; else on the processor.
         let mesh = match o.card_mesh(ui.ctx(), &mut self.card, card_ready) {
@@ -2127,7 +2129,12 @@ impl BimApp {
             .chain(trim_first.iter())
             .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
-            .chain(hover_lit.iter().filter(|id| !lit_ids.contains(id)).map(|id| (*id, rgb(canvas_pal().hover))))
+            .chain(
+                hover_lit
+                    .iter()
+                    .filter(|id| self.roof_edge_edit.is_none() && !lit_ids.contains(id))
+                    .map(|id| (*id, rgb(canvas_pal().hover))),
+            )
             .collect();
         let lit_now: Vec<Id> = tints.iter().map(|(id, _)| *id).collect();
         tints.extend(crate::groups::greyed(&model, scope.as_ref(), &lit_now).into_iter().map(|id| (id, crate::groups::grey())));
@@ -2576,7 +2583,7 @@ impl BimApp {
             crate::coordinates::paint_point(&p, *c, *pt, lit);
         }
         let point_hit = click
-            .filter(|_| modify && sketch_z.is_none() && !picking)
+            .filter(|_| modify && sketch_z.is_none() && self.roof_edge_edit.is_none() && !picking)
             .and_then(|at| points.iter().find(|(_, c)| c.distance(at) <= 10.0))
             .and_then(|(pt, _)| pt.id(&model));
         let clicked = click
@@ -2598,7 +2605,13 @@ impl BimApp {
             under.and_then(|u| Some((u.id, model.face_role(u.id, u.at, u.normal)?, u.at)))
         });
         let target = click.filter(|_| drawing && !on_face).and_then(|at| aimed(&o.picker, at));
+        let roof_edge_hit =
+            click.and_then(|at| self.roof_edge_edit.as_ref().and_then(|edit| edit.hit(at, |q| on_screen(&cam, rect, ppp, q))));
+        if let Some(edit) = &self.roof_edge_edit {
+            edit.paint(&p, |q| on_screen(&cam, rect, ppp, q), hover);
+        }
         match clicked {
+            Some(_) if self.roof_edge_edit.is_some() => self.roof_edge_pick(roof_edge_hit, click_modifiers(ui)),
             Some(_) if self.curtain_face_tool() => {
                 let on = click.and_then(face_at);
                 self.curtain_face_click(on);

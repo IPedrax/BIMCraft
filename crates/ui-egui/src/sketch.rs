@@ -1674,6 +1674,9 @@ fn sent(l: &SketchLine) -> serde_json::Value {
     if let Some(slope) = l.slope {
         v["slope"] = json!(slope);
     }
+    if let Some(defines) = l.defines_slope {
+        v["defines_slope"] = json!(defines);
+    }
     v
 }
 

@@ -292,6 +292,17 @@ reads back typed as they were (text, a real, a length, a boolean), and come in f
 IfcOpenShell reads each element's `BIMCraft_Phasing` set and the project's list of phases; they come back from IFC as they went
 out, and from a set its API writes (labels and a list value), while a set another tool calls its own, `Phasing` say, is left unread.
 
+Roof pitch editing: select a pitched footprint roof and choose **Edit roof pitches** in Properties. Click a numbered
+eave to select its plane; Ctrl/Command-click adds or removes edges. Properties shows the selected count and **Selected pitch**,
+with the corresponding plane outlined. **Apply pitches** commits the listed pending edge edits in one Undo step;
+**Cancel pitch edit** or Escape discards them. This works in plan and 3D, without changing the roof's default pitch.
+
+For footprint geometry or slope definition, choose **Edit Boundary**, then select one or several boundary lines to set
+**Defines Slope** and their pitch together. Mixed values show honestly. The roof's Slope reports its common effective
+pitch or **Varies**; entering a new pitch offers a choice to keep individual pitches or change all defining edges,
+with an eave-height preview before Apply. Roof and boundary-line inputs accept degrees, ratios (`6:12`, `6/12`) and
+positive percentages (`50%`); values display in degrees. [Workflow, limits and before/after pictures](docs/roof-slope-review.md).
+
 ## Quick start
 
 BIMCraft needs Rust 1.95 or later (egui 0.36 and sysinfo 0.40; krilla, which writes PDF, 1.92).

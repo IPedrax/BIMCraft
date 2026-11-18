@@ -175,11 +175,50 @@ shallowest moves at 1 (every edge at one slope still moves at exactly 1), so edg
 together and the slopes meet along their hips; the eaves stay level, the roof's base `overhang` in from them lowered by the roof's
 `slope`, whatever the edges' own. A gable stays upright whatever its slope, and a flat roof (`slope` 0) keeps its `slopes` as it keeps
 its `gables`, unused. `Model::check` refuses a list of the wrong length, saying how many edges there are, and a slope outside 0
-to 75°, saying which edge. A sketch line may carry a `slope` (`SketchLine::slope`; the Slope row of Properties, with one line of a
+to 75°, saying which edge. A sketch line may carry a `slope` (`SketchLine::slope`; the Slope row of Properties, with lines of a
 roof's sketch picked, sets it): the roof keeps it as the `slopes` of the edges along that line (`sketch::along`), never in its
 `sketch`, which `sketch::check` refuses to hold one. `edit_boundary` keeps the slope of an edge that stays or that a new
 line cuts in two (an edge lying along an old one), the lines' own `slope` (0 sets the roof's) winning over it, and without
 `slope` on the lines it keeps what the edges had; `edit_boundary` without a sketch gives the lines with the slope their edges share.
+A roof sketch line also takes `defines_slope`: false makes its edges upright, true slopes them. The selected line's
+Properties checkbox changes this draft until Finish; selecting several lines applies it and a common pitch together.
+The checkbox is indeterminate when definitions differ; the pitch says Varies for different stored overrides (blank/zero inherits).
+Unselected lines keep their settings; selecting alone adds no history. The shared `roof` / `edit_boundary` commands resolve it into
+the existing `gables` list and clear automatic `gable` when explicit choices are supplied. Reading the boundary returns
+the effective choice, including automatic gables. These line properties are command/draft data only, not new saved fields.
+A selected pitched footprint roof also offers **Edit roof pitches** in Properties. `roof_edges.rs` keeps a transient
+selection of source-edge indices and a draft `slopes` array. Numbered physical eaves are picked in plan or 3D;
+selected eaves and their plane perimeters are outlined, with a count and a single Selected pitch field. Ctrl/Command
+adds/removes an edge and Shift removes one. Pending edits remain listed when selection changes. Apply sends one
+existing `modify {id, slopes}`; Cancel/Escape discards the draft. Default slope and shared underside eave datum are
+unchanged, though plane thickness, intersections and attached geometry still follow their normal rules. The drawing
+updates on Apply. Undo/Redo waits until Apply/Cancel; changing tools, leaving plan/3D, external selection or a changed
+model ends the draft. This mode edits pitches only; Defines Slope and boundary geometry remain in Edit Boundary.
+`Model::roof_faces_by_edge` carries each source edge through winding normalization and joined-face clipping; dropping
+those indices produces the existing `roof_faces` geometry. Gables, flat and extrusion roofs supply no selectable sloping
+footprint face. The mode outlines source face perimeters, not opening/shaft cutouts, and overlays them through other
+geometry for explicit selection. It does not offer ridge/valley dragging or face-interior picking.
+
+The selected roof's Slope field and its sketch-line Slope field accept degrees, positive rise:run / rise/run
+(`6:12`, `6/12`, `1/2`), or positive percentages (`50%`, `12.5%`), storing and displaying degrees.
+Percentage means 100 × rise/run: `50%` equals `6:12`, and `100%` equals 45°. The existing 75° limit still applies.
+Blank (or bare zero) inherits only on an edge; bare zero on
+the roof makes it flat. A pitched roof still needs at least one slope-defining edge: Finish refuses an all-upright
+draft without changing the model. Project-wide slope formats and extrusion-profile editing are separate features.
+
+The overall inspector reports common effective pitch or Varies, excluding upright edges. An edit involving individual
+pitches opens a per-edit choice: keep those explicit pitches and change the inherited ones, or apply the new pitch to all
+defining edges. `Model::roof_with_pitch` builds both candidates; inheritance markers and upright-edge pitches are retained.
+The preview uses the same `roof_eave_height` datum as `roof_faces`, shows its before/after elevation and signed movement
+in project units, and keeps the base level/offset unchanged. Apply is one command; Cancel and a stale preview apply nothing.
+Zero still makes the roof flat with its edge settings retained but unused. This choice/warning is an intentional product
+adaptation, not a claim of the same dialog in native Revit.
+
+`modify` shares this contract with CLI/MCP: changing `slope` when individual pitches are involved requires
+`roof_slope_mode: "inherited" | "all"`. If it moves the eave, the command refuses without mutation/history and gives the
+signed delta in mm; `allow_eave_change: true` explicitly accepts it. The choice flags are command-only. `all` cannot be
+combined with a separate `slopes` array. Inherited-only roofs retain direct overall editing. No stored datum or file-format
+change is introduced; the existing eave/overhang semantics are preserved and made explicit before the edit.
 Over the walls (`floor_outline`, which `roof_footprint` grows by the overhang), a loop of them standing free inside the outer
 ones, joined to none of them and with no room in it, is a courtyard, open through the floor and the roof; one joined to them,
 or with a room in it, is rooms, and both run over it.

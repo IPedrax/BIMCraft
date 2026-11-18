@@ -26,6 +26,12 @@ use egui::{
 };
 use serde_json::{Value, json};
 
+pub(crate) struct RoofSlopeDialog {
+    before: Arc<Model>,
+    params: Value,
+    all: bool,
+}
+
 use crate::icons::{self, Icon};
 use crate::lang::{self, t, tf};
 use crate::style::{GuideStyle, pal};
@@ -37,6 +43,8 @@ enum Kind {
     Text,
     /// A number with no unit: an angle, a scale, a size on paper.
     Number,
+    /// Degrees, or positive rise:run / rise/run, stored as degrees.
+    RoofPitch,
     /// A length or an elevation, in the project's units.
     Length,
     /// `[x, y]`, lengths in the project's units, typed as `x, y`.
@@ -103,7 +111,7 @@ type Row = (&'static str, &'static str, &'static str, Kind);
 fn field_of(e: &Value, key: &str, kind: Kind) -> Value {
     match key.split('.').try_fold(e, |v, k| v.get(k)) {
         Some(v) => v.clone(),
-        None if matches!(kind, Length | Number) => json!(0.0),
+        None if matches!(kind, Length | Number | RoofPitch) => json!(0.0),
         None => Value::Null,
     }
 }
@@ -417,7 +425,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "offset", "Base Offset", Length),
             ("Constraints", "extrusion.from", msg!("Extrusion Start"), LengthIf),
             ("Constraints", "extrusion.to", msg!("Extrusion End"), LengthIf),
-            ("Dimensions", "slope", "Slope (°)", Number),
+            ("Dimensions", "slope", "Slope (°)", RoofPitch),
             ("Dimensions", "ridge", msg!("Max Ridge Height"), LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Other", "gable", msg!("Gable Ends"), Flag),
@@ -685,6 +693,22 @@ pub(crate) fn number(s: &str) -> Option<f64> {
     s.trim().parse::<f64>().ok().filter(|x| x.is_finite())
 }
 
+/// Roof instances and footprint edges store degrees. Zero is an edge's inherit sentinel, so
+/// ratios and percentages must stay positive even at floating-point limits. Plain zero still means flat/inherit.
+pub(crate) fn roof_pitch(input: &str) -> Option<f64> {
+    let degrees = if let Some(percent) = input.trim().strip_suffix('%') {
+        let percent = number(percent).filter(|n| *n > 0.0)?;
+        Some(percent.atan2(100.0).to_degrees()).filter(|n| *n > 0.0)?
+    } else if let Some((rise, run)) = input.split_once([':', '/']) {
+        let rise = number(rise).filter(|n| *n > 0.0)?;
+        let run = number(run).filter(|n| *n > 0.0)?;
+        Some(rise.atan2(run).to_degrees()).filter(|n| *n > 0.0)?
+    } else {
+        number(input)?
+    };
+    (0.0..=bimcraft_core::model::MAX_SLOPE).contains(&degrees).then_some(degrees)
+}
+
 /// A value of `kind` as the palette shows it, lengths and areas in `units`.
 /// An area parameter's value, m² in the model, in the project's units.
 fn area_shown(v: &Value, units: Units) -> String {
@@ -750,6 +774,7 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
     let length = |typed: &str| units.parse(typed).ok_or_else(|| tf("`{}` is not a length", &[typed.trim()]));
     match kind {
         Number => number(s).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not a number", &[s])),
+        RoofPitch => roof_pitch(s).map(|x| json!(x)).ok_or_else(|| t("Degrees or pitch (6:12, 6/12 or 50%)").to_string()),
         Length | LengthIf | Height => length(s).map(|x| json!(x)),
         Limit(_) if s.trim().is_empty() => Ok(Value::Null),
         Limit(_) => length(s).map(|x| json!(x)),
@@ -1551,6 +1576,13 @@ impl BimApp {
     }
 
     pub(crate) fn properties(&mut self, ui: &mut Ui) {
+        if self.roof_edge_edit.is_some() {
+            self.roof_edge_properties(ui);
+            return;
+        }
+        if self.roof_edge_launcher(ui) {
+            return;
+        }
         if self.editing_roof_profile() {
             ui.heading(t("Roof Profile"));
             self.roof_profile_coordinates(ui);
@@ -1984,7 +2016,9 @@ impl BimApp {
         }
     }
 
-    /// A footprint sketch's selected line sets the slope sent to `edit_boundary` on Finish.
+    /// A roof's sketch (a new roof's footprint or Edit Boundary's) with lines picked: their Slope, the angle in degrees the roof's
+    /// edges along them rise at, blank for the roof's own. Several picked lines show mixed values honestly and change together, and
+    /// Finish Edit Mode sends it with the lines for the core to give the edges along the line theirs (`slopes`).
     fn sketch_slope(&mut self, ui: &mut Ui) {
         let Some(sk) = &self.sketch else { return };
         let roof = match sk.of {
@@ -1993,26 +2027,56 @@ impl BimApp {
             _ => false,
         };
         let picked: Vec<usize> = sk.picked.iter().copied().collect();
-        let (true, &[i]) = (roof, picked.as_slice()) else { return };
-        let Some(line) = sk.lines.get(i) else { return };
-        let current = line.slope.filter(|s| *s > 0.0).map_or_else(String::new, |s| text(&json!(s)));
+        let (true, Some(&i)) = (roof, picked.first()) else { return };
+        let lines: Vec<_> = picked.iter().filter_map(|i| sk.lines.get(*i)).collect();
+        let Some(line) = lines.first() else { return };
+        let slope = line.slope.unwrap_or(0.0);
+        let mixed_pitch = lines.iter().any(|l| l.slope.unwrap_or(0.0) != slope);
+        let current = if mixed_pitch {
+            t("Varies").to_string()
+        } else if slope > 0.0 {
+            text(&json!(slope))
+        } else {
+            String::new()
+        };
+        let mut defines = line.defines_slope.unwrap_or(true);
+        let mixed = lines.iter().any(|l| l.defines_slope.unwrap_or(true) != defines);
+        if mixed {
+            defines = false;
+        }
+        if ui.add(egui::Checkbox::new(&mut defines, t("Defines Slope")).indeterminate(mixed)).changed()
+            && let Some(sk) = &mut self.sketch
+        {
+            for &i in &picked {
+                if let Some(line) = sk.lines.get_mut(i) {
+                    line.defines_slope = Some(defines);
+                }
+            }
+        }
+        if !defines && !mixed {
+            return;
+        }
         let mut typed = None;
-        grid(ui, ("sketch-slope", i), |ui| {
+        grid(ui, ("sketch-slope", &picked), |ui| {
             let name = ui.label(t("Slope"));
-            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Roof's slope"));
+            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Degrees or pitch (6:12, 6/12 or 50%)"));
             ui.end_row();
         });
         let Some(typed) = typed else { return };
         let max = bimcraft_core::model::MAX_SLOPE;
-        match Some(typed.trim()).filter(|s| !s.is_empty()).map_or(Some(0.0), |s| number(s).filter(|x| (0.0..=max).contains(x))) {
+        match if typed.trim().is_empty() { Some(0.0) } else { roof_pitch(&typed) } {
             Some(slope) => {
-                if let Some(l) = self.sketch.as_mut().and_then(|sk| sk.lines.get_mut(i)) {
-                    l.slope = Some(slope);
+                if let Some(sk) = &mut self.sketch {
+                    for &i in &picked {
+                        if let Some(l) = sk.lines.get_mut(i) {
+                            l.slope = Some(slope);
+                        }
+                    }
                 }
             }
             None => {
                 self.status = Status {
-                    text: tf("Slope: a number of degrees from 0 to {}, or blank for the roof's", &[&max.to_string()]),
+                    text: tf("Degrees from 0 to {}, or positive pitch (6:12, 6/12 or 50%). Blank inherits.", &[&max.to_string()]),
                     error: true,
                 };
             }
@@ -2475,6 +2539,27 @@ impl BimApp {
                                 select = Some(other);
                             }
                         }
+                        RoofPitch => {
+                            let pitches: Vec<_> = ids
+                                .iter()
+                                .filter_map(|id| match model.elements.get(*id) {
+                                    Some(Element::Roof(r)) => model.roof_pitch_summary(r).ok(),
+                                    _ => None,
+                                })
+                                .collect();
+                            let common = pitches
+                                .first()
+                                .and_then(|p| p.common)
+                                .filter(|p| pitches.iter().all(|s| s.common.is_some_and(|s| (s - *p).abs() < 1e-9)));
+                            let current = if pitches.len() == ids.len() {
+                                common.map_or_else(|| t("Varies").to_string(), |p| text(&json!(p)))
+                            } else {
+                                shown(kind, val, units)
+                            };
+                            if let Some(typed) = self.field(ui, id, key, current, name.id, t("Degrees or pitch (6:12, 6/12 or 50%)")) {
+                                change = Some((key, parse(kind, &typed, units)));
+                            }
+                        }
                         Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
                             // Blank across a selection may be values that differ, not nothing.
                             let hint = match kind {
@@ -2510,10 +2595,84 @@ impl BimApp {
                     p[k] = v;
                 }
                 p["ids"] = json!(ids);
+                if key == "slope"
+                    && let Some(pitch) = p["slope"].as_f64()
+                    && ids.iter().any(|id| {
+                        let Some(Element::Roof(r)) = model.elements.get(*id) else { return false };
+                        model.roof_pitch_summary(r).is_ok_and(|s| s.individual)
+                            || model.roof_with_pitch(r, pitch, false).and_then(|r| model.roof_pitch_summary(&r)).is_ok_and(|s| s.individual)
+                    })
+                {
+                    self.roof_slope_dialog = Some(RoofSlopeDialog { before: Arc::clone(&self.session.model), params: p, all: false });
+                    return;
+                }
                 self.run("modify", p);
             }
             Some((key, Err(e))) => self.status = Status { text: format!("{key}: {e}"), error: true },
             None => {}
+        }
+    }
+
+    pub(crate) fn roof_slope_window(&mut self, ctx: &Context) {
+        let Some(mut d) = self.roof_slope_dialog.take() else { return };
+        if !Arc::ptr_eq(&d.before, &self.session.model) {
+            self.status = Status { text: t("The project changed; enter the roof slope again to review its effect.").into(), error: true };
+            return;
+        }
+        let pitch = d.params["slope"].as_f64().unwrap_or(0.0);
+        let mut apply = false;
+        let mut cancel = false;
+        let r = Modal::new(UiId::new("roof-slope-change"), t("Roof slope change")).width(520.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.label(tf("New pitch: {}°", &[&text(&json!(pitch))]));
+                ui.radio_value(&mut d.all, false, t("Keep individual edge pitches"));
+                ui.radio_value(&mut d.all, true, t("Apply to all defining edges"));
+                ui.label(t(if pitch == 0.0 {
+                    msg!("The roof becomes flat. Stored edge pitches are retained for when it is pitched again.")
+                } else if d.all {
+                    msg!("Every slope-defining edge uses the new pitch. Upright edges keep their settings.")
+                } else {
+                    msg!("Only inherited pitches change. Individual pitches keep their angles but may move vertically.")
+                }));
+                for id in d.params["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
+                    let Some(Element::Roof(old)) = d.before.elements.get(id) else { continue };
+                    let Ok(next) = d.before.roof_with_pitch(old, pitch, d.all) else { continue };
+                    let (before, after) = (d.before.roof_eave_height(old), d.before.roof_eave_height(&next));
+                    let delta = after - before;
+                    let units = d.before.units;
+                    let length = |mm| if units.imperial() { units.length(mm) } else { format!("{} {}", units.length(mm), units.name()) };
+                    ui.separator();
+                    let effective = |r| {
+                        d.before
+                            .roof_pitch_summary(r)
+                            .ok()
+                            .and_then(|s| s.common)
+                            .map_or_else(|| t("Varies").to_string(), |p| format!("{}°", text(&json!(p))))
+                    };
+                    ui.label(tf("Effective pitches: {} → {}", &[&effective(old), &effective(&next)]));
+                    ui.label(tf("Roof {}: eave elevation {} → {}", &[&id.to_string(), &length(before), &length(after)]));
+                    let note = if delta.abs() < 1e-6 {
+                        t("Eave height is unchanged.").into()
+                    } else {
+                        tf(if delta < 0.0 { msg!("Eaves move down {}.") } else { msg!("Eaves move up {}.") }, &[&length(delta.abs())])
+                    };
+                    ui.label(RichText::new(note).strong());
+                }
+                ui.label(t("Base level and offset stay unchanged. Attached walls follow the resulting roof."));
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.horizontal(|ui| {
+                    apply = ui.button(t("Apply slope")).clicked();
+                    cancel = ui.button(t("Cancel")).clicked();
+                });
+            });
+        });
+        if apply {
+            d.params["roof_slope_mode"] = json!(if d.all { "all" } else { "inherited" });
+            d.params["allow_eave_change"] = json!(true);
+            self.run("modify", d.params);
+        } else if !cancel && !r.should_close() {
+            self.roof_slope_dialog = Some(d);
         }
     }
 
