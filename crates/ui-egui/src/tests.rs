@@ -4882,6 +4882,36 @@ fn a_selected_runs_ends_are_grips_that_drag_one_end_with_snaps_and_ctrl_keeps_th
 }
 
 #[test]
+fn a_selected_grids_ends_are_grips_that_each_drag_one_end_as_one_undo_step_in_both_profiles() {
+    let script = r#"grid {"start": [0, -2000], "end": [0, 8000]}"#;
+    for (name, mut h) in [("Rev", app(script)), ("BIMCraft", bimcraft(script))] {
+        let grid = ids(&h, "grid")[0];
+        let ends = |h: &Harness<BimApp>| match h.state().session.model.elements.get(grid) {
+            Some(Element::Grid(g)) => (g.start, g.end),
+            _ => panic!("the grid is there"),
+        };
+        // Picked on its line with Modify, a grid has a grip at each end.
+        click(&mut h, P2(0.0, 3000.0));
+        assert_eq!(h.state().selection, vec![grid], "{name}");
+        assert_eq!(h.state().tool, Tool::Modify, "{name}: Modify is the tool that grips");
+        let steps = h.state().session.history().len();
+        // The end dragged south: the grid is shorter, and the start stayed.
+        drag(&mut h, P2(0.0, 8000.0), P2(0.0, 6000.0));
+        let (a, b) = ends(&h);
+        assert_eq!(a, P2(0.0, -2000.0), "{name}: the start stayed");
+        assert!(b.dist(P2(0.0, 6000.0)) < 1.0, "{name}: the end went where it was dropped: {b:?}");
+        assert_eq!(h.state().session.history().len(), steps + 1, "{name}: one undo step");
+        assert_eq!(h.state().selection, vec![grid], "{name}: still selected, to drag again");
+        // The start is a grip too: dragged off to the side, the grid leans, and the end stays.
+        drag(&mut h, P2(0.0, -2000.0), P2(-1500.0, -2000.0));
+        let (c, d) = ends(&h);
+        assert!(c.dist(P2(-1500.0, -2000.0)) < 1.0, "{name}: the start went where it was dropped: {c:?}");
+        assert_eq!(d, b, "{name}: the end stayed");
+        assert_eq!(h.state().session.history().len(), steps + 2, "{name}: one undo step each");
+    }
+}
+
+#[test]
 fn a_selected_walls_angle_is_typed_to_turn_it_about_either_end() {
     let mut h = app(BOX);
     click(&mut h, P2(2000.0, 0.0));

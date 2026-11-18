@@ -4746,7 +4746,7 @@ impl BimApp {
         }
     }
 
-    /// The wall or run selected alone, with Modify: the one whose ends are grips.
+    /// The wall, run or grid selected alone, with Modify: the one whose ends are grips.
     fn gripped(&self) -> Option<Id> {
         // Walls' Outline picks walls; it does not move their ends.
         if self.outline_pending {
@@ -4754,15 +4754,20 @@ impl BimApp {
         }
         let m = &self.session.model;
         match (self.selection.as_slice(), &self.tool) {
-            (&[id], Tool::Modify) if m.wall(id).is_some() || m.run_of(id).is_some() => Some(id),
+            (&[id], Tool::Modify)
+                if m.wall(id).is_some() || m.run_of(id).is_some() || matches!(m.elements.get(id), Some(Element::Grid(_))) =>
+            {
+                Some(id)
+            }
             _ => None,
         }
     }
 
-    /// The ends of the element whose ends are grips, `(start, end)`: a wall's or a run's line.
+    /// The ends of the element whose ends are grips, `(start, end)`: a wall's, a run's or a grid's line.
     fn grip_ends(m: &Model, id: Id) -> Option<(P2, P2)> {
         match m.elements.get(id)? {
             Element::Wall(w) => Some((w.start, w.end)),
+            Element::Grid(g) => Some((g.start, g.end)),
             e => Some((e.run()?.start, e.run()?.end)),
         }
     }
@@ -4785,7 +4790,7 @@ impl BimApp {
         (found, at)
     }
 
-    /// A drag from an end of the selected wall or run moves that end: its angle and length follow
+    /// A drag from an end of the selected wall, run or grid moves that end: its angle and length follow
     /// the cursor, with the snaps and angle guides from the other end (Ctrl keeps the length); on
     /// release, `move`, and the walls joined there follow.
     fn grip_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, level: Id) {
@@ -4830,7 +4835,7 @@ impl BimApp {
         }
     }
 
-    /// The selected wall's or run's grips at its ends and, beside each for a wall, its angle to
+    /// The selected wall's, run's or grid's grips at its ends and, beside each for a wall, its angle to
     /// click and type: the wall turns about that end. Dragging one, the element as it would stand,
     /// with its ruler.
     #[allow(clippy::too_many_arguments)]
@@ -4841,6 +4846,7 @@ impl BimApp {
         };
         let Some(ends) = Self::grip_ends(m, id) else { return };
         let wall = m.wall(id).cloned();
+        let is_grid = matches!(m.elements.get(id), Some(Element::Grid(_)));
         let p = ui.painter_at(rect);
         let at = |q: P2| pos(rect.min, v.px(q));
         let held = self.canvas.grip.filter(|(g, _)| *g == id).map(|(_, start)| start);
@@ -4860,6 +4866,8 @@ impl BimApp {
                     let (left, right) = (axis.points(0.0, axis.length(), ext), axis.points(0.0, axis.length(), int));
                     left.into_iter().chain(right.into_iter().rev()).collect()
                 }
+                // A grid is its line.
+                None if is_grid => vec![moved_ends.0, moved_ends.1],
                 // A run's footprint across its axis, in the state it would take.
                 None => m
                     .elements
@@ -4873,7 +4881,8 @@ impl BimApp {
                     .unwrap_or_default(),
             };
             let ring: Vec<Pos2> = ring.into_iter().map(&at).collect();
-            p.add(Shape::closed_line(ring, Stroke::new(1.0, pal().accent)));
+            let stroke = Stroke::new(1.0, pal().accent);
+            p.add(if is_grid { Shape::line(ring, stroke) } else { Shape::closed_line(ring, stroke) });
             let fixed = if start { ends.1 } else { ends.0 };
             p.extend(ruler_shapes(&sc, fixed, to, GuideLook::of(&p, self.refined_guides())));
             self.show_snap(&sc, &found, Lock::Free);

@@ -2217,7 +2217,8 @@ other_files(
          its annotations in drawing coordinates, straight-wall openings in their host (refusing motion off the host), and \
          unhosted non-adaptive components in world coordinates. Other model kinds and `end` are refused in this mode. \
          Without `view`, moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall, one run or one grid \
+         moves (a grid's other end stays, and it keeps some length). One \
          section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
          looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
          an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
@@ -19451,9 +19452,12 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 walls.insert(id, w);
             }
             Element::Door(o) | Element::Window(o) if moving_guids.contains(&o.host) => {}
-            // Moving one end of a run: the other end stays where it was, as a wall's does.
+            // Moving one end of a run or a grid: the other end stays where it was, as a wall's does.
             mut e => {
                 if let (Some(at_start), Some(me), Some(old)) = (end, e.run_mut(), m.run_of(id)) {
+                    if at_start { me.end = old.end } else { me.start = old.start }
+                }
+                if let (Some(at_start), Element::Grid(me), Some(Element::Grid(old))) = (end, &mut e, m.elements.get(id)) {
                     if at_start { me.end = old.end } else { me.start = old.start }
                 }
                 if let (Some(before), Some(after)) = (m.run_of(id).cloned(), e.run().cloned()) {
@@ -20642,8 +20646,12 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
             }
         }
     };
-    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
+    let is_grid = |one: &Id| matches!(s.model.elements.get(*one), Some(Element::Grid(_)));
+    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some() || is_grid(one)) {
+        return Err(bad(
+            c,
+            "`end` moves an end of one wall or one run, or of one grid, or a part of one section or elevation; give `ids` one of those",
+        ));
     }
     // A group goes with its members.
     let taken = if end.is_none() { crate::groups::with_members(&s.model, &ids) } else { ids.clone() };

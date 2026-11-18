@@ -245,6 +245,8 @@ drawn again after the plan's own pass, so neither can be buried by a wall. A sel
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
 a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
+A selected grid's ends are grips by the same code: a drag lengthens, shortens or leans the grid, and runs `move` with `end` (`start` or
+`end`) on release, so the other end stays and `Model::check` refuses a grid with no length.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
