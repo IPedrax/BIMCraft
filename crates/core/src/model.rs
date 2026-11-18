@@ -455,6 +455,15 @@ pub struct Wall {
     /// its ends stretch with what they meet; an unjoined wall's ends stay square and follow no one.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub join: bool,
+    /// Revit's Cross-Section Slanted, Angle From Vertical: how far its faces lean from upright, degrees, toward its exterior
+    /// (its left) positive, its interior negative; 0 upright. It leans about its location line at its base.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub slant: f64,
+    /// Revit's Edit Profile: a straight, upright wall's shape in elevation in place of the rectangle from its base to its top.
+    /// Loops of `[along, up]` mm, along its location line from its start and up from its base; the first is its outline and any
+    /// others are holes in it. Empty, the rectangle.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profile: Vec<Vec<P2>>,
     /// A curtain wall's edits, apart from its type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curtain: Option<crate::curtain::CurtainEdits>,
@@ -1022,6 +1031,10 @@ pub struct Opening {
     /// Hinge on the other jamb.
     #[serde(default)]
     pub flip_hand: bool,
+    /// Revit's Orientation in a slanted wall: Slanted, leaning with the wall; else Vertical (the default), standing upright where
+    /// the wall has leant to halfway up it. The wall is cut the same either way. Nothing changes in an upright wall.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slanted: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -6242,19 +6255,56 @@ impl Model {
     /// A door's or a window's family's axes in the model, as its pieces have them, the opening's flips taken already
     /// ([`Model::opening_local`]): its insertion point in the middle of its wall at `offset` along its line and `sill` up from
     /// its base, x along the wall there, y across it, z up; the family placed by its origin there
-    /// ([`crate::hosting::Placement::by_origin`]).
+    /// ([`crate::hosting::Placement::by_origin`]). In a slanted wall, a slanted one ([`Opening::slanted`]) stands where the wall
+    /// has leant to at its sill, its z leaning with the wall ([`Model::opening_lean`]), so it stays in the wall all the way up;
+    /// a vertical one stands upright where the wall has leant to halfway up it.
     pub fn opening_placement(&self, o: &Opening) -> Option<crate::hosting::Placement> {
+        self.opening_placement_as(o, o.slanted)
+    }
+
+    /// [`Model::opening_placement`] for `o` slanted or not: slanted, what its voids stand in, leaning with the wall so they cut
+    /// it the same whichever way the opening stands.
+    fn opening_placement_as(&self, o: &Opening, slanted: bool) -> Option<crate::hosting::Placement> {
         let w = self.wall(o.host)?;
+        let sill = self.own_base(w) + o.sill;
+        let across = if slanted || w.slant == 0.0 { sill } else { sill + self.opening_rise(o) / 2.0 };
         let axis = walls::Axis::of(w);
-        let (at, u) = (axis.at(o.offset, walls::centre(self, w)), axis.tangent(o.offset));
+        let (at, u) = (axis.at(o.offset, walls::centre(self, w) + walls::lean(self, w, across)), axis.tangent(o.offset));
         let n = u.perp();
-        let insertion = [at.0, at.1, self.own_base(w) + o.sill];
+        let lean = if slanted { self.host_lean(o) } else { 0.0 };
+        let insertion = [at.0, at.1, sill];
         Some(crate::hosting::Placement::by_origin(
             insertion,
-            [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [0.0, 0.0, 1.0]],
+            [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [lean * n.0, lean * n.1, 1.0]],
             true,
             self.opening_origin(o),
         ))
+    }
+
+    /// A door's or window's height, as its type or family says; 0 where neither does.
+    fn opening_rise(&self, o: &Opening) -> f64 {
+        let Some(name) = &o.family else {
+            return self.types.door.get(&o.type_name).or_else(|| self.types.window.get(&o.type_name)).map_or(0.0, |t| t.height);
+        };
+        let wall = self.wall(o.host).map_or(crate::family::DEFAULT_WALL, |w| self.thickness(w));
+        match self.families.get(name).and_then(|f| f.values_in(&o.type_name, &o.params, wall).ok()) {
+            Some(v) => match v.get(crate::family::HEIGHT) {
+                Some(crate::family::Val::Number(h)) => *h,
+                _ => 0.0,
+            },
+            None => 0.0,
+        }
+    }
+
+    /// How far a door or window moves across its wall for each mm it rises: a slanted one, its slanted wall's lean, which it
+    /// leans with, so it stays in the wall all the way up; 0 for a vertical one and in an upright wall.
+    pub fn opening_lean(&self, o: &Opening) -> f64 {
+        if o.slanted { self.host_lean(o) } else { 0.0 }
+    }
+
+    /// How far door or window `o`'s wall moves across for each mm it rises: 0 upright.
+    pub fn host_lean(&self, o: &Opening) -> f64 {
+        self.wall(o.host).map_or(0.0, |w| walls::lean(self, w, self.own_base(w) + 1.0) - walls::lean(self, w, self.own_base(w)))
     }
 
     /// The origin of door or window `o`'s family in its own axes, flipped as the opening is: none (the datums' crossing) for
@@ -6353,7 +6403,7 @@ impl Model {
     /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
     pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let Some(placed) = self.opening_placement(o) else { return Vec::new() };
+        let Some(placed) = self.opening_placement_as(o, true) else { return Vec::new() };
         self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(|p| placed.place(p))).collect()).collect()
     }
 
@@ -9417,6 +9467,56 @@ impl Model {
                     None => size(&format!("{who} height"), w.height)?,
                 }
                 coord(&format!("{who} top offset"), w.top_offset)?;
+                if !(w.slant.is_finite() && w.slant.abs() <= walls::MAX_SLANT) {
+                    return Err(format!("{who}: slant {}° isn't between -{max}° and {max}° from upright", w.slant, max = walls::MAX_SLANT));
+                }
+                if let Some(outer) = w.profile.first() {
+                    let why = if w.arc != 0.0 {
+                        Some("a curved wall's")
+                    } else if w.slant != 0.0 {
+                        Some("a slanted wall's")
+                    } else if w.attach_top.is_some() || w.attach_base.is_some() {
+                        Some("an attached wall's")
+                    } else if w.panel_of.is_some() || crate::curtain::pattern(self, w).is_some() {
+                        Some("a curtain wall's, or a wall in one's,")
+                    } else {
+                        None
+                    };
+                    if let Some(why) = why {
+                        return Err(format!(
+                            "{who}: {why} shape can't be edited; reset its profile (`modify {{id, profile: []}}`) or make it straight, upright and unattached first"
+                        ));
+                    }
+                    if w.profile.len() > MAX_POINTS || w.profile.iter().map(Vec::len).sum::<usize>() > MAX_POINTS {
+                        return Err(format!("{who}: a profile has at most {MAX_POINTS} points"));
+                    }
+                    boundary(&format!("{who} profile"), outer)?;
+                    openings(&format!("{who} profile"), outer, &w.profile[1..])?;
+                    let length = w.start.dist(w.end);
+                    let low = outer.iter().map(|q| q.1).fold(f64::INFINITY, f64::min);
+                    let (s0, s1) = outer.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), q| (a.min(q.0), b.max(q.0)));
+                    if (s0.abs() > TOL) || ((s1 - length).abs() > TOL) {
+                        return Err(format!(
+                            "{who}: its profile runs from {s0:.0} to {s1:.0} mm along it, but must run between both its ends (0 and {length:.0} mm), as its joins and its length are its location line's"
+                        ));
+                    }
+                    // Its outline mustn't cross itself.
+                    let edges: Vec<(P2, P2)> = geom::ring_edges(outer).collect();
+                    let n = edges.len();
+                    for i in 0..n {
+                        for j in i + 2..n {
+                            if (i == 0 && j == n - 1) || geom::crossing(edges[i].0, edges[i].1, edges[j].0, edges[j].1).is_none() {
+                                continue;
+                            }
+                            return Err(format!("{who}: its profile crosses itself (edges {i} and {j})"));
+                        }
+                    }
+                    if low.abs() > TOL {
+                        return Err(format!(
+                            "{who}: its profile's lowest point is {low:.0} mm up from its base; it must start at its base (0), as its doors' sills are measured from there; move the wall's base offset instead"
+                        ));
+                    }
+                }
                 let (base, top) = (self.base_z(w), self.top_z(w));
                 if top <= base + TOL {
                     let (tall, short) = ((top - base).round() + 0.0, (base - top).round() + 0.0);
@@ -11257,6 +11357,8 @@ mod tests {
             join: true,
             curtain: None,
             panel_of: None,
+            slant: 0.0,
+            profile: Vec::new(),
         })
     }
 
@@ -11281,6 +11383,7 @@ mod tests {
             mark: String::new(),
             flip_facing: false,
             flip_hand: false,
+            slanted: false,
         })
     }
 

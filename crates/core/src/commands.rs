@@ -383,10 +383,12 @@ other_files(
         "wall",
         msg!("Wall"),
         &["WA"],
-        "{points: [[x,y],…], closed?, type?, level?, top_level?, top_offset?, height?, base_offset?, arc?, location?, attach_top?, \
+        "{points: [[x,y],…], closed?, type?, level?, top_level?, top_offset?, height?, base_offset?, arc?, slant?, location?, attach_top?, \
          attach_base?, room_bounding?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
          to `top_level`, `top_offset` mm above it (0; negative, below it; the top must stay above the base). `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
-         its right). `location`: the line of it the points are on: centre (the default), core-centre, exterior-finish, \
+         its right). `slant`: degrees its faces lean from upright about its location line at its base (Revit's Cross-Section \
+         Slanted), toward its exterior positive, up to 60 either way; a curtain wall's grid leans with it. `location`: the line \
+         of it the points are on: centre (the default), core-centre, exterior-finish, \
          interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls \
          drawn clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands \
          on. `room_bounding`: false for a wall rooms run past (a low wall, a balustrade); true, the default, bounds them",
@@ -397,11 +399,12 @@ other_files(
         "door",
         ui_msg!("Door"),
         &["DR"],
-        "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, \
+        "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?, slanted?} in the wall under `at`, \
          or in `wall` centred `offset` mm from its start; without `level`, prefer the lowest level at or above elevation 0 \
          whose plan cuts a wall there, then the highest below 0; with `family`, a door family's `type` (its first by default), \
          which sizes the opening and draws the door; an explicit `level` different from the wall's places it at that \
-         level's elevation, otherwise at the wall's base; it may rise past a low wall's top, as Revit lets it",
+         level's elevation, otherwise at the wall's base; it may rise past a low wall's top, as Revit lets it. In a slanted \
+         wall it stands upright (Revit's Vertical) unless `slanted`, when it leans with the wall; the wall is cut the same",
         door,
     )
     .menu("Architecture > Door"),
@@ -409,7 +412,7 @@ other_files(
         "window",
         "Window",
         &["WN"],
-        "{at: [x,y] | wall: id, offset?, sill?, type?, family?, level?, mark?, flip_facing?} like door; `sill` defaults to the \
+        "{at: [x,y] | wall: id, offset?, sill?, type?, family?, level?, mark?, flip_facing?, slanted?} like door; `sill` defaults to the \
          type's (a family's `Sill Height`) and must be under the wall's top, while its head may rise past the top, as Revit \
          lets it (the wall is notched up to its top)",
         window,
@@ -11291,6 +11294,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
     let top_offset = num(c, p, "top_offset")?.unwrap_or(0.0);
     let height = height.unwrap_or(DEFAULT_HEIGHT);
     let arc = num(c, p, "arc")?.unwrap_or(0.0);
+    let slant = num(c, p, "slant")?.unwrap_or(0.0);
     let location = match string(c, p, "location")? {
         Some(n) => Location::from_name(&n).ok_or_else(|| bad(c, location_names(&n)))?,
         // A curtain wall stands on a face, as it has no centre of its own to speak of.
@@ -11349,6 +11353,8 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 join: true,
                 curtain: None,
                 panel_of: None,
+                slant,
+                profile: Vec::new(),
             }))),
             _ => None,
         })
@@ -11652,6 +11658,7 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
         mark,
         flip_facing: flag(c, p, "flip_facing")?,
         flip_hand: flag(c, p, "flip_hand")?,
+        slanted: flag(c, p, "slanted")?,
     };
     Ok(o)
 }
@@ -14032,6 +14039,8 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             join: true,
             curtain: None,
             panel_of: None,
+            slant: 0.0,
+            profile: Vec::new(),
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
@@ -18278,6 +18287,8 @@ const PLACED_BY: &[&str] = &[
     "upper_limit",
     "flip_facing",
     "flip_hand",
+    "slanted",
+    "slant",
     "level",
     "top_level",
     "view_range",

@@ -114,6 +114,8 @@ icon_names! {
     Flip,
     Attach,
     Detach,
+    EditProfile,
+    ResetProfile,
     Ai,
     Floor,
     WorkPlane,
@@ -1147,6 +1149,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(2.5, 20.0), (9.0, 4.0), (15.5, 20.0)]);
             g.line(&[(5.0, 14.5), (13.0, 14.5)]);
             g.line(&[(20.5, 4.0), (20.5, 20.0)]);
+        }
+        Icon::EditProfile => {
+            // A wall in elevation with a gable top, a hole in it, and a pencil on its edge.
+            g.closed(&[(3.0, 21.0), (3.0, 11.0), (10.0, 5.0), (17.0, 11.0), (17.0, 21.0)]);
+            g.closed(&[(7.0, 14.0), (11.0, 14.0), (11.0, 18.0), (7.0, 18.0)]);
+            g.line(&[(14.0, 9.0), (19.0, 4.0)]);
+            g.line(&[(16.0, 11.0), (21.0, 6.0)]);
+            g.line(&[(19.0, 4.0), (21.0, 6.0)]);
+            g.line(&[(14.0, 9.0), (13.0, 12.0), (16.0, 11.0)]);
+        }
+        Icon::ResetProfile => {
+            // The wall's rectangle again, and the arrow of an undo round its corner.
+            g.closed(&[(3.0, 21.0), (3.0, 9.0), (17.0, 9.0), (17.0, 21.0)]);
+            g.line(&[(11.0, 5.0), (16.0, 3.0), (21.0, 6.0), (21.0, 12.0)]);
+            g.line(&[(11.0, 5.0), (14.0, 2.5)]);
+            g.line(&[(11.0, 5.0), (14.5, 7.5)]);
         }
         Icon::Detach => {
             g.line(&[(3.0, 8.0), (12.0, 3.0), (21.0, 8.0)]);

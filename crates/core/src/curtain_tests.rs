@@ -340,7 +340,12 @@ fn what_a_curtain_wall_cant_be_yet_is_refused() {
     let mut s = session();
     grid(&mut s, "CW", &[1000.0], &[3000.0], json!({}));
     let id = wall(&mut s, "CW", 2000.0, 3000.0);
-    assert!(fails(&mut s, "modify", json!({"id": id, "arc": 45})).contains("curved"));
+    // Curved, it is faceted; but a segment wider than its arc's circle is no chord of it.
+    s.execute("modify", &json!({"id": id, "arc": 45})).unwrap_or_else(|e| panic!("{e}"));
+    grid(&mut s, "Wide", &[2500.0], &[3000.0], json!({}));
+    let e = fails(&mut s, "modify", json!({"id": id, "arc": 180, "type": "Wide"}));
+    assert!(e.contains("chord"), "{e}");
+    s.execute("modify", &json!({"id": id, "arc": 0})).unwrap_or_else(|e| panic!("{e}"));
     assert!(fails(&mut s, "modify", json!({"id": id, "location": "centre"})).contains("exterior"));
     let e = fails(&mut s, "door", json!({"wall": id, "offset": 1000}));
     assert!(e.contains("panel"), "{e}");

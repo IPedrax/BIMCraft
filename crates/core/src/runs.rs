@@ -276,7 +276,7 @@ fn run_arm_at(g: &Geom, s: f64, forward: bool, mine: bool) -> walls::Arm {
     walls::Arm { mine, way, ccw, cw, centre: p, thick: g.width, ..Default::default() }
 }
 
-/// A wall's arm at `s` mm along its line, as [`walls::arm`] makes one at an end: left of its way first.
+/// A wall's arm at `s` mm along its line, as [`walls::arm_at`] makes one at an end: left of its way first.
 fn wall_arm_at(m: &Model, w: &Wall, s: f64, forward: bool, mine: bool) -> walls::Arm {
     let axis = Axis::of(w);
     let (ext, int) = walls::faces(m, w);

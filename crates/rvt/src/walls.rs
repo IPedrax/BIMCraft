@@ -341,6 +341,8 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 join: true,
                 curtain: None,
                 panel_of: None,
+                slant: 0.0,
+                profile: Vec::new(),
             };
             let note = if tid == 0 {
                 "no_type".to_string()

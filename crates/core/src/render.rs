@@ -693,11 +693,17 @@ fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, ind
     elements
         .iter()
         .filter(|(id, _)| look.shows(*id))
-        .filter_map(|&(id, e)| match e {
+        .flat_map(|&(id, e)| match e {
             // A curtain wall is drawn part by part: nothing fills it as a whole.
-            Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => None,
-            Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, index))),
-            _ => stands(m, id, e, index).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
+            Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => Vec::new(),
+            // Its outline at the cut plane: its ends as what it joins there has them, a slanted one where it has leant to, an
+            // edited profile's only where that reaches the plane.
+            Element::Wall(w) if m.spans(w, z) => walls::plan_cut(m, id, index, z).into_iter().map(|o| (id, o)).collect(),
+            _ => stands(m, id, e, index)
+                .filter(|(_, bottom, top)| *bottom <= z && z < *top)
+                .map(|(outline, ..)| (id, outline))
+                .into_iter()
+                .collect(),
         })
         .collect()
 }
@@ -941,16 +947,44 @@ fn curtains_in_plan<'a>(m: &'a Model, range: &PlanRange, shown: impl Fn(Id) -> b
 /// cut plane passes through filled and inked, and the panels it passes through thin (at coarse detail, a line down their middle).
 fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, range: &PlanRange, seen: bool) {
     use crate::curtain::{self, PartKind};
-    let (id, w, l) = (wall.0, wall.1, &wall.2);
-    let (axis, plane, cut) = (walls::Axis::of(w), curtain::grid_plane(m, w), range.cut - m.own_base(w));
+    let (id, l) = (wall.0, &wall.2);
+    // Its parts stand on its grid's surface: a curved wall's chords, a slanted wall's slope.
+    let f = &l.surface;
+    // A part's corners in the model, `[along, across, up]` from its centre in its own axes.
+    let corners = |p: &curtain::Part, size: [f64; 3]| -> [[f64; 3]; 8] {
+        let [along, up, across] = p.centre;
+        let [da, dz, dc] = size.map(|x| x / 2.0);
+        let (ax, o) = (f.axes(along, p.turn), f.at(along, up, across));
+        let at = |x: f64, y: f64, z: f64| std::array::from_fn(|k| o[k] + ax[0][k] * x + ax[1][k] * y + ax[2][k] * z);
+        [
+            at(-da, -dc, -dz),
+            at(da, -dc, -dz),
+            at(da, dc, -dz),
+            at(-da, dc, -dz),
+            at(-da, -dc, dz),
+            at(da, -dc, dz),
+            at(da, dc, dz),
+            at(-da, dc, dz),
+        ]
+    };
+    // How high a part reaches in the model, from its lowest corner to its highest.
+    let span = |p: &curtain::Part, size: [f64; 3]| {
+        corners(p, size).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), c| (lo.min(c[2]), hi.max(c[2])))
+    };
     let ring = |p: &curtain::Part, s: &curtain::Shape| -> Vec<P2> {
-        if p.turn != 0.0 || s.plan.is_some() {
-            return p.corners(s).iter().map(|q| axis.at(q[0], plane + q[1])).collect();
+        if s.plan.is_some() {
+            return p.corners(s).iter().map(|q| f.at(q[0], 0.0, q[1])).map(|c| P2(c[0], c[1])).collect();
         }
-        let [along, _, across] = p.centre;
-        let [da, _, dc] = s.size.map(|x| x / 2.0);
-        let c = plane + across;
-        vec![axis.at(along - da, c - dc), axis.at(along + da, c - dc), axis.at(along + da, c + dc), axis.at(along - da, c + dc)]
+        let c = corners(p, s.size);
+        if f.leans() {
+            // Tilted: where the cut plane passes through it, or seen below the plane, its middle.
+            let (lo, hi) = span(p, s.size);
+            let z = if lo <= range.cut && range.cut < hi { range.cut } else { (lo + hi) / 2.0 };
+            let faces: [[usize; 4]; 6] = [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]];
+            let tris: Vec<[[f64; 3]; 3]> = faces.iter().flat_map(|q| [[c[q[0]], c[q[1]], c[q[2]]], [c[q[0]], c[q[2]], c[q[3]]]]).collect();
+            return view3d::level_slice(&tris, z).into_iter().max_by_key(Vec::len).unwrap_or_default();
+        }
+        c[..4].iter().map(|q| P2(q[0], q[1])).collect()
     };
     let coarse = d.detail == Detail::Coarse;
     let style = |kind: PartKind| m.object_style(crate::graphics::part_row(kind));
@@ -972,7 +1006,8 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         for piece in l.pieces() {
             let Some(p) = l.parts.get(piece.first) else { continue };
             let Some(s) = l.shapes.get(p.shape as usize).filter(|s| look.shows_curtain_part(s.kind)) else { continue };
-            if piece.centre[1] + piece.size[1] / 2.0 <= cut {
+            let whole_part = curtain::Part { centre: piece.centre, ..*p };
+            if span(&whole_part, piece.size).1 <= range.cut {
                 // One piece, however many parts: no joint where a mullion runs on.
                 let whole = curtain::Part { centre: piece.centre, ..*p };
                 let r = if s.plan.is_some() { ring(p, s) } else { ring(&whole, &curtain::Shape { size: piece.size, ..s.clone() }) };
@@ -985,7 +1020,10 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         return;
     }
     d.part(Part::Cut);
-    let crossing = |p: &curtain::Part, s: &curtain::Shape| (p.centre[1] - s.size[1] / 2.0 <= cut) && (cut < p.centre[1] + s.size[1] / 2.0);
+    let crossing = |p: &curtain::Part, s: &curtain::Shape| {
+        let (lo, hi) = span(p, s.size);
+        lo <= range.cut && range.cut < hi
+    };
     // The panels first, for the mullions to stand over where they touch.
     for p in &l.parts {
         let Some(s) =
@@ -993,10 +1031,10 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         else {
             continue;
         };
-        if coarse {
-            let [along, _, across] = p.centre;
-            let c = plane + across;
-            ink(d, &[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], PartKind::Panel, true, false);
+        if coarse && !f.leans() {
+            // Its middle line, along it.
+            let c = corners(p, [s.size[0], s.size[1], 0.0]);
+            ink(d, &[P2(c[0][0], c[0][1]), P2(c[1][0], c[1][1])], PartKind::Panel, true, false);
         } else {
             ink(d, &ring(p, s), PartKind::Panel, true, true);
         }
@@ -2555,7 +2593,8 @@ fn section_base_cancellable(
             return None;
         }
         let layers = m.type_layers("wall", &w.type_name);
-        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
+        // A slanted wall's layers lean across the section: it shows in poché, its layers not yet drawn.
+        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse || w.slant != 0.0 {
             continue;
         }
         d.owner = Some(wall);
@@ -3432,6 +3471,37 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
     }
+    // A slanted wall leans across the plan: below the cut plane the plan sees its foot, and the top of one that stops under the
+    // plane, in projection, but where what is cut covers them.
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+        let Element::Wall(w) = e else { continue };
+        if w.slant == 0.0 || crate::curtain::pattern(m, w).is_some() {
+            continue;
+        }
+        let (lo, hi) = (m.base_z(w), m.top_z(w));
+        if !(range.depth - TOL < hi && lo <= range.cut) {
+            continue;
+        }
+        let cut = if m.spans(w, range.cut) { walls::plan_cut(m, id, index, range.cut) } else { Vec::new() };
+        let covers: Vec<Vec<P2>> = cut.iter().flat_map(|r| walls::convex_pieces(r)).collect();
+        let covers: Vec<&[P2]> = covers.iter().map(Vec::as_slice).collect();
+        // Its foot, unless seen below whole already (`seen_below` outlines it); its top when it stops under the plane.
+        let mut seen = Vec::new();
+        if m.spans(w, range.cut) {
+            seen.push(walls::outline_at_in(m, id, index, lo + 1e-3));
+        }
+        if hi <= range.cut {
+            seen.push(walls::outline_at_in(m, id, index, hi - 1e-3));
+        }
+        d.owner = Some(id);
+        for ring in seen {
+            let mut closed = ring.clone();
+            closed.extend(ring.first().copied());
+            for part in lines_outside_columns(&closed, &covers) {
+                d.line(&part, BY_CATEGORY, INK, false);
+            }
+        }
+    }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
     for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Some(g) = m.run_geom(e).filter(|g| !g.vertical()) else { continue };
@@ -3541,12 +3611,14 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             continue;
         }
         d.owner = Some(id);
-        let geometry = walls::layer_geometry(m, id, index);
-        let along = (w.end - w.start).unit();
+        let geometry = walls::layer_geometry_at(m, id, index, Some(range.cut));
+        // The material's pattern lies on the project's axes from its origin, not along the wall: walls of one material
+        // show one hatch, running on through their corners.
+        let along = P2(1.0, 0.0);
         for (k, layer) in layers.iter().enumerate() {
-            let ring = geometry.band(k);
+            let rings = walls::profile::clip(w, range.cut - m.own_base(w), &geometry.band(k));
             let room = layer.thickness * d.view.scale;
-            for piece in outside_columns(vec![ring], &columns) {
+            for piece in outside_columns(rings, &columns) {
                 cut_layer(&mut d, m, layer, &piece, along, room);
             }
         }
@@ -3580,7 +3652,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             for (by, voids) in m.hosted_voids(id) {
                 d.owner = Some(by).filter(|c| shown(*c));
                 let past = 3.0 / d.view.scale;
-                wall_voids(&mut d, &Axis::of(w), walls::faces(m, w), past, &voids, range.cut);
+                wall_voids(&mut d, &Axis::of(w), walls::faces_at(m, w, Some(range.cut)), past, &voids, range.cut);
             }
         }
     }
@@ -4546,7 +4618,8 @@ fn below_tris(tris: &[[view3d::P3; 3]], cut: f64) -> Vec<[view3d::P3; 3]> {
 #[allow(clippy::too_many_arguments)]
 fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64, shown: bool, hides: &dyn Fn(&str) -> bool) {
     let Some(h) = m.opening_hole(e, cut) else { return };
-    let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
+    // A slanted wall's faces where the plane cuts it.
+    let (axis, (ext, int)) = (Axis::of(w), walls::faces_at(m, w, Some(cut)));
     let (s0, s1) = (h.s0, h.s1);
     // Clear a little past the faces too, where the outlines' outer halves are; along an arc, an arc.
     let past = 3.0 / d.view.scale;
@@ -7431,6 +7504,55 @@ mod tests {
         // A weight overridden is a pen too.
         s.execute("graphics", &serde_json::json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 13}}}})).unwrap();
         assert!((widest(&s, view, wall) - 0.7 * 5.0 * 2.0).abs() < 1e-4, "pen 13, 0.7 mm: {}", widest(&s, view, wall));
+    }
+
+    #[test]
+    fn walls_of_one_material_share_one_hatch_laid_from_the_origin_whichever_way_they_run() {
+        // A rectangle of hatched walls, each running its own way round: the hatch is the material's, not the wall's, so
+        // every wall's lines run the same way and lie on the same lattice from the project's origin.
+        let mut s = Session::new();
+        s.script(
+            r#"material {"name": "Hatched", "cut": "diagonal"}
+               type {"category": "wall", "name": "Hatched Wall", "layers": [{"material": "Hatched", "thickness": 300}]}
+               wall {"points": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "closed": true, "type": "Hatched Wall"}"#,
+        )
+        .unwrap();
+        let walls: Vec<Id> = s.model.elements.iter().filter_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).collect();
+        assert_eq!(walls.len(), 4);
+        let level = s.model.levels()[0].0;
+        let view = View { angle: 0.0, scale: 0.1, cx: 3000.0, cy: 2000.0, width: 900, height: 700 };
+        let d = draw(&s.model, level, view);
+        let mut ways = Vec::new();
+        let mut lattice = Vec::new();
+        for ((p, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+            let (Prim::Line { pts, .. }, Some(o), Part::Pattern) = (p, o, part) else { continue };
+            if !walls.contains(o) || pts.len() != 2 {
+                continue;
+            }
+            let (a, b) = (P2(f64::from(pts[0].0), f64::from(pts[0].1)), P2(f64::from(pts[1].0), f64::from(pts[1].1)));
+            if a.dist(b) < 4.0 {
+                continue;
+            }
+            let u = (b - a).unit();
+            let u = if u.0 < 0.0 { u * -1.0 } else { u };
+            ways.push((*o, u));
+            // How far across the lines each lies: on one lattice, a whole number of steps from any other.
+            lattice.push((*o, a.dot(u.perp())));
+        }
+        for w in &walls {
+            assert!(ways.iter().any(|(o, _)| o == w), "wall {w} is hatched");
+        }
+        let (_, first) = ways[0];
+        for (o, u) in &ways {
+            assert!(u.dist(first) < 0.02, "wall {o}'s hatch runs {u:?}, another's {first:?}");
+        }
+        let gaps: Vec<f64> = lattice.iter().map(|(_, c)| *c).collect();
+        let step = gaps.windows(2).map(|w| (w[1] - w[0]).abs()).filter(|g| *g > 1.0).fold(f64::INFINITY, f64::min);
+        assert!(step.is_finite());
+        for c in &gaps {
+            let k = (c - gaps[0]) / step;
+            assert!((k - k.round()).abs() < 0.05, "a line {k} steps off the others' lattice");
+        }
     }
 
     #[test]

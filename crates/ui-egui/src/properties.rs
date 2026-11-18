@@ -149,6 +149,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
+            ("Constraints", "slant", msg!("Angle From Vertical (°)"), Number),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
@@ -161,6 +162,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", msg!("Flip Facing"), Flag),
             ("Other", "flip_hand", msg!("Flip Hand"), Flag),
+            ("Other", "slanted", msg!("Slanted with Wall"), Flag),
         ],
         "window" => &[
             ("Constraints", "level", "Level", LevelName),
@@ -169,6 +171,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "host", "Host Wall", Link),
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", "Flip Facing", Flag),
+            ("Other", "slanted", "Slanted with Wall", Flag),
         ],
         "room" => &[
             ("Constraints", "level", "Level", Level),

@@ -53,6 +53,14 @@ fn harness(script: &str, step: f32, profile: crate::style::Profile) -> Harness<'
     h
 }
 
+/// A tool of the Modify Wall panel: from its list where a narrow ribbon has handed it over.
+fn wall_tool(h: &mut Harness<BimApp>, label: &str) {
+    if h.query_by_label(label).is_none() {
+        press(h, "Modify Wall ▾");
+    }
+    press(h, label);
+}
+
 fn press(h: &mut Harness<BimApp>, label: &str) {
     h.get_by_label(label).click();
     h.run();
@@ -3498,8 +3506,9 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     h.run();
     press(&mut h, "Finish Face: Interior");
     assert_eq!((field(&h, wall, "location"), field(&h, wall, "start")), (json!("interior-finish"), json!([0.0, -100.0])));
-    // Attach Top/Base, then the roof, by its edge seen overhead: the wall's top follows it.
-    press(&mut h, "Attach Top/Base");
+    // Attach Top/Base, then the roof, by its edge seen overhead: the wall's top follows it. Beside the wall's Mode panel a 1280
+    // ribbon lists it in the Modify Wall panel.
+    wall_tool(&mut h, "Attach Top/Base");
     let roof = ids(&h, "roof")[0];
     click(&mut h, P2(4000.0, -600.0));
     assert_eq!(field(&h, wall, "attach_top"), json!(roof));
@@ -3509,7 +3518,7 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     // Flipped from the same tab, it runs the other way; detached, its top is its own again.
     press(&mut h, "Flip");
     assert_eq!(walls(&h)[0], (P2(8000.0, -100.0), P2(0.0, -100.0)));
-    press(&mut h, "Detach Top/Base");
+    wall_tool(&mut h, "Detach Top/Base");
     assert_eq!(field(&h, wall, "attach_top"), Value::Null);
 }
 
@@ -6510,6 +6519,9 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
 #[test]
 fn unhide_element_and_unhide_category_bring_back_what_the_selection_hides_while_revealing() {
     let mut h = app(BOX);
+    // Room for the View panel's tools beside a wall's Mode panel: at 1280 the ribbon lists the last of them.
+    h.set_size(egui::vec2(1600.0, 800.0));
+    h.run();
     let walls = ids(&h, "wall");
     // A wall hidden for good can't be picked, and offers nothing to unhide.
     click(&mut h, P2(4000.0, 0.0));
@@ -7670,6 +7682,7 @@ mod typeprops;
 mod underlay;
 mod vertical_tools;
 mod view_controls;
+mod wall_shapes;
 mod window;
 mod work_plane_based;
 mod working3d;

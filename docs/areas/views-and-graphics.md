@@ -695,7 +695,10 @@ A material's cut and surface may be one of the project's fill patterns (`Materia
 library reference like a region type's), over the patterns drawn in code (`model::Pattern`), which stay for the materials
 that name them: `material` takes either name for `cut` and `surface`, and the desktop's material editor lists both. A fill
 pattern a material shows can't be deleted, and is renamed with it. `render::fill_pattern` draws a fill pattern for a
-region, a cut layer (its courses along the layer) and a floor's or a ceiling's surface. A model pattern is aligned and
+region, a cut layer and a floor's or a ceiling's surface. A wall's cut layer in a plan lies on the project's axes from its
+origin, not along the wall (`render::cut_layer` takes `P2(1, 0)` there, as a section already did), so walls of one material show
+one hatch that runs on through their corners whichever way each wall runs; a floor's or a roof's layer in a section still runs along
+its slope. A model pattern is aligned and
 rotated as Revit's: a filled region and a floor hold `pattern_origin` and `pattern_angle` (`fills::strokes_placed`), which
 Move, Rotate and Mirror carry with the element; Align with a pattern line picked second (`render::pattern_line_at`) moves the
 origin so that line lies on the reference, and Properties shows Pattern Angle. `Model::align_pattern(id, reference, line)` is

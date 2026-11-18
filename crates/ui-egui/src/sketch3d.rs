@@ -23,8 +23,25 @@ use crate::{BimApp, Sheet, Status, Tool, draw};
 /// How near a grip, in points, a press takes it.
 const GRIP: f32 = 8.0;
 
-/// The sketch's plane as the 3D view shows it: the camera, where the view is on screen and the pixels a point holds, and the
-/// plane over the plan the lines lie on.
+impl Surface {
+    /// Wall `id`'s face for Edit Profile: along it from its start, up from its base, as a roof's profile is drawn on its line.
+    pub(crate) fn of_wall(m: &Model, id: Id) -> Option<Surface> {
+        let w = m.wall(id)?;
+        let u = (w.end - w.start).unit();
+        (u.length() > 0.5).then(|| Surface::Profile(Frame { origin: [w.start.0, w.start.1, m.own_base(w)], normal: [u.1, -u.0, 0.0] }))
+    }
+
+    /// The sketch's point `q` in the model.
+    pub(crate) fn world(&self, q: P2) -> [f64; 3] {
+        match self {
+            Surface::Plan(p) => [q.0, q.1, p.at(q)],
+            Surface::Profile(frame) => frame.point(q),
+        }
+    }
+}
+
+/// The sketch's plane as a view shows it (the 3D view, or a section or an elevation looking at a wall): the camera, where the
+/// view is on screen and the pixels a point holds, and the face the lines lie on.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Plane {
     pub cam: Camera,
@@ -42,11 +59,7 @@ pub(crate) enum Surface {
 impl Plane {
     /// Where point `q` of the plane shows on screen.
     pub fn screen(&self, q: P2) -> Pos2 {
-        let point = match self.surface {
-            Surface::Plan(p) => [q.0, q.1, p.at(q)],
-            Surface::Profile(frame) => frame.point(q),
-        };
-        let (x, y, _) = self.cam.project(point);
+        let (x, y, _) = self.cam.project(self.surface.world(q));
         self.rect.min + vec2(x as f32 / self.ppp, y as f32 / self.ppp)
     }
 
@@ -116,8 +129,15 @@ impl BimApp {
     /// The plane the sketch lies on while it is sketched in the 3D view: an Edit Boundary begun there, of what still has a
     /// plane, or a new one on the work plane it began on.
     pub(crate) fn sketch_surface(&self) -> Option<Surface> {
-        let sk = self.sketch.as_ref().filter(|sk| sk.plan == Sheet::View3D)?;
+        self.sketch_face_in(Sheet::View3D)
+    }
+
+    /// The surface a sketch begun in `sheet` lies on: Edit Profile's, a wall's face, in a section or an elevation too.
+    pub(crate) fn sketch_face_in(&self, sheet: Sheet) -> Option<Surface> {
+        let sk = self.sketch.as_ref().filter(|sk| sk.plan == sheet)?;
         match sk.of {
+            Of::Profile(id) => Surface::of_wall(&self.session.model, id),
+            _ if sheet != Sheet::View3D => None,
             Of::Edit(id) => self.session.model.sketch_plane(id).map(Surface::Plan),
             Of::RoofProfile(id) => workplane::roof_profile(&self.session.model, id).map(Surface::Profile),
             _ => sk.surface.map(Surface::Plan),
@@ -130,16 +150,24 @@ impl BimApp {
     fn snap3(&self, m: &Model, plane: &Plane, raw: P2, from: &[P2], square: bool) -> P2 {
         let Some(sk) = &self.sketch else { return raw };
         let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };
+        // A wall's profile, in its face's own axes: onto the sketch's lines (their ends, middles, crossings, the nearest point
+        // of one), the wall's base and ends and the levels across it, with the plan's switches and Shift's square step.
+        let on_lines = |traces: &[(P2, P2)]| {
+            let curves: Vec<bimcraft_core::curves::Curve> = sk.lines.iter().map(|l| l.curve.clone()).collect();
+            snap::among(traces, &[], &curves, raw, reach, from, square, &self.snaps_now()).at
+        };
+        if let Of::Profile(id) = sk.of {
+            return on_lines(&crate::profile::traces(m, id));
+        }
         if matches!(sk.of, Of::RoofProfile(_)) {
-            let curves: Vec<_> = sk.lines.iter().map(|l| l.curve.clone()).collect();
-            return snap::among(&[], &[], &curves, raw, reach, from, square, &self.snaps_now()).at;
+            return on_lines(&[]);
         }
         let (level, editing) = match sk.of {
             Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
-            Of::Region { .. } | Of::Form { .. } | Of::RoofProfile(_) => (None, None),
+            Of::Region { .. } | Of::Form { .. } | Of::Profile(_) | Of::RoofProfile(_) => (None, None),
         };
-        let Some(level) = level else { return raw };
+        let Some(level) = level else { return on_lines(&[]) };
         let sketch = snap::Sketch { view: level, lines: &sk.lines, editing };
         snap::in_sketch(m, sketch, raw, reach, from, square, &self.snaps_now()).at
     }
