@@ -31,6 +31,15 @@ fn app_at(script: &str, step: f32) -> Harness<'static, BimApp> {
     harness(script, step, crate::style::Profile::Rev)
 }
 
+/// `app` in a window wide enough for a selected wall's Modify tab: at 1280 its panels fold into lists (Clipboard, Modify, View...),
+/// so the tests that press Rotate, Delete and the like on a selection use this one.
+fn wide(script: &str) -> Harness<'static, BimApp> {
+    let mut h = app(script);
+    h.set_size(vec2(1600.0, 800.0));
+    h.run();
+    h
+}
+
 /// The app on a script in BIMCraft's own profile: no ribbon, the Tools palette down the left, the Inspector and the Navigator down
 /// the right. `app` is Rev's, with Revit's palette layout: the tests of what the tools do were written round the ribbon.
 fn bimcraft(script: &str) -> Harness<'static, BimApp> {
@@ -1246,7 +1255,7 @@ fn new_asks_before_dropping_unsaved_changes() {
 
 #[test]
 fn the_ribbon_has_revit_tabs_and_a_contextual_tab_for_the_tool_or_selection() {
-    let mut h = app(SAMPLE);
+    let mut h = wide(SAMPLE);
     for label in ["File", "Architecture", "View", "Wall"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
@@ -1959,7 +1968,7 @@ fn the_palette_keeps_its_fields_and_apply_inside_it_whatever_their_labels() {
 
 #[test]
 fn rotate_turns_the_selection_about_its_middle() {
-    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]]}"#);
+    let mut h = wide(r#"wall {"points": [[0, 0], [4000, 0]]}"#);
     click(&mut h, P2(3000.0, 0.0));
     press(&mut h, "Rotate");
     // From the middle of the wall: the angle's start along it, its end a quarter turn round.
@@ -3692,7 +3701,7 @@ fn rotating_a_camera_about_its_eye_keeps_the_eye_and_turns_the_target() {
 #[test]
 fn rotate_centre_shows_a_walls_snap_before_the_click_and_takes_it() {
     use bimcraft_core::snap::Kind;
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     click(&mut h, P2(4000.0, 0.0));
     press(&mut h, "Rotate");
     press(&mut h, "Place Centre");
@@ -3704,7 +3713,7 @@ fn rotate_centre_shows_a_walls_snap_before_the_click_and_takes_it() {
 
 #[test]
 fn rotate_snaps_the_angle_s_start_and_end_to_what_is_drawn() {
-    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[1000, 3000], [3000, 3000]]}}"));
+    let mut h = wide(&format!("{BOX}\nwall {{\"points\": [[1000, 3000], [3000, 3000]]}}"));
     let wall =
         ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(1000.0, 3000.0))).unwrap();
     click(&mut h, P2(2000.0, 3000.0));
@@ -3720,7 +3729,7 @@ fn rotate_snaps_the_angle_s_start_and_end_to_what_is_drawn() {
 
 #[test]
 fn rotate_takes_an_angle_typed_over_the_view() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     let wall = ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(0.0, 0.0))).unwrap();
     click(&mut h, P2(4000.0, 0.0));
     press(&mut h, "Rotate");
@@ -3738,7 +3747,7 @@ fn rotate_takes_an_angle_typed_over_the_view() {
 #[test]
 fn rotate_centre_snaps_to_a_notes_anchor() {
     use bimcraft_core::snap::Kind;
-    let mut h = app(&format!("{BOX}\ntext {{\"text\": \"Note\", \"at\": [4000, 3000], \"leader\": [5000, 3000]}}"));
+    let mut h = wide(&format!("{BOX}\ntext {{\"text\": \"Note\", \"at\": [4000, 3000], \"leader\": [5000, 3000]}}"));
     click(&mut h, P2(4000.0, 0.0));
     press(&mut h, "Rotate");
     press(&mut h, "Place Centre");
@@ -3750,7 +3759,7 @@ fn rotate_centre_snaps_to_a_notes_anchor() {
 
 #[test]
 fn a_click_on_a_cameras_mark_takes_its_eye() {
-    let mut h = app(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
+    let mut h = wide(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
     click(&mut h, P2(4000.0, 0.0));
     press(&mut h, "Rotate");
     press(&mut h, "Place Centre");
@@ -3824,7 +3833,7 @@ fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
 
 #[test]
 fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
     choose(&mut h, "Location Line:", "Wall Centre Line");
@@ -3859,7 +3868,7 @@ fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
 
 #[test]
 fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_and_deletes() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
     choose(&mut h, "Location Line:", "Wall Centre Line");
@@ -3906,7 +3915,7 @@ fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_a
 
 #[test]
 fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
     choose(&mut h, "Location Line:", "Wall Centre Line");
@@ -5508,7 +5517,7 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
 
 #[test]
 fn unhide_element_and_unhide_category_bring_back_what_the_selection_hides_while_revealing() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     let walls = ids(&h, "wall");
     // A wall hidden for good can't be picked, and offers nothing to unhide.
     click(&mut h, P2(4000.0, 0.0));

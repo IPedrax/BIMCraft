@@ -420,7 +420,7 @@ fn a_filled_regions_lines_take_the_line_style_picked_each_its_own() {
 
 #[test]
 fn add_and_delete_vertex_and_convert_spline_on_modify_lines() {
-    let mut h = app(&format!(
+    let mut h = wide(&format!(
         "{BOX}\ndetail_line {{\"points\": [[1000, 1000], [4000, 1000], [4000, 4000]]}}\ndetail_line {{\"fit\": [[1000, 5000], [2500, 5500], [4000, 5000]]}}"
     ));
     let l = ids(&h, "line");

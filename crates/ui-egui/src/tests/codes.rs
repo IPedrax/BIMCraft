@@ -118,7 +118,7 @@ fn a_stair_s_landings_and_turns_are_edited_in_properties() {
 
 #[test]
 fn a_stair_selected_flips_and_shows_its_code_check_from_the_ribbon() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     h.state_mut().run("building_code", json!({"set": "nbr"}));
     let id =
         h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90, "riser": 200, "tread": 240, "width": 1200})).unwrap()["id"]
@@ -217,7 +217,7 @@ fn the_code_check_window_cuts_the_floor_over_a_stair_open() {
 
 #[test]
 fn the_stair_tool_draws_a_stair_by_hand_and_a_made_stair_becomes_a_sketch() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     tool(&mut h, "Stair");
     press(&mut h, "Railings");
     press(&mut h, "By Risers");

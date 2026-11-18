@@ -46,7 +46,7 @@ fn extrusion_roof_edit_profile_commits_an_open_chain_and_cancel_keeps_the_model(
 fn extrusion_roof_rotated_profile_grips_and_numeric_heights_work_in_both_profiles() {
     for rev in [true, false] {
         let script = "level {\"name\": \"Roof level\", \"elevation\": 2000}\nroof {\"level\": \"Roof level\", \"extrusion\": {\"line\": [[1000,2000],[4600,6800]], \"profile\": [[0,0],[3000,1500],[6000,0]], \"from\": -500, \"to\": 4000}, \"offset\": 1000}";
-        let mut h = if rev { app(script) } else { bimcraft(script) };
+        let mut h = if rev { wide(script) } else { bimcraft(script) };
         let roof = ids(&h, "roof")[0];
         h.state_mut().selection = vec![roof];
         h.run();
