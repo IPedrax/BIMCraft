@@ -16,33 +16,110 @@
 //! - Speed 3 m/s at most (the standard lets a pipe go faster where water hammer and noise are shown not to matter); at least
 //!   10 kPa dynamic at a point of use.
 
-/// PVC soldável: (DN = outside diameter, wall) in mm, NBR 5648.
-pub const PVC: &[(f64, f64)] =
-    &[(20.0, 1.5), (25.0, 1.7), (32.0, 2.1), (40.0, 2.4), (50.0, 3.0), (60.0, 3.3), (75.0, 4.2), (85.0, 4.7), (110.0, 6.1)];
+use serde::{Deserialize, Serialize};
 
-/// Equivalent lengths (m) of rigid PVC fittings by DN: elbow 90°, elbow 45°, tee straight through, tee side outlet, gate valve,
-/// globe valve, check valve (light).
-const LE: &[(f64, [f64; 7])] = &[
-    (20.0, [1.1, 0.4, 0.7, 2.3, 0.1, 11.1, 2.5]),
-    (25.0, [1.2, 0.5, 0.8, 2.4, 0.2, 11.4, 2.7]),
-    (32.0, [1.5, 0.7, 0.9, 3.1, 0.3, 15.0, 3.8]),
-    (40.0, [2.0, 1.0, 1.5, 4.6, 0.4, 22.0, 4.9]),
-    (50.0, [3.2, 1.3, 2.2, 7.3, 0.7, 35.8, 6.8]),
-    (60.0, [3.4, 1.5, 2.3, 7.6, 0.8, 37.9, 7.1]),
-    (75.0, [3.7, 1.7, 2.4, 7.8, 0.9, 38.0, 8.2]),
-    (85.0, [3.9, 1.8, 2.5, 8.0, 0.9, 40.0, 9.3]),
-    (110.0, [4.3, 1.9, 2.6, 8.3, 1.0, 42.3, 10.4]),
-];
+/// The rules cold water is sized by: the Plumbing tab's Cold Water section (`data/codes/plumbing/nbr.json`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WaterRules {
+    /// The method a design flow is worked out by when the caller names none: `weights` or `sum`.
+    pub flow_method: String,
+    /// `Q = k √ΣP`'s `k`, L/s.
+    pub flow_coefficient: f64,
+    /// The fastest water may go, m/s.
+    pub max_speed: f64,
+    /// The least dynamic pressure at a point of use, kPa.
+    pub min_use_kpa: f64,
+    /// The pipes' roughness, mm.
+    pub roughness: f64,
+    /// The pipes: (DN, the outside diameter, and wall) in mm.
+    pub pipes: Vec<[f64; 2]>,
+    /// The fittings `water_size` counts, in the order of `equivalent_lengths`' columns after the DN.
+    pub fittings: Vec<String>,
+    /// Equivalent lengths (m) by DN: `[DN, one for each fitting…]`.
+    pub equivalent_lengths: Vec<Vec<f64>>,
+}
 
-/// The fittings `water_size` counts, in the order of `LE`'s columns.
-pub const FITTINGS: &[&str] = &["elbow90", "elbow45", "tee_through", "tee_side", "gate", "globe", "check"];
+impl crate::codes::Section for WaterRules {
+    const DISCIPLINE: crate::codes::Discipline = crate::codes::Discipline::Plumbing;
+    const KEY: &'static str = "cold_water";
+    fn check(&self) -> Result<(), String> {
+        let positive = |v: f64| v.is_finite() && v > 0.0;
+        for (k, v) in [("flow_coefficient", self.flow_coefficient), ("max_speed", self.max_speed), ("roughness", self.roughness)] {
+            if !positive(v) || v > 1000.0 {
+                return Err(format!("cold water: `{k}` is a positive number, not {v}"));
+            }
+        }
+        if !self.min_use_kpa.is_finite() || !(0.0..=10_000.0).contains(&self.min_use_kpa) {
+            return Err(format!("cold water: `min_use_kpa` is from 0 to 10000 kPa, not {}", self.min_use_kpa));
+        }
+        if Method::parse(&self.flow_method).is_none() {
+            return Err(format!("cold water: `flow_method` is weights or sum, not `{}`", self.flow_method));
+        }
+        if self.pipes.is_empty()
+            || self.pipes.len() > 200
+            || self.pipes.iter().any(|[dn, wall]| !positive(*dn) || !positive(*wall) || 2.0 * wall >= *dn)
+        {
+            return Err("cold water: `pipes` are [DN, wall] in mm, the wall under half the DN, 200 at most".into());
+        }
+        if self.pipes.windows(2).any(|w| w[0][0] >= w[1][0]) {
+            return Err("cold water: `pipes` go from the smallest DN up".into());
+        }
+        if self.fittings.len() > 50 || self.equivalent_lengths.len() > 200 {
+            return Err("cold water: 50 fittings and 200 rows of equivalent lengths at most".into());
+        }
+        for row in &self.equivalent_lengths {
+            if row.len() != self.fittings.len() + 1 || row.iter().any(|v| !v.is_finite() || *v < 0.0) {
+                return Err("cold water: each row of `equivalent_lengths` is a DN and a length for each fitting, none negative".into());
+            }
+        }
+        Ok(())
+    }
+}
 
-/// The fastest water may go, m/s.
-pub const MAX_SPEED: f64 = 3.0;
-/// The least dynamic pressure at a point of use, kPa.
-pub const MIN_USE_KPA: f64 = 10.0;
-/// The roughness of PVC, mm.
-pub const EPS_PVC: f64 = 0.0015;
+impl WaterRules {
+    /// The design flow (L/s) of fixtures given as (kind, count), by `fixtures`' flows and weights.
+    pub fn design_flow(&self, method: Method, fixtures: &[(&str, f64)], library: &crate::plumbing::Fixtures) -> f64 {
+        let (mut q, mut w) = (0.0, 0.0);
+        for (kind, n) in fixtures {
+            if let Some(f) = library.fixture(kind) {
+                q += f.cold_flow * n;
+                w += f.weight * n;
+            }
+        }
+        match method {
+            Method::Sum => q,
+            Method::Weights => (self.flow_coefficient * w.sqrt()).min(q),
+        }
+    }
+
+    /// The inner diameter (mm) of a pipe by its DN, or `None` for a DN the table does not list.
+    pub fn inside(&self, dn: f64) -> Option<f64> {
+        self.pipes.iter().find(|p| p[0] == dn).map(|p| p[0] - 2.0 * p[1])
+    }
+
+    /// The DNs the pipes come in.
+    pub fn dns(&self) -> Vec<f64> {
+        self.pipes.iter().map(|p| p[0]).collect()
+    }
+
+    /// A fitting's equivalent length (m) in a DN, or `None` for a DN or a fitting the table does not have.
+    pub fn equivalent_length(&self, dn: f64, fitting: &str) -> Option<f64> {
+        let col = self.fittings.iter().position(|f| f == fitting)?;
+        self.equivalent_lengths.iter().find(|r| r.first() == Some(&dn)).and_then(|r| r.get(col + 1).copied())
+    }
+
+    /// The smallest DN whose speed at `q` L/s is within `max_speed`, or `None` when the table has none that carries it.
+    pub fn smallest_dn(&self, q: f64) -> Option<f64> {
+        self.dns().into_iter().find(|dn| self.inside(*dn).is_some_and(|d| head_loss(q, d, self.roughness).0 <= self.max_speed + 1e-9))
+    }
+}
+
+/// The library's cold water rules.
+fn library() -> std::sync::Arc<WaterRules> {
+    crate::codes::library_rules::<WaterRules>()
+}
+
 /// A metre of water, kPa.
 pub const KPA_PER_M: f64 = 9.81;
 const NU: f64 = 1.004e-6;
@@ -69,30 +146,19 @@ pub fn fixture(kind: &str) -> Option<(f64, f64)> {
     crate::plumbing::fixture(kind).map(|f| (f.cold_flow, f.weight))
 }
 
-/// The design flow (L/s) of fixtures given as (kind, count).
+/// The design flow (L/s) of fixtures given as (kind, count), by the library's rules.
 pub fn design_flow(method: Method, fixtures: &[(&str, f64)]) -> f64 {
-    let (mut q, mut w) = (0.0, 0.0);
-    for (kind, n) in fixtures {
-        if let Some((fq, fw)) = fixture(kind) {
-            q += fq * n;
-            w += fw * n;
-        }
-    }
-    match method {
-        Method::Sum => q,
-        Method::Weights => (0.3 * w.sqrt()).min(q),
-    }
+    library().design_flow(method, fixtures, &crate::plumbing::fixtures())
 }
 
-/// The inner diameter (mm) of a PVC soldável DN, or `None` for a DN the standard does not list.
+/// The inner diameter (mm) of a library pipe's DN, or `None` for a DN it does not list.
 pub fn inside(dn: f64) -> Option<f64> {
-    PVC.iter().find(|p| p.0 == dn).map(|p| p.0 - 2.0 * p.1)
+    library().inside(dn)
 }
 
-/// A fitting's equivalent length (m) in a DN, or `None` for a DN or a fitting the table does not have.
+/// A fitting's equivalent length (m) in a DN, by the library's table.
 pub fn equivalent_length(dn: f64, fitting: &str) -> Option<f64> {
-    let col = FITTINGS.iter().position(|f| *f == fitting)?;
-    LE.iter().find(|r| r.0 == dn).map(|r| r.1[col])
+    library().equivalent_length(dn, fitting)
 }
 
 /// Colebrook's friction factor for a Reynolds number and a relative roughness.
@@ -124,9 +190,9 @@ pub fn head_loss(q: f64, d: f64, eps: f64) -> (f64, f64) {
     (v, f / dm * v * v / (2.0 * G))
 }
 
-/// The smallest PVC soldável DN whose speed at `q` L/s is within `MAX_SPEED`, or `None` when the table has none that carries it.
+/// The smallest library DN whose speed at `q` L/s is within its most speed.
 pub fn smallest_dn(q: f64) -> Option<f64> {
-    PVC.iter().map(|p| p.0).find(|dn| inside(*dn).is_some_and(|d| head_loss(q, d, EPS_PVC).0 <= MAX_SPEED + 1e-9))
+    library().smallest_dn(q)
 }
 
 #[cfg(test)]

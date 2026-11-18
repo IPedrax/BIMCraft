@@ -5,14 +5,15 @@
 
 use bimcraft_i18n::msg;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bimcraft_core::geom::{self, P2};
-use bimcraft_core::model::{Element, Id, Line, Model, TOL};
+use bimcraft_core::model::{Element, Id, Line, Model, TOL, Wall};
 use bimcraft_core::render::View;
 use bimcraft_core::sketch::{self as solver, Problem, SketchLine};
 use bimcraft_core::units::Units;
-use egui::{Align2, Color32, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Shape, Stroke, StrokeKind, Ui, vec2};
+use bimcraft_core::walls::{self, Axis, Face};
+use egui::{Align2, Color32, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Shape, Stroke, StrokeKind, TextEdit, Ui, vec2};
 use serde_json::json;
 
 use crate::canvas::{box_shapes, tag};
@@ -37,6 +38,8 @@ pub enum Of {
     Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
     Edit(Id),
+    /// An existing extrusion roof's open profile, in its upright reference plane.
+    RoofProfile(Id),
     /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
     /// `edit`, one it has already, redrawn.
     Form { revolve: bool, void: bool, edit: bool },
@@ -49,6 +52,60 @@ pub enum Drag {
     Box((f32, f32)),
 }
 
+/// A line Pick Walls placed: the wall it was taken from, the face of that wall and how far out from it the line lies.
+/// It lives only in the sketch, never in the project: after Finish the boundary is coordinates like any other.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pick {
+    pub wall: Id,
+    pub face: Face,
+    pub offset: f64,
+}
+
+/// Where Walls' Outline puts a floor's contour across each wall: on the wall's centre line, or on its interior or its
+/// exterior face, which the wall's finish or its core makes (the Options Bar's component).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OutlineSide {
+    /// The line half way through the wall: its centre line.
+    Axis,
+    /// The side the floor is on.
+    #[default]
+    Interior,
+    /// The other side of the wall.
+    Exterior,
+}
+
+impl OutlineSide {
+    /// Every side, as the Walls panel lists them.
+    pub const ALL: [OutlineSide; 3] = [OutlineSide::Axis, OutlineSide::Interior, OutlineSide::Exterior];
+
+    /// What the side is called in the Walls panel.
+    pub fn label(self) -> &'static str {
+        match self {
+            OutlineSide::Axis => msg!("Wall Centre Line"),
+            OutlineSide::Interior => msg!("Interior Face"),
+            OutlineSide::Exterior => msg!("Exterior Face"),
+        }
+    }
+
+    /// The face of a wall this side asks for, its component being the finish or the core.
+    pub fn face(self, core: bool) -> Face {
+        match self {
+            OutlineSide::Axis => Face::Centre,
+            OutlineSide::Interior => Face::InteriorFinish.with_core(core),
+            OutlineSide::Exterior => Face::ExteriorFinish.with_core(core),
+        }
+    }
+}
+
+/// A step Ctrl+Z takes back: the lines as they were, and the walls their lines were picked from, by their place in them.
+#[derive(Clone, Debug, PartialEq)]
+struct Snapshot {
+    lines: Vec<SketchLine>,
+    picks: BTreeMap<usize, Pick>,
+    /// The lines Walls' Outline put in as they were: they go back with the rest on Ctrl+Z.
+    outlines: Vec<Vec<SketchLine>>,
+}
+
 /// A sketch being drawn: its lines, those picked (Modify, for Delete and the grips), those the last Finish found wrong, and
 /// the drag under way.
 #[derive(Clone, Debug, PartialEq)]
@@ -58,6 +115,11 @@ pub struct Sketch {
     pub picked: BTreeSet<usize>,
     pub wrong: Vec<usize>,
     pub drag: Option<Drag>,
+    /// The lines Pick Walls placed, by their place in `lines`, and the wall's face each was taken from.
+    pub picks: BTreeMap<usize, Pick>,
+    /// The outlines Walls' Outline put in, each as its lines were: a new DRAW adds another, and one wholly like one
+    /// already there is refused.
+    outlines: Vec<Vec<SketchLine>>,
     /// A new region's type and its boundary's line style (none, invisible), as the Options Bar sets them.
     pub region: (String, Option<String>),
     /// A region's sketch: each line drawn takes the Options Bar's line style.
@@ -67,9 +129,14 @@ pub struct Sketch {
     /// The work plane a new one begun in the 3D view lies on (`workplane.rs`): what it makes stands on the level below it.
     pub surface: Option<bimcraft_core::walls::Plane>,
     /// The lines as they were before each change, oldest first, and as the last frame saw them: Ctrl+Z takes back one change
-    /// (a line drawn, a trim, a fillet, a grip moved), not one line.
-    history: Vec<Vec<SketchLine>>,
+    /// (a line drawn, a trim, a fillet, a grip moved), not one line. The picks go with them, so a line taken back keeps its
+    /// wall while it is still at that face.
+    history: Vec<Snapshot>,
     seen: Vec<SketchLine>,
+    /// The picks as the last frame saw them, with `seen`: they go into the step a change makes.
+    seen_picks: BTreeMap<usize, Pick>,
+    /// Walls' Outline's lines as the last frame saw them, with `seen`.
+    seen_outlines: Vec<Vec<SketchLine>>,
 }
 
 /// How many changes of a sketch Ctrl+Z can take back.
@@ -92,6 +159,7 @@ impl Sketch {
             Of::Region { masking: false, .. } => msg!("Create Filled Region Boundary"),
             Of::Region { masking: true, .. } => msg!("Create Masking Region Boundary"),
             Of::Edit(_) => "Edit Boundary",
+            Of::RoofProfile(_) => msg!("Edit Profile"),
             Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
             Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
             Of::Form { revolve: false, void: true, edit: false } => msg!("Modify | Create Void Extrusion"),
@@ -111,11 +179,15 @@ impl Sketch {
             picked: BTreeSet::new(),
             wrong: Vec::new(),
             drag: None,
+            picks: BTreeMap::new(),
+            outlines: Vec::new(),
             region: (String::new(), None),
             styled: false,
             plan: Sheet::View3D,
             surface: None,
             history: Vec::new(),
+            seen_picks: BTreeMap::new(),
+            seen_outlines: Vec::new(),
         }
     }
 
@@ -185,8 +257,8 @@ impl Sketch {
             .collect()
     }
 
-    /// A line added, unless it's too short to be one.
-    pub(crate) fn add(&mut self, mut l: SketchLine) {
+    /// A line added, unless it's too short to be one: its place in the sketch.
+    pub(crate) fn add(&mut self, mut l: SketchLine) -> Option<usize> {
         if self.styled {
             l.invisible = self.region.1.is_none();
             l.style = self.region.1.clone();
@@ -194,7 +266,9 @@ impl Sketch {
         if l.curve.check("").is_ok() {
             self.lines.push(l);
             self.changed();
+            return Some(self.lines.len() - 1);
         }
+        None
     }
 
     pub(crate) fn changed(&mut self) {
@@ -202,13 +276,164 @@ impl Sketch {
         self.wrong.clear();
     }
 
+    /// The line `i` was picked from a wall, if it still is.
+    pub fn pick(&self, i: usize) -> Option<Pick> {
+        self.picks.get(&i).copied()
+    }
+
+    /// Every picked line put back on its wall's face, as the Options Bar's face and offset now say; the walls whose
+    /// line could not be placed (a wall gone) and whose picks are dropped, each once.
+    pub(crate) fn refit_picks(&mut self, m: &Model) -> Vec<Id> {
+        let mut gone: Vec<Id> = Vec::new();
+        let mut updates: Vec<(usize, _)> = Vec::new();
+        let mut lost: Vec<usize> = Vec::new();
+        for (&i, p) in &self.picks {
+            match walls::face_line(m, p.wall, p.face, p.offset).filter(|_| self.lines.get(i).is_some()) {
+                Some(c) => updates.push((i, c)),
+                None => {
+                    if !gone.contains(&p.wall) {
+                        gone.push(p.wall);
+                    }
+                    lost.push(i);
+                }
+            }
+        }
+        for (i, curve) in updates {
+            if let Some(line) = self.lines.get_mut(i) {
+                line.curve = curve;
+            }
+        }
+        for i in lost {
+            self.picks.remove(&i);
+        }
+        self.join_picked_corners(m);
+        gone
+    }
+
+    /// Picks dropped from lines whose geometry was changed by something other than their pick (a grip, a trim, a fillet,
+    /// an offset, a split, a vertex, a box moving them): a line drawn on by hand is an ordinary line, as in Revit.
+    pub(crate) fn forget_moved_picks(&mut self, m: &Model) {
+        let lines = &self.lines;
+        self.picks
+            .retain(|&i, p| walls::face_line(m, p.wall, p.face, p.offset).is_some_and(|c| lines.get(i).is_some_and(|l| l.curve == c)));
+        // The frame's step is made; the picks now are what the next change starts from.
+        self.seen_picks = self.picks.clone();
+    }
+
+    /// The picked line `i` flipped to the other side of its wall, its offset kept; false when its wall can't place it.
+    pub(crate) fn flip_pick(&mut self, m: &Model, i: usize) -> bool {
+        let Some(p) = self.picks.get(&i).copied() else { return false };
+        let face = p.face.flipped();
+        let Some(curve) = walls::face_line(m, p.wall, face, p.offset) else { return false };
+        if let Some(line) = self.lines.get_mut(i) {
+            line.curve = curve;
+        }
+        if let Some(p) = self.picks.get_mut(&i) {
+            p.face = face;
+        }
+        self.join_picked_corners(m);
+        true
+    }
+
+    /// Picked lines of the same Offset are run on to their neighbours' lines at the corners they share, as the Draw
+    /// Line chain does: a picked contour closes instead of leaving gaps or crossing at its ends.
+    pub(crate) fn join_picked_corners(&mut self, m: &Model) {
+        let picks: Vec<(usize, Pick)> = self.picks.iter().map(|(&i, &p)| (i, p)).collect();
+        for a in 0..picks.len() {
+            for b in a + 1..picks.len() {
+                let (ia, pa) = picks[a];
+                let (ib, pb) = picks[b];
+                if (pa.offset - pb.offset).abs() > TOL {
+                    continue;
+                }
+                let Some(la) = self.lines.get(ia).cloned() else { continue };
+                let Some(lb) = self.lines.get(ib).cloned() else { continue };
+                if la.curve.kind() != "line" || lb.curve.kind() != "line" {
+                    continue;
+                }
+                let thick = [pa.wall, pb.wall]
+                    .into_iter()
+                    .filter_map(|id| m.wall(id))
+                    .map(|w| {
+                        let (ext, int) = walls::faces(m, w);
+                        (ext - int).abs()
+                    })
+                    .fold(TOL, f64::max);
+                let reach = thick + 2.0 * pa.offset.abs() + TOL;
+                let (as_, ae, bs, be) = (la.curve.start(), la.curve.end(), lb.curve.start(), lb.curve.end());
+                let mut best: Option<(f64, bool, bool)> = None;
+                for (a_start, b_start) in [(true, true), (true, false), (false, true), (false, false)] {
+                    let ap = if a_start { as_ } else { ae };
+                    let bp = if b_start { bs } else { be };
+                    let d = ap.dist(bp);
+                    if d <= reach && best.is_none_or(|(best, _, _)| d < best) {
+                        best = Some((d, a_start, b_start));
+                    }
+                }
+                let Some((_, a_start, b_start)) = best else { continue };
+                let (ap, bp) = (if a_start { as_ } else { ae }, if b_start { bs } else { be });
+                let Some(x) = geom::line_intersection(as_, ae, bs, be) else { continue };
+                if x.dist(ap) > reach || x.dist(bp) > reach {
+                    continue;
+                }
+                let a_curve = if a_start { bimcraft_core::curves::Curve::line(x, ae) } else { bimcraft_core::curves::Curve::line(as_, x) };
+                let b_curve = if b_start { bimcraft_core::curves::Curve::line(x, be) } else { bimcraft_core::curves::Curve::line(bs, x) };
+                if let Some(line) = self.lines.get_mut(ia) {
+                    line.curve = a_curve;
+                }
+                if let Some(line) = self.lines.get_mut(ib) {
+                    line.curve = b_curve;
+                }
+            }
+        }
+    }
+
+    /// The lines at `drop` taken out, the picks after them moved to their new places.
+    fn remove_lines(&mut self, drop: &BTreeSet<usize>) {
+        if drop.is_empty() {
+            return;
+        }
+        let mut kept = BTreeMap::new();
+        let mut to = 0;
+        for from in 0..self.lines.len() {
+            if drop.contains(&from) {
+                continue;
+            }
+            if let Some(p) = self.picks.get(&from) {
+                kept.insert(to, *p);
+            }
+            to += 1;
+        }
+        let mut i = 0;
+        self.lines.retain(|_| {
+            i += 1;
+            !drop.contains(&(i - 1))
+        });
+        self.picks = kept;
+    }
+
+    /// Walls' Outline's lines put in the sketch as another outline, unless one already there has exactly the same lines:
+    /// DRAW adds an outline, it does not lay a second copy of one over itself. False for the copy.
+    pub(crate) fn put_outline(&mut self, lines: Vec<SketchLine>) -> bool {
+        self.outlines.retain(|c| c.iter().all(|l| self.lines.contains(l)));
+        if self.outlines.iter().any(|c| c.len() == lines.len() && lines.iter().all(|l| c.contains(l))) {
+            return false;
+        }
+        self.outlines.push(lines.clone());
+        self.lines.extend(lines);
+        self.changed();
+        true
+    }
+
     /// Notes the lines if they are not as the last frame saw them: the change is a step Ctrl+Z takes back. True for a change.
     pub(crate) fn track(&mut self) -> bool {
         if self.lines == self.seen {
             return false;
         }
-        let before = std::mem::replace(&mut self.seen, self.lines.clone());
-        self.history.push(before);
+        let lines = std::mem::replace(&mut self.seen, self.lines.clone());
+        let picks = std::mem::replace(&mut self.seen_picks, self.picks.clone());
+        let outlines = std::mem::replace(&mut self.seen_outlines, self.outlines.clone());
+        self.history.push(Snapshot { lines, picks, outlines });
         if self.history.len() > UNDO {
             self.history.remove(0);
         }
@@ -219,8 +444,12 @@ impl Sketch {
     pub(crate) fn undo(&mut self) -> bool {
         self.track();
         let Some(before) = self.history.pop() else { return false };
-        self.lines.clone_from(&before);
-        self.seen = before;
+        self.lines.clone_from(&before.lines);
+        self.seen.clone_from(&before.lines);
+        self.picks = before.picks;
+        self.seen_picks = self.picks.clone();
+        self.outlines = before.outlines;
+        self.seen_outlines = self.outlines.clone();
         self.changed();
         true
     }
@@ -262,6 +491,31 @@ impl Sketch {
 /// Whether `x`, on the line through `a` and `b`, lies between them.
 fn on(x: P2, a: P2, b: P2) -> bool {
     geom::dist_to_segment(x, a, b) <= 1e-6 * a.dist(b).max(1.0)
+}
+
+/// The face of wall `id` a Pick Walls click at `at` takes: the side the cursor is on (its left is the exterior one), or,
+/// on the location line, the side of an earlier pick of the same wall, and the interior side when there is none. `core`
+/// takes the core face rather than the finish.
+pub(crate) fn picked_face(m: &Model, id: Id, w: &Wall, at: P2, picks: &BTreeMap<usize, Pick>, core: bool, flip: bool) -> Face {
+    let side = Axis::of(w).project(at).1;
+    let centre = walls::centre(m, w);
+    let left = if (side - centre).abs() <= TOL {
+        picks.iter().rev().find(|(_, p)| p.wall == id).is_none_or(|(_, p)| !matches!(p.face, Face::InteriorFinish | Face::InteriorCore))
+    } else {
+        side > centre
+    };
+    let face = (if left { Face::ExteriorFinish } else { Face::InteriorFinish }).with_core(core);
+    if flip { face.flipped() } else { face }
+}
+
+/// What a picked line's face is called, for the status bar and a tooltip: `Core — interior, Offset 0`.
+fn face_said(face: Face, offset: f64, units: Units) -> String {
+    let side = match face {
+        Face::InteriorFinish | Face::InteriorCore => t("interior"),
+        _ => t("exterior"),
+    };
+    let kind = if face.is_core() { t("Core") } else { t("Finish") };
+    tf("{} — {}, Offset {}", &[kind, side, &units.length(offset)])
 }
 
 /// What a line is called to whoever draws it: by its id once it has one, else new.
@@ -354,18 +608,39 @@ impl BimApp {
         };
         let seen = lines.clone();
         let plan = self.sheet;
+        // Pick Walls starts on the core for a floor, as Revit's does, and on the finish for a roof; an edit of a floor
+        // keeps the floor's. A new sketch starts again with no offset.
+        self.pick_core = match of {
+            Of::Floor(_) => true,
+            Of::Edit(id) => matches!(m.elements.get(id), Some(Element::Floor(_))),
+            _ => false,
+        };
+        self.pick_offset.clear();
+        self.pick_flip = false;
+        // Walls' Outline starts as a floor's Pick Walls does: on the interior face, its core, with no offset.
+        self.outline_side = OutlineSide::Interior;
+        self.outline_core = self.pick_core;
+        self.outline_offset.clear();
+        self.outline_flip = false;
+        self.sketch_line_chain = None;
+        self.outline_pending = false;
+        self.outline_walls.clear();
         self.sketch = Some(Sketch {
             of,
             lines,
             picked: BTreeSet::new(),
             wrong: Vec::new(),
             drag: None,
+            picks: BTreeMap::new(),
+            outlines: Vec::new(),
             region,
             styled,
             plan,
             surface: None,
             history: Vec::new(),
             seen,
+            seen_picks: BTreeMap::new(),
+            seen_outlines: Vec::new(),
         });
         self.forget_picks();
         self.selection.clear();
@@ -385,6 +660,45 @@ impl BimApp {
         }
     }
 
+    pub(crate) fn roof_profile_selected(&self) -> Option<Id> {
+        let &[id] = self.selection.as_slice() else { return None };
+        bimcraft_core::workplane::roof_profile(&self.session.model, id).map(|_| id)
+    }
+
+    pub(crate) fn editing_roof_profile(&self) -> bool {
+        self.sketch.as_ref().is_some_and(|sk| matches!(sk.of, Of::RoofProfile(_)))
+    }
+
+    /// Edit the existing open profile on its own upright plane, using the shared sketch tools and `modify` on Finish.
+    pub(crate) fn edit_roof_profile(&mut self) {
+        let Some(id) = self.roof_profile_selected() else { return };
+        let Some(Element::Roof(r)) = self.session.model.elements.get(id) else { return };
+        let Some(x) = &r.extrusion else { return };
+        let lines = x.profile.windows(2).map(|p| SketchLine::new(p[0], p[1])).collect();
+        let Some(frame) = bimcraft_core::workplane::roof_profile(&self.session.model, id) else { return };
+        let min = x.profile.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, b| P2(a.0.min(b.0), a.1.min(b.1)));
+        let max = x.profile.iter().fold(P2(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, b| P2(a.0.max(b.0), a.1.max(b.1)));
+        self.open_sheet(Sheet::View3D);
+        // Face the profile so even a roof whose plane was edge-on can be edited immediately. Navigation remains free.
+        let (width, height) = if self.view_rect.is_positive() {
+            ((self.view_rect.width() * self.orbit.ppp).max(1.0) as u32, (self.view_rect.height() * self.orbit.ppp).max(1.0) as u32)
+        } else {
+            self.orbit.camera.map_or((800, 500), |c| (c.width, c.height))
+        };
+        self.orbit.camera = Some(bimcraft_core::view3d::Camera {
+            azimuth: frame.normal[1].atan2(frame.normal[0]).to_degrees(),
+            elevation: 0.0,
+            scale: (f64::from(width) / (max.0 - min.0).max(1000.0)).min(f64::from(height) / (max.1 - min.1).max(1000.0)) * 0.7,
+            target: frame.point((min + max) * 0.5),
+            width,
+            height,
+            lens: None,
+        });
+        self.start_sketch(Of::RoofProfile(id), lines);
+        self.drawing.sketch = draw::Shape::Line;
+        self.tool = Tool::Modify;
+    }
+
     /// The one element selected, when it has an outline Edit Boundary redraws.
     pub(crate) fn boundary_selected(&self) -> bool {
         match self.selection.as_slice() {
@@ -400,7 +714,42 @@ impl BimApp {
     /// Finish Edit Mode: the lines solved and made into what the sketch is for, selected; or what's wrong said, the lines it
     /// names marked, still sketching.
     pub(crate) fn finish_sketch(&mut self) {
+        self.leave_walls_outline();
+        // Nested loops make several regions: a floor with its holes, and a floor inside a hole (an island). Each is its
+        // own floor, as `solve` gives them; `solve_one` would refuse the sketch as two outlines.
+        let nested = {
+            let Some(sk) = &self.sketch else { return };
+            if let Of::Floor(level) = sk.of {
+                solver::solve(&sk.lines).ok().filter(|p| p.regions.len() > 1).map(|p| {
+                    let regions: Vec<(Vec<P2>, Vec<Vec<P2>>)> = p.regions.iter().map(|r| (r.outer.clone(), r.holes.clone())).collect();
+                    (level, sk.surface, regions)
+                })
+            } else {
+                None
+            }
+        };
+        if let Some((level, surface, regions)) = nested {
+            self.finish_nested_floor(level, surface, regions);
+            return;
+        }
         let Some(sk) = &mut self.sketch else { return };
+        if let Of::RoofProfile(id) = sk.of {
+            let profile = match solver::extrusion_profile(&sk.lines) {
+                Ok(profile) => profile,
+                Err(text) => {
+                    sk.wrong = (0..sk.lines.len()).collect();
+                    self.status = Status { text, error: true };
+                    return;
+                }
+            };
+            if self.run("modify", json!({"id": id, "extrusion": {"profile": profile}})).is_some() {
+                self.sketch = None;
+                self.tool = Tool::Modify;
+                self.forget_picks();
+                self.selection = vec![id];
+            }
+            return;
+        }
         // A region is any number of outlines; the rest, one.
         let many = match sk.of {
             Of::Region { .. } => true,
@@ -461,7 +810,7 @@ impl BimApp {
             }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
             // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
-            Of::Form { .. } => return,
+            Of::Form { .. } | Of::RoofProfile(_) => return,
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
         if let Some(made) = self.run(id, p) {
@@ -473,10 +822,39 @@ impl BimApp {
         }
     }
 
+    /// Finish Edit Mode on a floor sketch of nested loops: each region `solve` found becomes its own floor, the outer one
+    /// with its holes and an island inside a hole as another floor.
+    fn finish_nested_floor(&mut self, level: Id, surface: Option<bimcraft_core::walls::Plane>, regions: Vec<(Vec<P2>, Vec<Vec<P2>>)>) {
+        let m = std::sync::Arc::clone(&self.session.model);
+        let (level, offset) = match surface {
+            Some(surface) => match bimcraft_core::workplane::host(&m, surface, P2(0.0, 0.0)) {
+                Some(host) => host,
+                None => return,
+            },
+            None => (level, 0.0),
+        };
+        let mut params = Vec::with_capacity(regions.len());
+        for (outer, holes) in regions {
+            let mut p = json!({"level": level, "boundary": outer, "openings": holes, "structural": self.floor_structural});
+            if surface.is_some() {
+                p["offset"] = json!(offset);
+            }
+            params.push(self.typed("floor", p));
+        }
+        let made = self.run_all("floor", "floor", params);
+        if !made.is_empty() {
+            self.sketch = None;
+            self.tool = Tool::Modify;
+            self.forget_picks();
+            self.selection = made.iter().filter_map(|made| made["id"].as_u64()).collect();
+        }
+    }
+
     /// Cancel Edit Mode: the lines dropped, the model as it was.
     pub(crate) fn cancel_sketch(&mut self) {
+        self.leave_walls_outline();
         let edited = match self.sketch.take() {
-            Some(Sketch { of: Of::Edit(id), .. }) => Some(id),
+            Some(Sketch { of: Of::Edit(id) | Of::RoofProfile(id), .. }) => Some(id),
             _ => None,
         };
         self.tool = Tool::Modify;
@@ -495,6 +873,8 @@ impl BimApp {
         let keep_trim = matches!(self.tool, Tool::TrimTo { many: true, .. })
             && self.drawing.trim.is_some_and(|(i, _)| sk.lines.get(i).is_some() && sk.lines.get(i) == sk.seen.get(i));
         if sk.track() {
+            let m = std::sync::Arc::clone(&self.session.model);
+            sk.forget_moved_picks(&m);
             self.drawing.fillet.retain(|(l, _)| matches!(l, draw::Picked::Element(_)));
             if !keep_trim {
                 self.drawing.trim = None;
@@ -558,11 +938,7 @@ impl BimApp {
     pub(crate) fn delete_sketch_lines(&mut self) {
         if let Some(sk) = &mut self.sketch {
             let picked = std::mem::take(&mut sk.picked);
-            let mut i = 0;
-            sk.lines.retain(|_| {
-                i += 1;
-                !picked.contains(&(i - 1))
-            });
+            sk.remove_lines(&picked);
             sk.changed();
         }
     }
@@ -590,6 +966,13 @@ impl BimApp {
     /// the first, the loop is closed and the next line starts anew), Rectangle's corner, Arc's ends then the point it
     /// passes through, Pick Walls' wall (`wall`), or with Modify a line picked.
     pub(crate) fn sketch_click(&mut self, m: &Model, p: P2, raw: P2, reach: f64, wall: Option<Id>, mods: Modifiers) {
+        if self.editing_roof_profile()
+            && (matches!(self.tool, Tool::SketchPick)
+                || (matches!(self.tool, Tool::SketchLine(_)) && !matches!(self.shape(), draw::Shape::Line | draw::Shape::Polyline)))
+        {
+            self.status = Status { text: t("An extrusion roof profile supports straight lines and polylines").into(), error: true };
+            return;
+        }
         // The Draw panel's other shapes: Fillet Arc picks two of the sketch's lines, Pick Lines a line of the model's;
         // the rest gather their points.
         if matches!(self.tool, Tool::SketchLine(_)) {
@@ -601,7 +984,10 @@ impl BimApp {
                     return;
                 }
                 draw::Shape::PickLines => {
-                    if let Some(c) = wall.and_then(|id| self.picked_curve(id, raw)) {
+                    if self.options_refused() {
+                        return;
+                    }
+                    if let Some(c) = wall.and_then(|id| self.picked_curve_at(id, raw)) {
                         self.add_sketch_lines(vec![c]);
                     }
                     return;
@@ -614,6 +1000,11 @@ impl BimApp {
                 }
             }
         }
+        // Pick Walls' face and offset, read before the sketch is borrowed mutably; the Draw panel's Offset moves a line
+        // as it is drawn.
+        let (pick_core, pick_offset) = (self.pick_core, self.pick_offset.clone());
+        let pick_flip = self.pick_flip;
+        let offset = self.draw_options().offset;
         let Some(sk) = &mut self.sketch else { return };
         match &mut self.tool {
             Tool::Modify => {
@@ -636,9 +1027,34 @@ impl BimApp {
                             Status { text: t("A loop needs three lines: click a point that isn't the start.").into(), error: true };
                         return;
                     }
-                    sk.add(SketchLine::new(last, p));
+                    let [mut a, mut b] = draw::offset_line(last, p, offset);
+                    // Offset lines of a chain do not meet at the raw corners: each is run on to its neighbour's line,
+                    // so the offset contour closes with square corners, as the lines clicked do.
+                    if offset != 0.0
+                        && let Some((first, previous)) = self
+                            .sketch_line_chain
+                            .filter(|(first, previous)| sk.lines.get(*first).is_some() && sk.lines.get(*previous).is_some())
+                    {
+                        if let Some(prev) = sk.lines.get_mut(previous)
+                            && let Some(x) = geom::line_intersection(prev.curve.start(), prev.curve.end(), a, b)
+                        {
+                            prev.curve = bimcraft_core::curves::Curve::line(prev.curve.start(), x);
+                            a = x;
+                        }
+                        if closes
+                            && let Some(first) = sk.lines.get_mut(first)
+                            && let Some(x) = geom::line_intersection(first.curve.start(), first.curve.end(), a, b)
+                        {
+                            first.curve = bimcraft_core::curves::Curve::line(x, first.curve.end());
+                            b = x;
+                        }
+                    }
+                    if let Some(i) = sk.add(SketchLine::new(a, b)) {
+                        self.sketch_line_chain = Some((self.sketch_line_chain.map_or(i, |(first, _)| first), i));
+                    }
                     if closes {
                         chain.clear();
+                        self.sketch_line_chain = None;
                     } else {
                         chain.push(p);
                     }
@@ -646,15 +1062,33 @@ impl BimApp {
                 Some(_) => {}
                 None => chain.push(p),
             },
-            // A line along the wall's location line, round with it where it's an arc.
+            // A line on the wall's face under the cursor: its core or its finish, out by the Options Bar's offset.
             Tool::SketchPick => {
-                if let Some(w) = wall.and_then(|id| m.wall(id)) {
-                    let axis = bimcraft_core::walls::Axis::of(w);
-                    let line = match w.arc {
-                        a if a != 0.0 => SketchLine::arc(w.start, w.end, axis.at(axis.length() / 2.0, 0.0)),
-                        _ => SketchLine::new(w.start, w.end),
+                let Some(id) = wall else { return };
+                let Some(w) = m.wall(id) else { return };
+                let offset = match pick_offset.trim() {
+                    "" => Some(0.0),
+                    text => m.units.parse(text),
+                };
+                let Some(offset) = offset else {
+                    self.status = Status { text: tf("Offset: a number in {}", &[m.units.name()]), error: true };
+                    return;
+                };
+                let mut face = picked_face(m, id, w, raw, &sk.picks, pick_core, pick_flip);
+                let no_core = face.is_core() && walls::core_faces(m, w).is_none();
+                if no_core {
+                    face = face.with_core(false);
+                }
+                if let Some(curve) = walls::face_line(m, id, face, offset) {
+                    if let Some(i) = sk.add(SketchLine::from(curve)) {
+                        sk.picks.insert(i, Pick { wall: id, face, offset });
+                        sk.join_picked_corners(m);
+                    }
+                    self.status = if no_core {
+                        Status { text: msg!("This wall has no core: its faces are its finish faces.").into(), error: false }
+                    } else {
+                        Status::default()
                     };
-                    sk.add(line);
                 }
             }
             _ => {}
@@ -665,7 +1099,10 @@ impl BimApp {
     /// go (snapped); from anywhere else a box, picking the lines in it (from the left, wholly inside; from the right,
     /// touching too), or a line where it began if it hardly moved. True when one ended this frame: that's no click.
     pub(crate) fn sketch_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, level: Id) -> bool {
-        if self.tool != Tool::Modify || self.sketch.is_none() {
+        // Walls' Outline with Ctrl draws a box over walls (`canvas.rs`); without it the sketch's lines are boxed as usual.
+        // The click's own modifiers count too, as they do there.
+        let ctrl = crate::canvas::click_modifiers(ui);
+        if (self.outline_pending && (ctrl.ctrl || ctrl.command)) || self.tool != Tool::Modify || self.sketch.is_none() {
             return false;
         }
         let local = |p: Pos2| (p.x - rect.min.x, p.y - rect.min.y);
@@ -673,6 +1110,11 @@ impl BimApp {
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
             && let Some(sk) = &mut self.sketch
         {
+            // Choosing contour lines lets the walls picked for Walls' Outline go.
+            if self.outline_pending {
+                self.outline_walls.clear();
+                self.selection.clear();
+            }
             let q = local(o);
             sk.drag = Some(match sk.grip_at(view.mm(q), f64::from(GRIP) / view.scale) {
                 Some(g) => Drag::Grip(g),
@@ -709,14 +1151,49 @@ impl BimApp {
         true
     }
 
-    /// What a sketch tool or drag shows under the cursor at `q`: Rectangle's rectangle, Arc's arc, a selection box.
-    pub(crate) fn sketch_preview(&self, p: &Painter, view: &View, origin: Pos2, q: (f32, f32), cursor: P2) {
+    /// What a sketch tool or drag shows under the cursor at `q`: Rectangle's rectangle, Arc's arc, a selection box, and
+    /// Pick Walls' line on the face of the wall under it (`wall`).
+    pub(crate) fn sketch_preview(&self, p: &Painter, view: &View, origin: Pos2, q: (f32, f32), cursor: P2, wall: Option<Id>) {
+        // With Ctrl the box over walls is the plan's (`canvas.rs`); without it the sketch's own previews stand.
+        let ctrl = p.ctx().input(|i| i.modifiers.ctrl || i.modifiers.command);
+        if self.outline_pending && ctrl {
+            return;
+        }
         let stroke = Stroke::new(2.0, pal().accent);
         let at = |pt: P2| {
             let (x, y) = view.px(pt);
             origin + vec2(x, y)
         };
         match (&self.tool, self.sketch.as_ref().and_then(|sk| sk.drag)) {
+            (Tool::SketchPick, _) => {
+                let m = &self.session.model;
+                let Some(id) = wall else { return };
+                let Some(w) = m.wall(id) else { return };
+                let Some(offset) = (match self.pick_offset.trim() {
+                    "" => Some(0.0),
+                    text => m.units.parse(text),
+                }) else {
+                    return;
+                };
+                let picks = self.sketch.as_ref().map(|sk| &sk.picks);
+                let raw = view.mm(q);
+                let mut face = picked_face(m, id, w, raw, picks.unwrap_or(&BTreeMap::new()), self.pick_core, self.pick_flip);
+                if face.is_core() && walls::core_faces(m, w).is_none() {
+                    face = face.with_core(false);
+                }
+                if let Some(line) = walls::face_line(m, id, face, offset) {
+                    p.add(Shape::line(line.points().into_iter().map(at).collect(), stroke));
+                    tag(p, at(line.middle()) + vec2(10.0, -10.0), Align2::LEFT_BOTTOM, face_said(face, offset, m.units));
+                }
+            }
+            // A line with the Options Bar's Offset is previewed by the plan's own `preview` (canvas.rs).
+            // Pick Lines: the picked line beside the one under the pointer, by the Options Bar's Offset.
+            (Tool::SketchLine(_), _) if self.shape() == draw::Shape::PickLines => {
+                let Some(id) = wall else { return };
+                if let Some(c) = self.picked_curve_at(id, view.mm(q)) {
+                    p.add(Shape::line(c.points().into_iter().map(at).collect(), stroke));
+                }
+            }
             (Tool::SketchLine(_), _) => {
                 for c in self.shape_preview(cursor) {
                     p.add(Shape::line(c.points().into_iter().map(at).collect(), stroke));
@@ -757,10 +1234,13 @@ impl BimApp {
             (Icon::Split, msg!("Split Element"), msg!("Split Element (SL): click a wall or a line where to split it"), Tool::Split),
             (Icon::Offset, msg!("Offset"), msg!("Offset (OF): pick a wall or a line; a copy goes to the cursor's side"), Tool::Offset),
         ];
+        let profile = self.editing_roof_profile();
+        let tools: Vec<_> = tools.into_iter().filter(|(_, _, _, tool)| !profile || !matches!(tool, Tool::Align(_))).collect();
+        let columns = if profile && ribbon::listing() { 1 } else { 3 };
         panel(ui, "Modify", |ui| {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                for row in tools.chunks(3) {
+                for row in tools.chunks(columns) {
                     ui.horizontal(|ui| {
                         for (icon, label, tip, tool) in row {
                             let active = match (&self.tool, tool) {
@@ -782,11 +1262,12 @@ impl BimApp {
     pub(crate) fn mode_panel(&mut self, ui: &mut Ui) {
         let sketching = self.sketch.is_some();
         let boundary = self.boundary_selected() && self.tool == Tool::Modify;
+        let profile = self.roof_profile_selected().is_some() && self.tool == Tool::Modify;
         // Placing a component: Load Family and Edit Family (Modify | Place Component); a family's instance selected, Edit
         // Family (Modify | <Category>).
         let placing = !sketching && matches!(self.tool, Tool::Component | Tool::Fixture(_));
         let family = if !sketching && (placing || self.tool == Tool::Modify) { self.family_in_hand() } else { None };
-        if !sketching && !boundary && !placing && family.is_none() {
+        if !sketching && !boundary && !profile && !placing && family.is_none() {
             return;
         }
         // Pushed to the right end by the room the rest leaves: its width as it was last drawn.
@@ -794,13 +1275,22 @@ impl BimApp {
         let drawn = ui.scope(|ui| {
             panel(ui, "Mode", |ui| {
                 if sketching {
-                    let tip = msg!("Finish Edit Mode: the lines, closed into loops, become the outline and its holes");
+                    let tip = if self.editing_roof_profile() {
+                        msg!("Finish Edit Mode: apply the open profile to the extrusion roof")
+                    } else {
+                        msg!("Finish Edit Mode: the lines, closed into loops, become the outline and its holes")
+                    };
                     if inked_button(ui, Icon::Check, "Finish Edit Mode", false, tip, Some(pal().context)).clicked() {
                         self.finish_sketch();
                     }
                     let tip = "Cancel Edit Mode: drop the lines, keep it as it was";
                     if inked_button(ui, Icon::Close, "Cancel Edit Mode", false, tip, Some(pal().error)).clicked() {
                         self.cancel_sketch();
+                    }
+                } else if profile {
+                    let tip = msg!("Edit Profile: change the extrusion roof's open profile on its upright plane");
+                    if big_button(ui, Icon::Line, msg!("Edit Profile"), false, tip).clicked() {
+                        self.edit_roof_profile();
                     }
                 } else if boundary {
                     // A floor or a ceiling that follows a room has the room's outline.
@@ -838,32 +1328,157 @@ impl BimApp {
         }
     }
 
+    /// The walls picked for Walls' Outline are the selection too, so they are lit as a selection is; nothing else is
+    /// selected while its panel is open.
+    pub(crate) fn sync_outline_selection(&mut self) {
+        self.selection = self.outline_walls.iter().copied().collect();
+    }
+
+    /// Out of Walls' Outline: its panel closes, and the walls picked for it are let go.
+    pub(crate) fn leave_walls_outline(&mut self) {
+        if std::mem::take(&mut self.outline_pending) {
+            self.outline_walls.clear();
+            if self.selection.iter().all(|id| self.session.model.wall(*id).is_some()) {
+                self.selection.clear();
+            }
+        }
+    }
+
     /// A new floor's sketch: Walls' Outline, the outline the walls of its level enclose (and the courtyards in it) put in the
-    /// sketch as lines, to edit before Finish: what the Floor tool's one click made before it sketched.
+    /// sketch as lines, to edit before Finish: what the Floor tool's one click made before it sketched. The button only
+    /// asks for it: its line, component and offset are chosen on the Options Bar, and DRAW puts the outline in the sketch.
     pub(crate) fn walls_outline_panel(&mut self, ui: &mut Ui) {
-        let Some(Of::Floor(level)) = self.sketch.as_ref().map(|sk| sk.of) else { return };
+        let Some(Of::Floor(_)) = self.sketch.as_ref().map(|sk| sk.of) else { return };
         panel(ui, msg!("Walls"), |ui| {
-            let tip = msg!("Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit");
-            if big_button(ui, Icon::Wall, msg!("Walls' Outline"), false, tip).clicked() {
-                self.walls_outline(level);
+            let tip = msg!("Walls' Outline: choose the line and the walls on the Options Bar, then press DRAW");
+            if big_button(ui, Icon::Wall, msg!("Walls' Outline"), self.outline_pending, tip).clicked() {
+                // The arrow does the picking: a wall clicked, or a box drawn round several. The floor's own options
+                // (Structural, and the rest) stay as they were.
+                self.tool = Tool::Modify;
+                self.clear_typed();
+                self.outline_pending = true;
+                self.status = Status::default();
             }
         });
     }
 
-    /// The outline level `level`'s walls enclose, and its courtyards, added to the sketch as lines; or why there's none.
-    pub(crate) fn walls_outline(&mut self, level: Id) {
-        let Some((outline, courtyards)) = bimcraft_core::floor_outline(&self.session.model, level) else {
-            self.status = Status { text: t("No walls on this level enclose an area: sketch the outline.").into(), error: true };
-            return;
+    /// Walls' Outline's Options Bar: the line the outline follows, the wall component that line is on, its offset, the
+    /// walls picked in the view, and DRAW, which puts the outline in the sketch.
+    pub(crate) fn walls_outline_options(&mut self, ui: &mut Ui, level: Id) {
+        let l = ui.label(t("Location Line:"));
+        let mut side = self.outline_side;
+        let c = egui::ComboBox::from_id_salt("walls-outline-side").selected_text(t(side.label())).width(140.0).show_ui(ui, |ui| {
+            for s in OutlineSide::ALL {
+                ui.selectable_value(&mut side, s, t(s.label()));
+            }
+        });
+        c.response.labelled_by(l.id);
+        self.outline_side = side;
+        let l = ui.label(t("Wall Component:"));
+        let mut core = self.outline_core;
+        let c = ui
+            .add_enabled_ui(side != OutlineSide::Axis, |ui| {
+                egui::ComboBox::from_id_salt("walls-outline-core")
+                    .selected_text(if core { t("Core") } else { t("Finish") })
+                    .width(90.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut core, false, t("Finish"));
+                        ui.selectable_value(&mut core, true, t("Core"));
+                    })
+            })
+            .inner;
+        c.response.labelled_by(l.id);
+        self.outline_core = core;
+        let units = self.session.model.units.name().to_string();
+        let l = ui.label(t("Outline Offset:"));
+        let field =
+            TextEdit::singleline(&mut self.outline_offset).desired_width(70.0).hint_text(&units).id(egui::Id::new("outline-offset"));
+        ui.add(field).labelled_by(l.id);
+        let n = self.outline_walls.len();
+        let walls = if n == 0 { t("Walls: all").to_string() } else { tf("Walls: {}", &[&n.to_string()]) };
+        let hint = t("Click walls in the view to pick them: DRAW follows just those, or every wall when none is picked");
+        ui.label(walls).on_hover_text(hint);
+        ui.separator();
+        let draw = ui.button(t("DRAW")).on_hover_text(t("DRAW: redraw the outline, along the walls picked or every wall"));
+        draw.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("DRAW")));
+        if draw.clicked() {
+            self.walls_outline(level);
+        }
+    }
+
+    /// The picked lines put back on their walls' faces, after the Options Bar's face or offset changed; a wall that can no
+    /// longer place its line is said once, and the line stays as it was drawn.
+    pub(crate) fn refit_picks(&mut self) {
+        let m = std::sync::Arc::clone(&self.session.model);
+        let gone = self.sketch.as_mut().map(|sk| sk.refit_picks(&m)).unwrap_or_default();
+        if !gone.is_empty() {
+            self.status = Status { text: msg!("Wall of a boundary line is gone: the line stays as drawn.").into(), error: true };
+        }
+    }
+
+    /// A picked boundary line flipped to the other side of its wall, its offset kept.
+    pub(crate) fn flip_pick(&mut self, i: usize) {
+        let m = std::sync::Arc::clone(&self.session.model);
+        let flipped = self.sketch.as_mut().is_some_and(|sk| sk.flip_pick(&m, i));
+        if flipped {
+            self.status = Status::default();
+        } else {
+            self.status = Status { text: msg!("Wall of a boundary line is gone: the line stays as drawn.").into(), error: true };
+        }
+    }
+
+    /// The outline level `level`'s walls enclose, along the line the Walls panel chooses (their centre line or a face,
+    /// out by its outline offset), and its courtyards, added to the sketch as lines; or why there's none. True when the
+    /// lines are in the sketch.
+    pub(crate) fn walls_outline(&mut self, level: Id) -> bool {
+        let face = self.outline_side.face(self.outline_core);
+        let Some(offset) = (match self.outline_offset.trim() {
+            "" => Some(0.0),
+            text => self.session.model.units.parse(text),
+        }) else {
+            self.status = Status { text: tf("Outline Offset: a number in {}", &[self.session.model.units.name()]), error: true };
+            return false;
         };
-        let Some(sk) = &mut self.sketch else { return };
+        let only = (!self.outline_walls.is_empty()).then(|| self.outline_walls.clone());
+        let mut made = bimcraft_core::floor_outline_faces_of(&self.session.model, level, face, offset, only.as_ref(), self.outline_flip);
+        // A core face needs every wall to have a core. Walls without a structural layer follow their finish face, as
+        // individual Pick Walls lines do; Wall Centre Line stays for the user who asks for it.
+        let mut fell_back = false;
+        if made.is_err() && face.is_core() {
+            made = bimcraft_core::floor_outline_faces_of(
+                &self.session.model,
+                level,
+                face.with_core(false),
+                offset,
+                only.as_ref(),
+                self.outline_flip,
+            );
+            fell_back = made.is_ok();
+        }
+        let (outline, courtyards) = match made {
+            Ok(outline) => outline,
+            Err(why) => {
+                self.status = Status { text: why, error: true };
+                return false;
+            }
+        };
+        if fell_back {
+            self.status = Status { text: msg!("A wall has no core: the outline follows its finish face.").into(), error: false };
+        }
+        let mut lines = Vec::new();
         for ring in std::iter::once(&outline).chain(&courtyards) {
             for (a, b) in geom::ring_edges(ring) {
-                sk.lines.push(SketchLine::new(a, b));
+                lines.push(SketchLine::new(a, b));
             }
         }
-        sk.changed();
+        let Some(sk) = &mut self.sketch else { return false };
+        if !sk.put_outline(lines) {
+            self.status =
+                Status { text: msg!("This outline is already in the sketch: the same outline is not drawn twice.").into(), error: false };
+            return false;
+        }
         self.status = Status::default();
+        true
     }
 
     /// The Floor, Ceiling, Roof and Shaft tools' Draw panel: their outline sketched instead of found from the walls.
@@ -891,36 +1506,93 @@ impl BimApp {
         });
     }
 
-    /// The Options Bar while sketching a region: the line style the lines drawn take (or invisible lines), which the lines
-    /// picked take at once.
+    /// The Options Bar while sketching: a region's line style, and the face Pick Walls takes and its offset, which the
+    /// lines picked from walls follow at once.
     pub(crate) fn sketch_options(&mut self, ui: &mut Ui) {
-        let m = &self.session.model;
-        let Some(sk) = self.sketch.as_mut().filter(|sk| sk.styled) else { return };
-        // The region's type is the Type Selector's, in the Properties palette: one place to set it.
-        let l = ui.label(t("Line Style:"));
-        let invisible = t("<Invisible lines>").to_string();
-        let shown = sk.region.1.clone().unwrap_or_else(|| invisible.clone());
-        let was = sk.region.1.clone();
-        let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
-            ui.selectable_value(&mut sk.region.1, None, &invisible);
-            for (n, style) in &m.line_styles {
-                if crate::linestyles::style_row(ui, m, Some(style), sk.region.1.as_ref() == Some(n), n) {
-                    sk.region.1 = Some(n.clone());
-                }
+        if self.sketch.is_none() {
+            return;
+        }
+        // Walls' Outline's own Options Bar, with its DRAW: nothing else is drawn while it is open.
+        if self.outline_pending {
+            if let Some(Of::Floor(level)) = self.sketch.as_ref().map(|sk| sk.of) {
+                self.walls_outline_options(ui, level);
+            } else {
+                self.outline_pending = false;
             }
-        });
-        c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));
-        c.response.labelled_by(l.id);
-        // A style picked restyles the lines picked.
-        if sk.region.1 != was {
-            let (style, picked) = (sk.region.1.clone(), sk.picked.clone());
-            for i in picked {
-                if let Some(line) = sk.lines.get_mut(i) {
-                    line.invisible = style.is_none();
-                    line.style = style.clone();
+            return;
+        }
+        if self.sketch.as_ref().is_some_and(|sk| sk.styled) {
+            let m = &self.session.model;
+            let Some(sk) = self.sketch.as_mut() else { return };
+            // The region's type is the Type Selector's, in the Properties palette: one place to set it.
+            let l = ui.label(t("Line Style:"));
+            let invisible = t("<Invisible lines>").to_string();
+            let shown = sk.region.1.clone().unwrap_or_else(|| invisible.clone());
+            let was = sk.region.1.clone();
+            let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
+                ui.selectable_value(&mut sk.region.1, None, &invisible);
+                for (n, style) in &m.line_styles {
+                    if crate::linestyles::style_row(ui, m, Some(style), sk.region.1.as_ref() == Some(n), n) {
+                        sk.region.1 = Some(n.clone());
+                    }
+                }
+            });
+            c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));
+            c.response.labelled_by(l.id);
+            // A style picked restyles the lines picked.
+            if sk.region.1 != was {
+                let (style, picked) = (sk.region.1.clone(), sk.picked.clone());
+                for i in picked {
+                    if let Some(line) = sk.lines.get_mut(i) {
+                        line.invisible = style.is_none();
+                        line.style = style.clone();
+                    }
                 }
             }
         }
+        // The lines picked that Pick Walls placed: the options apply to them at once.
+        let picked: Vec<usize> =
+            self.sketch.as_ref().map(|sk| sk.picked.iter().filter(|i| sk.picks.contains_key(i)).copied().collect()).unwrap_or_default();
+        // A shape's Offset is its own; these are the wall's, for Pick Walls and the lines it placed.
+        if !matches!(self.tool, Tool::SketchPick) && picked.is_empty() {
+            return;
+        }
+        let units = self.session.model.units.name().to_string();
+        let (mut core, mut offset) = (self.pick_core, self.pick_offset.clone());
+        let checkbox = ui.checkbox(&mut core, t("Extend into wall (to core)"));
+        let l = ui.label(t("Offset:"));
+        let edit = TextEdit::singleline(&mut offset).desired_width(70.0).hint_text(&units).id(egui::Id::new("pick-offset"));
+        let field = ui.add(edit).labelled_by(l.id);
+        self.pick_core = core;
+        let core_changed = checkbox.changed();
+        let offset_changed = field.changed();
+        if offset_changed {
+            self.pick_offset = offset;
+        }
+        if !(core_changed || offset_changed) {
+            return;
+        }
+        let Some(offset) = (match self.pick_offset.trim() {
+            "" => Some(0.0),
+            text => self.session.model.units.parse(text),
+        }) else {
+            self.status = Status { text: tf("Offset: a number in {}", &[self.session.model.units.name()]), error: true };
+            return;
+        };
+        if let Some(sk) = &mut self.sketch {
+            for i in picked {
+                if let Some(p) = sk.picks.get_mut(&i) {
+                    if core_changed {
+                        p.face = p.face.with_core(core);
+                    }
+                    if offset_changed {
+                        p.offset = offset;
+                    }
+                }
+            }
+        }
+        self.status = Status::default();
+        self.refit_picks();
     }
 
     /// Annotate's Region panel: Filled Region, Masking Region, sketched in the plan on screen.
@@ -962,8 +1634,17 @@ impl BimApp {
             Tool::TrimTo { .. } => msg!("Pick a sketch line to trim or extend, on the part to keep. Esc clears the boundary."),
             Tool::SketchLine(_) if self.shape() != draw::Shape::Line => return self.shape_prompt(),
             Tool::SketchLine(chain) if chain.is_empty() => "Click where the line starts.",
+            Tool::SketchLine(_) if self.editing_roof_profile() => {
+                msg!("Click the next profile point. Keep the profile open; Esc stops drawing.")
+            }
             Tool::SketchLine(_) => msg!("Click the line's end; the next starts there. The first point again closes the loop; Esc stops."),
-            Tool::SketchPick => msg!("Click a wall: a boundary line along it."),
+            Tool::SketchPick if self.pick_core => {
+                msg!("Pick Walls: a boundary line on the wall's core face under the pointer.")
+            }
+            Tool::SketchPick => msg!("Pick Walls: a boundary line on the wall's finish face under the pointer."),
+            Tool::Modify if self.editing_roof_profile() => msg!(
+                "Pick a profile line; drag its end grips or edit Along and Height in Properties. Finish applies the open profile; Cancel discards it."
+            ),
             Tool::Modify if self.sketch_surface().is_some() => {
                 msg!(
                     "Pick sketch lines (a box picks several); drag a picked line's end over its plane to move it; Shift and the middle button orbit; Delete removes them. Finish Edit Mode when every loop is closed."
@@ -1015,6 +1696,8 @@ impl BimApp {
             return;
         }
         let mut pick = None;
+        let can_flip = sk.picks.contains_key(&i);
+        let mut flip = false;
         egui::Area::new(egui::Id::new("edge-palette")).order(egui::Order::Middle).fixed_pos(at).show(ctx, |ui| {
             egui::Frame::popup(ui.style()).fill(crate::style::pal().surface).show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -1028,9 +1711,15 @@ impl BimApp {
                             pick = Some(tool);
                         }
                     }
+                    if can_flip && crate::icon_button(ui, crate::icons::Icon::Flip, bimcraft_i18n::msg!("Flip")).clicked() {
+                        flip = true;
+                    }
                 });
             });
         });
+        if flip {
+            self.flip_pick(i);
+        }
         if let Some(tool) = pick {
             self.set_tool(tool);
         }

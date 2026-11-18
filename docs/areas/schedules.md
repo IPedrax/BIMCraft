@@ -50,3 +50,7 @@ to do. Where the two define a quantity differently, the difference goes here, wi
   command's default), over their ceilings at 2.7 m: Revit's volume of them is their area times 2.7 m where ours is times
   3.7 m, the one difference the comparison is expected to show until volumes stop at ceilings.
 - Each level's computation height (where walls and columns are cut to bound rooms) goes to Revit as the level's.
+
+## Schedules of bars
+
+`schedule {template: "steel_list" | "steel_summary"}` fills a schedule of category `rebar` with the fields, filters, sort and grouping of a steel list or a steel summary where the call gives none, so every other parameter of the command still applies. The rule for marks, and the commands `steel_list` and `cut_plan`, are in [quantities](quantities.md).

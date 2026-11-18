@@ -38,7 +38,7 @@ pub(crate) struct Opening {
 impl BimApp {
     /// Starts reading the project at `path` on a thread of its own. Whether it started: the project is replaced later, by
     /// [`poll_opening`](Self::poll_opening), and only if the file comes through.
-    pub(crate) fn open_in_background(&mut self, path: &Path) -> bool {
+    pub(crate) fn open_in_background(&mut self, path: &Path, template: bool) -> bool {
         let file = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         if self.opening.is_some() {
             self.status = Status { text: tf("{} is still being opened.", &[&file]), error: true };
@@ -52,7 +52,9 @@ impl BimApp {
             s.dwg = dwg;
             s.progress = Some(watched);
             // The engine runs the command under `catch_unwind` and leaves the scratch session as it was on any failure.
-            let read = s.execute("open", &json!({"path": to.to_string_lossy()})).map(|reply| (Arc::clone(&s.model), s.path.clone(), reply));
+            let read = s
+                .execute("open", &json!({"path": to.to_string_lossy(), "as_template": template}))
+                .map(|reply| (Arc::clone(&s.model), s.path.clone(), reply));
             drop(s);
             let _ = send.send(read);
         });

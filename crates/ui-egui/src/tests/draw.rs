@@ -24,6 +24,22 @@ fn kinds(h: &Harness<BimApp>) -> Vec<&'static str> {
     ids(h, "line").into_iter().map(|id| curve(h, id).kind()).collect()
 }
 
+/// A typed length locks the click for a detail line too: 2000 typed and clicked 6000 away is a 2000 line, and the next
+/// segment starts Idle.
+#[test]
+fn a_typed_length_places_a_detail_line_where_the_preview_shows_it() {
+    let mut h = detailing();
+    click(&mut h, P2(1000.0, 1000.0));
+    hover(&mut h, P2(7000.0, 1000.0));
+    h.event(Event::Text("2000".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "2000");
+    click(&mut h, P2(7000.0, 1000.0));
+    assert_eq!(h.state().typed_length, "", "the number is spent, so the next segment starts Idle");
+    let line = ids(&h, "line")[0];
+    assert!((curve(&h, line).length() - 2000.0).abs() < 0.01, "the line is the typed 2000: {}", curve(&h, line).length());
+}
+
 /// A detail line takes the guide its preview draws: the click lands on that line, not under the
 /// pointer, as a wall's does.
 #[test]
@@ -155,6 +171,19 @@ fn radius_sides_and_offset_on_the_options_bar_shape_what_a_click_makes() {
 }
 
 #[test]
+fn space_flips_the_draw_offset_to_the_other_side() {
+    let mut h = detailing();
+    press(&mut h, "Line");
+    type_into(&mut h, "Offset:", "200");
+    click(&mut h, P2(1000.0, 1000.0));
+    key(&mut h, Key::Space);
+    click(&mut h, P2(2000.0, 1000.0));
+    key(&mut h, Key::Escape);
+    let l = curve(&h, *ids(&h, "line").last().unwrap_or(&0));
+    assert!(l.start().dist(P2(1000.0, 800.0)) < 1e-6, "Space puts the line on its right: {l:?}");
+}
+
+#[test]
 fn fillet_rounds_two_detail_lines_and_pick_lines_draws_along_a_wall() {
     let mut h = detailing();
     press(&mut h, "Line");
@@ -177,7 +206,7 @@ fn fillet_rounds_two_detail_lines_and_pick_lines_draws_along_a_wall() {
     press(&mut h, "Pick Lines");
     click(&mut h, P2(4000.0, 6000.0));
     let along = curve(&h, *ids(&h, "line").last().unwrap_or(&0));
-    assert_eq!((along.start().1, along.end().1, along.length()), (6000.0, 6000.0, 8000.0));
+    assert_eq!((along.start().1, along.end().1, along.length()), (5900.0, 5900.0, 7800.0));
 }
 
 #[test]
@@ -391,7 +420,7 @@ fn a_filled_regions_lines_take_the_line_style_picked_each_its_own() {
 
 #[test]
 fn add_and_delete_vertex_and_convert_spline_on_modify_lines() {
-    let mut h = app(&format!(
+    let mut h = wide(&format!(
         "{BOX}\ndetail_line {{\"points\": [[1000, 1000], [4000, 1000], [4000, 4000]]}}\ndetail_line {{\"fit\": [[1000, 5000], [2500, 5500], [4000, 5000]]}}"
     ));
     let l = ids(&h, "line");
@@ -461,6 +490,7 @@ fn a_rectangles_width_and_height_a_radius_and_a_sketchs_lengths_are_typed() {
     // Only the height typed: the width is the cursor's.
     click(&mut h, P2(5000.0, 1000.0));
     hover(&mut h, P2(5800.0, 500.0));
+    key(&mut h, Key::Tab);
     key(&mut h, Key::Tab);
     h.event(Event::Text("300".into()));
     h.run();

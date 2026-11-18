@@ -143,7 +143,7 @@ fn places_are_known_by_a_name() {
 #[test]
 fn every_rule_of_every_standard_names_its_source() {
     let sets = rule_sets();
-    assert!(!sets.is_empty(), "data/dr-check.json did not load");
+    assert!(!sets.is_empty(), "NBR 5410's `rcd` section did not load");
     for set in sets {
         let n = &set.standard;
         assert!(!n.trim().is_empty() && !set.source.trim().is_empty(), "{n}: no source");

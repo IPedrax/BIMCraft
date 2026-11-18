@@ -337,6 +337,7 @@ impl BimApp {
             "Wireframe" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Wireframe),
             "Hidden Line" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::HiddenLine),
             "Shaded" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Shaded),
+            "Fly Mode" => self.toggle_fly(),
             "Project Units" => {
                 self.tab = Tab::Manage;
                 self.open_units = true;

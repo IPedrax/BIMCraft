@@ -543,6 +543,16 @@ fn tab_picks_a_dimension_segment_and_delete_takes_it_out() {
     assert_eq!(field(&h, id, "values"), json!([3000.0]), "the neighbour keeps its own references");
 }
 
+/// Shift+Tab is a wall line's step only while a chain is drawn; in Modify it is Tab, as it was.
+#[test]
+fn shift_tab_picks_a_dimension_segment_as_tab_does() {
+    let mut h = app(THREE_WALLS);
+    h.hover_at(h.state().screen(P2(1000.0, -1000.0)));
+    h.run();
+    shift_key(&mut h, Key::Tab);
+    assert!(h.state().dimension_segment_hover.is_some(), "Shift+Tab picked the segment under the cursor");
+}
+
 #[test]
 fn an_equal_chain_prints_eq_and_shows_its_eq_control_over_it() {
     let mut h = app(THREE_WALLS);

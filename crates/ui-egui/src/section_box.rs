@@ -32,10 +32,10 @@ pub(crate) enum Was {
 }
 
 impl BimApp {
-    /// The default 3D view's section box as the project holds it, on or off.
+    /// The section box of the 3D view on screen (a camera view's own, else the default's) as the project holds it, on or off.
     pub(crate) fn section_box(&self) -> Option<SectionBox> {
         let m = &self.session.model;
-        match m.default_3d().and_then(|v| m.elements.get(v)) {
+        match self.active_3d().and_then(|v| m.elements.get(v)) {
             Some(Element::View3D(v)) => v.section_box,
             _ => None,
         }
@@ -47,7 +47,11 @@ impl BimApp {
         if self.sheet != Sheet::View3D {
             self.open_sheet(Sheet::View3D);
         }
-        self.run("section_box", json!({"on": !on}));
+        let mut params = json!({"on": !on});
+        if let Some(v) = self.active_3d() {
+            params["view"] = json!(v);
+        }
+        self.run("section_box", params);
     }
 
     /// The 3D view's Extents in Properties: Section Box, and while it's on where each of its faces is.
@@ -62,7 +66,8 @@ impl BimApp {
         }
         let b = self.section_box();
         let units = self.session.model.units;
-        let view = self.session.model.default_3d().unwrap_or_default();
+        let active = self.active_3d();
+        let view = active.unwrap_or_default();
         let mut set = None;
         crate::properties::grid(ui, "section-box-properties", |ui| {
             let name = t("Section Box");
@@ -97,7 +102,10 @@ impl BimApp {
                 ui.end_row();
             }
         });
-        if let Some(p) = set {
+        if let Some(mut p) = set {
+            if let Some(v) = active {
+                p["view"] = json!(v);
+            }
             self.run("section_box", p);
         }
     }

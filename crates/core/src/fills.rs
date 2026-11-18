@@ -470,6 +470,20 @@ mod tests {
     const ALL: (P2, P2) = (P2(-1e6, -1e6), P2(1e6, 1e6));
 
     #[test]
+    fn a_placed_pattern_turns_its_lines_by_its_angle() {
+        let p = FillPattern { target: Target::Model, lines: vec![HatchLine::simple(0.0, 1000.0)], drawn: None };
+        let rings = vec![square(0.0, 0.0, 5000.0)];
+        let flat = strokes_placed(&p, &rings, 1.0, ALL, 10_000, (P2(0.0, 0.0), 0.0)).unwrap();
+        let turned = strokes_placed(&p, &rings, 1.0, ALL, 10_000, (P2(0.0, 0.0), 30.0)).unwrap();
+        let heading = |s: &[P2; 2]| (s[1].1 - s[0].1).atan2(s[1].0 - s[0].0).to_degrees();
+        assert!(flat.iter().all(|s| heading(s).abs() < 1e-6), "level at 0°");
+        // 30° counter-clockwise: every line now runs up at 30°, or down at its opposite.
+        let turned_off: Vec<f64> = turned.iter().map(heading).filter(|a| a.abs() > 1e-6).collect();
+        assert!(!turned_off.is_empty(), "the lines turned");
+        assert!(turned_off.iter().all(|a| (a.abs() - 30.0).abs() < 1e-6), "{turned_off:?}");
+    }
+
+    #[test]
     fn a_family_of_lines_fills_inside_the_outline_and_not_its_hole() {
         let p = FillPattern { target: Target::Model, lines: vec![HatchLine::simple(0.0, 100.0)], drawn: None };
         let rings = vec![square(0.0, 0.0, 1000.0), square(400.0, 400.0, 200.0)];

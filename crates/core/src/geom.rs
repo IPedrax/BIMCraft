@@ -450,7 +450,7 @@ pub fn faces(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
 }
 
 /// `p` to the micron: what a point meant to be exact is, without float noise.
-pub(crate) fn micron(p: P2) -> P2 {
+pub fn micron(p: P2) -> P2 {
     P2((p.0 * 1e3).round() / 1e3, (p.1 * 1e3).round() / 1e3)
 }
 

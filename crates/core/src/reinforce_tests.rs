@@ -1260,7 +1260,7 @@ fn a_check_of_a_column_and_a_floor_names_what_is_off() {
         json!({"host": fl, "cover": 20, "check": "NBR 6118", "aggressiveness": 4, "bottom": {"x": {"diameter": 32, "spacing": 300}}}),
     );
     let text = r["notes"].to_string();
-    for want in ["20.1", "an eighth", "293 mm apart", "7.4.7.2"] {
+    for want in ["20.1", "1/8 of the slab", "293 mm apart", "7.4.7.2"] {
         assert!(text.contains(want), "{want}: {text}");
     }
 }

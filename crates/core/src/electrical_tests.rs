@@ -51,13 +51,14 @@ fn the_starter_data_agrees_with_the_sizing_tables() {
     let s = Session::new();
     let m = &s.model;
     // The voltage systems the circuit sizing knows are voltages the project has.
-    for (name, ln, ll) in nbr5410::SYSTEMS {
+    let rules = &nbr5410::rule_sets()[0];
+    for nbr5410::System { name, phase_v: ln, line_v: ll } in &rules.systems {
         let sys = m.distribution_systems.get(&format!("{name} V")).unwrap_or_else(|| panic!("{name}"));
         let volts = |v: &Option<String>| v.as_deref().and_then(|n| m.voltages.get(n)).map(|v| v.nominal);
         assert_eq!((volts(&sys.l_n), volts(&sys.l_l)), (Some(*ln), Some(*ll)), "{name}");
     }
     // The wire types seeded from NBR 5410 hold its tables' reference method B1, two loaded conductors (the fifth column).
-    for (wire, table) in [("Cu PVC 70 °C", nbr5410::CU_PVC), ("Cu XLPE/EPR 90 °C", nbr5410::CU_EPR)] {
+    for (wire, table) in [("Cu PVC 70 °C", &rules.ampacity_pvc), ("Cu XLPE/EPR 90 °C", &rules.ampacity_epr)] {
         let sizes = &m.wire_types[wire].sizes;
         assert_eq!(sizes.len(), table.len(), "{wire}");
         for (size, (section, row)) in sizes.iter().zip(table) {

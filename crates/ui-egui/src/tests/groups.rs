@@ -140,7 +140,7 @@ fn a_click_picks_the_group_and_tab_its_member() {
 
 #[test]
 fn exclude_and_restore_all_excluded_from_the_group_panel() {
-    let mut h = app(CORNER);
+    let mut h = wide(CORNER);
     let group = ids(&h, "modelgroup");
     let walls = ids(&h, "wall");
     h.state_mut().selection = vec![walls[0]];

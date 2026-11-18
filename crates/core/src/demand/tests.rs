@@ -2,6 +2,203 @@
 
 use super::*;
 
+/// BIMCraft's utilities, as a project that changed nothing reads them.
+fn method(utility: &str) -> &'static Method {
+    &find(utility).unwrap_or_else(|| panic!("{utility}")).0.method
+}
+
+fn cpfl() -> &'static ByTerms {
+    match method("CPFL") {
+        Method::Terms(t) => t,
+        _ => panic!("CPFL works out a demand by terms"),
+    }
+}
+
+fn enel() -> &'static ByAnnexes {
+    match method("ENEL") {
+        Method::Annexes(a) => a,
+        _ => panic!("ENEL frames a supply by annexes"),
+    }
+}
+
+fn celesc() -> &'static ByTable {
+    match method("CELESC") {
+        Method::Table(t) => t,
+        _ => panic!("CELESC frames a supply by one table"),
+    }
+}
+
+fn least_outlets(area: f64) -> Option<(u32, u32)> {
+    cpfl().least_outlets(area)
+}
+
+fn lighting_factor(kw: f64) -> f64 {
+    cpfl().lighting.at(kw)
+}
+
+fn heater_factor(n: u32) -> f64 {
+    cpfl().heaters.at(f64::from(n.max(1)))
+}
+
+fn boiler_factor(n: u32) -> f64 {
+    cpfl().boilers.at(f64::from(n))
+}
+
+fn appliance_factor(n: u32) -> f64 {
+    cpfl().appliances.at(f64::from(n))
+}
+
+fn stove_factor(n: u32) -> f64 {
+    cpfl().stoves.at(f64::from(n))
+}
+
+fn air_factor(n: u32) -> f64 {
+    cpfl().air.at(f64::from(n))
+}
+
+fn motor_factor(rank: u32) -> f64 {
+    cpfl().motors.at(f64::from(rank.max(1)))
+}
+
+fn window_air(btu: f64) -> Option<(f64, f64)> {
+    cpfl().window_air(btu)
+}
+
+fn motor(cv: f64, phases: u32) -> Option<(f64, f64)> {
+    cpfl().motor(cv, phases)
+}
+
+fn compute(i: &Input) -> Result<Output, String> {
+    cpfl().compute(i)
+}
+
+#[derive(Clone, Copy)]
+enum System {
+    S127_220,
+    S220_380,
+}
+
+fn category(system: System, c: f64, d: f64) -> Option<&'static Category> {
+    cpfl().category(if matches!(system, System::S127_220) { "127/220" } else { "220/380" }, c, d)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Network {
+    Aerial,
+    Aerial120240,
+    Underground,
+    Submersible,
+}
+
+fn annex(n: Network) -> &'static Annex {
+    let name = match n {
+        Network::Aerial => "aerial",
+        Network::Aerial120240 => "aerial_120_240",
+        Network::Underground => "underground",
+        Network::Submersible => "underground_submersible",
+    };
+    enel().annex(name).unwrap_or_else(|| panic!("{name}"))
+}
+
+/// An annex's row with its columns as the tables print them.
+struct Row {
+    name: &'static str,
+    lo: f64,
+    hi: f64,
+    breaker: f64,
+    connection: (Option<u8>, f64, f64),
+    entry: (f64, f64),
+    earth: f64,
+    junction_box: Option<&'static str>,
+}
+
+fn row(r: &'static AnnexRow) -> Row {
+    Row {
+        name: r.name.as_str(),
+        lo: r.over,
+        hi: r.up_to,
+        breaker: r.breaker,
+        connection: (r.connection.conductors_per_phase, r.connection.phase, r.connection.neutral),
+        entry: (r.entry.phase, r.entry.neutral),
+        earth: r.earthing,
+        junction_box: r.junction_box.as_deref(),
+    }
+}
+
+fn enel_row(n: Network, name: &str) -> Option<Row> {
+    annex(n).rows.iter().find(|r| r.name == name).map(row)
+}
+
+struct Pick {
+    rows: Vec<Row>,
+}
+
+fn enel_pick(n: Network, kw: f64, phases: Option<u8>) -> Option<Pick> {
+    enel().pick(annex(n), kw, phases).map(|rows| Pick { rows: rows.into_iter().map(row).collect() })
+}
+
+struct Delta {
+    names: Vec<&'static str>,
+    breaker: f64,
+    connection: (Option<u8>, f64, f64),
+    entry: f64,
+    earth: f64,
+    measurement: &'static str,
+}
+
+fn delta_pick(amps: f64, phases: Option<u8>) -> Option<Vec<Delta>> {
+    enel().by_current(amps, phases).map(|rows| {
+        rows.into_iter()
+            .map(|r| Delta {
+                names: r.names.iter().map(String::as_str).collect(),
+                breaker: r.breaker,
+                connection: (r.connection.conductors_per_phase, r.connection.phase, r.connection.neutral),
+                entry: r.entry,
+                earth: r.earthing,
+                measurement: r.measurement.as_str(),
+            })
+            .collect()
+    })
+}
+
+/// A row of Celesc's Tabela 01 with its columns as printed.
+struct Celesc {
+    name: &'static str,
+    lo: f64,
+    hi: f64,
+    demand: Option<(f64, f64)>,
+    breaker: f64,
+    phases: u8,
+    wires: u8,
+    connection: (f64, f64),
+    entry: f64,
+    earth: (f64, f64),
+}
+
+fn celesc_of(r: &'static TableRow) -> Celesc {
+    Celesc {
+        name: r.name.as_str(),
+        lo: r.over,
+        hi: r.up_to,
+        demand: r.demand_up_to.map(|hi| (r.demand_over.unwrap_or(0.0), hi)),
+        breaker: r.breaker,
+        phases: r.phases,
+        wires: r.wires,
+        connection: (r.connection.copper, r.connection.aluminium),
+        entry: r.entry,
+        earth: (r.earthing.copper, r.earthing.copper_clad_steel),
+    }
+}
+
+fn celesc_row(name: &str) -> Option<Celesc> {
+    celesc().networks.iter().flat_map(|n| &n.rows).find(|r| r.name == name).map(celesc_of)
+}
+
+fn celesc_pick(network: &str, kw: f64, phases: Option<u8>) -> Option<Celesc> {
+    let n = celesc().networks.iter().find(|n| n.network == network)?;
+    celesc().pick(n, kw, phases).map(celesc_of)
+}
+
 fn near(a: f64, b: f64, e: f64) -> bool {
     (a - b).abs() <= e
 }
@@ -70,7 +267,7 @@ fn the_tables_of_equipment_are_as_printed() {
 
 #[test]
 fn the_category_follows_the_load_and_the_demand() {
-    let a = |c: f64, d: f64| category(System::S127_220, c, d).map(|k| k.name);
+    let a = |c: f64, d: f64| category(System::S127_220, c, d).map(|k| k.name.as_str());
     assert_eq!(a(5.0, 0.0), Some("A1"));
     assert_eq!(a(10.0, 0.0), Some("A2"));
     assert_eq!(a(15.0, 0.0), Some("B1"));
@@ -81,7 +278,7 @@ fn the_category_follows_the_load_and_the_demand() {
     assert_eq!(a(70.0, 76.0), Some("C6"));
     assert_eq!(a(70.0, 76.1), None);
     assert_eq!(a(75.1, 10.0), None);
-    let b = |c: f64, d: f64| category(System::S220_380, c, d).map(|k| k.name);
+    let b = |c: f64, d: f64| category(System::S220_380, c, d).map(|k| k.name.as_str());
     assert_eq!(b(9.0, 0.0), Some("A3"));
     assert_eq!(b(14.0, 0.0), Some("A4"));
     assert_eq!(b(20.0, 0.0), Some("B3"));
@@ -93,9 +290,9 @@ fn the_category_follows_the_load_and_the_demand() {
     assert_eq!(b(50.0, 52.1), Some("C10"));
     // The pieces of a category, as Tabelas 1A to 1C print them, aluminium included.
     let c3 = category(System::S127_220, 46.1, 33.0).unwrap();
-    assert_eq!((c3.breaker, c3.cable, c3.aluminium, c3.conduit, c3.earth), (100.0, 35.0, 35.0, 40.0, 10.0));
+    assert_eq!((c3.breaker, c3.cable, c3.aluminium, c3.conduit, c3.earthing), (100.0, 35.0, 35.0, 40.0, 10.0));
     let c11 = category(System::S220_380, 70.0, 80.0).unwrap();
-    assert_eq!((c11.breaker, c11.cable, c11.aluminium, c11.conduit, c11.earth), (125.0, 50.0, 50.0, 50.0, 16.0));
+    assert_eq!((c11.breaker, c11.cable, c11.aluminium, c11.conduit, c11.earthing), (125.0, 50.0, 50.0, 50.0, 16.0));
     let a1 = category(System::S127_220, 5.0, 0.0).unwrap();
     assert_eq!((a1.cable, a1.aluminium), (6.0, 10.0));
     // Version 46: B1 and B3 in a 32 mm conduit, C7's earthing conductor 6 mm².
@@ -103,7 +300,7 @@ fn the_category_follows_the_load_and_the_demand() {
     assert_eq!(category(System::S220_380, 20.0, 0.0).map(|k| k.conduit), Some(32.0));
     assert_eq!(category(System::S127_220, 20.0, 0.0).map(|k| k.conduit), Some(40.0));
     let c7 = category(System::S220_380, 30.0, 20.0).unwrap();
-    assert_eq!((c7.breaker, c7.cable, c7.aluminium, c7.earth), (40.0, 10.0, 16.0, 6.0));
+    assert_eq!((c7.breaker, c7.cable, c7.aluminium, c7.earthing), (40.0, 10.0, 16.0, 6.0));
 }
 
 fn load(w: f64, count: u32) -> Load {
@@ -159,7 +356,7 @@ fn a_big_flat_declares_its_outlets() {
 #[test]
 fn special_equipment_is_taken_at_a_power_factor_of_0_75_by_rank() {
     let mut i = example_3();
-    i.special = vec![Special { kind: SpecialKind::ResistanceWeld, kw: 4.0, count: 2 }];
+    i.special = vec![Special { kind: "resistance_weld".into(), kw: 4.0, count: 2 }];
     let r = compute(&i).unwrap();
     // 5.333 kVA at 1 and 5.333 at 0.6.
     assert!(near(r.terms.h, 4.0 / 0.75 * (1.0 + 0.6), 1e-9), "{}", r.terms.h);
@@ -221,7 +418,7 @@ mod command {
     #[test]
     fn another_utility_is_refused_and_named() {
         let mut s = Session::new();
-        for u in ["Light", "COPEL", "xx"] {
+        for u in ["Light", "EDP", "xx"] {
             let e = s.execute("demand", &json!({"utility": u, "area": 40})).unwrap_err();
             assert!(e.contains("CPFL") && e.contains("ENEL") && e.contains("CELESC") && e.contains(u), "{e}");
         }
@@ -435,11 +632,11 @@ fn enel_anexo_b_is_picked_by_the_current_of_the_demand() {
     assert_eq!(p(300.0, None).map(|r| r[0].1), Some(300.0));
     assert_eq!(p(300.1, None), None);
     // Version 02: B4 and C4 connect by 16 mm² (16), and B9/C9 earth by 50 mm².
-    let first = |a: f64, ph: Option<u8>| delta_pick(a, ph).and_then(|r| r.first().copied());
+    let first = |a: f64, ph: Option<u8>| delta_pick(a, ph).and_then(|r| r.into_iter().next());
     assert_eq!(first(60.0, Some(3)).map(|r| r.connection), Some((Some(3), 16.0, 16.0)));
     assert_eq!(first(60.0, Some(2)).map(|r| r.connection), Some((Some(2), 16.0, 16.0)));
     assert_eq!(first(190.0, None).map(|r| r.earth), Some(50.0));
-    let r = delta_pick(250.0, None).and_then(|r| r.first().copied());
+    let r = delta_pick(250.0, None).and_then(|r| r.into_iter().next());
     assert_eq!(
         r.map(|r| (r.breaker, r.connection, r.entry, r.earth, r.measurement)),
         Some((275.0, (Some(3), 150.0, 80.0), 150.0, 95.0, "indirect"))
@@ -592,5 +789,81 @@ mod celesc_command {
         ] {
             assert!(s.execute("demand", &p).is_err(), "{p}");
         }
+    }
+}
+
+mod project_s_utility {
+    use crate::engine::Session;
+    use serde_json::{Value, json};
+
+    fn run(s: &mut Session, id: &str, p: Value) -> Value {
+        s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
+    }
+
+    /// CPFL's unit demand with its first category's A1 breaker changed to `a`.
+    fn cpfl_with_a1(a: u32) -> Value {
+        let c = crate::codes::find(crate::codes::Discipline::Electrical, "cpfl").unwrap();
+        let mut u = c.sections["unit_demand"].clone();
+        let rows = u["method"]["terms"]["categories"][0]["rows"].as_array_mut().unwrap();
+        let a1 = rows.iter_mut().find(|r| r["name"] == "A1").unwrap();
+        a1["breaker"] = json!(a);
+        u
+    }
+
+    fn breaker(s: &mut Session, utility: &str) -> Value {
+        let r = run(s, "demand", json!({"utility": utility, "area": 40}));
+        r["category"]["breaker_a"].clone()
+    }
+
+    #[test]
+    fn an_amendment_s_change_reaches_its_utility_wherever_it_stands_and_no_other() {
+        let mut s = Session::new();
+        let library = breaker(&mut s, "CPFL");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cpfl", "enel"]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "cpfl", "rules": {"unit_demand": cpfl_with_a1(40)}}));
+        assert_eq!(breaker(&mut s, "CPFL"), json!(40.0), "CPFL's amendment holds 40 A though Enel stands over it");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["enel", "cpfl"]}));
+        assert_eq!(breaker(&mut s, "CPFL"), json!(40.0), "in either order");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["enel"]}));
+        assert_eq!(breaker(&mut s, "CPFL"), library, "CPFL no longer chosen: the library's");
+    }
+
+    #[test]
+    fn a_project_held_to_a_utility_s_code_has_demand_take_that_utility_when_none_is_named() {
+        let mut s = Session::new();
+        assert!(s.execute("demand", &json!({"area": 40})).is_err(), "the project holds no utility's code, and none is named");
+        for (code, utility, unit) in [("cpfl", "CPFL", json!({"area": 40})), ("hidropan", "HIDROPAN", json!({"installed_kw": 10}))] {
+            run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": [code]}));
+            let held = run(&mut s, "demand", unit.clone());
+            assert_eq!(held["utility"], utility);
+            let mut named = unit;
+            named["utility"] = json!(utility);
+            assert_eq!(held, run(&mut s, "demand", named), "the same as naming it");
+        }
+    }
+
+    #[test]
+    fn a_utility_s_tables_are_never_another_s() {
+        let mut s = Session::new();
+        let library = run(&mut s, "demand", json!({"utility": "CPFL", "area": 40}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cpfl"]}));
+        // Taking CPFL's method out of its amendment leaves CPFL's own, never Celesc's.
+        let _ =
+            s.execute("building_code", &json!({"discipline": "electrical", "amend": "cpfl", "rules": {"unit_demand": {"method": null}}}));
+        let r = run(&mut s, "demand", json!({"utility": "CPFL", "area": 40}));
+        assert_eq!(r["category"], library["category"], "{r}");
+        assert!(!r.to_string().contains("N-321"), "no Celesc source: {r}");
+    }
+
+    #[test]
+    fn a_change_to_a_utility_s_tables_is_made_in_its_amendment() {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["cpfl"]}));
+        // The project's own change has no utility it belongs to once another is chosen: it is refused, and says how.
+        let e = s.execute("building_code", &json!({"discipline": "electrical", "rules": {"unit_demand": cpfl_with_a1(40)}})).unwrap_err();
+        assert!(e.contains("amend"), "{e}");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["enel"]}));
+        let r = run(&mut s, "demand", json!({"utility": "ENEL", "network": "aerial", "installed_kw": 10}));
+        assert!(r.get("category").is_some() || r.get("annex").is_some(), "{r}");
     }
 }

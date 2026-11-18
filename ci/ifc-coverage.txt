@@ -92,3 +92,8 @@ beam {"points":[[0,17000],[6000,17000]],"type":"CHS steel","offset":3000,"end_of
 # (IfcMember .STRINGER.), coverings and BIMCraft_Stair. Last, so the ids above stay put.
 type {"category": "stair", "name": "Stringers - Closed Risers", "landing_stringers": true, "tread_cover": 30, "cover_nosing": 20}
 stair {"start": [70000, 0], "width": 1000, "type": "Stringers - Closed Risers", "path": [{"to": [70000, 1900]}, {"to": [72500, 1900], "landing": true}, {"to": [72500, -5000]}]}
+# A component that doesn't stand upright: a work plane-based sign on a plane sloped 30 degrees, written with its own tilted
+# axes (`place_tilted`, the same placement an imported bolt's `tilt` takes, which no command sets).
+family {"name": "Sign", "category": "generic", "types": {"A": {}}, "options": {"work_plane_based": true, "always_vertical": false}, "forms": [{"profile": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "to": 100}]}
+reference_plane {"name": "Ramp", "start": [80000, 0, 0], "end": [84000, 0, 0], "up": [0, 0.8660254037844386, 0.5]}
+component {"family": "Sign", "at": [81000, 1000], "host": {"plane": "Ramp"}}

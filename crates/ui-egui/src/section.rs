@@ -20,6 +20,8 @@ use crate::style::canvas_pal;
 use crate::view_worker::Latest;
 use crate::{BimApp, Status, Tool};
 
+mod tools;
+
 /// Geometry and visibility identity, independent of interaction paint.
 type Shot = (Arc<Model>, Id, View, View);
 
@@ -51,7 +53,7 @@ pub struct Cut {
     texture: Option<TextureHandle>,
     shown: Option<Shot>,
     grid_background: bool,
-    tints: Vec<(Id, Rgb)>,
+    pub(crate) tints: Vec<(Id, Rgb)>,
     ground: Color32,
     #[cfg(test)]
     overlay: Option<render::SectionOverlay>,
@@ -221,7 +223,8 @@ impl BimApp {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::CLICK | Sense::DRAG);
         let model = self.view_model();
         let ground = color(render::PAPER);
-        let grid_background = self.background_grid().shown();
+        // Under a background grid or an underlay drawn behind, the picture's paper is clear.
+        let grid_background = self.background_grid().shown() || crate::underlay::Layer::behind(&model, id);
         if self.cut.mode.0 {
             self.cut.poll(ui.ctx(), &model, id, ground, grid_background);
             if !self.canvas.has_view(id) {
@@ -267,7 +270,8 @@ impl BimApp {
         let pixels = View { scale: view.scale * ppp, width: side(view.width), height: side(view.height), ..view };
         let ground = color(render::PAPER);
         // Framing/model changes rebuild visibility; interaction changes only paint.
-        let grid_background = self.background_grid().shown();
+        // Under a background grid or an underlay drawn behind, the picture's paper is clear.
+        let grid_background = self.background_grid().shown() || crate::underlay::Layer::behind(&model, id);
         // A new canvas colour, or the background grid shown or hidden, paints the same picture's paper again.
         if self.cut.ground != ground || self.cut.grid_background != grid_background {
             self.cut.upload(ui.ctx(), ground, grid_background);
@@ -302,7 +306,20 @@ impl BimApp {
             d.pick((x, y), PICK / k)
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
-        let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
+        // Modify and Demolish pick what is under the cursor, and the section tools take their references from it.
+        let picks = matches!(
+            self.tool,
+            Tool::Modify | Tool::Demolish | Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }
+        );
+        // The level line under the cursor, though a wall or a floor lies nearer: what Aligned to Picked Level takes.
+        let pick_level =
+            |d: &render::Drawing, q: (f32, f32)| d.pick_all(unproject(q), PICK / k).into_iter().find(|l| model.level(*l).is_some());
+        // Under the cursor, lit: what a click would take (Aligned to Picked Level takes only a level line).
+        let hovered = local.and_then(|q| match self.tool {
+            _ if picks => pick(&self.cut, &d, q),
+            Tool::PickLevel => pick_level(&d, q),
+            _ => None,
+        });
         // On the selected curtain wall under the cursor, Tab goes through its parts there, on the plane the view looks at.
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab)) && local.is_some();
         if tab {
@@ -312,7 +329,7 @@ impl BimApp {
                 }
             });
         }
-        if (std::mem::take(&mut self.tab_cycle) || tab)
+        if (std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab)
             && let (Some(q), Some(wall)) = (local, hovered)
             && crate::curtain::tab_wall(&model, &self.selection, &[wall], Some(wall), self.tool == Tool::Modify) == Some(wall)
             && let Some((cam, _)) = render::section_camera(&model, id, view)
@@ -382,11 +399,18 @@ impl BimApp {
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         self.paint_background_grid(&p, rect, view);
+        // The underlay, made once the section is: behind it here, or over it below.
+        let hold = self.cut.worker.as_ref().is_some_and(Latest::busy);
+        let under = self.underlay_now(ui.ctx(), &model, id, view, hold);
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), false);
         if let Some(t) = self.cut.texture.as_ref().filter(|_| displaying) {
             let image_rect = Rect::from_min_size(place.origin, egui::vec2(source.width as f32, source.height as f32) * k);
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         paint(&p, place, &d, &lit, lit_hover, self.thin, &[]);
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), true);
+        // Underlay Settings' Move or Rotate is picking here: the view's own clicks wait.
+        let picking = self.underlay_pick(ui, &response, &p, rect, &view, id, None);
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, ("section", id), rect, &view, (&d, place));
         if let Some((cam, _)) = render::section_camera(&model, id, view) {
             let screen = |c: [f64; 3]| {
@@ -483,7 +507,7 @@ impl BimApp {
         self.cut.image = held;
         p.extend(boxed);
         p.extend(datum);
-        let clicked = self.clicked_at(&response).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
+        let clicked = self.clicked_at(&response).filter(|_| !picking).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
         // Along the line and up, to the nearest 10 mm.
         let grid = self.background_grid();
         let snapping = self.grid_snapping;
@@ -519,6 +543,26 @@ impl BimApp {
             }
             return;
         }
+        // What a click would paste: the box round it, its middle at the cursor.
+        if self.tool == Tool::Paste
+            && let Some(frame) = bimcraft_core::clipboard::Frame::of(&model, id)
+            && let Some([lo, hi]) = self.paste_extent(&frame)
+            && let Some(cursor) = ui.input(|i| i.pointer.latest_pos()).filter(|c| rect.contains(*c))
+        {
+            let mid = (lo + hi) * 0.5;
+            let c = at((cursor.x - rect.min.x, cursor.y - rect.min.y));
+            let screen = |a: P2| rect.min + egui::vec2(view.px(a + c - mid).0, view.px(a + c - mid).1);
+            let r = egui::Rect::from_two_pos(screen(lo), screen(hi));
+            ui.painter_at(rect).rect_stroke(r, 0.0, egui::Stroke::new(1.0, crate::style::pal().accent), egui::StrokeKind::Middle);
+        }
+        // Only edit through the model generation being displayed. A stale picture must never
+        // lend a reference to geometry from a newer snapshot.
+        let fresh = self.cut.shown.as_ref().is_some_and(|(m, v, ..)| *v == id && Arc::ptr_eq(m, &model));
+        if self.vertical_tools(ui, &p, rect, view, id, local, clicked.filter(|_| fresh), hovered) {
+            self.context_menu(&response);
+            self.nav_bar(ui, rect, id);
+            return;
+        }
         match (clicked, &self.tool) {
             (Some(q), _) if self.curtain_face_tool() => {
                 let wall = match self.tool {
@@ -543,6 +587,11 @@ impl BimApp {
                 }
             }
             (Some(q), Tool::Text) => self.write_note(id, at(q)),
+            (Some(q), Tool::Paste) => self.paste_at(id, at(q)),
+            (Some(q), Tool::PickLevel) => match pick_level(&d, q) {
+                Some(l) => self.paste_on_level(l),
+                None => self.status = Status { text: crate::lang::t("click a level line").into(), error: true },
+            },
             (Some(q), Tool::Spot) => {
                 self.run("spot", json!({"at": [at(q).0, at(q).1], "view": id}));
             }

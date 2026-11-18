@@ -30,8 +30,8 @@ walls follow the result. Roofs with only inherited pitches retain direct overall
 
 Ratios and percentages must be positive and yield no more than 75°. Bare `0` makes a whole roof flat; on a boundary
 line, bare `0` or blank inherits the roof's pitch. A pitched roof with all edges disabled refuses Finish.
-The Roof creation Options Bar still accepts degrees. Project-wide slope display formats and extrusion **Edit Profile**
-UI are separate work; this change does not provide them.
+The Roof creation Options Bar still accepts degrees. Project-wide slope display formats remain separate work.
+Extrusion **Edit Profile** is supplied by the separately merged #495; this footprint contribution does not change it.
 
 ## Actual before and after
 
@@ -128,6 +128,13 @@ The table describes this implementation independently; it is not a native Revit 
 | Broader roof tools | Extrusion profile editing and general sketch-tool expansion are separate work; no full Revit parity claim |
 
 ## Verification and attribution
+
+The November 18 integration refresh includes upstream main `046b3575db132777da22655d6a44aa75b32b349c`, including the
+separately merged extrusion editor and current guide/typed-input routing. The two source conflicts were neighboring
+Properties methods and command help text: both footprint controls and extrusion coordinates, and both roof and Pick
+Walls documentation, are retained. Generated catalogs were refreshed from upstream translations. An additional
+Tab/Shift+Tab/Escape journey checks that dismissing a pending pitch choice retains roof selection and adds no history.
+This refresh preserves the per-edit pitch and eave semantics above; original test-first evidence remains recorded below.
 
 The November 17 refinement on merged baseline `0d36d580` passed `cargo test --workspace`: 4,872 passed, 0 failed,
 21 ignored, exit 0. Formatting, workspace/all-target Clippy with warnings denied, and `cargo i18n check` passed.

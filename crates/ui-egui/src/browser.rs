@@ -64,8 +64,8 @@ impl Tab {
 }
 
 /// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
-const SYSTEM_FAMILIES: [&str; 11] =
-    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing"];
+const SYSTEM_FAMILIES: [&str; 12] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing", "grid"];
 
 /// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,6 +115,11 @@ enum Act {
     Fold(bool),
     /// A curtain panel's or a mullion's type: Type Properties on it.
     EditType(&'static str, String),
+    /// A type's Select All Instances submenu, followed by its chosen scope.
+    Instances(serde_json::Value),
+    SelectInstances(serde_json::Value, crate::context::InstanceScope),
+    /// Show as Underlay: the view under the one on screen.
+    Underlay(Id),
 }
 
 /// An entry of the tree, or a group of them.
@@ -405,6 +410,7 @@ impl BimApp {
                 self.set_tool(Tool::Component);
             }
             Some(Act::Duplicate(view, mode)) => self.duplicate_view_of(view, mode),
+            Some(Act::Underlay(source)) => self.show_as_underlay(source),
             Some(Act::Delete(ids)) => {
                 self.delete_elements(ids);
             }
@@ -418,6 +424,7 @@ impl BimApp {
             Some(Act::EditType(category, name)) => {
                 self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
             }
+            Some(Act::SelectInstances(params, scope)) => self.select_instances(params, scope),
             _ => {}
         }
     }
@@ -428,12 +435,7 @@ impl BimApp {
         let text = marked(ui, &node.label, words);
         // Its right-click menu: its own items, a print set of what is picked (or of what it holds), and folding.
         let menu = |ui: &mut Ui, act: &mut Option<Act>, picks: Vec<Pick>| {
-            for (label, item) in &node.menu {
-                if ui.button(t(label)).clicked() {
-                    *act = Some(item.clone());
-                    ui.close();
-                }
-            }
+            browser_menu(ui, &node.menu, act);
             if !node.menu.is_empty() {
                 ui.separator();
             }
@@ -590,6 +592,9 @@ impl BimApp {
             if view {
                 menu.push(("Delete", Act::Delete(vec![id])));
             }
+            if self.underlay_target().is_some_and(|on| on != id) {
+                menu.push((msg!("Show as Underlay"), Act::Underlay(id)));
+            }
             self.view_leaf(name, sheet).with_menu(menu)
         };
         let plans = keyed.iter().map(|(id, name, view)| plan_leaf(*id, name, *view, Sheet::Plan(*id))).collect();
@@ -620,7 +625,15 @@ impl BimApp {
         {
             let views = views(category);
             if !views.is_empty() {
-                kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| self.view_leaf(name, Sheet::Section(*id))).collect()));
+                let leaf = |id: Id, name: &str| {
+                    let node = self.view_leaf(name, Sheet::Section(id));
+                    if self.underlay_target().is_some_and(|on| on != id) {
+                        node.with_menu(vec![(msg!("Show as Underlay"), Act::Underlay(id))])
+                    } else {
+                        node
+                    }
+                };
+                kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| leaf(*id, name)).collect()));
             }
         }
         Node::group(t("Views (all)"), true, kids)
@@ -684,11 +697,14 @@ impl BimApp {
     }
 
     /// Families, each its types: one picked, the Component tool places it. Folded but on its own tab.
-    /// Families: each category of the system's (walls, floors, doors…) with its types, then the project's component families.
+    /// Families: each category of the system's (walls, floors, doors, grids…) with its types, then the project's component families.
     /// A right click on a type or a family has Delete, which the project refuses while something uses it.
     fn families_node(&self, open: bool) -> Node {
         let m = &self.session.model;
         let delete = |params: serde_json::Value| vec![("Delete", Act::Do("delete_type", params))];
+        let type_menu = |params: serde_json::Value| {
+            vec![(msg!("Select All Instances"), Act::Instances(params.clone())), ("Delete", Act::Do("delete_type", params))]
+        };
         let system = SYSTEM_FAMILIES.iter().chain(&bimcraft_core::model::RUN_CATEGORIES).filter_map(|category| {
             let names = m.type_names(category);
             let leaves = names
@@ -696,7 +712,7 @@ impl BimApp {
                 .map(|ty| {
                     let on = self.types.get(category).is_some_and(|t| t == ty);
                     Node::leaf(ty, Act::Pick(category, ty.to_string()), on)
-                        .with_menu(delete(serde_json::json!({"category": category, "type": ty})))
+                        .with_menu(type_menu(serde_json::json!({"category": category, "type": ty})))
                 })
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
@@ -726,12 +742,26 @@ impl BimApp {
                 .map(|ty| {
                     let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.clone(), ty.clone()));
                     Node::leaf(ty, Act::Place(name.clone(), ty.clone()), on)
-                        .with_menu(delete(serde_json::json!({"family": name, "type": ty})))
+                        .with_menu(type_menu(serde_json::json!({"family": name, "type": ty})))
                 })
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
         });
         Node::group(t("Families"), open, system.chain(curtain).chain(components).collect())
+    }
+}
+
+/// One menu renderer for leaf entries and groups.
+fn browser_menu(ui: &mut Ui, entries: &[(&'static str, Act)], act: &mut Option<Act>) {
+    for (label, item) in entries {
+        if let Act::Instances(params) = item {
+            if let Some(scope) = crate::context::instances_menu(ui, true, false) {
+                *act = Some(Act::SelectInstances(params.clone(), scope));
+            }
+        } else if ui.button(t(label)).clicked() {
+            *act = Some(item.clone());
+            ui.close();
+        }
     }
 }
 

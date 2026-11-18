@@ -1,23 +1,24 @@
-//! Manage > Electrical Settings, as Revit's: the project's voltages, distribution systems and wire types, each a table with rows to
-//! add and take away, edited as a draft and applied as one undo step through the `voltage`, `distribution_system` and `wire_type`
-//! commands (OK and Apply), or dropped (Cancel). Sections are mm², always, as the core keeps them.
+//! Electrical Settings, as Revit's: the project's voltages, distribution systems and wire types, each a table with rows to add
+//! and take away, edited as a draft and applied as one undo step through the `voltage`, `distribution_system` and `wire_type`
+//! commands (the Building Codes dialog's OK and Apply), or dropped (Cancel). They are the first sections of Manage > Building
+//! Codes' Electrical tab (`codes.rs`), which Manage > Electrical Settings opens. Sections are mm², always, as the core keeps
+//! them.
 
 use std::collections::BTreeSet;
 
 use bimcraft_core::electrical::{EARTHINGS, MATERIALS, MAX_SIZES, MAX_SYSTEMS, MAX_VOLTAGES, MAX_WIRE_TYPES, Voltage, WireSize, WireType};
 use bimcraft_core::model::Model;
 use bimcraft_i18n::msg;
-use egui::{Align, Button, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, TextEdit, Ui, WidgetInfo, WidgetType};
+use egui::{Button, ComboBox, DragValue, Grid, RichText, TextEdit, Ui, WidgetInfo, WidgetType};
 use serde_json::{Value, json};
 
 use crate::lang::{t, tf};
-use crate::popup::Modal;
 use crate::renames;
 use crate::style::{ERROR_HEIGHT, boxed_text, pal};
 use crate::{BimApp, Status};
 
-/// The dialog's tabs.
-const TABS: [&str; 3] = [msg!("Voltages"), msg!("Distribution Systems"), msg!("Wire Types")];
+/// The settings' tables, as the Electrical tab lists them.
+pub(crate) const TABS: [&str; 3] = [msg!("Voltages"), msg!("Distribution Systems"), msg!("Wire Types")];
 
 /// The conductor materials, as the core names them, and as the window does.
 const MATERIAL_LABELS: [(&str, &str); 2] = [("copper", msg!("copper")), ("aluminium", msg!("aluminium"))];
@@ -47,9 +48,8 @@ struct Supply {
     ground: Option<String>,
 }
 
-/// The Electrical Settings dialog: its tab, and the three tables as edited and not yet applied.
+/// The Electrical Settings: the three tables as edited and not yet applied.
 pub(crate) struct ElectricalDialog {
-    tab: usize,
     voltages: Vec<Row<Voltage>>,
     systems: Vec<Row<Supply>>,
     wires: Vec<Row<WireType>>,
@@ -65,7 +65,6 @@ impl ElectricalDialog {
     /// Open on the project's electrical settings.
     pub(crate) fn new(m: &Model) -> ElectricalDialog {
         let mut d = ElectricalDialog {
-            tab: 0,
             voltages: Vec::new(),
             systems: Vec::new(),
             wires: Vec::new(),
@@ -289,7 +288,7 @@ fn heads(ui: &mut Ui, heads: &[&str]) {
 }
 
 /// The voltages: a name and the band each may read within.
-fn voltages_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
+pub(crate) fn voltages_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
     ui.label(t("The voltages of the project, in volts, and the band a device may read within. A distribution system names them."));
     ui.add_space(4.0);
     let mut delete = None;
@@ -298,7 +297,12 @@ fn voltages_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
         for (i, r) in d.voltages.iter_mut().enumerate() {
             let n = (i + 1).to_string();
             text_field(ui, &mut r.name, 180.0, tf("Voltage {} name", &[&n]));
+            let was = r.value.clone();
             number_field(ui, &mut r.value.nominal, 1.0..=100_000.0, " V", tf("Voltage {} nominal", &[&n]));
+            // A band still the 10 per cent around the nominal follows it, so a nominal typed alone is one the project takes.
+            if r.value.nominal != was.nominal && was == Voltage::around(was.nominal) {
+                r.value = Voltage::around(r.value.nominal);
+            }
             number_field(ui, &mut r.value.min, 1.0..=100_000.0, " V", tf("Voltage {} minimum", &[&n]));
             number_field(ui, &mut r.value.max, 1.0..=100_000.0, " V", tf("Voltage {} maximum", &[&n]));
             if delete_button(ui, tf("Delete voltage {}", &[&n])) {
@@ -329,7 +333,7 @@ fn voltage_combo(ui: &mut Ui, salt: (&str, u64), name: String, value: &mut Optio
 }
 
 /// The distribution systems: phases and wires, and the voltages each supplies.
-fn systems_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
+pub(crate) fn systems_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
     ui.label(t(
         "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed.",
     ));
@@ -389,7 +393,7 @@ fn systems_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
 }
 
 /// The wire types: one at a time, with its table of sections.
-fn wires_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
+pub(crate) fn wires_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
     ui.label(t("A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."));
     ui.add_space(4.0);
     d.wire = d.wire.min(d.wires.len().saturating_sub(1));
@@ -469,49 +473,23 @@ fn wires_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
     }
 }
 
-impl BimApp {
-    /// The Electrical Settings dialog, while it's open.
-    pub(crate) fn electrical_window(&mut self, ctx: &Context) {
-        let Some(mut d) = self.electrical_dialog.take() else { return };
-        let (mut ok, mut apply, mut cancel) = (false, false, false);
-        let r = Modal::new(UiId::new("electrical-settings"), t("Electrical Settings")).width(940.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    for (i, label) in TABS.iter().enumerate() {
-                        if ui.selectable_label(d.tab == i, t(label)).clicked() {
-                            d.tab = i;
-                        }
-                    }
-                });
-                ui.separator();
-                match d.tab {
-                    0 => voltages_tab(ui, &mut d),
-                    1 => systems_tab(ui, &mut d),
-                    _ => wires_tab(ui, &mut d),
-                }
-                if let Some(error) = &d.error {
-                    ui.add_space(6.0);
-                    boxed_text(ui, "electrical-error", pal().error, error, ERROR_HEIGHT);
-                }
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                    apply = ui.button(t("Apply")).clicked();
-                    cancel = ui.button(t("Cancel")).clicked();
-                    ok = ui.button(t("OK")).clicked();
-                });
-            });
-        });
-        let failed = (ok || apply) && !self.apply_electrical(&mut d, apply);
-        if failed || !(ok || cancel || r.should_close()) {
-            self.electrical_dialog = Some(d);
-        }
+/// Table `i` of the settings (`TABS`), and what stopped OK or Apply under it.
+pub(crate) fn table(ui: &mut Ui, d: &mut ElectricalDialog, i: usize) {
+    match i {
+        0 => voltages_tab(ui, d),
+        1 => systems_tab(ui, d),
+        _ => wires_tab(ui, d),
     }
+    if let Some(error) = &d.error {
+        ui.add_space(6.0);
+        boxed_text(ui, "electrical-error", pal().error, error, ERROR_HEIGHT);
+    }
+}
 
+impl BimApp {
     /// OK and Apply: what changed, as one undo step, all or nothing; a refusal (a name blank or used twice, the core's reasons)
-    /// keeps the dialog open to fix it, saying why in itself. Whether it was done.
-    fn apply_electrical(&mut self, d: &mut ElectricalDialog, apply: bool) -> bool {
+    /// keeps the Building Codes dialog open to fix it, saying why under the table. Whether it was done.
+    pub(crate) fn apply_electrical(&mut self, d: &mut ElectricalDialog, apply: bool) -> bool {
         d.error = None;
         let done = d.commands(&self.session.model).and_then(|commands| {
             if commands.is_empty() {
@@ -526,9 +504,9 @@ impl BimApp {
         }
         self.status = Status::default();
         if apply {
-            let (tab, wire) = (d.tab, d.wire);
+            let wire = d.wire;
             *d = ElectricalDialog::new(&self.session.model);
-            (d.tab, d.wire) = (tab, wire.min(d.wires.len().saturating_sub(1)));
+            d.wire = wire.min(d.wires.len().saturating_sub(1));
         }
         true
     }

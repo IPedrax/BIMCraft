@@ -20,6 +20,47 @@ use crate::model::{Element, MAX_COORD, MAX_POINTS, Model, TOL};
 /// A straight line, from one end to the other.
 pub type Line = [P2; 2];
 
+/// An extrusion roof's open, straight profile, in increasing distance along its reference line. Lines may be drawn in
+/// either direction and any order. Only their topology is solved here; `Model::check` validates the resulting extrusion.
+pub fn extrusion_profile(lines: &[SketchLine]) -> Result<Vec<P2>, String> {
+    if lines.len() >= MAX_POINTS {
+        return Err(format!("An extrusion roof profile has fewer than {MAX_POINTS} lines"));
+    }
+    let mut segments = Vec::new();
+    for line in lines {
+        let Curve::Poly { points, arcs, closed: false } = &line.curve else {
+            return Err("An extrusion roof profile needs open straight lines, not closed or curved shapes".into());
+        };
+        if points.len() < 2 || arcs.iter().any(|a| *a != 0.0) {
+            return Err("An extrusion roof profile supports straight segments only".into());
+        }
+        if points.iter().any(|p| !p.0.is_finite() || !p.1.is_finite()) {
+            return Err("An extrusion roof profile needs finite coordinates".into());
+        }
+        for pair in points.windows(2) {
+            if segments.len() >= MAX_POINTS - 1 {
+                return Err(format!("An extrusion roof profile has at most {MAX_POINTS} points"));
+            }
+            let (a, b) = if pair[0].0 <= pair[1].0 { (pair[0], pair[1]) } else { (pair[1], pair[0]) };
+            segments.push((a, b));
+        }
+    }
+    segments.sort_by(|a, b| a.0.0.total_cmp(&b.0.0));
+    let Some(&(start, _)) = segments.first() else {
+        return Err("Draw an open profile with at least one straight segment".into());
+    };
+    let mut profile = vec![start];
+    let mut end = start;
+    for (a, b) in segments {
+        if a.dist(end) > TOL || b.0 - a.0 <= TOL {
+            return Err("Join the profile end to end, with each point further along: no gaps, branches or vertical segments".into());
+        }
+        profile.push(b);
+        end = b;
+    }
+    Ok(profile)
+}
+
 /// A sketch line: any [`Curve`], a line, an arc, a polyline, a circle, an ellipse or a spline. Its id and GUID are its
 /// own, given when what it draws is made or edited and kept while it stays in the sketch. In a file and a command it is
 /// one flat object: its `id` and `guid` and its curve's fields.
@@ -976,6 +1017,76 @@ fn cap(mut problems: Vec<Problem>) -> Vec<Problem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extrusion_profile_orders_reversed_segments_and_refuses_gaps_branches_and_curves() {
+        let (a, b, c) = (P2(-500.0, 0.0), P2(3000.0, 2000.0), P2(6000.0, 500.0));
+        let first = SketchLine::new(a, b);
+        let second = SketchLine::new(c, b);
+        assert_eq!(extrusion_profile(&[second.clone(), first.clone()]).unwrap(), vec![a, b, c]);
+        for lines in [
+            vec![],
+            vec![first.clone(), SketchLine::new(P2(3100.0, 2000.0), c)],
+            vec![first.clone(), second.clone(), SketchLine::new(b, P2(7000.0, 0.0))],
+            vec![first.clone(), first.clone()],
+            vec![SketchLine::new(a, P2(a.0, 1000.0))],
+            vec![SketchLine::arc(a, c, b)],
+            vec![SketchLine::new(P2(f64::NAN, 0.0), c)],
+        ] {
+            assert!(extrusion_profile(&lines).is_err(), "{lines:?}");
+        }
+    }
+
+    #[test]
+    fn extrusion_profile_modify_preserves_hosts_identity_limits_and_reopens() {
+        use crate::engine::Session;
+        use serde_json::json;
+        let mut s = Session::new();
+        let roof = s
+            .execute(
+                "roof",
+                &json!({"level":"Level 1", "offset": 3000, "extrusion": {
+                    "line": [[1000,2000],[4600,6800]], "profile": [[0,0],[6000,1500]], "from": -500, "to": 4000
+                }}),
+            )
+            .unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        let wall =
+            s.execute("wall", &json!({"points": [[2000,5000],[3200,6600]], "attach_top": roof})).unwrap()["ids"][0].as_u64().unwrap();
+        let before = s.model.clone();
+        let history = s.history().len();
+        let guid = s.model.guid(roof);
+        let a = P2(0.0, 0.0);
+        let b = P2(6000.0, 3000.0);
+        let profile = extrusion_profile(&[SketchLine::new(b, a)]).unwrap();
+        s.execute("modify", &json!({"id": roof, "extrusion": {"profile": profile}})).unwrap();
+        assert_eq!(s.history().len(), history + 1);
+        assert_eq!(s.model.guid(roof), guid);
+        let Some(Element::Roof(r)) = s.model.elements.get(roof) else { panic!("roof") };
+        let x = r.extrusion.as_ref().unwrap();
+        assert_eq!((x.from, x.to, x.line), (-500.0, 4000.0, [P2(1000.0, 2000.0), P2(4600.0, 6800.0)]));
+        let frame = crate::workplane::roof_profile(&s.model, roof).unwrap();
+        for q in [a, b, P2(2000.0, 900.0)] {
+            assert!(frame.coordinates(frame.point(q)).dist(q) < 1e-9);
+        }
+        // The wall's midpoint is 4000 mm along the profile's axis; its top follows the new 1:2 rise.
+        let top = crate::view3d::tops_at(&s.model, P2(2600.0, 5800.0))[&wall];
+        assert!((top - 5000.0).abs() < 1e-6, "{top}");
+        let after = s.model.clone();
+        let (reopened, left) = Model::read(&s.model.to_json().unwrap()).unwrap();
+        assert!(left.is_empty());
+        assert_eq!(reopened.guid(roof), guid);
+        assert!((crate::view3d::tops_at(&reopened, P2(2600.0, 5800.0))[&wall] - top).abs() < 1e-6);
+        for invalid in [json!([[0, 0], [0, 1000]]), json!([[0, 0], [6000, 1e20]])] {
+            assert!(s.execute("modify", &json!({"id":roof,"extrusion":{"profile":invalid}})).is_err());
+            assert_eq!(*s.model, *after);
+        }
+        s.execute("undo", &json!({})).unwrap();
+        assert_eq!(*s.model, *before);
+        s.execute("redo", &json!({})).unwrap();
+        assert_eq!(*s.model, *after);
+    }
 
     fn ring(pts: &[(f64, f64)]) -> Vec<SketchLine> {
         let p: Vec<P2> = pts.iter().map(|&(x, y)| P2(x, y)).collect();

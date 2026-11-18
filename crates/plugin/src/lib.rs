@@ -455,6 +455,12 @@ impl Plugins {
         self.log.entries()
     }
 
+    /// Adds a line to the folder's log under a plugin's name: what the window says about an answer it couldn't show,
+    /// such as a report whose format it doesn't know.
+    pub fn note(&self, plugin: &str, level: Level, text: impl Into<String>) {
+        self.log.note(plugin, level, text);
+    }
+
     /// The ribbon tabs the loaded plugins declare, in the order the plugins were read. The common `Plugins`
     /// section comes last.
     pub fn tabs(&self) -> Vec<RibbonTab> {

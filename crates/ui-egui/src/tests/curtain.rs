@@ -476,7 +476,7 @@ fn a_selected_curtain_wall_offers_grids_and_a_click_on_it_places_one_with_its_mu
 fn horizontal_grids_are_placed_on_a_section_not_a_plan() {
     use bimcraft_core::curtain::GridWay;
     let script = format!("{TALL}\nsection {{\"start\": [-1000, -3000], \"end\": [9000, -3000]}}");
-    let mut h = app(&script);
+    let mut h = wide(&script);
     let id = select_tall(&mut h);
     press(&mut h, "Add Horizontal Grid");
     assert_eq!(h.state().tool, crate::Tool::CurtainGrid { wall: id, way: GridWay::Horizontal });

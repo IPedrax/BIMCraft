@@ -53,7 +53,7 @@ pub(crate) struct Over {
 }
 
 /// The colour of an axis: red for x, green for y, blue for z.
-fn axis_color(axis: usize) -> Color32 {
+pub(crate) fn axis_color(axis: usize) -> Color32 {
     [Color32::from_rgb(222, 74, 68), Color32::from_rgb(86, 178, 90), Color32::from_rgb(64, 132, 232)][axis.min(2)]
 }
 

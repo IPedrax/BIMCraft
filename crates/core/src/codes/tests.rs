@@ -24,14 +24,14 @@ fn broken(s: &mut Session, id: u64) -> Vec<String> {
 
 #[test]
 fn every_code_reads_names_its_sources_and_keeps_its_own_rules() {
-    let all = codes();
+    let all: Vec<&BuildingCode> = of(Discipline::Architectural).collect();
     let names: Vec<&str> = all.iter().map(|c| c.code.as_str()).collect();
     assert_eq!(names, ["generic", "nbr-9050", "nbr-9077", "ibc", "din", "jis"]);
     for c in all {
-        c.stairs.check().unwrap_or_else(|e| panic!("{}: {e}", c.code));
+        c.stairs().check().unwrap_or_else(|e| panic!("{}: {e}", c.code));
         assert!(!c.name.is_empty() && !c.note.is_empty(), "{}", c.code);
         assert!(c.code == GENERIC || !c.references.is_empty(), "{} names no source", c.code);
-        let r = &c.stairs;
+        let r = &c.stairs();
         // What a new stair starts with is inside the code it starts under.
         assert!((r.riser_min..=r.riser_max).contains(&r.riser), "{}", c.code);
         assert!((r.going_min..=r.going_max).contains(&r.going), "{}", c.code);
@@ -201,13 +201,36 @@ fn a_stair_stands_by_its_location_line_which_stays_when_it_widens() {
 #[test]
 fn a_file_with_rules_that_cannot_be_is_refused_and_an_unknown_code_is_generic() {
     let mut m = Model::new("x");
-    m.building_code = Some("mars".into());
+    m.codes.architectural.code = Some("mars".into());
     assert_eq!(m.building_code().code, GENERIC);
     m.check().unwrap();
-    let mut rules = code("ibc").unwrap().stairs.clone();
-    rules.headroom = f64::NAN;
-    m.stair_rules = Some(rules);
+    m.codes.architectural.changes.insert("stairs".into(), json!({"headroom": -1}).as_object().cloned().unwrap());
     assert!(m.check().unwrap_err().contains("headroom"));
+
+    // A file as #386 wrote it: its code, every stair rule and its own codes, taken in as the architectural choice.
+    let mut rules = code("nbr-9050").unwrap().stairs();
+    rules.width_min = 1100.0;
+    let mut v: Value = serde_json::from_str(&Model::new("old").to_json().unwrap()).unwrap();
+    v["building_code"] = json!("nbr");
+    v["stair_rules"] = serde_json::to_value(&rules).unwrap();
+    let mut own = serde_json::to_value(code("din").unwrap()).unwrap();
+    own["code"] = json!("Ours");
+    own["name"] = json!("Ours");
+    own["stairs"] = own["sections"]["stairs"].take();
+    own.as_object_mut().unwrap().remove("sections");
+    own.as_object_mut().unwrap().remove("default");
+    own["sources"] = json!({"riser_max": "ours"});
+    v["building_codes"] = json!([own]);
+    let (back, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.building_code().code, "nbr-9050");
+    assert_eq!(back.stair_rules().width_min, 1100.0);
+    assert_eq!(back.codes.architectural.changes["stairs"].keys().collect::<Vec<_>>(), ["width_min"], "the rest is the code's");
+    let ours = back.code("Ours").unwrap();
+    assert_eq!(ours.source("stairs", "riser_max").as_deref(), Some("ours"));
+    assert_eq!(ours.stairs(), code("din").unwrap().stairs());
+    let again = back.to_json().unwrap();
+    assert!(!again.contains("stair_rules") && !again.contains("\"building_code\""), "written the new way only");
 }
 
 #[test]
@@ -286,7 +309,12 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     let path = dir.join("it11.xml").to_string_lossy().to_string();
     run(&mut s, "building_code_export", json!({"path": path}));
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("<rule name=\"width_min\" value=\"1100.0\" source=\"São Paulo IT 11: the project's own number\"/>"), "{text}");
+    assert!(
+        text.contains(
+            "<rule name=\"width_min\" value=\"1100.0\" source=\"São Paulo IT 11: the project's own number\" kind=\"assumption\"/>"
+        ),
+        "{text}"
+    );
     assert!(text.contains("name=\"São Paulo IT 11\"") && text.contains("source=\"NBR 9050:2020 6.8.2\""), "the sources go with it: {text}");
     let mut other = Session::new();
     let r = run(&mut other, "building_code_import", json!({"path": path, "set": true}));
@@ -301,14 +329,14 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     assert_eq!(r["code"], "A & B");
     assert_eq!(r["left_out"], json!(["rule `colour`", "<extra>"]));
     let own = other.model.code("A & B").unwrap();
-    assert_eq!((own.stairs.riser_max, own.stairs.going), (170.0, 280.0));
+    assert_eq!((own.stairs().riser_max, own.stairs().going), (170.0, 280.0));
     assert_eq!(other.model.building_code().code, "São Paulo IT 11", "not set: the project stays as it was");
 
     // A code BIMCraft has, exported as it is, needs a name of the project's own to come back.
     run(&mut other, "building_code_export", json!({"path": hand, "code": "ibc"}));
     assert!(other.execute("building_code_import", &json!({"path": hand})).unwrap_err().contains("name"));
     run(&mut other, "building_code_import", json!({"path": hand, "name": "IBC, ours"}));
-    assert_eq!(other.model.code("IBC, ours").unwrap().stairs.riser_max, 177.8);
+    assert_eq!(other.model.code("IBC, ours").unwrap().stairs().riser_max, 177.8);
 
     // Taken away while the project is held to it: the rules stay, as its own, under the code it was based on.
     let r = run(&mut s, "building_code", json!({"delete": "São Paulo IT 11"}));
@@ -1193,7 +1221,7 @@ fn the_brazilian_standards_are_two_codes_each_number_with_its_item() {
         let c = code(name).unwrap();
         assert!(!c.checked.is_empty(), "{name} was checked against its text");
         for rule in ORDER {
-            assert!(c.sources.contains_key(rule), "{name}: `{rule}` names no source");
+            assert!(c.source("stairs", rule).is_some(), "{name}: `{rule}` names no source");
         }
     }
     assert_eq!(code("nbr").unwrap().code, "nbr-9050", "a project made with `nbr` keeps its rules");
@@ -1712,101 +1740,82 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
     out
 }
 
-#[test]
-fn every_code_names_only_methods_the_data_has_and_of_its_own_country() {
-    for c in codes() {
-        if let Some(u) = &c.electrical.demand {
-            assert!(crate::demand::UTILITIES.contains(&u.as_str()), "{}: no tables for {u}", c.code);
+/// The rows of every table in `v`, however deep: each element of an array whose elements are rows (arrays or objects, never
+/// plain numbers, so a shared series such as the conductor sections is no table) and that holds at least one number, written
+/// with every number as a float, so `9` and `9.0` read alike and an object's keys in order.
+fn rows(v: &Value, out: &mut Vec<String>) {
+    fn has_number(v: &Value) -> bool {
+        match v {
+            Value::Number(_) => true,
+            Value::Array(a) => a.iter().any(has_number),
+            Value::Object(o) => o.values().any(has_number),
+            _ => false,
         }
-        if let Some(name) = &c.electrical.building_demand {
-            let m = crate::building_demand::method(name).unwrap_or_else(|| panic!("{}: no method {name}", c.code));
-            assert_eq!(m.country, c.country, "{}: {name} is another country's", c.code);
-        }
-        assert!(c.code == GENERIC || c.country.len() == 2, "{}: a country, ISO 3166", c.code);
     }
-    // Brazil's utilities differ by state, and its methods are each a utility's: the NBR codes leave both to the project.
-    assert!(code("nbr-9050").unwrap().electrical.is_empty() && code("nbr-9077").unwrap().electrical.is_empty());
-    assert_eq!(code("ibc").unwrap().electrical.building_demand.as_deref(), Some("NEC 220.84"));
+    fn norm(v: &Value) -> Value {
+        match v {
+            Value::Number(n) => n.as_f64().map(|f| json!(f)).unwrap_or(Value::Null),
+            Value::Array(a) => Value::Array(a.iter().map(norm).collect()),
+            Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), norm(x))).collect()),
+            other => other.clone(),
+        }
+    }
+    match v {
+        Value::Array(a) => {
+            for x in a {
+                if matches!(x, Value::Array(_) | Value::Object(_)) && has_number(x) {
+                    out.push(norm(x).to_string());
+                }
+                rows(x, out);
+            }
+        }
+        // A table kept as an object keyed by name (wire types, voltages): each entry is a row.
+        Value::Object(o) => {
+            for x in o.values() {
+                if matches!(x, Value::Object(_)) && has_number(x) {
+                    out.push(norm(x).to_string());
+                }
+                rows(x, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[test]
-fn demand_and_building_demand_take_the_methods_the_project_s_code_names() {
-    let mut s = Session::new();
-    let units = json!([{"count": 30, "demand": 20}]);
-    // No method anywhere: each command says where to pick one.
-    for (id, p) in [("demand", json!({"area": 40})), ("building_demand", json!({"dwellings": units}))] {
-        let e = s.execute(id, &p).unwrap_err();
-        assert!(e.contains("Manage > Building Codes"), "{id}: {e}");
+fn the_code_of_a_project_that_chose_none_holds_no_other_code_s_tables() {
+    // A table a standard prints belongs to that standard's code: the default one reads it from the library, which says
+    // whose it is, and never holds a copy under its own name (generic's wire types were NBR 5410's Tabelas 36 and 37). A
+    // copy is caught row by row, so one changed row, a part of a table or its rows reordered don't hide it; four rows in
+    // common are a copy. Every edition counts, superseded ones too.
+    let mut checked = 0;
+    for d in Discipline::ALL {
+        let codes: Vec<&BuildingCode> = codes().iter().filter(|c| c.discipline == d).collect();
+        if codes.is_empty() {
+            continue;
+        }
+        let defaults: Vec<&&BuildingCode> = codes.iter().filter(|c| c.default).collect();
+        assert_eq!(defaults.len(), 1, "{d:?} has one default code");
+        let default = defaults[0];
+        let mut theirs = std::collections::HashSet::new();
+        for c in codes.iter().filter(|c| c.code != default.code) {
+            let mut r = Vec::new();
+            c.sections.values().for_each(|s| rows(s, &mut r));
+            theirs.extend(r);
+        }
+        for (key, section) in &default.sections {
+            let mut ours = Vec::new();
+            rows(section, &mut ours);
+            let shared: Vec<&String> = ours.iter().filter(|r| theirs.contains(*r)).collect();
+            assert!(
+                shared.len() < 4,
+                "{d:?} {}'s {key} holds {} rows of another code's tables, as {:.120}",
+                default.code,
+                shared.len(),
+                shared[0]
+            );
+        }
+        checked += 1;
     }
-    // The IBC names the NEC's: given none, the command takes it, and a method given still wins.
-    let r = run(&mut s, "building_code", json!({"set": "ibc"}));
-    assert_eq!(r["electrical"], json!({"building_demand": "NEC 220.84"}));
-    let by_code = run(&mut s, "building_demand", json!({"dwellings": units}));
-    assert_eq!(by_code, run(&mut s, "building_demand", json!({"standard": "NEC 220.84", "dwellings": units})));
-    let given = run(&mut s, "building_demand", json!({"utility": "CELESC", "dwellings": [{"count": 30, "area": 80}]}));
-    assert_eq!(given["standard"], "CELESC N-321.0003");
-    assert!(s.execute("demand", &json!({"area": 40})).is_err(), "the IBC names no utility");
-
-    // The project names its own: a utility, and a method by a utility that follows it.
-    let r = run(&mut s, "building_code", json!({"electrical": {"demand": "CPFL", "building_demand": "celesc"}}));
-    assert_eq!(
-        (r["code"].as_str(), r["electrical"].clone()),
-        (Some("ibc"), json!({"demand": "CPFL", "building_demand": "CELESC N-321.0003"}))
-    );
-    let p = json!({"area": 40, "lighting_points": 4});
-    let r = run(&mut s, "demand", p.clone());
-    assert_eq!(r["utility"], "CPFL");
-    assert_eq!(r, run(&mut s, "demand", json!({"utility": "CPFL", "area": 40, "lighting_points": 4})));
-    assert_eq!(run(&mut s, "building_demand", json!({"dwellings": [{"count": 30, "area": 80}]}))["standard"], "CELESC N-321.0003");
-
-    // A file keeps the choice.
-    let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
-    assert!(left_out.is_empty(), "{left_out:?}");
-    assert_eq!(back.electrical_methods().demand.as_deref(), Some("CPFL"));
-    assert_eq!(back.electrical_methods(), s.model.electrical_methods());
-
-    // Saved as a code of its own: the methods and the country go with it, into a file and out as XML.
-    run(&mut s, "building_code", json!({"save": "Ours"}));
-    assert_eq!(s.model.electrical_methods, None, "the code's own now");
-    let ours = s.model.building_code();
-    assert_eq!((ours.country.as_str(), ours.electrical.demand.as_deref()), ("US", Some("CPFL")));
-    let (back, _) = Model::read(&s.model.to_json().unwrap()).unwrap();
-    assert_eq!(back.electrical_methods(), s.model.electrical_methods());
-    let dir = std::env::temp_dir().join(format!("bimcraft-codes-electrical-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("ours.xml").to_string_lossy().to_string();
-    run(&mut s, "building_code_export", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(
-        text.contains("<electrical demand=\"CPFL\" building-demand=\"CELESC N-321.0003\"/>") && text.contains("country=\"US\""),
-        "{text}"
-    );
-    let mut other = Session::new();
-    run(&mut other, "building_code_import", json!({"path": path, "set": true}));
-    assert_eq!(other.model.electrical_methods(), s.model.electrical_methods());
-    assert_eq!(run(&mut other, "demand", p)["utility"], "CPFL");
-    std::fs::remove_dir_all(&dir).ok();
-
-    // Null leaves one to the command again; `reset` takes the project's own away, back to the code's.
-    run(&mut s, "building_code", json!({"set": "ibc"}));
-    let r = run(&mut s, "building_code", json!({"electrical": {"building_demand": null}}));
-    assert_eq!(r["electrical"], json!({}));
-    assert!(s.execute("building_demand", &json!({"dwellings": units})).is_err());
-    let r = run(&mut s, "building_code", json!({"reset": true}));
-    assert_eq!(r["electrical"], json!({"building_demand": "NEC 220.84"}));
-    assert_eq!(s.model.electrical_methods, None);
-
-    // What can't be named is refused, and the project stays as it was.
-    for p in [
-        json!({"electrical": {"demand": "COPEL"}}),
-        json!({"electrical": {"demand": ""}}),
-        json!({"electrical": {"building_demand": "DIN 18015-1"}}),
-        json!({"electrical": {"building_demand": 5}}),
-        json!({"electrical": {"lighting": "CPFL"}}),
-        json!({"electrical": "CPFL"}),
-        json!({"electrical": {"demand": "CPFL"}, "reset": true}),
-    ] {
-        assert!(s.execute("building_code", &p).is_err(), "{p}");
-    }
-    assert_eq!((&s.model.electrical_methods, s.model.building_code.as_deref()), (&None, Some("ibc")));
+    assert!(checked >= 5, "every discipline has codes");
 }
