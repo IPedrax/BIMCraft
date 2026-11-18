@@ -859,12 +859,29 @@ impl Orbit {
 
     /// `cam`, of a picture in `rect` at `ppp` pixels a point, zoomed by the wheel and turned or panned by the middle button (Shift
     /// orbits, Alt and the primary button stand in for it) over `response`, a widget lying over the view's own (Zoom In Region's),
-    /// as [`zoom`](Self::zoom) and [`navigate`](Self::navigate) do over the view's. The primary button alone is that widget's.
-    pub(crate) fn wheel_and_middle(&mut self, ui: &Ui, rect: Rect, ppp: f32, response: &egui::Response, cam: Camera) -> Camera {
+    /// as [`zoom`](Self::zoom) and [`navigate`](Self::navigate) do over the view's, about what `scene` shows. The primary button
+    /// alone is that widget's.
+    pub(crate) fn wheel_and_middle(
+        &mut self,
+        ui: &Ui,
+        rect: Rect,
+        ppp: f32,
+        response: &egui::Response,
+        cam: Camera,
+        scene: Option<&Scene>,
+    ) -> Camera {
         let input = Input::read(ui, rect, response, ppp, None, None);
-        let cam = self.zoom(ui.ctx(), &input, cam, None);
+        let cam = self.zoom(ui.ctx(), &input, cam, scene);
         let held = response.dragged_by(PointerButton::Primary) && !input.alt;
-        self.navigate(ui, response, &input, cam, held, false, false, None).cam
+        self.navigate(ui, response, &input, cam, held, false, false, scene).cam
+    }
+
+    /// The hand let go: a drag turning or panning the view, or a selection box, ended without its release being seen (the widget
+    /// it was over, Zoom In Region's, is gone).
+    pub(crate) fn let_go(&mut self) {
+        self.drag = None;
+        self.before = None;
+        self.select = None;
     }
 
     /// A fit asked for and not yet done, given up: the camera is being set otherwise (Previous Pan/Zoom), and the fit must not

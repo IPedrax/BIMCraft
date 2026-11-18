@@ -932,7 +932,7 @@ msgstr "對齊尺寸標注 (DI)：拾取平行的牆面、牆端、門、窗、�
 msgid "Aligned Dimension in 3D"
 msgstr "3D對齊尺寸標注"
 
-#: crates/ui-egui/src/orbit.rs:1573
+#: crates/ui-egui/src/orbit.rs:1590
 msgid "Aligned dimension: {}"
 msgstr "對齊尺寸標注：{}"
 
@@ -1906,7 +1906,7 @@ msgid "Build"
 msgstr "構建"
 
 #: crates/ui-egui/src/editor/document.rs:2042
-#: crates/ui-egui/src/orbit.rs:1758
+#: crates/ui-egui/src/orbit.rs:1775
 msgid "Building 3D view…"
 msgstr ""
 
@@ -2463,7 +2463,7 @@ msgstr "正在檢查更新…"
 msgid "Checking the model"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:856
+#: crates/ui-egui/src/adaptive_view.rs:861
 msgid "Choose Point and click on the work plane."
 msgstr ""
 
@@ -2822,7 +2822,7 @@ msgstr "在模型上單擊：其表面上的一點。"
 msgid "Click on the top: a point there, the Options Bar's offset over the surface, or at its Absolute elevation."
 msgstr "在頂面上單擊：該處的一個點，位於表面之上選項欄所設的偏移處，或位於其“絕對”高程處。"
 
-#: crates/ui-egui/src/adaptive_view.rs:233
+#: crates/ui-egui/src/adaptive_view.rs:238
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr ""
 
@@ -2838,7 +2838,7 @@ msgstr "單擊平行的參照平面、拉伸端面或形狀的線，然後單擊
 msgid "Click points along what to measure: each length and the total read beside them. Click the first point again to close it and read its area; Enter ends the chain, Esc clears it."
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:234
+#: crates/ui-egui/src/adaptive_view.rs:239
 msgid "Click points or the work plane; click the first point again to close the profile."
 msgstr ""
 
@@ -2934,7 +2934,7 @@ msgstr "單擊下一個角點；按 Enter 或再次單擊第一個角點完成�
 msgid "Click the next point it passes through; Enter finishes it. Esc cancels."
 msgstr "單擊它經過的下一個點；按 Enter 完成。按 Esc 取消。"
 
-#: crates/ui-egui/src/adaptive_view.rs:235
+#: crates/ui-egui/src/adaptive_view.rs:240
 msgid "Click the next point; the first again closes the profile; Enter or Escape finishes it open."
 msgstr ""
 
@@ -3090,7 +3090,7 @@ msgstr ""
 msgid "Click to select what the view cuts or sees; the middle button pans, the wheel zooms."
 msgstr "單擊可選擇視圖剖切到或看到的圖元；中鍵平移，滾輪縮放。"
 
-#: crates/ui-egui/src/adaptive_view.rs:231
+#: crates/ui-egui/src/adaptive_view.rs:236
 msgid "Click to select, Ctrl adds; drag a box to select (left to right what is inside it, right to left what it touches); drag a point or a gizmo arrow to move it; Shift and the middle button orbit."
 msgstr ""
 
@@ -3142,7 +3142,7 @@ msgstr "單擊終點：組沿該線按間距重複。"
 msgid "Click where it ends: the top folds along it. Esc cancels."
 msgstr "單擊其終點：頂面沿它折起。按 Esc 取消。"
 
-#: crates/ui-egui/src/adaptive_view.rs:238
+#: crates/ui-egui/src/adaptive_view.rs:243
 msgid "Click where it goes."
 msgstr ""
 
@@ -3158,7 +3158,7 @@ msgstr ""
 msgid "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
 msgstr "單擊坡段的終點：越過頂端則為單跑，高度由選項欄指定；未到則為平台。按 Esc 取消。"
 
-#: crates/ui-egui/src/adaptive_view.rs:240
+#: crates/ui-egui/src/adaptive_view.rs:245
 msgid "Click where the angle ends."
 msgstr ""
 
@@ -3808,7 +3808,7 @@ msgstr "複製報告"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "複製其 ID、GUID 和 IFC GlobalId"
 
-#: crates/ui-egui/src/adaptive_view.rs:237
+#: crates/ui-egui/src/adaptive_view.rs:242
 msgid "Copy: click the point to copy from."
 msgstr ""
 
@@ -3837,7 +3837,7 @@ msgid "Corner Mullion"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2046
-#: crates/ui-egui/src/orbit.rs:1762
+#: crates/ui-egui/src/orbit.rs:1779
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -4619,7 +4619,7 @@ msgstr "詳圖線 (DL)：每次單擊都從上一點畫一條線，使用選項�
 msgid "Detail elements only ({})"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1767
+#: crates/ui-egui/src/orbit.rs:1784
 msgid "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is."
 msgstr ""
 
@@ -6987,7 +6987,7 @@ msgstr "高亮顯示游標下的對象"
 msgid "Home"
 msgstr "主頁"
 
-#: crates/ui-egui/src/orbit.rs:2778
+#: crates/ui-egui/src/orbit.rs:2795
 msgid "Home View"
 msgstr "主視圖"
 
@@ -8281,7 +8281,7 @@ msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2111
-#: crates/ui-egui/src/orbit.rs:2043
+#: crates/ui-egui/src/orbit.rs:2060
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -9181,7 +9181,7 @@ msgstr ""
 msgid "Move the underlay by two points picked in the view"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:236
+#: crates/ui-egui/src/adaptive_view.rs:241
 msgid "Move: click the point to move from."
 msgstr ""
 
@@ -10678,11 +10678,11 @@ msgstr ""
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "拾取一個圓或圓弧，然後單擊尺寸標注的放置位置。"
 
-#: crates/ui-egui/src/orbit.rs:1577
+#: crates/ui-egui/src/orbit.rs:1594
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "請拾取模型的角點、邊或面以進行尺寸標注。"
 
-#: crates/ui-egui/src/orbit.rs:2626
+#: crates/ui-egui/src/orbit.rs:2643
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -10690,7 +10690,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "拾取一面弧形牆或一段圓弧。"
 
-#: crates/ui-egui/src/orbit.rs:2583
+#: crates/ui-egui/src/orbit.rs:2600
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "選取牆、樓板、天花板或屋頂的一個面以將其放置在上面。"
 
@@ -10752,7 +10752,7 @@ msgstr "拾取一個平面：單擊“確定”後，在3D視圖中單擊模型�
 msgid "Pick a plane: click a reference plane or a datum in the view."
 msgstr "拾取一個平面：在視圖中單擊參照平面或基準。"
 
-#: crates/ui-egui/src/adaptive_view.rs:227
+#: crates/ui-egui/src/adaptive_view.rs:232
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
 msgstr ""
 
@@ -11026,12 +11026,12 @@ msgid "Place Centre"
 msgstr "放置於中心"
 
 #: crates/ui-egui/src/lib.rs:2110
-#: crates/ui-egui/src/orbit.rs:1592
+#: crates/ui-egui/src/orbit.rs:1609
 msgid "Place Column"
 msgstr "放置柱"
 
 #: crates/ui-egui/src/lib.rs:2112
-#: crates/ui-egui/src/orbit.rs:1594
+#: crates/ui-egui/src/orbit.rs:1611
 msgid "Place Component"
 msgstr "放置構件"
 
@@ -11188,7 +11188,7 @@ msgid "Place Voice Outlet"
 msgstr "放置語音插座"
 
 #: crates/ui-egui/src/lib.rs:2084
-#: crates/ui-egui/src/orbit.rs:1591
+#: crates/ui-egui/src/orbit.rs:1608
 msgid "Place Wall"
 msgstr "放置牆"
 
@@ -12714,7 +12714,7 @@ msgstr ""
 msgid "Rotate with Component"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:239
+#: crates/ui-egui/src/adaptive_view.rs:244
 msgid "Rotate: click where the angle starts, about the centre shown."
 msgstr ""
 
@@ -15329,7 +15329,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "視圖正對草圖平面的邊緣：請旋轉視圖後再在其上拾取。"
 
-#: crates/ui-egui/src/orbit.rs:1563
+#: crates/ui-egui/src/orbit.rs:1580
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "視圖與尺寸標注同向：請旋轉視圖後再放置尺寸線。"
 
@@ -17189,7 +17189,7 @@ msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:2806
 #: crates/ui-egui/src/editor/document.rs:1267
-#: crates/ui-egui/src/orbit.rs:2781
+#: crates/ui-egui/src/orbit.rs:2798
 msgid "Zoom to Fit"
 msgstr "縮放以適應"
 
@@ -17386,7 +17386,7 @@ msgstr ""
 msgid "click on the curtain wall"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:2706
+#: crates/ui-egui/src/orbit.rs:2723
 msgid "click on the floor's top"
 msgstr "請在樓板的頂面上單擊"
 
@@ -17841,7 +17841,7 @@ msgstr "已存在參數 `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "還沒有詳圖組：請選擇詳圖線並創建組"
 
-#: crates/ui-egui/src/orbit.rs:1511
+#: crates/ui-egui/src/orbit.rs:1528
 msgid "there's no face to paint there"
 msgstr "該處沒有可上漆的面"
 
@@ -17857,7 +17857,7 @@ msgstr ""
 msgid "this machine"
 msgstr "本機"
 
-#: crates/ui-egui/src/orbit.rs:2600
+#: crates/ui-egui/src/orbit.rs:2617
 #: crates/ui-egui/src/paper.rs:172
 #: crates/ui-egui/src/section.rs:575
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -18226,7 +18226,7 @@ msgid "{} of {} risers"
 msgstr "{} 個踢面（共 {} 個）"
 
 #: crates/ui-egui/src/canvas.rs:6350
-#: crates/ui-egui/src/orbit.rs:2394
+#: crates/ui-egui/src/orbit.rs:2411
 msgid "{} of {} {}"
 msgstr "{}：{} {}"
 
@@ -18484,11 +18484,11 @@ msgstr "{}：`{}` 不是數字"
 msgid "{}: column {}, row {}"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1605
+#: crates/ui-egui/src/orbit.rs:1622
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}：在3D視圖中它立於水平面上（樓板頂面、平屋頂或標高）：請指向其中之一"
 
-#: crates/ui-egui/src/orbit.rs:1601
+#: crates/ui-egui/src/orbit.rs:1618
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}：在3D視圖中其各點位於水平面上（樓板頂面、柱頂、平屋頂或標高）：請指向其中之一"
 

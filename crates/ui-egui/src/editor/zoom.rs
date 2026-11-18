@@ -149,7 +149,16 @@ impl FamilyEditor {
 
     /// Zoom In Region given up (Escape).
     pub(crate) fn cancel_zoom_region(&mut self) {
-        self.zoom.region = None;
+        self.give_up_region();
+    }
+
+    /// Zoom In Region given up, if it was armed: a drag of the middle button over its widget, whose release that widget will no
+    /// longer see, let go.
+    fn give_up_region(&mut self) {
+        if self.zoom.region.take().is_some() {
+            self.orbit.let_go();
+            self.modeller.let_go();
+        }
     }
 
     /// Previous Pan/Zoom: the view shown as it was before its last zoom command; nothing with none before.
@@ -169,7 +178,7 @@ impl FamilyEditor {
         self.note_fit();
         // Another view shown, another tool picked, or the tab left (a pass the view wasn't drawn in) since it was armed: given up.
         if !self.zoom_region_armed() || self.zoom.region.as_ref().is_some_and(|a| a.pass + 1 < pass) {
-            self.zoom.region = None;
+            self.give_up_region();
             return;
         }
         let Some(armed) = self.zoom.region.as_mut() else { return };
@@ -214,7 +223,15 @@ impl FamilyEditor {
             None => {
                 if let Some(cam) = self.orbit.camera {
                     let (rect, ppp) = (self.orbit.rect, self.orbit.ppp);
-                    self.orbit.camera = Some(self.orbit.wheel_and_middle(ui, rect, ppp, response, cam));
+                    // About what the picture shows, while it is of the family as staged now, as the view's own navigation.
+                    let scene = self.orbit.scene.as_ref().map(|(_, s)| std::sync::Arc::clone(s));
+                    let fresh = self.scene3d.as_ref().is_some_and(|s| self.orbit.shows(&s.model));
+                    let moved = self.orbit.wheel_and_middle(ui, rect, ppp, response, cam, scene.as_deref().filter(|_| fresh));
+                    // Moved, it no longer fits itself again as its pane is resized.
+                    if moved != cam {
+                        self.orbit.fitted = None;
+                    }
+                    self.orbit.camera = Some(moved);
                 }
             }
         }
