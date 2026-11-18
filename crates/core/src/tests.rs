@@ -100,8 +100,11 @@ fn a_command_that_takes_a_path_is_marked_as_touching_files() {
             Err(_) => (signature_keys(command.params), false),
         };
         let kinds = ["path", "save", "texture.path"];
-        // A stair's `path` is the line it is drawn along, not a file.
-        let takes = kinds.iter().find(|kind| paths.iter().any(|p| p == *kind)).filter(|_| command.id != "stair");
+        // A stair's `path` is the line it is drawn along, not a file; a building code's `save` is the name its rules are kept under.
+        let takes = kinds
+            .iter()
+            .find(|kind| paths.iter().any(|p| p == *kind))
+            .filter(|kind| command.id != "stair" && !(command.id == "building_code" && **kind == "save"));
         let Some(kind) = takes else {
             // A command with no file parameter that is marked as a file one is a lie too: it would need the
             // permission for nothing. (One in prose may reach its file by another key: `reload`'s link, `publish`'s folder.)
