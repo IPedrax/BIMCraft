@@ -143,7 +143,7 @@ impl PlacementDrag {
                 if let Some(ring) = window_ring(&self.base, self.id, by, screen) {
                     let at = ring[2];
                     painter.add(egui::Shape::closed_line(ring.to_vec(), Stroke::new(2.0, ink)));
-                    let height = self.base.units.with_unit(sill + by.1);
+                    let height = self.base.with_unit(sill + by.1);
                     let label = if self.shift { tf("Sill locked: {}", &[&height]) } else { tf("Sill: {}", &[&height]) };
                     crate::canvas::tag(painter, at + vec2(8.0, -6.0), egui::Align2::LEFT_BOTTOM, label);
                 }

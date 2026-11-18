@@ -78,3 +78,28 @@ fn the_families_list_curtain_panels_and_mullions_under_their_system_families() {
     }
     assert_eq!(h.state().types.get("mullion").map(String::as_str), Some("50 x 150"));
 }
+
+#[test]
+fn the_families_categories_are_listed_alphabetically_by_their_names() {
+    use egui_kittest::kittest::NodeT;
+    let mut h = app(&format!("{BOX}\nfloor {{\"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}}\ndoor {{\"at\": [2000, 0]}}"));
+    press(&mut h, "List Families");
+    let find = h.get_by_label(FIND).rect();
+    // The categories' headers (buttons) under the search field, top to bottom; some nodes have no bounds at all.
+    let mut headers: Vec<(f32, String)> = h
+        .get_all_by_role(Role::Button)
+        .filter(|n| n.accesskit_node().bounding_box().is_some())
+        .filter(|n| n.rect().top() > find.bottom() && n.rect().left() < find.right())
+        .filter_map(|n| Some((n.rect().top(), n.accesskit_node().label()?)))
+        .filter(|(_, l)| l.as_str() != "Families")
+        .collect();
+    headers.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let names: Vec<String> = headers.into_iter().map(|(_, l)| l).collect();
+    // The system's categories come first, then the component families, each group by the name shown, case aside; the
+    // Properties palette's buttons share the column, so look at the names the families list is known to hold.
+    let system = ["Beams", "Ceilings", "Columns", "Doors", "Floors", "Roofs", "Stairs", "Walls"];
+    let shown: Vec<&str> = names.iter().map(String::as_str).filter(|n| system.contains(n)).collect();
+    assert_eq!(shown, system, "{names:?}");
+    let at = |name: &str| names.iter().position(|n| n == name);
+    assert!(matches!((at("Washbasin"), at("WC")), (Some(a), Some(b)) if a < b), "case aside: {names:?}");
+}

@@ -2407,12 +2407,16 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         }
         let (a, b) = match axis.as_deref() {
             Some([p, .., q]) if r.flat(*p).dist(r.flat(*q)) > TOL => (r.flat(*p), r.flat(*q)),
-            // No axis: along the wall's own x, as far as its body goes.
+            // No axis: along the wall's own x, or its own y where the body runs longer that way, as far as it goes.
             _ => {
                 let o = r.flat(f.o);
-                let x = P2(f.x[0], f.x[1]).unit();
-                match span(pts.iter().map(|p| (r.flat(*p) - o).dot(x))) {
-                    Some((s0, s1)) if x.length() > 0.5 => (o + x * s0, o + x * s1),
+                let reach = |d: P3| {
+                    let d = P2(d[0], d[1]).unit();
+                    span(pts.iter().map(|p| (r.flat(*p) - o).dot(d))).filter(|_| d.length() > 0.5).map(|(s0, s1)| (d, s0, s1))
+                };
+                match (reach(f.x), reach(f.y)) {
+                    (Some((_, x0, x1)), Some((y, y0, y1))) if y1 - y0 > x1 - x0 => (o + y * y0, o + y * y1),
+                    (Some((x, s0, s1)), _) => (o + x * s0, o + x * s1),
                     _ => (o, o),
                 }
             }
@@ -2496,15 +2500,34 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     // The openings through floors, ceilings and roofs: what each voids, its outline in plan at its
     // top, and how high it reaches. Each comes in as a shaft, which takes the hole it cuts in what
     // it voids: a mesh carries the holes cut in it.
+    // An opening in a roof voids that roof only, but its body often runs past it, and a shaft as long would cut the roof over it
+    // too (a dormer's): so its shaft reaches only as high and as low as the roof and its parts do.
+    let mut roof_reach: HashMap<u64, Option<(f64, f64)>> = HashMap::new();
     let cuts: Vec<(u64, u64, Vec<P2>, f64, f64)> = named(&["IFCOPENINGELEMENT", "IFCOPENINGSTANDARDCASE"])
         .into_iter()
         .filter_map(|id| {
             let h = *l.host.get(&id)?;
-            let host = e(h)?.name.as_str();
+            let hx = e(h)?;
+            let host = hx.name.as_str();
             let o = e(id).filter(|_| SLABS.contains(&host) || matches!(host, "IFCCOVERING" | "IFCROOF"))?;
             let faces = r.body(o);
             let (z0, z1) = span(faces.iter().flatten().map(|p| p[2]))?;
             let ring = outline(&faces, Plane::flat(z1), true)?.outer;
+            let in_roof = host == "IFCROOF"
+                || enumeration(hx.args.get(8)) == Some("ROOF")
+                || l.whole.get(&h).and_then(|w| e(*w)).is_some_and(|w| w.name == "IFCROOF");
+            let reach = if in_roof {
+                *roof_reach.entry(h).or_insert_with(|| {
+                    let parts = l.parts.get(&h).into_iter().flatten().copied();
+                    span(std::iter::once(h).chain(parts).filter_map(e).flat_map(|x| r.body(x)).flatten().map(|p| p[2]))
+                })
+            } else {
+                None
+            };
+            let (z0, z1) = match reach {
+                Some((lo, hi)) if z0.max(lo) < z1.min(hi) => (z0.max(lo), z1.min(hi)),
+                _ => (z0, z1),
+            };
             Some((id, h, ring.into_iter().map(|p| micron(r.flat([p.0, p.1, 0.0]))).collect(), z0, z1))
         })
         .collect();
@@ -2703,10 +2726,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     // Roofs: flat, else pitched over a rectangle, measured from the faces they turn up.
     for id in roofs {
         let Some(roof) = e(id) else { continue };
-        let mut faces = r.body(roof);
+        let mut faces = r.body_out(roof);
         for part in l.parts.get(&id).into_iter().flatten() {
             if let Some(p) = e(*part) {
-                faces.extend(r.body(p));
+                faces.extend(r.body_out(p));
                 seen.insert(*part);
             }
         }
@@ -4121,7 +4144,16 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let is_door = o.name.starts_with("IFCDOOR");
         let opening = l.fills.get(&id).copied();
         let Some(&(host, a, b, base)) = opening.and_then(|op| l.host.get(&op)).and_then(|h| walls.get(h)) else {
-            let why = if opening.is_some() { "its wall was left out" } else { "it isn't in a wall" };
+            // A roof is no wall either: BIMCraft sets its openings' doors and windows in walls only.
+            let roof = opening
+                .and_then(|op| l.host.get(&op))
+                .and_then(|h| e(*h))
+                .is_some_and(|h| h.name == "IFCROOF" || (SLABS.contains(&h.name.as_str()) && enumeration(h.args.get(8)) == Some("ROOF")));
+            let why = match (roof, opening.is_some()) {
+                (true, _) => "it is in a roof; BIMCraft sets doors and windows only in walls",
+                (false, true) => "its wall was left out",
+                (false, false) => "it isn't in a wall",
+            };
             leave(&mut skipped, &mut seen, id, why);
             continue;
         };
@@ -5326,6 +5358,46 @@ ENDSEC;END-ISO-10303-21;"
         assert_eq!((c.at, c.angle, t.width, t.depth, t.round, c.height), (P2(3000.0, 4000.0), 90.0, 500.0, 300.0, false, 3000.0));
     }
 
+    /// An IFC4 file in mm with one wall at an identity placement and no Axis, whose body is a triangle mesh of a box `x` wide,
+    /// `y` deep and 3 m high.
+    fn box_wall(x: f64, y: f64) -> String {
+        let pts = format!(
+            "(0.,0.,0.),({x:?},0.,0.),({x:?},{y:?},0.),(0.,{y:?},0.),(0.,0.,3000.),({x:?},0.,3000.),({x:?},{y:?},3000.),(0.,{y:?},3000.)"
+        );
+        let tris = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+        format!(
+            "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('p',$,'Box wall',$,$,$,$,$,#2);
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCLOCALPLACEMENT($,#5);
+#7=IFCBUILDINGSTOREY('s',$,'Level 0',$,$,#6,$,$,.ELEMENT.,0.);
+#10=IFCCARTESIANPOINTLIST3D(({pts}));
+#11=IFCTRIANGULATEDFACESET(#10,$,.T.,({tris}),$);
+#12=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#11));
+#13=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));
+#18=IFCLOCALPLACEMENT(#6,#5);
+#19=IFCWALL('w',$,'Wall',$,$,#18,#13,$,$);
+#50=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#19),#7);
+ENDSEC;END-ISO-10303-21;"
+        )
+    }
+
+    #[test]
+    fn a_wall_with_no_axis_runs_along_the_longer_side_of_its_body() {
+        let wall = |x: f64, y: f64| {
+            let i = ifc(box_wall(x, y).as_bytes(), "x").unwrap();
+            assert_eq!(i.skipped.len(), 0, "{:?}", i.skipped);
+            let Some(Element::Wall(w)) = only(&i.model, "wall").first().copied() else { panic!("no wall") };
+            (w.start, w.end, i.model.thickness(w))
+        };
+        // Along x, as it always came in; along y, which came in 300 mm long and 5 m thick (#410).
+        assert_eq!(wall(5000.0, 300.0), (P2(0.0, 150.0), P2(5000.0, 150.0), 300.0));
+        assert_eq!(wall(300.0, 5000.0), (P2(150.0, 0.0), P2(150.0, 5000.0), 300.0));
+    }
+
     #[test]
     fn a_cable_swept_round_its_centre_line_comes_in_as_a_wire() {
         // As Renga writes one: a disk 3.7 mm across swept along an indexed polycurve, through a mapped item.
@@ -5511,6 +5583,22 @@ ENDSEC;END-ISO-10303-21;",
             "#85=IFCMATERIALLAYERSETUSAGE(#84,.{axis}.,.POSITIVE.,{offset:.1},$);\n#86=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#{id}),#85);"
         );
         file.replace("ENDSEC;END", &format!("{set}\n{usage}\nENDSEC;END"))
+    }
+
+    #[test]
+    fn a_window_in_a_roof_is_left_out_with_the_roof_as_its_reason() {
+        // A roof slab (PredefinedType ROOF) voided by an opening that a skylight fills: no wall hosts it.
+        let file = holed("#35=IFCSLAB('f',$,'Roof',$,$,#6,#34,$,.ROOF.);", 35).replace(
+            "ENDSEC;END",
+            "#60=IFCWINDOW('w',$,'Skylight',$,$,#6,$,$,1000.,1000.,.SKYLIGHT.);\n\
+             #61=IFCRELFILLSELEMENT('f',$,$,$,#46,#60);\n\
+             #62=IFCRELCONTAINEDINSPATIALSTRUCTURE('r2',$,$,$,(#60),#7);\nENDSEC;END",
+        );
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert!(only(&i.model, "window").is_empty(), "the skylight is not set");
+        let reasons: Vec<&String> = i.skipped.iter().filter(|s| s.contains("roof")).collect();
+        assert_eq!(reasons.len(), 1, "{:?}", i.skipped);
+        assert!(reasons[0].contains("it is in a roof; BIMCraft sets doors and windows only in walls"), "{reasons:?}");
     }
 
     #[test]
@@ -5892,6 +5980,90 @@ ENDSEC;END-ISO-10303-21;",
             assert_eq!(roof.openings, [[P2(1000.0, 1000.0), P2(1000.0, 2000.0), P2(2500.0, 2000.0), P2(2500.0, 1000.0)]]);
             assert_eq!(only(&i.model, "shaft").len(), 1);
         }
+    }
+
+    /// An IFC4 file in mm whose roof is a mono-pitch slab, 6 x 4 m and 200 mm thick plumb, as a closed triangle mesh: its
+    /// underside 3000 high at its eaves and rising 2000 over the 6 m; `tris` winds its twelve faces.
+    fn mono_pitch(tris: &str) -> String {
+        let pts = "(0.,0.,3000.),(6000.,0.,5000.),(6000.,4000.,5000.),(0.,4000.,3000.),(0.,0.,3200.),(6000.,0.,5200.),(6000.,4000.,5200.),(0.,4000.,3200.)";
+        format!(
+            "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('p',$,'Roof',$,$,$,$,$,#2);
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCLOCALPLACEMENT($,#5);
+#7=IFCBUILDINGSTOREY('s',$,'Level 0',$,$,$,$,$,.ELEMENT.,0.);
+#10=IFCCARTESIANPOINTLIST3D(({pts}));
+#11=IFCTRIANGULATEDFACESET(#10,$,.T.,({tris}),$);
+#12=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#11));
+#13=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));
+#14=IFCROOF('r',$,'Roof',$,$,#6,#13,$,.SHED_ROOF.);
+#50=IFCRELCONTAINEDINSPATIALSTRUCTURE('c',$,$,$,(#14),#7);
+ENDSEC;END-ISO-10303-21;"
+        )
+    }
+
+    #[test]
+    fn a_roof_mesh_wound_inside_out_comes_in_as_one_wound_outward() {
+        // The same slab, its faces wound outward and then each the other way round.
+        let outward = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+        let inward = "(1,2,3),(1,3,4),(5,7,6),(5,8,7),(1,6,2),(1,5,6),(2,7,3),(2,6,7),(3,8,4),(3,7,8),(4,5,1),(4,8,5)";
+        let read = |tris: &str| {
+            let i = ifc(mono_pitch(tris).as_bytes(), "x").unwrap();
+            assert_eq!(i.skipped, Vec::<String>::new());
+            let Some(Element::Roof(r)) = only(&i.model, "roof").first().copied() else { panic!("no roof") };
+            (r.slope, r.offset, r.overhang, r.gables.clone(), r.boundary.clone())
+        };
+        let right = read(outward);
+        assert_eq!((right.0, right.1), (18.43, 3000.0), "its underside 3000 high at its eaves, rising 2 m over 6");
+        assert_eq!(read(inward), right);
+    }
+
+    #[test]
+    fn an_opening_through_one_roof_leaves_the_roof_over_it_whole() {
+        // A roof from -200 to 0 with an opening whose body runs on to 900, and a small roof from 800 to 1000 over it that the
+        // opening doesn't void: the hole is the lower roof's alone, and its shaft is as high as that roof.
+        let canopy = "#60=IFCCARTESIANPOINT((0.,0.,800.));
+#61=IFCAXIS2PLACEMENT3D(#60,$,$);
+#62=IFCLOCALPLACEMENT($,#61);
+#63=IFCCARTESIANPOINT((4500.,1500.));
+#64=IFCAXIS2PLACEMENT2D(#63,$);
+#65=IFCRECTANGLEPROFILEDEF(.AREA.,$,#64,2000.,2000.);
+#66=IFCEXTRUDEDAREASOLID(#65,$,#31,200.);
+#67=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#66));
+#68=IFCPRODUCTDEFINITIONSHAPE($,$,(#67));
+#69=IFCROOF('c',$,'Canopy',$,$,#62,#68,$,.FLAT_ROOF.);";
+        let file = holed("#35=IFCROOF('f',$,'Roof',$,$,#6,#34,$,.FLAT_ROOF.);", 35)
+            .replace("(#35),#7)", "(#35,#69),#7)")
+            .replace("#43=IFCEXTRUDEDAREASOLID(#42,$,#31,200.);", "#43=IFCEXTRUDEDAREASOLID(#42,$,#31,1100.);")
+            .replace("ENDSEC;END", &format!("{canopy}\nENDSEC;END"));
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert_eq!(i.skipped, Vec::<String>::new());
+        let Some(Element::Shaft(sh)) = only(&i.model, "shaft").first().copied() else { panic!("no shaft") };
+        assert_eq!(sh.height, 200.0, "no higher than the roof it voids");
+        // Each roof's plan, less its openings and the shafts through it.
+        let left = |roof: &crate::model::Roof| -> f64 {
+            let m = &i.model;
+            m.roof_slabs(roof)
+                .iter()
+                .map(|(face, rise)| m.less_shafts(face, *rise).0.iter().map(|p| geom::area(p).abs()).sum::<f64>())
+                .sum()
+        };
+        let mut areas: Vec<(f64, f64)> = only(&i.model, "roof")
+            .into_iter()
+            .filter_map(|e| match e {
+                Element::Roof(r) => Some((geom::area(&r.boundary).abs(), left(r))),
+                _ => None,
+            })
+            .collect();
+        areas.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert_eq!(areas.len(), 2, "{areas:?}");
+        let ((small, small_left), (big, big_left)) = (areas[0], areas[1]);
+        assert!((small - 4e6).abs() < 100.0 && (big - 24e6).abs() < 100.0, "{areas:?}");
+        assert!((big_left - 21.5e6).abs() < 100.0, "6 x 4 less 1.5 and 1: {areas:?}");
+        assert!((small_left - 4e6).abs() < 100.0, "the roof over the opening is whole: {areas:?}");
     }
 
     #[test]

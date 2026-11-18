@@ -1325,7 +1325,7 @@ pub(crate) fn opening_dimensions(p: &Painter, m: &Model, v: &View, o: &bimcraft_
     [(from, c), (c, to)]
         .into_iter()
         .filter(|(s, e)| screen(*s).distance(screen(*e)) >= 24.0)
-        .map(|(s, e)| (dimension_line(p, screen(s), screen(e), n, off), m.units.length(s.dist(e)), s.dist(e)))
+        .map(|(s, e)| (dimension_line(p, screen(s), screen(e), n, off), m.length(s.dist(e)), s.dist(e)))
         .collect()
 }
 
@@ -1348,7 +1348,7 @@ pub(crate) fn wall_dimensions(p: &Painter, m: &Model, v: &View, id: Id) -> Vec<(
         .filter(|(_, c)| screen(c.from).distance(screen(c.from + c.toward * c.distance)) >= 24.0)
         .map(|(n, c)| {
             let (a, b) = (screen(c.from), screen(c.from + c.toward * c.distance));
-            (n, dimension_line(p, a, b, side, 36.0), m.units.length(c.distance), c)
+            (n, dimension_line(p, a, b, side, 36.0), m.length(c.distance), c)
         })
         .collect()
 }
@@ -1374,7 +1374,7 @@ pub(crate) fn standing_dimensions(p: &Painter, m: &Model, v: &View, e: &Element)
         .map(|(n, c)| {
             // East and west dimensions lie north of it, north and south ones east of it.
             let side = if n % 2 == 0 { vec2(0.0, -1.0) } else { vec2(1.0, 0.0) };
-            (n, dimension_line(p, screen(at), screen(at + c.toward * c.distance), side, off), m.units.length(c.distance), c)
+            (n, dimension_line(p, screen(at), screen(at + c.toward * c.distance), side, off), m.length(c.distance), c)
         })
         .collect()
 }
@@ -3969,10 +3969,7 @@ impl BimApp {
                 st.angle = (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9;
                 (st.line, st.offset) = (Default::default(), 0.0);
                 if radius < width / 2.0 {
-                    return Err(tf(
-                        "stair: its centre is {} from its middle line at least, half its width",
-                        &[&m.units.with_unit(width / 2.0)],
-                    ));
+                    return Err(tf("stair: its centre is {} from its middle line at least, half its width", &[&m.with_unit(width / 2.0)]));
                 }
                 st.spiral = Some(bimcraft_core::model::Spiral { radius: if self.stair_clockwise { -radius } else { radius }, sweep: 0.0 });
                 return Ok((Element::Stair(st), true));
@@ -4754,7 +4751,7 @@ impl BimApp {
         }
     }
 
-    /// The wall or run selected alone, with Modify: the one whose ends are grips.
+    /// The wall, run or grid selected alone, with Modify: the one whose ends are grips.
     fn gripped(&self) -> Option<Id> {
         // Walls' Outline picks walls; it does not move their ends.
         if self.outline_pending {
@@ -4762,15 +4759,20 @@ impl BimApp {
         }
         let m = &self.session.model;
         match (self.selection.as_slice(), &self.tool) {
-            (&[id], Tool::Modify) if m.wall(id).is_some() || m.run_of(id).is_some() => Some(id),
+            (&[id], Tool::Modify)
+                if m.wall(id).is_some() || m.run_of(id).is_some() || matches!(m.elements.get(id), Some(Element::Grid(_))) =>
+            {
+                Some(id)
+            }
             _ => None,
         }
     }
 
-    /// The ends of the element whose ends are grips, `(start, end)`: a wall's or a run's line.
+    /// The ends of the element whose ends are grips, `(start, end)`: a wall's, a run's or a grid's line.
     fn grip_ends(m: &Model, id: Id) -> Option<(P2, P2)> {
         match m.elements.get(id)? {
             Element::Wall(w) => Some((w.start, w.end)),
+            Element::Grid(g) => Some((g.start, g.end)),
             e => Some((e.run()?.start, e.run()?.end)),
         }
     }
@@ -4793,7 +4795,7 @@ impl BimApp {
         (found, at)
     }
 
-    /// A drag from an end of the selected wall or run moves that end: its angle and length follow
+    /// A drag from an end of the selected wall, run or grid moves that end: its angle and length follow
     /// the cursor, with the snaps and angle guides from the other end (Ctrl keeps the length); on
     /// release, `move`, and the walls joined there follow.
     fn grip_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, level: Id) {
@@ -4838,7 +4840,7 @@ impl BimApp {
         }
     }
 
-    /// The selected wall's or run's grips at its ends and, beside each for a wall, its angle to
+    /// The selected wall's, run's or grid's grips at its ends and, beside each for a wall, its angle to
     /// click and type: the wall turns about that end. Dragging one, the element as it would stand,
     /// with its ruler.
     #[allow(clippy::too_many_arguments)]
@@ -4849,6 +4851,7 @@ impl BimApp {
         };
         let Some(ends) = Self::grip_ends(m, id) else { return };
         let wall = m.wall(id).cloned();
+        let is_grid = matches!(m.elements.get(id), Some(Element::Grid(_)));
         let p = ui.painter_at(rect);
         let at = |q: P2| pos(rect.min, v.px(q));
         let held = self.canvas.grip.filter(|(g, _)| *g == id).map(|(_, start)| start);
@@ -4868,6 +4871,8 @@ impl BimApp {
                     let (left, right) = (axis.points(0.0, axis.length(), ext), axis.points(0.0, axis.length(), int));
                     left.into_iter().chain(right.into_iter().rev()).collect()
                 }
+                // A grid is its line.
+                None if is_grid => vec![moved_ends.0, moved_ends.1],
                 // A run's footprint across its axis, in the state it would take.
                 None => m
                     .elements
@@ -4881,13 +4886,14 @@ impl BimApp {
                     .unwrap_or_default(),
             };
             let ring: Vec<Pos2> = ring.into_iter().map(&at).collect();
-            p.add(Shape::closed_line(ring, Stroke::new(1.0, pal().accent)));
+            let stroke = Stroke::new(1.0, pal().accent);
+            p.add(if is_grid { Shape::line(ring, stroke) } else { Shape::closed_line(ring, stroke) });
             let fixed = if start { ends.1 } else { ends.0 };
             p.extend(ruler_shapes(&sc, fixed, to, GuideLook::of(&p, self.refined_guides())));
             self.show_snap(&sc, &found, Lock::Free);
             self.canvas.found.set(Some(found));
             let r = snap::ruler(fixed, to);
-            let reading = format!("{}  {}", m.units.with_unit(r.length), degrees(if start { norm_turn(r.angle + 180.0) } else { r.angle }));
+            let reading = format!("{}  {}", m.with_unit(r.length), degrees(if start { norm_turn(r.angle + 180.0) } else { r.angle }));
             tag(&p, at(to) + vec2(12.0, -12.0), Align2::LEFT_BOTTOM, reading);
             ends_drawn[usize::from(!start)] = to;
         }
@@ -5481,7 +5487,7 @@ impl BimApp {
         } else {
             dimension_line(&p, a, b, n, off)
         };
-        let text = m.units.length(length);
+        let text = m.length(length);
         let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
         let number = Rect::from_center_size(middle, size);
         // Under the number, a small dimension-line button makes the temporary dimension a real one: a dimension between
@@ -5568,11 +5574,11 @@ impl BimApp {
         // The field in hand shows its digits alone, as a text field does; a number that is locked and now out of hand keeps
         // its unit, so a dimmed 1500 cannot be read as the wrong kind of number.
         let len = if len.is_empty() {
-            m.units.with_unit(last.dist(next))
+            m.with_unit(last.dist(next))
         } else if focus == Some(0) {
             len.to_string()
         } else {
-            m.units.parse(len).map_or_else(|| len.to_string(), |v| m.units.with_unit(v))
+            m.units.parse(len).map_or_else(|| len.to_string(), |v| m.with_unit(v))
         };
         // Degrees from east, the convention the field and its reference arc use, so the number in the pill is the number
         // to type. It showed the corner the chain turns at, which a typed angle could not reproduce.
@@ -5603,7 +5609,7 @@ impl BimApp {
         if shape == draw::Shape::Fillet {
             return match self.fillet_radius_at(next).filter(|_| self.filleting()) {
                 _ if !self.typed_length.is_empty() && self.filleting() => vec![(next, format!("R {} (Enter)", self.typed_length.trim()))],
-                Some(r) => vec![(next, format!("R {}", m.units.with_unit(r)))],
+                Some(r) => vec![(next, format!("R {}", m.with_unit(r)))],
                 None => Vec::new(),
             };
         }
@@ -5625,8 +5631,8 @@ impl BimApp {
             let shown = match now.get(i) {
                 _ if !typed.is_empty() => typed.trim().to_string(),
                 Some(v) if *name == "Angle" => degrees(*v),
-                Some(v) if *name == "Radius" => format!("R {}", m.units.with_unit(*v)),
-                Some(v) => m.units.with_unit(*v),
+                Some(v) if *name == "Radius" => format!("R {}", m.with_unit(*v)),
+                Some(v) => m.with_unit(*v),
                 None => continue,
             };
             out.push((places.get(i).copied().unwrap_or(next), shown));
@@ -5765,15 +5771,12 @@ impl BimApp {
                             let whole = Stair { top_offset: 0.0, height, ..st.clone() };
                             let (full, each, _) = m.flight(&whole);
                             let drawn = bimcraft_core::stairs::drawn_risers(m, &whole).clamp(1, full.max(1));
-                            Some(tf(
-                                "Step {} of {} - {}",
-                                &[&drawn.to_string(), &full.to_string(), &m.units.with_unit(f64::from(drawn) * each)],
-                            ))
+                            Some(tf("Step {} of {} - {}", &[&drawn.to_string(), &full.to_string(), &m.with_unit(f64::from(drawn) * each)]))
                         }
                         Element::Stair(st) => {
                             st.landings.first().map(|l| tf("{} of {} risers", &[&l.at.to_string(), &m.flight(st).0.to_string()]))
                         }
-                        Element::Ramp(r) => r.landings.first().map(|l| tf("{} up", &[&m.units.with_unit(l.at)])),
+                        Element::Ramp(r) => r.landings.first().map(|l| tf("{} up", &[&m.with_unit(l.at)])),
                         _ => None,
                     };
                     let along = matches!(&e, Element::Stair(st) if !st.path.is_empty());
@@ -5798,7 +5801,7 @@ impl BimApp {
                             {
                                 let tip = tf(
                                     "Tab: {} risers of {}, treads {}",
-                                    &[&best.risers.to_string(), &m.units.with_unit(best.riser), &m.units.with_unit(best.tread)],
+                                    &[&best.risers.to_string(), &m.with_unit(best.riser), &m.with_unit(best.tread)],
                                 );
                                 p.text(cursor + vec2(18.0, 38.0), Align2::LEFT_TOP, tip, FontId::proportional(11.5), pal().accent);
                                 self.stair_offer.set(Some((best.riser, best.tread, best.width)));
@@ -5827,7 +5830,7 @@ impl BimApp {
                 let to = self.shape_found(sc, q, &[], shift);
                 p.circle_stroke(sc.screen(to), 4.0, stroke);
                 if let Some(z) = self.landing_height(to) {
-                    label(cursor, m.units.length(z));
+                    label(cursor, m.length(z));
                 }
                 return;
             }
@@ -5836,7 +5839,7 @@ impl BimApp {
                 let to = self.shape_found(sc, q, &[start], shift);
                 p.line_segment([sc.screen(start), sc.screen(to)], stroke);
                 if let Some(z) = self.landing_height(to) {
-                    label(cursor, m.units.length(z));
+                    label(cursor, m.length(z));
                 }
                 return;
             }
@@ -5845,7 +5848,7 @@ impl BimApp {
                 let to = self.shape_found(sc, q, &[], shift);
                 p.circle_stroke(sc.screen(to), 4.0, stroke);
                 if let Some(z) = self.landing_height(to) {
-                    label(cursor, m.units.length(z));
+                    label(cursor, m.length(z));
                 }
                 return;
             }
@@ -6218,7 +6221,7 @@ impl BimApp {
                 for e in self.run_sketch(m, category, level, start, end) {
                     sketched(&e);
                 }
-                label(cursor, m.units.length(start.dist(end)));
+                label(cursor, m.length(start.dist(end)));
                 return;
             }
             // The structural column or footing a click would put down, and how far it stands from the walls.

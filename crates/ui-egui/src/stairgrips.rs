@@ -128,23 +128,23 @@ impl BimApp {
             let (n, _, _) = m.flight(&shown);
             let what = match grip {
                 Grip::Riser(i, _) => tf("Riser {}", &[&(i + 1).to_string()]),
-                Grip::Centre => m.units.with_unit(shown.spiral.map_or(0.0, |sp| sp.radius.abs())),
+                Grip::Centre => m.with_unit(shown.spiral.map_or(0.0, |sp| sp.radius.abs())),
                 Grip::Vertex(i) => {
                     let from = if i == 0 { shown.start } else { shown.path.get(i - 1).map_or(shown.start, |s| s.to) };
-                    m.units.with_unit(shown.path.get(i).map_or(0.0, |s| s.to.dist(from)))
+                    m.with_unit(shown.path.get(i).map_or(0.0, |s| s.to.dist(from)))
                 }
-                Grip::Foot => m.units.with_unit(st.start.dist(shown.start)),
+                Grip::Foot => m.with_unit(st.start.dist(shown.start)),
                 Grip::Top => format!("{:.1}°", shown.angle),
-                Grip::Width(_) => m.units.with_unit(shown.width),
+                Grip::Width(_) => m.with_unit(shown.width),
                 Grip::Turn(i) => {
                     shown.landings.get(i).map_or_else(String::new, |t| tf("{} of {} risers", &[&t.at.to_string(), &n.to_string()]))
                 }
-                Grip::Landing(i) => shown.landings.get(i).map_or_else(String::new, |t| m.units.with_unit(t.length)),
+                Grip::Landing(i) => shown.landings.get(i).map_or_else(String::new, |t| m.with_unit(t.length)),
                 // How far the edge stands out from where the stair's layout puts it.
                 Grip::Edge(k, tenths) => {
                     let normal = tenths as f64 / 10.0;
                     let by = shown.edges.iter().find(|e| e.landing == k && (e.normal - normal).abs() < 0.5).map_or(0.0, |e| e.by);
-                    m.units.with_unit(by)
+                    m.with_unit(by)
                 }
             };
             let outside = codes::stair_findings(m, &shown).len();

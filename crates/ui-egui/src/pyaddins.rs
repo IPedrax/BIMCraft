@@ -604,7 +604,6 @@ impl BimApp {
     /// A field's value as the form starts it: its default, in the project's units; a library name with none, the first of its
     /// kind that `taken` (the fields before it) hasn't, so two lists of types start on two types.
     fn first_field(&self, i: &bimcraft_pyaddins::Input, taken: &[String]) -> Field {
-        let units = self.session.model.units;
         match (&i.kind, &i.default) {
             (Kind::Library(kind), None) => {
                 let names: Vec<&str> = self
@@ -619,7 +618,7 @@ impl BimApp {
                 Field::Text(name.map(|n| n.to_string()).unwrap_or_default())
             }
             (Kind::Bool, d) => Field::Bool(d.as_ref().and_then(Value::as_bool).unwrap_or(false)),
-            (Kind::Length, Some(d)) => Field::Text(d.as_f64().map(|mm| units.length(mm)).unwrap_or_default()),
+            (Kind::Length, Some(d)) => Field::Text(d.as_f64().map(|mm| self.session.model.field(mm)).unwrap_or_default()),
             (Kind::Choice(_), Some(d)) => Field::Text(d.to_string()),
             (Kind::Level, None) => Field::Text(self.session.model.levels().first().map(|(_, l)| l.name.clone()).unwrap_or_default()),
             (_, Some(Value::String(s))) => Field::Text(s.clone()),
@@ -701,7 +700,7 @@ impl BimApp {
                         }
                         None => {
                             let hint = match kind {
-                                Kind::Length => self.session.model.units.length(0.0),
+                                Kind::Length => self.session.model.length(0.0),
                                 _ => String::new(),
                             };
                             ui.add_sized([width - 8.0, 22.0], TextEdit::singleline(s).id(id).hint_text(hint)).labelled_by(named);
