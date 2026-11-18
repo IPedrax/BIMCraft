@@ -34,6 +34,7 @@ fn a_family_at_1280_folds_no_panel_its_ribbon_has_room_for() {
 /// Modify | Extrusion at 1280 and 1440, the family's Create tab and the project's Architecture tab at 1280, saved where
 /// `BIMCRAFT_RIBBON_DUMP` says (only then): the window and the ribbon three times as large.
 #[test]
+#[ignore = "saves screenshots for looking at"]
 fn ribbon_fit_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_RIBBON_DUMP") else { return };
     let folder = std::path::PathBuf::from(folder);

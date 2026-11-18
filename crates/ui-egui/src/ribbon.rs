@@ -204,8 +204,10 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     let asked = FITS.with(|f| f.borrow().clone());
     let exhausted = asked == fits(&seen, whole.max(1.0) * 4.0 + room, room - SLACK);
     // What was missed was the panels' that were there: a tab that now draws others under the same key (another selection's
-    // contextual tab) starts again from what they say, else it would hand over or fold what has room.
-    let same = before.len() == seen.len() && before.iter().zip(&seen).all(|(a, b)| a.name == b.name && a.tools == b.tools);
+    // contextual tab, its panels named alike but their tools not as wide) starts again from what they say, else it would hand
+    // over or fold what has room.
+    let same = before.len() == seen.len()
+        && before.iter().zip(&seen).all(|(a, b)| a.name == b.name && a.tools == b.tools && (a.natural - b.natural).abs() < 0.5);
     let missed = if same { (missed + over).min(whole) } else { 0.0 };
     if over > 0.0 && (!same || (missed < whole && !exhausted)) {
         ui.ctx().request_repaint();
@@ -269,17 +271,27 @@ pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
         }
     }
     // A panel folded on the way may not have been needed: the ones before it, asked after, can make more room than was left
-    // over (a whole tool's worth). Each fold that room still holds is given back, the first made first.
+    // over (a whole tool's worth). Each fold that room still holds is given back, the first made first; a kept panel's
+    // before any other's, and none other while a kept one stays folded, so it still gives way last.
     let mut spare = -over;
-    fits.retain(|(name, fit)| {
-        let Some(p) = seen.iter().find(|p| &p.name == name).filter(|_| *fit == Fit::Fold) else { return true };
-        let made = p.natural - FOLDED;
-        if made > spare {
-            return true;
+    for kept in [true, false] {
+        let mut stays = false;
+        fits.retain(|(name, fit)| {
+            let Some(p) = seen.iter().find(|p| &p.name == name && p.kept == kept).filter(|_| *fit == Fit::Fold) else {
+                return true;
+            };
+            let made = p.natural - FOLDED;
+            if made > spare {
+                stays = true;
+                return true;
+            }
+            spare -= made;
+            false
+        });
+        if kept && stays {
+            break;
         }
-        spare -= made;
-        false
-    });
+    }
     fits
 }
 
@@ -536,6 +548,18 @@ mod tests {
         assert_eq!(fit(&[(300.0, 10), (82.0, 1)], 355.0), [("p0".into(), Fit::Show(8))]);
         // 95 over: the fold and three tools (100 made) do it, where the first alone would hand four over; the fold stays.
         assert_eq!(fit(&[(300.0, 10), (82.0, 1)], 305.0), [("p1".into(), Fit::Fold), ("p0".into(), Fit::Show(7))]);
+    }
+
+    #[test]
+    fn a_kept_panel_still_folds_last_when_a_fold_is_given_back() {
+        // 390 wide in 180, 210 over: the first folds (18 made), then the kept one must too (228 made), and the first's fold is
+        // not given back while the kept one stays folded.
+        let list = [(90.0, 1), (300.0, 1)];
+        let mut seen = panels(&list);
+        seen[1].kept = true;
+        assert_eq!(fits(&seen, 390.0, 180.0), [("p0".into(), Fit::Fold), ("p1".into(), Fit::Fold)]);
+        // In 220, 170 over: the kept one's fold alone is room enough, but it is asked last; both stay folded, as the rule says.
+        assert_eq!(fits(&seen, 390.0, 220.0), [("p0".into(), Fit::Fold), ("p1".into(), Fit::Fold)]);
     }
 
     /// One frame of a tab `room` wide drawn in `ctx`, under `key`: each panel of `panels` a name and its tools' widths. Whether

@@ -5819,6 +5819,8 @@ fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list
     h.set_size(vec2(990.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
+    // Set, not pressed: at 990 the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
+    // end), so a click on it lands outside the strip and does nothing, upstream too.
     h.state_mut().tab = Tab::Manage;
     h.run();
     assert!(h.query_by_label("Design Options").is_none(), "the last panel is folded at {window}");
