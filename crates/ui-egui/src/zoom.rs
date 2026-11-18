@@ -89,7 +89,8 @@ pub(crate) fn drag(ui: &Ui, pane: Rect, from: &mut Option<Pos2>) -> (Option<Rect
     if response.hovered() || response.dragged() {
         ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
     }
-    if response.drag_started_by(egui::PointerButton::Primary) {
+    // Alt and the primary button stand in for the middle one (the view's navigation): no rectangle.
+    if response.drag_started_by(egui::PointerButton::Primary) && !ui.input(|i| i.modifiers.alt) {
         *from = ui.input(|i| i.pointer.press_origin());
     }
     let at = ui.input(|i| i.pointer.latest_pos());

@@ -70,8 +70,13 @@ impl Modeller {
     /// or panned as the view's own navigation does it.
     pub(crate) fn wheel_and_middle(&mut self, ui: &egui::Ui, response: &egui::Response) {
         if let Some(cam) = self.camera {
-            self.camera = Some(self.nav.wheel_and_middle(ui, self.rect, 1.0, response, cam));
+            self.camera = Some(self.nav.wheel_and_middle(ui, self.rect, 1.0, response, cam, None));
         }
+    }
+
+    /// The hand let go, as [`Orbit::let_go`].
+    pub(crate) fn let_go(&mut self) {
+        self.nav.let_go();
     }
 }
 

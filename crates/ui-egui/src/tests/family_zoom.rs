@@ -519,6 +519,74 @@ fn zoom_to_fit_on_a_fitted_view_leaves_no_step() {
     assert!((look(&h)[1] - look(&h)[0]).length() < (closest[1] - closest[0]).length() * 0.99, "Previous steps back out");
 }
 
+#[test]
+fn alt_and_the_primary_button_navigate_3d_while_the_region_is_armed_and_draw_no_rectangle() {
+    let mut h = open();
+    view(&mut h, None);
+    settle(&mut h);
+    bar(&mut h, REGION);
+    let before = editor(&h).orbit.camera.expect("{3D} drawn");
+    let c = middle(&h);
+    let (a, b) = (c - vec2(120.0, 80.0), c + vec2(60.0, 40.0));
+    h.event(Event::ModifiersChanged(Modifiers::ALT));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::ALT });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.event(Event::PointerMoved(a + (b - a) * t));
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::ALT });
+    h.run();
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    settle(&mut h);
+    let after = editor(&h).orbit.camera.expect("{3D} drawn");
+    assert_ne!(after.target, before.target, "Alt and the primary button pan {{3D}}");
+    assert_eq!(after.scale, before.scale, "no rectangle fitted");
+    assert!(prompted(&h), "the region is still armed");
+}
+
+#[test]
+fn a_wheel_while_armed_keeps_its_zoom_when_3d_is_resized() {
+    let mut h = open();
+    view(&mut h, None);
+    bar(&mut h, FIT);
+    settle(&mut h);
+    bar(&mut h, REGION);
+    wheel(&mut h);
+    settle(&mut h);
+    let wheeled = editor(&h).orbit.camera.expect("{3D} drawn").scale;
+    key(&mut h, Key::Escape);
+    h.set_size(vec2(1500.0, 1000.0));
+    settle(&mut h);
+    let now = editor(&h).orbit.camera.expect("{3D} drawn").scale;
+    assert!((now / wheeled - 1.0).abs() < 1e-6, "the wheel's zoom kept: {wheeled} then {now}");
+}
+
+#[test]
+fn the_region_given_up_mid_drag_of_the_middle_button_lets_the_hand_go() {
+    let mut h = open();
+    view(&mut h, None);
+    settle(&mut h);
+    bar(&mut h, REGION);
+    let c = middle(&h);
+    h.hover_at(c);
+    h.run();
+    h.event(Event::PointerButton { pos: c, button: PointerButton::Middle, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [10.0, 20.0, 30.0] {
+        h.event(Event::PointerMoved(c + vec2(t, t)));
+        h.run();
+    }
+    assert!(editor(&h).orbit.turning(), "the middle button pans");
+    key(&mut h, Key::Escape);
+    h.event(Event::PointerButton { pos: c + vec2(30.0, 30.0), button: PointerButton::Middle, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert!(!prompted(&h), "given up");
+    assert!(!editor(&h).orbit.turning(), "the hand let go");
+}
+
 /// The view control bar with the new buttons, light and dark, and a region being dragged in the plan and once it is fitted,
 /// saved where `BIMCRAFT_FE3_DUMP` says (only then).
 #[test]

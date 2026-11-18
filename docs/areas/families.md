@@ -1305,8 +1305,8 @@ modelling view or the preview), on the view shown and never on the project's (`e
 view shown afresh: before, it left a plan or an elevation as it was. Zoom Out (2x) halves the view about its middle. Zoom In
 Region arms a drag over the view, drawn over it so the view's own drag neither turns, pans nor selects, and the view fits the
 rectangle let go (a drag under 4 points either way is a click, and leaves it armed); while it is armed the status bar asks for
-the rectangle, the wheel and the middle button still zoom, pan and turn the view (handed to its own navigation from the
-region's widget), and Escape, another view shown, another tool picked or the tab left gives it up. Previous Pan/Zoom steps
+the rectangle, the wheel and the middle button (and Alt with the primary button, which then draws no rectangle) still zoom, pan
+and turn the view (handed to its own navigation from the region's widget, about what the picture shows), and Escape, another view shown, another tool picked or the tab left gives it up (and a drag of the middle button with it). Previous Pan/Zoom steps
 back through a short history each view keeps, a step left by each of those commands that changes the view (Zoom to Fit on a
 view fitted already leaves none) and none by the wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never
 comes back over the camera it restored. The three new commands have no keys yet: the project has no such commands, so they
