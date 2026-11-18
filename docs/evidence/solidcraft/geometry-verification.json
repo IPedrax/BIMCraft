@@ -1,0 +1,82 @@
+{
+  "Window": {
+    "before": {
+      "triangles": 96,
+      "bodies": 8,
+      "max_vertex_error_mm": 0.0001070766379845153,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    },
+    "after": {
+      "triangles": 120,
+      "bodies": 10,
+      "max_vertex_error_mm": 4.245026732223937e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    }
+  },
+  "Door": {
+    "before": {
+      "triangles": 34358,
+      "bodies": 13,
+      "max_vertex_error_mm": 9.611895820378618e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    },
+    "after": {
+      "triangles": 34356,
+      "bodies": 13,
+      "max_vertex_error_mm": 9.611895820378618e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    }
+  },
+  "Light": {
+    "before": {
+      "triangles": 101808,
+      "bodies": 28,
+      "max_vertex_error_mm": 2.4211521162497878e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    },
+    "after": {
+      "triangles": 152652,
+      "bodies": 34,
+      "max_vertex_error_mm": 4.773025923385312e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    }
+  },
+  "DrawerBase": {
+    "before": {
+      "triangles": 100322,
+      "bodies": 37,
+      "max_vertex_error_mm": 3.32100015339944e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    },
+    "after": {
+      "triangles": 133632,
+      "bodies": 46,
+      "max_vertex_error_mm": 3.3777206989607866e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    }
+  },
+  "TwoDoorBase": {
+    "before": {
+      "triangles": 66818,
+      "bodies": 19,
+      "max_vertex_error_mm": 3.3147891611600306e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    },
+    "after": {
+      "triangles": 236,
+      "bodies": 13,
+      "max_vertex_error_mm": 3.3777206989607866e-05,
+      "all_triangles_match": true,
+      "history_reopen_exact": true
+    }
+  }
+}

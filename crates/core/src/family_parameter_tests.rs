@@ -403,3 +403,38 @@ fn a_group_is_one_of_revits_by_its_name_or_heading_or_a_heading_of_its_own() {
     assert_eq!(listed, [Under::Group(Group::Constraints), Under::Group(Group::Other), Under::Own("A".into()), Under::Own("b".into())]);
     assert!(Under::Own("two\nlines".into()).check("p").is_err());
 }
+
+#[test]
+fn explicit_dimension_roles_follow_effective_values_history_and_reload() {
+    let mut s = Session::new();
+    let definition = json!({"name":"Role control", "category":"casework",
+        "dimension_parameters":{"Width":"Span", "Height":"Rise", "Depth":"CoreDepth", "Overall Depth":"Outside"},
+        "parameters":[{"name":"Span","value":600,"instance":true},
+          {"name":"Rise","value":900},{"name":"CoreDepth","value":500},
+          {"name":"Outside","formula":"CoreDepth + 20"}],
+        "types":{"Standard":{}},
+        "forms":[{"profile":[[0,0],["Span",0],["Span","Outside"],[0,"Outside"]],"to":"Rise"}]});
+    run(&mut s, "family", definition.clone());
+    let a = run(&mut s, "component", json!({"family":"Role control","at":[0,0]}))["id"].as_u64().unwrap();
+    let b = run(&mut s, "component", json!({"family":"Role control","at":[1500,0]}))["id"].as_u64().unwrap();
+    let field = |s: &Session, id, name| crate::schedule::field_text(&s.model, id, name).unwrap();
+    assert_eq!(field(&s, a, "Width"), field(&s, a, "Span"));
+    assert_ne!(field(&s, a, "Depth"), field(&s, a, "Overall Depth"));
+    run(&mut s, "modify", json!({"id":b,"params":{"Span":762}}));
+    assert_ne!(field(&s, a, "Width"), field(&s, b, "Width"));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(field(&s, a, "Width"), field(&s, b, "Width"));
+    run(&mut s, "redo", json!({}));
+    run(&mut s, "family", json!({"name":"Role control","types":{"Standard":{"Rise":1000}}}));
+    assert_eq!(field(&s, a, "Height"), field(&s, b, "Height"));
+    assert_eq!(field(&s, a, "Height"), field(&s, a, "Rise"));
+    let encoded = serde_json::to_value(&s.model.families["Role control"]).unwrap();
+    let f: crate::family::Family = serde_json::from_value(encoded).unwrap();
+    assert_eq!(f.dimension_parameters.len(), 4);
+    assert_eq!(f.parameters.len(), 4, "roles never create duplicate inputs");
+    assert!(!err(&mut s, "family", json!({"name":"Role control","dimension_parameters":{"Width":"Missing"}})).is_empty());
+    assert_eq!(field(&s, b, "Width"), field(&s, b, "Span"), "refusal leaves mappings intact");
+    let mut f = f.clone();
+    f.rename_parameter("Span", "ClearSpan");
+    assert_eq!(f.dimension_parameters["Width"], "ClearSpan");
+}

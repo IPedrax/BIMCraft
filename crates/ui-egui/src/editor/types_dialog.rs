@@ -107,6 +107,7 @@ impl FamilyEditor {
                 (self.params, self.types, self.forms, self.symbols) = (e.params, e.types, e.forms, e.symbols);
                 (self.adaptive, self.connectors, self.planes, self.lines) = (e.adaptive, e.connectors, e.planes, e.lines);
                 self.options = e.options;
+                self.dimension_parameters = e.dimension_parameters;
             }
             Err(_) => {
                 for p in self.params.iter_mut().filter(|p| p.name.trim() == old) {
@@ -196,6 +197,11 @@ impl FamilyEditor {
 
 /// Family Types' body: the Type name row, the search, the table and the buttons under it, and what was refused.
 pub(super) fn body(ed: &mut FamilyEditor, ui: &mut Ui, base: &Arc<Model>, materials: &[String]) {
+    if ed.solidcraft.is_some() {
+        ui.label(t(
+            "Geometry is evaluated by SolidCraft. Edit the source timeline in SolidCraft; published input names must stay unchanged here.",
+        ));
+    }
     ed.picked = ed.picked.min(ed.types.len().saturating_sub(1));
     type_row(ed, ui);
     ui.add_space(4.0);
@@ -667,6 +673,15 @@ fn commit(ed: &mut FamilyEditor, e: &Editing) -> Result<(), String> {
     }
     if e.was.as_deref() != Some(name.as_str()) && ed.param_at(&name).is_some() {
         return Err(tf("The family has a parameter named {} already.", &[&name]));
+    }
+    if let Some(was) = &e.was
+        && *was != name
+        && ed.solidcraft.as_ref().is_some_and(|s| s.inputs.contains_key(was))
+    {
+        return Err(tf(
+            "SolidCraft input `{}` cannot be renamed here. Rename it in SolidCraft and republish with reviewed bindings.",
+            &[was],
+        ));
     }
     let group = Some(e.group.clone()).filter(|g| *g != kind_group(e.kind));
     let shared = e.shared.filter(|_| e.is_shared);

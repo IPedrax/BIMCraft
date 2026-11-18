@@ -695,6 +695,9 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
         );
     }
     if cat == "component" {
+        for name in m.families.values().flat_map(|f| f.dimension_parameters.keys()) {
+            add(name, Kind::Length);
+        }
         for p in m.families.values().flat_map(|f| &f.parameters) {
             add(
                 &p.name,
@@ -1020,6 +1023,14 @@ impl Row<'_> {
     /// One of category `cat`'s fields, of its element.
     fn field_of(&self, cat: &str, name: &str) -> Value {
         let (m, j) = (self.m, &self.json);
+        // Roles are read-only aliases of the same effective values that rebuild the family.
+        // No inference from names, suffixes, geometry bounds, or category.
+        if cat == "component"
+            && let Some((family, _)) = self.e.family()
+            && let Some(source) = m.families.get(family).and_then(|f| f.dimension_parameters.get(name))
+        {
+            return j.get("values").and_then(|v| v.get(source)).cloned().unwrap_or(Value::Null);
+        }
         if let Some((_, kind, from)) = own(cat).1.iter().find(|(n, _, _)| *n == name) {
             let number = |v: Option<&Value>| v.and_then(Value::as_f64).unwrap_or(0.0);
             return match *from {
@@ -1092,7 +1103,9 @@ impl Row<'_> {
     fn shared(&self, name: &str, kind: Kind) -> Value {
         let cat = self.e.category();
         let name = if (cat, name) == ("roof", "Area") { "Plan Area" } else { name };
-        if own(cat).1.iter().any(|(n, k, _)| *n == name && *k == kind) {
+        if own(cat).1.iter().any(|(n, k, _)| *n == name && *k == kind)
+            || (cat == "component" && fields(self.m, cat).iter().any(|(n, k)| n == name && *k == kind))
+        {
             return self.field_of(cat, name);
         }
         let by = |a: &str, b: &str| match (self.field_of(cat, a).as_f64(), self.field_of(cat, b).as_f64()) {

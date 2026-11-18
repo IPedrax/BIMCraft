@@ -1,0 +1,39 @@
+{
+  "category": "window",
+  "parameters": {
+    "Width": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "Height": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "LiteCount": {
+      "scope": "instance",
+      "group": "graphics",
+      "kind": "integer"
+    },
+    "TransomHeight": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "FrameDepth": {
+      "scope": "type",
+      "group": "dimensions"
+    },
+    "FrameWidth": {
+      "scope": "type",
+      "group": "dimensions"
+    },
+    "MullionWidth": {
+      "scope": "type",
+      "group": "dimensions"
+    }
+  },
+  "dimensions": {
+    "Width": "Width",
+    "Height": "Height",
+    "Depth": "FrameDepth"
+  }
+}

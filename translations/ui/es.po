@@ -107,7 +107,7 @@ msgid "3D View: {}"
 msgstr ""
 
 #: crates/ui-egui/src/browser.rs:605
-#: crates/ui-egui/src/editor/document.rs:1101
+#: crates/ui-egui/src/editor/document.rs:1107
 #: crates/ui-egui/src/properties.rs:1735
 msgid "3D Views"
 msgstr "Vistas 3D"
@@ -912,7 +912,7 @@ msgstr "Terminal aéreo"
 msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
 msgstr "Terminal aéreo (AT): un captor, donde hagas clic en la cubierta; Espacio lo gira"
 
-#: crates/ui-egui/src/editor.rs:968
+#: crates/ui-egui/src/editor.rs:979
 msgid "Air Terminals"
 msgstr "Terminales aéreos"
 
@@ -2300,7 +2300,7 @@ msgstr ""
 msgid "Casement Window"
 msgstr "Ventana abatible"
 
-#: crates/ui-egui/src/editor.rs:960
+#: crates/ui-egui/src/editor.rs:971
 msgid "Casework"
 msgstr "Carpintería"
 
@@ -3662,7 +3662,7 @@ msgid "Comparison"
 msgstr "Comparación"
 
 #: crates/core/src/commands.rs:2113
-#: crates/ui-egui/src/editor/document.rs:467
+#: crates/ui-egui/src/editor/document.rs:473
 msgid "Component"
 msgstr "Componente"
 
@@ -4528,7 +4528,7 @@ msgstr "Punto de datos"
 msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
 msgstr "Punto de datos (DT): un punto de datos, donde hagas clic en el muro; Espacio lo gira"
 
-#: crates/ui-egui/src/editor.rs:971
+#: crates/ui-egui/src/editor.rs:982
 msgid "Data Outlets"
 msgstr "Puntos de datos"
 
@@ -4984,7 +4984,7 @@ msgid "Did the surveyor's numbers change by a fixed amount? Type the change here
 msgstr "¿Los números del topógrafo cambiaron en una cantidad fija? Escriba el cambio aquí y todas las ubicaciones se mueven en esa cantidad de una vez, por ejemplo 5 m más de elevación."
 
 #: crates/ui-egui/src/dimtypes.rs:94
-#: crates/ui-egui/src/editor/document.rs:485
+#: crates/ui-egui/src/editor/document.rs:491
 #: crates/ui-egui/src/lang.rs:31
 #: crates/ui-egui/src/lib.rs:5811
 msgid "Dimension"
@@ -5027,7 +5027,7 @@ msgstr ""
 msgid "Dimension {}"
 msgstr "Cota {}"
 
-#: crates/core/src/family.rs:353
+#: crates/core/src/family.rs:354
 #: crates/ui-egui/src/lang.rs:32
 #: crates/ui-egui/src/properties.rs:578
 msgid "Dimensions"
@@ -5462,7 +5462,7 @@ msgstr "Electrodo de puesta a tierra"
 msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
 msgstr "Electrodo de puesta a tierra (EG): una pica clavada bajo el nivel, donde hagas clic; Espacio lo gira"
 
-#: crates/ui-egui/src/editor.rs:969
+#: crates/ui-egui/src/editor.rs:980
 msgid "Earthing Electrodes"
 msgstr "Electrodos de puesta a tierra"
 
@@ -5739,7 +5739,7 @@ msgstr "Eléctrico"
 msgid "Electrical Ceiling"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:965
+#: crates/ui-egui/src/editor.rs:976
 msgid "Electrical Equipment"
 msgstr "Equipo eléctrico"
 
@@ -5821,7 +5821,7 @@ msgstr ""
 msgid "Elevation: {}"
 msgstr "Elevación: {}"
 
-#: crates/ui-egui/src/editor/document.rs:1102
+#: crates/ui-egui/src/editor/document.rs:1108
 #: crates/ui-egui/src/properties.rs:1730
 msgid "Elevations"
 msgstr ""
@@ -6939,7 +6939,7 @@ msgstr "Completa"
 msgid "Function"
 msgstr "Función"
 
-#: crates/ui-egui/src/editor.rs:959
+#: crates/ui-egui/src/editor.rs:970
 msgid "Furniture"
 msgstr "Mobiliario"
 
@@ -6990,6 +6990,10 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:6182
 msgid "Geometry"
 msgstr "Geometría"
+
+#: crates/ui-egui/src/editor/types_dialog.rs:202
+msgid "Geometry is evaluated by SolidCraft. Edit the source timeline in SolidCraft; published input names must stay unchanged here."
+msgstr ""
 
 #: crates/ui-egui/src/assistant.rs:134
 #: crates/ui-egui/src/assistant.rs:653
@@ -7831,7 +7835,7 @@ msgstr "Caja de inspección"
 msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
 msgstr "Caja de inspección (IB): sobre un electrodo, a ras del nivel, donde hagas clic; Espacio la gira"
 
-#: crates/ui-egui/src/editor.rs:970
+#: crates/ui-egui/src/editor.rs:981
 msgid "Inspection Boxes"
 msgstr "Cajas de inspección"
 
@@ -8327,7 +8331,7 @@ msgstr ""
 msgid "Leave blank to omit this entry."
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1135
+#: crates/ui-egui/src/editor.rs:1146
 #: crates/ui-egui/src/export/mod.rs:984
 #: crates/ui-egui/src/titleblocks.rs:233
 #: crates/ui-egui/src/titleblocks.rs:238
@@ -10850,7 +10854,7 @@ msgstr "Aire exterior por uso, por persona y por área, ocupaciones por defecto 
 msgid "Outlet"
 msgstr "Tomacorriente"
 
-#: crates/ui-egui/src/editor.rs:966
+#: crates/ui-egui/src/editor.rs:977
 msgid "Outlets"
 msgstr "Tomacorrientes"
 
@@ -11139,7 +11143,7 @@ msgstr "Panel de parcheo"
 msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
 msgstr "Panel de parcheo (PB): un panel en el muro, donde hagas clic; Espacio lo gira"
 
-#: crates/ui-egui/src/editor.rs:973
+#: crates/ui-egui/src/editor.rs:984
 msgid "Patch Panels"
 msgstr "Paneles de parcheo"
 
@@ -11990,7 +11994,7 @@ msgstr "Aparato sanitario"
 msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
 msgstr "Aparato sanitario (PX): lavabo, inodoro, fregadero, ducha o sumidero, donde hagas clic; Espacio lo gira"
 
-#: crates/ui-egui/src/editor.rs:961
+#: crates/ui-egui/src/editor.rs:972
 msgid "Plumbing Fixtures"
 msgstr "Sanitarios"
 
@@ -12480,7 +12484,7 @@ msgstr "REDUNDANTE"
 msgid "RIGHT"
 msgstr ""
 
-#: crates/core/src/family.rs:148
+#: crates/core/src/family.rs:149
 msgid "Rack"
 msgstr "Rack"
 
@@ -12488,7 +12492,7 @@ msgstr "Rack"
 msgid "Rack (RK): a floor rack, where you click; Space turns it"
 msgstr "Rack (RK): un rack de piso, donde hagas clic; Espacio lo gira"
 
-#: crates/ui-egui/src/editor.rs:974
+#: crates/ui-egui/src/editor.rs:985
 msgid "Racks"
 msgstr "Racks"
 
@@ -13245,7 +13249,7 @@ msgstr "Cinta de opciones"
 msgid "Ribbon panel"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1135
+#: crates/ui-egui/src/editor.rs:1146
 #: crates/ui-egui/src/export/mod.rs:986
 #: crates/ui-egui/src/spots.rs:355
 #: crates/ui-egui/src/titleblocks.rs:235
@@ -14715,6 +14719,10 @@ msgstr "Relleno sólido"
 msgid "Solid/Void"
 msgstr ""
 
+#: crates/ui-egui/src/editor/types_dialog.rs:682
+msgid "SolidCraft input `{}` cannot be renamed here. Rename it in SolidCraft and republish with reviewed bindings."
+msgstr ""
+
 #: crates/ui-egui/src/cowork/door.rs:64
 msgid "Someone asks to join"
 msgstr "Alguien pide unirse"
@@ -15295,7 +15303,7 @@ msgstr "Conector de interruptor"
 msgid "Switch Connector: what a switch controls"
 msgstr "Conector de interruptor: lo que controla un interruptor"
 
-#: crates/ui-egui/src/editor.rs:967
+#: crates/ui-egui/src/editor.rs:978
 msgid "Switches"
 msgstr "Interruptores"
 
@@ -17534,7 +17542,7 @@ msgstr "Punto de voz"
 msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
 msgstr "Punto de voz (VO): un punto de teléfono, donde hagas clic en el muro; Espacio lo gira"
 
-#: crates/ui-egui/src/editor.rs:972
+#: crates/ui-egui/src/editor.rs:983
 msgid "Voice Outlets"
 msgstr "Puntos de voz"
 
@@ -17934,7 +17942,7 @@ msgstr "Ventana (WN): haz clic en un muro"
 msgid "Window Schedule"
 msgstr "Tabla de ventanas"
 
-#: crates/ui-egui/src/editor/document.rs:592
+#: crates/ui-egui/src/editor/document.rs:598
 #: crates/ui-egui/src/lang.rs:34
 msgid "Windows"
 msgstr "Ventanas"

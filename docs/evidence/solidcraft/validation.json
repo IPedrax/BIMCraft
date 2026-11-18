@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-18",
+  "implementation_commit": "bf482d87fcef4cc4133bd0a09d414cc19090bef9",
+  "baseline": "e61e6d6d6999416ea2282de7d3d60b84ccce2401",
+  "platform": "macOS 27.0.1 Apple silicon",
+  "rust": "1.99.1",
+  "fmt": "pass",
+  "clippy_workspace_all_targets_deny_warnings": "pass",
+  "i18n_check": "pass",
+  "wasm_sample_plugin_build": "pass",
+  "workspace_command": "cargo test --offline --workspace -- --skip tests::hostile_params_never_panic_or_break_the_model",
+  "workspace_results": {
+    "passed": 5340,
+    "failed": 0,
+    "ignored": 27,
+    "measured": 0,
+    "filtered": 1
+  },
+  "omitted_test": "Passed in preceding full core run (2899 passed, 0 failed, 13 ignored). Only documentation changed afterward.",
+  "native_external_integration": {
+    "passed": 4,
+    "failed": 0
+  },
+  "geometry_cases": {
+    "before_after_states": 10,
+    "all_triangles_match": true,
+    "history_reopen_exact": true
+  },
+  "qualification": "Automated tests, not manual user acceptance. External evaluator only qualified on pinned SC 0.44.1 on this Mac."
+}

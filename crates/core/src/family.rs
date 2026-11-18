@@ -26,6 +26,7 @@ mod options;
 mod origin;
 mod planes;
 pub mod sketch;
+pub mod solidcraft;
 mod validate;
 pub mod views;
 pub mod visibility;
@@ -1048,6 +1049,12 @@ impl TryFrom<FormIn> for Form {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Family {
+    /// Explicit schedule/tag dimension roles, reading existing effective parameters.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dimension_parameters: BTreeMap<String, String>,
+    /// A vanilla SolidCraft document and the public inputs chosen at import.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solidcraft: Option<Arc<solidcraft::Source>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adaptive: Option<crate::adaptive::Definition>,
     #[serde(default)]
@@ -1127,6 +1134,8 @@ pub struct Family {
 impl Default for Family {
     fn default() -> Family {
         Family {
+            dimension_parameters: BTreeMap::new(),
+            solidcraft: None,
             adaptive: None,
             category: Category::default(),
             kind: None,
@@ -1861,6 +1870,11 @@ impl Family {
     /// parameter must be walked here, so a rename never leaves one behind: a new such part adds its arm. The library
     /// entry (its GUID) and the components' values are the model's to follow (`Library::renamed`).
     pub fn rename_parameter(&mut self, old: &str, new: &str) {
+        for source in self.dimension_parameters.values_mut() {
+            if source == old {
+                *source = new.to_string();
+            }
+        }
         // Adaptive: every formula of its points and forms (what "=" ties to a parameter), and its forms made of a material
         // parameter.
         let material = self.material_parameter(old);
@@ -2138,6 +2152,20 @@ impl Family {
     /// [`Family::check`], within a tree of nested families: `chain` the names of the families it is nested in, `total` the
     /// nested definitions counted so far ([`nested`]).
     pub(crate) fn check_in(&self, has_material: &dyn Fn(&str) -> bool, chain: &mut Vec<String>, total: &mut usize) -> Result<(), String> {
+        if let Some(source) = &self.solidcraft {
+            source.check_parameters(&self.parameters)?;
+        }
+        for (role, name) in &self.dimension_parameters {
+            if !["Width", "Height", "Depth", "Overall Depth"].contains(&role.as_str()) {
+                return Err(format!("unknown dimension role `{role}`"));
+            }
+            if !self.parameters.iter().any(|p| p.name == *name && p.kind == Kind::Length) {
+                return Err(format!("dimension role `{role}` must reference an existing length parameter: `{name}`"));
+            }
+            if role != name && self.parameters.iter().any(|p| p.name == *role) {
+                return Err(format!("dimension role `{role}` conflicts with a parameter of the same name"));
+            }
+        }
         if let Some(definition) = &self.adaptive {
             definition.check()?;
         }
@@ -2665,7 +2693,11 @@ impl Family {
         read: &mut HashMap<&'a str, Result<Node, String>>,
         cuts: &mut csg::Meter,
     ) -> Result<Vec<Piece>, String> {
-        let (mut out, mut voids) = (Vec::new(), Vec::new());
+        let mut out = match &self.solidcraft {
+            Some(source) => source.pieces(values)?,
+            None => Vec::new(),
+        };
+        let mut voids = Vec::new();
         for i in 0..self.forms.len() {
             let what = format!("form {}", i + 1);
             let Some(piece) = self.solid(i, values, read).map_err(|e| format!("{what}: {e}"))? else {

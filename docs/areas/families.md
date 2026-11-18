@@ -1351,3 +1351,14 @@ In `crates/ui-egui`, the Family Editor:
   overlay drawn through a view's projection alone).
 - `editor/origin_mark.rs`: the insertion point's mark over plans and elevations and, as a point in space, {3D}; Defines Origin ticked on a plane.
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+
+
+## SolidCraft-backed families (opt-in review)
+
+The isolated bridge candidate evaluates source parameters in vanilla SolidCraft and requests `model.mesh` at a 0.001 mm chord tolerance. SolidCraft floors that tolerance at one millionth of each body’s size; this is a requested meshing accuracy, not a universal certified error bound for every surface. `family/solidcraft/density.rs` reads the component inventory, meshes each definition, and places every occurrence through its complete transform chain. It compares the result count with the evaluator’s world-body inventory. No family or parameter names select behavior.
+
+This replaces the candidate’s finest OBJ route; it does not reduce accuracy adaptively to make a family fit. The 400,000-triangle family cap remains. The read-only API also caps each body at 8,192 vertices / 16,384 triangles. Excess size, missing bodies, diagnostics (including incomplete/lenient meshing), invalid indices, nonfinite/nonrigid placement data, or nonclosed/inconsistently wound meshes cause refusal. Closed-mesh validation welds only validation identities at 0.000001 mm; it never rounds or modifies returned geometry. The authoritative command transaction retains the model/history on refusal.
+
+The source document, author-selected parameter scopes/groups/category and source bindings are unchanged. Properties, type edits, Edit Family/reload, save/reopen and semantic MCP use the same evaluator. The candidate does not certify all freeform or imported surfaces; the cabinet/casing qualification checks exact planes and cylinders independently, alongside dense-export sampled distances, bounds, volumes, geometry/history and native UI checks. Production installation and upstream handoff are separate decisions.
+
+`family/solidcraft.rs` owns source/input binding, unit conversion and the bounded successful-result cache. `family/solidcraft/density.rs` invokes the explicitly configured local evaluator and validates/place its meshes. The editor retains these fields through draft, save and reload; bound input names cannot be silently renamed or removed. Setup, exact supported behavior and the Revit 2026 comparison are in [the bridge guide](../solidcraft-bridge.md). Project format 22 prevents older readers silently dropping source geometry.

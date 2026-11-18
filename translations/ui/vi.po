@@ -107,7 +107,7 @@ msgid "3D View: {}"
 msgstr ""
 
 #: crates/ui-egui/src/browser.rs:605
-#: crates/ui-egui/src/editor/document.rs:1101
+#: crates/ui-egui/src/editor/document.rs:1107
 #: crates/ui-egui/src/properties.rs:1735
 msgid "3D Views"
 msgstr "Khung nhìn 3D"
@@ -912,7 +912,7 @@ msgstr "Kim thu sét"
 msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
 msgstr "Kim thu sét (AT): một kim thu, tại chỗ bạn nhấp trên mái; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:968
+#: crates/ui-egui/src/editor.rs:979
 msgid "Air Terminals"
 msgstr "Kim thu sét"
 
@@ -2300,7 +2300,7 @@ msgstr ""
 msgid "Casement Window"
 msgstr "Cửa sổ mở quay"
 
-#: crates/ui-egui/src/editor.rs:960
+#: crates/ui-egui/src/editor.rs:971
 msgid "Casework"
 msgstr "Tủ kệ"
 
@@ -3662,7 +3662,7 @@ msgid "Comparison"
 msgstr "So sánh"
 
 #: crates/core/src/commands.rs:2113
-#: crates/ui-egui/src/editor/document.rs:467
+#: crates/ui-egui/src/editor/document.rs:473
 msgid "Component"
 msgstr "Thành phần"
 
@@ -4528,7 +4528,7 @@ msgstr "Ổ cắm dữ liệu"
 msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
 msgstr "Ổ cắm dữ liệu (DT): một điểm dữ liệu, tại chỗ bạn nhấp trên tường; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:971
+#: crates/ui-egui/src/editor.rs:982
 msgid "Data Outlets"
 msgstr "Ổ cắm dữ liệu"
 
@@ -4984,7 +4984,7 @@ msgid "Did the surveyor's numbers change by a fixed amount? Type the change here
 msgstr ""
 
 #: crates/ui-egui/src/dimtypes.rs:94
-#: crates/ui-egui/src/editor/document.rs:485
+#: crates/ui-egui/src/editor/document.rs:491
 #: crates/ui-egui/src/lang.rs:31
 #: crates/ui-egui/src/lib.rs:5811
 msgid "Dimension"
@@ -5027,7 +5027,7 @@ msgstr ""
 msgid "Dimension {}"
 msgstr ""
 
-#: crates/core/src/family.rs:353
+#: crates/core/src/family.rs:354
 #: crates/ui-egui/src/lang.rs:32
 #: crates/ui-egui/src/properties.rs:578
 msgid "Dimensions"
@@ -5462,7 +5462,7 @@ msgstr "Cọc nối đất"
 msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
 msgstr "Cọc nối đất (EG): một cọc đóng xuống từ tầng, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:969
+#: crates/ui-egui/src/editor.rs:980
 msgid "Earthing Electrodes"
 msgstr "Cọc nối đất"
 
@@ -5739,7 +5739,7 @@ msgstr "Điện"
 msgid "Electrical Ceiling"
 msgstr "Điện trần"
 
-#: crates/ui-egui/src/editor.rs:965
+#: crates/ui-egui/src/editor.rs:976
 msgid "Electrical Equipment"
 msgstr "Thiết bị điện"
 
@@ -5821,7 +5821,7 @@ msgstr ""
 msgid "Elevation: {}"
 msgstr "Mặt đứng: {}"
 
-#: crates/ui-egui/src/editor/document.rs:1102
+#: crates/ui-egui/src/editor/document.rs:1108
 #: crates/ui-egui/src/properties.rs:1730
 msgid "Elevations"
 msgstr ""
@@ -6939,7 +6939,7 @@ msgstr "Đầy đủ"
 msgid "Function"
 msgstr "Chức năng"
 
-#: crates/ui-egui/src/editor.rs:959
+#: crates/ui-egui/src/editor.rs:970
 msgid "Furniture"
 msgstr "Nội thất"
 
@@ -6990,6 +6990,10 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:6182
 msgid "Geometry"
 msgstr "Hình học"
+
+#: crates/ui-egui/src/editor/types_dialog.rs:202
+msgid "Geometry is evaluated by SolidCraft. Edit the source timeline in SolidCraft; published input names must stay unchanged here."
+msgstr ""
 
 #: crates/ui-egui/src/assistant.rs:134
 #: crates/ui-egui/src/assistant.rs:653
@@ -7831,7 +7835,7 @@ msgstr "Hộp kiểm tra"
 msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
 msgstr "Hộp kiểm tra (IB): trên một cọc nối đất, bằng mặt tầng, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:970
+#: crates/ui-egui/src/editor.rs:981
 msgid "Inspection Boxes"
 msgstr "Hộp kiểm tra"
 
@@ -8327,7 +8331,7 @@ msgstr ""
 msgid "Leave blank to omit this entry."
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1135
+#: crates/ui-egui/src/editor.rs:1146
 #: crates/ui-egui/src/export/mod.rs:984
 #: crates/ui-egui/src/titleblocks.rs:233
 #: crates/ui-egui/src/titleblocks.rs:238
@@ -10850,7 +10854,7 @@ msgstr ""
 msgid "Outlet"
 msgstr "Ổ cắm"
 
-#: crates/ui-egui/src/editor.rs:966
+#: crates/ui-egui/src/editor.rs:977
 msgid "Outlets"
 msgstr "Ổ cắm"
 
@@ -11139,7 +11143,7 @@ msgstr "Patch panel"
 msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
 msgstr "Patch panel (PB): một tấm trên tường, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:973
+#: crates/ui-egui/src/editor.rs:984
 msgid "Patch Panels"
 msgstr "Patch panel"
 
@@ -11990,7 +11994,7 @@ msgstr "Thiết bị vệ sinh"
 msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
 msgstr "Thiết bị vệ sinh (PX): chậu rửa, bồn cầu, chậu bếp, vòi sen hoặc phễu thu, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:961
+#: crates/ui-egui/src/editor.rs:972
 msgid "Plumbing Fixtures"
 msgstr "Thiết bị vệ sinh"
 
@@ -12480,7 +12484,7 @@ msgstr "THỪA"
 msgid "RIGHT"
 msgstr ""
 
-#: crates/core/src/family.rs:148
+#: crates/core/src/family.rs:149
 msgid "Rack"
 msgstr "Tủ rack"
 
@@ -12488,7 +12492,7 @@ msgstr "Tủ rack"
 msgid "Rack (RK): a floor rack, where you click; Space turns it"
 msgstr "Tủ rack (RK): một tủ rack đặt sàn, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:974
+#: crates/ui-egui/src/editor.rs:985
 msgid "Racks"
 msgstr "Tủ rack"
 
@@ -13245,7 +13249,7 @@ msgstr "Dải băng"
 msgid "Ribbon panel"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1135
+#: crates/ui-egui/src/editor.rs:1146
 #: crates/ui-egui/src/export/mod.rs:986
 #: crates/ui-egui/src/spots.rs:355
 #: crates/ui-egui/src/titleblocks.rs:235
@@ -14715,6 +14719,10 @@ msgstr "Tô đặc"
 msgid "Solid/Void"
 msgstr ""
 
+#: crates/ui-egui/src/editor/types_dialog.rs:682
+msgid "SolidCraft input `{}` cannot be renamed here. Rename it in SolidCraft and republish with reviewed bindings."
+msgstr ""
+
 #: crates/ui-egui/src/cowork/door.rs:64
 msgid "Someone asks to join"
 msgstr "Có người xin tham gia"
@@ -15295,7 +15303,7 @@ msgstr "Đầu nối công tắc"
 msgid "Switch Connector: what a switch controls"
 msgstr "Đầu nối công tắc: thứ mà công tắc điều khiển"
 
-#: crates/ui-egui/src/editor.rs:967
+#: crates/ui-egui/src/editor.rs:978
 msgid "Switches"
 msgstr "Công tắc"
 
@@ -17534,7 +17542,7 @@ msgstr "Ổ cắm thoại"
 msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
 msgstr "Ổ cắm thoại (VO): một điểm điện thoại, tại chỗ bạn nhấp trên tường; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:972
+#: crates/ui-egui/src/editor.rs:983
 msgid "Voice Outlets"
 msgstr "Ổ cắm thoại"
 
@@ -17934,7 +17942,7 @@ msgstr "Cửa sổ (WN): nhấp vào một tường"
 msgid "Window Schedule"
 msgstr "Bảng thống kê cửa sổ"
 
-#: crates/ui-egui/src/editor/document.rs:592
+#: crates/ui-egui/src/editor/document.rs:598
 #: crates/ui-egui/src/lang.rs:34
 msgid "Windows"
 msgstr "Cửa sổ"

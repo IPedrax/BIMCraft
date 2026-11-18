@@ -235,7 +235,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a grid has a type (`type`), and a project holds grid types (`grid_types`, library entries of kind `grid-type`); a grid of
 /// 20 has none, and reading it as 21 gives it the type the standards name; a build that reads up to 20 would leave both out as
 /// fields it doesn't know and draw every grid in the one line it had, not say "saved by a newer BIMCraft".
-pub const FORMAT: u32 = 21;
+/// FORMAT 22 preserves SolidCraft source-backed geometry and explicit family dimension bindings.
+/// Older readers would discard the source and show an empty family, so they must refuse this file.
+pub const FORMAT: u32 = 22;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -5299,6 +5301,8 @@ impl Model {
     /// (its id, then) points at its GUID, and the ids move up to six digits, by as much as takes the first to [`FIRST_ID`]
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
+        // FORMAT 22 adds optional source geometry and dimension bindings. Older families have
+        // neither and keep their native forms; serde defaults supply the absent fields.
         self.codes_from_386();
         if self.format < 1 {
             self.resolve();

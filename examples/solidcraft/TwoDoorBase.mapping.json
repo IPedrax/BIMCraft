@@ -1,0 +1,110 @@
+{
+  "category": "casework",
+  "parameters": {
+    "SDH_Base_width": {
+      "scope": "instance",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_height": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_depth": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_thickness": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_back_thickness": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_plinth": {
+      "scope": "instance",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_toe_kick_setback": {
+      "scope": "instance",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_show_fronts": {
+      "scope": "instance",
+      "group": "graphics",
+      "kind": "yesno"
+    },
+    "SDH_Base_show_hardware": {
+      "scope": "instance",
+      "group": "graphics",
+      "kind": "yesno"
+    },
+    "SDH_Base_use_knobs": {
+      "scope": "instance",
+      "group": "graphics",
+      "kind": "yesno"
+    },
+    "SDH_Base_center_hardware": {
+      "scope": "instance",
+      "group": "graphics",
+      "kind": "yesno"
+    },
+    "SDH_Base_hardware_x_offset": {
+      "scope": "instance",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_hardware_top_offset": {
+      "scope": "instance",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_pull_length": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_hardware_projection": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_face_frame_width": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_face_frame_depth": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_front_thickness": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_reveal": {
+      "scope": "type",
+      "group": "dimensions",
+      "kind": "auto"
+    },
+    "SDH_Base_shelf_count": {
+      "scope": "instance",
+      "group": "graphics",
+      "kind": "integer"
+    }
+  },
+  "dimensions": {
+    "Width": "SDH_Base_width",
+    "Height": "SDH_Base_height",
+    "Depth": "SDH_Base_depth"
+  }
+}
