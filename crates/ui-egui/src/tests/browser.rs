@@ -78,3 +78,22 @@ fn the_families_list_curtain_panels_and_mullions_under_their_system_families() {
     }
     assert_eq!(h.state().types.get("mullion").map(String::as_str), Some("50 x 150"));
 }
+
+#[test]
+fn the_families_categories_are_listed_alphabetically_by_their_names() {
+    use egui_kittest::kittest::{By, NodeT};
+    let mut h = app(&format!("{BOX}\nfloor {{\"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}}\ndoor {{\"at\": [2000, 0]}}"));
+    press(&mut h, "List Families");
+    let find = h.get_by_label(FIND).rect();
+    // The tree in order, under the search field: the Families group's header and the categories' headers.
+    let names: Vec<String> = h
+        .query_all(By::new())
+        .filter(|n| n.rect().top() > find.bottom() && n.rect().left() < find.right())
+        .filter_map(|n| n.accesskit_node().label())
+        .filter(|l| l.as_str() != "Families")
+        .collect();
+    let sorted = names.windows(2).all(|w| w[0].to_lowercase() <= w[1].to_lowercase());
+    assert!(sorted, "the categories in alphabetical order, not {names:?}");
+    let at = |name: &str| names.iter().position(|n| n == name);
+    assert!(at("Doors").is_some() && at("Doors") < at("Floors") && at("Floors") < at("Walls"), "{names:?}");
+}
