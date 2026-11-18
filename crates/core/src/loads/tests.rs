@@ -132,7 +132,7 @@ fn a_kitchen_asks_for_two_outlets_over_the_counter() {
 #[test]
 fn every_rule_of_every_standard_names_its_source() {
     let sets = rule_sets();
-    assert!(!sets.is_empty(), "data/load-points.json did not load");
+    assert!(!sets.is_empty(), "NBR 5410's `load_points` section did not load");
     for set in sets {
         assert!(!set.standard.trim().is_empty() && !set.source.trim().is_empty(), "{}: no source", set.standard);
         assert!(!set.lighting.source.trim().is_empty(), "{}: the lighting names no source", set.standard);

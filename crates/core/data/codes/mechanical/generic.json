@@ -1,0 +1,8 @@
+{
+ "code": "generic",
+ "discipline": "mechanical",
+ "name": "No building code",
+ "default": true,
+ "note": "No code's numbers. The sections a module reads come from the first of BIMCraft's codes that has them, and say so.",
+ "sections": {}
+}

@@ -123,3 +123,49 @@ fn pick_new_host_screenshots() {
         }
     }
 }
+
+#[test]
+fn pick_new_host_preview_and_click_agree_with_a_moved_family_origin() {
+    let (mut h, id) = selected(crate::style::Profile::Rev);
+    h.state_mut()
+        .exec(
+            "family",
+            &json!({"name": "Origin window", "category": "window", "types": {"A": {}},
+        "parameters": [{"name": "Width", "value": 1200}, {"name": "Height", "value": 1500}],
+        "forms": [{"profile": [[-600,-30],[600,-30],[600,30],[-600,30]], "from": 0, "to": 1500}]}),
+        )
+        .unwrap();
+    h.state_mut().exec("modify", &json!({"id": id, "family": "Origin window", "type": "A"})).unwrap();
+    h.state_mut()
+        .exec(
+            "family",
+            &json!({"name": "Origin window", "ref_planes": [
+        {"name": "Origin X", "start": [125,0,0], "end": [125,1000,0], "up": [0,0,1000], "defines_origin": true},
+        {"name": "Origin Z", "start": [0,0,-100], "end": [1000,0,-100], "up": [0,1000,0], "defines_origin": true}]}),
+        )
+        .unwrap();
+    h.run();
+    press(&mut h, "Pick New Host");
+    let before = Arc::clone(&h.state().session.model);
+    key(&mut h, Key::Space);
+    assert!(Arc::ptr_eq(&before, &h.state().session.model), "Space must not change the live opening during rehosting");
+    let target = ids(&h, "wall")[1];
+    let params = h.state().rehost_params(Some(target), P2(3500.0, 3000.0), 0.0).unwrap();
+    assert_eq!(params["offset"], json!(2500.0));
+    let preview = h.state().rehost_preview(&params).unwrap();
+    let Element::Window(o) = preview.elements.get(id).unwrap() else { panic!("window") };
+    assert_eq!(preview.opening_middle(o), (2375.0, 900.0));
+    assert_eq!(o.sill, 800.0);
+    assert!(o.flip_facing);
+    hover(&mut h, P2(3500.0, 3000.0));
+    assert!(Arc::ptr_eq(&before, &h.state().session.model));
+    click(&mut h, P2(3500.0, 3000.0));
+    let Element::Window(committed) = h.state().session.model.elements.get(id).unwrap() else { panic!("window") };
+    // Pointer coordinates round through screen f32 pixels; all other fields must match exactly.
+    assert!((committed.offset - o.offset).abs() < 0.001);
+    let mut expected = o.clone();
+    expected.offset = committed.offset;
+    assert_eq!(committed, &expected);
+    h.state_mut().exec("undo", &json!({})).unwrap();
+    assert_eq!(h.state().session.model.elements.get(id), before.elements.get(id));
+}

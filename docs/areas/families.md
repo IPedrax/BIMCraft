@@ -111,6 +111,10 @@ command sets it (`ifc`, written in capitals, `null` to forget it) and `Family::c
 isn't `IFC` and capitals, a predefined type of anything but capitals, digits and `_`, an object type of more than a line. A
 family of another category keeps what it remembers but goes out as its category says. An older BIMCraft leaves `ifc` out of
 a project and opens it, its components going out as proxies, so the field took no `FORMAT` step.
+A generic family is full at `family::MAX_FORMS` forms or `MAX_PLANES` less three planes. Then its types go on in a family of
+the same name and class numbered on, `Bolt assembly (2)`, `(3)`, up to `import::MAX_NAMESAKES` (100); past that a product is
+left out, saying so. A fastener whose file gives its size (Tekla's `Bolt Name` property) comes in in a family named with it,
+`Bolt M20`, so a steel model's thousands of bolts fill families by size rather than one family in order.
 A material's `texture` (`texture.rs`) is a pattern drawn in code or a picture of `Model::images` (a PNG or JPEG comes in, is kept
 as a PNG of at most 1024 px, its header checked before the decoder makes room for it), laid on a face at its `size` in mm by the
 face's own axes (`view3d::basis`: across is level, up goes up it, east and north where it lies flat), sampled per pixel from the
@@ -459,8 +463,8 @@ part (`HasPart`, `parts_now`), with an id and a GUID. Each has a `reference` (T1
 `center_elevation`, `top`, each of these one plane's or line's in the family), a `subcategory` and `defines_origin`.
 `Family::check_planes` says what's wrong: a name used twice, a named reference taken twice, numbers past `MAX_COORD`, a line
 with one point, an `up` along the line, the origin defined twice in a direction, or by a plane square to none of x, y and z.
-The datums define the origin until a plane of the family's own in their direction takes it; moving the origin there (and
-correcting placed components' `at` so they stay put) is not done yet: the flag is kept and checked only.
+The datums define the origin until a plane of the family's own in their direction takes it: where the planes that define it
+cross is the family's insertion point (*The origin*, below).
 
 A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
 host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
@@ -487,6 +491,47 @@ An adaptive family's work planes are these planes too: a reference point is draw
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
 before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
 `rehost` and `resolve_hosts` follow its points as they follow forms and lines.
+
+### The origin
+
+O1 (`family/origin.rs`). A family stands by its insertion point, `Family::origin`: where the planes that define the origin
+cross, one square to each of x, y and z, a datum's in a direction no plane of the family's own takes over. Those planes stay
+as a type flexes (a dimension never moves them, a pivot never turns them), so it is one point for every type. An adaptive
+family has none: its points place it. The family's forms, planes and lines stay where they are in its axes; only the point it
+is placed by changes.
+
+**One placement.** Every way a family's axes are put in the project goes through `hosting::Placement::by_origin`: the
+insertion point, the axes, and the origin flipped as the pieces are, giving the place of the family's own zero. A component's
+is `Model::component_placement` (its pieces, outlines, plan marks, connectors, room calculation point, face voids, bounds in
+`bounds.rs` and `component_geometry.rs`, the 3D scene and its picking, plans and their picking, IFC's local placement); a door's
+or a window's is `Model::opening_placement` (its pieces, marks and voids, `opening_frame`); a nested instance's is
+`placed_instance` in `family/nested.rs`. A door's or a window's opening is its family's datums': `Model::opening_middle` gives
+its middle along the wall and its bottom, which its hole, the checks on its place in its wall, dimensions to it, wall splits and
+joins, Timber Framing and IFC's opening read in place of `offset` and `sill`. A family document's scratch project places the
+family by its origin, so its forms stand where its planes are drawn.
+
+**Instances stay put.** A family records the origin its instances were placed against (`placed_origin`, left out of a file
+while it is the datums'; it is bookkeeping and never makes two families differ). After every command but those that replace
+the project (`Session::execute`), and as a project is read (`Model::read`), `Model::settle_origins` moves the instances of
+each family whose origin is not that record by the difference, in the same undo step, and makes the record its origin: a
+reload (`family_reload` carries the record over), an edit of the planes, a shared family replaced across the project
+(`replace_shared` keeps each copy's record). A component on a level or a reference plane moves by the difference turned and
+mirrored with it; one on a face of a wall, a floor, a ceiling or a roof only along the face, and a door or a window only along
+and up its wall (`offset`, `sill`), since the host fixes where they are across it, so across it they follow the new origin.
+Nested instances are moved in the families that place them, a place or a turn given by a formula staying one. A file of a
+build that placed every family by its datums holds no record, so one whose family already had a plane marked opens with its
+instances where they were drawn. Insert from File (`insert.rs`) moves a component or a door or a window whose family this
+project has otherwise (by name, with its own GUID) by the difference of the two families' origins, so it stands where it
+stood in the other project. An imported 3D model's family (`import_mesh`) has its origin on its datums. Tests:
+`origin_tests.rs`.
+
+**In the family document.** A reference plane's Properties have Defines Origin under Other (none for an adaptive family):
+ticked, the plane takes the origin in its direction and the plane that had it lets go; cleared, the datum of that direction
+takes it back; a datum's box can't be cleared while it has the origin, nor a plane square to none of x, y and z ticked. A small
+crimson mark, a ring with a cross, shows the insertion point over the plans and the elevations; in {3D} it is a point in
+space: three short axes along the family's x, y and z in the triad's colours, and thin dashed lines dropping from it to Ref.
+Level and running there to the datums' crossing (`editor/origin_mark.rs`). Tests: `crates/ui-egui/src/tests/family_origin.rs`, which with `BIMCRAFT_O1_DUMP` set to a folder
+saves the window there (`o1-*.png`).
 
 ## Dimensions and constraints
 
@@ -943,6 +988,16 @@ Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC ke
 18 holds this change: a build that reads up to 17 would stand a tilted component upright and lose its plane; a file of 17
 holds neither.
 
+A component on no plane may lie tilted too (`Component::tilt`, two unit directions square to each other: its family's x and z
+in the model before `angle` turns them about the vertical), as an imported bolt through a brace does. `component_placement`
+reads it first, so the plan, the 3D view, sections and IFC place it as they place one on a plane; none, the component stands
+upright, and an upright one writes nothing. `Model::check` refuses a tilt that isn't two square unit directions and one on a
+component with a `host` or placed by its points, which tilt it themselves. Rotate turns it with `angle`; Mirror reflects it
+(its directions' y the other way, beside `mirrored`). `Model::shape_key` keys a component's shape by the values its family
+reads only, so a plan of thousands of tilted copies of few shapes builds each shape once and places its corners
+(`Components::corners`) for its heights and outline, and the 3D view takes its placed triangles without an outline
+(`Components::solids`). FORMAT 21 holds it: a build that reads up to 20 would leave it out and stand the component up.
+
 The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
 it placed and starts Rotate about its point. Properties shows a work plane-based family's component's Schedule Level,
@@ -1242,6 +1297,22 @@ data URI is decoded. What the reader can't use (textures, lines and points, spar
 which refuse the file) is listed in `left_out`; a file with nothing to bring in is an error that says what was left out.
 Generic components go to IFC as `IfcBuildingElementProxy`.
 
+## Zooming the family's views (FE-3)
+
+The zoom commands work in each of the document's views, plans, the ceiling plan, elevations and {3D} (an adaptive family's
+modelling view or the preview), on the view shown and never on the project's (`editor/zoom.rs`, over the window's own
+`zoom.rs`). The view control bar has three beside Zoom to Fit. Zoom to Fit (and its keys, ZF, ZE and ZA, and Find) fits the
+view shown afresh: before, it left a plan or an elevation as it was. Zoom Out (2x) halves the view about its middle. Zoom In
+Region arms a drag over the view, drawn over it so the view's own drag neither turns, pans nor selects, and the view fits the
+rectangle let go (a drag under 4 points either way is a click, and leaves it armed); while it is armed the status bar asks for
+the rectangle, the wheel and the middle button (and Alt with the primary button, which then draws no rectangle) still zoom, pan
+and turn the view (handed to its own navigation from the region's widget, about what the picture shows), and Escape, another view shown, another tool picked or the tab left gives it up (and a drag of the middle button with it). Previous Pan/Zoom steps
+back through a short history each view keeps, a step left by each of those commands that changes the view (Zoom to Fit on a
+view fitted already leaves none) and none by the wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never
+comes back over the camera it restored. The three new commands have no keys yet: the project has no such commands, so they
+are not in `shortcuts::ACTIONS` or `SHORTCUTS`, and their keys (ZR and ZZ, ZO and ZV, ZP and ZC) wait for a family document
+to have keys of its own. Tests: `tests/family_zoom.rs`.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
@@ -1253,6 +1324,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 `family/`:
 
 - `family/planes.rs`: reference planes and lines, forms' hosts.
+- `family/origin.rs`: its origin, the insertion point it stands by, and its instances kept where they stand when it moves (O1).
 - `family/options.rs`: Family Category and Parameters' options.
 - `family/views.rs`: a family's plans and elevations.
 - `family/sketch.rs`: forms' sketches.
@@ -1269,6 +1341,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+- `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
@@ -1276,17 +1349,23 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/connectors.rs`: a family's connectors in the document, placed from Create > Connectors, listed in the browser, typed
   in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
   overlay drawn through a view's projection alone).
+- `editor/origin_mark.rs`: the insertion point's mark over plans and elevations and, as a point in space, {3D}; Defines Origin ticked on a plane.
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
 
 
 ## Pick New Host for an existing opening
 
-`pick_new_host {id, wall, offset}` changes an ordinary door or window's host and its centre distance from the target
-wall's start, in millimetres. Both references accept an id or GUID. It delegates to `modify`; `Model::check` remains the
+`pick_new_host {id, wall, offset}` changes an ordinary door or window's host and its insertion-point distance from the target
+wall's start, in millimetres (the opening centre while the family origin is at its datums). Both references accept an id or GUID. It delegates to `modify`; `Model::check` remains the
 single source of fit, overlap and family-parameter validation. One successful call adds one undo step. Refusal preserves
 the model and history. The element is never deleted/recreated: its id/GUID, mark, family/type, instance/project parameters,
 sill and hand/facing flags remain. Tags and references continue to name the same opening. Families evaluate against the
 new wall's thickness. Old/new wall cuts and their derived graphics follow the changed host reference.
+
+The integrated family-origin semantics apply unchanged: `offset`/`sill` place the family's origin; `opening_middle` derives
+the physical opening centre/bottom. A moved origin can give a valid door a negative stored sill. Rehosting keeps that sill,
+the family origin and both flips, so its physical height is preserved on equal-base hosts. It neither recentres the family
+nor settles an origin a second time. Mirrored and rotated targets use the existing placement transform.
 
 `rehost.rs` limits eligibility to unpinned, ungrouped ordinary openings with ordinary straight source/target walls on the
 same level and at the same `own_base` elevation (within 0.000001 mm). Curtain walls, panel replacement walls, curved walls,
@@ -1299,3 +1378,5 @@ The desktop exposes this in plans only ([desktop](desktop.md)); CLI and MCP exec
 FORMAT change. `rehost_tests.rs` covers identity, parameters, flips, fit/refusal, group/curtain/curved controls, raised bases,
 read-only, history, save/open, tags/dimensions, family thickness and fresh/incremental geometry. Source-backed external
 family evaluators are not part of upstream main and need their own compatibility replay.
+Slanted/profiled wall PR #504 is not part of the tested base; its `slant` and `profile` fields remain refused. If those
+forms enter main, extend the eligibility guard and regression controls before offering them as rehost targets.

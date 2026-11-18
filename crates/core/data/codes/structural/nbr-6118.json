@@ -1,0 +1,41 @@
+{
+ "code": "nbr-6118",
+ "discipline": "structural",
+ "name": "ABNT NBR 6118 (concrete structures)",
+ "edition": "2014",
+ "region": "Brasil",
+ "references": ["ABNT NBR 6118:2014, Projeto de estruturas de concreto, items 7.4, 17.3, 17.4, 18.4 and 20.1"],
+ "note": "The usual limits on bars that course material and handbooks print, typed and not read from the standard's own text, which is paid for: check one against your copy before relying on it. Items are the 2014 edition's, at the level of the item. The least tension steel is given up to C30 only (Table 17.3); a limit that needs what a bar list doesn't hold (shear, the load, the aggregate) is not here.",
+ "documents": {"nbr6118": {"title": "ABNT NBR 6118", "edition": "2014", "publisher": "ABNT"}},
+ "sections": {
+  "concrete": {
+   "standard": "NBR 6118",
+   "classes": ["I", "II", "III", "IV"],
+   "covers": {"beam": [25.0, 30.0, 40.0, 50.0], "column": [25.0, 30.0, 40.0, 50.0], "floor": [20.0, 25.0, 35.0, 45.0], "ground": [30.0, 30.0, 40.0, 50.0]},
+   "beam": {
+    "ratio_max": 0.04, "ratio_min": 0.0015, "ratio_min_fck_max": 30.0,
+    "skin_from_depth": 600.0, "skin_ratio": 0.001, "skin_spacing_max": 200.0, "skin_spacing_d": 3.0,
+    "stirrup_dia_min": 5.0, "stirrup_width_ratio": 10.0, "stirrup_spacing_d": 0.6, "stirrup_spacing_max": 300.0
+   },
+   "column": {
+    "bar_dia_min": 10.0, "bar_side_ratio": 8.0, "bars_min_rect": 4, "bars_min_round": 6,
+    "ratio_min": 0.004, "ratio_max": 0.08, "bar_spacing_sides": 2.0, "bar_spacing_max": 400.0,
+    "stirrup_dia_min": 5.0, "stirrup_bar_ratio": 4.0, "stirrup_spacing_max": 200.0, "stirrup_spacing_bars": 12.0
+   },
+   "floor": {"bar_thickness_ratio": 8.0, "spacing_thickness": 2.0, "spacing_max": 200.0},
+   "items": {
+    "cover": "7.4.7.2", "beam_ratio": "17.3.5.2", "beam_skin": "17.3.5.2.3", "beam_stirrup": "17.4.1.1",
+    "column_bars": "18.4.2.1", "column_ratio": "17.3.5.3", "column_spacing": "18.4.2.2", "column_stirrup": "18.4.3", "floor": "20.1"
+   }
+  }
+ },
+ "sources": {
+  "concrete.covers": {"doc": "nbr6118", "item": "7.4.7.2, Table 7.2 (nominal cover, Δc = 10 mm)"},
+  "concrete.classes": {"doc": "nbr6118", "item": "6.4.2, Table 6.1 (environmental aggressiveness classes)"},
+  "concrete.beam": {"doc": "nbr6118", "item": "17.3.5.2, 17.3.5.2.3 and 17.4.1.1"},
+  "concrete.column": {"doc": "nbr6118", "item": "17.3.5.3, 18.4.2.1, 18.4.2.2 and 18.4.3"},
+  "concrete.floor": {"doc": "nbr6118", "item": "20.1"},
+  "concrete.items": "The item each check cites in its notes"
+ },
+ "kinds": {"concrete": "practice"}
+}

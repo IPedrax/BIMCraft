@@ -45,7 +45,7 @@ reaches every front end.
 
 | Family | Formats |
 |---|---|
-| Document | PDF through krilla (MIT/Apache): sheets in one file, pages laid out, PDF/A-1b, 2b, 2u, 3b or 4, version 1.4 to 2.0, vector or raster pages, cut marks, title, author and subject |
+| Document | PDF through krilla (MIT/Apache): sheets in one file, pages laid out, PDF/A-1b, 2b, 2u, 3b or 4, version 1.4 to 2.0, vector or raster pages, cut marks, title, author, subject, creator and producer |
 | Vector | SVG |
 | Raster | PNG, JPEG (jpeg-encoder), JPEG XL (zune-jpegxl, lossless only: the only lossy encoder in Rust is AGPL) |
 | Line | DXF (AC1018, written here), DWG (experimental: the DXF through acadrust, [CAD import](cad-import.md#dwg)) |
@@ -84,6 +84,17 @@ ezdxf's audit, IFC4.3 and IFC2x3 with IfcOpenShell (CI validates `coverage-4x3.i
   pages are the pictures the PNG writer makes, at the page setup's dpi. Cut marks (`document::cut_marks`) are hairlines in
   the margin, along each edge of the printable area that meets another page of a tiled drawing. The `a` levels (tagged) are
   not offered: a drawing has no reading order to tag.
+  `creator` and `producer` in the same `pdf` object set the document's Creator and Producer in both Info and XMP
+  (PDF/A-4 and ordinary PDF 2.0 have XMP only). Left out or `null`, they stay `BIMCraft` and `BIMCraft <version>`;
+  an empty or whitespace-only string omits the entry; any other string is used as given. These options also belong to
+  a publishing entry's `options.pdf` and are saved only when set.
+
+  For example, from the CLI:
+
+  ```sh
+  bimcraft-cli run --sample --cmd \
+    'export {"format":"pdf","view":"Level 1","path":"plan.pdf","pdf":{"creator":"Drawing tool","producer":""}}'
+  ```
 
 - **Pages** (`page::Pages`) are all of them, a range (`[first, last]`), or a typed list (`"1, 3, 5-7"`); a page past the last is
   left out. A drawing no larger than its paper is one page whatever the margin: the margin takes its edge, as a printer's
@@ -125,11 +136,13 @@ ezdxf's audit, IFC4.3 and IFC2x3 with IfcOpenShell (CI validates `coverage-4x3.i
 - **The page** is set as a print dialog sets it, a paper of its own size among the papers, a 5 mm margin to start with, with
   the preview beside it. Subtle gray rules separate the form's choices. A PDF's Content (vector or raster) and Draw cut marks
   sit under the colours; its document settings
-  (archive, version, title, author, subject) are in the PDF Settings… window under the preview. Pages are all, a range, or
-  Custom, a list typed. The preview draws every page, numbers each in light grey when there are several, greys those
-  outside the range and draws the drawing on each with `canvas::paint`, in the colours and lines the setup asks for
-  (`formats::styled`). The preview's drawing is made on a thread of its own and kept while the source and the project stay
-  the same. Under the form, the dialog says how many pages it makes, their size and the scale.
+  (archive, version, title, author, subject, creator, producer) are in the PDF Settings… window under the preview.
+  Creator and Producer each have a Default checkbox; uncheck it to enter a value, or leave the field blank to omit that
+  entry. Pages are all, a range, or Custom, a list typed. The preview draws every page, numbers each in light grey when
+  there are several, greys those outside the range and draws the drawing on each with `canvas::paint`, in the colours
+  and lines the setup asks for (`formats::styled`). The preview's drawing is made on a thread of its own and kept while
+  the source and the project stay the same. Under the form, the dialog says how many pages it makes, their size and the
+  scale.
 - **Export…** asks for the file in the system's dialog, then writes it with `worker.rs`. The job runs on a thread of its
   own, on a snapshot of the project, so editing goes on. The status bar shows a progress bar with Cancel Export.
   `poll_export` puts what was written, what wasn't and why, and whether it was cancelled in the status box. The file's name

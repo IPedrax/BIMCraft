@@ -205,6 +205,25 @@ pub const PROJECT_INFO: &str = "BIMCraft_ProjectInformation";
 /// The property set an element's phase and design option go in; on the project, its phases and design option sets.
 pub const PHASING: &str = "BIMCraft_Phasing";
 
+/// The GlobalIds an IFC file gave its project, its site and its building, so a model read from one writes them back as they
+/// were; what a project of BIMCraft's own never has, and the export makes from the model's `uid`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpatialGuids {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<Guid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<Guid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub building: Option<Guid>,
+}
+
+impl SpatialGuids {
+    pub fn is_empty(&self) -> bool {
+        *self == SpatialGuids::default()
+    }
+}
+
 /// What a `Phase Created` says of itself when the element holds none: it was made in the first phase.
 pub const IMPLIED: &str = "Implied: no phase is set for it, so it was made in the first phase";
 
@@ -752,6 +771,11 @@ impl Step {
         }
     }
 
+    /// The GlobalId of the project, the site or the building (`role`): the one the file it was read from gave it, else its own.
+    fn spatial(&self, role: u64, kept: Option<Guid>) -> String {
+        kept.map_or_else(|| self.guid(role, 0), |g| s(&compress(g.as_u128())))
+    }
+
     /// Part `i` of element `id`, for its GlobalId.
     fn part(&self, id: Id, i: usize) -> u64 {
         mix(self.own.get(&id).map_or(id, |g| fold(*g))).wrapping_add(i as u64)
@@ -1280,7 +1304,7 @@ impl Step {
 fn common_pset(e: &Element) -> Option<&'static str> {
     Some(match e {
         Element::Wall(_) => "Pset_WallCommon",
-        Element::Floor(_) => "Pset_SlabCommon",
+        Element::Floor(_) | Element::Toposolid(_) => "Pset_SlabCommon",
         Element::Roof(_) => "Pset_RoofCommon",
         Element::Ceiling(_) => "Pset_CoveringCommon",
         Element::Door(_) => "Pset_DoorCommon",
@@ -1575,7 +1599,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     let info = m.project_info();
     let said = |t: &str| if t.is_empty() { "$".to_string() } else { s(t) };
     let phase = said(info.map_or("", |(_, i)| i.status.as_str()));
-    let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
+    let project =
+        w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.spatial(PROJECT, m.spatial_guids.project), s(&m.name)));
     w.map_sets(project);
     let site_at = match from {
         Some(o) => w.place(None, (-o[0], -o[1], -o[2]), None),
@@ -1618,7 +1643,10 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         (Some(w), None) => (compound(w[1]), compound(w[0]), real(0.0)),
         (None, _) => ("$".into(), "$".into(), "$".into()),
     };
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,{lat},{lon},{elevation},$,$)", w.guid(SITE, 0)));
+    let site = w.add(format!(
+        "IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,{lat},{lon},{elevation},$,$)",
+        w.spatial(SITE, m.spatial_guids.site)
+    ));
     if !plots.is_empty() {
         let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
         let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
@@ -1650,8 +1678,11 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         }
         None => "$".to_string(),
     };
-    let building =
-        w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,{address})", w.guid(BUILDING, 0), s(building_name)));
+    let building = w.add(format!(
+        "IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,{address})",
+        w.spatial(BUILDING, m.spatial_guids.building),
+        s(building_name)
+    ));
     if let Some((_, i)) = info {
         let props: Vec<u64> = crate::project_info::FIELDS
             .iter()
@@ -1828,6 +1859,42 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     };
                     vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
                 };
+                w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
+            }
+            Element::Toposolid(t) => {
+                let Some(&(_, storey)) = storeys.get(&t.level) else { continue };
+                let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
+                let thickness = m.toposolid_thickness(t);
+                // Its top's planes and the solid under them: a closed Brep, as Revit writes a terrain slab.
+                let shape = match m.toposolid_solid(t) {
+                    Some(solid) => {
+                        let brep = w.polyhedron(&solid, m.elevation(t.level));
+                        w.solid(&[brep], &[])
+                    }
+                    None => {
+                        let faces: Vec<Vec<P3>> = m.toposolid_slabs(t).into_iter().map(|(face, _)| face).collect();
+                        w.breps(&faces, m.elevation(t.level), thickness)
+                    }
+                };
+                let ent = w.add(format!(
+                    "IFCSLAB({},$,{},$,{},#{at},#{shape},'{id}',.BASESLAB.)",
+                    w.guid(ELEMENT, id),
+                    s(&t.name),
+                    s("Toposolid")
+                ));
+                contained.entry(t.level).or_default().push(ent);
+                products.insert(id, ent);
+                hosts.insert(id, (ent, at, m.elevation(t.level)));
+                let gross = geom::area(&t.boundary).abs();
+                let volume = m.toposolid_volume(t);
+                let values = [
+                    ("Width", "LENGTH", thickness),
+                    ("Perimeter", "LENGTH", perimeter(&t.boundary)),
+                    ("GrossArea", "AREA", gross / 1e6),
+                    ("NetArea", "AREA", gross / 1e6),
+                    ("GrossVolume", "VOLUME", volume / 1e9),
+                    ("NetVolume", "VOLUME", volume / 1e9),
+                ];
                 w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
             }
             Element::Ceiling(c) => {
@@ -2042,12 +2109,15 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 if pieces.is_empty() {
                     continue;
                 }
-                // Upright, turned about z; tilted with its work plane, its own axes.
+                // Upright, turned about z; tilted with its work plane, its own axes. Its pieces are in its family's axes, so it
+                // is placed where their zero is ([`Model::component_placement`]): its insertion point less its family's origin.
                 let placed = m.component_placement(cp);
+                let zero: [f64; 3] = std::array::from_fn(|i| placed.origin[i] - placed.insertion[i]);
+                let xyz = (cp.at.0 + zero[0], cp.at.1 + zero[1], cp.offset + zero[2]);
                 let at = if placed.upright {
-                    w.place(Some(storey), (cp.at.0, cp.at.1, cp.offset), Some(heading(cp.angle)))
+                    w.place(Some(storey), xyz, Some(heading(cp.angle)))
                 } else {
-                    w.place_tilted(storey, (cp.at.0, cp.at.1, cp.offset), placed.axes[2], placed.axes[0])
+                    w.place_tilted(storey, xyz, placed.axes[2], placed.axes[0])
                 };
                 let mut items = Vec::new();
                 let mut made_of: Vec<u64> = Vec::new();
@@ -2562,10 +2632,13 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             continue;
         };
         // From its jamb toward the wall's start, square to the wall at its middle, in the wall's frame.
+        // Its opening's middle and bottom are its family's datums' (`Model::opening_middle`), its forms drawn about them; across
+        // the wall they stand off its middle as its family's origin says.
         let axis = Axis::of(wl);
-        let (u, way) = (axis.tangent(0.0), axis.tangent(o.offset));
-        let jamb = axis.at(o.offset, walls::centre(m, wl)) - way * (t.width / 2.0) - wl.start;
-        let at = w.place(Some(wall_at), (jamb.dot(u), jamb.dot(u.perp()), o.sill), Some(P2(way.dot(u), way.dot(u.perp()))));
+        let ((middle, sill), across) = (m.opening_middle(o), -m.opening_origin(o)[1] + 0.0);
+        let (u, way) = (axis.tangent(0.0), axis.tangent(middle));
+        let jamb = axis.at(middle, walls::centre(m, wl)) - way * (t.width / 2.0) - wl.start;
+        let at = w.place(Some(wall_at), (jamb.dot(u), jamb.dot(u.perp()), sill), Some(P2(way.dot(u), way.dot(u.perp()))));
         // The hole reaches 10 mm past both faces so it cuts cleanly; through a curved wall, past its bow too.
         let bow = axis.radius().map_or(0.0, |r| {
             let inner = r - m.thickness(wl) / 2.0 - walls::centre(m, wl).abs();
@@ -2580,7 +2653,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         } else {
             let items: Vec<u64> = voids.iter().map(|v| w.faceset(v)).collect();
             let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','Tessellation',({}))", w.body, refs(&items)));
-            (w.place(Some(at), (t.width / 2.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+            (w.place(Some(at), (t.width / 2.0, across, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
         };
         let opening = w.add(format!("IFCOPENINGELEMENT({},$,'Opening',$,$,#{opening_at},#{shape},$,.OPENING.)", w.guid(OPENING, id)));
         w.add(format!("IFCRELVOIDSELEMENT({},$,$,$,#{wall},#{opening})", w.guid(VOIDS, id)));
@@ -2604,7 +2677,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     items.push(set);
                 }
                 let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&items)));
-                (w.place(Some(at), (t.width / 2.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+                (w.place(Some(at), (t.width / 2.0, across, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
             }
             None => {
                 let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, 50.0));

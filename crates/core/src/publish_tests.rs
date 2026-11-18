@@ -95,6 +95,25 @@ fn a_set_writes_each_folders_print_sets_as_their_formats() {
 }
 
 #[test]
+fn a_default_pdf_publish_entry_saves_without_creator_or_producer() {
+    let mut s = project();
+    let dir = folder("default-pdf-metadata");
+    std::fs::create_dir_all(&dir).unwrap();
+    run(&mut s, "publish_set", json!({"name": "Issue", "folders": [{"entries": [{"print_set": "Sheets", "format": "pdf"}]}]}));
+    let file = dir.join("project.bimc");
+    run(&mut s, "save", json!({"path": file}));
+    let saved = crate::bimc::read_to_string(&file).unwrap();
+    let saved: Value = serde_json::from_str(&saved).unwrap();
+    let entry = &saved["publish_sets"]["Issue"]["folders"][0]["entries"][0];
+    assert_eq!(entry["format"], "pdf");
+    let pdf = entry["options"]["pdf"].as_object().unwrap();
+    assert_eq!(pdf["archive"], "none");
+    assert!(!pdf.contains_key("creator"), "a default entry writes no creator key");
+    assert!(!pdf.contains_key("producer"), "a default entry writes no producer key");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn a_print_set_is_in_a_folder_once_for_each_format() {
     let mut s = project();
     let twice = json!({"name": "Issue", "folders": [{"name": "Out", "entries": [
@@ -142,7 +161,7 @@ fn a_set_is_a_library_entry_renamed_duplicated_saved_and_listed() {
         &mut s,
         "publish_set",
         json!({"name": "Issue", "folder": "Published", "folders": [{"name": "PDF", "entries": [
-            {"print_set": "Sheets", "format": "pdf", "options": {"page": {"paper": "A3", "margin": 10}, "pdf": {"archive": "a2b"}}}]}]}),
+            {"print_set": "Sheets", "format": "pdf", "options": {"page": {"paper": "A3", "margin": 10}, "pdf": {"archive": "a2b", "creator": "Drawing tool", "producer": ""}}}]}]}),
     );
     let id = s.model.library.id(&crate::library::Kind::PublishSet, "Issue");
     assert!(id.is_some());
@@ -155,6 +174,8 @@ fn a_set_is_a_library_entry_renamed_duplicated_saved_and_listed() {
     let first = &listed["publish_sets"][0];
     assert_eq!((first["name"].as_str(), first["folder"].as_str()), (Some("Tender"), Some("Published")), "{listed}");
     assert_eq!(first["folders"][0]["entries"][0]["options"]["page"]["paper"], "A3", "{listed}");
+    assert_eq!(first["folders"][0]["entries"][0]["options"]["pdf"]["creator"], "Drawing tool");
+    assert_eq!(first["folders"][0]["entries"][0]["options"]["pdf"]["producer"], "");
     // A print set renamed is still the one meant, here and in a file.
     run(&mut s, "print_set", json!({"name": "Sheets", "rename": "All Sheets"}));
     assert_eq!(s.model.publish_sets["Tender"].folders[0].entries[0].print_set, "All Sheets");
@@ -170,6 +191,10 @@ fn a_set_is_a_library_entry_renamed_duplicated_saved_and_listed() {
     // Beside the project's file: a folder that isn't absolute.
     let r = run(&mut t, "publish", json!({"name": "Tender"}));
     assert_eq!(written(&r, &dir), ["Published/PDF/A101 - Plans.pdf", "Published/PDF/A102 - Details.pdf"], "{r}");
+    let bytes = std::fs::read(dir.join("Published/PDF/A101 - Plans.pdf")).unwrap();
+    let pdf = String::from_utf8_lossy(&bytes);
+    assert!(pdf.contains("/Creator(Drawing tool)") && pdf.contains("<xmp:CreatorTool>Drawing tool</xmp:CreatorTool>"));
+    assert!(!pdf.contains("/Producer") && !pdf.contains("<pdf:Producer>"));
     // A print set deleted leaves every folder it was in; undone, it is back in them.
     run(&mut s, "print_set", json!({"name": "All Sheets", "delete": true}));
     assert!(s.model.publish_sets["Tender"].is_empty() && s.model.publish_sets["Tender 2"].is_empty());

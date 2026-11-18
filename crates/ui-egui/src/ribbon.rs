@@ -191,6 +191,11 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
 /// Pushes what is drawn next to the right end of the tab being drawn, a panel `width` wide (one that stands apart, as Edit Mode's
 /// does). The gap is not width the tab needs, so it never makes the panels before it hand their tools over.
 pub(crate) fn push_right(ui: &mut Ui, width: f32) {
+    // Rows (the Tools palette's, a panel's list) have no right end, and the room kept here is the last ribbon's: a window that wore
+    // the other profile, or another test's, would leave a gap down the palette.
+    if listing() {
+        return;
+    }
     let (room, left, gaps) = LAID.with(Cell::get);
     let gap = (room - (END.with(Cell::get) - left - gaps) - width).max(0.0);
     ui.add_space(gap);

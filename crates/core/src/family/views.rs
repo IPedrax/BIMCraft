@@ -231,6 +231,7 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
             reference: None,
             mark: None,
             graphics: crate::graphics::Graphics::default(),
+            underlay: None,
         };
         elevations.push((side, m.insert(Element::Elevation(section)), start));
     }

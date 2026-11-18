@@ -1,0 +1,75 @@
+{
+ "code": "ashrae-62-1",
+ "discipline": "mechanical",
+ "name": "ASHRAE 62.1 (ventilation rate procedure)",
+ "edition": "2022",
+ "region": "USA",
+ "references": [
+  "ANSI/ASHRAE Standard 62.1-2022, Table 6-1; adopted by the IMC 2024, Table 403.3.1.1"
+ ],
+ "note": "Outdoor air in the breathing zone is Rp × people + Ra × area. A reference: nothing checks these yet. Typed from public summaries and unchecked; the table has many more uses.",
+ "sections": {
+  "ventilation": {
+   "rates": [
+    {
+     "use": "office",
+     "rp": 2.5,
+     "ra": 0.3,
+     "people_per_100m2": 5
+    },
+    {
+     "use": "reception",
+     "rp": 2.5,
+     "ra": 0.3,
+     "people_per_100m2": 30
+    },
+    {
+     "use": "conference",
+     "rp": 2.5,
+     "ra": 0.3,
+     "people_per_100m2": 50
+    },
+    {
+     "use": "classroom (age 9 and over)",
+     "rp": 5.0,
+     "ra": 0.6,
+     "people_per_100m2": 35
+    },
+    {
+     "use": "lecture classroom",
+     "rp": 3.8,
+     "ra": 0.3,
+     "people_per_100m2": 65
+    },
+    {
+     "use": "retail sales",
+     "rp": 3.8,
+     "ra": 0.6,
+     "people_per_100m2": 15
+    },
+    {
+     "use": "restaurant dining",
+     "rp": 3.8,
+     "ra": 0.9,
+     "people_per_100m2": 70
+    },
+    {
+     "use": "library",
+     "rp": 2.5,
+     "ra": 0.6,
+     "people_per_100m2": 10
+    },
+    {
+     "use": "corridor",
+     "rp": 0.0,
+     "ra": 0.3,
+     "people_per_100m2": 0
+    }
+   ],
+   "units": "rp in L/s per person, ra in L/s per m²"
+  }
+ },
+ "sources": {
+  "ventilation": "ASHRAE 62.1-2022 Table 6-1, SI values (unchecked)"
+ }
+}

@@ -287,6 +287,7 @@ pub fn category(category: &str, several: bool) -> String {
         "ceiling" => (msg!("category", "Ceiling"), msg!("category-plural", "Ceilings")),
         "shaft" => (msg!("category", "Shaft Opening"), msg!("category-plural", "Shaft Openings")),
         "mass" => (msg!("category", "Mass"), msg!("category-plural", "Masses")),
+        "toposolid" => (msg!("category", "Toposolid"), msg!("category-plural", "Toposolids")),
         "region" => (msg!("category", "Filled Region"), msg!("category-plural", "Filled Regions")),
         "massfloor" => (msg!("category", "Mass Floor"), msg!("category-plural", "Mass Floors")),
         "ramp" => (msg!("category", "Ramp"), msg!("category-plural", "Ramps")),

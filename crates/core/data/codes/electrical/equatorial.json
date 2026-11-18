@@ -1,0 +1,538 @@
+{
+ "code": "equatorial",
+ "discipline": "electrical",
+ "name": "Equatorial, the group's distribution companies",
+ "region": "Brasil",
+ "edition": "NT.00001.EQTL",
+ "amends": "nbr-5410",
+ "references": [
+  "Equatorial, NT.00001.EQTL 'Fornecimento de Energia Elétrica em Baixa Tensão', revision 09, approved 22/05/2025: Tabelas 1 and 2"
+ ],
+ "note": "The utility's own standard over NBR 5410. Its service categories: Every row goes by the installed load in kW, single-phase, two-phase (127/220 V only) or three-phase; the table prints no names, so a row is named here by the phases and breaker printed in its breaker column ('25 (MONO)' is 'MONO 25 A'). A range printed 'de 5,1 a 8' is taken from 5.",
+ "sections": {
+  "entrance": {
+   "id": "EQUATORIAL",
+   "name": "Equatorial, the group's distribution companies",
+   "standard": "NT.00001.EQTL",
+   "source": "Equatorial, NT.00001.EQTL 'Fornecimento de Energia Elétrica em Baixa Tensão', revision 09, approved 22/05/2025: Tabelas 1 and 2",
+   "rule": "Every row goes by the installed load in kW, single-phase, two-phase (127/220 V only) or three-phase; the table prints no names, so a row is named here by the phases and breaker printed in its breaker column ('25 (MONO)' is 'MONO 25 A'). A range printed 'de 5,1 a 8' is taken from 5.",
+   "members": [],
+   "columns": {
+    "connection_copper_concentric_mm2": "the connection branch up to 2 km from the sea, copper concentric, mm²",
+    "connection_copper_multiplex_mm2": "the connection branch up to 2 km from the sea, copper multiplex, mm²",
+    "connection_aluminium_multiplex_mm2": "the connection branch from 2 km from the sea on, aluminium multiplex (duplex, triplex or quadruplex), mm²",
+    "entry_conduit_steel_in": "the entry conduit, galvanised steel, nominal size in inches",
+    "entry_mm2": "the customer's least insulated copper conductor, phase and neutral in mm² (note 26); 'X(Y)' is phase X and neutral Y",
+    "earthing_mm2": "the earthing conductor, copper-clad steel, mm²",
+    "earthing_conduit_in": "the earthing conductor's conduit, nominal size in inches"
+   },
+   "tables": [
+    {
+     "system": "220/380",
+     "use": "individual",
+     "source": "Tabela 1 'Dimensionamento do Ramal de Conexão e Entrada das Instalações em 220/380V' (pages 29 and 30)",
+     "rows": [
+      {
+       "name": "MONO 25 A",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 5
+       },
+       "breaker_a": [
+        25
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 4,
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": 4,
+        "earthing_mm2": 4,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 40 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 5,
+        "up_to": 8
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 6,
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 63 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 8,
+        "up_to": 12
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 10,
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": 10,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 20 A",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 12
+       },
+       "breaker_a": [
+        20
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 10
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 40 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 12,
+        "up_to": 24
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 10
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": 6,
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 63 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 24,
+        "up_to": 38
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 16,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 25
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": 10,
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 80 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 38,
+        "up_to": 48
+       },
+       "breaker_a": [
+        80
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 25,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 35
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": 16,
+        "earthing_mm2": 16,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 100 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 48,
+        "up_to": 60
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 25,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 50
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": 25,
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 125 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 60,
+        "up_to": 75
+       },
+       "breaker_a": [
+        125
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 35,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 70
+        },
+        "entry_conduit_steel_in": "2 1/2",
+        "entry_mm2": 35,
+        "earthing_mm2": 35,
+        "earthing_conduit_in": "1"
+       }
+      }
+     ]
+    },
+    {
+     "system": "127/220",
+     "use": "individual",
+     "source": "Tabela 2 'Dimensionamento do Ramal de Conexão e Entrada das Instalações em 127/220V' (pages 31 and 32)",
+     "rows": [
+      {
+       "name": "MONO 32 A",
+       "phases": 1,
+       "installed_kw": {
+        "up_to": 3.5
+       },
+       "breaker_a": [
+        32
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 6,
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": "6(6)",
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 63 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 3.5,
+        "up_to": 7
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_concentric_mm2": 10,
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 10
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "MONO 80 A",
+       "phases": 1,
+       "installed_kw": {
+        "over": 7,
+        "up_to": 10
+       },
+       "breaker_a": [
+        80
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "duplex": 16
+        },
+        "entry_conduit_steel_in": "3/4",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "BI 50 A",
+       "phases": 2,
+       "installed_kw": {
+        "up_to": 10
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "triplex": 10
+        },
+        "entry_conduit_steel_in": "1",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "BI 63 A",
+       "phases": 2,
+       "installed_kw": {
+        "over": 10,
+        "up_to": 12
+       },
+       "breaker_a": [
+        63
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "triplex": 16
+        },
+        "entry_conduit_steel_in": "1",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "BI 70 A",
+       "phases": 2,
+       "installed_kw": {
+        "over": 12,
+        "up_to": 15
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "triplex": 16
+        },
+        "entry_conduit_steel_in": "1",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 10,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 40 A",
+       "phases": 3,
+       "installed_kw": {
+        "up_to": 15
+       },
+       "breaker_a": [
+        40
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 6,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 10
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": "6(6)",
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 50 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 15,
+        "up_to": 17
+       },
+       "breaker_a": [
+        50
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 10,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 16
+        },
+        "entry_conduit_steel_in": "1 1/2",
+        "entry_mm2": "10(10)",
+        "earthing_mm2": 6,
+        "earthing_conduit_in": "1/2"
+       }
+      },
+      {
+       "name": "TRI 70 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 17,
+        "up_to": 24
+       },
+       "breaker_a": [
+        70
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 16,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 25
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": "16(16)",
+        "earthing_mm2": 16,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 100 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 24,
+        "up_to": 35
+       },
+       "breaker_a": [
+        100
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 25,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 50
+        },
+        "entry_conduit_steel_in": "2",
+        "entry_mm2": "25(25)",
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 125 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 35,
+        "up_to": 44
+       },
+       "breaker_a": [
+        125
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 35,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 70
+        },
+        "entry_conduit_steel_in": "2 1/2",
+        "entry_mm2": "35(25)",
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 150 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 44,
+        "up_to": 52
+       },
+       "breaker_a": [
+        150
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 50,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 70
+        },
+        "entry_conduit_steel_in": "3",
+        "entry_mm2": "50(25)",
+        "earthing_mm2": 25,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 175 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 52,
+        "up_to": 61
+       },
+       "breaker_a": [
+        175
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 70,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 95
+        },
+        "entry_conduit_steel_in": "3",
+        "entry_mm2": "70(35)",
+        "earthing_mm2": 35,
+        "earthing_conduit_in": "1"
+       }
+      },
+      {
+       "name": "TRI 200 A",
+       "phases": 3,
+       "installed_kw": {
+        "over": 61,
+        "up_to": 75
+       },
+       "breaker_a": [
+        200
+       ],
+       "columns": {
+        "connection_copper_multiplex_mm2": 70,
+        "connection_aluminium_multiplex_mm2": {
+         "quadruplex": 120
+        },
+        "entry_conduit_steel_in": "3",
+        "entry_mm2": "70(35)",
+        "earthing_mm2": 35,
+        "earthing_conduit_in": "1"
+       }
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "A consumer who takes a two-phase or three-phase connection below the single-phase limit pays the difference (notes 19 to 21).",
+    "The tables take a demand factor of 80 % and a 2 % voltage drop at the meter; power factor 1 single-phase and two-phase, 0.92 three-phase (note 23)."
+   ],
+   "not_covered": "Tabelas 11 and 12 that Nota Técnica 004/2026 adds for a unit fed by its own single-phase transformer (published 27/10/2026, binding from 24/02/2027), the collective units of NT.00004, and the poles and posts"
+  }
+ },
+ "sources": {
+  "entrance": "Equatorial, NT.00001.EQTL 'Fornecimento de Energia Elétrica em Baixa Tensão', revision 09, approved 22/05/2025: Tabelas 1 and 2"
+ }
+}

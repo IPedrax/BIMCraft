@@ -389,7 +389,7 @@ impl ReinforceDialog {
 
 /// A label and its text field as one unit of a wrapping row: it goes to a new line when it would not fit the rest of this one (a
 /// nested layout does not wrap, and squeezes its field to nothing at the edge, as long Spanish or Portuguese labels showed).
-fn labelled(ui: &mut Ui, label: &str, text: &mut String, name: String, width: f32, hint: &str) {
+pub(crate) fn labelled(ui: &mut Ui, label: &str, text: &mut String, name: String, width: f32, hint: &str) {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let wide = ui.painter().layout_no_wrap(label.to_string(), font, ui.visuals().text_color()).size().x;
     if ui.available_size_before_wrap().x < wide + width + 3.0 * ui.spacing().item_spacing.x + 12.0 {
@@ -402,7 +402,7 @@ fn labelled(ui: &mut Ui, label: &str, text: &mut String, name: String, width: f3
 }
 
 /// A text field named `name` for screen readers, `width` wide.
-fn edit(ui: &mut Ui, text: &mut String, name: String, width: f32, hint: &str) {
+pub(crate) fn edit(ui: &mut Ui, text: &mut String, name: String, width: f32, hint: &str) {
     let r = ui.add(TextEdit::singleline(text).desired_width(width).hint_text(hint));
     r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, name.clone()));
 }

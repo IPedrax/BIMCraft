@@ -116,6 +116,8 @@ fn relevant(e: &Value, key: &str) -> bool {
         (Some(_), "revision") => !e["cloud"].is_null(),
         // A wall's Top Offset is from its top constraint: an unconnected wall stands `height` tall and has none.
         (_, "top_offset") => !e["top_level"].is_null(),
+        // An extrusion roof takes its pitch from its profile, not the footprint's slope.
+        (_, "slope") => e["extrusion"].is_null(),
         _ => true,
     }
 }
@@ -159,6 +161,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", msg!("Flip Facing"), Flag),
             ("Other", "flip_hand", msg!("Flip Hand"), Flag),
+            ("Other", "code_check", msg!("Building Code"), Shown),
         ],
         "window" => &[
             ("Constraints", "level", "Level", LevelName),
@@ -181,6 +184,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Identity Data", "name", "Name", Text),
             ("Other", "point", msg!("Location"), Point),
             ("Other", "frozen", msg!("Frozen"), Flag),
+            ("Other", "code_check", msg!("Building Code"), Shown),
         ],
         "floor" => &[
             ("Constraints", "level", "Level", Level),
@@ -342,6 +346,13 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
+        // A bar's mark among its host's, the host's mark and its shape, worked out and not stored: read only.
+        "rebar" => &[
+            ("Identity Data", "mark", "Mark", Shown),
+            ("Identity Data", "host_mark", "Host Mark", Shown),
+            ("Dimensions", "length", "Length", LengthShown),
+            ("Other", "shape_label", "Shape", Shown),
+        ],
         "footing" => &[
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "base_offset", "Base Offset", Length),
@@ -391,6 +402,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "width", "Width", Length),
             ("Dimensions", "slope", msg!("Max Slope (%)"), Number),
             ("Dimensions", "length", "Length", LengthShown),
+            ("Dimensions", "code_check", msg!("Building Code"), Shown),
             ("Other", "start", "Start", Point),
         ],
         "railing" => &[
@@ -1520,6 +1532,10 @@ impl BimApp {
                 self.spot_type_dialog = Some(crate::spots::SpotTypeDialog::new(&self.session.model, name, elements));
                 return;
             }
+            if category == "grid" {
+                self.grid_type_dialog = Some(crate::gridtypes::GridTypeDialog::new(&self.session.model, name, elements));
+                return;
+            }
             let pair = if category == "component" {
                 self.component_type()
             } else {
@@ -1533,6 +1549,11 @@ impl BimApp {
     }
 
     pub(crate) fn properties(&mut self, ui: &mut Ui) {
+        if self.editing_roof_profile() {
+            ui.heading(t("Roof Profile"));
+            self.roof_profile_coordinates(ui);
+            return;
+        }
         // A new selection starts the filter over.
         if self.palette_filter.as_ref().is_some_and(|(_, picked_for)| *picked_for != self.selection) {
             self.palette_filter = None;
@@ -1635,6 +1656,7 @@ impl BimApp {
             self.opening_picker(ui, &model);
             self.floor_slope(ui, &model);
             self.sketch_slope(ui);
+            self.sketch_pick(ui);
             if !ids.is_empty() {
                 self.parameters(ui, &model, &ids, rows);
                 if let Subject::Element(id) = subject {
@@ -1678,6 +1700,9 @@ impl BimApp {
         }
         if view_shown {
             self.graphics_properties(ui);
+            if !matches!(subject, Subject::CeilingPlan) {
+                self.underlay_properties(ui);
+            }
             self.phasing_properties(ui);
         }
         ui.add_space(8.0);
@@ -1803,6 +1828,11 @@ impl BimApp {
     /// flipped, both. The one they share is lit; a click sets their `flip_hand` and `flip_facing` to another.
     fn opening_picker(&mut self, ui: &mut Ui, model: &Model) {
         let Some(("door", _, ids)) = self.type_subject() else { return };
+        // A door whose leaves slide, fold or stay put has no Opens positions to pick from.
+        let ids: Vec<Id> = ids
+            .into_iter()
+            .filter(|id| model.elements.get(*id).and_then(|e| model.opening_flips(e)).is_some_and(|flips| flips.any()))
+            .collect();
         if ids.is_empty() {
             return;
         }
@@ -1847,7 +1877,7 @@ impl BimApp {
             }
         });
         if let Some((hand, facing)) = pick {
-            self.run("modify", json!({"ids": ids, "flip_hand": hand, "flip_facing": facing}));
+            self.run("flip", json!({"ids": ids, "hand": hand, "facing": facing}));
         }
     }
 
@@ -1907,9 +1937,52 @@ impl BimApp {
         }
     }
 
-    /// A roof's sketch (a new roof's footprint or Edit Boundary's) with one line picked: its Slope, the angle in degrees the roof's
-    /// edges along it rise at, blank for the roof's own, which is what a line has until it is given one. It is set on the line, and
-    /// Finish Edit Mode sends it with the lines for the core to give the edges along the line theirs (`slopes`).
+    /// Profile endpoints in their own plane: numeric changes move joined ends just as the grips do.
+    fn roof_profile_coordinates(&mut self, ui: &mut Ui) {
+        use bimcraft_core::geom::P2;
+        if !self.editing_roof_profile() {
+            return;
+        }
+        ui.label(t("Along the reference line; height above the roof base."));
+        let Some(sk) = &self.sketch else { return };
+        let picked: Vec<_> = sk.picked.iter().copied().collect();
+        let &[i] = picked.as_slice() else {
+            ui.label(t("Select a profile line to edit its end coordinates."));
+            return;
+        };
+        let Some(line) = sk.lines.get(i) else { return };
+        let ends = [line.start(), line.end()];
+        let units = self.session.model.units;
+        let mut change = None;
+        grid(ui, ("roof-profile", i), |ui| {
+            for (end, along, label, key) in [
+                (0, true, msg!("Start Along"), "profile-start-along"),
+                (0, false, msg!("Start Height"), "profile-start-height"),
+                (1, true, msg!("End Along"), "profile-end-along"),
+                (1, false, msg!("End Height"), "profile-end-height"),
+            ] {
+                let name = ui.label(t(label));
+                let p = ends[end];
+                if let Some(typed) = self.field(ui, 1 + i as Id, key, units.length(if along { p.0 } else { p.1 }), name.id, "") {
+                    change = Some((p, along, typed));
+                }
+                ui.end_row();
+            }
+        });
+        if let Some((from, along, typed)) = change {
+            match units.parse(&typed) {
+                Some(value) => {
+                    if let Some(sk) = &mut self.sketch {
+                        sk.move_end(from, if along { P2(value, from.1) } else { P2(from.0, value) });
+                    }
+                    self.status = Status::default();
+                }
+                None => self.status = Status { text: t("Enter a length in the project's units.").into(), error: true },
+            }
+        }
+    }
+
+    /// A footprint sketch's selected line sets the slope sent to `edit_boundary` on Finish.
     fn sketch_slope(&mut self, ui: &mut Ui) {
         let Some(sk) = &self.sketch else { return };
         let roof = match sk.of {
@@ -1942,6 +2015,60 @@ impl BimApp {
                 };
             }
         }
+    }
+
+    /// A boundary line that Pick Walls placed, picked alone in Modify: the wall it came from, whether it follows the
+    /// wall's core or its finish, and its offset. A change puts the line back on the face and is one step of the sketch's
+    /// undo, as a grip moved is.
+    fn sketch_pick(&mut self, ui: &mut Ui) {
+        let Some(sk) = &self.sketch else { return };
+        if !matches!(self.tool, Tool::Modify) {
+            return;
+        }
+        let picked: Vec<usize> = sk.picked.iter().copied().collect();
+        let [i] = picked[..] else { return };
+        let Some(p) = sk.picks.get(&i).copied() else { return };
+        let m = Arc::clone(&self.session.model);
+        let Some(w) = m.wall(p.wall) else { return };
+        let mut core = p.face.is_core();
+        let mut typed = None;
+        grid(ui, ("sketch-pick", i), |ui| {
+            let name = ui.label(t("Wall"));
+            let _ = name;
+            ui.label(format!("{} ({})", w.type_name, p.wall));
+            ui.end_row();
+            ui.checkbox(&mut core, t("Extend into wall (to core)"));
+            ui.end_row();
+            let name = ui.label(t("Offset:"));
+            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.units.length(p.offset), name.id, m.units.name());
+            ui.end_row();
+        });
+        let face_changed = core != p.face.is_core();
+        if face_changed && core && bimcraft_core::walls::core_faces(&m, w).is_none() {
+            self.status = Status { text: msg!("This wall has no core: its faces are its finish faces.").into(), error: true };
+            return;
+        }
+        let offset = match typed {
+            Some(text) if text.trim().is_empty() => Some(0.0),
+            Some(text) => m.units.parse(&text),
+            None => Some(p.offset),
+        };
+        let Some(offset) = offset else {
+            self.status = Status { text: tf("Offset: a number in {}", &[m.units.name()]), error: true };
+            return;
+        };
+        if !face_changed && (offset - p.offset).abs() <= f64::EPSILON {
+            return;
+        }
+        if let Some(sk) = &mut self.sketch
+            && let Some(p) = sk.picks.get_mut(&i)
+        {
+            if face_changed {
+                p.face = p.face.with_core(core);
+            }
+            p.offset = offset;
+        }
+        self.refit_picks();
     }
 
     /// The Type Selector: the category and the type of what the palette shows, a drop-down of
@@ -2209,7 +2336,7 @@ impl BimApp {
                             let said = if n == 1 { t("Outside 1 rule").to_string() } else { tf("Outside {} rules", &[&n.to_string()]) };
                             let r = ui
                                 .add(Button::new(RichText::new(said).color(crate::codes::OUTSIDE)).small())
-                                .on_hover_text(t("Click to see which rules, and what would bring the stair inside them"));
+                                .on_hover_text(t("Click to see which rules, and what would bring it inside them"));
                             if r.clicked() {
                                 findings = true;
                             }

@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Weak};
 
 use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult};
-use bimcraft_core::geom::{self, P2};
+use bimcraft_core::geom::{self, P2, micron};
 use bimcraft_core::model::{
     Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face, Floor, Id, Landing, Line, MAX_COORD, Mass,
     Model, Ramp, Reference, Roof, Section, Spot, Stair, TOL, Tag, Wall,
@@ -17,7 +17,7 @@ use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d::shape_snap_plan;
 use bimcraft_core::walls::{self, Axis};
-use bimcraft_core::{floor_outline, opening_of, roof_footprint};
+use bimcraft_core::{floor_outline_faces, opening_of, roof_footprint};
 use egui::{
     Align, Align2, Color32, ColorImage, Event, FontId, Key, Layout, Mesh, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Sense,
     Shape, Stroke, StrokeKind, TextEdit, TextureHandle, TextureId, TextureOptions, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
@@ -338,6 +338,11 @@ pub struct Canvas {
     level: Option<Id>,
     /// The model point under the cursor.
     pub cursor: Option<P2>,
+    /// The pointer this frame, in points on the screen, and the typed angle last seen with the base it was typed from
+    /// and the pointer it was typed at: a typed angle is the direction until the pointer moves off that spot, and mirrors
+    /// into its other quadrants after.
+    pointer: Cell<Option<Pos2>>,
+    typed_angle: RefCell<Option<(String, P2, Pos2)>>,
     /// The model point a middle-button drag holds under the cursor.
     grab: Option<P2>,
     drag: Option<Drag>,
@@ -411,6 +416,8 @@ impl Default for Canvas {
             room: 0.0,
             level: None,
             cursor: None,
+            pointer: Cell::new(None),
+            typed_angle: RefCell::new(None),
             grab: None,
             drag: None,
             under: Vec::new(),
@@ -443,6 +450,22 @@ impl Default for Canvas {
 }
 
 impl Canvas {
+    /// The marks, the face `Tab` chose and the held guide belong to the command being drawn: clearing them together
+    /// keeps a stale hysteresis or dwell from surviving a finish, an undo or an Escape.
+    pub(crate) fn guides_reset(&mut self) {
+        self.pins.borrow_mut().clear();
+        self.start_edge = None;
+        self.wall_face = None;
+        self.last_align.set(None);
+        self.dwell.set(None);
+    }
+
+    /// The typed angle's place is forgotten: the same number typed again later is the direction until its own pointer is
+    /// swept, not one from the last session's.
+    pub(crate) fn forget_typed_angle(&self) {
+        self.typed_angle.borrow_mut().take();
+    }
+
     /// View `level` (a plan's key, a section or an elevation) as it was last shown: its zoom, its middle and its size.
     pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
@@ -986,13 +1009,57 @@ fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
     }
 }
 
+/// Most elements a paste's preview draws one by one; past them, its box.
+const PASTE_GHOSTS: usize = 400;
+
+/// What Paste from Clipboard would put down with its middle at `at`, in the plan of frame `to`: each element drawn as the
+/// clipboard's project draws it, moved there; or, for a large clipboard, the box round it.
+fn paste_ghost(p: &Painter, origin: Pos2, v: &View, ps: &crate::clipboard::Pasting, to: &bimcraft_core::clipboard::Frame, at: P2) {
+    let c = &ps.clip;
+    let Some([lo, hi]) = c.extent_in(to) else { return };
+    let delta = at - (lo + hi) * 0.5;
+    let screen = |d: P2| {
+        let (x, y) = v.along(d);
+        vec2(x as f32, y as f32)
+    };
+    if c.source.ids.len() > PASTE_GHOSTS {
+        let (a, b) = (pos(origin, v.px(lo + delta)), pos(origin, v.px(hi + delta)));
+        p.rect_stroke(Rect::from_two_pos(a, b), 0.0, Stroke::new(1.0, pal().accent), egui::StrokeKind::Middle);
+        return;
+    }
+    // Only what was copied: what the clipboard holds besides (the levels, a door's wall) isn't pasted.
+    let pasted: Vec<Id> = c.source.ids.iter().copied().filter(|id| c.shift_of(*id, to).is_some()).collect();
+    for (d, shift) in ps.drawings(*v, to).iter() {
+        let by = screen(delta + *shift);
+        ghost(p, Place::at(origin), d, &pasted, &|pt| pt + by);
+    }
+}
+
 /// A short reading drawn where a tool previews, on a soft background so it stays legible over
 /// what's drawn: `text` anchored at `at` as `align` says.
 pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>) {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(12.0), pal().accent);
-    let rect = align.anchor_size(at, galley.size());
+    let rect = inside(align.anchor_size(at, galley.size()), p.clip_rect());
     p.rect_filled(rect.expand2(vec2(3.0, 1.0)), 2.0, pal().surface.gamma_multiply(0.85));
     p.galley(rect.min, galley, pal().accent);
+}
+
+/// `rect` moved inside `clip`, never cut by the view's edge: a snap's name over a point at the top is read a line lower,
+/// not as half a name.
+pub(crate) fn inside(rect: Rect, clip: Rect) -> Rect {
+    let clip = clip.shrink(2.0);
+    let dx = (clip.left() - rect.left()).max(0.0) - (rect.right() - clip.right()).max(0.0);
+    let dy = (clip.top() - rect.top()).max(0.0) - (rect.bottom() - clip.bottom()).max(0.0);
+    rect.translate(vec2(dx, dy))
+}
+
+/// The reading's field in hand: `text` in the accent's selection fill with white lettering, as the pill's boxed field is,
+/// so the same token looks the same wherever it is read.
+fn selection_box(p: &Painter, at: Pos2, align: Align2, text: &str) {
+    let galley = p.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), Color32::WHITE);
+    let rect = align.anchor_size(at, galley.size());
+    p.rect_filled(rect.expand2(vec2(4.0, 1.5)), 3.0, canvas_pal().accent);
+    p.galley(rect.min, galley, Color32::WHITE);
 }
 
 /// What the guides at a point say: the one inference, or the two that cross there, so a point both
@@ -1090,22 +1157,41 @@ pub(crate) fn lock_glyph(kind: Kind, lock: Lock, refined: bool) -> Option<LockGl
     }
 }
 
+/// The guide ink and its screen sizes, built once a frame: the hairline, the tail past the cursor, and which look.
+/// The drawing helpers take this instead of a `refined` flag and re-deriving the ink.
+#[derive(Clone, Copy)]
+pub(crate) struct GuideLook {
+    pub(crate) ink: GuideInk,
+    pub(crate) hair: f32,
+    pub(crate) tail: f32,
+    pub(crate) refined: bool,
+}
+
+impl GuideLook {
+    pub(crate) fn of(p: &Painter, refined: bool) -> Self {
+        Self { ink: guide_ink(), hair: 1.0 / p.pixels_per_point(), tail: 100.0, refined }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn plain(hair: f32, tail: f32, refined: bool) -> Self {
+        Self { ink: guide_ink(), hair, tail, refined }
+    }
+}
+
 /// The shapes the guides at a point draw: each guide's ray to the view's edge, the stronger segment from
 /// its source to the point it locks, and its source's mark. `to` and `along` put a model point and a
-/// model direction on the screen; `refined` picks the thin ink over the dashed magenta of old.
+/// model direction on the screen; `look` picks the thin ink over the dashed magenta of old.
 pub(crate) fn alignment_shapes(
     alignments: &[AlignmentResult],
     to: impl Fn(P2) -> Pos2,
     along: impl Fn(P2) -> Vec2,
-    tail: f32,
-    hair: f32,
-    refined: bool,
+    look: GuideLook,
 ) -> Vec<Shape> {
-    let ink = guide_ink();
+    let ink = look.ink;
     let mut out = Vec::new();
     // A hairline is one physical pixel; on an axis it is put on the pixel grid, where it is crisp, not two pale
-    // halves straddling an edge. `hair` is `1 / pixels_per_point`, as `show_alignments` gives it.
-    let ppp = 1.0 / hair.max(f32::EPSILON);
+    // halves straddling an edge.
+    let ppp = 1.0 / look.hair.max(f32::EPSILON);
     let on_grid = |v: f32| ((v * ppp).floor() + 0.5) / ppp;
     for res in alignments {
         let mut at = to(res.snapped_point);
@@ -1118,21 +1204,36 @@ pub(crate) fn alignment_shapes(
         } else if d.y.abs() < 1e-3 {
             (at.y, source.y) = (on_grid(at.y), on_grid(at.y));
         }
-        if refined {
-            // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks.
-            out.push(Shape::line_segment([source, at], Stroke::new(hair, ink.core)));
+        if look.refined {
+            // The relation itself, from the marked edge's nearest end (or the reference point) to the point it locks — but
+            // only the last screen-wide stretch of it in the strong ink. A 40 m grid's source is 200 px away at 1:100, and
+            // its whole length would run across the plan as if the guide were the element.
+            let reach = (at - source).length();
+            let near = if reach > look.tail { at + (source - at) / reach * look.tail } else { source };
+            if reach > look.tail {
+                // The rest of the relation fades in toward the strong end, so a long one has no hard cut where the strong
+                // ink begins: a marked corner 200 px away still reads as one line from its halo to the point.
+                for k in 0..3 {
+                    let f0 = k as f32 / 3.0;
+                    let f1 = (k + 1) as f32 / 3.0;
+                    let a = source + (near - source) * f0;
+                    let b = source + (near - source) * f1;
+                    out.push(Shape::line_segment([a, b], Stroke::new(look.hair, ink.core.gamma_multiply(0.22 + 0.2 * k as f32))));
+                }
+            }
+            out.push(Shape::line_segment([near, at], Stroke::new(look.hair, ink.core)));
             // A short tail past the cursor, fading: the plan stays clear of rays that run to the view's edge.
             for (i, alpha) in [0.5f32, 0.28, 0.12].into_iter().enumerate() {
-                let (a, b) = (at + d * (tail * i as f32 / 3.0), at + d * (tail * (i + 1) as f32 / 3.0));
-                out.push(Shape::line_segment([a, b], Stroke::new(hair, ink.ray.gamma_multiply(alpha))));
+                let (a, b) = (at + d * (look.tail * i as f32 / 3.0), at + d * (look.tail * (i + 1) as f32 / 3.0));
+                out.push(Shape::line_segment([a, b], Stroke::new(look.hair, ink.ray.gamma_multiply(alpha))));
             }
             if !matches!(res.axis, AlignmentAxis::Inferred { .. }) {
                 out.push(Shape::circle_filled(source, 2.5, ink.anchor));
-                out.push(Shape::circle_stroke(source, 4.5, Stroke::new(hair, ink.anchor.gamma_multiply(0.45))));
+                out.push(Shape::circle_stroke(source, 4.5, Stroke::new(look.hair, ink.anchor.gamma_multiply(0.45))));
             }
         } else {
             // Classic keeps its dashed look, still only beside the cursor.
-            out.extend(Shape::dashed_line(&[at - d * 24.0, at + d * tail], Stroke::new(1.0, CLASSIC_GUIDE), 6.0, 4.0));
+            out.extend(Shape::dashed_line(&[at - d * 24.0, at + d * look.tail], Stroke::new(1.0, CLASSIC_GUIDE), 6.0, 4.0));
             // The point it comes from, marked: a borrowed direction's is the point being drawn from,
             // which already has the tool's own marker.
             if !matches!(res.axis, AlignmentAxis::Inferred { .. }) {
@@ -1279,13 +1380,11 @@ pub(crate) fn standing_dimensions(p: &Painter, m: &Model, v: &View, e: &Element)
 }
 
 /// A ruler from `a` to `b`: its line, and its graduations at round lengths at least 10 px apart,
-/// every fifth longer. `refined` draws the live drawing's fine one, quieter than the line it measures.
-fn ruler_shapes(sc: &Scene, a: P2, b: P2, refined: bool) -> Vec<Shape> {
+/// every fifth longer. `look` draws the live drawing's fine one, quieter than the line it measures.
+fn ruler_shapes(sc: &Scene, a: P2, b: P2, look: GuideLook) -> Vec<Shape> {
     let (pa, pb) = (sc.screen(a), sc.screen(b));
-    let ink = guide_ink();
-    let hair = 1.0 / sc.p.pixels_per_point();
-    let (spine, tick, long, short) = if refined {
-        (Stroke::new(hair, ink.ruler), Stroke::new(hair, ink.tick), 6.0, 3.0)
+    let (spine, tick, long, short) = if look.refined {
+        (Stroke::new(look.hair, look.ink.ruler), Stroke::new(look.hair, look.ink.tick), 6.0, 3.0)
     } else {
         (Stroke::new(2.0, canvas_pal().accent), Stroke::new(1.0, canvas_pal().accent), 7.0, 3.5)
     };
@@ -1303,10 +1402,10 @@ fn ruler_shapes(sc: &Scene, a: P2, b: P2, refined: bool) -> Vec<Shape> {
     shapes
 }
 
-/// The angle at `last` between the line back to `prev` and the line on to `next`, as a small arc: dotted and muted in the
-/// refined look, so it does not fight the walls.
-fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2, refined: bool) -> Vec<Shape> {
-    let (c, a, b) = (sc.screen(last), sc.screen(prev) - sc.screen(last), sc.screen(next) - sc.screen(last));
+/// The angle at `c` on the screen between the screen rays `a` and `b`, as a small arc: dotted and muted in the refined
+/// look, so it does not fight the walls. Screen vectors, because the arc is a screen size: a fixed model radius is a speck
+/// at 1:100 and a page across at 1:10.
+fn corner_arc(c: Pos2, a: Vec2, b: Vec2, look: GuideLook) -> Vec<Shape> {
     if a.length() < 30.0 || b.length() < 30.0 {
         return Vec::new();
     }
@@ -1319,11 +1418,10 @@ fn corner_arc(sc: &Scene, prev: P2, last: P2, next: P2, refined: bool) -> Vec<Sh
     while sweep < -std::f32::consts::PI {
         sweep += std::f32::consts::TAU;
     }
-    let radius = if refined { 26.0 } else { 22.0 };
+    let radius = if look.refined { 26.0 } else { 22.0 };
     let pts: Vec<Pos2> = (0..=24).map(|i| a0 + sweep * i as f32 / 24.0).map(|t| c + vec2(t.cos(), t.sin()) * radius).collect();
-    if refined {
-        let hair = 1.0 / sc.p.pixels_per_point();
-        Shape::dashed_line(&pts, Stroke::new(hair, guide_ink().arc), 2.5, 2.5)
+    if look.refined {
+        Shape::dashed_line(&pts, Stroke::new(look.hair, look.ink.arc), 2.5, 2.5)
     } else {
         vec![Shape::line(pts, Stroke::new(1.0, canvas_pal().accent))]
     }
@@ -1395,7 +1493,7 @@ fn alignment_pick(
 /// Degrees from the ray `centre`→`from` to the ray `centre`→`to`, counter-clockwise, in
 /// (-180, 180]; each ray onto the nearest multiple of `inc` degrees when it's within a few
 /// degrees of one.
-fn angle_between(centre: P2, from: P2, to: P2, inc: f64) -> f64 {
+pub(crate) fn angle_between(centre: P2, from: P2, to: P2, inc: f64) -> f64 {
     let (a, b) = (snap_angle(from - centre, inc), snap_angle(to - centre, inc));
     let d = (b.1.atan2(b.0) - a.1.atan2(a.0)).to_degrees();
     if d > 180.0 {
@@ -1436,11 +1534,6 @@ fn point(p: P2) -> Value {
     json!([p.0, p.1])
 }
 
-/// `p` to the micron: what a point meant to be exact is, without float noise.
-fn micron(p: P2) -> P2 {
-    P2((p.0 * 1e3).round() / 1e3, (p.1 * 1e3).round() / 1e3)
-}
-
 /// `d`'s direction, turned onto the nearest multiple of `inc` degrees when it's within 3° of one
 /// (less where they lie closer), as Revit's angle snaps do; `inc` outside 1 to 180 for none.
 fn snap_angle(d: P2, inc: f64) -> P2 {
@@ -1463,6 +1556,35 @@ fn norm_turn(a: f64) -> f64 {
 /// An angle as a ruler reads it: to the hundredth of a degree.
 fn degrees(a: f64) -> String {
     format!("{}°", (a * 100.0).round() / 100.0 + 0.0)
+}
+
+/// An angle as typed, in degrees: `30`, `30°`, `-45`. None when it does not read as one.
+pub(crate) fn parse_angle(text: &str) -> Option<f64> {
+    let text = text.trim().trim_end_matches('°').trim();
+    text.parse::<f64>().ok().filter(|a| a.is_finite())
+}
+
+/// A direction in degrees from east, the reference the reading's numbers and its arc use.
+fn bearing(deg: f64) -> P2 {
+    let r = deg.rem_euclid(360.0).to_radians();
+    P2(r.cos(), r.sin())
+}
+
+/// A typed angle's four symmetric directions — 60 is also -60, 120 and -120 — and the one nearest the pointer: the
+/// angle mirrors across the reference axis (east) and its perpendicular. A tie keeps the typed one, offered first, so a
+/// pointer with no clear quadrant never turns the line; an explicit minus is the typed direction until it is swept.
+fn mirrored_angle(angle: f64, toward: P2) -> P2 {
+    let mut best = bearing(angle);
+    let mut best_dot = best.dot(toward);
+    for a in [-angle, 180.0 - angle, angle - 180.0] {
+        let u = bearing(a);
+        let dot = u.dot(toward);
+        // A near tie is a tie: the number stays the direction until the pointer is clearly in another quadrant.
+        if dot > best_dot + 1e-6 {
+            (best, best_dot) = (u, dot);
+        }
+    }
+    best
 }
 
 /// The point a tool picked first, while it has one.
@@ -1649,7 +1771,7 @@ impl BimApp {
                 };
                 snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &snaps)
             }
-            None => snap::snap(m, view, v.mm(at), reach, from, square, &snaps),
+            None => snap::snap_with(m, view, v.mm(at), reach, from, square, &snaps, self.underlay.segments(view)),
         };
         if matches!(found.kind, Kind::Free | Kind::Angle)
             && !square
@@ -1684,12 +1806,10 @@ impl BimApp {
         let tol = f64::from(snaps.alignment_tolerance) / v.scale;
         let config = AlignmentConfig {
             enabled: true,
-            tolerance: tol,
             endpoints: snaps.endpoint,
             midpoints: snaps.midpoint,
             faces: true,
             intersections: snaps.intersection,
-            angles: false,
         };
         let start = from.last().copied();
         let key = self.plan_key().unwrap_or(level);
@@ -1736,15 +1856,13 @@ impl BimApp {
     /// glyph to say. `from` is the point being drawn from, whose segment the badge keeps off as it keeps off the rays.
     fn show_alignments(&self, sc: &Scene, alignments: &[AlignmentResult], from: Option<P2>) -> Lock {
         self.canvas.badge.set(None);
-        let refined = self.refined_guides();
         // A temporary guide fades out 100 px past the cursor; the plan is never crossed edge to edge by a snap ray.
-        let tail = 100.0;
-        let hair = 1.0 / sc.p.pixels_per_point();
+        let look = GuideLook::of(sc.p, self.refined_guides());
         let along = |d: P2| {
             let (x, y) = sc.v.along(d);
             vec2(x as f32, y as f32)
         };
-        sc.p.extend(alignment_shapes(alignments, |p| sc.screen(p), along, tail, hair, refined));
+        sc.p.extend(alignment_shapes(alignments, |p| sc.screen(p), along, look));
         let lock = match alignments {
             [] => Lock::Free,
             [one] => Lock::One(along(one.axis.direction()).normalized()),
@@ -1753,13 +1871,13 @@ impl BimApp {
         if let Some(first) = alignments.first() {
             let at = sc.screen(first.snapped_point);
             let text = alignment_tag(alignments);
-            if refined {
+            if look.refined {
                 // What runs through the glyph: the rays, and the segment being drawn, so the pill sits in a clear corner.
                 let mut lines: Vec<f32> = alignments.iter().map(|r| along(r.axis.direction()).angle()).collect();
                 if let Some(a) = from {
                     lines.push((at - sc.screen(a)).angle());
                 }
-                self.canvas.badge.set(Some(badge(sc.p, at, text, guide_ink(), &lines)));
+                self.canvas.badge.set(Some(badge(sc.p, at, text, look.ink, &lines)));
             } else {
                 tag(sc.p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, text);
             }
@@ -1792,7 +1910,10 @@ impl BimApp {
         let at = if pointer.square || matches!(f.kind, Kind::Angle) { f.at } else { pointer.at };
         let found: Vec<AlignmentResult> =
             self.alignments(m, level, v, at, from).into_iter().filter(|a| on_guide(a.snapped_point)).collect();
-        if crossing_only && found.len() < 2 { Vec::new() } else { found }
+        let found = if crossing_only && found.len() < 2 { Vec::new() } else { found };
+        // The held guide is one that was drawn, not one the filter took away: the next frame's 12-px leave reads this.
+        self.canvas.last_align.set(found.first().map(|a| a.axis));
+        found
     }
 
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.
@@ -1840,7 +1961,15 @@ impl BimApp {
         f.at = Self::on_guide(f, &alignments);
         let lock = self.show_alignments(sc, &alignments, from.last().copied());
         self.show_target_line(sc, &f);
-        self.show_snap(sc, &f, lock);
+        // With the reading's numbers in hand the point is not the pointer's: a dot where the click lands, and no marker or
+        // snap guide left behind at the pointer.
+        let points = self.points().cloned().unwrap_or_default();
+        let tip = self.typed_end(&points, f.at);
+        if (tip - f.at).length() > 0.01 {
+            sc.p.circle_filled(sc.screen(tip), 3.0, canvas_pal().accent);
+        } else {
+            self.show_snap(sc, &f, lock);
+        }
         match target {
             Some(target) => {
                 self.dwell_tick(sc, q, target);
@@ -1860,7 +1989,15 @@ impl BimApp {
     /// marker, by what it snapped to; and its name.
     fn show_snap(&self, sc: &Scene, f: &Found, lock: Lock) {
         let name = snap_name(sc.m, f);
-        snap_mark(sc.p, sc.screen(f.at), f.guide.map(|g| sc.screen(g.from)), f.kind, lock, self.refined_guides(), name);
+        snap_mark(
+            sc.p,
+            sc.screen(f.at),
+            f.guide.map(|g| sc.screen(g.from)),
+            f.kind,
+            lock,
+            GuideLook::of(sc.p, self.refined_guides()),
+            name,
+        );
     }
 
     /// The wall line a pick would take, along the wall's own stretch, in the canvas's hover ink: before a click or a rest,
@@ -1879,8 +2016,9 @@ impl BimApp {
 
     /// The reference under the pointer this frame: a snapped point, else the nearest wall face or centre line, detail
     /// line or grid within 8 px.
-    fn mark_target(&self, sc: &Scene, q: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
-        let key = self.plan_key().unwrap_or(sc.level);
+    /// What the pointer may mark: the snap's element or the plan's picking, and the reference nearest the pointer.
+    /// The ring and `Q` both read this, so a section plugs its own space in here rather than copying either.
+    fn pin_target(&self, m: &Model, level: Id, key: Id, v: &View, at: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
         let mut under = self.canvas.under_cursor.clone();
         // The snap knows the wall even on a frame the retained plan's picking comes back empty.
         if let Some(id) = f.source
@@ -1888,7 +2026,12 @@ impl BimApp {
         {
             under.push(id);
         }
-        crate::guide_refs::target_at(sc.m, sc.level, key, sc.v, q, f, &under)
+        crate::guide_refs::target_at(m, level, key, v, at, f, &under)
+    }
+
+    fn mark_target(&self, sc: &Scene, q: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
+        let key = self.plan_key().unwrap_or(sc.level);
+        self.pin_target(sc.m, sc.level, key, sc.v, q, f)
     }
 
     /// Fills the ring on the reference under the pointer, and marks it when the ring closes. It is the target's key and
@@ -1973,23 +2116,24 @@ impl BimApp {
         self.canvas.now.set(ui.input(|i| i.time));
         let tool = std::mem::discriminant(&self.tool);
         if self.canvas.pin_tool != Some(tool) || self.canvas.pin_view != Some(key) {
-            self.canvas.pins.borrow_mut().clear();
-            self.canvas.start_edge = None;
-            self.canvas.wall_face = None;
-            self.canvas.last_align.set(None);
-            self.canvas.dwell.set(None);
+            self.canvas.guides_reset();
+            // A new tool or view may mark again under a pointer that did not move; a finish keeps the guard.
             self.canvas.dwell_quiet.set(None);
             self.canvas.pin_tool = Some(tool);
             self.canvas.pin_view = Some(key);
         }
         // Where the pointer is, for the others in a Co-Work session.
         self.cowork_seen.pointer = local.map(|q| (key, view.mm(q)));
-        let mods = ui.input(|i| i.modifiers);
+        // Clicks carry their modifiers even when no key event came with them, as a test's or a synthesized event's do.
+        let mods = click_modifiers(ui);
         let shape = self.shape();
         let pipeline = self.card.canvas();
         let look = crate::retained::Look::now(ui.ctx(), &ui.painter_at(rect), rect.min, self.writing(), self.thin);
         let c = &mut self.canvas;
         c.cursor = local.map(|q| view.mm(q));
+        // Screen points, not the view's own: a panel opening moves the view, and a pointer that has not moved with it
+        // must not read as swept.
+        c.pointer.set(local.map(|q| rect.min + vec2(q.0, q.1)));
         let d = match &pipeline {
             Some(pipeline) => c.drawing.moving(ui.ctx(), &model, key, view, up, pipeline, look),
             None => c.drawing.drawing(&model, key, view, up),
@@ -2019,15 +2163,45 @@ impl BimApp {
         if under != c.under {
             (c.under, c.cycle) = (under, 0);
         }
-        let tab = ui.input(|i| i.key_pressed(Key::Tab)) && local.is_some();
-        if tab {
+        // Without the app's input hook, as in a test, this frame's events still hold the Tab, so round it up here too.
+        let (tab, face) = ui.input(|i| {
+            let mut found = (false, false);
+            if local.is_none() {
+                return found;
+            }
+            for e in &i.events {
+                if let Event::Key { key: Key::Tab, pressed: true, modifiers, .. } = e {
+                    if modifiers.shift {
+                        found.1 = true;
+                    } else {
+                        found.0 = true;
+                    }
+                }
+            }
+            found
+        });
+        if tab || face {
             ui.ctx().memory_mut(|m| {
                 if let Some(f) = m.focused() {
                     m.surrender_focus(f);
                 }
             });
         }
-        let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        // The tools whose chain Shift+Tab steps a wall's three lines for; for any other, Shift+Tab is Tab.
+        let chain = matches!(
+            self.tool,
+            Tool::Wall(_)
+                | Tool::DetailLine(_)
+                | Tool::SketchLine(_)
+                | Tool::Railing(_)
+                | Tool::Mass(_)
+                | Tool::Move(_)
+                | Tool::Copy(_)
+                | Tool::Column
+                | Tool::Run(..)
+        );
+        let face = std::mem::take(&mut self.face_cycle) || face;
+        let tabbed = std::mem::take(&mut self.tab_cycle) || tab || (face && !chain);
         // Drawing a stair outside the rules, Tab takes the nearest stair that fits: its riser, tread and width. That Tab is the
         // stair's, not a wall face's.
         let mut stair_tabbed = false;
@@ -2111,44 +2285,33 @@ impl BimApp {
         } else if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
-        // Tab over a wall, while a line or a wall is being drawn from a point, steps through the wall's three references —
-        // its exterior face, its centre line and its interior face — starting from the one the pick has now, so the first
-        // Tab always moves the point. A number already typed keeps Tab for the field it belongs to.
+        // Tab steps the reading's fields; before the first point there are none, so it steps the wall's three references
+        // under the pointer — its exterior face, its centre line and its interior face. Shift+Tab steps those three
+        // anytime, mid-chain and while a number is typed too, so a wall face is never lost to the fields' key.
         let typing = !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty();
-        let chain = matches!(
-            self.tool,
-            Tool::Wall(_)
-                | Tool::DetailLine(_)
-                | Tool::SketchLine(_)
-                | Tool::Railing(_)
-                | Tool::Mass(_)
-                | Tool::Move(_)
-                | Tool::Copy(_)
-                | Tool::Column
-                | Tool::Run(..)
-        );
+        let faces = face || (tabbed && self.base().is_none());
         let mut wall_tabbed = false;
-        if tabbed
+        if faces
             && !stair_tabbed
             && !reference_tabbed
             && !segment_tabbed
-            && !typing
+            && (!typing || face)
             && !ui.ctx().egui_wants_keyboard_input()
             && chain
             && self.typed_fields() == 0
-            && let Some(id) = self
-                .canvas
-                .under_cursor
-                .iter()
-                .copied()
-                .find(|id| model.wall(*id).is_some_and(|w| w.arc == 0.0 && model.cut_by(w, model.guid(level))))
+            && let Some(id) =
+                self.canvas.under_cursor.iter().copied().find(|id| model.wall(*id).is_some_and(|w| model.straight_at(w, level)))
         {
+            // The face the cycle starts from: the one it holds, else the wall's line nearest the pointer. Shift is also
+            // the square modifier, so the pick shown while the key is down is squared off the wall; the nearest line is
+            // asked again without it, or the first press would start from the middle instead of moving.
+            let nearest = local.and_then(|q| {
+                let f = self.snap(&model, level, &view, q, &[], false);
+                (f.source == Some(id)).then(|| f.face.unwrap_or(Face::Centre))
+            });
             let now = match self.canvas.wall_face {
                 Some((held, face)) if held == id => face,
-                _ => match self.canvas.found.get() {
-                    Some(f) if f.source == Some(id) => f.face.unwrap_or(Face::Centre),
-                    _ => Face::Centre,
-                },
+                _ => nearest.unwrap_or(Face::Centre),
             };
             let next = match now {
                 Face::Left => Face::Centre,
@@ -2159,9 +2322,15 @@ impl BimApp {
             wall_tabbed = true;
         }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
-        if tabbed && !wall_tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
-            std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
-            self.drawing.field = 1 - self.drawing.field.min(1);
+        // From Idle the first Tab arms the length (nothing is typed yet, so there is nothing to move away from); after
+        // that it swaps, and the field it moves onto is selected, so the first digit replaces rather than appends.
+        if tabbed && !wall_tabbed && !stair_tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
+            if self.drawing.armed {
+                std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
+                self.drawing.field = 1 - self.drawing.field.min(1);
+            }
+            self.drawing.armed = true;
+            self.drawing.selected = true;
         }
         let c = &mut self.canvas;
         // How near the cursor a dimension's reference line must be, mm.
@@ -2170,89 +2339,101 @@ impl BimApp {
         // the press for a click, which the hand may have left by the time the button came up.
         // (Modify, here, is what is drawn nearest; Tab cycles through what is under the cursor.)
         let tool = self.tool.clone();
-        let under_at = |q: (f32, f32)| match &tool {
-            Tool::Modify if sketching => None,
-            Tool::Modify => picks(&d.pick_all(q, PICK), false).first().copied(),
-            Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
-            // A line to draw along, or to round.
-            Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
-                d.pick_all(q, PICK).into_iter().find(|id| draw::element_curve(&model, *id).is_some())
+        // Walls' Outline open: with Ctrl the wall under the pointer is what a click picks for it; without it the
+        // sketch's lines are picked as Modify picks them.
+        let outline_walls = self.outline_pending && (mods.ctrl || mods.command);
+        let under_at = |q: (f32, f32)| {
+            if outline_walls {
+                return d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some());
             }
-            Tool::Wall(_) if shape == draw::Shape::Fillet => {
-                d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some_and(|w| w.arc == 0.0))
+            match &tool {
+                Tool::Modify if sketching => None,
+                Tool::Modify => picks(&d.pick_all(q, PICK), false).first().copied(),
+                Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
+                // A line to draw along, or to round.
+                Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
+                    d.pick_all(q, PICK).into_iter().find(|id| draw::element_curve(&model, *id).is_some())
+                }
+                Tool::Wall(_) if shape == draw::Shape::Fillet => {
+                    d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some_and(|w| w.arc == 0.0))
+                }
+                Tool::DetailLine(_) if shape == draw::Shape::Fillet => {
+                    d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
+                }
+                Tool::Split => d
+                    .pick_all(q, PICK)
+                    .into_iter()
+                    .find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_)))),
+                Tool::Trim(_) | Tool::Offset => d
+                    .pick_all(q, PICK)
+                    .into_iter()
+                    .find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_)))),
+                Tool::Vertex { .. } => {
+                    d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
+                }
+                Tool::TrimTo { boundary: None, .. } => {
+                    d.pick_all(q, PICK).into_iter().find(|id| draw::element_curve(&model, *id).is_some())
+                }
+                Tool::TrimTo { .. } => {
+                    d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
+                }
+                Tool::PickNewHost => d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some()),
+                Tool::Door | Tool::Window => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
+                Tool::Demolish | Tool::Linework => d.pick(q, PICK),
+                // Search all candidates: a non-alignable annotation must not hide a model edge.
+                Tool::Align(Some(_)) if sketching => None,
+                Tool::Align(reference) => d.pick_all(q, PICK).into_iter().find(|id| {
+                    (reference.is_none() || !bimcraft_core::link::is_linked(*id))
+                        && alignment_line(&model, key, *id, view.mm(q), near, reference.is_some()).is_some()
+                }),
+                Tool::Mirror { draw: false, .. } => d.pick(q, PICK).filter(|id| !model.reference_lines(*id).is_empty()),
+                // Something to measure to: with a line parallel to the first one picked, or for an angle,
+                // one across it.
+                Tool::Dimension(_, refs) => {
+                    d.pick_all(q, PICK).into_iter().find(|id| dimension_pick(&model, refs, *id, view.mm(q), near).is_some())
+                }
+                Tool::Angular(refs) if refs.len() < 2 => d
+                    .pick_all(q, PICK)
+                    .into_iter()
+                    .find(|id| reference_for(&model, DimKind::Angular, refs.first(), *id, view.mm(q), near).is_some()),
+                Tool::Round(kind, picked) if picked.is_empty() => {
+                    d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::dims::round_at(&model, *id, view.mm(q), *kind).is_some())
+                }
+                // An arc length's points, on its arc.
+                Tool::Round(DimKind::ArcLength, picked) => picked.first().and_then(|arc| {
+                    d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::dims::arc_point(&model, arc, *id, view.mm(q), near).is_some())
+                }),
+                // What an elevation would look at: a straight wall, a line, a slab's edge, the project's or a link's.
+                Tool::Elevation => {
+                    d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::elevation::reference(&model, *id, view.mm(q)).is_some())
+                }
+                // What a spot elevation would read.
+                Tool::Spot => model.spot_host(level, view.mm(q)),
+                // The floor or roof a spot slope would read.
+                Tool::SpotSlope => model
+                    .spot_host(level, view.mm(q))
+                    .filter(|id| matches!(model.elements.get(*id), Some(Element::Floor(_) | Element::Roof(_)))),
+                Tool::Tag => d.pick(q, PICK).filter(|id| model.anchor(*id).is_some()),
+                // A linked model's element (its link gives the coordinates) or a CAD drawing.
+                Tool::Acquire => d
+                    .pick_all(q, PICK)
+                    .into_iter()
+                    .find(|id| bimcraft_core::link::is_linked(*id) || matches!(model.elements.get(id), Some(Element::CadImport(_)))),
+                // What a spot coordinate's elevation would read.
+                Tool::SpotCoordinate(None) => model.spot_host(level, view.mm(q)),
+                Tool::Attach => {
+                    d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Roof(_) | Element::Floor(_))))
+                }
+                Tool::Dormer => model.roof_at(level, view.mm(q)),
+                Tool::GableEdge => model.roof_edge(level, view.mm(q), f64::from(PICK) / view.scale).map(|(id, _)| id),
+                Tool::Railing(path) if path.is_empty() => {
+                    d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Stair(_) | Element::Ramp(_))))
+                }
+                _ => None,
             }
-            Tool::DetailLine(_) if shape == draw::Shape::Fillet => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
-            }
-            Tool::Split => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
-            }
-            Tool::Trim(_) | Tool::Offset => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
-            }
-            Tool::Vertex { .. } => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
-            }
-            Tool::TrimTo { boundary: None, .. } => d.pick_all(q, PICK).into_iter().find(|id| draw::element_curve(&model, *id).is_some()),
-            Tool::TrimTo { .. } => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
-            }
-            Tool::PickNewHost => d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some()),
-            Tool::Door | Tool::Window => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
-            Tool::Demolish | Tool::Linework => d.pick(q, PICK),
-            // Search all candidates: a non-alignable annotation must not hide a model edge.
-            Tool::Align(Some(_)) if sketching => None,
-            Tool::Align(reference) => d.pick_all(q, PICK).into_iter().find(|id| {
-                (reference.is_none() || !bimcraft_core::link::is_linked(*id))
-                    && alignment_line(&model, key, *id, view.mm(q), near, reference.is_some()).is_some()
-            }),
-            Tool::Mirror { draw: false, .. } => d.pick(q, PICK).filter(|id| !model.reference_lines(*id).is_empty()),
-            // Something to measure to: with a line parallel to the first one picked, or for an angle,
-            // one across it.
-            Tool::Dimension(_, refs) => {
-                d.pick_all(q, PICK).into_iter().find(|id| dimension_pick(&model, refs, *id, view.mm(q), near).is_some())
-            }
-            Tool::Angular(refs) if refs.len() < 2 => d
-                .pick_all(q, PICK)
-                .into_iter()
-                .find(|id| reference_for(&model, DimKind::Angular, refs.first(), *id, view.mm(q), near).is_some()),
-            Tool::Round(kind, picked) if picked.is_empty() => {
-                d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::dims::round_at(&model, *id, view.mm(q), *kind).is_some())
-            }
-            // An arc length's points, on its arc.
-            Tool::Round(DimKind::ArcLength, picked) => picked.first().and_then(|arc| {
-                d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::dims::arc_point(&model, arc, *id, view.mm(q), near).is_some())
-            }),
-            // What an elevation would look at: a straight wall, a line, a slab's edge, the project's or a link's.
-            Tool::Elevation => {
-                d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::elevation::reference(&model, *id, view.mm(q)).is_some())
-            }
-            // What a spot elevation would read.
-            Tool::Spot => model.spot_host(level, view.mm(q)),
-            // The floor or roof a spot slope would read.
-            Tool::SpotSlope => model
-                .spot_host(level, view.mm(q))
-                .filter(|id| matches!(model.elements.get(*id), Some(Element::Floor(_) | Element::Roof(_)))),
-            Tool::Tag => d.pick(q, PICK).filter(|id| model.anchor(*id).is_some()),
-            // A linked model's element (its link gives the coordinates) or a CAD drawing.
-            Tool::Acquire => d
-                .pick_all(q, PICK)
-                .into_iter()
-                .find(|id| bimcraft_core::link::is_linked(*id) || matches!(model.elements.get(id), Some(Element::CadImport(_)))),
-            // What a spot coordinate's elevation would read.
-            Tool::SpotCoordinate(None) => model.spot_host(level, view.mm(q)),
-            Tool::Attach => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Roof(_) | Element::Floor(_))))
-            }
-            Tool::Dormer => model.roof_at(level, view.mm(q)),
-            Tool::GableEdge => model.roof_edge(level, view.mm(q), f64::from(PICK) / view.scale).map(|(id, _)| id),
-            Tool::Railing(path) if path.is_empty() => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Stair(_) | Element::Ramp(_))))
-            }
-            _ => None,
         };
         let hovered = match (&tool, local) {
-            (Tool::Modify, Some(_)) => c.under.get(c.cycle).copied(),
+            (Tool::Modify, Some(_)) if !self.outline_pending => c.under.get(c.cycle).copied(),
             (_, Some(q)) => under_at(q),
             _ => None,
         };
@@ -2269,11 +2450,15 @@ impl BimApp {
         self.view_grip_drag(ui, &response, rect, &view);
         self.spot_grip_drag(ui, &response, rect, &view, level);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
-        // A drag from an element moves the selection; from empty floor, it draws a selection box.
+        // A drag from an element moves the selection; from empty floor, it draws a selection box. Walls' Outline's open
+        // panel takes every drag as a box over the walls it picks.
+        // Underlay Settings' Move or Rotate is picking here: the view's own clicks and drags wait.
+        let picking = self.underlay_edit.is_some();
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
-            && !sketching
+            && (!sketching || outline_walls)
             && !writing
+            && !picking
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
             && self.canvas.view_grip.is_none()
@@ -2285,35 +2470,61 @@ impl BimApp {
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
             self.canvas.prior = None;
-            self.canvas.drag = Some(match d.pick(o, PICK) {
-                Some(id) => {
-                    self.grab(id);
-                    Drag::Move(view.mm(o))
+            self.canvas.drag = Some(if outline_walls {
+                Drag::Box(o)
+            } else {
+                match d.pick(o, PICK) {
+                    Some(id) => {
+                        self.grab(id);
+                        Drag::Move(view.mm(o))
+                    }
+                    None => Drag::Box(o),
                 }
-                None => Drag::Box(o),
             });
         }
         let at = ui.input(|i| i.pointer.latest_pos()).map(|p| (p.x - rect.min.x, p.y - rect.min.y));
+        // True on the frame a Walls' Outline box is let go: the lifted press must not be taken for a click as well.
+        let mut outline_boxed = false;
         if response.drag_stopped()
             && let (Some(drag), Some(q)) = (self.canvas.drag.take(), at)
-            && self.finish_drag()
         {
-            match drag {
-                Drag::Move(from) => {
-                    let by = self.dragged(&model, &view, from, view.mm(q));
-                    if by.length() > 0.0 && !self.move_point(by) {
-                        // An elevation taken alone is taken by its mark, which goes apart from its line.
-                        match self.selection.as_slice() {
-                            &[id] if matches!(model.elements.get(id), Some(Element::Elevation(_))) => {
-                                self.run("move", json!({"ids": [id], "by": point(by), "end": "mark"}))
+            if self.outline_pending && (mods.ctrl || mods.command) {
+                if let Drag::Box(from) = drag {
+                    // A press and release that never moved is a click, not a box: the click below picks the wall.
+                    if from != q {
+                        outline_boxed = true;
+                        let found = self.outline_walls_in_box(&model, &view, rect, from, q);
+                        let mods = click_modifiers(ui);
+                        if mods.shift {
+                            for id in found {
+                                self.outline_walls.remove(&id);
                             }
-                            _ => self.run("move", json!({"ids": self.selection, "by": point(by)})),
-                        };
+                        } else if mods.command {
+                            self.outline_walls.extend(found);
+                        } else {
+                            self.outline_walls = found.into_iter().collect();
+                        }
+                        self.sync_outline_selection();
                     }
                 }
-                Drag::Box(from) => {
-                    let found = picks(&d.in_box(from, q, q.0 < from.0), true);
-                    self.pick_up(found, click_modifiers(ui))
+            } else if self.finish_drag() {
+                match drag {
+                    Drag::Move(from) => {
+                        let by = self.dragged(&model, &view, from, view.mm(q));
+                        if by.length() > 0.0 && !self.move_point(by) {
+                            // An elevation taken alone is taken by its mark, which goes apart from its line.
+                            match self.selection.as_slice() {
+                                &[id] if matches!(model.elements.get(id), Some(Element::Elevation(_))) => {
+                                    self.run("move", json!({"ids": [id], "by": point(by), "end": "mark"}))
+                                }
+                                _ => self.run("move", json!({"ids": self.selection, "by": point(by)})),
+                            };
+                        }
+                    }
+                    Drag::Box(from) => {
+                        let found = picks(&d.in_box(from, q, q.0 < from.0), true);
+                        self.pick_up(found, click_modifiers(ui))
+                    }
                 }
             }
         }
@@ -2348,36 +2559,71 @@ impl BimApp {
             self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(&model, id, segment));
             return;
         }
+        // A double click on a boundary line Pick Walls placed flips it to the other side of its wall.
+        if response.double_clicked()
+            && !writing
+            && matches!(self.tool, Tool::Modify)
+            && let Some(q) = local
+            && let Some(i) = self
+                .sketch
+                .as_ref()
+                .and_then(|sk| sk.line_at(view.mm(q), f64::from(PICK) / view.scale))
+                .filter(|i| self.sketch.as_ref().is_some_and(|sk| sk.picks.contains_key(i)))
+        {
+            self.flip_pick(i);
+            return;
+        }
         // A click on a shape point's height label is the label's.
         let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
-        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at)) {
+        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !picking && !on_label(at)) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
-            // What lay under the press, which the hand may have left by the time the button came up.
-            let found = if Some(q) == local { hovered } else { under_at(q) };
-            // A dimension's control keeps a click over it (its number, EQ, padlock or text button), but a mark that
-            // opens a view or a note, or is written in, is the click's: a double click there must not be held back.
-            let opens = found.is_some_and(|id| {
-                model.section(id).is_some()
-                    || matches!(model.elements.get(id), Some(Element::View3D(_)))
-                    || crate::notes::is_note(&model, id)
-            });
-            if self.over_dimension_control && !opens {
+            // What lay under the press, which the hand may have left by the time the button came up. Walls' Outline's
+            // Ctrl click always looks again: its hover was taken without Ctrl, when a wall was not what it sought.
+            let found = if Some(q) == local && !outline_walls { hovered } else { under_at(q) };
+            if self.outline_pending && (mods.ctrl || mods.command) {
+                if !outline_boxed {
+                    match found.filter(|id| model.wall(*id).is_some()) {
+                        Some(id) => {
+                            if !self.outline_walls.remove(&id) {
+                                self.outline_walls.insert(id);
+                            }
+                        }
+                        None => self.outline_walls.clear(),
+                    }
+                    self.sync_outline_selection();
+                }
                 self.snap_once = None;
             } else {
-                // Tab has picked a segment of the dimension under the cursor: a click selects that segment.
-                if let Some((dim, segment)) = self.dimension_segment_hover
-                    && (found == Some(dim) || d.pick_all(q, PICK).contains(&dim))
-                {
-                    self.selection = vec![dim];
-                    self.dimension_segment = Some((dim, segment));
-                    self.dimension_segment_hover = None;
-                } else {
-                    self.dimension_segment = None;
-                    self.dimension_segment_hover = None;
-                    self.click(&model, (level, key), &view, q, found, click_modifiers(ui));
+                // Without Ctrl a click works on the contour's lines, as Modify does: the walls picked for it are let go.
+                if self.outline_pending {
+                    self.outline_walls.clear();
+                    self.selection.clear();
                 }
-                // A snap override typed was for that point.
-                self.snap_once = None;
+                // A dimension's control keeps a click over it (its number, EQ, padlock or text button), but a mark that
+                // opens a view or a note, or is written in, is the click's: a double click there must not be held back.
+                let opens = found.is_some_and(|id| {
+                    model.section(id).is_some()
+                        || matches!(model.elements.get(id), Some(Element::View3D(_)))
+                        || crate::notes::is_note(&model, id)
+                });
+                if self.over_dimension_control && !opens {
+                    self.snap_once = None;
+                } else {
+                    // Tab has picked a segment of the dimension under the cursor: a click selects that segment.
+                    if let Some((dim, segment)) = self.dimension_segment_hover
+                        && (found == Some(dim) || d.pick_all(q, PICK).contains(&dim))
+                    {
+                        self.selection = vec![dim];
+                        self.dimension_segment = Some((dim, segment));
+                        self.dimension_segment_hover = None;
+                    } else {
+                        self.dimension_segment = None;
+                        self.dimension_segment_hover = None;
+                        self.click(&model, (level, key), &view, q, found, click_modifiers(ui));
+                    }
+                    // A snap override typed was for that point.
+                    self.snap_once = None;
+                }
             }
         }
         // A double click ends a spline or a polyline at the point clicked, as Enter does.
@@ -2397,6 +2643,11 @@ impl BimApp {
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         self.paint_background_grid(&p, rect, view);
+        // The underlay, made once the plan is: behind it here, or over it below.
+        let hold = self.canvas.drawing.busy();
+        // A ceiling plan has none: the floor plan's is the level's.
+        let under = if up { None } else { self.underlay_now(ui.ctx(), &model, key, view, hold) };
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), false);
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
         // A group selected lights its members; a curtain wall selected stays as it is drawn, for the part Tab picks to be seen.
@@ -2404,6 +2655,10 @@ impl BimApp {
             .into_iter()
             .filter(|id| Some(*id) != shaped)
             .collect();
+        // Walls picked for Walls' Outline are lit as the selection is.
+        if self.outline_pending {
+            marked.extend(self.outline_walls.iter().copied());
+        }
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
@@ -2420,9 +2675,13 @@ impl BimApp {
             crate::curtain::tinted_hover(&model, &self.selection, hovered)
         };
         let place = Place { hide: self.writing(), ..d.place };
-        let kept = pipeline.as_ref().is_some_and(|pipeline| {
-            self.canvas.drawing.retained.paint(ui.ctx(), pipeline, &p, place, rect.min, &d.drawing, &marked, painted_hover, self.thin)
-        });
+        // A sketch is drawn with egui's shapes after the plan: the retained drawing's GPU callback can paint over them,
+        // which hid a boundary line lying in a wall (its centre line). Sketches take the immediate painter instead, so
+        // every sketch line is over the model.
+        let kept = self.sketch.is_none()
+            && pipeline.as_ref().is_some_and(|pipeline| {
+                self.canvas.drawing.retained.paint(ui.ctx(), pipeline, &p, place, rect.min, &d.drawing, &marked, painted_hover, self.thin)
+            });
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
         }
@@ -2456,6 +2715,8 @@ impl BimApp {
                 p.add(Shape::line(pts, Stroke::new(2.0, ink.core)));
             }
         }
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), true);
+        self.underlay_pick(ui, &response, &p, rect, &view, key, Some(level));
         let kind = if up { "ceiling" } else { "plan" };
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
         // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
@@ -2520,11 +2781,20 @@ impl BimApp {
             };
             let shift = ui.input(|i| i.modifiers.shift);
             // The snapped cursor is for a grip being dragged and for what a sketch tool shows; Modify's idle frames need none.
-            let wanted = sk.drag.is_some() || matches!(self.tool, Tool::SketchLine(_));
+            let wanted = sk.drag.is_some() || matches!(self.tool, Tool::SketchLine(_) | Tool::SketchPick);
             let cursor = local.filter(|_| wanted).map(|q| self.snap(&model, level, &view, q, from, shift).at);
+            // The walls picked for Walls' Outline, under the sketch's lines: the contour must stay over a wall's face.
+            if self.outline_pending {
+                for id in &self.outline_walls {
+                    let ring: Vec<Pos2> = walls::outline(&model, *id).into_iter().map(|q| pos(rect.min, view.px(q))).collect();
+                    if ring.len() >= 2 {
+                        p.add(Shape::closed_line(ring, Stroke::new(2.5, canvas_pal().accent)));
+                    }
+                }
+            }
             sk.paint(&p, |q| pos(rect.min, view.px(q)), over, cursor, &self.sketch_lit());
             if let (Some(q), Some(c)) = (local, cursor) {
-                self.sketch_preview(&p, &view, rect.min, q, c);
+                self.sketch_preview(&p, &view, rect.min, q, c, hovered);
             }
         }
         p.extend(crop);
@@ -2582,7 +2852,7 @@ impl BimApp {
         // The Measure tool's ruler, as laid.
         if let (Tool::Measure(_), Some((a, b))) = (&self.tool, self.measured) {
             let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
-            p.extend(ruler_shapes(&scene, a, b, false));
+            p.extend(ruler_shapes(&scene, a, b, GuideLook::of(&p, false)));
             let r = snap::ruler(a, b);
             let units = model.units;
             let text = format!(
@@ -2783,6 +3053,33 @@ impl BimApp {
     }
 
     /// Add `found` to the selection with Ctrl, take it away with Shift, else select just it.
+    /// The walls whose outlines a box from `a` to `b` takes, in screen points: wholly inside it from the left, touching it
+    /// too from the right, as Modify's box does.
+    fn outline_walls_in_box(&self, m: &Model, view: &View, rect: Rect, a: (f32, f32), b: (f32, f32)) -> Vec<Id> {
+        let at = |q: P2| {
+            let (x, y) = view.px(q);
+            pos2(rect.min.x + x, rect.min.y + y)
+        };
+        let r = Rect::from_two_pos(pos2(rect.min.x + a.0, rect.min.y + a.1), pos2(rect.min.x + b.0, rect.min.y + b.1));
+        let crossing = b.0 < a.0;
+        m.elements
+            .iter()
+            .filter(|(_, e)| matches!(e, Element::Wall(_)))
+            .filter(|(id, _)| {
+                let shown: Vec<Pos2> = walls::outline(m, **id).into_iter().map(at).collect();
+                if shown.is_empty() {
+                    return false;
+                }
+                if crossing {
+                    shown.iter().any(|q| r.contains(*q)) || shown.windows(2).any(|w| r.intersects(Rect::from_two_pos(w[0], w[1])))
+                } else {
+                    shown.iter().all(|q| r.contains(*q))
+                }
+            })
+            .map(|(&id, _)| id)
+            .collect()
+    }
+
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
         // Edit Group's Add or Remove: what is picked joins the group or leaves it, and isn't selected.
         if self.group_pick_up(&found) {
@@ -2830,12 +3127,17 @@ impl BimApp {
             if let Some(middle) = m.centred(&o, SNAP / v.scale) {
                 params["offset"] = json!(middle);
             }
-            if door
-                && m.single_swing_door(o.family.as_deref(), &o.type_name)
-                && let Some(w) = m.wall(o.host)
-            {
-                params["flip_hand"] = json!(self.door_flip_hand);
-                params["flip_facing"] = json!(Axis::of(w).project(cursor).1 < walls::centre(m, w));
+            if let Some(w) = m.wall(o.host) {
+                let side = Axis::of(w).project(cursor).1 < walls::centre(m, w);
+                if door {
+                    if m.door_flips(o.family.as_deref(), &o.type_name).hand {
+                        params["flip_hand"] = json!(self.door_flip_hand);
+                        params["flip_facing"] = json!(side);
+                    }
+                } else {
+                    // The window's face is the pointer's side, or the other way round while Space asks for it.
+                    params["flip_facing"] = json!(side ^ self.window_flip_facing);
+                }
             }
         }
         params
@@ -2878,6 +3180,7 @@ impl BimApp {
             }
             return;
         }
+        // Walls' Outline's panel is open: its clicks pick walls before this (`canvas.rs`), so nothing reaches the tool.
         match &self.tool {
             &Tool::Vertex { delete } if self.sketch.is_some() => self.vertex_click(None, v.mm(at), f64::from(PICK) / v.scale, delete),
             Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
@@ -2917,7 +3220,11 @@ impl BimApp {
                 let door = matches!(self.tool, Tool::Door);
                 let cat = if door { "door" } else { "window" };
                 let p = self.opening_params(m, v, level, at, door);
-                self.run(cat, p);
+                // The placement takes the pending hinge or face; the next one starts as placed.
+                if self.run(cat, p).is_some() {
+                    self.door_flip_hand = false;
+                    self.window_flip_facing = false;
+                }
             }
             Tool::Room => {
                 let p = self.typed("room", json!({"point": point(round(v.mm(at))), "level": level}));
@@ -2986,7 +3293,13 @@ impl BimApp {
                 };
                 let square = mods.shift || (self.constrain && matches!(self.tool, Tool::Move(_) | Tool::Copy(_)));
                 let pt = self.snap_point(m, level, v, at, &chain, square);
+                // A click places what the preview shows: the reading's numbers lock the point as `Enter` does.
+                let points = self.points().cloned().unwrap_or_default();
+                let pt = self.typed_end(&points, pt);
                 self.place(level, pt);
+                if self.drawing.armed {
+                    self.clear_typed();
+                }
             }
             &Tool::Rotate { centre, start, place } => {
                 self.tool = match (place, start) {
@@ -3001,13 +3314,11 @@ impl BimApp {
             }
             Tool::ExportRegion(_) => self.export_region_at(v.mm(at)),
             Tool::SpecifyPoint => {
-                // Snapped as any point; its height by what it snapped to.
-                let f = self.snap(m, level, v, at, &[], false);
-                let p = self
-                    .alignments_for(m, level, v, &f, &[], GuideAt { at: v.mm(at), square: false })
-                    .first()
-                    .map_or(f.at, |a| a.snapped_point);
-                let z = bimcraft_core::coordinates::picked_z(m, level, p, f.source);
+                // Snapped as any point, through the preview's one landing; its height by what it snapped to.
+                let (f, found) = self.landed(m, level, v, at, &[], false);
+                let source = f.source;
+                let p = Self::on_guide(f, &found);
+                let z = bimcraft_core::coordinates::picked_z(m, level, p, source);
                 self.specify_at([p.0, p.1, z]);
             }
             &Tool::RotateNorth { centre, start, place } => {
@@ -3201,6 +3512,13 @@ impl BimApp {
                 let p = self.snap_point(m, level, v, at, &[], false);
                 self.place_model_group(level, p)
             }
+            Tool::Paste => {
+                let p = self.snap_point(m, level, v, at, &[], false);
+                self.paste_at(key, p)
+            }
+            Tool::PickLevel => {
+                self.status = Status { text: t("click a level line in a section or an elevation").into(), error: true };
+            }
             &Tool::RepeatingDetail(start) => {
                 let p = self.snap_point(m, level, v, at, start.as_slice(), mods.shift);
                 match start {
@@ -3344,7 +3662,15 @@ impl BimApp {
                             self.make_detail_lines(level, &[c]);
                         }
                     }
-                    _ => self.place_detail_line(level, p),
+                    _ => {
+                        // A click places what the preview shows: the reading's numbers lock the point as `Enter` does.
+                        let points = self.points().cloned().unwrap_or_default();
+                        let p = self.typed_end(&points, p);
+                        self.place_detail_line(level, p);
+                        if self.drawing.armed {
+                            self.clear_typed();
+                        }
+                    }
                 }
             }
             // On the level above, over this plan's walls; once made, selected, as a finished sketch is.
@@ -3766,15 +4092,13 @@ impl BimApp {
             }
             self.run("railing", p);
         }
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
-        self.canvas.pins.borrow_mut().clear();
+        self.canvas.guides_reset();
     }
 
     /// The Detail Line tool's next point. A line a click, as walls are: each click after the first makes a line from the
     /// one before, and with Chain goes on from there until back on the first point. With Polyline, the points gather into
     /// one line, closed when back on the first, else finished with Enter.
-    fn place_detail_line(&mut self, level: Id, p: P2) {
+    pub(crate) fn place_detail_line(&mut self, level: Id, p: P2) {
         if !matches!(self.shape(), draw::Shape::Line | draw::Shape::Polyline) {
             if let Some(made) = self.shape_click(p) {
                 self.make_detail_lines(level, &made);
@@ -3815,6 +4139,50 @@ impl BimApp {
         }
     }
 
+    /// Backspace in a wall or detail line chain: take the last point back, and the segment built to it, so the chain goes
+    /// on from the point before. A detail line made only when its chain ends has no segment to undo.
+    pub(crate) fn undo_chain_point(&mut self) -> bool {
+        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() {
+            return false;
+        }
+        // Only a Line builds a segment a click: an arc, a spline or a polyline keeps its points until the shape is made.
+        let (points, built) = match &self.tool {
+            Tool::Wall(chain) => (chain.len(), self.shape() == draw::Shape::Line && chain.len() >= 2),
+            Tool::DetailLine(path) => (path.len(), self.shape() == draw::Shape::Line && !self.one_line() && path.len() >= 2),
+            _ => return false,
+        };
+        if points == 0 {
+            return false;
+        }
+        // A chain is normally the last thing that changed the model: a click that built no segment pushes no point. Undo
+        // first, so a failed undo leaves the chain as it was.
+        if built {
+            let start_edge = self.canvas.start_edge;
+            if self.run("undo", json!({})).is_none() {
+                return true;
+            }
+            // The undo clears the drawing's marks, as they may name what it took away; the wall the chain started on is not
+            // one of them, so its line stays the chain's guide.
+            self.canvas.start_edge = start_edge;
+        }
+        let left = match &mut self.tool {
+            Tool::Wall(chain) => {
+                chain.pop();
+                chain.len()
+            }
+            Tool::DetailLine(path) => {
+                path.pop();
+                path.len()
+            }
+            _ => return false,
+        };
+        if left == 0 {
+            self.canvas.start_edge = None;
+            self.canvas.wall_face = None;
+        }
+        true
+    }
+
     /// The Detail Line tool's Enter: with Polyline, a detail line through the points clicked, in the plan of `level`;
     /// else the chain ends, its lines made as it went.
     pub(crate) fn finish_detail_line(&mut self, level: Id) {
@@ -3827,9 +4195,7 @@ impl BimApp {
         } else if let Tool::DetailLine(path) = &mut self.tool {
             path.clear();
         }
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.wall_face = None;
-        self.canvas.start_edge = None;
+        self.canvas.guides_reset();
     }
 
     /// A detail line through the points clicked, round to the first again where `closed`, in the Options Bar's line
@@ -3861,9 +4227,7 @@ impl BimApp {
             }
             Err(e) => self.status = Status { text: tf("mass: {}", &[&e]), error: true },
         }
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
-        self.canvas.pins.borrow_mut().clear();
+        self.canvas.guides_reset();
     }
 
     /// The Text tool's click: a note saying what the Options Bar says, its top left at `at` in
@@ -3892,6 +4256,7 @@ impl BimApp {
         let mut p = json!({"text": text, "at": point(at), "view": view});
         if let Some(arrow) = leader {
             p["leader"] = point(arrow);
+            p["leader_kind"] = json!(self.note_leader_kind.name());
         }
         self.run("text", p);
     }
@@ -4003,8 +4368,7 @@ impl BimApp {
                         // Back on its start, the chain closes; without Chain, every wall stands alone.
                         if !self.chain || first.dist(p) <= TOL {
                             chain.clear();
-                            self.canvas.start_edge = None;
-                            self.canvas.pins.borrow_mut().clear();
+                            self.canvas.guides_reset();
                         } else {
                             chain.push(p);
                         }
@@ -4034,7 +4398,11 @@ impl BimApp {
             Tool::Grid(start) => match start.take() {
                 None => *start = Some(p),
                 Some(a) if a.dist(p) > TOL => {
-                    self.run("grid", json!({"start": point(a), "end": point(p)}));
+                    let mut params = json!({"start": point(a), "end": point(p)});
+                    if let Some(type_name) = self.grid_type_for() {
+                        params["type"] = json!(type_name);
+                    }
+                    self.run("grid", params);
                 }
                 Some(a) => *start = Some(a),
             },
@@ -4115,34 +4483,112 @@ impl BimApp {
             return;
         }
         let Some(cursor) = self.canvas.cursor else { return };
-        if self.place_numbers(level, self.canvas.found.get().map_or(cursor, |f| f.at)) {
+        let at = self.canvas.found.get().map_or(cursor, |f| f.at);
+        if self.place_numbers(level, at) {
             return;
         }
-        let typed = std::mem::take(&mut self.typed_length);
-        let Some(base) = self.base() else { return };
-        // The length and the angle, whichever Tab left in `drawing.other`.
-        let other = std::mem::take(&mut self.drawing.other);
-        let (typed, angle) = if std::mem::take(&mut self.drawing.field) == 1 { (other, typed) } else { (typed, other) };
-        let toward = match (angle.trim().trim_end_matches('°').trim().parse::<f64>(), self.canvas.found.get()) {
-            (Ok(a), _) if a.is_finite() => P2(a.to_radians().cos(), a.to_radians().sin()),
-            (Err(_), _) if !angle.trim().is_empty() => {
-                self.status = Status { text: tf("`{}` is not an angle", &[angle.trim()]), error: true };
-                return;
-            }
-            (_, Some(f)) if f.at.dist(base) > TOL => (f.at - base).unit(),
-            _ => snap_angle(cursor - base, self.snaps.angle),
-        };
-        // An angle with no length: as far along it as the cursor is.
-        let typed = if typed.trim().is_empty() {
-            let d = cursor - base;
-            self.session.model.units.length(d.0 * toward.0 + d.1 * toward.1)
-        } else {
-            typed
-        };
-        match self.session.model.units.parse(&typed) {
-            Some(len) if len > 0.0 && len <= MAX_COORD => self.put(level, micron(base + toward * len)),
-            _ => self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true },
+        let Some(_) = self.base() else { return };
+        // What is typed must read as a length and an angle before it places; the preview shows what it can. Either way the
+        // numbers were for this point, so Enter takes them.
+        let (len, ang) = (self.typed_texts().0.to_string(), self.typed_texts().1.to_string());
+        let points = self.points().cloned().unwrap_or_default();
+        let end = self.typed_end(&points, at);
+        self.clear_typed();
+        if !len.is_empty() && self.session.model.units.parse(&len).is_none_or(|l| !(l.is_finite() && l > 0.0 && l <= MAX_COORD)) {
+            self.status = Status { text: tf("`{}` is not a length", &[&len]), error: true };
+            return;
         }
+        if !ang.is_empty() && parse_angle(&ang).is_none() {
+            self.status = Status { text: tf("`{}` is not an angle", &[&ang]), error: true };
+            return;
+        }
+        self.put(level, micron(end));
+    }
+
+    /// What is typed for the length and for the angle, whichever field `Tab` is on.
+    pub(crate) fn typed_texts(&self) -> (&str, &str) {
+        if self.drawing.field == 1 {
+            (self.drawing.other.trim(), self.typed_length.trim())
+        } else {
+            (self.typed_length.trim(), self.drawing.other.trim())
+        }
+    }
+
+    /// The next point the reading's numbers put it at: a shape's own numbers through `draw::typed`, a line's or a wall's
+    /// through the typed length along the typed angle (else the pointer's). `cursor` is the pointer's snapped point, so
+    /// the direction is the snap's and the numbers only ever narrow it. What the preview draws, what `Enter` places and
+    /// what a click places is this one answer. A typed angle not seen before is recorded here with the pointer it was typed
+    /// at, for [`BimApp::angle_swept`].
+    pub(crate) fn typed_end(&self, points: &[P2], cursor: P2) -> P2 {
+        let (len, ang) = self.typed_texts();
+        // Nothing typed is the pointer's own point, exactly: the lock changes nothing until a number is in hand.
+        if len.is_empty() && ang.is_empty() {
+            return cursor;
+        }
+        let shape = self.shape();
+        let names = bimcraft_core::draw::numbers(shape, points.len());
+        if !names.is_empty() {
+            let values: Vec<Option<f64>> = names
+                .iter()
+                .enumerate()
+                .map(|(i, name)| {
+                    let text = if i == self.drawing.field.min(1) { &self.typed_length } else { &self.drawing.other };
+                    self.number_value(name, text)
+                })
+                .collect();
+            return bimcraft_core::draw::typed(shape, points, cursor, &values).unwrap_or(cursor);
+        }
+        let Some(base) = self.base() else { return cursor };
+        let toward = match parse_angle(ang) {
+            // The four directions the number names are offered, mirrored across the axes (60 is also -60, 120 and -120),
+            // and the pointer's nearest wins — but only once the pointer has left the spot the number was typed at, so
+            // `120` Enter is 120 and not the mirror nearest where the mouse happened to stop.
+            Some(a) if self.angle_swept(ang, base) => mirrored_angle(a, cursor - base),
+            Some(a) => bearing(a),
+            None if ang.is_empty() => {
+                let d = cursor - base;
+                if d.length() <= TOL {
+                    return cursor;
+                }
+                d.unit()
+            }
+            None => return cursor,
+        };
+        let len = match (len.is_empty(), self.session.model.units.parse(len)) {
+            // The pointer's reach along the ray. Before it is swept the pointer may be behind the typed ray, and the reach
+            // is still a length along it; after, the mirror is the ray nearest the pointer, so the reach is positive.
+            (true, _) => (cursor - base).dot(toward).abs(),
+            (false, Some(l)) => l,
+            (false, None) => return cursor,
+        };
+        if len.is_finite() && (0.0..=MAX_COORD).contains(&len) { base + toward * len } else { cursor }
+    }
+
+    /// Whether the pointer has moved off the spot a typed angle was typed at: until it has, the number is the direction;
+    /// after, the angle mirrors into the quadrant the pointer is in. A number, or a chain, seen for the first time is
+    /// recorded here, so the same angle typed again later starts as typed too.
+    fn angle_swept(&self, ang: &str, base: P2) -> bool {
+        let now = self.canvas.pointer.get();
+        let mut seen = self.canvas.typed_angle.borrow_mut();
+        match seen.as_ref() {
+            Some((text, at, pointer)) if text == ang && *at == base => now.is_some_and(|p| p.distance(*pointer) > 4.0),
+            _ => {
+                if let Some(p) = now {
+                    *seen = Some((ang.to_string(), base, p));
+                }
+                false
+            }
+        }
+    }
+
+    /// A shape's number as typed: an angle in degrees, else a length in the project's units.
+    fn number_value(&self, name: &str, text: &str) -> Option<f64> {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        let value = if name == "Angle" { parse_angle(text) } else { self.session.model.units.parse(text) };
+        value.filter(|v| v.is_finite() && *v > 0.0 && *v <= MAX_COORD)
     }
 
     /// End the wall chain, its walls built as it went: the tool's Enter. An arc not finished yet
@@ -4151,9 +4597,7 @@ impl BimApp {
         if let Tool::Wall(chain) = &mut self.tool {
             chain.clear();
         }
-        self.canvas.start_edge = None;
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.wall_face = None;
+        self.canvas.guides_reset();
     }
 
     /// Walls along `points`, each turning `arc` degrees, as the Options Bar says: their type,
@@ -4306,6 +4750,10 @@ impl BimApp {
 
     /// The wall or run selected alone, with Modify: the one whose ends are grips.
     fn gripped(&self) -> Option<Id> {
+        // Walls' Outline picks walls; it does not move their ends.
+        if self.outline_pending {
+            return None;
+        }
         let m = &self.session.model;
         match (self.selection.as_slice(), &self.tool) {
             (&[id], Tool::Modify) if m.wall(id).is_some() || m.run_of(id).is_some() => Some(id),
@@ -4429,7 +4877,7 @@ impl BimApp {
             let ring: Vec<Pos2> = ring.into_iter().map(&at).collect();
             p.add(Shape::closed_line(ring, Stroke::new(1.0, pal().accent)));
             let fixed = if start { ends.1 } else { ends.0 };
-            p.extend(ruler_shapes(&sc, fixed, to, self.refined_guides()));
+            p.extend(ruler_shapes(&sc, fixed, to, GuideLook::of(&p, self.refined_guides())));
             self.show_snap(&sc, &found, Lock::Free);
             self.canvas.found.set(Some(found));
             let r = snap::ruler(fixed, to);
@@ -5091,11 +5539,54 @@ impl BimApp {
 
     /// The listening dimensions of a shape being drawn, with the cursor at `next`: a rectangle's width and height by
     /// their sides, a radius, an angle or a reach by the cursor, each as typed once something is; else the length
-    /// from the last point, as a line's. The number Tab is on says Enter.
+    /// from the last point, as a line's. The number Tab is on is boxed.
     fn shape_dimensions(&self, sc: &Scene, chain: &[P2], next: P2) {
-        for (at, text) in self.shape_texts(sc.m, chain, next) {
-            tag(sc.p, sc.screen(at) + vec2(12.0, -12.0), Align2::LEFT_BOTTOM, text);
+        let names = bimcraft_core::draw::numbers(self.shape(), chain.len());
+        let field = self.drawing.field.min(names.len().saturating_sub(1));
+        for (i, (at, text)) in self.shape_texts(sc.m, chain, next).into_iter().enumerate() {
+            let q = sc.screen(at) + vec2(12.0, -12.0);
+            if !names.is_empty() && self.drawing.armed && i == field {
+                selection_box(sc.p, q, Align2::LEFT_BOTTOM, &text);
+            } else {
+                tag(sc.p, q, Align2::LEFT_BOTTOM, text);
+            }
         }
+    }
+
+    /// The line or wall being drawn: its length and its angle from east — the angle a typed number places — the field
+    /// that takes the digits boxed, and which numbers are typed.
+    pub(crate) fn line_reading(&self, m: &Model, chain: &[P2], next: P2) -> Option<Reading> {
+        let &last = chain.last()?;
+        let (len, ang) = self.typed_texts();
+        let focus = self.drawing.armed.then_some(self.drawing.field.min(1));
+        // The field in hand shows its digits alone, as a text field does; a number that is locked and now out of hand keeps
+        // its unit, so a dimmed 1500 cannot be read as the wrong kind of number.
+        let len = if len.is_empty() {
+            m.units.with_unit(last.dist(next))
+        } else if focus == Some(0) {
+            len.to_string()
+        } else {
+            m.units.parse(len).map_or_else(|| len.to_string(), |v| m.units.with_unit(v))
+        };
+        // Degrees from east, the convention the field and its reference arc use, so the number in the pill is the number
+        // to type. It showed the corner the chain turns at, which a typed angle could not reproduce.
+        let ang = if ang.is_empty() {
+            degrees(snap::ruler(last, next).angle)
+        } else if focus == Some(1) {
+            ang.to_string()
+        } else {
+            format!("{}°", ang)
+        };
+        Some(Reading {
+            len,
+            ang,
+            focus,
+            caret: self.drawing.armed
+                && !self.drawing.selected
+                && (!self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty()),
+            len_locked: !self.typed_texts().0.is_empty(),
+            ang_locked: !self.typed_texts().1.is_empty(),
+        })
     }
 
     /// What [`BimApp::shape_dimensions`] says, and where (a model point each).
@@ -5110,33 +5601,11 @@ impl BimApp {
                 None => Vec::new(),
             };
         }
-        let Some(&last) = chain.last() else { return Vec::new() };
         if names.is_empty() {
-            // The length and, once Tab has been pressed, the angle: the one being typed in brackets.
-            let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
-            let text = match (self.typed_length.is_empty(), angled) {
-                (true, false) => m.units.with_unit(last.dist(next)),
-                (false, false) => format!("{} (Enter)", self.typed_length.trim()),
-                _ => {
-                    let (len, ang) = if self.drawing.field == 1 {
-                        (&self.drawing.other, &self.typed_length)
-                    } else {
-                        (&self.typed_length, &self.drawing.other)
-                    };
-                    let d = next - last;
-                    let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.trim().to_string() };
-                    let ang = if ang.is_empty() {
-                        format!("{:.0}°", d.1.atan2(d.0).to_degrees().rem_euclid(360.0))
-                    } else {
-                        format!("{}°", ang.trim())
-                    };
-                    match self.drawing.field {
-                        1 => format!("{len}  [{ang}] (Enter)"),
-                        _ => format!("[{len}]  {ang} (Enter)"),
-                    }
-                }
-            };
-            return vec![(next, text)];
+            // The length and the angle, both shown while a segment is drawn: the field that takes the digits is the one
+            // in brackets, and `line_reading` is what the pill draws, so the two cannot say different things.
+            let Some(reading) = self.line_reading(m, chain, next) else { return Vec::new() };
+            return vec![(next, reading.text())];
         }
         let now = bimcraft_core::draw::reading(shape, chain, next);
         let field = self.drawing.field.min(names.len() - 1);
@@ -5154,8 +5623,7 @@ impl BimApp {
                 Some(v) => m.units.with_unit(*v),
                 None => continue,
             };
-            let text = if i == field && (!typed.is_empty() || names.len() > 1) { format!("{shown} (Enter)") } else { shown };
-            out.push((places.get(i).copied().unwrap_or(next), text));
+            out.push((places.get(i).copied().unwrap_or(next), shown));
         }
         out
     }
@@ -5242,6 +5710,13 @@ impl BimApp {
                 chain.as_slice()
             }
             Tool::SketchPick => &[],
+            // What a click would paste, its middle at the cursor.
+            Tool::Paste => {
+                if let (Some(ps), Some(frame)) = (&self.pasting, bimcraft_core::clipboard::Frame::of(m, key)) {
+                    paste_ghost(p, origin, v, ps, &frame, self.found(sc, q, &[], false));
+                }
+                return;
+            }
             // The group a click would place.
             Tool::DetailGroup => {
                 for e in self.group_at(m, key, self.found(sc, q, &[], false)) {
@@ -5398,6 +5873,7 @@ impl BimApp {
                     reference: None,
                     mark: None,
                     graphics: Default::default(),
+                    underlay: None,
                 }));
                 return;
             }
@@ -5419,6 +5895,7 @@ impl BimApp {
                         reference,
                         mark: None,
                         graphics: Default::default(),
+                        underlay: None,
                     }));
                 }
                 return;
@@ -5663,6 +6140,7 @@ impl BimApp {
                 let mut n = crate::notes::NoteEdit::new(m, key, round(v.mm(q)), self.note_type()).note;
                 n.text = text;
                 n.leader = self.note_arrow.filter(|(view, _)| *view == key).map(|(_, arrow)| arrow);
+                n.leader_kind = self.note_leader_kind;
                 sketched(&Element::Text(n));
                 return;
             }
@@ -5725,6 +6203,7 @@ impl BimApp {
                     let at = self.found(sc, q, &[], false);
                     let angle = self.component_angle;
                     let c = Component {
+                        tilt: None,
                         adaptive: None,
                         family,
                         type_name,
@@ -5789,9 +6268,17 @@ impl BimApp {
                 }
                 return;
             }
-            // The floor a click would make, under the walls, open over their courtyards.
+            // The floor a click would make, under the walls, along the faces Pick Walls' options choose.
             Tool::Floor => {
-                if let Some((ring, courtyards)) = floor_outline(m, level) {
+                let face =
+                    if self.pick_core { bimcraft_core::walls::Face::InteriorCore } else { bimcraft_core::walls::Face::InteriorFinish };
+                let offset = match self.pick_offset.trim() {
+                    "" => Some(0.0),
+                    text => m.units.parse(text),
+                };
+                if let Some(offset) = offset
+                    && let Ok((ring, courtyards)) = floor_outline_faces(m, level, face, offset)
+                {
                     for r in std::iter::once(&ring).chain(&courtyards) {
                         p.add(Shape::closed_line(r.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
                     }
@@ -5869,7 +6356,10 @@ impl BimApp {
             (true, [.., last]) if chain.len() < 2 || shape.open_ended() => std::slice::from_ref(last),
             (true, _) => &[],
         };
-        let next = self.found(sc, q, guide, square);
+        // The pointer's snapped point first, so the direction is the snap's; then the reading's numbers lock it: a typed
+        // length keeps the angle the pointer sweeps, a typed angle keeps the ray the pointer slides along.
+        let pointer = self.found(sc, q, guide, square);
+        let next = self.typed_end(chain, pointer);
         if shaped {
             for c in self.shape_preview(next) {
                 p.add(Shape::line(c.points().into_iter().map(|pt| sc.screen(pt)).collect(), stroke));
@@ -5877,7 +6367,7 @@ impl BimApp {
             if let (Some(&last), true) =
                 (chain.last(), matches!(shape, draw::Shape::Circle | draw::Shape::Inscribed | draw::Shape::Circumscribed))
             {
-                p.extend(ruler_shapes(sc, last, next, refined));
+                p.extend(ruler_shapes(sc, last, next, GuideLook::of(sc.p, refined)));
             }
             self.shape_dimensions(sc, chain, next);
             return;
@@ -5887,11 +6377,19 @@ impl BimApp {
             ghost(&|pt| pt + delta);
         }
         // A line's walls are built as it goes: only the next one is to come.
-        // Walls, and detail lines a click, are made as they go: only the next one is still a preview.
-        let one_by_one = matches!(self.tool, Tool::Wall(_) | Tool::DetailLine(_)) && shape == draw::Shape::Line && !self.one_line();
+        // Walls, detail lines and sketch lines a click are made as they go: only the next one is still a preview, and
+        // with the Options Bar's Offset it lies on the side the next click would put it.
+        let one_by_one = matches!(self.tool, Tool::Wall(_) | Tool::DetailLine(_) | Tool::SketchLine(_))
+            && shape == draw::Shape::Line
+            && !self.one_line();
         let built = if one_by_one { chain.len().saturating_sub(1) } else { 0 };
-        let mut pts: Vec<Pos2> = chain.iter().skip(built).map(|pt| sc.screen(*pt)).collect();
-        pts.push(sc.screen(next));
+        let mut world: Vec<P2> = chain.iter().skip(built).copied().collect();
+        world.push(next);
+        if one_by_one && world.len() == 2 {
+            let [a, b] = draw::offset_line(world[0], world[1], self.draw_options().offset);
+            world = vec![a, b];
+        }
+        let pts: Vec<Pos2> = world.iter().map(|pt| sc.screen(*pt)).collect();
         p.add(Shape::line(pts, stroke));
         // The mass a click would close: its outline as the plan draws it, and its area.
         if let (Tool::Mass(_), true) = (&self.tool, chain.len() >= 2) {
@@ -5912,44 +6410,96 @@ impl BimApp {
         }
         // The ruler along the new line, and an arc at the corner it turns from the line before.
         if let Some(&last) = chain.last() {
-            p.extend(ruler_shapes(sc, last, next, refined));
-            if let [.., prev, l] = chain {
-                p.extend(corner_arc(sc, *prev, *l, next, refined));
+            p.extend(ruler_shapes(sc, last, next, GuideLook::of(sc.p, refined)));
+            if let [.., prev, l] = chain
+                && !(self.drawing.armed && self.drawing.field == 1)
+            {
+                let (c, to_prev, to_next) = (sc.screen(*l), sc.screen(*prev) - sc.screen(*l), sc.screen(next) - sc.screen(*l));
+                p.extend(corner_arc(c, to_prev, to_next, GuideLook::of(sc.p, refined)));
             }
         }
-        // The listening dimension: the length so far and the angle (at the corner it turns, else from
-        // east), or the length being typed. (An arc's radius is its shape's: `shape_texts`.)
-        let reading = |last: P2| {
-            let angle = match chain {
-                [.., prev, l] => snap::corner(*prev, *l, next),
-                _ => None,
-            };
-            format!("{}  {}", m.units.with_unit(last.dist(next)), degrees(angle.unwrap_or_else(|| snap::ruler(last, next).angle)))
-        };
-        if let Some(last) = chain.last() {
-            if !self.typed_length.is_empty() {
-                label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim()));
-            } else if refined {
+        // With the angle in hand, the baseline it is read from (east) and the arc it turns through: degrees from east, as
+        // the reading and the command say, so the two are never at odds. The arc is `corner_arc`'s 26 px, a screen size.
+        if self.drawing.armed
+            && self.drawing.field == 1
+            && let Some(&base) = chain.last()
+        {
+            let c = sc.screen(base);
+            let look = GuideLook::of(sc.p, refined);
+            // East on the screen: a plan turned to true north turns the baseline with it, as the reading's number does.
+            let (ex, ey) = sc.v.along(P2(1.0, 0.0));
+            let e = vec2(ex as f32, ey as f32);
+            let east = if e.length() > f32::EPSILON { e / e.length() } else { vec2(1.0, 0.0) };
+            // A short, muted stub just past the arc's radius: the reference the angle is read from, not a guide.
+            p.extend(Shape::dashed_line(&[c, c + east * 40.0], Stroke::new(look.hair, look.ink.arc), 4.0, 3.0));
+            p.extend(corner_arc(c, east * 40.0, sc.screen(next) - c, look));
+        }
+        // One reading in every state: `line_reading` is its numbers and the field that takes the digits, so Idle, armed,
+        // typing and locked are the same pill in the same place.
+        if let Some(reading) = self.line_reading(m, chain, next) {
+            if refined {
                 // Beside the segment's middle, on the outside of the corner it turns at, and clear of the line by the pill's
                 // own width so a wide pill never crosses back over a steep segment; the badge it must keep off is known.
-                let (pl, pn) = (sc.screen(*last), sc.screen(next));
+                let last = chain.last().copied().unwrap_or(next);
+                let (pl, pn) = (sc.screen(last), sc.screen(next));
                 let prev = match chain {
                     [.., prev, _] => Some(sc.screen(*prev)),
                     _ => None,
                 };
-                reading_pill(sc.p, pl, pn, prev, reading(*last), guide_ink(), self.canvas.badge.get());
+                reading_pill(sc.p, pl, pn, prev, &reading, guide_ink(), self.canvas.badge.get());
             } else {
-                label(sc.screen(next), reading(*last));
+                label(sc.screen(next), reading.text());
             }
         }
     }
 }
 
+/// The line reading's two numbers and the state of the field that takes the digits: which one is boxed (`None` in
+/// Idle), whether a caret sits in it, and which of the two is locked to a typed value rather than following the
+/// pointer. One value for the pill, the classic label and the tests, so they cannot read differently.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Reading {
+    pub len: String,
+    pub ang: String,
+    pub focus: Option<usize>,
+    pub caret: bool,
+    pub len_locked: bool,
+    pub ang_locked: bool,
+}
+
+impl Reading {
+    /// The reading as text, the boxed field in brackets and a caret where one is typed: the classic look's label.
+    pub(crate) fn text(&self) -> String {
+        let (len, ang) = match self.focus {
+            Some(0) => (format!("[{}]{}", self.len, if self.caret { "|" } else { "" }), self.ang.clone()),
+            Some(_) => (self.len.clone(), format!("[{}]{}", self.ang, if self.caret { "|" } else { "" })),
+            None => (self.len.clone(), self.ang.clone()),
+        };
+        format!("{len}  {ang}")
+    }
+}
+
 /// A live reading in a pill of its own: the length and angle on the guide ink's paper, on the outside of the segment it
 /// measures and kept inside the painter's edge, so neither the line, the corner's arc nor the badge behind it cuts the number.
-fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, text: String, ink: GuideInk, avoid: Option<Rect>) -> Rect {
-    let galley = p.layout_no_wrap(text, FontId::proportional(11.5), ink.badge_text);
-    let size = galley.size() + vec2(10.0, 5.0);
+fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, reading: &Reading, ink: GuideInk, avoid: Option<Rect>) -> Rect {
+    let font = FontId::proportional(11.5);
+    // Laid out without a colour, so each token takes the tone it is drawn in: the field in hand is white on the accent.
+    let len = p.layout_no_wrap(reading.len.clone(), font.clone(), Color32::PLACEHOLDER);
+    let ang = p.layout_no_wrap(reading.ang.clone(), font.clone(), Color32::PLACEHOLDER);
+    // The selection fill keeps 4 px round its text and room for the caret; the pill keeps 4 px round the fill, so neither
+    // crowds the other's edge.
+    let box_pad = vec2(4.0, 2.0);
+    let pad = vec2(4.0, 3.0);
+    let gap = 8.0;
+    let caret = if reading.caret { 3.0 } else { 0.0 };
+    let height = len.size().y.max(ang.size().y);
+    let boxed = |w: f32| w + box_pad.x * 2.0 + caret;
+    let inner = match reading.focus {
+        Some(0) => boxed(len.size().x) + gap + ang.size().x,
+        Some(_) => len.size().x + gap + boxed(ang.size().x),
+        None => len.size().x + gap + ang.size().x,
+    };
+    let size = vec2(inner + pad.x * 2.0, height + box_pad.y * 2.0 + pad.y * 2.0);
     let at = reading_spot(from, to, prev, size, avoid);
     let clip = p.clip_rect();
     let c = pos2(
@@ -5960,7 +6510,28 @@ fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, text: Str
     let radius = rect.height() / 2.0;
     p.rect_filled(rect, radius, ink.badge);
     p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
-    p.galley(rect.min + vec2(5.0, 2.5), galley, ink.badge_text);
+    let y = rect.center().y - height / 2.0;
+    let mut x = rect.min.x + pad.x;
+    // The field Tab is on: the accent's selection fill, white lettering and a caret when a number is being typed. The
+    // other keeps the pill's own ink, quieter while it is locked to a typed value and no longer follows the pointer.
+    for (i, galley) in [(0usize, len), (1usize, ang)] {
+        if reading.focus == Some(i) {
+            let box_rect = Rect::from_min_size(pos2(x, y - box_pad.y), vec2(boxed(galley.size().x), height + box_pad.y * 2.0));
+            p.rect_filled(box_rect, 4.0, canvas_pal().accent);
+            let text_at = pos2(x + box_pad.x, y);
+            p.galley(text_at, galley.clone(), Color32::WHITE);
+            if reading.caret {
+                let cx = text_at.x + galley.size().x + 1.5;
+                p.line_segment([pos2(cx, y + 1.0), pos2(cx, y + height - 1.0)], Stroke::new(1.2, Color32::WHITE));
+            }
+            x = box_rect.max.x + gap;
+        } else {
+            let locked = if i == 0 { reading.len_locked } else { reading.ang_locked };
+            let tone = if locked { ink.badge_text.gamma_multiply(0.55) } else { ink.badge_text };
+            p.galley(pos2(x, y), galley.clone(), tone);
+            x += galley.size().x + gap;
+        }
+    }
     rect
 }
 
@@ -6001,13 +6572,7 @@ impl BimApp {
         let chain = picked(&self.tool);
         let at = v.px(cursor);
         let f = self.snap(&m, level, &v, at, &chain, false);
-        let mut under = self.canvas.under_cursor.clone();
-        if let Some(id) = f.source
-            && !under.contains(&id)
-        {
-            under.push(id);
-        }
-        let Some(target) = crate::guide_refs::target_at(&m, level, key, &v, at, &f, &under) else { return };
+        let Some(target) = self.pin_target(&m, level, key, &v, at, &f) else { return };
         let lines = target.lines(&m, level, m.guid(key));
         let marked = self.canvas.pins.borrow_mut().toggle(key, target, lines);
         // The hover that pressed Q has had its mark: the ring must not fill and take it back while the hand rests, nor
@@ -6147,7 +6712,7 @@ pub(crate) fn pin_shapes(pins: &[crate::guide_refs::Pin], to: impl Fn(P2) -> Pos
                 out.push(Shape::circle_filled(c, 2.5, ink.core));
             }
             crate::guide_refs::PinTarget::Edge { a, b, .. } => {
-                out.push(Shape::line_segment([to(a), to(b)], Stroke::new(2.5, ink.core)));
+                out.push(Shape::line_segment([to(a), to(b)], Stroke::new(1.5, ink.core.gamma_multiply(0.85))));
             }
         }
     }
@@ -6175,11 +6740,10 @@ pub(crate) fn snap_name(m: &Model, f: &Found) -> String {
 
 /// A snap's marker at `at` on screen, by what it snapped to (`kind`), its guide dashed from `from` (the point it runs from,
 /// on screen) on past it, and `name` beside it: the plan's and a family's sketch's alike. `lock` says what holds a free
-/// point, which changes its marker; `refined` draws the thin ink of Manage > Snaps instead of the classic one.
-pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, lock: Lock, refined: bool, name: String) {
-    let ink = guide_ink();
-    let hair = 1.0 / p.pixels_per_point();
-    let stroke = Stroke::new(if refined { 1.5 } else { 2.0 }, canvas_pal().accent);
+/// point, which changes its marker; `look` is the frame's ink, refined or classic as Manage > Snaps chose.
+pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, lock: Lock, look: GuideLook, name: String) {
+    let (ink, hair) = (look.ink, look.hair);
+    let stroke = Stroke::new(if look.refined { 1.5 } else { 2.0 }, canvas_pal().accent);
     if let Some(a) = from
         && a.distance(at) > 1.0
     {
@@ -6187,7 +6751,7 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, l
         // off would make a dash for every 10 px.
         let u = (at - a).normalized();
         let back = a.distance(at).min(4000.0) + 24.0;
-        let (stroke, dash, gap) = if refined {
+        let (stroke, dash, gap) = if look.refined {
             (Stroke::new(hair, canvas_pal().accent.gamma_multiply(0.6)), 4.0, 4.0)
         } else {
             (Stroke::new(1.0, canvas_pal().accent), 6.0, 4.0)
@@ -6195,7 +6759,7 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, l
         p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], stroke, dash, gap));
     }
     // The guides' glyph comes first: a point both an angle step and two guides hold says which guides, not the step.
-    if let Some(glyph) = lock_glyph(kind, lock, refined) {
+    if let Some(glyph) = lock_glyph(kind, lock, look.refined) {
         match glyph {
             LockGlyph::Bullseye => {
                 p.circle_stroke(at, 7.0, Stroke::new(hair, ink.core));

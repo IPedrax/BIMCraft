@@ -319,6 +319,7 @@ pub enum Page {
     Performance,
     Graphics,
     Files,
+    Templates,
     Agents,
     Assistant,
     Cowork,
@@ -326,8 +327,17 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 8] =
-        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Cowork, Page::Updates];
+    pub const ALL: [Page; 9] = [
+        Page::Interface,
+        Page::Performance,
+        Page::Graphics,
+        Page::Files,
+        Page::Templates,
+        Page::Agents,
+        Page::Assistant,
+        Page::Cowork,
+        Page::Updates,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -335,6 +345,7 @@ impl Page {
             Page::Performance => msg!("Performance"),
             Page::Graphics => "Graphics",
             Page::Files => msg!("Files"),
+            Page::Templates => msg!("Templates"),
             Page::Agents => msg!("Agents"),
             Page::Assistant => msg!("Assistant"),
             Page::Cowork => msg!("Co-Work"),
@@ -486,6 +497,7 @@ impl BimApp {
                             Page::Performance => self.performance_page(ui),
                             Page::Graphics => self.graphics_page(ui),
                             Page::Files => self.files_page(ui),
+                            Page::Templates => self.templates_page(ui, ctx),
                             Page::Agents => self.agents_page(ui),
                             Page::Assistant => self.assistant_page(ui),
                             Page::Cowork => self.cowork_page(ui),

@@ -215,6 +215,106 @@ fn pick_new_host_refuses_curtain_hosts_and_preserves_redo_after_refusal() {
     refused(&mut s, json!({"id": id, "wall": b, "offset": 3000}), "curtain");
 }
 
+#[test]
+fn pick_new_host_preserves_moved_origins_on_mirrored_and_rotated_targets() {
+    for category in ["door", "window"] {
+        for rotated in [false, true] {
+            for (hand, facing) in [(false, false), (true, false), (false, true), (true, true)] {
+                let (mut s, a, b, old) = fixture();
+                run(&mut s, "delete", json!({"ids": [old]}));
+                run(&mut s, "modify", json!({"ids": [a, b], "base_offset": 400}));
+                run(&mut s, "mirror", json!({"ids": [b], "axis": [[3000, 0], [3000, 1000]]}));
+                if rotated {
+                    run(&mut s, "modify", json!({"id": b, "start": [1000, 4000], "end": [1000, 10000]}));
+                }
+                run(
+                    &mut s,
+                    "family",
+                    json!({"name": "Origin opening", "category": category, "types": {"A": {}},
+                    "parameters": [{"name": "Width", "value": 900}, {"name": "Height", "value": 2100}],
+                    "forms": [{"profile": [[-450,-30],[-400,-30],[-400,60],[-450,60]], "from": 0, "to": 2100}]}),
+                );
+                let sill = if category == "door" { 0 } else { 700 };
+                let id = run(
+                    &mut s,
+                    category,
+                    json!({"wall": a, "offset": 2000, "sill": sill,
+                    "family": "Origin opening", "type": "A", "mark": "ORIGIN", "flip_hand": hand, "flip_facing": facing}),
+                )["id"]
+                    .as_u64()
+                    .unwrap();
+                run(
+                    &mut s,
+                    "family",
+                    json!({"name": "Origin opening", "ref_planes": [
+                    {"name": "Origin X", "start": [125,0,0], "end": [125,1000,0], "up": [0,0,1000], "defines_origin": true},
+                    {"name": "Origin Y", "start": [0,40,0], "end": [1000,40,0], "up": [0,0,1000], "defines_origin": true},
+                    {"name": "Origin Z", "start": [0,0,-100], "end": [1000,0,-100], "up": [0,1000,0], "defines_origin": true}]}),
+                );
+                let before = s.model.clone();
+                let original = before.elements.get(id).unwrap().clone();
+                let (Element::Door(o) | Element::Window(o)) = &original else { panic!("opening") };
+                assert_eq!(o.sill, f64::from(sill) - 100.0);
+                assert_eq!(before.opening_middle(o), (2000.0, f64::from(sill)));
+                let old_offset = o.offset;
+                let points = |m: &crate::model::Model| -> Vec<[f64; 3]> {
+                    m.opening_pieces(m.elements.get(id).unwrap()).iter().flat_map(|p| p.tris.iter().flatten().copied()).collect()
+                };
+                let was = points(&before);
+                assert!(!was.is_empty());
+                run(&mut s, "pick_new_host", json!({"id": before.guid(id), "wall": before.guid(b), "offset": 2500}));
+                let mut expected = original.clone();
+                if let Element::Door(o) | Element::Window(o) = &mut expected {
+                    o.host = s.model.guid(b);
+                    o.offset = 2500.0;
+                }
+                assert_eq!(s.model.elements.get(id), Some(&expected));
+                let (Element::Door(o) | Element::Window(o)) = &expected else { panic!("opening") };
+                let w = s.model.wall(b).unwrap();
+                let u = (w.end - w.start) * (1.0 / (w.end - w.start).length());
+                let at = w.start + u * 2500.0;
+                let now = points(&s.model);
+                assert_eq!(now.len(), was.len());
+                for (p, q) in was.iter().zip(&now) {
+                    let x = p[0] - old_offset;
+                    let wanted = [at.0 + u.0 * x - u.1 * p[1], at.1 + u.1 * x + u.0 * p[1], p[2]];
+                    assert!((0..3).all(|k| (wanted[k] - q[k]).abs() < 1e-6), "{wanted:?} != {q:?}");
+                }
+                let hole = crate::walls::hole(&s.model, w, &expected, o).unwrap();
+                assert!((hole.s0 - (2500.0 - if hand { -125.0 } else { 125.0 } - 450.0)).abs() < 1e-6);
+                assert_eq!(hole.bottom, 400.0 + f64::from(sill));
+                let after = s.model.clone();
+                run(&mut s, "undo", json!({}));
+                assert_eq!(s.model.elements.get(id), Some(&original));
+                assert_eq!(points(&s.model), was);
+                run(&mut s, "redo", json!({}));
+                assert_eq!(points(&s.model), now);
+                let temp = tempfile::tempdir().unwrap();
+                let path = temp.path().join("origin-rehost.bimc");
+                run(&mut s, "save", json!({"path": path}));
+                run(&mut s, "open", json!({"path": path}));
+                assert_eq!(s.model.elements.get(id), after.elements.get(id));
+                assert_eq!(points(&s.model), now);
+                refused(&mut s, json!({"id": id, "wall": a, "offset": 0}), "fit");
+            }
+        }
+    }
+}
+
+#[test]
+fn pick_new_host_does_not_enable_pending_wall_forms() {
+    // #504 is not in this base. If these fields become supported, extend the rehost eligibility guard before this test changes.
+    let (mut s, _, b, _) = fixture();
+    for (key, value) in [("slant", json!(15)), ("profile", json!([[[0, 0], [6000, 0], [6000, 3000], [0, 3000]]]))] {
+        let before = s.model.clone();
+        let mut p = json!({"id": b});
+        p[key] = value;
+        let error = s.execute("modify", &p).unwrap_err();
+        assert!(error.contains(key), "{error}");
+        assert!(std::sync::Arc::ptr_eq(&before, &s.model));
+    }
+}
+
 pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
     let a = run(base, "wall", json!({"points": [[20000,-20000],[26000,-20000]]}))["ids"][0].as_u64().unwrap();
     let b = run(base, "wall", json!({"points": [[20000,-24000],[26000,-24000]]}))["ids"][0].as_u64().unwrap();

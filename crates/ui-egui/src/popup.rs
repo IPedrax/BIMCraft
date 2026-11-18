@@ -1,5 +1,7 @@
 //! Shared dialog frame: a draggable title bar, a corner close button, a scrolling body and a fixed footer.
 
+use std::hash::Hash;
+
 use egui::{
     Align2, Area, Context, CursorIcon, Id, Label, ModalResponse, Order, Pos2, RichText, ScrollArea, Sense, Stroke, Ui, UiKind, WidgetInfo,
     WidgetType, vec2,
@@ -130,12 +132,18 @@ impl<R> Response<R> {
 /// (`ui.min_rect()`), which only ever grew: a dialog sized itself to its tallest moment and kept a blank band above its
 /// buttons after its content shrank.
 pub(crate) fn body<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    body_salted(ui, "dialog-body", add)
+}
+
+/// A body whose scroll position is its own, for a dialog that shows a new report each time it opens: the salt makes
+/// the next report start at the top instead of where the last one was left.
+pub(crate) fn body_salted<R>(ui: &mut Ui, salt: impl Hash + std::fmt::Debug, add: impl FnOnce(&mut Ui) -> R) -> R {
     let footer = dialog_row(ui) + 12.0;
     let max_height = (ui.ctx().content_rect().height() - FRAME_MARGIN - TITLE_HEIGHT - footer - 12.0).max(40.0);
     let least = ui.data(|d| d.get_temp::<f32>(ui.id().with(MIN_HEIGHT))).unwrap_or(0.0);
     let min_height = (ui.max_rect().top() + least - ui.cursor().top() - footer).clamp(0.0, max_height);
     ScrollArea::vertical()
-        .id_salt("dialog-body")
+        .id_salt(salt)
         .max_height(max_height)
         .min_scrolled_height(0.0)
         .auto_shrink([false, true])

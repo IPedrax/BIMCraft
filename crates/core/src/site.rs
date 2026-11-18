@@ -25,7 +25,7 @@ pub fn bearing(a: P2, b: P2, rotation: f64) -> (String, f64) {
 /// Reuse the bounded sketch solver: reject crossings, touching nonadjacent edges, spikes and zero-length edges.
 /// Unlike legacy slab outlines, property lines have no historical malformed geometry to preserve.
 pub(crate) fn check(who: &str, points: &[P2]) -> Result<(), String> {
-    crate::sketch::solve_one(&crate::sketch::lines_of(points, &[])).map(|_| ()).map_err(|problems| {
-        format!("{who}: its property boundary isn't simple: {}", crate::sketch::say(&problems, &|i| format!("edge {i}")))
-    })
+    crate::sketch::solve_one(&crate::sketch::lines_of(points, &[]))
+        .map(|_| ())
+        .map_err(|problems| format!("{who}: its boundary isn't simple: {}", crate::sketch::say(&problems, &|i| format!("edge {i}"))))
 }

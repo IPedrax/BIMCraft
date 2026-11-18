@@ -1,5 +1,5 @@
-//! A building's demand, for the supply of a building of dwellings: the method of a utility or of a country, read from
-//! `data/building-demand.json`. A pure function of what it is given, with no model behind it: the `building_demand` command is its
+//! A building's demand, for the supply of a building of dwellings: the method of a utility or of a country, the
+//! `building_demand` section of its building code (a utility's amendment over NBR 5410, a country's code). A pure function of what it is given, with no model behind it: the `building_demand` command is its
 //! only caller. `demand.rs` is the other half, one installation's demand and category by a utility's own tables.
 //!
 //! The methods agree on a shape, which is what lets them be data: a building of `n` dwellings asks
@@ -23,7 +23,9 @@
 //!
 //! The demand then picks the building's entrance from the method's table, where it has one. Every table keeps the values as
 //! printed; an erratum corrects a row that the same table in other standards prints otherwise, and `as_printed` uses the printed
-//! value. A utility or a country is added as an entry of the file, never as code.
+//! value. A utility or a country is added as a building code (`data/codes/electrical/`), never as code. A building of `n`
+//! dwellings asks D = factor·F(n)·d + (factor if `factor_on_common`) · common + special + commercial + premises; each table keeps
+//! its source and the standard's own example as a test.
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -164,7 +166,7 @@ pub struct Entrance {
     pub rows: Vec<EntranceRow>,
 }
 
-/// One method, an entry of `data/building-demand.json`.
+/// One method, a code's `building_demand` section.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Method {
@@ -197,15 +199,11 @@ pub struct Method {
     pub not_covered: Vec<String>,
 }
 
-#[derive(Deserialize)]
-struct Data {
-    methods: Vec<Method>,
-}
-
-/// The methods of `data/building-demand.json`; none if it does not read, which a test keeps from happening.
+/// The methods of BIMCraft's electrical codes, each code's `building_demand` section (a utility's amendment, a country's
+/// code), in the library's order: a project reads its own (`Model::section_as`), and a method named reads the library's.
 pub fn methods() -> &'static [Method] {
     static ALL: OnceLock<Vec<Method>> = OnceLock::new();
-    ALL.get_or_init(|| serde_json::from_str::<Data>(include_str!("../data/building-demand.json")).map(|d| d.methods).unwrap_or_default())
+    ALL.get_or_init(|| crate::codes::library_sections(crate::codes::Discipline::Electrical, "building_demand"))
 }
 
 /// A method by its standard's name, or by a utility that follows it (in any case).

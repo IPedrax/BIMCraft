@@ -217,21 +217,47 @@ pub struct Hosted {
     pub offset: f64,
 }
 
-/// Where a component's family axes are in the model: `origin`, its insertion point, and the model's directions of its x,
-/// y and z. `upright` when z is the vertical, as every component but one tilted with its plane is.
+/// Where a component's family axes are in the model: `origin`, where the family's own (the datums' crossing) is, and the
+/// model's directions of its x, y and z; `insertion`, its insertion point, where the planes that define the family's origin
+/// cross ([`crate::family::Family::origin`]), which is `origin` while the datums define it. `upright` when z is the vertical,
+/// as every component but one tilted with its plane is.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Placement {
     pub origin: P3,
     pub axes: [P3; 3],
     pub upright: bool,
+    pub insertion: P3,
 }
 
 impl Placement {
+    /// **The one placement of a family's axes in the model.** A family stands by its insertion point: `insertion`, where its
+    /// axes go `axes` (x, y and z), and `origin`, the family's origin in its own axes, flipped as its pieces are where the
+    /// instance is mirrored ([`crate::family::Family::origin`]). Its own axes' zero, the datums' crossing, is then `origin`
+    /// back from the insertion point along the axes. Every way a family's pieces, marks, connectors, room point, bounds or
+    /// IFC body is put in the model goes through here: a component ([`Model::component_placement`]), a door or a window in
+    /// its wall ([`Model::opening_placement`]) and a nested instance in its host.
+    pub fn by_origin(insertion: P3, axes: [P3; 3], upright: bool, origin: P3) -> Placement {
+        if origin == [0.0; 3] {
+            return Placement { origin: insertion, axes, upright, insertion };
+        }
+        let [a, b, c] = axes;
+        let zero = std::array::from_fn(|i| insertion[i] - (origin[0] * a[i] + origin[1] * b[i] + origin[2] * c[i]));
+        Placement { origin: zero, axes, upright, insertion }
+    }
+
     /// Point `p` of the family's axes in the model's. Upright, this is to the last bit `at + (x cos - y sin, x sin + y cos,
     /// z)`, as components always were placed: the extra terms add zero.
     pub fn place(&self, p: P3) -> P3 {
         let [a, b, c] = self.axes;
         std::array::from_fn(|i| self.origin[i] + p[0] * a[i] + p[1] * b[i] + p[2] * c[i])
+    }
+
+    /// [`Placement::piece`] as the 3D view draws it: its triangles placed, its bottom and top theirs, and no outline in plan
+    /// (none, and no holes), which a tilted piece would find as the hull of every triangle, for nothing.
+    pub fn solid(&self, pc: &Piece) -> Piece {
+        let tris: Vec<[P3; 3]> = pc.tris.iter().map(|t| t.map(|p| self.place(p))).collect();
+        let (bottom, top) = tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
+        Piece { tris, outline: Vec::new(), holes: Vec::new(), bottom, top, ..pc.clone() }
     }
 
     /// A piece of the family's (mirrored already, if it is) where the component stands. Upright, its outline is placed and
@@ -290,24 +316,40 @@ impl Model {
     /// upright axes (`Model::component_axes`): it is always placed upright, whatever `host` it might carry, which
     /// `Model::check` refuses on one anyway, so no work plane ever tilts it.
     pub fn component_placement(&self, c: &Component) -> Placement {
+        let (axes, upright) = self.component_turn(c);
+        let insertion = [c.at.0, c.at.1, self.elevation(c.level) + c.offset];
+        // An adaptive family has no insertion point: its points place it, in its own axes as drawn.
+        let origin = match self.families.get(&c.family) {
+            Some(f) if !self.placed_by_points(c) => f.origin(),
+            _ => [0.0; 3],
+        };
+        Placement::by_origin(insertion, axes, upright, [origin[0], if c.mirrored { -origin[1] } else { origin[1] }, origin[2]])
+    }
+
+    /// The model's directions of component `c`'s family axes, and whether its z is the vertical ([`Model::component_placement`]).
+    fn component_turn(&self, c: &Component) -> ([P3; 3], bool) {
         let (sin, cos) = c.angle.to_radians().sin_cos();
-        let origin = [c.at.0, c.at.1, self.elevation(c.level) + c.offset];
-        let upright = Placement { origin, axes: [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]], upright: true };
+        let upright = [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]];
         if self.placed_by_points(c) {
-            return upright;
+            return (upright, true);
         }
-        let Some(h) = c.host else { return upright };
-        let Some(at) = self.host_at(&h) else { return upright };
+        if let (None, Some([x, z])) = (c.host, c.tilt) {
+            let turn = |v: P3| [v[0] * cos - v[1] * sin, v[0] * sin + v[1] * cos, v[2]];
+            let (x, z) = (turn(x), turn(z));
+            return ([x, cross(z, x), z], false);
+        }
+        let Some(h) = c.host else { return (upright, true) };
+        let Some(at) = self.host_at(&h) else { return (upright, true) };
         let always_vertical = self.families.get(&c.family).is_none_or(|f| f.always_vertical);
         let z = vertical_z(at.normal, always_vertical).unwrap_or(at.normal);
         let up = z[0].abs() < 1e-12 && z[1].abs() < 1e-12 && z[2] > 0.0;
         match at.across {
             Some(r) => {
                 let x: P3 = std::array::from_fn(|i| r[i] * cos + cross(z, r)[i] * sin);
-                Placement { origin, axes: [x, cross(z, x), z], upright: up }
+                ([x, cross(z, x), z], up)
             }
-            None if up => upright,
-            None => Placement { origin, axes: upright.axes.map(|a| tilted(a, z)), upright: false },
+            None if up => (upright, true),
+            None => (upright.map(|a| tilted(a, z)), false),
         }
     }
 

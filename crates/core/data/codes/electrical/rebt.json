@@ -1,0 +1,162 @@
+{
+ "code": "rebt",
+ "discipline": "electrical",
+ "name": "REBT, Reglamento Electrotécnico para Baja Tensión (Spain)",
+ "region": "España",
+ "edition": "2002",
+ "references": [
+  "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002; ITC-BT-10 as consolidated after Real Decreto 1053/2014), ITC-BT-10, item 3"
+ ],
+ "note": "A building's demand by this country's method (`building_demand`). The rest of the discipline comes from BIMCraft's library, and says so.",
+ "sections": {
+  "building_demand": {
+   "standard": "ITC-BT-10",
+   "utilities": [],
+   "country": "ES",
+   "source": "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002; ITC-BT-10 as consolidated after Real Decreto 1053/2014), ITC-BT-10, item 3: a building's load is its dwellings' (the mean of their powers × the coefficient of Tabla 1) plus the general services, the shops and offices and the garages, these at a coefficient of 1. The powers are W at 230 V, given here in kW.",
+   "unit": "kW",
+   "min_dwellings": 1,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "ITC-BT-10, items 2.1 and 2.2: a dwelling's power is the one its owner plans, at least 5.75 kW; the grades basic and elevated",
+    "grades": [
+     {
+      "name": "basic",
+      "demand": 5.75,
+      "source": "ITC-BT-10, item 2.2: 5 750 W at 230 V, the least for a new dwelling"
+     },
+     {
+      "name": "elevated",
+      "demand": 9.2,
+      "source": "ITC-BT-10, item 2.2: 9 200 W at least"
+     }
+    ],
+    "least": 5.75
+   },
+   "diversity": {
+    "source": "ITC-BT-10, Tabla 1 (item 3.1): the coefficient of simultaneity by the number of dwellings, and 15.3 + (n − 21)·0.5 above 21",
+    "steps": [
+     [
+      1,
+      1
+     ],
+     [
+      2,
+      2
+     ],
+     [
+      3,
+      3
+     ],
+     [
+      4,
+      3.8
+     ],
+     [
+      5,
+      4.6
+     ],
+     [
+      6,
+      5.4
+     ],
+     [
+      7,
+      6.2
+     ],
+     [
+      8,
+      7
+     ],
+     [
+      9,
+      7.8
+     ],
+     [
+      10,
+      8.5
+     ],
+     [
+      11,
+      9.2
+     ],
+     [
+      12,
+      9.9
+     ],
+     [
+      13,
+      10.6
+     ],
+     [
+      14,
+      11.3
+     ],
+     [
+      15,
+      11.9
+     ],
+     [
+      16,
+      12.5
+     ],
+     [
+      17,
+      13.1
+     ],
+     [
+      18,
+      13.7
+     ],
+     [
+      19,
+      14.3
+     ],
+     [
+      20,
+      14.8
+     ],
+     [
+      21,
+      15.3
+     ]
+    ],
+    "beyond": 0.5
+   },
+   "factor": 1.0,
+   "factor_source": "ITC-BT-10 applies no growth factor",
+   "factor_on_common": false,
+   "premises": [
+    {
+     "use": "commercial",
+     "w_per_m2": 100,
+     "least_w": 3450,
+     "source": "ITC-BT-10, item 3.3: shops and offices, 100 W/m², 3 450 W at least each, coefficient 1"
+    },
+    {
+     "use": "garage_natural",
+     "w_per_m2": 10,
+     "least_w": 3450,
+     "source": "ITC-BT-10, item 3.4: a garage with natural ventilation, 10 W/m², 3 450 W at least, coefficient 1"
+    },
+    {
+     "use": "garage_forced",
+     "w_per_m2": 20,
+     "least_w": 3450,
+     "source": "ITC-BT-10, item 3.4: a garage with forced ventilation, 20 W/m², 3 450 W at least, coefficient 1"
+    }
+   ],
+   "notes": [
+    "The general services (lifts, pumps, common lighting) count whole (item 3.2): give them in `common_demand`."
+   ],
+   "not_covered": [
+    "a building on the night tariff, whose coefficient is the number of dwellings (item 3.1)",
+    "electric vehicle charging (item 5.2 and ITC-BT-52)",
+    "industrial buildings (item 4.2)"
+   ]
+  }
+ },
+ "sources": {
+  "building_demand": "Spain's Low Voltage Electrotechnical Regulation (REBT, Real Decreto 842/2002, BOE no. 224 of 18/09/2002; ITC-BT-10 as consolidated after Real Decreto 1053/2014), ITC-BT-10, item 3: a building's load is its dwellings' (the mean of their powers × the coefficient of Tabla 1) plus the general services, the shops and offices and the garages, these at a coefficient of 1. The powers are W at 230 V, given here in kW."
+ }
+}

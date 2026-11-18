@@ -28,7 +28,8 @@ fn corner_layers<'a>(m: &'a Model, a: &Arm, reach: f64) -> Option<&'a [Layer; 3]
     let guid = m.guid(a.id);
     let occupied = m.lookup().referrers(&guid).any(|id| {
         let Some(e @ (Element::Door(o) | Element::Window(o))) = m.elements.get(id) else { return false };
-        let station = if a.at_end { w.start.dist(w.end) - o.offset } else { o.offset };
+        let (middle, _) = m.opening_middle(o);
+        let station = if a.at_end { w.start.dist(w.end) - middle } else { middle };
         m.opening_type(e).is_some_and(|t| station - t.width / 2.0 <= reach)
     });
     (!occupied).then_some(layers)

@@ -28,13 +28,18 @@ fn save_as_names_a_project_bimc_and_keeps_the_extension_typed_when_it_is_one_off
     let dir = tempfile::tempdir().unwrap();
     let mut h = app(BOX);
     let ctx = h.ctx.clone();
-    for (typed, saved) in [("plan", "plan.bimc"), ("kept.bimc", "kept.bimc"), ("shell.bimt", "shell.bimt"), ("Up.BIMC", "Up.BIMC")] {
+    for (typed, saved) in [("plan", "plan.bimc"), ("kept.bimc", "kept.bimc"), ("Up.BIMC", "Up.BIMC")] {
         h.state_mut().save_as(&ctx, None);
         answer(&mut h, &dir.path().join(typed));
         assert_eq!(h.state().session.path.as_deref(), Some(dir.path().join(saved).as_path()), "{typed}");
         assert!(dir.path().join(saved).exists(), "{saved}");
         assert!(!h.state().dirty(), "{saved} is the project's file now");
     }
+    // A `.bimt` typed is a template: written, and the project still saves to its own file.
+    h.state_mut().save_as(&ctx, None);
+    answer(&mut h, &dir.path().join("shell.bimt"));
+    assert!(dir.path().join("shell.bimt").exists());
+    assert_eq!(h.state().session.path.as_deref(), Some(dir.path().join("Up.BIMC").as_path()));
 }
 
 #[test]
@@ -55,7 +60,9 @@ fn a_project_from_before_the_new_names_opens_every_way_a_file_opens_and_is_not_r
         let path = dir.path().join(name);
         assert!(h.state_mut().open_path(&path), "{name}: {}", h.state().status.text);
         assert_eq!(walls(&h).len(), 4, "{name}");
-        assert_eq!(h.state().session.path.as_deref(), Some(path.as_path()), "the project keeps the file's own name");
+        // A template is let go once read: its content is a new project.
+        let kept = (!name.ends_with(".bimt")).then_some(path.as_path());
+        assert_eq!(h.state().session.path.as_deref(), kept, "the project keeps the file's own name");
     }
     // The system's open event, and a file dropped on the window, are the same as File > Open.
     let inbox: Rc<RefCell<Vec<OsEvent>>> = Rc::default();
@@ -69,7 +76,9 @@ fn a_project_from_before_the_new_names_opens_every_way_a_file_opens_and_is_not_r
     assert_eq!(h.state().session.path.as_deref(), Some(old.as_path()));
     let recent: Vec<String> = h.state().recent.labels();
     for name in names {
-        assert!(recent.iter().any(|r| r == name), "Open Recent lists {name}: {recent:?}");
+        // A template is listed among the templates New offers, not the recent projects.
+        let listed = if name.ends_with(".bimt") { h.state().templates().labels() } else { recent.clone() };
+        assert!(listed.iter().any(|r| r == name), "{name} is listed: {listed:?}");
     }
     assert_eq!(recent[0], "house.bimcraft", "opened last, so first");
     assert_eq!(std::fs::read(&old).unwrap(), bytes);

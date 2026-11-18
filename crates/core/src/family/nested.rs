@@ -193,16 +193,15 @@ impl Family {
         let own =
             nested.family.values_seeded(&inst.type_name, &BTreeMap::new(), wall, &seeds).map_err(|e| format!("`{}`: {e}", inst.family))?;
         let frame = self.frame(&inst.host).map_err(|e| format!("its host: {e}"))?;
-        let (x, y) = (number(&inst.at[0], values, &mut read)?, number(&inst.at[1], values, &mut read)?);
+        let (x_at, y_at) = (number(&inst.at[0], values, &mut read)?, number(&inst.at[1], values, &mut read)?);
         let offset = number(&inst.offset, values, &mut read)?;
         let angle = number(&inst.angle, values, &mut read)?;
         let (s, c) = angle.to_radians().sin_cos();
-        let placed = Placed {
-            origin: frame.point(P2(x, y), offset),
-            x: add(mul(frame.x, c), mul(frame.y, s)),
-            y: add(mul(frame.x, -s), mul(frame.y, c)),
-            z: frame.z,
-        };
+        let (x, y, z) = (add(mul(frame.x, c), mul(frame.y, s)), add(mul(frame.x, -s), mul(frame.y, c)), frame.z);
+        // Its family stands by its origin at the point it is placed at (O1), as a component does.
+        let origin =
+            crate::hosting::Placement::by_origin(frame.point(P2(x_at, y_at), offset), [x, y, z], false, nested.family.origin()).origin;
+        let placed = Placed { origin, x, y, z };
         Ok(Some((&nested.family, own, placed)))
     }
 
@@ -471,7 +470,10 @@ fn replace_shared(list: &mut [NestedFamily], name: &str, definition: &Family, de
     for n in list.iter_mut() {
         if n.name == name && n.family.shared {
             if n.family != *definition {
+                // Its instances in this family were placed against its origin as it was: kept, so they stay put (O1).
+                let placed = n.family.placed_origin;
                 n.family = definition.clone();
+                n.family.placed_origin = placed;
                 any = true;
             }
         } else {
@@ -590,7 +592,7 @@ pub fn nest_into(
     report.shared_asked = asked;
     for (s, def) in takes {
         match work.iter().position(|n| n.name == s) {
-            Some(j) => work[j].family = def.clone(),
+            Some(j) => work[j].family = Family { placed_origin: work[j].family.placed_origin, ..def.clone() },
             None => {
                 report.shared_added.push(s.clone());
                 work.push(NestedFamily { name: s.clone(), family: def.clone(), ..Default::default() });

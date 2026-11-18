@@ -261,3 +261,76 @@ pub fn schema(classes: &[Class]) -> Vec<u8> {
     out.extend_from_slice(&0u16.to_le_bytes());
     out
 }
+
+/// A field's type in a synthetic schema: its kind and modifier bytes, a fixed array's count, an array's inner type and the
+/// class it names, by tag (never inline).
+#[derive(Clone, Copy)]
+pub struct Ty<'a> {
+    pub kind: u8,
+    pub modifier: u8,
+    pub count: Option<u32>,
+    pub inner: Option<&'a Ty<'a>>,
+    pub class: Option<u16>,
+}
+
+impl Ty<'_> {
+    /// A plain kind: `1` and `2` a byte, `3` a `u16`, `4` and `5` a `u32`, `6` an `f32`, `7` an `f64`, `11` a `u64`.
+    pub const fn plain(kind: u8) -> Ty<'static> {
+        Ty { kind, modifier: 0, count: None, inner: None, class: None }
+    }
+
+    /// So many of a plain kind, side by side.
+    pub const fn fixed(kind: u8, count: u32) -> Ty<'static> {
+        Ty { kind, modifier: 0x10, count: Some(count), inner: None, class: None }
+    }
+
+    /// An object of class `tag` with this modifier: `0` by value, `1` owned (an index and a tag), `3` weak (an index), `0x51`
+    /// a counted list of owned ones, `0x50` a counted list by value.
+    pub const fn object(modifier: u8, tag: Option<u16>) -> Ty<'static> {
+        Ty { kind: 0x0e, modifier, count: None, inner: None, class: tag }
+    }
+}
+
+/// A class of a synthetic schema written with typed fields: its name, the tag of its base (none: no base) and its fields.
+pub struct TypedClass<'a> {
+    pub name: &'a str,
+    pub base: Option<u16>,
+    pub fields: &'a [(&'a str, Ty<'a>)],
+}
+
+/// The records of `classes`, each after its zero `u16`, with no closing separator: they take the tags after those of the
+/// schema they are appended to, in order.
+pub fn typed_classes(classes: &[TypedClass]) -> Vec<u8> {
+    fn ty(out: &mut Vec<u8>, t: &Ty) {
+        out.extend_from_slice(&(u32::from(t.kind) | (u32::from(t.modifier) << 8)).to_le_bytes());
+        if t.modifier & 0xf0 == 0x10 {
+            out.extend_from_slice(&t.count.unwrap_or(0).to_le_bytes());
+        }
+        if t.kind == 0x0d {
+            out.extend_from_slice(&[1, 0, 0, 0, 0x20]);
+            let inner = t.inner.copied().unwrap_or(Ty::plain(7));
+            ty(out, &inner);
+            if inner.kind == 0x0e && inner.modifier & 0x0f == 0 {
+                out.extend_from_slice(&t.class.unwrap_or(0).to_le_bytes());
+            }
+        } else if t.kind == 0x0e && t.modifier & 0x0f == 0 {
+            out.extend_from_slice(&t.class.unwrap_or(0).to_le_bytes());
+        }
+    }
+    let mut out = Vec::new();
+    for c in classes {
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&(c.name.len() as u16).to_le_bytes());
+        out.extend_from_slice(c.name.as_bytes());
+        out.extend_from_slice(&c.base.unwrap_or(0).to_le_bytes());
+        out.extend_from_slice(&1u32.to_le_bytes());
+        out.extend_from_slice(&(c.fields.len() as u32).to_le_bytes());
+        for (name, t) in c.fields {
+            out.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            out.extend_from_slice(name.as_bytes());
+            ty(&mut out, t);
+        }
+        out.extend_from_slice(&0u32.to_le_bytes());
+    }
+    out
+}

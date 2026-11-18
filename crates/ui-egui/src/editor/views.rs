@@ -23,7 +23,7 @@ pub(crate) struct Views {
     /// The view shown; none, {3D}.
     pub(crate) shown: Option<Which>,
     /// How close each view is, times as fitted, and how far it is moved (mm).
-    frames: BTreeMap<Which, (f64, (f64, f64))>,
+    pub(super) frames: BTreeMap<Which, (f64, (f64, f64))>,
     /// Each view's work plane ({3D}'s under none), once Set; else its own (`default_work_plane`).
     work_planes: BTreeMap<Option<Which>, PlaneRef>,
     /// Work Plane > Show: the work plane tinted.
@@ -73,7 +73,7 @@ pub(crate) struct Views {
     /// What a tool of the views couldn't do, for the status bar.
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
-    pane: Option<Rect>,
+    pub(super) pane: Option<Rect>,
     /// The reference line selected, by GUID (F7d).
     pub(crate) line: Option<Guid>,
     /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
@@ -109,7 +109,7 @@ pub(super) struct Cached {
     key: u64,
     pub(super) which: Which,
     pub(super) staged: Staged,
-    view: View,
+    pub(super) view: View,
     drawing: Drawing,
     /// An elevation's hidden-line picture, which its drawing is painted over; and the picture itself, kept for a test.
     texture: Option<TextureHandle>,
@@ -332,6 +332,7 @@ impl FamilyEditor {
             if let Some((p, _, z)) = frame {
                 (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
             }
+            super::at_origin(&f, &mut place);
             s.model_mut().families.insert(name.clone(), g);
             let made = s.execute("component", &place)?;
             ghost_id = made["id"].as_u64();
@@ -804,6 +805,10 @@ impl FamilyEditor {
         self.connector_hover = response.hover_pos().and_then(|p| super::connector_marks::pick(&connector_marks, &project, p));
         let lit = (PICKED, crate::style::canvas_pal().hover);
         super::connector_marks::paint(&painter, &connector_marks, &project, self.selected_connector(), self.connector_hover, lit);
+        // The insertion point, where the planes that define the origin cross (O1).
+        if let Some(at) = self.origin_mark() {
+            super::origin_mark::paint(&painter, &project, at);
+        }
         // What is selected, over the picture.
         if editable && let (Some(i), Some(f)) = (self.selected_form(), family.as_ref()) {
             let ring: Vec<egui::Pos2> = fv::outline(f, &values, &c.staged, which, i).into_iter().map(screen).collect();
@@ -1238,7 +1243,7 @@ impl FamilyEditor {
 
 impl FamilyEditor {
     /// How close view `which` is, by the wheel over it, and where, moved by the middle button (its `scale`, pixels a mm).
-    fn zoom_and_pan(&mut self, ui: &Ui, response: &egui::Response, which: Which, scale: f64) {
+    pub(super) fn zoom_and_pan(&mut self, ui: &Ui, response: &egui::Response, which: Which, scale: f64) {
         let mut frame = self.views.frames.get(&which).copied().unwrap_or((1.0, (0.0, 0.0)));
         let before = frame;
         if response.hovered() {

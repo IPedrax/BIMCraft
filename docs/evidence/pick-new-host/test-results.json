@@ -1,11 +1,13 @@
 {
-  "target_summaries": 56,
-  "passed": 4880,
+  "target_summaries": 59,
+  "passed": 5335,
   "failed": 0,
-  "ignored": 21,
+  "ignored": 22,
   "rustc": "1.99.1",
   "host": "aarch64-apple-darwin",
   "command": "cargo test --locked --workspace",
   "hostile_sweep_passed": true,
-  "plugin_fixture_built": true
+  "plugin_fixture_built": true,
+  "base": "046b3575db132777da22655d6a44aa75b32b349c",
+  "date": "2026-11-18"
 }

@@ -1,6 +1,6 @@
 # Pick New Host evidence
 
-BIMCraft Rust, based on `cb5bd74ba4d429769114042440a2047814781a4a` (development main, package 0.12.0).
+BIMCraft Rust, refreshed against `046b3575db132777da22655d6a44aa75b32b349c` (November 18 development main, package 0.12.0).
 All public cases are synthetic. Agent: Codex desktop, `gpt-6-astra`, high reasoning effort, verified from this chat's local
 turn configuration. No native Revit session or manual user acceptance is claimed.
 
@@ -10,7 +10,9 @@ session. A successful command is one Undo/Redo step. Escape, bad fit and stale p
 
 Orientation follows the target wall's interior/exterior faces. Both hand/facing flags remain unchanged, so a reversed wall
 can reverse the world direction. This was the requesting user's explicit policy, not an inference from Autodesk's docs.
-Targets must share level and base elevation; sill remains unchanged. Group contexts, curved/curtain hosts, panel replacement
+Targets must share level and base elevation; sill remains unchanged. With the integrated family origins (#437), offset and
+sill locate the insertion point; the physical opening centre and bottom follow its origin and flips. A negative stored
+sill can be valid. Rehosting preserves physical height and does not settle the origin again. Group contexts, curved/curtain hosts, panel replacement
 walls and pinned openings are refused. Activation outside plans and cross-host dragging are outside this slice.
 
 ## Test-first evidence
@@ -19,11 +21,18 @@ Before the command existed, `cargo test --locked -p bimcraft-core rehost_tests -
 an unknown-command error naming `pick_new_host`. Before the UI action existed, the first egui test failed with
 a missing-node query for `Pick New Host`. The same cases pass after implementation.
 
-The focused core suite has nine tests covering GUID/value preservation, reversed/rotated face orientation, raised hosts,
+The focused core suite has eleven tests covering GUID/value preservation, reversed/rotated face orientation, raised hosts,
 existing wall-top notch policy, thicker-wall family evaluation, tags/dimension references, save/reopen, old-host deletion,
 read-only refusal, history, groups and curtain hosts. The geometry test compares incremental scene pixels with a fresh scene.
 The UI suite exercises actual contextual activation/clicks, hover/Escape/refusal, view/selection/model changes and a TCP
 control-port command interleaved with a pending user pick. The hostile-input sweep includes real opening/target payloads.
+The refresh adds door/window cases for all four hand/facing combinations, moved XYZ origins, actually mirrored and rotated
+target walls, independent vertex/hole calculations, Undo/Redo and native reopen. A UI case checks origin-aware preview and
+click placement, including Space leaving the live opening unchanged during the pending pick.
+
+This base includes #437 origins, #443 flips, #455 same-host dragging, #473 clipboard, #490 vertical tools and #495 roofs.
+Their existing paths remain intact. Pending #504's slanted/profiled wall schema is not adopted; a control verifies that
+its proposed fields still fail strict modification on this base. Its eventual integration requires a new eligibility audit.
 
 ## Automated UI captures
 
@@ -48,11 +57,11 @@ Only independently written behavior descriptions and links are used; no Autodesk
 | Properties/type distinction | Keeps original type and instance values | Core and MCP; no default-type recreation |
 | Interior/exterior-relative facing | Preserves both flags | User policy, rotated/reversed tests |
 | Sill and levels | Same level/base only, unchanged sill | Explicit bounded policy; broader Revit rules not asserted |
-| Placement precision | Host-axis projection, existing centre snap; command offset in mm | New snapping work remains with #488 |
+| Placement precision | Insertion-point projection, origin-aware existing centre snap; command offset in mm | No separate snap engine added |
 | Cancel/history | Escape cancels; one command/Undo/Redo; failed fit is atomic | Automated UI/core/MCP |
 | Persistence/drawings | Native reopen and rebuilt old/new host cuts | Core and exported-output verification |
 | 3D/section activation, curved/curtain/group hosts | Unavailable | Honest disabled UI/refusals; no parity claim |
-| Ordinary same-host dragging | Separate #455 work | This PR does not change it |
+| Ordinary same-host dragging | Integrated #455 behavior | This PR does not change it |
 
 Area/user docs and a [proposed wiki patch](../../wiki-patches/pick-new-host.md) accompany the change. The wiki patch is not
 published. This does not claim completion of the broader agentic document/revision contract or Co-Work acceptance.
@@ -85,9 +94,9 @@ On macOS arm64 with Rust 1.99.1:
 
 - `cargo fmt --all -- --check`: passed.
 - `cargo clippy --locked --workspace --all-targets -- -D warnings`: passed.
-- `cargo test --locked --workspace`: **4,880 passed, 0 failed, 21 ignored**, including the hostile-input sweep. The wasm
+- `cargo test --locked --workspace`: **5,335 passed, 0 failed, 22 ignored**, including the hostile-input sweep. The wasm
   sample plugin was built before the suite. [Result totals](test-results.json).
-- `cargo i18n update`: completed; new messages fall back to English until translated.
+- `cargo i18n update` and `cargo i18n check`: passed; new messages fall back to English until translated.
 - Desktop and CLI development builds: passed. The desktop linker warned that its debug exception-unwind section exceeded
   the compact-unwind encoding limit; this is a build warning, not a test failure or a release-build result.
 

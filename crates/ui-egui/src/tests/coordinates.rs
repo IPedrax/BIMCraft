@@ -244,7 +244,7 @@ fn rotate_project_north_snaps_its_rays_and_space_moves_its_centre() {
 
 #[test]
 fn space_moves_rotate_s_centre_too() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     click(&mut h, P2(4000.0, 0.0));
     press(&mut h, "Rotate");
     h.key_press(Key::Space);
