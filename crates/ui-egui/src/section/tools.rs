@@ -132,7 +132,7 @@ impl BimApp {
                     p.text(
                         screen(b) + egui::vec2(12.0, -12.0),
                         egui::Align2::LEFT_BOTTOM,
-                        m.units.length(a.dist(b)),
+                        m.length(a.dist(b)),
                         egui::FontId::proportional(13.0),
                         stroke.color,
                     );

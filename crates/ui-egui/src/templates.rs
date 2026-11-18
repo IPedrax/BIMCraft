@@ -605,9 +605,7 @@ fn settings(ui: &mut Ui, d: &mut TemplatesDialog, m: &Model) -> Option<Ask> {
     if matches!(ask, Some(Ask::Range)) {
         // The View Range row: its own small dialog, on the draft's range.
         let r = d.current(m).and_then(|t| t.view_range).unwrap_or_default();
-        let units = m.units;
-        d.range =
-            Some([r.top.map(|v| units.field(v)).unwrap_or_default(), units.field(r.cut), units.field(r.bottom), units.field(r.depth)]);
+        d.range = Some([r.top.map(|v| m.field(v)).unwrap_or_default(), m.field(r.cut), m.field(r.bottom), m.field(r.depth)]);
         return None;
     }
     ask

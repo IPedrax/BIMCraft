@@ -3182,6 +3182,28 @@ fn project_units_show_and_read_lengths_in_feet_and_inches() {
 }
 
 #[test]
+fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_one_picked() {
+    let mut h = app(&format!("{BOX}\nunits {}", json!({"length": "m"})));
+    press(&mut h, "Manage");
+    press(&mut h, "Project Units");
+    // Metres show two to five places, each as it writes a metre.
+    for sample in ["1.00 m", "1.000 m", "1.0000 m", "1.00000 m"] {
+        assert!(h.query_by_label(sample).is_some(), "no `{sample}`");
+    }
+    assert!(h.query_by_label("1.0 m").is_none() && h.query_by_label("1.000000 m").is_none());
+    press(&mut h, "1.000 m");
+    assert_eq!(h.state().session.model.decimals, Some(3), "{}", h.state().status.text);
+    assert_eq!(h.state().session.model.length(3.0), "0.003");
+    // Inches and feet-inches show sixteenths: no places to pick.
+    press(&mut h, "Manage");
+    press(&mut h, "Project Units");
+    press(&mut h, "Feet and inches");
+    assert_eq!(h.state().session.model.decimals, None, "the places of one unit are not another's");
+    press(&mut h, "Project Units");
+    assert!(h.query_by_label("Decimal places").is_none());
+}
+
+#[test]
 fn lengths_typed_while_drawing_read_in_the_project_units() {
     let mut h = app("units {\"length\": \"ft-in\"}");
     tool(&mut h, "Wall");

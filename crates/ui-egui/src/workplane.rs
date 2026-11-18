@@ -150,7 +150,7 @@ impl BimApp {
             (None, None, Some(_)) => tf("Surface, {}°", &[&slope()]),
             _ => tf("Three points, {}°", &[&slope()]),
         };
-        if wp.offset == 0.0 { name } else { format!("{name} + {}", m.units.length(wp.offset)) }
+        if wp.offset == 0.0 { name } else { format!("{name} + {}", m.length(wp.offset)) }
     }
 
     /// The work plane's patch as the 3D view in `rect` shows it through `cam`, `ppp` pixels a point: its corners on screen.
@@ -213,7 +213,7 @@ impl BimApp {
             _ => By::Name,
         };
         let name = choices.iter().find(|(_, l)| *l == current).or(choices.first()).map(|(_, l)| l.clone()).unwrap_or_default();
-        self.work_plane = Some(Draft { by, name, offset: m.units.field(wp.offset), picking: None, error: None, components: Vec::new() });
+        self.work_plane = Some(Draft { by, name, offset: m.field(wp.offset), picking: None, error: None, components: Vec::new() });
     }
 
     /// The selection's components that Edit Work Plane can put on another plane: each of a work plane-based family placed by
@@ -253,7 +253,7 @@ impl BimApp {
             }
             (Some(sf), None, None) => {
                 let name = tf("Surface, {}", &[&facing(sf.normal)]);
-                if wp.offset == 0.0 { name } else { format!("{name} + {}", m.units.length(wp.offset)) }
+                if wp.offset == 0.0 { name } else { format!("{name} + {}", m.length(wp.offset)) }
             }
             _ => self.work_plane_name(),
         };

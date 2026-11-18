@@ -737,7 +737,7 @@ pub(crate) fn field_value_with(m: &Model, id: impl crate::ids::Key, name: &str, 
 /// units, a yes or no as `Yes` or `No`): what a tag shows.
 pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
     let (kind, v) = field_value_with(m, id, name, rooms)?;
-    Some(shown(m.units, kind, &v))
+    Some(shown_to(m.units, m.decimals, kind, &v))
 }
 
 /// The fields a schedule of category `cat` shows unless it chooses.
@@ -1380,9 +1380,14 @@ pub fn heading(units: Units, column: &Column) -> String {
 /// so the column lines up; other numbers to the hundredth; yes or no as `Yes` or `No` (English,
 /// for the caller to say in its language); text as it is.
 pub fn shown(units: Units, kind: Kind, v: &Value) -> String {
+    shown_to(units, None, kind, v)
+}
+
+/// [`shown`] with lengths to a project's `decimals` (`Model::decimals`).
+pub fn shown_to(units: Units, decimals: Option<u8>, kind: Kind, v: &Value) -> String {
     match (v, kind) {
         (Value::Bool(b), _) => (if *b { msg!("Yes") } else { msg!("No") }).into(),
-        (v, Kind::Length) if v.is_number() => units.length(v.as_f64().unwrap_or(0.0)),
+        (v, Kind::Length) if v.is_number() => units.length_to(v.as_f64().unwrap_or(0.0), decimals),
         (v, Kind::Area) if v.is_number() => format!("{:.2}", units.area(v.as_f64().unwrap_or(0.0) * 1e6).0),
         (Value::Number(x), _) => format!("{}", (x.as_f64().unwrap_or(0.0) * 100.0).round() / 100.0 + 0.0),
         (v, _) => cell(v),

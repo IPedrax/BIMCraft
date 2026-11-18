@@ -72,12 +72,12 @@ fn choice<T: Copy + PartialEq>(ui: &mut Ui, label: &str, value: &mut T, options:
 impl CurtainEditor {
     fn new(m: &Model, name: &str) -> Option<CurtainEditor> {
         let l = m.types.wall.get(name)?.curtain.clone()?;
-        let typed = |d: &Direction, u: Units| d.segments.iter().map(|s| u.field(*s)).collect::<Vec<_>>();
+        let typed = |d: &Direction| d.segments.iter().map(|s| m.field(*s)).collect::<Vec<_>>();
         Some(CurtainEditor {
             name: name.to_string(),
-            columns: typed(&l.columns, m.units),
-            rows: typed(&l.rows, m.units),
-            smallest: m.units.field(l.min_panel),
+            columns: typed(&l.columns),
+            rows: typed(&l.rows),
+            smallest: m.field(l.min_panel),
             l,
             selected: Vec::new(),
             error: None,
@@ -824,7 +824,7 @@ impl BimApp {
         let word = if matches!(at, Address::VerticalGrid { .. }) { t("Vertical Grid") } else { t("Horizontal Grid") };
         ui.label(egui::RichText::new(word).strong());
         if let Some(place) = l.grid_at(at) {
-            ui.label(self.session.model.units.length(place));
+            ui.label(self.session.model.length(place));
         }
         let manual = l.grid_is_manual(at);
         ui.label(tf("Grid Kind: {}", &[if manual { t("Manual") } else { t("Auto") }]));
@@ -937,12 +937,9 @@ impl BimApp {
                         // What's typed shows as it's typed; what isn't a length yet waits, and OK says so.
                         let _ = d.read(model.units);
                         d.preview(ui, &model);
-                        let module = |w: &Direction| model.units.length(w.segments.iter().sum());
+                        let module = |w: &Direction| model.length(w.segments.iter().sum());
                         let thick = curtain::envelope(&model, &d.l).map_or(0.0, |(a, b)| a + b);
-                        ui.label(tf(
-                            "Module {} x {}, thickness {}",
-                            &[&module(&d.l.columns), &module(&d.l.rows), &model.units.length(thick)],
-                        ));
+                        ui.label(tf("Module {} x {}, thickness {}", &[&module(&d.l.columns), &module(&d.l.rows), &model.length(thick)]));
                         ui.separator();
                         if d.selected.is_empty() {
                             ui.label(t("Click a panel or a mullion to set its type; Shift adds to the selection."));

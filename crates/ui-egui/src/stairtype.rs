@@ -137,7 +137,7 @@ impl StairDraft {
         let own = serde_json::to_value(kind.rules).unwrap_or_default();
         let code = m.stair_rules();
         let said = |holds: Holds, x: f64| match holds {
-            Holds::Length => m.units.field(x),
+            Holds::Length => m.field(x),
             _ => ((x * 1000.0).round() / 1000.0).to_string(),
         };
         // What the building code has for a rule that is off: shown greyed, so it is plain what applies.

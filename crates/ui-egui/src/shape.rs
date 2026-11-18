@@ -119,7 +119,7 @@ pub(crate) fn heights_text(m: &Model, f: &Floor, ends: &[P2], base: Base, by: f6
     let read = |q: P2| m.floor_top(f).at(q) + m.shape_height(f, q) + by - base.at(m, f, q);
     let zs: Vec<f64> = ends.iter().map(|q| read(*q)).collect();
     let (lo, hi) = zs.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(*z), hi.max(*z)));
-    if hi - lo < 0.5 { m.units.length(lo) } else { format!("{}…{}", m.units.length(lo), m.units.length(hi)) }
+    if hi - lo < 0.5 { m.length(lo) } else { format!("{}…{}", m.length(lo), m.length(hi)) }
 }
 
 /// What edit mode draws of a shaped top, in the model: its points and corners (whether on the outline or an opening's
@@ -426,7 +426,7 @@ impl BimApp {
     /// The Options Bar's Elevation as the selection reads it now.
     pub(crate) fn shape_refresh(&mut self) {
         if self.tool == Tool::ModifySubElements {
-            self.shape_z = self.shape_picked_height().map(|z| self.session.model.units.length(z)).unwrap_or_default();
+            self.shape_z = self.shape_picked_height().map(|z| self.session.model.length(z)).unwrap_or_default();
         }
     }
 
