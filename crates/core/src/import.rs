@@ -2407,12 +2407,16 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         }
         let (a, b) = match axis.as_deref() {
             Some([p, .., q]) if r.flat(*p).dist(r.flat(*q)) > TOL => (r.flat(*p), r.flat(*q)),
-            // No axis: along the wall's own x, as far as its body goes.
+            // No axis: along the wall's own x, or its own y where the body runs longer that way, as far as it goes.
             _ => {
                 let o = r.flat(f.o);
-                let x = P2(f.x[0], f.x[1]).unit();
-                match span(pts.iter().map(|p| (r.flat(*p) - o).dot(x))) {
-                    Some((s0, s1)) if x.length() > 0.5 => (o + x * s0, o + x * s1),
+                let reach = |d: P3| {
+                    let d = P2(d[0], d[1]).unit();
+                    span(pts.iter().map(|p| (r.flat(*p) - o).dot(d))).filter(|_| d.length() > 0.5).map(|(s0, s1)| (d, s0, s1))
+                };
+                match (reach(f.x), reach(f.y)) {
+                    (Some((_, x0, x1)), Some((y, y0, y1))) if y1 - y0 > x1 - x0 => (o + y * y0, o + y * y1),
+                    (Some((x, s0, s1)), _) => (o + x * s0, o + x * s1),
                     _ => (o, o),
                 }
             }
@@ -5333,6 +5337,46 @@ ENDSEC;END-ISO-10303-21;"
         let Some(Element::Column(c)) = only(&i.model, "column").first().copied() else { panic!("no column") };
         let t = &i.model.types.column[&c.type_name];
         assert_eq!((c.at, c.angle, t.width, t.depth, t.round, c.height), (P2(3000.0, 4000.0), 90.0, 500.0, 300.0, false, 3000.0));
+    }
+
+    /// An IFC4 file in mm with one wall at an identity placement and no Axis, whose body is a triangle mesh of a box `x` wide,
+    /// `y` deep and 3 m high.
+    fn box_wall(x: f64, y: f64) -> String {
+        let pts = format!(
+            "(0.,0.,0.),({x:?},0.,0.),({x:?},{y:?},0.),(0.,{y:?},0.),(0.,0.,3000.),({x:?},0.,3000.),({x:?},{y:?},3000.),(0.,{y:?},3000.)"
+        );
+        let tris = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+        format!(
+            "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('p',$,'Box wall',$,$,$,$,$,#2);
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCLOCALPLACEMENT($,#5);
+#7=IFCBUILDINGSTOREY('s',$,'Level 0',$,$,#6,$,$,.ELEMENT.,0.);
+#10=IFCCARTESIANPOINTLIST3D(({pts}));
+#11=IFCTRIANGULATEDFACESET(#10,$,.T.,({tris}),$);
+#12=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#11));
+#13=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));
+#18=IFCLOCALPLACEMENT(#6,#5);
+#19=IFCWALL('w',$,'Wall',$,$,#18,#13,$,$);
+#50=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#19),#7);
+ENDSEC;END-ISO-10303-21;"
+        )
+    }
+
+    #[test]
+    fn a_wall_with_no_axis_runs_along_the_longer_side_of_its_body() {
+        let wall = |x: f64, y: f64| {
+            let i = ifc(box_wall(x, y).as_bytes(), "x").unwrap();
+            assert_eq!(i.skipped.len(), 0, "{:?}", i.skipped);
+            let Some(Element::Wall(w)) = only(&i.model, "wall").first().copied() else { panic!("no wall") };
+            (w.start, w.end, i.model.thickness(w))
+        };
+        // Along x, as it always came in; along y, which came in 300 mm long and 5 m thick (#410).
+        assert_eq!(wall(5000.0, 300.0), (P2(0.0, 150.0), P2(5000.0, 150.0), 300.0));
+        assert_eq!(wall(300.0, 5000.0), (P2(150.0, 0.0), P2(150.0, 5000.0), 300.0));
     }
 
     #[test]

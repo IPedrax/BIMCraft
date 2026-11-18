@@ -114,10 +114,12 @@ wall follows. Reopening keeps those choices and the drawn endpoints, without ext
 location with no attachment property means unattached, so geometric roof inference does not add a link.
 
 Walls without a recognized location still come in from the body's centre line and retain the existing join and roof
-inference. A missing axis, or a layer usage that reverses it, also keeps the generic centre-line reconstruction. Attachment
-targets must have come in as roofs or floors; missing or other-kind targets are ignored. The axis is read through the file's
-placements and length units, so the metadata does not introduce a second coordinate system. Other native wall constraints
-(such as height and top offsets) continue to be inferred from geometry; this set does not preserve all native parameters.
+inference. A wall with no axis runs along its own x or its own y, whichever its body is longer along (x where they
+tie), and is as thick as the body is across that. A missing axis, or a layer usage that reverses it, also keeps the
+generic centre-line reconstruction. Attachment targets must have come in as roofs or floors; missing or other-kind targets
+are ignored. The axis is read through the file's placements and length units, so the metadata does not introduce a second
+coordinate system. Other native wall constraints (such as height and top offsets) continue to be inferred from geometry;
+this set does not preserve all native parameters.
 The native project schema and file format are unchanged.
 
 ## Georeference
