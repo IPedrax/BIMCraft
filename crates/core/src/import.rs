@@ -2707,10 +2707,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     // Roofs: flat, else pitched over a rectangle, measured from the faces they turn up.
     for id in roofs {
         let Some(roof) = e(id) else { continue };
-        let mut faces = r.body(roof);
+        let mut faces = r.body_out(roof);
         for part in l.parts.get(&id).into_iter().flatten() {
             if let Some(p) = e(*part) {
-                faces.extend(r.body(p));
+                faces.extend(r.body_out(p));
                 seen.insert(*part);
             }
         }
@@ -5961,6 +5961,45 @@ ENDSEC;END-ISO-10303-21;",
             assert_eq!(roof.openings, [[P2(1000.0, 1000.0), P2(1000.0, 2000.0), P2(2500.0, 2000.0), P2(2500.0, 1000.0)]]);
             assert_eq!(only(&i.model, "shaft").len(), 1);
         }
+    }
+
+    /// An IFC4 file in mm whose roof is a mono-pitch slab, 6 x 4 m and 200 mm thick plumb, as a closed triangle mesh: its
+    /// underside 3000 high at its eaves and rising 2000 over the 6 m; `tris` winds its twelve faces.
+    fn mono_pitch(tris: &str) -> String {
+        let pts = "(0.,0.,3000.),(6000.,0.,5000.),(6000.,4000.,5000.),(0.,4000.,3000.),(0.,0.,3200.),(6000.,0.,5200.),(6000.,4000.,5200.),(0.,4000.,3200.)";
+        format!(
+            "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('p',$,'Roof',$,$,$,$,$,#2);
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCLOCALPLACEMENT($,#5);
+#7=IFCBUILDINGSTOREY('s',$,'Level 0',$,$,$,$,$,.ELEMENT.,0.);
+#10=IFCCARTESIANPOINTLIST3D(({pts}));
+#11=IFCTRIANGULATEDFACESET(#10,$,.T.,({tris}),$);
+#12=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#11));
+#13=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));
+#14=IFCROOF('r',$,'Roof',$,$,#6,#13,$,.SHED_ROOF.);
+#50=IFCRELCONTAINEDINSPATIALSTRUCTURE('c',$,$,$,(#14),#7);
+ENDSEC;END-ISO-10303-21;"
+        )
+    }
+
+    #[test]
+    fn a_roof_mesh_wound_inside_out_comes_in_as_one_wound_outward() {
+        // The same slab, its faces wound outward and then each the other way round.
+        let outward = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+        let inward = "(1,2,3),(1,3,4),(5,7,6),(5,8,7),(1,6,2),(1,5,6),(2,7,3),(2,6,7),(3,8,4),(3,7,8),(4,5,1),(4,8,5)";
+        let read = |tris: &str| {
+            let i = ifc(mono_pitch(tris).as_bytes(), "x").unwrap();
+            assert_eq!(i.skipped, Vec::<String>::new());
+            let Some(Element::Roof(r)) = only(&i.model, "roof").first().copied() else { panic!("no roof") };
+            (r.slope, r.offset, r.overhang, r.gables.clone(), r.boundary.clone())
+        };
+        let right = read(outward);
+        assert_eq!((right.0, right.1), (18.43, 3000.0), "its underside 3000 high at its eaves, rising 2 m over 6");
+        assert_eq!(read(inward), right);
     }
 
     #[test]

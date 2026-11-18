@@ -43,6 +43,10 @@ takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item b
 `Reader::give_up`'s, kept by item (`Reader::unread`): a product left out as having no body says it after `it has no body
 BIMCraft can read: `, and one that came in without part of its body has its own note, `part of its body was left out, …`.
 
+A roof's body is read by `Reader::body_out`: each item whose faces close a body (their vector areas sum to nothing) and
+whose signed volume is negative is wound inside out, so its faces are turned the other way before its top and underside are
+told apart. A mesh that does not close is read as the file winds it.
+
 ## Shared shapes
 
 A body an `IfcMappedItem` maps (as Tekla writes every bolt and Revit a type's geometry) is read once in its
