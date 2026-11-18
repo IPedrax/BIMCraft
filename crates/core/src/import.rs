@@ -4121,7 +4121,16 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let is_door = o.name.starts_with("IFCDOOR");
         let opening = l.fills.get(&id).copied();
         let Some(&(host, a, b, base)) = opening.and_then(|op| l.host.get(&op)).and_then(|h| walls.get(h)) else {
-            let why = if opening.is_some() { "its wall was left out" } else { "it isn't in a wall" };
+            // A roof is no wall either: BIMCraft sets its openings' doors and windows in walls only.
+            let roof = opening
+                .and_then(|op| l.host.get(&op))
+                .and_then(|h| e(*h))
+                .is_some_and(|h| h.name == "IFCROOF" || (SLABS.contains(&h.name.as_str()) && enumeration(h.args.get(8)) == Some("ROOF")));
+            let why = match (roof, opening.is_some()) {
+                (true, _) => "it is in a roof; BIMCraft sets doors and windows only in walls",
+                (false, true) => "its wall was left out",
+                (false, false) => "it isn't in a wall",
+            };
             leave(&mut skipped, &mut seen, id, why);
             continue;
         };
@@ -5511,6 +5520,22 @@ ENDSEC;END-ISO-10303-21;",
             "#85=IFCMATERIALLAYERSETUSAGE(#84,.{axis}.,.POSITIVE.,{offset:.1},$);\n#86=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#{id}),#85);"
         );
         file.replace("ENDSEC;END", &format!("{set}\n{usage}\nENDSEC;END"))
+    }
+
+    #[test]
+    fn a_window_in_a_roof_is_left_out_with_the_roof_as_its_reason() {
+        // A roof slab (PredefinedType ROOF) voided by an opening that a skylight fills: no wall hosts it.
+        let file = holed("#35=IFCSLAB('f',$,'Roof',$,$,#6,#34,$,.ROOF.);", 35).replace(
+            "ENDSEC;END",
+            "#60=IFCWINDOW('w',$,'Skylight',$,$,#6,$,$,1000.,1000.,.SKYLIGHT.);\n\
+             #61=IFCRELFILLSELEMENT('f',$,$,$,#46,#60);\n\
+             #62=IFCRELCONTAINEDINSPATIALSTRUCTURE('r2',$,$,$,(#60),#7);\nENDSEC;END",
+        );
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert!(only(&i.model, "window").is_empty(), "the skylight is not set");
+        let reasons: Vec<&String> = i.skipped.iter().filter(|s| s.contains("roof")).collect();
+        assert_eq!(reasons.len(), 1, "{:?}", i.skipped);
+        assert!(reasons[0].contains("it is in a roof; BIMCraft sets doors and windows only in walls"), "{reasons:?}");
     }
 
     #[test]
