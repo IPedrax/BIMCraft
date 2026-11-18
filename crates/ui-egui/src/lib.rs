@@ -116,6 +116,7 @@ mod updates;
 mod view_worker;
 pub mod window;
 mod workplane;
+mod zoom;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -4039,12 +4040,13 @@ impl BimApp {
         match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) | Sheet::Paper(id) => self.canvas.fit(id),
             Sheet::View3D => self.fit3d(),
-            Sheet::Family(_, None) => {
+            // A family's view, whichever is shown (`editor/zoom.rs`).
+            Sheet::Family(..) => {
                 if let Some(ed) = self.active_family_mut() {
-                    ed.orbit.fit();
+                    ed.zoom_to_fit();
                 }
             }
-            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
+            Sheet::Schedule(_) | Sheet::Table(_) => {}
         }
     }
 

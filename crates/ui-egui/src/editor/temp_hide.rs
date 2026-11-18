@@ -304,6 +304,13 @@ impl BimApp {
             }
             return true;
         }
+        // The view control bar's Zoom to Fit (ZF, ZE, ZA), in the view shown (`zoom.rs`).
+        if action == Some("Zoom to Fit")
+            && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
+        {
+            ed.zoom_to_fit();
+            return true;
+        }
         let asked = match action {
             Some("Temporary Hide Element") => Asked::Hide { category: false },
             Some("Temporary Hide Category") => Asked::Hide { category: true },

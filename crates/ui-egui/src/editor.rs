@@ -21,6 +21,7 @@ mod types_dialog;
 pub(crate) mod views;
 pub(crate) mod visibility;
 pub(crate) mod work_plane;
+pub(crate) mod zoom;
 
 use crate::popup::Modal;
 
@@ -515,6 +516,8 @@ pub(crate) struct FamilyEditor {
     picked: usize,
     /// {3D}: the project's 3D view's camera, navigation and painters, and the family staged for it (`lit3d.rs`).
     pub(crate) orbit: crate::orbit::Orbit,
+    /// FE-3: Zoom In Region armed in the view shown, and each view's steps for Previous Pan/Zoom (`zoom.rs`).
+    pub(crate) zoom: zoom::Zoom,
     pub(crate) scene3d: Option<lit3d::FamilyScene>,
     /// Why the family can't be tried or made: shown under the preview.
     problem: Option<String>,
@@ -639,6 +642,7 @@ impl FamilyEditor {
             types_dialog: Default::default(),
             picked: 0,
             orbit: crate::orbit::Orbit::named("family-preview"),
+            zoom: Default::default(),
             scene3d: None,
             problem: None,
             document: Default::default(),
