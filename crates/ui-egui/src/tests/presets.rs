@@ -200,8 +200,8 @@ fn a_panel_taken_out_in_edit_tools_leaves_the_tab_and_comes_back() {
             press(&mut h, "Team");
         }
         press(&mut h, "Edit Tools");
-        h.get_by_role_and_label(Role::CheckBox, "Build").click();
-        h.run();
+        let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
+        click_at(&mut h, at);
         press(&mut h, "Done");
         assert!(h.state().panels_hidden.contains("tab:Architecture/Build"), "rev {rev}");
         assert!(h.query_by_label("Wall").is_none(), "the panel and its tools left the tab (rev {rev})");
@@ -219,8 +219,8 @@ fn a_panel_taken_out_in_edit_tools_leaves_the_tab_and_comes_back() {
             press(&mut h, "Team");
         }
         press(&mut h, "Edit Tools");
-        h.get_by_role_and_label(Role::CheckBox, "Build").click();
-        h.run();
+        let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
+        click_at(&mut h, at);
         press(&mut h, "Done");
         assert!(!h.state().panels_hidden.contains("tab:Architecture/Build"), "rev {rev}");
         assert!(h.query_by_label("Wall").is_some(), "rev {rev}");
@@ -250,7 +250,8 @@ fn a_tab_whose_panels_are_all_hidden_says_so_and_the_button_brings_them_back() {
     }
     h.run();
     assert!(h.query_by_label("Every panel of this tab is hidden.").is_some());
-    press(&mut h, "Show the panels");
+    let at = h.get_by_label("Show the panels").rect().center();
+    click_at(&mut h, at);
     assert!(h.state().panels_hidden.iter().all(|k| !k.starts_with("tab:Architecture/")));
     assert!(h.query_by_label("Wall").is_some());
 }
@@ -410,13 +411,13 @@ fn edit_tools_done_keeps_the_palette_layout_and_panels_in_the_selected_preset() 
     h.state_mut().apply_preset(&p);
     h.run();
     // The user moves a palette and takes a panel out, then presses Done: both go into the preset the window wears.
-    h.state_mut().docking.put(Palette::Tools, Target::Side(Side::Right));
+    h.state_mut().docking.put(Palette::Browser, Target::Side(Side::Bottom));
     press(&mut h, "Edit Tools");
-    h.get_by_role_and_label(Role::CheckBox, "Build").click();
-    h.run();
+    let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
+    click_at(&mut h, at);
     press(&mut h, "Done");
     let kept = &h.state().presets[0];
-    assert_eq!(kept.docking.docked(Palette::Tools), Some(Side::Right), "the palette layout is kept in the preset");
+    assert_eq!(kept.docking.docked(Palette::Browser), Some(Side::Bottom), "the palette layout is kept in the preset");
     assert!(kept.panels_hidden.contains("tab:Architecture/Build"), "the panel taken out is kept too");
     assert_eq!(h.state().active_preset.as_deref(), Some("Design"));
 }
