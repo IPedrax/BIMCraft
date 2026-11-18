@@ -213,6 +213,26 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a building code names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`,
 /// `building_demand`), and a project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and
 /// `demand` and `building_demand` would ask for a method again.
+/// And a PDF publishing entry may set or omit its Creator and Producer (`creator`, `producer`, written only then); a build
+/// that reads up to 20 would leave them out as fields it doesn't know, list them as left out and write its own.
+/// And a note's leader takes a kind (`leader_kind`: two segments or curved); a build that reads up to 20 would leave it out
+/// and draw the leader straight.
+/// And a component may lie tilted on no plane (`tilt`, its family's x and z in the model), as an imported bolt through a brace
+/// does; a build that reads up to 20 would leave it out without a word and stand the component up.
+/// And a plan, a section or an elevation may show another view under or over it (`underlay` on a level, a plan view or a
+/// section); a build that reads up to 20 would leave it out as a field it doesn't know, and draw the view without it. A file
+/// of 20 has none.
+/// And a family's insertion point is where the reference planes that define its origin cross (`defines_origin`), and it holds
+/// the origin its instances were placed against (`placed_origin`, left out while it is the datums'): a door's or a window's
+/// `offset` and `sill` are where that point stands, the middle and the bottom as before while the datums define it. A build that
+/// reads up to 20 places every family by its datums and leaves `placed_origin` out as a field it doesn't know, so a file saved
+/// with a moved origin shows its instances shifted from where they were drawn, and such a door or window moved along and up its
+/// wall. A file of 20 needs no step: it holds no record, which is the datums, so its instances stay where they were drawn.
+/// And a dimension may belong to a section or an elevation (its `view` and `level` both that view), measured between levels,
+/// grids and the view's detail lines in its drawing plane; a build that reads up to 20 would resolve its references in plan or
+/// drop it. A file of 20 needs no step: it holds none.
+/// And the site's ground may be a toposolid (`toposolid`, with types in `types.toposolid`, which a file of 20 is given:
+/// `Generic - 300mm`); a build that reads up to 20 would answer one with a serde error, not "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -247,6 +267,9 @@ pub struct Level {
     /// What its elevation is shown from: the Project Base Point or the Survey Point. It is stored internal.
     #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
     pub elevation_base: crate::coordinates::Origin,
+    /// What it shows under it, as Archicad's Trace & Reference ([`crate::underlay`]): kept while it is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub underlay: Option<crate::underlay::Underlay>,
 }
 
 fn computation_height() -> f64 {
@@ -269,6 +292,7 @@ impl Level {
             section_box: false,
             computation_height: CUT_HEIGHT,
             elevation_base: Default::default(),
+            underlay: None,
         }
     }
 }
@@ -327,6 +351,42 @@ pub struct PropertyLine {
     pub name: String,
     pub level: Guid,
     pub points: Vec<P2>,
+}
+
+/// A solid topographic element, Revit's Toposolid: a boundary on a level, a thickness under its top, and a top shaped by
+/// elevation points and split lines as a floor's is. `shape`'s points are above the flat top (`level` plus `offset`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Toposolid {
+    /// Its type: the layers it is made of, and so how thick it is (`Types::toposolid`).
+    #[serde(rename = "type")]
+    pub type_name: String,
+    pub level: Guid,
+    /// Its outline in plan, counter-clockwise; concave fine.
+    pub boundary: Vec<P2>,
+    /// How far its flat top is over its level, mm.
+    #[serde(default)]
+    pub offset: f64,
+    /// Points and split lines on its top, a floor's (`Floor::shape`).
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
+    /// The mm between the contour lines plans draw; 0 for none.
+    #[serde(default = "contour_interval")]
+    pub interval: f64,
+    /// Where its top's model pattern starts, and how far it's turned, degrees: Revit's aligned and rotated pattern.
+    #[serde(default, skip_serializing_if = "crate::fills::at_origin")]
+    pub pattern_origin: P2,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pattern_angle: f64,
+    #[serde(default)]
+    pub name: String,
+    /// Its values of the project's parameters, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+fn contour_interval() -> f64 {
+    1000.0
 }
 
 /// A reinforcing bar: a round bar of `diameter` mm bent along `path` (mm: x east, y north, z over `level`), of steel `grade`. It
@@ -847,6 +907,10 @@ type ShapeMesh = (crate::triangulation::Triangulation, Vec<[f64; 3]>, Vec<walls:
 /// The most points a shape has, and the most split lines.
 pub const MAX_SHAPE_POINTS: usize = 2_000;
 pub const MAX_SPLIT_LINES: usize = 2_000;
+/// The least mm between a toposolid's contour lines, the most levels its contours cut, and the most segments they have.
+pub const MIN_CONTOUR_INTERVAL: f64 = 10.0;
+pub const MAX_CONTOURS: usize = 1_000;
+pub const MAX_CONTOUR_SEGMENTS: usize = 20_000;
 
 /// A ceiling along `boundary` (counter-clockwise), open through its `openings` (holes inside it,
 /// apart), its underside `offset` mm above its level, its type's thickness over that.
@@ -1466,7 +1530,8 @@ impl Orient {
 
 /// A text note in a view: a level's plan, a section, an elevation or a sheet. `at` is the top left
 /// of its first line, in the view's own terms; lettered as its text type says (`crate::text`); turned
-/// `angle` degrees counter-clockwise; with a leader to `leader`. With `override_format`, its `runs`
+/// `angle` degrees counter-clockwise; with a leader to `leader`, straight, in two segments or curved as
+/// `leader_kind` says. With `override_format`, its `runs`
 /// make parts of it bold, italic or underlined, or not, whatever its type says; they stay when its type
 /// changes. `size` is a note's from before text types, which a file's reading gives a type of that size.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1483,10 +1548,39 @@ pub struct Note {
     pub angle: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader: Option<P2>,
+    #[serde(default, skip_serializing_if = "LeaderKind::is_straight")]
+    pub leader_kind: LeaderKind,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub override_format: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runs: Vec<crate::text::Run>,
+}
+
+/// How a note's leader reaches the point it names: straight from the note's side, in two segments (a shoulder level
+/// with the note, its lettering's height long, then to the point), or as an arc bowing from that shoulder's corner.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaderKind {
+    #[default]
+    Straight,
+    TwoSegment,
+    Curved,
+}
+
+impl LeaderKind {
+    /// Its name in a command or a file.
+    pub fn name(self) -> &'static str {
+        match self {
+            LeaderKind::Straight => "straight",
+            LeaderKind::TwoSegment => "two_segment",
+            LeaderKind::Curved => "curved",
+        }
+    }
+
+    /// Whether it is left out of a file: straight, the default.
+    fn is_straight(&self) -> bool {
+        *self == LeaderKind::Straight
+    }
 }
 
 /// A scan placed: the project's `cloud`, its middle at `at` in plan and `offset` mm over `level`, turned `angle` degrees
@@ -1684,6 +1778,9 @@ pub struct PlanView {
     /// range and its sides as its crop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub section_box: bool,
+    /// What it shows under it, as Archicad's Trace & Reference ([`crate::underlay`]): kept while it is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub underlay: Option<crate::underlay::Underlay>,
 }
 
 /// A 3D view, seen from `azimuth` degrees round from east (counter-clockwise) and `elevation`
@@ -1793,10 +1890,10 @@ pub struct Tag {
 }
 
 impl Tag {
-    /// The field a tag of category `cat` shows unless it names one: a door's or window's mark, a room's name, else the type.
+    /// The field a tag of category `cat` shows unless it names one: a door's, window's or bar's mark, a room's name, else the type.
     pub fn usual(cat: &str) -> &'static str {
         match cat {
-            "door" | "window" => msg!("Mark"),
+            "door" | "window" | "rebar" => msg!("Mark"),
             "room" => msg!("Name"),
             _ => msg!("Type"),
         }
@@ -1924,6 +2021,10 @@ pub struct Component {
     pub offset: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mirrored: bool,
+    /// Where it lies tilted on no plane (a bolt through a brace, as an IFC file places it): the directions in the model of its
+    /// family's x and z, before `angle` turns them about the vertical. None, it stands upright, or as its plane tilts it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tilt: Option<[[f64; 3]; 2]>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
     /// What a work plane-based component stands on, where that isn't its level: its place on a reference plane, which its
@@ -2268,6 +2369,7 @@ impl Element {
         match self {
             Element::Floor(f) => Some(&f.shape),
             Element::Roof(r) => Some(&r.shape),
+            Element::Toposolid(t) => Some(&t.shape),
             _ => None,
         }
     }
@@ -2276,6 +2378,7 @@ impl Element {
         match self {
             Element::Floor(f) => Some(&mut f.shape),
             Element::Roof(r) => Some(&mut r.shape),
+            Element::Toposolid(t) => Some(&mut t.shape),
             _ => None,
         }
     }
@@ -2370,6 +2473,9 @@ pub struct Section {
     /// What it hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
+    /// What it shows under it, as Archicad's Trace & Reference ([`crate::underlay`]): kept while it is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub underlay: Option<crate::underlay::Underlay>,
 }
 
 impl Section {
@@ -2529,7 +2635,9 @@ macro_rules! visit_refs {
         let f: &mut dyn FnMut(& $($m)? Guid) = $f;
         match $e {
             // A view's graphics, as `views_graphics` gives them.
-            Element::Level(_) | Element::Section(_) | Element::Elevation(_) => {}
+            Element::Level(Level { underlay, .. }) | Element::Section(Section { underlay, .. }) | Element::Elevation(Section { underlay, .. }) => {
+                if let Some(u) = underlay { f(& $($m)? u.view) }
+            }
             Element::View3D(v) => {
                 if let Some(wp) = & $($m)? v.work_plane {
                     if let Some(g) = & $($m)? wp.level {
@@ -2545,6 +2653,7 @@ macro_rules! visit_refs {
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
+                if let Some(u) = & $($m)? v.underlay { f(& $($m)? u.view) }
             }
             Element::Wall(w) => {
                 f(& $($m)? w.level);
@@ -2638,6 +2747,7 @@ macro_rules! visit_refs {
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
             Element::PropertyLine(pl) => f(& $($m)? pl.level),
+            Element::Toposolid(t) => f(& $($m)? t.level),
             Element::Circuit(c) => {
                 f(& $($m)? c.panel);
                 for g in & $($m)? c.devices {
@@ -2665,6 +2775,8 @@ pub enum Element {
     Ceiling(Ceiling),
     Shaft(Shaft),
     Mass(Mass),
+    /// A solid topographic element: the site's ground, on a level.
+    Toposolid(Toposolid),
     Door(Opening),
     Window(Opening),
     Room(Room),
@@ -2745,6 +2857,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposolid(Toposolid { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2769,6 +2882,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposolid(Toposolid { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2929,6 +3043,7 @@ impl Element {
             Element::Ceiling(_) => "ceiling",
             Element::Shaft(_) => "shaft",
             Element::Mass(_) => "mass",
+            Element::Toposolid(_) => "toposolid",
             Element::Door(_) => "door",
             Element::Window(_) => "window",
             Element::Room(_) => "room",
@@ -3628,6 +3743,21 @@ pub enum Operation {
     Roller,
 }
 
+/// What a door or a window can turn over: a swing door's hinge (`hand`) and the side it opens to (`facing`), a
+/// window's face (`facing`). Computed from its operation, so it is no rule of the model's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Flips {
+    pub hand: bool,
+    pub facing: bool,
+}
+
+impl Flips {
+    /// Whether it can be flipped at all.
+    pub fn any(self) -> bool {
+        self.hand || self.facing
+    }
+}
+
 impl Operation {
     pub const ALL: [Operation; 8] = [
         Operation::Swing,
@@ -3752,6 +3882,10 @@ pub struct Types {
     pub ceiling: BTreeMap<String, CeilingType>,
     #[serde(default)]
     pub railing: BTreeMap<String, RailingType>,
+    /// The toposolid types: the layers each is made of, and so how thick it is (its layers' total, as Revit's Default
+    /// Thickness), from the top down.
+    #[serde(default)]
+    pub toposolid: BTreeMap<String, FloorType>,
     /// Room types: what floor and ceiling a room has of its own.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub room: BTreeMap<String, RoomType>,
@@ -3868,11 +4002,12 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 26] = [
+pub const PARAMETER_CATEGORIES: [&str; 27] = [
     "wall",
     "floor",
     "ceiling",
     "roof",
+    "toposolid",
     "door",
     "window",
     "room",
@@ -4217,6 +4352,10 @@ pub struct Model {
     /// opens the rest, so it took no `FORMAT` step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub georeference: Option<Georeference>,
+    /// The GlobalIds of the IFC project, site and building it was read from, which its IFC export writes back. A project of
+    /// BIMCraft's own has none and its file leaves them out, so it took no `FORMAT` step.
+    #[serde(default, skip_serializing_if = "crate::ifc::SpatialGuids::is_empty")]
+    pub spatial_guids: crate::ifc::SpatialGuids,
     /// The elements pinned where they are, by GUID: commands that place, draw or delete them refuse them until `unpin`. One of
     /// FORMAT 18's: a build that reads up to 17 would leave it out of a file and let them move.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -4360,6 +4499,7 @@ impl Model {
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             georeference: None,
+            spatial_guids: Default::default(),
             demand_factors: BTreeMap::new(),
             coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
             elements: Elements::new(),
@@ -4411,6 +4551,7 @@ impl Model {
         ];
         m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None });
         m.types.floor.insert("Generic - 200mm".into(), FloorType { thickness: 200.0, layers: Vec::new() });
+        m.types.toposolid.insert("Generic - 300mm".into(), FloorType { thickness: 300.0, layers: Vec::new() });
         for (n, w) in [("Single 900 x 2100", 900.0), ("Single 800 x 2100", 800.0)] {
             m.types.door.insert(n.into(), OpeningType { width: w, height: 2100.0, sill: 0.0, operation: None });
         }
@@ -4533,7 +4674,8 @@ impl Model {
         let floors = t.floor.iter().map(|(n, x)| ("floor", n.as_str(), x.thickness, x.layers.as_slice()));
         let roofs = t.roof.iter().map(|(n, x)| ("roof", n.as_str(), x.thickness, x.layers.as_slice()));
         let ceilings = t.ceiling.iter().map(|(n, x)| ("ceiling", n.as_str(), x.thickness, x.layers.as_slice()));
-        walls.chain(floors).chain(roofs).chain(ceilings)
+        let toposolids = t.toposolid.iter().map(|(n, x)| ("toposolid", n.as_str(), x.thickness, x.layers.as_slice()));
+        walls.chain(floors).chain(roofs).chain(ceilings).chain(toposolids)
     }
 
     /// The layers of type `name` of `category`, a wall's from its exterior in, the others' from
@@ -4544,11 +4686,12 @@ impl Model {
 
     /// Every type's layers, to change.
     pub fn layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
-        let Types { wall, floor, roof, ceiling, .. } = &mut *self.types;
+        let Types { wall, floor, roof, ceiling, toposolid, .. } = &mut *self.types;
         (wall.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(floor.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(roof.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(ceiling.values_mut().flat_map(|t| t.layers.iter_mut()))
+            .chain(toposolid.values_mut().flat_map(|t| t.layers.iter_mut()))
     }
 
     /// Every material the types' layers name that the library hasn't, put in it: what a project
@@ -4696,6 +4839,17 @@ impl Model {
         placement.frames.iter().filter_map(|(n, f)| f.from_local(axes, c.mirrored).ok().map(|f| (*n, f))).collect()
     }
 
+    /// What component `c`'s shape in its own axes is built from: its family, type, mirroring, and of its own values those its
+    /// family evaluates, with its adaptive placement. Paint, phase, design-option and project parameters' values live in
+    /// `params` too, but no form reads them ([`crate::family::Family::values`] reads its own parameters by name), so copies
+    /// differing only in them, as an IFC's copies of one shape do, are built once.
+    pub(crate) fn shape_key(&self, c: &Component) -> crate::component_geometry::Key {
+        let params = self.families.get(&c.family).map(|family| {
+            c.params.iter().filter(|(name, _)| family.parameters.iter().any(|p| p.name == **name)).collect::<BTreeMap<_, _>>()
+        });
+        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&params, &c.adaptive)).unwrap_or_default())
+    }
+
     /// Component `c`'s solids in its own axes, mirrored if it is: each visible form's triangles, its
     /// outline seen from above, from its bottom to its top over its base, what it's made of; none
     /// for one that doesn't build.
@@ -4735,7 +4889,8 @@ impl Model {
             return Vec::new();
         }
         // Tilted with its plane, it has no plan of its own to draw its symbols in.
-        if !self.component_placement(c).upright {
+        let placed = self.component_placement(c);
+        if !placed.upright {
             return Vec::new();
         }
         let marks = f.values(&c.type_name, &c.params).and_then(|v| match detail {
@@ -4743,9 +4898,12 @@ impl Model {
             None => f.marks(&v),
         });
         let Ok(marks) = marks else { return Vec::new() };
-        let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
-        marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
+        let place = |q: P2| {
+            let p = placed.place([q.0, flip * q.1, 0.0]);
+            P2(p[0], p[1])
+        };
+        marks.iter().map(|k| k.map(place)).collect()
     }
 
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
@@ -4755,7 +4913,7 @@ impl Model {
         let placed = self.component_placement(c);
         let local =
             self.families.get(&c.family).and_then(|f| f.values(&c.type_name, &c.params).ok().and_then(|v| f.room_point(&v).ok().flatten()));
-        let Some([x, y, z]) = local else { return placed.origin };
+        let Some([x, y, z]) = local else { return placed.insertion };
         placed.place([x, if c.mirrored { -y } else { y }, z])
     }
 
@@ -5093,6 +5251,9 @@ impl Model {
         }
         // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
         m.pinned.retain(|g| m.elements.id(*g).is_some());
+        // A family's instances placed against an origin that isn't its own (a file of a build that placed every family by its
+        // datums, whose family had a plane marked as defining the origin) stay where they were drawn (O1).
+        m.settle_origins(None);
         Ok((m, left_out))
     }
 
@@ -5212,6 +5373,10 @@ impl Model {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
+        // 20 to 21: a file of 20 or before has no toposolid type, the one a new toposolid is made of, which `default_type` names.
+        if self.format < 21 {
+            self.types.toposolid.entry("Generic - 300mm".into()).or_insert(FloorType { thickness: 300.0, layers: Vec::new() });
+        }
         self.settle_hosts(None);
         // 19 to 20: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
         if self.types.room.is_empty() {
@@ -5275,6 +5440,12 @@ impl Model {
             crate::curtain::corner_types(self);
         }
         // 20 to 21: classification tables and their bindings. A file of 20 holds none, so nothing to do.
+        // 20 to 21: a PDF publishing entry's Creator and Producer. A file of 20 sets neither, so nothing to do.
+        // 20 to 21: a component's `tilt`. A file of 20 needs nothing: its components all stand upright or on their plane.
+        // 20 to 21: a view's underlay. It is a field that defaults to none, so a file of 20 needs nothing.
+        // 20 to 21: a family's `placed_origin`, the origin its instances stand against. A file of 20 holds none, which is the datums,
+        // so `settle_origins` on read makes it the family's origin and moves nothing: its instances stay where they were drawn.
+        // 20 to 21: dimensions in sections and elevations. A file of 20 holds none, so nothing to do.
         self.format = FORMAT;
     }
 
@@ -5392,13 +5563,16 @@ impl Model {
 
     /// Where element `id`'s model pattern starts (its `pattern_origin`) once its pattern line `line` lies on `reference`:
     /// the origin moved across by the gap between the two, which must run the same way (plan mm, a line by its two ends).
-    /// What Align on a pattern asks of the model; set the answer with `modify`. A filled region or a floor has a pattern to
-    /// align; the error says what else is wrong.
+    /// What Align on a pattern asks of the model; set the answer with `modify`. A filled region, a floor or a toposolid has
+    /// a pattern to align; the error says what else is wrong.
     pub fn align_pattern(&self, id: Id, reference: (P2, P2), line: (P2, P2)) -> Result<P2, String> {
         let origin = match self.elements.get(id) {
             Some(Element::FilledRegion(r)) => r.pattern_origin,
             Some(Element::Floor(f)) => f.pattern_origin,
-            Some(e) => return Err(format!("{} {id} has no model pattern to align; a filled region or a floor has", e.category())),
+            Some(Element::Toposolid(t)) => t.pattern_origin,
+            Some(e) => {
+                return Err(format!("{} {id} has no model pattern to align; a filled region, a floor or a toposolid has", e.category()));
+            }
             None => return Err(format!("no element {id}")),
         };
         if [reference, line].iter().any(|(a, b)| !(a.is_finite() && b.is_finite()) || a.dist(*b) < TOL) {
@@ -5463,6 +5637,20 @@ impl Model {
     /// The run `k` finds: a beam, a strip footing, a pipe... whatever its category.
     pub fn run_of(&self, k: impl Key) -> Option<&Run> {
         self.elements.get(k)?.run()
+    }
+
+    /// The element that `id` is hosted in or on: a door's or a window's wall, a component's face's element or its reference
+    /// plane, a reinforcing bar's beam, column, footing or floor, a railing's stair or ramp. None for one that stands on its
+    /// level or on nothing.
+    pub fn host_of(&self, id: impl Key) -> Option<Id> {
+        let host = match self.elements.get(id)? {
+            Element::Door(o) | Element::Window(o) => o.host,
+            Element::Component(c) => c.host.map(|h| h.host.guid())?,
+            Element::Rebar(rb) => rb.host?,
+            Element::Railing(r) => r.host?,
+            _ => return None,
+        };
+        self.elements.id(host)
     }
 
     /// The rectangle level `id` stretches over in plan, south-west corner then north-east: its
@@ -5901,6 +6089,7 @@ impl Model {
             "roof" => names(&self.types.roof),
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
+            "toposolid" => names(&self.types.toposolid),
             "room" => names(&self.types.room),
             "stair" => names(&self.types.stair),
             "curtainpanel" => names(&self.types.curtain_panel),
@@ -5922,6 +6111,7 @@ impl Model {
                 return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
             }
             "wall" | "floor" => "Generic - 200mm",
+            "toposolid" => "Generic - 300mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",
             "roof" => "Generic - 300mm",
@@ -6005,14 +6195,37 @@ impl Model {
         })
     }
 
+    /// How a door of this family or project type opens, when the model knows it.
+    fn door_operation(&self, family: Option<&str>, type_name: &str) -> Option<Option<Operation>> {
+        match family {
+            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
+            None => self.types.door.get(type_name).map(|t| t.operation),
+        }
+    }
+
     /// Whether this door has one swinging leaf. A door without a declared operation swings by default,
     /// as it does in IFC. Read the chosen family or project type without building its geometry.
     pub fn single_swing_door(&self, family: Option<&str>, type_name: &str) -> bool {
-        let operation = match family {
-            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
-            None => self.types.door.get(type_name).map(|t| t.operation),
-        };
-        matches!(operation, Some(None | Some(Operation::Swing)))
+        matches!(self.door_operation(family, type_name), Some(None | Some(Operation::Swing)))
+    }
+
+    /// What a door of this family or project type can flip: a swing door's hinge and face; another operation's
+    /// leaves slide, fold or stay put, and flip nothing.
+    pub fn door_flips(&self, family: Option<&str>, type_name: &str) -> Flips {
+        match self.door_operation(family, type_name) {
+            Some(Some(operation)) if operation != Operation::Swing => Flips::default(),
+            _ => Flips { hand: true, facing: true },
+        }
+    }
+
+    /// What an element can flip, as `flip` and the Space key offer it: a door's as its type says, a window's face
+    /// until its family's control arrows say more. `None` for what isn't a door or a window.
+    pub fn opening_flips(&self, e: &Element) -> Option<Flips> {
+        match e {
+            Element::Door(o) => Some(self.door_flips(o.family.as_deref(), &o.type_name)),
+            Element::Window(_) => Some(Flips { hand: false, facing: true }),
+            _ => None,
+        }
     }
 
     /// The type of a door or window.
@@ -6020,27 +6233,52 @@ impl Model {
         self.opening_dims(e).ok()
     }
 
-    /// Where a door's or window's family's axes lie: the point in plan at the middle of the opening in the middle
-    /// of its wall, the way the wall runs there, and the height of its sill.
-    /// In a slanted wall, where the wall has leant to at its sill ([`Model::opening_lean`] says how it leans on above it).
-    /// A vertical one ([`Opening::slanted`] false) stands where the wall has leant to halfway up it, its sill still the third.
-    pub fn opening_frame(&self, o: &Opening) -> Option<(P2, P2, f64)> {
-        self.opening_frame_as(o, o.slanted)
+    /// The hole a door or a window cuts in its wall, when the cut plane at height `cut` passes through it: what a plan or
+    /// a section shows of the opening at that height, and nothing for a window whose sill is over the plane or a door
+    /// whose head is under it. None too when its wall or its type is gone.
+    pub fn opening_hole(&self, e: &Element, cut: f64) -> Option<crate::walls::Hole> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return None };
+        let h = crate::walls::hole(self, self.wall(o.host)?, e, o)?;
+        (h.bottom <= cut && cut < h.top).then_some(h)
     }
 
-    /// [`Model::opening_frame`] for `o` slanted or not.
-    fn opening_frame_as(&self, o: &Opening, slanted: bool) -> Option<(P2, P2, f64)> {
+    /// Where a door's or window's family's axes lie: the point in plan of their zero, the datums' crossing, the way the wall
+    /// runs there, and its height. Its insertion point is in the middle of its wall at `offset` along it, `sill` up it, and
+    /// the family stands by its origin there ([`Model::opening_placement`]); while the datums define the origin, that is the
+    /// middle of the opening.
+    pub fn opening_frame(&self, o: &Opening) -> Option<(P2, P2, f64)> {
+        let placed = self.opening_placement(o)?;
+        let u = placed.axes[0];
+        Some((P2(placed.origin[0], placed.origin[1]), P2(u[0], u[1]), placed.origin[2]))
+    }
+
+    /// A door's or a window's family's axes in the model, as its pieces have them, the opening's flips taken already
+    /// ([`Model::opening_local`]): its insertion point in the middle of its wall at `offset` along its line and `sill` up from
+    /// its base, x along the wall there, y across it, z up; the family placed by its origin there
+    /// ([`crate::hosting::Placement::by_origin`]). In a slanted wall, a slanted one ([`Opening::slanted`]) stands where the wall
+    /// has leant to at its sill, its z leaning with the wall ([`Model::opening_lean`]), so it stays in the wall all the way up;
+    /// a vertical one stands upright where the wall has leant to halfway up it.
+    pub fn opening_placement(&self, o: &Opening) -> Option<crate::hosting::Placement> {
+        self.opening_placement_as(o, o.slanted)
+    }
+
+    /// [`Model::opening_placement`] for `o` slanted or not: slanted, what its voids stand in, leaning with the wall so they cut
+    /// it the same whichever way the opening stands.
+    fn opening_placement_as(&self, o: &Opening, slanted: bool) -> Option<crate::hosting::Placement> {
         let w = self.wall(o.host)?;
         let sill = self.own_base(w) + o.sill;
-        let at = if slanted || w.slant == 0.0 { sill } else { sill + self.opening_rise(o) / 2.0 };
+        let across = if slanted || w.slant == 0.0 { sill } else { sill + self.opening_rise(o) / 2.0 };
         let axis = walls::Axis::of(w);
-        Some((axis.at(o.offset, walls::centre(self, w) + walls::lean(self, w, at)), axis.tangent(o.offset), sill))
-    }
-
-    /// [`Model::opening_frame`] where the wall has leant to at the sill, whatever the opening's orientation: what its voids
-    /// stand in, leaning with the wall so they cut it the same either way.
-    fn opening_frame_leaning(&self, o: &Opening) -> Option<(P2, P2, f64)> {
-        self.opening_frame_as(o, true)
+        let (at, u) = (axis.at(o.offset, walls::centre(self, w) + walls::lean(self, w, across)), axis.tangent(o.offset));
+        let n = u.perp();
+        let lean = if slanted { self.host_lean(o) } else { 0.0 };
+        let insertion = [at.0, at.1, sill];
+        Some(crate::hosting::Placement::by_origin(
+            insertion,
+            [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [lean * n.0, lean * n.1, 1.0]],
+            true,
+            self.opening_origin(o),
+        ))
     }
 
     /// A door's or window's height, as its type or family says; 0 where neither does.
@@ -6067,6 +6305,26 @@ impl Model {
     /// How far door or window `o`'s wall moves across for each mm it rises: 0 upright.
     pub fn host_lean(&self, o: &Opening) -> f64 {
         self.wall(o.host).map_or(0.0, |w| walls::lean(self, w, self.own_base(w) + 1.0) - walls::lean(self, w, self.own_base(w)))
+    }
+
+    /// The origin of door or window `o`'s family in its own axes, flipped as the opening is: none (the datums' crossing) for
+    /// one of a project type.
+    pub fn opening_origin(&self, o: &Opening) -> [f64; 3] {
+        let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) else { return [0.0; 3] };
+        let [x, y, z] = f.origin();
+        let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
+        [fx * x + 0.0, fy * y + 0.0, z]
+    }
+
+    /// Where door or window `o`'s opening is in its wall: how far along its line its middle is, and how far up from its base
+    /// its bottom is. Its family's datums, Center (Left/Right) and Ref. Level, are the opening's middle and bottom, so this is
+    /// `offset` and `sill` until a plane of the family's own takes the origin over (O1).
+    pub fn opening_middle(&self, o: &Opening) -> (f64, f64) {
+        let [x, _, z] = self.opening_origin(o);
+        if x == 0.0 && z == 0.0 {
+            return (o.offset, o.sill);
+        }
+        (o.offset - x, o.sill - z)
     }
 
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
@@ -6145,36 +6403,16 @@ impl Model {
     /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
     pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let Some((at, u, z)) = self.opening_frame_leaning(o) else { return Vec::new() };
-        let lean = self.host_lean(o);
-        let place = |p: [f64; 3]| {
-            let q = at + u * p[0] + u.perp() * (p[1] + lean * p[2]);
-            [q.0, q.1, z + p[2]]
-        };
-        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(place)).collect()).collect()
+        let Some(placed) = self.opening_placement_as(o, true) else { return Vec::new() };
+        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(|p| placed.place(p))).collect()).collect()
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
     /// outline seen from above, and what it reaches from and to, over the level.
     pub fn opening_pieces(&self, e: &Element) -> Vec<Piece> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((pieces, _)), Some((at, u, z))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        let lean = self.opening_lean(o);
-        let place = |p: [f64; 3]| {
-            let q = at + u * p[0] + u.perp() * (p[1] + lean * p[2]);
-            [q.0, q.1, z + p[2]]
-        };
-        pieces
-            .into_iter()
-            .map(|pc| Piece {
-                tris: pc.tris.iter().map(|t| t.map(place)).collect(),
-                outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
-                holes: pc.holes.iter().map(|h| h.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect()).collect(),
-                bottom: z + pc.bottom,
-                top: z + pc.top,
-                ..pc
-            })
-            .collect()
+        let (Some((pieces, _)), Some(placed)) = (self.opening_local(e), self.opening_placement(o)) else { return Vec::new() };
+        pieces.iter().map(|pc| placed.piece(pc)).collect()
     }
 
     /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
@@ -6190,8 +6428,12 @@ impl Model {
 
     fn opening_marks_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local_at(e, detail), self.opening_frame(o)) else { return Vec::new() };
-        marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
+        let (Some((_, marks)), Some(placed)) = (self.opening_local_at(e, detail), self.opening_placement(o)) else { return Vec::new() };
+        let place = |q: P2| {
+            let p = placed.place([q.0, q.1, 0.0]);
+            P2(p[0], p[1])
+        };
+        marks.iter().map(|(k, sub)| (k.map(place), *sub)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -6207,6 +6449,7 @@ impl Model {
             Element::Ceiling(c) => Some(c.level),
             Element::Shaft(sh) => Some(sh.level),
             Element::Mass(ms) => Some(ms.level),
+            Element::Toposolid(t) => Some(t.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
             Element::PropertyLine(pl) => Some(pl.level),
@@ -6400,8 +6643,29 @@ impl Model {
         }
     }
 
-    /// Element `id` as shape editing works on it: a floor as it is, or a flat roof by footprint as `roof_as_floor` sees it.
-    /// None for anything else, or with why for a roof that can't take a shape.
+    /// A toposolid's top as shape editing sees it: a floor over its boundary, at its flat top (its level plus `offset`), with
+    /// its shape. Its points' heights, picks, labels and checks are then a floor's; `toposolid_solid` lays its bottom its
+    /// thickness under.
+    pub fn toposolid_as_floor(&self, t: &Toposolid) -> Floor {
+        Floor {
+            type_name: String::new(),
+            level: t.level,
+            boundary: ccw(&t.boundary),
+            openings: Vec::new(),
+            offset: t.offset,
+            slope: 0.0,
+            arrow: None,
+            structural: false,
+            pattern_origin: P2::default(),
+            pattern_angle: 0.0,
+            sketch: Vec::new(),
+            shape: t.shape.clone(),
+            params: BTreeMap::new(),
+        }
+    }
+
+    /// Element `id` as shape editing works on it: a floor as it is, a flat roof by footprint as `roof_as_floor` sees it, or
+    /// a toposolid as `toposolid_as_floor` sees it. None for anything else, or with why for a roof that can't take a shape.
     pub fn shapeable(&self, id: impl Key) -> Result<Floor, String> {
         match self.elements.get(id) {
             Some(Element::Floor(f)) => Ok(f.clone()),
@@ -6409,7 +6673,8 @@ impl Model {
                 Some(why) => Err(why.into()),
                 None => Ok(self.roof_as_floor(r)),
             },
-            _ => Err("only floors and flat roofs have shapes".into()),
+            Some(Element::Toposolid(t)) => Ok(self.toposolid_as_floor(t)),
+            _ => Err("only floors, flat roofs and toposolids have shapes".into()),
         }
     }
 
@@ -6741,11 +7006,113 @@ impl Model {
         self.shaped_solid(f, openings, self.floor_depth(f), self.floor_under(f).map(|(p, _)| p))
     }
 
+    /// A toposolid's thickness, mm: its type's, its layers' total (Revit's Default Thickness).
+    pub fn toposolid_thickness(&self, t: &Toposolid) -> f64 {
+        self.types.toposolid.get(&t.type_name).map_or(0.0, |x| x.thickness)
+    }
+
+    /// A toposolid's top in convex pieces, each counter-clockwise with the plane it lies in (`floor_faces` on its top).
+    pub fn toposolid_faces(&self, t: &Toposolid) -> Vec<(Vec<P2>, walls::Plane)> {
+        self.floor_faces(&self.toposolid_as_floor(t))
+    }
+
+    /// A toposolid's pieces in plan, each a bottom face and how far it rises to the top: what the 3D view draws as slabs.
+    pub fn toposolid_slabs(&self, t: &Toposolid) -> Vec<(Vec<[f64; 3]>, f64)> {
+        let thickness = self.toposolid_thickness(t);
+        self.toposolid_faces(t)
+            .into_iter()
+            .map(|(ring, top)| {
+                let bottom = walls::Plane { z: top.z - thickness, ..top };
+                (bottom.lift(&ring), thickness)
+            })
+            .collect()
+    }
+
+    /// A toposolid's slab as one closed solid: its top's planes, and its thickness under them plumb, its sides round its
+    /// boundary. None for a boundary that doesn't triangulate.
+    pub fn toposolid_solid(&self, t: &Toposolid) -> Option<Polyhedron> {
+        self.solid_under_shape(&self.toposolid_as_floor(t), &[], self.toposolid_thickness(t), None)
+    }
+
+    /// How much a toposolid holds, mm³.
+    pub fn toposolid_volume(&self, t: &Toposolid) -> f64 {
+        self.toposolid_solid(t).map_or(0.0, |p| volume(&p))
+    }
+
+    /// A toposolid's top's lowest and highest, mm.
+    pub fn toposolid_range(&self, t: &Toposolid) -> (f64, f64) {
+        self.toposolid_faces(t)
+            .iter()
+            .flat_map(|(ring, plane)| ring.iter().map(move |q| plane.at(*q)))
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)))
+    }
+
+    /// A toposolid's contour lines: at each multiple of its `interval` between its top's lowest and highest (not at either),
+    /// the segments where its top crosses that height. At most [`MAX_CONTOURS`] levels, and
+    /// [`MAX_CONTOUR_SEGMENTS`] segments in all.
+    pub fn toposolid_contours(&self, t: &Toposolid) -> Vec<(f64, Vec<(P2, P2)>)> {
+        if t.interval <= 0.0 || t.shape.is_empty() {
+            return Vec::new();
+        }
+        let (lo, hi) = self.toposolid_range(t);
+        if !(lo.is_finite() && hi.is_finite()) {
+            return Vec::new();
+        }
+        let first = (lo / t.interval).ceil() as i64;
+        let last = ((hi / t.interval).floor() as i64).min(first + MAX_CONTOURS as i64 - 1);
+        let f = self.toposolid_as_floor(t);
+        let Ok((mesh, lifted, _)) = self.shape_mesh(&f, &[]) else { return Vec::new() };
+        let mut out = Vec::new();
+        let mut drawn = 0usize;
+        for k in first..=last {
+            let z = k as f64 * t.interval;
+            let mut lines = Vec::new();
+            for tri in &mesh.triangles {
+                let (Some(a), Some(b), Some(c)) = (lifted.get(tri[0]), lifted.get(tri[1]), lifted.get(tri[2])) else {
+                    continue;
+                };
+                let p = [*a, *b, *c];
+                let mut hits = Vec::new();
+                for (a, b) in [(0, 1), (1, 2), (2, 0)] {
+                    let (pa, pb) = (p[a], p[b]);
+                    let (da, db) = (pa[2] - z, pb[2] - z);
+                    // A corner exactly at the height counts as above it: a line crosses an edge with one end below.
+                    if (da < 0.0) != (db < 0.0) {
+                        let s = da / (da - db);
+                        hits.push(P2(pa[0] + (pb[0] - pa[0]) * s, pa[1] + (pb[1] - pa[1]) * s));
+                    }
+                }
+                if let [a, b] = hits.as_slice()
+                    && a.dist(*b) > TOL
+                {
+                    lines.push((*a, *b));
+                    drawn += 1;
+                    if drawn >= MAX_CONTOUR_SEGMENTS {
+                        break;
+                    }
+                }
+            }
+            if !lines.is_empty() {
+                out.push((z, lines));
+            }
+            if drawn >= MAX_CONTOUR_SEGMENTS {
+                break;
+            }
+        }
+        out
+    }
+
     /// A shaped top's slab as one closed solid (`shape_solid_over`), `depth` under its top, plumb, or down to `under`.
     fn shaped_solid(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
         if f.shape.is_empty() {
             return None;
         }
+        self.solid_under_shape(f, openings, depth, under)
+    }
+
+    /// A shape's slab from its top's triangulation, flat or shaped (`shaped_solid` without the floor's "no shape, no
+    /// solid").
+    fn solid_under_shape(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
         let (t, lifted, planes) = self.shape_mesh(f, openings).ok()?;
         let n = lifted.len();
         let down = |p: &[f64; 3]| [p[0], p[1], under.map_or(p[2] - depth, |u| u.at(P2(p[0], p[1])))];
@@ -7308,10 +7675,11 @@ impl Model {
                 let (Some(w), Some(t)) = (self.wall(o.host), self.opening_type(e)) else {
                     return Err(format!("{what} has no wall or no type to measure"));
                 };
+                let (middle, _) = self.opening_middle(o);
                 let along = match face {
-                    Face::Centre => o.offset,
-                    Face::Start => o.offset - t.width / 2.0,
-                    Face::End => o.offset + t.width / 2.0,
+                    Face::Centre => middle,
+                    Face::Start => middle - t.width / 2.0,
+                    Face::End => middle + t.width / 2.0,
                     Face::Left | Face::Right | Face::Across | Face::Edge(_) => {
                         return Err(format!("{what} has a centre and two jambs, start and end; measure to one of those"));
                     }
@@ -7417,7 +7785,7 @@ impl Model {
         if let Some(o) = d.orient {
             return Some(o.along());
         }
-        let geo: Vec<Line> = d.refs.iter().filter_map(|r| self.reference_geometry(r).ok()).collect();
+        let geo: Vec<Line> = d.refs.iter().filter_map(|r| crate::drawing_plane::reference(self, d.view, r).ok()).collect();
         if let Some((a, b)) = geo.iter().find(|(a, b)| a.dist(*b) > 1e-9) {
             return Some((*b - *a).unit().perp());
         }
@@ -7544,8 +7912,9 @@ impl Model {
                 (geom::dist_to_segment(hit, p, q) <= reach).then(|| along(hit))
             })
             .collect();
-        let start = hits.iter().copied().filter(|&t| t < o.offset).fold(0.0, f64::max);
-        let end = hits.iter().copied().filter(|&t| t > o.offset).fold(length, f64::min);
+        let (middle, _) = self.opening_middle(o);
+        let start = hits.iter().copied().filter(|&t| t < middle).fold(0.0, f64::max);
+        let end = hits.iter().copied().filter(|&t| t > middle).fold(length, f64::min);
         Some((start, end))
     }
 
@@ -7554,7 +7923,9 @@ impl Model {
     pub fn centred(&self, o: &Opening, near: f64) -> Option<f64> {
         let (start, end) = self.opening_span(o)?;
         let middle = (start + end) / 2.0;
-        ((o.offset - middle).abs() <= near).then_some(middle)
+        // Its opening's middle there, which its offset is from its family's origin (`opening_middle`).
+        let (at, _) = self.opening_middle(o);
+        ((at - middle).abs() <= near).then_some(middle + (o.offset - at))
     }
 
     /// The circle a radial dimension measures on `r`: a round column's centre and radius, or a
@@ -7685,7 +8056,8 @@ impl Model {
 
     /// [`Model::crossings`], each with the reference it is of.
     pub fn stations(&self, d: &Dimension) -> (P2, Vec<(f64, Line, Reference)>) {
-        let lines: Vec<(Line, Reference)> = d.refs.iter().filter_map(|r| Some((self.reference_geometry(r).ok()?, *r))).collect();
+        let lines: Vec<(Line, Reference)> =
+            d.refs.iter().filter_map(|r| Some((crate::drawing_plane::reference(self, d.view, r).ok()?, *r))).collect();
         let Some(n) = self.measured_along(d) else { return (P2(0.0, 0.0), Vec::new()) };
         let n = if n.0 < -1e-9 || (n.0.abs() <= 1e-9 && n.1 < 0.0) { n * -1.0 } else { n };
         let mut v: Vec<(f64, Line, Reference)> = lines
@@ -8599,7 +8971,7 @@ impl Model {
             }
             match layers.iter().filter(|l| l.variable).count() {
                 0 => {}
-                _ if matches!(cat, "wall" | "ceiling") => {
+                _ if matches!(cat, "wall" | "ceiling" | "toposolid") => {
                     return Err(format!("{who}: only a floor's or a roof's layer can be variable, to take up a shaped top's falls"));
                 }
                 1 => {}
@@ -8890,6 +9262,9 @@ impl Model {
         } = t;
         let who = format!("{} {id}", e.category());
         crate::curtain::check_element(self, id, e, panel_cells)?;
+        if let Some(u) = crate::underlay::of_element(e) {
+            crate::underlay::check(self, id, u)?;
+        }
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
         let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
@@ -9004,6 +9379,25 @@ impl Model {
                     return Err(format!("{who}: a property line needs a name"));
                 }
                 crate::site::check(&who, &pl.points)?;
+            }
+            Element::Toposolid(t) => {
+                point(&format!("{who} pattern origin"), t.pattern_origin)?;
+                coord(&format!("{who} pattern angle"), t.pattern_angle)?;
+                level_ok(t.level)?;
+                known(&who, &t.type_name, &self.types.toposolid)?;
+                boundary(&who, &t.boundary)?;
+                crate::site::check(&who, &t.boundary)?;
+                text(&who, "name", &t.name)?;
+                coord(&format!("{who} offset"), t.offset)?;
+                coord(&format!("{who} interval"), t.interval)?;
+                coord(&format!("{who} thickness"), self.toposolid_thickness(t))?;
+                if t.interval != 0.0 && t.interval < MIN_CONTOUR_INTERVAL {
+                    return Err(format!(
+                        "{who}: its contour interval is {} mm: it must be 0, or at least {MIN_CONTOUR_INTERVAL} mm",
+                        t.interval
+                    ));
+                }
+                shape_ok(&who, &self.toposolid_as_floor(t), None)?;
             }
             Element::RoomSeparator(rs) => {
                 level_ok(rs.level)?;
@@ -9212,7 +9606,9 @@ impl Model {
                 coord(&format!("{who} offset"), o.offset)?;
                 coord(&format!("{who} sill"), o.sill)?;
                 text(&who, "mark", &o.mark)?;
-                let (a, b) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
+                // Its opening, its family's datums' middle and bottom (`opening_middle`), in the wall.
+                let (middle, sill) = self.opening_middle(o);
+                let (a, b) = (middle - t.width / 2.0, middle + t.width / 2.0);
                 let length = crate::walls::Axis::of(w).length();
                 if a < -TOL || b > length + TOL {
                     return Err(format!(
@@ -9224,22 +9620,22 @@ impl Model {
                 }
                 // Its sill in the wall: on or over its base, and under its top all across it (which a roof it's attached to may
                 // raise). Its head may rise past the top, as Revit lets it: the wall is cut up to its top, a notch open there.
-                if o.sill < 0.0 {
-                    return Err(format!("{who}: sill {} is under wall {}'s base; give it a sill of 0 or more", o.sill, self.shown(o.host)));
+                if sill < 0.0 {
+                    return Err(format!("{who}: sill {} is under wall {}'s base; give it a sill of 0 or more", sill, self.shown(o.host)));
                 }
                 let top =
-                    [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min) - self.own_base(w);
-                if o.sill > top - TOL {
+                    [a, middle, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min) - self.own_base(w);
+                if sill > top - TOL {
                     return Err(format!(
                         "{who}: sill {} is at or over the top of wall {}, {} mm up from its base there, so nothing of it is in the \
                          wall; lower its sill to {} or less, or raise the wall's top",
-                        o.sill,
+                        sill,
                         self.shown(o.host),
                         (top * 100.0).round() / 100.0,
                         ((top - TOL) * 100.0).round() / 100.0
                     ));
                 }
-                let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
+                let span = OpeningSpan { start: a, end: b, sill, head: sill + t.height, id };
                 let list = spans.entry(o.host).or_default();
                 let at = list.partition_point(|held| held.start <= a);
                 list.insert(at, span);
@@ -9306,8 +9702,20 @@ impl Model {
                 }
             }
             Element::Dimension(d) => {
-                level_ok(d.level)?;
-                if let Some(v) = d.view {
+                let vertical = d.view.is_some_and(|v| self.section(v).is_some());
+                if vertical {
+                    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || d.equal || !d.locked.is_empty() || d.alignment {
+                        return Err(format!(
+                            "{who}: section/elevation dimensions support aligned and linear measurement, without locks or equality constraints"
+                        ));
+                    }
+                    if d.view != Some(d.level) {
+                        return Err(format!("{who}: a section/elevation dimension's anchor must be its view"));
+                    }
+                } else {
+                    level_ok(d.level)?;
+                }
+                if let Some(v) = d.view.filter(|_| !vertical) {
                     self.plan_view_of(v, d.level).ok_or_else(|| format!("{who}: view {} isn't a plan view of its level", self.shown(v)))?;
                 }
                 point(&who, d.at)?;
@@ -9389,7 +9797,7 @@ impl Model {
                     if r.point.is_some() && d.kind == DimKind::Angular {
                         return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
                     }
-                    let line = self.reference_geometry(r).map_err(|e| format!("{who}: {e}"))?;
+                    let line = crate::drawing_plane::reference(self, d.view, r).map_err(|e| format!("{who}: {e}"))?;
                     if !seen.insert((r.id, r.face, r.point)) {
                         let at = match r.point {
                             Some(End::Start) => "start of its ",
@@ -9695,6 +10103,21 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
+                // Its tilt, where it has one: two unit directions square to each other, on no plane and placed by no points,
+                // which tilt a component themselves.
+                if let Some([x, z]) = c.tilt {
+                    let unit = |v: [f64; 3]| {
+                        v.iter().all(|k| k.is_finite()) && ((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt() - 1.0).abs() < 1e-6
+                    };
+                    if !(unit(x) && unit(z) && (x[0] * z[0] + x[1] * z[1] + x[2] * z[2]).abs() < 1e-6) {
+                        return Err(format!("{who}: its tilt's x and z must be unit directions square to each other, not {x:?} and {z:?}"));
+                    }
+                    if c.host.is_some() || self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is tilted, and stands on a work plane or is placed by its points, which tilt it themselves"
+                        ));
+                    }
+                }
                 // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
                 // by its own points.
                 if let Some(h) = &c.host {
@@ -9762,10 +10185,7 @@ impl Model {
                 }
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
-                let built = match serde_json::to_string(&c.params) {
-                    Ok(values) => shapes.entry((c.family.as_str(), c.type_name.as_str(), values)).or_insert_with(build).clone(),
-                    Err(_) => build(),
-                };
+                let built = shapes.entry(self.shape_key(c)).or_insert_with(build).clone();
                 built.map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
@@ -10272,6 +10692,7 @@ impl Model {
             distribution_systems,
             wire_types,
             georeference,
+            spatial_guids,
             pinned,
             demand_factors,
             coordinates,
@@ -10327,6 +10748,7 @@ impl Model {
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
+            && *spatial_guids == o.spatial_guids
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors
             && *coordinates == o.coordinates
@@ -10372,7 +10794,7 @@ struct Tally<'a> {
     /// The members each view's detail groups and repeating details place.
     members_placed: BTreeMap<Guid, usize>,
     /// Whether components' shapes build, by family, type and values (as JSON).
-    shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
+    shapes: HashMap<crate::component_geometry::Key, Result<(), String>>,
     /// The project's information element, once seen.
     project_info: Option<Id>,
     /// Each group member: its group.
@@ -11066,6 +11488,31 @@ mod tests {
         }
         let e = m.check().unwrap_err();
         assert!(e.contains(&format!("wall {id}")) && e.contains("Brick") && e.contains("Generic - 200mm"), "{e}");
+    }
+
+    /// A cut plane shows an opening only between its sill and its head, and through the hole its own type cuts: the one
+    /// question a plan's ink and a plan's snapping both ask.
+    #[test]
+    fn a_cut_plane_shows_an_opening_between_its_sill_and_its_head() {
+        let mut m = Model::new("t");
+        let host = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        let d = m.insert(door(m.guid(host), 2500.0));
+        let e = m.elements.get(d).expect("the door");
+        let h = m.opening_hole(e, 1000.0).expect("the cut plane passes through it");
+        assert!((h.s0 - 2050.0).abs() < 1e-6 && (h.s1 - 2950.0).abs() < 1e-6, "the hole along the wall: {:?}", (h.s0, h.s1));
+        assert_eq!((h.bottom, h.top), (0.0, 2100.0), "from the level's floor to its head");
+        assert!(m.opening_hole(e, 2100.0).is_none(), "its head is under the plane");
+        // One lifted over the plane, as a window is: nothing of it shows at 1200, all of it at its own height.
+        let mut lifted = door(m.guid(host), 4000.0);
+        if let Element::Door(o) = &mut lifted {
+            o.sill = 2000.0;
+        }
+        let w = m.insert(lifted);
+        let we = m.elements.get(w).expect("the lifted one");
+        assert!(m.opening_hole(we, 1200.0).is_none(), "under its sill");
+        assert_eq!(m.opening_hole(we, 2100.0).map(|h| (h.bottom, h.top)), Some((2000.0, 4100.0)));
+        // Only a door or a window has one.
+        assert!(m.opening_hole(&wall(m.guid(100000), P2(0.0, 0.0), P2(1000.0, 0.0)), 1000.0).is_none());
     }
 
     #[test]

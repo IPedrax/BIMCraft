@@ -326,6 +326,12 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
     h.run();
 }
 
+/// `Shift+Tab`: the wall's three lines, before the first point and mid-chain alike.
+fn shift_key(h: &mut Harness<BimApp>, k: Key) {
+    h.key_combination_modifiers(Modifiers::SHIFT, &[k]);
+    h.run();
+}
+
 /// Letters typed over the view: a two-letter shortcut.
 /// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
@@ -1076,6 +1082,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
         "Player",
         "Run Script",
         "New Script",
+        "Underlay Settings",
     ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
@@ -2907,6 +2914,31 @@ fn the_text_tool_with_a_leader_takes_its_point_then_the_notes() {
     );
 }
 
+/// The Text tool's Leader Type (#381): a note placed with Two Segment or Curved keeps the kind it was placed with.
+#[test]
+fn the_text_tools_leader_type_goes_with_the_notes_it_places() {
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Text");
+    type_into(&mut h, "Text:", "Lintel");
+    press(&mut h, "Leader");
+    press(&mut h, "Two Segment");
+    click(&mut h, P2(2000.0, 2000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    press(&mut h, "Curved");
+    click(&mut h, P2(3000.0, 2000.0));
+    click(&mut h, P2(5000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!(notes.len(), 2);
+    assert_eq!((field(&h, notes[0], "leader_kind"), field(&h, notes[1], "leader_kind")), (json!("two_segment"), json!("curved")));
+    // Rewritten, a placed note changes its leader's kind from its own Options Bar.
+    h.state_mut().edit_note(notes[0]);
+    h.run();
+    press(&mut h, "Curved");
+    press(&mut h, "Finish");
+    assert_eq!(field(&h, notes[0], "leader_kind"), json!("curved"));
+}
+
 #[test]
 fn angular_and_radial_dimensions_and_spot_elevations_from_the_annotate_tab() {
     // Walls 3 to 6, a slanted one 7, a round column 8, the floor 9.
@@ -3733,6 +3765,8 @@ fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!((floor.len(), field(&h, floor[0], "area_m2")), (1, json!(48.0)));
@@ -3752,6 +3786,8 @@ fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     // A drain 30 mm down in its middle, from Shape Editing's Add Point at the Options Bar's elevation.
@@ -3785,6 +3821,8 @@ fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_a
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     press(&mut h, "Add Point");
@@ -3830,6 +3868,8 @@ fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height(
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     press(&mut h, "Add Point");
@@ -3923,6 +3963,8 @@ fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free()
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!(floor.len(), 1);
@@ -4110,6 +4152,7 @@ fn a_floor_types_layers_go_from_its_top_down() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     press(&mut h, "Edit Type");
     // A layer on top of its structure: tiles, 10 mm.
@@ -4568,9 +4611,12 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
         .collect();
     // The horizontal guide is put on the physical pixel grid: y = 1000.5, a pixel's centre, so it is one crisp pixel.
     let (snapped, source) = (pos2(1000.0, 1000.5), pos2(0.0, 1000.5));
-    assert_eq!(segments.len(), 4, "the relation and its three fading tail pieces: {shapes:?}");
+    // The relation is in two inks since a guide's strong ink reaches only a screen back from the point it locks: a faint piece
+    // from the source and a strong one ending at the point, and then the three fading tail pieces.
+    assert_eq!(segments.len(), 5, "the relation in two inks and its three fading tail pieces: {shapes:?}");
     // The relation runs from its source to the point it locks.
-    assert!(segments.iter().any(|[a, b]| a.distance(source) < 0.01 && b.distance(snapped) < 0.01), "{segments:?}");
+    assert!(segments.iter().any(|[a, _]| a.distance(source) < 0.01), "it starts at its source: {segments:?}");
+    assert!(segments.iter().any(|[_, b]| b.distance(snapped) < 0.01), "and ends at the point it locks: {segments:?}");
     // The tail runs on past the point, 100 px in all, and no ray crosses the view.
     let tail: f32 = segments.iter().map(|[a, b]| a.distance(*b)).filter(|len| *len != 0.0).sum();
     assert!((tail - (1000.0 + 100.0)).abs() < 0.1, "the relation and a 100 px tail: {segments:?}");
@@ -4644,6 +4690,51 @@ fn a_point_held_by_guides_says_so_whatever_else_it_snapped_to() {
     assert_eq!(lock_glyph(Kind::Angle, Lock::Free, true), None, "an angle step nothing holds keeps its dot");
     assert_eq!(lock_glyph(Kind::Endpoint, Lock::Cross, true), None, "real geometry keeps its own marker");
     assert_eq!(lock_glyph(Kind::Free, Lock::Cross, false), None, "the classic look has its own markers");
+}
+
+/// A label at the view's edge is moved inside it: a snap's name over a point at the very top is read a line lower, not
+/// cut in half by the edge.
+#[test]
+fn a_label_at_the_views_edge_is_kept_inside_it() {
+    use crate::canvas::inside;
+    let clip = egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(800.0, 600.0));
+    let size = vec2(120.0, 20.0);
+    let top = inside(egui::Rect::from_min_size(pos2(400.0, -8.0), size), clip);
+    assert_eq!(top.min, pos2(400.0, 2.0), "the name came down by the margin");
+    let right = inside(egui::Rect::from_min_size(pos2(760.0, 300.0), size), clip);
+    assert_eq!(right.max.x, 798.0, "and a name at the right edge came left");
+    let free = egui::Rect::from_min_size(pos2(300.0, 300.0), size);
+    assert_eq!(inside(free, clip), free, "a label with room stays where it is");
+}
+
+/// A guide's strong segment is the last screen-wide stretch of the relation, however far its source is: a 40 m grid's
+/// source would otherwise paint a bright line across the whole plan.
+#[test]
+fn a_guides_strong_segment_reaches_only_a_screen_from_the_point_it_locks() {
+    use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult, GuideLine, ReferenceType};
+    let (at, far) = (P2(0.0, 0.0), P2(-20_000.0, 0.0));
+    let res = AlignmentResult {
+        snapped_point: at,
+        guide_line: GuideLine { from: far, to: at },
+        reference_point: far,
+        axis: AlignmentAxis::Y,
+        kind: ReferenceType::Endpoint,
+        wall_id: None,
+    };
+    let to = |p: P2| pos2(p.0 as f32, p.1 as f32);
+    let along = |d: P2| vec2(d.0 as f32, d.1 as f32);
+    let shapes = crate::canvas::alignment_shapes(&[res], to, along, 100.0, 1.0, true);
+    let core = crate::style::guide_ink().core;
+    let strong = shapes
+        .iter()
+        .find_map(|s| match s {
+            egui::Shape::LineSegment { points, stroke } if stroke.color == core => Some(*points),
+            _ => None,
+        })
+        .expect("the relation's own ink");
+    assert!((strong[1] - strong[0]).length() <= 100.01, "one screen's reach, not 20 m: {strong:?}");
+    // A horizontal hairline is put on the pixel grid, half a pixel off the point's own row.
+    assert!(strong[1].distance(to(at)) <= 0.5, "it ends on the point it locks: {strong:?}");
 }
 
 /// The live reading sits clear of its own segment and its badge: a wide horizontal pill beside a steep one is pushed
@@ -4926,24 +5017,149 @@ fn tab_cycles_a_walls_three_lines_until_a_number_is_typed() {
     let over = P2(2000.0, ext - 10.0);
     assert!(hover(&mut h, over).is_some(), "the pointer is over the plan");
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Left), "the nearest line first");
-    key(&mut h, Key::Tab);
+    shift_key(&mut h, Key::Tab);
     assert_eq!(h.state().canvas.wall_face, Some((id, Face::Centre)), "the next line along");
     hover(&mut h, over);
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Centre), "and the pick follows it");
-    key(&mut h, Key::Tab);
+    shift_key(&mut h, Key::Tab);
     hover(&mut h, over);
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Right));
-    // A number typed keeps Tab: the field swaps, and the wall's line stays where it was.
+    // A number typed keeps the fields' key and the wall's: `Tab` swaps the field, `Shift+Tab` the line.
     h.event(Event::Text("3000".into()));
     h.run();
     assert_eq!(h.state().typed_length, "3000", "the number is being typed");
+    shift_key(&mut h, Key::Tab);
+    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Left)), "Shift+Tab still steps the lines");
     key(&mut h, Key::Tab);
-    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Right)), "the lines stay where they were");
+    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Left)), "Tab leaves the wall's line alone");
     assert_eq!(
         (h.state().typed_length.as_str(), h.state().drawing.other.as_str()),
         ("", "3000"),
         "the number moved to the angle field, as Tab does"
     );
+}
+
+/// `Tab` over a wall steps its three lines and the pick follows; a digit still types the length. Off every wall, `Tab`
+/// steps the length to the angle — and the reading brackets the field that takes the digits, so the move is seen.
+#[test]
+fn tab_over_a_wall_steps_its_faces_and_away_from_it_the_numbers() {
+    use bimcraft_core::model::Face;
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    let (id, ext) = {
+        let m = &h.state().session.model;
+        let id = ids(&h, "wall")[0];
+        (id, bimcraft_core::walls::faces(m, m.wall(id).expect("the wall")).0)
+    };
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 1000.0));
+    assert_eq!(hover(&mut h, P2(2000.0, ext - 10.0)).and_then(|f| f.face), Some(Face::Left), "the wall is under the pointer");
+    // Mid-chain `Tab` is the reading's, even over a wall: the field must step, the wall must not take the key.
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits");
+    assert_eq!(h.state().canvas.wall_face, None, "the wall kept its own line");
+    // `Shift+Tab` steps the wall's three lines from the one the pick has now.
+    shift_key(&mut h, Key::Tab);
+    assert!(h.state().canvas.wall_face.is_some_and(|(w, _)| w == id), "the wall's line, from the fields' key");
+    // The face key never blocks typing: a number is still the length.
+    h.event(Event::Text("350".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "350");
+    // `Esc` takes the number first, leaving the point it was for.
+    key(&mut h, Key::Escape);
+    assert_eq!((h.state().typed_length.as_str(), h.state().drawing.field), ("", 0), "the number went and the field came back to Length");
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there");
+    // Off every wall, Tab steps to the angle, and the reading says which field it is.
+    assert_eq!(hover(&mut h, P2(2000.0, 1000.0)).and_then(|f| f.face), None, "no wall under the pointer");
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits now");
+    let chain = h.state().points().cloned().unwrap_or_default();
+    let m = h.state().session.model.clone();
+    let texts = h.state().shape_texts(&m, &chain, P2(2000.0, 2000.0));
+    let text = texts.first().map(|(_, t)| t.as_str()).unwrap_or_default();
+    assert!(text.contains("[") && text.contains("°"), "one field is bracketed, the angle being the other: {text}");
+}
+
+/// In the app the `Tab` never reaches the canvas: the input hook takes the key and leaves `tab_cycle` for the next
+/// frame. This is that path.
+#[test]
+fn tab_taken_by_the_apps_input_hook_steps_the_fields_off_a_wall() {
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 1000.0));
+    hover(&mut h, P2(2000.0, 1000.0));
+    // What `raw_input_hook` does: the key is not in this frame's events, only the flag is.
+    h.state_mut().tab_cycle = true;
+    h.run();
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits");
+    h.state_mut().tab_cycle = true;
+    h.run();
+    assert_eq!(h.state().drawing.field, 0, "and the length takes them again");
+}
+
+/// The line's reading is painted with the field `Tab` is on in brackets, as a shape's numbers are. The preview drew
+/// a reading of its own once, so `Tab` moved the field and nothing on screen said so whatever `shape_texts` answered.
+#[test]
+fn the_reading_a_line_paints_brackets_the_field_tab_is_on() {
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 1000.0));
+    hover(&mut h, P2(2000.0, 1000.0));
+    let reading = |h: &Harness<BimApp>| {
+        painted_text(h)
+            .into_iter()
+            .find(|t| t.contains("mm") && t.contains('['))
+            .unwrap_or_else(|| panic!("no bracketed reading among {:?}", painted_text(h)))
+    };
+    let before = reading(&h);
+    assert!(before.trim_start().starts_with('['), "the length takes the digits first: {before}");
+    key(&mut h, Key::Tab);
+    let after = reading(&h);
+    assert!(after.find('[') > before.find('['), "the angle takes them now: {before} -> {after}");
+    assert!(after.contains('°'), "the angle is still read: {after}");
+}
+
+/// Before Point 1 there is no number to type, so `Tab` has the faces to itself.
+#[test]
+fn tab_cycles_a_walls_faces_before_the_first_point() {
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    let id = ids(&h, "wall")[0];
+    tool(&mut h, "Wall");
+    hover(&mut h, P2(2000.0, 0.0));
+    key(&mut h, Key::Tab);
+    assert!(h.state().canvas.wall_face.is_some_and(|(w, _)| w == id), "Tab chose a face before Point 1");
+}
+
+/// `Esc` drops a typed number and the field back to Length before it drops the point it was for.
+#[test]
+fn esc_drops_a_typed_number_before_the_chain() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    h.event(Event::Text("900".into()));
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(
+        (h.state().typed_length.as_str(), h.state().drawing.other.as_str(), h.state().drawing.field),
+        ("", "900", 1),
+        "the number is the angle's"
+    );
+    key(&mut h, Key::Escape);
+    assert_eq!(
+        (h.state().typed_length.as_str(), h.state().drawing.other.as_str(), h.state().drawing.field),
+        ("", "", 0),
+        "the number went and the field came back to Length"
+    );
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there: {:?}", h.state().tool);
+    key(&mut h, Key::Escape);
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "the second Esc drops the chain");
+    // A field opened with no digits in it is nothing to drop: one Esc takes the chain, not two.
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    hover(&mut h, P2(5000.0, 5000.0));
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits, and none is typed");
+    key(&mut h, Key::Escape);
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "one Esc, nothing to drop: {:?}", h.state().tool);
 }
 
 /// One edge pin per wall: marking another of its faces moves the pin rather than spending a second of the three, and the
@@ -7388,6 +7604,7 @@ mod assistant;
 mod autosave;
 mod browser;
 mod cad;
+mod camera_views;
 mod chinese;
 mod classification;
 mod clouds;
@@ -7452,6 +7669,7 @@ mod spacemouse;
 mod spots;
 mod standards;
 mod start;
+mod steel;
 mod templates;
 mod themes;
 mod titlebar;
@@ -7461,6 +7679,8 @@ mod triad;
 mod trim;
 mod typed;
 mod typeprops;
+mod underlay;
+mod vertical_tools;
 mod view_controls;
 mod wall_shapes;
 mod window;
@@ -8469,6 +8689,7 @@ mod family_document;
 mod family_exit;
 mod family_nav3d;
 mod family_open;
+mod family_origin;
 mod family_pivots;
 mod family_properties;
 mod family_sketch;
@@ -8481,8 +8702,12 @@ mod family_views;
 mod family_visibility;
 #[cfg(test)]
 mod family_work_plane;
+mod fly;
 mod highlight3d;
 mod industrial_doors;
 mod nested_families;
 mod preview_visibility;
+mod select_instances;
 mod sheet_fit;
+
+mod window_drag;

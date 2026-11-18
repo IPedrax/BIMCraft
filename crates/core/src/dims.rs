@@ -351,13 +351,18 @@ impl Placing {
     /// The kind and orientation of a dimension placed this way through `at` between `refs`. A line picked fixes the way
     /// an automatic one runs: square to it.
     pub fn kind(self, m: &Model, refs: &[Reference], at: P2) -> (DimKind, Option<Orient>) {
+        self.kind_in(m, None, refs, at)
+    }
+
+    pub fn kind_in(self, m: &Model, view: Option<crate::ids::Guid>, refs: &[Reference], at: P2) -> (DimKind, Option<Orient>) {
         match self {
             Placing::Aligned => (DimKind::Aligned, None),
             Placing::Horizontal => (DimKind::Linear, Some(Orient::Horizontal)),
             Placing::Vertical => (DimKind::Linear, Some(Orient::Vertical)),
             Placing::Auto if refs.iter().any(|r| r.point.is_none()) => (DimKind::Aligned, None),
             Placing::Auto => {
-                let points: Vec<P2> = refs.iter().filter_map(|r| m.reference_point(r).ok()).collect();
+                let points: Vec<P2> =
+                    refs.iter().filter_map(|r| crate::drawing_plane::reference(m, view, r).ok().map(|(a, _)| a)).collect();
                 match Orient::follow(&points, at) {
                     Some(o) => (DimKind::Linear, Some(o)),
                     None => (DimKind::Aligned, None),

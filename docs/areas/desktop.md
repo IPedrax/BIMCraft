@@ -132,8 +132,11 @@ project's: the plan, the section and the 3D view draw `BimApp::view_model`, a co
 command on a scratch `Session`, made once for each model and each setting. A tool that needs the view's real model (select all, commands)
 still reads `session.model`. The Door and Window tools preview with `opening_of`, which the `door` and `window` commands insert too, so a
 sketch is the element the click makes (`render::sketch`). When placing a single-swing door in plan, Space swaps its hinge jamb
-and moving the pointer across the wall centre swaps its facing. With one such door selected, Space steps through the four Opens
-pictures in Inspector order; each press is one `modify` and one Undo step. A selected door or window shows two temporary dimensions from its middle
+and moving the pointer across the wall centre swaps its facing; a window's face follows the pointer's side, and Space turns it over.
+A click takes the pending hinge or face and the next one starts as placed. With doors or windows selected, Space turns every one it
+can: a swing door steps through the four Opens pictures in Inspector order, a window turns its face, and a sliding or fixed door
+is left alone. Walls in the selection turn as Space always did, and each press is one `flip` and one Undo step. A door's or a window's
+flip capabilities are `Model::opening_flips`, from its operation; the flip arrows on the plan do the same. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.
@@ -144,7 +147,10 @@ A selected straight wall shows, besides its length, how far its centre line stan
 each side, square to it from its middle (`Model::wall_clearances`; `wall_dimensions` draws them a little along it): a typed one moves the
 wall by the difference, the walls joined to it stretching (`move`).
 The Text tool's Leader (Options Bar) makes the first click the point the note's leader reaches and the next the note's top left corner,
-in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first.
+in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first. Leader Type, beside it, is how that leader runs:
+Straight, Two Segment (a shoulder level with the note, its lettering's height long, then to the point) or Curved, an arc bowing from
+that shoulder's corner (`LeaderKind`, the note's `leader_kind`). The same row appears while a note with a leader is rewritten, so a
+placed note's leader changes its shape there.
 
 Align (AL) highlights the exact edge or axis under the cursor before either pick, leaving the selected reference as an
 extended dashed line. It searches the candidates under the pointer for a usable line rather than letting annotation mask
@@ -178,7 +184,7 @@ line from the last point touches a circle or an arc (`tangents`), else a scan's 
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
-grid point lying on it beats a rounded length), a wall's own line (its exterior face, its centre line or its interior face, whichever the pointer is nearest: `Model::reference_lines`, the same three a dimension measures to), the nearest point of a detail line, else the nearest 10 mm.
+grid point lying on it beats a rounded length), a wall's own line (its exterior face, its centre line or its interior face, whichever the pointer is nearest: `Model::reference_lines`, the same three a dimension measures to), the nearest point of a detail line, the ends of a door's or a window's two jambs (the lines its dimensions measure to, each across its wall) with the middle of the opening a point of its own, else the nearest 10 mm.
 The walls the cursor reaches add their outlines as the plan draws them (`outlines`: the corners and the
 faces as lines), and a stair its corners, riser ends and landing edges (`stairs::reference_edges`); while the Stair
 tool drafts one, `Snaps::stair_corners` keeps a stair to its location line's corners (`stairs::line_corners`). In a section or an
@@ -205,10 +211,11 @@ point or an edge until the ring closes — 150 ms of dead zone, then 300 ms of f
 `Q` at once, before the first point as much as after it; `Q` again, `Esc`, finishing the command or changing tool or
 view clears them, and a view keeps three (`CAP`). A wall is three references — its exterior face, its centre line and
 its interior face, as `Model::reference_lines` gives them to dimensions — and a pick takes the one nearest the pointer,
-which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. `Tab`, while a line or a wall is being drawn,
-steps the pick through the three from the line it has now (`Canvas::wall_face`), and that line is drawn in the canvas's
-hover ink before a click, so a face and a centre line are told apart before they are taken; a number already typed keeps
-Tab for the field it belongs to. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
+which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. Before the first point `Tab` steps the pick
+through the three from the line it has now (`Canvas::wall_face`); once the chain has a point, `Tab` steps the reading's
+fields (length, then angle) and `Shift+Tab` steps the three, a number typed or not (`face_cycle`); for a tool that
+draws no chain (Modify, Dimension, a curtain wall's parts, a section, the 3D view) `Shift+Tab` is `Tab`. The line held is drawn
+in the canvas's hover ink before a click, so a face and a centre line are told apart before they are taken. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
 wall lends one edge pin — marking another of its faces moves the pin (`Marked::Moved`) rather than spending a second of
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
 guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
@@ -243,10 +250,11 @@ sheets take their clicks), and what lay under it is read there (`under_at`), not
 move and its box, so only a press let go within `QUICK` (0.2 s) is a click wherever the hand went: the drag it began is not
 finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's views, the plan's move and box) and the selection
 that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
-a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
-Revit, Shift and the middle button orbit, round the point under the pointer, and the middle button alone pans. Alt (Option on a
-Mac) and the primary button are the middle button, which a Mac's trackpad and mouse don't have (`Orbit::navigate`, issue 459). A
-primary drag alone never moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
+a captured window or wall placement drag commits even when quick; another quick press is a click, and a camera the hand turned
+meanwhile goes back (`Orbit::before`). There, as in Revit, Shift and the middle button orbit, round the point under the pointer,
+and the middle button alone pans. Alt (Option on a Mac) and the primary button are the middle button, which a Mac's trackpad and
+mouse don't have (`Orbit::navigate`, issue 459). A primary drag alone never moves the camera: in Modify an uncaptured drag is a
+selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
 them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
@@ -257,6 +265,31 @@ view's position is written back once the cap rests, and wheel turns 3DxWare may 
 desktop app starts its reader (`BimApp::space_mouse`, Windows only for now), which reads the device's HID reports itself (with
 3DxWare running too, while its profile for BIMCraft passes the axes on as `HIDMultiAxis_*`), the axes found in its report
 descriptor (`spacemouse/descriptor.rs`). With `BIMCRAFT_SPACEMOUSE_LOG=<file>` the reader logs what it found and every report.
+
+A window selected alone in Modify has a contrasting perimeter and its mark above the head in 3D.
+Dragging its body slides it along and up its straight host wall. Shift holds the sill at its starting height,
+including when pressed during a drag or recorded on mouse-up. The preview shows the sill and lock state.
+Release the button before releasing Shift to place at that height. Escape cancels and keeps the selection.
+The selected straight wall's dotted location line is also a drag target on its base plane when its base is unattached.
+On a free wall Shift constrains the move perpendicular to its axis; an end joined to another wall defaults to
+perpendicular movement and Shift releases that constraint. End/height grips, section-box grips, sketch tools,
+dimensions and the visible work-plane patch take precedence. The window keeps its host, type, mark and GUID;
+moving the wall uses the core's Move command to carry its openings and maintain joins.
+
+Both gestures (`orbit/placement.rs`) preview the existing `modify` or `move` command against a snapshot and
+commit once through `BimApp::run`. An invalid placement, lost focus, changed selection or intervening model edit
+drops the pending gesture. A valid release adds one Undo step. Curved-host window dragging, rehosting, multiple
+selection dragging, drag-time numeric entry and snapping are outside this interaction.
+Fly mode (FY, or the wing on the 3D view's control bar; `fly.rs`) flies the active 3D view as a game's camera: W and S forward and
+back where it looks, A and D to the side, Q up and E down, the mouse turning it about the eye (`Camera::flown` in the core), the wheel
+setting the speed (it starts at what crosses the model in about eight seconds) and Shift flying four times as fast. A parallel view is
+turned to perspective as it begins (`perspective`), since only a perspective view has an eye. While it flies the window holds the
+pointer, hidden (locked where the system can, else confined to the window; the mouse's own motion, egui's `pointer.motion`, turns the
+view), and a banner over the view says so. Clicks are dropped while it flies (`raw_input_hook`): X11 can't lock the pointer, and the
+hidden one would click whatever it roamed over. The letters fly only with no Ctrl, Cmd or Alt held, so Ctrl+S saves and Alt+drag still
+turns the view. Esc, FY or the wing again end it, and so do leaving the 3D view, opening a family, a dialog that takes the keys
+(`keys_taken`) or the window losing focus (`BimApp::fly_frame`). A camera view writes where it flew to back to its camera once, as fly
+mode ends however it ends, so a flight is one step to undo. It is the 3D view's only: elsewhere FY says so.
 
 A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
 ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element
@@ -366,9 +399,9 @@ The Inspector's pictures, the same in both profiles. Under the filter row, the t
 (`properties::layer_picture`, for walls, floors, roofs and ceilings, `LAYERED`): each layer to its thickness in its material's colour, a
 type without layers as one band. A wall's run from its exterior face to its interior one, with the location line the selected walls share
 dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
-`modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
-its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
-`flip_facing` through `modify`. A room's colour on plans is its type's, so it is set in the room type's Type Properties
+`modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors that swing, which way they open (`opening_picker`): four
+plans of a door in its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting
+their `flip_hand` and `flip_facing` through `flip`; a door whose leaves slide, fold or stay put has no such pictures. A room's colour on plans is its type's, so it is set in the room type's Type Properties
 (`properties::RoomRows`, Edit Type with a room selected): under Floor and Ceiling, the floor type and the ceiling type its rooms have
 of their own (None first) and each one's offset from the room's level; under Graphics, Colour on plans and its swatches or any other
 colour (`RoomType::colour`, red, green and blue, none for no fill), which plans draw as a fill of each of its rooms' regions behind
@@ -410,7 +443,15 @@ parameters), and a component's says the room it stands in, which costs its level
 each element's for the model it was found in (`palette_json`, by a `Weak<Model>` as the canvas keeps room outlines) and finds what it
 lacks together, among one `Rooms`, so a level's rooms are found once for the whole selection. On the 20-storey highrise with two rooms
 a storey, 50 selected components cost 180 ms a frame read afresh; kept, 0.004 ms, and the frame after a change 3 ms on one level, 27 ms
-over all twenty. Select All Instances shares one `Rooms` over what the view shows the same way.
+over all twenty.
+
+Select All Instances offers **Visible in View** (also SA) and **In Entire Project** in the canvas's context menu and on a
+system or loadable-family type in the Project Browser. Browser selection needs no selected instance and leaves the placement
+tool unchanged. Both use the read-only `select_instances` command: selected `ids` (ids or GUIDs) identify types, or `category`
+and `type` / `family` and `type` name a browser type. Optional `within` restricts matching to candidate ids (empty means none);
+omitting it searches the project. Matching uses library type identity, including the family for loadable types, without
+computing rooms or serializing every candidate. View candidates follow the active view's graphics and temporary visibility;
+the project scope includes hidden instances. Selecting creates no model edit or undo step.
 
 View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
 kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,
@@ -462,6 +503,12 @@ of the model the 3D view draws, so the project, its undo and its file never hold
 view goes back where it was (`section_box::Was`: closed, its tab at its place, or floating) and is drawn as the project has it; closing its
 window ends the link. The selection is the model's, so the plan and the 3D view share it already. The plan's own Section Box flag reads the
 project's box, never the link's, so a plan that follows the box and a 3D view that follows the plan never chase each other.
+
+Extrusion roof **Edit Profile** uses the same 3D sketch interaction in an upright frame (`workplane::roof_profile`).
+`sketch3d::Surface` distinguishes world-XY boundary coordinates from the profile's local along/up coordinates. It maps
+profile picks with `Camera::on` and `Frame::coordinates`, and draws with `Frame::point`. The view initially faces the
+profile so rotated roofs are immediately editable. Finish calls existing `modify`, with one history step; Cancel leaves
+the model unchanged. [Scope, properties and tests](levels-walls-roofs.md).
 
 Sketching in 3D (`sketch3d.rs`). Edit Boundary on a floor, ceiling, roof by footprint or shaft selected in the 3D view keeps the
 sketch there, as Revit does: the lines are drawn over the picture on the element's own plane, `Model::sketch_plane` (a floor's
@@ -682,6 +729,9 @@ pattern geometry (including font outlines) and can follow a curve. The creator s
 Cancel, so OK/Apply remains one undoable Line Styles transaction. See [views and graphics](views-and-graphics.md) for the
 seven segment kinds, paper units, text fitting and centerline semantics.
 
+The following interaction details describe plan dimensions; [vertical drawing tools](#drawing-tools-in-sections-and-elevations)
+have their own supported references and restrictions.
+
 Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
 them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
 it ends (`canvas::dimension_pick`), marked with a square; a click on a reference already picked takes it out, Backspace the last, and Esc starts the chain over; after two, a click away places the dimension the Options Bar's Place says (Auto,
@@ -749,6 +799,17 @@ there is nothing to snap to. Show grids only controls display: snapping can rema
 constraints keep priority; grid snapping replaces the free-point fallback and automatic angle guides. Sections and
 elevations snap annotation placement in their local horizontal/height coordinates. Model validation rejects invalid
 spacing, divisions, pens or rotation, and commands roll back the whole edit.
+
+## Drawing tools in sections and elevations
+
+Aligned/Linear Dimension picks levels, grids perpendicular to the view line, and that view's detail-line references or endpoints. Pick references, then click away to place; Space cycles placement modes. Dimension types and instance text use the existing Properties controls. These dimensions follow their references but do not drive geometry, lock it or impose equality yet. Wall/mesh silhouettes, oblique grids and datum display endpoints are not dimension references in this first slice.
+
+Detail Line draws in along/up coordinates with the existing Draw shapes (Pick Lines and Fillet are not yet available). Move uses a base and destination, Shift/Constrain and typed lengths. It moves annotations only within their owning view, straight-wall openings along the host and in height, and unhosted non-adaptive components in world coordinates. Unsupported categories or motion off an opening's host refuse the whole command. Trim/Extend Corner and Single/Multiple work on the view's detail lines through the same core operations as plan tools. Failed Trim retains its first pick. Escape and view switching cancel partial input. A point snaps to a reference near the cursor, else to the background grid when
+grid snapping is on, else to the nearest 10 mm, grid snapping off or not.
+
+Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids, by:[along,up]}`; all other mutations retain existing commands. A vertical dimension's `level` anchor is its view GUID, also stored in `view`. Format 21 prevents older readers from resolving it as a plan dimension or dropping it. Format 20 needs no data conversion.
+
+Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
 
 ## Benchmarking the window
 

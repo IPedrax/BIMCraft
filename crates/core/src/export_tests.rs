@@ -387,6 +387,20 @@ fn a_region_of_a_view_is_all_an_export_holds_and_a_region_outside_it_is_refused(
 }
 
 #[test]
+fn an_export_command_sets_pdf_creator_and_omits_producer() {
+    let mut s = project();
+    let dir = folder("pdf-creator");
+    let to = dir.join("plan.pdf");
+    run(&mut s, "export", json!({"format": "pdf", "view": "A101", "path": to, "pdf": {"creator": "Drawing tool", "producer": ""}}));
+    let bytes = std::fs::read(&to).unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("/Creator(Drawing tool)"));
+    assert!(text.contains("<xmp:CreatorTool>Drawing tool</xmp:CreatorTool>"));
+    assert!(!text.contains("/Producer") && !text.contains("<pdf:Producer>"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn a_pdf_is_written_as_an_archive_or_as_pictures_as_its_settings_say() {
     let mut s = project();
     let dir = folder("pdfa");

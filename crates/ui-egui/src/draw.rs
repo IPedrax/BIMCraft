@@ -10,11 +10,13 @@ pub(crate) use bimcraft_core::draw::{Shape, element_curve};
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Id, TOL};
 use bimcraft_core::sketch::SketchLine;
+use bimcraft_core::walls;
 use egui::{Painter, PointerButton, Pos2, Rect, Response, Shape as Paint, Stroke, StrokeKind, TextEdit, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::icons::Icon;
 use crate::lang::{t, tf};
+use crate::sketch::picked_face;
 use crate::style::{canvas_pal, pal};
 use crate::{BimApp, Status, Tool, panel, small_button};
 
@@ -72,6 +74,8 @@ pub struct Drawing {
     pub radius_on: bool,
     pub radius: String,
     pub offset: String,
+    /// The Options Bar's Offset on the other side, as Space flips it while a shape is drawn.
+    pub offset_flip: bool,
     /// Where the last line drawn ended, and the way it ran there.
     pub last: Option<(P2, P2)>,
     /// Fillet Arc's first line, then its second, each where it was picked.
@@ -105,6 +109,7 @@ impl Default for Drawing {
             radius_on: false,
             radius: "1000".into(),
             offset: "0".into(),
+            offset_flip: false,
             last: None,
             fillet: Vec::new(),
             grip: None,
@@ -193,6 +198,15 @@ impl BimApp {
 
     /// The shape `target` draws from now, its points so far dropped: a chain going on from where it is.
     pub(crate) fn set_shape(&mut self, target: Target, shape: Shape) {
+        if target == Target::Sketch && self.editing_roof_profile() && !matches!(shape, Shape::Line | Shape::Polyline) {
+            self.status = crate::Status {
+                text: crate::lang::t("An extrusion roof profile supports straight lines and polylines").into(),
+                error: true,
+            };
+            return;
+        }
+        // A Draw tool is a tool of its own: Walls' Outline's Options Bar closes and the shape takes over.
+        self.leave_walls_outline();
         let slot = match target {
             Target::Detail => &mut self.drawing.detail,
             Target::Sketch => &mut self.drawing.sketch,
@@ -232,6 +246,7 @@ impl BimApp {
         let sides = self.drawing.sides.trim().parse::<usize>().unwrap_or(6).clamp(3, draw::MAX_SIDES);
         let radius = self.drawing.radius_on.then(|| units.parse(&self.drawing.radius)).flatten().filter(|r| *r > TOL);
         let offset = units.parse(&self.drawing.offset).filter(|o| o.is_finite()).unwrap_or(0.0);
+        let offset = if self.drawing.offset_flip { -offset } else { offset };
         Options { sides, radius, offset }
     }
 
@@ -248,7 +263,7 @@ impl BimApp {
             return Some((Field::Radius, &d.radius));
         }
         // A blank Offset is none; one that isn't a length (it may be negative, to the other side) is a mistake.
-        let offsets = !matches!(shape, Shape::Spline | Shape::FitSpline | Shape::Ellipse | Shape::PartialEllipse | Shape::Fillet);
+        let offsets = shape.takes_offset();
         if offsets && !d.offset.trim().is_empty() && units.parse(&d.offset).is_none_or(|o| !o.is_finite()) {
             return Some((Field::Offset, &d.offset));
         }
@@ -289,8 +304,10 @@ impl BimApp {
 
     /// The Draw panel for `target`: a button for each shape it draws, two rows of them as Revit's are.
     pub(crate) fn draw_panel(&mut self, ui: &mut Ui, target: Target) {
+        let profile = target == Target::Sketch && self.editing_roof_profile();
         let shapes: Vec<Shape> = Shape::ALL
             .into_iter()
+            .filter(|s| !profile || matches!(s, Shape::Line | Shape::Polyline))
             .filter(|s| match target {
                 Target::Wall => s.for_walls(),
                 Target::Detail | Target::Sketch => s.for_lines(),
@@ -302,6 +319,7 @@ impl BimApp {
             Target::Wall => self.drawing.wall,
         };
         let picking_walls = matches!(self.tool, Tool::SketchPick);
+        let drawing = matches!(self.tool, Tool::SketchLine(_));
         panel(ui, msg!("Draw"), |ui| {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
@@ -310,14 +328,16 @@ impl BimApp {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         for &s in row {
-                            let on = s == now && !picking_walls;
+                            let on = s == now && !picking_walls && drawing;
                             if small_button(ui, icon(s), s.label(), on, tip(s)).clicked() {
                                 self.set_shape(target, s);
                             }
                         }
-                        if target == Target::Sketch && k == 1 {
+                        if target == Target::Sketch && k == 1 && !profile {
                             let tip = msg!("Pick Walls: a boundary line along each wall clicked");
                             if small_button(ui, Icon::Wall, "Pick Walls", picking_walls, tip).clicked() {
+                                // Pick Walls is a tool of its own: Walls' Outline's Options Bar closes.
+                                self.leave_walls_outline();
                                 self.tool = Tool::SketchPick;
                             }
                         }
@@ -346,9 +366,10 @@ impl BimApp {
         if round && self.target() == Some(Target::Detail) {
             ui.checkbox(&mut self.drawing.centre_mark, t("Show Centre"));
         }
-        if !matches!(shape, Shape::Spline | Shape::FitSpline | Shape::Ellipse | Shape::PartialEllipse | Shape::Fillet) {
+        if shape.takes_offset() {
             let l = ui.label(t("Offset:"));
-            ui.add(field(&mut self.drawing.offset, 70.0, bad == Some(Field::Offset))).labelled_by(l.id);
+            let edit = field(&mut self.drawing.offset, 70.0, bad == Some(Field::Offset)).id(egui::Id::new("draw-offset"));
+            ui.add(edit).labelled_by(l.id);
         }
     }
 
@@ -890,12 +911,24 @@ impl BimApp {
     }
 
     /// Pick Lines' click on element `id` near `at`: its line, beside it by the Options Bar's offset on the side clicked.
+    /// Pick Lines' line for element `id` near `at`, beside it by the Options Bar's offset on the side clicked: a wall's
+    /// face under the cursor (not its location line), so the offset is measured from the wall's face.
+    pub(crate) fn picked_curve_at(&self, id: Id, at: P2) -> Option<Curve> {
+        let m = &self.session.model;
+        let offset = self.draw_options().offset;
+        if let Some(w) = m.wall(id) {
+            let face = picked_face(m, id, w, at, &std::collections::BTreeMap::new(), false, false);
+            return walls::face_line(m, id, face, offset);
+        }
+        let c = draw::element_curve(m, id)?;
+        draw::pick(&c, at, offset)
+    }
+
     pub(crate) fn picked_curve(&mut self, id: Id, at: P2) -> Option<Curve> {
         if self.options_refused() {
             return None;
         }
-        let c = draw::element_curve(&self.session.model, id)?;
-        draw::pick(&c, at, self.draw_options().offset)
+        self.picked_curve_at(id, at)
     }
 
     /// Join into Polyline (PJ): the detail lines selected, or while sketching the lines picked, joined end to end into one.
@@ -1146,6 +1179,9 @@ impl BimApp {
 
     /// The detail line selected alone, with Modify: the one whose handles are grips.
     pub(crate) fn line_gripped(&self) -> Option<Id> {
+        if self.outline_pending {
+            return None;
+        }
         match (self.selection.as_slice(), &self.tool) {
             (&[id], Tool::Modify) if matches!(self.session.model.elements.get(id), Some(Element::DetailLine(_))) => Some(id),
             _ => None,

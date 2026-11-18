@@ -944,6 +944,15 @@ pub(crate) fn pdf_settings(ui: &mut Ui, s: &mut bimcraft_core::pdf::Settings) {
         text_row(ui, msg!("Title"), &mut s.title, "export-pdf-title");
         text_row(ui, msg!("Author"), &mut s.author, "export-pdf-author");
         text_row(ui, msg!("Subject"), &mut s.subject, "export-pdf-subject");
+        pdf_tool_row(ui, msg!("Creator"), msg!("Default Creator"), &mut s.creator, bimcraft_core::pdf::CREATOR, "export-pdf-creator");
+        pdf_tool_row(
+            ui,
+            msg!("Producer"),
+            msg!("Default Producer"),
+            &mut s.producer,
+            &bimcraft_core::pdf::producer(),
+            "export-pdf-producer",
+        );
     });
 }
 
@@ -1168,4 +1177,27 @@ impl Preview {
             }
         }
     }
+}
+
+/// A tool name with an explicit default: an edited blank field omits the entry, rather than restoring the default.
+fn pdf_tool_row(ui: &mut Ui, label: &str, default_label: &str, value: &mut Option<String>, default: &str, id: &str) {
+    let label = ui.label(t(label));
+    ui.push_id(id, |ui| {
+        ui.horizontal(|ui| {
+            let mut use_default = value.is_none();
+            let mut text = value.clone().unwrap_or_else(|| default.to_string());
+            let response = ui.add_enabled_ui(!use_default, |ui| {
+                ui.add_sized([220.0, 20.0], egui::TextEdit::singleline(&mut text))
+                    .labelled_by(label.id)
+                    .on_hover_text(t("Leave blank to omit this entry."))
+            });
+            if response.inner.changed() {
+                *value = Some(text);
+            }
+            if ui.checkbox(&mut use_default, t(default_label)).changed() {
+                *value = if use_default { None } else { Some(String::new()) };
+            }
+        });
+    });
+    ui.end_row();
 }

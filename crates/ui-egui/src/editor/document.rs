@@ -910,6 +910,26 @@ impl BimApp {
                     self.status = Status { text: e, error: true };
                 }
             }
+            // Defines Origin (O1): where the planes ticked cross is the insertion point the family is placed by. Ticked on one
+            // plane, the other of its direction lets go; a datum ticked stays so until another plane takes it. An adaptive family
+            // has no insertion point.
+            if ed.adaptive.is_none()
+                && let Some(p) = ed.planes.iter().find(|p| p.guid == g)
+            {
+                let (mut on, square, datum) = (p.defines_origin, p.direction().is_some(), p.datum());
+                let mut changed = false;
+                group(ui, msg!("Other"), |ui| {
+                    let l = ui.label(t("Defines Origin"));
+                    let enabled = square && !(datum && on);
+                    let r = ui.add_enabled(enabled, egui::Checkbox::without_text(&mut on)).labelled_by(l.id);
+                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, t("Defines Origin")));
+                    changed = r.changed();
+                    ui.end_row();
+                });
+                if changed {
+                    ed.define_origin(g, on);
+                }
+            }
             self.put_family(ed);
             return;
         }
@@ -2096,6 +2116,10 @@ impl BimApp {
         // The connectors over it, at their places in the family's axes.
         let lit = (crate::style::canvas_pal().accent, crate::style::canvas_pal().hover);
         super::connector_marks::paint(&p, &marks, &project, ed.selected_connector(), ed.connector_hover, lit);
+        // The insertion point, where the planes that define the origin cross (O1).
+        if let Some(at) = ed.origin_mark() {
+            super::origin_mark::paint_3d(&p, &project, at);
+        }
         // A form being sketched on its plane, over the picture (F5), with its padlocks.
         if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
             self.status = Status { text: e, error: true };

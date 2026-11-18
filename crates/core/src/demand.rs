@@ -17,6 +17,12 @@
 /// The utilities there are tables for.
 pub const UTILITIES: &[&str] = &["CPFL", "ENEL", "CELESC"];
 
+/// Every utility `demand` takes by name, as a project's building code may name it: these, then the groups whose categories are
+/// data (`entrance.rs`; a group's member is taken by `demand` too, but not offered here).
+pub fn utilities() -> Vec<&'static str> {
+    UTILITIES.iter().copied().chain(crate::entrance::utilities().iter().map(|u| u.id.as_str())).collect()
+}
+
 /// Where the numbers come from, for each utility.
 pub fn source(utility: &str) -> Option<&'static str> {
     match utility {
@@ -29,7 +35,8 @@ pub fn source(utility: &str) -> Option<&'static str> {
         "CELESC" => Some(
             "Celesc Distribuição, Norma Técnica N-321.0001 'Fornecimento de Energia Elétrica em Tensão de Distribuição Baixa Tensão', revision of December 2025 (RES. DCL nº 143/2025, 12/11/2025): Tabela 01",
         ),
-        _ => None,
+        // A utility of the data cites its own standard.
+        _ => crate::entrance::utilities().iter().find(|u| u.id == utility).map(|u| u.source.as_str()),
     }
 }
 

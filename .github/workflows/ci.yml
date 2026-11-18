@@ -34,9 +34,13 @@ jobs:
         include:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
           - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
-          - { name: Windows, runner: windows-latest, timeout: 100 }
-          # macOS's tests took 75 to 86 minutes on main before the stairs, groups, curtain walls and classification came in.
-          - { name: macOS, runner: macos-15, timeout: 120 }
+          # Windows and macOS compile slowly (Windows 32 minutes, macOS 35, Linux 13) and took 74 to 92 and 64 to 86 minutes in all on
+          # main. Their crates are built without debug info and the timings are kept (below), so a slow run shows what is left to cut.
+          # They also leave out the three tests that run longest, which only Linux runs: the hostile sweep and the two random-edit
+          # oracles of the 3D scene. They check the model's logic, not the platform, and were two thirds of the core's test time on
+          # Windows (the three alone: 1,470 of 2,220 seconds).
+          - { name: Windows, runner: windows-latest, timeout: 100, test_flags: '--config ci/fast-build.toml --timings', test_args: '-- --skip hostile_params_never_panic_or_break_the_model --skip view3d::update::tests::random_edits' }
+          - { name: macOS, runner: macos-15, timeout: 120, test_flags: '--config ci/fast-build.toml --timings', test_args: '-- --skip hostile_params_never_panic_or_break_the_model --skip view3d::update::tests::random_edits' }
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +54,16 @@ jobs:
       - name: Rust
         shell: bash
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
+
+      # Runners of one kind differ: the Linux test step alone took 26 to 63 minutes. The CPU says whether a slow run was unlucky.
+      - name: Machine
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) grep -m1 'model name' /proc/cpuinfo; nproc ;;
+            macOS) sysctl -n machdep.cpu.brand_string hw.ncpu ;;
+            Windows) powershell -NoProfile -Command "(Get-CimInstance Win32_Processor).Name; (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors" ;;
+          esac
 
       # The dependencies' builds, kept between runs (egui and wgpu from scratch take about 15 minutes). Only main saves the cache, so
       # branch runs reuse it without filling the repository's 10 GB of caches with a copy each.
@@ -77,7 +91,19 @@ jobs:
           cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace ${{ matrix.test_flags }} ${{ matrix.test_args }}
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'Linux' && always()
+        with:
+          name: ${{ matrix.name }}-timings
+          path: target/cargo-timings/cargo-timing.html
+          if-no-files-found: ignore
+
+      # Whether the runner's 7 GB ran out while the crates compiled: swap in use at the end says it did.
+      - name: macOS memory
+        if: runner.os == 'macOS' && always()
+        run: sysctl hw.memsize vm.swapusage && vm_stat
 
   # What CLAUDE.md asks after touching ifc.rs: IfcOpenShell validates what BIMCraft writes, with the EXPRESS rules, and builds every
   # product's shape. The sample house, and ci/ifc-coverage.txt for what the sample doesn't reach (structure, runs, masses, phases).
@@ -132,6 +158,13 @@ jobs:
 
       - name: Discord release post
         run: python3 ci/discord_release.py --self-test
+
+      # ci/fast-build.toml names the workspace's crates one by one (see its header): a new crate not named there keeps its debug info.
+      - name: Build config names every crate
+        run: |
+          while read -r name; do
+            grep -q "^\[profile.dev.package.$name\]" ci/fast-build.toml || { echo "ci/fast-build.toml does not name $name"; exit 1; }
+          done < <(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(*(p["name"] for p in json.load(sys.stdin)["packages"]), sep="\n")')
 
       - name: actionlint
         run: |

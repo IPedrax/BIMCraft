@@ -137,6 +137,14 @@ impl Version {
     }
 }
 
+/// The creating application's default name.
+pub const CREATOR: &str = "BIMCraft";
+
+/// The producing application's default name, including this build's version.
+pub fn producer() -> String {
+    format!("{CREATOR} {}", env!("CARGO_PKG_VERSION"))
+}
+
 /// How a PDF file is written, besides its pages.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -154,6 +162,12 @@ pub struct Settings {
     pub author: Option<String>,
     pub subject: Option<String>,
     pub keywords: Vec<String>,
+    /// The creating and producing tools: none keeps BIMCraft's defaults, a blank string omits the entry,
+    /// any other string is used as given (in both Info and XMP).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub producer: Option<String>,
     /// When it was made, seconds since 1970 (UTC); none, no date.
     pub created: Option<u64>,
 }
@@ -376,7 +390,15 @@ fn document_with(pages: &[Page], settings: &Settings, compress: bool) -> Result<
     }
     doc.set_outline(outline);
     let title = settings.title.clone().or_else(|| pages.iter().find_map(|p| p.title.clone()));
-    let mut metadata = Metadata::new().creator("BIMCraft".to_string()).producer(format!("BIMCraft {}", env!("CARGO_PKG_VERSION")));
+    let mut metadata = Metadata::new();
+    let creator = settings.creator.as_deref().unwrap_or(CREATOR);
+    if !creator.trim().is_empty() {
+        metadata = metadata.creator(creator.to_string());
+    }
+    let producer = settings.producer.clone().unwrap_or_else(producer);
+    if !producer.trim().is_empty() {
+        metadata = metadata.producer(producer);
+    }
     let given = |s: &Option<String>| s.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     if let Some(t) = given(&title) {
         metadata = metadata.title(t);
@@ -436,6 +458,77 @@ mod tests {
         assert!(bytes.starts_with(b"%PDF-1.7"));
         assert_eq!(text.matches("/Type/Page/").count(), 2);
         assert!(text.contains("/Outlines"));
+    }
+
+    /// Read the metadata in the emitted bytes, not the settings that requested it. PDF/A-4 has no Info dictionary.
+    fn check_creator_producer(creator: Option<&str>, producer: Option<&str>) {
+        let d = house();
+        for (archive, version) in Archive::ALL.into_iter().map(|a| (a, Version::default())).chain([(Archive::None, Version::V20)]) {
+            let mut input = serde_json::json!({"archive": archive, "version": version, "title": "Plan", "created": 1_700_000_000});
+            if let Some(value) = creator {
+                input["creator"] = value.into();
+            }
+            if let Some(value) = producer {
+                input["producer"] = value.into();
+            }
+            let settings: Settings = serde_json::from_value(input).unwrap();
+            let bytes = document(&[Page::new(&d, P2(80.0, 60.0))], &settings).unwrap();
+            let text = String::from_utf8_lossy(&bytes);
+            // Follow the trailer's reference: an output intent also has an unrelated /Info string.
+            let info = text.rsplit_once("/Info ").map(|(_, reference)| {
+                let id = reference.split_whitespace().next().unwrap();
+                let object = format!("\n{id} 0 obj\n");
+                let body = text.split_once(&object).unwrap().1;
+                body.split_once("\nendobj").unwrap().0
+            });
+            for (key, tag, expected) in [
+                ("Creator", "xmp:CreatorTool", creator.unwrap_or("BIMCraft").to_string()),
+                (
+                    "Producer",
+                    "pdf:Producer",
+                    producer.map(str::to_string).unwrap_or_else(|| format!("BIMCraft {}", env!("CARGO_PKG_VERSION"))),
+                ),
+            ] {
+                if archive == Archive::A4 || version == Version::V20 || expected.trim().is_empty() {
+                    assert!(!info.unwrap_or_default().contains(&format!("/{key}")), "{archive:?}: no {key} in Info");
+                } else {
+                    assert!(info.unwrap().contains(&format!("/{key}({expected})")), "{archive:?}: {key} in Info");
+                }
+                if expected.trim().is_empty() {
+                    assert!(!text.contains(&format!("<{tag}>")), "{archive:?}: no {tag} in XMP");
+                } else {
+                    let escaped = expected.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+                    assert!(text.contains(&format!("<{tag}>{escaped}</{tag}>")), "{archive:?}: {tag} in XMP");
+                }
+            }
+            if archive == Archive::A4 {
+                assert!(info.is_none(), "PDF/A-4 has XMP only");
+            }
+        }
+    }
+
+    #[test]
+    fn creator_and_producer_default_in_info_and_xmp() {
+        check_creator_producer(None, None);
+        let settings: Settings = serde_json::from_value(serde_json::json!({"creator": null, "producer": null})).unwrap();
+        assert_eq!(settings, Settings::default());
+    }
+
+    #[test]
+    fn empty_creator_and_producer_are_omitted_from_info_and_xmp() {
+        check_creator_producer(Some(""), None);
+        check_creator_producer(None, Some(""));
+        check_creator_producer(Some(""), Some(""));
+        check_creator_producer(Some(" \t\n"), None);
+        check_creator_producer(None, Some(" \t\n"));
+    }
+
+    #[test]
+    fn custom_creator_and_producer_are_set_in_info_and_xmp() {
+        check_creator_producer(Some(" Drawing tool "), None);
+        check_creator_producer(None, Some(" Publishing tool "));
+        check_creator_producer(Some("Drawing tool"), Some("Publishing tool"));
+        check_creator_producer(Some("A & B <C>"), Some("X & Y <Z>"));
     }
 
     #[test]

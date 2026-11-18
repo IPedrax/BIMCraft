@@ -1,0 +1,10 @@
+# Synthetic vertical drawing fixture. Millimetres; no imported assets.
+# Default levels are 100000 (0) and 100001 (3000).
+wall {"points":[[1000,2000],[7000,10000]],"height":3000}
+window {"wall":100002,"offset":3000,"sill":900}
+section {"name":"Rotated section","start":[1800,1400],"end":[7800,9400]}
+detail_line {"view":"Rotated section","start":[1000,400],"end":[5000,400]}
+detail_line {"view":"Rotated section","start":[4000,200],"end":[4000,2400]}
+dimension {"view":"Rotated section","refs":[{"id":100000},{"id":100001}],"at":[6500,1500]}
+elevation {"name":"Rotated elevation","start":[1800,1400],"end":[7800,9400]}
+dimension {"view":"Rotated elevation","refs":[{"id":100000},{"id":100001}],"at":[6500,1500]}

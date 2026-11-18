@@ -43,6 +43,25 @@ takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item b
 `Reader::give_up`'s, kept by item (`Reader::unread`): a product left out as having no body says it after `it has no body
 BIMCraft can read: `, and one that came in without part of its body has its own note, `part of its body was left out, …`.
 
+## Shared shapes
+
+A body an `IfcMappedItem` maps (as Tekla writes every bolt and Revit a type's geometry) is read once in its
+`IfcRepresentationMap`'s frame (`map_frame`), so copies of one shape, moved, turned or lying down, are one type of one family.
+Copies are told apart to a tenth of a millimetre and a thousandth of a degree (`identity`), as Tekla writes copies a few
+hundredths apart; the type keeps the first copy's values exactly. A copy that doesn't stand upright keeps its 3D orientation as
+the component's `tilt` ([families](families.md)); an upright one gets its turn as `angle`.
+
+Inside a mapped body, a straight extrusion of a circle or a profile of lines and arcs comes in as the form it is
+(`exact_form`): its profile on a plane, from and to, meshed only where it is drawn, as a family drawn by hand is. An arc
+(`IfcTrimmedCurve`) stays an arc, a line with a turn; an arc too small for the family's chords comes in as chords of its own,
+and a side under a millimetre joins its neighbours. Forms square to one direction share one reference plane through the
+family's origin, how far along it each stands kept in its from and to, so a family doesn't gather a plane for each copy. Any
+other item (a B-rep, a face set) stays a mesh. A family that is full goes on in `Name (2)` ([families](families.md)).
+
+On a steel model of 39,739 bolts (#264) this brings every bolt in, against 1,366 before. The 3D view has about 28 times
+the triangles to draw (45 M), building its scene in about 25 s and rotating at about 12 frames a second, as #423 measured
+it; holding each copy as a placement in the scene is left for later. Export still writes each component as a mesh of its own, no `IfcMappedItem`.
+
 ## Colours
 
 A material takes the colour a file shades it in: a surface style of its name, else its `IfcMaterialDefinitionRepresentation`'s
@@ -150,3 +169,23 @@ goes back out where it came from (#223).
   (`{system, edition?}`, or `null`); `Model::check` holds both to what IFC can write.
 - **The file**: an older BIMCraft leaves `sets` and `classification` out (`lenient`), and the values stay as plain parameters,
   so it took no `FORMAT` step. Other kinds of property (enumerated, bounded, list, table, complex) are not read yet.
+
+## What a file holds: `ifc_survey`
+
+`ifc_survey {path}` (`survey.rs`) reads an `.ifc` the way `open` does (the same memory budget, `step::parse_within`) and
+answers with counts and the names the format writes, never a product's name, an id or a value, and no coordinate but a storey's
+elevation and heights. It exists so that a file that must not leave the machine can still be described: its owner runs the
+command and pastes the reply back, and what a structural program's files hold stops being a guess. The reply has:
+
+- `schema`, `encoding` (`valid_utf8`, `non_ascii_bytes`: whether the text is UTF-8 or a Windows exporter's Latin-1) and `units`
+  (the length, volume, mass and angle units, by the name the file gives them).
+- `storeys`: for each, its `elevation` attribute, the height of its `placement_z` and the `lowest_product_z` of what it contains
+  (a placement's height is the sum of the heights up its chain of placements, with no rotation taken into account), in the
+  file's length unit, so a file that writes the elevation one way and the placements another shows both.
+- `classes`: for each IFC class, its `count`, its `predefined` types, what its `bodies` are made of (the class of each item of a
+  `Body` representation), `items` (products whose body has 1, 2 or 3 and more items) and how many are `contained` in a storey,
+  `aggregated`, `nested` and `typed`.
+- `property_sets` and `quantity_sets`: each set's name and `count`, the classes it is `on`, and for each property or quantity
+  its name and the types it is written with, with counts.
+- `relations`: each `IFCREL*` class with a count; and `left_out`, the rows a cap held back (500 rows a list, 200 members a set,
+  and the whole reply under 256 KiB).

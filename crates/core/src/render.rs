@@ -23,8 +23,8 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
-    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, LeaderKind, Model, Note,
+    Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -142,7 +142,7 @@ impl Prim {
 
     /// What of it lies inside the box from pixel `lo` to `hi`: a fill's rings clipped, a line in
     /// the pieces inside, a picture's whole pixels inside.
-    fn cropped(self, lo: (f32, f32), hi: (f32, f32)) -> Vec<Prim> {
+    pub(crate) fn cropped(self, lo: (f32, f32), hi: (f32, f32)) -> Vec<Prim> {
         let mm = |p: (f32, f32)| P2(f64::from(p.0), f64::from(p.1));
         let px = |p: P2| (p.0 as f32, p.1 as f32);
         match self {
@@ -1442,6 +1442,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             Element::Floor(Floor { level: l, boundary, .. })
             | Element::Ceiling(Ceiling { level: l, boundary, .. })
             | Element::Shaft(Shaft { level: l, boundary, .. })
+            | Element::Toposolid(crate::model::Toposolid { level: l, boundary, .. })
                 if *l == level =>
             {
                 extent.extend(boundary)
@@ -3053,6 +3054,7 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
         d.owner = Some(nid);
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),
+            Element::Dimension(dm) if dm.view.is_some_and(|v| m.same(v, id)) => dimension(&mut d, m, dm),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::RepeatingDetail(r) if m.same(r.view, id) => detail_members(&mut d, m, &r.members(m)),
             // A spot slope reads a plan's floor or roof; a section has none to show.
@@ -3411,7 +3413,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                             FAINT,
                             (f.pattern_origin, f.pattern_angle),
                         ),
-                        None => surface(&mut d, &piece, x.surface, FAINT),
+                        None => surface(&mut d, &piece, x.surface, FAINT, (f.pattern_origin, f.pattern_angle)),
                     }
                 }
             }
@@ -3751,6 +3753,36 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Ramp(r) => ramp(&mut d, m, r, level),
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
+            // A toposolid: its boundary, the lines where its top crosses each contour height, and its type's surface.
+            Element::Toposolid(t) if t.level == level => {
+                d.owner = Some(id);
+                let material = m.type_layers("toposolid", &t.type_name).first().and_then(|l| m.materials.get(&l.material));
+                if d.detail == Detail::Fine
+                    && let Some(x) = material
+                {
+                    for (face, rise) in m.toposolid_slabs(t) {
+                        for piece in m.less_shafts(&face, rise).0 {
+                            match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+                                Some(p) => fill_pattern(
+                                    &mut d,
+                                    p,
+                                    std::slice::from_ref(&piece),
+                                    std::slice::from_ref(&piece),
+                                    FAINT,
+                                    (t.pattern_origin, t.pattern_angle),
+                                ),
+                                None => surface(&mut d, &piece, x.surface, FAINT, (t.pattern_origin, t.pattern_angle)),
+                            }
+                        }
+                    }
+                }
+                d.line(&t.boundary, BY_CATEGORY, FAINT, true);
+                for (_, lines) in m.toposolid_contours(t) {
+                    for (a, b) in lines {
+                        d.line(&[a, b], Pen::PROJECTION, FAINT, false);
+                    }
+                }
+            }
             // A room separation line: a thin line, on its own level's plan only.
             Element::RoomSeparator(rs) if rs.level == level => {
                 let pts = vec![d.view.px(rs.start), d.view.px(rs.end)];
@@ -4075,7 +4107,7 @@ fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room
         if over.is_none() {
             d.fill(&[ring.to_vec()], PAPER);
         }
-        hatch(d, ring, pattern, u, INK, gap / d.view.scale);
+        hatch(d, ring, pattern, u, INK, gap / d.view.scale, P2(0.0, 0.0));
     } else if layer.function != Function::Structure && over.is_none() {
         d.fill(&[ring.to_vec()], LIGHT_POCHE);
     }
@@ -4129,22 +4161,24 @@ pub(crate) fn cap_fill(
     (base, strokes)
 }
 
-/// A surface pattern over `ring`, where its lines are far enough apart to read.
-fn surface(d: &mut Drawing, ring: &[P2], pattern: Pattern, color: Rgb) {
+/// A surface pattern over `ring`, where its lines are far enough apart to read: its courses turned by `placed`'s angle
+/// and its lines started at its origin, as a named fill pattern's are — one paving over every piece of a shaped slab.
+fn surface(d: &mut Drawing, ring: &[P2], pattern: Pattern, color: Rgb, (origin, angle): (P2, f64)) {
     if MODULE * d.view.scale >= GAP / 2.0 {
-        hatch(d, ring, pattern, P2(1.0, 0.0), color, MODULE);
+        let (sin, cos) = angle.to_radians().sin_cos();
+        hatch(d, ring, pattern, P2(cos, sin), color, MODULE, origin);
     }
 }
 
 /// `pattern` over `ring` (model mm), as far as the view shows it: its lines `gap` mm apart, thin,
 /// its courses along unit `u`; an insulation's zigzag along the ring's length, side to side.
-fn hatch(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64) {
+fn hatch(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64, origin: P2) {
     let part = std::mem::replace(&mut d.part, Part::Pattern);
-    hatching(d, ring, pattern, u, color, gap);
+    hatching(d, ring, pattern, u, color, gap, origin);
     d.part = part;
 }
 
-fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64) {
+fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64, origin: P2) {
     // The box the view shows, whole however it is turned.
     let [lo, hi] = d.view.shown();
     let ring = [(P2(1.0, 0.0), lo.0), (P2(-1.0, 0.0), -hi.0), (P2(0.0, 1.0), lo.1), (P2(0.0, -1.0), -hi.1)]
@@ -4173,9 +4207,12 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
         if (c1 - c0) / step > 2000.0 {
             return;
         }
-        let mut k = (c0 / step).ceil();
-        while k * step <= c1 {
-            seg(d, dir.perp() * (k * step) + dir * (a0 - 1.0), dir, f64::NEG_INFINITY, f64::INFINITY);
+        // Its lines lie where the pattern puts them all over the model, not at this ring's own extent: one paving over
+        // every piece of a shaped slab, and turned as the view's origin and angle say.
+        let on = origin.dot(dir.perp());
+        let mut k = ((c0 - on) / step).ceil();
+        while on + k * step <= c1 {
+            seg(d, dir.perp() * (on + k * step) + dir * (a0 - 1.0), dir, f64::NEG_INFINITY, f64::INFINITY);
             k += 1.0;
         }
     };
@@ -4275,7 +4312,7 @@ fn ceiling(d: &mut Drawing, m: &Model, id: Id, c: &Ceiling) {
             if !replaced && let Some(x) = material {
                 match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
                     Some(p) => fill_pattern(d, p, std::slice::from_ref(&piece), std::slice::from_ref(&piece), INK, (P2(0.0, 0.0), 0.0)),
-                    None => surface(d, &piece, x.surface, INK),
+                    None => surface(d, &piece, x.surface, INK, (P2(0.0, 0.0), 0.0)),
                 }
             }
         }
@@ -4580,10 +4617,7 @@ fn below_tris(tris: &[[view3d::P3; 3]], cut: f64) -> Vec<[view3d::P3; 3]> {
 /// a leaf with its swing, or glass.
 #[allow(clippy::too_many_arguments)]
 fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64, shown: bool, hides: &dyn Fn(&str) -> bool) {
-    let Some(h) = walls::hole(m, w, e, o) else { return };
-    if !(h.bottom <= cut && cut < h.top) {
-        return;
-    }
+    let Some(h) = m.opening_hole(e, cut) else { return };
     // A slanted wall's faces where the plane cuts it.
     let (axis, (ext, int)) = (Axis::of(w), walls::faces_at(m, w, Some(cut)));
     let (s0, s1) = (h.s0, h.s1);
@@ -5786,9 +5820,36 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
         // From the side nearer where it points.
         let to = d.view.px(to);
         let right = frame.mm(to).0 > layout.width / 2.0;
-        let from = frame.px((if right { layout.width + off } else { -off }, t.size / 2.0));
-        d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
-        arrow(d, from, to);
+        let (fx, fy) = (if right { layout.width + off } else { -off }, t.size / 2.0);
+        let from = frame.px((fx, fy));
+        // A shoulder level with the note, its lettering's height long, always away from the note and never past the point:
+        // where two segments meet, and where an arc is pulled toward.
+        let side = if right { 1.0 } else { -1.0 };
+        let along = (frame.mm(to).0 - fx) * side;
+        let reach = side * if along > 0.0 { t.size.min(along) } else { t.size };
+        let elbow = frame.px((fx + reach, fy));
+        match n.leader_kind {
+            LeaderKind::Straight => {
+                d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
+                arrow(d, from, to);
+            }
+            LeaderKind::TwoSegment => {
+                d.stroke(vec![from, elbow, to], Pen::PROJECTION, INK, None, false);
+                arrow(d, elbow, to);
+            }
+            LeaderKind::Curved => {
+                // A quadratic curve from the note's side, level out of it and turned toward the point by the shoulder's
+                // corner: the same corner a two-segment leader bends at.
+                let mut arc = Vec::with_capacity(17);
+                for step in 0..=16 {
+                    let u = step as f32 / 16.0;
+                    let (a, b, c) = ((1.0 - u) * (1.0 - u), 2.0 * u * (1.0 - u), u * u);
+                    arc.push((a * from.0 + b * elbow.0 + c * to.0, a * from.1 + b * elbow.1 + c * to.1));
+                }
+                d.stroke(arc, Pen::PROJECTION, INK, None, false);
+                arrow(d, elbow, to);
+            }
+        }
     }
 }
 

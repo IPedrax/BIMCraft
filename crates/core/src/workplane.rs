@@ -60,6 +60,18 @@ pub struct Frame {
 }
 
 impl Frame {
+    /// A point in the plane's across/up coordinates, in model space.
+    pub fn point(&self, q: P2) -> P3 {
+        let (across, up) = self.axes();
+        add(self.origin, add(mul(across, q.0), mul(up, q.1)))
+    }
+
+    /// A model point projected into the plane's across/up coordinates.
+    pub fn coordinates(&self, p: P3) -> P2 {
+        let (across, up) = self.axes();
+        let v = sub(p, self.origin);
+        P2(dot(v, across), dot(v, up))
+    }
     /// The level plane at height `z`.
     pub fn flat(z: f64) -> Frame {
         Frame { origin: [0.0, 0.0, z], normal: [0.0, 0.0, 1.0] }
@@ -102,6 +114,15 @@ impl From<Plane> for Frame {
     fn from(p: Plane) -> Frame {
         Frame { origin: [0.0, 0.0, p.z], normal: unit([-p.g.0, -p.g.1, 1.0]) }
     }
+}
+
+/// The upright reference plane of an extrusion roof: along its line, and up from its level plus offset. Sweep limits
+/// move the ends of the solid, not the reference plane or the profile's coordinate origin.
+pub fn roof_profile(m: &Model, id: Id) -> Option<Frame> {
+    let Element::Roof(r) = m.elements.get(id)? else { return None };
+    let x = r.extrusion.as_ref()?;
+    let u = (x.line[1] - x.line[0]).unit();
+    Some(Frame { origin: [x.line[0].0, x.line[0].1, m.elevation(r.level) + r.offset], normal: [u.1, -u.0, 0.0] })
 }
 
 impl WorkPlane {

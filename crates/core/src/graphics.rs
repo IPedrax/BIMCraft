@@ -27,12 +27,13 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 47] = [
+pub const MODEL: [&str; 48] = [
     "wall",
     "floor",
     "ceiling",
     "shaft",
     "mass",
+    "toposolid",
     "door",
     "window",
     "room",
@@ -1231,6 +1232,15 @@ impl Look {
     /// them, else as those of a view with none (its last phase, and its sets' primary options).
     pub fn of_3d(m: &Model) -> Look {
         m.default_3d().map_or_else(|| Look::with(m, &Graphics::default()), |id| Look::of(m, id))
+    }
+
+    /// What 3D view `view` looks like: as its own graphics say when it is a 3D view (a camera view, or `{3D}` itself), else
+    /// as the default 3D view looks ([`Look::of_3d`]).
+    pub fn of_3d_view(m: &Model, view: Option<Id>) -> Look {
+        match view {
+            Some(v) if matches!(m.elements.get(v), Some(Element::View3D(_))) => Look::of(m, v),
+            _ => Look::of_3d(m),
+        }
     }
 
     /// What a view with graphics `own` looks like.

@@ -217,7 +217,9 @@ use the separate font fallback below, so a character outside the drawing letteri
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
 rename): Revit's font, size (its capitals' height on paper, mm), bold, italic, underline, width factor, colour, and a border
-`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts. A project starts
+`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts: straight from
+there, in two segments (a shoulder level with the note, its lettering's height long, then to the point), or as an arc bowing from
+that shoulder's corner (`LeaderKind`, the note's `leader_kind`; straight unless told). A project starts
 with 2.5mm, 3.5mm and 5mm in Arial; `text_type` makes, renames and deletes them (none in use). A type's font is a name:
 any font the system has, or one we carry (IBM Plex Sans, IBM Plex Mono, BIMCraft Lettering: `font.rs`'s single-stroke
 capitals). `text/system.rs` lists the system's fonts once (`system::index`): it looks through the folders Linux, Windows
@@ -279,7 +281,10 @@ would fail on one with a serde error, so 6 makes it say that the file is from a 
 in a file of 5 changes, so `Model::migrate` has no step for 5 to 6.
 
 The Options Bar's Offset puts a line, an arc or a polyline beside the points clicked; a rectangle, a polygon or a circle grows
-by it as a whole (`grown`, its corners joined), and a spline or an ellipse takes none (`Shape::offsets`). Modify's Offset takes
+by it as a whole (`grown`, its corners joined), an ellipse grows or shrinks by it, a partial ellipse is set beside the
+points clicked, and only a spline takes none (`Shape::takes_offset`). While a Draw tool
+draws, its next line is previewed where the Offset would put it; Pick Lines previews the line beside the one under the
+pointer, and Space flips the Offset to the other side, the preview and the line the last click makes following it. Modify's Offset takes
 ellipses and splines too, as a spline through points within `FIT_TOL` of the true offset (`curves::offset_fit`), refused where
 it would fold over itself. While a shape is drawn its numbers can be typed (`draw::numbers`, `reading`, `typed`): a rectangle's
 width and height (Tab between them, the canvas taking the Tab from egui's focus), a circle's or a polygon's radius, the third
@@ -297,6 +302,11 @@ a plan clears the voids' slice at its cut plane within the wall's faces (`render
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
 surfaces meet at an angle or end, found once) drawn through the faces; a pixel within two of a line picks its element.
+
+A mesh form's faces are its own, not its planes: `facets` welds the triangles that share an edge, at a micron, and groups those that
+turn less than `SMOOTH` degrees there, so the side of a 24-sided post is one surface while two squares in one plane are two faces.
+`Scene::face_at` returns the triangles of the face clicked — the one a work plane is set on too — where before it took every
+triangle of the element lying in that face's plane.
 
 A view's graphics (`graphics.rs`; `Level`, `Section` and `View3D` each hold `graphics`) hide and override by category, by view
 filter (`Model::view_filters`: categories and a schedule filter's rules, `schedule::picks`) and by element: an element's own beats
@@ -420,7 +430,10 @@ Bar, and opens the new view: `BimApp::active_3d` is the 3D view the 3D tab shows
 view it shows, and a camera view picked on a plan passes the picked one, so both show the same Name, Eye, Target and Focal Length
 and edit it the same way (`camera` for the camera, `modify` for the name). Graphics, phasing and the section box stay with the view
 on screen (`graphic_view`), not with a camera view picked on a plan: its mark shows its camera, its project parameters and its
-phase. A camera view shows no Azimuth or Elevation: those
+phase. Each 3D view is drawn, picked, fitted and capped as its own Visibility/Graphics say (`Look::of_3d_view`): `render` with a
+camera view's name, and the 3D tab through `Orbit::show_view`, which carries the view to its scene, fit and cap jobs and makes the
+mesh again when another view is shown (`view3d::scene_kept_in` keeps it only while that view looks as it did). A camera view
+shows no Azimuth or Elevation: those
 (`View3D::azimuth`, `View3D::elevation`) only frame a 3D view **without** a camera on a sheet (`sheet::framing`, `camera_of`), so a
 view on a sheet whose view has a camera shows its name alone. A camera edit while its view is on screen drops the on-screen
 camera (`Orbit::camera`), so the next frame stands the view from the model and the settled hand has nothing old to write back. A
@@ -728,6 +741,12 @@ To do: shared coordinates, a link's graphics overrides and visibility per view, 
 
 ## Dimensions
 
+Sections/elevations use `drawing_plane::reference` for aligned/linear dimensions: levels, grids perpendicular to the
+view line and detail references owned by that view. Their placement is `[along,height]`, and both `level` and `view`
+hold the view GUID. Format 21 protects that interpretation; format 20 needs no data conversion. These dimensions
+measure only: locks, equality and driving values are refused. The plan reference/constraint behavior below remains
+unchanged. See [vertical drawing tools](desktop.md#drawing-tools-in-sections-and-elevations) for the supported input.
+
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines
 (`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a column's or structural column's two
 centre lines, along its angle and across it (`Face::Across`, file format 18), its left and right faces and its start and end caps (`Model::column_reference_line`;
@@ -913,3 +932,45 @@ the line the elevation looks at, the elevation turns round and its line comes ov
 reference as it was; moved whole across (the Move tool, or with other things), the line turns round where it stands. Changing
 the line (its grips, `crop`) pins the mark where it stood. `mark` is FORMAT 18's too, so a build that reads up to 17 never draws
 the mark back at the middle.
+
+## Underlays
+
+A plan, a section or an elevation may show another view under it (or over it). It is Archicad's Trace & Reference, not Revit's
+Underlay: Revit's shows a plan the elements of a range of levels, looking down or up, which BIMCraft doesn't offer (a view's range
+and orientation are its own, and a ceiling plan shows no underlay). It is a working aid, not printed, exported or put on sheets.
+Any plan (a level's or a plan view), section or elevation but itself can be shown, drawn as its own view range, graphics
+(Visibility/Graphics, its template, detail level, scale) and crop draw it. It is the view's own, saved with it (`Level::underlay`, `PlanView::underlay`, `Section::underlay`: `underlay.rs`'s
+`Underlay`), and a duplicate of the view has it too; deleting the view an underlay shows takes it off the views that showed it. The
+`underlay` command sets it: `source` (null takes it off), `on`, `color`,
+`fills`, `hide_annotation` (on by default: dimensions, tags, notes, grids, levels, marks and other annotation categories,
+`graphics::ANNOTATION`, and all lettering), `front` (over the view, rather than behind), `offset`, `angle`, `move`, `rotate`
+about `about`, and `reset`.
+
+- **Fitted by the internal origin.** A plan's coordinates are the model's; a section's run along its line from its start, and up
+  from 0, so the internal origin falls at its projection on the line, at height 0 (`underlay::origin`). The underlay's points go
+  to `origin(target) + offset + R(angle) (p - origin(source))` (`underlay::place`); `source_view` turns that into the `View` the
+  source is drawn through, so a plan source is drawn by `render::draw` straight into the target's pixels, turned however it is.
+  A section draws only square to its axes: it is drawn over a square that still covers the view once turned, then its lines
+  are turned and its picture resampled (`turned`).
+- **One colour, never picked.** `restyle` draws every line in the underlay's colour and every fill and pattern in a light wash
+  of it (or leaves them out without `fills`), and owns none of it, so nothing in it is ever picked or highlighted. A section's
+  picture of what it sees past its line comes as a picture of its own (`Underlaid::picture`), its ink in the colour and its
+  paper clear. What lies outside the target's crop region is cut away (`cropped_to`).
+- **Snapped to.** `Underlaid::segments` are its lines in the target's coordinates; `snap::snap_with` adds the nearest of them
+  (at most 256) to a plan's snaps, so ends, middles and crossings with the plan's own lines snap; a section's Move and Rotate
+  snap to them with `snap::among`.
+- **On screen** (`crates/ui-egui/src/underlay.rs`). The view's own drawing comes first: the underlay is asked of a worker of its
+  own (`view_worker::Latest`, which keeps a section's `SectionWork` for the next job of the same model) only while the view's
+  worker is idle, so a pan or an edit never waits on it. Until a new one comes, the last one of the same view and source is
+  shown, moved with the view. Its lines are triangles kept on the card (`retained::Retained`, one of its own), so a frame that
+  changes nothing costs a draw call. Behind the view it is painted over the paper and the background grid and under the
+  drawing (a section's picture lets it through, its paper clear, as under a background grid); in front, over the drawing.
+  Properties' Underlay group has Show Underlay (on with nothing chosen yet, a plan's starts with the level below, else above),
+  the view it shows and Underlay Settings (UD opens it for the view on screen), which has the rest and says an underlay is a
+  working aid, not printed or exported; Move (two points) and Rotate (a centre and two rays) pick in
+  the view while the dialog stands aside, Esc stops them, and Reset Position puts it back. The Project Browser's right-click
+  Show as Underlay puts a plan, section or elevation under the view on screen. A ceiling plan shows none.
+- **Not yet:** an underlay is not printed, exported or drawn on sheets, by design for now (Underlay Settings says so); a source
+  view's own underlay isn't drawn in it; a change
+  to another level still makes it again (a revision check on what the source shows would spare that).
+

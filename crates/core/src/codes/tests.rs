@@ -1713,10 +1713,31 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
 }
 
 #[test]
+fn the_utilities_a_project_may_name_are_those_demand_reads() {
+    // What Manage > Building Codes offers (`demand::utilities`): every one is taken by `building_code` and read by `demand`.
+    let names = crate::demand::utilities();
+    for u in ["CPFL", "ENEL", "CELESC", "FECOERGS", "HIDROPAN", "ENERGISA", "EQUATORIAL", "COPEL"] {
+        assert!(names.contains(&u), "{u} is not offered: {names:?}");
+    }
+    let mut s = Session::new();
+    for u in &names {
+        run(&mut s, "building_code", json!({"electrical": {"demand": u}}));
+        assert_eq!(s.model.electrical_methods().demand.as_deref(), Some(*u));
+        assert!(crate::demand::source(u).is_some(), "{u} cites nothing");
+        // The project's utility, not given: read by its own tables (it may still ask for what they need).
+        if let Err(e) = s.execute("demand", &json!({})) {
+            assert!(!e.contains("no tables") && !e.contains("`utility` is required"), "{u}: {e}");
+        }
+    }
+    let e = s.execute("building_code", &json!({"electrical": {"demand": "EDP"}})).unwrap_err();
+    assert!(names.iter().all(|u| e.contains(u)), "{e}");
+}
+
+#[test]
 fn every_code_names_only_methods_the_data_has_and_of_its_own_country() {
     for c in codes() {
         if let Some(u) = &c.electrical.demand {
-            assert!(crate::demand::UTILITIES.contains(&u.as_str()), "{}: no tables for {u}", c.code);
+            assert!(crate::demand::utilities().contains(&u.as_str()), "{}: no tables for {u}", c.code);
         }
         if let Some(name) = &c.electrical.building_demand {
             let m = crate::building_demand::method(name).unwrap_or_else(|| panic!("{}: no method {name}", c.code));
@@ -1798,7 +1819,7 @@ fn demand_and_building_demand_take_the_methods_the_project_s_code_names() {
 
     // What can't be named is refused, and the project stays as it was.
     for p in [
-        json!({"electrical": {"demand": "COPEL"}}),
+        json!({"electrical": {"demand": "EDP"}}),
         json!({"electrical": {"demand": ""}}),
         json!({"electrical": {"building_demand": "DIN 18015-1"}}),
         json!({"electrical": {"building_demand": 5}}),

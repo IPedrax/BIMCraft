@@ -1,6 +1,6 @@
 //! Edit Profile, as Revit's: a straight, upright wall's shape in elevation, re-sketched on the wall's face. In a view that looks at
 //! the wall (a section or an elevation whose line runs along it, or the 3D view) it is sketch mode there at once: the wall's
-//! outline and holes as sketch lines on its face (`sketch::Of::Profile`, an upright `sketch3d::Face`), deleted, moved and drawn
+//! outline and holes as sketch lines on its face (`sketch::Of::Profile`, an upright `sketch3d::Surface::Profile`), deleted, moved and drawn
 //! again with the Draw panel and Modify, until Finish Edit Mode sets the profile in one step. A plan can't show the shape, so
 //! there Revit's Go To View asks for such a view first, and opening it starts the sketch. Reset Profile gives the wall its
 //! rectangle back. The wall's ends and base stay where they are, so it still joins and its openings are measured as before

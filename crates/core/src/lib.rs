@@ -20,6 +20,8 @@ pub mod cad;
 #[cfg(test)]
 mod cad_tests;
 #[cfg(test)]
+mod camera_view_tests;
+#[cfg(test)]
 mod circuit_tests;
 pub mod classification;
 #[cfg(test)]
@@ -58,6 +60,7 @@ pub mod dps;
 pub mod dr;
 pub mod drainage;
 pub mod draw;
+pub mod drawing_plane;
 #[cfg(test)]
 mod dry_run_tests;
 pub mod dxf;
@@ -68,6 +71,7 @@ pub mod electrical;
 mod electrical_tests;
 pub mod elevation;
 pub mod engine;
+pub mod entrance;
 pub mod export;
 #[cfg(test)]
 mod export_tests;
@@ -109,6 +113,8 @@ mod file_tests;
 pub mod files;
 pub mod fills;
 mod fixtures;
+#[cfg(test)]
+mod flip_tests;
 mod font;
 #[cfg(test)]
 mod formula_visibility_tests;
@@ -130,6 +136,8 @@ pub mod ids;
 pub mod ifc;
 #[cfg(test)]
 mod ifc_colour_tests;
+#[cfg(test)]
+mod ifc_exact_tests;
 #[cfg(test)]
 mod ifc_generic_tests;
 #[cfg(test)]
@@ -160,6 +168,8 @@ mod opening_subcategory_tests;
 mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
+#[cfg(test)]
+mod origin_tests;
 pub mod paint;
 pub mod panel_schedule;
 #[cfg(test)]
@@ -246,7 +256,12 @@ pub mod titleblock;
 mod titleblock_tests;
 pub mod triad;
 pub mod triangulation;
+pub mod underlay;
+#[cfg(test)]
+mod underlay_tests;
 pub mod units;
+#[cfg(test)]
+mod vertical_tools_tests;
 pub mod view3d;
 #[cfg(test)]
 mod wall_shape_tests;
@@ -265,7 +280,8 @@ pub mod world;
 pub mod xlsx;
 
 pub use commands::{
-    command_of, element_json, element_json_with, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of,
+    command_of, element_json, element_json_with, floor_outline, floor_outline_faces, floor_outline_faces_of, floor_outline_only,
+    opening_of, roof_footprint, run_category_of, runs_of, stood_of,
 };
 
 #[cfg(test)]
@@ -290,8 +306,14 @@ mod panel_tests;
 mod plan_view_tests;
 #[cfg(test)]
 mod purge_tests;
+pub mod steel;
+#[cfg(test)]
+mod steel_tests;
 #[cfg(test)]
 mod structure_tests;
+pub mod survey;
+#[cfg(test)]
+mod survey_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

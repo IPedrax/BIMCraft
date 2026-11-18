@@ -589,6 +589,14 @@ impl Session {
                 if unsettled {
                     self.model_mut().keep_rooms();
                 }
+                // A family whose origin the command moved (a reload, an edit of its planes) moves its instances by as much, so
+                // they stay where they stand (O1); a project the command replaced was settled as it was read.
+                if !REPLACES.contains(&cmd.id) {
+                    let settled = !self.model.origins_unsettled(&before);
+                    if !settled {
+                        self.model_mut().settle_origins(Some(&before));
+                    }
+                }
                 // A hosted component goes where its plane is, or onto its plane where the command moved it.
                 let unsettled = self.model.unsettled(Some(&before));
                 if !unsettled.is_empty() {
@@ -661,6 +669,7 @@ impl Session {
                 self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
                     let step = self.stamped(Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) });
+                    before.derived.forget();
                     self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
@@ -846,6 +855,7 @@ impl Session {
                     self.redo = redo;
                 } else {
                     let step = self.stamped(Step { checked, ..Step::new(label, &before, &self.model) });
+                    before.derived.forget();
                     undo.push((step, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
@@ -869,6 +879,7 @@ impl Session {
         let Some((first, before)) = steps.next() else { return };
         drop(steps);
         let step = Step { checked: first.checked, by: first.by, ..self.stamped(Step::new(to, &before, &self.model)) };
+        before.derived.forget();
         self.undo.push((step, before));
     }
 
@@ -951,7 +962,9 @@ impl Session {
             let Some((mut step, model)) = from.pop() else { break };
             label = step.label.clone();
             std::mem::swap(&mut step.checked, &mut checked);
-            to.push((step, std::mem::replace(&mut self.model, model)));
+            let replaced = std::mem::replace(&mut self.model, model);
+            replaced.derived.forget();
+            to.push((step, replaced));
         }
         if checked {
             self.verified = Some(Arc::clone(&self.model));
@@ -1071,6 +1084,7 @@ impl Session {
         self.undo[at].0.undone = true;
         let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &now));
         let step = Step { by: Some(by.into()), undoes: Some(n), inverse, checked, ..self.stamped(Step::new(&label, &now, &m)) };
+        now.derived.forget();
         self.undo.push((step, now));
         if self.undo.len() > UNDO_LIMIT {
             self.undo.remove(0);
