@@ -21,6 +21,23 @@ pub(crate) fn rectangle(length: f64, height: f64) -> Vec<P2> {
     vec![P2(0.0, 0.0), P2(length, 0.0), P2(length, height), P2(0.0, height)]
 }
 
+/// What a wall's profile snaps to besides its sketch's lines, in its face's axes (`[along, up]`): its base, its two ends and
+/// the levels across it, each a line running past the wall.
+pub(crate) fn traces(m: &Model, id: Id) -> Vec<(P2, P2)> {
+    let Some(w) = m.wall(id) else { return Vec::new() };
+    let (length, base) = (w.start.dist(w.end), m.own_base(w));
+    let (lo, hi) = (-length - 10_000.0, 2.0 * length + 10_000.0);
+    let mut out = vec![(P2(lo, 0.0), P2(hi, 0.0)), (P2(0.0, lo), P2(0.0, hi)), (P2(length, lo), P2(length, hi))];
+    out.extend(
+        m.levels()
+            .into_iter()
+            .map(|(_, l)| l.elevation - base)
+            .filter(|up| up.abs() > 1e-6 && up.abs() < 1e6)
+            .map(|up| (P2(lo, up), P2(hi, up))),
+    );
+    out
+}
+
 /// Whether wall `id` can have its profile edited: straight, upright, unattached, not a curtain wall or in one.
 pub(crate) fn profile_editable(m: &Model, id: Id) -> bool {
     m.wall(id).is_some_and(|w| {

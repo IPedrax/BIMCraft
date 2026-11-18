@@ -76,7 +76,9 @@ the Modify Wall panel yields (`ribbon::yielding`), so a narrow ribbon lists Atta
 whose line runs along it, or the 3D view) Edit Profile is sketch mode on the wall's face (`sketch::Of::Profile`): its outline and holes
 are sketch lines in the wall's `[along, up]` frame on an upright `sketch3d::Face`, which a section's camera shows as the 3D view's
 does, so they can be deleted and the outline sketched again with the Draw panel, Modify's grips and Delete, as a floor's boundary is;
-points snap to the lines' ends and to 10 mm. Finish Edit Mode solves the lines into one outline with holes and sets the profile (the
+points snap as a plan's do, with Manage > Snaps' switches (`snap::among`): to the lines' ends, middles and crossings, the nearest
+point of a line, the wall's base, its ends and the levels across it (`profile::traces`), else to 10 mm; Shift keeps a step square.
+A floor's sketch on the 3D view's work plane snaps to its level's plan the same way. Finish Edit Mode solves the lines into one outline with holes and sets the profile (the
 wall's own rectangle sets none), one undo step. A plan can't show the shape: there Go To View lists the sections and elevations along
 the wall and the 3D view, and Open View opens the one picked in sketch mode (`crates/ui-egui/src/profile.rs`).
 

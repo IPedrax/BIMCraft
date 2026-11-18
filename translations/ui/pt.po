@@ -682,7 +682,7 @@ msgid "Add Text"
 msgstr "Adicionar texto"
 
 #: crates/ui-egui/src/draw.rs:1071
-#: crates/ui-egui/src/sketch.rs:1044
+#: crates/ui-egui/src/sketch.rs:1049
 msgid "Add Vertex"
 msgstr "Adicionar vértice"
 
@@ -2070,7 +2070,7 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 #: crates/ui-egui/src/printsets.rs:156
 #: crates/ui-egui/src/printsets.rs:244
 #: crates/ui-egui/src/printsets.rs:302
-#: crates/ui-egui/src/profile.rs:113
+#: crates/ui-egui/src/profile.rs:130
 #: crates/ui-egui/src/projectinfo.rs:157
 #: crates/ui-egui/src/properties.rs:4206
 #: crates/ui-egui/src/properties.rs:4401
@@ -3858,7 +3858,7 @@ msgstr ""
 msgid "Couldn't save the setting: {}"
 msgstr "Não foi possível salvar a configuração: {}"
 
-#: crates/ui-egui/src/profile.rs:122
+#: crates/ui-egui/src/profile.rs:139
 msgid "Couldn't sketch the profile in {}"
 msgstr "Não foi possível esboçar o perfil em {}"
 
@@ -5245,7 +5245,7 @@ msgstr "Editar perfil: desenhar o perfil no seu plano, perpendicular ao caminho 
 msgid "Edit Profile: sketch the wall's outline, and any holes, on its face in an elevation, a section or the 3D view"
 msgstr "Editar perfil: esboce o contorno da parede, e os furos, na face dela em uma elevação, um corte ou na vista 3D"
 
-#: crates/ui-egui/src/profile.rs:94
+#: crates/ui-egui/src/profile.rs:111
 msgid "Edit Profile: sketch the wall's outline, and any holes, on its face; then Finish Edit Mode"
 msgstr "Editar perfil: esboce o contorno da parede, e os furos, na face dela; depois Concluir modo de edição"
 
@@ -6555,7 +6555,7 @@ msgid "Global (z) then Host (xy)"
 msgstr ""
 
 #: crates/ui-egui/src/editor/work_plane.rs:271
-#: crates/ui-egui/src/profile.rs:103
+#: crates/ui-egui/src/profile.rs:120
 msgid "Go To View"
 msgstr "Ir para vista"
 
@@ -9777,7 +9777,7 @@ msgstr "Desativado: nenhum agente alcança esta janela"
 #: crates/ui-egui/src/linestyles/creator.rs:89
 #: crates/ui-egui/src/properties.rs:596
 #: crates/ui-egui/src/sketch.rs:778
-#: crates/ui-egui/src/sketch.rs:1046
+#: crates/ui-egui/src/sketch.rs:1051
 #: crates/ui-egui/src/workplane.rs:340
 msgid "Offset"
 msgstr "Deslocamento"
@@ -9884,7 +9884,7 @@ msgid "Open Recent"
 msgstr "Abrir recente"
 
 #: crates/ui-egui/src/editor/work_plane.rs:288
-#: crates/ui-egui/src/profile.rs:114
+#: crates/ui-egui/src/profile.rs:131
 msgid "Open View"
 msgstr "Abrir vista"
 
@@ -13799,7 +13799,7 @@ msgstr "Dividir"
 #: crates/ui-egui/src/editor/document.rs:678
 #: crates/ui-egui/src/lib.rs:5545
 #: crates/ui-egui/src/sketch.rs:777
-#: crates/ui-egui/src/sketch.rs:1045
+#: crates/ui-egui/src/sketch.rs:1050
 msgid "Split Element"
 msgstr "Dividir elemento"
 
@@ -15079,7 +15079,7 @@ msgstr "A vista vê o plano de trabalho de perfil: desenhe numa vista que o veja
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr "As tensões do projeto, em volts, e a faixa em que um dispositivo pode operar. Um sistema de distribuição se refere a elas."
 
-#: crates/ui-egui/src/profile.rs:105
+#: crates/ui-egui/src/profile.rs:122
 msgid "The wall's profile is sketched in a view that looks at it. Pick one to open:"
 msgstr "O perfil da parede é esboçado em uma vista voltada para ela. Escolha uma para abrir:"
 
@@ -15563,7 +15563,7 @@ msgstr "Aparar/Estender elemento único: escolha a linha-limite e depois a linha
 #: crates/core/src/commands.rs:2117
 #: crates/ui-egui/src/editor/sketch.rs:1515
 #: crates/ui-egui/src/sketch.rs:761
-#: crates/ui-egui/src/sketch.rs:1047
+#: crates/ui-egui/src/sketch.rs:1052
 msgid "Trim/Extend to Corner"
 msgstr "Aparar/estender para canto"
 

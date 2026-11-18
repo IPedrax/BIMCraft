@@ -682,7 +682,7 @@ msgid "Add Text"
 msgstr "添加文字"
 
 #: crates/ui-egui/src/draw.rs:1071
-#: crates/ui-egui/src/sketch.rs:1044
+#: crates/ui-egui/src/sketch.rs:1049
 msgid "Add Vertex"
 msgstr "添加頂點"
 
@@ -2070,7 +2070,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/printsets.rs:156
 #: crates/ui-egui/src/printsets.rs:244
 #: crates/ui-egui/src/printsets.rs:302
-#: crates/ui-egui/src/profile.rs:113
+#: crates/ui-egui/src/profile.rs:130
 #: crates/ui-egui/src/projectinfo.rs:157
 #: crates/ui-egui/src/properties.rs:4206
 #: crates/ui-egui/src/properties.rs:4401
@@ -3858,7 +3858,7 @@ msgstr ""
 msgid "Couldn't save the setting: {}"
 msgstr "無法儲存設置：{}"
 
-#: crates/ui-egui/src/profile.rs:122
+#: crates/ui-egui/src/profile.rs:139
 msgid "Couldn't sketch the profile in {}"
 msgstr ""
 
@@ -5245,7 +5245,7 @@ msgstr "編輯輪廓：在輪廓平面上繪製輪廓，該平面在路徑第一
 msgid "Edit Profile: sketch the wall's outline, and any holes, on its face in an elevation, a section or the 3D view"
 msgstr ""
 
-#: crates/ui-egui/src/profile.rs:94
+#: crates/ui-egui/src/profile.rs:111
 msgid "Edit Profile: sketch the wall's outline, and any holes, on its face; then Finish Edit Mode"
 msgstr ""
 
@@ -6555,7 +6555,7 @@ msgid "Global (z) then Host (xy)"
 msgstr ""
 
 #: crates/ui-egui/src/editor/work_plane.rs:271
-#: crates/ui-egui/src/profile.rs:103
+#: crates/ui-egui/src/profile.rs:120
 msgid "Go To View"
 msgstr "轉到視圖"
 
@@ -9777,7 +9777,7 @@ msgstr "關閉：沒有智能體能連接到此視窗"
 #: crates/ui-egui/src/linestyles/creator.rs:89
 #: crates/ui-egui/src/properties.rs:596
 #: crates/ui-egui/src/sketch.rs:778
-#: crates/ui-egui/src/sketch.rs:1046
+#: crates/ui-egui/src/sketch.rs:1051
 #: crates/ui-egui/src/workplane.rs:340
 msgid "Offset"
 msgstr "偏移"
@@ -9884,7 +9884,7 @@ msgid "Open Recent"
 msgstr "最近開啟"
 
 #: crates/ui-egui/src/editor/work_plane.rs:288
-#: crates/ui-egui/src/profile.rs:114
+#: crates/ui-egui/src/profile.rs:131
 msgid "Open View"
 msgstr "開啟視圖"
 
@@ -13799,7 +13799,7 @@ msgstr "拆分"
 #: crates/ui-egui/src/editor/document.rs:678
 #: crates/ui-egui/src/lib.rs:5545
 #: crates/ui-egui/src/sketch.rs:777
-#: crates/ui-egui/src/sketch.rs:1045
+#: crates/ui-egui/src/sketch.rs:1050
 msgid "Split Element"
 msgstr "拆分圖元"
 
@@ -15079,7 +15079,7 @@ msgstr "該視圖側視工作平面：請在正對該平面的視圖或 {3D} 中
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr "項目的電壓（以伏特計）及設備讀數可接受的範圍。配電系統按名稱引用它們。"
 
-#: crates/ui-egui/src/profile.rs:105
+#: crates/ui-egui/src/profile.rs:122
 msgid "The wall's profile is sketched in a view that looks at it. Pick one to open:"
 msgstr ""
 
@@ -15563,7 +15563,7 @@ msgstr "修剪/延伸單個圖元：拾取邊界線，然後在要保留的部�
 #: crates/core/src/commands.rs:2117
 #: crates/ui-egui/src/editor/sketch.rs:1515
 #: crates/ui-egui/src/sketch.rs:761
-#: crates/ui-egui/src/sketch.rs:1047
+#: crates/ui-egui/src/sketch.rs:1052
 msgid "Trim/Extend to Corner"
 msgstr "修剪/延伸為角"
 

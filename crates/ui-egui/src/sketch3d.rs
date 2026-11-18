@@ -164,22 +164,22 @@ impl BimApp {
     /// vertical.
     fn snap3(&self, m: &Model, plane: &Plane, raw: P2, from: &[P2], square: bool) -> P2 {
         let Some(sk) = &self.sketch else { return raw };
-        // A wall's profile: onto an end of its own lines, else to the nearest 10 mm along and up.
-        if let Of::Profile(_) = sk.of {
-            let reach = plane.mm(SNAP);
-            let ends = sk.lines.iter().flat_map(|l| l.curve.handles());
-            if let Some(end) = ends.filter(|q| q.dist(raw) <= reach).min_by(|a, b| a.dist(raw).total_cmp(&b.dist(raw))) {
-                return end;
-            }
-            return P2((raw.0 / 10.0).round() * 10.0 + 0.0, (raw.1 / 10.0).round() * 10.0 + 0.0);
+        let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };
+        // A wall's profile, in its face's own axes: onto the sketch's lines (their ends, middles, crossings, the nearest point
+        // of one), the wall's base and ends and the levels across it, with the plan's switches and Shift's square step.
+        let on_lines = |traces: &[(P2, P2)]| {
+            let curves: Vec<bimcraft_core::curves::Curve> = sk.lines.iter().map(|l| l.curve.clone()).collect();
+            snap::among(traces, &[], &curves, raw, reach, from, square, &self.snaps_now()).at
+        };
+        if let Of::Profile(id) = sk.of {
+            return on_lines(&crate::profile::traces(m, id));
         }
         let (level, editing) = match sk.of {
             Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
             Of::Region { .. } | Of::Form { .. } | Of::Profile(_) => (None, None),
         };
-        let Some(level) = level else { return raw };
-        let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };
+        let Some(level) = level else { return on_lines(&[]) };
         let sketch = snap::Sketch { view: level, lines: &sk.lines, editing };
         snap::in_sketch(m, sketch, raw, reach, from, square, &self.snaps_now()).at
     }

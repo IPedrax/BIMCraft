@@ -1022,13 +1022,18 @@ fn sent(l: &SketchLine) -> serde_json::Value {
 }
 
 impl BimApp {
-    /// A small palette over the view at the middle of the sketch line picked alone, in Modify: what can be done to it, each button
+    /// A small palette over a plan at the middle of the sketch line picked alone, in Modify: what can be done to it, each button
     /// starting its tool as the panels' do (Add Vertex, which no panel offers while sketching, Split, Offset, Trim/Extend).
     pub(crate) fn edge_palette(&mut self, ctx: &egui::Context) {
         if !matches!(self.tool, Tool::Modify) {
             return;
         }
         let Some(sk) = &self.sketch else { return };
+        // Only over a plan: Edit Profile and a sketch on the 3D view's work plane have the same tools on the ribbon, and their
+        // lines aren't in a plan's axes.
+        if matches!(sk.of, crate::sketch::Of::Profile(_)) || self.sketch_face_in(sk.plan).is_some() {
+            return;
+        }
         let picked: Vec<usize> = sk.picked.iter().copied().collect();
         let [i] = picked[..] else { return };
         let Some(line) = sk.lines.get(i) else { return };

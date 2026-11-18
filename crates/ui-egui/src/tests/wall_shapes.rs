@@ -58,12 +58,18 @@ fn on_face(h: &Harness<BimApp>, view: Id, id: Id, q: P2) -> egui::Pos2 {
 }
 
 fn click_at(h: &mut Harness<BimApp>, at: egui::Pos2) {
+    click_at_with(h, at, Modifiers::NONE);
+}
+
+fn click_at_with(h: &mut Harness<BimApp>, at: egui::Pos2, modifiers: Modifiers) {
+    h.event(egui::Event::ModifiersChanged(modifiers));
     h.hover_at(at);
     h.run();
     for pressed in [true, false] {
-        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers });
         h.run();
     }
+    h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
 }
 
 #[test]
@@ -104,6 +110,42 @@ fn edit_profile_in_a_section_sketches_on_the_walls_face_and_a_hole_drawn_there_i
         assert!(hole.iter().any(|p| p.dist(q) < 1e-6), "{hole:?}");
     }
     assert_eq!(h.state().selection, vec![id], "the wall stays selected");
+}
+
+#[test]
+fn edit_profile_snaps_to_the_sketchs_lines_and_shift_draws_square_with_no_palette_over_the_view() {
+    let mut h = app(ALONG);
+    let (id, _) = wall(&h);
+    let view = section_of(&h);
+    h.state_mut().open_sheet(Sheet::Section(view));
+    h.run();
+    h.state_mut().selection = vec![id];
+    h.run();
+    press(&mut h, "Modify | Walls");
+    press(&mut h, "Edit Profile");
+    assert!(h.state().sketch.is_some(), "{}", h.state().status.text);
+    h.run();
+    let last = |h: &Harness<BimApp>| h.state().sketch.as_ref().and_then(|sk| sk.lines.last().cloned()).unwrap_or_else(|| panic!("no line"));
+    // A few pixels under the wall's top edge, clicked: on the edge, as a plan's line takes it.
+    let near_top = on_face(&h, view, id, P2(2500.0, 3000.0)) + egui::vec2(0.0, 4.0);
+    click_at(&mut h, near_top);
+    // Shift held, the next point is square to it, whatever the pointer's slope.
+    let off = on_face(&h, view, id, P2(2900.0, 1800.0));
+    click_at_with(&mut h, off, Modifiers::SHIFT);
+    key(&mut h, Key::Escape);
+    let line = last(&h);
+    let (a, b) = (line.curve.start(), line.curve.end());
+    assert!((a.1 - 3000.0).abs() < 1e-6, "on the top edge: {a:?}");
+    assert!((a.0 - b.0).abs() < 1e-6 && b.1 < 2000.0, "square, straight down: {a:?} to {b:?}");
+    // One line picked in Modify: the ribbon has its tools, so no palette floats over the view.
+    key(&mut h, Key::Escape);
+    let i = h.state().sketch.as_ref().map_or(0, |sk| sk.lines.len() - 1);
+    if let Some(sk) = h.state_mut().sketch.as_mut() {
+        sk.picked = [i].into();
+    }
+    h.run();
+    assert!(h.state().tool == crate::Tool::Modify, "{:?}", h.state().tool);
+    assert!(h.query_by_label("Add Vertex").is_none(), "no edge palette");
 }
 
 #[test]
