@@ -72,8 +72,12 @@ fn the_browsers_families_list_the_systems_types_and_a_right_click_deletes_an_unu
     let mut h = with_spare_types();
     press(&mut h, "List Families");
     type_into(&mut h, FIND, "generic - 200");
-    // A type in use is refused, saying so.
-    in_browser(&h, "Generic - 200mm").click_secondary();
+    // A type in use is refused, saying so. Floors list a "Generic - 200mm" too and come before Walls, so take the last one.
+    h.get_all_by_label("Generic - 200mm")
+        .filter(|n| n.rect().center().x < 290.0 && n.accesskit_node().role() == Role::Button)
+        .max_by(|a, b| a.rect().center().y.total_cmp(&b.rect().center().y))
+        .unwrap()
+        .click_secondary();
     h.run();
     press(&mut h, "Delete");
     assert!(h.state().status.error && h.state().status.text.contains("is used"), "{}", h.state().status.text);
