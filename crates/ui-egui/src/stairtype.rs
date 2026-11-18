@@ -137,7 +137,7 @@ impl StairDraft {
         let own = serde_json::to_value(kind.rules).unwrap_or_default();
         let code = m.stair_rules();
         let said = |holds: Holds, x: f64| match holds {
-            Holds::Length => m.units.length(x),
+            Holds::Length => m.field(x),
             _ => ((x * 1000.0).round() / 1000.0).to_string(),
         };
         // What the building code has for a rule that is off: shown greyed, so it is plain what applies.
@@ -285,8 +285,8 @@ impl StairDraft {
     pub(crate) fn show(&mut self, tb: &mut Table, m: &Model, fields: &mut [crate::properties::TypeField]) {
         let hint = m.units.name();
         let mut size = |tb: &mut Table, key: &str, label: &str, about: &str| {
-            if let Some((_, _, _, typed, _)) = fields.iter_mut().find(|f| f.1 == key) {
-                tb.text_about(t(label), typed, hint, t(about));
+            if let Some((_, _, _, typed, original)) = fields.iter_mut().find(|f| f.1 == key) {
+                original.edited |= tb.text_changed(t(label), typed, hint, t(about));
             }
         };
         tb.section(msg!("Model"), msg!("What the stair is built of, its sizes and the rules it is checked against."));

@@ -2514,7 +2514,7 @@ impl BimApp {
             ];
             for field in fields {
                 if let Some(mm) = from.parse(field) {
-                    *field = to.length(mm);
+                    *field = to.field(mm);
                 }
             }
             self.units = to;
@@ -3528,7 +3528,7 @@ impl BimApp {
         }
         if tool == Tool::Level {
             let top = self.session.model.levels().last().map_or(0.0, |(_, l)| l.elevation);
-            self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
+            self.new_level = (self.session.model.field(top + 3000.0), String::new());
         }
         let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
         let placing_grid = matches!(tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. });
@@ -5673,10 +5673,21 @@ impl BimApp {
                 let tip = tf("Project Units (UN): how lengths show and read; now {}", &[&t(now.label()).to_lowercase()]);
                 let r = stacked_button(ui, Icon::Units, msg!("Project Units"), false, &tip);
                 let asked = self.open_units;
+                let places = self.session.model.decimals_shown();
                 let opened = ribbon::choices(ui, &r, asked, |ui| {
                     for u in Units::ALL {
                         if ui.selectable_label(u == now, t(u.label())).clicked() {
                             self.run("units", json!({"length": u.name()}));
+                        }
+                    }
+                    // The places lengths show, each as it writes a metre; inches and feet-inches show sixteenths.
+                    if let Some(range) = now.decimals() {
+                        ui.separator();
+                        ui.weak(t("Decimal places"));
+                        for d in range {
+                            if ui.selectable_label(Some(d) == places, now.with_unit_to(1000.0, Some(d))).clicked() {
+                                self.run("units", json!({"decimals": d}));
+                            }
                         }
                     }
                 });
@@ -6377,11 +6388,11 @@ impl BimApp {
                     let kind = self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default();
                     let rules = bimcraft_core::codes::limits_of(m, &kind).rules;
                     let l = ui.label(t("Riser:"));
-                    ui.add(TextEdit::singleline(&mut self.stair_riser).desired_width(56.0).hint_text(m.units.length(rules.riser)))
+                    ui.add(TextEdit::singleline(&mut self.stair_riser).desired_width(56.0).hint_text(m.length(rules.riser)))
                         .labelled_by(l.id)
                         .on_hover_text(t("The most a riser may be: the stair takes as many risers as it needs to stay under it. Leave it empty to follow the rules."));
                     let l = ui.label(t("Tread:"));
-                    ui.add(TextEdit::singleline(&mut self.stair_tread).desired_width(56.0).hint_text(m.units.length(rules.going)))
+                    ui.add(TextEdit::singleline(&mut self.stair_tread).desired_width(56.0).hint_text(m.length(rules.going)))
                         .labelled_by(l.id)
                         .on_hover_text(t("How deep each tread is. Leave it empty to follow the rules."));
                     let l = ui.label(t("Winders:"));
@@ -7183,9 +7194,9 @@ impl BimApp {
                     ui.label(RichText::new(tf("No rows yet: the {} is empty.", &[&name.to_lowercase()])).color(pal().muted));
                 }
                 Ok(table) => {
-                    let units = self.session.model.units;
+                    let (units, decimals) = (self.session.model.units, self.session.model.decimals);
                     let said = |c: &schedule::Column, v: &Value| {
-                        let text = schedule::shown(units, c.kind, v);
+                        let text = schedule::shown_to(units, decimals, c.kind, v);
                         if v.is_boolean() { t(&text).to_string() } else { text }
                     };
                     // A row is highlighted while what it lists is selected; a click on it picks that.

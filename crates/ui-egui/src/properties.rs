@@ -698,10 +698,12 @@ fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
 }
 
 /// A project parameter's value of `kind` as a field shows it: lengths and areas in `units`. Not for yes or no, a checkbox.
-pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
+pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, m: &Model) -> String {
+    let units = m.units;
     match kind {
         ParameterKind::Area => area_shown(v, units),
-        ParameterKind::Length => shown(Length, v, units),
+        // Read whole by the dialog's OK: what the units round away is said in mm, so a value left alone keeps itself.
+        ParameterKind::Length => v.as_f64().map_or_else(String::new, |x| m.field(x)),
         ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => shown(Number, v, units),
         ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, units),
     }
@@ -860,13 +862,26 @@ enum Subject {
     Schedule,
 }
 
-/// A staged layer: function, material, thickness text, variable flag, and original thickness in mm.
-type LayerRow = (Function, String, String, bool, f64);
+/// A staged layer: function, material, thickness text, variable flag, and its original length.
+type LayerRow = (Function, String, String, bool, OriginalLength);
 
-/// A staged field that was not edited keeps its stored precision, including values finer than
-/// the typed-input parser's micron. The original travels with a layer when it is reordered.
-fn length_input_value(units: Units, typed: &str, original: f64) -> Option<f64> {
-    if typed == units.length_input(original) { Some(original) } else { units.parse(typed) }
+/// The text a length field opened with and its unrounded value. Keep both: the project's display
+/// may round, and parsing even precise text intentionally rounds newly typed input to a micron.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct OriginalLength {
+    text: String,
+    value: f64,
+    pub(crate) edited: bool,
+}
+
+impl OriginalLength {
+    fn new(m: &Model, value: f64) -> Self {
+        Self { text: m.field(value), value, edited: false }
+    }
+
+    fn parse(&self, units: Units, typed: &str) -> Option<f64> {
+        if !self.edited && typed == self.text { Some(self.value) } else { units.parse(typed) }
+    }
 }
 
 /// The categories whose types have layers: a wall's from its exterior in, the others' from the top down.
@@ -943,8 +958,8 @@ fn function_name(f: Function) -> &'static str {
     FUNCTIONS.iter().find(|(g, _)| *g == f).map_or("Structure", |(_, n)| n)
 }
 
-/// A staged type parameter: group, field, label, text, and original numeric value.
-pub(crate) type TypeField = (&'static str, &'static str, &'static str, String, f64);
+/// A staged type parameter: group, field, label, text, and original length (unused for angles).
+pub(crate) type TypeField = (&'static str, &'static str, &'static str, String, OriginalLength);
 
 /// A type's value of one of the project's type parameters, as typed.
 #[derive(Clone, Debug, PartialEq)]
@@ -1097,9 +1112,9 @@ pub(crate) struct RoomRows {
     pub(crate) floor_offset: String,
     pub(crate) ceiling: String,
     pub(crate) ceiling_offset: String,
-    original_offsets: [f64; 2],
     pub(crate) fill: bool,
     pub(crate) colour: [u8; 3],
+    original_offsets: [OriginalLength; 2],
 }
 
 /// The colours a room type's fill is picked from, beside any other.
@@ -1116,12 +1131,12 @@ impl RoomRows {
         let t = m.types.room.get(name).cloned().unwrap_or_default();
         RoomRows {
             floor: t.floor.unwrap_or_default(),
-            floor_offset: m.units.length_input(t.floor_offset),
+            floor_offset: m.field(t.floor_offset),
             ceiling: t.ceiling.unwrap_or_default(),
-            ceiling_offset: m.units.length_input(t.ceiling_offset),
-            original_offsets: [t.floor_offset, t.ceiling_offset],
+            ceiling_offset: m.field(t.ceiling_offset),
             fill: t.colour.is_some(),
             colour: t.colour.unwrap_or(SWATCHES[0].1),
+            original_offsets: [OriginalLength::new(m, t.floor_offset), OriginalLength::new(m, t.ceiling_offset)],
         }
     }
 
@@ -1133,7 +1148,7 @@ impl RoomRows {
                 (msg!("Floor"), msg!("Floor Offset"), "floor", &mut self.floor, &mut self.floor_offset),
                 (msg!("Ceiling"), msg!("Ceiling Height"), "ceiling", &mut self.ceiling, &mut self.ceiling_offset),
             ];
-            for (label, offset, category, of, typed) in parts {
+            for ((label, offset, category, of, typed), original) in parts.into_iter().zip(&mut self.original_offsets) {
                 let options: Vec<String> =
                     std::iter::once(none.clone()).chain(m.type_names(category).into_iter().map(String::from)).collect();
                 let mut shown = if of.is_empty() { none.clone() } else { of.clone() };
@@ -1141,7 +1156,7 @@ impl RoomRows {
                 *of = if shown == none { String::new() } else { shown };
                 // No floor, no offset to give it.
                 if !of.is_empty() {
-                    tb.text(t(offset), typed, m.units.name());
+                    original.edited |= tb.text_changed(t(offset), typed, m.units.name(), "");
                 }
             }
         } else if group == GRAPHICS {
@@ -1167,14 +1182,16 @@ impl RoomRows {
 
     /// What the `type` command is given for them, or why an offset isn't a length.
     fn params(&self, p: &mut Value, units: Units) -> Result<(), String> {
-        for (key, of, offset, label, typed, original) in [
-            ("floor", &self.floor, "floor_offset", msg!("Floor Offset"), &self.floor_offset, self.original_offsets[0]),
-            ("ceiling", &self.ceiling, "ceiling_offset", msg!("Ceiling Height"), &self.ceiling_offset, self.original_offsets[1]),
-        ] {
+        for ((key, of, offset, label, typed), original) in [
+            ("floor", &self.floor, "floor_offset", msg!("Floor Offset"), &self.floor_offset),
+            ("ceiling", &self.ceiling, "ceiling_offset", msg!("Ceiling Height"), &self.ceiling_offset),
+        ]
+        .into_iter()
+        .zip(&self.original_offsets)
+        {
             p[key] = if of.is_empty() { Value::Null } else { json!(of) };
             if !of.is_empty() {
-                p[offset] =
-                    json!(length_input_value(units, typed, original).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
+                p[offset] = json!(original.parse(units, typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
             }
         }
         p["colour"] = if self.fill { json!(self.colour) } else { Value::Null };
@@ -1262,11 +1279,11 @@ impl TypeDialog {
                     (Value::Null, v) | (v, _) => v.clone(),
                 };
                 // A rotation is an angle, in degrees whatever the project's units, and none is 0.
+                let original = OriginalLength::new(m, value.as_f64().unwrap_or(0.0));
                 if *k == "rotation" {
-                    return (*g, *k, *l, format!("{}°", value.as_f64().unwrap_or(0.0)), value.as_f64().unwrap_or(0.0));
+                    return (*g, *k, *l, format!("{}°", original.value), original);
                 }
-                let mm = value.as_f64().unwrap_or(0.0);
-                (*g, *k, *l, m.units.length_input(mm), mm)
+                (*g, *k, *l, original.text.clone(), original)
             })
             .collect()
     }
@@ -1274,9 +1291,9 @@ impl TypeDialog {
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
     fn layers(m: &Model, category: &str, name: &str) -> Vec<LayerRow> {
         let Some((.., thickness, layers)) = m.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return Vec::new() };
-        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length_input(l.thickness), l.variable, l.thickness);
+        let typed = |l: &Layer| (l.function, l.material.clone(), m.field(l.thickness), l.variable, OriginalLength::new(m, l.thickness));
         match layers {
-            [] => vec![(Function::Structure, String::new(), m.units.length_input(thickness), false, thickness)],
+            [] => vec![(Function::Structure, String::new(), m.field(thickness), false, OriginalLength::new(m, thickness))],
             layers => layers.iter().map(typed).collect(),
         }
     }
@@ -1296,8 +1313,7 @@ impl TypeDialog {
         let layered = copy || self.layers != self.layers_were;
         if layered {
             let layers = self.layers.iter().map(|(function, material, typed, variable, original)| {
-                let thickness =
-                    length_input_value(units, typed, *original).ok_or_else(|| tf("{}: `{}` is not a length", &[t("Thickness"), typed]))?;
+                let thickness = original.parse(units, typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t("Thickness"), typed]))?;
                 let mut l = json!({"function": function, "material": material.trim(), "thickness": thickness});
                 if *variable {
                     l["variable"] = json!(true);
@@ -1315,7 +1331,7 @@ impl TypeDialog {
                 p[*key] = json!(angle.ok_or_else(|| tf("`{}` is not an angle", &[typed.trim()]))?);
                 continue;
             }
-            p[*key] = json!(length_input_value(units, typed, *original).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
+            p[*key] = json!(original.parse(units, typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
         }
         if let Some((round, material)) = &self.shape {
             if !self.curtain_part() {
@@ -2051,7 +2067,7 @@ impl BimApp {
             ui.checkbox(&mut core, t("Extend into wall (to core)"));
             ui.end_row();
             let name = ui.label(t("Offset:"));
-            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.units.length(p.offset), name.id, m.units.name());
+            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.length(p.offset), name.id, m.units.name());
             ui.end_row();
         });
         let face_changed = core != p.face.is_core();
@@ -3412,7 +3428,7 @@ impl BimApp {
                     }
                     for g in groups {
                         tb.group(g);
-                        for (_, key, label, typed, _) in d.fields.iter_mut().filter(|f| f.0 == g) {
+                        for (_, key, label, typed, original) in d.fields.iter_mut().filter(|f| f.0 == g) {
                             // A round section has a diameter and no depth.
                             if round && *key == "depth" {
                                 continue;
@@ -3426,7 +3442,7 @@ impl BimApp {
                                             .labelled_by(l)
                                     });
                                 }
-                                None => tb.text(label, typed, if *key == "rotation" { "°" } else { model.units.name() }),
+                                None => original.edited |= tb.text_changed(label, typed, if *key == "rotation" { "°" } else { model.units.name() }, ""),
                             }
                         }
                         if g == "Dimensions"
@@ -3450,7 +3466,7 @@ impl BimApp {
                                     edit_pattern = true;
                                 }
                             });
-                            tb.shown(t("Thickness"), &model.units.length(*thickness));
+                            tb.shown(t("Thickness"), &model.length(*thickness));
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
@@ -3793,7 +3809,7 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
         ui.label("");
         ui.end_row();
         let last = layers.len().saturating_sub(1);
-        for (k, (f, mat, typed, var, _)) in layers.iter_mut().enumerate() {
+        for (k, (f, mat, typed, var, original)) in layers.iter_mut().enumerate() {
             let c = ComboBox::from_id_salt(("layer-function", k)).selected_text(t(function_name(*f))).width(110.0).show_ui(ui, |ui| {
                 for (g, n) in FUNCTIONS {
                     if ui.selectable_label(*f == g, t(n)).clicked() {
@@ -3815,7 +3831,8 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
                 }
             });
             c.response.labelled_by(material.id);
-            ui.add_sized([70.0, 20.0], TextEdit::singleline(typed).hint_text(units.name())).labelled_by(thickness.id);
+            original.edited |=
+                ui.add_sized([70.0, 20.0], TextEdit::singleline(typed).hint_text(units.name())).labelled_by(thickness.id).changed();
             if variable
                 && ui.checkbox(var, t("Variable")).on_hover_text(t("Takes up a shaped top's falls: one layer at most")).changed()
                 && *var
@@ -3852,7 +3869,8 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
     }
     // A finish 10 mm thick, on the exterior side.
     if ui.button(t("Insert Layer")).clicked() {
-        layers.insert(0, (Function::Finish, String::new(), units.length_input(10.0), false, 10.0));
+        let original = OriginalLength { text: units.length(10.0), value: 10.0, edited: false };
+        layers.insert(0, (Function::Finish, String::new(), original.text.clone(), false, original));
     }
 }
 
@@ -3864,8 +3882,8 @@ pub(crate) struct FamilyDialog {
     name: String,
     /// The components that were on the type when the dialog opened; OK puts them on the type shown.
     elements: Vec<Id>,
-    /// Each type parameter: name, kind, text, computed flag, group, and original numeric value.
-    fields: Vec<(String, Holds, String, bool, Under, Option<f64>)>,
+    /// Each type parameter: name, kind, text, computed flag, group, and original length if it has one.
+    fields: Vec<(String, Holds, String, bool, Under, Option<OriginalLength>)>,
     /// A new name being typed, for a duplicate or a rename.
     naming: Naming,
     /// What stopped OK, Apply, Duplicate or Rename.
@@ -3882,7 +3900,7 @@ impl FamilyDialog {
             .map(|f| {
                 let values = f.values(&name, &Default::default()).unwrap_or_default();
                 let typed = |p: &bimcraft_core::family::Parameter| match values.get(&p.name) {
-                    Some(Val::Number(x)) if p.kind == Holds::Length => m.units.length_input(*x),
+                    Some(Val::Number(x)) if p.kind == Holds::Length => m.field(*x),
                     Some(Val::Number(x)) if p.kind == Holds::YesNo => (if *x != 0.0 { "1" } else { "0" }).to_string(),
                     Some(Val::Number(x)) => format!("{}", (x * 1e6).round() / 1e6),
                     Some(Val::Text(t)) => t.clone(),
@@ -3893,7 +3911,7 @@ impl FamilyDialog {
                     .filter(|p| !p.instance)
                     .map(|p| {
                         let original = match values.get(&p.name) {
-                            Some(Val::Number(x)) => Some(*x),
+                            Some(Val::Number(x)) if p.kind == Holds::Length => Some(OriginalLength::new(m, *x)),
                             _ => None,
                         };
                         (p.name.clone(), p.kind, typed(p), p.formula.is_some() || p.reporting, p.group(), original)
@@ -3922,8 +3940,8 @@ impl FamilyDialog {
             let v = match kind {
                 Holds::Length => json!(
                     original
-                        .and_then(|mm| length_input_value(units, typed, mm))
-                        .or_else(|| units.parse(typed))
+                        .as_ref()
+                        .map_or_else(|| units.parse(typed), |original| original.parse(units, typed))
                         .ok_or_else(|| tf("{}: `{}` is not a length", &[key, typed]))?
                 ),
                 Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
@@ -3955,7 +3973,7 @@ impl BimApp {
                 typeprops::table(ui, "family-type", below, |tb| {
                     for g in groups {
                         tb.group(g.label());
-                        for (key, kind, typed, computed, _, _) in d.fields.iter_mut().filter(|f| f.4 == g) {
+                        for (key, kind, typed, computed, _, original) in d.fields.iter_mut().filter(|f| f.4 == g) {
                             match kind {
                                 // What a formula works out, shown as Revit greys it.
                                 _ if *computed => tb.shown(key, typed),
@@ -3965,7 +3983,12 @@ impl BimApp {
                                     *typed = (if on { "1" } else { "0" }).to_string();
                                 }
                                 Holds::Material => tb.pick(key, typed, &materials),
-                                Holds::Length => tb.text(key, typed, model.units.name()),
+                                Holds::Length => {
+                                    let changed = tb.text_changed(key, typed, model.units.name(), "");
+                                    if let Some(original) = original {
+                                        original.edited |= changed;
+                                    }
+                                }
                                 Holds::Angle => tb.text(key, typed, "°"),
                                 Holds::Area => tb.text(key, typed, "mm²"),
                                 Holds::Volume => tb.text(key, typed, "mm³"),

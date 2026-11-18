@@ -173,6 +173,11 @@ units {"length":"m"}"#,
     let wall = &h.state().session.model.types.wall["Precision Wall"];
     assert_eq!(wall.layers[0].thickness, 3.000123456789);
     assert_eq!(wall.layers[1].thickness, 125.0);
+    press(&mut h, "OK");
+    h.state_mut().run("undo", json!({}));
+    assert_eq!(h.state().session.model.types.wall["Precision Wall"].layers[1].thickness, 55.0);
+    h.state_mut().run("redo", json!({}));
+    press(&mut h, "Edit Type");
     layer_text(&mut h, 0, "3 mm");
     press(&mut h, "OK");
     assert_eq!(h.state().session.model.types.wall["Precision Wall"].thickness, 128.0);
@@ -271,4 +276,24 @@ units {"length":"m"}"#);
     press(&mut h, "Apply");
     press(&mut h, "Apply");
     assert_eq!(read(&h), 55.0);
+}
+
+#[test]
+fn precision_project_decimals_keep_their_display_and_untouched_values() {
+    use egui_kittest::kittest::NodeT;
+    for decimals in [2, 3, 4, 5] {
+        let mut h = app(&format!("{FAMILY}\nunits {{\"length\":\"m\",\"decimals\":{decimals}}}"));
+        h.state_mut().selection = ids(&h, "component");
+        h.run();
+        press(&mut h, "Edit Type");
+        let expected = h.state().session.model.field(55.0);
+        let expected_precision = h.state().session.model.decimals;
+        assert_eq!(h.get_by_role_and_label(Role::TextInput, "Width").accesskit_node().value(), Some(expected));
+        type_into(&mut h, "Gap", "4 mm");
+        press(&mut h, "Apply");
+        press(&mut h, "Apply");
+        assert_eq!(family_value(&h, "Gap"), 4.0);
+        assert_eq!(family_value(&h, "Width"), 55.0);
+        assert_eq!(h.state().session.model.decimals, expected_precision);
+    }
 }

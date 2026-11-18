@@ -70,7 +70,7 @@ impl BimApp {
         }
         let was = (self.run_justify, std::mem::take(&mut self.beam_offset));
         self.run_kept.insert(self.run_loaded, was);
-        let zero = self.session.model.units.length(0.0);
+        let zero = self.session.model.length(0.0);
         (self.run_justify, self.beam_offset) =
             self.run_kept.remove(category).unwrap_or_else(|| (bimcraft_core::runs::default_justify(category), zero));
         self.run_loaded = category;

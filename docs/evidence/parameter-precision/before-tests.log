@@ -1,40 +1,91 @@
-   Compiling bimcraft-ui-egui v0.12.0 (/Users/austinhartt/Documents/ChatGPT/BimCraft Test/bimcraft-rust-parameter-precision/crates/ui-egui)
-    Finished `test` profile [unoptimized] target(s) in 18.10s
+   Compiling bimcraft-i18n v0.12.0 (/private/tmp/parameter-precision-refresh/crates/i18n)
+   Compiling bimcraft-update v0.12.0 (/private/tmp/parameter-precision-refresh/crates/update)
+   Compiling bimcraft-core v0.12.0 (/private/tmp/parameter-precision-refresh/crates/core)
+   Compiling bimcraft-ui-egui v0.12.0 (/private/tmp/parameter-precision-refresh/crates/ui-egui)
+   Compiling bimcraft-cowork v0.12.0 (/private/tmp/parameter-precision-refresh/crates/cowork)
+   Compiling bimcraft-assistant v0.12.0 (/private/tmp/parameter-precision-refresh/crates/assistant)
+   Compiling bimcraft-pyaddins v0.12.0 (/private/tmp/parameter-precision-refresh/crates/pyaddins)
+   Compiling bimcraft-plugin v0.12.0 (/private/tmp/parameter-precision-refresh/crates/plugin)
+    Finished `test` profile [unoptimized] target(s) in 1m 02s
      Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_ui_egui-41097187b197fa1a)
 
-running 4 tests
-
-thread 'tests::parameter_precision::precision_screenshots' (69296220) panicked at /Users/austinhartt/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/egui_kittest-0.36.2/src/wgpu.rs:77:6:
-Failed to create render state: CustomNativeAdapterSelectionError("No adapter found")
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-test tests::parameter_precision::precision_screenshots ... FAILED
-
-thread 'tests::parameter_precision::precision_family_noop_apply_keeps_stored_lengths' (69296218) panicked at crates/ui-egui/src/tests/parameter_precision.rs:34:9:
-assertion `left == right` failed: m: untouched Gap
-  left: 0.0
- right: 3.0
+running 13 tests
+test tests::parameter_precision::precision_screenshots ... ok
+test tests::parameter_precision::precision_wall_noop_apply_keeps_total_and_layers ... ok
+test tests::parameter_precision::precision_untouched_family_value_keeps_submicron_source_precision ... FAILED
+test tests::parameter_precision::precision_layer_reorder_and_duplicate_keep_original_values ... FAILED
+test tests::parameter_precision::precision_family_typed_value_survives_repeat_apply ... ok
+test tests::parameter_precision::precision_wall_layer_edit_keeps_other_layers_and_repeated_apply ... FAILED
+test tests::parameter_precision::precision_room_type_offsets_survive_other_field_edit ... FAILED
+test tests::parameter_precision::precision_invalid_type_input_does_not_commit_other_fields ... ok
+test tests::parameter_precision::precision_project_type_parameter_is_a_change_only_control ... ok
+test tests::parameter_precision::precision_family_other_field_cancel_history_and_reopen ... FAILED
+test tests::parameter_precision::precision_instance_fields_are_change_only_controls ... ok
 test tests::parameter_precision::precision_family_noop_apply_keeps_stored_lengths ... FAILED
-
-thread 'tests::parameter_precision::precision_wall_noop_apply_keeps_total_and_layers' (69296221) panicked at crates/ui-egui/src/tests/parameter_precision.rs:59:5:
-assertion `left == right` failed
-  left: 60.0
- right: 58.0
-test tests::parameter_precision::precision_wall_noop_apply_keeps_total_and_layers ... FAILED
-
-thread 'tests::parameter_precision::precision_family_typed_value_survives_repeat_apply' (69296219) panicked at crates/ui-egui/src/tests/parameter_precision.rs:46:5:
-assertion `left == right` failed: second Apply
-  left: 0.0
- right: 3.0
-test tests::parameter_precision::precision_family_typed_value_survives_repeat_apply ... FAILED
+test tests::parameter_precision::precision_typed_lengths_are_exact_in_metric_and_imperial_projects ... FAILED
 
 failures:
+
+---- tests::parameter_precision::precision_untouched_family_value_keeps_submicron_source_precision stdout ----
+
+thread 'tests::parameter_precision::precision_untouched_family_value_keeps_submicron_source_precision' (69514647) panicked at crates/ui-egui/src/tests/parameter_precision.rs:121:5:
+assertion `left == right` failed
+  left: 3.0
+ right: 3.000123456789
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::parameter_precision::precision_layer_reorder_and_duplicate_keep_original_values stdout ----
+
+thread 'tests::parameter_precision::precision_layer_reorder_and_duplicate_keep_original_values' (69514642) panicked at crates/ui-egui/src/tests/parameter_precision.rs:248:5:
+assertion `left == right` failed
+  left: 3.0
+ right: 3.000123456789
+
+---- tests::parameter_precision::precision_wall_layer_edit_keeps_other_layers_and_repeated_apply stdout ----
+
+thread 'tests::parameter_precision::precision_wall_layer_edit_keeps_other_layers_and_repeated_apply' (69514648) panicked at crates/ui-egui/src/tests/parameter_precision.rs:170:5:
+assertion `left == right` failed
+  left: 3.0
+ right: 3.000123456789
+
+---- tests::parameter_precision::precision_room_type_offsets_survive_other_field_edit stdout ----
+
+thread 'tests::parameter_precision::precision_room_type_offsets_survive_other_field_edit' (69514644) panicked at crates/ui-egui/src/tests/parameter_precision.rs:195:5:
+assertion `left == right` failed
+  left: 3.0
+ right: 3.000123456789
+
+---- tests::parameter_precision::precision_family_other_field_cancel_history_and_reopen stdout ----
+
+thread 'tests::parameter_precision::precision_family_other_field_cancel_history_and_reopen' (69514638) panicked at crates/ui-egui/src/tests/parameter_precision.rs:101:5:
+assertion `left == right` failed: one Undo reverses the edit despite repeated Apply/OK
+  left: 125.0
+ right: 55.0
+
+---- tests::parameter_precision::precision_family_noop_apply_keeps_stored_lengths stdout ----
+
+thread 'tests::parameter_precision::precision_family_noop_apply_keeps_stored_lengths' (69514637) panicked at crates/ui-egui/src/tests/parameter_precision.rs:34:9:
+assertion `left == right` failed: ft: untouched Gap
+  left: 3.048
+ right: 3.0
+
+---- tests::parameter_precision::precision_typed_lengths_are_exact_in_metric_and_imperial_projects stdout ----
+
+thread 'tests::parameter_precision::precision_typed_lengths_are_exact_in_metric_and_imperial_projects' (69514646) panicked at crates/ui-egui/src/tests/parameter_precision.rs:215:9:
+assertion `left == right` failed: ft: 0.125
+  left: 39.624
+ right: 38.1
+
 
 failures:
     tests::parameter_precision::precision_family_noop_apply_keeps_stored_lengths
-    tests::parameter_precision::precision_family_typed_value_survives_repeat_apply
-    tests::parameter_precision::precision_screenshots
-    tests::parameter_precision::precision_wall_noop_apply_keeps_total_and_layers
+    tests::parameter_precision::precision_family_other_field_cancel_history_and_reopen
+    tests::parameter_precision::precision_layer_reorder_and_duplicate_keep_original_values
+    tests::parameter_precision::precision_room_type_offsets_survive_other_field_edit
+    tests::parameter_precision::precision_typed_lengths_are_exact_in_metric_and_imperial_projects
+    tests::parameter_precision::precision_untouched_family_value_keeps_submicron_source_precision
+    tests::parameter_precision::precision_wall_layer_edit_keeps_other_layers_and_repeated_apply
 
-test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 1630 filtered out; finished in 0.37s
+test result: FAILED. 6 passed; 7 failed; 0 ignored; 0 measured; 1636 filtered out; finished in 1.36s
 
 error: test failed, to rerun pass `-p bimcraft-ui-egui --lib`

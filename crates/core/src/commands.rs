@@ -2217,7 +2217,8 @@ other_files(
          its annotations in drawing coordinates, straight-wall openings in their host (refusing motion off the host), and \
          unhosted non-adaptive components in world coordinates. Other model kinds and `end` are refused in this mode. \
          Without `view`, moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall, one run or one grid \
+         moves (a grid's other end stays, and it keeps some length). One \
          section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
          looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
          an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
@@ -2724,9 +2725,14 @@ other_files(
         "units",
         "Project Units",
         &["UN"],
-        "{length?: mm|cm|m|in|ft|ft-in} how drawings, schedules and the desktop show lengths, and read typed ones: \
+        "{length?: mm|cm|m|in|ft|ft-in, decimals?: 0..5|null} how drawings, schedules and the desktop show lengths, and read typed ones: \
          millimetres, centimetres, metres, fractional inches, decimal feet, or feet and fractional inches (to 1/16\"); areas \
-         in m², or ft² with inches and feet. The model, and every command, keep millimetres",
+         in m², or ft² with inches and feet. The model, and every command, keep millimetres. `decimals` is how many places \
+         after the point lengths show, in what the project's units allow: metres and feet 2 to 5, centimetres 1 to 4, \
+         millimetres 0 to 3 (so 3 mm in metres can show as 0.003, not 0.00); null, or the fewest, is what drawings have always \
+         shown (metres 2, centimetres 1, millimetres 0, feet 2). Inches and feet-inches show sixteenths and take none. It is kept \
+         with the project, and starts again at its fewest when `length` changes and no `decimals` comes with it. Typed lengths \
+         are read exactly whatever it is. Says `length` and `decimals` (the places shown, null for inches and feet-inches)",
         units,
     )
     .menu("Manage > Project Units"),
@@ -19451,9 +19457,12 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 walls.insert(id, w);
             }
             Element::Door(o) | Element::Window(o) if moving_guids.contains(&o.host) => {}
-            // Moving one end of a run: the other end stays where it was, as a wall's does.
+            // Moving one end of a run or a grid: the other end stays where it was, as a wall's does.
             mut e => {
                 if let (Some(at_start), Some(me), Some(old)) = (end, e.run_mut(), m.run_of(id)) {
+                    if at_start { me.end = old.end } else { me.start = old.start }
+                }
+                if let (Some(at_start), Element::Grid(me), Some(Element::Grid(old))) = (end, &mut e, m.elements.get(id)) {
                     if at_start { me.end = old.end } else { me.start = old.start }
                 }
                 if let (Some(before), Some(after)) = (m.run_of(id).cloned(), e.run().cloned()) {
@@ -20642,8 +20651,12 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
             }
         }
     };
-    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
+    let is_grid = |one: &Id| matches!(s.model.elements.get(*one), Some(Element::Grid(_)));
+    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some() || is_grid(one)) {
+        return Err(bad(
+            c,
+            "`end` moves an end of one wall or one run, or of one grid, or a part of one section or elevation; give `ids` one of those",
+        ));
     }
     // A group goes with its members.
     let taken = if end.is_none() { crate::groups::with_members(&s.model, &ids) } else { ids.clone() };
@@ -21982,13 +21995,45 @@ fn stair_check(s: &mut Session, p: &Value) -> R {
 
 fn units(s: &mut Session, p: &Value) -> R {
     let c = "units";
-    if let Some(name) = string(c, p, "length")? {
-        let u = Units::from_name(&name).ok_or_else(|| bad(c, format!("`length` is mm, cm, m, in, ft or ft-in, not `{name}`")))?;
-        if u != s.model.units {
-            s.model_mut().units = u;
+    only(c, p, &["length", "decimals"])?;
+    let units = match string(c, p, "length")? {
+        Some(name) => Units::from_name(&name).ok_or_else(|| bad(c, format!("`length` is mm, cm, m, in, ft or ft-in, not `{name}`")))?,
+        None => s.model.units,
+    };
+    let decimals = match p.get("decimals") {
+        // The places of one unit are not another's: new units start at their fewest.
+        None => s.model.decimals.filter(|_| units == s.model.units),
+        Some(Value::Null) => None,
+        Some(v) => {
+            let range = units.decimals().ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "inches and feet-inches show sixteenths of an inch and take no `decimals`: use mm, cm, m or ft, or null, not {v}"
+                    ),
+                )
+            })?;
+            let d = v.as_u64().and_then(|d| u8::try_from(d).ok()).filter(|d| range.contains(d)).ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "`decimals` is {} to {} in {} (null for the {} drawings show), not {v}",
+                        range.start(),
+                        range.end(),
+                        units.name(),
+                        range.start()
+                    ),
+                )
+            })?;
+            // The fewest are what none shows.
+            Some(d).filter(|d| d != range.start())
         }
+    };
+    if units != s.model.units || decimals != s.model.decimals {
+        let m = s.model_mut();
+        (m.units, m.decimals) = (units, decimals);
     }
-    Ok(json!({"length": s.model.units.name()}))
+    Ok(json!({"length": s.model.units.name(), "decimals": s.model.decimals_shown()}))
 }
 
 fn room_area(s: &mut Session, p: &Value) -> R {

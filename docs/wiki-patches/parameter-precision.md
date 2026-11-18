@@ -1,13 +1,13 @@
-# Proposed wiki additions — #513
+# Proposed wiki patch: untouched type lengths
 
-Prepared against the live **Project Settings** and **Types and Materials** pages read November 18, 2026. These additions are proposed, not published.
+Unpublished. Checked against the live Types and Materials / Project Settings pages on November 18, 2026. This supplements upstream's metric-field fix and project-decimal setting.
 
-## Project Settings — after the Units paragraph
+## Types and Materials — after the Type Properties workflow list
 
-Family type lengths and native type dimensions in Type Properties show additional digits when the usual display rounding would hide part of the value. In a metre project, a 3 mm type length reads `0.003`, and 55 mm reads `0.055`. You can also enter an explicit unit, such as `3 mm`. Applying the type again or editing another field keeps untouched lengths at their original stored precision. Newly typed lengths retain the existing input precision of 0.001 mm.
+Type dimension fields, layer thicknesses, room offsets and family type lengths keep their stored values when you leave them untouched. This applies when imperial display rounds a value or the stored value has more digits than typed input accepts. Editing one field does not round the others.
 
-Drawing and schedule rounding is unchanged. Project Units does not yet offer a project-wide decimal-places setting.
+Typing into a field uses the usual unit parser. Deliberately retyping its displayed value counts as an edit: retyping `1/8"` sets 3.175 mm, while leaving a 3 mm value displayed as `1/8"` untouched keeps 3 mm. Newly typed lengths keep the existing 0.001 mm precision.
 
-## Types and Materials — after Edit Type's action list
+Repeated unchanged **Apply** or **OK** adds no extra Undo step. **Cancel** discards staged edits. Duplicate and reordered layer rows retain their untouched values.
 
-Type Properties keeps untouched family type lengths, native dimensions, layer thicknesses and room finish offsets at their stored precision. **Apply** commits the current edit and leaves the dialog open; **Cancel** discards edits made since the last Apply. Enter a length in the project's unit, or include its unit (`0.003` in a metre project, or `3 mm`). Repeated Apply does not round those lengths to the drawing display precision. Duplicate carries the same precise dimensions into the new type.
+This note covers the fields listed above, not Family Editor or the separate stair-rule table. Display units and project decimal settings continue to control presentation.

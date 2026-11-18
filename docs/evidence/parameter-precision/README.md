@@ -1,86 +1,68 @@
-# Type Properties length precision — issue #513
+# Preserve untouched type dimensions — #513 follow-up
 
-BIMCraft Rust v0.12.0, based on upstream `046b3575db132777da22655d6a44aa75b32b349c`. All models and screenshots here are synthetic. The test fixture is in `crates/ui-egui/src/tests/parameter_precision.rs`; [fixture.txt](fixture.txt) provides a visible wall and generic block for a separate desktop/CLI run.
+BIMCraft Rust v0.12.0, refreshed against upstream `e61e6d6d6999416ea2282de7d3d60b84ccce2401`. Upstream `c4a3fa25` repaired metric field formatting, and `faaee4fa` added project decimal settings. This PR retains those changes and addresses the remaining raw-value/history regressions. There is no new core formatter or precision UI.
 
-## Reproduction and repair
+## Test-first evidence
 
-The unchanged base fails three behavioral regressions in [before-tests.log](before-tests.log):
+The synthetic regressions replayed on unchanged new main before this repair: **seven failed, six passed** (one passing test is optional screenshot capture). [before-tests.log](before-tests.log) records the results.
 
-| Metre-project action | Raw result before | Required result |
+| Action on new main | Raw result before | Required result |
 |---|---:|---:|
-| Family type, untouched Apply | Gap 3 → 0 mm | 3 mm |
-| Type `0.003`, Apply twice | first 3 mm, second 0 mm | 3 mm both times |
-| Native wall type, untouched Apply | total 58 → 60 mm | 58 mm (3 + 55) |
+| Untouched family Apply in feet | Gap 3 → 3.048 mm | 3 mm |
+| Type `0.125` ft, repeat Apply | 38.1 → 39.624 mm | 38.1 mm |
+| Edit another field, reorder/duplicate a layer, or edit a room offset | 3.000123456789 → 3 mm | Original stored value |
+| Edit Width, Apply, unchanged OK, one Undo | Width stays 125 mm | Width returns to 55 mm |
 
-The UI initialized editable fields with `Units::length`, the rounded drawing format, then parsed every field back into a command. A wall's rounded total also changed its structure layer through the normal type command. This was model-value loss, not only display rounding.
+The first candidate and its metric reproduction are preserved in [commit f4f0bf50](https://github.com/drsurfbum/BIMCraft-Rust/tree/f4f0bf50cc94bdf3b7fd8d5367d5d9f0f3f834f9/docs/evidence/parameter-precision). Its formatting implementation was superseded by upstream and is not part of this final diff.
 
-`Units::length_input` keeps the usual notation when it represents the value and otherwise shows decimal units. Native type fields, layer rows, room offsets and family type lengths retain the original number alongside their text, so untouched values finer than the parser's micron survive too. Edited text uses the existing parser and commands. Unchanged Apply/OK skips resubmission, avoiding a redundant Undo step. No model/file format or command schema changes.
+## Repair and scope
 
-## Workflow checks
+`OriginalLength` stages the model value, initial display text and actual edit state for native dimension fields, layer rows, room offsets and family type lengths. Untouched fields retain the original number; edited fields use the existing parser. Actual edit state matters: a stored 3 mm may display as `1/8"`. Leaving it alone keeps 3 mm; deliberately retyping `1/8"` stores 3.175 mm. Layer reordering carries the snapshot. Unchanged Apply/OK skips a redundant type command/history step.
 
-The 12 UI behavioral tests plus the optional screenshot test pass in [after-tests.log](after-tests.log). They cover all six unit systems; `0.003`, `0.055`, fractional millimetres, explicit metric and imperial input; untouched and repeated Apply; editing another field; Cancel/Escape; invalid input with atomic refusal; one Undo/Redo of the real edit; native save/reopen; layer edits and reordering; Duplicate; submicron stored values; and existing instance/project-type-parameter change-only controls. The core formatter test checks representative positive, negative and zero lengths in every unit.
+Mutations still use authoritative commands and validation. No file format, command schema, core units formatter, project setting or drawing/schedule behavior changes. Newly typed lengths still round to 0.001 mm. Instance and project type parameters retain their existing changed-text-only paths. Family Editor, the separate stair-rule table and other dialogs are outside this bounded repair.
 
-Newly typed lengths keep the established 0.001 mm input precision. Instance Properties and project type parameters already skip unchanged text and remain rounded in their display; these controls are tested but their formatting is outside this fix. Family Editor has its own parameter editing path. Drawing/schedule precision, a project-wide precision setting, and broad Revit parity are not implemented here.
+The focused suite has 13 behavioral tests plus optional visual capture. It covers all six unit systems, explicit units, another field, repeated Apply, Cancel/Escape, invalid input, family/native Undo/Redo, native reopen, Duplicate, reordered layers, submicron values, deliberate retyping and upstream metre decimal settings from two to five places.
 
-## Automated visual evidence
+## Runtime and visuals
 
-The original values appear as `0.00` and `0.06` before, and `0.003` and `0.055` after. The native egui harness rendered both profiles in Light, Dark and Dark UI/Light Canvas. All six after images were inspected. These are automated captures, not manual user acceptance.
+[fixture.txt](fixture.txt) creates a generic block and two-layer wall. The UI test fixture is independent and only 500 mm high; the runtime block is 2000 mm high so it crosses the plan cut. All models/images are synthetic.
 
-| Before | After |
-|---|---|
-| ![Rounded editable lengths](before/rev-light.png) | ![Precise editable lengths](after/rev-light.png) |
-
-The remaining images are in [before](before/) and [after](after/). An initial sandbox render had no graphics adapter; the separate capture runs with Mac graphics access succeeded.
-
-## Revit reference and bounded comparison
-
-Reference versions: Revit LT 2026 [Project Units](https://help.autodesk.com/cloudhelp/2026/ENU/RevitLT-Customize/files/GUID-3AC18F2E-AEB3-43F5-A77A-4E9B72CE9357.htm) and Revit API 26.4.0.0 [FormatOptions.Accuracy](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API-MainReference/files/html/bbba6604-8961-3a26-4e1f-73c2a2169464.htm). Documentation was consulted for behavior; no Autodesk assets or prose are included in implementation or fixtures.
-
-| Topic | Evidence and BIMCraft Rust scope |
-|---|---|
-| Display versus editable precision | Autodesk documents distinct editable model-size precision. This fix uses precise type-edit text while keeping drawing rounding. |
-| Type versus instance | Type edits use the shared `family`/`type` commands; instance Properties keeps its existing changed-field path. UI controls tested. |
-| Numeric input | Existing metric/imperial parsing, explicit units and 0.001 mm input precision retained; tested. |
-| Apply/Cancel/history/persistence | Automated BIMCraft checks above. No native Revit run was performed for this slice. |
-| Activation/selection | Select the synthetic element, Edit Type, edit the staged fields; selection and type assignment use existing flows. |
-| Geometry/layers | Generic family dimensions and native wall layers covered; no cabinet-specific behavior or new hosting semantics. |
-| Grips/snapping/export/drawing formats | No interaction change. Drawing and schedule rounding remains supported as before; customizable project-wide precision remains unavailable. |
-
-## Reproduce
+`mcp_probe.py CLI OUTPUT_DIR` drives real JSON-RPC stdio. `desktop_probe.py DESKTOP CLI OUTPUT_DIR` runs the same semantic commands in an isolated native window with separate preferences and update checking disabled, then cleans up only its own saved test process. It is not a manual close/unsaved-prompt acceptance test. Optional `--capture` requests native plan/3D images: those requests timed out on this refreshed build, so native screenshot acceptance is not claimed. The six focused egui renders below are the visual evidence. `ifc_probe.py OUTPUT_DIR` independently checks schema/EXPRESS rules and mesh bounds with IfcOpenShell and pytest.
 
 ```sh
-cargo test -p bimcraft-ui-egui --lib precision_
-cargo test -p bimcraft-core editable_lengths_keep_small_values_in_every_unit
-BIMCRAFT_PRECISION_DUMP=/absolute/output/folder cargo test -p bimcraft-ui-egui --lib precision_screenshots
+cargo test --locked --workspace precision_
+BIMCRAFT_PRECISION_DUMP=/absolute/output/folder cargo test --locked --workspace precision_screenshots
 python3 docs/evidence/parameter-precision/mcp_probe.py /absolute/path/bimcraft-cli /absolute/output/folder
 ```
 
-The MCP probe uses real JSON-RPC stdio, the same semantic commands as the UI, raw queries, refusal, Undo/Redo, native reopen and IFC export. `--connect PORT` runs against an isolated desktop opened on the generated `fixture.bimc`. Both modes passed; transcripts and summaries are in [runtime](runtime/). The final raw values are Gap 3 mm, Width 125 mm and wall layers 3 + 125 mm. A separate CLI reopen of the desktop's saved native file retained those values.
+The refresh preserves upstream field appearance. Captures: [Rev light](after/rev-light.png), [Rev dark](after/rev-dark.png), [Rev light canvas](after/rev-light-canvas.png), [BIMCraft light](after/bimcraft-light.png), [BIMCraft dark](after/bimcraft-dark.png), [BIMCraft light canvas](after/bimcraft-light-canvas.png). Six profile/theme captures verify presentation; the raw-value table and assertions establish behavior. Automated captures are not manual user acceptance.
 
-`desktop_probe.py DESKTOP CLI OUTPUT_DIR` starts the fixture with isolated preferences and update checking disabled, runs the connected probe, captures plan/3D through the native benchmark runner and closes that test process. Both native images were inspected. The 500 mm-high UI harness block and the 2000 mm-high runtime block are deliberately separate synthetic cases; the latter is visible at the plan cut height.
+## Revit comparison
 
-Independent IfcOpenShell 0.8.4.post1 validation found zero schema/EXPRESS findings in standalone, connected and reopened exports. Mesh bounds measure the wall at 4 × 0.128 × 3 m and the block at 0.125 × 0.5 × 2 m. Reproduce with `ifc_probe.py OUTPUT_DIR` in an environment containing `ifcopenshell` and `pytest`. The connected reopen/export commands are:
+Reference versions: Revit LT 2026 [Project Units](https://help.autodesk.com/cloudhelp/2026/ENU/RevitLT-Customize/files/GUID-3AC18F2E-AEB3-43F5-A77A-4E9B72CE9357.htm) and Revit API 26.4.0.0 [FormatOptions.Accuracy](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API-MainReference/files/html/bbba6604-8961-3a26-4e1f-73c2a2169464.htm). Documentation references, not native Revit observations. No Autodesk prose/assets copied into implementation or fixtures.
 
-```sh
-bimcraft-cli run OUTPUT_DIR/connected.bimc --cmd 'elements {"category":"component"}' --cmd 'inspect {}'
-bimcraft-cli run OUTPUT_DIR/connected.bimc --save OUTPUT_DIR/connected-reopened.ifc
-```
+| Workflow | Bounded BIMCraft Rust evidence |
+|---|---|
+| Display versus stored precision | Retains upstream display settings and untouched model values. Documentation supports treating display rounding separately. |
+| Activation and type/instance distinction | Select the synthetic element, Edit Type, stage edits. Type commands remain shared by UI/MCP; adjacent instance/project-type paths tested. |
+| Numeric input | Metric/imperial, explicit units, deliberate retyping, parser precision and atomic refusal tested. |
+| Apply/Cancel/history/reopen | Tests read stored values; one Undo reverses the real family/native edit. |
+| Geometry/layers/export | Layer edits, reordering and Duplicate covered; independent IFC checks measure synthetic geometry. |
+| Grips, snapping and hosting | No changes or additional parity claims. |
 
-## Contribution scope and attribution
+## Checks and attribution
 
-Small generic repair for the data-loss alternative in [#513](https://github.com/IPedrax/BIMCraft/issues/513). Open upstream PRs were checked before implementation; no duplicate precision fix was found. The separate SolidCraft compatibility upgrade is not part of this contribution. The [proposed wiki patch](../../wiki-patches/parameter-precision.md) is unpublished.
-
-Agent: Codex desktop, `gpt-6-astra`, high reasoning effort, verified from this chat's recorded turn configuration. No subagents were used.
-
-## Final local validation
-
-macOS arm64, Rust 1.99.1 (`58cf8f9c3`), Cargo 1.99.1. Source/catalog hashes used for the checks are in [checks/source-hashes.json](checks/source-hashes.json); the PR head identifies this source snapshot.
+On macOS arm64 with Rust/Cargo 1.99.1, development/test debug information and incremental compilation disabled:
 
 - `cargo fmt --check`: passed.
 - `cargo clippy --locked --workspace --all-targets -- -D warnings`: passed.
-- `cargo test --locked --workspace`: **5,330 passed, 0 failed, 22 ignored**, including the hostile-input sweep. The wasm sample plugin was built first.
-- `cargo i18n update` and `cargo i18n check`: passed; only source references changed.
-- `cargo build --locked -p bimcraft -p bimcraft-cli`: passed. Both binaries report v0.12.0; this is an isolated development build, not a release or installed-app replacement.
-- Standalone/connected MCP, native reopen and the three independently checked IFC exports: passed as described above.
+- Translation extraction and check: passed; this repair adds no translatable strings.
+- `cargo test --locked --workspace`: **5,347 passed, 0 failed, 22 ignored** across 59 test binaries; sample wasm plugin built first.
+- Final focused workspace run with graphics capture: **14 passed, 0 failed** (13 behavioral tests plus capture); all six images inspected.
+- Desktop and CLI development builds: passed. Tested source/catalog hashes are in [checks/source-hashes.json](checks/source-hashes.json).
+- Standalone and real connected MCP passed numeric edits, atomic refusal, Undo/Redo and persistence/export. Independent reopen retained Gap 3 mm, Width 125 mm and wall layers 3 + 125 mm.
+- IfcOpenShell 0.8.4.post1: zero schema/EXPRESS findings in three synthetic exports; wall bounds 4 × 0.128 × 3 m and block bounds 0.125 × 0.5 × 2 m.
 
-Actual logs are in [checks](checks/). Commands used `CARGO_TARGET_DIR=/tmp/parameter-precision-target`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0`. Graphics/socket tests ran with macOS access. The first workspace compile in Documents stopped on file-provider OS error 60 before tests ran; a matching local `/tmp` source copy completed the full suite. The Documents Git index was also evicted, so a fresh local publishing clone at the same base was used, with every staged source/catalog hash compared to the tested copy.
+[Check logs](checks/) and [runtime results](runtime/) are committed. Native screenshot requests timed out; manual window closing, native visual acceptance and native Revit parity remain unverified.
+
+README/area docs and the [proposed wiki patch](../../wiki-patches/parameter-precision.md) are updated; wiki patch unpublished. Agent: **Codex desktop / gpt-6-astra / high reasoning effort**, verified from recorded turn configuration. No subagents.

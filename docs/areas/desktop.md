@@ -245,6 +245,8 @@ drawn again after the plan's own pass, so neither can be buried by a wall. A sel
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
 a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
+A selected grid's ends are grips by the same code: a drag lengthens, shortens or leans the grid, and runs `move` with `end` (`start` or
+`end`) on release, so the other end stays and `Model::check` refuses a grid with no length.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
@@ -348,13 +350,6 @@ state and its commands: the project's own types and a family's in `properties.rs
 `notes.rs` (`text_type`, with `rename`), filled region types in `fillpatterns.rs`, where Duplicate and Rename change the draft OK applies and a
 pattern's … opens the Patterns tab. The dialogs are one width, and the table's body one height where the window has room, known from the first frame:
 a body that fitted its rows grew over a few frames, and a click meant for one row landed on the next. A refusal is said in the dialog.
-
-Family type lengths and native type dimension fields use `Units::length_input`, which adds digits when the drawing format
-would round the value. Their staged fields retain the original numeric length; Apply/OK and Duplicate reuse it when its
-text is untouched, including layer rows moved or changed in another column and room finish offsets. Changed text still
-uses `Units::parse` (explicit units accepted, 0.001 mm input precision) and the existing `family`/`type` command routes.
-Drawing/schedule formatting remains `Units::length`. Instance Properties and project type parameters already submit only
-changed text; this fix does not change their display formatting. Regression coverage is `tests/parameter_precision.rs`.
 
 BIMCraft's tools and Find. BIMCraft has no ribbon: its tools are the Tools palette (`dock::Palette::Tools`, `BimApp::tool_column`), a
 palette like the others, so it docks on any side, floats and closes, and the settings file keeps where (one a file from before it never
@@ -823,6 +818,31 @@ grid snapping is on, else to the nearest 10 mm, grid snapping off or not.
 Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids, by:[along,up]}`; all other mutations retain existing commands. A vertical dimension's `level` anchor is its view GUID, also stored in `view`. Format 21 prevents older readers from resolving it as a plan dimension or dropping it. Format 20 needs no data conversion.
 
 Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
+
+## Lengths in fields
+
+A dialog that fills a field from the model and reads every field back when OK or Apply is pressed (Type Properties, a room type's
+offsets, a stair type's rules, Edit Pattern, a view range, Reinforce, a project parameter's value, a family's type parameters)
+fills a length with `Units::field`, never `Units::length`. `length` is what drawings show, rounded (3 mm in metres is `0.00`), so
+a field left alone would be read back as 0. In mm, cm and m, `field` is `length` while that reads back as the value, else the
+value in mm with its unit (`3 mm`), which `Units::parse` reads. Inches and feet round to a sixteenth of an inch and a hundredth
+of a foot by design, so `field` is `length` there. A field that commits only when its text changes (the Properties palette)
+keeps `length`.
+
+A project also keeps how many places lengths show (`Model::decimals`, the `units` command's `decimals`; Manage > Project Units
+lists them under the units): metres and feet 2 to 5, centimetres 1 to 4, millimetres 0 to 3, none for inches and feet-inches,
+which show sixteenths. None, and the fewest, are what drawings always showed. A change of units starts again at the fewest.
+Code that has a `Model` shows a length with `Model::length`, `Model::with_unit` and `Model::field`, which pass the places on;
+`Units::length` is for code that has only the units (so it shows the fewest places), and dimension types and schedules take
+the places as `DimensionType::length` and `schedule::shown_to` do. Typed lengths are read exactly whatever places are shown.
+
+Type Properties additionally stages the raw value, initial text and edit state of native dimension fields, layer thicknesses,
+room offsets and family type lengths (`OriginalLength` in `properties.rs`). An untouched field keeps its raw value, even when
+imperial display rounds or the value is finer than the typed-input parser's 0.001 mm precision. An actual text edit uses that
+parser, including deliberately retyping the same rounded text. The snapshot travels with a reordered layer; Apply refreshes it.
+An unchanged Apply/OK skips the type command, so one Undo reaches the real edit. Validation and history still belong to the
+existing `type`, `family` and `type_parameter` commands. Instance/project-parameter change-only controls retain their existing
+paths. Family Editor, the separate stair-rule table and other dialogs are outside this bounded staging repair.
 
 ## Benchmarking the window
 

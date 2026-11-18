@@ -250,7 +250,7 @@ impl BimApp {
             p.circle_stroke(plane.screen(c), 4.0, Stroke::new(1.5, pal().accent));
             // How long the line to come is, as the plan says it.
             if let (Some(last), draw::Shape::Line | draw::Shape::Polyline) = (chain.last(), self.shape()) {
-                let text = m.units.with_unit(last.dist(c));
+                let text = m.with_unit(last.dist(c));
                 crate::canvas::tag(p, plane.screen(c) + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, text);
             }
         }
