@@ -38,6 +38,7 @@ Extrusion **Edit Profile** is supplied by the separately merged #495; this footp
 The November 17 follow-up adds multiple-line controls and the per-edit overall-pitch choice. Before is the merged
 baseline `0d36d580434a089b864b5e479d58ee5f849c05eb` with a capture test only; after is this revision. Both use the same
 synthetic two-line selection. The baseline has no slope controls for multiple lines; after shows mixed values.
+The after images were refreshed from integration commit `409fd0f4` on November 18, retaining the current upstream controls.
 
 ![Before: two selected lines without slope controls](images/roof-slope-multi-before.png)
 
