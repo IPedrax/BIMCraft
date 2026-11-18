@@ -5988,7 +5988,7 @@ msgstr ""
 msgid "Evaluation and host references"
 msgstr ""
 
-#: crates/ui-egui/src/presets.rs:499
+#: crates/ui-egui/src/presets.rs:498
 msgid "Every panel of this tab is hidden."
 msgstr ""
 
@@ -14432,7 +14432,7 @@ msgstr "Mostrar os atalhos nas dicas"
 msgid "Show temporary alignment guides (smart snapping) when drawing"
 msgstr "Mostrar guias de alinhamento temporárias ao desenhar"
 
-#: crates/ui-egui/src/presets.rs:500
+#: crates/ui-egui/src/presets.rs:499
 msgid "Show the panels"
 msgstr ""
 

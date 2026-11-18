@@ -5987,7 +5987,7 @@ msgstr ""
 msgid "Evaluation and host references"
 msgstr ""
 
-#: crates/ui-egui/src/presets.rs:499
+#: crates/ui-egui/src/presets.rs:498
 msgid "Every panel of this tab is hidden."
 msgstr ""
 
@@ -14431,7 +14431,7 @@ msgstr "Zobrazovat klávesové zkratky v popisech tlačítek"
 msgid "Show temporary alignment guides (smart snapping) when drawing"
 msgstr "Při kreslení zobrazovat dočasná vodítka zarovnání (chytré přichytávání)"
 
-#: crates/ui-egui/src/presets.rs:500
+#: crates/ui-egui/src/presets.rs:499
 msgid "Show the panels"
 msgstr ""
 
