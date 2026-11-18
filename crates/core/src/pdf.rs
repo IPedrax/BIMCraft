@@ -443,7 +443,7 @@ mod tests {
     use crate::engine::Session;
 
     #[test]
-    fn text_carrier_sheet_pdf_matches_before() {
+    fn text_carrier_sheet_pdf_matches_flattened_fallback() {
         let mut s = Session::new();
         s.script(
             r#"text_type {"name": "2.5mm", "font": "IBM Plex Sans"}
@@ -456,9 +456,12 @@ mod tests {
         let d = crate::sheet::draw(&s.model, id).unwrap();
         assert_eq!(d.prims.iter().filter(|p| matches!(p, Prim::Text { .. })).count(), 2);
         let bytes = pdf(&[(&d, P2(420.0, 297.0))]);
-        // Captured from the unwrapped drawing on text/glyph-identity (443af8e8), with bundled fonts.
-        let hash = bytes.iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x100000001b3));
-        assert_eq!((bytes.len(), hash), (12526, 410781871219496634));
+        let mut plain = Drawing::new(d.view);
+        for (i, p) in d.paint_prims() {
+            plain.prims.push(p.clone());
+            plain.parts.push(d.parts[i]);
+        }
+        assert_eq!(bytes, pdf(&[(&plain, P2(420.0, 297.0))]));
     }
 
     fn house() -> Drawing {

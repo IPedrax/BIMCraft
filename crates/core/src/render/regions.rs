@@ -472,11 +472,10 @@ fn outside(prim: &Prim, view: View, rings: &[Vec<P2>], boxes: &[Option<Extent>])
                 *color,
             )
         }
-        Prim::Text { frame, layout, fallback } => vec![Prim::Text {
-            frame: *frame,
-            layout: layout.clone(),
-            fallback: fallback.iter().flat_map(|p| outside(p, view, rings, boxes)).collect(),
-        }],
+        Prim::Text { frame, layout, fallback } => {
+            let fallback: Vec<_> = fallback.iter().flat_map(|p| outside(p, view, rings, boxes)).collect();
+            if fallback.is_empty() { Vec::new() } else { vec![Prim::Text { frame: *frame, layout: layout.clone(), fallback }] }
+        }
         Prim::Image { .. } => Vec::new(),
     }
 }
@@ -682,11 +681,10 @@ impl<'a> Area<'a> {
                 }
                 fill(parts, view, *color)
             }
-            Prim::Text { frame, layout, fallback } => vec![Prim::Text {
-                frame: *frame,
-                layout: layout.clone(),
-                fallback: fallback.iter().flat_map(|p| self.clip(p, view, stroke)).collect(),
-            }],
+            Prim::Text { frame, layout, fallback } => {
+                let fallback: Vec<_> = fallback.iter().flat_map(|p| self.clip(p, view, stroke)).collect();
+                if fallback.is_empty() { Vec::new() } else { vec![Prim::Text { frame: *frame, layout: layout.clone(), fallback }] }
+            }
             Prim::Image { .. } => Vec::new(),
         }
     }
@@ -806,3 +804,20 @@ fn capsule(p: P2, q: P2, d: f64, a: P2, u: P2) -> Option<(f64, f64)> {
 
 #[cfg(test)]
 mod tests;
+
+#[test]
+fn text_carrier_cropped_wholly_out_disappears_on_every_path() {
+    let view = View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 200, height: 100 };
+    for font in [crate::text::SANS, crate::text::LETTERING] {
+        let layout = crate::text::layout(&crate::text::TextType { font: font.into(), ..Default::default() }, "AV", &[]);
+        let mut d = Drawing::new(view);
+        lettering(&mut d, &layout, NoteFrame { at: (10.0, 10.0), k: 5.0, angle: 0.2 }, INK);
+        assert_eq!(d.prims.len(), 1);
+        let far = [vec![P2(500.0, 500.0), P2(600.0, 500.0), P2(600.0, 600.0), P2(500.0, 600.0)]];
+        let cover = [vec![P2(-200.0, -200.0), P2(200.0, -200.0), P2(200.0, 200.0), P2(-200.0, 200.0)]];
+        assert!(d.cropped((500.0, 500.0), (600.0, 600.0)).0.prims.is_empty());
+        assert!(d.prims[0].clone().cropped((500.0, 500.0), (600.0, 600.0)).is_empty());
+        assert!(outside(&d.prims[0], view, &cover, &[bounds(&cover[0])]).is_empty());
+        assert!(Area::new(&far, &[]).unwrap().clip(&d.prims[0], view, 1.0).is_empty());
+    }
+}

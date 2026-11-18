@@ -968,7 +968,7 @@ fn group_frames(p: &Painter, m: &Model, d: &Shown, lit: &[Id], hovered: usize) {
             (lo, hi) = (lo.min(q), hi.max(q));
         };
         for (i, prim) in d.paint_prims() {
-            let owner = &d.owners[i];
+            let owner = d.owners.get(i).copied().flatten();
             if !owner.is_some_and(|o| members.contains(&o)) {
                 continue;
             }
@@ -998,7 +998,7 @@ fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
     let at = |q: &(f32, f32)| f(place.pos(*q));
     let selected: HashSet<Id> = selected.iter().copied().collect();
     for (i, prim) in d.paint_prims() {
-        let owner = &d.owners[i];
+        let owner = d.owners.get(i).copied().flatten();
         if !owner.is_some_and(|id| selected.contains(&id)) {
             continue;
         }

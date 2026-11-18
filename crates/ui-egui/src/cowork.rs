@@ -872,7 +872,7 @@ pub(crate) fn paint_plan(
     let (drawing, at) = d;
     if !marks.lit.is_empty() {
         for (i, prim) in drawing.paint_prims() {
-            let owner = &drawing.owners[i];
+            let owner = drawing.owners.get(i).copied().flatten();
             let Some(c) = owner.and_then(|id| marks.lit.get(&id)).map(|c| colour(*c)) else { continue };
             match prim {
                 Prim::Line { pts, .. } => {

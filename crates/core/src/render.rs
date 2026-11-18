@@ -91,6 +91,8 @@ impl Drawing {
 pub enum Prim {
     /// Notes and title-block lettering: layout in paper mm, placement in pixels, and the exact paint it replaces.
     /// The fallback contains only fills and lines, already placed, in their original paint order.
+    /// Cropping may leave only a subset of the layout; a text exporter must clip characters itself.
+    /// After `Look::dress`, fallback fills take the override fill colour and lines take its color.
     Text {
         frame: NoteFrame,
         layout: std::sync::Arc<crate::text::Layout>,
@@ -180,8 +182,8 @@ impl Prim {
         let px = |p: P2| (p.0 as f32, p.1 as f32);
         match self {
             Prim::Text { frame, layout, fallback } => {
-                let fallback = fallback.into_iter().flat_map(|p| p.cropped(lo, hi)).collect();
-                vec![Prim::Text { frame, layout, fallback }]
+                let fallback: Vec<_> = fallback.into_iter().flat_map(|p| p.cropped(lo, hi)).collect();
+                if fallback.is_empty() { Vec::new() } else { vec![Prim::Text { frame, layout, fallback }] }
             }
             Prim::Fill { rings, color } => {
                 let rings: Vec<Vec<(f32, f32)>> = rings.iter().map(|r| clip_ring(r, lo, hi)).filter(|r| r.len() >= 3).collect();
@@ -6459,6 +6461,33 @@ mod tests {
     use super::*;
     use crate::engine::Session;
 
+    fn text_carrier_frame_matches_fallback(d: &Drawing) {
+        let mut seen = 0;
+        for p in &d.prims {
+            if let Prim::Text { frame, layout, fallback } = p {
+                let mut fresh = Drawing::new(d.view);
+                lettering_fallback(&mut fresh, layout, *frame, INK);
+                let a: Vec<_> = fresh.prims.iter().flat_map(Prim::points).collect();
+                let b: Vec<_> = fallback.iter().flat_map(Prim::points).collect();
+                assert_eq!(a.len(), b.len());
+                assert!(a.iter().zip(b).all(|(a, b)| (a.0 - b.0).hypot(a.1 - b.1) < 0.001));
+                seen += 1;
+            }
+        }
+        assert!(seen > 0);
+    }
+
+    #[test]
+    fn text_carrier_angled_section_underlay_frame_matches_fallback() {
+        let mut s = Session::new();
+        let source = s.execute("section", &serde_json::json!({"start":[-1000,0], "end":[1000,0]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("text", &serde_json::json!({"view":source, "text":"AV note", "at":[1000,0], "angle":17})).unwrap();
+        s.execute("underlay", &serde_json::json!({"view":"Level 1", "source":source, "angle":31, "hide_annotation":false})).unwrap();
+        let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 400, height: 300 };
+        let under = crate::underlay::draw_cancellable(&s.model, None, 100000, view, &|| false).unwrap().unwrap();
+        text_carrier_frame_matches_fallback(&under.drawing);
+    }
+
     #[test]
     fn text_carrier_fallback_is_exact() {
         let mut s = Session::new();
@@ -6519,6 +6548,12 @@ mod tests {
                 d.prims = std::mem::take(&mut d.prims).into_iter().map(|p| p.moved(7.0, -4.0)).collect();
             }
             same(&wrapped, &plain);
+            text_carrier_frame_matches_fallback(&wrapped);
+            text_carrier_frame_matches_fallback(&wrapped.cropped((-10.0, -10.0), (250.0, 170.0)).0);
+            let mut grown = make(true);
+            grown.k = 1.7;
+            grown.grow(0, (13.0, 19.0));
+            text_carrier_frame_matches_fallback(&grown);
             let setup = crate::export::page::PageSetup { colour: crate::export::page::Colour::Grey, hairlines: true, ..Default::default() };
             same(&crate::export::formats::styled(&wrapped, &setup).unwrap(), &crate::export::formats::styled(&plain, &setup).unwrap());
             for d in [&mut wrapped, &mut plain] {
