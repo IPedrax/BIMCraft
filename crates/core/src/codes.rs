@@ -1,231 +1,512 @@
-//! Building codes: the rules a project's stairs and railings are held to, apart from its technical standard, which is
-//! about drafting. A project names a code (`Model::building_code`) and starts with its rules; it may change any of them
-//! (`Model::stair_rules`: a state's or a city's own numbers), and nothing is ever refused for breaking one: a stair
-//! outside its rules is built and reported ([`stair_findings`], the `stair_check` command). A code names the methods its
-//! electrical demand is worked out by too ([`Electrical`]), which `demand` and `building_demand` take when not given one, and
-//! a project may name its own (`Model::electrical_methods`).
+//! Building codes: the rules a project is held to by law or by a standard of practice, in five disciplines
+//! (architectural, structural, electrical, mechanical, plumbing), apart from its technical standard, which is about
+//! drafting. Nothing is ever refused for breaking a rule: what is outside one is built and reported.
 //!
-//! The numbers are data, not code: `data/building-codes.json` holds an entry for each code, naming its sources. The NBR
-//! entries were checked against their texts; the rest were typed from memory and are unchecked, as each rule's source says;
-//! where a code gives no number the entry holds a forgiving one. The area, and the rule that every check is fast and
-//! spatial (it runs under the cursor and after every edit): `docs/areas/building-codes.md`. The plan this is the first piece
-//! of: `docs/stair-tool-plan.md`.
+//! - A **code** ([`BuildingCode`]) is an entry for one discipline: its documents, who checked it, and its **sections**,
+//!   each a group of rules as JSON (`stairs`, `conductors`, `drainage`…). A rule is a number, a yes or no, a choice or a
+//!   table, with its source (`sources`, by `section.rule`) and its kind (`kinds`: a requirement, a practice…).
+//! - A section is read by a module as a typed struct ([`Section`]), registered in [`sections`] with what it is and what
+//!   reads it. The numbers are data, never code: `data/codes/<discipline>/*.json`, one file a code (`data.rs`).
+//! - A project ([`Codes`], `Model::codes`) picks a **base** code for each discipline, any **amendments** over it (a state's
+//!   fire brigade, a city's own code, a utility), and may change any rule (`changes`). The rules in force are those
+//!   layers, the last one winning, rule by rule ([`Model::resolve_code`], [`Model::rules`], kept until the codes change).
+//!   A section the base hasn't is taken from the first code BIMCraft has that holds it (the library), under what the
+//!   amendments change of it, so a command works whatever the project chose, and says where its numbers came from.
+//!   Amendments go in the order chosen, each over the base or another amendment held; a change made with `amend` is
+//!   that amendment's (one of BIMCraft's becomes the project's copy, under its name).
+//! - Site and Climate ([`Site`]) are the numbers a code's maps give for the project's place, shared by every tab.
+//!
+//! The area, and the rule that every check is fast and spatial: `docs/areas/building-codes.md`; the plan:
+//! `docs/building-code-plan.md`.
 
-use std::sync::OnceLock;
+use std::any::{Any, TypeId};
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex, OnceLock};
 
+use bimcraft_i18n::ui_msg;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
-use crate::model::{Element, Landing, Model, Stair};
-use crate::stairs;
+use crate::model::Model;
 
-/// The code of a project that has chosen none: wide ranges round common practice.
+pub mod checks;
+pub(crate) mod command;
+mod data;
+pub mod stairs;
+mod xml;
+
+pub use stairs::*;
+
+/// The code of a project that has chosen none, in the architectural discipline: wide ranges round common practice.
 pub const GENERIC: &str = "generic";
 
-/// How long a landing must be.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// The most building codes a project keeps of its own, the longest name of one, and the largest file one is read from.
+pub const MAX_OWN: usize = 100;
+pub const MAX_NAME: usize = 64;
+pub const MAX_XML: usize = 16 << 20;
+/// The most values (numbers, texts, entries) a project's own codes and changes may hold together: tables the size of a
+/// utility's, many times over, and no more.
+pub const MAX_VALUES: usize = 400_000;
+/// The most amendments over one base.
+pub const MAX_AMENDMENTS: usize = 16;
+
+/// A discipline: a tab of Manage > Building Codes, and the codes for it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LandingRule {
-    /// As long as the stair is wide, `landing_length` being enough.
-    Width,
-    /// `landing_length`.
-    Fixed,
-    /// A going and one step (two risers and a going), and `landing_length` at least.
-    Step,
+pub enum Discipline {
+    #[default]
+    Architectural,
+    Structural,
+    Electrical,
+    Mechanical,
+    Plumbing,
 }
 
-/// Where a winder's going is measured.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WalkLine {
-    /// Along the middle of the stair.
-    Centre,
-    /// `walk_line_offset` in from the narrow side.
-    NarrowSide,
-}
+impl Discipline {
+    pub const ALL: [Discipline; 5] =
+        [Discipline::Architectural, Discipline::Structural, Discipline::Electrical, Discipline::Mechanical, Discipline::Plumbing];
 
-/// The rules stairs and railings are held to, in millimetres: a code's, or a project's own. What each means is in
-/// `data/building-codes.json`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StairRules {
-    /// The riser and the going a new stair starts with.
-    pub riser: f64,
-    pub going: f64,
-    pub riser_min: f64,
-    pub riser_max: f64,
-    pub going_min: f64,
-    pub going_max: f64,
-    /// The range of two risers and a going.
-    pub step_min: f64,
-    pub step_max: f64,
-    pub width_min: f64,
-    pub headroom: f64,
-    /// A landing is due when a flight would rise more than this, or hold more risers than `flight_risers_max`.
-    pub flight_rise_max: f64,
-    pub flight_risers_max: u32,
-    pub landing_rule: LandingRule,
-    pub landing_length: f64,
-    /// Whether winding treads are allowed.
-    pub winders: bool,
-    pub walk_line: WalkLine,
-    pub walk_line_offset: f64,
-    pub winder_going_min: f64,
-    pub winder_narrow_min: f64,
-    /// The least and the most a tread's nosing stands out past the riser below it (finish to finish).
-    #[serde(default)]
-    pub nosing_min: f64,
-    pub nosing_max: f64,
-    pub open_risers: bool,
-    /// The most two risers or goings of a flight may differ.
-    pub uniformity: f64,
-    pub handrail_min: f64,
-    pub handrail_max: f64,
-    pub guard_min: f64,
-}
-
-/// The longest any rule may be, 100 m: more is a mistake, or hostile.
-const MAX_RULE: f64 = 100_000.0;
-
-impl StairRules {
-    /// Its lengths by name, as the data and `building_code` name them.
-    fn lengths(&self) -> [(&'static str, f64); 21] {
-        [
-            ("riser", self.riser),
-            ("going", self.going),
-            ("riser_min", self.riser_min),
-            ("riser_max", self.riser_max),
-            ("going_min", self.going_min),
-            ("going_max", self.going_max),
-            ("step_min", self.step_min),
-            ("step_max", self.step_max),
-            ("width_min", self.width_min),
-            ("headroom", self.headroom),
-            ("flight_rise_max", self.flight_rise_max),
-            ("landing_length", self.landing_length),
-            ("walk_line_offset", self.walk_line_offset),
-            ("winder_going_min", self.winder_going_min),
-            ("winder_narrow_min", self.winder_narrow_min),
-            ("nosing_min", self.nosing_min),
-            ("nosing_max", self.nosing_max),
-            ("uniformity", self.uniformity),
-            ("handrail_min", self.handrail_min),
-            ("handrail_max", self.handrail_max),
-            ("guard_min", self.guard_min),
-        ]
+    /// As the commands and files name it.
+    pub fn key(self) -> &'static str {
+        match self {
+            Discipline::Architectural => "architectural",
+            Discipline::Structural => "structural",
+            Discipline::Electrical => "electrical",
+            Discipline::Mechanical => "mechanical",
+            Discipline::Plumbing => "plumbing",
+        }
     }
 
-    /// Whether these can be rules at all: every length a number from 0 to 100 m, what a new stair starts with and what a
-    /// flight may rise more than nothing, and no range upside down. Says what to fix.
-    pub fn check(&self) -> Result<(), String> {
-        for (name, v) in self.lengths() {
-            if !v.is_finite() || !(0.0..=MAX_RULE).contains(&v) {
-                return Err(format!("stair rules: `{name}` is a length from 0 to {MAX_RULE} mm, not {v}"));
-            }
+    /// What the window calls it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Discipline::Architectural => ui_msg!("Architectural"),
+            Discipline::Structural => ui_msg!("Structural"),
+            Discipline::Electrical => ui_msg!("Electrical"),
+            Discipline::Mechanical => ui_msg!("Mechanical"),
+            Discipline::Plumbing => ui_msg!("Plumbing"),
         }
-        for (name, v) in
-            [("riser", self.riser), ("going", self.going), ("riser_max", self.riser_max), ("flight_rise_max", self.flight_rise_max)]
-        {
-            if v < 1.0 {
-                return Err(format!("stair rules: `{name}` is 1 mm at least, not {v}"));
-            }
+    }
+
+    pub fn parse(t: &str) -> Option<Discipline> {
+        Discipline::ALL.into_iter().find(|d| d.key() == t)
+    }
+}
+
+/// What a rule's number is: the text's own, or something else that a reader should know.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    /// What the document asks.
+    Requirement,
+    /// What the document recommends.
+    Recommendation,
+    /// A maker's table, a handbook's or a common practice: no requirement.
+    Practice,
+    /// The project's to choose and justify.
+    Assumption,
+    /// An older edition's, kept for reference.
+    Historical,
+    /// No document gives it: a number that asks nothing in practice.
+    Forgiving,
+}
+
+impl Kind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Kind::Requirement => ui_msg!("requirement"),
+            Kind::Recommendation => ui_msg!("recommendation"),
+            Kind::Practice => ui_msg!("practice"),
+            Kind::Assumption => ui_msg!("assumption"),
+            Kind::Historical => ui_msg!("historical"),
+            Kind::Forgiving => ui_msg!("forgiving"),
         }
-        if !(1..=1000).contains(&self.flight_risers_max) {
-            return Err(format!("stair rules: `flight_risers_max` is from 1 to 1000 risers, not {}", self.flight_risers_max));
+    }
+}
+
+/// A section's rules as a module reads them. The data's section deserializes into it; `check` says what can't be rules.
+pub trait Section: Serialize + DeserializeOwned + Clone + Default + Send + Sync + 'static {
+    const DISCIPLINE: Discipline;
+    const KEY: &'static str;
+    fn check(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// A section as the registry knows it: its discipline and key, what the window calls it, a line on what it holds, what
+/// reads it (none: shown as a reference only), and the reading of a value of it: the value as the section types it
+/// (`1100` as `1100.0` where a length is a number), or what can't be rules.
+pub struct SectionDef {
+    pub discipline: Discipline,
+    pub key: &'static str,
+    pub label: &'static str,
+    pub about: &'static str,
+    pub read_by: &'static [&'static str],
+    pub read: fn(&Value) -> Result<Value, String>,
+}
+
+impl SectionDef {
+    /// Whether `v` can be this section's rules.
+    pub fn check(&self, v: &Value) -> Result<(), String> {
+        (self.read)(v).map(|_| ())
+    }
+}
+
+fn check_as<S: Section>(v: &Value) -> Result<Value, String> {
+    let s: S = serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
+    s.check()?;
+    serde_json::to_value(&s).map_err(|e| e.to_string())
+}
+
+/// A section a module reads as a type of its own that has no form to write back: it can be the rules if it reads as one, and
+/// it is kept as it is.
+fn valid_as<T: DeserializeOwned>(v: &Value) -> Result<Value, String> {
+    serde_json::from_value::<T>(v.clone()).map_err(|e| e.to_string())?;
+    Ok(v.clone())
+}
+
+/// A table by steps, as codes print a factor by a count or a load: the value of the first row whose bound `x` is up to, else
+/// `beyond`.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Steps {
+    /// (up to, value), the bounds rising.
+    pub rows: Vec<(f64, f64)>,
+    pub beyond: f64,
+}
+
+impl Steps {
+    pub fn at(&self, x: f64) -> f64 {
+        self.rows.iter().find(|r| x <= r.0).map_or(self.beyond, |r| r.1)
+    }
+
+    /// Finite numbers, and bounds that rise.
+    pub fn valid(&self, what: &str) -> Result<(), String> {
+        if self.rows.iter().flat_map(|r| [r.0, r.1]).chain([self.beyond]).any(|x| !x.is_finite()) {
+            return Err(format!("`{what}` holds a number that isn't finite"));
         }
-        for (low, a, high, b) in [
-            ("riser_min", self.riser_min, "riser_max", self.riser_max),
-            ("going_min", self.going_min, "going_max", self.going_max),
-            ("step_min", self.step_min, "step_max", self.step_max),
-            ("handrail_min", self.handrail_min, "handrail_max", self.handrail_max),
-            ("nosing_min", self.nosing_min, "nosing_max", self.nosing_max),
-        ] {
-            if a > b {
-                return Err(format!("stair rules: `{low}` ({a}) is more than `{high}` ({b}); swap them, or change one"));
-            }
+        if self.rows.windows(2).any(|w| w[1].0 <= w[0].0) {
+            return Err(format!("`{what}`: each row's bound is above the one before"));
         }
         Ok(())
     }
-
-    /// The names of the rules that differ from `other`'s, in the order the data lists them.
-    pub fn changed(&self, other: &StairRules) -> Vec<String> {
-        let (Ok(serde_json::Value::Object(a)), Ok(serde_json::Value::Object(b))) =
-            (serde_json::to_value(self), serde_json::to_value(other))
-        else {
-            return Vec::new();
-        };
-        ORDER.iter().filter(|k| a.get(**k) != b.get(**k)).map(|k| (*k).to_string()).collect()
-    }
-
-    /// How long a landing must be on a stair `width` wide, of risers `riser` high and goings `going` deep.
-    pub fn landing_due(&self, width: f64, riser: f64, going: f64) -> f64 {
-        match self.landing_rule {
-            LandingRule::Width => width.min(self.landing_length),
-            LandingRule::Fixed => self.landing_length,
-            LandingRule::Step => (going + 2.0 * riser + going).max(self.landing_length),
-        }
-    }
-
-    /// The most risers a flight of risers `riser` high may hold before a landing is due: 2 at least, a flight's fewest.
-    pub fn flight_risers(&self, riser: f64) -> u32 {
-        let by_rise = if riser > 0.0 { (self.flight_rise_max / riser + EPS).floor().clamp(0.0, 1000.0) as u32 } else { 1000 };
-        self.flight_risers_max.min(by_rise).max(2)
-    }
-
-    /// The landings a straight stair of `risers` risers, each `riser` high, is due: as few as keep every flight inside the
-    /// rules, the flights as equal as whole risers allow, each landing straight on.
-    /// What a new landing's `length` is on a stair `width` wide: 0, as deep as the stair is wide, where that is what
-    /// the rules ask; else what they ask.
-    pub fn landing_length_for(&self, width: f64, riser: f64, going: f64) -> f64 {
-        let due = self.landing_due(width, riser, going);
-        if (due - width).abs() < EPS { 0.0 } else { (due * 100.0).round() / 100.0 }
-    }
-
-    pub fn landings(&self, risers: u32, riser: f64) -> Vec<Landing> {
-        let most = self.flight_risers(riser);
-        let flights = risers.div_ceil(most).clamp(1, 100);
-        (1..flights)
-            .map(|i| Landing { at: (f64::from(risers) * f64::from(i) / f64::from(flights)).round(), ..Landing::default() })
-            .filter(|l| l.at >= 2.0 && l.at <= f64::from(risers) - 2.0)
-            .collect()
-    }
 }
 
-/// The rules' names, in the order the data lists them.
-pub const ORDER: [&str; 26] = [
-    "riser",
-    "going",
-    "riser_min",
-    "riser_max",
-    "going_min",
-    "going_max",
-    "step_min",
-    "step_max",
-    "width_min",
-    "headroom",
-    "flight_rise_max",
-    "flight_risers_max",
-    "landing_rule",
-    "landing_length",
-    "winders",
-    "walk_line",
-    "walk_line_offset",
-    "winder_going_min",
-    "winder_narrow_min",
-    "nosing_min",
-    "nosing_max",
-    "open_risers",
-    "uniformity",
-    "handrail_min",
-    "handrail_max",
-    "guard_min",
-];
+/// What a typed section's rules must be beyond their types: numbers that are finite and in range, lists that aren't empty.
+pub trait Valid {
+    fn valid(&self) -> Result<(), String>;
+}
 
-/// A building code, an entry of `data/building-codes.json`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// A section a module reads as a type of its own, with no form to write back, that checks what its types can't.
+fn valid_checked<T: DeserializeOwned + Valid>(v: &Value) -> Result<Value, String> {
+    serde_json::from_value::<T>(v.clone()).map_err(|e| e.to_string())?.valid()?;
+    Ok(v.clone())
+}
+
+/// A section nothing reads yet: any object of rules, shown as a reference.
+fn reference(v: &Value) -> Result<Value, String> {
+    if v.is_object() { Ok(v.clone()) } else { Err("a section is an object of rules, by name".into()) }
+}
+
+/// Every section there is, in the order the window lists them.
+pub fn sections() -> &'static [SectionDef] {
+    use Discipline::*;
+    static ALL: OnceLock<Vec<SectionDef>> = OnceLock::new();
+    ALL.get_or_init(|| {
+        let s = |discipline, key, label, about, read_by, read| SectionDef { discipline, key, label, about, read_by, read };
+        vec![
+            s(
+                Architectural,
+                "stairs",
+                ui_msg!("Stairs and Railings"),
+                ui_msg!("Risers, treads, widths, landings, winders, nosings, handrails and guards of stairs."),
+                &["stair", "stair_check", "stair_solve", "code_check"],
+                check_as::<StairRules>,
+            ),
+            s(
+                Architectural,
+                "ramps",
+                ui_msg!("Ramps"),
+                ui_msg!("The slope and width of new ramps, the steepest slope allowed, the height between landings, widths and landings."),
+                &["ramp", "code_check"],
+                check_as::<checks::RampRules>,
+            ),
+            s(
+                Architectural,
+                "doors",
+                ui_msg!("Doors and Openings"),
+                ui_msg!("The minimum clear width and height of doors, the widest leaf, and the doors that are not checked."),
+                &["code_check"],
+                check_as::<checks::DoorRules>,
+            ),
+            s(
+                Architectural,
+                "rooms",
+                ui_msg!("Rooms and Habitability"),
+                ui_msg!("Minimum area, width, height and natural light of rooms, by the kind of room its name shows."),
+                &["code_check"],
+                check_as::<checks::RoomRules>,
+            ),
+            s(
+                Architectural,
+                "egress",
+                ui_msg!("Egress"),
+                ui_msg!("Occupant load factors, exit widths, travel distances and corridors."),
+                &[],
+                reference,
+            ),
+            s(
+                Architectural,
+                "accessibility",
+                ui_msg!("Accessibility"),
+                ui_msg!("Accessible routes, turning spaces, reach ranges and accessible toilets."),
+                &[],
+                reference,
+            ),
+            s(
+                Architectural,
+                "fire",
+                ui_msg!("Fire Safety"),
+                ui_msg!("Fire resistance by element, compartments and separation."),
+                &[],
+                reference,
+            ),
+            s(
+                Architectural,
+                "envelope",
+                ui_msg!("Envelope and Energy"),
+                ui_msg!("Thermal transmittance of walls, roofs, floors and windows by climate zone."),
+                &[],
+                reference,
+            ),
+            s(
+                Structural,
+                "loads",
+                ui_msg!("Loads and Combinations"),
+                ui_msg!("Partial factors, imposed loads by use and unit weights."),
+                &[],
+                reference,
+            ),
+            s(
+                Structural,
+                "concrete",
+                ui_msg!("Concrete"),
+                ui_msg!("Concrete cover by exposure class, steel ratios, bars, stirrups and skin bars, used by the reinforcement check."),
+                &["reinforce"],
+                check_as::<crate::reinforce::norm::ConcreteRules>,
+            ),
+            s(
+                Electrical,
+                "rcd",
+                ui_msg!("Residual-Current Devices"),
+                ui_msg!("Which circuits need a high-sensitivity residual-current device (RCD), by place and type of point, and the highest residual current allowed."),
+                &["dr_check"],
+                valid_as::<crate::dr::RuleSet>,
+            ),
+            s(
+                Electrical,
+                "bath_volumes",
+                ui_msg!("Bathroom Volumes"),
+                ui_msg!("The zones around a bathtub or shower, their size, the IP rating, and what may be installed in each."),
+                &["bath_volumes"],
+                valid_as::<crate::bath::RuleSet>,
+            ),
+            s(
+                Electrical,
+                "load_points",
+                ui_msg!("Dwelling Lighting and Outlets"),
+                ui_msg!("The minimum lighting and outlets for each room of a home, and the power of each point."),
+                &["load_points"],
+                valid_as::<crate::loads::RuleSet>,
+            ),
+            s(
+                Electrical,
+                "building_demand",
+                ui_msg!("Building Demand"),
+                ui_msg!("How a utility or a country calculates a building's demand: the demand of one home, the factor for the number of homes, and the shared loads."),
+                &["building_demand"],
+                valid_as::<crate::building_demand::Method>,
+            ),
+            s(
+                Electrical,
+                "entrance",
+                ui_msg!("Service Categories"),
+                ui_msg!("The utility's service categories by supply system and use: the load or demand of each, with its breaker and cables."),
+                &["demand"],
+                valid_as::<crate::entrance::Utility>,
+            ),
+            s(
+                Electrical,
+                "voltages",
+                ui_msg!("Voltages"),
+                ui_msg!("The voltages the project uses, each with the lowest and highest a device may get."),
+                &["voltage", "panel", "circuit"],
+                crate::electrical::voltages_section,
+            ),
+            s(
+                Electrical,
+                "distribution_systems",
+                ui_msg!("Distribution Systems"),
+                ui_msg!("The systems that feed a board: the phases and wires, the voltages, and the earthing."),
+                &["distribution_system", "panel"],
+                crate::electrical::systems_section,
+            ),
+            s(
+                Electrical,
+                "wire_types",
+                ui_msg!("Wire Types"),
+                ui_msg!("The kinds of wire, by material and insulation, and the current each size carries."),
+                &["wire_type", "circuit"],
+                crate::electrical::wires_section,
+            ),
+            s(
+                Electrical,
+                "unit_demand",
+                ui_msg!("Unit Demand and Supply"),
+                ui_msg!("How a utility works out one unit's demand, and the supply category it gives for the load or demand."),
+                &["demand"],
+                valid_checked::<crate::demand::Standard>,
+            ),
+            s(
+                Electrical,
+                "circuits",
+                ui_msg!("Circuit Sizing"),
+                ui_msg!("The current each cable carries, the corrections for heat, grouping and soil, voltage drop, cable sizes and breakers."),
+                &["circuit"],
+                valid_checked::<crate::nbr5410::Rules>,
+            ),
+            s(
+                Electrical,
+                "conduit_fill",
+                ui_msg!("Conduit Fill"),
+                ui_msg!("How full a conduit may be, the conduits makers sell, and the outside size of each cable."),
+                &["conduit_fill"],
+                valid_checked::<crate::conduit::Rules>,
+            ),
+            s(
+                Electrical,
+                "surge",
+                ui_msg!("Surge Protection"),
+                ui_msg!("When a surge protective device is needed, where it goes, how it is connected, and the least currents and voltages."),
+                &["dps_check"],
+                valid_checked::<crate::dps::Rules>,
+            ),
+            s(
+                Electrical,
+                "lighting",
+                ui_msg!("Lighting Levels"),
+                ui_msg!("Maintained illuminance by room or task, and emergency lighting."),
+                &[],
+                reference,
+            ),
+            s(
+                Electrical,
+                "working_space",
+                ui_msg!("Equipment Working Space"),
+                ui_msg!("The clear space in front of panels and switchboards."),
+                &[],
+                reference,
+            ),
+            s(
+                Mechanical,
+                "ventilation",
+                ui_msg!("Ventilation"),
+                ui_msg!("Outdoor air by use, per person and per area, default occupancies and exhaust rates."),
+                &[],
+                reference,
+            ),
+            s(
+                Mechanical,
+                "ducts",
+                ui_msg!("Ducts and Piping"),
+                ui_msg!("The maximum air and water speeds, and friction losses."),
+                &[],
+                reference,
+            ),
+            s(
+                Mechanical,
+                "design_conditions",
+                ui_msg!("Design Conditions"),
+                ui_msg!("Indoor temperatures and humidity for heating and cooling."),
+                &[],
+                reference,
+            ),
+            s(
+                Plumbing,
+                "fixtures",
+                ui_msg!("Fixtures"),
+                ui_msg!("Each fixture's design flows, weight, fixture units and minimum drain."),
+                &["water_size", "drain_size"],
+                check_as::<crate::plumbing::Fixtures>,
+            ),
+            s(
+                Plumbing,
+                "cold_water",
+                ui_msg!("Cold Water"),
+                ui_msg!(
+                    "The flow method, the maximum speed, the minimum pressure at a fixture, and the equivalent lengths of pipes and fittings."
+                ),
+                &["water_size"],
+                check_as::<crate::water::WaterRules>,
+            ),
+            s(
+                Plumbing,
+                "reservoir",
+                ui_msg!("Reservation"),
+                ui_msg!("Days of water stored, refill time, compartments and pumps."),
+                &["reservoir_size"],
+                check_as::<crate::reservoir::ReservoirRules>,
+            ),
+            s(
+                Plumbing,
+                "drainage",
+                ui_msg!("Sanitary Drainage and Vents"),
+                ui_msg!("How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."),
+                &["drain_size", "vent_size"],
+                check_as::<crate::drainage::DrainageRules>,
+            ),
+            s(
+                Plumbing,
+                "storm",
+                ui_msg!("Storm Drainage"),
+                ui_msg!("Rainfall, slopes, roughness, the minimum downpipe and the downpipe charts."),
+                &["storm_size"],
+                check_as::<crate::storm::StormRules>,
+            ),
+            s(
+                Plumbing,
+                "hydrants",
+                ui_msg!("Hydrants and Hose Reels"),
+                ui_msg!("Fire hydrant systems by type, the fire water reserve, pipe roughness, and the limits on speed and pressure."),
+                &["hydrant_size"],
+                check_as::<crate::hydrant::HydrantRules>,
+            ),
+            s(
+                Plumbing,
+                "fixture_counts",
+                ui_msg!("Minimum Fixtures by Use"),
+                ui_msg!("Toilets, washbasins and other fixtures a building needs for the people in it."),
+                &[],
+                reference,
+            ),
+        ]
+    })
+}
+
+/// The section `key` of discipline `d`.
+pub fn section_def(d: Discipline, key: &str) -> Option<&'static SectionDef> {
+    sections().iter().find(|s| s.discipline == d && s.key == key)
+}
+
+/// A building code: an entry of `data/codes/`, or one of a project's own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, from = "RawCode")]
 pub struct BuildingCode {
     /// What `building_code {set}` takes, and a project file holds. One of a project's own is called by its name.
     pub code: String,
+    #[serde(default)]
+    pub discipline: Discipline,
     pub name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub region: String,
@@ -238,57 +519,186 @@ pub struct BuildingCode {
     /// The code one of a project's own started from, by what it is called.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub based_on: String,
-    /// Where each rule's number comes from, by the rule's name: the document, its edition and its item, so anyone can
-    /// check it against its text; or why there is none (a forgiving number the document doesn't give).
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub sources: std::collections::BTreeMap<String, String>,
+    /// Its edition, as its documents name it (`2004`, `46.0`): a project pins the edition it chose
+    /// ([`Choice::editions`]), and a newer one in the library changes nothing until the project takes it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub edition: String,
+    /// The edition that replaced this one, where the library keeps an older edition for the projects pinned to it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub superseded_by: String,
+    /// The code this one changes: empty for a base, which a project picks first; else an amendment, laid over the base or
+    /// over another amendment (a member of a group of utilities over the group's standard).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub amends: String,
+    /// The documents its sources cite, by an id of the code's own: title, edition, where it was found and when, kept
+    /// apart from the rules so a moved link changes one line.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub documents: BTreeMap<String, Document>,
+    /// Whether a project that chose none of its discipline's codes is held to this one (BIMCraft's own, one for each).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default: bool,
+    /// Where each rule's number comes from, by `section.rule` (or `section` for all of it): a document of `documents`
+    /// with its item and page, or a text saying so, so anyone can check it against its text; or why there is none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sources: BTreeMap<String, Source>,
+    /// What each number is, by `section.rule` or `section`, where it isn't the document's requirement.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kinds: BTreeMap<String, Kind>,
     /// Who checked its numbers against the documents' text, and where that is written; empty while unchecked.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub checked: String,
-    /// The country of its `region`, ISO 3166 (`BR`, `US`…): the electrical methods the desktop offers it are that country's.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub country: String,
-    pub stairs: StairRules,
-    /// The methods its electrical demand is worked out by.
-    #[serde(default, skip_serializing_if = "Electrical::is_empty")]
-    pub electrical: Electrical,
+    /// Its sections' rules, by the section's key.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sections: BTreeMap<String, Value>,
 }
 
-/// The methods a code names for the electrical commands, each by what that command takes: the utility whose standard `demand`
-/// reads (`CPFL`, `ENEL`, `CELESC`) and the method of `data/building-demand.json` `building_demand` reads (its `standard`). Either
-/// may be left to the project, as a country's utilities differ by region. The numbers and their sources are the method's own.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// A code as a file holds it: as now, or as #386 wrote one (the stairs' rules beside the rest, sources by rule alone).
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Electrical {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub demand: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub building_demand: Option<String>,
+struct RawCode {
+    code: String,
+    #[serde(default)]
+    discipline: Discipline,
+    name: String,
+    #[serde(default)]
+    region: String,
+    #[serde(default)]
+    references: Vec<String>,
+    #[serde(default)]
+    note: String,
+    #[serde(default)]
+    based_on: String,
+    #[serde(default)]
+    edition: String,
+    #[serde(default)]
+    superseded_by: String,
+    #[serde(default)]
+    amends: String,
+    #[serde(default)]
+    documents: BTreeMap<String, Document>,
+    #[serde(default)]
+    default: bool,
+    #[serde(default)]
+    sources: BTreeMap<String, Source>,
+    #[serde(default)]
+    kinds: BTreeMap<String, Kind>,
+    #[serde(default)]
+    checked: String,
+    #[serde(default)]
+    sections: BTreeMap<String, Value>,
+    #[serde(default)]
+    stairs: Option<Value>,
 }
 
-impl Electrical {
-    pub fn is_empty(&self) -> bool {
-        self.demand.is_none() && self.building_demand.is_none()
-    }
-
-    /// Names of a size, on one line. Whether a command knows one is the command's to say, when it runs.
-    pub fn check(&self) -> Result<(), String> {
-        match self
-            .demand
-            .iter()
-            .chain(&self.building_demand)
-            .find(|n| n.is_empty() || n.chars().count() > 200 || n.chars().any(char::is_control))
-        {
-            Some(n) => Err(format!("an electrical method is named by 1 to 200 characters on one line, not `{n}`")),
-            None => Ok(()),
+impl From<RawCode> for BuildingCode {
+    fn from(r: RawCode) -> BuildingCode {
+        let mut sections = r.sections;
+        let old = r.stairs.is_some();
+        if let Some(stairs) = r.stairs {
+            sections.entry("stairs".into()).or_insert(stairs);
+        }
+        // #386's sources were by the stair rule's name alone.
+        let sources = if old {
+            r.sources.into_iter().map(|(k, v)| if k.contains('.') { (k, v) } else { (format!("stairs.{k}"), v) }).collect()
+        } else {
+            r.sources
+        };
+        BuildingCode {
+            code: r.code,
+            discipline: r.discipline,
+            name: r.name,
+            region: r.region,
+            references: r.references,
+            note: r.note,
+            based_on: r.based_on,
+            edition: r.edition,
+            superseded_by: r.superseded_by,
+            amends: r.amends,
+            documents: r.documents,
+            default: r.default,
+            sources,
+            kinds: r.kinds,
+            checked: r.checked,
+            sections,
         }
     }
 }
 
-/// The most building codes a project keeps of its own, the longest name of one, and the largest file one is read from.
-pub const MAX_OWN: usize = 100;
-pub const MAX_NAME: usize = 64;
-pub const MAX_XML: usize = 1 << 20;
+/// A document a code's numbers are from.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Document {
+    pub title: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub edition: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub publisher: String,
+    /// Where it was found, and the day it was read there (`2026-11-16`).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub url: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub accessed: String,
+}
+
+impl Document {
+    /// Its title and edition, as a source cites it.
+    pub fn cited(&self) -> String {
+        if self.edition.is_empty() { self.title.clone() } else { format!("{} ({})", self.title, self.edition) }
+    }
+}
+
+/// Where a number comes from: a text, or a document of the code's `documents` with its item and page.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Source {
+    Text(String),
+    Cited(Citation),
+}
+
+/// A document cited by its id, with the item, table and page the number is on.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Citation {
+    pub doc: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub item: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub page: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub note: String,
+}
+
+impl From<&str> for Source {
+    fn from(t: &str) -> Source {
+        Source::Text(t.to_string())
+    }
+}
+
+impl Source {
+    /// As a person reads it, the document `documents` names in full.
+    pub fn said(&self, documents: &BTreeMap<String, Document>) -> String {
+        match self {
+            Source::Text(t) => t.clone(),
+            Source::Cited(c) => {
+                let mut out = documents.get(&c.doc).map_or_else(|| c.doc.clone(), Document::cited);
+                for (part, lead) in [(&c.item, ""), (&c.page, "p. "), (&c.note, "")] {
+                    if !part.is_empty() {
+                        out.push_str(&format!(", {lead}{part}"));
+                    }
+                }
+                out
+            }
+        }
+    }
+
+    /// How long its texts are together.
+    fn len(&self) -> usize {
+        match self {
+            Source::Text(t) => t.chars().count(),
+            Source::Cited(c) => [&c.doc, &c.item, &c.page, &c.note].iter().map(|t| t.chars().count()).sum(),
+        }
+    }
+}
 
 /// What a name for a project's own code must be: something, 64 characters at most, on one line, and not what BIMCraft
 /// calls one of its own. The name, trimmed.
@@ -303,904 +713,800 @@ pub fn own_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-impl BuildingCode {
-    /// One of a project's own: a name that can be, texts of a size, rules that can be.
-    pub fn check(&self) -> Result<(), String> {
-        if own_name(&self.code)? != self.code {
-            return Err(format!("the building code `{}` has spaces round its name", self.code));
+/// How many values `v` holds, counting into its arrays and objects, stopping once past `most`.
+pub(crate) fn values_in(v: &Value, most: usize) -> usize {
+    fn walk(v: &Value, n: &mut usize, most: usize) {
+        *n += 1;
+        if *n > most {
+            return;
         }
+        match v {
+            Value::Array(a) => a.iter().for_each(|x| walk(x, n, most)),
+            Value::Object(o) => o.values().for_each(|x| walk(x, n, most)),
+            _ => {}
+        }
+    }
+    let mut n = 0;
+    walk(v, &mut n, most);
+    n
+}
+
+impl BuildingCode {
+    /// Its section `key`'s rules, if it has the section.
+    pub fn section(&self, key: &str) -> Option<&Map<String, Value>> {
+        self.sections.get(key).and_then(Value::as_object)
+    }
+
+    /// Where rule `rule` of section `key` comes from: its own source, else its section's, as a person reads it.
+    pub fn source(&self, key: &str, rule: &str) -> Option<String> {
+        self.sources.get(&format!("{key}.{rule}")).or_else(|| self.sources.get(key)).map(|s| s.said(&self.documents))
+    }
+
+    /// Its name, with its edition.
+    pub fn named(&self) -> String {
+        if self.edition.is_empty() { self.name.clone() } else { format!("{} ({})", self.name, self.edition) }
+    }
+
+    /// What rule `rule` of section `key` is: as said, else its section's, else the document's requirement.
+    pub fn kind(&self, key: &str, rule: &str) -> Kind {
+        self.kinds.get(&format!("{key}.{rule}")).or_else(|| self.kinds.get(key)).copied().unwrap_or(Kind::Requirement)
+    }
+
+    /// What it is called in a list: its name, with its region.
+    pub fn title(&self) -> String {
+        if self.region.is_empty() { self.name.clone() } else { format!("{} ({})", self.name, self.region) }
+    }
+
+    /// Whether it can be a code: texts of a size, each of its sections the registry knows a section that can be.
+    pub fn check_rules(&self) -> Result<(), String> {
         let long = |t: &str| t.chars().count() > 2000;
         if long(&self.name)
             || long(&self.region)
             || long(&self.note)
             || long(&self.based_on)
+            || long(&self.amends)
             || self.references.len() > 50
             || self.references.iter().any(|r| long(r))
             || long(&self.checked)
-            || long(&self.country)
-            || self.sources.len() > ORDER.len()
-            || self.sources.iter().any(|(k, v)| !ORDER.contains(&k.as_str()) || long(v))
+            || self.sources.len() > 10_000
+            || self.sources.iter().any(|(k, v)| long(k) || v.len() > 2000)
+            || self.documents.len() > 200
+            || self
+                .documents
+                .iter()
+                .any(|(k, d)| long(k) || long(&d.title) || long(&d.edition) || long(&d.publisher) || long(&d.url) || long(&d.accessed))
+            || self.kinds.len() > 10_000
         {
-            return Err(format!(
-                "the building code `{}` has a text over 2000 characters, more than 50 references, or a source for a rule it doesn't have",
-                self.code
-            ));
+            return Err(format!("the building code `{}` has a text over 2000 characters, or more than 50 references", self.code));
         }
-        self.stairs.check().and_then(|()| self.electrical.check()).map_err(|e| format!("the building code `{}`: {e}", self.code))
+        // An amendment's sections hold what it changes, and are checked as laid over what it amends.
+        if !self.amends.is_empty() {
+            return Ok(());
+        }
+        for (key, v) in &self.sections {
+            let Some(def) = section_def(self.discipline, key) else { continue };
+            def.check(v).map_err(|e| format!("the building code `{}`, its {key}: {e}", self.code))?;
+        }
+        Ok(())
+    }
+
+    /// One of a project's own: a name that can be, and rules that can be.
+    pub fn check(&self) -> Result<(), String> {
+        // The project's copy of one of BIMCraft's amendments, changed for it, keeps that one's name.
+        let copy = self.based_on == self.code && !self.amends.is_empty() && find(self.discipline, &self.code).is_some();
+        if copy {
+            return self.check_rules();
+        }
+        if own_name(&self.code)? != self.code {
+            return Err(format!("the building code `{}` has spaces round its name", self.code));
+        }
+        self.check_rules()
     }
 
     /// As a file to hand to another project: XML, a `rule` for each of its rules.
     pub fn to_xml(&self) -> String {
-        let esc = |t: &str| t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
-        let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        out.push_str(&format!(
-            "<building-code format=\"1\" name=\"{}\" region=\"{}\" country=\"{}\" based-on=\"{}\">\n",
-            esc(&self.name),
-            esc(&self.region),
-            esc(&self.country),
-            esc(&self.based_on)
-        ));
-        if !self.note.is_empty() {
-            out.push_str(&format!("  <note>{}</note>\n", esc(&self.note)));
+        xml::write(std::slice::from_ref(self))
+    }
+
+    /// A code read from such a file, and what the file holds that this version doesn't know (a stairs-only file of #386
+    /// too). A rule the file leaves out is its base's, else its discipline's default code's; the code is called by its
+    /// name, or by `name`. A file of several codes gives the first: [`read_xml`] gives them all.
+    pub fn from_xml(text: &str, name: Option<&str>) -> Result<(BuildingCode, Vec<String>), String> {
+        let (mut all, left_out) = read_xml(text, name)?;
+        if all.is_empty() {
+            return Err("the file holds no building code".into());
         }
-        for r in &self.references {
-            out.push_str(&format!("  <reference>{}</reference>\n", esc(r)));
+        Ok((all.remove(0), left_out))
+    }
+}
+
+/// The codes an XML file holds, each completed and checked as one of a project's own, and what it holds that this version
+/// doesn't know. `name` names the first one.
+pub fn read_xml(text: &str, name: Option<&str>) -> Result<(Vec<BuildingCode>, Vec<String>), String> {
+    if text.len() > MAX_XML {
+        return Err(format!("the file is larger than building codes' ({} MB)", MAX_XML >> 20));
+    }
+    let (read, left_out) = xml::read(text)?;
+    let mut out = Vec::new();
+    for (i, mut code) in read.into_iter().enumerate() {
+        let wanted = if i == 0 { name } else { None };
+        code.code = own_name(wanted.unwrap_or(&code.name)).map_err(|e| format!("{e} (`name` gives it one)"))?;
+        code.name = code.code.clone();
+        complete(&mut code);
+        code.check()?;
+        out.push(code);
+    }
+    Ok((out, left_out))
+}
+
+/// Code `code` with what it leaves out of the sections it has filled in from what it is based on, or its discipline's
+/// default code: a rule a file leaves out is that code's.
+pub fn complete(code: &mut BuildingCode) {
+    let from = find(code.discipline, &code.based_on).or_else(|| find(code.discipline, &code.amends));
+    let base = from.unwrap_or_else(|| default_of(code.discipline));
+    for (key, v) in code.sections.iter_mut() {
+        // A section of reference is the file's as it is: only what a module reads must be whole.
+        if section_def(code.discipline, key).is_none_or(|d| d.read_by.is_empty()) {
+            continue;
         }
-        if !self.checked.is_empty() {
-            out.push_str(&format!("  <checked>{}</checked>\n", esc(&self.checked)));
+        // A utility's or a country's method is the file's whole: never filled in from another utility's.
+        if is_whole(code.discipline, key) {
+            continue;
         }
-        out.push_str("  <!-- Lengths in millimetres. A rule left out is read as the generic code's. -->\n  <stairs>\n");
-        if let Ok(serde_json::Value::Object(rules)) = serde_json::to_value(&self.stairs) {
-            for key in ORDER {
-                let said = match rules.get(key) {
-                    Some(serde_json::Value::String(t)) => esc(t),
-                    Some(v) => v.to_string(),
-                    None => continue,
-                };
-                match self.sources.get(key) {
-                    Some(from) => out.push_str(&format!("    <rule name=\"{key}\" value=\"{said}\" source=\"{}\"/>\n", esc(from))),
-                    None => out.push_str(&format!("    <rule name=\"{key}\" value=\"{said}\"/>\n")),
-                }
+        let (Some(have), Some(theirs)) =
+            (v.as_object_mut(), base.section(key).or_else(|| library(code.discipline, key).and_then(|c| c.section(key))))
+        else {
+            continue;
+        };
+        for (k, x) in theirs {
+            have.entry(k.clone()).or_insert_with(|| x.clone());
+        }
+    }
+}
+
+/// The codes BIMCraft has, every discipline's, read once from `data/codes/`.
+pub fn codes() -> &'static [BuildingCode] {
+    static CODES: OnceLock<Vec<BuildingCode>> = OnceLock::new();
+    CODES.get_or_init(data::read)
+}
+
+/// The codes BIMCraft has for discipline `d` in their current editions, its default first.
+pub fn of(d: Discipline) -> impl Iterator<Item = &'static BuildingCode> {
+    let current = move |c: &&BuildingCode| c.discipline == d && c.superseded_by.is_empty();
+    let first = codes().iter().filter(current).filter(|c| c.default);
+    first.chain(codes().iter().filter(current).filter(|c| !c.default))
+}
+
+/// One of BIMCraft's codes of discipline `d`, by what it is called.
+pub fn find(d: Discipline, name: &str) -> Option<&'static BuildingCode> {
+    if name.is_empty() {
+        return None;
+    }
+    // `nbr`, the one entry the two Brazilian standards had before they were told apart, is NBR 9050's.
+    let name = if d == Discipline::Architectural && name == "nbr" { "nbr-9050" } else { name };
+    codes().iter().find(|c| c.discipline == d && c.code == name && c.superseded_by.is_empty())
+}
+
+/// One of BIMCraft's codes of discipline `d` in edition `edition`, if the library keeps it.
+pub fn find_edition(d: Discipline, name: &str, edition: &str) -> Option<&'static BuildingCode> {
+    codes().iter().find(|c| c.discipline == d && c.code == name && c.edition == edition)
+}
+
+/// An architectural code by what it is called (`nbr-9050`, `ibc`…): the stairs' codes.
+pub fn code(name: &str) -> Option<&'static BuildingCode> {
+    find(Discipline::Architectural, name)
+}
+
+/// The code of discipline `d` a project that chose none is held to.
+pub fn default_of(d: Discipline) -> &'static BuildingCode {
+    static NONE: OnceLock<BuildingCode> = OnceLock::new();
+    of(d).next().unwrap_or_else(|| NONE.get_or_init(BuildingCode::default))
+}
+
+/// The architectural code of a project that chose none.
+pub fn generic() -> &'static BuildingCode {
+    default_of(Discipline::Architectural)
+}
+
+/// The first of BIMCraft's codes of discipline `d` that holds section `key`, the default first: where a section none of
+/// a project's layers has is read from.
+pub fn library(d: Discipline, key: &str) -> Option<&'static BuildingCode> {
+    of(d).find(|c| c.sections.contains_key(key))
+}
+
+/// Section `S` as BIMCraft's library has it (the default code's, else the first code's that holds it), read once: what
+/// the modules' functions without a project read, and what a project that chose nothing is held to.
+pub fn library_rules<S: Section>() -> Arc<S> {
+    type Kept = Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>;
+    static KEPT: OnceLock<Kept> = OnceLock::new();
+    let kept = KEPT.get_or_init(Default::default);
+    if let Ok(map) = kept.lock()
+        && let Some(any) = map.get(&TypeId::of::<S>())
+        && let Ok(s) = Arc::clone(any).downcast::<S>()
+    {
+        return s;
+    }
+    let made =
+        Arc::new(library(S::DISCIPLINE, S::KEY).and_then(|c| c.section(S::KEY)).and_then(|v| typed::<S>(v.clone())).unwrap_or_default());
+    if let Ok(mut map) = kept.lock() {
+        map.insert(TypeId::of::<S>(), Arc::clone(&made) as Arc<dyn Any + Send + Sync>);
+    }
+    made
+}
+
+/// Section `key` of every one of BIMCraft's codes of discipline `d` that holds it, read as `T`, in the library's order: where a
+/// module that knows its rules by a standard's or a utility's own name looks them up.
+pub fn library_sections<T: DeserializeOwned>(d: Discipline, key: &str) -> Vec<T> {
+    of(d).filter_map(|c| c.section(key)).filter_map(|o| serde_json::from_value(Value::Object(o.clone())).ok()).collect()
+}
+
+/// A region's codes, one for each discipline, picked at once on the Overview.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Preset {
+    pub name: String,
+    #[serde(default)]
+    pub note: String,
+    pub choices: BTreeMap<Discipline, Pick>,
+}
+
+/// A base and its amendments.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pick {
+    pub code: String,
+    #[serde(default)]
+    pub amendments: Vec<String>,
+}
+
+/// The region presets of `data/codes/presets.json`.
+pub fn presets() -> &'static [Preset] {
+    static ALL: OnceLock<Vec<Preset>> = OnceLock::new();
+    ALL.get_or_init(data::presets)
+}
+
+/// What a project chose for one discipline: its base code, the amendments over it in order, and the rules it changed,
+/// by section, each a rule's whole value.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Choice {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub amendments: Vec<String>,
+    /// The edition of each of BIMCraft's codes it chose, by the code: the one it is held to while the library keeps it.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub editions: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub changes: BTreeMap<String, Map<String, Value>>,
+}
+
+impl Choice {
+    pub fn is_empty(&self) -> bool {
+        self.code.is_none() && self.amendments.is_empty() && self.editions.is_empty() && self.changes.is_empty()
+    }
+}
+
+/// The numbers a code's maps give for the project's place, each with the map or table it was read from (`sources`, by
+/// field). None is bundled: they are the project's.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Site {
+    /// Rainfall intensity for storm drains, mm/h, and the return period it is for, years.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rain_intensity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rain_return_period: Option<f64>,
+    /// The region's exposure to thunderstorms, as NBR 5410 classes it: AQ1, AQ2 or AQ3.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thunderstorms: Option<String>,
+    /// Basic wind speed, m/s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wind_speed: Option<f64>,
+    /// Ground snow load, kN/m².
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ground_snow: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seismic_zone: Option<String>,
+    /// Frost depth, mm.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frost_depth: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub climate_zone: Option<String>,
+    /// Altitude, m.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub altitude: Option<f64>,
+    /// Outdoor design temperatures, °C.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cooling_design: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heating_design: Option<f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub sources: BTreeMap<String, String>,
+}
+
+/// Site and Climate's numbers: their key, their unit, and the range a number may have.
+pub const SITE_NUMBERS: [(&str, &str, f64, f64); 9] = [
+    ("rain_intensity", "mm/h", 0.0, 2000.0),
+    ("rain_return_period", "years", 0.0, 10_000.0),
+    ("wind_speed", "m/s", 0.0, 150.0),
+    ("ground_snow", "kN/m²", 0.0, 100.0),
+    ("frost_depth", "mm", 0.0, 10_000.0),
+    ("altitude", "m", -500.0, 9_000.0),
+    ("cooling_design", "°C", -80.0, 70.0),
+    ("heating_design", "°C", -80.0, 70.0),
+    ("_", "", 0.0, 0.0),
+];
+
+/// Its texts: their key, and the values they may have (any, up to 64 characters, where none are listed).
+pub const SITE_TEXTS: [(&str, &[&str]); 3] = [("thunderstorms", &["AQ1", "AQ2", "AQ3"]), ("seismic_zone", &[]), ("climate_zone", &[])];
+
+impl Site {
+    pub fn is_empty(&self) -> bool {
+        *self == Site::default()
+    }
+
+    /// Whether it can be: numbers in their range, texts short or of their list, sources by a field it has.
+    pub fn check(&self) -> Result<(), String> {
+        let Ok(Value::Object(o)) = serde_json::to_value(self) else { return Ok(()) };
+        for (key, unit, low, high) in SITE_NUMBERS {
+            if let Some(v) = o.get(key).and_then(Value::as_f64)
+                && !(low..=high).contains(&v)
+            {
+                return Err(format!("site and climate: `{key}` is from {low} to {high} {unit}, not {v}"));
             }
         }
-        out.push_str("  </stairs>\n");
-        // The methods it names, each by what its command takes; one left to the project is left out.
-        if !self.electrical.is_empty() {
-            let named = |key: &str, v: &Option<String>| v.as_ref().map_or(String::new(), |n| format!(" {key}=\"{}\"", esc(n)));
-            let (d, b) = (named("demand", &self.electrical.demand), named("building-demand", &self.electrical.building_demand));
-            out.push_str(&format!("  <electrical{d}{b}/>\n"));
+        for (key, allowed) in SITE_TEXTS {
+            if let Some(t) = o.get(key).and_then(Value::as_str)
+                && (t.chars().count() > 64 || (!allowed.is_empty() && !allowed.contains(&t)))
+            {
+                let what = if allowed.is_empty() { "64 characters at most".to_string() } else { allowed.join(", ") };
+                return Err(format!("site and climate: `{key}` is {what}, not {t}"));
+            }
         }
-        out.push_str("</building-code>\n");
+        for (k, v) in &self.sources {
+            if !o.contains_key(k) || k == "sources" || v.chars().count() > 500 {
+                return Err(format!("site and climate: a source for `{k}`, which it has no number for, or over 500 characters"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A project's building codes: what it chose for each discipline, the codes of its own, and its site's numbers.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Codes {
+    #[serde(skip_serializing_if = "Choice::is_empty")]
+    pub architectural: Choice,
+    #[serde(skip_serializing_if = "Choice::is_empty")]
+    pub structural: Choice,
+    #[serde(skip_serializing_if = "Choice::is_empty")]
+    pub electrical: Choice,
+    #[serde(skip_serializing_if = "Choice::is_empty")]
+    pub mechanical: Choice,
+    #[serde(skip_serializing_if = "Choice::is_empty")]
+    pub plumbing: Choice,
+    /// Building codes of the project's own, saved under names it gave them (`building_code {save}`), or read from a file.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub own: Vec<BuildingCode>,
+    #[serde(skip_serializing_if = "Site::is_empty")]
+    pub site: Site,
+}
+
+impl Codes {
+    pub fn is_empty(&self) -> bool {
+        *self == Codes::default()
+    }
+
+    pub fn choice(&self, d: Discipline) -> &Choice {
+        match d {
+            Discipline::Architectural => &self.architectural,
+            Discipline::Structural => &self.structural,
+            Discipline::Electrical => &self.electrical,
+            Discipline::Mechanical => &self.mechanical,
+            Discipline::Plumbing => &self.plumbing,
+        }
+    }
+
+    pub fn choice_mut(&mut self, d: Discipline) -> &mut Choice {
+        match d {
+            Discipline::Architectural => &mut self.architectural,
+            Discipline::Structural => &mut self.structural,
+            Discipline::Electrical => &mut self.electrical,
+            Discipline::Mechanical => &mut self.mechanical,
+            Discipline::Plumbing => &mut self.plumbing,
+        }
+    }
+
+    /// One of discipline `d`'s codes, the project's own first, by what it is called: in the edition the project pinned,
+    /// while the library keeps it.
+    pub fn find(&self, d: Discipline, name: &str) -> Option<&BuildingCode> {
+        if let Some(own) = self.own.iter().find(|c| c.discipline == d && c.code == name) {
+            return Some(own);
+        }
+        let pinned = self.choice(d).editions.get(name).and_then(|e| find_edition(d, name, e));
+        pinned.or_else(|| find(d, name))
+    }
+
+    /// The codes of discipline `d` whose pinned edition the library no longer has: the code, the edition pinned, and the
+    /// edition it is held to instead.
+    pub fn editions_gone(&self, d: Discipline) -> Vec<(String, String, String)> {
+        let choice = self.choice(d);
+        let mut out = Vec::new();
+        for (name, pinned) in &choice.editions {
+            if find_edition(d, name, pinned).is_none()
+                && let Some(now) = find(d, name)
+            {
+                out.push((name.clone(), pinned.clone(), now.edition.clone()));
+            }
+        }
         out
     }
 
-    /// A code read from such a file, and what the file holds that this version doesn't know. A rule the file leaves out
-    /// is the generic code's; the code is called by its name, or by `name`.
-    pub fn from_xml(text: &str, name: Option<&str>) -> Result<(BuildingCode, Vec<String>), String> {
-        if text.len() > MAX_XML {
-            return Err("the file is larger than a building code's (1 MB)".into());
-        }
-        let unesc =
-            |t: &str| t.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&");
-        let Ok(serde_json::Value::Object(mut rules)) = serde_json::to_value(&generic().stairs) else {
-            return Err("the rules could not be read".into());
-        };
-        let mut code = BuildingCode {
-            code: String::new(),
-            name: String::new(),
-            region: String::new(),
-            references: Vec::new(),
-            note: String::new(),
-            based_on: String::new(),
-            sources: Default::default(),
-            checked: String::new(),
-            country: String::new(),
-            stairs: generic().stairs.clone(),
-            electrical: Electrical::default(),
-        };
-        let (mut left_out, mut root, mut rest) = (Vec::new(), false, text);
-        while let Some(open) = rest.find('<') {
-            let after = rest.get(open + 1..).unwrap_or("");
-            // A declaration or a comment: past it.
-            let skip = if after.starts_with("!--") {
-                Some("-->")
-            } else if after.starts_with('?') {
-                Some("?>")
-            } else {
-                None
-            };
-            if let Some(end) = skip {
-                rest = after.find(end).and_then(|i| after.get(i + end.len()..)).unwrap_or("");
-                continue;
-            }
-            let Some(close) = after.find('>') else { return Err("a tag of the file never closes".into()) };
-            let tag = after.get(..close).unwrap_or("").trim_end_matches('/').trim();
-            rest = after.get(close + 1..).unwrap_or("");
-            if tag.starts_with('/') {
-                continue;
-            }
-            let (name, attrs) = tag.split_once(char::is_whitespace).unwrap_or((tag, ""));
-            // name="value" pairs, in either quote.
-            let mut pairs: Vec<(String, String)> = Vec::new();
-            let mut a = attrs.trim_start();
-            while let Some((key, value)) = a.split_once('=') {
-                let value = value.trim_start();
-                let Some(q) = value.chars().next().filter(|q| *q == '"' || *q == '\'') else { break };
-                let Some(end) = value.get(1..).and_then(|v| v.find(q)) else { break };
-                pairs.push((key.trim().to_string(), unesc(value.get(1..=end).unwrap_or(""))));
-                a = value.get(end + 2..).unwrap_or("").trim_start();
-                if pairs.len() > 64 {
-                    break;
+    /// The editions now in force of the codes chosen for `d`, for the choice to pin.
+    pub fn pins(&self, d: Discipline) -> BTreeMap<String, String> {
+        let choice = self.choice(d);
+        let names = choice.code.iter().chain(&choice.amendments);
+        names
+            .filter_map(|n| self.find(d, n))
+            .filter(|c| !c.edition.is_empty() && !self.own.contains(c))
+            .map(|c| (c.code.clone(), c.edition.clone()))
+            .collect()
+    }
+
+    /// Every code of discipline `d` there is for this project: BIMCraft's, then its own.
+    /// One of BIMCraft's that the project changed (an amendment edited) is its own copy, listed once.
+    pub fn all(&self, d: Discipline) -> impl Iterator<Item = (&BuildingCode, bool)> {
+        let shadowed = move |c: &BuildingCode| self.own.iter().any(|o| o.discipline == d && o.code == c.code);
+        of(d).filter(move |c| !shadowed(c)).map(|c| (c, false)).chain(self.own.iter().filter(move |c| c.discipline == d).map(|c| (c, true)))
+    }
+
+    /// BIMCraft's code of discipline `d` called `name`, in the edition the project pinned while the library keeps it: what
+    /// a copy of the project's own of it was taken from.
+    pub fn library_of(&self, d: Discipline, name: &str) -> Option<&'static BuildingCode> {
+        let pinned = self.choice(d).editions.get(name).and_then(|e| find_edition(d, name, e));
+        pinned.or_else(|| find(d, name))
+    }
+
+    /// The base code of discipline `d`: the one chosen, if it is still there and a base, else the default.
+    pub fn base(&self, d: Discipline) -> &BuildingCode {
+        self.choice(d).code.as_deref().and_then(|k| self.find(d, k)).filter(|c| c.amends.is_empty()).unwrap_or_else(|| default_of(d))
+    }
+
+    /// The layers of discipline `d` in order: the base, then the amendments in the order chosen, the last winning, each one
+    /// that is still there and amends the base or another amendment held (a member of a group over the group's standard).
+    pub fn layers(&self, d: Discipline) -> Vec<&BuildingCode> {
+        let base = self.base(d);
+        let chosen: Vec<&BuildingCode> =
+            self.choice(d).amendments.iter().filter_map(|a| self.find(d, a)).filter(|c| !c.amends.is_empty()).collect();
+        let mut held: Vec<&str> = vec![base.code.as_str()];
+        let mut on = vec![false; chosen.len()];
+        // What stands over the base, then over what stands, until nothing more does: so order is the user's to choose.
+        loop {
+            let mut grew = false;
+            for (i, c) in chosen.iter().enumerate() {
+                if !on[i] && held.contains(&c.amends.as_str()) && !held.contains(&c.code.as_str()) {
+                    on[i] = true;
+                    held.push(c.code.as_str());
+                    grew = true;
                 }
             }
-            let attr = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
-            let text = || unesc(rest.split('<').next().unwrap_or("").trim());
-            match name {
-                "building-code" => {
-                    root = true;
-                    code.name = attr("name").unwrap_or_default();
-                    code.region = attr("region").unwrap_or_default();
-                    code.country = attr("country").unwrap_or_default();
-                    code.based_on = attr("based-on").unwrap_or_default();
-                }
-                "note" => code.note = text(),
-                "checked" => code.checked = text(),
-                "reference" if code.references.len() < 50 => code.references.push(text()),
-                "stairs" => {}
-                "electrical" => {
-                    let named = |key: &str| attr(key).map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
-                    code.electrical = Electrical { demand: named("demand"), building_demand: named("building-demand") };
-                }
-                "rule" => {
-                    let (key, value) = (attr("name").unwrap_or_default(), attr("value").unwrap_or_default());
-                    if !ORDER.contains(&key.as_str()) {
-                        left_out.push(format!("rule `{key}`"));
-                        continue;
-                    }
-                    let v = match value.trim() {
-                        "true" => serde_json::Value::Bool(true),
-                        "false" => serde_json::Value::Bool(false),
-                        t => match t.parse::<f64>() {
-                            Ok(x) if x.is_finite() && x.fract() == 0.0 && (0.0..1e9).contains(&x) && key == "flight_risers_max" => {
-                                serde_json::json!(x as u64)
-                            }
-                            Ok(x) if x.is_finite() => serde_json::json!(x),
-                            _ => serde_json::Value::String(t.to_string()),
-                        },
-                    };
-                    if let Some(from) = attr("source").filter(|f| !f.trim().is_empty()) {
-                        code.sources.insert(key.clone(), from.trim().to_string());
-                    }
-                    rules.insert(key, v);
-                }
-                other => {
-                    if left_out.len() < 50 {
-                        left_out.push(format!("<{}>", other.chars().take(40).collect::<String>()));
-                    }
-                }
+            if !grew {
+                break;
             }
         }
-        if !root {
-            return Err("the file is no building code: it has no <building-code>".into());
+        std::iter::once(base).chain(chosen.into_iter().zip(on).filter(|(_, on)| *on).map(|(c, _)| c)).collect()
+    }
+
+    /// Whether everything chosen can be: own codes few and each one that can be, amendments few, each change a rule of a
+    /// section there is that leaves the section one that can be, the site's numbers in range, and all of it of a size.
+    pub fn check(&self) -> Result<(), String> {
+        if self.own.len() > MAX_OWN {
+            return Err(format!("a project keeps {MAX_OWN} building codes of its own at most"));
         }
-        code.code = own_name(name.unwrap_or(&code.name)).map_err(|e| format!("{e} (`name` gives it one)"))?;
-        code.name = code.code.clone();
-        code.stairs = serde_json::from_value(serde_json::Value::Object(rules)).map_err(|e| format!("a rule of the file: {e}"))?;
-        code.check()?;
-        Ok((code, left_out))
-    }
-}
-
-#[derive(Deserialize)]
-struct Data {
-    codes: Vec<BuildingCode>,
-}
-
-/// The rules of no code, should the data not read (which a test keeps from happening): a stair as it always was.
-fn fallback() -> BuildingCode {
-    BuildingCode {
-        code: GENERIC.into(),
-        name: "No building code".into(),
-        region: String::new(),
-        references: Vec::new(),
-        note: String::new(),
-        based_on: String::new(),
-        sources: Default::default(),
-        checked: String::new(),
-        country: String::new(),
-        electrical: Electrical::default(),
-        stairs: StairRules {
-            riser: 180.0,
-            going: 280.0,
-            riser_min: 100.0,
-            riser_max: 220.0,
-            going_min: 210.0,
-            going_max: 400.0,
-            step_min: 550.0,
-            step_max: 700.0,
-            width_min: 800.0,
-            headroom: 2000.0,
-            flight_rise_max: 4000.0,
-            flight_risers_max: 22,
-            landing_rule: LandingRule::Width,
-            landing_length: 1200.0,
-            winders: true,
-            walk_line: WalkLine::Centre,
-            walk_line_offset: 300.0,
-            winder_going_min: 210.0,
-            winder_narrow_min: 100.0,
-            nosing_min: 0.0,
-            nosing_max: 40.0,
-            open_risers: true,
-            uniformity: 10.0,
-            handrail_min: 800.0,
-            handrail_max: 1100.0,
-            guard_min: 900.0,
-        },
-    }
-}
-
-/// The codes of `data/building-codes.json`, the generic one first.
-pub fn codes() -> &'static [BuildingCode] {
-    static CODES: OnceLock<Vec<BuildingCode>> = OnceLock::new();
-    CODES.get_or_init(|| {
-        let read = serde_json::from_str::<Data>(include_str!("../data/building-codes.json")).map(|d| d.codes).unwrap_or_default();
-        if read.iter().any(|c| c.code == GENERIC) { read } else { vec![fallback()] }
-    })
-}
-
-/// A code by what it is called (`nbr-9050`, `ibc`…). `nbr`, the one entry the two Brazilian standards had before they
-/// were told apart, is NBR 9050's.
-pub fn code(name: &str) -> Option<&'static BuildingCode> {
-    let name = if name == "nbr" { "nbr-9050" } else { name };
-    codes().iter().find(|c| c.code == name)
-}
-
-/// The generic code.
-pub fn generic() -> &'static BuildingCode {
-    static NONE: OnceLock<BuildingCode> = OnceLock::new();
-    code(GENERIC).unwrap_or_else(|| NONE.get_or_init(fallback))
-}
-
-/// The rules a stair is held to: the project's, with what its type has on in their place; and the rules only a type
-/// has, each a least and a most that may be off: the tread over the riser, the tread and the riser together, and the
-/// pitch in degrees.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Limits {
-    pub rules: StairRules,
-    pub ratio: (Option<f64>, Option<f64>),
-    pub sum: (Option<f64>, Option<f64>),
-    pub pitch: (Option<f64>, Option<f64>),
-}
-
-/// The rules stair `st` is held to.
-pub fn limits(m: &Model, st: &Stair) -> Limits {
-    limits_of(m, &st.type_name)
-}
-
-/// The rules a stair of the stair type `name` is held to; the project's, for no type.
-pub fn limits_of(m: &Model, name: &str) -> Limits {
-    let mut rules = m.stair_rules().clone();
-    let Some(t) = m.types.stair.get(name).map(|t| t.rules) else {
-        return Limits { rules, ratio: (None, None), sum: (None, None), pitch: (None, None) };
-    };
-    let set = |to: &mut f64, v: Option<f64>| {
-        if let Some(v) = v {
-            *to = v;
-        }
-    };
-    set(&mut rules.riser_min, t.riser_min);
-    set(&mut rules.riser_max, t.riser_max);
-    set(&mut rules.going_min, t.going_min);
-    set(&mut rules.going_max, t.going_max);
-    set(&mut rules.step_min, t.step_min);
-    set(&mut rules.step_max, t.step_max);
-    // A range the type turned upside down against the code's other end holds at the type's number.
-    rules.riser_min = rules.riser_min.min(rules.riser_max);
-    rules.going_min = rules.going_min.min(rules.going_max);
-    rules.step_min = rules.step_min.min(rules.step_max);
-    // What a new stair starts with is inside the range it is held to.
-    rules.riser = rules.riser.clamp(rules.riser_min, rules.riser_max);
-    rules.going = rules.going.clamp(rules.going_min, rules.going_max);
-    if let Some(v) = t.landing_min {
-        (rules.landing_rule, rules.landing_length) = (LandingRule::Fixed, v);
-    }
-    if let Some(v) = t.walk_offset_min {
-        (rules.walk_line, rules.walk_line_offset) = (WalkLine::NarrowSide, v);
-    }
-    Limits { rules, ratio: (t.ratio_min, t.ratio_max), sum: (t.sum_min, t.sum_max), pitch: (t.pitch_min, t.pitch_max) }
-}
-
-/// Where a stair is outside its project's rules: the rule by name, what the stair has, what the rule asks, and a
-/// sentence saying both and what to change.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct Finding {
-    pub rule: &'static str,
-    pub value: f64,
-    pub limit: f64,
-    pub message: String,
-}
-
-/// Lengths nearer than this are the same: a riser worked out by dividing is not held to the last digit.
-const EPS: f64 = 1e-6;
-
-fn mm(x: f64) -> f64 {
-    (x * 100.0).round() / 100.0
-}
-
-/// Where stair `st` is outside the project's rules, in the order the rules are listed; none when it is inside them all.
-pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
-    let held = limits(m, st);
-    let rules = &held.rules;
-    let (n, riser, _) = m.flight(st);
-    let mut out = Vec::new();
-    if n == 0 {
-        return out;
-    }
-    // One drawn by hand is measured as drawn: its shallowest tread on the line through its risers' middles, and its
-    // narrowest riser.
-    let drawn = !st.sketch.is_empty();
-    let going = if drawn {
-        st.sketch.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.mid().dist(b.mid()))).fold(f64::INFINITY, f64::min)
-    } else {
-        st.tread
-    };
-    let width = if drawn {
-        st.sketch.iter().map(|s| s.riser[0].dist(s.riser[1])).fold(f64::INFINITY, f64::min)
-    } else {
-        // Its narrowest run.
-        st.landings.iter().filter(|l| l.width > 0.0).map(|l| l.width).fold(st.width, f64::min)
-    };
-    let mut range = |rule_min: &'static str, rule_max: &'static str, what: &str, v: f64, min: f64, max: f64, fix: (&str, &str)| {
-        if v < min - EPS {
-            out.push(Finding {
-                rule: rule_min,
-                value: mm(v),
-                limit: min,
-                message: format!("{what} is {} mm, under the least, {min} mm: {}", mm(v), fix.0),
-            });
-        } else if v > max + EPS {
-            out.push(Finding {
-                rule: rule_max,
-                value: mm(v),
-                limit: max,
-                message: format!("{what} is {} mm, over the most, {max} mm: {}", mm(v), fix.1),
-            });
-        }
-    };
-    range(
-        "riser_min",
-        "riser_max",
-        "each riser",
-        riser,
-        rules.riser_min,
-        rules.riser_max,
-        ("give it fewer risers (a higher `riser`)", "lower its `riser`, for more risers"),
-    );
-    range("going_min", "going_max", "each going", going, rules.going_min, rules.going_max, ("deepen its `tread`", "shorten its `tread`"));
-    range(
-        "step_min",
-        "step_max",
-        "two risers and a going",
-        2.0 * riser + going,
-        rules.step_min,
-        rules.step_max,
-        ("deepen its `tread`, or give it fewer risers", "shorten its `tread`, or give it more risers"),
-    );
-    if width < rules.width_min - EPS {
-        out.push(Finding {
-            rule: "width_min",
-            value: mm(width),
-            limit: rules.width_min,
-            message: format!("it is {} mm wide, under the least, {} mm: widen it", mm(width), rules.width_min),
-        });
-    }
-    // How far a tread stands out over the riser below it, finish to finish; and whether its risers are open.
-    if let Some(t) = m.types.stair.get(&st.type_name) {
-        let nosing = stairs::reach(t);
-        if nosing < rules.nosing_min - EPS {
-            out.push(Finding {
-                rule: "nosing_min",
-                value: mm(nosing),
-                limit: rules.nosing_min,
-                message: format!(
-                    "its treads stand out {} mm past the riser below, under the least, {} mm: give its type a longer nosing (`nosing`, or `cover_nosing` for the finish)",
-                    mm(nosing),
-                    rules.nosing_min
-                ),
-            });
-        } else if nosing > rules.nosing_max + EPS {
-            out.push(Finding {
-                rule: "nosing_max",
-                value: mm(nosing),
-                limit: rules.nosing_max,
-                message: format!(
-                    "its treads stand out {} mm past the riser below, over the most, {} mm: give its type a shorter nosing",
-                    mm(nosing),
-                    rules.nosing_max
-                ),
-            });
-        }
-        if !rules.open_risers && !t.monolithic() && t.riser_thickness <= 0.0 {
-            out.push(Finding {
-                rule: "open_risers",
-                value: 1.0,
-                limit: 0.0,
-                message: "its risers are open, which this code does not allow: use a type with risers (`riser_thickness`)".into(),
-            });
-        }
-    }
-    // The rules only a stair type has: the tread over the riser, the two together, and the pitch.
-    if riser > 0.0 && going.is_finite() {
-        let more = [
-            ("ratio_min", "ratio_max", "the tread over the riser", going / riser, held.ratio, ""),
-            ("sum_min", "sum_max", "a tread and a riser together", going + riser, held.sum, " mm"),
-            ("pitch_min", "pitch_max", "its pitch", (riser / going.max(1e-9)).atan().to_degrees(), held.pitch, "°"),
-        ];
-        for (low, high, what, v, (min, max), unit) in more {
-            let v = (v * 1000.0).round() / 1000.0;
-            if let Some(min) = min.filter(|min| v < min - EPS) {
-                out.push(Finding {
-                    rule: low,
-                    value: v,
-                    limit: min,
-                    message: format!("{what} is {v}{unit}, under the least its type asks, {min}{unit}"),
-                });
-            } else if let Some(max) = max.filter(|max| v > max + EPS) {
-                out.push(Finding {
-                    rule: high,
-                    value: v,
-                    limit: max,
-                    message: format!("{what} is {v}{unit}, over the most its type asks, {max}{unit}"),
-                });
+        let mut total = 0;
+        for (i, c) in self.own.iter().enumerate() {
+            c.check()?;
+            if self.own.iter().take(i).any(|o| o.code == c.code && o.discipline == c.discipline) {
+                return Err(format!("two of the project's building codes are called `{}`", c.code));
             }
+            total += c.sections.values().map(|v| values_in(v, MAX_VALUES)).sum::<usize>();
         }
-    }
-    // A floor, a ceiling or a beam over its steps with less than the headroom between them, and not cut open there.
-    if let Some((over, least, _)) = stairs::headroom(m, st, rules.headroom).into_iter().min_by(|a, b| a.1.total_cmp(&b.1)) {
-        let message = match m.elements.get(over) {
-            Some(Element::Floor(_)) => format!(
-                "under floor {over} there is {} mm of headroom at the least, under the {} mm asked: cut the floor open over the stair (`stair_opening` does)",
-                mm(least),
-                rules.headroom
-            ),
-            Some(e) => format!(
-                "under {} {over} there is {} mm of headroom at the least, under the {} mm asked: raise it or move it clear of the stair",
-                e.category(),
-                mm(least),
-                rules.headroom
-            ),
-            None => String::new(),
-        };
-        out.push(Finding { rule: "headroom", value: mm(least), limit: rules.headroom, message });
-    }
-    // A multistorey stair's other storeys have risers of their own heights: each inside the range, and none far from
-    // the first's.
-    let others: Vec<f64> = m.storeys(st).into_iter().skip(1).map(|s| m.flight_of(st, s.2).1).collect();
-    let (low, high) = others.iter().fold((riser, riser), |(lo, hi), r| (lo.min(*r), hi.max(*r)));
-    if let Some((i, r)) = others.iter().enumerate().find(|(_, r)| **r < rules.riser_min - EPS || **r > rules.riser_max + EPS) {
-        let (rule, limit, what) = if *r > rules.riser_max {
-            ("riser_max", rules.riser_max, "over the most")
-        } else {
-            ("riser_min", rules.riser_min, "under the least")
-        };
-        if !out.iter().any(|f| f.rule == rule) {
-            out.push(Finding {
-                rule,
-                value: mm(*r),
-                limit,
-                message: format!(
-                    "each riser of storey {} is {} mm, {what}, {limit} mm: change its `riser`, which every storey counts its risers by",
-                    i + 2,
-                    mm(*r)
-                ),
-            });
-        }
-    }
-    if high - low > rules.uniformity + EPS {
-        out.push(Finding {
-            rule: "uniformity",
-            value: mm(high - low),
-            limit: rules.uniformity,
-            message: format!(
-                "its storeys are of different heights, and their risers differ by {} mm ({} to {}), over the most, {} mm: a `riser` that divides each storey more evenly brings them together",
-                mm(high - low),
-                mm(low),
-                mm(high),
-                rules.uniformity
-            ),
-        });
-    }
-    // One drawn by hand is one flight.
-    if !st.sketch.is_empty() {
-        let rise = f64::from(n) * riser;
-        if rise > rules.flight_rise_max + EPS {
-            out.push(Finding {
-                rule: "flight_rise_max",
-                value: mm(rise),
-                limit: rules.flight_rise_max,
-                message: format!(
-                    "it rises {} mm with no landing, and one is due every {} mm at most: draw a tread as deep as a landing",
-                    mm(rise),
-                    rules.flight_rise_max
-                ),
-            });
-        }
-    }
-    // A spiral is one flight, and every tread of it a winder.
-    if let Some(sp) = st.spiral {
-        let rise = f64::from(n) * riser;
-        if rise > rules.flight_rise_max + EPS {
-            out.push(Finding {
-                rule: "flight_rise_max",
-                value: mm(rise),
-                limit: rules.flight_rise_max,
-                message: format!(
-                    "the spiral rises {} mm in one flight, and a landing is due every {} mm at most",
-                    mm(rise),
-                    rules.flight_rise_max
-                ),
-            });
-        } else if n > rules.flight_risers_max {
-            out.push(Finding {
-                rule: "flight_risers_max",
-                value: f64::from(n),
-                limit: f64::from(rules.flight_risers_max),
-                message: format!("the spiral has {n} risers in one flight, and a landing is due after {} at most", rules.flight_risers_max),
-            });
-        }
-        if !rules.winders {
-            out.push(Finding {
-                rule: "winders",
-                value: f64::from(n.saturating_sub(1)),
-                limit: 0.0,
-                message: "it is a spiral, all winders, which this code does not allow".into(),
-            });
-        }
-        let (step, inside) = (stairs::spiral_step(st, sp, n), (sp.radius.abs() - st.width / 2.0).max(0.0));
-        let radius = match rules.walk_line {
-            WalkLine::Centre => sp.radius.abs(),
-            WalkLine::NarrowSide => inside + rules.walk_line_offset.min(st.width),
-        };
-        let (going, narrow) = (radius * step, inside * step);
-        if going < rules.winder_going_min - EPS {
-            out.push(Finding {
-                rule: "winder_going_min",
-                value: mm(going),
-                limit: rules.winder_going_min,
-                message: format!(
-                    "its treads are {} mm deep on the walk line, {} mm from the centre, under the least, {} mm: deepen its `tread`, give it a larger `radius`, or a wider `sweep`",
-                    mm(going),
-                    mm(radius),
-                    rules.winder_going_min
-                ),
-            });
-        }
-        if narrow < rules.winder_narrow_min - EPS {
-            out.push(Finding {
-                rule: "winder_narrow_min",
-                value: mm(narrow),
-                limit: rules.winder_narrow_min,
-                message: format!(
-                    "its treads are {} mm deep at the narrow end, under the least, {} mm: give it a larger `radius`, so it stands further from its centre",
-                    mm(narrow),
-                    rules.winder_narrow_min
-                ),
-            });
-        }
-    }
-    for (i, run) in stairs::stair(m, st).runs.iter().enumerate() {
-        let rise = run.z.1 - run.z.0;
-        if rise > rules.flight_rise_max + EPS {
-            out.push(Finding {
-                rule: "flight_rise_max",
-                value: mm(rise),
-                limit: rules.flight_rise_max,
-                message: format!(
-                    "flight {} rises {} mm, and a landing is due every {} mm at most: give it a landing (`landings`: \"auto\" places them)",
-                    i + 1,
-                    mm(rise),
-                    rules.flight_rise_max
-                ),
-            });
-        } else if run.risers > rules.flight_risers_max {
-            out.push(Finding {
-                rule: "flight_risers_max",
-                value: f64::from(run.risers),
-                limit: f64::from(rules.flight_risers_max),
-                message: format!(
-                    "flight {} has {} risers, and a landing is due after {} at most: give it a landing (`landings`: \"auto\" places them)",
-                    i + 1,
-                    run.risers,
-                    rules.flight_risers_max
-                ),
-            });
-        }
-    }
-    // Winders: whether the code has them at all, and their goings on its walk line and at the narrow end, which
-    // is nothing where they are fanned round a point.
-    let mut said_no = false;
-    for l in st.landings.iter().filter(|l| l.winders > 0) {
-        if !rules.winders && !said_no {
-            said_no = true;
-            out.push(Finding {
-                rule: "winders",
-                value: f64::from(l.winders),
-                limit: 0.0,
-                message: "it has winders, which this code does not allow: give the turn a landing (`winders`: 0)".into(),
-            });
-        }
-        let radius = match rules.walk_line {
-            WalkLine::Centre => st.width / 2.0,
-            WalkLine::NarrowSide => rules.walk_line_offset.min(st.width),
-        };
-        // Balanced, the turn's steps are its winders and the treads it takes of the flights, equal along the walk line and
-        // along the inside string.
-        let (into, steps) = (f64::from(l.balance) * st.tread, f64::from(l.winders + 2 * l.balance));
-        let going = (2.0 * into + radius * l.turn.abs().to_radians()) / steps;
-        let narrow = 2.0 * into / steps;
-        if going < rules.winder_going_min - EPS {
-            out.push(Finding {
-                rule: "winder_going_min",
-                value: mm(going),
-                limit: rules.winder_going_min,
-                message: format!(
-                    "its {} winders are {} mm deep on the walk line, {} mm from the narrow side, under the least, {} mm: give the turn fewer winders, balance them into the flights (`balance`), or widen it",
-                    l.winders,
-                    mm(going),
-                    mm(radius),
-                    rules.winder_going_min
-                ),
-            });
-        }
-        if narrow < rules.winder_narrow_min - EPS {
-            out.push(Finding {
-                rule: "winder_narrow_min",
-                value: mm(narrow),
-                limit: rules.winder_narrow_min,
-                message: if l.balance == 0 {
-                    format!(
-                        "its winders come to a point at the narrow end, where the least depth is {} mm: balance them into the flights (`balance`: treads of each flight)",
-                        rules.winder_narrow_min
-                    )
-                } else {
-                    format!(
-                        "its winders are {} mm deep at the narrow end, under the least, {} mm: balance them over more treads (`balance`), or give the turn fewer winders",
-                        mm(narrow),
-                        rules.winder_narrow_min
-                    )
-                },
-            });
-        }
-    }
-    // A landing is as deep as the stair is wide unless it says, and no less where it turns left or right.
-    let due = rules.landing_due(st.width, riser, st.tread);
-    let deep = |l: &Landing| {
-        if l.length <= 0.0 {
-            st.width
-        } else if l.turn.abs() == 90.0 {
-            l.length.max(st.width)
-        } else {
-            l.length
-        }
-    };
-    if let Some((i, d)) =
-        st.landings.iter().enumerate().filter(|(_, l)| l.winders == 0).map(|(i, l)| (i, deep(l))).find(|(_, d)| *d < due - EPS)
-    {
-        out.push(Finding {
-            rule: "landing_length",
-            value: mm(d),
-            limit: mm(due),
-            message: format!(
-                "landing {} is {} mm long, under the least, {} mm: give it a `length` of {} or more",
-                i + 1,
-                mm(d),
-                mm(due),
-                mm(due)
-            ),
-        });
-    }
-    out
-}
-
-/// What `solve` leaves as it is: the count of risers, the treads' depth, the width, the landings.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Locks {
-    pub risers: bool,
-    pub tread: bool,
-    pub width: bool,
-    pub landings: bool,
-}
-
-/// A stair `solve` proposes in place of one: its risers, treads, width and landings, what that changes, said, and what
-/// it would still be outside of (nothing, for one that fits).
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct Proposal {
-    pub risers: u32,
-    pub riser: f64,
-    pub tread: f64,
-    pub width: f64,
-    pub landings: Vec<Landing>,
-    pub changes: Vec<String>,
-    pub findings: Vec<Finding>,
-    #[serde(skip)]
-    pub cost: f64,
-}
-
-impl Proposal {
-    /// `st` as the proposal makes it.
-    pub fn applied(&self, st: &Stair) -> Stair {
-        Stair { riser: self.riser, tread: self.tread, width: self.width, landings: self.landings.clone(), ..st.clone() }
-    }
-}
-
-/// Whether every run of a stair of `n` risers with `landings` keeps two risers or more.
-fn runs_hold(n: u32, landings: &[Landing]) -> bool {
-    let mut last = 0.0;
-    for l in landings {
-        let (wound, into) = (f64::from(l.wound()), f64::from(l.balance));
-        if l.at - into < last + 2.0 || l.at + wound + into > f64::from(n) - 2.0 {
-            return false;
-        }
-        last = l.at + wound + into;
-    }
-    true
-}
-
-/// The stairs nearest `st` that are inside the project's rules, the one that changes least first: other counts of
-/// risers, a tread the step rule allows, the least width, the landings the rules ask (the stair's own moved with its
-/// risers, lengthened where they are short, and more where a flight is too long). What `locks` names stays as it is.
-/// When none fits, the nearest, with what each would still break. A stair already inside the rules is the only answer.
-pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
-    let held = limits(m, st);
-    let rules = &held.rules;
-    let (n0, each0, _) = m.flight(st);
-    // One drawn by hand is as it was drawn: there is nothing to count again.
-    if n0 == 0 || !st.sketch.is_empty() {
-        return Vec::new();
-    }
-    let rise = f64::from(n0) * each0;
-    let counts: Vec<u32> = if locks.risers {
-        vec![n0]
-    } else {
-        let lo = (rise / rules.riser_max - 1e-9).ceil().max(2.0) as u32;
-        let hi = if rules.riser_min > 0.0 { (rise / rules.riser_min + 1e-9).floor().max(2.0) as u32 } else { lo.saturating_add(40) };
-        // A stair takes 2 to 200 risers: a proposal of more could never be made.
-        let hi = hi.clamp(lo, lo.saturating_add(40)).min(crate::model::MAX_RISERS);
-        let mut all: Vec<u32> = (lo..=hi).collect();
-        if !all.contains(&n0) {
-            all.push(n0);
-        }
-        all
-    };
-    let mut out: Vec<Proposal> = Vec::new();
-    for n in counts {
-        let riser = rise / f64::from(n);
-        // A tread inside its own range and the step rule's, the nearest to the stair's.
-        let tread = if locks.tread {
-            st.tread
-        } else {
-            let (lo, hi) =
-                (rules.going_min.max(rules.step_min - 2.0 * riser).ceil(), rules.going_max.min(rules.step_max - 2.0 * riser).floor());
-            if lo <= hi { st.tread.clamp(lo, hi) } else { st.tread.clamp(rules.going_min, rules.going_max) }
-        };
-        let width = if locks.width { st.width } else { st.width.max(rules.width_min) };
-        // Its landings, moved with its risers; and with the landings the rules ask of flights too long.
-        let scale = f64::from(n) / f64::from(n0);
-        let due = rules.landing_length_for(width, riser, tread);
-        let moved: Vec<Landing> = st
-            .landings
-            .iter()
-            .map(|l| {
-                let mut l = *l;
-                l.at = (l.at * scale).round();
-                // A landing shorter than the rules ask takes their length.
-                let deep = if l.length > 0.0 { l.length } else { width };
-                if !locks.landings
-                    && l.winders == 0
-                    && matches!(l.turn.abs(), 0.0 | 90.0 | 180.0)
-                    && deep < rules.landing_due(width, riser, tread) - EPS
-                {
-                    l.length = due;
-                }
-                l
-            })
-            .collect();
-        let mut sets = vec![moved.clone()];
-        // Winders that come to a point, or too near one: balanced into the flights by as few treads as give their narrow
-        // end the least depth the rules ask.
-        if !locks.landings {
-            let mut balanced = moved.clone();
-            for l in balanced.iter_mut().filter(|l| l.winders > 0) {
-                let narrow = |j: u32| 2.0 * f64::from(j) * tread / f64::from(l.winders + 2 * j);
-                if narrow(l.balance) < rules.winder_narrow_min - EPS
-                    && let Some(j) = (l.balance + 1..=12).find(|j| narrow(*j) >= rules.winder_narrow_min - EPS)
-                {
-                    l.balance = j;
-                }
-            }
-            if balanced != moved {
-                sets.insert(0, balanced);
-            }
-        }
-        if !locks.landings && st.spiral.is_none() && st.path.is_empty() {
-            let most = f64::from(rules.flight_risers(riser));
-            let mut more = Vec::new();
-            let mut from = 0.0;
-            let ends = moved.iter().map(|l| (l.at - f64::from(l.balance), Some(*l))).chain([(f64::from(n), None)]);
-            for (to, turn) in ends {
-                let flights = ((to - from) / most).ceil().max(1.0);
-                for i in 1..(flights as u32) {
-                    more.push(Landing { at: from + ((to - from) * f64::from(i) / flights).round(), length: due, ..Landing::default() });
-                }
-                if let Some(l) = turn {
-                    from = l.at + f64::from(l.wound()) + f64::from(l.balance);
-                    more.push(l);
-                }
-            }
-            if more.len() != moved.len() {
-                sets.push(more);
-            }
-        }
-        for landings in sets {
-            if !runs_hold(n, &landings) {
-                continue;
-            }
-            let p = Proposal { risers: n, riser, tread, width, landings, changes: Vec::new(), findings: Vec::new(), cost: 0.0 };
-            let made = p.applied(st);
-            let findings = stair_findings(m, &made);
-            let mut changes = Vec::new();
-            if n != n0 {
-                changes.push(format!("{n} risers of {} mm, where it has {n0} of {}", mm(riser), mm(each0)));
-            }
-            if (tread - st.tread).abs() > EPS {
-                changes.push(format!("treads {} mm deep, where they are {}", mm(tread), mm(st.tread)));
-            }
-            if (width - st.width).abs() > EPS {
-                changes.push(format!("{} mm wide, where it is {}", mm(width), mm(st.width)));
-            }
-            let added = made.landings.len().saturating_sub(st.landings.len());
-            if added > 0 {
-                let at: Vec<String> = made
-                    .landings
-                    .iter()
-                    .filter(|l| !st.landings.iter().any(|o| (o.at * scale).round() == l.at))
-                    .map(|l| l.at.to_string())
-                    .collect();
-                changes.push(format!("{added} more landing{}, after {} risers", if added == 1 { "" } else { "s" }, at.join(" and ")));
-            }
-            if added == 0
-                && let Some((l, _)) = made.landings.iter().zip(&st.landings).find(|(a, b)| a.balance != b.balance)
+        for d in Discipline::ALL {
+            let choice = self.choice(d);
+            if choice.code.as_ref().is_some_and(|c| c.chars().count() > MAX_NAME)
+                || choice.amendments.len() > MAX_AMENDMENTS
+                || choice.editions.len() > MAX_AMENDMENTS + 1
+                || choice.editions.iter().any(|(k, v)| k.chars().count() > MAX_NAME || v.chars().count() > MAX_NAME)
             {
-                changes.push(format!(
-                    "its winders balanced over {} tread{} of the flight on each side",
-                    l.balance,
-                    if l.balance == 1 { "" } else { "s" }
-                ));
+                return Err(format!("{}: a code's name is {MAX_NAME} characters at most, and {MAX_AMENDMENTS} amendments", d.key()));
             }
-            if made.landings.iter().zip(&st.landings).any(|(a, b)| (a.length - b.length).abs() > EPS) && added == 0 {
-                changes.push(format!("landings {} mm long", mm(due)));
+            for changed in choice.changes.values() {
+                total += changed.values().map(|v| values_in(v, MAX_VALUES)).sum::<usize>();
             }
-            let cost = f64::from(n.abs_diff(n0)) * 10.0
-                + (tread - st.tread).abs() / 10.0
-                + (width - st.width).abs() / 50.0
-                + added as f64 * 3.0
-                + if changes.is_empty() { 0.0 } else { 0.5 }
-                + findings.len() as f64 * 1000.0;
-            out.push(Proposal { changes, findings, cost, ..p });
+            // What the project changed, and what an amendment of its own lays over a base, is checked as it stands.
+            let mut keys: Vec<&String> = choice.changes.keys().collect();
+            for layer in self.layers(d).into_iter().skip(1).filter(|c| self.own.contains(c)) {
+                keys.extend(layer.sections.keys());
+            }
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                let Some(def) = section_def(d, key) else { continue };
+                let resolved = resolve_in(self, d, key);
+                def.check(&Value::Object(resolved.value)).map_err(|e| format!("{} {key}: {e}", d.key()))?;
+            }
+        }
+        if total > MAX_VALUES {
+            return Err(format!("the project's building codes hold more than {MAX_VALUES} values"));
+        }
+        self.site.check()
+    }
+}
+
+/// Where a rule in force comes from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "layer", content = "code")]
+pub enum Layer {
+    /// The base code.
+    Base(String),
+    /// An amendment over it.
+    Amendment(String),
+    /// None of the project's codes has the section: the code of BIMCraft's it was read from.
+    Library(String),
+    /// The project changed it.
+    Project,
+}
+
+/// A section's rules in force, and where each comes from, with its source and kind.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Resolved {
+    pub value: Map<String, Value>,
+    pub from: BTreeMap<String, Layer>,
+    pub sources: BTreeMap<String, String>,
+    pub kinds: BTreeMap<String, Kind>,
+}
+
+impl Resolved {
+    /// The rules as they were before the project changed any.
+    pub fn of_code(&self) -> bool {
+        !self.from.values().any(|l| *l == Layer::Project)
+    }
+}
+
+/// Section `key` of discipline `d` as `codes` holds it: its layers', the last one winning rule by rule, then the
+/// project's changes; from the library where no layer has it.
+pub fn resolve_in(codes: &Codes, d: Discipline, key: &str) -> Resolved {
+    let mut out = layered(codes, d, key);
+    if let Some(changed) = codes.choice(d).changes.get(key) {
+        for (k, v) in changed {
+            out.value.insert(k.clone(), v.clone());
+            out.from.insert(k.clone(), Layer::Project);
+            out.sources.remove(k);
+            out.kinds.insert(k.clone(), Kind::Assumption);
         }
     }
-    out.sort_by(|a, b| a.cost.total_cmp(&b.cost));
-    // A stair inside the rules as it is needs nothing; else what changes nothing is no proposal.
-    if out.first().is_some_and(|p| p.changes.is_empty() && p.findings.is_empty()) {
-        out.truncate(1);
-        return out;
-    }
-    out.retain(|p| !p.changes.is_empty());
-    let fits = out.iter().filter(|p| p.findings.is_empty()).count();
-    out.truncate(if fits > 0 { fits.min(5) } else { 3 });
     out
 }
 
+/// The sections that are one utility's or one country's method whole: an amendment holding one replaces the one under it
+/// instead of being laid over it rule by rule, so one utility's rules never answer for another's.
+pub const WHOLE: [(Discipline, &str); 3] =
+    [(Discipline::Electrical, "unit_demand"), (Discipline::Electrical, "building_demand"), (Discipline::Electrical, "entrance")];
+
+/// Whether section `key` of discipline `d` is a method whole (`WHOLE`).
+pub fn is_whole(d: Discipline, key: &str) -> bool {
+    WHOLE.iter().any(|(wd, k)| *wd == d && *k == key)
+}
+
+/// Section `key` of `c` as a method whole: what `c` holds, over what the code it was made from holds (a project's copy of
+/// one of BIMCraft's utilities keeps that utility's rules it took out), never another code's.
+pub fn whole_section(c: &BuildingCode, key: &str) -> Option<Map<String, Value>> {
+    let own = c.section(key)?;
+    let origin = [c.based_on.as_str(), c.code.as_str()].into_iter().find_map(|n| find(c.discipline, n)).filter(|o| !std::ptr::eq(*o, c));
+    let mut out = origin.and_then(|o| o.section(key)).cloned().unwrap_or_default();
+    // A null is a value here (a method with no common areas' factors says so): `amend` takes a rule out by leaving it out.
+    for (k, v) in own {
+        out.insert(k.clone(), v.clone());
+    }
+    Some(out)
+}
+
+/// Section `key` as the project's layers have it, without the project's changes.
+pub fn layered(codes: &Codes, d: Discipline, key: &str) -> Resolved {
+    let mut out = Resolved::default();
+    let layers = codes.layers(d);
+    let whole_key = is_whole(d, key);
+    let take = |c: &BuildingCode, layer: Layer, out: &mut Resolved| {
+        let Some(rules) = (if whole_key { whole_section(c, key) } else { c.section(key).cloned() }) else { return };
+        // A method whole replaces the one under it.
+        if whole_key {
+            *out = Resolved::default();
+        }
+        for (k, v) in &rules {
+            out.value.insert(k.clone(), v.clone());
+            out.from.insert(k.clone(), layer.clone());
+            match c.source(key, k) {
+                Some(s) => out.sources.insert(k.clone(), s),
+                None => out.sources.remove(k),
+            };
+            out.kinds.insert(k.clone(), c.kind(key, k));
+        }
+    };
+    let lay = |out: &mut Resolved| {
+        for (i, c) in layers.iter().enumerate() {
+            let layer = if i == 0 { Layer::Base(c.code.clone()) } else { Layer::Amendment(c.code.clone()) };
+            take(c, layer, out);
+        }
+    };
+    lay(&mut out);
+    // A section none of the layers has is the library's; one only amendments have, and that isn't whole without the
+    // rules they leave out, is the library's under what they change of it.
+    let whole = |r: &Resolved| section_def(d, key).is_none_or(|def| def.check(&Value::Object(r.value.clone())).is_ok());
+    let base_has = layers.first().is_some_and(|b| b.section(key).is_some());
+    // A method whole is never laid over another code's: only none held at all is the library's. The electrical settings are
+    // entries by name, so an amendment's few are laid over the library's others, never in place of them.
+    let entries = d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key);
+    if (out.value.is_empty() || (!whole_key && !base_has && (entries || !whole(&out))))
+        && let Some(lib) = library(d, key)
+    {
+        out = Resolved::default();
+        take(lib, Layer::Library(lib.code.clone()), &mut out);
+        lay(&mut out);
+    }
+    out
+}
+
+/// The kept typed sections of one set of codes.
+type Kept = HashMap<TypeId, Arc<dyn Any + Send + Sync>>;
+
+/// A model's typed sections, kept while its codes are the same allocation.
+#[derive(Default)]
+pub struct Cache {
+    kept: Mutex<Option<(crate::shared::Identity<Codes>, Kept)>>,
+}
+
+impl Clone for Cache {
+    fn clone(&self) -> Cache {
+        Cache::default()
+    }
+}
+
+impl PartialEq for Cache {
+    /// What a model keeps is no part of what it is.
+    fn eq(&self, _: &Cache) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for Cache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Cache")
+    }
+}
+
+impl Cache {
+    fn get<S: Section>(&self, codes: &crate::shared::Shared<Codes>, make: impl FnOnce() -> S) -> Arc<S> {
+        let id = TypeId::of::<S>();
+        if let Ok(kept) = self.kept.lock()
+            && let Some((of, map)) = kept.as_ref()
+            && of.is_of(codes)
+            && let Some(any) = map.get(&id)
+            && let Ok(s) = Arc::clone(any).downcast::<S>()
+        {
+            return s;
+        }
+        let made = Arc::new(make());
+        if let Ok(mut kept) = self.kept.lock() {
+            if !kept.as_ref().is_some_and(|(of, _)| of.is_of(codes)) {
+                *kept = Some((codes.identity(), HashMap::new()));
+            }
+            if let Some((_, map)) = kept.as_mut() {
+                map.insert(id, Arc::clone(&made) as Arc<dyn Any + Send + Sync>);
+            }
+        }
+        made
+    }
+}
+
+/// `v` as section `S`, or none where it can't be one.
+fn typed<S: Section>(v: Map<String, Value>) -> Option<S> {
+    serde_json::from_value::<S>(Value::Object(v)).ok().filter(|s| s.check().is_ok())
+}
+
+impl Model {
+    /// The project's codes of discipline `d`: its base.
+    pub fn base_code(&self, d: Discipline) -> &BuildingCode {
+        self.codes.base(d)
+    }
+
+    /// The architectural code the project's stairs are held to.
+    pub fn building_code(&self) -> &BuildingCode {
+        self.codes.base(Discipline::Architectural)
+    }
+
+    /// An architectural code by name: the project's own first, then BIMCraft's.
+    pub fn code(&self, name: &str) -> Option<&BuildingCode> {
+        let name = if name == "nbr" { "nbr-9050" } else { name };
+        self.codes.find(Discipline::Architectural, name)
+    }
+
+    /// Section `key` of discipline `d` in force, with where each rule comes from.
+    pub fn resolve_code(&self, d: Discipline, key: &str) -> Resolved {
+        resolve_in(&self.codes, d, key)
+    }
+
+    /// Section `S` in force, kept until the project's codes change: the project's, else its layers' alone, else the
+    /// library's, else nothing's (which a test keeps from happening).
+    pub fn rules<S: Section>(&self) -> Arc<S> {
+        self.code_cache.get(&self.codes, || {
+            typed::<S>(resolve_in(&self.codes, S::DISCIPLINE, S::KEY).value)
+                .or_else(|| typed::<S>(layered(&self.codes, S::DISCIPLINE, S::KEY).value))
+                .or_else(|| library(S::DISCIPLINE, S::KEY).and_then(|c| c.section(S::KEY)).and_then(|v| typed::<S>(v.clone())))
+                .unwrap_or_default()
+        })
+    }
+
+    /// Section `S` as code `name` has it: the rules in force where the code is one of the project's layers, with what it
+    /// changed; that code's own otherwise. None where there is no such code, or it hasn't the section.
+    pub fn rules_in<S: Section>(&self, name: &str) -> Option<Arc<S>> {
+        let layers = self.codes.layers(S::DISCIPLINE);
+        if layers.iter().any(|c| c.code == name) {
+            return Some(self.rules::<S>());
+        }
+        let c = self.codes.find(S::DISCIPLINE, name)?;
+        typed::<S>(c.section(S::KEY)?.clone()).map(Arc::new)
+    }
+
+    /// Section `key` of discipline `d` in force for the project, read as a module's own type `T`, and whether one of the
+    /// project's layers or changes holds it (false: it is BIMCraft's library's). Read each time: for commands, not for checks.
+    pub fn section_as<T: DeserializeOwned>(&self, d: Discipline, key: &str) -> Option<(T, bool)> {
+        let r = self.resolve_code(d, key);
+        if r.value.is_empty() {
+            return None;
+        }
+        let own = r.from.values().any(|l| !matches!(l, Layer::Library(_)));
+        serde_json::from_value(Value::Object(r.value)).ok().map(|t| (t, own))
+    }
+
+    /// A method whole (`WHOLE`) as each of the project's layers holds it, the last first, read as `T`, with the source of
+    /// its rule `about` and whether it is the project's (an amendment changed in it, or its own code): what a command
+    /// naming a utility reads, so a utility held under another answers by its own rules.
+    pub fn held_wholes<T: DeserializeOwned>(&self, d: Discipline, key: &str, about: &str) -> Vec<(T, Option<String>, bool)> {
+        self.codes
+            .layers(d)
+            .iter()
+            .rev()
+            .filter_map(|c| {
+                let rules = whole_section(c, key)?;
+                let t = serde_json::from_value(Value::Object(rules)).ok()?;
+                let own = find(d, &c.code).is_none_or(|lib| !std::ptr::eq(lib, *c));
+                Some((t, c.source(key, about).or_else(|| find(d, &c.based_on).and_then(|o| o.source(key, about))), own))
+            })
+            .collect()
+    }
+
+    /// The rules the project's stairs and railings are held to.
+    pub fn stair_rules(&self) -> Arc<StairRules> {
+        self.rules::<StairRules>()
+    }
+}
+
+/// Where element `e` is outside the project's building codes; none for what no section checks yet.
+pub fn findings(m: &Model, _id: crate::ids::Id, e: &crate::model::Element) -> Vec<Finding> {
+    match e {
+        crate::model::Element::Stair(st) => stair_findings(m, st),
+        crate::model::Element::Ramp(r) => checks::ramp_findings(m, r),
+        crate::model::Element::Door(o) => checks::door_findings(m, e, o),
+        crate::model::Element::Room(r) => checks::room_findings(m, r),
+        _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod engine_tests;
+#[cfg(test)]
+mod rule_tests;
 #[cfg(test)]
 pub(crate) mod tests;

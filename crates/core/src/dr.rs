@@ -15,8 +15,13 @@
 //! persons or to keep lives, is left out. What is not covered, and the caller says so: the further rules for the volumes of a
 //! bathroom and for swimming pools, and the other protections against shock the device does not replace.
 //!
-//! The rules are data, not code: `data/dr-check.json` holds a rule set for each standard, every rule naming its source, and
-//! `check` only reads them (`RuleSet`). NBR 5410:2004 is the default and, for now, the only set.
+//! The rules are data, not code: the `rcd` section of a building code (NBR 5410's in `data/codes/electrical/`), every rule
+//! naming its source, as the project or an amendment changed it; `check` only reads them (`RuleSet`). A point meets a rule
+//! when its `place` is one of the rule's `places` (any when empty) and its `kind` one of its `kinds` (any when empty), in a
+//! `building` that is `residential`, `other` or `any`; `outdoor` asks an internal outlet that may feed equipment outdoors, and a
+//! light at `lights_from_mm` or higher is left out. `max_outlet_a` is the highest rated current of an outlet the rules reach,
+//! `max_residual_ma` the most the device's rated residual current may be, and `it_exempt` leaves out a circuit of an IT scheme
+//! that must not be cut.
 
 use serde::Deserialize;
 use std::sync::OnceLock;
@@ -126,7 +131,7 @@ pub enum Building {
     Other,
 }
 
-/// One case a standard asks the device for, a row of `data/dr-check.json`.
+/// One case a standard asks the device for, a row of the `rcd` section.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rule {
@@ -151,7 +156,7 @@ pub struct Rule {
     pub source: String,
 }
 
-/// One standard's rules, an entry of `data/dr-check.json`.
+/// One standard's rules, a code's `rcd` section.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuleSet {
@@ -175,15 +180,11 @@ pub struct RuleSet {
     pub not_covered: String,
 }
 
-#[derive(Default, Deserialize)]
-struct Data {
-    rule_sets: Vec<RuleSet>,
-}
-
-/// The rule sets of `data/dr-check.json`; none if it does not read, which a test keeps from happening.
+/// The rule sets of BIMCraft's electrical codes, each code's `rcd` section, in the library's order: a project reads
+/// its own (`Model::section_as`), and a standard named reads the library's.
 pub fn rule_sets() -> &'static [RuleSet] {
     static SETS: OnceLock<Vec<RuleSet>> = OnceLock::new();
-    SETS.get_or_init(|| serde_json::from_str::<Data>(include_str!("../data/dr-check.json")).map(|d| d.rule_sets).unwrap_or_default())
+    SETS.get_or_init(|| crate::codes::library_sections(crate::codes::Discipline::Electrical, "rcd"))
 }
 
 /// The rule set of a standard, by its name.

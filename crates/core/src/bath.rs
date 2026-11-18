@@ -3,8 +3,12 @@
 //! by its class and its protection. A pure function of the fixture and the things it is given, with no model behind it: the
 //! `bath_volumes` command is its only caller.
 //!
-//! The numbers are data, not code: `data/bath-volumes.json` holds a rule set for each standard, every volume and every thing it
-//! allows naming its source, and this only reads them (`RuleSet`). NBR 5410:2004 is the default and, for now, the only set. The
+//! The numbers are data, not code: the `bath_volumes` section of a building code (NBR 5410's in `data/codes/electrical/`), every
+//! volume and every thing it allows naming its source, as the project or an amendment changed it; this only reads them
+//! (`RuleSet`). A point is in the first volume whose reach and height hold it: `reach_mm` out in plan from the tub's or tray's
+//! edge, `shower_reach_mm` from a shower's outlet with no tray, `top_mm` up from the floor (`to_rim`: up to the tub's rim); `ip`
+//! the least second digit of the IP code (`ip_public` in a public bathroom), `selv_max_v` safety extra-low voltage, and `allows`
+//! the kinds, classes and protections that may stand there. The
 //! volumes are measured straight, in plan from the edge of the tub or tray (or from the outlet of a shower with no tray) and in
 //! height from the floor one stands on; the walls and partitions the standard lets them go around are not seen, so what stands
 //! behind one is taken as inside, on the safe side.
@@ -40,7 +44,7 @@ pub struct Allow {
     pub source: String,
 }
 
-/// One volume of a row of `data/bath-volumes.json`.
+/// One volume of a row of the `bath_volumes` section.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Volume {
@@ -67,7 +71,7 @@ pub struct Volume {
     pub source: String,
 }
 
-/// One standard's volumes, an entry of `data/bath-volumes.json`.
+/// One standard's volumes, a code's `bath_volumes` section.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuleSet {
@@ -83,15 +87,11 @@ pub struct RuleSet {
     pub not_covered: String,
 }
 
-#[derive(Default, Deserialize)]
-struct Data {
-    rule_sets: Vec<RuleSet>,
-}
-
-/// The rule sets of `data/bath-volumes.json`; none if it does not read, which a test keeps from happening.
+/// The rule sets of BIMCraft's electrical codes, each code's `bath_volumes` section, in the library's order: a project reads
+/// its own (`Model::section_as`), and a standard named reads the library's.
 pub fn rule_sets() -> &'static [RuleSet] {
     static SETS: OnceLock<Vec<RuleSet>> = OnceLock::new();
-    SETS.get_or_init(|| serde_json::from_str::<Data>(include_str!("../data/bath-volumes.json")).map(|d| d.rule_sets).unwrap_or_default())
+    SETS.get_or_init(|| crate::codes::library_sections(crate::codes::Discipline::Electrical, "bath_volumes"))
 }
 
 /// The rule set of a standard, by its name.

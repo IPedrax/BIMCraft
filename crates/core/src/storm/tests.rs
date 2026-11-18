@@ -2,6 +2,10 @@
 
 use super::*;
 
+fn lib() -> std::sync::Arc<StormRules> {
+    crate::codes::library_rules::<StormRules>()
+}
+
 fn near(a: f64, b: f64, e: f64) -> bool {
     (a - b).abs() <= e
 }
@@ -22,14 +26,14 @@ fn horizontal_drains_agree_with_tabela_4_within_one_per_cent() {
     let mut worst: f64 = 0.0;
     for (d, row) in table {
         for (v, s) in row.iter().zip([0.005, 0.01, 0.02, 0.04]) {
-            worst = worst.max((manning_flow(*d, s, N_PVC) / v - 1.0).abs());
+            worst = worst.max((manning_flow(*d, s, lib().n("pvc").unwrap()) / v - 1.0).abs());
         }
     }
     assert!(worst < 0.01, "worst {:.2} % (the table rounds)", worst * 100.0);
-    assert_eq!(manning_flow(100.0, 0.0, N_PVC), 0.0, "no slope, no flow");
-    assert_eq!(manning_flow(0.0, 0.01, N_PVC), 0.0);
+    assert_eq!(manning_flow(100.0, 0.0, lib().n("pvc").unwrap()), 0.0, "no slope, no flow");
+    assert_eq!(manning_flow(0.0, 0.01, lib().n("pvc").unwrap()), 0.0);
     assert_eq!(manning_flow(100.0, 0.01, 0.0), 0.0);
-    assert_eq!(MIN_SLOPE, 0.005);
+    assert_eq!(lib().min_slope, 0.005);
 }
 
 #[test]
@@ -42,10 +46,10 @@ fn the_design_flow_is_the_rain_on_the_area() {
 #[test]
 fn the_horizontal_diameter_inverts_manning() {
     for (q, s) in [(250.0, 0.01), (1000.0, 0.005), (3000.0, 0.02)] {
-        let d = horizontal_diameter(q, s, N_PVC);
-        assert!(near(manning_flow(d, s, N_PVC), q, q * 1e-9), "{q} L/min at {s}: {d} mm");
+        let d = horizontal_diameter(q, s, lib().n("pvc").unwrap());
+        assert!(near(manning_flow(d, s, lib().n("pvc").unwrap()), q, q * 1e-9), "{q} L/min at {s}: {d} mm");
     }
-    assert!(horizontal_diameter(100.0, 0.0, N_PVC).is_nan());
+    assert!(horizontal_diameter(100.0, 0.0, lib().n("pvc").unwrap()).is_nan());
 }
 
 fn pipe(outlet: Outlet, q: f64, h: f64, l: f64) -> Result<Downpipe, Off> {

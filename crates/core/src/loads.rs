@@ -15,8 +15,12 @@
 //! the outlets (near the lavatory; above a counter; for a room of 2.25 m² or less, up to 0.80 m outside the door). The TUE, the
 //! outlets for specific use, are not here.
 //!
-//! The numbers are data, not code: `data/load-points.json` holds a rule set for each standard, every row naming its source, and the
-//! sum here only reads them (`RuleSet`). NBR 5410:2004 is the default and, for now, the only set.
+//! The numbers are data, not code: the `load_points` section of a building code (NBR 5410's in `data/codes/electrical/`), every
+//! row naming its source, as the project or an amendment changed it; the sum here only reads them (`RuleSet`). A room's row:
+//! `least` the fewest outlets, `per_perimeter_m` one for each so many metres of perimeter (only above `above_m2` where given),
+//! `counter` the outlets over a kitchen's sink counter, `first` points at `first_va` each and every other at `va`. The lighting
+//! is `va` up to `up_to_m2` and `step_va` more for each whole `step_m2` above; `alternative` lets `first` points be paid at
+//! `first_va` where the rooms that have `first` hold more than `above` points together.
 
 use serde::Deserialize;
 use std::sync::OnceLock;
@@ -92,7 +96,7 @@ pub fn kind_of(name: &str) -> Kind {
 /// The standard `load_points` follows when none is named.
 pub const DEFAULT: &str = "NBR 5410:2004";
 
-/// One standard's numbers for a dwelling's rooms, a row of `data/load-points.json`.
+/// One standard's numbers for a dwelling's rooms, a code's `load_points` section.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuleSet {
@@ -153,15 +157,11 @@ pub struct RoomRule {
     pub source: String,
 }
 
-#[derive(Default, Deserialize)]
-struct Data {
-    rule_sets: Vec<RuleSet>,
-}
-
-/// The rule sets of `data/load-points.json`; none if it does not read, which a test keeps from happening.
+/// The rule sets of BIMCraft's electrical codes, each code's `load_points` section, in the library's order: a project reads
+/// its own (`Model::section_as`), and a standard named reads the library's.
 pub fn rule_sets() -> &'static [RuleSet] {
     static SETS: OnceLock<Vec<RuleSet>> = OnceLock::new();
-    SETS.get_or_init(|| serde_json::from_str::<Data>(include_str!("../data/load-points.json")).map(|d| d.rule_sets).unwrap_or_default())
+    SETS.get_or_init(|| crate::codes::library_sections(crate::codes::Discipline::Electrical, "load_points"))
 }
 
 /// The rule set of a standard, by its name.

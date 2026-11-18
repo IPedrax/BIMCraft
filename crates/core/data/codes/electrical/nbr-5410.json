@@ -1,0 +1,2712 @@
+{
+ "code": "nbr-5410",
+ "discipline": "electrical",
+ "name": "ABNT NBR 5410 (low-voltage installations)",
+ "region": "Brasil",
+ "edition": "2004",
+ "references": [
+  "ABNT NBR 5410:2004 (corrected version 2008), Instalações elétricas de baixa tensão"
+ ],
+ "note": "Brazil's low-voltage installations: the circuits that need a 30 mA residual-current device (item 5.1.3.2.2), the volumes round a bathtub or a shower and what may stand in each (9.1), a dwelling's least lighting and outlets (9.5.2), the sizing of a circuit's conductors and breaker (Tabelas 36 to 48 and 58, and the voltage drop), the fill of a conduit, and surge protection (5.4.2 and 6.3.5). The numbers are the standard's, the words are ours. A utility's own standard (its service categories, a unit's or a building's demand) is an amendment over this code.",
+ "sections": {
+  "rcd": {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 5.1.3.2.2, additional protection by a residual-current device. Equivalents: IEC 60364-4-41 (411.3.3) and BS 7671 (411.3.3) ask it for outlets up to 32 A whatever the room, and IEC 60364-7-701 and BS 7671 section 701 for every circuit of a room with a bath or a shower; the US NEC (210.8) asks a GFCI, a device of its own, by a list of places much like this one.",
+   "max_residual_ma": 30,
+   "max_outlet_a": 32,
+   "max_outlet_source": "NBR 5410:2004, 5.1.3.2.2, note 1: an outlet is reached up to a rated current of 32 A",
+   "it_exempt": true,
+   "it_source": "NBR 5410:2004, 5.1.3.2.2, note 2: a circuit or sector of an IT scheme that must not be cut, for the safety of persons or to keep lives, is left out",
+   "rules": [
+    {
+     "reason": "bath",
+     "says": "a point in a place with a bathtub or a shower",
+     "places": [
+      "bath"
+     ],
+     "source": "NBR 5410:2004, 5.1.3.2.2 a)"
+    },
+    {
+     "reason": "external",
+     "says": "an outlet in an external area",
+     "places": [
+      "external"
+     ],
+     "kinds": [
+      "outlet"
+     ],
+     "source": "NBR 5410:2004, 5.1.3.2.2 b)"
+    },
+    {
+     "reason": "outdoor",
+     "says": "an internal outlet that may feed equipment outdoors",
+     "kinds": [
+      "outlet"
+     ],
+     "outdoor": true,
+     "source": "NBR 5410:2004, 5.1.3.2.2 c)"
+    },
+    {
+     "reason": "wet",
+     "says": "a point in a kitchen, laundry, service area, garage or other wet internal area of a dwelling",
+     "places": [
+      "kitchen",
+      "laundry",
+      "service",
+      "garage",
+      "wet"
+     ],
+     "building": "residential",
+     "lights_from_mm": 2500,
+     "source": "NBR 5410:2004, 5.1.3.2.2 d), and its note 3 for lights 2.5 m up or more"
+    },
+    {
+     "reason": "wet",
+     "says": "an outlet in a kitchen, laundry, service area, garage or other wet internal area",
+     "places": [
+      "kitchen",
+      "laundry",
+      "service",
+      "garage",
+      "wet"
+     ],
+     "kinds": [
+      "outlet"
+     ],
+     "building": "other",
+     "source": "NBR 5410:2004, 5.1.3.2.2 e)"
+    }
+   ],
+   "not_covered": "the further rules for the volumes of a bathroom and for swimming pools, and the other protections against shock, which the device does not replace"
+  },
+  "bath_volumes": {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 9.1, places with a bathtub or a shower (Figures 16 to 18). Equivalents: IEC 60364-7-701 and BS 7671 section 701 answer the same question, but their present editions draw zones 0 to 2 only, with other reaches, so they would be a set of their own rows; the US NEC (410.10(D), 406.9(C)) keeps luminaires and receptacles out of a space over the tub or shower instead.",
+   "max_rcd_ma": 30,
+   "volumes": [
+    {
+     "name": "0",
+     "reach_mm": 0,
+     "to_rim": true,
+     "ip": 7,
+     "ip_public": 7,
+     "selv_max_v": 12,
+     "source": "NBR 5410:2004, 9.1.2.1 a) (the inside of the tub, tray or recess), 9.1.3.1.1 (SELV up to 12 V only, its source outside) and 9.1.4.1 (IPX7)",
+     "allows": [
+      {
+       "kinds": [
+        "box"
+       ],
+       "serving": true,
+       "source": "NBR 5410:2004, 9.1.4.2.4"
+      },
+      {
+       "kinds": [
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment as 9.1.3.1.1 asks is left out of 9.1.4.4.1)"
+      }
+     ]
+    },
+    {
+     "name": "1",
+     "reach_mm": 0,
+     "shower_reach_mm": 600,
+     "top_mm": 2250,
+     "ip": 4,
+     "ip_public": 4,
+     "source": "NBR 5410:2004, 9.1.2.1 b) (over volume 0 to the vertical face around the tub or tray, or 0.6 m around a shower with no tray, up to 2.25 m) and 9.1.4.1 (IPX4)",
+     "allows": [
+      {
+       "kinds": [
+        "box"
+       ],
+       "serving": true,
+       "source": "NBR 5410:2004, 9.1.4.2.4"
+      },
+      {
+       "kinds": [
+        "heater"
+       ],
+       "classes": [
+        "I",
+        "II"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4.2"
+      },
+      {
+       "kinds": [
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment left out)"
+      },
+      {
+       "kinds": [
+        "switch"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3.1 and its note (controls at SELV)"
+      }
+     ]
+    },
+    {
+     "name": "2",
+     "reach_mm": 600,
+     "shower_reach_mm": 1200,
+     "top_mm": 3000,
+     "ip": 3,
+     "ip_public": 5,
+     "source": "NBR 5410:2004, 9.1.2.1 c) (0.60 m out from volume 1, from the floor up to 3 m, so over volume 1 too) and 9.1.4.1 (IPX3, IPX5 in a public bathroom)",
+     "allows": [
+      {
+       "kinds": [
+        "box"
+       ],
+       "serving": true,
+       "source": "NBR 5410:2004, 9.1.4.2.4"
+      },
+      {
+       "kinds": [
+        "luminaire"
+       ],
+       "classes": [
+        "II"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4.3"
+      },
+      {
+       "kinds": [
+        "heater"
+       ],
+       "classes": [
+        "I",
+        "II"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4.3"
+      },
+      {
+       "kinds": [
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment left out)"
+      },
+      {
+       "kinds": [
+        "switch"
+       ],
+       "any_of": [
+        "selv"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3.1 and its note (controls at SELV)"
+      }
+     ]
+    },
+    {
+     "name": "3",
+     "reach_mm": 3000,
+     "shower_reach_mm": 3600,
+     "top_mm": 2250,
+     "ip": 1,
+     "ip_public": 5,
+     "source": "NBR 5410:2004, 9.1.2.1 d) (2.40 m out from volume 2, from the floor up to 2.25 m) and 9.1.4.1 (IPX1, IPX5 in a public bathroom)",
+     "allows": [
+      {
+       "kinds": [
+        "outlet"
+       ],
+       "any_of": [
+        "separation",
+        "selv",
+        "rcd"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3.2 a) to c)"
+      },
+      {
+       "kinds": [
+        "switch",
+        "box",
+        "luminaire",
+        "heater",
+        "equipment"
+       ],
+       "source": "NBR 5410:2004, 9.1.4.3 and 9.1.4.4 (no further limit in volume 3)"
+      }
+     ]
+    }
+   ],
+   "not_covered": "fixed walls and partitions, which the volumes go around (note 1 of 9.1.2.1: here the reach is measured straight, so what stands behind one is taken as inside, on the safe side); the space under a tub or tray (note 2); the 0.60 m around the door of a prefabricated shower cabin (9.1.4.3.3); the wiring (9.1.4.2.1 to 9.1.4.2.3); the supplementary equipotential bonding (9.1.3.1.2); and the circuits' own residual-current device, which dr_check asks"
+  },
+  "load_points": {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 9.5.2, dwellings. Equivalents: IEC 60364 leaves the number of outlets of a dwelling to national rules; the US NEC, article 210.52, places receptacles by spacing along the walls instead; BS 7671 sets no count.",
+   "lighting": {
+    "va": 100,
+    "up_to_m2": 6,
+    "step_m2": 4,
+    "step_va": 60,
+    "source": "NBR 5410:2004, 9.5.2.1.2 a) and b)"
+   },
+   "alternative": {
+    "above": 6,
+    "first": 2,
+    "source": "NBR 5410:2004, 9.5.2.2.2 a), the alternative allowed where those rooms together have more than six points"
+   },
+   "rooms": [
+    {
+     "kind": "bath",
+     "least": 1,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 a) (count) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "kitchen",
+     "least": 1,
+     "per_perimeter_m": 3.5,
+     "counter": 2,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count, two over the sink's counter) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "service",
+     "least": 1,
+     "per_perimeter_m": 3.5,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "dry",
+     "least": 1,
+     "per_perimeter_m": 5,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 d) (count) and 9.5.2.2.2 b) (power)"
+    },
+    {
+     "kind": "veranda",
+     "least": 1,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 c) (count) and 9.5.2.2.2 b) (power)"
+    },
+    {
+     "kind": "other",
+     "least": 1,
+     "above_m2": 6,
+     "per_perimeter_m": 5,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 e) (count) and 9.5.2.2.2 b) (power)"
+    }
+   ]
+  },
+  "circuits": {
+   "systems": [
+    {
+     "name": "127/220",
+     "phase_v": 127,
+     "line_v": 220
+    },
+    {
+     "name": "220/380",
+     "phase_v": 220,
+     "line_v": 380
+    },
+    {
+     "name": "230/400",
+     "phase_v": 230,
+     "line_v": 400
+    }
+   ],
+   "methods": [
+    {
+     "method": "1",
+     "reference": "A1",
+     "grouping": "bundle"
+    },
+    {
+     "method": "2",
+     "reference": "A2",
+     "grouping": "bundle"
+    },
+    {
+     "method": "3",
+     "reference": "B1",
+     "grouping": "bundle"
+    },
+    {
+     "method": "4",
+     "reference": "B2",
+     "grouping": "bundle"
+    },
+    {
+     "method": "5",
+     "reference": "B1",
+     "grouping": "bundle"
+    },
+    {
+     "method": "6",
+     "reference": "B2",
+     "grouping": "bundle"
+    },
+    {
+     "method": "7",
+     "reference": "B1",
+     "grouping": "bundle"
+    },
+    {
+     "method": "8",
+     "reference": "B2",
+     "grouping": "bundle"
+    },
+    {
+     "method": "11",
+     "reference": "C",
+     "grouping": "layer"
+    },
+    {
+     "method": "11A",
+     "reference": "C",
+     "grouping": "ceiling"
+    },
+    {
+     "method": "61",
+     "reference": "D",
+     "grouping": "buried_multi"
+    },
+    {
+     "method": "61A",
+     "reference": "D",
+     "grouping": "buried_single"
+    }
+   ],
+   "default_method": "7",
+   "ampacity_pvc": [
+    [
+     0.5,
+     [
+      7,
+      7,
+      7,
+      7,
+      9,
+      8,
+      9,
+      8,
+      10,
+      9,
+      12,
+      10
+     ]
+    ],
+    [
+     0.75,
+     [
+      9,
+      9,
+      9,
+      9,
+      11,
+      10,
+      11,
+      10,
+      13,
+      11,
+      15,
+      12
+     ]
+    ],
+    [
+     1,
+     [
+      11,
+      10,
+      11,
+      10,
+      14,
+      12,
+      13,
+      12,
+      15,
+      14,
+      18,
+      15
+     ]
+    ],
+    [
+     1.5,
+     [
+      14.5,
+      13.5,
+      14,
+      13,
+      17.5,
+      15.5,
+      16.5,
+      15,
+      19.5,
+      17.5,
+      22,
+      18
+     ]
+    ],
+    [
+     2.5,
+     [
+      19.5,
+      18,
+      18.5,
+      17.5,
+      24,
+      21,
+      23,
+      20,
+      27,
+      24,
+      29,
+      24
+     ]
+    ],
+    [
+     4,
+     [
+      26,
+      24,
+      25,
+      23,
+      32,
+      28,
+      30,
+      27,
+      36,
+      32,
+      38,
+      31
+     ]
+    ],
+    [
+     6,
+     [
+      34,
+      31,
+      32,
+      29,
+      41,
+      36,
+      38,
+      34,
+      46,
+      41,
+      47,
+      39
+     ]
+    ],
+    [
+     10,
+     [
+      46,
+      42,
+      43,
+      39,
+      57,
+      50,
+      52,
+      46,
+      63,
+      57,
+      63,
+      52
+     ]
+    ],
+    [
+     16,
+     [
+      61,
+      56,
+      57,
+      52,
+      76,
+      68,
+      69,
+      62,
+      85,
+      76,
+      81,
+      67
+     ]
+    ],
+    [
+     25,
+     [
+      80,
+      73,
+      75,
+      68,
+      101,
+      89,
+      90,
+      80,
+      112,
+      96,
+      104,
+      86
+     ]
+    ],
+    [
+     35,
+     [
+      99,
+      89,
+      92,
+      83,
+      125,
+      110,
+      111,
+      99,
+      138,
+      119,
+      125,
+      103
+     ]
+    ],
+    [
+     50,
+     [
+      119,
+      108,
+      110,
+      99,
+      151,
+      134,
+      133,
+      118,
+      168,
+      144,
+      148,
+      122
+     ]
+    ],
+    [
+     70,
+     [
+      151,
+      136,
+      139,
+      125,
+      192,
+      171,
+      168,
+      149,
+      213,
+      184,
+      183,
+      151
+     ]
+    ],
+    [
+     95,
+     [
+      182,
+      164,
+      167,
+      150,
+      232,
+      207,
+      201,
+      179,
+      258,
+      223,
+      216,
+      179
+     ]
+    ],
+    [
+     120,
+     [
+      210,
+      188,
+      192,
+      172,
+      269,
+      239,
+      232,
+      206,
+      299,
+      259,
+      246,
+      203
+     ]
+    ],
+    [
+     150,
+     [
+      240,
+      216,
+      219,
+      196,
+      309,
+      275,
+      265,
+      236,
+      344,
+      299,
+      278,
+      230
+     ]
+    ],
+    [
+     185,
+     [
+      273,
+      245,
+      248,
+      223,
+      353,
+      314,
+      300,
+      268,
+      392,
+      341,
+      312,
+      258
+     ]
+    ],
+    [
+     240,
+     [
+      321,
+      286,
+      291,
+      261,
+      415,
+      370,
+      351,
+      313,
+      461,
+      403,
+      361,
+      297
+     ]
+    ],
+    [
+     300,
+     [
+      367,
+      328,
+      334,
+      298,
+      477,
+      426,
+      401,
+      358,
+      530,
+      464,
+      408,
+      336
+     ]
+    ],
+    [
+     400,
+     [
+      438,
+      390,
+      398,
+      355,
+      571,
+      510,
+      477,
+      425,
+      634,
+      557,
+      478,
+      394
+     ]
+    ],
+    [
+     500,
+     [
+      502,
+      447,
+      456,
+      406,
+      656,
+      587,
+      545,
+      486,
+      729,
+      642,
+      540,
+      445
+     ]
+    ],
+    [
+     630,
+     [
+      578,
+      514,
+      526,
+      467,
+      758,
+      678,
+      626,
+      559,
+      843,
+      743,
+      614,
+      506
+     ]
+    ],
+    [
+     800,
+     [
+      669,
+      593,
+      609,
+      540,
+      881,
+      788,
+      723,
+      645,
+      978,
+      865,
+      700,
+      577
+     ]
+    ],
+    [
+     1000,
+     [
+      767,
+      679,
+      698,
+      618,
+      1012,
+      906,
+      827,
+      738,
+      1125,
+      996,
+      792,
+      652
+     ]
+    ]
+   ],
+   "ampacity_epr": [
+    [
+     0.5,
+     [
+      10,
+      9,
+      10,
+      9,
+      12,
+      10,
+      11,
+      10,
+      12,
+      11,
+      14,
+      12
+     ]
+    ],
+    [
+     0.75,
+     [
+      12,
+      11,
+      12,
+      11,
+      15,
+      13,
+      15,
+      13,
+      16,
+      14,
+      18,
+      15
+     ]
+    ],
+    [
+     1,
+     [
+      15,
+      13,
+      14,
+      13,
+      18,
+      16,
+      17,
+      15,
+      19,
+      17,
+      21,
+      17
+     ]
+    ],
+    [
+     1.5,
+     [
+      19,
+      17,
+      18.5,
+      16.5,
+      23,
+      20,
+      22,
+      19.5,
+      24,
+      22,
+      26,
+      22
+     ]
+    ],
+    [
+     2.5,
+     [
+      26,
+      23,
+      25,
+      22,
+      31,
+      28,
+      30,
+      26,
+      33,
+      30,
+      34,
+      29
+     ]
+    ],
+    [
+     4,
+     [
+      35,
+      31,
+      33,
+      30,
+      42,
+      37,
+      40,
+      35,
+      45,
+      40,
+      44,
+      37
+     ]
+    ],
+    [
+     6,
+     [
+      45,
+      40,
+      42,
+      38,
+      54,
+      48,
+      51,
+      44,
+      58,
+      52,
+      56,
+      46
+     ]
+    ],
+    [
+     10,
+     [
+      61,
+      54,
+      57,
+      51,
+      75,
+      66,
+      69,
+      60,
+      80,
+      71,
+      73,
+      61
+     ]
+    ],
+    [
+     16,
+     [
+      81,
+      73,
+      76,
+      68,
+      100,
+      88,
+      91,
+      80,
+      107,
+      96,
+      95,
+      79
+     ]
+    ],
+    [
+     25,
+     [
+      106,
+      95,
+      99,
+      89,
+      133,
+      117,
+      119,
+      105,
+      138,
+      119,
+      121,
+      101
+     ]
+    ],
+    [
+     35,
+     [
+      131,
+      117,
+      121,
+      109,
+      164,
+      144,
+      146,
+      128,
+      171,
+      147,
+      146,
+      122
+     ]
+    ],
+    [
+     50,
+     [
+      158,
+      141,
+      145,
+      130,
+      198,
+      175,
+      175,
+      154,
+      209,
+      179,
+      173,
+      144
+     ]
+    ],
+    [
+     70,
+     [
+      200,
+      179,
+      183,
+      164,
+      253,
+      222,
+      221,
+      194,
+      269,
+      229,
+      213,
+      178
+     ]
+    ],
+    [
+     95,
+     [
+      241,
+      216,
+      220,
+      197,
+      306,
+      269,
+      265,
+      233,
+      328,
+      278,
+      252,
+      211
+     ]
+    ],
+    [
+     120,
+     [
+      278,
+      249,
+      253,
+      227,
+      354,
+      312,
+      305,
+      268,
+      382,
+      322,
+      287,
+      240
+     ]
+    ],
+    [
+     150,
+     [
+      318,
+      285,
+      290,
+      259,
+      407,
+      358,
+      349,
+      307,
+      441,
+      371,
+      324,
+      271
+     ]
+    ],
+    [
+     185,
+     [
+      362,
+      324,
+      329,
+      295,
+      464,
+      408,
+      395,
+      348,
+      506,
+      424,
+      363,
+      304
+     ]
+    ],
+    [
+     240,
+     [
+      424,
+      380,
+      386,
+      346,
+      546,
+      481,
+      462,
+      407,
+      599,
+      500,
+      419,
+      351
+     ]
+    ],
+    [
+     300,
+     [
+      486,
+      435,
+      442,
+      396,
+      628,
+      553,
+      529,
+      465,
+      693,
+      576,
+      474,
+      396
+     ]
+    ],
+    [
+     400,
+     [
+      579,
+      519,
+      527,
+      472,
+      751,
+      661,
+      628,
+      552,
+      835,
+      692,
+      555,
+      464
+     ]
+    ],
+    [
+     500,
+     [
+      664,
+      595,
+      604,
+      541,
+      864,
+      760,
+      718,
+      631,
+      966,
+      797,
+      627,
+      525
+     ]
+    ],
+    [
+     630,
+     [
+      765,
+      685,
+      696,
+      623,
+      998,
+      879,
+      825,
+      725,
+      1122,
+      923,
+      711,
+      596
+     ]
+    ],
+    [
+     800,
+     [
+      885,
+      792,
+      805,
+      721,
+      1158,
+      1020,
+      952,
+      837,
+      1311,
+      1074,
+      811,
+      679
+     ]
+    ],
+    [
+     1000,
+     [
+      1014,
+      908,
+      923,
+      826,
+      1332,
+      1173,
+      1088,
+      957,
+      1515,
+      1237,
+      916,
+      767
+     ]
+    ]
+   ],
+   "highest_celsius": {
+    "pvc": 70,
+    "epr": 90
+   },
+   "temperature_air": [
+    [
+     10,
+     1.22,
+     1.15
+    ],
+    [
+     15,
+     1.17,
+     1.12
+    ],
+    [
+     20,
+     1.12,
+     1.08
+    ],
+    [
+     25,
+     1.06,
+     1.04
+    ],
+    [
+     30,
+     1,
+     1
+    ],
+    [
+     35,
+     0.94,
+     0.96
+    ],
+    [
+     40,
+     0.87,
+     0.91
+    ],
+    [
+     45,
+     0.79,
+     0.87
+    ],
+    [
+     50,
+     0.71,
+     0.82
+    ],
+    [
+     55,
+     0.61,
+     0.76
+    ],
+    [
+     60,
+     0.5,
+     0.71
+    ],
+    [
+     65,
+     null,
+     0.65
+    ],
+    [
+     70,
+     null,
+     0.58
+    ],
+    [
+     75,
+     null,
+     0.5
+    ],
+    [
+     80,
+     null,
+     0.41
+    ]
+   ],
+   "temperature_soil": [
+    [
+     10,
+     1.1,
+     1.07
+    ],
+    [
+     15,
+     1.05,
+     1.04
+    ],
+    [
+     20,
+     1,
+     1
+    ],
+    [
+     25,
+     0.95,
+     0.96
+    ],
+    [
+     30,
+     0.89,
+     0.93
+    ],
+    [
+     35,
+     0.84,
+     0.89
+    ],
+    [
+     40,
+     0.77,
+     0.85
+    ],
+    [
+     45,
+     0.71,
+     0.8
+    ],
+    [
+     50,
+     0.63,
+     0.76
+    ],
+    [
+     55,
+     0.55,
+     0.71
+    ],
+    [
+     60,
+     0.45,
+     0.65
+    ],
+    [
+     65,
+     null,
+     0.6
+    ],
+    [
+     70,
+     null,
+     0.53
+    ],
+    [
+     75,
+     null,
+     0.46
+    ],
+    [
+     80,
+     null,
+     0.38
+    ]
+   ],
+   "lowest_celsius": 10,
+   "reference_air_celsius": 30,
+   "reference_soil_celsius": 20,
+   "soil_resistivity": [
+    [
+     1,
+     1.18
+    ],
+    [
+     1.5,
+     1.1
+    ],
+    [
+     2,
+     1.05
+    ],
+    [
+     2.5,
+     1
+    ],
+    [
+     3,
+     0.96
+    ]
+   ],
+   "reference_soil_resistivity": 2.5,
+   "grouping_bundle": [
+    1,
+    0.8,
+    0.7,
+    0.65,
+    0.6,
+    0.57,
+    0.54,
+    0.52
+   ],
+   "grouping_layer": [
+    1,
+    0.85,
+    0.79,
+    0.75,
+    0.73,
+    0.72,
+    0.72,
+    0.71
+   ],
+   "grouping_ceiling": [
+    0.95,
+    0.81,
+    0.72,
+    0.68,
+    0.66,
+    0.64,
+    0.63,
+    0.62
+   ],
+   "grouping_bundle_more": [
+    [
+     11,
+     0.5
+    ],
+    [
+     15,
+     0.45
+    ],
+    [
+     19,
+     0.41
+    ]
+   ],
+   "grouping_bundle_most": 0.38,
+   "grouping_layer_more": 0.7,
+   "grouping_ceiling_more": 0.61,
+   "buried_spacings_m": [
+    0,
+    0.25,
+    0.5,
+    1
+   ],
+   "buried_multi": [
+    [
+     0.85,
+     0.75,
+     0.7,
+     0.65,
+     0.6
+    ],
+    [
+     0.9,
+     0.85,
+     0.8,
+     0.8,
+     0.8
+    ],
+    [
+     0.95,
+     0.9,
+     0.85,
+     0.85,
+     0.8
+    ],
+    [
+     0.95,
+     0.95,
+     0.9,
+     0.9,
+     0.8
+    ]
+   ],
+   "buried_single": [
+    [
+     0.8,
+     0.7,
+     0.65,
+     0.6,
+     0.6
+    ],
+    [
+     0.9,
+     0.8,
+     0.75,
+     0.7,
+     0.7
+    ],
+    [
+     0.9,
+     0.85,
+     0.8,
+     0.8,
+     0.8
+    ],
+    [
+     0.95,
+     0.9,
+     0.9,
+     0.9,
+     0.9
+    ]
+   ],
+   "buried_most_circuits": 6,
+   "minimum_section": {
+    "lighting": 1.5,
+    "power": 2.5
+   },
+   "neutral_whole_up_to": 25,
+   "neutral_reduced": [
+    [
+     35,
+     25
+    ],
+    [
+     50,
+     25
+    ],
+    [
+     70,
+     35
+    ],
+    [
+     95,
+     50
+    ],
+    [
+     120,
+     70
+    ],
+    [
+     150,
+     70
+    ],
+    [
+     185,
+     95
+    ],
+    [
+     240,
+     120
+    ],
+    [
+     300,
+     150
+    ],
+    [
+     400,
+     185
+    ]
+   ],
+   "protective_whole_up_to": 16,
+   "protective_fixed_up_to": 35,
+   "protective_fixed": 16,
+   "resistance_rigid": [
+    [
+     0.5,
+     36
+    ],
+    [
+     0.75,
+     24.5
+    ],
+    [
+     1,
+     18.1
+    ],
+    [
+     1.5,
+     12.1
+    ],
+    [
+     2.5,
+     7.41
+    ],
+    [
+     4,
+     4.61
+    ],
+    [
+     6,
+     3.08
+    ],
+    [
+     10,
+     1.83
+    ],
+    [
+     16,
+     1.15
+    ],
+    [
+     25,
+     0.727
+    ],
+    [
+     35,
+     0.524
+    ],
+    [
+     50,
+     0.387
+    ],
+    [
+     70,
+     0.268
+    ],
+    [
+     95,
+     0.193
+    ],
+    [
+     120,
+     0.153
+    ],
+    [
+     150,
+     0.124
+    ],
+    [
+     185,
+     0.0991
+    ],
+    [
+     240,
+     0.0754
+    ],
+    [
+     300,
+     0.0601
+    ],
+    [
+     400,
+     0.047
+    ],
+    [
+     500,
+     0.0366
+    ],
+    [
+     630,
+     0.0283
+    ],
+    [
+     800,
+     0.0221
+    ],
+    [
+     1000,
+     0.0176
+    ]
+   ],
+   "resistance_flexible": [
+    [
+     0.5,
+     39
+    ],
+    [
+     0.75,
+     26
+    ],
+    [
+     1,
+     19.5
+    ],
+    [
+     1.5,
+     13.3
+    ],
+    [
+     2.5,
+     7.98
+    ],
+    [
+     4,
+     4.95
+    ],
+    [
+     6,
+     3.3
+    ],
+    [
+     10,
+     1.91
+    ],
+    [
+     16,
+     1.21
+    ],
+    [
+     25,
+     0.78
+    ],
+    [
+     35,
+     0.554
+    ],
+    [
+     50,
+     0.386
+    ],
+    [
+     70,
+     0.272
+    ],
+    [
+     95,
+     0.206
+    ],
+    [
+     120,
+     0.161
+    ],
+    [
+     150,
+     0.129
+    ],
+    [
+     185,
+     0.106
+    ],
+    [
+     240,
+     0.0801
+    ]
+   ],
+   "flexible_over_rigid": 1.07,
+   "reactance": 0.1,
+   "drop_limit": 4,
+   "sections": [
+    0.5,
+    0.75,
+    1,
+    1.5,
+    2.5,
+    4,
+    6,
+    10,
+    16,
+    25,
+    35,
+    50,
+    70,
+    95,
+    120,
+    150,
+    185,
+    240,
+    300,
+    400,
+    500,
+    630,
+    800,
+    1000
+   ],
+   "breakers": [
+    6,
+    10,
+    16,
+    20,
+    25,
+    32,
+    40,
+    50,
+    63,
+    70,
+    80,
+    90,
+    100,
+    125,
+    160,
+    200,
+    250,
+    315,
+    400,
+    500,
+    630,
+    800,
+    1000
+   ],
+   "least_breaker": 10
+  },
+  "conduit_fill": {
+   "limits": {
+    "rows": [
+     [
+      1,
+      0.53
+     ],
+     [
+      2,
+      0.31
+     ]
+    ],
+    "beyond": 0.4
+   },
+   "default_family": "pvc-thread",
+   "families": [
+    {
+     "key": "pvc-thread",
+     "label": "PVC, threaded (Wavin)",
+     "material": "pvc",
+     "maker": "Amanco Wavin Eletroduto rígido roscável",
+     "document": "Ficha técnica \"Eletroduto Rígido Soldável e Roscável\"",
+     "page": "8 and 9 (outside diameter B (dem) and wall C)",
+     "url": "https://mediahub.wavin.com/m/2159cf9811cfe732/original/-FT-Eletroduto-Soldavel-e-Roscavel.pdf",
+     "sizes": [
+      [
+       "1/2\"",
+       20,
+       20.8,
+       2.2
+      ],
+      [
+       "3/4\"",
+       25,
+       26.2,
+       2.3
+      ],
+      [
+       "1\"",
+       32,
+       32.9,
+       2.7
+      ],
+      [
+       "1.1/4\"",
+       40,
+       41.9,
+       3
+      ],
+      [
+       "1.1/2\"",
+       50,
+       47.4,
+       3
+      ],
+      [
+       "2\"",
+       60,
+       59.1,
+       3.2
+      ],
+      [
+       "2.1/2\"",
+       75,
+       74.9,
+       3.8
+      ],
+      [
+       "3\"",
+       85,
+       87.6,
+       4
+      ],
+      [
+       "4\"",
+       110,
+       112.7,
+       4.4
+      ]
+     ]
+    },
+    {
+     "key": "pvc-solder",
+     "label": "PVC, solvent-weld (Wavin)",
+     "material": "pvc",
+     "maker": "Amanco Wavin Eletroduto rígido soldável",
+     "document": "Ficha técnica \"Eletroduto Rígido Soldável e Roscável\"",
+     "page": "6 (diameter B and wall C)",
+     "url": "https://mediahub.wavin.com/m/2159cf9811cfe732/original/-FT-Eletroduto-Soldavel-e-Roscavel.pdf",
+     "sizes": [
+      [
+       "DN20",
+       20,
+       20,
+       1.6
+      ],
+      [
+       "DN25",
+       25,
+       25,
+       1.8
+      ],
+      [
+       "DN32",
+       32,
+       32,
+       2.1
+      ]
+     ]
+    },
+    {
+     "key": "steel-heavy",
+     "label": "Steel, electrolytic heavy, NBR 13057 (Elecon)",
+     "material": "steel",
+     "maker": "Elecon Eletroduto eletrolítico pesado, NBR 13057",
+     "document": "Catálogo Elecon (Eletrodutos)",
+     "page": "5 (wall and outside diameter, minimum and maximum)",
+     "url": "https://elecon.com.br/wp-content/uploads/2017/10/catalogo.pdf",
+     "sizes": [
+      [
+       "1/2\"",
+       15,
+       20,
+       1.5
+      ],
+      [
+       "3/4\"",
+       20,
+       25.2,
+       1.5
+      ],
+      [
+       "1\"",
+       25,
+       31.5,
+       1.5
+      ],
+      [
+       "1.1/4\"",
+       32,
+       40.5,
+       2
+      ],
+      [
+       "1.1/2\"",
+       40,
+       46.6,
+       2.25
+      ],
+      [
+       "2\"",
+       50,
+       58.4,
+       2.25
+      ],
+      [
+       "2.1/2\"",
+       65,
+       74.1,
+       2.65
+      ],
+      [
+       "3\"",
+       80,
+       86.8,
+       2.65
+      ],
+      [
+       "4\"",
+       100,
+       111.6,
+       2.65
+      ]
+     ]
+    },
+    {
+     "key": "steel-rir",
+     "label": "Steel, hot-dip galvanised RIR, NBR 5597 (Elecon)",
+     "material": "steel",
+     "maker": "Elecon Eletroduto RIR galvanizado a fogo, NBR 5597 (rosca NPT)",
+     "document": "Catálogo Elecon (Eletrodutos)",
+     "page": "7 (outside diameter and wall)",
+     "url": "https://elecon.com.br/wp-content/uploads/2017/10/catalogo.pdf",
+     "sizes": [
+      [
+       "1/2\"",
+       15,
+       21.3,
+       2.25
+      ],
+      [
+       "3/4\"",
+       20,
+       26.9,
+       2.25
+      ],
+      [
+       "1\"",
+       25,
+       33.7,
+       2.65
+      ],
+      [
+       "1.1/4\"",
+       32,
+       42.4,
+       3
+      ],
+      [
+       "1.1/2\"",
+       40,
+       48.3,
+       3
+      ],
+      [
+       "2\"",
+       50,
+       60.3,
+       3.35
+      ],
+      [
+       "2.1/2\"",
+       65,
+       73,
+       3.75
+      ],
+      [
+       "3\"",
+       80,
+       88.9,
+       3.75
+      ],
+      [
+       "4\"",
+       100,
+       114.3,
+       4.25
+      ],
+      [
+       "5\"",
+       125,
+       141.3,
+       5
+      ],
+      [
+       "6\"",
+       150,
+       168.3,
+       5.3
+      ]
+     ]
+    }
+   ],
+   "cable_diameters": [
+    [
+     1,
+     2.5
+    ],
+    [
+     4,
+     4.05
+    ],
+    [
+     6,
+     4.65
+    ],
+    [
+     10,
+     6
+    ],
+    [
+     16,
+     7
+    ],
+    [
+     25,
+     8.6
+    ],
+    [
+     35,
+     10.15
+    ],
+    [
+     50,
+     11.8
+    ],
+    [
+     70,
+     13.5
+    ],
+    [
+     95,
+     15.7
+    ],
+    [
+     120,
+     17.2
+    ],
+    [
+     150,
+     19.1
+    ],
+    [
+     185,
+     21.4
+    ],
+    [
+     240,
+     24.2
+    ],
+    [
+     0.5,
+     2.15
+    ],
+    [
+     0.75,
+     2.35
+    ],
+    [
+     1.5,
+     2.95
+    ],
+    [
+     2.5,
+     3.55
+    ]
+   ],
+   "cable_source": "Corfio Cabo flexível BWF 750 V, Catálogo de Produtos Corfio, page 5 (https://www.corfio.com.br/documentos/Catalogo_de_Produtos-Corfio.pdf): a flexible 750 V PVC cable's nominal outside diameter"
+  },
+  "surge": {
+   "regions": [
+    "AQ1",
+    "AQ2",
+    "AQ3"
+   ],
+   "overhead_in": [
+    "AQ2"
+   ],
+   "always_in": [
+    "AQ3"
+   ],
+   "region_notes": {
+    "AQ1": "up to 25 days of thunderstorms a year",
+    "AQ2": "more than 25 days of thunderstorms a year"
+   },
+   "signals": [
+    "telephone",
+    "data",
+    "video",
+    "tv",
+    "antenna",
+    "interconnection"
+   ],
+   "meter_box_up_to": 10,
+   "conductor_length": 0.5,
+   "conductor_section": {
+    "line": 4,
+    "direct": 16
+   },
+   "discharge": {
+    "each_mode": 5,
+    "neutral_pe_single_phase": 10,
+    "neutral_pe_three_phase": 20
+   },
+   "impulse": {
+    "each_mode": 12.5,
+    "neutral_pe_single_phase": 25,
+    "neutral_pe_three_phase": 50
+   },
+   "follow_current": 100,
+   "uc_factor": 1.1,
+   "withstand": [
+    {
+     "systems": [
+      "120/208",
+      "127/220"
+     ],
+     "kv": [
+      4,
+      2.5,
+      1.5,
+      0.8
+     ]
+    },
+    {
+     "systems": [
+      "220/380",
+      "230/400",
+      "277/480"
+     ],
+     "kv": [
+      6,
+      4,
+      2.5,
+      1.5
+     ]
+    },
+    {
+     "systems": [
+      "400/690"
+     ],
+     "kv": [
+      8,
+      6,
+      4,
+      2.5
+     ]
+    }
+   ],
+   "signal_entry_withstand": 1.5
+  },
+  "voltages": {
+   "127 V": {
+    "nominal": 127,
+    "min": 114.3,
+    "max": 139.7
+   },
+   "220 V": {
+    "nominal": 220,
+    "min": 198,
+    "max": 242
+   },
+   "380 V": {
+    "nominal": 380,
+    "min": 342,
+    "max": 418
+   }
+  },
+  "distribution_systems": {
+   "127/220 V": {
+    "phases": 3,
+    "wires": 4,
+    "l_l": "220 V",
+    "l_n": "127 V",
+    "l_g": "127 V",
+    "ground": "TN-S"
+   },
+   "220/380 V": {
+    "phases": 3,
+    "wires": 4,
+    "l_l": "380 V",
+    "l_n": "220 V",
+    "l_g": "220 V",
+    "ground": "TN-S"
+   }
+  },
+  "wire_types": {
+   "Cu PVC 70 °C": {
+    "material": "copper",
+    "temperature": 70,
+    "insulation": "PVC",
+    "note": "NBR 5410:2004 Tabela 36, reference method B1 (insulated conductors in conduit on a wall), two loaded conductors, 30 °C ambient. The same family as IEC 60364-5-52; check a design against the standard in force.",
+    "sizes": [
+     {
+      "section": 0.5,
+      "ampacity": 9
+     },
+     {
+      "section": 0.75,
+      "ampacity": 11
+     },
+     {
+      "section": 1,
+      "ampacity": 14
+     },
+     {
+      "section": 1.5,
+      "ampacity": 17.5
+     },
+     {
+      "section": 2.5,
+      "ampacity": 24
+     },
+     {
+      "section": 4,
+      "ampacity": 32
+     },
+     {
+      "section": 6,
+      "ampacity": 41
+     },
+     {
+      "section": 10,
+      "ampacity": 57
+     },
+     {
+      "section": 16,
+      "ampacity": 76
+     },
+     {
+      "section": 25,
+      "ampacity": 101
+     },
+     {
+      "section": 35,
+      "ampacity": 125
+     },
+     {
+      "section": 50,
+      "ampacity": 151
+     },
+     {
+      "section": 70,
+      "ampacity": 192
+     },
+     {
+      "section": 95,
+      "ampacity": 232
+     },
+     {
+      "section": 120,
+      "ampacity": 269
+     },
+     {
+      "section": 150,
+      "ampacity": 309
+     },
+     {
+      "section": 185,
+      "ampacity": 353
+     },
+     {
+      "section": 240,
+      "ampacity": 415
+     },
+     {
+      "section": 300,
+      "ampacity": 477
+     },
+     {
+      "section": 400,
+      "ampacity": 571
+     },
+     {
+      "section": 500,
+      "ampacity": 656
+     },
+     {
+      "section": 630,
+      "ampacity": 758
+     },
+     {
+      "section": 800,
+      "ampacity": 881
+     },
+     {
+      "section": 1000,
+      "ampacity": 1012
+     }
+    ]
+   },
+   "Cu XLPE/EPR 90 °C": {
+    "material": "copper",
+    "temperature": 90,
+    "insulation": "XLPE/EPR",
+    "note": "NBR 5410:2004 Tabela 37, reference method B1 (insulated conductors in conduit on a wall), two loaded conductors, 30 °C ambient. The same family as IEC 60364-5-52; check a design against the standard in force.",
+    "sizes": [
+     {
+      "section": 0.5,
+      "ampacity": 12
+     },
+     {
+      "section": 0.75,
+      "ampacity": 15
+     },
+     {
+      "section": 1,
+      "ampacity": 18
+     },
+     {
+      "section": 1.5,
+      "ampacity": 23
+     },
+     {
+      "section": 2.5,
+      "ampacity": 31
+     },
+     {
+      "section": 4,
+      "ampacity": 42
+     },
+     {
+      "section": 6,
+      "ampacity": 54
+     },
+     {
+      "section": 10,
+      "ampacity": 75
+     },
+     {
+      "section": 16,
+      "ampacity": 100
+     },
+     {
+      "section": 25,
+      "ampacity": 133
+     },
+     {
+      "section": 35,
+      "ampacity": 164
+     },
+     {
+      "section": 50,
+      "ampacity": 198
+     },
+     {
+      "section": 70,
+      "ampacity": 253
+     },
+     {
+      "section": 95,
+      "ampacity": 306
+     },
+     {
+      "section": 120,
+      "ampacity": 354
+     },
+     {
+      "section": 150,
+      "ampacity": 407
+     },
+     {
+      "section": 185,
+      "ampacity": 464
+     },
+     {
+      "section": 240,
+      "ampacity": 546
+     },
+     {
+      "section": 300,
+      "ampacity": 628
+     },
+     {
+      "section": 400,
+      "ampacity": 751
+     },
+     {
+      "section": 500,
+      "ampacity": 864
+     },
+     {
+      "section": 630,
+      "ampacity": 998
+     },
+     {
+      "section": 800,
+      "ampacity": 1158
+     },
+     {
+      "section": 1000,
+      "ampacity": 1332
+     }
+    ]
+   }
+  }
+ },
+ "documents": {
+  "nbr5410": {
+   "title": "ABNT NBR 5410",
+   "edition": "2004 (corrected version 2008)",
+   "publisher": "ABNT"
+  },
+  "iec60228": {
+   "title": "IEC 60228, Conductors of insulated cables",
+   "publisher": "IEC"
+  },
+  "prysmian": {
+   "title": "Prysmian Afumex 750 and Afumex Flex VFD catalogues",
+   "publisher": "Prysmian",
+   "url": "https://br.prysmian.com"
+  },
+  "corfio": {
+   "title": "Catálogo de Produtos Corfio",
+   "publisher": "Corfio",
+   "url": "https://www.corfio.com.br/documentos/Catalogo_de_Produtos-Corfio.pdf"
+  },
+  "wavin": {
+   "title": "Ficha técnica \"Eletroduto Rígido Soldável e Roscável\"",
+   "publisher": "Amanco Wavin",
+   "url": "https://mediahub.wavin.com/m/2159cf9811cfe732/original/-FT-Eletroduto-Soldavel-e-Roscavel.pdf"
+  },
+  "elecon": {
+   "title": "Catálogo Elecon (Eletrodutos)",
+   "publisher": "Elecon",
+   "url": "https://elecon.com.br/wp-content/uploads/2017/10/catalogo.pdf"
+  }
+ },
+ "sources": {
+  "rcd": "ABNT NBR 5410:2004 (corrected version 2008), item 5.1.3.2.2, additional protection by a residual-current device. Equivalents: IEC 60364-4-41 (411.3.3) and BS 7671 (411.3.3) ask it for outlets up to 32 A whatever the room, and IEC 60364-7-701 and BS 7671 section 701 for every circuit of a room with a bath or a shower; the US NEC (210.8) asks a GFCI, a device of its own, by a list of places much like this one.",
+  "bath_volumes": "ABNT NBR 5410:2004 (corrected version 2008), item 9.1, places with a bathtub or a shower (Figures 16 to 18). Equivalents: IEC 60364-7-701 and BS 7671 section 701 answer the same question, but their present editions draw zones 0 to 2 only, with other reaches, so they would be a set of their own rows; the US NEC (410.10(D), 406.9(C)) keeps luminaires and receptacles out of a space over the tub or shower instead.",
+  "load_points": "ABNT NBR 5410:2004 (corrected version 2008), item 9.5.2, dwellings. Equivalents: IEC 60364 leaves the number of outlets of a dwelling to national rules; the US NEC, article 210.52, places receptacles by spacing along the walls instead; BS 7671 sets no count.",
+  "circuits": {
+   "doc": "nbr5410",
+   "item": "6.2.5 and 6.2.6, the sizing of conductors; the numbers transcribed from a licensed copy, no clause text copied"
+  },
+  "circuits.systems": "the usual Brazilian low-voltage systems (phase to neutral, phase to phase)",
+  "circuits.methods": {
+   "doc": "nbr5410",
+   "item": "Tabela 33, the installation methods Tabelas 36 and 37 cover, with their reference method and the row of Tabela 42 or 45 each takes"
+  },
+  "circuits.ampacity_pvc": {
+   "doc": "nbr5410",
+   "item": "Tabela 36: copper, PVC 70 °C, amperes by section (mm²) and reference method A1, A2, B1, B2, C, D, each for two loaded conductors then three"
+  },
+  "circuits.ampacity_epr": {
+   "doc": "nbr5410",
+   "item": "Tabela 37: copper, EPR or XLPE 90 °C, as Tabela 36"
+  },
+  "circuits.highest_celsius": {
+   "doc": "nbr5410",
+   "item": "Tabela 35, the highest working temperature of each insulation"
+  },
+  "circuits.temperature_air": {
+   "doc": "nbr5410",
+   "item": "Tabela 40, ambient temperature in air (°C): the factor for PVC and for EPR or XLPE (null: hotter than the insulation allows)"
+  },
+  "circuits.temperature_soil": {
+   "doc": "nbr5410",
+   "item": "Tabela 40, soil temperature (°C), as in air"
+  },
+  "circuits.lowest_celsius": {
+   "doc": "nbr5410",
+   "item": "Tabela 40, its first row"
+  },
+  "circuits.reference_air_celsius": {
+   "doc": "nbr5410",
+   "item": "6.2.5.3, the reference ambient in air"
+  },
+  "circuits.reference_soil_celsius": {
+   "doc": "nbr5410",
+   "item": "6.2.5.3, the reference temperature of the soil"
+  },
+  "circuits.soil_resistivity": {
+   "doc": "nbr5410",
+   "item": "Tabela 41: soil resistivity (K·m/W) and its factor"
+  },
+  "circuits.reference_soil_resistivity": {
+   "doc": "nbr5410",
+   "item": "Tabela 41, the resistivity whose factor is 1"
+  },
+  "circuits.grouping_bundle": {
+   "doc": "nbr5410",
+   "item": "Tabela 42, circuits 1 to 8: in a bundle or a closed conduit, in a single layer on a wall or tray, in a single layer on the ceiling"
+  },
+  "circuits.grouping_layer": {
+   "doc": "nbr5410",
+   "item": "Tabela 42, circuits 1 to 8: in a bundle or a closed conduit, in a single layer on a wall or tray, in a single layer on the ceiling"
+  },
+  "circuits.grouping_ceiling": {
+   "doc": "nbr5410",
+   "item": "Tabela 42, circuits 1 to 8: in a bundle or a closed conduit, in a single layer on a wall or tray, in a single layer on the ceiling"
+  },
+  "circuits.grouping_bundle_more": {
+   "doc": "nbr5410",
+   "item": "Tabela 42, beyond 8 circuits: (up to this many circuits, factor); a bundle drops to 0.50, 0.45, 0.41 and 0.38, a layer stays at 0.70 and the ceiling at 0.61"
+  },
+  "circuits.grouping_bundle_most": {
+   "doc": "nbr5410",
+   "item": "Tabela 42, beyond 8 circuits: (up to this many circuits, factor); a bundle drops to 0.50, 0.45, 0.41 and 0.38, a layer stays at 0.70 and the ceiling at 0.61"
+  },
+  "circuits.grouping_layer_more": {
+   "doc": "nbr5410",
+   "item": "Tabela 42, beyond 8 circuits: (up to this many circuits, factor); a bundle drops to 0.50, 0.45, 0.41 and 0.38, a layer stays at 0.70 and the ceiling at 0.61"
+  },
+  "circuits.grouping_ceiling_more": {
+   "doc": "nbr5410",
+   "item": "Tabela 42, beyond 8 circuits: (up to this many circuits, factor); a bundle drops to 0.50, 0.45, 0.41 and 0.38, a layer stays at 0.70 and the ceiling at 0.61"
+  },
+  "circuits.buried_spacings_m": {
+   "doc": "nbr5410",
+   "item": "Tabela 45: buried conduits, 2 to 6 circuits, by the spacing between them (nil, 0.25, 0.5, 1 m); multi-core cables, then single-core"
+  },
+  "circuits.buried_multi": {
+   "doc": "nbr5410",
+   "item": "Tabela 45: buried conduits, 2 to 6 circuits, by the spacing between them (nil, 0.25, 0.5, 1 m); multi-core cables, then single-core"
+  },
+  "circuits.buried_single": {
+   "doc": "nbr5410",
+   "item": "Tabela 45: buried conduits, 2 to 6 circuits, by the spacing between them (nil, 0.25, 0.5, 1 m); multi-core cables, then single-core"
+  },
+  "circuits.buried_most_circuits": {
+   "doc": "nbr5410",
+   "item": "Tabela 45: buried conduits, 2 to 6 circuits, by the spacing between them (nil, 0.25, 0.5, 1 m); multi-core cables, then single-core"
+  },
+  "circuits.minimum_section": {
+   "doc": "nbr5410",
+   "item": "Tabela 47, the least section of copper: 1.5 mm² for lighting, 2.5 mm² for power"
+  },
+  "circuits.neutral_whole_up_to": {
+   "doc": "nbr5410",
+   "item": "6.2.6.2.6, a neutral as the phases up to 25 mm²"
+  },
+  "circuits.neutral_reduced": {
+   "doc": "nbr5410",
+   "item": "Tabela 48: the neutral of a balanced three-phase circuit, smaller than the phases above 25 mm² (the standard's conditions are the project's to check)"
+  },
+  "circuits.protective_whole_up_to": {
+   "doc": "nbr5410",
+   "item": "Tabela 58: the protective conductor is the phase's up to 16 mm², 16 above to 35, half of it above (rounded up to the next standard section; 6.4.3.1.3 asks the nearest, up is the safe side)"
+  },
+  "circuits.protective_fixed_up_to": {
+   "doc": "nbr5410",
+   "item": "Tabela 58: the protective conductor is the phase's up to 16 mm², 16 above to 35, half of it above (rounded up to the next standard section; 6.4.3.1.3 asks the nearest, up is the safe side)"
+  },
+  "circuits.protective_fixed": {
+   "doc": "nbr5410",
+   "item": "Tabela 58: the protective conductor is the phase's up to 16 mm², 16 above to 35, half of it above (rounded up to the next standard section; 6.4.3.1.3 asks the nearest, up is the safe side)"
+  },
+  "circuits.resistance_rigid": {
+   "doc": "iec60228",
+   "item": "class 2, resistance in Ω/km at 20 °C of a rigid copper conductor by section (mm²)"
+  },
+  "circuits.resistance_flexible": {
+   "doc": "prysmian",
+   "item": "column \"Rcc máx. a 20 ºC\" of the 750 V flexible cables: the IEC 60228 class 5 maxima, 0.5 to 240 mm²"
+  },
+  "circuits.flexible_over_rigid": "NBR NM 280 Tabela 3 against Tabela 2: 0.0641 against 0.0601 Ω/km at 300 mm², 6.7 %, rounded up: a flexible conductor above 240 mm² is taken as the rigid one times this, until those rows are added; the other sections above 300 mm² were not compared",
+  "circuits.reactance": "a conductor's reactance in a conduit, Ω/km: with it the drop agrees with the makers' V/A·km tables within about 3 %",
+  "circuits.drop_limit": {
+   "doc": "nbr5410",
+   "item": "6.2.7.2, the drop a terminal circuit may have, per cent of the voltage"
+  },
+  "circuits.sections": {
+   "doc": "nbr5410",
+   "item": "the sections (mm²) the tables list"
+  },
+  "circuits.breakers": "the IEC 60898 preferred ratings (A), 70 and 90 A (not every maker has them) and the usual moulded-case ones",
+  "circuits.least_breaker": "the least breaker a new circuit is given for its load (A)",
+  "circuits.default_method": {
+   "doc": "nbr5410",
+   "item": "Tabela 33, method 7: conductors in a conduit in masonry, the usual one in a dwelling"
+  },
+  "conduit_fill": {
+   "doc": "nbr5410",
+   "item": "6.2.11.1.6: the cables over the conduit's inside, at most 53 % for one cable, 31 % for two and 40 % for three or more"
+  },
+  "conduit_fill.families": "the makers' catalogues, each size as (mark, DN mm, outside mm, wall mm); a conduit's inside is the outside less twice the wall, as the catalogues don't print it",
+  "conduit_fill.cable_diameters": {
+   "doc": "corfio",
+   "item": "page 5, Cabo flexível BWF 750 V: the nominal outside diameter (mm) by section (mm²)"
+  },
+  "conduit_fill.default_family": "the conduit family taken when none is named",
+  "surge": {
+   "doc": "nbr5410",
+   "item": "5.4.2.1.1, 5.4.2.2.1, 6.3.5.2.1 to 6.3.5.2.9 and 6.3.5.3.1, Figure 13 and Tabelas 31 and 49"
+  },
+  "surge.regions": {
+   "doc": "nbr5410",
+   "item": "Tabela 15, external influence AQ (lightning)"
+  },
+  "surge.overhead_in": {
+   "doc": "nbr5410",
+   "item": "5.4.2.1.1 a): an overhead line in AQ2"
+  },
+  "surge.always_in": {
+   "doc": "nbr5410",
+   "item": "5.4.2.1.1 b): any line in AQ3"
+  },
+  "surge.meter_box_up_to": {
+   "doc": "nbr5410",
+   "item": "6.3.5.2.1, note: the meter box of an existing individual consumer unit, no more than this far from the entry (m)"
+  },
+  "surge.conductor_length": {
+   "doc": "nbr5410",
+   "item": "6.3.5.2.9: the connecting conductors, no more than this in all (m)"
+  },
+  "surge.conductor_section": {
+   "doc": "nbr5410",
+   "item": "6.3.5.2.9: the least copper section of the connecting conductors (mm²), against surges by the line and against direct lightning"
+  },
+  "surge.discharge": {
+   "doc": "nbr5410",
+   "item": "6.3.5.2.4 d): the least nominal discharge current (kA, 8/20 µs) for each mode, and between neutral and PE of connection 3"
+  },
+  "surge.impulse": {
+   "doc": "nbr5410",
+   "item": "6.3.5.2.4 d): the least impulse current (kA; the standard fixes no waveform for its test) against direct lightning where IEC 61312-1 does not work it out"
+  },
+  "surge.follow_current": {
+   "doc": "nbr5410",
+   "item": "6.3.5.2.4 e): the follow current a spark-gap DPS between neutral and PE interrupts in TN and TT (A)"
+  },
+  "surge.uc_factor": {
+   "doc": "nbr5410",
+   "item": "Tabela 49: the least Uc of a mode with a phase in TT, TN-S and TN-C, times Uo"
+  },
+  "surge.withstand": {
+   "doc": "nbr5410",
+   "item": "Tabela 31: the impulse withstand (kV) of the components by nominal system, categories IV, III, II and I"
+  },
+  "surge.signal_entry_withstand": {
+   "doc": "nbr5410",
+   "item": "Tabela 31, note 3 (IEC 61663-2): components tied to a signal line at the entry (kV)"
+  },
+  "voltages": "the Brazilian low-voltage systems, 127/220 and 220/380 V; the band of 10 % either way is BIMCraft's own practice",
+  "distribution_systems": "the Brazilian low-voltage systems, 127/220 and 220/380 V; the band of 10 % either way is BIMCraft's own practice",
+  "wire_types": "each wire type's own note names its table"
+ },
+ "kinds": {
+  "circuits.resistance_flexible": "practice",
+  "conduit_fill.families": "practice",
+  "conduit_fill.cable_diameters": "practice",
+  "circuits.breakers": "practice",
+  "circuits.reactance": "assumption",
+  "circuits.flexible_over_rigid": "assumption",
+  "circuits.least_breaker": "assumption",
+  "circuits.systems": "assumption",
+  "conduit_fill.default_family": "assumption",
+  "circuits.default_method": "assumption",
+  "voltages": "practice",
+  "distribution_systems": "practice"
+ }
+}

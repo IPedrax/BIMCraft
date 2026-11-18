@@ -2,6 +2,63 @@
 
 use super::*;
 
+/// BIMCraft's NBR 5410, as a project that changed nothing reads it.
+fn rules() -> &'static Rules {
+    &rule_sets()[0]
+}
+
+fn ampacity(i: Insulation, section: f64, method: &str, loaded: usize) -> Option<f64> {
+    rules().ampacity(i, section, method, loaded)
+}
+
+fn temperature_factor(i: Insulation, celsius: f64, soil: bool) -> Option<f64> {
+    rules().temperature_factor(i, celsius, soil)
+}
+
+fn soil_factor(resistivity: f64) -> Option<f64> {
+    rules().soil_factor(resistivity)
+}
+
+fn grouping_factor(method: &str, bundle: bool, circuits: u32, spacing: f64) -> Option<f64> {
+    rules().grouping_factor(method, bundle, circuits, spacing)
+}
+
+fn minimum_section(u: Use) -> f64 {
+    rules().minimum_section(u)
+}
+
+fn neutral_section(phase: f64, reduced: bool) -> f64 {
+    rules().neutral_section(phase, reduced)
+}
+
+fn protective_section(phase: f64) -> f64 {
+    rules().protective_section(phase)
+}
+
+fn resistance(section: f64, i: Insulation, flexible: bool) -> Option<f64> {
+    rules().resistance(section, i, flexible)
+}
+
+fn design(c: &Circuit) -> Design {
+    super::design(rules(), c)
+}
+
+fn evaluate(c: &Circuit, section: f64, breaker: f64) -> Result<Evaluation, Fault> {
+    super::evaluate(rules(), c, section, breaker)
+}
+
+fn design_current(c: &Circuit) -> f64 {
+    super::design_current(rules(), c)
+}
+
+fn volts(system: usize, phases: Phases) -> f64 {
+    super::volts(rules(), system, phases)
+}
+
+fn cable_text(phases: Phases, section: f64, reduced: bool) -> String {
+    super::cable_text(rules(), phases, section, reduced)
+}
+
 fn near(a: f64, b: f64, e: f64) -> bool {
     (a - b).abs() <= e
 }
@@ -38,16 +95,16 @@ fn tabela_37_is_as_printed() {
 
 #[test]
 fn every_section_has_a_row_in_both_tables_and_a_resistance() {
-    for s in SECTIONS {
+    for s in &rules().sections {
         for ins in [Insulation::Pvc, Insulation::Epr] {
             assert!(ampacity(ins, *s, "7", 2).is_some(), "{s} mm2");
             assert!(resistance(*s, ins, false).is_some(), "{s} mm2");
         }
     }
-    assert_eq!(CU_PVC.len(), SECTIONS.len());
-    assert_eq!(CU_EPR.len(), SECTIONS.len());
+    assert_eq!(rules().ampacity_pvc.len(), rules().sections.len());
+    assert_eq!(rules().ampacity_epr.len(), rules().sections.len());
     // an ampacity never falls as the section grows
-    for t in [CU_PVC, CU_EPR] {
+    for t in [&rules().ampacity_pvc, &rules().ampacity_epr] {
         let mut sorted = t.to_vec();
         sorted.sort_by(|a, b| a.0.total_cmp(&b.0));
         for pair in sorted.windows(2) {
@@ -114,7 +171,7 @@ fn the_neutral_and_the_protective_conductor() {
     assert_eq!(protective_section(240.0), 120.0);
     for (phase, pe) in [(95.0, 50.0), (120.0, 70.0), (150.0, 95.0), (185.0, 95.0), (300.0, 150.0), (400.0, 240.0)] {
         assert_eq!(protective_section(phase), pe, "PE of {phase} mm²: half, up to a standard section");
-        assert!(SECTIONS.contains(&protective_section(phase)));
+        assert!(rules().sections.contains(&protective_section(phase)));
     }
     assert_eq!(cable_text(Phases::PhaseNeutral, 2.5, false), "1 × 2.5 + N 2.5 + PE 2.5 mm²");
     assert_eq!(cable_text(Phases::ThreeNeutral, 70.0, true), "3 × 70 + N 35 + PE 35 mm²");
@@ -199,7 +256,7 @@ fn a_long_circuit_is_sized_by_its_voltage_drop() {
 fn the_breaker_list_has_70_and_90_a() {
     let d = design(&power(8500.0)).needed;
     assert_eq!(d.map(|e| (e.section, e.breaker)), Some((16.0, 70.0)), "66.9 A: a 70 A breaker, 16 mm2 carries 76 A");
-    assert!(BREAKERS.contains(&90.0));
+    assert!(rules().breakers.contains(&90.0));
 }
 
 #[test]

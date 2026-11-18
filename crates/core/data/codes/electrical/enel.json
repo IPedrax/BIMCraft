@@ -1,0 +1,1027 @@
+{
+ "code": "enel",
+ "discipline": "electrical",
+ "name": "Enel (Rio de Janeiro and São Paulo)",
+ "region": "Brasil",
+ "edition": "GRI-0017 v02",
+ "amends": "nbr-5410",
+ "references": [
+  "Enel Grids Brasil, Especificação Técnica GRI-0017 (GRI-EDBR-CNC-GRI-0017 / CNC-NDBR-DBR-24-1569-EDBR) 'Fornecimento de Energia Elétrica em Tensão Secundária de Distribuição até 1 kV - Conexão Individual', version 02, 06/03/2025: Anexos A to E"
+ ],
+ "note": "The utility's own standard over NBR 5410: the category of supply by the installed load (Anexos A, C, D and E) or by the designer's demand current (Anexo B). GRI-0017 leaves the demand to the designer.",
+ "sections": {
+  "unit_demand": {
+   "utility": "ENEL",
+   "method": {
+    "annexes": {
+     "networks": [
+      {
+       "network": "aerial",
+       "annex": "A",
+       "primary_above": 75,
+       "rows": [
+        {
+         "name": "A1",
+         "phases": 1,
+         "over": 0,
+         "up_to": 5,
+         "breaker": 40,
+         "connection": {
+          "conductors_per_phase": 1,
+          "phase": 10,
+          "neutral": 10
+         },
+         "entry": {
+          "phase": 10,
+          "neutral": 10
+         },
+         "earthing": 10,
+         "measurement": "direct"
+        },
+        {
+         "name": "A2",
+         "phases": 1,
+         "over": 5,
+         "up_to": 8,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": 1,
+          "phase": 16,
+          "neutral": 10
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 10
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "B1",
+         "phases": 2,
+         "over": 0,
+         "up_to": 11,
+         "breaker": 50,
+         "connection": {
+          "conductors_per_phase": 2,
+          "phase": 10,
+          "neutral": 10
+         },
+         "entry": {
+          "phase": 10,
+          "neutral": 10
+         },
+         "earthing": 10,
+         "measurement": "direct"
+        },
+        {
+         "name": "B2",
+         "phases": 2,
+         "over": 11,
+         "up_to": 14,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": 2,
+          "phase": 16,
+          "neutral": 10
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 10
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "C1",
+         "phases": 3,
+         "over": 10,
+         "up_to": 15,
+         "breaker": 40,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 10,
+          "neutral": 10
+         },
+         "entry": {
+          "phase": 10,
+          "neutral": 10
+         },
+         "earthing": 10,
+         "measurement": "direct"
+        },
+        {
+         "name": "C2",
+         "phases": 3,
+         "over": 15,
+         "up_to": 19.1,
+         "breaker": 50,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 10,
+          "neutral": 10
+         },
+         "entry": {
+          "phase": 10,
+          "neutral": 10
+         },
+         "earthing": 10,
+         "measurement": "direct"
+        },
+        {
+         "name": "C3",
+         "phases": 3,
+         "over": 19.1,
+         "up_to": 24,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 25,
+          "neutral": 25
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "C4",
+         "phases": 3,
+         "over": 24,
+         "up_to": 30,
+         "breaker": 80,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 35,
+          "neutral": 54.6
+         },
+         "entry": {
+          "phase": 25,
+          "neutral": 25
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "C5",
+         "phases": 3,
+         "over": 30,
+         "up_to": 38,
+         "breaker": 100,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 35,
+          "neutral": 54.6
+         },
+         "entry": {
+          "phase": 35,
+          "neutral": 25
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "C6",
+         "phases": 3,
+         "over": 38,
+         "up_to": 48,
+         "breaker": 125,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 35,
+          "neutral": 54.6
+         },
+         "entry": {
+          "phase": 50,
+          "neutral": 25
+         },
+         "earthing": 25,
+         "measurement": "direct or indirect"
+        },
+        {
+         "name": "C7",
+         "phases": 3,
+         "over": 48,
+         "up_to": 57.1,
+         "breaker": 150,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 50,
+          "neutral": 54.6
+         },
+         "entry": {
+          "phase": 70,
+          "neutral": 35
+         },
+         "earthing": 35,
+         "measurement": "direct or indirect"
+        },
+        {
+         "name": "C8",
+         "phases": 3,
+         "over": 57.1,
+         "up_to": 67,
+         "breaker": 175,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 50,
+          "neutral": 54.6
+         },
+         "entry": {
+          "phase": 95,
+          "neutral": 50
+         },
+         "earthing": 50,
+         "measurement": "direct or indirect"
+        },
+        {
+         "name": "C9",
+         "phases": 3,
+         "over": 67,
+         "up_to": 75,
+         "breaker": 200,
+         "connection": {
+          "conductors_per_phase": 3,
+          "phase": 95,
+          "neutral": 54.6
+         },
+         "entry": {
+          "phase": 95,
+          "neutral": 50
+         },
+         "earthing": 50,
+         "measurement": "direct or indirect"
+        }
+       ]
+      },
+      {
+       "network": "aerial_120_240",
+       "annex": "C",
+       "primary_above": 75,
+       "rows": [
+        {
+         "name": "A1",
+         "phases": 1,
+         "over": 0,
+         "up_to": 5,
+         "breaker": 40,
+         "connection": {
+          "conductors_per_phase": 1,
+          "phase": 10,
+          "neutral": 10
+         },
+         "entry": {
+          "phase": 10,
+          "neutral": 10
+         },
+         "earthing": 10,
+         "measurement": "direct"
+        },
+        {
+         "name": "A2",
+         "phases": 1,
+         "over": 5,
+         "up_to": 6,
+         "breaker": 50,
+         "connection": {
+          "conductors_per_phase": 1,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "B1",
+         "phases": 2,
+         "over": 6,
+         "up_to": 12,
+         "breaker": 50,
+         "connection": {
+          "conductors_per_phase": 2,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        }
+       ]
+      },
+      {
+       "network": "underground",
+       "annex": "D",
+       "primary_above": 75,
+       "rows": [
+        {
+         "name": "A1",
+         "phases": 1,
+         "over": 0,
+         "up_to": 8,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "A2",
+         "phases": 1,
+         "over": 8,
+         "up_to": 10,
+         "breaker": 80,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 25,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 25,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "B1",
+         "phases": 2,
+         "over": 10,
+         "up_to": 14,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "B2",
+         "phases": 2,
+         "over": 14,
+         "up_to": 18,
+         "breaker": 80,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 25,
+          "neutral": 25
+         },
+         "entry": {
+          "phase": 25,
+          "neutral": 25
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "C1",
+         "phases": 3,
+         "over": 18,
+         "up_to": 24,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "C2",
+         "phases": 3,
+         "over": 24,
+         "up_to": 30,
+         "breaker": 80,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 25,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 25,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct"
+        },
+        {
+         "name": "C3",
+         "phases": 3,
+         "over": 30,
+         "up_to": 48,
+         "breaker": 125,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 50,
+          "neutral": 25
+         },
+         "entry": {
+          "phase": 50,
+          "neutral": 25
+         },
+         "earthing": 25,
+         "measurement": "indirect"
+        },
+        {
+         "name": "C4",
+         "phases": 3,
+         "over": 48,
+         "up_to": 57.1,
+         "breaker": 150,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 95,
+          "neutral": 25
+         },
+         "entry": {
+          "phase": 50,
+          "neutral": 25
+         },
+         "earthing": 50,
+         "measurement": "indirect"
+        },
+        {
+         "name": "C5",
+         "phases": 3,
+         "over": 57.1,
+         "up_to": 67,
+         "breaker": 175,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 95,
+          "neutral": 25
+         },
+         "entry": {
+          "phase": 95,
+          "neutral": 25
+         },
+         "earthing": 95,
+         "measurement": "direct (a 200 A meter) or indirect"
+        },
+        {
+         "name": "C6",
+         "phases": 3,
+         "over": 67,
+         "up_to": 75,
+         "breaker": 200,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 150,
+          "neutral": 95
+         },
+         "entry": {
+          "phase": 150,
+          "neutral": 95
+         },
+         "earthing": 95,
+         "measurement": "direct (a 200 A meter) or indirect"
+        }
+       ]
+      },
+      {
+       "network": "underground_submersible",
+       "annex": "E",
+       "rows": [
+        {
+         "name": "B1",
+         "phases": 2,
+         "over": 10,
+         "up_to": 12,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct",
+         "junction_box": "type 2"
+        },
+        {
+         "name": "B2",
+         "phases": 2,
+         "over": 13,
+         "up_to": 16,
+         "breaker": 80,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 25,
+          "neutral": 25
+         },
+         "entry": {
+          "phase": 25,
+          "neutral": 25
+         },
+         "earthing": 16,
+         "measurement": "direct",
+         "junction_box": "type 2"
+        },
+        {
+         "name": "B3",
+         "phases": 2,
+         "over": 16,
+         "up_to": 20,
+         "breaker": 100,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 35,
+          "neutral": 35
+         },
+         "entry": {
+          "phase": 35,
+          "neutral": 35
+         },
+         "earthing": 16,
+         "measurement": "direct",
+         "junction_box": "type 2"
+        },
+        {
+         "name": "C1",
+         "phases": 3,
+         "over": 18,
+         "up_to": 20,
+         "breaker": 63,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 16,
+          "neutral": 16
+         },
+         "entry": {
+          "phase": 16,
+          "neutral": 16
+         },
+         "earthing": 16,
+         "measurement": "direct",
+         "junction_box": "type 2"
+        },
+        {
+         "name": "C2",
+         "phases": 3,
+         "over": 20,
+         "up_to": 28,
+         "breaker": 80,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 25,
+          "neutral": 25
+         },
+         "entry": {
+          "phase": 25,
+          "neutral": 25
+         },
+         "earthing": 16,
+         "measurement": "direct",
+         "junction_box": "type 2"
+        },
+        {
+         "name": "C3",
+         "phases": 3,
+         "over": 29,
+         "up_to": 36,
+         "breaker": 100,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 35,
+          "neutral": 35
+         },
+         "entry": {
+          "phase": 35,
+          "neutral": 35
+         },
+         "earthing": 16,
+         "measurement": "direct",
+         "junction_box": "type 2"
+        },
+        {
+         "name": "C4",
+         "phases": 3,
+         "over": 37,
+         "up_to": 45,
+         "breaker": 125,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 50,
+          "neutral": 50
+         },
+         "entry": {
+          "phase": 50,
+          "neutral": 50
+         },
+         "earthing": 25,
+         "measurement": "indirect",
+         "junction_box": "type 3"
+        },
+        {
+         "name": "C5",
+         "phases": 3,
+         "over": 46,
+         "up_to": 54,
+         "breaker": 160,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 95,
+          "neutral": 95
+         },
+         "entry": {
+          "phase": 70,
+          "neutral": 70
+         },
+         "earthing": 35,
+         "measurement": "indirect",
+         "junction_box": "type 3"
+        },
+        {
+         "name": "C6",
+         "phases": 3,
+         "over": 54,
+         "up_to": 65,
+         "breaker": 200,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 150,
+          "neutral": 150
+         },
+         "entry": {
+          "phase": 95,
+          "neutral": 95
+         },
+         "earthing": 50,
+         "measurement": "indirect",
+         "junction_box": "type 3"
+        },
+        {
+         "name": "C7",
+         "phases": 3,
+         "over": 66,
+         "up_to": 80,
+         "breaker": 225,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 150,
+          "neutral": 150
+         },
+         "entry": {
+          "phase": 120,
+          "neutral": 120
+         },
+         "earthing": 70,
+         "measurement": "indirect",
+         "junction_box": "type 3"
+        },
+        {
+         "name": "C8",
+         "phases": 3,
+         "over": 81,
+         "up_to": 90,
+         "breaker": 275,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 150,
+          "neutral": 150
+         },
+         "entry": {
+          "phase": 150,
+          "neutral": 150
+         },
+         "earthing": 95,
+         "measurement": "indirect",
+         "junction_box": "type 3"
+        },
+        {
+         "name": "C9",
+         "phases": 3,
+         "over": 91,
+         "up_to": 100,
+         "breaker": 300,
+         "connection": {
+          "conductors_per_phase": null,
+          "phase": 185,
+          "neutral": 185
+         },
+         "entry": {
+          "phase": 185,
+          "neutral": 185
+         },
+         "earthing": 95,
+         "measurement": "indirect",
+         "junction_box": "type 3"
+        }
+       ]
+      }
+     ],
+     "by_current": {
+      "network": "aerial_delta",
+      "annex": "B",
+      "rows": [
+       {
+        "names": [
+         "A1"
+        ],
+        "phases": [
+         1
+        ],
+        "breaker": 50,
+        "connection": {
+         "conductors_per_phase": 1,
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry": 10,
+        "earthing": 10,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "B3"
+        ],
+        "phases": [
+         2
+        ],
+        "breaker": 50,
+        "connection": {
+         "conductors_per_phase": 2,
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry": 10,
+        "earthing": 10,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "C3"
+        ],
+        "phases": [
+         3
+        ],
+        "breaker": 50,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 10,
+         "neutral": 10
+        },
+        "entry": 10,
+        "earthing": 10,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "A2"
+        ],
+        "phases": [
+         1
+        ],
+        "breaker": 63,
+        "connection": {
+         "conductors_per_phase": 1,
+         "phase": 16,
+         "neutral": 10
+        },
+        "entry": 16,
+        "earthing": 16,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "B4"
+        ],
+        "phases": [
+         2
+        ],
+        "breaker": 63,
+        "connection": {
+         "conductors_per_phase": 2,
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry": 16,
+        "earthing": 16,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "C4"
+        ],
+        "phases": [
+         3
+        ],
+        "breaker": 63,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 16,
+         "neutral": 16
+        },
+        "entry": 16,
+        "earthing": 16,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "B5"
+        ],
+        "phases": [
+         2
+        ],
+        "breaker": 80,
+        "connection": {
+         "conductors_per_phase": 2,
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry": 25,
+        "earthing": 16,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "C5"
+        ],
+        "phases": [
+         3
+        ],
+        "breaker": 80,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 25,
+         "neutral": 25
+        },
+        "entry": 25,
+        "earthing": 16,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "B6",
+         "C6"
+        ],
+        "phases": [
+         2,
+         3
+        ],
+        "breaker": 100,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 35,
+         "neutral": 54.6
+        },
+        "entry": 35,
+        "earthing": 16,
+        "measurement": "direct"
+       },
+       {
+        "names": [
+         "B7",
+         "C7"
+        ],
+        "phases": [
+         2,
+         3
+        ],
+        "breaker": 125,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 35,
+         "neutral": 54.6
+        },
+        "entry": 50,
+        "earthing": 25,
+        "measurement": "indirect"
+       },
+       {
+        "names": [
+         "B8",
+         "C8"
+        ],
+        "phases": [
+         2,
+         3
+        ],
+        "breaker": 160,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 50,
+         "neutral": 54.6
+        },
+        "entry": 70,
+        "earthing": 35,
+        "measurement": "indirect"
+       },
+       {
+        "names": [
+         "B9",
+         "C9"
+        ],
+        "phases": [
+         2,
+         3
+        ],
+        "breaker": 200,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 95,
+         "neutral": 54.6
+        },
+        "entry": 95,
+        "earthing": 50,
+        "measurement": "indirect"
+       },
+       {
+        "names": [
+         "B10",
+         "C10"
+        ],
+        "phases": [
+         2,
+         3
+        ],
+        "breaker": 225,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 95,
+         "neutral": 54.6
+        },
+        "entry": 120,
+        "earthing": 70,
+        "measurement": "indirect"
+       },
+       {
+        "names": [
+         "B11",
+         "C11"
+        ],
+        "phases": [
+         2,
+         3
+        ],
+        "breaker": 275,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 150,
+         "neutral": 80
+        },
+        "entry": 150,
+        "earthing": 95,
+        "measurement": "indirect"
+       },
+       {
+        "names": [
+         "B12",
+         "C12"
+        ],
+        "phases": [
+         2,
+         3
+        ],
+        "breaker": 300,
+        "connection": {
+         "conductors_per_phase": 3,
+         "phase": 150,
+         "neutral": 80
+        },
+        "entry": 185,
+        "earthing": 95,
+        "measurement": "indirect"
+       }
+      ]
+     },
+     "demand_note": "GRI-0017 leaves a three-phase supply's demand to the designer, up to 75 kW of installed load (Anexo A, note 11): it is carried as given, never worked out here",
+     "primary_note": "above {kw} kW the unit is served at primary voltage (item 7.4), which this specification does not cover",
+     "not_covered": "the conduits, the poles and the type of meter box of the annexes, the point of connection, Anexo A to E's other columns, Anexos F to H (Enel Ceará) and the limits of supply by motors, welding machines and X-ray sets"
+    }
+   }
+  }
+ },
+ "sources": {
+  "unit_demand": "Enel Grids Brasil, Especificação Técnica GRI-0017 (GRI-EDBR-CNC-GRI-0017 / CNC-NDBR-DBR-24-1569-EDBR) 'Fornecimento de Energia Elétrica em Tensão Secundária de Distribuição até 1 kV - Conexão Individual', version 02, 06/03/2025: Anexos A to E"
+ }
+}

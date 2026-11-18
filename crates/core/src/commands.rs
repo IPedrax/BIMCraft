@@ -26,10 +26,9 @@ use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind,
     Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
-    PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE,
-    RAMP_WIDTH, Railing, RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule,
-    Scope, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading,
-    paper,
+    PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, Railing, RailingType,
+    Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft,
+    Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -2753,35 +2752,43 @@ other_files(
         "building_code",
         "Building Codes",
         &[],
-        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, electrical?: {demand?, building_demand?}, \
-         reset?: bool} the project's building code, which its stairs and railings are held to (apart from its technical standard, \
-         which is about drafting): `generic` (none, wide ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it \
-         too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
-         rules, unless `keep_rules` keeps the project's own. `stairs` changes rules of the project's own (a state's or a city's \
-         numbers), each by name, mm: `riser` and `going` a new stair starts with; `riser_min`, `riser_max`, `going_min`, `going_max`; \
-         `step_min`, `step_max` (two risers and a going); `width_min`; `headroom`; `flight_rise_max` and `flight_risers_max` (a \
-         landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
-         (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
-         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `electrical` names the \
-         methods the project's electrical demand is worked out by, which `demand` and `building_demand` take when not given one: \
-         `demand` a utility (CPFL, ENEL or CELESC) and `building_demand` a method of data/building-demand.json (its standard, or a \
-         utility that follows it), each null to leave it to the command; the IBC names NEC 220.84, the others none (a country's \
-         utilities differ by region). `reset` takes the project's own rules and methods away, back to its code's; `set` too, \
-         unless `keep_rules`. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
-         (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
-         one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
-         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, the methods \
-         in force (`electrical`), and `all` the codes. The NBR codes' numbers were checked against their texts by a contributor; \
-         the IBC's, DIN's and Japan's were typed from memory of the documents named and are unchecked, as each rule's source says",
+        "{discipline?: architectural|structural|electrical|mechanical|plumbing, set?, amendments?: [code, …], keep_rules?: bool, \
+         rules?: {section: {rule: value, …}, …}, stairs?: {…}, reset?: true|section, save?: name, delete?: name, amend?: code, \
+         create?: name, over?: code} the project's \
+         building code for one discipline (architectural where none is named), apart from its technical standard, which is about \
+         drafting. A code is BIMCraft's (`data/codes/`) or one of the project's own; its rules are grouped in sections (`code_rules` \
+         lists them: stairs, ramps, rooms…; plumbing's fixtures, cold_water, drainage…). `set` chooses the base code and brings its \
+         rules, unless `keep_rules` keeps the project's changes; `amendments` lays codes over it in the order given, the last \
+         winning (a fire brigade's instruction over a standard, a member's document over its group's), each amending the base or \
+         another amendment given. `rules` changes rules for the project (a state's or a city's numbers), each by its name in its \
+         section, whole: a table is given whole; `stairs` is `rules.stairs`. With `amend` (one of the amendments held), `rules` \
+         and `reset` change that amendment instead: one of BIMCraft's becomes the project's copy under its name (reset whole, the \
+         library's again), and a rule set to null leaves it. `create` makes an empty amendment of the project's own over the \
+         base (or the code `over` names), which `amendments` then chooses. The architectural stairs' rules, mm: `riser` and `going` a new stair starts with; \
+         `riser_min`, `riser_max`, `going_min`, `going_max`; `step_min`, `step_max` (two risers and a going); `width_min`; \
+         `headroom`; `flight_rise_max` and `flight_risers_max`; `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; \
+         `winders`, `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
+         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the \
+         project's changes away, all or a section's. `save`: \"name\" keeps the rules in force as a code of the project's own and \
+         holds the project to it; `delete`: \"name\" takes one away (a project held to it keeps its rules; one holding a \
+         utility's or a country's method is refused while the project is held to it). The editions of the \
+         codes chosen are pinned: a newer edition in the library changes nothing until the code is chosen again \
+         (`editions_gone` says where the library no longer has the edition pinned). Nothing is refused for breaking a rule: \
+         `code_check` reports it. The reply gives the base `code`, `name`, `edition`, `references`, `note`, `amendments`, the \
+         rules in force by section (`sections`), what the project changed (`changes`), `all` the codes it may choose, and for \
+         the architectural discipline `stairs` and `changed` (the stair rules changed). Unless a code says it was `checked`, its \
+         numbers are unchecked",
         building_code,
     )
     .menu("Manage > Building Codes"),
     other_files(
         "building_code_export",
         "Export Building Code",
-        "{path, code?, name?} writes a building code as an XML file, to hand to another project or office: the project's, with \
-         the rules it changed, or the one `code` names; `name` is what the file calls it (a code BIMCraft has needs another name \
-         to be read back). A <rule name value/> for each rule, mm",
+        "{path, discipline?, all?: bool, code?, name?} writes building codes as an XML file, to hand to another project or office: \
+         the discipline's rules in force (base, amendments and the project's changes, each rule with its source), or the one \
+         `code` names, or with `all` the five disciplines' in one file; `name` is what the file calls it (a code BIMCraft has \
+         needs another name to be read back). A <section> for each section, a <rule name value/> for each rule (mm), a table \
+         as <rule name json/>",
         building_code_export,
         Files::Write,
     ),
@@ -2789,12 +2796,45 @@ other_files(
         "building_code_import",
         "Import Building Code",
         &[],
-        "{path, name?, set?: bool} reads a building code from an XML file `building_code_export` wrote (or one written by hand: \
-         <building-code name=\"…\"><stairs><rule name=\"riser_max\" value=\"180\"/>…</stairs></building-code>) and keeps it as one of \
-         the project's own, under the file's name or `name`, in place of one of that name; a rule the file leaves out is the generic \
-         code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
+        "{path, name?, set?: bool} reads building codes from an XML file `building_code_export` wrote (one, or a file of all \
+         five; or #386's stairs-only file, or one written by hand: <building-code name=\"…\"><stairs><rule name=\"riser_max\" \
+         value=\"180\"/>…</stairs></building-code>) and keeps each as one of the project's own, under its name or, the first, \
+         `name`. A rule the file leaves out is the code's it is based on (else the discipline's default), and what it holds that \
+         this version doesn't know is listed as `left_out`. `set` holds the project to them: a base is chosen, an amendment laid \
+         over it",
         building_code_import,
         Files::Read,
+    ),
+    other(
+        "code_rules",
+        "Building Code Rules",
+        "{discipline?, section?} the rules in force for a discipline (architectural where none is named), by section: each \
+         `rule`, its `value`, where it comes `from` (the base, an amendment, the library where none of the project's codes has the \
+         section, or the project), its `source` (the document, item and page) and its `kind` (requirement, recommendation, \
+         practice, assumption, historical, forgiving). Each section says what `read_by` it (commands and checks) and whether it is \
+         a `reference` only, which nothing checks yet",
+        code_rules,
+    ),
+    edit(
+        "site_climate",
+        "Site and Climate",
+        &[],
+        "{rain_intensity?, rain_return_period?, thunderstorms?: AQ1|AQ2|AQ3, wind_speed?, ground_snow?, seismic_zone?, \
+         frost_depth?, climate_zone?, altitude?, cooling_design?, heating_design?, sources?: {key: text}} the numbers a code's \
+         maps give for the project's place, shared by every discipline: rainfall mm/h for its return period in years, basic wind \
+         speed m/s, ground snow kN/m², frost depth mm, altitude m, outdoor design temperatures °C; `sources` says, for each, the \
+         map or table it was read from. `null` takes one away. `storm_size` reads the rain and `dps_check` the thunderstorms \
+         when they aren't given",
+        site_climate,
+    ),
+    other(
+        "code_check",
+        "Check Building Codes",
+        "{ids?: [id, …]} where elements are outside the project's building codes: for each element (those in `ids`, else all) \
+         that is outside a rule, its `id`, `category` and `findings`, each the `rule` broken, the element's `value`, the rule's \
+         `limit` and a `message` saying what to change; `count` is how many in all. Stairs today. It reads and never changes \
+         an element: what is outside a rule is still built",
+        code_check,
     ),
     edit(
         "stair_sketch",
@@ -3201,9 +3241,9 @@ other_files(
         "load_points",
         "Residential Load Points",
         "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
-         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are data \
-         (`data/load-points.json`, one rule set for each standard, every row naming its source): `standard` names the set, \
-         `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source`, `lighting_source` and \
+         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are the \
+         project's electrical code's `load_points` section (Manage > Building Codes, NBR 5410 in BIMCraft's codes; every row naming \
+         its source), as the project or an amendment changed them; `standard` names a set of BIMCraft's instead, and the answer gives `standard`, `standard_source`, `lighting_source` and \
          each room's `source`. The rooms are `rooms` (`area` in m², \
          `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
          model, measured inside the walls' finish, with the power outlets and the luminaires that stand in each (the room a \
@@ -3226,8 +3266,8 @@ other_files(
         "Check Residual-Current Protection",
         "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other, standard?} \
          which circuits NBR 5410:2004 asks additional protection by a high-sensitivity residual-current device (DR, 30 mA at most) \
-         for. The rules are data (`data/dr-check.json`, one rule set for each standard, every rule naming its source): `standard` \
-         names the set, `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source` and, \
+         for. The rules are the project's electrical code's `rcd` section (NBR 5410 in BIMCraft's codes, every rule naming its \
+         source), as the project or an amendment changed them; `standard` names a set of BIMCraft's instead, and the answer gives `standard`, `standard_source` and, \
          for each circuit, the `sources` of its `reasons`. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
          pantry-kitchen), laundry, service (service area), garage, wet (another wet internal area) or dry; `kind` is outlet, lighting or \
          fixed (another point of use); `rating` an outlet's rated current in A (32 A at most is covered; unknown, it is taken as covered), \
@@ -3246,8 +3286,9 @@ other_files(
         "Check Bathroom Volumes",
         "{fixture: {outline?: [[x, y], …], shower?: [x, y], floor?, rim?}, things: [{name?, kind, at: [x, y, z], ip?, class?, supply?, voltage?, rcd?, serving?}], public?, standard?} \
          which of the volumes around a bathtub or a shower each thing stands in, and whether it may stand there, as NBR 5410:2004 \
-         item 9.1 asks. The numbers are data (`data/bath-volumes.json`, one rule set for each standard, every volume and every thing \
-         it allows naming its source): `standard` names the set, `NBR 5410:2004` the default and only one so far. `fixture` is the \
+         item 9.1 asks. The numbers are the project's electrical code's `bath_volumes` section (NBR 5410 in BIMCraft's codes, every \
+         volume and every thing it allows naming its source), as the project or an amendment changed them; `standard` names a set of \
+         BIMCraft's instead. `fixture` is the \
          tub, tray or recess in plan (`outline`, mm) or the outlet of a shower with no tray (`shower`), `floor` the level one stands on \
          (mm, 0 by default) and `rim` the tub's rim above it (mm, 0 by default). Volume 0 is the inside up to the rim (none for a shower \
          with no tray); 1 over it up to 2.25 m (0.6 m round a shower with no tray); 2 out 0.60 m more, up to 3 m, so over volume 1 \
@@ -3294,9 +3335,9 @@ other_files(
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
-         the project's building code's when not given (`building_code {electrical: {demand}}`), and required when it names none: \
-         CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
-         06/03/2025) or CELESC (N-321.0001, revision of December 2025), or one whose categories are data (data/entrance-categories.json): \
+         the one the project is held to in Manage > Building Codes when not given, else required: CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
+         06/03/2025) or CELESC (N-321.0001, revision of December 2025), or one whose categories are a building code's (the `entrance` section of its amendment over NBR 5410, as the project \
+         changed it where the project holds it): \
          FECOERGS (the RIC BT REGD 035.01.06 of Rio Grande do Sul's cooperatives; a member such as COPREL or CERTEL by its own name, \
          with its own changes), HIDROPAN (RIC 2014), ENERGISA (NDU 001 version 7.0; a company such as EMT by its own name), \
          EQUATORIAL (NT.00001 revision 09) or COPEL (NTC 901100); any other is refused until its tables are added. A utility of the data takes \
@@ -3334,10 +3375,11 @@ other_files(
         "Building Demand",
         "{utility? | standard?, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
          premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
-         `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
+         `standard` (each the `building_demand` section of a utility's amendment or a country's code; the project's own, as it \
+         changed it, where neither is given: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
          Spain's ITC-BT-10, Portugal's RTIEBT 803.2.4.3, France's NF C 14-100 (SéQuélec GP 16) and the US NEC 220.84; any other is \
-         refused until its entry is added). Given neither, it is the method the project's building code names \
-         (`building_code {electrical: {building_demand}}`), and refused when it names none. D = factor · F(n) · d + common + special + \
+         refused until its entry is added). Given neither, it is the method of the utility's amendment or the country's code the \
+         project is held to (`building_code {discipline: electrical, set | amendments}`), and refused when it holds none. D = factor · F(n) · d + common + special + \
          commercial + premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, \
          looked up in the method's table, an area between two rows taking the next one up) or, where the method takes it, each group's `demand` or a \
          `grade` naming one (ITC-BT-10: basic, elevated; RTIEBT: 1 room, 2-6 rooms, 7+ rooms; GP 16: student, 1-2 rooms, 3-5 rooms, \
@@ -4130,6 +4172,19 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     }
     if m.is_pinned(id) {
         extra.insert("pinned".into(), json!(true));
+    }
+    // A ramp, a door or a room held to the project's building code: in short, and each finding (a stair's are below).
+    if matches!(e, Element::Ramp(_) | Element::Door(_) | Element::Room(_)) {
+        let outside = crate::codes::findings(m, id, e);
+        let said = match outside.len() {
+            0 => "Inside the rules".to_string(),
+            1 => "Outside 1 rule".to_string(),
+            n => format!("Outside {n} rules"),
+        };
+        extra.insert("code_check".into(), json!(said));
+        if !outside.is_empty() {
+            extra.insert("code_findings".into(), json!(outside));
+        }
     }
     // Its type's and its family's GUIDs, beside their names.
     e.clone().lib_refs_mut(&mut |kind, name| {
@@ -6966,6 +7021,62 @@ fn within(c: &str, p: &Value, key: &str, default: f64, lo: f64, hi: f64) -> Resu
 }
 
 /// A choice among `names`, as text; `default` when absent.
+/// A set of rules an electrical command follows: the project's (its code, amendments and changes), or one of BIMCraft's library.
+enum Held<T: 'static> {
+    Project(Box<T>),
+    Library(&'static T),
+}
+
+impl<T> std::ops::Deref for Held<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        match self {
+            Held::Project(t) => t,
+            Held::Library(t) => t,
+        }
+    }
+}
+
+/// The rules of electrical section `key` a command follows: the project's where `param` names none or names the project's own
+/// (`name` says a set's name), else BIMCraft's of that name, from `all`. `own_only` takes the project's only where one of its
+/// codes or changes holds the section, not the library's (a utility's method, which no project follows by default).
+fn held<T: serde::de::DeserializeOwned>(
+    s: &Session,
+    c: &str,
+    p: &Value,
+    (key, param): (&str, &str),
+    all: &'static [T],
+    name: fn(&T) -> &str,
+    own_only: bool,
+) -> Result<Option<Held<T>>, String> {
+    let project = s.model.section_as::<T>(crate::codes::Discipline::Electrical, key).filter(|(_, own)| *own || !own_only);
+    match p.get(param) {
+        v if absent(v) => Ok(match project {
+            Some((t, _)) => Some(Held::Project(Box::new(t))),
+            None if own_only => None,
+            None => all.first().map(Held::Library),
+        }),
+        Some(Value::String(n)) => {
+            if let Some((t, _)) = project.filter(|(t, _)| name(t) == n) {
+                return Ok(Some(Held::Project(Box::new(t))));
+            }
+            let names: Vec<&str> = all.iter().map(name).collect();
+            all.iter()
+                .find(|t| name(t) == n)
+                .map(|t| Some(Held::Library(t)))
+                .ok_or_else(|| bad(c, format!("`{param}` must be one of {}, got \"{n}\"", names.join(", "))))
+        }
+        Some(v) => Err(bad(c, format!("`{param}` is a name, not {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// The rules of electrical section `key` a command follows: the project's, else BIMCraft's.
+fn rules_of<T: serde::de::DeserializeOwned>(s: &Session, c: &str, key: &str, all: &'static [T]) -> Result<Held<T>, String> {
+    held(s, c, &Value::Null, (key, ""), all, |_| "", false)?
+        .ok_or_else(|| bad(c, format!("the building codes have no `{key}` section (Manage > Building Codes > Electrical)")))
+}
+
 fn choice<'a>(c: &str, p: &'a Value, key: &str, names: &[&str], default: &'a str) -> Result<&'a str, String> {
     match p.get(key) {
         v if absent(v) => Ok(default),
@@ -7192,17 +7303,19 @@ fn circuit_of_model(s: &mut Session, p: &Value) -> R {
     if rating.is_none()
         && let Some(t) = electrical::circuit_totals(m, &x)
         && t.installed_va > 0.0
+        && let Ok(r) = rules_of(s, "circuit", "circuits", crate::nbr5410::rule_sets())
     {
-        let need = t.current_a.max(10.0);
-        x.rating_a = crate::nbr5410::BREAKERS.iter().copied().find(|b| *b >= need).unwrap_or(16.0);
+        let need = t.current_a.max(r.least_breaker);
+        x.rating_a = r.breakers.iter().copied().find(|b| *b >= need).unwrap_or(x.rating_a);
     }
     let id = s.model_mut().insert(Element::Circuit(x));
     Ok(json!({"id": id, "circuit": element_json(&s.model, id)}))
 }
 
-fn circuit_size(_: &mut Session, p: &Value) -> R {
+fn circuit_size(s: &mut Session, p: &Value) -> R {
     use crate::nbr5410::{self as e, Circuit, Insulation, Phases, Use};
     let c = "circuit";
+    let r = rules_of(s, c, "circuits", e::rule_sets())?;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = SIZING_KEYS;
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7212,25 +7325,22 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
     if load <= 0.0 {
         return Err(bad(c, "`load` (W, or VA with `apparent`) is required"));
     }
-    let systems: Vec<&str> = e::SYSTEMS.iter().map(|s| s.0).collect();
-    let system = choice(c, p, "system", &systems, systems[0])?;
-    let methods = e::method_keys();
-    let sections_ok = |x: f64| e::SECTIONS.iter().any(|s| (s - x).abs() < 1e-9);
+    let systems: Vec<&str> = r.systems.iter().map(|s| s.name.as_str()).collect();
+    let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or_default())?;
+    let methods = r.method_keys();
+    let sections_ok = |x: f64| r.sections.iter().any(|s| (s - x).abs() < 1e-9);
     let section = within(c, p, "section", 0.0, 0.0, 1000.0)?;
     if section > 0.0 && !sections_ok(section) {
         return Err(bad(
             c,
-            format!(
-                "`section` must be one of the standard's: {}",
-                e::SECTIONS.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
-            ),
+            format!("`section` must be one of the standard's: {}", r.sections.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")),
         ));
     }
     let breaker = within(c, p, "breaker", 0.0, 0.0, 1000.0)?;
-    if breaker > 0.0 && !e::BREAKERS.iter().any(|b| (b - breaker).abs() < 1e-9) {
+    if breaker > 0.0 && !r.breakers.iter().any(|b| (b - breaker).abs() < 1e-9) {
         return Err(bad(
             c,
-            format!("`breaker` must be one of: {}", e::BREAKERS.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")),
+            format!("`breaker` must be one of: {}", r.breakers.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")),
         ));
     }
     let ambient = match p.get("ambient") {
@@ -7246,20 +7356,20 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
         system: systems.iter().position(|s| *s == system).unwrap_or(0),
         use_: if choice(c, p, "use", &["power", "lighting"], "power")? == "lighting" { Use::Lighting } else { Use::Power },
         length: within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0,
-        method: choice(c, p, "method", &methods, "7")?.to_string(),
+        method: choice(c, p, "method", &methods, &r.default_method)?.to_string(),
         insulation: Insulation::parse(choice(c, p, "insulation", &["pvc", "epr"], "pvc")?).unwrap_or(Insulation::Pvc),
         flexible: choice(c, p, "conductor", &["flexible", "rigid"], "flexible")? == "flexible",
         ambient,
         grouped: within(c, p, "grouped", 1.0, 1.0, 1000.0)?.round() as u32,
         bundle: flag(c, p, "bundle")?,
         spacing: within(c, p, "spacing", 0.0, 0.0, 100_000.0)? / 1000.0,
-        soil: within(c, p, "soil", 2.5, 0.0, 100.0)?,
+        soil: within(c, p, "soil", r.reference_soil_resistivity, 0.0, 100.0)?,
         section,
         breaker,
-        drop_limit: within(c, p, "drop_limit", e::DROP_LIMIT, f64::MIN_POSITIVE, 100.0)?,
+        drop_limit: within(c, p, "drop_limit", r.drop_limit, f64::MIN_POSITIVE, 100.0)?,
         reduced_neutral: flag(c, p, "reduced_neutral")?,
     };
-    let d = e::design(&circuit);
+    let d = e::design(&r, &circuit);
     if let Some(fault) = d.fault {
         return Err(bad(c, fault.message()));
     }
@@ -7279,16 +7389,18 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
         "breaker_a": n.breaker,
         "carries_a": round(n.carries, 100.0),
         "drop_percent": n.drop.map(|d| round(d.0, 100.0)),
-        "conductors": e::cable_text(circuit.phases, n.section, circuit.reduced_neutral),
+        "conductors": e::cable_text(&r, circuit.phases, n.section, circuit.reduced_neutral),
         "grew": section < n.section - 1e-9 || breaker < n.breaker - 1e-9,
         "chosen": d.chosen.as_ref().map(evaluation),
     }))
 }
 
-fn conduit_fill(_: &mut Session, p: &Value) -> R {
-    use crate::conduit::{self, FAMILIES};
+fn conduit_fill(s: &mut Session, p: &Value) -> R {
+    use crate::conduit;
     use crate::nbr5410::Phases;
     let c = "conduit_fill";
+    let r = rules_of(s, c, "conduit_fill", conduit::rule_sets())?;
+    let sizing = rules_of(s, c, "circuits", crate::nbr5410::rule_sets())?;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["section", "phases", "circuits", "reduced_neutral", "family", "size"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7300,32 +7412,31 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
     }
     let phases = Phases::parse(choice(c, p, "phases", &["FN", "FF", "3F", "3FN"], "FN")?).unwrap_or(Phases::PhaseNeutral);
     let circuits = within(c, p, "circuits", 1.0, 1.0, 1000.0)?.round() as usize;
-    let keys: Vec<&str> = FAMILIES.iter().map(|f| f.key).collect();
-    let family = conduit::family(choice(c, p, "family", &keys, "pvc-thread")?).ok_or_else(|| bad(c, "no such family"))?;
-    let one = conduit::conductors(phases, section, flag(c, p, "reduced_neutral")?);
+    let keys: Vec<&str> = r.families.iter().map(|f| f.key.as_str()).collect();
+    let family = r.family(choice(c, p, "family", &keys, &r.default_family)?).ok_or_else(|| bad(c, "no such family"))?;
+    let one = conduit::conductors(&sizing, phases, section, flag(c, p, "reduced_neutral")?);
     let all: Vec<f64> = (0..circuits).flat_map(|_| one.iter().copied()).collect();
     let source = json!({"maker": family.maker, "document": family.document, "page": family.page, "url": family.url, "inside": "outside less twice the wall"});
-    if let Some(s) = one.iter().find(|s| conduit::cable_diameter(**s).is_none()) {
+    if let Some(s) = one.iter().find(|s| r.cable_diameter(**s).is_none()) {
         return Ok(
             json!({"conductors": all.len(), "pending": format!("the catalogue has no outside diameter for a cable of {s} mm²"), "source": source}),
         );
     }
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
-    let smallest = conduit::smallest(family, &all).map(|s| s.0);
-    let size =
-        match string(c, p, "size")? {
-            None => None,
-            Some(mark) => Some(family.sizes.iter().find(|s| s.0 == mark).ok_or_else(|| {
-                bad(c, format!("`size` must be one of {}", family.sizes.iter().map(|s| s.0).collect::<Vec<_>>().join(", ")))
-            })?),
-        };
-    let fill = size.and_then(|s| conduit::fill(s, &all));
+    let smallest = r.smallest(family, &all).map(|s| s.0.clone());
+    let size = match string(c, p, "size")? {
+        None => None,
+        Some(mark) => Some(family.sizes.iter().find(|s| s.0 == mark).ok_or_else(|| {
+            bad(c, format!("`size` must be one of {}", family.sizes.iter().map(|s| s.0.as_str()).collect::<Vec<_>>().join(", ")))
+        })?),
+    };
+    let fill = size.and_then(|s| r.fill(s, &all));
     Ok(json!({
         "conductors": all.len(),
         "circuits": circuits,
         "sections_mm2": one,
         "smallest": smallest,
-        "size": size.map(|s| s.0),
+        "size": size.map(|s| s.0.as_str()),
         "inside_mm": size.map(|s| round(conduit::inside(s), 100.0)),
         "fill_percent": fill.map(|f| round(f.ratio * 100.0, 10.0)),
         "limit_percent": fill.map(|f| round(f.limit * 100.0, 10.0)),
@@ -7334,9 +7445,12 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn drain_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage::{self, Role};
+fn drain_size(s: &mut Session, p: &Value) -> R {
+    use crate::drainage::Role;
     let c = "drain_size";
+    // The project's rules: its plumbing code's Sanitary Drainage and Fixtures.
+    let rules = s.model.rules::<crate::drainage::DrainageRules>();
+    let library = s.model.rules::<crate::plumbing::Fixtures>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "fixtures", "role", "slope", "floors", "min_dn"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7350,8 +7464,10 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
         Some(Value::Object(f)) => {
             let mut sum = 0.0;
             for (kind, n) in f {
-                let (u, dn) = drainage::fixture(kind)
-                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))))?;
+                let (u, dn) = library
+                    .fixture(kind)
+                    .map(|f| (f.uhc, f.drain_dn))
+                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", library.kinds().join(", "))))?;
                 let n = n
                     .as_f64()
                     .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
@@ -7373,9 +7489,9 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
     let role = Role::parse(choice(c, p, "role", &["branch", "main", "stack"], "branch")?).unwrap_or(Role::Branch);
     let slope = within(c, p, "slope", 0.01, 0.0, 1.0)?;
     let floors = within(c, p, "floors", 1.0, 1.0, 1000.0)?.round() as u32;
-    let dn = drainage::smallest(units, slope, role, floors, minimum)
+    let dn = rules.smallest(units, slope, role, floors, minimum)
         .ok_or_else(|| {
-        let most = drainage::DNS.iter().map(|dn| (*dn, drainage::capacity(*dn, slope, role, floors))).fold((0.0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
+        let most = rules.dns.iter().map(|dn| (*dn, rules.capacity(*dn, slope, role, floors))).fold((0.0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
         bad(
             c,
             format!(
@@ -7384,12 +7500,12 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
             ),
         )
     })?;
-    Ok(json!({"units": units, "dn": dn, "capacity": drainage::capacity(dn, slope, role, floors), "minimum_dn": minimum}))
+    Ok(json!({"units": units, "dn": dn, "capacity": rules.capacity(dn, slope, role, floors), "minimum_dn": minimum}))
 }
 
-fn vent_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage;
+fn vent_size(s: &mut Session, p: &Value) -> R {
     let c = "vent_size";
+    let rules = s.model.rules::<crate::drainage::DrainageRules>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "wc", "stack_dn", "length", "trap_dn"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7399,10 +7515,11 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
     if units <= 0.0 {
         return Err(bad(c, "`units` (UHC of what it vents) is required"));
     }
-    let dns = drainage::DNS;
+    let dns = &rules.dns;
     let mut out = serde_json::Map::new();
     let dn = if absent(p.get("stack_dn")) {
-        drainage::branch_vent(units, flag(c, p, "wc")?)
+        rules
+            .branch_vent(units, flag(c, p, "wc")?)
             .ok_or_else(|| bad(c, format!("{units} UHC is more than the table gives a branch vent (Tabela 8)")))?
     } else {
         let served = within(c, p, "stack_dn", 0.0, 0.0, 1000.0)?;
@@ -7413,77 +7530,86 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
             return Err(bad(c, "`length` (mm, from the foot to the open end) is required with `stack_dn`"));
         }
         let length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
-        let dn = drainage::vent_stack(served, units, length)
+        let dn = rules
+            .vent_stack(served, units, length)
             .ok_or_else(|| bad(c, "no vent of the table (Tabela 2) is long enough for that, or the units pass its last row"))?;
-        out.insert("longest_m".into(), json!(drainage::vent_stack_limit(served, units, dn)));
+        out.insert("longest_m".into(), json!(rules.vent_stack_limit(served, units, dn)));
         dn
     };
     out.insert("dn".into(), json!(dn));
     if !absent(p.get("trap_dn")) {
         let t = within(c, p, "trap_dn", 0.0, 0.0, 1000.0)?;
-        let mm = drainage::trap_distance(t).ok_or_else(|| bad(c, "`trap_dn` must be 40, 50, 75 or 100 (Tabela 1)"))?;
+        let mm = rules.trap_distance(t).ok_or_else(|| {
+            let dns: Vec<String> = rules.trap_to_vent.iter().map(|r| r[0].to_string()).collect();
+            bad(c, format!("`trap_dn` must be one of {} (the trap's table)", dns.join(", ")))
+        })?;
         out.insert("trap_to_vent_mm".into(), json!(mm));
     }
     Ok(Value::Object(out))
 }
 
-/// `demand` for Enel: GRI-0017 leaves the demand to the designer (Anexo A, note 11), so it frames the supply by the installed load,
-/// in its Anexos A, C, D and E (B by the demand current), and carries the designer's demand if one is given.
-fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
-    use crate::demand::{self as d, NETWORKS, Network};
+/// The phases a unit asks, if any.
+fn unit_phases(c: &str, p: &Value) -> Result<Option<u8>, String> {
+    match p.get("phases").filter(|v| !v.is_null()) {
+        None => Ok(None),
+        Some(v) => match v.as_u64() {
+            Some(n @ 1..=3) => Ok(Some(n as u8)),
+            _ => Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
+        },
+    }
+}
+
+/// `demand` by annexes (Enel's GRI-0017): the standard leaves the demand to the designer, so it frames the supply by the installed
+/// load in an annex for each network (one goes by the demand current), and carries the designer's demand if one is given.
+fn demand_by_annexes(p: &Value, utility: &str, source: &str, a: &crate::demand::ByAnnexes) -> R {
     let c = "demand";
     const KEYS: &[&str] = &["utility", "network", "installed_kw", "demand_current_a", "phases", "demand_kva"];
     if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
-        return Err(bad(c, format!("`{k}` isn't one of ENEL's parameters: {}", KEYS.join(", "))));
+        return Err(bad(c, format!("`{k}` isn't one of {utility}'s parameters: {}", KEYS.join(", "))));
     }
-    let name = choice(c, p, "network", NETWORKS, "")?;
+    let networks = a.network_names();
+    let name = choice(c, p, "network", &networks, "")?;
     if name.is_empty() {
-        return Err(bad(c, format!("`network` is required: {}", NETWORKS.join(", "))));
+        return Err(bad(c, format!("`network` is required: {}", networks.join(", "))));
     }
-    let phases = match p.get("phases").filter(|v| !v.is_null()) {
-        None => None,
-        Some(v) => match v.as_u64() {
-            Some(n @ 1..=3) => Some(n as u8),
-            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
-        },
-    };
+    let phases = unit_phases(c, p)?;
     let demand_kva = match p.get("demand_kva").filter(|v| !v.is_null()) {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let note_demand = "GRI-0017 leaves a three-phase supply's demand to the designer, up to 75 kW of installed load (Anexo A, note 11): it is carried as given, never worked out here";
-    let not_covered = "the conduits, the poles and the type of meter box of the annexes, the point of connection, Anexo A to E's other columns, Anexos F to H (Enel Ceará) and the limits of supply by motors, welding machines and X-ray sets";
-    if name == "aerial_delta" {
-        // Anexo B goes by the current the designer's demand draws, not by the installed load.
+    let by = &a.by_current;
+    if name == by.network {
+        // This annex goes by the current the designer's demand draws, not by the installed load.
         if p.get("installed_kw").is_some_and(|v| !v.is_null()) {
-            return Err(bad(c, "Anexo B (`aerial_delta`) goes by `demand_current_a`, not by `installed_kw`"));
+            return Err(bad(c, format!("Anexo {} (`{}`) goes by `demand_current_a`, not by `installed_kw`", by.annex, by.network)));
         }
         if absent(p.get("demand_current_a")) {
-            return Err(bad(c, "`demand_current_a` (the designer's demand current, A) is required for `aerial_delta`"));
+            return Err(bad(c, format!("`demand_current_a` (the designer's demand current, A) is required for `{}`", by.network)));
         }
         let amps = within(c, p, "demand_current_a", 0.0, 0.0, 1.0e6)?;
-        let rows = d::delta_pick(amps, phases);
-        let (category, note) = match &rows {
-            Some(rows) => {
-                let r = rows[0];
-                let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
-                let cat = json!({
+        let rows = a.by_current(amps, phases);
+        let (category, note) = match rows.as_ref().and_then(|r| r.first()) {
+            Some(r) => (
+                json!({
                     "names": r.names,
                     "breaker_a": r.breaker,
-                    "connection_mm2": conn,
+                    "connection_mm2": r.connection,
                     "entry_mm2": r.entry,
-                    "earthing_mm2": r.earth,
+                    "earthing_mm2": r.earthing,
                     "measurement": r.measurement,
-                });
-                (cat, Value::Null)
+                }),
+                Value::Null,
+            ),
+            None => {
+                let last = by.rows.iter().map(|r| r.breaker).fold(0.0, f64::max);
+                (Value::Null, json!(format!("above the last breaker of Anexo {}: {last} A", by.annex)))
             }
-            None => (Value::Null, json!("above the last breaker of Anexo B: 300 A")),
         };
-        let candidates: Vec<&str> = rows.iter().flatten().flat_map(|r| r.names.iter().copied()).collect();
+        let candidates: Vec<&str> = rows.iter().flatten().flat_map(|r| r.names.iter().map(String::as_str)).collect();
         return Ok(json!({
             "utility": utility,
             "source": source,
-            "annex": "B",
+            "annex": by.annex,
             "network": name,
             "installed_kw": Value::Null,
             "demand_current_a": amps,
@@ -7492,88 +7618,85 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
             "candidates": candidates,
             "category_note": note,
             "demand_kva": demand_kva,
-            "demand_note": note_demand,
-            "not_covered": not_covered,
+            "demand_note": a.demand_note,
+            "not_covered": a.not_covered,
         }));
     }
-    let network = Network::parse(name).ok_or_else(|| bad(c, format!("`network` is one of {}", NETWORKS.join(", "))))?;
+    let annex = a.annex(name).ok_or_else(|| bad(c, format!("`network` is one of {}", networks.join(", "))))?;
     if p.get("demand_current_a").is_some_and(|v| !v.is_null()) {
-        return Err(bad(c, "`demand_current_a` is for `aerial_delta` (Anexo B); the other networks go by `installed_kw`"));
+        return Err(bad(
+            c,
+            format!("`demand_current_a` is for `{}` (Anexo {}); the other networks go by `installed_kw`", by.network, by.annex),
+        ));
     }
     if absent(p.get("installed_kw")) {
         return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
     }
     let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
-    let pick = d::enel_pick(network, kw, phases);
-    let (category, candidates, note) = match &pick {
-        Some(k) => {
-            let r = k.rows[0];
-            let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
+    let pick = a.pick(annex, kw, phases);
+    let (category, candidates, note) = match pick.as_ref().and_then(|k| k.first().map(|r| (k, r))) {
+        Some((k, r)) => {
             let cat = json!({
                 "name": r.name,
                 "breaker_a": r.breaker,
-                "connection_mm2": conn,
-                "entry_mm2": {"phase": r.entry.0, "neutral": r.entry.1},
-                "earthing_mm2": r.earth,
+                "connection_mm2": r.connection,
+                "entry_mm2": r.entry,
+                "earthing_mm2": r.earthing,
                 "measurement": r.measurement,
                 "junction_box": r.junction_box,
             });
-            (cat, json!(k.rows.iter().map(|r| r.name).collect::<Vec<_>>()), Value::Null)
+            (cat, json!(k.iter().map(|r| r.name.as_str()).collect::<Vec<_>>()), Value::Null)
         }
-        None if kw > 75.0 && network != Network::Submersible => (
-            Value::Null,
-            json!([]),
-            json!("above 75 kW the unit is served at primary voltage (item 7.4), which this specification does not cover"),
-        ),
-        None => {
-            let last = match network {
-                Network::Aerial => 75,
-                Network::Aerial120240 => 12,
-                Network::Underground => 75,
-                Network::Submersible => 100,
-            };
-            (
-                Value::Null,
-                json!([]),
-                json!(format!("above the last category of Anexo {}: up to {last} kW of installed load", network.annex())),
-            )
-        }
+        None => match annex.primary_above.filter(|limit| kw > *limit) {
+            Some(limit) => (Value::Null, json!([]), json!(a.primary_note.replace("{kw}", &limit.to_string()))),
+            None => {
+                let last = annex.rows.iter().map(|r| r.up_to).fold(0.0, f64::max);
+                (
+                    Value::Null,
+                    json!([]),
+                    json!(format!("above the last category of Anexo {}: up to {last} kW of installed load", annex.annex)),
+                )
+            }
+        },
     };
     Ok(json!({
         "utility": utility,
         "source": source,
-        "annex": network.annex(),
-        "network": network.name(),
+        "annex": annex.annex,
+        "network": annex.network,
         "installed_kw": kw,
         "phases": phases,
         "category": category,
         "candidates": candidates,
         "category_note": note,
         "demand_kva": demand_kva,
-        "demand_note": note_demand,
-        "not_covered": not_covered,
+        "demand_note": a.demand_note,
+        "not_covered": a.not_covered,
     }))
 }
 
-/// `demand` for Celesc: N-321.0001 classes a unit by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01) and leaves a demand to
-/// the designer where a three-phase unit needs one (Tabela 01, note 1), so it frames the supply and carries the designer's demand.
-fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
-    use crate::demand::{self as d, CELESC_NETWORKS};
+/// `demand` by one table (Celesc's N-321.0001): a unit is classed by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01), and
+/// a demand where a three-phase unit needs one is the designer's (Tabela 01, note 1), so it frames the supply and carries the
+/// designer's demand.
+fn demand_by_table(p: &Value, utility: &str, source: &str, t: &crate::demand::ByTable) -> R {
     let c = "demand";
     const KEYS: &[&str] = &["utility", "network", "installed_kw", "phases", "demand_kva"];
     if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
-        return Err(bad(c, format!("`{k}` isn't one of CELESC's parameters: {}", KEYS.join(", "))));
+        return Err(bad(c, format!("`{k}` isn't one of {utility}'s parameters: {}", KEYS.join(", "))));
     }
-    let network = choice(c, p, "network", CELESC_NETWORKS, "220/380")?;
-    let phases = match p.get("phases").filter(|v| !v.is_null()) {
-        None => None,
-        Some(v) => match v.as_u64() {
-            Some(n @ 1..=3) => Some(n as u8),
-            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
-        },
-    };
-    if phases == Some(3) && network == "220/440" {
-        return Err(bad(c, "a 220/440 V network serves single-phase units only (Tabela 01: A and M); take `network: 220/380`"));
+    let names = t.network_names();
+    let name = choice(c, p, "network", &names, names.first().copied().unwrap_or_default())?;
+    let network =
+        t.networks.iter().find(|n| n.network == name).ok_or_else(|| bad(c, format!("`network` is one of {}", names.join(", "))))?;
+    let phases = unit_phases(c, p)?;
+    if let Some(ph) = phases
+        && !network.rows.iter().any(|r| r.phases == ph)
+    {
+        let served: Vec<&str> = t.networks.iter().filter(|n| n.rows.iter().any(|r| r.phases == ph)).map(|n| n.network.as_str()).collect();
+        return Err(bad(
+            c,
+            format!("a {name} V network serves no {ph}-phase unit (Tabela {}); take `network`: {}", t.table, served.join(" or ")),
+        ));
     }
     if absent(p.get("installed_kw")) {
         return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
@@ -7583,47 +7706,43 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let row = d::celesc_pick(network, kw, phases);
-    let (category, note) = match row {
+    let (category, note) = match t.pick(network, kw, phases) {
         Some(r) => {
+            let printed = r.demand_up_to.map(|hi| (r.demand_over.unwrap_or(0.0), hi));
             let cat = json!({
                 "name": r.name,
-                "installed_kw": {"over": r.lo, "up_to": r.hi},
-                "demand_kva": r.demand.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
+                "installed_kw": {"over": r.over, "up_to": r.up_to},
+                "demand_kva": printed.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
                 "breaker_a": r.breaker,
                 "phases": r.phases,
                 "wires": r.wires,
-                "connection_mm2": {"copper": r.connection.0, "aluminium": r.connection.1},
+                "connection_mm2": r.connection,
                 "entry_mm2": r.entry,
-                "earthing_mm2": {"copper": r.earth.0, "copper_clad_steel": r.earth.1},
+                "earthing_mm2": r.earthing,
             });
-            let note = match (r.demand, demand_kva) {
+            let note = match (printed, demand_kva) {
                 (Some((_, hi)), Some(dk)) if dk > hi => {
                     json!(format!("the designer's demand, {dk} kVA, is above the {hi} kVA printed beside {}", r.name))
                 }
-                _ if r.breaker >= 125.0 => json!("a 125 A three-phase supply asks the designer for a demand (Tabela 01, note 1)"),
+                _ if r.breaker >= t.asks_demand_from_breaker => json!(t.asks_demand_note),
                 _ => Value::Null,
             };
             (cat, note)
         }
-        None if network == "220/440" => (Value::Null, json!("above 50 kW a 220/440 V unit is past Tabela 01")),
-        None => (
-            Value::Null,
-            json!("above 75 kW the unit may be served in low voltage only as item 5.2.2.8 allows, with the designer's demand study"),
-        ),
+        None => (Value::Null, json!(network.beyond)),
     };
     Ok(json!({
         "utility": utility,
         "source": source,
-        "table": "01",
-        "network": network,
+        "table": t.table,
+        "network": name,
         "installed_kw": kw,
         "phases": phases,
         "category": category,
         "category_note": note,
         "demand_kva": demand_kva,
-        "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
-        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003: `building_demand`)",
+        "demand_note": t.demand_note,
+        "not_covered": t.not_covered,
     }))
 }
 
@@ -7636,27 +7755,45 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     only(c, p, &["standard", "utility", "dwellings", "common", "common_demand", "special", "commercial", "premises", "as_printed"])?;
     let names = || bd::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
     let utilities = || bd::methods().iter().flat_map(|m| m.utilities.iter().map(String::as_str)).collect::<Vec<_>>().join(", ");
-    let m = match (string(c, p, "standard")?, string(c, p, "utility")?) {
+    // The project's method (its utility's amendment or its country's code, as it changed them) where it names none, or names
+    // the project's own; else BIMCraft's by the standard's or the utility's name.
+    let project = s.model.section_as::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand").filter(|(_, own)| *own);
+    let project = project.map(|(m, _)| m);
+    // Each of the project's amendments' own method, wherever it stands: named, a utility under another answers by its own.
+    let held: Vec<bd::Method> = s
+        .model
+        .held_wholes::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
+        .into_iter()
+        .filter(|(_, _, own)| *own)
+        .map(|(m, _, _)| m)
+        .collect();
+    let m: Held<bd::Method> = match (string(c, p, "standard")?, string(c, p, "utility")?) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
-        (Some(s), None) => bd::methods()
-            .iter()
-            .find(|m| m.standard == s)
-            .ok_or_else(|| bad(c, format!("no method `{s}` in data/building-demand.json: {}", names())))?,
-        (None, Some(u)) => bd::methods()
-            .iter()
-            .find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u)))
-            .ok_or_else(|| bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())))?,
-        // Neither: the method the project's building code names.
-        (None, None) => match &s.model.electrical_methods().building_demand {
-            Some(n) => bd::method(n).ok_or_else(|| {
-                bad(c, format!("the project's building code names `{n}`, which data/building-demand.json doesn't have: {}", names()))
-            })?,
+        (Some(s), None) => match project.filter(|m| m.standard == s).or_else(|| held.into_iter().find(|m| m.standard == s)) {
+            Some(m) => Held::Project(Box::new(m)),
+            None => Held::Library(
+                bd::methods()
+                    .iter()
+                    .find(|m| m.standard == s)
+                    .ok_or_else(|| bad(c, format!("no method `{s}` in the building codes: {}", names())))?,
+            ),
+        },
+        (None, Some(u)) => {
+            let named = |m: &bd::Method| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u));
+            match project.filter(|m| named(m)).or_else(|| held.into_iter().find(|m| named(m))) {
+                Some(m) => Held::Project(Box::new(m)),
+                None => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
+                    || bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())),
+                )?),
+            }
+        }
+        (None, None) => match project {
+            Some(m) => Held::Project(Box::new(m)),
             None => {
                 return Err(bad(
                     c,
                     format!(
-                        "give the `utility` ({}) or the `standard` ({}), or pick a method for the project in Manage > Building Codes \
-                         (`building_code {{electrical: {{building_demand}}}}`)",
+                        "give the `utility` ({}) or the `standard` ({}), or hold the project to a utility's or a country's code in Building Codes",
                         utilities(),
                         names()
                     ),
@@ -7664,6 +7801,7 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
             }
         },
     };
+    let m = &*m;
     let list = match p.get("dwellings") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 1000 => a,
         _ => return Err(bad(c, "`dwellings` is a list of 1 to 1000 groups of dwellings alike, each {count, area | demand | grade}")),
@@ -7748,7 +7886,7 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     }))
 }
 
-/// `demand` for a utility whose categories are data (`data/entrance-categories.json`, `entrance.rs`): its table for the supply system
+/// `demand` for a utility whose categories are data (a building code's `entrance` section, `entrance.rs`): its table for the supply system
 /// and the use frames the unit by the installed load and the designer's demand, as the table prints them, with a member's own changes.
 fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Option<&crate::entrance::Member>) -> R {
     use crate::entrance::{self as e, Unit};
@@ -7847,7 +7985,7 @@ fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Opt
 }
 
 fn demand(s: &mut Session, p: &Value) -> R {
-    use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
+    use crate::demand::{self as d, Air, Load, Motor, OtherUse, Special};
     let c = "demand";
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
@@ -7880,48 +8018,71 @@ fn demand(s: &mut Session, p: &Value) -> R {
             "entrance",
         ],
     )?;
-    // Not given: the utility the project's building code names.
-    let utility = string(c, p, "utility")?.or_else(|| s.model.electrical_methods().demand.clone()).ok_or_else(|| {
-        bad(
-            c,
-            format!(
-                "`utility` is required: {}; or pick one for the project in Manage > Building Codes \
-                 (`building_code {{electrical: {{demand}}}}`)",
-                d::utilities().join(", ")
-            ),
-        )
-    })?;
-    if let Some((u, member)) = crate::entrance::find(&utility) {
+    // Not given: the utility whose code the project is held to (its unit demand's, else its entrance categories').
+    let own_utility = |r: Option<(String, bool)>| r.filter(|(_, own)| *own).map(|(u, _)| u);
+    let electrical = crate::codes::Discipline::Electrical;
+    let utility = string(c, p, "utility")?
+        .or_else(|| own_utility(s.model.section_as::<d::Standard>(electrical, "unit_demand").map(|(x, own)| (x.utility, own))))
+        .or_else(|| own_utility(s.model.section_as::<crate::entrance::Utility>(electrical, "entrance").map(|(x, own)| (x.id, own))))
+        .ok_or_else(|| {
+            bad(
+                c,
+                format!(
+                    "`utility` is required: {}, {}; or hold the project to a utility's code in Manage > Building Codes",
+                    d::names().join(", "),
+                    crate::entrance::names().join(", ")
+                ),
+            )
+        })?;
+    // The project's utility, as its amendment holds it and the project changed it; else BIMCraft's.
+    // Each amendment's own entrance, wherever it stands: one utility's never answers for another's.
+    for (u, _, own) in s.model.held_wholes::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance", "rule") {
+        let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
+        if own && (u.id.eq_ignore_ascii_case(&utility) || member.is_some()) {
+            return demand_table(p, &utility, &u, member);
+        }
+    }
+    // The utility's own unit demand, as its amendment holds it, wherever it stands among the project's amendments: never
+    // the rules of another utility layered with it.
+    let project = s
+        .model
+        .held_wholes::<d::Standard>(crate::codes::Discipline::Electrical, "unit_demand", "method")
+        .into_iter()
+        .find(|(u, _, own)| *own && u.utility.eq_ignore_ascii_case(&utility))
+        .map(|(u, source, _)| (u, source.unwrap_or_else(|| "changed in this project".into())));
+    if project.is_none()
+        && let Some((u, member)) = crate::entrance::find(&utility)
+    {
         return demand_table(p, &utility, u, member);
     }
-    let Some(source) = d::source(&utility) else {
+    let Some((standard, source)) = project.or_else(|| d::find(&utility).cloned()) else {
         return Err(bad(
             c,
             format!(
-                "there are no tables for `{utility}` yet, only {} and, as data, {}: they are the utility's own, and are added from its standard",
-                d::UTILITIES.join(", "),
+                "there are no tables for `{utility}` yet, only {} and {}: they are the utility's own, added as a building code from its standard",
+                d::names().join(", "),
                 crate::entrance::names().join(", ")
             ),
         ));
     };
+    let utility = standard.utility.clone();
+    let source = source.as_str();
+    let g = match &standard.method {
+        d::Method::Annexes(a) => return demand_by_annexes(p, &utility, source, a),
+        d::Method::Table(t) => return demand_by_table(p, &utility, source, t),
+        d::Method::Terms(g) => g,
+    };
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
-    if utility == "ENEL" {
-        return demand_enel(p, &utility, source);
-    }
-    if utility == "CELESC" {
-        return demand_celesc(p, &utility, source);
-    }
     if let Some(k) =
         ["network", "installed_kw", "demand_current_a", "phases", "demand_kva", "entrance"].iter().find(|k| p.get(**k).is_some())
     {
         return Err(bad(
             c,
-            format!(
-                "`{k}` is for utilities ENEL and CELESC: {utility}'s standard takes the loads of its examples, not a category by installed load"
-            ),
+            format!("`{k}` is for a utility that frames a supply by installed load: {utility}'s standard takes the loads of its examples"),
         ));
     }
-    let system = System::parse(choice(c, p, "system", &["127/220", "220/380"], "127/220")?).unwrap_or(System::S127_220);
+    let systems = g.systems();
+    let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or_default())?;
     let area = match p.get("area").filter(|v| !v.is_null()) {
         None => None,
         Some(_) => Some(within(c, p, "area", 0.0, 0.0, 1.0e6)?),
@@ -7983,9 +8144,10 @@ fn demand(s: &mut Session, p: &Value) -> R {
             if let Some(k) = o.keys().find(|k| !["use", "kw", "pf"].contains(&k.as_str())) {
                 return Err(bad(c, format!("`lighting_outlets`: unknown parameter `{k}`")));
             }
-            let kind = choice(c, v, "use", USES, "")?;
+            let uses = g.uses();
+            let kind = choice(c, v, "use", &uses, "")?;
             if kind.is_empty() {
-                return Err(bad(c, format!("`lighting_outlets`: `use` is one of {}", USES.join(", "))));
+                return Err(bad(c, format!("`lighting_outlets`: `use` is one of {}", uses.join(", "))));
             }
             let kw = within(c, v, "kw", f64::NAN, 0.0, 1.0e6)?;
             if kw.is_nan() {
@@ -8003,11 +8165,9 @@ fn demand(s: &mut Session, p: &Value) -> R {
         let n = count(&v, "count", 100_000.0)?;
         if o.get("btu").is_some_and(|x| !x.is_null()) {
             let btu = within(c, &v, "btu", 0.0, 0.0, 1.0e6)?;
-            let (va, w) = d::window_air(btu).ok_or_else(|| {
-                bad(
-                    c,
-                    format!("`btu` {btu} is not in Tabela 8: 7100, 8500, 10000, 12000, 14000, 18000, 21000 or 30000; or give `va` and `w`"),
-                )
+            let (va, w) = g.window_air(btu).ok_or_else(|| {
+                let listed: Vec<String> = g.window_air.iter().map(|r| r.0.to_string()).collect();
+                bad(c, format!("`btu` {btu} is not in Tabela 8: {}; or give `va` and `w`", listed.join(", ")))
             })?;
             air.push(Air { va, w, count: n });
         } else {
@@ -8031,8 +8191,9 @@ fn demand(s: &mut Session, p: &Value) -> R {
                 Some(x @ (1 | 3)) => x as u32,
                 _ => return Err(bad(c, "`motors`: `phases` is 1 or 3 with `cv`")),
             };
-            let (kva, kw) = d::motor(cv, phases).ok_or_else(|| {
-                bad(c, format!("no {cv} cv {}-phase motor in Tabela {}; give `kva` and `kw`", phases, if phases == 1 { 14 } else { 15 }))
+            let (kva, kw) = g.motor(cv, phases).ok_or_else(|| {
+                let table = if phases == 1 { "13" } else { "14" };
+                bad(c, format!("no {cv} cv {phases}-phase motor in Tabela {table}; give `kva` and `kw`"))
             })?;
             motors.push(Motor { kva, kw, count: n });
         } else {
@@ -8049,8 +8210,12 @@ fn demand(s: &mut Session, p: &Value) -> R {
         if let Some(k) = o.keys().find(|k| !["kind", "kw", "count"].contains(&k.as_str())) {
             return Err(bad(c, format!("`special`: unknown parameter `{k}`")));
         }
-        let kind = SpecialKind::parse(choice(c, &v, "kind", SPECIAL_KINDS, "")?)
-            .ok_or_else(|| bad(c, format!("`special`: `kind` is one of {}", SPECIAL_KINDS.join(", "))))?;
+        let kinds = g.special_kinds();
+        let kind = choice(c, &v, "kind", &kinds, "")?;
+        if kind.is_empty() {
+            return Err(bad(c, format!("`special`: `kind` is one of {}", kinds.join(", "))));
+        }
+        let kind = kind.to_string();
         let kw = within(c, &v, "kw", f64::NAN, 0.0, 1.0e6)?;
         if kw.is_nan() {
             return Err(bad(c, "`special`: `kw` is required"));
@@ -8073,17 +8238,18 @@ fn demand(s: &mut Session, p: &Value) -> R {
         hydro: loads("hydromassage", "w")?,
         commercial_air: choice(c, p, "air_use", &["residential", "commercial"], "residential")? == "commercial",
     };
-    let o = d::compute(&input).map_err(|e| bad(c, e))?;
+    let o = g.compute(&input).map_err(|e| bad(c, e))?;
     let r6 = |x: f64| (x * 1.0e6).round() / 1.0e6 + 0.0;
-    let cat = d::category(system, o.installed_kw, o.demand_kva);
+    let cat = g.category(system, o.installed_kw, o.demand_kva);
     let (category, note) = match cat {
         Some(k) => (
-            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
+            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earthing, "phases": k.phases}),
             Value::Null,
         ),
-        None if o.installed_kw > 75.0 => {
-            (Value::Null, json!("above 75 kW the utility serves at primary voltage, which this standard does not cover"))
-        }
+        None if o.installed_kw > g.primary_above => (
+            Value::Null,
+            json!(format!("above {} kW the utility serves at primary voltage, which this standard does not cover", g.primary_above)),
+        ),
         None => (Value::Null, json!("the demand is above the last category of the table")),
     };
     let t = &o.terms;
@@ -8098,14 +8264,17 @@ fn demand(s: &mut Session, p: &Value) -> R {
         "demand_kva_rounded_up": (o.demand_kva - 1.0e-9).ceil(),
         "category": category,
         "category_note": note,
-        "system": if system == System::S127_220 { "127/220" } else { "220/380" },
-        "not_covered": "the poles, boxes, earthing conduit and motor limits of Tabelas 1A to 1C, Tabela 1D (two clients on one pole), the starting of motors (Tabela 12) and the DPS and other requirements of the entry",
+        "system": system,
+        "not_covered": g.not_covered,
     }))
 }
 
-fn dps_check(_: &mut Session, p: &Value) -> R {
-    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, REGIONS, Region, SIGNALS};
+fn dps_check(s: &mut Session, p: &Value) -> R {
+    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, Region};
     let c = "dps_check";
+    let r = rules_of(s, c, "surge", dps::rule_sets())?;
+    let regions = r.region_names();
+    let signal_names: Vec<&str> = r.signals.iter().map(String::as_str).collect();
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
@@ -8128,8 +8297,8 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             "before_dr",
         ],
     )?;
-    let Some(region) = Region::parse(choice(c, p, "region", REGIONS, "")?) else {
-        return Err(bad(c, format!("`region` is required: {}", REGIONS.join(", "))));
+    let Some(region) = Region::parse(choice(c, p, "region", &regions, "")?) else {
+        return Err(bad(c, format!("`region` is required: {}", regions.join(", "))));
     };
     let line = dps::Line {
         overhead: flag(c, p, "overhead")?,
@@ -8154,9 +8323,9 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     let before_dr = flag(c, p, "before_dr")?;
     let system = match p.get("system").filter(|v| !v.is_null()) {
         None => None,
-        Some(v) => match v.as_str().filter(|x| dps::withstand(x).is_some()) {
+        Some(v) => match v.as_str().filter(|x| dps::withstand(&r, x).is_some()) {
             Some(x) => Some(x.to_string()),
-            None => return Err(bad(c, format!("`system` is one of {}, got {v}", dps::SYSTEMS.join(", ")))),
+            None => return Err(bad(c, format!("`system` is one of {}, got {v}", r.systems().join(", ")))),
         },
     };
     let uo = match p.get("uo").filter(|v| !v.is_null()) {
@@ -8168,34 +8337,34 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
         None => {}
         Some(Value::Array(a)) if a.len() <= 1000 => {
             for v in a {
-                let kind = v.as_str().filter(|k| dps::signal_required(k).is_some());
+                let kind = v.as_str().filter(|k| dps::signal_required(&r, k).is_some());
                 let Some(kind) = kind else {
-                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", SIGNALS.join(", "))));
+                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", signal_names.join(", "))));
                 };
                 signals.push(json!({
                     "kind": kind,
                     "required": true,
-                    "why": dps::signal_required(kind),
+                    "why": dps::signal_required(&r, kind),
                     "where": "at the building's entry or exit",
-                    "min_impulse_withstand_kv": dps::SIGNAL_ENTRY_WITHSTAND_KV,
+                    "min_impulse_withstand_kv": r.signal_entry_withstand,
                 }));
             }
         }
-        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", SIGNALS.join(", ")))),
+        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", signal_names.join(", ")))),
     }
-    let v = dps::required(&line);
+    let v = dps::required(&r, &line);
     let mut power = Map::new();
     power.insert("required".into(), json!(v.required));
     power.insert("exempt".into(), json!(v.exempt));
     power.insert("reasons".into(), json!(v.reasons));
     if v.required {
         power.insert("purpose".into(), json!(PURPOSES[purpose as usize]));
-        power.insert("where".into(), json!(dps::place(purpose, existing)));
+        power.insert("where".into(), json!(dps::place(&r, purpose, existing)));
         power.insert(
             "short_circuit".into(),
             json!("the DPS withstands the short-circuit current presumed where it is installed, with the overcurrent device that goes with it, and a DPS with spark gaps interrupts the follow current of that point (6.3.5.2.4 e)"),
         );
-        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(x).map(|w| (x, w))) {
+        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(&r, x).map(|w| (x, w))) {
             power.insert(
                 "up".into(),
                 json!({
@@ -8211,7 +8380,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             let list = if before_dr { dps::schemes_before_dr(e, neutral) } else { dps::schemes(e, neutral) };
             three = list.contains(&3);
             let text: Vec<Value> = list.iter().map(|s| json!({"scheme": s, "connects": dps::scheme_text(*s, e)})).collect();
-            let modes: Vec<Value> = dps::uc_min(e, neutral, uo.unwrap_or(1.0))
+            let modes: Vec<Value> = dps::uc_min(&r, e, neutral, uo.unwrap_or(1.0))
                 .iter()
                 .map(|u| match uo {
                     Some(_) => json!({"between": u.between, "formula": u.formula, "volts": (u.volts * 100.0).round() / 100.0}),
@@ -8219,7 +8388,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
                 })
                 .collect();
             power.insert("uc_min".into(), json!({"uo_v": uo, "modes": modes}));
-            match dps::subsequent_current(e) {
+            match dps::subsequent_current(&r, e) {
                 Some(dps::Subsequent::AtLeastA(a)) => {
                     power.insert("subsequent_current".into(), json!({"neutral_pe_min_a": a}));
                 }
@@ -8242,12 +8411,15 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             Value::Object(o)
         };
         if purpose != Purpose::Direct {
-            power.insert("discharge_ka".into(), extra(dps::discharge(purpose, false, phases), dps::discharge(purpose, true, phases)));
+            power.insert(
+                "discharge_ka".into(),
+                extra(dps::discharge(&r, purpose, false, phases), dps::discharge(&r, purpose, true, phases)),
+            );
         }
         if purpose != Purpose::Line {
-            power.insert("impulse_ka".into(), extra(dps::impulse(false, phases), dps::impulse(true, phases)));
+            power.insert("impulse_ka".into(), extra(dps::impulse(&r, false, phases), dps::impulse(&r, true, phases)));
         }
-        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(purpose), "max_length_m": dps::CONDUCTOR_LENGTH}));
+        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(&r, purpose), "max_length_m": r.conductor_length}));
     }
     Ok(json!({
         "power": power,
@@ -8298,9 +8470,9 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     }
     only(c, p, &["rooms", "alternative", "standard"])?;
     let alternative = flag(c, p, "alternative")?;
-    let names: Vec<&str> = loads::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, loads::DEFAULT)?;
-    let set = loads::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/load-points.json")))?;
+    // The project's electrical code's, as it changed them, or a standard named.
+    let set = held(s, c, p, ("load_points", "standard"), loads::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no load points in the building codes"))?;
     let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
     // (name, kind, area m2, perimeter m, points, kind given)
     let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
@@ -8436,16 +8608,15 @@ fn drawn_points(m: &Model, rooms: &crate::rooms::Rooms) -> (Option<PerRoom>, Opt
     (outlets, lights)
 }
 
-fn dr_check(_: &mut Session, p: &Value) -> R {
+fn dr_check(s: &mut Session, p: &Value) -> R {
     use crate::dr::{self, KINDS, PLACES, Place};
     let c = "dr_check";
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
     only(c, p, &["circuits", "building", "standard"])?;
-    let names: Vec<&str> = dr::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, dr::DEFAULT)?;
-    let set = dr::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/dr-check.json")))?;
+    let set = held(s, c, p, ("rcd", "standard"), dr::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no residual-current device rules in the building codes"))?;
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
     let list = match p.get("circuits") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
@@ -8524,7 +8695,7 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn bath_volumes(_: &mut Session, p: &Value) -> R {
+fn bath_volumes(s: &mut Session, p: &Value) -> R {
     use crate::bath::{self, Bath, CLASSES, Fixture, KINDS, SUPPLIES, Thing};
     let c = "bath_volumes";
     if !p.is_object() {
@@ -8532,9 +8703,8 @@ fn bath_volumes(_: &mut Session, p: &Value) -> R {
     }
     only(c, p, &["fixture", "things", "public", "standard"])?;
     let public = flag(c, p, "public")?;
-    let names: Vec<&str> = bath::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, bath::DEFAULT)?;
-    let set = bath::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/bath-volumes.json")))?;
+    let set = held(s, c, p, ("bath_volumes", "standard"), bath::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no bathroom volumes in the building codes"))?;
     let f = p.get("fixture").filter(|v| v.is_object()).ok_or_else(|| bad(c, "`fixture` {outline | shower, floor?, rim?} is required"))?;
     let at = |e: String| format!("fixture: {e}");
     only(c, f, &["outline", "shower", "floor", "rim"]).map_err(at)?;
@@ -8626,9 +8796,13 @@ fn bath_volumes(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn hydrant_size(_: &mut Session, p: &Value) -> R {
-    use crate::hydrant::{self, MATERIALS, MAX_NOZZLE_HEAD, MAX_SPEED, TYPE_KEYS};
+fn hydrant_size(s: &mut Session, p: &Value) -> R {
+    use crate::hydrant;
     let c = "hydrant_size";
+    // The project's rules: its plumbing code's Hydrants (CBPMESP IT 22 in BIMCraft's library).
+    let rules = s.model.rules::<hydrant::HydrantRules>();
+    let keys: Vec<&str> = rules.types.iter().map(|t| t.key.as_str()).collect();
+    let columns = rules.reserve.len().max(1) as f64;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["region", "column", "area", "type", "hydrants", "inside", "nominal", "material", "length", "rise"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -8645,17 +8819,17 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
     let mut system: Option<(u8, f64)> = None;
     if has_column || has_area {
         if !has_column {
-            return Err(bad(c, "`column` (1 to 5, of IT 22's Tabela 3) is required with `area`"));
+            return Err(bad(c, format!("`column` (1 to {columns}, of the code's reserve table) is required with `area`")));
         }
         if !has_area {
             return Err(bad(c, "`area` (m², built) is required with `column`"));
         }
-        let column = within(c, p, "column", 1.0, 1.0, 5.0)?;
+        let column = within(c, p, "column", 1.0, 1.0, columns)?;
         if column.fract() != 0.0 {
-            return Err(bad(c, "`column` must be a whole number from 1 to 5"));
+            return Err(bad(c, format!("`column` must be a whole number from 1 to {columns}")));
         }
         let area = within(c, p, "area", 0.0, f64::MIN_POSITIVE, 1.0e8)?;
-        system = hydrant::system_for(column as u8, area);
+        system = rules.system_for(column as u8, area);
     }
     let mut out = serde_json::Map::new();
     if let Some((t, rti)) = system {
@@ -8669,12 +8843,12 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
             }
             Some((t, _)) if t != 4 => Some(t.to_string()),
             Some(_) => None,
-            None => return Err(bad(c, "`type` (1, 2, 3, 4-40, 4-65 or 5) or `column` and `area` is required")),
+            None => return Err(bad(c, format!("`type` ({}) or `column` and `area` is required", keys.join(", ")))),
         }
     } else {
-        let key = choice(c, p, "type", TYPE_KEYS, "")?;
-        if let (Some((t, _)), Some(row)) = (system, hydrant::kind(key))
-            && row.1 != t
+        let key = choice(c, p, "type", &keys, "")?;
+        if let (Some((t, _)), Some(row)) = (system, rules.kind(key))
+            && row.kind != t
         {
             return Err(bad(
                 c,
@@ -8688,14 +8862,14 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
     if hydrants.fract() != 0.0 {
         return Err(bad(c, "`hydrants` must be a whole number from 1 to 1000"));
     }
-    let Some(t) = hydrant::kind(&key) else { return Err(bad(c, format!("no system type `{key}`"))) };
-    let flow = hydrant::design_flow(&key, hydrants as u32);
+    let Some(t) = rules.kind(&key) else { return Err(bad(c, format!("no system type `{key}`"))) };
+    let flow = rules.design_flow(&key, hydrants as u32);
     out.insert("type".into(), json!(key));
     out.insert("flow_lpm".into(), json!(flow));
-    out.insert("nozzle_head_mca".into(), json!(t.6));
-    out.insert("hose_dn_mm".into(), json!(t.3));
-    out.insert("hose_length_m".into(), json!(t.4));
-    let mut ok = t.6 <= MAX_NOZZLE_HEAD;
+    out.insert("nozzle_head_mca".into(), json!(t.nozzle_head));
+    out.insert("hose_dn_mm".into(), json!(t.hose_dn));
+    out.insert("hose_length_m".into(), json!(t.hose_length));
+    let mut ok = t.nozzle_head <= rules.max_nozzle_head;
     if absent(p.get("inside")) {
         if !absent(p.get("nominal")) {
             return Err(bad(c, "`nominal` needs the pipe's `inside` diameter (mm)"));
@@ -8703,40 +8877,48 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
         return Ok(Value::Object(out));
     }
     let inside = within(c, p, "inside", 0.0, f64::MIN_POSITIVE, 5000.0)?;
-    let material = choice(c, p, "material", &MATERIALS.iter().map(|m| m.0).collect::<Vec<_>>(), "steel")?;
-    let cf = hydrant::hazen_c(material).unwrap_or(120.0);
+    let materials: Vec<&str> = rules.hazen_c.iter().map(|m| m.material.as_str()).collect();
+    let first = if materials.contains(&"steel") { "steel" } else { materials.first().copied().unwrap_or("") };
+    let material = choice(c, p, "material", &materials, first)?;
+    let cf = rules.hazen_c(material).ok_or_else(|| bad(c, format!("`material` is one of {}", materials.join(", "))))?;
     let length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
     let rise = within(c, p, "rise", 0.0, -MAX_COORD, MAX_COORD)? / 1000.0;
     let (v, j) = (hydrant::speed(flow, inside), hydrant::hazen_j(flow, cf, inside));
     let loss = j * length;
-    let speed_ok = v <= MAX_SPEED + 1e-9;
+    let speed_ok = v <= rules.max_speed + 1e-9;
     ok = ok && speed_ok;
     out.insert("speed_ms".into(), json!(round(v, 100.0)));
     out.insert("speed_ok".into(), json!(speed_ok));
     out.insert("head_loss_m_per_m".into(), json!(round(j, 1.0e5)));
     out.insert("loss_mca".into(), json!(round(loss, 100.0)));
-    out.insert("need_mca".into(), json!(round(t.6 + loss + rise, 100.0)));
+    out.insert("need_mca".into(), json!(round(t.nozzle_head + loss + rise, 100.0)));
     out.insert(
         "need_covers".into(),
         json!("nozzle head + head loss of the straight pipe + rise: not the hose, the fittings or the pressure at the source"),
     );
     if !absent(p.get("nominal")) {
         let nominal = within(c, p, "nominal", 0.0, f64::MIN_POSITIVE, 5000.0)?;
-        let size_ok = nominal + 1e-9 >= hydrant::min_nominal(&key);
+        let size_ok = nominal + 1e-9 >= rules.min_nominal(&key);
         ok = ok && size_ok;
         out.insert("size_ok".into(), json!(size_ok));
     }
     out.insert("ok".into(), json!(ok));
     out.insert(
         "ok_covers".into(),
-        json!("nozzle head within 100 mca, speed within 5 m/s and the pipe's size only: it is not a verdict on the design"),
+        json!(format!(
+            "nozzle head within {} mca, speed within {} m/s and the pipe's size only: it is not a verdict on the design",
+            rules.max_nozzle_head, rules.max_speed
+        )),
     );
     Ok(Value::Object(out))
 }
 
-fn water_size(_: &mut Session, p: &Value) -> R {
-    use crate::water::{self, FITTINGS, MAX_SPEED, MIN_USE_KPA, Method};
+fn water_size(s: &mut Session, p: &Value) -> R {
+    use crate::water::{self, Method};
     let c = "water_size";
+    // The project's rules: its plumbing code's Cold Water and Fixtures.
+    let rules = s.model.rules::<water::WaterRules>();
+    let library = s.model.rules::<crate::plumbing::Fixtures>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["fixtures", "flow", "method", "dn", "length", "fittings", "pressure", "rise"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -8747,20 +8929,21 @@ fn water_size(_: &mut Session, p: &Value) -> R {
             .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
             .ok_or_else(|| bad(c, format!("`{key}`: `{kind}` must be a whole number from 0 to 10000, got {n}")))
     };
-    let method = Method::parse(choice(c, p, "method", &["weights", "sum"], "weights")?).unwrap_or(Method::Weights);
+    let said = choice(c, p, "method", &["weights", "sum"], "weights")?;
+    let method = Method::parse(if absent(p.get("method")) { rules.flow_method.as_str() } else { said }).unwrap_or(Method::Weights);
     let flow = match (absent(p.get("flow")), p.get("fixtures")) {
         (false, f) if !absent(f) => return Err(bad(c, "give `flow` or `fixtures`, not both")),
         (false, _) => within(c, p, "flow", 0.0, f64::MIN_POSITIVE, 1000.0)?,
         (true, Some(Value::Object(f))) => {
             let mut list: Vec<(&str, f64)> = Vec::new();
             for (kind, n) in f {
-                if water::fixture(kind).is_none() {
-                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))));
+                if library.fixture(kind).is_none() {
+                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", library.kinds().join(", "))));
                 }
                 let n = whole("fixtures", kind, n)?;
                 list.push((kind.as_str(), n));
             }
-            water::design_flow(method, &list)
+            rules.design_flow(method, &list, &library)
         }
         (true, Some(v)) if !absent(Some(v)) => return Err(bad(c, format!("`fixtures` must be an object {{kind: count}}, got {v}"))),
         _ => 0.0,
@@ -8769,36 +8952,44 @@ fn water_size(_: &mut Session, p: &Value) -> R {
         return Err(bad(c, "`flow` (L/s) or `fixtures` is required"));
     }
     let dn = if absent(p.get("dn")) {
-        water::smallest_dn(flow).ok_or_else(|| bad(c, "no DN of PVC soldável (20 to 110) keeps the speed within 3 m/s at that flow"))?
+        rules.smallest_dn(flow).ok_or_else(|| {
+            let dns = rules.dns();
+            let (first, last) = (dns.first().copied().unwrap_or(0.0), dns.last().copied().unwrap_or(0.0));
+            bad(c, format!("no DN of the code's pipes ({first} to {last}) keeps the speed within {} m/s at that flow", rules.max_speed))
+        })?
     } else {
         let dn = within(c, p, "dn", 0.0, 0.0, 1000.0)?;
-        water::inside(dn).map(|_| dn).ok_or_else(|| bad(c, "`dn` must be one of 20, 25, 32, 40, 50, 60, 75, 85, 110 (PVC soldável)"))?
+        rules.inside(dn).map(|_| dn).ok_or_else(|| {
+            let dns: Vec<String> = rules.dns().iter().map(|d| d.to_string()).collect();
+            bad(c, format!("`dn` must be one of {} (the code's pipes)", dns.join(", ")))
+        })?
     };
-    let inside = water::inside(dn).ok_or_else(|| bad(c, "`dn` is not a PVC soldável size"))?;
+    let inside = rules.inside(dn).ok_or_else(|| bad(c, "`dn` is not one of the code's pipes"))?;
     let mut length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
     match p.get("fittings") {
         v if absent(v) => {}
         Some(Value::Object(f)) => {
             for (kind, n) in f {
-                let le = water::equivalent_length(dn, kind)
-                    .ok_or_else(|| bad(c, format!("`fittings`: no fitting `{kind}`, use {}", FITTINGS.join(", "))))?;
+                let le = rules
+                    .equivalent_length(dn, kind)
+                    .ok_or_else(|| bad(c, format!("`fittings`: no fitting `{kind}`, use {}", rules.fittings.join(", "))))?;
                 length += le * whole("fittings", kind, n)?;
             }
         }
         Some(v) => return Err(bad(c, format!("`fittings` must be an object {{fitting: count}}, got {v}"))),
         None => {}
     }
-    let (speed, j) = water::head_loss(flow, inside, water::EPS_PVC);
+    let (speed, j) = water::head_loss(flow, inside, rules.roughness);
     let loss = j * length * water::KPA_PER_M;
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
-    let mut ok = speed <= MAX_SPEED + 1e-9;
+    let mut ok = speed <= rules.max_speed + 1e-9;
     let end = if absent(p.get("pressure")) {
         None
     } else {
         let pressure = within(c, p, "pressure", 0.0, 0.0, 1.0e5)?;
         let rise = within(c, p, "rise", 0.0, -MAX_COORD, MAX_COORD)? / 1000.0;
         let end = pressure - loss - rise * water::KPA_PER_M;
-        ok = ok && end >= MIN_USE_KPA;
+        ok = ok && end >= rules.min_use_kpa;
         Some(end)
     };
     Ok(json!({
@@ -8815,7 +9006,7 @@ fn water_size(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn reservoir_size(_: &mut Session, p: &Value) -> R {
+fn reservoir_size(s: &mut Session, p: &Value) -> R {
     use crate::reservoir::{self, Input, Kind, Status};
     let c = "reservoir_size";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
@@ -8880,7 +9071,7 @@ fn reservoir_size(_: &mut Session, p: &Value) -> R {
         smallest_l: optional("smallest_l", 1.0e9)?,
         peak_l: optional("peak_l", 1.0e9)?,
     };
-    let r = reservoir::size(&input);
+    let r = reservoir::size_by(&input, &s.model.rules::<reservoir::ReservoirRules>());
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
     let pending: Vec<&str> = r.checks.iter().filter(|k| k.status == Status::Pending).map(|k| k.id).collect();
     Ok(json!({
@@ -8925,11 +9116,14 @@ fn reservoir_size(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn storm_size(_: &mut Session, p: &Value) -> R {
-    use crate::storm::{self, DEFAULT_RAIN, MIN_SLOPE, N_PVC, Off, Outlet};
+fn storm_size(s: &mut Session, p: &Value) -> R {
+    use crate::storm::{self, Off, Outlet};
     let c = "storm_size";
+    // The project's rules: its plumbing code's Storm Drainage, and the rain of its Site and Climate.
+    let rules = s.model.rules::<storm::StormRules>();
+    let site_rain = s.model.codes.site.rain_intensity.filter(|r| *r > 0.0);
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    const KEYS: &[&str] = &["kind", "area", "rainfall", "flow", "outlet", "gutter", "length", "slope", "inside"];
+    const KEYS: &[&str] = &["kind", "area", "rainfall", "flow", "outlet", "gutter", "length", "slope", "inside", "material"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
@@ -8937,8 +9131,10 @@ fn storm_size(_: &mut Session, p: &Value) -> R {
     if kind.is_empty() {
         return Err(bad(c, "`kind` (downpipe or horizontal) is required"));
     }
-    let mine: &[&str] = if kind == "downpipe" { &["outlet", "gutter", "length"] } else { &["slope", "inside"] };
-    if let Some(key) = ["outlet", "gutter", "length", "slope", "inside"].into_iter().find(|k| o.contains_key(*k) && !mine.contains(k)) {
+    let mine: &[&str] = if kind == "downpipe" { &["outlet", "gutter", "length"] } else { &["slope", "inside", "material"] };
+    if let Some(key) =
+        ["outlet", "gutter", "length", "slope", "inside", "material"].into_iter().find(|k| o.contains_key(*k) && !mine.contains(k))
+    {
         return Err(bad(c, format!("`{key}` does not apply to a {kind}")));
     }
     if !absent(p.get("flow"))
@@ -8947,62 +9143,79 @@ fn storm_size(_: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("`{key}` and `flow` are two ways to give the flow: give one")));
     }
     let outlet = Outlet::parse(choice(c, p, "outlet", &["edge", "funnel"], "edge")?).unwrap_or(Outlet::Edge);
+    // Where the rainfall comes from: given, the project's site, or the code's default for a small roof.
+    let mut rain_from = "given";
     let flow = if absent(p.get("flow")) {
         let area = within(c, p, "area", 0.0, 0.0, 1.0e7)?;
         if area <= 0.0 {
             return Err(bad(c, "`area` (m², the roof that drains) or `flow` (L/min) is required"));
         }
-        if area > storm::DEFAULT_RAIN_MAX_AREA && absent(p.get("rainfall")) {
+        let rain = if !absent(p.get("rainfall")) {
+            within(c, p, "rainfall", rules.default_rain, f64::MIN_POSITIVE, 1000.0)?
+        } else if let Some(r) = site_rain {
+            rain_from = "site";
+            r
+        } else if area > rules.default_rain_max_area {
             return Err(bad(
                 c,
                 format!(
-                    "`rainfall` (mm/h, from the standard's table for the place and return period) is required above {} m²: the default {DEFAULT_RAIN} mm/h is for smaller roofs",
-                    storm::DEFAULT_RAIN_MAX_AREA
+                    "`rainfall` (mm/h, from the standard's table for the place and return period) is required above {} m², or the project's Site and Climate (`site_climate`): the default {} mm/h is for smaller roofs",
+                    rules.default_rain_max_area, rules.default_rain
                 ),
             ));
-        }
-        storm::design_flow(within(c, p, "rainfall", DEFAULT_RAIN, f64::MIN_POSITIVE, 1000.0)?, area)
+        } else {
+            rain_from = "default";
+            rules.default_rain
+        };
+        storm::design_flow(rain, area)
     } else {
+        rain_from = "flow";
         within(c, p, "flow", 0.0, f64::MIN_POSITIVE, 1.0e9)?
     };
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
     if kind == "downpipe" {
         if absent(p.get("gutter")) {
-            return Err(bad(c, "`gutter` (the water depth in the gutter, 50 to 100 mm) is required"));
+            let [lo, hi] = rules.depth_range;
+            return Err(bad(c, format!("`gutter` (the water depth in the gutter, {lo} to {hi} mm) is required")));
         }
         if absent(p.get("length")) {
             return Err(bad(c, "`length` (the downpipe's, mm) is required"));
         }
         let (gutter, length) = (within(c, p, "gutter", 0.0, 0.0, 10_000.0)?, within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0);
-        let d = storm::downpipe_diameter(outlet, flow, gutter, length).map_err(|off| {
+        let d = storm::downpipe_by(&rules, outlet, flow, gutter, length).map_err(|off| {
+            let ([lo, hi], [_, most]) = (rules.depth_range, rules.diameter_axis);
             bad(
                 c,
                 match off {
-                    Off::Depth => "the water depth in the gutter must be 50 to 100 mm: the abacuses stop there",
-                    Off::Length => "a downpipe shorter than 0.3 m is off the abacuses",
-                    Off::Diameter => "more than 150 mm inside is off the abacuses of NBR 10844's Figure 3",
+                    Off::Depth => format!("the water depth in the gutter must be {lo} to {hi} mm: the abacuses stop there"),
+                    Off::Length => format!("a downpipe shorter than {} m is off the abacuses", rules.min_length),
+                    Off::Diameter => format!("more than {most} mm inside is off the code's downpipe abacuses"),
                 },
             )
         })?;
         return Ok(
-            json!({"flow_lpm": round(flow, 100.0), "inside_mm": round(d.diameter, 10.0), "by_depth_mm": round(d.by_depth, 10.0), "by_length_mm": round(d.by_length, 10.0)}),
+            json!({"flow_lpm": round(flow, 100.0), "inside_mm": round(d.diameter, 10.0), "by_depth_mm": round(d.by_depth, 10.0), "by_length_mm": round(d.by_length, 10.0), "rainfall_from": rain_from}),
         );
     }
     if absent(p.get("slope")) {
-        return Err(bad(c, "`slope` (a fraction, 0.005 at least) is required"));
+        return Err(bad(c, format!("`slope` (a fraction, {} at least) is required", rules.min_slope)));
     }
     let slope = within(c, p, "slope", 0.0, 0.0, 1.0)?;
-    if slope + 1e-9 < MIN_SLOPE {
-        return Err(bad(c, "`slope` must be 0.5 % (0.005) at least, NBR 10844"));
+    if slope + 1e-9 < rules.min_slope {
+        return Err(bad(c, format!("`slope` must be {} % ({}) at least, the code's least", rules.min_slope * 100.0, rules.min_slope)));
     }
-    let need = storm::horizontal_diameter(flow, slope, N_PVC);
+    let materials: Vec<&str> = rules.roughness.iter().map(|r| r.material.as_str()).collect();
+    let material = string(c, p, "material")?.unwrap_or_else(|| materials.first().map_or_else(String::new, |m| m.to_string()));
+    let n = rules.n(&material).ok_or_else(|| bad(c, format!("`material` is one of {}", materials.join(", "))))?;
+    let need = storm::horizontal_diameter(flow, slope, n);
     let inside = within(c, p, "inside", 0.0, 0.0, 10_000.0)?;
-    let carries = (inside > 0.0).then(|| storm::manning_flow(inside, slope, N_PVC));
+    let carries = (inside > 0.0).then(|| storm::manning_flow(inside, slope, n));
     Ok(json!({
         "flow_lpm": round(flow, 100.0),
         "inside_mm": round(need, 10.0),
         "carries_lpm": carries.map(|q| round(q, 10.0)),
         "ok": carries.map(|q| q + 1e-9 >= flow),
+        "rainfall_from": rain_from,
     }))
 }
 
@@ -10401,6 +10614,7 @@ fn voltage(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("voltage `{name}` is one distribution system `{system}` supplies: change or delete that first")));
         }
         m.voltages.remove(&name);
+        crate::electrical::to_codes(m, "voltages", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.voltages.get(&name).cloned();
@@ -10425,7 +10639,16 @@ fn voltage(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("there's already a voltage `{to}`")));
             }
             m.voltages.remove(&name);
+            let supplying: Vec<String> =
+                m.distribution_systems.iter().filter(|(_, d)| d.voltage_names().any(|v| *v == name)).map(|(k, _)| k.clone()).collect();
             rename_entry(m, &LibKind::Voltage, &name, &to);
+            crate::electrical::to_codes(m, "voltages", &name, None);
+            // The systems that name it name it again in the code, as they do in the project.
+            for k in supplying {
+                if let Some(d) = m.distribution_systems.get(&k).cloned() {
+                    crate::electrical::to_codes(m, "distribution_systems", &k, Some(json!(d)));
+                }
+            }
             to
         }
         _ => name,
@@ -10435,6 +10658,7 @@ fn voltage(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_VOLTAGES} voltages")));
     }
     m.voltages.insert(name.clone(), v.clone());
+    crate::electrical::to_codes(m, "voltages", &name, Some(json!(v)));
     Ok(json!({"name": name, "voltage": v}))
 }
 
@@ -10456,6 +10680,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("distribution system `{name}` is the one board {first}{more} is on: change that first")));
         }
         m.distribution_systems.remove(&name);
+        crate::electrical::to_codes(m, "distribution_systems", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.distribution_systems.get(&name).cloned();
@@ -10485,6 +10710,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
             }
             m.distribution_systems.remove(&name);
             rename_entry(m, &LibKind::DistributionSystem, &name, &to);
+            crate::electrical::to_codes(m, "distribution_systems", &name, None);
             to
         }
         _ => name,
@@ -10494,6 +10720,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_SYSTEMS} distribution systems")));
     }
     m.distribution_systems.insert(name.clone(), d.clone());
+    crate::electrical::to_codes(m, "distribution_systems", &name, Some(json!(d)));
     Ok(json!({"name": name, "distribution_system": d}))
 }
 
@@ -10509,6 +10736,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
         if m.wire_types.remove(&name).is_none() {
             return Err(bad(c, format!("there's no wire type `{name}`")));
         }
+        crate::electrical::to_codes(m, "wire_types", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.wire_types.get(&name).cloned();
@@ -10544,6 +10772,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
             }
             m.wire_types.remove(&name);
             rename_entry(m, &LibKind::WireType, &name, &to);
+            crate::electrical::to_codes(m, "wire_types", &name, None);
             to
         }
         _ => name,
@@ -10553,6 +10782,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_WIRE_TYPES} wire types")));
     }
     m.wire_types.insert(name.clone(), w.clone());
+    crate::electrical::to_codes(m, "wire_types", &name, Some(json!(w)));
     Ok(json!({"name": name, "wire_type": w}))
 }
 
@@ -13883,6 +14113,8 @@ fn sides(c: &str, s: &mut Session, p: &Value, id: Id, level: Guid) -> Result<Vec
 fn ramp(s: &mut Session, p: &Value) -> R {
     let c = "ramp";
     let m = &s.model;
+    // What a new ramp starts with: the project's code's.
+    let new_ramp = m.rules::<crate::codes::checks::RampRules>();
     let start = point_req(c, p, "start")?;
     let angle = climb(c, p, start)?;
     let level = level_param(c, m, p, "level")?;
@@ -13894,8 +14126,8 @@ fn ramp(s: &mut Session, p: &Value) -> R {
         height,
         start,
         angle,
-        width: num(c, p, "width")?.unwrap_or(RAMP_WIDTH),
-        slope: num(c, p, "slope")?.unwrap_or(RAMP_SLOPE),
+        width: num(c, p, "width")?.unwrap_or(new_ramp.width),
+        slope: num(c, p, "slope")?.unwrap_or(new_ramp.slope),
         landings: landings_param(c, p)?,
     };
     let length: f64 = stairs::ramp(m, &r).runs.iter().map(|r| r.length).sum();
@@ -21481,219 +21713,27 @@ fn standard(s: &mut Session, p: &Value) -> R {
 }
 
 fn building_code(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code";
-    only(c, p, &["set", "keep_rules", "stairs", "electrical", "reset", "save", "delete"])?;
-    let names: Vec<String> = codes::codes().iter().chain(&s.model.building_codes).map(|k| k.code.clone()).collect();
-    let set = match p.get("set") {
-        v if absent(v) => None,
-        Some(Value::String(t)) if names.contains(t) => Some(t.clone()),
-        // The one entry the two Brazilian standards had before they were told apart: NBR 9050's now.
-        Some(Value::String(t)) if t == "nbr" => Some("nbr-9050".to_string()),
-        Some(v) => return Err(bad(c, format!("`set` is one of {}, not {v}", names.join(", ")))),
-        None => None,
-    };
-    let save = string(c, p, "save")?.map(|n| codes::own_name(&n).map_err(|e| bad(c, e))).transpose()?;
-    let delete = string(c, p, "delete")?;
-    if let Some(d) = &delete
-        && !s.model.building_codes.iter().any(|k| k.code == *d)
-    {
-        return Err(bad(c, format!("`delete` takes one of the project's own codes away, and `{d}` is none of them")));
-    }
-    let (keep, reset) = (flag(c, p, "keep_rules")?, flag(c, p, "reset")?);
-    let patch = match p.get("stairs") {
-        v if absent(v) => None,
-        Some(Value::Object(o)) => Some(o),
-        Some(_) => return Err(bad(c, "`stairs` is the rules to change, by name: {width_min: 1100, …}")),
-        None => None,
-    };
-    let named = match p.get("electrical") {
-        v if absent(v) => None,
-        Some(Value::Object(o)) => Some(o),
-        Some(_) => {
-            return Err(bad(c, "`electrical` is the methods to name, by command: {demand: \"CPFL\", building_demand: \"NEC 220.84\"}"));
-        }
-        None => None,
-    };
-    if reset && (patch.is_some() || named.is_some()) {
-        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs` or `electrical`"));
-    }
-    // The project's own rules after this: kept across a change of code only when asked, then changed by `stairs`.
-    let mut own = if reset || (set.is_some() && !keep) { None } else { s.model.stair_rules.clone() };
-    let mut own_methods = if reset || (set.is_some() && !keep) { None } else { s.model.electrical_methods.clone() };
-    let code = set.clone().or_else(|| s.model.building_code.clone());
-    if let Some(named) = named {
-        let base = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
-        let mut methods = own_methods.clone().unwrap_or_else(|| base.electrical.clone());
-        for (k, v) in named {
-            let name = match v {
-                Value::Null => None,
-                Value::String(t) => Some(t.trim()),
-                _ => return Err(bad(c, format!("`electrical.{k}` is a method's name, or null to leave it to the command"))),
-            };
-            match k.as_str() {
-                "demand" => {
-                    let known = crate::demand::utilities();
-                    methods.demand = match name {
-                        Some(u) if !known.contains(&u) => {
-                            return Err(bad(c, format!("`demand` is a utility `demand` has tables for: {}", known.join(", "))));
-                        }
-                        u => u.map(String::from),
-                    };
-                }
-                "building_demand" => {
-                    let all = || crate::building_demand::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
-                    methods.building_demand = match name.map(|n| (n, crate::building_demand::method(n))) {
-                        Some((n, None)) => return Err(bad(c, format!("no method `{n}` in data/building-demand.json: {}", all()))),
-                        found => found.and_then(|(_, m)| m).map(|m| m.standard.clone()),
-                    };
-                }
-                _ => return Err(bad(c, format!("`electrical.{k}` names no command's method; they are demand and building_demand"))),
-            }
-        }
-        own_methods = Some(methods);
-    }
-    if let Some(patch) = patch {
-        let base = own.as_ref().unwrap_or(&code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic()).stairs);
-        let Ok(Value::Object(mut all)) = serde_json::to_value(base) else { return Err(bad(c, "the rules could not be read")) };
-        for (k, v) in patch {
-            if !codes::ORDER.contains(&k.as_str()) {
-                return Err(bad(c, format!("`{k}` is no stair rule; they are {}", codes::ORDER.join(", "))));
-            }
-            all.insert(k.clone(), v.clone());
-        }
-        let rules: codes::StairRules = serde_json::from_value(Value::Object(all)).map_err(|e| bad(c, format!("`stairs`: {e}")))?;
-        rules.check().map_err(|e| bad(c, e))?;
-        own = Some(rules);
-    }
-    let mut code = code;
-    let mut kept = s.model.building_codes.clone();
-    // The rules in force, saved as a code of the project's own, which it is then held to.
-    if let Some(name) = save {
-        let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
-        let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
-        let stairs = own.take().unwrap_or_else(|| from.stairs.clone());
-        let electrical = own_methods.take().unwrap_or_else(|| from.electrical.clone());
-        // A rule kept is still from where the code it came from says; one changed is the project's.
-        let mut sources = from.sources.clone();
-        for rule in stairs.changed(&from.stairs) {
-            sources.insert(rule, format!("{name}: the project's own number"));
-        }
-        let new = codes::BuildingCode {
-            code: name.clone(),
-            name: name.clone(),
-            region: from.region.clone(),
-            references: from.references.clone(),
-            note: format!("The project's own, based on {}.", codes::code(&based_on).map_or(based_on.as_str(), |k| k.name.as_str())),
-            based_on,
-            sources,
-            checked: String::new(),
-            country: from.country.clone(),
-            stairs,
-            electrical,
-        };
-        kept.retain(|k| k.code != name);
-        kept.push(new);
-        code = Some(name);
-    }
-    // One taken away: a project held to it keeps its rules, as its own, under the code it was based on.
-    if let Some(name) = delete
-        && let Some(i) = kept.iter().position(|k| k.code == name)
-    {
-        let gone = kept.remove(i);
-        if code.as_deref() == Some(name.as_str()) {
-            own = own.or(Some(gone.stairs));
-            own_methods = own_methods.or(Some(gone.electrical));
-            code = codes::code(&gone.based_on).map(|k| k.code.clone());
-        }
-    }
-    // Rules and methods that are the code's own are not the project's.
-    let its = code.as_deref().and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k))).unwrap_or(codes::generic());
-    if own.as_ref() == Some(&its.stairs) {
-        own = None;
-    }
-    if own_methods.as_ref() == Some(&its.electrical) {
-        own_methods = None;
-    }
-    if own != s.model.stair_rules
-        || own_methods != s.model.electrical_methods
-        || code != s.model.building_code
-        || kept != s.model.building_codes
-    {
-        let m = s.model_mut();
-        m.stair_rules = own;
-        m.electrical_methods = own_methods;
-        m.building_code = code;
-        m.building_codes = kept;
-    }
-    let m = &s.model;
-    let code = m.building_code();
-    Ok(json!({
-        "code": code.code,
-        "name": code.name,
-        "region": code.region,
-        "references": code.references,
-        "note": code.note,
-        "stairs": m.stair_rules(),
-        "changed": m.stair_rules().changed(&code.stairs),
-        "electrical": m.electrical_methods(),
-        "custom": m.building_codes.iter().any(|k| k.code == code.code),
-        "based_on": code.based_on,
-        "all": codes::codes().iter().map(|k| (k, false)).chain(m.building_codes.iter().map(|k| (k, true))).map(|(k, own)| json!({
-            "code": k.code, "name": k.name, "region": k.region, "references": k.references, "note": k.note, "custom": own,
-        })).collect::<Vec<_>>(),
-    }))
+    crate::codes::command::building_code(s, p)
 }
 
-/// `building_code_export`: the code the project is held to, with the rules it changed, or one named, as an XML file.
 fn building_code_export(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code_export";
-    only(c, p, &["path", "code", "name"])?;
-    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to write"))?;
-    let m = &s.model;
-    let mut code = match string(c, p, "code")? {
-        Some(k) => m.code(&k).cloned().ok_or_else(|| bad(c, format!("no building code `{k}`")))?,
-        // The project's, as it is held to it: with the rules it changed.
-        None => {
-            codes::BuildingCode { stairs: m.stair_rules().clone(), electrical: m.electrical_methods().clone(), ..m.building_code().clone() }
-        }
-    };
-    if let Some(name) = string(c, p, "name")? {
-        code.name = codes::own_name(&name).map_err(|e| bad(c, e))?;
-    }
-    if code.based_on.is_empty() {
-        code.based_on = code.code.clone();
-    }
-    std::fs::write(&path, code.to_xml()).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    Ok(json!({"path": path, "name": code.name, "based_on": code.based_on}))
+    crate::codes::command::building_code_export(s, p)
 }
 
-/// `building_code_import`: a code read from an XML file, kept as one of the project's own.
 fn building_code_import(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code_import";
-    only(c, p, &["path", "name", "set"])?;
-    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to read"))?;
-    let set = flag(c, p, "set")?;
-    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{path}: {e}")))?.len();
-    if size > codes::MAX_XML as u64 {
-        return Err(bad(c, format!("{path}: larger than a building code's file (1 MB)")));
-    }
-    let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    // A file named after a code BIMCraft has (one exported as it was) comes in under another name.
-    let renamed = string(c, p, "name")?;
-    let (code, left_out) = codes::BuildingCode::from_xml(&text, renamed.as_deref()).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    let name = code.code.clone();
-    let m = s.model_mut();
-    m.building_codes.retain(|k| k.code != name);
-    m.building_codes.push(code);
-    if set {
-        m.building_code = Some(name.clone());
-        m.stair_rules = None;
-        m.electrical_methods = None;
-    }
-    Ok(json!({"code": name, "left_out": left_out, "set": set}))
+    crate::codes::command::building_code_import(s, p)
+}
+
+fn code_rules(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::code_rules(s, p)
+}
+
+fn site_climate(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::site_climate(s, p)
+}
+
+fn code_check(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::code_check(s, p)
 }
 
 /// `stair_sketch`: a stair made by its runs and turns becomes one drawn by hand, every riser a line of its own.

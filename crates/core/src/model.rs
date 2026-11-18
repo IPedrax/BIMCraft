@@ -55,9 +55,6 @@ pub const DEFAULT_HEIGHT: f64 = 3000.0;
 pub const RISER: f64 = 180.0;
 pub const TREAD: f64 = 280.0;
 pub const STAIR_WIDTH: f64 = 1000.0;
-/// A ramp's steepest slope, percent (1 in 12), and its width, unless told otherwise.
-pub const RAMP_SLOPE: f64 = 100.0 / 12.0;
-pub const RAMP_WIDTH: f64 = 1200.0;
 /// How far a railing on a stair or a ramp runs in from its edge, mm.
 pub const RAILING_INSET: f64 = 50.0;
 /// Balusters one railing may have.
@@ -188,7 +185,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
 /// 21 (the next release's, which every change since 0.12 shares): stairs have types (`types.stair`), a building code holds
-/// them to rules (the project's `building_code`, `stair_rules` and `building_codes`), and a stair is drawn along a `path`, as
+/// them to rules (the project's `codes`: the code it chose for each of five disciplines, the amendments over it, the rules it
+/// changed and its own codes; #386's `building_code`, `stair_rules` and `building_codes` are read into it, never written), and
+/// a stair is drawn along a `path`, as
 /// a `spiral` or by hand (`sketch`, `unsketched`), by a location `line` and `offset`, from a `base_offset` to a `top_offset`,
 /// `multistorey`, with its landings' edges moved (`edges`) and its landings turned 5 to 135 degrees, of a `length` and a
 /// `width` of their own, or made of `winders` and `balance`d. A dimension may measure to a stair's edge (`{"edge": n}`), and a
@@ -210,9 +209,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a project holds classification tables and what their parameters take codes from (`classification`, library entries
 /// of kind `classification`); a build that reads up to 20 would answer one with a serde error ("isn't a kind of library
 /// entry"), not "saved by a newer BIMCraft". A file of 20 needs no step for them: it holds no tables.
-/// And a building code names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`,
-/// `building_demand`), and a project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and
-/// `demand` and `building_demand` would ask for a method again.
+/// And a project's `codes` hold the electrical demand's methods too, each utility's or country's an amendment or a code of the
+/// electrical discipline; a build that reads up to 20 would leave `codes` out as a field it doesn't know, and `demand` and
+/// `building_demand` would ask for a method again.
 /// And a PDF publishing entry may set or omit its Creator and Producer (`creator`, `producer`, written only then); a build
 /// that reads up to 20 would leave them out as fields it doesn't know, list them as left out and write its own.
 /// And a note's leader takes a kind (`leader_kind`: two segments or curved); a build that reads up to 20 would leave it out
@@ -4271,18 +4270,17 @@ pub struct Model {
     /// What technical standard (NBR, ISO, ANSI, EU, JIS) drawing conventions follow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub standard: Option<crate::standards::TechnicalStandard>,
-    /// The building code its stairs and railings are held to, by what `data/building-codes.json` calls it; none until one
-    /// is chosen ([`Model::building_code`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Its building codes: the code it chose for each discipline, the amendments over it and the rules it changed, its
+    /// own codes, and its site's numbers (`codes.rs`, Manage > Building Codes).
+    #[serde(default, skip_serializing_if = "crate::codes::Codes::is_empty")]
+    pub codes: crate::shared::Shared<crate::codes::Codes>,
+    /// The building code as #386's files named it, its rules changed and its own codes: read, and taken into `codes`
+    /// by [`Model::migrate`]; never written.
+    #[serde(default, skip_serializing)]
     pub building_code: Option<String>,
-    /// Its own rules for stairs and railings, once it changed any of its code's ([`Model::stair_rules`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stair_rules: Option<crate::codes::StairRules>,
-    /// The methods its electrical demand is worked out by, once it named any its code doesn't ([`Model::electrical_methods`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub electrical_methods: Option<crate::codes::Electrical>,
-    /// Building codes of the project's own, saved under names it gave them (`building_code {save}`), or read from a file.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing)]
+    pub stair_rules: Option<serde_json::Map<String, serde_json::Value>>,
+    #[serde(default, skip_serializing)]
     pub building_codes: Vec<crate::codes::BuildingCode>,
     /// The pens each model category draws in, cut and in projection (Manage > Object Styles), by category: only those it
     /// has set apart from what a project starts with ([`Model::object_style`]).
@@ -4374,6 +4372,9 @@ pub struct Model {
     /// What its elements point at, looked up the other way (`Model::lookup`): no part of the model, never in a file.
     #[serde(skip)]
     pub derived: crate::derived::Derived,
+    /// The building codes' sections in force, as the modules read them, kept until `codes` changes.
+    #[serde(skip)]
+    pub code_cache: crate::codes::Cache,
 }
 
 impl Model {
@@ -4402,27 +4403,6 @@ impl Model {
                 self.object_styles.insert(cat.to_string(), style);
             }
         }
-    }
-
-    /// The building code its stairs and railings are held to: the one it chose, else the generic one, as is one this
-    /// BIMCraft doesn't know.
-    pub fn building_code(&self) -> &crate::codes::BuildingCode {
-        self.building_code.as_deref().and_then(|c| self.code(c)).unwrap_or(crate::codes::generic())
-    }
-
-    /// A building code by what it is called: one of the project's own, else one BIMCraft has.
-    pub fn code(&self, name: &str) -> Option<&crate::codes::BuildingCode> {
-        self.building_codes.iter().find(|c| c.code == name).or_else(|| crate::codes::code(name))
-    }
-
-    /// The rules its stairs and railings are held to: its own, else its building code's.
-    pub fn stair_rules(&self) -> &crate::codes::StairRules {
-        self.stair_rules.as_ref().unwrap_or(&self.building_code().stairs)
-    }
-
-    /// The methods `demand` and `building_demand` take when not given one: its own, else its building code's.
-    pub fn electrical_methods(&self) -> &crate::codes::Electrical {
-        self.electrical_methods.as_ref().unwrap_or(&self.building_code().electrical)
     }
 
     /// What its pens draw on paper: its own line weights, or those a project in its units starts with.
@@ -4470,9 +4450,9 @@ impl Model {
             option_sets: BTreeMap::new(),
             line_weights: None,
             standard,
+            codes: Default::default(),
             building_code: None,
             stair_rules: None,
-            electrical_methods: None,
             building_codes: Vec::new(),
             object_styles: BTreeMap::new(),
             line_patterns: lines::patterns(language),
@@ -4502,6 +4482,7 @@ impl Model {
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
             derived: Default::default(),
+            code_cache: Default::default(),
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
@@ -5253,10 +5234,40 @@ impl Model {
         Ok((m, left_out))
     }
 
+    /// The building code as #386's files held it (its name, its stair rules changed, its own codes), taken into
+    /// [`Model::codes`]: the architectural code, the stairs' changes, and the own codes, each architectural.
+    fn codes_from_386(&mut self) {
+        if self.building_code.is_none() && self.stair_rules.is_none() && self.building_codes.is_empty() {
+            return;
+        }
+        let (code, rules, own) = (self.building_code.take(), self.stair_rules.take(), std::mem::take(&mut self.building_codes));
+        let codes = &mut *self.codes;
+        if let Some(code) = code {
+            codes.architectural.code = Some(if code == "nbr" { "nbr-9050".into() } else { code });
+        }
+        for c in own {
+            if !codes.own.iter().any(|o| o.code == c.code && o.discipline == c.discipline) {
+                codes.own.push(c);
+            }
+        }
+        if let Some(rules) = rules {
+            // What #386 kept was every rule; the project's changes are those its code says otherwise.
+            let base = crate::codes::layered(codes, crate::codes::Discipline::Architectural, "stairs").value;
+            let changed: serde_json::Map<String, serde_json::Value> = rules
+                .into_iter()
+                .filter(|(k, v)| base.get(k).is_none_or(|b| b != v && b.as_f64().zip(v.as_f64()).is_none_or(|(x, y)| x != y)))
+                .collect();
+            if !changed.is_empty() {
+                codes.architectural.changes.insert("stairs".into(), changed);
+            }
+        }
+    }
+
     /// Brought up to [`FORMAT`]. From before pens, see [`pens_from_pixels`]. From before GUIDs: each element was given one as it was read, what points at an element
     /// (its id, then) points at its GUID, and the ids move up to six digits, by as much as takes the first to [`FIRST_ID`]
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
+        self.codes_from_386();
         if self.format < 1 {
             self.resolve();
             if self.elements.keys().next().is_some_and(|&first| first < FIRST_ID) {
@@ -5449,6 +5460,8 @@ impl Model {
         // 20 to 21: a family's `placed_origin`, the origin its instances stand against. A file of 20 holds none, which is the datums,
         // so `settle_origins` on read makes it the family's origin and moves nothing: its instances stay where they were drawn.
         // 20 to 21: dimensions in sections and elevations. A file of 20 holds none, so nothing to do.
+        // 20 to 21: the building codes. `codes_from_386` above takes a file's `building_code`, `stair_rules` and `building_codes` into
+        // `codes`; a file of 20 holds none of them, so nothing to do.
         self.format = FORMAT;
     }
 
@@ -8650,24 +8663,7 @@ impl Model {
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
-        if let Some(rules) = &self.stair_rules {
-            rules.check()?;
-        }
-        if let Some(e) = &self.electrical_methods {
-            e.check()?;
-        }
-        if self.building_code.as_ref().is_some_and(|c| c.chars().count() > 64) {
-            return Err("the building code's name is 64 characters at most".into());
-        }
-        if self.building_codes.len() > crate::codes::MAX_OWN {
-            return Err(format!("more than {} building codes of the project's own", crate::codes::MAX_OWN));
-        }
-        for (i, c) in self.building_codes.iter().enumerate() {
-            c.check()?;
-            if self.building_codes.iter().take(i).any(|o| o.code == c.code) {
-                return Err(format!("two building codes of the project's own are called `{}`", c.code));
-            }
-        }
+        self.codes.check()?;
         for (c, style) in &self.object_styles {
             crate::styles::known(c)?;
             style.check(c)?;
@@ -10613,10 +10609,10 @@ impl Model {
             option_sets,
             line_weights,
             standard,
-            building_code,
-            stair_rules,
-            electrical_methods,
-            building_codes,
+            codes,
+            building_code: _,
+            stair_rules: _,
+            building_codes: _,
             object_styles,
             line_patterns,
             line_styles,
@@ -10646,6 +10642,7 @@ impl Model {
             library,
             loaded,
             derived: _,
+            code_cache: _,
         } = self;
         *format == o.format
             && *name == o.name
@@ -10670,10 +10667,7 @@ impl Model {
             && *option_sets == o.option_sets
             && *line_weights == o.line_weights
             && *standard == o.standard
-            && *building_code == o.building_code
-            && *stair_rules == o.stair_rules
-            && *electrical_methods == o.electrical_methods
-            && *building_codes == o.building_codes
+            && *codes == o.codes
             && *object_styles == o.object_styles
             && *line_patterns == o.line_patterns
             && *line_styles == o.line_styles
