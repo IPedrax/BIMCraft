@@ -320,3 +320,74 @@ fn a_shared_family_nested_twice_otherwise_loads_as_one_definition_the_first_met(
         assert_eq!(to(&f), Some(10.0), "{who}");
     }
 }
+
+/// The cabinet saved to `file` in a directory of its own, its saved definition edited by `edit` before it is written back.
+fn cabinet_file(file: &str, edit: impl FnOnce(&mut serde_json::Map<String, Value>)) -> (Session, std::path::PathBuf) {
+    let mut s = cabinet();
+    let dir = std::env::temp_dir().join(format!("bimcraft-family-keys-{}-{file}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(file);
+    run(&mut s, "family", json!({"name": "Cabinet", "save": path.to_string_lossy()}));
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    edit(v.as_object_mut().unwrap());
+    std::fs::write(&path, v.to_string()).unwrap();
+    (s, path)
+}
+
+#[test]
+fn a_key_a_family_file_holds_that_isnt_a_familys_is_left_out_with_a_warning() {
+    // `nested_instance`, the command's word for one, where the file's is `nested_instances`: the box is nested, never placed.
+    let (_, path) = cabinet_file("before.window.json", |f| {
+        let placed = f.remove("nested_instances").unwrap();
+        f.insert("nested_instance".into(), placed);
+    });
+    let mut fresh = Session::new();
+    let r = run(&mut fresh, "family", json!({"path": path.to_string_lossy()}));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    let warnings: Vec<&str> = r["warnings"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+    assert!(warnings.contains(&"`nested_instance` in before.window.json is not a family's and was left out"), "{warnings:?}");
+    let f = &fresh.model.families["Cabinet"];
+    assert_eq!((f.nested.len(), f.nested_instances.len()), (1, 0));
+    // A dry run of it says the same.
+    let (_, path) = cabinet_file("dry.json", |f| {
+        f.insert("rename".into(), json!("Other"));
+    });
+    let r = run(&mut Session::new(), "family", json!({"path": path.to_string_lossy(), "dry_run": true}));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    assert!(r["warnings"].as_array().unwrap().contains(&json!("`rename` in dry.json is not a family's and was left out")), "{r}");
+}
+
+#[test]
+fn a_clean_family_file_loads_with_no_warning_of_a_key() {
+    let (mut s, path) = cabinet_file("Cabinet.json", |_| {});
+    let read = run(&mut s, "family", json!({"name": "Cabinet"}));
+    let mut fresh = Session::new();
+    let r = run(&mut fresh, "family", json!({"path": path.to_string_lossy()}));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    assert_eq!(r["warnings"], read["warnings"]);
+}
+
+#[test]
+fn every_key_a_family_file_may_hold_loads_with_no_warning() {
+    // Each field of a family, each of its options, its name and the origin its instances were placed against (the project's
+    // record, which a file brings but a load keeps as the project has it).
+    let (mut s, path) = cabinet_file("Cabinet.json", |f| {
+        let every = json!({
+            "kind": null, "ifc": null, "operation": null, "adaptive": null, "connectors": [], "lines": [], "dimensions": [], "symbols": [],
+            "work_plane_based": false, "always_vertical": true, "default_elevation": 0.0, "cut_with_voids_when_loaded": false,
+            "shared": false, "room_calculation_point": null, "cut_in_views": null, "omniclass": null, "placed_origin": [0.0, 0.0, 0.0]
+        });
+        for (k, v) in every.as_object().unwrap() {
+            f.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+    });
+    let keys: Vec<String> =
+        serde_json::from_str::<Value>(&std::fs::read_to_string(&path).unwrap()).unwrap().as_object().unwrap().keys().cloned().collect();
+    for k in ["name", "category", "parameters", "types", "forms", "planes", "nested", "nested_instances"] {
+        assert!(keys.iter().any(|h| h == k), "{k} in {keys:?}");
+    }
+    let read = run(&mut s, "family", json!({"name": "Cabinet"}));
+    let r = run(&mut Session::new(), "family", json!({"path": path.to_string_lossy()}));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    assert_eq!(r["warnings"], read["warnings"]);
+}

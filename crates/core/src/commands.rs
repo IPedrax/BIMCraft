@@ -2045,7 +2045,7 @@ other_files(
          `invalid_dimensions` is `delete` (a reload's Delete Dimension(s)); a file opened leaves it out. `solve` reads, for a \
          type, where its planes, forms' ends and sketches' lines go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
-         wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
+         wall, a door's or window's plan with no symbols, a key a file at `path` holds that isn't a family's, which is left out). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
          Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. \
          Nested families (T6a): `nest` loads a family (a file or a definition) into this one, carried whole inside it; one it \
@@ -16981,7 +16981,8 @@ fn family(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
             };
             let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            Some((fields, json!(stem)))
+            let file = path.file_name().map(|s| s.to_string_lossy().into_owned());
+            Some((fields, json!(stem), file))
         }
         // A command's own definition is read strictly, as any command's params are: a misspelled field is an error.
         (None, Some(definition)) => {
@@ -16994,12 +16995,14 @@ fn family(s: &mut Session, p: &Value) -> R {
             if let Some(own) = own {
                 fields.insert("name".into(), own);
             }
-            Some((fields, Value::Null))
+            Some((fields, Value::Null, None))
         }
         (None, None) => None,
     };
     let loading = loaded.is_some();
-    if let Some((mut fields, stem)) = loaded {
+    // What a file at `path` holds that isn't a family's: left out, as older files keep opening, and said in `warnings`.
+    let mut left_out: Vec<String> = Vec::new();
+    if let Some((mut fields, stem, file)) = loaded {
         let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(stem);
         if !name.as_str().is_some_and(|n| !n.trim().is_empty()) {
             return Err(bad(c, "`name` must be a nonempty family name"));
@@ -17031,6 +17034,11 @@ fn family(s: &mut Session, p: &Value) -> R {
                 family.insert(key.into(), value);
             }
         }
+        // The origin its instances were placed against is the project's record, kept as the project has it (O1).
+        fields.remove("placed_origin");
+        if let Some(file) = file {
+            left_out = fields.keys().map(|k| format!("`{k}` in {file} is not a family's and was left out")).collect();
+        }
         if let Some(policy) = &overwrite {
             let name =
                 name.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` must be a nonempty family name"))?;
@@ -17038,7 +17046,8 @@ fn family(s: &mut Session, p: &Value) -> R {
                 let incoming =
                     if policy == "no" { old.clone() } else { serde_json::from_value(Value::Object(family)).map_err(|e| bad(c, e))? };
                 if policy == "no" || incoming == *old {
-                    let (_, warnings) = old.problems(&|m| s.model.materials.contains_key(m));
+                    let (_, mut warnings) = old.problems(&|m| s.model.materials.contains_key(m));
+                    warnings.extend(left_out);
                     let mut reply = family_reply(name, old, &warnings);
                     reply["overwritten"] = json!(false);
                     if flag(c, &p, "dry_run")? {
@@ -17481,7 +17490,8 @@ fn family(s: &mut Session, p: &Value) -> R {
     };
     let to = rename.clone().unwrap_or_else(|| name.clone());
     // Every error of what it comes to, each addressed to what has it, and every warning of it.
-    let (errors, warnings) = f.problems(&|m| s.model.materials.contains_key(m));
+    let (errors, mut warnings) = f.problems(&|m| s.model.materials.contains_key(m));
+    warnings.extend(left_out);
     if !errors.is_empty() {
         // What it's worth knowing comes with what stops it: an author fixes both at once, and a
         // warning never hides behind the error that came first.
