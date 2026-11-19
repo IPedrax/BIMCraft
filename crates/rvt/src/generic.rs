@@ -51,7 +51,7 @@ use crate::inventory::{Gathered, Inventory, Wants, category_name};
 use crate::openings::{family_of, symbol_of};
 use crate::placement::Transform;
 use crate::records::Record;
-use crate::shapes::{MAX_TRIANGLES, Shape as Solid};
+use crate::shapes::Shape as Solid;
 
 /// How a category's box stands for its elements: as their envelope, as a path's only where it runs along an axis, or as a whole
 /// only where it holds no box of its parts' categories.
@@ -475,22 +475,7 @@ fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
     let mut materials: Vec<Option<u32>> = d.body.as_ref().map(|b| b.materials.clone()).unwrap_or_default();
     let mut marks = d.marks.clone();
     for (symbol, t) in &d.placed {
-        let shape = shape_of(symbol)?;
-        let (_, mirrored, _) = pose(t).ok_or("a symbol it places is placed by no turn")?;
-        if tris.len() + shape.triangles.len() > MAX_TRIANGLES {
-            return Err(format!("it draws more than {MAX_TRIANGLES} triangles"));
-        }
-        let place = |p: [f64; 3]| -> [f64; 3] {
-            std::array::from_fn(|k| t.origin[k] * 304.8 + p[0] * t.axes[0][k] + p[1] * t.axes[1][k] + p[2] * t.axes[2][k])
-        };
-        tris.extend(
-            shape
-                .triangles
-                .iter()
-                .map(|[a, b, c]| if mirrored { [place(*a), place(*c), place(*b)] } else { [place(*a), place(*b), place(*c)] }),
-        );
-        marks.extend(shape.marks.iter().map(|p| place(*p)));
-        materials.extend(&shape.materials);
+        crate::shapes::place(shape_of(symbol)?, t, &mut tris, &mut marks, &mut materials)?;
     }
     if !crate::shapes::fills(&tris, &marks, &d.tight) {
         return Err("what it draws is not the box its graphics give round their solids".to_string());
@@ -502,7 +487,7 @@ fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
     let solids = d.body.as_ref().map_or(0, |b| b.solids) + d.placed.len();
     let faces = d.body.as_ref().map_or(0, |b| b.faces);
     materials.resize(tris.len(), None);
-    let shape = Solid { triangles, solids, faces, whole, marks: Vec::new(), materials };
+    let shape = Solid { triangles, solids, faces, whole, materials, ..Solid::default() };
     let at = Transform { axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], origin: corner };
     fits(&shape, &at, &r.bbox)?;
     Ok(Drawn { own: true, symbol: r.id, at, shape: std::borrow::Cow::Owned(shape) })
@@ -525,7 +510,7 @@ fn extent(shape: &Solid) -> [f64; 6] {
 /// has no name for: the family's own, as its category says). Whether it is drawn so. A family that would hold more than
 /// [`MAX_FORMS`] forms, or whose types would build more than [`MAX_BUILT`] triangles together (its shapes, and a box of a dozen or so
 /// for each type that may be added), keeps the box for its type.
-fn show(family: &mut Family, type_name: &str, solid: &Solid, names: &BTreeMap<u32, String>) -> bool {
+pub(crate) fn show(family: &mut Family, type_name: &str, solid: &Solid, names: &BTreeMap<u32, String>) -> bool {
     if let Some(k) = family.types.get(type_name).and_then(|t| t.get(SHOWS)) {
         return k.as_u64().is_some_and(|k| k > 0);
     }
@@ -746,6 +731,7 @@ fn boxes(
                     (Some(d), ..) => cx.note(label, r.id, if d.own { DRAWN } else { SHAPED }),
                     (None, None, Err(not)) => cx.note(label, r.id, &format!("{turned_so}; {not}")),
                     (None, None, Ok(_)) => cx.note(label, r.id, &format!("{turned_so}; its family holds as many shapes as one family may")),
+                    (None, Some(why), Err(not)) => cx.note(label, r.id, &format!("{box_so}; {why}; {not}")),
                     (None, Some(why), _) => cx.note(label, r.id, &format!("{box_so}; {why}")),
                 }
             }
