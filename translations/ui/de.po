@@ -807,8 +807,9 @@ msgstr ""
 msgid "Add to Group: click a greyed element, or drag a box, to add it to the group. Esc or Add again stops."
 msgstr ""
 
-#: crates/ui-egui/src/favorites.rs:145
-#: crates/ui-egui/src/favorites.rs:168
+#: crates/ui-egui/src/favorites.rs:146
+#: crates/ui-egui/src/favorites.rs:175
+#: crates/ui-egui/src/favorites.rs:198
 msgid "Add to Project"
 msgstr "Zum Projekt hinzufügen"
 
@@ -834,7 +835,7 @@ msgstr ""
 msgid "Add: click elements (greyed now) to add them to the group; click Add again to stop. They join at Finish"
 msgstr ""
 
-#: crates/ui-egui/src/favorites.rs:192
+#: crates/ui-egui/src/favorites.rs:226
 msgid "Added {} to the project"
 msgstr "{} zum Projekt hinzugefügt"
 
@@ -1328,7 +1329,7 @@ msgstr "Gilt für alle Ansichten; fängt am aktivierten Hauptraster oder Unterra
 #: crates/ui-egui/src/parameters.rs:748
 #: crates/ui-egui/src/properties.rs:846
 #: crates/ui-egui/src/standards.rs:333
-#: crates/ui-egui/src/titleblocks.rs:750
+#: crates/ui-egui/src/titleblocks.rs:755
 #: crates/ui-egui/src/typeprops.rs:346
 msgid "Apply"
 msgstr "Übernehmen"
@@ -2249,7 +2250,7 @@ msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-A
 #: crates/ui-egui/src/shortcuts.rs:541
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:755
-#: crates/ui-egui/src/titleblocks.rs:751
+#: crates/ui-egui/src/titleblocks.rs:756
 #: crates/ui-egui/src/typeprops.rs:347
 #: crates/ui-egui/src/workplane.rs:352
 msgid "Cancel"
@@ -3481,7 +3482,7 @@ msgstr ""
 
 #: crates/ui-egui/src/codes.rs:1561
 #: crates/ui-egui/src/cowork.rs:691
-#: crates/ui-egui/src/favorites.rs:179
+#: crates/ui-egui/src/favorites.rs:209
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
 #: crates/ui-egui/src/lib.rs:7245
@@ -4664,7 +4665,7 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:3594
 #: crates/ui-egui/src/properties.rs:3826
 #: crates/ui-egui/src/templates.rs:477
-#: crates/ui-egui/src/titleblocks.rs:669
+#: crates/ui-egui/src/titleblocks.rs:670
 msgid "Delete"
 msgstr "Löschen"
 
@@ -5397,7 +5398,7 @@ msgstr ""
 
 #: crates/ui-egui/src/browser.rs:588
 #: crates/ui-egui/src/publisher.rs:617
-#: crates/ui-egui/src/titleblocks.rs:666
+#: crates/ui-egui/src/titleblocks.rs:667
 msgid "Duplicate"
 msgstr "Duplizieren"
 
@@ -6314,7 +6315,7 @@ msgstr "Versatz ferne Schnittebene"
 msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
 msgstr ""
 
-#: crates/ui-egui/src/favorites.rs:112
+#: crates/ui-egui/src/favorites.rs:113
 #: crates/ui-egui/src/lib.rs:5686
 msgid "Favorites"
 msgstr "Favoriten"
@@ -7724,7 +7725,7 @@ msgstr "CAD importieren"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "CAD importieren: eine DWG- oder DXF-Zeichnung wird ins Projekt übernommen, unter dem Modell in den Plänen eines Geschosses gezeichnet, ihre Layer, Farben und Linientypen bleiben erhalten, und es wird darauf gefangen"
 
-#: crates/ui-egui/src/titleblocks.rs:683
+#: crates/ui-egui/src/titleblocks.rs:688
 msgid "Import DXF…"
 msgstr ""
 
@@ -8153,7 +8154,11 @@ msgstr ""
 msgid "Keep Them"
 msgstr ""
 
-#: crates/ui-egui/src/favorites.rs:114
+#: crates/ui-egui/src/titleblocks.rs:674
+msgid "Keep it in your Favorites, with its logos, for every project"
+msgstr ""
+
+#: crates/ui-egui/src/favorites.rs:115
 msgid "Kept for every project: add one to this project with a click."
 msgstr "Für jedes Projekt verfügbar: mit einem Klick zu diesem Projekt hinzufügen."
 
@@ -9114,7 +9119,7 @@ msgstr ""
 msgid "Make each changed group a group type of its own, as it now stands"
 msgstr ""
 
-#: crates/ui-egui/src/titleblocks.rs:690
+#: crates/ui-egui/src/titleblocks.rs:695
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
@@ -9898,7 +9903,7 @@ msgstr "NICHT UMSCHLOSSEN"
 #: crates/ui-egui/src/properties.rs:3604
 #: crates/ui-egui/src/properties.rs:4514
 #: crates/ui-egui/src/pyaddins.rs:902
-#: crates/ui-egui/src/titleblocks.rs:694
+#: crates/ui-egui/src/titleblocks.rs:699
 #: crates/ui-egui/src/workplane.rs:294
 msgid "Name"
 msgstr "Name"
@@ -9956,7 +9961,7 @@ msgstr "Nie"
 #: crates/ui-egui/src/graphics.rs:453
 #: crates/ui-egui/src/lib.rs:5021
 #: crates/ui-egui/src/properties.rs:3588
-#: crates/ui-egui/src/titleblocks.rs:663
+#: crates/ui-egui/src/titleblocks.rs:664
 msgid "New"
 msgstr "Neu"
 
@@ -10058,7 +10063,7 @@ msgstr "Neuer Filter:"
 msgid "New from This View…"
 msgstr "Neu aus dieser Ansicht…"
 
-#: crates/ui-egui/src/titleblocks.rs:673
+#: crates/ui-egui/src/titleblocks.rs:678
 msgid "New from starter:"
 msgstr ""
 
@@ -10080,7 +10085,7 @@ msgstr "Neuer Name"
 msgid "New pattern from lines"
 msgstr "Neues Muster aus Linien"
 
-#: crates/ui-egui/src/titleblocks.rs:661
+#: crates/ui-egui/src/titleblocks.rs:662
 msgid "New title block's name"
 msgstr ""
 
@@ -10138,13 +10143,17 @@ msgstr ""
 msgid "No element is hidden or overridden here: select some and Add Selected."
 msgstr "Hier ist kein Element ausgeblendet oder überschrieben: Elemente auswählen und Auswahl hinzufügen."
 
-#: crates/ui-egui/src/favorites.rs:155
+#: crates/ui-egui/src/favorites.rs:185
 msgid "No favorite families yet: save one from the Family Editor."
 msgstr "Noch keine Favoritenfamilien: eine im Familieneditor speichern."
 
-#: crates/ui-egui/src/favorites.rs:130
+#: crates/ui-egui/src/favorites.rs:131
 msgid "No favorite materials yet: save one from Manage > Materials."
 msgstr "Noch keine Favoritenmaterialien: eines unter Verwalten > Materialien speichern."
+
+#: crates/ui-egui/src/favorites.rs:157
+msgid "No favorite title blocks yet: save one from View > Title Blocks."
+msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:1193
 msgid "No filters applied."
@@ -10238,7 +10247,7 @@ msgstr "Noch keine Vorlagen."
 msgid "No templates yet: Browse… picks one, and New lists it from then on."
 msgstr "Noch keine Vorlagen: Durchsuchen… wählt eine, und Neu listet sie von da an."
 
-#: crates/ui-egui/src/favorites.rs:138
+#: crates/ui-egui/src/favorites.rs:139
 msgid "No texture"
 msgstr "Keine Textur"
 
@@ -10535,7 +10544,7 @@ msgstr ""
 #: crates/ui-egui/src/reinforce.rs:559
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:756
-#: crates/ui-egui/src/titleblocks.rs:752
+#: crates/ui-egui/src/titleblocks.rs:757
 #: crates/ui-egui/src/typeprops.rs:348
 #: crates/ui-egui/src/workplane.rs:353
 msgid "OK"
@@ -12652,7 +12661,7 @@ msgstr ""
 msgid "Read Convention"
 msgstr "Lesekonvention"
 
-#: crates/ui-egui/src/titleblocks.rs:682
+#: crates/ui-egui/src/titleblocks.rs:687
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
@@ -12894,8 +12903,9 @@ msgstr ""
 
 #: crates/ui-egui/src/classification.rs:398
 #: crates/ui-egui/src/codes.rs:1208
-#: crates/ui-egui/src/favorites.rs:142
-#: crates/ui-egui/src/favorites.rs:165
+#: crates/ui-egui/src/favorites.rs:143
+#: crates/ui-egui/src/favorites.rs:172
+#: crates/ui-egui/src/favorites.rs:195
 #: crates/ui-egui/src/graphics.rs:1219
 #: crates/ui-egui/src/graphics.rs:1274
 #: crates/ui-egui/src/groups.rs:332
@@ -13762,6 +13772,7 @@ msgid "Save this tab's rules to an XML file, to use in another project"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:3721
+#: crates/ui-egui/src/titleblocks.rs:675
 msgid "Save to Favorites"
 msgstr "Zu Favoriten hinzufügen"
 
@@ -13775,6 +13786,7 @@ msgstr "Vorlage {} gespeichert; Neu listet sie."
 
 #: crates/ui-egui/src/editor.rs:1531
 #: crates/ui-egui/src/properties.rs:3742
+#: crates/ui-egui/src/titleblocks.rs:862
 msgid "Saved {} to your Favorites"
 msgstr "{} zu den Favoriten hinzugefügt"
 
@@ -14298,7 +14310,7 @@ msgid "Sheet List"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:316
-#: crates/ui-egui/src/titleblocks.rs:703
+#: crates/ui-egui/src/titleblocks.rs:708
 msgid "Sheet Name"
 msgstr "Planname"
 
@@ -16149,7 +16161,7 @@ msgstr ""
 msgid "The project has no print sets yet: Print Sets… makes one"
 msgstr ""
 
-#: crates/ui-egui/src/titleblocks.rs:657
+#: crates/ui-egui/src/titleblocks.rs:658
 msgid "The project has no title blocks of its own; sheets draw the built-in one."
 msgstr ""
 
@@ -16678,13 +16690,13 @@ msgstr ""
 msgid "Title Block Width:"
 msgstr "Schriftfeldbreite:"
 
-#: crates/ui-egui/src/titleblocks.rs:805
+#: crates/ui-egui/src/titleblocks.rs:810
 msgid "Title Block {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:5569
 #: crates/ui-egui/src/purge.rs:17
-#: crates/ui-egui/src/titleblocks.rs:644
+#: crates/ui-egui/src/titleblocks.rs:645
 msgid "Title Blocks"
 msgstr ""
 
@@ -19073,7 +19085,7 @@ msgstr "es gibt noch keine Detailgruppe: Detaillinien auswählen und Gruppe erst
 msgid "there's no face to paint there"
 msgstr "dort gibt es keine Fläche zum Anstreichen"
 
-#: crates/ui-egui/src/favorites.rs:44
+#: crates/ui-egui/src/favorites.rs:45
 msgid "there's no folder to keep favorites in here"
 msgstr "hier gibt es keinen Ordner für Favoriten"
 
@@ -19784,7 +19796,7 @@ msgstr "{}: dieser Build von BIMCraft wurde ohne Revit-Unterstützung erstellt (
 msgid "{}: valid"
 msgstr ""
 
-#: crates/ui-egui/src/favorites.rs:162
+#: crates/ui-egui/src/favorites.rs:192
 #: crates/ui-egui/src/structure.rs:210
 msgid "{}: {}"
 msgstr "{}: {}"

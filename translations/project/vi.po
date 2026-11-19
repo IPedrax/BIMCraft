@@ -264,7 +264,7 @@ msgstr "Điện động lực"
 
 #: crates/core/src/commands.rs:15109
 #: crates/core/src/commands.rs:15125
-#: crates/core/src/commands.rs:20104
+#: crates/core/src/commands.rs:20134
 msgid "Elevation"
 msgstr "Mặt đứng"
 
@@ -505,7 +505,7 @@ msgid "Membrane"
 msgstr "Màng"
 
 #: crates/core/src/commands.rs:4431
-#: crates/core/src/commands.rs:18649
+#: crates/core/src/commands.rs:18679
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -708,7 +708,7 @@ msgid "Seat Height"
 msgstr "Chiều cao mặt ghế"
 
 #: crates/core/src/commands.rs:15043
-#: crates/core/src/commands.rs:20103
+#: crates/core/src/commands.rs:20133
 msgid "Section"
 msgstr "Mặt cắt"
 
