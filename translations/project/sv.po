@@ -65,7 +65,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:3848
+#: crates/core/src/render.rs:3853
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -144,8 +144,8 @@ msgstr "Korsskraffering"
 msgid "Cut to Clipboard"
 msgstr ""
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4907
+#: crates/core/src/render.rs:5252
 msgid "DN"
 msgstr "NED"
 
@@ -525,7 +525,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöjd"
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3632
 msgid "NOT ENCLOSED"
 msgstr "EJ OMSLUTET"
 
@@ -640,7 +640,7 @@ msgstr ""
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3632
 msgid "REDUNDANT"
 msgstr "ÖVERFLÖDIGT"
 
@@ -921,8 +921,8 @@ msgstr ""
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4907
+#: crates/core/src/render.rs:5252
 msgid "UP"
 msgstr "UPP"
 
