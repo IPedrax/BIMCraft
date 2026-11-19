@@ -20,7 +20,8 @@ SOURCE="${BIMCRAFT_BINARY:-$ROOT/target/release/bimcraft}"
 
 # Keep the terminal open after a double click, on success and on any failure.
 pause_on_exit() {
-  local code=$?
+  local code
+  code=$?
   printf '\nPress Enter to close this window...'
   read -r _ || true
   exit "$code"
@@ -76,11 +77,11 @@ check() {
     STATUS=1
   fi
 }
-[ "$ACTUAL_VERSION" = "$EXPECTED_VERSION" ] && v=0 || v=1
+if [ "$ACTUAL_VERSION" = "$EXPECTED_VERSION" ]; then v=0; else v=1; fi
 check "$v" "version" "$ACTUAL_VERSION (expected $EXPECTED_VERSION)"
-[ "$MODE" = "755" ] && p=0 || p=1
+if [ "$MODE" = "755" ]; then p=0; else p=1; fi
 check "$p" "permissions" "$MODE (expected 755)"
-[ "$TARGET_SIZE" = "$SOURCE_SIZE" ] && s=0 || s=1
+if [ "$TARGET_SIZE" = "$SOURCE_SIZE" ]; then s=0; else s=1; fi
 check "$s" "size" "$TARGET_SIZE bytes (source $SOURCE_SIZE)"
 if [ -f "$BACKUP" ]; then
   printf '  note  backup: %s\n' "$BACKUP"
