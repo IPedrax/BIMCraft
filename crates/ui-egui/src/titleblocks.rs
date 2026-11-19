@@ -641,6 +641,7 @@ impl BimApp {
         let (mut pick, mut make, mut duplicate, mut delete, mut import) = (None, None, false, false, false);
         let mut starter: Option<String> = None;
         let mut add_logo = false;
+        let mut favorite = false;
         let r = Modal::new(UiId::new("title-blocks-dialog"), t("Title Blocks")).width(1120.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.horizontal_top(|ui| {
@@ -670,6 +671,10 @@ impl BimApp {
                                 delete = true;
                             }
                         });
+                        let tip = t("Keep it in your Favorites, with its logos, for every project");
+                        if !d.name.is_empty() && ui.button(t("Save to Favorites")).on_hover_text(tip).clicked() {
+                            favorite = true;
+                        }
                         let l = ui.label(t("New from starter:"));
                         let combo = ComboBox::from_id_salt("title-block-starter").selected_text("").width(180.0).show_ui(ui, |ui| {
                             for n in bimcraft_core::title_starters::names() {
@@ -848,6 +853,15 @@ impl BimApp {
                 self.import_title_block(ctx, d.name.clone());
             }
             keep = false;
+        }
+        if favorite {
+            // What was typed first, so the favorite is what the user sees.
+            if commit(self, &mut d) {
+                let p = self.favorite_params("save", "title_block", &d.name);
+                if self.run("favorite", p).is_some() {
+                    self.status = crate::Status { text: tf("Saved {} to your Favorites", &[&d.name]), error: false };
+                }
+            }
         }
         if add_logo {
             // The same: what was typed first, then the picture the user picks, and the dialog open on it again.

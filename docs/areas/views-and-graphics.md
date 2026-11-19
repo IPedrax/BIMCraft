@@ -924,6 +924,14 @@ used (Purge Unused leaves it, Insert from File brings it), and a copy of a title
 Logos tab of View > Title Blocks lists them (X, Y, Width, Height, Remove logo) and Add Logo… reads a file, placing it 30 mm wide in the
 bottom left corner to be moved; the preview shows them. No SVG: an SVG logo goes in as a PNG, or as a DXF the title block is read from.
 
+**Presets.** A title block is kept for every project as a favorite (`favorite {kind: "title_block"}`: `save` a project's block, `as` another
+name, `load` it into a project, `as` another name or `replace`, `delete`, and `list` says each one's size, papers and number of logos). The
+user's favorites file (`favorites.rs`: `TitleBlockEntry`, the block and the pictures of its logos by id, so it comes into a project whole,
+and a logo's picture once however many blocks use it; `check` refuses a logo of a picture the file lacks) writes `title_blocks` only when
+there are some, so a file of materials and families is still one an older version reads. In the desktop, View > Title Blocks has Save to
+Favorites (what was typed is applied first), and the Favorites window's Title Blocks tab adds one to the project (as `Name 2` when the project
+has that name) or removes it.
+
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
 circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their

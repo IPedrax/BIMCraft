@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use crate::cad::{Cad, Colors};
 use crate::cloud::{self, Cloud};
 use crate::engine::{Command, Files, Run, Session};
-use crate::favorites::{self, FamilyEntry, Favorites, MaterialEntry};
+use crate::favorites::{self, FamilyEntry, Favorites, MaterialEntry, TitleBlockEntry};
 use crate::fills::{FillPattern, FilledRegion, FilledRegionType, Target};
 use crate::geom::{self, P2};
 use crate::graphics::{self, Graphics, Group, Look, Override, ViewTemplate};
@@ -1671,10 +1671,10 @@ other_files(
         "favorite",
         "Favorites",
         &[],
-        "{action?: list|save|load|delete, kind?: material|family, name?, as?, replace?, path?} the user's favorites, kept in a file \
-         of their own (`path`; by default in their configuration folder) for every project to use: `save` the project's \
-         material or family `name` (a material with the picture its texture is made of, a family with the materials it is \
-         made of), under another name with `as`; `load` a favorite into the project, under another name with `as`, or over \
+        "{action?: list|save|load|delete, kind?: material|family|title_block, name?, as?, replace?, path?} the user's favorites, \
+         kept in a file of their own (`path`; by default in their configuration folder) for every project to use: `save` the \
+         project's material, family or title block `name` (a material with the picture its texture is made of, a family with \
+         the materials it is made of, a title block with the pictures of its logos), under another name with `as`; `load` a favorite into the project, under another name with `as`, or over \
          one it has already with `replace`; `delete` one from the favorites; `list` them (the default)",
         favorite,
         Files::Conditional,
@@ -18112,8 +18112,8 @@ fn favorite(s: &mut Session, p: &Value) -> R {
     let c = "favorite";
     let action = string(c, p, "action")?.unwrap_or_else(|| "list".into());
     let kind = string(c, p, "kind")?.unwrap_or_else(|| "material".into());
-    if !matches!(kind.as_str(), "material" | "family") {
-        return Err(bad(c, format!("`kind` is material or family, not `{kind}`")));
+    if !matches!(kind.as_str(), "material" | "family" | "title_block") {
+        return Err(bad(c, format!("`kind` is material, family or title_block, not `{kind}`")));
     }
     let path = match string(c, p, "path")? {
         Some(path) => PathBuf::from(path),
@@ -18136,17 +18136,33 @@ fn favorite(s: &mut Session, p: &Value) -> R {
                 .iter()
                 .map(|(n, e)| json!({"name": n, "category": e.family.category, "types": e.family.types.keys().collect::<Vec<_>>()}))
                 .collect();
-            Ok(json!({"path": path, "materials": materials, "families": families}))
+            let title_blocks: Vec<Value> = kept
+                .title_blocks
+                .iter()
+                .map(|(n, e)| {
+                    let t = &e.title_block;
+                    json!({"name": n, "width": t.width, "height": t.height, "sizes": t.sizes, "logos": t.logos.len()})
+                })
+                .collect();
+            Ok(json!({"path": path, "materials": materials, "families": families, "title_blocks": title_blocks}))
         }
         "save" => {
             let name = need()?;
             let kept_as = rename.unwrap_or_else(|| name.clone());
-            if kind == "material" {
-                let entry = MaterialEntry::of(&s.model, &name).ok_or_else(|| bad(c, format!("the library has no `{name}`")))?;
-                kept.materials.insert(kept_as.clone(), entry);
-            } else {
-                let entry = FamilyEntry::of(&s.model, &name).ok_or_else(|| bad(c, format!("the project has no family `{name}`")))?;
-                kept.families.insert(kept_as.clone(), entry);
+            match kind.as_str() {
+                "material" => {
+                    let entry = MaterialEntry::of(&s.model, &name).ok_or_else(|| bad(c, format!("the library has no `{name}`")))?;
+                    kept.materials.insert(kept_as.clone(), entry);
+                }
+                "family" => {
+                    let entry = FamilyEntry::of(&s.model, &name).ok_or_else(|| bad(c, format!("the project has no family `{name}`")))?;
+                    kept.families.insert(kept_as.clone(), entry);
+                }
+                _ => {
+                    let entry =
+                        TitleBlockEntry::of(&s.model, &name).ok_or_else(|| bad(c, format!("the project has no title block `{name}`")))?;
+                    kept.title_blocks.insert(kept_as.clone(), entry);
+                }
             }
             kept.version = 1;
             kept.check().and_then(|()| kept.write(&path)).map_err(|e| bad(c, e))?;
@@ -18154,7 +18170,11 @@ fn favorite(s: &mut Session, p: &Value) -> R {
         }
         "delete" => {
             let name = need()?;
-            let gone = if kind == "material" { kept.materials.remove(&name).is_some() } else { kept.families.remove(&name).is_some() };
+            let gone = match kind.as_str() {
+                "material" => kept.materials.remove(&name).is_some(),
+                "family" => kept.families.remove(&name).is_some(),
+                _ => kept.title_blocks.remove(&name).is_some(),
+            };
             if !gone {
                 return Err(bad(c, format!("there's no favorite {kind} `{name}`")));
             }
@@ -18170,6 +18190,16 @@ fn favorite(s: &mut Session, p: &Value) -> R {
                 let entry = kept.materials.get(&name).ok_or_else(|| bad(c, format!("there's no favorite material `{name}`")))?;
                 if m.materials.contains_key(&as_name) && !replace {
                     return Err(bad(c, format!("the library has `{as_name}` already: load it `as` another name, or `replace` it")));
+                }
+                entry.bring_into(m, &as_name).map_err(|e| bad(c, e))?;
+                prune_images(m);
+            } else if kind == "title_block" {
+                let entry = kept.title_blocks.get(&name).ok_or_else(|| bad(c, format!("there's no favorite title block `{name}`")))?;
+                if m.title_blocks.contains_key(&as_name) && !replace {
+                    return Err(bad(
+                        c,
+                        format!("the project has title block `{as_name}` already: load it `as` another name, or `replace` it"),
+                    ));
                 }
                 entry.bring_into(m, &as_name).map_err(|e| bad(c, e))?;
                 prune_images(m);

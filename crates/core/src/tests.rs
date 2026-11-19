@@ -6000,7 +6000,7 @@ fn favorites_keep_materials_and_families_for_every_project() {
         (json!({"action": "save", "path": file}), "`name` is required"),
         (json!({"action": "delete", "name": "Nothing", "path": file}), "no favorite"),
         (json!({"action": "keep", "path": file}), "list, save, load or delete"),
-        (json!({"kind": "texture", "path": file}), "material or family"),
+        (json!({"kind": "texture", "path": file}), "material, family or title_block"),
     ] {
         let e = b.execute("favorite", &p).unwrap_err();
         assert!(e.contains(says), "{p}: {e}");
