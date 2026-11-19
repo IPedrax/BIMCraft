@@ -4,6 +4,8 @@
 //! The words of a code (`source`, `note`) are kept apart from its numbers: a row's source is its last column, an object's is a
 //! line under it.
 
+use std::collections::BTreeMap;
+
 use egui::{Align, Layout, RichText, ScrollArea, Ui};
 use serde_json::{Map, Value};
 
@@ -258,12 +260,20 @@ fn item_text(v: &Value) -> String {
 }
 
 /// A list as typed: values between commas, a value in quotes taken as that text whole; or the list itself, written as JSON.
+#[cfg(test)]
 fn list_value(typed: &str) -> Value {
+    list_value_over(typed, &Value::Null)
+}
+
+/// `list_value`, over the list `was` the cell held: an item typed as it showed one of `was` at its place is that item as
+/// it was, not read again (a number too long to read back exactly stays the number it was).
+fn list_value_over(typed: &str, was: &Value) -> Value {
     if typed.trim_start().starts_with('[')
         && let Ok(list @ Value::Array(_)) = serde_json::from_str::<Value>(typed)
     {
         return list;
     }
+    let was = was.as_array().map(Vec::as_slice).unwrap_or_default();
     let mut items = Vec::new();
     let mut rest = typed;
     loop {
@@ -283,7 +293,8 @@ fn list_value(typed: &str) -> Value {
         }
         let (item, after) = rest.split_once(',').unwrap_or((rest, ""));
         if !item.trim().is_empty() {
-            items.push(cell_value(item.trim()));
+            let as_it_was = was.get(items.len()).filter(|w| item_text(w) == item.trim()).cloned();
+            items.push(as_it_was.unwrap_or_else(|| cell_value(item.trim())));
         }
         rest = after;
     }
@@ -417,7 +428,7 @@ fn table_tools(ui: &mut Ui, rows: &mut Vec<Value>, pasted: &mut String) {
                         o.iter()
                             .map(|(k, v)| {
                                 let blank = match v {
-                                    Value::Object(_) => blank_of(v),
+                                    Value::Object(_) => empty_lists(blank_of(v)),
                                     Value::Array(_) => Value::Array(Vec::new()),
                                     _ => Value::Null,
                                 };
@@ -447,6 +458,21 @@ fn table_tools(ui: &mut Ui, rows: &mut Vec<Value>, pasted: &mut String) {
             pasted.clear();
             stop_typing(ui);
         }
+    }
+}
+
+/// An object's lists of plain values, emptied, as empty lists (not lists of nulls, which would read as lists already typed).
+fn empty_lists(v: Value) -> Value {
+    match v {
+        Value::Object(o) => Value::Object(
+            o.into_iter()
+                .map(|(k, x)| match x {
+                    Value::Array(a) if a.iter().all(scalar) => (k, Value::Array(Vec::new())),
+                    x => (k, empty_lists(x)),
+                })
+                .collect(),
+        ),
+        other => other,
     }
 }
 
@@ -510,14 +536,15 @@ fn plain_table(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, pasted: 
 fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pasted: &mut String) {
     let cols = object_columns(rows);
     let literal = literal_columns(rows);
-    // Columns rows hold lists in, and those they hold a plain value in. A cell this row lacks (a row added) takes a list in a
-    // list column, and in one holding both when what is typed has a comma or is written as one; a cell it holds empty (a
-    // value cleared on the way to another) takes a list only so written.
-    let holds = |f: fn(&Value) -> bool| -> std::collections::BTreeSet<String> {
-        cols.iter().filter(|c| rows.iter().any(|r| get(r, c).is_some_and(f))).cloned().collect()
+    // Which rows hold a list in each column, and which a plain value: by row, so a row's own value, typed so far, never
+    // decides its own cell's kind.
+    let holding = |c: &String, f: fn(&Value) -> bool| -> Vec<usize> {
+        rows.iter().enumerate().filter(|(_, r)| get(r, c).is_some_and(f)).map(|(i, _)| i).collect()
     };
-    let lists = holds(Value::is_array);
-    let plains = holds(|v| scalar(v) && !v.is_null());
+    let lists: BTreeMap<&String, Vec<usize>> =
+        cols.iter().map(|c| (c, holding(c, |v| v.as_array().is_some_and(|a| !a.is_empty())))).collect();
+    let plains: BTreeMap<&String, Vec<usize>> = cols.iter().map(|c| (c, holding(c, |v| scalar(v) && !v.is_null()))).collect();
+    let others = |m: &BTreeMap<&String, Vec<usize>>, c: &String, i: usize| m.get(c).is_some_and(|rs| rs.iter().any(|r| *r != i));
     let widths: Vec<f32> = cols
         .iter()
         .map(|c| {
@@ -567,11 +594,43 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                     };
                     if r.changed() {
                         ui.data_mut(|d| d.insert_temp(typing, Typing(text.clone())));
+                        // The kind of what is typed is the kind of what the cell held when typing began (not of what it holds
+                        // so far): a list stays a list; an empty one, in a column other rows hold lists in, takes a list,
+                        // and in one they hold plain values in too, when what is typed has a comma or is written as one.
+                        let (began, first) = ui.data_mut(|d| {
+                            let began = d.get_temp_mut_or_insert_with(typing, || Began(now.clone())).0.clone();
+                            let first = d.get_temp_mut_or_insert_with(typing, || First(now.clone())).0.clone();
+                            (began, first)
+                        });
+                        // Undone back to what it showed when first typed in during this dialog (even after leaving and coming
+                        // back): what it held then, as it was.
+                        let shown_first = if first.is_null() { String::new() } else { list_text(&first) };
+                        let empty = began.is_null() || began.as_array().is_some_and(Vec::is_empty);
                         let written_as_list = text.contains(',') || text.trim_start().starts_with('[');
-                        let lacked = get(row, c).is_none();
-                        let list =
-                            now.is_array() || (now.is_null() && lists.contains(c) && (written_as_list || (lacked && !plains.contains(c))));
-                        write(row, c, if list { list_value(&text) } else { cell_value(&text) }, lit);
+                        let list = if empty {
+                            // Other rows hold lists only: a list. Plain values only: a plain value. Both, or neither: as written.
+                            match (others(&lists, c, i), others(&plains, c, i)) {
+                                (true, false) => true,
+                                (false, true) => false,
+                                _ => written_as_list,
+                            }
+                        } else {
+                            began.is_array()
+                        };
+                        // Only an undo or a redo (not the same text typed anew, which reads as it is typed).
+                        let undone = ui.input(|i| {
+                            i.events.iter().any(|e| {
+                                matches!(e, egui::Event::Key { key: egui::Key::Z | egui::Key::Y, pressed: true, modifiers, .. } if modifiers.command)
+                            })
+                        });
+                        let value = if undone && text == shown_first {
+                            first.clone()
+                        } else if list {
+                            list_value_over(&text, &began)
+                        } else {
+                            cell_value(&text)
+                        };
+                        write(row, c, value, lit);
                     }
                 }
                 if ui.small_button("×").on_hover_text(t("Delete this row")).clicked() {
@@ -594,6 +653,15 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
 #[derive(Clone, Default)]
 struct Typing(String);
 
+/// What a cell held when this typing in it began: the kind of what is typed, and the items it keeps.
+#[derive(Clone, Default)]
+struct Began(Value);
+
+/// What a cell held when it was first typed in while the dialog is open: what an undo back to its first text restores, even
+/// after leaving the cell and coming back. Forgotten with the rest when rows change or the dialog closes.
+#[derive(Clone, Default)]
+struct First(Value);
+
 /// While cell `typing` is typed in, `text` is what was typed, not what it reads as so far; left, what it holds. The cell
 /// is counted among those whose typing and undo history go when the rows change or the dialog closes.
 fn typed_so_far(ui: &Ui, typing: egui::Id, text: &mut String) {
@@ -602,7 +670,10 @@ fn typed_so_far(ui: &Ui, typing: egui::Id, text: &mut String) {
             *text = was;
         }
     } else {
-        ui.data_mut(|d| d.remove::<Typing>(typing));
+        ui.data_mut(|d| {
+            d.remove::<Typing>(typing);
+            d.remove::<Began>(typing);
+        });
     }
     ui.data_mut(|d| d.get_temp_mut_or_default::<Drawn>(egui::Id::new("codes cells drawn")).0.insert(typing));
 }
@@ -626,6 +697,8 @@ struct Drawn(std::collections::HashSet<egui::Id>);
 pub(crate) fn forget_typing(ctx: &egui::Context) {
     ctx.data_mut(|d| {
         d.remove_by_type::<Typing>();
+        d.remove_by_type::<Began>();
+        d.remove_by_type::<First>();
         let key = egui::Id::new("codes cells drawn");
         for id in d.get_temp::<Drawn>(key).unwrap_or_default().0 {
             d.remove::<egui::text_edit::TextEditState>(id);
@@ -3150,5 +3223,292 @@ mod tests {
         g7_ok(&mut h);
         g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &electrical);
         g7d_review_expect_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks", &plumbing);
+    }
+
+    // G7e: how a list is typed (the reviews' cases).
+
+    #[test]
+    fn review_g7c_codes_appending_does_not_round_an_existing_number() {
+        let original = 9_007_199_254_740_991.0;
+        let mut h = g7_table(json!([{"name":"one","list":[original]}]));
+        g7_cell(&h, "one", "List").focus();
+        h.run();
+        review_append(&mut h, &[", final"]);
+        assert_eq!(h.state().0, json!([{"name":"one","list":[original,"final"]}]));
+    }
+
+    #[test]
+    fn review_g7d_codes_one_item_in_list_only_column_after_explicit_null() {
+        let mut h = g7_table(json!([{"name":"one","values":[1]},{"name":"two","values":null}]));
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        review_type_at(&mut h, 2, "Values", "25");
+        assert_eq!(h.state().0[2]["values"], json!([25]));
+    }
+
+    #[test]
+    fn review_g7d_codes_mixed_added_after_list_keeps_plain_number_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7d_review_seed_mixed(&mut h, Some(json!([18, 19])));
+        let before = g7r2_entrance(&h);
+        let row = g7d_review_added_entrance(&mut h);
+        review_type_at(&mut h, row, "Audit kind", "25");
+        g7d_review_saved_added_entrance(&mut h, &before, row, json!(25));
+    }
+
+    #[test]
+    fn review_g7d_codes_mixed_added_after_missing_cell_slow_comma_list_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7d_review_seed_mixed(&mut h, None);
+        let before = g7r2_entrance(&h);
+        let row = g7d_review_added_entrance(&mut h);
+        review_cell_at(&h, row, "Audit kind").focus();
+        h.run();
+        review_append(&mut h, &["3", ",", "4"]);
+        g7d_review_saved_added_entrance(&mut h, &before, row, json!([3, 4]));
+    }
+
+    // The review's cases (G7e).
+    // Paste inside codes::tree::tests. Uses the helpers already in that module.
+
+    #[test]
+    fn review_g7e_codes_same_length_middle_edit_keeps_unchanged_duplicate_numbers() {
+        let number = json!(9_007_199_254_740_991.0);
+        let mut h = g7_table(json!([{"name":"one","values":[number, "middle", number]}]));
+        g7_type(&mut h, "one", "Values", &format!("{number}, changed, {number}"));
+        assert_eq!(h.state().0, json!([{"name":"one","values":[number, "changed", number]}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_only_other_null_does_not_choose_kind() {
+        let mut h = g7_table(json!([{"name":"one","values":null},{"name":"two","values":[]}]));
+        g7_type(&mut h, "two", "Values", "25");
+        assert_eq!(h.state().0, json!([{"name":"one","values":null},{"name":"two","values":25}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_only_other_null_allows_list_as_written() {
+        let mut h = g7_table(json!([{"name":"one","values":null},{"name":"two","values":null}]));
+        g7_type(&mut h, "two", "Values", "2, 5");
+        assert_eq!(h.state().0, json!([{"name":"one","values":null},{"name":"two","values":[2, 5]}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_other_empty_list_does_not_choose_kind() {
+        let mut h = g7_table(json!([{"name":"one","values":[]},{"name":"two","values":null}]));
+        g7_type(&mut h, "two", "Values", "25");
+        assert_eq!(h.state().0, json!([{"name":"one","values":[]},{"name":"two","values":25}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_other_empty_list_does_not_make_plain_column_mixed() {
+        let mut h = g7_table(json!([{"name":"one","values":[]},{"name":"two","values":1},{"name":"three","values":null}]));
+        g7_type(&mut h, "three", "Values", "2, 5");
+        assert_eq!(h.state().0, json!([{"name":"one","values":[]},{"name":"two","values":1},{"name":"three","values":"2, 5"}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_refocusing_uses_kind_committed_on_leaving_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7r2_seed_entrance(&mut h, |rows| {
+            let i = rows.as_array().unwrap().iter().position(|r| r["name"] == "T4").unwrap();
+            rows[i]["columns"]["audit_kind"] = Value::Null;
+        });
+        let mut expected = g7r2_entrance(&h);
+        let i = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Audit kind", "3");
+        g7_cell(&h, "T4", "Name").focus();
+        h.run_steps(3);
+        g7_cell(&h, "T4", "Audit kind").focus();
+        h.run();
+        review_append(&mut h, &[",", " 4"]);
+        expected["tables"][0]["rows"][i]["columns"]["audit_kind"] = json!("3, 4");
+        g7_ok(&mut h);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7e_codes_undo_within_edit_restores_plain_number_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7r2_seed_entrance(&mut h, |rows| {
+            let i = rows.as_array().unwrap().iter().position(|r| r["name"] == "T4").unwrap();
+            rows[i]["columns"]["audit_kind"] = Value::Null;
+        });
+        let mut expected = g7r2_entrance(&h);
+        let i = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Audit kind", "3");
+        h.run_steps(5);
+        review_append(&mut h, &[", 4"]);
+        h.run_steps(5);
+        let rows = &h
+            .state()
+            .codes_dialog
+            .as_ref()
+            .unwrap()
+            .tabs
+            .iter()
+            .find(|tab| tab.discipline == Discipline::Electrical)
+            .unwrap()
+            .rules["entrance"]["tables"][0]["rows"];
+        assert_eq!(rows[i]["columns"]["audit_kind"], json!([3, 4]));
+        g7d_review_undo(&mut h);
+        expected["tables"][0]["rows"][i]["columns"]["audit_kind"] = json!(3);
+        g7_ok(&mut h);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7e_codes_undo_after_refocusing_restores_original_text_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7r2_seed_entrance(&mut h, |rows| {
+            let i = rows.as_array().unwrap().iter().position(|r| r["name"] == "T4").unwrap();
+            rows[i]["columns"]["audit_kind"] = json!("alpha, beta");
+        });
+        let expected = g7r2_entrance(&h);
+        g7_cell(&h, "T4", "Audit kind").focus();
+        h.run_steps(5);
+        g7d_review_replace(&mut h, "");
+        g7_cell(&h, "T4", "Name").focus();
+        h.run_steps(3);
+        g7_cell(&h, "T4", "Audit kind").focus();
+        h.run_steps(3);
+        g7d_review_undo(&mut h);
+        g7_ok(&mut h);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7e_codes_undo_of_first_edit_restores_empty_list() {
+        let mut h = g7_table(json!([{"name":"one","values":[]},{"name":"two","values":1}]));
+        g7_cell(&h, "one", "Values").focus();
+        h.run_steps(5);
+        review_append(&mut h, &["3"]);
+        h.run_steps(5);
+        g7d_review_undo(&mut h);
+        assert_eq!(h.state().0, json!([{"name":"one","values":[]},{"name":"two","values":1}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_deleted_row_does_not_give_successor_its_kind() {
+        let mut h = g7_table(json!([{"name":"old","values":[11,12]},{"name":"next","values":"plain"}]));
+        g7_type(&mut h, "old", "Values", "31, 32");
+        h.get_all_by_label("×").next().unwrap().click_accesskit();
+        h.run();
+        g7_type(&mut h, "next", "Values", "3, 4");
+        assert_eq!(h.state().0, json!([{"name":"next","values":"3, 4"}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_pasted_row_does_not_inherit_old_plain_kind() {
+        let mut h = g7_table(json!([{"name":"old","values":"plain"}]));
+        h.state_mut().1 = "name\tvalues\nreplacement\t[17,23]\n".into();
+        h.run();
+        g7_type(&mut h, "old", "Values", "91, 92");
+        h.get_by_label("Use Pasted Rows").click_accesskit();
+        h.run();
+        g7_cell(&h, "replacement", "Values").focus();
+        h.run();
+        review_append(&mut h, &[", 4"]);
+        assert_eq!(h.state().0, json!([{"name":"replacement","values":[17, 23, 4]}]));
+    }
+
+    #[test]
+    fn review_g7e_codes_add_row_preserves_positional_places() {
+        let mut h = g7_table(json!([[1, [2, 3], 4]]));
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        review_type_at(&mut h, 1, "3", "25");
+        assert_eq!(h.state().0, json!([[1, [2, 3], 4], [null, [null, 25], null]]));
+    }
+
+    #[test]
+    fn review_g7e_codes_add_card_keeps_the_shape_of_nested_rows_and_lists() {
+        let original = json!({"name":"card","rows":[{"name":"inner","limit":12,"options":[1,2]}],"values":[3,4]});
+        let mut h = g7_table(json!([original]));
+        h.get_all_by_label("Add Row").max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().click_accesskit();
+        h.run();
+        assert_eq!(
+            h.state().0,
+            json!([original,{"name":null,"rows":[{"name":null,"limit":null,"options":[null,null]}],"values":[null,null]}])
+        );
+    }
+
+    // The confirmation's cases (G7e).
+    // Insert inside codes::tree::tests.
+
+    #[test]
+    fn review_g7er2_codes_add_row_restarts_original_value_for_existing_cell() {
+        let mut h = g7_dialog("energisa");
+        let i = g7r2_t4(&g7r2_entrance(&h));
+        g7r2_seed_entrance(&mut h, |rows| rows[i]["columns"]["audit_kind"] = json!("7"));
+        g7_type(&mut h, "T4", "Audit kind", "8");
+        let added = g7d_review_added_entrance(&mut h);
+        g7_type(&mut h, "T4", "Audit kind", "7");
+        g7_ok(&mut h);
+        assert!(h.state().codes_dialog.is_none());
+        let saved = g7r2_entrance(&h);
+        assert_eq!(saved["tables"][0]["rows"][added]["name"], json!("Audit G7d"));
+        assert_eq!(saved["tables"][0]["rows"][i]["name"], json!("T4"));
+        assert_eq!(saved["tables"][0]["rows"][i]["columns"]["audit_kind"], json!(7));
+    }
+
+    #[test]
+    fn review_g7er2_codes_delete_row_keeps_edits_and_restarts_shifted_cells() {
+        let mut h = g7_table(json!([{"name":"old","value":"7"},{"name":"next","value":"7"}]));
+        g7_type(&mut h, "old", "Value", "9");
+        g7_type(&mut h, "next", "Value", "8");
+        h.get_all_by_label("×").next().unwrap().click_accesskit();
+        h.run();
+        assert_eq!(h.state().0, json!([{"name":"next","value":8}]));
+        g7_type(&mut h, "next", "Value", "7");
+        assert_eq!(h.state().0, json!([{"name":"next","value":7}]));
+    }
+
+    #[test]
+    fn review_g7er2_codes_first_edit_after_paste_can_restore_the_pasted_number() {
+        let mut h = g7_table(json!([{"name":"old","value":"7"}]));
+        g7_type(&mut h, "old", "Value", "8");
+        review_g7c_paste_tsv(&mut h, "name\tvalue\nreplacement\t7\n");
+        assert_eq!(h.state().0, json!([{"name":"replacement","value":7}]));
+        g7_type(&mut h, "replacement", "Value", "9");
+        g7_cell(&h, "replacement", "Name").focus();
+        h.run_steps(3);
+        g7_type(&mut h, "replacement", "Value", "7");
+        assert_eq!(h.state().0, json!([{"name":"replacement","value":7}]));
+    }
+
+    #[test]
+    fn review_g7er2_codes_add_object_row_blanks_its_nested_plain_list() {
+        let original = json!({"name":"one","details":{"values":[1,2]}});
+        let mut h = g7_table(json!([original]));
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        assert_eq!(h.state().0, json!([original,{"name":null,"details":{"values":[]}}]));
+    }
+
+    #[test]
+    fn review_g7er2_codes_cancel_discards_first_value_before_reopening() {
+        let mut h = g7_dialog("energisa");
+        let i = g7r2_t4(&g7r2_entrance(&h));
+        g7r2_seed_entrance(&mut h, |rows| rows[i]["columns"]["audit_kind"] = json!("7"));
+        let original = g7r2_entrance(&h);
+        g7_type(&mut h, "T4", "Audit kind", "9");
+        h.get_by_label("Cancel").click_accesskit();
+        h.run();
+        review_expect_entrance(&h, &original);
+
+        // Another project edit while the dialog is closed distinguishes old and new histories.
+        let app = h.state_mut();
+        let mut fresh = crate::codes::CodesDialog::new(&app.session.model);
+        let tab = fresh.tab_mut(Discipline::Electrical);
+        tab.rules.get_mut("entrance").unwrap()["tables"][0]["rows"][i]["columns"]["audit_kind"] = json!(8);
+        app.session.execute("building_code", &tab.params(&app.session.model)).unwrap();
+        let mut expected = g7r2_entrance(&h);
+        expected["tables"][0]["rows"][i]["columns"]["audit_kind"] = json!(7);
+
+        review_open_entrance(&mut h);
+        g7_type(&mut h, "T4", "Audit kind", "7");
+        g7_ok(&mut h);
+        review_expect_entrance(&h, &expected);
     }
 }

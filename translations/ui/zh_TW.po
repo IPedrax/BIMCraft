@@ -686,9 +686,9 @@ msgstr ""
 msgid "Add Rectangle"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:395
-#: crates/ui-egui/src/codes/tree.rs:412
-#: crates/ui-egui/src/codes/tree.rs:679
+#: crates/ui-egui/src/codes/tree.rs:406
+#: crates/ui-egui/src/codes/tree.rs:423
+#: crates/ui-egui/src/codes/tree.rs:752
 #: crates/ui-egui/src/codes.rs:827
 #: crates/ui-egui/src/curtain.rs:339
 msgid "Add Row"
@@ -3958,7 +3958,7 @@ msgid "Copper"
 msgstr "銅"
 
 #: crates/core/src/commands.rs:2238
-#: crates/ui-egui/src/codes/tree.rs:434
+#: crates/ui-egui/src/codes/tree.rs:445
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -4011,7 +4011,7 @@ msgstr "複製報告"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "複製其 ID、GUID 和 IFC GlobalId"
 
-#: crates/ui-egui/src/codes/tree.rs:434
+#: crates/ui-egui/src/codes/tree.rs:445
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
@@ -4727,10 +4727,10 @@ msgstr ""
 msgid "Delete this code from the project. If the project uses it, its rules are kept."
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:389
-#: crates/ui-egui/src/codes/tree.rs:494
-#: crates/ui-egui/src/codes/tree.rs:577
-#: crates/ui-egui/src/codes/tree.rs:666
+#: crates/ui-egui/src/codes/tree.rs:400
+#: crates/ui-egui/src/codes/tree.rs:520
+#: crates/ui-egui/src/codes/tree.rs:636
+#: crates/ui-egui/src/codes/tree.rs:739
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr ""
@@ -11119,7 +11119,7 @@ msgstr ""
 msgid "Paste onto these levels:"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:442
+#: crates/ui-egui/src/codes/tree.rs:453
 msgid "Paste rows here"
 msgstr ""
 
@@ -14750,7 +14750,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "GitHub 上的源代碼"
 
-#: crates/ui-egui/src/codes/tree.rs:376
+#: crates/ui-egui/src/codes/tree.rs:387
 msgid "Source:"
 msgstr ""
 
@@ -16460,11 +16460,11 @@ msgstr "此項目沒有標高。請用“標高”工具添加一個。"
 msgid "This project has {}, the file {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:566
+#: crates/ui-egui/src/codes/tree.rs:593
 msgid "This row gives one value for these columns"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:564
+#: crates/ui-egui/src/codes/tree.rs:591
 msgid "This row gives this value in the columns after it"
 msgstr ""
 
@@ -17246,7 +17246,7 @@ msgstr "上限"
 msgid "Use"
 msgstr "使用"
 
-#: crates/ui-egui/src/codes/tree.rs:443
+#: crates/ui-egui/src/codes/tree.rs:454
 msgid "Use Pasted Rows"
 msgstr ""
 
@@ -19464,7 +19464,7 @@ msgstr ""
 msgid "{} redefined from lines"
 msgstr "{} 已由線重新定義"
 
-#: crates/ui-egui/src/codes/tree.rs:367
+#: crates/ui-egui/src/codes/tree.rs:378
 #: crates/ui-egui/src/codes.rs:192
 msgid "{} rows"
 msgstr ""
