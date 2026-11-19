@@ -23,6 +23,9 @@ pub(crate) const TABS: [(&str, &str); 6] = [
     ("pictures", msg!("Pictures")),
 ];
 
+/// How tall the list of a tab is, px: the window is of one size, its list scrolling past this.
+const LIST: f32 = 340.0;
+
 /// What an import does with a name the project has, as `import_assets` names it, and what the window calls it.
 pub(crate) const EXISTING: [(&str, &str); 3] =
     [("skip", msg!("Keep the project's")), ("replace", msg!("Replace with the file's")), ("rename", msg!("Bring in renamed"))];
@@ -126,7 +129,8 @@ impl BimApp {
     pub(crate) fn asset_manager_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.asset_manager.take() else { return };
         let (mut close, mut import, mut export_some, mut export_all) = (false, false, false, false);
-        let r = Modal::new(UiId::new("asset-manager"), t("Asset Manager")).width(760.0).show(ctx, |ui| {
+        // Of one size whatever it lists or shows of the asset picked, so nothing it shows moves it on the screen.
+        let r = Modal::new(UiId::new("asset-manager"), t("Asset Manager")).width(760.0).min_height(LIST + 220.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for (i, (kind, label)) in TABS.iter().enumerate() {
@@ -141,33 +145,38 @@ impl BimApp {
                 let kind = TABS[d.tab].0;
                 let rows = d.rows();
                 ui.columns(2, |cols| {
-                    ScrollArea::vertical().id_salt("asset-rows").max_height(340.0).auto_shrink([false, true]).show(&mut cols[0], |ui| {
-                        if rows.is_empty() {
-                            ui.label(RichText::new(t("The project has none.")).color(pal().muted));
-                        }
-                        for row in &rows {
-                            let name = row["name"].as_str().unwrap_or_default().to_string();
-                            ui.horizontal(|ui| {
-                                let key = (kind.to_string(), name.clone());
-                                let mut on = d.checked.contains(&key);
-                                if ui.checkbox(&mut on, "").on_hover_text(t("Export it")).changed() {
-                                    if on {
-                                        d.checked.insert(key);
-                                    } else {
-                                        d.checked.remove(&key);
+                    ScrollArea::vertical()
+                        .id_salt("asset-rows")
+                        .min_scrolled_height(LIST)
+                        .max_height(LIST)
+                        .auto_shrink([false, false])
+                        .show(&mut cols[0], |ui| {
+                            if rows.is_empty() {
+                                ui.label(RichText::new(t("The project has none.")).color(pal().muted));
+                            }
+                            for row in &rows {
+                                let name = row["name"].as_str().unwrap_or_default().to_string();
+                                ui.horizontal(|ui| {
+                                    let key = (kind.to_string(), name.clone());
+                                    let mut on = d.checked.contains(&key);
+                                    if ui.checkbox(&mut on, "").on_hover_text(t("Export it")).changed() {
+                                        if on {
+                                            d.checked.insert(key);
+                                        } else {
+                                            d.checked.remove(&key);
+                                        }
                                     }
-                                }
-                                swatch(ui, &self.session.model, kind, &name);
-                                let shown = row["label"].as_str().map_or_else(|| name.clone(), |l| format!("{l} ({name})"));
-                                if ui.selectable_label(d.picked.as_deref() == Some(name.as_str()), shown).clicked() {
-                                    d.picked = Some(name.clone());
-                                }
-                                let uses = row["uses"].as_u64().unwrap_or(0);
-                                let text = if uses == 0 { t("unused").to_string() } else { tf("used {}×", &[&uses.to_string()]) };
-                                ui.label(RichText::new(text).color(pal().muted));
-                            });
-                        }
-                    });
+                                    swatch(ui, &self.session.model, kind, &name);
+                                    let shown = row["label"].as_str().map_or_else(|| name.clone(), |l| format!("{l} ({name})"));
+                                    if ui.selectable_label(d.picked.as_deref() == Some(name.as_str()), shown).clicked() {
+                                        d.picked = Some(name.clone());
+                                    }
+                                    let uses = row["uses"].as_u64().unwrap_or(0);
+                                    let text = if uses == 0 { t("unused").to_string() } else { tf("used {}×", &[&uses.to_string()]) };
+                                    ui.label(RichText::new(text).color(pal().muted));
+                                });
+                            }
+                        });
                     let ui = &mut cols[1];
                     let picked = d.picked.as_ref().and_then(|p| rows.iter().find(|r| r["name"] == p.as_str()));
                     match picked {
@@ -185,20 +194,26 @@ impl BimApp {
                             ui.add_space(6.0);
                             ui.label(t("Used by"));
                             let by = row["used_by"].as_array().cloned().unwrap_or_default();
-                            ScrollArea::vertical().id_salt("asset-uses").max_height(260.0).show(ui, |ui| {
-                                if by.is_empty() {
-                                    ui.label(RichText::new(t("Nothing in the project uses it.")).color(pal().muted));
-                                }
-                                for u in &by {
-                                    ui.label(use_label(u));
-                                }
-                            });
+                            ScrollArea::vertical().id_salt("asset-uses").max_height(LIST - 100.0).auto_shrink([false, true]).show(
+                                ui,
+                                |ui| {
+                                    if by.is_empty() {
+                                        ui.label(RichText::new(t("Nothing in the project uses it.")).color(pal().muted));
+                                    }
+                                    for u in &by {
+                                        ui.label(use_label(u));
+                                    }
+                                },
+                            );
                         }
                     }
                 });
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.label(t("A name the project has:"));
+                ui.add_space(6.0);
+                ui.separator();
+                import = ui.button(t("Import…")).clicked();
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(t("When importing duplicates:"));
                     for (i, (_, label)) in EXISTING.iter().enumerate() {
                         ui.radio_value(&mut d.existing, i, t(label));
                     }
@@ -206,7 +221,6 @@ impl BimApp {
             });
             crate::popup::footer(ui, |ui| {
                 ui.horizontal(|ui| {
-                    import = ui.button(t("Import…")).clicked();
                     let n = d.checked.len();
                     export_some = ui.add_enabled(n > 0, Button::new(tf("Export {} Checked…", &[&n.to_string()]))).clicked();
                     export_all = ui.button(t("Export All…")).clicked();

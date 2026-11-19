@@ -744,7 +744,7 @@ To do: a link's graphics overrides and visibility per view, hosting on a linked 
 `links {kind?}` (`link/manage.rs`) lists, as Revit's Manage Links does, every file the project reads from elsewhere, a tab for
 each kind: `projects` and `ifc` (links, by their path's extension), `cad` (`Model::cads`, linked or imported), `clouds`, `models`
 (families made by `import_mesh`, which keep `Family::source`: the file's absolute path, the object, the OBJ's units and up, and
-the point the family stands on in the file), `images` (the pictures placed in plans, a row for each picture and file) and `pdf` (not yet anything). There's one row for each file, as Revit
+the point the family stands on in the file), `images` (the pictures placed in plans, a row for each picture and file) and `pdf` (the PDFs' pages placed, the same way). There's one row for each file, as Revit
 lists a link's type: `path` as kept, `path_type`, `resolved` (relative to the project's file), `status` (loaded, not loaded,
 unloaded, not found, imported) and its `instances` with their `ids`.
 
@@ -766,7 +766,17 @@ picture's nearest pixel to each of the view's, clipped to the view, as one `Prim
 moved (`transform` moves its middle; a turn keeps it upright, a mirror is refused) and deleted as any element. Linked, it keeps
 its file (`path`), which `reload_image {id, path?}` reads again for every image of that picture and file, and Manage Links lists on
 its Images tab; the picture it showed goes when nothing else shows it. The Asset Manager lists it among the picture's users.
-Tests: `image_tests.rs`. Still to come: on sheets and in sections, turned, and pictures larger than a texture's.
+A picture placed is kept up to `texture::MAX_PLACED_SIDE` (4096 px) a side, where a material's is kept to `MAX_SIDE` (1024):
+`Picture::import_at`. A file that fits is kept byte for byte, so a JPEG stays the JPEG it came in as (`Picture::is_jpeg`), as
+small as it was; one halved to fit is written again as what it was (a JPEG at quality 90 through jpeg-encoder, or a PNG). A
+project file holds either under the picture's `png` key, which every version reads (both are known by their first bytes).
+
+A PDF's page is placed the same way, as Revit's Insert > PDF: `image {path: "….pdf", page?}` draws page `page` (from 1) through
+`pdf_in.rs` and hayro (Apache-2.0 OR MIT), over white at up to 150 dpi and 4096 px a side, its text in a standard font the PDF
+doesn't embed drawn in hayro's Foxit fonts (BSD-3, in `NOTICE`). Unless `width` says, it stands at its paper's size at the plan's
+scale (`graphics::scale_of`), so a drawing printed at that scale lies true over the model. `PlacedImage::page` keeps the page,
+which `reload_image` draws again; Manage Links lists it on its PDF tab. A file past `pdf_in::MAX_BYTES`, an encrypted one, or a
+page it hasn't is refused. Tests: `image_tests.rs`. Still to come: on sheets and in sections, turned.
 
 ## Grid types
 

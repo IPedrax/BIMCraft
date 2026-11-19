@@ -1,7 +1,7 @@
 //! The `.bima` file: a project's assets taken out to share with another project, and brought in from one. It's a zip, as a
 //! `.bimc` is ([`crate::bimc`]): `assets.json` says what it holds, and each picture is a file of its own beside it,
-//! `images/<id>.png`, the PNG as the project held it, byte for byte. A picture that came in as a JPEG was kept as a PNG, so
-//! it loses nothing a second time.
+//! `images/<id>.png` or `images/<id>.jpg`, the file as the project held it, byte for byte: a JPEG stays the JPEG it came in
+//! as, and loses nothing a second time.
 //!
 //! `assets.json` is `{format, materials, fill_types, fill_patterns, line_patterns, line_styles, pictures}`: each kind by
 //! name, an asset `{guid, value}` (its value as a project file writes it), a picture `{guid, name, file}`. What goes out
@@ -170,8 +170,8 @@ pub fn export(m: &Model, sel: &Selection) -> Result<(Vec<u8>, BTreeMap<&'static 
             "line_styles" => m.line_styles.get(name).map(serde_json::to_value),
             _ => {
                 let Some(p) = m.images.get(name) else { continue };
-                let entry = format!("images/{name}.png");
-                images.push((entry.clone(), p.png().to_vec()));
+                let entry = format!("images/{name}.{}", p.extension());
+                images.push((entry.clone(), p.file().to_vec()));
                 file.pictures.insert(name.clone(), PictureAsset { guid, name: p.name().to_string(), file: entry });
                 *counts.entry(kind).or_default() += 1;
                 continue;
@@ -256,7 +256,7 @@ pub fn import(m: &mut Model, bytes: &[u8], sel: &Selection, existing: Existing) 
             out.left_out.push(("pictures", key.clone(), format!("its file `{}` isn't in the zip", p.file)));
             continue;
         };
-        match Picture::from_png(&p.name, png.clone()) {
+        match Picture::from_file(&p.name, png.clone()) {
             Ok(picture) => {
                 let id = picture.id();
                 here.entry("pictures").or_default().insert(key.clone(), id.clone());

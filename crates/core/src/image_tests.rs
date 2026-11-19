@@ -133,3 +133,62 @@ fn an_image_in_one_view_only_and_hostile_ones() {
         assert_eq!(*s.model, *before);
     }
 }
+
+#[test]
+fn a_pdfs_page_is_placed_at_its_papers_size_at_the_plans_scale_and_listed_on_the_pdf_tab() {
+    let dir = dir("pdf");
+    // A sheet of this project, written as a PDF: a page with a title block's lines on it.
+    let mut a = Session::new();
+    let sheet = run(&mut a, "sheet", json!({}))["id"].as_u64().unwrap();
+    let file = dir.join("plans.pdf");
+    run(&mut a, "export", json!({"format": "pdf", "view": sheet, "path": file}));
+    let mut s = Session::new();
+    let v = run(&mut s, "image", json!({"path": file.to_string_lossy(), "link": true}));
+    let id = v["id"].as_u64().unwrap();
+    let Some(crate::model::Element::Image(im)) = s.model.elements.get(id) else { panic!("{v}") };
+    assert_eq!(im.page, Some(1));
+    // Its paper at 1 : 100, the plan's scale.
+    let paper = crate::graphics::scale_of(&s.model, LEVEL);
+    let (w, h) = (v["width"].as_f64().unwrap(), v["height"].as_f64().unwrap());
+    assert!(w > 100.0 * paper && w < 1300.0 * paper, "a sheet's width at the plan's scale: {v}");
+    let size: Vec<u64> = v["size"].as_array().unwrap().iter().map(|n| n.as_u64().unwrap()).collect();
+    assert!(size[0].max(size[1]) <= crate::texture::MAX_PLACED_SIDE as u64 && size[0] > 1000, "drawn fine: {v}");
+    assert!((w / h - size[0] as f64 / size[1] as f64).abs() < 0.01);
+    // Something of the page is drawn, not all white.
+    let view = View { angle: 0.0, scale: 800.0 / w, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+    let pm = tiny_skia::Pixmap::decode_png(&render::png(&render::draw(&s.model, LEVEL, view)).unwrap()).unwrap();
+    assert!(pm.pixels().iter().any(|p| p.red() < 128), "the title block's lines");
+    // The PDF tab lists it, not the Images tab, and Reload draws its page again.
+    let links = run(&mut s, "links", json!({}));
+    assert_eq!((links["pdf"].as_array().unwrap().len(), links["images"].as_array().unwrap().len()), (1, 0), "{links}");
+    assert_eq!(links["pdf"][0]["status"], "loaded");
+    run(&mut s, "reload_image", json!({"id": id}));
+    // Not a PDF, or a page it hasn't, is refused.
+    let fake = dir.join("fake.pdf");
+    std::fs::write(&fake, b"%PDF-1.7 nothing").unwrap();
+    assert!(s.execute("image", &json!({"path": fake.to_string_lossy()})).is_err());
+    let e = s.execute("image", &json!({"path": file.to_string_lossy(), "page": 9})).unwrap_err();
+    assert!(e.contains("1 pages, not a page 9"), "{e}");
+    assert!(s.execute("image", &json!({"path": file.to_string_lossy(), "page": 0})).is_err());
+}
+
+#[test]
+fn a_jpeg_is_kept_as_the_jpeg_it_came_in_as() {
+    let dir = dir("jpeg");
+    let mut out = Vec::new();
+    let rgb: Vec<u8> = (0..64 * 32).flat_map(|_| [200u8, 40, 40]).collect();
+    jpeg_encoder::Encoder::new(&mut out, 80).encode(&rgb, 64, 32, jpeg_encoder::ColorType::Rgb).unwrap();
+    let path = dir.join("photo.jpg");
+    std::fs::write(&path, &out).unwrap();
+    let mut s = Session::new();
+    let v = run(&mut s, "image", json!({"path": path.to_string_lossy()}));
+    let picture = &s.model.images[v["picture"].as_str().unwrap()];
+    assert!(picture.is_jpeg());
+    assert_eq!(picture.file(), &out[..], "byte for byte");
+    // Through a .bima and back, still the same JPEG.
+    let bima = dir.join("a.bima").to_string_lossy().into_owned();
+    run(&mut s, "export_assets", json!({"path": bima, "pictures": true}));
+    let mut t = Session::new();
+    run(&mut t, "import_assets", json!({"path": bima}));
+    assert_eq!(t.model.images.values().next().unwrap().file(), &out[..]);
+}

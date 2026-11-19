@@ -189,6 +189,7 @@ mod parameter_tests;
 pub mod parameters;
 pub mod pat;
 pub mod pdf;
+pub mod pdf_in;
 pub mod pen;
 pub mod phasing;
 pub mod places;

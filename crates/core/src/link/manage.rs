@@ -37,7 +37,8 @@ pub fn list(m: &Model, project: Option<&Path>, kind: Option<&str>) -> Value {
             "cad" => cads(m, project),
             "clouds" => clouds(m),
             "models" => models(m),
-            "images" => images(m, project),
+            "images" => images(m, project, false),
+            "pdf" => images(m, project, true),
             _ => Vec::new(),
         };
         out.insert((*k).to_string(), Value::Array(rows));
@@ -146,14 +147,17 @@ fn models(m: &Model) -> Vec<Value> {
         .collect()
 }
 
-/// The images placed in plans, one row for each picture and file: linked ones by their file, imported ones by the picture
-/// the project holds.
-fn images(m: &Model, project: Option<&Path>) -> Vec<Value> {
+/// The images placed in plans, or with `pdf` the PDFs' pages, one row for each picture and file: linked ones by their file,
+/// imported ones by the picture the project holds.
+fn images(m: &Model, project: Option<&Path>, pdf: bool) -> Vec<Value> {
     // A picture and the file it's linked to, if it is: the images placed from it.
     type Placed = ((String, Option<String>), Vec<Id>);
     let mut files: Vec<Placed> = Vec::new();
     for (id, e) in m.elements.iter() {
         let Element::Image(im) = e else { continue };
+        if im.page.is_some() != pdf {
+            continue;
+        }
         let key = (im.picture.clone(), im.path.clone());
         match files.iter_mut().find(|(k, _)| *k == key) {
             Some((_, ids)) => ids.push(*id),

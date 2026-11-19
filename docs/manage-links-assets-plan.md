@@ -1,6 +1,6 @@
 # Manage Links and the Asset Manager: plan
 
-Status: steps 1–6 and 8–11 built (draft PR #540); 7, a PDF placed in a view, waits on the renderer's choice (below). Each step lands with
+Status: every step built (draft PR #540). Each step lands with
 its test, and this file says where it stands. How it works now: [views and graphics](areas/views-and-graphics.md#manage-links)
 and [assets](areas/assets.md).
 
@@ -54,8 +54,8 @@ Two dialogs, each with a command under it, so the CLI, scripts and MCP get the s
    and Link Image…. Tests: the PNG's pixels where it's placed. Still to come: sheets, sections and drafting views, a turn,
    and pictures larger than a texture's 1024 px.
 7. **Core: a PDF in a view.** A page of a PDF rendered to a picture and placed the same way, kept linked to its file. The
-   candidate is `hayro` (pure Rust, Apache-2.0 OR MIT). Its default `embed-fonts` bundles PDFium's Foxit fonts (BSD-3), which
-   would go in `NOTICE`; without them a PDF whose text uses an unembedded standard font draws no text. Waiting on that choice.
+   renderer is `hayro` (pure Rust, Apache-2.0 OR MIT) with its default `embed-fonts`, PDFium's Foxit fonts (BSD-3), credited
+   in `NOTICE`, so a PDF's text in an unembedded standard font is drawn. Built: `image` of a `.pdf` with `page`, Insert > PDF.
 
 ### The Asset Manager
 

@@ -241,8 +241,8 @@ other_files(
          project's assets to a .bima file, to bring into another project with `import_assets`: those the lists name (a list \
          given as true takes every asset of its kind), or with none, every asset. What they need goes with them: a material's \
          fill patterns and picture, a fill type's patterns, a line style's line pattern. A .bima is a zip: `assets.json` (each \
-         asset by name, with its GUID and its value as a project file writes it) and each picture as `images/<id>.png`, the \
-         PNG the project holds. Returns `path` and how many of each kind it holds",
+         asset by name, with its GUID and its value as a project file writes it) and each picture as `images/<id>.png` or \
+         `.jpg`, the file the project holds. Returns `path` and how many of each kind it holds",
         export_assets,
         Files::Write,
     ),
@@ -453,9 +453,11 @@ other_files(
         "image",
         "Image",
         &[],
-        "{path | picture, level?, view?, at?: [x, y], width?, link?} places a picture in the plans of `level` (the first unless \
-         given), or with `view` (a plan) in that view only, as Revit's Insert > Image: a PNG or JPEG file (`path`, taken into \
-         the project at up to 1024 px a side, one picture for the same pixels) or a picture the project holds (`picture`, its \
+        "{path | picture, level?, view?, at?: [x, y], width?, link?, page?} places a picture in the plans of `level` (the \
+         first unless given), or with `view` (a plan) in that view only, as Revit's Insert > Image and Insert > PDF. A PDF's \
+         `page` (the first unless given) is drawn over white at up to 150 dpi and 4096 px a side, and placed at its paper's \
+         size at the plan's scale unless `width` says, so a drawing made at that scale lies true. A PNG or JPEG file (`path`, taken into \
+         the project as it is, a JPEG staying a JPEG, halved to fit 4096 px a side; one picture for the same file) or a picture the project holds (`picture`, its \
          id from `assets`). Its middle stands on `at` (the origin unless given), `width` mm across (10 mm a pixel unless \
          given), as tall as its pixels say; it is drawn under the model, as a CAD import is, and moves and copies as any \
          element. `link: true` keeps its file, which `reload_image` and Manage Links read again. Returns `id`, `picture`, \
@@ -467,7 +469,7 @@ other_files(
         "reload_image",
         "Reload Image",
         &[],
-        "{id, path?} reads linked image `id`'s file again, for every image placed from it; with `path`, Reload From: that file \
+        "{id, path?, page?} reads linked image `id`'s file again (a PDF's page again, or `page`), for every image placed from it; with `path`, Reload From: that file \
          in its place (an image brought in unlinked too), linked to it from then on. Each keeps its middle and its width. \
          Returns `picture` and `images`, the ids of those that read it",
         reload_image,
@@ -10111,16 +10113,40 @@ fn reload_mesh(s: &mut Session, p: &Value) -> R {
     Ok(json!({"path": kept, "reloaded": reloaded, "missing": missing}))
 }
 
-/// The picture of the PNG or JPEG file at `path`, as the project would hold it.
-fn read_picture(c: &str, s: &Session, path: &str) -> Result<crate::texture::Picture, String> {
+/// The picture of the PNG or JPEG file at `path`, as the project would hold it; of a PDF, its page `page` (the first unless
+/// given) drawn, and its size on paper, mm.
+fn read_picture(c: &str, s: &Session, path: &str, page: Option<u32>) -> Result<(crate::texture::Picture, Option<[f64; 2]>), String> {
     let full = beside(s, path);
+    let pdf = ext(&full) == "pdf";
+    let most = if pdf { crate::pdf_in::MAX_BYTES } else { texture::MAX_BYTES as u64 };
     let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
-    if size > texture::MAX_BYTES as u64 {
-        return Err(bad(c, format!("{} is {size} bytes; a picture's file is up to {}", full.display(), texture::MAX_BYTES)));
+    if size > most {
+        return Err(bad(c, format!("{} is {size} bytes; a file to place is up to {most}", full.display())));
+    }
+    if page.is_some() && !pdf {
+        return Err(bad(c, "`page` is a PDF's: give a .pdf, or no `page`"));
     }
     let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
     let name = full.file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned());
-    Picture::import(&name, &bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))
+    let at = |e: String| bad(c, format!("{}: {e}", full.display()));
+    if pdf {
+        let n = usize::try_from(page.unwrap_or(1)).unwrap_or(usize::MAX);
+        let (picture, mm, _) = crate::pdf_in::page(&name, bytes, n).map_err(at)?;
+        return Ok((picture, Some(mm)));
+    }
+    Ok((Picture::import_at(&name, &bytes, texture::MAX_PLACED_SIDE).map_err(at)?, None))
+}
+
+/// `page`, a PDF's page from 1, if given.
+fn page_param(c: &str, p: &Value) -> Result<Option<u32>, String> {
+    match p.get("page") {
+        v if absent(v) => Ok(None),
+        Some(v) => match v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| *n >= 1) {
+            Some(n) => Ok(Some(n)),
+            None => Err(bad(c, format!("`page` is a PDF's page, from 1, not {v}"))),
+        },
+        None => Ok(None),
+    }
 }
 
 fn image(s: &mut Session, p: &Value) -> R {
@@ -10137,7 +10163,8 @@ fn image(s: &mut Session, p: &Value) -> R {
     };
     let link = flag(c, p, "link")?;
     let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
-    let (picture, path) = match (string(c, p, "path")?, string(c, p, "picture")?) {
+    let page = page_param(c, p)?;
+    let (picture, path, paper) = match (string(c, p, "path")?, string(c, p, "picture")?) {
         (Some(_), Some(_)) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, one the project holds; not both")),
         (None, None) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, the id of one the project holds")),
         (None, Some(id)) => {
@@ -10145,19 +10172,25 @@ fn image(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, "`link` keeps the file a picture comes from: give `path`"));
             }
             let held = m.images.get(&id).cloned().ok_or_else(|| bad(c, format!("the project holds no picture `{id}`")))?;
-            (held, None)
+            (held, None, None)
         }
-        (Some(path), None) => (read_picture(c, s, &path)?, link.then_some(path)),
+        (Some(path), None) => {
+            let (picture, paper) = read_picture(c, s, &path, page)?;
+            (picture, link.then_some(path), paper)
+        }
     };
     let (w, h) = picture.size();
-    let width = match num(c, p, "width")? {
-        Some(w) => w,
-        None => w as f64 * 10.0,
+    // A PDF's page at its paper's size at the plan's scale, so a drawing made at that scale lies true; a picture, 10 mm a pixel.
+    let width = match (num(c, p, "width")?, paper) {
+        (Some(w), _) => w,
+        (None, Some([mm, _])) => mm * crate::graphics::scale_of(&s.model, view.unwrap_or(level)),
+        (None, None) => w as f64 * 10.0,
     };
+    let page = paper.map(|_| page.unwrap_or(1));
     let id = picture.id();
     let m = s.model_mut();
     m.images.entry(id.clone()).or_insert(picture);
-    let placed = crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path };
+    let placed = crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page };
     let height = placed.height(m);
     let new = m.insert(Element::Image(placed));
     Ok(json!({"id": new, "picture": id, "size": [w, h], "width": width, "height": height}))
@@ -10167,13 +10200,16 @@ fn reload_image(s: &mut Session, p: &Value) -> R {
     let c = "reload_image";
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, an image, is required"))?;
     let Some(Element::Image(im)) = s.model.elements.get(id) else { return Err(bad(c, format!("element {id} is not an image"))) };
-    let (old, was) = (im.picture.clone(), im.path.clone());
+    let (old, was, was_page) = (im.picture.clone(), im.path.clone(), im.page);
     let path = match (string(c, p, "path")?, &was) {
         (Some(path), _) => path,
         (None, Some(path)) => path.clone(),
         (None, None) => return Err(bad(c, format!("image {id} isn't linked; give `path`, a file to reload it from"))),
     };
-    let picture = read_picture(c, s, &path)?;
+    // A PDF's page: the one asked for, else the one it was.
+    let pdf = ext(Path::new(&path)) == "pdf";
+    let page = if pdf { page_param(c, p)?.or(was_page).or(Some(1)) } else { page_param(c, p)? };
+    let (picture, _) = read_picture(c, s, &path, page)?;
     let new = picture.id();
     let m = s.model_mut();
     m.images.entry(new.clone()).or_insert(picture);
@@ -10184,6 +10220,7 @@ fn reload_image(s: &mut Session, p: &Value) -> R {
         if let Some(Element::Image(x)) = m.elements.get_mut(*i) {
             x.picture.clone_from(&new);
             x.path = Some(path.clone());
+            x.page = page;
         }
     }
     // The picture it showed, if nothing else shows it now.

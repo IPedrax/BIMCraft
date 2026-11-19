@@ -16,6 +16,10 @@ fn the_asset_manager_lists_what_the_project_draws_with_and_where_it_is_used() {
     press(&mut h, "Site");
     assert!(h.query_by_label("Used by").is_some());
     assert!(h.query_by_label_contains(&line.to_string()).is_some(), "the detail line drawn in it, by its id");
+    // Import's choice for duplicates is under it, as it says.
+    let import = h.get_by_label("Import…").rect();
+    let choice = h.get_by_label("When importing duplicates:").rect();
+    assert!(choice.top() >= import.bottom() - 1.0, "{import:?} {choice:?}");
     press(&mut h, "Close");
     assert!(h.state().asset_manager.is_none());
 }
@@ -34,4 +38,29 @@ fn assets_go_out_to_a_bima_and_come_into_another_project() {
     assert!(b.state_mut().import_assets_from(&path, "skip"), "{}", b.state().status.text);
     assert_eq!(b.state().session.model.materials["Oak"].color, [0xa0, 0x52, 0x2d]);
     let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn hovering_the_asset_managers_rows_leaves_it_where_it_stands() {
+    let mut h = app(&format!("{BOX}\nmaterial {{\"name\": \"Oak\", \"color\": \"#a0522d\"}}"));
+    h.state_mut().open_asset_manager();
+    h.run();
+    let rect = |h: &Harness<BimApp>| h.ctx.memory(|m| m.area_rect(egui::Id::new("asset-manager"))).expect("the window");
+    let first = rect(&h);
+    let names: Vec<String> =
+        h.state().asset_manager.as_ref().unwrap().rows().iter().take(6).filter_map(|r| r["name"].as_str().map(str::to_string)).collect();
+    for _ in 0..3 {
+        for name in &names {
+            h.get_by_label(name).hover();
+            h.run();
+            // Picked, it shows where it's used beside the list; the window stays as it was.
+            h.get_by_label(name).click();
+            h.run();
+            let now = rect(&h);
+            assert!(
+                (now.top() - first.top()).abs() < 0.5 && (now.height() - first.height()).abs() < 0.5,
+                "{name}: {first:?} became {now:?}"
+            );
+        }
+    }
 }

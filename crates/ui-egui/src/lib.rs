@@ -5583,10 +5583,22 @@ impl BimApp {
             let r = big_button(ui, Icon::Component, "Image", false, tip);
             ribbon::choices(ui, &r, false, |ui| {
                 if ui.button(t("Import Image…")).clicked() {
-                    self.image_dialog(ui.ctx(), false);
+                    self.image_dialog(ui.ctx(), false, false);
                 }
                 if ui.button(t("Link Image…")).clicked() {
-                    self.image_dialog(ui.ctx(), true);
+                    self.image_dialog(ui.ctx(), true, false);
+                }
+            });
+            let tip = msg!(
+                "PDF: a PDF's first page placed under the model in the plans of this plan's level, at its paper's size at the plan's scale, so a drawing printed at that scale lies true"
+            );
+            let r = big_button(ui, Icon::Sheet, "PDF", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), false, true);
+                }
+                if ui.button(t("Link PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), true, true);
                 }
             });
         });

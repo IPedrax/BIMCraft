@@ -132,7 +132,7 @@ fn a_bima_takes_what_an_asset_needs_and_brings_it_back_with_its_guid() {
     let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
     let id = a.model.images.keys().next().unwrap().clone();
     assert_eq!(names, vec!["assets.json".to_string(), format!("images/{id}.png")]);
-    assert_eq!(files[1].1, a.model.images[&id].png());
+    assert_eq!(files[1].1, a.model.images[&id].file());
 
     let mut b = Session::new();
     let v = run(&mut b, "import_assets", json!({"path": path}));

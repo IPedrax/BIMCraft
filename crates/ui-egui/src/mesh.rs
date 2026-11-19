@@ -42,9 +42,14 @@ impl BimApp {
 }
 
 impl BimApp {
-    /// Insert > Image, or Link Image with `link`: the PNG or JPEG the user picks, placed on the plan on screen.
-    pub(crate) fn image_dialog(&mut self, ctx: &Context, link: bool) {
-        let dialog = rfd::AsyncFileDialog::new().add_filter(t("Images (PNG, JPEG)"), &["png", "jpg", "jpeg"]);
+    /// Insert > Image, or Link Image with `link`: the PNG or JPEG the user picks (with `pdf`, a PDF, its first page), placed on
+    /// the plan on screen.
+    pub(crate) fn image_dialog(&mut self, ctx: &Context, link: bool, pdf: bool) {
+        let dialog = if pdf {
+            rfd::AsyncFileDialog::new().add_filter(t("PDF files"), &["pdf"])
+        } else {
+            rfd::AsyncFileDialog::new().add_filter(t("Images (PNG, JPEG)"), &["png", "jpg", "jpeg"])
+        };
         self.ask_file(ctx, dialog, false, move |app, path| {
             app.image_path(&path, link);
         });

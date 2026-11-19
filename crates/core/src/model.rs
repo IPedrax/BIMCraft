@@ -1611,7 +1611,8 @@ pub struct CadImport {
     pub colors: Colors,
 }
 
-/// A picture placed in a plan, as Revit's Insert > Image (and Link Image, with `path`): the project's `picture` (one of
+/// A picture placed in a plan, as Revit's Insert > Image (and Link Image, with `path`), or a PDF's page as one, as Revit's
+/// Insert > PDF: the project's `picture` (one of
 /// `Model::images`) with its middle on `at` on `level`, `width` mm across and as tall as its pixels say. With a `view`, only
 /// that plan shows it; without, every plan of its level does. It is drawn under the model, as a CAD import is. Linked, it
 /// keeps the file it came from, which `reload_image` reads again; the project holds the picture, so it opens without it.
@@ -1626,6 +1627,9 @@ pub struct PlacedImage {
     pub view: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// The page of the PDF it is, from 1, when it's one: `reload_image` draws that page again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
 }
 
 /// The widest an image placed may be, mm: 10 km.

@@ -22,8 +22,9 @@ A picture also says its `size` in px and its `label`, the name it came in with. 
 ## The `.bima` file (`bima.rs`)
 
 `files::ASSETS` (`bima`). It's a zip, written and read by `bimc::zip_files` and `bimc::unzip_files`, the same in-house zip as
-a project's: `assets.json` (deflated) and `images/<id>.png` (stored), each picture's PNG byte for byte, as the project holds
-it. A picture that came in as a JPEG is held as a PNG, so going out and back loses nothing.
+a project's: `assets.json` (deflated) and `images/<id>.png` or `images/<id>.jpg` (stored), each picture's file byte for byte, as
+the project holds it. A picture that came in as a JPEG is held as that JPEG (`texture::Picture::import_at`), so it stays as
+small as it was and going out and back loses nothing.
 
 `assets.json` is `{format, materials, fill_types, fill_patterns, line_patterns, line_styles, pictures}`: each kind by name,
 an asset as `{guid, value}` with its value as a project file writes it, a picture as `{guid, name, file}`.

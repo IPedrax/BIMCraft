@@ -47,7 +47,7 @@ fn can(kind: &str, row: &Value) -> (bool, bool, bool) {
         "projects" | "ifc" => (true, true, row["status"] != "unloaded"),
         "cad" => (row["path"].is_string(), true, false),
         "models" => (true, true, false),
-        "images" => (row["path"].is_string(), true, false),
+        "images" | "pdf" => (row["path"].is_string(), true, false),
         _ => (false, false, false),
     }
 }
@@ -91,8 +91,8 @@ impl BimApp {
             ("cad", Some(path)) => ("reload_cad", json!({"cad": row["name"], "path": path})),
             ("models", None) => ("reload_mesh", json!({"path": row["path"]})),
             ("models", Some(path)) => ("reload_mesh", json!({"path": row["path"], "from": path})),
-            ("images", None) => ("reload_image", json!({"id": first})),
-            ("images", Some(path)) => ("reload_image", json!({"id": first, "path": path})),
+            ("images" | "pdf", None) => ("reload_image", json!({"id": first})),
+            ("images" | "pdf", Some(path)) => ("reload_image", json!({"id": first, "path": path})),
             _ => return false,
         };
         let Some(v) = self.run(cmd, p) else { return false };
@@ -164,7 +164,7 @@ impl BimApp {
                     reload = ui.add_enabled(reloads, Button::new(t("Reload"))).clicked();
                     from = ui.add_enabled(froms, Button::new(t("Reload From…"))).clicked();
                     unload = ui.add_enabled(unloads, Button::new(t("Unload"))).clicked();
-                    let adds = matches!(kind, "projects" | "ifc" | "cad" | "clouds" | "models");
+                    let adds = matches!(kind, "projects" | "ifc" | "cad" | "clouds" | "models" | "images" | "pdf");
                     add = ui.add_enabled(adds, Button::new(t("Add…"))).clicked();
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         close = ui.button(t("Close")).clicked();
@@ -189,6 +189,8 @@ impl BimApp {
                 "projects" | "ifc" => self.link_dialog = true,
                 "cad" => self.cad_dialog = Some(true),
                 "clouds" => self.cloud_dialog = true,
+                "images" => self.image_dialog(ctx, true, false),
+                "pdf" => self.image_dialog(ctx, true, true),
                 _ => self.import_mesh_dialog(ctx),
             }
             close = true;
@@ -207,6 +209,7 @@ impl BimApp {
             "cad" => vec!["dwg", "dxf"],
             "models" => vec!["obj", "gltf", "glb"],
             "images" => vec!["png", "jpg", "jpeg"],
+            "pdf" => vec!["pdf"],
             _ => crate::links::link_extensions(),
         };
         let dialog = rfd::AsyncFileDialog::new().add_filter(t("Files of this kind"), &extensions);

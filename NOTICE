@@ -228,3 +228,61 @@ Zlib, BSD-2-Clause (arrayref), BSD-3-Clause (tiny-skia-path, as tiny-skia
 already is) and Unicode-3.0 (yoke, zerofrom). The sRGB and grey colour profiles it puts in a file's
 output intent are from Compact-ICC-Profiles
 (https://github.com/saucecontrol/Compact-ICC-Profiles), released under CC0 1.0.
+
+==============================================================================
+Reading PDFs: hayro, and PDFium's Foxit fonts
+==============================================================================
+
+The core (bimcraft-core) draws a PDF's page to place it in a view (Insert >
+PDF) through hayro, unmodified:
+
+  hayro  Apache-2.0 OR MIT  PDF interpretation and rendering, in Rust
+    by Laurenz Stampfl and its contributors
+    https://github.com/LaurenzV/hayro
+    https://crates.io/crates/hayro/0.9.0
+
+Its own crates (hayro-syntax, hayro-interpret, hayro-font, hayro-cmap,
+hayro-jbig2, hayro-jpeg2000, hayro-ccitt, hayro-postscript) are Apache-2.0 OR
+MIT, and so are vello_cpu, vello_common, kurbo, peniko, skrifa and the rest of
+its dependencies but these: BSD-3-Clause AND MIT (brotli,
+brotli-decompressor), BSD-3-Clause (alloc-no-stdlib, alloc-stdlib),
+BSD-3-Clause OR Apache-2.0 (moxcms, pic-scale, pxfm), Apache-2.0
+(ab_glyph_rasterizer), Zlib (zlib-rs, foldhash), MIT (phf, libm) and
+Unicode-3.0 (yoke, zerofrom).
+
+hayro-font carries fourteen Type 1 fonts from PDFium, built into BIMCraft's
+executables, which draw a PDF's text in the standard fonts it doesn't embed
+(Helvetica, Times, Courier, Symbol, ZapfDingbats): FoxitSans, FoxitSerif and
+FoxitFixed in their regular, bold, italic and bold italic, FoxitSymbol and
+FoxitDingbats. BIMCraft does not change them. They carry this notice:
+
+    Copyright 2014 PDFium Authors. All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+       * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+       * Redistributions in binary form must reproduce the above
+    copyright notice, this list of conditions and the following disclaimer
+    in the documentation and/or other materials provided with the
+    distribution.
+       * Neither the name of Google Inc. nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"Foxit" is a trademark of Foxit Software Inc.; the fonts keep the names PDFium
+gave them. BIMCraft is not affiliated with Foxit or Google.
