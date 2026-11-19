@@ -255,6 +255,7 @@ pub mod symbol_set;
 pub mod text;
 pub mod texture;
 mod timber;
+pub mod title_starters;
 pub mod titleblock;
 #[cfg(test)]
 mod titleblock_tests;

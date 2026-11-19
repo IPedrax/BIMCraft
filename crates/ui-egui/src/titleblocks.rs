@@ -41,6 +41,8 @@ pub(crate) struct TitleBlocksDialog {
     field_scope: Scope,
     /// How much the preview is enlarged past fitting: 1 fits it.
     zoom: f32,
+    /// The papers it is for, as typed: `A4, A3`.
+    papers: String,
 }
 
 impl TitleBlocksDialog {
@@ -61,7 +63,15 @@ impl TitleBlocksDialog {
             field_key: String::new(),
             field_scope: Scope::Sheet,
             zoom: 1.0,
+            papers: String::new(),
         }
+        .with_papers()
+    }
+
+    /// Its papers, as typed, from what the title block shown lists.
+    fn with_papers(mut self) -> TitleBlocksDialog {
+        self.papers = self.tb.sizes.join(", ");
+        self
     }
 
     /// Text `i` picked on the preview (none, no text): Make Field offers a key made of what it says.
@@ -91,6 +101,7 @@ impl TitleBlocksDialog {
             o.insert("name".into(), json!(self.name));
             o.insert("drawing_area".into(), json!(self.tb.drawing_area));
             o.insert("template_border".into(), json!(self.tb.template_border));
+            o.insert("sizes".into(), json!(self.tb.sizes));
             for key in ["lines", "fills", "texts", "fields"] {
                 o.entry(key).or_insert(json!([]));
             }
@@ -333,6 +344,19 @@ fn size_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
         }
     }
     ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        let l = ui.label(t("Papers"));
+        let r = ui.add_sized([260.0, 20.0], TextEdit::singleline(&mut d.papers).hint_text("A4, A3"));
+        let changed = r.changed();
+        r.labelled_by(l.id);
+        if changed {
+            d.tb.sizes = d.papers.split(',').map(|z| z.trim().to_string()).filter(|z| !z.is_empty()).collect();
+        }
+    });
+    ui.label(
+        RichText::new(t("A sheet that names no title block is drawn with the first one, by name, that lists its paper.")).weak().small(),
+    );
+    ui.add_space(4.0);
     Grid::new("title-block-size").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
         ui.label(t("Width"));
         ui.add(mm(&mut d.tb.width, 1.0, titleblock::MAX_SIZE));
@@ -553,6 +577,7 @@ impl BimApp {
         let names: Vec<String> = model.title_blocks.keys().cloned().collect();
         let (mut ok, mut apply, mut cancel) = (false, false, false);
         let (mut pick, mut make, mut duplicate, mut delete, mut import) = (None, None, false, false, false);
+        let mut starter: Option<String> = None;
         let r = Modal::new(UiId::new("title-blocks-dialog"), t("Title Blocks")).width(1120.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.horizontal_top(|ui| {
@@ -582,6 +607,15 @@ impl BimApp {
                                 delete = true;
                             }
                         });
+                        let l = ui.label(t("New from starter:"));
+                        let combo = ComboBox::from_id_salt("title-block-starter").selected_text("").width(180.0).show_ui(ui, |ui| {
+                            for n in bimcraft_core::title_starters::names() {
+                                if ui.selectable_label(false, n).clicked() {
+                                    starter = Some(n.to_string());
+                                }
+                            }
+                        });
+                        combo.response.labelled_by(l.id);
                         let tip = t("Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field");
                         if ui.button(t("Import DXF…")).on_hover_text(tip).clicked() {
                             import = true;
@@ -598,7 +632,7 @@ impl BimApp {
                             ui.add_sized([240.0, 20.0], TextEdit::singleline(&mut d.rename));
                         });
                         // What it looks like, filled in as the first sheet that names it would be, else with its defaults.
-                        let sheet = model.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(s) if s.title_block == d.name).then_some(*id));
+                        let sheet = model.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(s) if model.title_block_of(s).is_some_and(|(n, _)| n == d.name)).then_some(*id));
                         // No sheet names it yet: the automatic fields as a sheet of one view at 1 : 100 would have them.
                         let mut values = sheet.map(|s| bimcraft_core::sheet::title_values(&model, s)).unwrap_or_else(|| {
                             [
@@ -667,6 +701,12 @@ impl BimApp {
                             d.name = n.to_string();
                             d.rename = d.name.clone();
                         }
+                        // The papers as the command keeps them: each once, in capitals.
+                        d.tb.sizes = v["title_block"]["sizes"]
+                            .as_array()
+                            .map(|a| a.iter().filter_map(|z| z.as_str().map(str::to_string)).collect())
+                            .unwrap_or_default();
+                        d.papers = d.tb.sizes.join(", ");
                     }
                     Err(e) => {
                         d.error = Some(e);
@@ -706,6 +746,16 @@ impl BimApp {
             };
             match self.exec("title_block", &json!({"name": name})) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, Some(&name)),
+                Err(e) => d.error = Some(e),
+            }
+        }
+        if let Some(starter) = starter {
+            let mut p = json!({"starter": starter});
+            if !d.new_name.trim().is_empty() {
+                p["name"] = json!(d.new_name.trim());
+            }
+            match self.exec("title_block", &p) {
+                Ok(v) => d = TitleBlocksDialog::new(&self.session.model, v["name"].as_str()),
                 Err(e) => d.error = Some(e),
             }
         }
