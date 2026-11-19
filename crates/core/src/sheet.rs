@@ -436,7 +436,7 @@ fn table_of(m: &Model, view: Option<Id>, sc: &Schedule) -> Table {
     let kept = schedule::table_kept(m, view, sc).ok();
     let t = kept.as_deref().unwrap_or(&empty);
     let said = |c: &schedule::Column, v: &serde_json::Value| {
-        let s = schedule::shown(m.units, c.kind, v);
+        let s = schedule::shown_to(m.units, m.decimals, c.kind, v);
         if v.is_boolean() { m.language.word(&s).to_string() } else { s }
     };
     let mut rows: Vec<Vec<String>> = t.rows.iter().map(|r| r.iter().zip(&t.columns).map(|(v, c)| said(c, v)).collect()).collect();

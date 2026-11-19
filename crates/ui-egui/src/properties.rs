@@ -697,10 +697,12 @@ fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
 }
 
 /// A project parameter's value of `kind` as a field shows it: lengths and areas in `units`. Not for yes or no, a checkbox.
-pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
+pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, m: &Model) -> String {
+    let units = m.units;
     match kind {
         ParameterKind::Area => area_shown(v, units),
-        ParameterKind::Length => shown(Length, v, units),
+        // Read whole by the dialog's OK: what the units round away is said in mm, so a value left alone keeps itself.
+        ParameterKind::Length => v.as_f64().map_or_else(String::new, |x| m.field(x)),
         ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => shown(Number, v, units),
         ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, units),
     }
@@ -1073,9 +1075,9 @@ impl RoomRows {
         let t = m.types.room.get(name).cloned().unwrap_or_default();
         RoomRows {
             floor: t.floor.unwrap_or_default(),
-            floor_offset: m.units.length(t.floor_offset),
+            floor_offset: m.field(t.floor_offset),
             ceiling: t.ceiling.unwrap_or_default(),
-            ceiling_offset: m.units.length(t.ceiling_offset),
+            ceiling_offset: m.field(t.ceiling_offset),
             fill: t.colour.is_some(),
             colour: t.colour.unwrap_or(SWATCHES[0].1),
         }
@@ -1220,7 +1222,7 @@ impl TypeDialog {
                 if *k == "rotation" {
                     return (*g, *k, *l, format!("{}°", value.as_f64().unwrap_or(0.0)));
                 }
-                (*g, *k, *l, shown(Length, &value, m.units))
+                (*g, *k, *l, value.as_f64().map_or_else(String::new, |x| m.field(x)))
             })
             .collect()
     }
@@ -1228,9 +1230,9 @@ impl TypeDialog {
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
     fn layers(m: &Model, category: &str, name: &str) -> Vec<LayerRow> {
         let Some((.., thickness, layers)) = m.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return Vec::new() };
-        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length(l.thickness), l.variable);
+        let typed = |l: &Layer| (l.function, l.material.clone(), m.field(l.thickness), l.variable);
         match layers {
-            [] => vec![(Function::Structure, String::new(), m.units.length(thickness), false)],
+            [] => vec![(Function::Structure, String::new(), m.field(thickness), false)],
             layers => layers.iter().map(typed).collect(),
         }
     }
@@ -2004,7 +2006,7 @@ impl BimApp {
             ui.checkbox(&mut core, t("Extend into wall (to core)"));
             ui.end_row();
             let name = ui.label(t("Offset:"));
-            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.units.length(p.offset), name.id, m.units.name());
+            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.length(p.offset), name.id, m.units.name());
             ui.end_row();
         });
         let face_changed = core != p.face.is_core();
@@ -3403,7 +3405,7 @@ impl BimApp {
                                     edit_pattern = true;
                                 }
                             });
-                            tb.shown(t("Thickness"), &model.units.length(*thickness));
+                            tb.shown(t("Thickness"), &model.length(*thickness));
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
@@ -3621,7 +3623,7 @@ impl FamilyDialog {
             .map(|f| {
                 let values = f.values(&name, &Default::default()).unwrap_or_default();
                 let typed = |p: &bimcraft_core::family::Parameter| match values.get(&p.name) {
-                    Some(Val::Number(x)) if p.kind == Holds::Length => m.units.length(*x),
+                    Some(Val::Number(x)) if p.kind == Holds::Length => m.field(*x),
                     Some(Val::Number(x)) if p.kind == Holds::YesNo => (if *x != 0.0 { "1" } else { "0" }).to_string(),
                     Some(Val::Number(x)) => format!("{}", (x * 1e6).round() / 1e6),
                     Some(Val::Text(t)) => t.clone(),

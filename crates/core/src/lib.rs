@@ -269,6 +269,8 @@ pub mod underlay;
 mod underlay_tests;
 pub mod units;
 #[cfg(test)]
+mod units_tests;
+#[cfg(test)]
 mod vertical_tools_tests;
 pub mod view3d;
 #[cfg(test)]

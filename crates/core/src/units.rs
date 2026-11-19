@@ -93,11 +93,53 @@ impl Units {
         }
     }
 
+    /// The places after the point a project may show lengths to in these units: from the fewest, which drawings use (metres
+    /// and feet 2, centimetres 1, millimetres 0), to three more. Inches and feet-inches show sixteenths, so none.
+    pub fn decimals(self) -> Option<std::ops::RangeInclusive<u8>> {
+        let fewest = match self {
+            Units::Millimetres => 0,
+            Units::Centimetres => 1,
+            Units::Metres | Units::Feet => 2,
+            Units::Inches | Units::FeetInches => return None,
+        };
+        Some(fewest..=fewest + 3)
+    }
+
+    /// [`Units::length`] to `decimals` places after the point (a project's, [`Units::decimals`]; none, the fewest), the places
+    /// of a file held to the range.
+    pub fn length_to(self, mm: f64, decimals: Option<u8>) -> String {
+        let Some(range) = self.decimals() else { return self.length(mm) };
+        match decimals.map(|d| d.clamp(*range.start(), *range.end())) {
+            Some(d) if d != *range.start() => crate::dims::rounded(self, Some(d), mm),
+            _ => self.length(mm),
+        }
+    }
+
+    /// A length as a field to edit is filled: as [`Units::length`], unless that reads back as another length (3 mm in metres
+    /// is `0.00`), and then in mm with its unit, so a field left alone keeps its value. Inches and feet round as drawings do.
+    pub fn field(self, mm: f64) -> String {
+        self.field_to(mm, None)
+    }
+
+    /// [`Units::field`] to a project's `decimals`.
+    pub fn field_to(self, mm: f64, decimals: Option<u8>) -> String {
+        let shown = self.length_to(mm, decimals);
+        if self.imperial() || self.parse(&shown) == self.parse(&format!("{mm} mm")) {
+            return shown;
+        }
+        format!("{} mm", (mm * 1e3).round() / 1e3 + 0.0)
+    }
+
     /// A length with its unit, as the desktop labels one: 3000 mm, 3.00 m, 9'-10 1/8".
     pub fn with_unit(self, mm: f64) -> String {
+        self.with_unit_to(mm, None)
+    }
+
+    /// [`Units::with_unit`] to a project's `decimals`.
+    pub fn with_unit_to(self, mm: f64, decimals: Option<u8>) -> String {
         match self {
-            Units::Millimetres | Units::Centimetres | Units::Metres => format!("{} {}", self.length(mm), self.name()),
-            _ => self.length(mm),
+            Units::Millimetres | Units::Centimetres | Units::Metres => format!("{} {}", self.length_to(mm, decimals), self.name()),
+            _ => self.length_to(mm, decimals),
         }
     }
 
@@ -287,6 +329,59 @@ mod tests {
         assert_eq!(Units::FeetInches.with_unit(3000.0), "9'-10 1/8\"");
         let (ft2, unit) = Units::FeetInches.area(18e6);
         assert_eq!((format!("{ft2:.2}"), unit), ("193.75".to_string(), "ft²"));
+    }
+
+    #[test]
+    fn a_field_is_filled_with_what_reads_back_as_the_value() {
+        // What the units round away is said in mm, so Apply on a field left alone changes nothing.
+        assert_eq!(Units::Metres.field(3.0), "3 mm");
+        assert_eq!(Units::Metres.field(55.0), "55 mm");
+        assert_eq!(Units::Metres.field(-12.5), "-12.5 mm");
+        assert_eq!(Units::Centimetres.field(3005.4), "3005.4 mm");
+        assert_eq!(Units::Millimetres.field(3.5), "3.5 mm");
+        // What they show exactly is shown as drawings show it.
+        assert_eq!(Units::Metres.field(2950.0), "2.95");
+        assert_eq!(Units::Metres.field(0.0), "0.00");
+        assert_eq!(Units::Centimetres.field(3005.0), "300.5");
+        assert_eq!(Units::Millimetres.field(3000.0), "3000");
+        // Inches and feet round by design, to a sixteenth of an inch and a hundredth of a foot.
+        assert_eq!(Units::FeetInches.field(3000.0), "9'-10 1/8\"");
+        assert_eq!(Units::Feet.field(3000.0), "9.84'");
+        for u in [Units::Millimetres, Units::Centimetres, Units::Metres] {
+            for mm in [0.0, 3.0, 55.0, 2950.0, 3213.1, -12.5, 0.0004] {
+                assert_eq!(u.parse(&u.field(mm)), Some((mm * 1e3).round() / 1e3 + 0.0), "{u:?} {mm}");
+            }
+        }
+    }
+
+    #[test]
+    fn lengths_show_to_the_decimals_a_project_asks_for() {
+        assert_eq!(Units::Metres.decimals(), Some(2..=5));
+        assert_eq!(Units::Centimetres.decimals(), Some(1..=4));
+        assert_eq!(Units::Millimetres.decimals(), Some(0..=3));
+        assert_eq!(Units::Feet.decimals(), Some(2..=5));
+        assert_eq!((Units::Inches.decimals(), Units::FeetInches.decimals()), (None, None));
+        // None, and the fewest places, are what drawings show; inches and feet-inches keep their sixteenths.
+        for u in Units::ALL {
+            assert_eq!(u.length_to(2955.5, None), u.length(2955.5), "{u:?}");
+            assert_eq!(u.length_to(2955.5, u.decimals().map(|r| *r.start())), u.length(2955.5), "{u:?}");
+            assert_eq!(u.length_to(2955.5, Some(3)) == u.length(2955.5), u.decimals().is_none(), "{u:?}");
+        }
+        assert_eq!(Units::Metres.length_to(3.0, Some(3)), "0.003");
+        assert_eq!(Units::Metres.length_to(55.0, Some(3)), "0.055");
+        assert_eq!(Units::Metres.length_to(2950.0, Some(5)), "2.95000");
+        assert_eq!(Units::Centimetres.length_to(3005.4, Some(2)), "300.54");
+        assert_eq!(Units::Millimetres.length_to(3.5, Some(1)), "3.5");
+        assert_eq!(Units::Feet.length_to(3000.0, Some(4)), "9.8425'");
+        assert_eq!(Units::Metres.with_unit_to(3.0, Some(3)), "0.003 m");
+        assert_eq!(Units::FeetInches.with_unit_to(3000.0, Some(3)), "9'-10 1/8\"");
+        // More than the most is the most, and fewer than the fewest the fewest.
+        assert_eq!(Units::Metres.length_to(3.0, Some(9)), "0.00300");
+        assert_eq!(Units::Metres.length_to(2955.0, Some(0)), Units::Metres.length(2955.0));
+        // A field says what it holds to those places, and in mm when they would not.
+        assert_eq!(Units::Metres.field_to(3.0, Some(3)), "0.003");
+        assert_eq!(Units::Metres.field_to(3.4, Some(3)), "3.4 mm");
+        assert_eq!(Units::Metres.field_to(3.0, None), "3 mm");
     }
 
     #[test]

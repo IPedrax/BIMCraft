@@ -245,6 +245,8 @@ drawn again after the plan's own pass, so neither can be buried by a wall. A sel
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
 a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
+A selected grid's ends are grips by the same code: a drag lengthens, shortens or leans the grid, and runs `move` with `end` (`start` or
+`end`) on release, so the other end stays and `Model::check` refuses a grid with no length.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
@@ -816,6 +818,23 @@ grid snapping is on, else to the nearest 10 mm, grid snapping off or not.
 Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids, by:[along,up]}`; all other mutations retain existing commands. A vertical dimension's `level` anchor is its view GUID, also stored in `view`. Format 21 prevents older readers from resolving it as a plan dimension or dropping it. Format 20 needs no data conversion.
 
 Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
+
+## Lengths in fields
+
+A dialog that fills a field from the model and reads every field back when OK or Apply is pressed (Type Properties, a room type's
+offsets, a stair type's rules, Edit Pattern, a view range, Reinforce, a project parameter's value, a family's type parameters)
+fills a length with `Units::field`, never `Units::length`. `length` is what drawings show, rounded (3 mm in metres is `0.00`), so
+a field left alone would be read back as 0. In mm, cm and m, `field` is `length` while that reads back as the value, else the
+value in mm with its unit (`3 mm`), which `Units::parse` reads. Inches and feet round to a sixteenth of an inch and a hundredth
+of a foot by design, so `field` is `length` there. A field that commits only when its text changes (the Properties palette)
+keeps `length`.
+
+A project also keeps how many places lengths show (`Model::decimals`, the `units` command's `decimals`; Manage > Project Units
+lists them under the units): metres and feet 2 to 5, centimetres 1 to 4, millimetres 0 to 3, none for inches and feet-inches,
+which show sixteenths. None, and the fewest, are what drawings always showed. A change of units starts again at the fewest.
+Code that has a `Model` shows a length with `Model::length`, `Model::with_unit` and `Model::field`, which pass the places on;
+`Units::length` is for code that has only the units (so it shows the fewest places), and dimension types and schedules take
+the places as `DimensionType::length` and `schedule::shown_to` do. Typed lengths are read exactly whatever places are shown.
 
 ## Benchmarking the window
 

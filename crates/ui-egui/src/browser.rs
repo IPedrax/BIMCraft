@@ -747,7 +747,12 @@ impl BimApp {
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
         });
-        Node::group(t("Families"), open, system.chain(curtain).chain(components).collect())
+        // Alphabetical by the name shown, case aside (the families' map order would put capitals first).
+        let mut categories: Vec<Node> = system.chain(curtain).collect();
+        categories.sort_by_key(|n| n.label.to_lowercase());
+        let mut components: Vec<Node> = components.collect();
+        components.sort_by_key(|n| n.label.to_lowercase());
+        Node::group(t("Families"), open, categories.into_iter().chain(components).collect())
     }
 }
 
