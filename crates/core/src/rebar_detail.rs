@@ -244,7 +244,7 @@ pub fn tag_text(m: &Model, set: &Set, spread: bool) -> String {
 
 /// Where a beam's sections are cut when none is chosen: the middle of each zone of stirrups, or the middle of the beam where it
 /// has none. Whole tenths of a millimetre, in order, no more than [`MAX_STATIONS`].
-pub fn default_stations(m: &Model, sets: &[Set], b: &Located) -> Vec<f64> {
+pub(crate) fn default_stations(m: &Model, sets: &[Set], b: &Located) -> Vec<f64> {
     let mut at: Vec<f64> = Vec::new();
     for s in sets.iter().filter(|s| s.layer == "stirrup") {
         let us: Vec<f64> = s

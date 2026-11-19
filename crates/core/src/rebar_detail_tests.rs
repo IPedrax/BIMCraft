@@ -165,9 +165,9 @@ fn a_detail_goes_with_its_beam() {
     let mut s = Session::new();
     let host = armed(&mut s);
     let id = view(&mut s, json!({"host": host}))["id"].as_u64().unwrap();
-    assert!(s.model.elements.contains_key(&id));
+    assert!(s.model.elements.contains_key(id));
     run(&mut s, "delete", json!({"ids": [host]}));
-    assert!(!s.model.elements.contains_key(&id));
+    assert!(!s.model.elements.contains_key(id));
 }
 
 #[test]

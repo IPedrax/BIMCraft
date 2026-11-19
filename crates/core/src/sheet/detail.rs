@@ -283,7 +283,7 @@ fn shape(ink: &mut Ink, m: &Model, path: &[P3], (left, top, w, h): (f32, f32, f3
         }
     }
     if sk.spatial {
-        ink.centred(&m.language.word("spatial").to_string(), (left + w / 2.0, top + h - 6.0), SMALL);
+        ink.centred(m.language.word("spatial"), (left + w / 2.0, top + h - 6.0), SMALL);
     }
 }
 
