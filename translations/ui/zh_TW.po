@@ -2193,8 +2193,8 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:140
 #: crates/ui-egui/src/classification.rs:736
-#: crates/ui-egui/src/clipboard.rs:473
-#: crates/ui-egui/src/clipboard.rs:536
+#: crates/ui-egui/src/clipboard.rs:480
+#: crates/ui-egui/src/clipboard.rs:543
 #: crates/ui-egui/src/clouds.rs:95
 #: crates/ui-egui/src/codes.rs:1687
 #: crates/ui-egui/src/coordinates.rs:1274
@@ -2770,7 +2770,7 @@ msgstr "單擊形狀、巢狀實例、參照平面、參照線或尺寸標注以
 msgid "Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:361
+#: crates/ui-egui/src/clipboard.rs:368
 msgid "Click a level the pasted elements go onto. Esc cancels."
 msgstr ""
 
@@ -2992,8 +2992,8 @@ msgstr "在頂面上單擊：該處的一個點，位於表面之上選項欄所
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:349
-#: crates/ui-egui/src/clipboard.rs:485
+#: crates/ui-egui/src/clipboard.rs:356
+#: crates/ui-egui/src/clipboard.rs:492
 #: crates/ui-egui/src/lib.rs:6897
 msgid "Click on the work plane where the pasted elements go. Esc cancels."
 msgstr ""
@@ -3406,7 +3406,7 @@ msgstr "單擊一條邊中點的位置。按 Esc 取消。"
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:351
+#: crates/ui-egui/src/clipboard.rs:358
 #: crates/ui-egui/src/lib.rs:6952
 msgid "Click where the pasted elements go. Esc cancels."
 msgstr ""
@@ -3479,7 +3479,7 @@ msgstr ""
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
-#: crates/ui-egui/src/lib.rs:7249
+#: crates/ui-egui/src/lib.rs:7252
 #: crates/ui-egui/src/parameters.rs:728
 #: crates/ui-egui/src/parameters.rs:746
 #: crates/ui-egui/src/phasing.rs:278
@@ -3501,7 +3501,7 @@ msgstr ""
 msgid "Close"
 msgstr "關閉"
 
-#: crates/ui-egui/src/lib.rs:7223
+#: crates/ui-egui/src/lib.rs:7226
 msgid "Close Family"
 msgstr ""
 
@@ -3531,7 +3531,7 @@ msgstr "關閉除此視圖外的所有視圖"
 
 #: crates/ui-egui/src/dock.rs:606
 #: crates/ui-egui/src/dock.rs:741
-#: crates/ui-egui/src/lib.rs:7223
+#: crates/ui-egui/src/lib.rs:7226
 msgid "Close {}"
 msgstr "關閉 {}"
 
@@ -3969,7 +3969,7 @@ msgstr "已複製 {} 個 ID。"
 msgid "Copied {} IFC GlobalIds."
 msgstr "已複製 {} 個 IFC GlobalId。"
 
-#: crates/ui-egui/src/clipboard.rs:308
+#: crates/ui-egui/src/clipboard.rs:315
 msgid "Copied {} elements to the clipboard."
 msgstr ""
 
@@ -3994,6 +3994,7 @@ msgstr "銅"
 #: crates/ui-egui/src/lib.rs:6570
 #: crates/ui-egui/src/lib.rs:6737
 #: crates/ui-egui/src/lib.rs:6774
+#: crates/ui-egui/src/lib.rs:7157
 #: crates/ui-egui/src/parameters.rs:1269
 #: crates/ui-egui/src/plugins.rs:363
 msgid "Copy"
@@ -4038,6 +4039,10 @@ msgstr "複製報告"
 #: crates/ui-egui/src/inquiry.rs:176
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "複製其 ID、GUID 和 IFC GlobalId"
+
+#: crates/ui-egui/src/lib.rs:7157
+msgid "Copy the message to the clipboard"
+msgstr ""
 
 #: crates/ui-egui/src/codes/tree.rs:318
 msgid "Copy the table to paste it into a spreadsheet"
@@ -4491,7 +4496,7 @@ msgstr ""
 msgid "Cut with Voids When Loaded"
 msgstr "載入時剪切的空心"
 
-#: crates/ui-egui/src/clipboard.rs:309
+#: crates/ui-egui/src/clipboard.rs:316
 msgid "Cut {} elements to the clipboard."
 msgstr ""
 
@@ -5201,7 +5206,7 @@ msgstr "域"
 msgid "Don't"
 msgstr "不要"
 
-#: crates/ui-egui/src/lib.rs:7463
+#: crates/ui-egui/src/lib.rs:7466
 msgid "Don't Save"
 msgstr "不儲存"
 
@@ -6273,7 +6278,7 @@ msgstr "族類型"
 msgid "Family Types: the family's parameters, their formulas, and its types"
 msgstr "族類型：族的參數、參數公式及其類型"
 
-#: crates/ui-egui/src/lib.rs:7213
+#: crates/ui-egui/src/lib.rs:7216
 msgid "Family document: {}"
 msgstr "族文件：{}"
 
@@ -6714,7 +6719,7 @@ msgstr "翻轉左右"
 
 #: crates/ui-egui/src/dock.rs:632
 #: crates/ui-egui/src/dock.rs:884
-#: crates/ui-egui/src/lib.rs:7245
+#: crates/ui-egui/src/lib.rs:7248
 msgid "Float"
 msgstr "浮動"
 
@@ -7697,7 +7702,7 @@ msgstr "標識數據"
 msgid "If you don't save it, your changes still apply to this project."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7459
+#: crates/ui-egui/src/lib.rs:7462
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "如果不儲存，自上次儲存以來的更改將會丟失。"
 
@@ -10234,7 +10239,7 @@ msgstr "尚無最近的項目"
 msgid "No region drawn yet"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7297
+#: crates/ui-egui/src/lib.rs:7300
 msgid "No rows yet: the {} is empty."
 msgstr "暫無數據行：{}為空。"
 
@@ -10328,7 +10333,7 @@ msgstr ""
 msgid "None of these can be printed yet."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:519
+#: crates/ui-egui/src/clipboard.rs:526
 msgid "None of this project's views is like the one they were copied from."
 msgstr ""
 
@@ -10528,7 +10533,7 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:760
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:141
-#: crates/ui-egui/src/clipboard.rs:537
+#: crates/ui-egui/src/clipboard.rs:544
 #: crates/ui-egui/src/clouds.rs:96
 #: crates/ui-egui/src/codes.rs:1688
 #: crates/ui-egui/src/coordinates.rs:1275
@@ -11200,15 +11205,15 @@ msgstr ""
 msgid "Paste from Clipboard"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:458
+#: crates/ui-egui/src/clipboard.rs:465
 msgid "Paste in 3D"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:517
+#: crates/ui-egui/src/clipboard.rs:524
 msgid "Paste into these views:"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:517
+#: crates/ui-egui/src/clipboard.rs:524
 msgid "Paste onto these levels:"
 msgstr ""
 
@@ -11216,11 +11221,11 @@ msgstr ""
 msgid "Paste rows here"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:418
+#: crates/ui-egui/src/clipboard.rs:425
 msgid "Pasted {} elements."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:420
+#: crates/ui-egui/src/clipboard.rs:427
 msgid "Pasted {} elements; {} left out: {}"
 msgstr ""
 
@@ -12177,7 +12182,7 @@ msgstr "位置"
 msgid "Position (mm)"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:467
+#: crates/ui-egui/src/clipboard.rs:474
 msgid "Position on Work Plane"
 msgstr ""
 
@@ -13687,7 +13692,7 @@ msgstr "比例如圖所示"
 msgid "Sage"
 msgstr "灰綠色"
 
-#: crates/ui-egui/src/clipboard.rs:463
+#: crates/ui-egui/src/clipboard.rs:470
 msgid "Same Place"
 msgstr ""
 
@@ -13779,7 +13784,7 @@ msgid "Save changes in {}"
 msgstr ""
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:7457
+#: crates/ui-egui/src/lib.rs:7460
 msgid "Save changes to {}?"
 msgstr "是否將更改儲存到 {}？"
 
@@ -16509,7 +16514,7 @@ msgstr "將這些圖案導出為 PAT 檔案（實心除外）"
 msgid "These rooms have floors or ceilings connected to them. Delete those too, or keep them as ordinary floors and ceilings?"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:468
+#: crates/ui-egui/src/clipboard.rs:475
 msgid "They follow the cursor over the view's work plane; click where they go"
 msgstr ""
 
@@ -16848,7 +16853,7 @@ msgstr ""
 msgid "Toposolid"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7339
+#: crates/ui-egui/src/lib.rs:7342
 msgid "Total"
 msgstr "總計"
 
@@ -17977,7 +17982,7 @@ msgstr "從上一點出發的直線與圓或圓弧相切的位置"
 msgid "Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:460
+#: crates/ui-egui/src/clipboard.rs:467
 msgid "Where do the pasted elements go?"
 msgstr ""
 
@@ -17997,7 +18002,7 @@ msgstr ""
 msgid "Where they were, on their levels"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:464
+#: crates/ui-egui/src/clipboard.rs:471
 msgid "Where they were, on their levels: Aligned to Same Place"
 msgstr ""
 
@@ -18574,7 +18579,7 @@ msgstr "天花板：`{}` 不是有效的高度"
 msgid "circle"
 msgstr "圓"
 
-#: crates/ui-egui/src/clipboard.rs:496
+#: crates/ui-egui/src/clipboard.rs:503
 #: crates/ui-egui/src/section.rs:593
 msgid "click a level line"
 msgstr ""
@@ -18998,7 +19003,7 @@ msgstr "請先選擇要設置坡度的樓板"
 msgid "select the walls or columns to attach first"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:289
+#: crates/ui-egui/src/clipboard.rs:296
 msgid "select what to copy first"
 msgstr ""
 
@@ -19059,7 +19064,7 @@ msgstr "標準延伸量"
 msgid "start"
 msgstr "起點"
 
-#: crates/ui-egui/src/clipboard.rs:333
+#: crates/ui-egui/src/clipboard.rs:340
 msgid "the clipboard holds nothing to paste: copy elements first (Ctrl+C)"
 msgstr ""
 
@@ -19384,7 +19389,7 @@ msgstr ""
 msgid "{} elements"
 msgstr "{} 個圖元"
 
-#: crates/ui-egui/src/clipboard.rs:311
+#: crates/ui-egui/src/clipboard.rs:318
 msgid "{} elements to the clipboard; {} left out (levels, views and sheets aren't copied)."
 msgstr ""
 

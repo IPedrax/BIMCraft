@@ -2192,8 +2192,8 @@ msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-A
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:140
 #: crates/ui-egui/src/classification.rs:736
-#: crates/ui-egui/src/clipboard.rs:473
-#: crates/ui-egui/src/clipboard.rs:536
+#: crates/ui-egui/src/clipboard.rs:480
+#: crates/ui-egui/src/clipboard.rs:543
 #: crates/ui-egui/src/clouds.rs:95
 #: crates/ui-egui/src/codes.rs:1687
 #: crates/ui-egui/src/coordinates.rs:1274
@@ -2769,7 +2769,7 @@ msgstr "Einen Körper, ein verschachteltes Exemplar, eine Referenzebene, eine Re
 msgid "Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:361
+#: crates/ui-egui/src/clipboard.rs:368
 msgid "Click a level the pasted elements go onto. Esc cancels."
 msgstr ""
 
@@ -2991,8 +2991,8 @@ msgstr "Auf die Oberseite klicken: ein Punkt dort, im Versatz aus der Optionslei
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:349
-#: crates/ui-egui/src/clipboard.rs:485
+#: crates/ui-egui/src/clipboard.rs:356
+#: crates/ui-egui/src/clipboard.rs:492
 #: crates/ui-egui/src/lib.rs:6897
 msgid "Click on the work plane where the pasted elements go. Esc cancels."
 msgstr ""
@@ -3405,7 +3405,7 @@ msgstr "Klicken, wohin die Mitte einer Seite soll. Esc bricht ab."
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:351
+#: crates/ui-egui/src/clipboard.rs:358
 #: crates/ui-egui/src/lib.rs:6952
 msgid "Click where the pasted elements go. Esc cancels."
 msgstr ""
@@ -3478,7 +3478,7 @@ msgstr ""
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
-#: crates/ui-egui/src/lib.rs:7249
+#: crates/ui-egui/src/lib.rs:7252
 #: crates/ui-egui/src/parameters.rs:728
 #: crates/ui-egui/src/parameters.rs:746
 #: crates/ui-egui/src/phasing.rs:278
@@ -3500,7 +3500,7 @@ msgstr ""
 msgid "Close"
 msgstr "Schließen"
 
-#: crates/ui-egui/src/lib.rs:7223
+#: crates/ui-egui/src/lib.rs:7226
 msgid "Close Family"
 msgstr ""
 
@@ -3530,7 +3530,7 @@ msgstr "Alle Ansichten außer dieser schließen"
 
 #: crates/ui-egui/src/dock.rs:606
 #: crates/ui-egui/src/dock.rs:741
-#: crates/ui-egui/src/lib.rs:7223
+#: crates/ui-egui/src/lib.rs:7226
 msgid "Close {}"
 msgstr "{} schließen"
 
@@ -3968,7 +3968,7 @@ msgstr "{} IDs kopiert."
 msgid "Copied {} IFC GlobalIds."
 msgstr "{} IFC GlobalIds kopiert."
 
-#: crates/ui-egui/src/clipboard.rs:308
+#: crates/ui-egui/src/clipboard.rs:315
 msgid "Copied {} elements to the clipboard."
 msgstr ""
 
@@ -3993,6 +3993,7 @@ msgstr "Kupfer"
 #: crates/ui-egui/src/lib.rs:6570
 #: crates/ui-egui/src/lib.rs:6737
 #: crates/ui-egui/src/lib.rs:6774
+#: crates/ui-egui/src/lib.rs:7157
 #: crates/ui-egui/src/parameters.rs:1269
 #: crates/ui-egui/src/plugins.rs:363
 msgid "Copy"
@@ -4037,6 +4038,10 @@ msgstr "Bericht kopieren"
 #: crates/ui-egui/src/inquiry.rs:176
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "ID, GUID und IFC GlobalId kopieren"
+
+#: crates/ui-egui/src/lib.rs:7157
+msgid "Copy the message to the clipboard"
+msgstr ""
 
 #: crates/ui-egui/src/codes/tree.rs:318
 msgid "Copy the table to paste it into a spreadsheet"
@@ -4490,7 +4495,7 @@ msgstr ""
 msgid "Cut with Voids When Loaded"
 msgstr "Beim Laden mit Aussparungen schneiden"
 
-#: crates/ui-egui/src/clipboard.rs:309
+#: crates/ui-egui/src/clipboard.rs:316
 msgid "Cut {} elements to the clipboard."
 msgstr ""
 
@@ -5200,7 +5205,7 @@ msgstr "Domäne"
 msgid "Don't"
 msgstr "Nicht"
 
-#: crates/ui-egui/src/lib.rs:7463
+#: crates/ui-egui/src/lib.rs:7466
 msgid "Don't Save"
 msgstr "Nicht speichern"
 
@@ -6272,7 +6277,7 @@ msgstr "Familientypen"
 msgid "Family Types: the family's parameters, their formulas, and its types"
 msgstr "Familientypen: die Parameter der Familie, ihre Formeln und ihre Typen"
 
-#: crates/ui-egui/src/lib.rs:7213
+#: crates/ui-egui/src/lib.rs:7216
 msgid "Family document: {}"
 msgstr "Familiendokument: {}"
 
@@ -6713,7 +6718,7 @@ msgstr "Anschlag umgedreht"
 
 #: crates/ui-egui/src/dock.rs:632
 #: crates/ui-egui/src/dock.rs:884
-#: crates/ui-egui/src/lib.rs:7245
+#: crates/ui-egui/src/lib.rs:7248
 msgid "Float"
 msgstr "Schweben"
 
@@ -7696,7 +7701,7 @@ msgstr "Identitätsdaten"
 msgid "If you don't save it, your changes still apply to this project."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7459
+#: crates/ui-egui/src/lib.rs:7462
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "Andernfalls gehen die Änderungen seit der letzten Speicherung verloren."
 
@@ -10233,7 +10238,7 @@ msgstr "Noch keine zuletzt verwendeten Projekte"
 msgid "No region drawn yet"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7297
+#: crates/ui-egui/src/lib.rs:7300
 msgid "No rows yet: the {} is empty."
 msgstr "Noch keine Zeilen: {} ist leer."
 
@@ -10327,7 +10332,7 @@ msgstr ""
 msgid "None of these can be printed yet."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:519
+#: crates/ui-egui/src/clipboard.rs:526
 msgid "None of this project's views is like the one they were copied from."
 msgstr ""
 
@@ -10527,7 +10532,7 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:760
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:141
-#: crates/ui-egui/src/clipboard.rs:537
+#: crates/ui-egui/src/clipboard.rs:544
 #: crates/ui-egui/src/clouds.rs:96
 #: crates/ui-egui/src/codes.rs:1688
 #: crates/ui-egui/src/coordinates.rs:1275
@@ -11199,15 +11204,15 @@ msgstr ""
 msgid "Paste from Clipboard"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:458
+#: crates/ui-egui/src/clipboard.rs:465
 msgid "Paste in 3D"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:517
+#: crates/ui-egui/src/clipboard.rs:524
 msgid "Paste into these views:"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:517
+#: crates/ui-egui/src/clipboard.rs:524
 msgid "Paste onto these levels:"
 msgstr ""
 
@@ -11215,11 +11220,11 @@ msgstr ""
 msgid "Paste rows here"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:418
+#: crates/ui-egui/src/clipboard.rs:425
 msgid "Pasted {} elements."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:420
+#: crates/ui-egui/src/clipboard.rs:427
 msgid "Pasted {} elements; {} left out: {}"
 msgstr ""
 
@@ -12176,7 +12181,7 @@ msgstr "Position"
 msgid "Position (mm)"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:467
+#: crates/ui-egui/src/clipboard.rs:474
 msgid "Position on Work Plane"
 msgstr ""
 
@@ -13686,7 +13691,7 @@ msgstr "MASSSTAB WIE ANGEGEBEN"
 msgid "Sage"
 msgstr "Salbei"
 
-#: crates/ui-egui/src/clipboard.rs:463
+#: crates/ui-egui/src/clipboard.rs:470
 msgid "Same Place"
 msgstr ""
 
@@ -13778,7 +13783,7 @@ msgid "Save changes in {}"
 msgstr ""
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:7457
+#: crates/ui-egui/src/lib.rs:7460
 msgid "Save changes to {}?"
 msgstr "Änderungen an {} speichern?"
 
@@ -16508,7 +16513,7 @@ msgstr "Diese Muster in eine PAT-Datei, aber nicht die Volltonmuster"
 msgid "These rooms have floors or ceilings connected to them. Delete those too, or keep them as ordinary floors and ceilings?"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:468
+#: crates/ui-egui/src/clipboard.rs:475
 msgid "They follow the cursor over the view's work plane; click where they go"
 msgstr ""
 
@@ -16847,7 +16852,7 @@ msgstr ""
 msgid "Toposolid"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7339
+#: crates/ui-egui/src/lib.rs:7342
 msgid "Total"
 msgstr "Gesamt"
 
@@ -17976,7 +17981,7 @@ msgstr "Wo eine Linie vom letzten Punkt einen Kreis oder einen Bogen berührt"
 msgid "Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:460
+#: crates/ui-egui/src/clipboard.rs:467
 msgid "Where do the pasted elements go?"
 msgstr ""
 
@@ -17996,7 +18001,7 @@ msgstr ""
 msgid "Where they were, on their levels"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:464
+#: crates/ui-egui/src/clipboard.rs:471
 msgid "Where they were, on their levels: Aligned to Same Place"
 msgstr ""
 
@@ -18573,7 +18578,7 @@ msgstr "Decke: `{}` ist keine Höhe"
 msgid "circle"
 msgstr "Kreis"
 
-#: crates/ui-egui/src/clipboard.rs:496
+#: crates/ui-egui/src/clipboard.rs:503
 #: crates/ui-egui/src/section.rs:593
 msgid "click a level line"
 msgstr ""
@@ -18997,7 +19002,7 @@ msgstr "zuerst den Boden zum Neigen auswählen"
 msgid "select the walls or columns to attach first"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:289
+#: crates/ui-egui/src/clipboard.rs:296
 msgid "select what to copy first"
 msgstr ""
 
@@ -19058,7 +19063,7 @@ msgstr "Standardüberstand"
 msgid "start"
 msgstr "Anfang"
 
-#: crates/ui-egui/src/clipboard.rs:333
+#: crates/ui-egui/src/clipboard.rs:340
 msgid "the clipboard holds nothing to paste: copy elements first (Ctrl+C)"
 msgstr ""
 
@@ -19383,7 +19388,7 @@ msgstr ""
 msgid "{} elements"
 msgstr "{} Elemente"
 
-#: crates/ui-egui/src/clipboard.rs:311
+#: crates/ui-egui/src/clipboard.rs:318
 msgid "{} elements to the clipboard; {} left out (levels, views and sheets aren't copied)."
 msgstr ""
 
