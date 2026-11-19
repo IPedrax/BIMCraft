@@ -28,7 +28,7 @@ its image fills): use them wherever a picture is kept, copied or renamed.
 
 The starter library's Grass, Gravel, Wood, Paving and Water have an image fill on their surfaces and the same picture as their
 texture. Their pictures are in `crates/core/assets/materials`, 128 px JPEGs (18 KB in all) that `Picture::bundled` keeps as they are, so a new
-project stays small. The sources and licences are in that folder's README and in NOTICE. Paving is CC BY 3.0 and must stay credited.
+project stays small. Water is 50% transparent (`WATER_TRANSPARENCY`). The sources and licences are in that folder's README and in NOTICE. Paving is CC BY 3.0 and must stay credited.
 
 ## Parameters
 

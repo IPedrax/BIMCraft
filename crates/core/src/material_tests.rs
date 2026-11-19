@@ -629,6 +629,8 @@ fn the_starter_library_has_ground_and_finishes_shown_by_a_picture() {
         assert!(w.max(h) <= 128 && w.min(h) >= 64, "{name}: {w} by {h}");
         assert_eq!(m.texture.as_ref(), Some(fill), "{name}: the same picture in 3D");
     }
+    assert_eq!(s.model.materials["Water"].transparency, 50, "water is half see-through");
+    assert_eq!(s.model.materials["Grass"].transparency, 0);
     // Held as the JPEGs they ship as: a new project stays small.
     let text = serde_json::to_string(&s.model.images).unwrap();
     assert!(text.len() < 32_000, "{} bytes", text.len());

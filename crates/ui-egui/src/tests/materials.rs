@@ -184,6 +184,36 @@ fn an_image_fill_takes_the_place_of_a_surfaces_patterns_and_is_sized_there() {
 }
 
 #[test]
+fn the_columns_fill_the_window_down_to_its_footer() {
+    let mut h = app(BOX);
+    h.set_size(egui::vec2(1280.0, 1000.0));
+    h.run();
+    open_materials(&mut h);
+    press(&mut h, "Brick");
+    h.state_mut().load_fill_image("Brick", false, std::path::Path::new(FILL));
+    h.state_mut().load_fill_image("Brick", true, std::path::Path::new(FILL));
+    h.run();
+    // Both image fills and the texture: all of it shows, the middle column as tall as the window lets it be, so the wheel
+    // over it has nothing to scroll.
+    let footer = h.get_by_role_and_label(Role::Button, "Favorites…").rect();
+    assert!(footer.bottom() > 1000.0 - 60.0, "the window stands as tall as the screen lets it: {footer:?}");
+    let last = h.get_by_label("Texture Offset Up").rect();
+    assert!(last.bottom() < footer.top(), "the last field {last:?}, the footer {footer:?}");
+    h.hover_at(h.get_by_label("Cut Image Width").rect().center());
+    h.run();
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -400.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: egui::Modifiers::NONE,
+    });
+    for _ in 0..10 {
+        h.run();
+    }
+    assert_eq!(h.get_by_label("Texture Offset Up").rect(), last, "it all fits: nothing to scroll");
+}
+
+#[test]
 fn the_window_fits_a_small_screen() {
     let mut h = app(BOX);
     open_materials(&mut h);

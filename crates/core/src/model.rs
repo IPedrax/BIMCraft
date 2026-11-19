@@ -662,6 +662,8 @@ pub const MAX_LAYERS: usize = 32;
 
 /// How see-through the starter library's glass is, percent.
 pub const GLASS_TRANSPARENCY: u8 = 70;
+/// And its water.
+pub const WATER_TRANSPARENCY: u8 = 50;
 
 /// A material of the project's library: its colour in shaded views, the patterns its cut shows in plans and sections, and the
 /// ones its surfaces show where a plan looks down on a floor or a ceiling plan up at a ceiling: each a foreground over a
@@ -4609,7 +4611,10 @@ impl Model {
             m.images.insert(id.clone(), picture);
             let fill = Texture { size, ..Texture::new(Kind::Image) };
             let fill = Texture { image: id, ..fill };
-            let material = Material { color, cut, surface_image: Some(fill.clone()), texture: Some(fill), ..Material::default() };
+            // Water lets what lies under it show, half and half.
+            let transparency = if name == "Water" { WATER_TRANSPARENCY } else { 0 };
+            let material =
+                Material { color, cut, surface_image: Some(fill.clone()), texture: Some(fill), transparency, ..Material::default() };
             m.materials.insert(language.word(name).into(), material);
         }
         m.families = crate::family::library(language).into();

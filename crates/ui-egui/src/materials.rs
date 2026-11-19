@@ -1027,9 +1027,10 @@ impl BimApp {
         let mut asked = Asked::default();
         let mut close = false;
         let released = ctx.input(|i| !i.pointer.any_down());
-        let height = (ctx.content_rect().height() - 150.0).clamp(300.0, 680.0);
         let r = Modal::new(UiId::new("materials"), t("Materials")).width(WIDTH).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
+                // As tall as the window lets the dialog be, so the columns fill it; on a short screen, tall enough to use.
+                let height = (crate::popup::body_room(ui) - 2.0).max(300.0);
                 let total = ui.available_width();
                 let gaps = 2.0 * (ui.spacing().item_spacing.x * 2.0 + 6.0);
                 let (list, side) = (LIST.min(total * 0.26), SIDE.min(total * 0.3));
@@ -1041,7 +1042,9 @@ impl BimApp {
                         add(ui);
                     });
                 };
-                ui.horizontal_top(|ui| {
+                // The row as tall as its columns, and no taller: a separator stands as tall as the row it is in.
+                ui.allocate_ui_with_layout(vec2(total, height), Layout::left_to_right(Align::Min), |ui| {
+                    ui.set_height(height);
                     column(ui, list, &mut |ui| library(ui, &mut d, &model, &mut asked));
                     ui.separator();
                     let picked = model.materials.get(&d.picked);
