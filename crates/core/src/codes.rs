@@ -827,10 +827,27 @@ pub fn read_xml(text: &str, name: Option<&str>) -> Result<(Vec<BuildingCode>, Ve
         return Err(format!("the file is larger than building codes' ({} MB)", MAX_XML >> 20));
     }
     let (read, left_out) = xml::read(text)?;
-    let mut out = Vec::new();
+    let mut out: Vec<BuildingCode> = Vec::new();
+    // The first code renamed: what the file lays over it (a utility's method kept as an amendment) follows it.
+    let mut first: Option<(Discipline, String, String)> = None;
     for (i, mut code) in read.into_iter().enumerate() {
         let wanted = if i == 0 { name } else { None };
+        let was = code.name.clone();
         code.code = own_name(wanted.unwrap_or(&code.name)).map_err(|e| format!("{e} (`name` gives it one)"))?;
+        if i == 0 {
+            first = Some((code.discipline, was, code.code.clone()));
+        } else if let Some((d, was, now)) = &first
+            && code.discipline == *d
+            && code.amends == *was
+        {
+            code.amends = now.clone();
+            // An amendment named after the first (`<first> · <layer>`, as export writes them) is named after it again.
+            if let Some(rest) = code.code.strip_prefix(&format!("{was} · ")) {
+                let renamed = format!("{now} · {rest}");
+                code.code = own_name(&renamed).map_err(|e| format!("{e}: `name` is too long for the codes the file lays over it"))?;
+                code.name = code.code.clone();
+            }
+        }
         code.name = code.code.clone();
         complete(&mut code);
         code.check()?;
@@ -1561,6 +1578,8 @@ pub fn findings(m: &Model, _id: crate::ids::Id, e: &crate::model::Element) -> Ve
 
 #[cfg(test)]
 mod engine_tests;
+#[cfg(test)]
+mod matrix_tests;
 #[cfg(test)]
 mod rule_tests;
 #[cfg(test)]
