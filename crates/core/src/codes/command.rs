@@ -484,10 +484,21 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         let m = s.model_mut();
         let before = std::mem::replace(&mut m.codes, Shared::new(next));
         if d == Discipline::Electrical {
-            crate::electrical::from_codes(m, &before);
+            full(crate::electrical::from_codes(m, &before)).map_err(|e| bad(c, e))?;
         }
     }
     Ok(said(&s.model.codes, d))
+}
+
+/// What the codes name that the project had no room for: refused, as the commands refuse it.
+fn full(left: Vec<String>) -> Result<(), String> {
+    match left.first() {
+        None => Ok(()),
+        Some(first) => Err(format!(
+            "the project holds up to {} of each electrical setting, and {first} would be past that; take one away in the same change",
+            crate::electrical::MAX_VOLTAGES
+        )),
+    }
 }
 
 /// Rules to change, by section.
@@ -731,7 +742,7 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
     let all: Vec<Value> = read.iter().map(|k| json!({"code": k.code, "discipline": k.discipline.key()})).collect();
     let m = s.model_mut();
     let before = std::mem::replace(&mut m.codes, Shared::new(next));
-    crate::electrical::from_codes(m, &before);
+    full(crate::electrical::from_codes(m, &before)).map_err(|e| bad(c, format!("{path}: {e}")))?;
     Ok(json!({"code": first, "codes": all, "left_out": left_out, "set": set}))
 }
 

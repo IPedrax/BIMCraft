@@ -353,7 +353,10 @@ pub(crate) fn wires_section(v: &serde_json::Value) -> Result<serde_json::Value, 
 /// (the project's own from before its settings were in its code), and so does one an element still names (a board's system,
 /// a circuit's voltage or wire type, a system's voltage), so that no element is left naming nothing. Voltages first, as
 /// systems name them.
-pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) {
+///
+/// A new entry that finds its kind full waits for what goes away; one that still finds no room is returned, by what it is,
+/// for the command to refuse.
+pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) -> Vec<String> {
     use crate::codes::Discipline::Electrical;
     use serde_json::Value;
     let now = |m: &Model, key: &str| m.resolve_code(Electrical, key).value;
@@ -379,13 +382,17 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) {
         }
     }
 
+    let (mut late_voltages, mut late_systems, mut late_wires) = (Vec::new(), Vec::new(), Vec::new());
     let voltages = now(m, "voltages");
     for (k, v) in &voltages {
         if let Ok(x) = serde_json::from_value::<Voltage>(v.clone())
             && x.check(k).is_ok()
-            && (m.voltages.contains_key(k) || m.voltages.len() < MAX_VOLTAGES)
         {
-            m.voltages.insert(k.clone(), x);
+            if m.voltages.contains_key(k) || m.voltages.len() < MAX_VOLTAGES {
+                m.voltages.insert(k.clone(), x);
+            } else {
+                late_voltages.push((k.clone(), x));
+            }
         }
     }
     // One a new project has is back first, as the systems coming back name it.
@@ -395,13 +402,20 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) {
             m.voltages.insert(k.clone(), x.clone());
         }
     }
+    // A system is checked with the voltages the project will have, those still waiting for room too: a voltage freed by what
+    // goes makes room for them before the end.
+    let mut ahead = m.voltages.clone();
+    ahead.extend(late_voltages.iter().cloned());
     let systems = now(m, "distribution_systems");
     for (k, v) in &systems {
-        if let Ok(x) = serde_json::from_value::<DistributionSystem>(v.clone())
-            && x.check(k, &m.voltages).is_ok()
-            && (m.distribution_systems.contains_key(k) || m.distribution_systems.len() < MAX_SYSTEMS)
-        {
-            m.distribution_systems.insert(k.clone(), x);
+        if let Ok(x) = serde_json::from_value::<DistributionSystem>(v.clone()) {
+            if m.distribution_systems.contains_key(k) || m.distribution_systems.len() < MAX_SYSTEMS {
+                if x.check(k, &ahead).is_ok() {
+                    m.distribution_systems.insert(k.clone(), x);
+                }
+            } else {
+                late_systems.push((k.clone(), x));
+            }
         }
     }
     let taken: Vec<String> = systems.iter().filter(|(_, v)| v.is_null()).map(|(k, _)| k.clone()).collect();
@@ -410,7 +424,7 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) {
             continue;
         }
         match starter().distribution_systems.get(k) {
-            Some(x) if !systems.contains_key(k) && x.check(k, &m.voltages).is_ok() => {
+            Some(x) if !systems.contains_key(k) && x.check(k, &ahead).is_ok() => {
                 m.distribution_systems.insert(k.clone(), x.clone());
             }
             _ => {
@@ -422,9 +436,12 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) {
     for (k, v) in &wires {
         if let Ok(x) = serde_json::from_value::<WireType>(v.clone())
             && x.check(k).is_ok()
-            && (m.wire_types.contains_key(k) || m.wire_types.len() < MAX_WIRE_TYPES)
         {
-            m.wire_types.insert(k.clone(), x);
+            if m.wire_types.contains_key(k) || m.wire_types.len() < MAX_WIRE_TYPES {
+                m.wire_types.insert(k.clone(), x);
+            } else {
+                late_wires.push((k.clone(), x));
+            }
         }
     }
     let taken: Vec<String> = wires.iter().filter(|(_, v)| v.is_null()).map(|(k, _)| k.clone()).collect();
@@ -449,6 +466,30 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) {
             m.voltages.remove(k);
         }
     }
+    // What found its kind full, now that what goes has gone: voltages first, as systems name them.
+    let mut full = Vec::new();
+    for (k, x) in late_voltages {
+        if m.voltages.len() < MAX_VOLTAGES {
+            m.voltages.insert(k, x);
+        } else {
+            full.push(format!("voltage `{k}`"));
+        }
+    }
+    for (k, x) in late_systems {
+        if m.distribution_systems.len() >= MAX_SYSTEMS {
+            full.push(format!("distribution system `{k}`"));
+        } else if x.check(&k, &ahead).is_ok() {
+            m.distribution_systems.insert(k, x);
+        }
+    }
+    for (k, x) in late_wires {
+        if m.wire_types.len() < MAX_WIRE_TYPES {
+            m.wire_types.insert(k, x);
+        } else {
+            full.push(format!("wire type `{k}`"));
+        }
+    }
+    full
 }
 
 /// The voltages the distribution systems in force under `codes` name that the project would not have, as (system, voltage):

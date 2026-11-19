@@ -621,3 +621,612 @@ fn a_system_is_checked_with_the_voltages_a_new_code_brings_back() {
     assert_eq!(s.model.voltages["480 V"].nominal, 480.0, "back as a new project has it");
     assert!(s.model.distribution_systems.contains_key("Review"), "taken by the codes and in the project");
 }
+
+/// A kind of electrical setting: its section, one of it, and the names the project holds.
+type SettingKind = (&'static str, Value, fn(&Session) -> Vec<String>);
+
+/// A setting of each of the three kinds.
+fn settings_kinds() -> [SettingKind; 3] {
+    [
+        ("voltages", json!({"nominal": 50, "min": 45, "max": 55}), |s| s.model.voltages.keys().cloned().collect()),
+        ("distribution_systems", json!({"phases": 1, "wires": 2, "l_n": "220 V"}), |s| {
+            s.model.distribution_systems.keys().cloned().collect()
+        }),
+        (
+            "wire_types",
+            json!({"material": "copper", "temperature": 70, "insulation": "PVC", "sizes": [{"section": 1.5, "ampacity": 15}]}),
+            |s| s.model.wire_types.keys().cloned().collect(),
+        ),
+    ]
+}
+
+#[test]
+fn a_setting_given_at_the_limit_takes_the_place_of_one_taken_away_and_one_past_it_is_refused() {
+    // The project holds 64 of each kind. Taking one away and adding another in one change is 64, the new one in both the
+    // code and the project (G6); one more than 64 is refused and nothing changes, as the commands refuse it.
+    for amend in [None, Some("Site")] {
+        for (key, x, names) in settings_kinds() {
+            let mut s = Session::new();
+            if amend.is_some() {
+                run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]}));
+            }
+            let ask = |rules: Value| {
+                let mut p = json!({"discipline": "electrical", "rules": {key: rules}});
+                if let Some(a) = amend {
+                    p["amend"] = json!(a);
+                }
+                p
+            };
+            let fill: Map<String, Value> = (names(&s).len()..64).map(|i| (format!("Filler {i:02}"), x.clone())).collect();
+            run(&mut s, "building_code", ask(Value::Object(fill)));
+            assert_eq!(names(&s).len(), 64, "{key}: filled to the limit");
+            let gone = names(&s).into_iter().find(|n| n.starts_with("Filler")).unwrap();
+            let r = s.execute("building_code", &ask(json!({&gone: null, "Replacement": x})));
+            assert!(r.is_ok(), "{key} {amend:?}: a change at the limit refused: {r:?}");
+            let now = names(&s);
+            assert_eq!(now.len(), 64, "{key} {amend:?}: one in the place of another");
+            assert!(now.contains(&"Replacement".to_string()) && !now.contains(&gone), "{key} {amend:?}: the new one in the project");
+            let in_code = s.model.resolve_code(Discipline::Electrical, key).value;
+            assert!(in_code.get("Replacement").is_some_and(|v| !v.is_null()), "{key} {amend:?}: and in the code");
+            let before = state(&s);
+            let r = s.execute("building_code", &ask(json!({"Extra": x})));
+            assert!(r.is_err(), "{key} {amend:?}: a 65th taken");
+            assert_eq!(state(&s), before, "{key} {amend:?}: refused, and nothing changed");
+        }
+    }
+}
+
+/// Settings at the limit of 64, in every way a change can bring them (G6 and what its review found).
+mod at_the_limit {
+    use super::*;
+
+    const V: &str = "voltages";
+    const S: &str = "distribution_systems";
+    const W: &str = "wire_types";
+    const SECTIONS: [&str; 3] = [V, S, W];
+
+    fn v(n: i32) -> Value {
+        json!({"nominal":n,"min":n,"max":n})
+    }
+    fn sys(name: &str) -> Value {
+        json!({"phases":1,"wires":2,"l_n":name})
+    }
+    fn sample(key: &str) -> Value {
+        match key {
+            V => v(50),
+            S => sys("220 V"),
+            _ => json!({"material":"copper","temperature":70,"insulation":"PVC","sizes":[{"section":1.5,"ampacity":15}]}),
+        }
+    }
+    fn bc(s: &mut Session, mut p: Value) -> Result<Value, String> {
+        p["discipline"] = json!("electrical");
+        s.execute("building_code", &p)
+    }
+    fn section(s: &Session, key: &str) -> Map<String, Value> {
+        s.model.resolve_code(Discipline::Electrical, key).value
+    }
+    fn model(s: &Session, key: &str) -> Map<String, Value> {
+        match key {
+            V => json!(s.model.voltages),
+            S => json!(s.model.distribution_systems),
+            _ => json!(s.model.wire_types),
+        }
+        .as_object()
+        .unwrap()
+        .clone()
+    }
+    fn fill(s: &mut Session, keys: &[&str], amend: Option<&str>) {
+        let defs: Map<String, Value> = keys
+            .iter()
+            .map(|&key| {
+                let start = model(s, key).len();
+                let entries: Map<String, Value> = (start..64).map(|i| (format!("G6 {i:02}"), sample(key))).collect();
+                (key.to_string(), Value::Object(entries))
+            })
+            .collect();
+        let mut p = json!({"rules":defs});
+        if let Some(a) = amend {
+            p["amend"] = json!(a);
+        }
+        bc(s, p).unwrap();
+        for key in keys {
+            assert_eq!(model(s, key).len(), 64);
+        }
+    }
+    fn snap(s: &Session) -> (String, String) {
+        (state(s), format!("{:?} {:?}", s.steps(false), s.steps(true)))
+    }
+    fn assert_voltage(s: &Session, name: &str, nominal: f64) {
+        assert_eq!(section(s, V)[name]["nominal"].as_f64(), Some(nominal));
+        assert_eq!(s.model.voltages[name].nominal, nominal);
+    }
+
+    #[test]
+    fn matrix_layers_and_combined_create_set_save() {
+        let mut anomalies = Vec::new();
+        for (label, layers, target) in [
+            ("project", vec![], None),
+            ("own lower", vec!["Site", "cpfl"], Some("Site")),
+            ("own upper", vec!["cpfl", "Site"], Some("Site")),
+            ("library lower", vec!["cpfl", "enel"], Some("cpfl")),
+            ("library upper", vec!["enel", "cpfl"], Some("cpfl")),
+        ] {
+            let mut s = Session::new();
+            let mut args = json!({"set":"nbr-5410","amendments":layers});
+            if layers.contains(&"Site") {
+                args["create"] = json!("Site");
+            }
+            bc(&mut s, args).unwrap();
+            fill(&mut s, &SECTIONS, None);
+            let mut rules = Map::new();
+            for key in SECTIONS {
+                rules.insert(key.into(), json!({"G6 62":null,"G6 63":null,"New A":sample(key),"New B":sample(key)}));
+            }
+            let mut args = json!({"rules":rules});
+            if let Some(a) = target {
+                args["amend"] = json!(a);
+            }
+            let r = bc(&mut s, args);
+            let changed = r.is_ok()
+                && SECTIONS.iter().all(|&key| {
+                    let m = model(&s, key);
+                    let c = s.model.resolve_code(Discipline::Electrical, key);
+                    let layer = target.map_or(Layer::Project, |n| Layer::Amendment(n.into()));
+                    m.len() == 64
+                        && ["New A", "New B"].iter().all(|n| m.contains_key(*n) && c.from.get(*n) == Some(&layer))
+                        && ["G6 62", "G6 63"].iter().all(|n| !m.contains_key(*n) && c.value.get(*n).is_none_or(Value::is_null))
+                });
+            let before = snap(&s);
+            let mut refusals = Vec::new();
+            for key in SECTIONS {
+                let mut extra = json!({"rules":{key:{"Extra":sample(key)}}});
+                if let Some(a) = target {
+                    extra["amend"] = json!(a);
+                }
+                let r = bc(&mut s, extra);
+                refusals.push((key, r.as_ref().err().cloned(), snap(&s) == before));
+            }
+            if !changed || refusals.iter().any(|(_, e, unchanged)| e.is_none() || !unchanged) {
+                anomalies.push(label);
+            }
+        }
+        let mut s = Session::new();
+        fill(&mut s, &SECTIONS, None);
+        let base = s.model.codes.base(Discipline::Electrical).code.clone();
+        let r = bc(
+            &mut s,
+            json!({"set":base,"keep_rules":true,"create":"New site","amendments":["New site"],"amend":"New site","save":"Saved G6",
+            "rules":{V:{"G6 63":null,"Incoming":v(61)},S:{"G6 63":null,"Incoming":sys("220 V")},W:{"G6 63":null,"Incoming":sample(W)}}}),
+        );
+        let combined = r.is_ok()
+            && SECTIONS.iter().all(|&k| model(&s, k).contains_key("Incoming"))
+            && s.model.codes.base(Discipline::Electrical).code == "Saved G6";
+        if !combined {
+            anomalies.push("combined");
+        }
+        assert!(anomalies.is_empty(), "{anomalies:?}");
+    }
+
+    #[test]
+    fn both_kinds_full_and_voltage_freed_by_removal_of_system() {
+        let mut s = Session::new();
+        bc(&mut s, json!({"rules":{V:{"Outgoing":v(51)},S:{"Outgoing":sys("Outgoing")}}})).unwrap();
+        fill(&mut s, &[V, S], None);
+        bc(&mut s, json!({"rules":{V:{"Outgoing":null,"Incoming":v(62)},S:{"Outgoing":null,"Incoming":sys("Incoming")}}})).unwrap();
+        assert_eq!(model(&s, V).len(), 64);
+        assert_eq!(model(&s, S).len(), 64);
+        assert!(!model(&s, V).contains_key("Outgoing"));
+        assert!(!model(&s, S).contains_key("Outgoing"));
+        assert_voltage(&s, "Incoming", 62.);
+        assert_eq!(s.model.distribution_systems["Incoming"].l_n.as_deref(), Some("Incoming"));
+    }
+
+    #[test]
+    fn new_system_with_room_needs_a_waiting_voltage() {
+        let mut s = Session::new();
+        fill(&mut s, &[V], None);
+        bc(&mut s, json!({"rules":{V:{"G6 63":null,"Incoming":v(62)},S:{"New system":sys("Incoming")}}})).unwrap();
+        let voltage = s.model.voltages.contains_key("Incoming");
+        let setting = s.model.distribution_systems.get("New system");
+        assert!(voltage && setting.is_some());
+    }
+
+    #[test]
+    fn edited_system_releases_its_previous_voltage() {
+        let mut s = Session::new();
+        bc(&mut s, json!({"rules":{V:{"Outgoing":v(51)},S:{"Staying":sys("Outgoing")}}})).unwrap();
+        fill(&mut s, &[V], None);
+        let r = bc(&mut s, json!({"rules":{V:{"Outgoing":null,"Incoming":v(62)},S:{"Staying":sys("Incoming")}}}));
+        assert!(
+            r.is_ok()
+                && !s.model.voltages.contains_key("Outgoing")
+                && s.model.voltages.contains_key("Incoming")
+                && s.model.distribution_systems["Staying"].l_n.as_deref() == Some("Incoming")
+        );
+        assert_voltage(&s, "Incoming", 62.);
+        check_link(&s, "Staying", "Incoming");
+        assert_eq!(s.model.voltages.len(), 64);
+    }
+
+    #[test]
+    fn edited_system_can_keep_stale_voltage_silently() {
+        let mut s = Session::new();
+        bc(&mut s, json!({"rules":{V:{"Previous":v(51)},S:{"Staying":sys("Previous")}}})).unwrap();
+        fill(&mut s, &[V], None);
+        bc(&mut s, json!({"rules":{V:{"G6 63":null,"Incoming":v(62)},S:{"Staying":sys("Incoming")}}})).unwrap();
+        assert_voltage(&s, "Previous", 51.);
+        assert_voltage(&s, "Incoming", 62.);
+        check_link(&s, "Staying", "Incoming");
+    }
+
+    #[test]
+    fn without_full_settings_voltage_and_system_apply_immediately() {
+        let mut s = Session::new();
+        bc(&mut s, json!({"rules":{V:{"Outgoing":v(51)},S:{"Staying":sys("Outgoing")}}})).unwrap();
+        bc(&mut s, json!({"rules":{V:{"Outgoing":null,"Incoming":v(62)},S:{"Staying":sys("Incoming"),"New system":sys("Incoming")}}}))
+            .unwrap();
+        assert!(!s.model.voltages.contains_key("Outgoing"));
+        assert_voltage(&s, "Incoming", 62.);
+        for n in ["Staying", "New system"] {
+            assert_eq!(s.model.distribution_systems[n].l_n.as_deref(), Some("Incoming"));
+        }
+    }
+
+    fn code_file(name: &str, rules: Value) -> std::path::PathBuf {
+        let file = dir().join(format!("{name}.xml"));
+        let k = BuildingCode {
+            code: name.into(),
+            name: name.into(),
+            discipline: Discipline::Electrical,
+            sections: serde_json::from_value(rules).unwrap(),
+            ..Default::default()
+        };
+        std::fs::write(&file, super::super::xml::write(&[k])).unwrap();
+        file
+    }
+    fn import(s: &mut Session, file: &std::path::Path, set: bool) -> Result<Value, String> {
+        s.execute("building_code_import", &json!({"path":file,"set":set}))
+    }
+
+    #[test]
+    fn imports_active_inactive_update_overflow_and_roundtrip() {
+        let mut fail = Vec::new();
+        let mut s = Session::new();
+        fill(&mut s, &SECTIONS, None);
+        let before: Vec<_> = SECTIONS.iter().map(|&k| model(&s, k)).collect();
+        let export = dir().join("G6-export.xml");
+        run(&mut s, "building_code_export", json!({"path":export,"discipline":"electrical","name":"G6 export"}));
+        let mut t = Session::new();
+        import(&mut t, &export, true).unwrap();
+        for (i, k) in SECTIONS.iter().enumerate() {
+            assert_eq!(model(&t, k), before[i]);
+            assert_eq!(section(&t, k), section(&s, k));
+        }
+
+        let replacement: Map<String, Value> = SECTIONS
+            .iter()
+            .map(|&key| {
+                let mut defs = section(&s, key);
+                defs.insert("G6 63".into(), Value::Null);
+                defs.insert("Incoming".into(), sample(key));
+                (key.into(), Value::Object(defs))
+            })
+            .collect();
+        let file = code_file("G6 active", json!(replacement));
+        import(&mut s, &file, false).unwrap();
+        for (i, k) in SECTIONS.iter().enumerate() {
+            assert_eq!(model(&s, k), before[i]);
+        }
+        let r = import(&mut s, &file, true);
+        let replaced = r.is_ok()
+            && SECTIONS
+                .iter()
+                .all(|&k| model(&s, k).len() == 64 && model(&s, k).contains_key("Incoming") && !model(&s, k).contains_key("G6 63"));
+        if !replaced {
+            fail.push("active replacement");
+        }
+
+        let mut extra = replacement;
+        extra[V]["Extra"] = v(63);
+        let file = code_file("G6 active", json!(extra));
+        let last = snap(&s);
+        let r = import(&mut s, &file, false);
+        if r.is_ok() || snap(&s) != last {
+            fail.push("active overwrite");
+        }
+
+        let mut t = Session::new();
+        fill(&mut t, &[V], None);
+        let mut rules = section(&t, V);
+        rules.insert("Extra".into(), v(63));
+        let file = code_file("G6 inactive", json!({V:rules}));
+        import(&mut t, &file, false).unwrap();
+        assert_eq!(model(&t, V).len(), 64);
+        assert!(!section(&t, V).contains_key("Extra"));
+        let last = snap(&t);
+        let r = import(&mut t, &file, true);
+        if r.is_ok() || snap(&t) != last {
+            fail.push("active overflow");
+        }
+        assert!(fail.is_empty(), "{fail:?}");
+    }
+
+    #[test]
+    fn reset_and_switch_restore_starters_at_limit_and_bimc_roundtrip() {
+        let mut s = Session::new();
+        let project: Map<String, Value> = SECTIONS
+            .iter()
+            .map(|&k| {
+                let current = model(&s, k);
+                let name = match k {
+                    V => "480 V",
+                    S => "277/480 V",
+                    _ => "Cu PVC 70 °C",
+                };
+                assert!(current.contains_key(name));
+                (k.to_string(), json!({name:null}))
+            })
+            .collect();
+        bc(&mut s, json!({"create":"Site","amendments":["Site"],"amend":"Site","rules":project})).unwrap();
+        fill(&mut s, &SECTIONS, Some("Site"));
+        let before = state(&s);
+        let file = dir().join("G6 at limit.bimc");
+        run(&mut s, "save", json!({"path":file}));
+        let mut t = Session::new();
+        run(&mut t, "open", json!({"path":file}));
+        assert_eq!(state(&t), before);
+        for (i, p) in
+            [json!({"amend":"Site","reset":true,"save":"G6 reset"}), json!({"set":"generic","amendments":[]})].into_iter().enumerate()
+        {
+            if i != 0 {
+                run(&mut t, "open", json!({"path":file}));
+            }
+            bc(&mut t, p).unwrap();
+            assert_voltage_starter(&t);
+        }
+    }
+    fn assert_voltage_starter(s: &Session) {
+        assert_eq!(s.model.voltages.get("480 V").map(|x| x.nominal), Some(480.));
+        assert!(s.model.distribution_systems.contains_key("277/480 V"));
+        assert!(s.model.wire_types.contains_key("Cu PVC 70 °C"));
+        assert!(SECTIONS.iter().all(|k| !model(s, k).contains_key("G6 63")));
+    }
+
+    #[test]
+    fn overflows_preserve_undo_redo_and_report_the_kind() {
+        let mut s = Session::new();
+        fill(&mut s, &SECTIONS, None);
+        let old = state(&s);
+        run(&mut s, "level", json!({"name":"G6 level","elevation":5000}));
+        run(&mut s, "undo", json!({}));
+        let last = snap(&s);
+        let mut fail = Vec::new();
+        for (k, kind) in [(V, "voltage"), (S, "distribution system"), (W, "wire type")] {
+            let r = bc(&mut s, json!({"rules":{k:{"ZZ overflow":sample(k)}}}));
+            if !r.is_err_and(|e| e.contains(&format!("{kind} `ZZ overflow`")) && e.contains("64")) || snap(&s) != last {
+                fail.push(kind);
+            }
+        }
+        if fail.is_empty() {
+            run(&mut s, "redo", json!({}));
+            assert!(s.model.levels().into_iter().any(|(_, l)| l.name == "G6 level"));
+            run(&mut s, "undo", json!({}));
+            assert_eq!(state(&s), old);
+            run(&mut s, "undo", json!({}));
+            assert!(SECTIONS.iter().all(|k| model(&s, k).len() < 64));
+            run(&mut s, "redo", json!({}));
+            assert_eq!(state(&s), old);
+        }
+        assert!(fail.is_empty(), "{fail:?}");
+    }
+
+    #[test]
+    fn a_panel_keeps_its_system_and_prevents_a_replacement() {
+        let mut s = Session::new();
+        bc(&mut s, json!({"create":"Referenced","amendments":["Referenced"],"amend":"Referenced","rules":{S:{"On panel":sys("220 V")}}}))
+            .unwrap();
+        fill(&mut s, &[S], None);
+        crate::circuit_tests::board_on(&mut s, "On panel");
+        let before = snap(&s);
+        let p = json!({"amendments":[],"rules":{S:{"Replacement":sys("220 V")}}});
+        let r = bc(&mut s, p);
+        assert!(r.is_err_and(|e| e.contains("distribution system `Replacement`") && e.contains("64")) && snap(&s) == before);
+        bc(&mut s, json!({"amendments":[]})).unwrap();
+        assert!(s.model.distribution_systems.contains_key("On panel"));
+        assert!(!section(&s, S).contains_key("On panel"));
+    }
+
+    #[test]
+    fn xml_nulls_survive_export_from_project_and_two_layers_at_64() {
+        let mut s = Session::new();
+        bc(&mut s, json!({"create":"Lower","amendments":["Lower"],"amend":"Lower","rules":{S:{"277/480 V":null}}})).unwrap();
+        bc(&mut s, json!({"create":"Upper","amendments":["Lower","Upper"],"amend":"Upper","rules":{V:{"480 V":null}}})).unwrap();
+        bc(&mut s, json!({"rules":{W:{"Cu PVC 70 °C":null}}})).unwrap();
+        fill(&mut s, &SECTIONS, None);
+        let file = dir().join("G6 layers nulls.xml");
+        run(&mut s, "building_code_export", json!({"path":file,"discipline":"electrical","name":"G6 nulls"}));
+        let mut t = Session::new();
+        let result = import(&mut t, &file, true);
+        result.unwrap();
+        for key in SECTIONS {
+            assert_eq!(model(&s, key), model(&t, key));
+            assert_eq!(section(&s, key), section(&t, key));
+        }
+    }
+
+    #[test]
+    fn import_system_waiting_for_a_voltage_at_capacity() {
+        let mut failures = Vec::new();
+        for set in [true, false] {
+            let mut s = Session::new();
+            if !set {
+                let mut donor = Session::new();
+                fill(&mut donor, &[V], None);
+                let original = code_file("G6 overwrite dependency", json!({V:section(&donor,V)}));
+                import(&mut s, &original, true).unwrap();
+            } else {
+                fill(&mut s, &[V], None);
+            }
+            assert_eq!(s.model.voltages.len(), 64);
+            let mut volts = section(&s, V);
+            volts.insert("G6 63".into(), Value::Null);
+            volts.insert("Incoming".into(), v(62));
+            let file = code_file("G6 overwrite dependency", json!({V:volts,S:{"New system":sys("Incoming")}}));
+            let r = import(&mut s, &file, set);
+            let voltage = s.model.voltages.contains_key("Incoming");
+            let system = s.model.distribution_systems.contains_key("New system");
+            if r.is_err() || !voltage || !system {
+                failures.push(set);
+            }
+        }
+        assert!(failures.is_empty(), "{failures:?}");
+    }
+
+    #[test]
+    fn a_starter_system_comes_back_when_its_starter_voltage_waits() {
+        let mut s = Session::new();
+        bc(&mut s, json!({"rules":{V:{"480 V":null},S:{"277/480 V":null}}})).unwrap();
+        fill(&mut s, &[V], None);
+        let mut volts = section(&s, V);
+        volts.insert("G6 63".into(), Value::Null);
+        volts.insert("480 V".into(), serde_json::to_value(&crate::electrical::voltages()["480 V"]).unwrap());
+        let file = code_file("G6 back to starter", json!({V:volts}));
+        import(&mut s, &file, false).unwrap();
+        let r = bc(&mut s, json!({"set":"G6 back to starter"}));
+        let voltage = s.model.voltages.get("480 V").map(|x| x.nominal);
+        let system = s.model.distribution_systems.contains_key("277/480 V");
+        assert!(r.is_ok() && voltage == Some(480.) && system && s.model.voltages.len() == 64);
+        assert_voltage(&s, "480 V", 480.);
+        let expected = &crate::electrical::distribution_systems()["277/480 V"];
+        assert_eq!(model(&s, S)["277/480 V"], json!(expected));
+        assert!(!s.model.voltages.contains_key("G6 63"));
+    }
+
+    #[test]
+    fn two_replacements_from_63_keep_both_systems() {
+        let mut s = Session::new();
+        fill(&mut s, &[V], None);
+        bc(&mut s, json!({"rules":{V:{"G6 61":null}}})).unwrap();
+        assert_eq!(s.model.voltages.len(), 63);
+        assert!(s.model.distribution_systems.len() < 64);
+        let r = bc(
+            &mut s,
+            json!({"rules":{
+                V:{"G6 62":null,"G6 63":null,"A incoming":v(61),"Z incoming":v(62)},
+                S:{"A system":sys("A incoming"),"Z system":sys("Z incoming")}
+            }}),
+        );
+        let observed = ["A", "Z"].map(|prefix| {
+            (
+                s.model.voltages.contains_key(&format!("{prefix} incoming")),
+                s.model.distribution_systems.contains_key(&format!("{prefix} system")),
+                section(&s, S).contains_key(&format!("{prefix} system")),
+            )
+        });
+        assert!(r.is_ok() && s.model.voltages.len() == 63);
+        assert_eq!(observed, [(true, true, true), (true, true, true)]);
+    }
+
+    fn check_link(s: &Session, system: &str, voltage: &str) {
+        assert_eq!(section(s, S)[system]["l_n"].as_str(), Some(voltage));
+        assert_eq!(s.model.distribution_systems[system].l_n.as_deref(), Some(voltage));
+    }
+
+    #[test]
+    fn review_exact_replacements_from_63_and_64() {
+        for count in [63, 64] {
+            for route in ["command", "xml-set", "xml-overwrite"] {
+                let mut donor = Session::new();
+                fill(&mut donor, &[V], None);
+                if count == 63 {
+                    bc(&mut donor, json!({"rules":{V:{"G6 61":null}}})).unwrap();
+                }
+                let mut s = donor;
+                let name = format!("G6 review {count} {route}");
+                if route == "xml-overwrite" {
+                    let file = code_file(&name, json!({V:section(&s,V)}));
+                    import(&mut s, &file, true).unwrap();
+                }
+                assert_eq!(s.model.voltages.len(), count);
+                let mut delta = json!({"G6 63":null,"Z incoming":v(62)});
+                let mut systems = json!({"Z system":sys("Z incoming")});
+                if count == 63 {
+                    delta["G6 62"] = Value::Null;
+                    delta["A incoming"] = v(61);
+                    systems["A system"] = sys("A incoming");
+                }
+                if route == "command" {
+                    bc(&mut s, json!({"rules":{V:delta,S:systems}})).unwrap();
+                } else {
+                    let mut volts = section(&s, V);
+                    volts.extend(delta.as_object().unwrap().clone());
+                    let file = code_file(&name, json!({V:volts,S:systems}));
+                    import(&mut s, &file, route == "xml-set").unwrap();
+                }
+                assert_eq!(s.model.voltages.len(), count);
+                assert!(!s.model.voltages.contains_key("G6 63"));
+                assert_voltage(&s, "Z incoming", 62.);
+                check_link(&s, "Z system", "Z incoming");
+                if count == 63 {
+                    assert!(!s.model.voltages.contains_key("G6 62"));
+                    assert_voltage(&s, "A incoming", 61.);
+                    check_link(&s, "A system", "A incoming");
+                }
+                let xml = dir().join(format!("{name} export.xml"));
+                run(&mut s, "building_code_export", json!({"path":xml,"discipline":"electrical","name":format!("{name} export")}));
+                let mut fresh = Session::new();
+                import(&mut fresh, &xml, true).unwrap();
+                for key in [V, S] {
+                    assert_eq!(section(&fresh, key), section(&s, key));
+                    assert_eq!(model(&fresh, key), model(&s, key));
+                }
+                let project = dir().join(format!("{name}.bimc"));
+                let expected = state(&s);
+                run(&mut s, "save", json!({"path":project}));
+                run(&mut fresh, "open", json!({"path":project}));
+                assert_eq!(state(&fresh), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn review_overflow_dependency_rolls_back() {
+        for route in ["command", "xml-set", "xml-overwrite"] {
+            let mut s = Session::new();
+            fill(&mut s, &[V], None);
+            let name = format!("G6 overflow dependent {route}");
+            if route == "xml-overwrite" {
+                let file = code_file(&name, json!({V:section(&s,V)}));
+                import(&mut s, &file, true).unwrap();
+            }
+            let before = snap(&s);
+            let result = if route == "command" {
+                bc(&mut s, json!({"rules":{V:{"ZZ blocked":v(62)},S:{"New system":sys("ZZ blocked")}}}))
+            } else {
+                let mut volts = section(&s, V);
+                volts.insert("ZZ blocked".into(), v(62));
+                let file = code_file(&name, json!({V:volts,S:{"New system":sys("ZZ blocked")}}));
+                import(&mut s, &file, route == "xml-set")
+            };
+            assert!(result.is_err_and(|e| e.contains("voltage `ZZ blocked`") && e.contains("64")));
+            assert_eq!(snap(&s), before);
+        }
+    }
+
+    #[test]
+    fn review_voltage_still_named_by_system() {
+        for full in [false, true] {
+            let mut s = Session::new();
+            bc(&mut s, json!({"rules":{V:{"Kept":v(51)}, S:{"Staying":sys("Kept")}}})).unwrap();
+            if full {
+                fill(&mut s, &[V], None);
+            }
+            let before = snap(&s);
+            let result = bc(&mut s, json!({"rules":{V:{"Kept":null,"Incoming":v(62)}}}));
+            assert!(result.is_err_and(|e| e.contains("Kept")));
+            assert_eq!(snap(&s), before);
+            assert_voltage(&s, "Kept", 51.);
+            check_link(&s, "Staying", "Kept");
+        }
+    }
+}
