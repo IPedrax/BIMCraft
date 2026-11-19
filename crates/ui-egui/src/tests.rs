@@ -3654,6 +3654,100 @@ fn the_type_selectors_list_stays_in_the_window_and_scrolls() {
 }
 
 #[test]
+fn a_nudge_is_ten_pixels_worth_rounded_down_to_one_two_or_five() {
+    // Pixels a millimetre: 10 px is 125 mm, 250 mm, 667 mm, 33 mm and half a millimetre.
+    for (scale, step) in [(0.08, 100.0), (0.04, 200.0), (0.015, 500.0), (0.3, 20.0), (20.0, 1.0), (f64::NAN, 1.0), (0.0, 1.0)] {
+        assert_eq!(crate::nudge_step(scale), step, "{scale} px/mm");
+    }
+}
+
+#[test]
+fn the_arrow_keys_nudge_the_selection_a_step_the_zoom_gives_and_shift_ten() {
+    // Issue 529: as in Revit, the arrow keys move what is selected a little, without Move.
+    let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000]}}"));
+    let column = ids(&h, "column")[0];
+    let at = |h: &Harness<BimApp>| serde_json::from_value::<[f64; 2]>(field(h, column, "at")).unwrap();
+    // Nothing selected: the arrows move nothing.
+    key(&mut h, Key::ArrowRight);
+    assert_eq!(at(&h), [4000.0, 3000.0]);
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(h.state().selection, vec![column]);
+    let key_of = h.state().plan_key().unwrap();
+    let step = crate::nudge_step(h.state().canvas.view(key_of).unwrap().scale);
+    assert!(step >= 1.0);
+    key(&mut h, Key::ArrowRight);
+    assert_eq!(at(&h), [4000.0 + step, 3000.0]);
+    key(&mut h, Key::ArrowUp);
+    assert_eq!(at(&h), [4000.0 + step, 3000.0 + step]);
+    // Shift: ten steps.
+    shift_key(&mut h, Key::ArrowLeft);
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0 + step]);
+    key(&mut h, Key::ArrowDown);
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0]);
+    // Each press is a Move of its own: Undo takes back the last one alone, and the column stays selected for more.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0 + step]);
+    // Another tool has the arrows to itself.
+    key(&mut h, Key::Escape);
+    h.state_mut().selection = vec![column];
+    h.state_mut().tool = Tool::Wall(Vec::new());
+    h.run();
+    key(&mut h, Key::ArrowRight);
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0 + step]);
+}
+
+#[test]
+fn space_turns_a_column_taken_up_and_dragged_and_the_drag_goes_on() {
+    // Issue 470: as in Revit, Space while a placed element is dragged turns it a quarter turn about its own point.
+    let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000]}}"));
+    let column = ids(&h, "column")[0];
+    let (a, b) = (h.state().screen(P2(4000.0, 3000.0)), h.state().screen(P2(5000.0, 2000.0)));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.25, 0.5] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    key(&mut h, Key::Space);
+    assert_eq!(field(&h, column, "angle"), json!(90.0), "turned while it is dragged");
+    assert_eq!(field(&h, column, "at"), json!([4000.0, 3000.0]), "about its own point, not yet moved");
+    for t in [0.75, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    let at = serde_json::from_value::<[f64; 2]>(field(&h, column, "at")).unwrap();
+    assert!(at[0] > 4500.0 && at[1] < 2500.0, "the drag went on: {at:?}");
+    assert_eq!(field(&h, column, "angle"), json!(90.0));
+    // Selected and not dragged, Space turns it again where it stands.
+    assert_eq!(h.state().selection, vec![column]);
+    key(&mut h, Key::Space);
+    assert_eq!(field(&h, column, "angle"), json!(180.0));
+    assert_eq!(serde_json::from_value::<[f64; 2]>(field(&h, column, "at")).unwrap(), at);
+}
+
+#[test]
+fn space_turns_a_selected_component_and_leaves_a_walls_flip_alone() {
+    let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"Bed\", \"type\": \"900 x 2000\", \"at\": [2000, 2000]}}"));
+    let bed = ids(&h, "component")[0];
+    h.state_mut().selection = vec![bed];
+    h.run();
+    key(&mut h, Key::Space);
+    assert_eq!((field(&h, bed, "angle"), field(&h, bed, "at")), (json!(90.0), json!([2000.0, 2000.0])));
+    assert_eq!(h.state().session.history().last(), Some(&"Rotate"));
+    // A wall has a flip, which Space keeps doing: it isn't turned.
+    let wall = ids(&h, "wall")[0];
+    h.state_mut().selection = vec![wall];
+    h.run();
+    key(&mut h, Key::Space);
+    assert_eq!(h.state().session.history().last(), Some(&"Flip"));
+}
+
+#[test]
 fn the_component_tool_places_a_familys_type_that_space_turns() {
     let mut h = app(BOX);
     tool(&mut h, "Component");
@@ -5814,11 +5908,15 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
 #[test]
 fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list_their_tools() {
     let mut h = app(BOX);
-    // Narrow enough that Manage folds its last panels; the fit is judged on each tool's average width, a few pixels out.
-    h.set_size(vec2(1020.0, 800.0));
+    // Narrow enough that Manage folds its last panels: at 1020 Settings, handing its last tools over, makes room enough for
+    // Design Options to stay whole.
+    h.set_size(vec2(990.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
-    press(&mut h, "Manage");
+    // Set, not pressed: at 990 the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
+    // end), so a click on it lands outside the strip and does nothing, upstream too.
+    h.state_mut().tab = Tab::Manage;
+    h.run();
     assert!(h.query_by_label("Design Options").is_none(), "the last panel is folded at {window}");
     assert!(h.get_by_label("Design Options ▾").rect().right() <= window, "to one button, in the window");
     assert!(h.get_by_label("Materials").rect().left() >= 0.0, "and the first panel is as it was");
@@ -6708,6 +6806,7 @@ mod pyaddins;
 mod qol;
 mod reinforce;
 mod revit;
+mod ribbon_fit;
 mod rooms;
 mod section_box;
 mod shape3d;

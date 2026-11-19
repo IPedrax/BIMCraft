@@ -7,9 +7,18 @@ msgstr "Project-Id-Version: BIMCraft\nLanguage: nl\nMIME-Version: 1.0\nContent-T
 msgid "AS INDICATED"
 msgstr ""
 
+#: crates/core/src/title_starters.rs:76
+msgid "Address"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:410
 msgid "Air Terminal"
 msgstr "Luchtuitlaat"
+
+#: crates/core/src/title_starters.rs:45
+#: crates/core/src/title_starters.rs:126
+msgid "Approved by"
+msgstr ""
 
 #: crates/core/src/schedule.rs:205
 #: crates/core/src/schedule.rs:255
@@ -40,7 +49,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/commands.rs:6405
+#: crates/core/src/commands.rs:6414
 msgid "Camera"
 msgstr "Camera"
 
@@ -76,10 +85,22 @@ msgstr "Keramische tegel"
 msgid "Chair"
 msgstr "Stoel"
 
+#: crates/core/src/title_starters.rs:65
+#: crates/core/src/title_starters.rs:85
+#: crates/core/src/title_starters.rs:126
+msgid "Checked by"
+msgstr ""
+
 #: crates/core/src/panel_schedule.rs:268
 #: crates/core/src/panel_schedule.rs:276
 #: crates/core/src/panel_schedule.rs:380
 msgid "Classification"
+msgstr ""
+
+#: crates/core/src/title_starters.rs:35
+#: crates/core/src/title_starters.rs:57
+#: crates/core/src/title_starters.rs:75
+msgid "Client"
 msgstr ""
 
 #: crates/core/src/family.rs:3209
@@ -99,11 +120,11 @@ msgstr ""
 msgid "Copper"
 msgstr "Koper"
 
-#: crates/core/src/commands.rs:2238
+#: crates/core/src/commands.rs:2243
 msgid "Copy"
 msgstr "Kopie"
 
-#: crates/core/src/commands.rs:2245
+#: crates/core/src/commands.rs:2250
 msgid "Copy to Clipboard"
 msgstr ""
 
@@ -111,11 +132,15 @@ msgstr ""
 msgid "Count"
 msgstr "Aantal"
 
+#: crates/core/src/title_starters.rs:44
+msgid "Created by"
+msgstr ""
+
 #: crates/core/src/fills.rs:409
 msgid "Crosshatch"
 msgstr "Kruisarcering"
 
-#: crates/core/src/commands.rs:2255
+#: crates/core/src/commands.rs:2260
 msgid "Cut to Clipboard"
 msgstr ""
 
@@ -136,12 +161,18 @@ msgstr "Streep-punt"
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
+#: crates/core/src/title_starters.rs:42
+#: crates/core/src/title_starters.rs:60
+#: crates/core/src/title_starters.rs:82
+msgid "Date"
+msgstr ""
+
 #: crates/core/src/panel_schedule.rs:273
 #: crates/core/src/panel_schedule.rs:380
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:15351
+#: crates/core/src/commands.rs:15360
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -202,6 +233,11 @@ msgstr "Dubbele schuifdeur"
 msgid "Double Swing"
 msgstr "Dubbele draaideur"
 
+#: crates/core/src/title_starters.rs:64
+#: crates/core/src/title_starters.rs:84
+msgid "Drawn by"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:423
 msgid "Earthing Electrode"
 msgstr "Aardingselektrode"
@@ -226,9 +262,9 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:15096
-#: crates/core/src/commands.rs:15112
-#: crates/core/src/commands.rs:19954
+#: crates/core/src/commands.rs:15105
+#: crates/core/src/commands.rs:15121
+#: crates/core/src/commands.rs:20016
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -411,7 +447,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:9374
+#: crates/core/src/commands.rs:9383
 #: crates/core/src/model.rs:4672
 msgid "Level"
 msgstr "Niveau"
@@ -452,7 +488,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:12137
+#: crates/core/src/commands.rs:12146
 msgid "Mass"
 msgstr "Massa"
 
@@ -468,11 +504,11 @@ msgstr "Middeldikke lijnen"
 msgid "Membrane"
 msgstr "Membraan"
 
-#: crates/core/src/commands.rs:4422
-#: crates/core/src/commands.rs:18499
+#: crates/core/src/commands.rs:4427
+#: crates/core/src/commands.rs:18561
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
-#: crates/core/src/model.rs:6382
+#: crates/core/src/model.rs:6386
 msgid "Metal"
 msgstr "Metaal"
 
@@ -512,6 +548,10 @@ msgstr "Verschuiving"
 msgid "Operation"
 msgstr "Bediening"
 
+#: crates/core/src/title_starters.rs:36
+msgid "Organization"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:357
 msgid "Outlet"
 msgstr "Contactdoos"
@@ -524,11 +564,17 @@ msgstr "Bovenliggende lijnen"
 msgid "PVC"
 msgstr "PVC"
 
+#: crates/core/src/title_starters.rs:46
+#: crates/core/src/title_starters.rs:69
+#: crates/core/src/title_starters.rs:86
+msgid "Page"
+msgstr ""
+
 #: crates/core/src/panel_schedule.rs:351
 msgid "Panel"
 msgstr ""
 
-#: crates/core/src/commands.rs:2263
+#: crates/core/src/commands.rs:2268
 msgid "Paste"
 msgstr ""
 
@@ -570,11 +616,18 @@ msgstr "Porselein"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4718
+#: crates/core/src/commands.rs:4727
+#: crates/core/src/title_starters.rs:35
+#: crates/core/src/title_starters.rs:55
+#: crates/core/src/title_starters.rs:75
 msgid "Project"
 msgstr "Project"
 
-#: crates/core/src/commands.rs:10122
+#: crates/core/src/title_starters.rs:56
+msgid "Project no."
+msgstr ""
+
+#: crates/core/src/commands.rs:10131
 msgid "Property Line"
 msgstr ""
 
@@ -589,6 +642,12 @@ msgstr "Rack"
 #: crates/core/src/fixtures.rs:334
 msgid "Recessed Luminaire"
 msgstr "Inbouwarmatuur"
+
+#: crates/core/src/title_starters.rs:43
+#: crates/core/src/title_starters.rs:67
+#: crates/core/src/title_starters.rs:83
+msgid "Rev."
+msgstr ""
 
 #: crates/core/src/schedule.rs:569
 msgid "Riser Height"
@@ -606,7 +665,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:12667
+#: crates/core/src/commands.rs:12676
 msgid "Room"
 msgstr "Ruimte"
 
@@ -634,6 +693,12 @@ msgstr "SCHAAL ZOALS AANGEGEVEN"
 msgid "Sand"
 msgstr "Zand"
 
+#: crates/core/src/title_starters.rs:41
+#: crates/core/src/title_starters.rs:66
+#: crates/core/src/title_starters.rs:81
+msgid "Scale"
+msgstr ""
+
 #: crates/core/src/model.rs:4526
 msgid "Screed"
 msgstr "Chape"
@@ -642,8 +707,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:15030
-#: crates/core/src/commands.rs:19953
+#: crates/core/src/commands.rs:15039
+#: crates/core/src/commands.rs:20015
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -671,8 +736,21 @@ msgstr ""
 msgid "Shared North"
 msgstr ""
 
+#: crates/core/src/title_starters.rs:40
+#: crates/core/src/title_starters.rs:80
+msgid "Sheet"
+msgstr ""
+
 #: crates/core/src/schedule.rs:134
 msgid "Sheet List"
+msgstr ""
+
+#: crates/core/src/title_starters.rs:68
+msgid "Sheet no."
+msgstr ""
+
+#: crates/core/src/title_starters.rs:60
+msgid "Sheet title"
 msgstr ""
 
 #: crates/core/src/phasing.rs:129
@@ -796,7 +874,12 @@ msgstr "Tegel 300"
 msgid "Timber"
 msgstr "Hout"
 
-#: crates/core/src/commands.rs:10164
+#: crates/core/src/title_starters.rs:36
+#: crates/core/src/title_starters.rs:76
+msgid "Title"
+msgstr ""
+
+#: crates/core/src/commands.rs:10173
 msgid "Toposolid"
 msgstr ""
 
@@ -834,7 +917,7 @@ msgstr "Onbegrensde hoogte"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15689
+#: crates/core/src/commands.rs:15698
 msgid "Unnamed"
 msgstr "Naamloos"
 
