@@ -1,8 +1,8 @@
-//! Structure > Quantities > Steel List (BL) and Cut Plan (CU): one dialog over the `steel_list` and `cut_plan` commands, which
-//! read the project's bars and change nothing. It asks which bars (a level, or what is selected), shows what the command
-//! returned, writes it to a .csv or .xlsx file, or makes the schedules of it (one undo step). A refusal is the command's words,
-//! said inside the dialog. Nothing is calculated until Calculate, except the list when the dialog opens: a cut plan is a
-//! purchase, so it waits for the stock length the engineer types.
+//! Structure > Quantities > Materials (QT), Steel List (BL) and Cut Plan (CU): one dialog over the `quantities`, `steel_list` and
+//! `cut_plan` commands, which read the project and change nothing. It asks which members or bars (a level, or what is selected),
+//! shows what the command returned, writes it to a .csv or .xlsx file, or makes the schedules of it (one undo step). A refusal is the
+//! command's words, said inside the dialog. Nothing is calculated until Calculate, except the page the dialog opens on: a cut plan is
+//! a purchase, so it waits for the stock length the engineer types.
 
 use bimcraft_core::model::Id;
 use bimcraft_core::units::Units;
@@ -19,10 +19,29 @@ use crate::{BimApp, Sheet, Status};
 /// The most rows of the list the dialog draws: the rest are in the file.
 const SHOWN: usize = 300;
 
-/// The dialog: the page it is on, which bars, what is typed, and what each page last calculated.
+/// A page of the dialog: the concrete, formwork and steel of the members, the list of the bars, or the plan to cut them.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Page {
+    #[default]
+    List,
+    Plan,
+    Materials,
+}
+
+impl Page {
+    fn command(self) -> &'static str {
+        match self {
+            Page::List => "steel_list",
+            Page::Plan => "cut_plan",
+            Page::Materials => "quantities",
+        }
+    }
+}
+
+/// The dialog: the page it is on, which members or bars, what is typed, and what each page last calculated.
 #[derive(Default)]
 pub(crate) struct SteelDialog {
-    pub(crate) cut: bool,
+    pub(crate) page: Page,
     /// A level's name, or none for the whole project.
     pub(crate) level: String,
     /// Only the bars of what is selected, when something is.
@@ -33,6 +52,9 @@ pub(crate) struct SteelDialog {
     min_offcut: String,
     pub(crate) list: Option<Value>,
     pub(crate) plan: Option<Value>,
+    /// The project parameter the Materials page splits by, or none.
+    pub(crate) by: String,
+    pub(crate) quantities: Option<Value>,
     pub(crate) error: String,
 }
 
@@ -47,7 +69,7 @@ fn length(units: Units, text: &str, name: &str) -> Result<Option<f64>, String> {
 
 impl SteelDialog {
     /// The command's parameters from the fields; the cut plan has no stock length of its own to fall back on.
-    pub(crate) fn params(&self, units: Units, selection: &[Id]) -> Result<Value, String> {
+    pub(crate) fn params(&self, page: Page, units: Units, selection: &[Id]) -> Result<Value, String> {
         let mut p = json!({});
         if !self.level.is_empty() {
             p["level"] = json!(self.level);
@@ -55,13 +77,19 @@ impl SteelDialog {
         if self.selected && !selection.is_empty() {
             p["ids"] = json!(selection);
         }
+        if page == Page::Materials {
+            if !self.by.is_empty() {
+                p["by"] = json!(self.by);
+            }
+            return Ok(p);
+        }
         let coil = self.coil_to.trim().replace(',', ".");
         if !coil.is_empty() {
             let size = coil.parse::<f64>().ok().filter(|x| x.is_finite());
             p["coil_to"] = json!(size.ok_or_else(|| tf("{} is not {}: `{}`", &[t("Coil up to"), t("a size in mm"), &coil]))?);
         }
         let stock = length(units, &self.stock_length, t("Stock length"))?;
-        if self.cut {
+        if page == Page::Plan {
             let Some(stock) = stock else {
                 return Err(t("Type the length of a stock bar first: it is a purchase, and yours to say.").into());
             };
@@ -77,8 +105,12 @@ impl SteelDialog {
         Ok(p)
     }
 
-    fn command(&self) -> &'static str {
-        if self.cut { "cut_plan" } else { "steel_list" }
+    fn reply(&self, page: Page) -> &Option<Value> {
+        match page {
+            Page::List => &self.list,
+            Page::Plan => &self.plan,
+            Page::Materials => &self.quantities,
+        }
     }
 }
 
@@ -244,37 +276,106 @@ fn plan_view(ui: &mut Ui, r: &Value, units: Units) {
     notes(ui, r);
 }
 
+/// A category as the Materials page names it.
+fn category_name(category: &str) -> &str {
+    match category {
+        "beam" => msg!("Beam"),
+        "column" => msg!("Column"),
+        "structuralcolumn" => msg!("Structural Column"),
+        "footing" => msg!("Isolated Footing"),
+        "stripfooting" => msg!("Wall Footing"),
+        "floor" => msg!("Floor"),
+        "unhosted bars" => msg!("Unhosted bars"),
+        other => other,
+    }
+}
+
+/// What `quantities` returned: its total, a row for each level and category (and value of the parameter split by), and the notes.
+fn materials_view(ui: &mut Ui, r: &Value, units: Units, by: &str) {
+    let total = &r["total"];
+    let per = |v: &Value, places: usize| v.as_f64().map_or_else(|| "-".to_string(), |x| format!("{x:.places$}"));
+    let (area, unit) = units.area(num(total, "formwork_m2") * 1e6);
+    ui.label(tf(
+        "{} members: {} m³ of concrete, {} {} of formwork, {} kg of steel ({} kg/m³).",
+        &[
+            &whole(total, "count"),
+            &per(&total["volume_m3"], 3),
+            &format!("{area:.2}"),
+            unit,
+            &per(&total["rebar_kg"], 1),
+            &per(&total["rebar_ratio"], 1),
+        ],
+    ));
+    ui.add_space(4.0);
+    let rows: Vec<Vec<String>> = r["rows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(SHOWN)
+        .map(|row| {
+            let mut cells = vec![text(row, "level"), t(category_name(&text(row, "category"))).to_string()];
+            if !by.is_empty() {
+                cells.push(text(row, "value"));
+            }
+            let area = units.area(num(row, "formwork_m2") * 1e6).0;
+            cells.extend([
+                whole(row, "count"),
+                per(&row["volume_m3"], 3),
+                format!("{area:.2}"),
+                per(&row["rebar_kg"], 1),
+                per(&row["rebar_ratio"], 1),
+            ]);
+            cells
+        })
+        .collect();
+    let mut heads = vec![t("Level").to_string(), t("Category").to_string()];
+    if !by.is_empty() {
+        heads.push(by.to_string());
+    }
+    heads.extend([
+        t("Count").to_string(),
+        t("Volume (m³)").to_string(),
+        tf("{} ({})", &[t("Formwork Area"), unit]),
+        tf("{} (kg)", &[t("Rebar Weight")]),
+        tf("{} (kg/m³)", &[t("Rebar Ratio")]),
+    ]);
+    grid(ui, "materials-rows", &heads.iter().map(String::as_str).collect::<Vec<_>>(), &rows);
+    notes(ui, r);
+}
+
 impl BimApp {
-    /// Steel List (BL) or Cut Plan (CU): the dialog, on that page. The list of what is selected, or of the project, is made at once.
-    pub(crate) fn open_steel(&mut self, cut: bool) {
+    /// Materials (QT), Steel List (BL) or Cut Plan (CU): the dialog, on that page. What is not yet calculated for the page, except a
+    /// cut plan, is made at once.
+    pub(crate) fn open_steel(&mut self, page: Page) {
         let first = self.steel_dialog.is_none();
         let mut d =
             self.steel_dialog.take().unwrap_or_else(|| SteelDialog { selected: !self.selection.is_empty(), ..SteelDialog::default() });
-        d.cut = cut;
-        if first {
+        d.page = page;
+        if first || (page != Page::Plan && d.reply(page).is_none()) {
             self.steel_calculate(&mut d, false);
         }
         self.steel_dialog = Some(d);
     }
 
-    /// Runs the page's command with the fields and keeps its reply; a refusal is said in the dialog. `own_page` false is the
-    /// first run on opening, which is the list's whatever page the dialog opens on: the cut plan waits for a stock length.
+    /// Runs the page's command with the fields and keeps its reply; a refusal is said in the dialog. `own_page` false is a run
+    /// the dialog makes for itself, which is never a cut plan: that waits for a stock length, so it makes the list.
     fn steel_calculate(&mut self, d: &mut SteelDialog, own_page: bool) {
-        let was = d.cut;
-        d.cut = own_page && d.cut;
+        let page = if own_page || d.page != Page::Plan { d.page } else { Page::List };
         d.error.clear();
-        match d.params(self.session.model.units, &self.selection) {
+        match d.params(page, self.session.model.units, &self.selection) {
             Err(e) => d.error = e,
-            Ok(p) => match self.run(d.command(), p) {
-                Some(reply) if d.cut => d.plan = Some(reply),
-                Some(reply) => d.list = Some(reply),
+            Ok(p) => match self.run(page.command(), p) {
+                Some(reply) => match page {
+                    Page::Plan => d.plan = Some(reply),
+                    Page::List => d.list = Some(reply),
+                    Page::Materials => d.quantities = Some(reply),
+                },
                 None => {
                     d.error = std::mem::take(&mut self.status.text);
                     self.status = Status::default();
                 }
             },
         }
-        d.cut = was;
     }
 
     /// The dialog, while it is open.
@@ -283,17 +384,18 @@ impl BimApp {
         let units = self.session.model.units;
         let hint = units.name();
         let levels: Vec<String> = self.session.model.levels().into_iter().map(|(_, l)| l.name.clone()).collect();
+        let parameters: Vec<String> = self.session.model.parameters.keys().cloned().collect();
         let has_selection = !self.selection.is_empty();
         let (mut calculate, mut export, mut make, mut close) = (false, false, false, false);
-        let r = Modal::new(UiId::new("steel"), t("Steel List and Cut Plan")).width(780.0).min_height(420.0).show(ctx, |ui| {
+        let r = Modal::new(UiId::new("steel"), t("Quantities")).width(780.0).min_height(420.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    if ui.selectable_label(!d.cut, t("Steel List")).clicked() {
-                        d.cut = false;
-                    }
-                    if ui.selectable_label(d.cut, t("Cut Plan")).clicked() {
-                        d.cut = true;
+                    for (page, label) in [(Page::Materials, t("Materials")), (Page::List, t("Steel List")), (Page::Plan, t("Cut Plan"))] {
+                        if ui.selectable_label(d.page == page, label).clicked() {
+                            d.page = page;
+                            d.error.clear();
+                        }
                     }
                 });
                 ui.add_space(4.0);
@@ -314,21 +416,39 @@ impl BimApp {
                     ui.add_enabled(has_selection, Checkbox::new(&mut d.selected, t("Only the selected elements")));
                 });
                 ui.horizontal_wrapped(|ui| {
+                    if d.page == Page::Materials {
+                        let l = ui.label(t("Split by:"));
+                        let shown = if d.by.is_empty() { t("None").to_string() } else { d.by.clone() };
+                        let c = ComboBox::from_id_salt("steel-by").selected_text(shown).width(160.0).show_ui(ui, |ui| {
+                            if ui.selectable_label(d.by.is_empty(), t("None")).clicked() {
+                                d.by.clear();
+                            }
+                            for n in &parameters {
+                                if ui.selectable_label(*n == d.by, n).clicked() {
+                                    d.by.clone_from(n);
+                                }
+                            }
+                        });
+                        c.response.labelled_by(l.id);
+                        return;
+                    }
                     let on = |label: &str| tf("{}:", &[t(label)]);
                     labelled(ui, &on("Coil up to"), &mut d.coil_to, t("Coil up to").to_string(), 56.0, "mm");
                     labelled(ui, &on("Stock length"), &mut d.stock_length, t("Stock length").to_string(), 72.0, hint);
-                    if d.cut {
+                    if d.page == Page::Plan {
                         labelled(ui, &on("Kerf"), &mut d.kerf, t("Kerf").to_string(), 48.0, hint);
                         labelled(ui, &on("Minimum offcut"), &mut d.min_offcut, t("Minimum offcut").to_string(), 56.0, hint);
                     }
                 });
                 ui.separator();
-                match if d.cut { &d.plan } else { &d.list } {
-                    Some(reply) if d.cut => plan_view(ui, reply, units),
-                    Some(reply) => list_view(ui, reply, units),
-                    None => {
+                match (d.reply(d.page), d.page) {
+                    (Some(reply), Page::Plan) => plan_view(ui, reply, units),
+                    (Some(reply), Page::List) => list_view(ui, reply, units),
+                    (Some(reply), Page::Materials) => materials_view(ui, reply, units, &d.by),
+                    (None, Page::Plan) => {
                         ui.label(RichText::new(t("Type the length of a stock bar, then Calculate.")).color(pal().muted));
                     }
+                    (None, _) => {}
                 }
                 if !d.error.is_empty() {
                     ui.add_space(6.0);
@@ -338,13 +458,21 @@ impl BimApp {
             popup::footer(ui, |ui| {
                 ui.horizontal(|ui| {
                     calculate = ui.button(t("Calculate")).clicked();
-                    let made = if d.cut { d.plan.is_some() } else { d.list.is_some() };
-                    export = ui.add_enabled(made, egui::Button::new(t("Export…"))).clicked();
-                    if !d.cut {
-                        make = ui
-                            .button(t("Create Schedules"))
-                            .on_hover_text(t("Make the Steel List and the Steel Summary as schedules in the project"))
-                            .clicked();
+                    export = ui.add_enabled(d.reply(d.page).is_some(), egui::Button::new(t("Export…"))).clicked();
+                    match d.page {
+                        Page::Materials => {
+                            make = ui
+                                .button(t("Create Schedules"))
+                                .on_hover_text(t("Make the Materials Summary as a schedule in the project"))
+                                .clicked();
+                        }
+                        Page::List => {
+                            make = ui
+                                .button(t("Create Schedules"))
+                                .on_hover_text(t("Make the Steel List and the Steel Summary as schedules in the project"))
+                                .clicked();
+                        }
+                        Page::Plan => {}
                     }
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         close = ui.button(t("Close")).clicked();
@@ -353,16 +481,20 @@ impl BimApp {
             });
         });
         let mut keep = !(close || r.should_close());
-        if calculate {
-            self.steel_calculate(&mut d, true);
+        if calculate || (d.page != Page::Plan && d.reply(d.page).is_none() && d.error.is_empty()) {
+            self.steel_calculate(&mut d, calculate);
         }
         if export {
             // The parameters as they are now, so the file is what the fields say; the name decides .csv or .xlsx.
-            match d.params(units, &self.selection) {
+            match d.params(d.page, units, &self.selection) {
                 Err(e) => d.error = e,
                 Ok(p) => {
-                    let cmd = d.command();
-                    let file = if d.cut { "cut-plan.csv" } else { "steel-list.csv" };
+                    let cmd = d.page.command();
+                    let file = match d.page {
+                        Page::Plan => "cut-plan.csv",
+                        Page::List => "steel-list.csv",
+                        Page::Materials => "quantities.csv",
+                    };
                     let dialog = rfd::AsyncFileDialog::new().add_filter("CSV", &["csv"]).add_filter("Excel", &["xlsx"]).set_file_name(file);
                     self.ask_file(ctx, dialog, true, move |app, path| {
                         let mut p = p;
@@ -374,7 +506,23 @@ impl BimApp {
                 }
             }
         }
-        if make {
+        if make && d.page == Page::Materials {
+            // A schedule of several categories cannot split by a project parameter, so it is made for the level alone.
+            let mut p = json!({"template": "materials_summary"});
+            if !d.level.is_empty() {
+                p["level"] = json!(d.level);
+            }
+            match self.exec_batch("Materials Summary", &[("schedule", p)]) {
+                Ok(made) => {
+                    if let Some(id) = made.first().and_then(|m| m["id"].as_u64()) {
+                        self.open_sheet(Sheet::Table(id));
+                    }
+                    self.status = Status { text: t("Made the Materials Summary.").into(), error: false };
+                    keep = false;
+                }
+                Err(e) => d.error = e,
+            }
+        } else if make {
             let mut of = json!({});
             if !d.level.is_empty() {
                 of["level"] = json!(d.level);

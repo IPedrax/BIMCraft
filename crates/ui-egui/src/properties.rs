@@ -194,6 +194,10 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Structural", "structural", "Structural", Flag),
             ("Graphics", "pattern_angle", msg!("Pattern Angle (°)"), Number),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
         "ceiling" => &[
             ("Constraints", "level", "Level", Level),
@@ -345,6 +349,10 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
         // A bar's mark among its host's, the host's mark and its shape, worked out and not stored: read only.
         "rebar" => &[
@@ -360,6 +368,25 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", "Unconnected Height", Height),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
+        ],
+        // A beam and a strip footing are runs with their quantities too, which a pipe has none of.
+        "beam" | "stripfooting" => &[
+            ("Constraints", "level", msg!("Reference Level"), Level),
+            ("Constraints", "offset", msg!("Start Level Offset"), Length),
+            ("Constraints", "end_offset", msg!("End Level Offset"), Limit(msg!("Same as start"))),
+            ("Constraints", "justify", msg!("Z Justification"), Justification),
+            ("Dimensions", "length", "Length", LengthShown),
+            ("Identity Data", "system", "System", Text),
+            ("Other", "start", "Start", Point),
+            ("Other", "end", "End", Point),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
         run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &[
             ("Constraints", "level", msg!("Reference Level"), Level),
