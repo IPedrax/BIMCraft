@@ -192,3 +192,107 @@ fn a_jpeg_is_kept_as_the_jpeg_it_came_in_as() {
     run(&mut t, "import_assets", json!({"path": bima}));
     assert_eq!(t.model.images.values().next().unwrap().file(), &out[..]);
 }
+
+/// A two-sheet PDF of this project's, in `dir`: its path.
+fn two_sheets(dir: &std::path::Path) -> std::path::PathBuf {
+    let mut a = Session::new();
+    let one = run(&mut a, "sheet", json!({}))["id"].as_u64().unwrap();
+    let two = run(&mut a, "sheet", json!({}))["id"].as_u64().unwrap();
+    let file = dir.join("set.pdf");
+    run(&mut a, "export", json!({"format": "pdf", "views": [one, two], "path": file}));
+    file
+}
+
+#[test]
+fn a_pdf_is_drawn_as_its_lines_not_a_picture_and_its_pages_are_listed() {
+    let dir = dir("vector");
+    let mut a = Session::new();
+    let sheet = run(&mut a, "sheet", json!({}))["id"].as_u64().unwrap();
+    let file = dir.join("one.pdf");
+    run(&mut a, "export", json!({"format": "pdf", "view": sheet, "path": file}));
+    let mut s = Session::new();
+    let v = run(&mut s, "pdf_pages", json!({"path": file.to_string_lossy()}));
+    assert_eq!(v["pages"].as_array().unwrap().len(), 1, "{v}");
+    let id = run(&mut s, "image", json!({"path": file.to_string_lossy()}))["id"].as_u64().unwrap();
+    let Some(crate::model::Element::Image(im)) = s.model.elements.get(id).cloned() else { panic!() };
+    let items = s.model.pdfs[&im.picture].drawing().items.len();
+    assert!(items > 4, "the title block's lines, as lines: {items}");
+    // In the plan, lines and fills of its own, not one picture.
+    let view = View { angle: 0.0, scale: 800.0 / im.width, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+    let d = render::draw(&s.model, LEVEL, view);
+    let lines = d.prims.iter().filter(|p| matches!(p, render::Prim::Line { .. })).count();
+    assert!(lines > 4, "{lines} lines");
+    assert!(!d.prims.iter().any(|p| matches!(p, render::Prim::Image { .. })), "no picture of it");
+    // Saved and opened, it is still drawn as lines.
+    let path = dir.join("p.bimc").to_string_lossy().into_owned();
+    run(&mut s, "save", json!({"path": path}));
+    let mut t = Session::new();
+    run(&mut t, "open", json!({"path": path}));
+    assert_eq!(t.model.pdfs[&im.picture].drawing().items.len(), items);
+}
+
+#[test]
+fn a_pdfs_pages_are_counted_and_any_of_them_placed() {
+    let dir = dir("pages");
+    let file = two_sheets(&dir);
+    let mut s = Session::new();
+    let v = run(&mut s, "pdf_pages", json!({"path": file.to_string_lossy()}));
+    assert_eq!(v["pages"].as_array().unwrap().len(), 2, "{v}");
+    let id = run(&mut s, "image", json!({"path": file.to_string_lossy(), "page": 2}))["id"].as_u64().unwrap();
+    let Some(crate::model::Element::Image(im)) = s.model.elements.get(id) else { panic!() };
+    assert_eq!((im.page, s.model.pdfs[&im.picture].page()), (Some(2), 2));
+}
+
+#[test]
+fn an_image_drawn_in_front_covers_the_model_and_one_behind_does_not() {
+    let dir = dir("front");
+    let path = dir.join("a.png");
+    picture(&path, 4, 4, RED, RED);
+    let mut s = Session::new();
+    run(&mut s, "floor", json!({"boundary": [[-3000, -3000], [3000, -3000], [3000, 3000], [-3000, 3000]]}));
+    run(&mut s, "wall", json!({"points": [[-2000, 0], [2000, 0]], "thickness": 400}));
+    let id = run(&mut s, "image", json!({"path": path.to_string_lossy(), "width": 2000}))["id"].as_u64().unwrap();
+    let wall = colour_at(&s, P2(0.0, 0.0));
+    assert_ne!(wall, Rgb(RED[0], RED[1], RED[2]), "behind, the wall's poché covers it");
+    run(&mut s, "modify", json!({"id": id, "front": true}));
+    assert_eq!(colour_at(&s, P2(0.0, 0.0)), Rgb(RED[0], RED[1], RED[2]), "in front, it covers the wall");
+}
+
+#[test]
+fn an_image_mirrors_about_an_upright_or_level_line_and_resizes_by_its_width() {
+    let dir = dir("mirror");
+    let path = dir.join("a.png");
+    picture(&path, 40, 20, RED, BLUE);
+    let mut s = Session::new();
+    let id = run(&mut s, "image", json!({"path": path.to_string_lossy(), "width": 4000}))["id"].as_u64().unwrap();
+    run(&mut s, "mirror", json!({"ids": [id], "axis": [[0, -1000], [0, 1000]]}));
+    assert_eq!(colour_at(&s, P2(-1000.0, 0.0)), Rgb(BLUE[0], BLUE[1], BLUE[2]), "flipped left to right");
+    assert!(s.execute("mirror", &json!({"ids": [id], "axis": [[0, 0], [1000, 1000]]})).is_err(), "not about a slant");
+    run(&mut s, "modify", json!({"id": id, "width": 8000}));
+    assert_eq!(colour_at(&s, P2(3000.0, 0.0)), Rgb(RED[0], RED[1], RED[2]), "twice as wide, and still flipped");
+    assert!(s.execute("modify", &json!({"id": id, "width": -5})).is_err());
+}
+
+#[test]
+fn an_images_height_and_a_pdfs_scale_set_its_width() {
+    let dir = dir("scale");
+    let mut a = Session::new();
+    let sheet = run(&mut a, "sheet", json!({}))["id"].as_u64().unwrap();
+    let file = dir.join("one.pdf");
+    run(&mut a, "export", json!({"format": "pdf", "view": sheet, "path": file}));
+    let mut s = Session::new();
+    let id = run(&mut s, "image", json!({"path": file.to_string_lossy()}))["id"].as_u64().unwrap();
+    let shown = run(&mut s, "elements", json!({"category": "image"}))["elements"][0].clone();
+    assert!(shown["paper"].as_str().is_some_and(|p| p.ends_with(" mm")), "{shown}");
+    let paper = |s: &Session| {
+        let Some(crate::model::Element::Image(im)) = s.model.elements.get(id) else { panic!() };
+        (im.width, im.paper(&s.model).unwrap()[0])
+    };
+    run(&mut s, "modify", json!({"id": id, "scale": 50}));
+    let (w, p) = paper(&s);
+    assert!((w - 50.0 * p).abs() < 1e-6, "1 : 50");
+    run(&mut s, "modify", json!({"id": id, "height": 1000}));
+    let Some(crate::model::Element::Image(im)) = s.model.elements.get(id) else { panic!() };
+    assert!((im.height(&s.model).unwrap() - 1000.0).abs() < 1e-6);
+    assert!(s.execute("modify", &json!({"id": id, "scale": -1})).is_err());
+}

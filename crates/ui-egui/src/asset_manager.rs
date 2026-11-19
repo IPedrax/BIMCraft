@@ -38,6 +38,8 @@ pub(crate) struct AssetManager {
     pub(crate) picked: Option<String>,
     pub(crate) checked: BTreeSet<(String, String)>,
     pub(crate) existing: usize,
+    /// Why the last Delete was refused: said inside the window, where it was asked.
+    pub(crate) error: Option<String>,
 }
 
 impl AssetManager {
@@ -86,7 +88,7 @@ pub(crate) fn use_label(u: &Value) -> String {
 
 impl BimApp {
     pub(crate) fn open_asset_manager(&mut self) {
-        let mut d = AssetManager { tab: 0, listed: Value::Null, picked: None, checked: BTreeSet::new(), existing: 0 };
+        let mut d = AssetManager { tab: 0, listed: Value::Null, picked: None, checked: BTreeSet::new(), existing: 0, error: None };
         self.relist_assets(&mut d);
         self.asset_manager = Some(d);
     }
@@ -126,9 +128,26 @@ impl BimApp {
         true
     }
 
+    /// The assets `chosen` names deleted, the window's list read again; a refusal said in the window.
+    pub(crate) fn delete_assets(&mut self, chosen: Value, d: &mut AssetManager) -> Value {
+        match self.exec("delete_assets", &chosen) {
+            Ok(v) => {
+                d.error = None;
+                d.checked.clear();
+                d.picked = None;
+                self.relist_assets(d);
+                v
+            }
+            Err(e) => {
+                d.error = Some(e.trim_start_matches("delete_assets: ").to_string());
+                Value::Null
+            }
+        }
+    }
+
     pub(crate) fn asset_manager_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.asset_manager.take() else { return };
-        let (mut close, mut import, mut export_some, mut export_all) = (false, false, false, false);
+        let (mut close, mut import, mut export_some, mut export_all, mut delete) = (false, false, false, false, false);
         // Of one size whatever it lists or shows of the asset picked, so nothing it shows moves it on the screen.
         let r = Modal::new(UiId::new("asset-manager"), t("Asset Manager")).width(760.0).min_height(LIST + 220.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
@@ -154,12 +173,14 @@ impl BimApp {
                             if rows.is_empty() {
                                 ui.label(RichText::new(t("The project has none.")).color(pal().muted));
                             }
+                            // A long name is cut short, its whole in its tip, so the window keeps its width.
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                             for row in &rows {
                                 let name = row["name"].as_str().unwrap_or_default().to_string();
                                 ui.horizontal(|ui| {
                                     let key = (kind.to_string(), name.clone());
                                     let mut on = d.checked.contains(&key);
-                                    if ui.checkbox(&mut on, "").on_hover_text(t("Export it")).changed() {
+                                    if ui.checkbox(&mut on, "").on_hover_text(t("Check it to export or delete it")).changed() {
                                         if on {
                                             d.checked.insert(key);
                                         } else {
@@ -168,16 +189,26 @@ impl BimApp {
                                     }
                                     swatch(ui, &self.session.model, kind, &name);
                                     let shown = row["label"].as_str().map_or_else(|| name.clone(), |l| format!("{l} ({name})"));
-                                    if ui.selectable_label(d.picked.as_deref() == Some(name.as_str()), shown).clicked() {
-                                        d.picked = Some(name.clone());
-                                    }
                                     let uses = row["uses"].as_u64().unwrap_or(0);
                                     let text = if uses == 0 { t("unused").to_string() } else { tf("used {}×", &[&uses.to_string()]) };
+                                    // The name, cut short to leave its uses room beside it.
+                                    let room = (ui.available_width() - 72.0).max(40.0);
+                                    ui.scope(|ui| {
+                                        ui.set_max_width(room);
+                                        let picked = d.picked.as_deref() == Some(name.as_str());
+                                        let r = ui.selectable_label(picked, &shown);
+                                        // Its whole name in a tip where the row cuts it short.
+                                        let r = if shown.chars().count() > 40 { r.on_hover_text(&shown) } else { r };
+                                        if r.clicked() {
+                                            d.picked = Some(name.clone());
+                                        }
+                                    });
                                     ui.label(RichText::new(text).color(pal().muted));
                                 });
                             }
                         });
                     let ui = &mut cols[1];
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                     let picked = d.picked.as_ref().and_then(|p| rows.iter().find(|r| r["name"] == p.as_str()));
                     match picked {
                         None => {
@@ -208,7 +239,9 @@ impl BimApp {
                         }
                     }
                 });
-                ui.add_space(6.0);
+                if let Some(e) = &d.error {
+                    ui.add(egui::Label::new(RichText::new(e).color(pal().error)).wrap());
+                }
                 ui.add_space(6.0);
                 ui.separator();
                 import = ui.button(t("Import…")).clicked();
@@ -224,12 +257,30 @@ impl BimApp {
                     let n = d.checked.len();
                     export_some = ui.add_enabled(n > 0, Button::new(tf("Export {} Checked…", &[&n.to_string()]))).clicked();
                     export_all = ui.button(t("Export All…")).clicked();
+                    // The checked assets, or with none checked the one picked.
+                    let doomed = if n > 0 { n } else { usize::from(d.picked.is_some()) };
+                    let tip = t("Delete the checked assets, or the one picked; refused while something uses one");
+                    delete = ui.add_enabled(doomed > 0, Button::new(tf("Delete {}", &[&doomed.to_string()]))).on_hover_text(tip).clicked();
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         close = ui.button(t("Close")).clicked();
                     });
                 });
             });
         });
+        if delete {
+            let p = if d.checked.is_empty() {
+                let mut p = json!({});
+                if let Some(n) = &d.picked {
+                    p[TABS[d.tab].0] = json!([n]);
+                }
+                p
+            } else {
+                d.chosen()
+            };
+            if p.as_object().is_some_and(|o| !o.is_empty()) {
+                self.delete_assets(p, &mut d);
+            }
+        }
         if import {
             let existing = EXISTING[d.existing].0;
             let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft assets"), &[bimcraft_core::files::ASSETS]);

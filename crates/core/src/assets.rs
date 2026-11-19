@@ -210,3 +210,81 @@ pub fn list(m: &Model, kind: Option<&str>) -> Value {
     }
     Value::Object(out)
 }
+
+/// What `delete_assets` takes away, by kind and name: each refused while something uses it, saying what.
+pub fn delete(m: &mut Model, chosen: &[(String, String)]) -> Result<Vec<(String, String)>, String> {
+    let users = users(m);
+    for (kind, name) in chosen {
+        let Some(lk) = library_kind(kind) else { return Err(format!("`{kind}` is {KIND_NAMES}")) };
+        if !names(m, kind).contains(name) {
+            return Err(format!("the project has no {} named `{name}`", lk.label()));
+        }
+        // What else of the chosen uses it goes with it, so a material and its own picture are taken together.
+        let by: Vec<String> = users
+            .get(&(lk.clone(), name.clone()))
+            .into_iter()
+            .flatten()
+            .filter(|u| !chosen.iter().any(|(k, n)| user_is(u, k, n)))
+            .map(|u| describe(u, m))
+            .collect();
+        if !by.is_empty() {
+            let more = if by.len() > 3 { format!(" and {} more", by.len() - 3) } else { String::new() };
+            return Err(format!(
+                "{} `{name}` is used by {}{more}: take it off them first",
+                lk.label(),
+                by.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+            ));
+        }
+    }
+    for (kind, name) in chosen {
+        match kind.as_str() {
+            "materials" => {
+                m.materials.remove(name);
+            }
+            "fill_types" => {
+                m.region_types.remove(name);
+            }
+            "fill_patterns" => {
+                m.fill_patterns.remove(name);
+            }
+            "line_patterns" => {
+                m.line_patterns.remove(name);
+            }
+            "line_styles" => {
+                m.line_styles.remove(name);
+            }
+            _ => {
+                m.images.remove(name);
+                m.pdfs.remove(name);
+            }
+        }
+    }
+    m.sync_library();
+    Ok(chosen.to_vec())
+}
+
+/// Whether `u` is asset `name` of `kind`.
+fn user_is(u: &User, kind: &str, name: &str) -> bool {
+    match u {
+        User::Material(n) => kind == "materials" && n == name,
+        User::FillType(n) => kind == "fill_types" && n == name,
+        User::LineStyle(n) => kind == "line_styles" && n == name,
+        _ => false,
+    }
+}
+
+/// How a use reads in a message: `wall 100234`, `wall type Generic 200`, `material Oak`.
+fn describe(u: &User, m: &Model) -> String {
+    match u {
+        User::Element(id) => format!("{} {id}", m.elements.get(*id).map_or("element", |e| e.category())),
+        User::Type { category, name, .. } => format!("{category} type {name}"),
+        User::Family(n) => format!("family {n}"),
+        User::Material(n) => format!("material {n}"),
+        User::FillType(n) => format!("fill type {n}"),
+        User::LineStyle(n) => format!("line style {n}"),
+        User::GridType(n) => format!("grid type {n}"),
+        User::ViewTemplate(n) => format!("view template {n}"),
+        User::Group(n) => format!("group {n}"),
+        User::PhaseOverride(n) => format!("phase override {n}"),
+    }
+}

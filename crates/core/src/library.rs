@@ -714,7 +714,10 @@ impl Model {
                 name.split_once(": ").is_some_and(|(f, t)| self.families.get_mut(f).is_some_and(|fam| fam.types.remove(t).is_some()))
             }
             Kind::Material => self.materials.remove(name).is_some(),
-            Kind::Picture => self.images.remove(name).is_some(),
+            Kind::Picture => {
+                self.pdfs.remove(name);
+                self.images.remove(name).is_some()
+            }
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
             Kind::TitleBlock => self.title_blocks.remove(name).is_some(),

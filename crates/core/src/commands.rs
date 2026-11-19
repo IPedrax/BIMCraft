@@ -234,6 +234,15 @@ other_files(
         assets,
     )
     .menu("Manage > Asset Manager"),
+    edit(
+        "delete_assets",
+        "Delete Assets",
+        &[],
+        "{materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} takes the named assets \
+         out of the project, as the Asset Manager's Delete does: refused, saying what uses it, for one something else uses \
+         (what is among those named, as a material's own picture, goes with it). Returns `deleted` ({kind, name})",
+        delete_assets,
+    ),
     other_files(
         "export_assets",
         "Export Assets",
@@ -463,6 +472,14 @@ other_files(
          element. `link: true` keeps its file, which `reload_image` and Manage Links read again. Returns `id`, `picture`, \
          `size` (px), `width` and `height` (mm)",
         image,
+        Files::Read,
+    ),
+    other_files(
+        "pdf_pages",
+        "PDF Pages",
+        "{path} the pages of a PDF, which `image` places one of: `pages` [{page, size: [w, h]}], each page's size on paper, mm. It \
+         changes nothing",
+        pdf_pages,
         Files::Read,
     ),
     edit_files(
@@ -4404,6 +4421,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("size".into(), json!([w, h]));
             }
             extra.insert("height".into(), json!(im.height(m)));
+            if let Some([w, h]) = im.paper(m) {
+                extra.insert("paper".into(), json!(format!("{} × {} mm", w.round(), h.round())));
+                extra.insert("scale".into(), json!((im.width / w * 100.0).round() / 100.0));
+            }
             if let Some(path) = &im.path {
                 extra.insert("linked".into(), json!(path));
             }
@@ -5407,6 +5428,23 @@ fn asset_selection(c: &str, p: &Value) -> Result<crate::bima::Selection, String>
         }
     }
     Ok(sel)
+}
+
+fn delete_assets(s: &mut Session, p: &Value) -> R {
+    let c = "delete_assets";
+    let sel = asset_selection(c, p)?;
+    let chosen: Vec<(String, String)> = sel
+        .iter()
+        .flat_map(|(kind, names)| match names {
+            Some(n) => n.iter().map(|n| (kind.clone(), n.clone())).collect::<Vec<_>>(),
+            None => crate::assets::names(&s.model, kind).into_iter().map(|n| (kind.clone(), n)).collect(),
+        })
+        .collect();
+    if chosen.is_empty() {
+        return Err(bad(c, format!("name the assets to delete, by kind: {}", crate::assets::KIND_NAMES)));
+    }
+    let done = crate::assets::delete(s.model_mut(), &chosen).map_err(|e| bad(c, e))?;
+    Ok(json!({"deleted": done.iter().map(|(k, n)| json!({"kind": k, "name": n})).collect::<Vec<_>>()}))
 }
 
 fn export_assets(s: &mut Session, p: &Value) -> R {
@@ -10122,9 +10160,12 @@ fn reload_mesh(s: &mut Session, p: &Value) -> R {
     Ok(json!({"path": kept, "reloaded": reloaded, "missing": missing}))
 }
 
-/// The picture of the PNG or JPEG file at `path`, as the project would hold it; of a PDF, its page `page` (the first unless
-/// given) drawn, and its size on paper, mm.
-fn read_picture(c: &str, s: &Session, path: &str, page: Option<u32>) -> Result<(crate::texture::Picture, Option<[f64; 2]>), String> {
+/// A PDF's page read: its drawing, and its size on paper, mm.
+type PdfRead = (crate::pdf_in::PdfDoc, [f64; 2]);
+
+/// The picture of the PNG or JPEG file at `path`, as the project would hold it; of a PDF, a picture of its page `page` (the
+/// first unless given), and the page read as a drawing.
+fn read_picture(c: &str, s: &Session, path: &str, page: Option<u32>) -> Result<(crate::texture::Picture, Option<PdfRead>), String> {
     let full = beside(s, path);
     let pdf = ext(&full) == "pdf";
     let most = if pdf { crate::pdf_in::MAX_BYTES } else { texture::MAX_BYTES as u64 };
@@ -10140,8 +10181,9 @@ fn read_picture(c: &str, s: &Session, path: &str, page: Option<u32>) -> Result<(
     let at = |e: String| bad(c, format!("{}: {e}", full.display()));
     if pdf {
         let n = usize::try_from(page.unwrap_or(1)).unwrap_or(usize::MAX);
-        let (picture, mm, _) = crate::pdf_in::page(&name, bytes, n).map_err(at)?;
-        return Ok((picture, Some(mm)));
+        let (picture, mm, _) = crate::pdf_in::page(&name, bytes.clone(), n).map_err(at)?;
+        let doc = crate::pdf_in::PdfDoc::new(&name, bytes, page.unwrap_or(1)).map_err(at)?;
+        return Ok((picture, Some((doc, mm))));
     }
     Ok((Picture::import_at(&name, &bytes, texture::MAX_PLACED_SIDE).map_err(at)?, None))
 }
@@ -10184,9 +10226,13 @@ fn image(s: &mut Session, p: &Value) -> R {
             (held, None, None)
         }
         (Some(path), None) => {
-            let (picture, paper) = read_picture(c, s, &path, page)?;
-            (picture, link.then_some(path), paper)
+            let (picture, pdf) = read_picture(c, s, &path, page)?;
+            (picture, link.then_some(path), pdf)
         }
+    };
+    let (pdf, paper) = match paper {
+        Some((doc, mm)) => (Some(doc), Some(mm)),
+        None => (None, None),
     };
     let (w, h) = picture.size();
     // A PDF's page at its paper's size at the plan's scale, so a drawing made at that scale lies true; a picture, 10 mm a pixel.
@@ -10197,12 +10243,30 @@ fn image(s: &mut Session, p: &Value) -> R {
     };
     let page = paper.map(|_| page.unwrap_or(1));
     let id = picture.id();
+    let front = flag(c, p, "front")?;
     let m = s.model_mut();
     m.images.entry(id.clone()).or_insert(picture);
-    let placed = crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page };
+    if let Some(doc) = pdf {
+        m.pdfs.entry(id.clone()).or_insert(doc);
+    }
+    let placed = crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page, front, flip_x: false, flip_y: false };
     let height = placed.height(m);
     let new = m.insert(Element::Image(placed));
     Ok(json!({"id": new, "picture": id, "size": [w, h], "width": width, "height": height}))
+}
+
+fn pdf_pages(s: &mut Session, p: &Value) -> R {
+    let c = "pdf_pages";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, a PDF, is required"))?;
+    let full = beside(s, &path);
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > crate::pdf_in::MAX_BYTES {
+        return Err(bad(c, format!("{} is {size} bytes; a PDF is read up to {}", full.display(), crate::pdf_in::MAX_BYTES)));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let pages = crate::pdf_in::pages(bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let rows: Vec<Value> = pages.iter().enumerate().map(|(i, [w, h])| json!({"page": i + 1, "size": [w.round(), h.round()]})).collect();
+    Ok(json!({"pages": rows}))
 }
 
 fn reload_image(s: &mut Session, p: &Value) -> R {
@@ -10218,10 +10282,13 @@ fn reload_image(s: &mut Session, p: &Value) -> R {
     // A PDF's page: the one asked for, else the one it was.
     let pdf = ext(Path::new(&path)) == "pdf";
     let page = if pdf { page_param(c, p)?.or(was_page).or(Some(1)) } else { page_param(c, p)? };
-    let (picture, _) = read_picture(c, s, &path, page)?;
+    let (picture, pdf) = read_picture(c, s, &path, page)?;
     let new = picture.id();
     let m = s.model_mut();
     m.images.entry(new.clone()).or_insert(picture);
+    if let Some((doc, _)) = pdf {
+        m.pdfs.insert(new.clone(), doc);
+    }
     // Every image of the same picture and file reads it: Revit reloads a linked image's type, its instances with it.
     let of_it: Vec<Id> =
         m.elements.iter().filter(|(_, e)| matches!(e, Element::Image(x) if x.picture == old && x.path == was)).map(|(id, _)| *id).collect();
@@ -10235,6 +10302,7 @@ fn reload_image(s: &mut Session, p: &Value) -> R {
     // The picture it showed, if nothing else shows it now.
     if old != new && !m.library_uses().contains_key(&(LibKind::Picture, old.clone())) {
         m.images.remove(&old);
+        m.pdfs.remove(&old);
     }
     Ok(json!({"picture": new, "images": of_it}))
 }
@@ -19338,6 +19406,21 @@ fn modify(s: &mut Session, p: &Value) -> R {
         for (k, val) in fields {
             let val = match k.as_str() {
                 "id" | "ids" => continue,
+                // An image's height, and a PDF's scale (1 : n, its paper's size n times), set its width: it keeps its aspect.
+                "height" | "scale" if matches!(e, Element::Image(_)) => {
+                    let Element::Image(im) = e else { continue };
+                    let n = val
+                        .as_f64()
+                        .filter(|n| n.is_finite() && *n > 0.0)
+                        .ok_or_else(|| bad(c, format!("image {id}: `{k}` is a number above 0, not {val}")))?;
+                    let width = match k.as_str() {
+                        "height" => im.height(m).filter(|h| *h > 0.0).map(|h| n * im.width / h),
+                        _ => im.paper(m).map(|[w, _]| n * w),
+                    };
+                    let width = width.ok_or_else(|| bad(c, format!("image {id} is no PDF's page: give its `width`")))?;
+                    obj.insert("width".into(), json!(width));
+                    continue;
+                }
                 // A component's Offset from Host: its host's offset on a plane, else its height over its level. Its Work Plane
                 // is what it is on, said, changed with `edit_work_plane`.
                 "offset_from_host" if matches!(e, Element::Component(_)) => {
@@ -19582,10 +19665,22 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             (ci.at, ci.angle) = turned(f, ci.at, ci.angle);
         }
         Element::Image(im) => {
+            // It stands square to the plan: turned, its middle goes round and it stays upright. Mirrored about an upright
+            // line it flips left to right, about a level one top to bottom.
             if mo.mirror {
-                return Err(bad(c, format!("image {id} can't be mirrored; mirror the picture, or move it")));
+                let (o, x, y) = (f(im.at), f(im.at + P2(1.0, 0.0)), f(im.at + P2(0.0, 1.0)));
+                let (ex, ey) = (x - o, y - o);
+                if (ex.0 + 1.0).abs() < 1e-6 && (ey.1 - 1.0).abs() < 1e-6 {
+                    im.flip_x = !im.flip_x;
+                } else if (ex.0 - 1.0).abs() < 1e-6 && (ey.1 + 1.0).abs() < 1e-6 {
+                    im.flip_y = !im.flip_y;
+                } else {
+                    return Err(bad(
+                        c,
+                        format!("image {id} is mirrored about an upright or a level line only: it stands square to the plan"),
+                    ));
+                }
             }
-            // It stands square to the plan: turned, its middle goes round and it stays upright.
             im.at = f(im.at);
         }
         Element::PointCloud(pc) => {

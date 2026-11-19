@@ -222,3 +222,20 @@ fn a_hostile_or_newer_assets_file_is_refused_without_harm() {
     assert_eq!(left, vec!["pictures", "materials"], "{v}");
     assert!(!s.model.materials.contains_key("M"));
 }
+
+#[test]
+fn an_asset_is_deleted_unless_something_uses_it() {
+    let mut s = Session::new();
+    run(&mut s, "line_pattern", json!({"name": "Fence", "segments": [{"dash": 4}, {"space": 1}]}));
+    run(&mut s, "line_style", json!({"name": "Boundary", "pen": 2, "pattern": "Fence"}));
+    let e = s.execute("delete_assets", &json!({"line_patterns": ["Fence"]})).unwrap_err();
+    assert!(e.contains("line style Boundary"), "{e}");
+    // With its user, both go.
+    let v = run(&mut s, "delete_assets", json!({"line_patterns": ["Fence"], "line_styles": ["Boundary"]}));
+    assert_eq!(v["deleted"].as_array().unwrap().len(), 2, "{v}");
+    assert!(!s.model.line_patterns.contains_key("Fence") && !s.model.line_styles.contains_key("Boundary"));
+    let v = run(&mut s, "assets", json!({"kind": "line_patterns"}));
+    assert!(!v["line_patterns"].as_array().unwrap().iter().any(|r| r["name"] == "Fence"), "{v}");
+    run(&mut s, "undo", json!({}));
+    assert!(s.model.line_patterns.contains_key("Fence"), "undo brings them back");
+}

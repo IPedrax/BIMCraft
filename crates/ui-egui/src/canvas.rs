@@ -2456,6 +2456,7 @@ impl BimApp {
         self.adaptive_grip_drag(ui, &response, rect, &view, level);
         self.view_grip_drag(ui, &response, rect, &view);
         self.spot_grip_drag(ui, &response, rect, &view, level);
+        self.image_grip_drag(ui, &response, rect, &view);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box. Walls' Outline's open
         // panel takes every drag as a box over the walls it picks.
@@ -2473,6 +2474,7 @@ impl BimApp {
             && self.drawing.grip.is_none()
             && self.adaptive_grip.is_none()
             && self.spot_grip.is_none()
+            && self.image_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -2892,6 +2894,7 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.spot_grip_overlay(&ui.painter_at(rect), rect, &view, spot_cursor);
+        self.image_grip_overlay(ui, &ui.painter_at(rect), rect, &view);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
         self.dimension_overlays(ui, &model, &view, rect, key);

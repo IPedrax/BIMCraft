@@ -1,6 +1,6 @@
 # Assets: the Asset Manager and `.bima` files
 
-The Asset Manager (Manage > Settings > Asset Manager, `crates/ui-egui/src/asset_manager.rs`) gathers what a project draws with:
+The Asset Manager (Manage > Annotation Settings > Asset Manager, `crates/ui-egui/src/asset_manager.rs`) gathers what a project draws with:
 its materials, fill types (filled region types), fill patterns, line patterns, line styles and pictures. Each kind has a tab.
 Each asset shows where it is used, and assets go out to a `.bima` file and come back in from one. The window only shows what
 the core's commands answer and runs them.
@@ -15,6 +15,10 @@ the core's commands answer and runs them.
   a curtain panel's or mullion's material;
 - a family, a material (its picture and its cut and surface fill patterns), a fill type (its patterns), a line style (its
   line pattern), a grid type (its line pattern), a view template's overrides, a group type's members, a phase override.
+
+`delete_assets {<kind>: [names], …}` takes assets out (the Asset Manager's Delete, on the checked ones or the one picked): refused,
+naming up to three users, for one something uses that isn't among those named, so a line style and its own pattern go
+together. One undo step.
 
 A picture also says its `size` in px and its `label`, the name it came in with. A picture lives in `Model::images`, keyed by
 `img-<hash>` of its PNG (`texture::Picture::id`), so the same pixels are one picture.

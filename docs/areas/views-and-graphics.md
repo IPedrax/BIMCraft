@@ -753,7 +753,7 @@ the file, so `open` (`relink`) doesn't read the link. `reload {id}` loads it aga
 loaded links. `reload_from {id, path}` points every link of the file at another and reads it; a file that can't be read
 refuses the command. `reload_cad {cad, path}` is a drawing's Reload From, which links an imported drawing from then on.
 `reload_mesh {path, from?}` rebuilds each family of a 3D model from the object of its name, about the point it stood on, so
-its components stay. The window is `crates/ui-egui/src/manage_links.rs` (Insert > Link and Manage > Project Location);
+its components stay. The window is `crates/ui-egui/src/manage_links.rs` (Insert > Link);
 tests are `links_tests.rs` and `tests/manage_links.rs`.
 
 ### Images in plans
@@ -776,7 +776,26 @@ A PDF's page is placed the same way, as Revit's Insert > PDF: `image {path: "…
 doesn't embed drawn in hayro's Foxit fonts (BSD-3, in `NOTICE`). Unless `width` says, it stands at its paper's size at the plan's
 scale (`graphics::scale_of`), so a drawing printed at that scale lies true over the model. `PlacedImage::page` keeps the page,
 which `reload_image` draws again; Manage Links lists it on its PDF tab. A file past `pdf_in::MAX_BYTES`, an encrypted one, or a
-page it hasn't is refused. Tests: `image_tests.rs`. Still to come: on sheets and in sections, turned.
+page it hasn't is refused. `pdf_pages {path}` lists a PDF's pages and their paper sizes, which the desktop's Insert > PDF asks
+from when there is more than one (`mesh.rs`, `PdfPageBox`).
+
+A PDF's page is drawn as vectors, not as its picture: `pdf_in::drawing` runs hayro's interpreter into a `Device` of its own
+(`Collect`) that keeps each path filled or stroked (flattened to 0.05 pt, with its colour, width and dashes), each glyph as the
+fill of its outline, and each raster picture in the page with its transform, up to `pdf_in::MAX_POINTS` points (past that, and
+for patterns, shadings and stencils, the drawing says `cut_short`). The project keeps the PDF itself (`Model::pdfs`, a
+`PdfDoc` keyed by the id of the page's picture in `Model::images`: deflated, as base64, read again when the project opens),
+and `render::pdf_page` draws its items into the plan each time, a line as wide as it prints at the image's size (a pixel at
+least), a picture in it resampled through its transform. The picture of the page (drawn at up to 2048 px) stays beside it,
+which an older version, leaving `pdfs` out of a file, shows instead.
+
+An image draws under the model, or over it with `front` (Properties' Draw in Front of Model): `render::images` runs twice, under
+the CAD drawings and after the model. `flip_x` and `flip_y` are what `mirror` makes of it about an upright or a level line (a
+slanted axis is refused: it stands square to the plan). `modify` takes its `width`, and for its size two keys that aren't
+fields: `height`, and a PDF's `scale` (1 : n, its paper's size n times), each setting the width at its aspect; `elements` shows
+a PDF's `paper` and `scale`. In the desktop its corners are grips (`image_grips.rs`): a drag resizes it about the corner
+across, keeping its aspect, and the Modify tab offers only Move, Copy, the Mirrors and Delete while images alone are
+selected. Tests: `image_tests.rs`, `tests/manage_links.rs`. Still to come: on sheets and in sections, turned, and a PDF's clip
+paths (everything on a page is drawn, clipped or not).
 
 ## Grid types
 

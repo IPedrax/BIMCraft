@@ -1630,12 +1630,26 @@ pub struct PlacedImage {
     /// The page of the PDF it is, from 1, when it's one: `reload_image` draws that page again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<u32>,
+    /// Drawn over the model rather than under it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub front: bool,
+    /// Mirrored left to right, and top to bottom: what `mirror` about an upright or a level line makes of it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_x: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_y: bool,
 }
 
 /// The widest an image placed may be, mm: 10 km.
 pub const MAX_IMAGE_WIDTH: f64 = 1e7;
 
 impl PlacedImage {
+    /// Its PDF page's size on paper, mm, when it is one the project holds as a drawing.
+    pub fn paper(&self, m: &Model) -> Option<[f64; 2]> {
+        let d = m.pdfs.get(&self.picture)?.drawing();
+        Some([d.size[0] * 25.4 / 72.0, d.size[1] * 25.4 / 72.0])
+    }
+
     /// How tall it stands, mm: its width over its picture's aspect; none where the project doesn't hold its picture.
     pub fn height(&self, m: &Model) -> Option<f64> {
         let (w, h) = m.images.get(&self.picture)?.size();
@@ -4276,6 +4290,10 @@ pub struct Model {
     /// The pictures its materials' textures are made of, by id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub images: BTreeMap<String, Picture>,
+    /// The PDFs' pages its images place, drawn as lines and fills: by the id of the picture of each in `images`, which an
+    /// older version, leaving this out of a file, shows instead.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pdfs: BTreeMap<String, crate::pdf_in::PdfDoc>,
     /// The scans its point clouds place, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::cloud::deserialize_scans")]
     pub clouds: BTreeMap<String, Cloud>,
@@ -4516,6 +4534,7 @@ impl Model {
             types: Types::default().into(),
             materials: BTreeMap::new().into(),
             images: BTreeMap::new(),
+            pdfs: BTreeMap::new(),
             clouds: BTreeMap::new(),
             cads: BTreeMap::new(),
             families: BTreeMap::new().into(),
@@ -8905,6 +8924,9 @@ impl Model {
         for id in self.images.keys() {
             text(&format!("picture `{id}`"), "id", id)?;
         }
+        if let Some(id) = self.pdfs.keys().find(|id| !self.images.contains_key(*id)) {
+            return Err(format!("PDF `{id}` has no picture of its page among the project's pictures"));
+        }
         if self.clouds.len() > crate::cloud::MAX_CLOUDS {
             return Err(format!("the project has {} scans; it holds up to {}", self.clouds.len(), crate::cloud::MAX_CLOUDS));
         }
@@ -10723,6 +10745,7 @@ impl Model {
             types,
             materials,
             images,
+            pdfs,
             clouds,
             cads,
             families,
@@ -10782,6 +10805,7 @@ impl Model {
             && *types == o.types
             && *materials == o.materials
             && *images == o.images
+            && *pdfs == o.pdfs
             && *clouds == o.clouds
             && *cads == o.cads
             && *families == o.families

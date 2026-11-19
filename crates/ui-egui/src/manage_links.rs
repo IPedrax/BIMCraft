@@ -22,6 +22,9 @@ pub(crate) const TABS: [(&str, &str); 7] = [
     ("models", msg!("3D Models")),
 ];
 
+/// How tall a tab's list is, px: the window is of one size, its list scrolling past this.
+const LIST: f32 = 320.0;
+
 /// The Manage Links window: the tab shown, what `links` said, and the row picked in it.
 pub(crate) struct ManageLinks {
     pub(crate) tab: usize,
@@ -108,7 +111,8 @@ impl BimApp {
     pub(crate) fn manage_links_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.manage_links.take() else { return };
         let (mut close, mut reload, mut from, mut unload, mut add) = (false, false, false, false, false);
-        let r = Modal::new(UiId::new("manage-links"), t("Manage Links")).width(760.0).show(ctx, |ui| {
+        // Of one size whatever its tab lists, so changing tabs never moves it.
+        let r = Modal::new(UiId::new("manage-links"), t("Manage Links")).width(760.0).min_height(LIST + 120.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for (i, (kind, label)) in TABS.iter().enumerate() {
@@ -122,39 +126,44 @@ impl BimApp {
                 });
                 ui.separator();
                 let rows = d.rows();
-                ScrollArea::vertical().max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
+                ScrollArea::vertical().min_scrolled_height(LIST).max_height(LIST).auto_shrink([false, false]).show(ui, |ui| {
+                    // A long name or path is cut short, its whole in its tip, so the window keeps its width.
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                     if rows.is_empty() {
                         ui.label(RichText::new(t("Nothing of this kind is linked or imported.")).color(pal().muted));
                         return;
                     }
-                    egui::Grid::new("manage-links-rows").striped(true).num_columns(5).spacing([16.0, 4.0]).show(ui, |ui| {
-                        for head in [msg!("Name"), msg!("Status"), msg!("Instances"), msg!("Saved Path"), msg!("Path Type")] {
-                            ui.label(RichText::new(t(head)).strong());
-                        }
-                        ui.end_row();
-                        for (i, row) in rows.iter().enumerate() {
-                            let name = row["name"].as_str().unwrap_or_default();
-                            if ui.selectable_label(d.picked == Some(i), name).clicked() {
-                                d.picked = Some(i);
+                    egui::Grid::new("manage-links-rows").striped(true).num_columns(5).spacing([16.0, 4.0]).max_col_width(300.0).show(
+                        ui,
+                        |ui| {
+                            for head in [msg!("Name"), msg!("Status"), msg!("Instances"), msg!("Saved Path"), msg!("Path Type")] {
+                                ui.label(RichText::new(t(head)).strong());
                             }
-                            let status = row["status"].as_str().unwrap_or_default();
-                            let colour = if status == "not found" { pal().error } else { pal().text };
-                            ui.label(RichText::new(status_label(status)).color(colour));
-                            ui.label(row["instances"].as_u64().unwrap_or(0).to_string());
-                            let path = row["path"].as_str().or(row["source"].as_str()).unwrap_or_default();
-                            let shown = ui.label(path);
-                            if let Some(full) = row["resolved"].as_str() {
-                                shown.on_hover_text(full);
-                            }
-                            let kind = match row["path_type"].as_str() {
-                                Some("relative") => t("Relative").to_string(),
-                                Some(_) => t("Absolute").to_string(),
-                                None => String::new(),
-                            };
-                            ui.label(kind);
                             ui.end_row();
-                        }
-                    });
+                            for (i, row) in rows.iter().enumerate() {
+                                let name = row["name"].as_str().unwrap_or_default();
+                                if ui.selectable_label(d.picked == Some(i), name).clicked() {
+                                    d.picked = Some(i);
+                                }
+                                let status = row["status"].as_str().unwrap_or_default();
+                                let colour = if status == "not found" { pal().error } else { pal().text };
+                                ui.label(RichText::new(status_label(status)).color(colour));
+                                ui.label(row["instances"].as_u64().unwrap_or(0).to_string());
+                                let path = row["path"].as_str().or(row["source"].as_str()).unwrap_or_default();
+                                let shown = ui.label(path);
+                                if let Some(full) = row["resolved"].as_str() {
+                                    shown.on_hover_text(full);
+                                }
+                                let kind = match row["path_type"].as_str() {
+                                    Some("relative") => t("Relative").to_string(),
+                                    Some(_) => t("Absolute").to_string(),
+                                    None => String::new(),
+                                };
+                                ui.label(kind);
+                                ui.end_row();
+                            }
+                        },
+                    );
                 });
             });
             crate::popup::footer(ui, |ui| {

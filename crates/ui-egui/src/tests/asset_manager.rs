@@ -8,6 +8,7 @@ fn the_asset_manager_lists_what_the_project_draws_with_and_where_it_is_used() {
     let line =
         h.state_mut().run("detail_line", json!({"view": "Level 1", "points": [[0, 0], [1000, 0]], "style": "Site"})).unwrap()["id"].clone();
     press(&mut h, "Manage");
+    press(&mut h, "Annotation Settings");
     press(&mut h, "Asset Manager");
     assert!(h.state().asset_manager.is_some());
     assert!(h.query_by_label_contains("Line Styles (").is_some());
@@ -63,4 +64,39 @@ fn hovering_the_asset_managers_rows_leaves_it_where_it_stands() {
             );
         }
     }
+}
+
+#[test]
+fn delete_takes_an_unused_asset_out_and_says_why_a_used_one_stays() {
+    let mut h = app("material {\"name\": \"Spare\", \"color\": \"#00ff00\"}\nline_style {\"name\": \"Site\", \"pen\": 3}");
+    let line = h.state_mut().run("detail_line", json!({"view": "Level 1", "points": [[0, 0], [1000, 0]], "style": "Site"}));
+    assert!(line.is_some());
+    h.state_mut().open_asset_manager();
+    h.run();
+    // Down the list, as a user scrolls to it.
+    h.get_by_label("Spare").scroll_to_me();
+    h.run();
+    h.get_by_label("Spare").click();
+    h.run();
+    press(&mut h, "Delete 1");
+    assert!(!h.state().session.model.materials.contains_key("Spare"));
+    h.get_by_label_contains("Line Styles (").click();
+    h.run();
+    h.get_by_label("Site").scroll_to_me();
+    h.run();
+    h.get_by_label("Site").click();
+    h.run();
+    press(&mut h, "Delete 1");
+    assert!(h.state().session.model.line_styles.contains_key("Site"));
+    assert!(h.query_by_label_contains("take it off them first").is_some(), "said in the window");
+}
+
+#[test]
+fn a_long_name_leaves_the_asset_manager_its_width() {
+    let long = "A material named at such length that no window could ever hope to show the whole of it on one line";
+    let mut h = app(&format!("material {{\"name\": \"{long}\", \"color\": \"#a0522d\"}}"));
+    h.state_mut().open_asset_manager();
+    h.run();
+    let w = h.ctx.memory(|m| m.area_rect(egui::Id::new("asset-manager"))).unwrap().width();
+    assert!(w < 800.0, "{w} wide");
 }

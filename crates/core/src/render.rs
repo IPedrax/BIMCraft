@@ -3181,44 +3181,162 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     d.own(None);
 }
 
-/// The images a plan shows, under its CAD drawings and the model: those placed on its level, in each of its plans or in this one
-/// only. Each is its picture's pixels, the nearest to each of the view's, upright whatever way the view is turned.
-fn images(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::ids::Guid, look: &Look) {
-    let (vw, vh) = (d.view.width as f64, d.view.height as f64);
+/// The images a plan shows, under its CAD drawings and the model, or with `front` those drawn over the model: those placed on
+/// its level, in each of its plans or in this one only. A PDF's page the project holds as a drawing is drawn as its lines,
+/// fills and pictures; any other image is its picture's pixels, the nearest to each of the view's. Each stands upright
+/// whatever way the view is turned, mirrored as it says.
+fn images(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::ids::Guid, look: &Look, front: bool) {
     for (id, e) in m.rare("image").into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
         let Element::Image(im) = e else { continue };
-        if im.level != level || im.view.is_some_and(|v| v != key) || !look.shows(id) {
+        if im.front != front || im.level != level || im.view.is_some_and(|v| v != key) || !look.shows(id) {
             continue;
         }
-        let (Some(picture), Some(h)) = (m.images.get(&im.picture), im.height(m)) else { continue };
-        let (pw, ph, rgb) = picture.pixels();
-        let (cx, cy) = d.view.px(im.at);
-        let (w_px, h_px) = (im.width * d.view.scale, h * d.view.scale);
-        let (x0, y0) = (f64::from(cx) - w_px / 2.0, f64::from(cy) - h_px / 2.0);
-        // The part of it in the view, whole pixels.
-        let (a, b) = (x0.max(0.0).floor(), y0.max(0.0).floor());
-        let (c, dd) = ((x0 + w_px).min(vw).ceil(), (y0 + h_px).min(vh).ceil());
-        if !(c > a && dd > b) || pw == 0 || ph == 0 {
-            continue;
-        }
-        let (cols, rows) = ((c - a) as usize, (dd - b) as usize);
-        let mut rgba = Vec::with_capacity(cols * rows * 4);
-        for y in 0..rows {
-            let v = ((b + y as f64 + 0.5 - y0) / h_px * ph as f64).floor();
-            for x in 0..cols {
-                let u = ((a + x as f64 + 0.5 - x0) / w_px * pw as f64).floor();
-                if u < 0.0 || v < 0.0 || u >= pw as f64 || v >= ph as f64 {
-                    rgba.extend([0, 0, 0, 0]);
-                    continue;
-                }
-                let i = (v as usize * pw + u as usize) * 3;
-                rgba.extend([rgb[i], rgb[i + 1], rgb[i + 2], 255]);
-            }
-        }
+        let Some(h) = im.height(m) else { continue };
         d.own(Some(id));
-        d.push(Prim::Image { at: (a as f32, b as f32), width: cols as u32, height: rows as u32, rgba, ink: false });
+        match m.pdfs.get(&im.picture) {
+            Some(doc) if !doc.drawing().items.is_empty() => pdf_page(d, im, h, doc.drawing()),
+            _ => picture_image(d, m, im, h),
+        }
     }
     d.own(None);
+}
+
+/// Where a point of a placed image is in the view, px, from where it is across and down its picture, 0 to 1.
+fn image_px(view: View, im: &crate::model::PlacedImage, h: f64) -> impl Fn(f64, f64) -> (f32, f32) + use<> {
+    let (left, top, w) = (im.at.0 - im.width / 2.0, im.at.1 + h / 2.0, im.width);
+    let (fx, fy) = (im.flip_x, im.flip_y);
+    move |u: f64, v: f64| {
+        let (u, v) = (if fx { 1.0 - u } else { u }, if fy { 1.0 - v } else { v });
+        view.px(P2(left + u * w, top - v * h))
+    }
+}
+
+/// A placed image's picture, its pixels nearest to each of the view's.
+fn picture_image(d: &mut Drawing, m: &Model, im: &crate::model::PlacedImage, h: f64) {
+    let Some(picture) = m.images.get(&im.picture) else { return };
+    let (pw, ph, rgb) = picture.pixels();
+    let (vw, vh) = (f64::from(d.view.width), f64::from(d.view.height));
+    let (cx, cy) = d.view.px(im.at);
+    let (w_px, h_px) = (im.width * d.view.scale, h * d.view.scale);
+    let (x0, y0) = (f64::from(cx) - w_px / 2.0, f64::from(cy) - h_px / 2.0);
+    // The part of it in the view, whole pixels.
+    let (a, b) = (x0.max(0.0).floor(), y0.max(0.0).floor());
+    let (c, dd) = ((x0 + w_px).min(vw).ceil(), (y0 + h_px).min(vh).ceil());
+    if !(c > a && dd > b) || pw == 0 || ph == 0 {
+        return;
+    }
+    let (cols, rows) = ((c - a) as usize, (dd - b) as usize);
+    let mut rgba = Vec::with_capacity(cols * rows * 4);
+    for y in 0..rows {
+        let mut v = (b + y as f64 + 0.5 - y0) / h_px;
+        if im.flip_y {
+            v = 1.0 - v;
+        }
+        let v = (v * ph as f64).floor();
+        for x in 0..cols {
+            let mut u = (a + x as f64 + 0.5 - x0) / w_px;
+            if im.flip_x {
+                u = 1.0 - u;
+            }
+            let u = (u * pw as f64).floor();
+            if u < 0.0 || v < 0.0 || u >= pw as f64 || v >= ph as f64 {
+                rgba.extend([0, 0, 0, 0]);
+                continue;
+            }
+            let i = (v as usize * pw + u as usize) * 3;
+            rgba.extend([rgb[i], rgb[i + 1], rgb[i + 2], 255]);
+        }
+    }
+    d.push(Prim::Image { at: (a as f32, b as f32), width: cols as u32, height: rows as u32, rgba, ink: false });
+}
+
+/// A PDF's page placed: its fills, its lines (as wide as they print, scaled with the page, a pixel at least) and the pictures
+/// in it, each left out where it lies outside the view.
+fn pdf_page(d: &mut Drawing, im: &crate::model::PlacedImage, h: f64, page: &crate::pdf_in::Drawing) {
+    use crate::pdf_in::Item;
+    let [pw, ph] = page.size;
+    if pw <= 0.0 || ph <= 0.0 {
+        return;
+    }
+    let px = image_px(d.view, im, h);
+    let at = |p: &[f32; 2]| px(f64::from(p[0]) / pw, f64::from(p[1]) / ph);
+    // Pixels for each of the page's points.
+    let k = (im.width * d.view.scale / pw) as f32;
+    let (vw, vh) = (d.view.width as f32, d.view.height as f32);
+    let seen = |b: [f32; 4]| {
+        let (p, q) = (at(&[b[0], b[1]]), at(&[b[2], b[3]]));
+        let (x0, x1, y0, y1) = (p.0.min(q.0), p.0.max(q.0), p.1.min(q.1), p.1.max(q.1));
+        x1 >= 0.0 && x0 <= vw && y1 >= 0.0 && y0 <= vh && (x1 - x0 >= 0.25 || y1 - y0 >= 0.25)
+    };
+    // Over white where it lets the paper through.
+    let rgb = |c: [u8; 4]| {
+        let a = u16::from(c[3]);
+        let over = |v: u8| ((u16::from(v) * a + 255 * (255 - a)) / 255) as u8;
+        Rgb(over(c[0]), over(c[1]), over(c[2]))
+    };
+    for item in &page.items {
+        if !seen(item.bounds()) {
+            continue;
+        }
+        match item {
+            Item::Fill { rings, rgba, .. } => {
+                let rings: Vec<Vec<(f32, f32)>> = rings.iter().map(|r| r.iter().map(at).collect()).collect();
+                d.push(Prim::Fill { rings, color: rgb(*rgba) });
+            }
+            Item::Stroke { lines, rgba, width, dash, .. } => {
+                let width = (width * k).max(1.0);
+                let dash = dash.as_ref().map(|ds| ds.iter().map(|x| (x * k).max(0.5)).collect::<Vec<f32>>());
+                for (pts, closed) in lines {
+                    let pts: Vec<(f32, f32)> = pts.iter().map(at).collect();
+                    d.push(Prim::Line { pts, width, color: rgb(*rgba), dash: dash.clone(), closed: *closed });
+                }
+            }
+            Item::Image { w, h: ih, rgba, m: mm, local, .. } => pdf_picture(d, &at, *w, *ih, rgba, mm, *local),
+        }
+    }
+}
+
+/// A picture inside a PDF's page, at `mm` (its pixels' space to the page's points), drawn into the view by `at`, the view's
+/// pixel nearest each of its own.
+fn pdf_picture(d: &mut Drawing, at: &dyn Fn(&[f32; 2]) -> (f32, f32), w: u32, h: u32, rgba: &[u8], mm: &[f64; 6], local: [f64; 2]) {
+    // Its corners in the view, and the way back from the view to its pixels.
+    let page = |x: f64, y: f64| [(mm[0] * x + mm[2] * y + mm[4]) as f32, (mm[1] * x + mm[3] * y + mm[5]) as f32];
+    let o = at(&page(0.0, 0.0));
+    let ex = at(&page(local[0], 0.0));
+    let ey = at(&page(0.0, local[1]));
+    let (ax, ay, bx, by) = (f64::from(ex.0 - o.0), f64::from(ex.1 - o.1), f64::from(ey.0 - o.0), f64::from(ey.1 - o.1));
+    let det = ax * by - ay * bx;
+    if det.abs() < 1e-9 || w == 0 || h == 0 {
+        return;
+    }
+    let far = (f64::from(ex.0 + ey.0 - o.0), f64::from(ex.1 + ey.1 - o.1));
+    let xs = [f64::from(o.0), f64::from(ex.0), f64::from(ey.0), far.0];
+    let ys = [f64::from(o.1), f64::from(ex.1), f64::from(ey.1), far.1];
+    let (vw, vh) = (f64::from(d.view.width), f64::from(d.view.height));
+    let x0 = xs.iter().copied().fold(f64::MAX, f64::min).max(0.0).floor();
+    let x1 = xs.iter().copied().fold(f64::MIN, f64::max).min(vw).ceil();
+    let y0 = ys.iter().copied().fold(f64::MAX, f64::min).max(0.0).floor();
+    let y1 = ys.iter().copied().fold(f64::MIN, f64::max).min(vh).ceil();
+    if !(x1 > x0 && y1 > y0) {
+        return;
+    }
+    let (cols, rows) = ((x1 - x0) as usize, (y1 - y0) as usize);
+    let mut out = vec![0u8; cols * rows * 4];
+    for r in 0..rows {
+        for c in 0..cols {
+            let (px, py) = (x0 + c as f64 + 0.5 - f64::from(o.0), y0 + r as f64 + 0.5 - f64::from(o.1));
+            let s = (px * by - py * bx) / det;
+            let t = (ax * py - ay * px) / det;
+            if !(0.0..1.0).contains(&s) || !(0.0..1.0).contains(&t) {
+                continue;
+            }
+            let (u, v) = ((s * f64::from(w)) as usize, (t * f64::from(h)) as usize);
+            let i = (v * w as usize + u) * 4;
+            let Some(p) = rgba.get(i..i + 4) else { continue };
+            out[(r * cols + c) * 4..(r * cols + c) * 4 + 4].copy_from_slice(p);
+        }
+    }
+    d.push(Prim::Image { at: (x0 as f32, y0 as f32), width: cols as u32, height: rows as u32, rgba: out, ink: false });
 }
 
 /// The CAD drawings a plan shows, under all the rest but its scans, as Revit draws an import in the background: those placed on
@@ -3348,7 +3466,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
         scans(&mut d, m, &range, &look);
-        images(&mut d, m, key, level, &look);
+        images(&mut d, m, key, level, &look, false);
         cad_imports(&mut d, m, key, level, &look);
     }
     // A ceiling plan isn't cropped: the crop region is the floor plan's.
@@ -3805,6 +3923,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.owner = Some(id);
             property_label(&mut d, m, pl, &room_labels);
         }
+    }
+    // The images drawn in front of the model.
+    if !up {
+        images(&mut d, m, key, level, &look, true);
     }
     d.model_under_regions(None);
     // Regions replace model backgrounds; non-masking ones retain the visible model foreground.
