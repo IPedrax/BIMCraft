@@ -685,9 +685,9 @@ msgstr ""
 msgid "Add Rectangle"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:291
-#: crates/ui-egui/src/codes/tree.rs:308
-#: crates/ui-egui/src/codes/tree.rs:473
+#: crates/ui-egui/src/codes/tree.rs:354
+#: crates/ui-egui/src/codes/tree.rs:371
+#: crates/ui-egui/src/codes/tree.rs:542
 #: crates/ui-egui/src/codes.rs:827
 #: crates/ui-egui/src/curtain.rs:339
 msgid "Add Row"
@@ -3957,7 +3957,7 @@ msgid "Copper"
 msgstr "Měď"
 
 #: crates/core/src/commands.rs:2238
-#: crates/ui-egui/src/codes/tree.rs:318
+#: crates/ui-egui/src/codes/tree.rs:381
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -4010,7 +4010,7 @@ msgstr "Kopírovat zprávu"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Kopírovat jeho ID, GUID a globální ID IFC"
 
-#: crates/ui-egui/src/codes/tree.rs:318
+#: crates/ui-egui/src/codes/tree.rs:381
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
@@ -4726,10 +4726,10 @@ msgstr ""
 msgid "Delete this code from the project. If the project uses it, its rules are kept."
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:285
-#: crates/ui-egui/src/codes/tree.rs:369
-#: crates/ui-egui/src/codes/tree.rs:420
-#: crates/ui-egui/src/codes/tree.rs:462
+#: crates/ui-egui/src/codes/tree.rs:348
+#: crates/ui-egui/src/codes/tree.rs:432
+#: crates/ui-egui/src/codes/tree.rs:489
+#: crates/ui-egui/src/codes/tree.rs:531
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr ""
@@ -11118,7 +11118,7 @@ msgstr ""
 msgid "Paste onto these levels:"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:326
+#: crates/ui-egui/src/codes/tree.rs:389
 msgid "Paste rows here"
 msgstr ""
 
@@ -14749,7 +14749,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "Zdrojový kód na GitHubu"
 
-#: crates/ui-egui/src/codes/tree.rs:272
+#: crates/ui-egui/src/codes/tree.rs:335
 msgid "Source:"
 msgstr ""
 
@@ -16459,6 +16459,10 @@ msgstr "Tento projekt nemá žádná podlaží. Přidejte podlaží pomocí nás
 msgid "This project has {}, the file {}"
 msgstr ""
 
+#: crates/ui-egui/src/codes/tree.rs:484
+msgid "This row gives one value for these columns"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3885
 msgid "This stair meets every rule of the project's building code."
 msgstr ""
@@ -17237,7 +17241,7 @@ msgstr "Horní hranice"
 msgid "Use"
 msgstr "Použít"
 
-#: crates/ui-egui/src/codes/tree.rs:327
+#: crates/ui-egui/src/codes/tree.rs:390
 msgid "Use Pasted Rows"
 msgstr ""
 
@@ -19455,7 +19459,7 @@ msgstr ""
 msgid "{} redefined from lines"
 msgstr "Vzor {} předefinován z čar"
 
-#: crates/ui-egui/src/codes/tree.rs:263
+#: crates/ui-egui/src/codes/tree.rs:326
 #: crates/ui-egui/src/codes.rs:192
 msgid "{} rows"
 msgstr ""
