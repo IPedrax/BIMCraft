@@ -235,9 +235,16 @@ impl BimApp {
     /// Ctrl+C, Ctrl+X and Ctrl+V, which the window's system hands over as copy, cut and paste (with the system clipboard's
     /// text), taken out of the frame's input; and the ribbon's paste, once its text has come or it has waited for it.
     pub(crate) fn clipboard_events(&mut self, ctx: &Context) {
+        // A label's text selection (the status box, a report, a plugin's note) takes Ctrl+C and Ctrl+X: egui copies the
+        // selected text when the event is still in the frame's input, so leave it there. Paste, and copy or cut of the
+        // model's selection, go through this window's own handler as before.
+        let text_selected = ctx.plugin_opt::<egui::text_selection::LabelSelectionState>().is_some_and(|state| state.lock().has_selection());
         let events: Vec<Event> = ctx.input_mut(|i| {
-            let (ours, rest): (Vec<Event>, Vec<Event>) =
-                std::mem::take(&mut i.events).into_iter().partition(|e| matches!(e, Event::Copy | Event::Cut | Event::Paste(_)));
+            let (ours, rest): (Vec<Event>, Vec<Event>) = std::mem::take(&mut i.events).into_iter().partition(|e| match e {
+                Event::Copy | Event::Cut => !text_selected,
+                Event::Paste(_) => true,
+                _ => false,
+            });
             i.events = rest;
             ours
         });
