@@ -21,10 +21,11 @@ impl Ground {
 
     /// The height of the ground at `q`, mm from the project's zero; none off the toposolid.
     pub fn height_at(&self, q: P2) -> Option<f64> {
-        if !(q.0.is_finite() && q.1.is_finite()) || !geom::contains(&self.boundary, q) {
+        // On its edge, within the model's tolerance, is on it.
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= crate::model::TOL);
+        if !(q.0.is_finite() && q.1.is_finite()) || !near(&self.boundary) {
             return None;
         }
-        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= crate::model::TOL);
         self.faces.iter().find(|(r, _)| near(r)).map(|(_, plane)| plane.at(q))
     }
 

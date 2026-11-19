@@ -356,6 +356,23 @@ pub fn default_spacing(b: &Bbox) -> f64 {
     (b.area_km2() * 1e6 / 36_000.0).sqrt().ceil().max(10.0)
 }
 
+/// The most heights a terrain fetched for a toposolid takes inside its box: a toposolid's top holds
+/// [`MAX_SHAPE_POINTS`](crate::model::MAX_SHAPE_POINTS), four of them its corners.
+pub const TERRAIN_POINTS: usize = crate::model::MAX_SHAPE_POINTS - 4;
+
+/// The spacing, metres, a terrain of box `b` is fetched at when none is asked for: [`default_spacing`], or wider where that would make
+/// more than `most` nodes.
+pub fn terrain_spacing(b: &Bbox, most: usize) -> f64 {
+    let mut spacing = default_spacing(b);
+    for _ in 0..400 {
+        if nodes(b, spacing, most).is_ok() {
+            break;
+        }
+        spacing = (spacing * 1.05).ceil();
+    }
+    spacing
+}
+
 /// What an app fetched on a thread of its own, held so the commands `fetch_osm` and `fetch_terrain` can be run on the main thread over it:
 /// they ask this for the same box, query, spacing and source, and are answered at once, from memory. One validation path, one undo
 /// step and one report, and the window never waits on the network. Anything else is refused, never fetched; the credits are the real
