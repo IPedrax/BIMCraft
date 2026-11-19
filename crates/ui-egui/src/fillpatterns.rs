@@ -165,7 +165,7 @@ impl FillPatternsDialog {
             self.live().map(|(_, r)| r.name.trim()).filter(|n| !n.is_empty()).map(|n| (n.to_string(), FillPattern::default())).collect();
         m.region_types.clear();
         for x in m.materials.values_mut() {
-            (x.cut_pattern, x.surface_pattern) = (None, None);
+            (x.cut_pattern, x.surface_pattern, x.cut_background, x.surface_background) = (None, None, None, None);
         }
         let reply = scratch.execute("import_fill_patterns", &json!({"path": path.to_string_lossy(), "replace": self.replace}))?;
         let names: Vec<&str> = reply["imported"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();

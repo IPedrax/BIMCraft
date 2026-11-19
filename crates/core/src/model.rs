@@ -662,10 +662,12 @@ pub const MAX_LAYERS: usize = 32;
 
 /// How see-through the starter library's glass is, percent.
 pub const GLASS_TRANSPARENCY: u8 = 70;
+/// And its water.
+pub const WATER_TRANSPARENCY: u8 = 50;
 
-/// A material of the project's library: its colour in shaded views, the pattern its cut shows in
-/// plans and sections, and the one its surfaces show where a plan looks down on a floor or a
-/// ceiling plan up at a ceiling.
+/// A material of the project's library: its colour in shaded views, the patterns its cut shows in plans and sections, and the
+/// ones its surfaces show where a plan looks down on a floor or a ceiling plan up at a ceiling: each a foreground over a
+/// background, as Revit's. Its parameters are in [`crate::materials`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Material {
@@ -680,12 +682,44 @@ pub struct Material {
     pub cut_pattern: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface_pattern: Option<String>,
+    /// The colours its cut's and its surfaces' foreground patterns are drawn in; none, the drawing's own ink.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_color: Option<[u8; 3]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_color: Option<[u8; 3]>,
+    /// What its cut and its surfaces show behind their foreground patterns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_background: Option<PatternLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_background: Option<PatternLayer>,
+    /// A picture its cut and its surfaces show in plans and sections in place of their patterns, foreground and background: a tile
+    /// of it its size in the building, turned and moved as a texture is (of kind `image`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_image: Option<Texture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_image: Option<Texture>,
     /// What its surfaces look like in the 3D view, over its colour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture: Option<Texture>,
     /// How much of what lies behind its surfaces shows through them in the 3D view, percent: 0 (opaque) to 100.
     #[serde(default, skip_serializing_if = "is_clear")]
     pub transparency: u8,
+    /// Its values of the parameters every material has and of the project parameters for materials, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters: BTreeMap<String, serde_json::Value>,
+}
+
+/// A pattern behind a material's foreground: one drawn in code, or one of the project's fill patterns (`fill`, over it), in a
+/// colour of its own (none, the drawing's ink).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PatternLayer {
+    #[serde(default)]
+    pub pattern: Pattern,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
 }
 
 fn is_clear(x: &u8) -> bool {
@@ -700,8 +734,15 @@ impl Default for Material {
             surface: Pattern::None,
             cut_pattern: None,
             surface_pattern: None,
+            cut_color: None,
+            surface_color: None,
+            cut_background: None,
+            surface_background: None,
+            cut_image: None,
+            surface_image: None,
             texture: None,
             transparency: 0,
+            parameters: BTreeMap::new(),
         }
     }
 }
@@ -3993,7 +4034,7 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 27] = [
+pub const PARAMETER_CATEGORIES: [&str; 28] = [
     "wall",
     "floor",
     "ceiling",
@@ -4021,6 +4062,7 @@ pub const PARAMETER_CATEGORIES: [&str; 27] = [
     "groundconductor",
     "cable",
     "project",
+    "material",
 ];
 
 impl ProjectParameter {
@@ -4540,6 +4582,40 @@ impl Model {
             // Glass is the one that lets the building behind it show.
             let transparency = if name == "Glass" { GLASS_TRANSPARENCY } else { 0 };
             m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture, transparency, ..Material::default() });
+        }
+        // Ground and finishes shown by a picture: an image fill on their surfaces in plan, the same picture their texture in 3D,
+        // each a tile `size` mm across and up (the pictures' sources are in `assets/materials/README.md` and NOTICE).
+        for (name, file, bytes, color, cut, size) in [
+            (msg!("Grass"), "grass", &include_bytes!("../assets/materials/grass.jpg")[..], [71, 85, 45], Pattern::None, [1000.0, 1000.0]),
+            (
+                msg!("Gravel"),
+                "gravel",
+                &include_bytes!("../assets/materials/gravel.jpg")[..],
+                [106, 98, 70],
+                Pattern::Concrete,
+                [1000.0, 1000.0],
+            ),
+            (msg!("Wood"), "wood", &include_bytes!("../assets/materials/wood.jpg")[..], [154, 112, 66], Pattern::Diagonal, [600.0, 600.0]),
+            (
+                msg!("Paving"),
+                "paving",
+                &include_bytes!("../assets/materials/paving.jpg")[..],
+                [134, 135, 131],
+                Pattern::Concrete,
+                [800.0, 512.0],
+            ),
+            (msg!("Water"), "water", &include_bytes!("../assets/materials/water.jpg")[..], [65, 175, 189], Pattern::None, [2000.0, 2000.0]),
+        ] {
+            let Some(picture) = Picture::bundled(file, bytes) else { continue };
+            let id = picture.id();
+            m.images.insert(id.clone(), picture);
+            let fill = Texture { size, ..Texture::new(Kind::Image) };
+            let fill = Texture { image: id, ..fill };
+            // Water lets what lies under it show, half and half.
+            let transparency = if name == "Water" { WATER_TRANSPARENCY } else { 0 };
+            let material =
+                Material { color, cut, surface_image: Some(fill.clone()), texture: Some(fill), transparency, ..Material::default() };
+            m.materials.insert(language.word(name).into(), material);
         }
         m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
@@ -5300,6 +5376,9 @@ impl Model {
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
         self.codes_from_386();
+        // A material's patterns behind its foreground and its parameters need no step: a file without them has none. A file
+        // may hold a value of a parameter it doesn't have, which is left out.
+        crate::materials::tidy(self);
         // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
         if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
             self.codes.methods_into_layers();
@@ -8792,7 +8871,7 @@ impl Model {
         }
         self.coordinates.check()?;
         for (n, x) in &self.materials {
-            for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
+            for p in x.fills() {
                 if !self.fill_patterns.contains_key(p) {
                     return Err(format!("material `{n}`: there's no fill pattern `{p}`"));
                 }
@@ -8885,6 +8964,11 @@ impl Model {
             }
             if let Some(t) = &x.texture {
                 t.check(&self.images).map_err(|e| format!("material `{n}`: texture: {e}"))?;
+            }
+            for (what, f) in [("cut", &x.cut_image), ("surface", &x.surface_image)] {
+                if let Some(f) = f {
+                    f.check_fill(&self.images).map_err(|e| format!("material `{n}`: {what} image fill: {e}"))?;
+                }
             }
         }
         for (n, f) in &self.families {
@@ -8986,6 +9070,7 @@ impl Model {
                 return Err(format!("{who}: a type's value {v} isn't what it holds"));
             }
         }
+        crate::materials::check(self)?;
         graphics::check_project(self)?;
         phasing::check_project(self)?;
         crate::curtain::check(self)?;

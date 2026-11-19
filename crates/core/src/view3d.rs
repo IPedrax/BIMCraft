@@ -5836,7 +5836,7 @@ mod tests {
         let (px, py) = at(&close, [3250.0, 4500.0, 0.0]);
         let c = img.color(px, py);
         assert!(blue(c) > 80, "blue now: {c:?}");
-        assert_eq!(s.model.images.len(), 1);
+        assert_eq!(s.model.images.len(), Session::new().model.images.len() + 1);
         std::fs::remove_file(path).unwrap();
         // Paint: the face of a wall toward the house (the exterior of these walls, drawn the way round they are) in a material
         // of its own; the face away from it, the other.
