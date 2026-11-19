@@ -104,6 +104,7 @@ impl BimApp {
             self.status = crate::Status { text: e["error"].as_str().unwrap_or_default().to_string(), error: true };
             return false;
         }
+        self.say_missing_fonts(&v);
         true
     }
 

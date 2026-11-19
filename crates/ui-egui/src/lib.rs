@@ -5881,13 +5881,8 @@ impl BimApp {
                 self.open_classification();
             }
         });
-        // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
-        // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
-        ribbon::yielding(ui, msg!("Project Location"), |ui| {
-            let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
-            if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
-                self.link_dialog = true;
-            }
+        // Revit's Project Location: where the project stands (a model is linked from Insert > Link).
+        panel(ui, msg!("Project Location"), |ui| {
             let tip = msg!(
                 "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
             );

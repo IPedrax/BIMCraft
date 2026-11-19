@@ -70,6 +70,9 @@ pub enum Part {
     Pattern,
     /// Stroke-like pattern graphics: filled dots and font outlines take line colour overrides.
     LinePattern,
+    /// What a placed image or PDF draws: its fills by the non-zero rule (a letter's counters and a frame's opening stay open),
+    /// and kept in their own colours when it is selected or hovered, which a front end shows over the whole of it.
+    Picture,
 }
 
 impl Part {
@@ -3193,10 +3196,12 @@ fn images(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::ids::
         }
         let Some(h) = im.height(m) else { continue };
         d.own(Some(id));
+        let part = std::mem::replace(&mut d.part, Part::Picture);
         match m.pdfs.get(&im.picture) {
             Some(doc) if !doc.drawing().items.is_empty() => pdf_page(d, im, h, doc.drawing()),
             _ => picture_image(d, m, im, h),
         }
+        d.part = part;
     }
     d.own(None);
 }

@@ -5908,12 +5908,12 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
 #[test]
 fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list_their_tools() {
     let mut h = app(BOX);
-    // Narrow enough that Manage folds its last panels: at 1020 Settings, handing its last tools over, makes room enough for
+    // Narrow enough that Manage folds its last panels: at 970 Settings, handing its last tools over, makes room enough for
     // Design Options to stay whole.
-    h.set_size(vec2(990.0, 800.0));
+    h.set_size(vec2(945.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
-    // Set, not pressed: at 990 the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
+    // Set, not pressed: this narrow, the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
     // end), so a click on it lands outside the strip and does nothing, upstream too.
     h.state_mut().tab = Tab::Manage;
     h.run();

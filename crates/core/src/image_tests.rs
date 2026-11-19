@@ -296,3 +296,88 @@ fn an_images_height_and_a_pdfs_scale_set_its_width() {
     assert!((im.height(&s.model).unwrap() - 1000.0).abs() < 1e-6);
     assert!(s.execute("modify", &json!({"id": id, "scale": -1})).is_err());
 }
+
+/// A one-page PDF, 600 by 800 points, drawing `content` with fonts F1 (Verdana) and F2 (Helvetica), neither held in it.
+fn hand_made_pdf(content: &str) -> Vec<u8> {
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>"
+            .to_string(),
+        format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len() + 1),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Verdana >>".to_string(),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+    ];
+    let mut pdf = b"%PDF-1.4\n".to_vec();
+    let mut at = Vec::new();
+    for (i, o) in objects.iter().enumerate() {
+        at.push(pdf.len());
+        pdf.extend(format!("{} 0 obj\n{o}\nendobj\n", i + 1).bytes());
+    }
+    let xref = pdf.len();
+    pdf.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).bytes());
+    for a in at {
+        pdf.extend(format!("{a:010} 00000 n \n").bytes());
+    }
+    pdf.extend(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objects.len() + 1).bytes());
+    pdf
+}
+
+#[test]
+fn a_pdfs_frame_filled_even_odd_keeps_its_opening_and_a_font_it_doesnt_hold_is_named() {
+    let dir = dir("holes");
+    let file = dir.join("frame.pdf");
+    // Two squares wound alike, filled even-odd: a frame. Text in Verdana, which isn't held and isn't a standard family, and in
+    // Helvetica, which is.
+    let content = "0 0 0 rg 100 100 400 400 re 200 200 200 200 re f* BT /F1 24 Tf 100 600 Td (Hi) Tj ET BT /F2 24 Tf 100 650 Td (Hi) Tj ET";
+    std::fs::write(&file, hand_made_pdf(content)).unwrap();
+    let mut s = Session::new();
+    // 600 points across as 6 m: 10 mm a point, the page's top left at (-3000, 4000).
+    let v = run(&mut s, "image", json!({"path": file.to_string_lossy(), "width": 6000}));
+    assert_eq!(v["missing_fonts"], json!(["Verdana"]), "{v}");
+    let id = v["id"].as_u64().unwrap();
+    let e = run(&mut s, "elements", json!({"category": "image"}));
+    let row = e["elements"].as_array().unwrap().iter().find(|r| r["id"] == json!(id)).cloned().unwrap();
+    assert_eq!(row["missing_fonts"], json!("Verdana"), "{row}");
+    // The opening, (300, 300) on the page, is the paper's; the frame round it, (150, 300), is ink.
+    let white = colour_at(&s, P2(0.0, -1000.0));
+    assert!(white.0 > 240 && white.1 > 240 && white.2 > 240, "the opening stays open: {white:?}");
+    let ink = colour_at(&s, P2(-1500.0, -1000.0));
+    assert!(ink.0 < 60 && ink.1 < 60 && ink.2 < 60, "the frame is filled: {ink:?}");
+    // In the plan, the frame is one fill of two rings, what the window fills by the non-zero rule.
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+    let d = render::draw(&s.model, LEVEL, view);
+    let mine: Vec<_> = d.prims.iter().zip(&d.owners).zip(&d.parts).filter(|((_, o), _)| **o == Some(id)).collect();
+    assert!(!mine.is_empty() && mine.iter().all(|(_, part)| **part == render::Part::Picture), "a picture's own part");
+    assert!(mine.iter().any(|((p, _), _)| matches!(p, render::Prim::Fill { rings, .. } if rings.len() == 2)), "the frame");
+}
+
+#[test]
+fn rings_filled_even_odd_are_wound_for_the_non_zero_rule() {
+    let square = |a: f32, b: f32| vec![[a, a], [b, a], [b, b], [a, b]];
+    let area = |r: &[[f32; 2]]| (0..r.len()).map(|i| r[i][0] * r[(i + 1) % r.len()][1] - r[(i + 1) % r.len()][0] * r[i][1]).sum::<f32>();
+    // A square, a square inside it and one inside that, all wound alike.
+    let mut rings = vec![square(0.0, 30.0), square(5.0, 25.0), square(10.0, 20.0)];
+    crate::pdf_in::wind_even_odd(&mut rings);
+    let signs: Vec<bool> = rings.iter().map(|r| area(r) > 0.0).collect();
+    assert_eq!(signs, [true, false, true], "out, opening, island");
+}
+
+#[test]
+fn a_fonts_family_is_read_from_its_postscript_name_and_found_on_the_computer() {
+    use crate::pdf_in::{family_of, system_font};
+    use hayro::hayro_interpret::font::{FallbackFontQuery, FontQuery, StandardFont};
+    assert_eq!(family_of("ArialMT"), "Arial");
+    assert_eq!(family_of("ABCDEF+TimesNewRomanPS-BoldMT"), "Times New Roman");
+    assert_eq!(family_of("Calibri,Bold"), "Calibri");
+    assert_eq!(family_of("DejaVuSans-Oblique"), "Deja Vu Sans");
+    // A computer with IBM Plex Mono alone: a CID font named for it is drawn in it, one named for a font it hasn't isn't, and
+    // nor is Courier, whose stand-ins it isn't.
+    let dir = dir("fonts");
+    std::fs::write(dir.join("Mono.ttf"), crate::text::PLEX_MONO).unwrap();
+    let index = crate::text::system::scan(&[dir]);
+    let asked = |name: &str| FontQuery::Fallback(FallbackFontQuery { post_script_name: Some(name.into()), ..Default::default() });
+    assert!(system_font(&index, &asked("IBMPlexMono-Bold")).is_some(), "found by its name, spaced or not");
+    assert!(system_font(&index, &asked("NoSuchFont")).is_none());
+    assert!(system_font(&index, &FontQuery::Standard(StandardFont::Courier)).is_none());
+}

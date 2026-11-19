@@ -772,8 +772,7 @@ small as it was; one halved to fit is written again as what it was (a JPEG at qu
 project file holds either under the picture's `png` key, which every version reads (both are known by their first bytes).
 
 A PDF's page is placed the same way, as Revit's Insert > PDF: `image {path: "….pdf", page?}` draws page `page` (from 1) through
-`pdf_in.rs` and hayro (Apache-2.0 OR MIT), over white at up to 150 dpi and 4096 px a side, its text in a standard font the PDF
-doesn't embed drawn in hayro's Foxit fonts (BSD-3, in `NOTICE`). Unless `width` says, it stands at its paper's size at the plan's
+`pdf_in.rs` and hayro (Apache-2.0 OR MIT), over white at up to 150 dpi and 4096 px a side. Unless `width` says, it stands at its paper's size at the plan's
 scale (`graphics::scale_of`), so a drawing printed at that scale lies true over the model. `PlacedImage::page` keeps the page,
 which `reload_image` draws again; Manage Links lists it on its PDF tab. A file past `pdf_in::MAX_BYTES`, an encrypted one, or a
 page it hasn't is refused. `pdf_pages {path}` lists a PDF's pages and their paper sizes, which the desktop's Insert > PDF asks
@@ -787,6 +786,20 @@ for patterns, shadings and stencils, the drawing says `cut_short`). The project 
 and `render::pdf_page` draws its items into the plan each time, a line as wide as it prints at the image's size (a pixel at
 least), a picture in it resampled through its transform. The picture of the page (drawn at up to 2048 px) stays beside it,
 which an older version, leaving `pdfs` out of a file, shows instead.
+
+Its fills are drawn by the non-zero rule, as every output fills (PNG, SVG, a sheet's PDF, and the window, which takes a placed
+image's shapes as `render::Part::Picture` and fills one of several rings as it fills a letter): a glyph's counters stay open as
+they're wound, and an even-odd fill's rings are wound again by how many of the others each lies in (`pdf_in::wind_even_odd`),
+so a frame's opening stays open too. Text is its fonts' own outlines where the PDF embeds them, as most do (a subset of each).
+A font it only names comes from `pdf_in::interpreter`'s resolver: one of PDF's standard families (Helvetica or Arial, Times or
+Times New Roman, Courier or Courier New) is this computer's font of it or one drawn to its widths (`text::system::substitutes`:
+Liberation, Arimo), a CID font is looked for by its own name (`pdf_in::system_font`, its PostScript name read as a family by
+`family_of`), and else hayro's Foxit fonts (BSD-3, in `NOTICE`) draw it. hayro reads an ordinary font of another family in the
+standard one nearest it whatever the computer has, so such a font, and a CID font the computer hasn't, is a stand-in: the page's
+resources name them (`pdf_in::stand_ins`), `image` and `reload_image` return them as `missing_fonts`, `elements` shows them, and
+the desktop says so on placing it and shows them in Properties (Fonts Substituted). It is decided where the project is open:
+the project holds the PDF, never a font. In the window a selected or hovered image keeps its own colours under a light tint
+over its whole page, and a selected one is outlined (`image_grips.rs`, `image_frames`).
 
 An image draws under the model, or over it with `front` (Properties' Draw in Front of Model): `render::images` runs twice, under
 the CAD drawings and after the model. `flip_x` and `flip_y` are what `mirror` makes of it about an upright or a level line (a

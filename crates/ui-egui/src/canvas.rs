@@ -806,14 +806,18 @@ pub(crate) fn paint_prim(
         return;
     }
     let accent = match owner {
+        // A picture keeps its colours, a tint over it lighting it (`image_frames`): lit line by line, a page would read as ink.
+        _ if part == render::Part::Picture => None,
         Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
         Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
         _ => None,
     };
     match prim {
-        // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
-        // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
-        Prim::Fill { rings, color: c } if part == render::Part::Text || (part == render::Part::LinePattern && rings.len() > 1) => {
+        // Notes, compound pattern glyphs and a PDF's shapes use the non-zero fill rule, preserving counters and overlapping
+        // contours. Single-contour fills (including dots) keep their ordinary polygon rendering below.
+        Prim::Fill { rings, color: c }
+            if part == render::Part::Text || (matches!(part, render::Part::LinePattern | render::Part::Picture) && rings.len() > 1) =>
+        {
             let fill = accent.map_or(color(*c), |a| a.0);
             let mut mesh = Mesh::default();
             for tri in letter(rings).iter() {
@@ -2894,6 +2898,7 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.spot_grip_overlay(&ui.painter_at(rect), rect, &view, spot_cursor);
+        self.image_frames(&ui.painter_at(rect), rect, &view, hovered);
         self.image_grip_overlay(ui, &ui.painter_at(rect), rect, &view);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);

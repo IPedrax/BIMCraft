@@ -1,6 +1,13 @@
 //! A PDF's page as a picture, to place in a plan (Insert > PDF, `image` of a `.pdf`): drawn by hayro (pure Rust, Apache-2.0
-//! OR MIT), over white, at most [`MAX_PLACED_SIDE`] px a side and as fine as 150 dpi. Text in a standard font the PDF doesn't
-//! embed is drawn in the fonts hayro carries, PDFium's Foxit fonts (BSD-3, in `NOTICE`), so it reads as its maker meant.
+//! OR MIT), over white, at most [`MAX_PLACED_SIDE`] px a side and as fine as 150 dpi, and as its lines, fills and pictures.
+//!
+//! Text is drawn in the fonts the PDF embeds, its letters' own outlines. A font it only names is looked for on this computer
+//! ([`interpreter`]): one of PDF's standard families (Helvetica or Arial, Times or Times New Roman, Courier or Courier New) in
+//! the computer's font of that family or one drawn to its widths (Liberation, Arimo), a CID font by its own name; else the
+//! fonts hayro carries, PDFium's Foxit fonts (BSD-3, in `NOTICE`), drawn to the standard ones' widths. A font of no standard
+//! family is drawn in the standard one nearest it (hayro reads an ordinary font that way, whatever the computer has), unless
+//! it is a CID font the computer has, and is named in [`Drawing::missing_fonts`]. Which font draws it is decided where the
+//! project is open: the project holds the PDF, never a font.
 //!
 //! A PDF is hostile: its file is held to [`MAX_BYTES`], a page it hasn't is refused, and what can't be read says so. An
 //! encrypted PDF isn't read.
@@ -44,8 +51,8 @@ pub fn page(name: &str, bytes: Vec<u8>, page: usize) -> Result<(Picture, [f64; 2
     let settings =
         hayro::PixmapSettings { x_scale: scale as f32, y_scale: scale as f32, bg_color: hayro::vello_cpu::color::palette::css::WHITE };
     let cache = hayro::RenderCache::new();
-    let pixmap =
-        hayro::render(p, &cache, &hayro::hayro_interpret::InterpreterSettings::default(), &hayro::RenderSettings::default(), &settings);
+    let fonts = interpreter(&Default::default());
+    let pixmap = hayro::render(p, &cache, &fonts, &hayro::RenderSettings::default(), &settings);
     let png = pixmap.into_png().map_err(|e| format!("its page {page} couldn't be drawn: {e}"))?;
     let picture = Picture::import_at(&format!("{name} p{page}"), &png, MAX_PLACED_SIDE)?;
     Ok((picture, [w * POINT, h * POINT], count))
@@ -81,12 +88,60 @@ impl Item {
 }
 
 /// A page's drawing: its size, points, what it draws, and whether some of it was left out (past [`MAX_POINTS`], or what
-/// BIMCraft doesn't draw: patterns and shadings fill grey).
+/// BIMCraft doesn't draw: patterns and shadings fill grey); and the fonts it names but doesn't hold that are drawn in a
+/// stand-in of another family.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Drawing {
     pub size: [f64; 2],
     pub items: Vec<Item>,
     pub cut_short: bool,
+    pub missing_fonts: Vec<String>,
+}
+
+/// The most rings of one even-odd fill wound again for the non-zero rule (each looked for inside every other).
+const MAX_WOUND: usize = 2_000;
+
+/// The rings of an even-odd fill wound so the non-zero rule, which every output fills by, fills them alike: each one inside an
+/// even number of the others one way, inside an odd number the other, so an opening cut in a shape stays open. Rings that
+/// cross each other, or past [`MAX_WOUND`], are left as they come.
+pub fn wind_even_odd(rings: &mut [Vec<[f32; 2]>]) {
+    if rings.len() < 2 || rings.len() > MAX_WOUND {
+        return;
+    }
+    let area = |r: &[[f32; 2]]| {
+        let n = r.len();
+        (0..n).map(|i| f64::from(r[i][0]) * f64::from(r[(i + 1) % n][1]) - f64::from(r[(i + 1) % n][0]) * f64::from(r[i][1])).sum::<f64>()
+    };
+    let boxes: Vec<[f32; 4]> = rings.iter().map(|r| bounds_of(r.iter())).collect();
+    let inside = |q: [f32; 2], r: &[[f32; 2]]| {
+        let (x, y) = (f64::from(q[0]), f64::from(q[1]));
+        let mut c = false;
+        let n = r.len();
+        for i in 0..n {
+            let (a, b) = (r[i], r[(i + n - 1) % n]);
+            let (ax, ay, bx, by) = (f64::from(a[0]), f64::from(a[1]), f64::from(b[0]), f64::from(b[1]));
+            if (ay > y) != (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax {
+                c = !c;
+            }
+        }
+        c
+    };
+    let depths: Vec<usize> = (0..rings.len())
+        .map(|i| {
+            let Some(&q) = rings[i].first() else { return 0 };
+            (0..rings.len())
+                .filter(|&j| {
+                    let b = boxes[j];
+                    j != i && q[0] >= b[0] && q[0] <= b[2] && q[1] >= b[1] && q[1] <= b[3] && inside(q, &rings[j])
+                })
+                .count()
+        })
+        .collect();
+    for (r, depth) in rings.iter_mut().zip(depths) {
+        if (area(r) > 0.0) != (depth % 2 == 0) {
+            r.reverse();
+        }
+    }
 }
 
 /// The box of `pts`.
@@ -149,9 +204,12 @@ impl Collect {
     }
 
     fn fill(&mut self, path: &hayro::kurbo::BezPath, m: hayro::kurbo::Affine, rgba: [u8; 4], even_odd: bool) {
-        let rings: Vec<Vec<[f32; 2]>> = self.flatten(path, m).into_iter().map(|(p, _)| p).filter(|p| p.len() >= 3).collect();
+        let mut rings: Vec<Vec<[f32; 2]>> = self.flatten(path, m).into_iter().map(|(p, _)| p).filter(|p| p.len() >= 3).collect();
         if rings.is_empty() || rgba[3] == 0 {
             return;
+        }
+        if even_odd {
+            wind_even_odd(&mut rings);
         }
         let bounds = bounds_of(rings.iter().flatten());
         self.items.push(Item::Fill { rings, rgba, even_odd, bounds });
@@ -303,16 +361,177 @@ pub fn drawing(bytes: Vec<u8>, page: usize) -> Result<Drawing, String> {
     use hayro::hayro_interpret::util::TransformExt;
     let transform = p.initial_transform(true).to_kurbo();
     let cache = hayro::hayro_interpret::InterpreterCache::new();
+    let missing = Missing::default();
     let mut ctx = hayro::hayro_interpret::Context::new(
         transform,
         hayro::kurbo::Rect::new(0.0, 0.0, f64::from(w), f64::from(h)),
         &cache,
         p.xref(),
-        hayro::hayro_interpret::InterpreterSettings::default(),
+        interpreter(&missing),
     );
     let mut device = Collect { items: Vec::new(), points: 0, pixels: 0, cut_short: false };
     hayro::hayro_interpret::interpret_page(p, &mut ctx, &mut device);
-    Ok(Drawing { size: [f64::from(w), f64::from(h)], items: device.items, cut_short: device.cut_short })
+    if let Ok(mut m) = missing.lock() {
+        let mut budget = MAX_LOOKED_AT;
+        stand_ins(p.resources(), &mut m, 0, &mut budget);
+    }
+    let missing_fonts = missing.lock().map(|m| m.iter().cloned().collect()).unwrap_or_default();
+    Ok(Drawing { size: [f64::from(w), f64::from(h)], items: device.items, cut_short: device.cut_short, missing_fonts })
+}
+
+/// The fonts a page names, doesn't hold and draws in a stand-in of another family.
+type Missing = std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>;
+/// The most of them named.
+const MAX_MISSING: usize = 32;
+/// The most fonts and forms of a page's resources looked at for them, and how deep in forms.
+const MAX_LOOKED_AT: usize = 4_000;
+const MAX_FORM_DEPTH: u32 = 4;
+
+/// The families a font the PDF doesn't hold is drawn true in: PDF's standard ones, which the computer's own or hayro's draw to
+/// the same widths.
+fn standard_family(name: &str) -> bool {
+    let family = family_of(name).to_lowercase();
+    ["helvetica", "arial", "times", "times new roman", "courier", "courier new", "symbol", "zapf dingbats"].contains(&family.as_str())
+}
+
+/// Puts in `out` the ordinary fonts `res` (a page's resources, or a form's in it, `depth` deep) names but doesn't hold and
+/// that are of no standard family: hayro draws them in a standard family's. A CID font is asked for by name, and named by
+/// [`interpreter`] if the computer hasn't it.
+fn stand_ins(res: &hayro::hayro_syntax::page::Resources<'_>, out: &mut std::collections::BTreeSet<String>, depth: u32, budget: &mut usize) {
+    use hayro::hayro_syntax::object::{Dict, Name, Stream};
+    for key in res.fonts.keys() {
+        if *budget == 0 || out.len() >= MAX_MISSING {
+            return;
+        }
+        *budget -= 1;
+        let Some(font) = res.fonts.get::<Dict<'_>>(key.as_str()) else { continue };
+        let kind = font.get::<Name<'_>>("Subtype");
+        if kind.as_ref().is_some_and(|k| matches!(k.as_str(), "Type0" | "Type3")) {
+            continue;
+        }
+        let held = font
+            .get::<Dict<'_>>("FontDescriptor")
+            .is_some_and(|d| ["FontFile", "FontFile2", "FontFile3"].iter().any(|k| d.contains_key(k)));
+        let Some(name) = font.get::<Name<'_>>("BaseFont") else { continue };
+        let name = name.as_str();
+        let name = name.split_once('+').filter(|(tag, _)| tag.len() == 6).map_or(name, |(_, n)| n);
+        if !held && !standard_family(name) {
+            out.insert(name.chars().take(64).collect());
+        }
+    }
+    if depth >= MAX_FORM_DEPTH {
+        return;
+    }
+    for key in res.x_objects.keys() {
+        if *budget == 0 {
+            return;
+        }
+        *budget -= 1;
+        let Some(form) = res.x_objects.get::<Stream<'_>>(key.as_str()) else { continue };
+        if form.dict().get::<Name<'_>>("Subtype").is_none_or(|k| k.as_str() != "Form") {
+            continue;
+        }
+        let Some(inner) = form.dict().get::<Dict<'_>>("Resources") else { continue };
+        stand_ins(&hayro::hayro_syntax::page::Resources::new(inner), out, depth + 1, budget);
+    }
+}
+
+/// How hayro reads a page here: a font the PDF doesn't hold is this computer's ([`system_font`]), else the Foxit font hayro
+/// carries for its family; one of no standard family that the computer hasn't either is named in `missing`.
+fn interpreter(missing: &Missing) -> hayro::hayro_interpret::InterpreterSettings {
+    use hayro::hayro_interpret::font::FontQuery;
+    let mut s = hayro::hayro_interpret::InterpreterSettings::default();
+    let carried = s.font_resolver.clone();
+    let missing = missing.clone();
+    s.font_resolver = std::sync::Arc::new(move |q: &FontQuery| {
+        if let Some(found) = system_font(crate::text::system::index(), q) {
+            return Some(found);
+        }
+        if let FontQuery::Fallback(f) = q
+            && let Some(name) = f.post_script_name.as_ref().or(f.font_name.as_ref()).or(f.font_family.as_ref())
+            && let Ok(mut m) = missing.lock()
+            && m.len() < MAX_MISSING
+        {
+            m.insert(name.chars().take(64).collect());
+        }
+        carried(q)
+    });
+    s
+}
+
+/// The family a PostScript font name names, spaced as a family is written: `ArialMT` Arial, `TimesNewRomanPS-BoldMT` Times New
+/// Roman, `Calibri,Bold` Calibri. Its style is left to the font's other fields.
+pub fn family_of(name: &str) -> String {
+    let name =
+        name.split_once('+').filter(|(tag, _)| tag.len() == 6 && tag.chars().all(|c| c.is_ascii_uppercase())).map_or(name, |(_, n)| n);
+    let mut base = name.split(['-', ',']).next().unwrap_or(name).trim();
+    loop {
+        let cut = ["PSMT", "MT", "PS"].iter().find_map(|s| base.strip_suffix(s).filter(|b| !b.is_empty()));
+        match cut {
+            Some(b) => base = b,
+            None => break,
+        }
+    }
+    let mut out = String::new();
+    let mut prev: Option<char> = None;
+    for ch in base.chars() {
+        if ch.is_uppercase() && prev.is_some_and(|p| p.is_lowercase() || p.is_ascii_digit()) {
+            out.push(' ');
+        }
+        out.push(ch);
+        prev = Some(ch);
+    }
+    out
+}
+
+/// A family of `index` by `name`, its case, spaces and punctuation aside (`DejaVuSans` is DejaVu Sans).
+fn family<'i>(index: &'i crate::text::system::Index, name: &str) -> Option<&'i [crate::text::system::SystemFace]> {
+    let bare = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+    let want = bare(name);
+    if want.is_empty() {
+        return None;
+    }
+    index.family(name).or_else(|| index.families.iter().find(|(k, f)| bare(k) == want && !f.is_empty()).map(|(_, f)| f.as_slice()))
+}
+
+/// The font of this computer that draws what query `q` asks for: the family it names, else one drawn to its widths or like it
+/// (`text::system::substitutes`), the face nearest its weight and slant. Symbol and Zapf Dingbats are left to hayro's own,
+/// whose letters are where a PDF expects them.
+pub fn system_font(
+    index: &crate::text::system::Index,
+    q: &hayro::hayro_interpret::font::FontQuery,
+) -> Option<(hayro::hayro_interpret::font::FontData, u32)> {
+    use hayro::hayro_interpret::font::FontQuery;
+    let (names, bold, italic): (Vec<String>, bool, bool) = match q {
+        FontQuery::Standard(f) => {
+            let ps = f.postscript_name();
+            let family = match ps.split('-').next() {
+                Some("Helvetica") => "Helvetica",
+                Some("Times") => "Times",
+                Some("Courier") => "Courier",
+                _ => return None,
+            };
+            (vec![family.into()], ps.contains("Bold"), ps.contains("Oblique") || ps.contains("Italic"))
+        }
+        FontQuery::Fallback(f) => {
+            let mut names: Vec<String> = f.font_family.iter().cloned().collect();
+            names.extend([&f.post_script_name, &f.font_name].into_iter().flatten().map(|n| family_of(n)));
+            (names, f.is_bold || f.font_weight >= 600, f.is_italic)
+        }
+    };
+    let faces = names.iter().find_map(|n| {
+        let alike = crate::text::system::substitutes(n).iter().copied();
+        std::iter::once(n.as_str()).chain(alike).find_map(|n| family(index, n))
+    })?;
+    let want: i32 = if bold { 700 } else { 400 };
+    let face = faces.iter().min_by_key(|f| {
+        u32::from(f.italic != italic) * 2000
+            + (i32::from(f.weight) - want).unsigned_abs()
+            + if f.width == 5 { 0 } else { 300 }
+            + if f.variable && bold { 150 } else { 0 }
+    })?;
+    let bytes = crate::text::system::load(&face.path)?;
+    Some((bytes, face.index))
 }
 
 /// A PDF's page as a project holds it, beside the picture drawn of it (the one of `Model::images` it is keyed by, which an
@@ -372,6 +591,11 @@ impl PdfDoc {
     /// What its page draws.
     pub fn drawing(&self) -> &Drawing {
         &self.drawing
+    }
+
+    /// The fonts its page names that are neither in the PDF nor on this computer, drawn in a stand-in.
+    pub fn missing_fonts(&self) -> &[String] {
+        &self.drawing.missing_fonts
     }
 
     fn file(&self) -> &PdfFile {

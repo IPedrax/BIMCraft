@@ -9,6 +9,9 @@ use serde_json::json;
 use crate::style::{canvas_pal, pal};
 use crate::{BimApp, Tool};
 
+/// How strong the tint over a selected or hovered image is: light, so what it draws reads through.
+const TINT: f32 = 0.14;
+
 /// An image's corners in plan, in turn: lower left, lower right, upper right, upper left.
 fn corners(lo: P2, hi: P2) -> [P2; 4] {
     [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)]
@@ -76,6 +79,27 @@ impl BimApp {
         }
     }
 
+    /// Every selected or hovered image washed with a light tint, over its whole page, and a selected one outlined, so its edges
+    /// show: its own colours are kept (the drawing doesn't light what a picture draws, `Part::Picture`), so it still reads.
+    pub(crate) fn image_frames(&self, p: &Painter, rect: Rect, view: &bimcraft_core::render::View, hovered: Option<Id>) {
+        let m = &self.session.model;
+        let lit = self.selection.iter().map(|id| (*id, true)).chain(hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, false)));
+        for (id, selected) in lit {
+            let Some(Element::Image(im)) = m.elements.get(id) else { continue };
+            let Some([lo, hi]) = im.bounds(m) else { continue };
+            let ring: Vec<egui::Pos2> = corners(lo, hi)
+                .iter()
+                .map(|q| {
+                    let (x, y) = view.px(*q);
+                    rect.min + vec2(x, y)
+                })
+                .collect();
+            let (colour, line) = if selected { (canvas_pal().accent, 1.5) } else { (canvas_pal().hover, 0.0) };
+            let stroke = if selected { Stroke::new(line, colour) } else { Stroke::NONE };
+            p.add(egui::Shape::convex_polygon(ring, colour.gamma_multiply(TINT), stroke));
+        }
+    }
+
     /// The selected image's corner grips, and while one is dragged, the outline it would take.
     pub(crate) fn image_grip_overlay(&self, ui: &Ui, p: &Painter, rect: Rect, view: &bimcraft_core::render::View) {
         let Some((id, lo, hi)) = self.image_gripped() else { return };
@@ -108,6 +132,53 @@ impl BimApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::canvas::{Place, paint_prim};
+    use bimcraft_core::render::{Part, Prim, Rgb};
+    use egui::{Color32, Pos2, Shape, pos2};
+
+    /// What a frame (a square with a square opening, wound the other way) of a placed PDF paints, `selected` or not: each mesh
+    /// vertex's colour, and whether its triangles cover `q`.
+    fn frame(selected: bool, q: Pos2) -> (Vec<Color32>, bool) {
+        let ring = |a: f32, b: f32| vec![(a, a), (b, a), (b, b), (a, b)];
+        let mut inner = ring(10.0, 20.0);
+        inner.reverse();
+        let prim = Prim::Fill { rings: vec![ring(0.0, 30.0), inner], color: Rgb(10, 10, 10) };
+        let set: std::collections::HashSet<Id> = if selected { [7].into() } else { Default::default() };
+        let mut shapes = Vec::new();
+        let clip = Rect::from_min_max(pos2(-100.0, -100.0), pos2(100.0, 100.0));
+        paint_prim(
+            &mut |s| shapes.push(s),
+            clip,
+            Place::at(Pos2::ZERO),
+            (&prim, Some(7), Part::Picture),
+            &set,
+            None,
+            false,
+            &mut [].iter(),
+        );
+        let (mut colours, mut covers) = (Vec::new(), false);
+        for s in shapes {
+            if let Shape::Mesh(m) = s {
+                colours.extend(m.vertices.iter().map(|v| v.color));
+                for t in m.indices.chunks(3) {
+                    let [a, b, c] = [t[0], t[1], t[2]].map(|i| m.vertices[i as usize].pos);
+                    let side = |p: Pos2, q1: Pos2, q2: Pos2| (q2.x - q1.x) * (p.y - q1.y) - (q2.y - q1.y) * (p.x - q1.x);
+                    let (d1, d2, d3) = (side(q, a, b), side(q, b, c), side(q, c, a));
+                    covers |= (d1 >= 0.0 && d2 >= 0.0 && d3 >= 0.0) || (d1 <= 0.0 && d2 <= 0.0 && d3 <= 0.0);
+                }
+            }
+        }
+        (colours, covers)
+    }
+
+    #[test]
+    fn a_selected_pdfs_shapes_keep_their_colours_and_an_opening_stays_open() {
+        let (plain, _) = frame(false, pos2(5.0, 15.0));
+        let (lit, covers_frame) = frame(true, pos2(5.0, 15.0));
+        assert!(!plain.is_empty() && lit == plain, "selected, it is drawn in its own colours (a tint goes over it)");
+        assert!(covers_frame, "the frame is filled");
+        assert!(!frame(true, pos2(15.0, 15.0)).1, "its opening is not");
+    }
 
     #[test]
     fn a_corner_dragged_resizes_about_the_one_across_keeping_the_aspect() {

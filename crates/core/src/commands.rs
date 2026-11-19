@@ -469,8 +469,10 @@ other_files(
          the project as it is, a JPEG staying a JPEG, halved to fit 4096 px a side; one picture for the same file) or a picture the project holds (`picture`, its \
          id from `assets`). Its middle stands on `at` (the origin unless given), `width` mm across (10 mm a pixel unless \
          given), as tall as its pixels say; it is drawn under the model, as a CAD import is, and moves and copies as any \
-         element. `link: true` keeps its file, which `reload_image` and Manage Links read again. Returns `id`, `picture`, \
-         `size` (px), `width` and `height` (mm)",
+         element. `link: true` keeps its file, which `reload_image` and Manage Links read again. A PDF's text is drawn in the \
+         fonts it embeds; one it only names, if of a standard family (Arial or Helvetica, Times New Roman, Courier New), in \
+         this computer's font of it or one of the same widths (Liberation), else in a stand-in. Returns `id`, `picture`, `size` (px), `width` and `height` \
+         (mm), and `missing_fonts`, the fonts drawn in a stand-in, when there are any",
         image,
         Files::Read,
     ),
@@ -4424,6 +4426,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some([w, h]) = im.paper(m) {
                 extra.insert("paper".into(), json!(format!("{} × {} mm", w.round(), h.round())));
                 extra.insert("scale".into(), json!((im.width / w * 100.0).round() / 100.0));
+            }
+            if let Some(missing) = m.pdfs.get(&im.picture).map(|d| d.missing_fonts()).filter(|f| !f.is_empty()) {
+                extra.insert("missing_fonts".into(), json!(missing.join(", ")));
             }
             if let Some(path) = &im.path {
                 extra.insert("linked".into(), json!(path));
@@ -10251,8 +10256,13 @@ fn image(s: &mut Session, p: &Value) -> R {
     }
     let placed = crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page, front, flip_x: false, flip_y: false };
     let height = placed.height(m);
+    let missing = m.pdfs.get(&id).map(|d| d.missing_fonts().to_vec()).unwrap_or_default();
     let new = m.insert(Element::Image(placed));
-    Ok(json!({"id": new, "picture": id, "size": [w, h], "width": width, "height": height}))
+    let mut out = json!({"id": new, "picture": id, "size": [w, h], "width": width, "height": height});
+    if !missing.is_empty() {
+        out["missing_fonts"] = json!(missing);
+    }
+    Ok(out)
 }
 
 fn pdf_pages(s: &mut Session, p: &Value) -> R {
@@ -10304,7 +10314,11 @@ fn reload_image(s: &mut Session, p: &Value) -> R {
         m.images.remove(&old);
         m.pdfs.remove(&old);
     }
-    Ok(json!({"picture": new, "images": of_it}))
+    let mut out = json!({"picture": new, "images": of_it});
+    if let Some(missing) = m.pdfs.get(&new).map(|d| d.missing_fonts()).filter(|f| !f.is_empty()) {
+        out["missing_fonts"] = json!(missing);
+    }
+    Ok(out)
 }
 
 fn import_cad(s: &mut Session, p: &Value) -> R {

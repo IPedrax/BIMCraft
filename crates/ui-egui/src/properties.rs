@@ -458,6 +458,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Identity Data", "source", "File", Shown),
             ("Identity Data", "linked", msg!("Linked File"), Shown),
             ("Identity Data", "page", msg!("Page"), Shown),
+            ("Identity Data", "missing_fonts", msg!("Fonts Substituted"), Shown),
             ("Dimensions", "width", "Width", Length),
             ("Dimensions", "height", "Height", Length),
             ("Dimensions", "paper", msg!("Paper Size"), Shown),

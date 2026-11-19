@@ -86,6 +86,16 @@ impl BimApp {
         }
         let Some(v) = self.run("image", p) else { return };
         self.selection = v["id"].as_u64().into_iter().collect();
+        self.say_missing_fonts(&v);
+    }
+
+    /// Says which fonts a PDF just placed or reloaded names without holding them and draws in a stand-in, each once.
+    pub(crate) fn say_missing_fonts(&mut self, v: &serde_json::Value) {
+        let names: Vec<&str> = v["missing_fonts"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
+        if !names.is_empty() {
+            let text = crate::lang::tf("Fonts the PDF doesn't hold, drawn in a stand-in: {}", &[&names.join(", ")]);
+            self.status = crate::Status { text, error: true };
+        }
     }
 }
 
