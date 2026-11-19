@@ -112,6 +112,16 @@ fn main() -> ExitCode {
     };
     let mut session = Session::new();
     session.dwg = dwg_reader();
+    // OpenStreetMap, elevation and aerial imagery, when the user asks for them: none where the network is not wanted
+    // (`BIMCRAFT_NO_NETWORK`, a Flatpak), and then the window says so. The cache sits beside the favorites.
+    session.geo = bimcraft_geofetch::Geofetch::desktop(
+        bimcraft_core::favorites::default_path().map(|favorites| bimcraft_geofetch::cache_dir(&favorites)),
+        None,
+    )
+    .unwrap_or_else(|why| {
+        eprintln!("bimcraft: no OpenStreetMap, elevation or imagery fetching: {why}");
+        None
+    });
     dwg_writer(&mut session);
     // A blank project starts in the interface's language: its levels named in it.
     if args.is_empty() {

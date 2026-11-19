@@ -187,6 +187,9 @@ pub struct Session {
     pub dwg: Option<crate::cad::DwgReader>,
     /// The formats it exports to (`export`): the core's, and any the app registers (the DWG writer, from the DWG bridge).
     pub exports: crate::export::Registry,
+    /// What fetches OpenStreetMap and elevation data, when the app has one (`geo::GeoSource`); none says to fetch it elsewhere and
+    /// bring it in as a file.
+    pub geo: Option<crate::geo::Fetcher>,
     /// The commands plugins registered, beside the static [`commands`]. They belong to this session, not the
     /// process, so two sessions and the tests never share them.
     external: Vec<ExternalCommand>,
@@ -287,6 +290,7 @@ impl Session {
             dropped: 0,
             dwg: None,
             exports: crate::export::Registry::default(),
+            geo: None,
             external: Vec::new(),
             read_only: None,
             author: None,

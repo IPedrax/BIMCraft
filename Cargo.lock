@@ -480,6 +480,7 @@ dependencies = [
  "bimcraft-assistant",
  "bimcraft-core",
  "bimcraft-dwg",
+ "bimcraft-geofetch",
  "bimcraft-i18n",
  "bimcraft-plugin",
  "bimcraft-pyaddins",
@@ -535,6 +536,7 @@ dependencies = [
  "krilla",
  "proj4rs",
  "rayon",
+ "roxmltree",
  "serde",
  "serde_json",
  "tempfile",
@@ -561,6 +563,19 @@ version = "0.12.0"
 dependencies = [
  "acadrust",
  "bimcraft-core",
+]
+
+[[package]]
+name = "bimcraft-geofetch"
+version = "0.12.0"
+dependencies = [
+ "bimcraft-core",
+ "flate2",
+ "png 0.17.16",
+ "ring",
+ "serde_json",
+ "tiff",
+ "ureq",
 ]
 
 [[package]]
@@ -3449,6 +3464,15 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9da7f59328b09405b181fee1018925fad50f157afb43c0c0f5c522c256dd5907"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

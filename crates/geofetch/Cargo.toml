@@ -1,0 +1,26 @@
+[package]
+name = "bimcraft-geofetch"
+description = "BIMCraft's fetcher: OpenStreetMap buildings from Overpass and elevation from tiles, for the desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# `testing::Fake` and `testing::Server`, for the desktop's tests too.
+testing = []
+
+[dependencies]
+bimcraft-core = { workspace = true }
+serde_json = { workspace = true }
+ureq = { workspace = true }
+ring = { workspace = true }
+png = { workspace = true }
+tiff = { workspace = true }
+
+[dev-dependencies]
+# The tests write the GeoTIFFs they read.
+flate2 = { workspace = true }

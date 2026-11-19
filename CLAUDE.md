@@ -41,14 +41,13 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   the model. Logic any front end needs (what a plan shows, what's under the cursor) belongs in the core: the canvas draws
   `render::draw` and picks with `Drawing::pick`. UI behaviour is tested with egui_kittest: clicks at model points
   (`BimApp::screen`), buttons by label, keys (`crates/ui-egui/src/tests.rs`).
-- **Only the desktop app reaches the network, and only through three crates.** `crates/update` is the updater: GitHub's
+- **Only the desktop app reaches the network, and only through four crates.** `crates/update` is the updater: GitHub's
   releases, checked at start unless the user turned it off. `crates/assistant` is the AI chat: the provider the user chose, only
-  once they have given a key and sent a message, and what the assistant reads of the open project goes with it. `crates/cowork` is
-  Co-Work: only the host or guests the user chose, by a code or an address, never a server, and discovery stays on the LAN. None
-  is a dependency of the core, the CLI or the MCP server, no other crate may use `ureq`, and a test reads every manifest. What
-  comes from the network is hostile. A `BimApp` starts with `updates: None` and no assistant network, so no test reaches it, and
-  Co-Work's tests stay on this machine's address. The checks are in [crates/update/CLAUDE.md](crates/update/CLAUDE.md),
-  [crates/assistant/CLAUDE.md](crates/assistant/CLAUDE.md) and [crates/cowork/CLAUDE.md](crates/cowork/CLAUDE.md).
+  once they have given a key and sent a message, and what it reads of the open project goes with it. `crates/cowork` is Co-Work:
+  only the host or guests the user chose, never a server; discovery stays on the LAN. `crates/geofetch` fetches OpenStreetMap,
+  elevation and imagery when the user asks (the core asks the hook `Session.geo`). None is a dependency of the core, the CLI or the
+  MCP server, no other crate may use `ureq`, and a test reads every manifest. What comes from the network is hostile; no test reaches
+  it, and Co-Work's stay on this machine's address. The checks are in each crate's `CLAUDE.md`.
 - **Test first.** Write the failing test, watch it fail, then write the code. Drawings and IFC are tested through their output:
   pixels of the PNG, entity references in the STEP file.
 - **Keep the agent docs layered.** This file stays short: the rules, the checks, the conventions and a map of the modules. A
