@@ -55,7 +55,11 @@ fn zones_follow_the_longitude_with_norways_and_svalbards_exceptions() {
 fn placed() -> Session {
     let mut s = Session::new();
     let name = s.model.coordinates.active.clone();
-    run(&mut s, "location", json!({"name": name, "crs": "EPSG:32723", "latitude": -23.5505, "longitude": -46.6333, "elevation": 760_000, "angle": 20}));
+    run(
+        &mut s,
+        "location",
+        json!({"name": name, "crs": "EPSG:32723", "latitude": -23.5505, "longitude": -46.6333, "elevation": 760_000, "angle": 20}),
+    );
     s
 }
 
@@ -89,60 +93,58 @@ fn a_project_with_no_map_system_is_refused_saying_how_to_give_it_one() {
     assert!(Projector::of(&s.model).is_err(), "shared coordinates with no map system are not a place on Earth");
 }
 
-
-
 #[test]
 fn a_pair_copied_from_a_map_is_read_as_latitude_then_longitude() {
-let want = Ok((51.2254809, 6.7700762));
-for text in [
-    "51.2254809, 6.7700762",
-    "51.2254809,6.7700762",
-    "  51.2254809 ,  6.7700762  ",
-    "51.2254809; 6.7700762",
-    "51.2254809 6.7700762",
-    "51.2254809\t6.7700762",
-    "(51.2254809, 6.7700762)",
-    "[51.2254809, 6.7700762]",
-    "51.2254809°, 6.7700762°",
-    "51.2254809° N, 6.7700762° E",
-    "N 51.2254809, E 6.7700762",
-    "N51.2254809 E6.7700762",
-    // A decimal comma, as a German or Brazilian map writes it.
-    "51,2254809; 6,7700762",
-    "51,2254809 6,7700762",
-] {
-    assert_eq!(parse_coordinates(text), want, "{text:?}");
-}
-// South and west are negative, however it is said.
-assert_eq!(parse_coordinates("23.5505 S, 46.6333 W"), Ok((-23.5505, -46.6333)));
-assert_eq!(parse_coordinates("S 23.5505, W 46.6333"), Ok((-23.5505, -46.6333)));
-assert_eq!(parse_coordinates("-23.5505, -46.6333"), Ok((-23.5505, -46.6333)));
-assert_eq!(parse_coordinates("0, 0"), Ok((0.0, 0.0)));
+    let want = Ok((51.2254809, 6.7700762));
+    for text in [
+        "51.2254809, 6.7700762",
+        "51.2254809,6.7700762",
+        "  51.2254809 ,  6.7700762  ",
+        "51.2254809; 6.7700762",
+        "51.2254809 6.7700762",
+        "51.2254809\t6.7700762",
+        "(51.2254809, 6.7700762)",
+        "[51.2254809, 6.7700762]",
+        "51.2254809°, 6.7700762°",
+        "51.2254809° N, 6.7700762° E",
+        "N 51.2254809, E 6.7700762",
+        "N51.2254809 E6.7700762",
+        // A decimal comma, as a German or Brazilian map writes it.
+        "51,2254809; 6,7700762",
+        "51,2254809 6,7700762",
+    ] {
+        assert_eq!(parse_coordinates(text), want, "{text:?}");
+    }
+    // South and west are negative, however it is said.
+    assert_eq!(parse_coordinates("23.5505 S, 46.6333 W"), Ok((-23.5505, -46.6333)));
+    assert_eq!(parse_coordinates("S 23.5505, W 46.6333"), Ok((-23.5505, -46.6333)));
+    assert_eq!(parse_coordinates("-23.5505, -46.6333"), Ok((-23.5505, -46.6333)));
+    assert_eq!(parse_coordinates("0, 0"), Ok((0.0, 0.0)));
 }
 
 #[test]
 fn what_is_not_a_pair_of_coordinates_is_refused_saying_what_was_read() {
-for (text, says) in [
-    ("", "latitude and longitude"),
-    ("51.2254809", "two numbers"),
-    ("51.2, 6.7, 100", "two numbers"),
-    ("north, east", "number"),
-    ("NaN, 1", "number"),
-    ("inf, 1", "number"),
-    ("1e999, 1", "number"),
-    ("95, 6.7", "latitude"),
-    ("-91, 6.7", "latitude"),
-    ("51.2, 181", "longitude"),
-    ("51.2, -200", "longitude"),
-    // A hemisphere that says the opposite of the sign, or twice a latitude.
-    ("-23.5 N, 46.6 E", "N"),
-    ("23.5 N, 46.6 S", "latitude"),
-    ("23.5 E, 46.6 W", "latitude"),
-] {
-    let e = parse_coordinates(text).expect_err(text);
-    assert!(e.contains(says), "{text:?}: {e}");
-}
-// Pasted text is hostile: a long one is refused before it is read.
-assert!(parse_coordinates(&"1".repeat(10_000)).is_err());
-assert!(parse_coordinates(&format!("{}, 1", "9".repeat(400))).is_err());
+    for (text, says) in [
+        ("", "latitude and longitude"),
+        ("51.2254809", "two numbers"),
+        ("51.2, 6.7, 100", "two numbers"),
+        ("north, east", "number"),
+        ("NaN, 1", "number"),
+        ("inf, 1", "number"),
+        ("1e999, 1", "number"),
+        ("95, 6.7", "latitude"),
+        ("-91, 6.7", "latitude"),
+        ("51.2, 181", "longitude"),
+        ("51.2, -200", "longitude"),
+        // A hemisphere that says the opposite of the sign, or twice a latitude.
+        ("-23.5 N, 46.6 E", "N"),
+        ("23.5 N, 46.6 S", "latitude"),
+        ("23.5 E, 46.6 W", "latitude"),
+    ] {
+        let e = parse_coordinates(text).expect_err(text);
+        assert!(e.contains(says), "{text:?}: {e}");
+    }
+    // Pasted text is hostile: a long one is refused before it is read.
+    assert!(parse_coordinates(&"1".repeat(10_000)).is_err());
+    assert!(parse_coordinates(&format!("{}, 1", "9".repeat(400))).is_err());
 }

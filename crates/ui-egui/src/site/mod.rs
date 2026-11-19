@@ -35,15 +35,8 @@ type Built = (Kind, Bbox, Value, Option<(f64, Option<String>)>);
 
 /// What a fetch brought, from its thread.
 enum Fetched {
-    Osm {
-        query: String,
-        reply: Reply,
-    },
-    Heights {
-        spacing: f64,
-        source: Option<String>,
-        got: Elevation,
-    },
+    Osm { query: String, reply: Reply },
+    Heights { spacing: f64, source: Option<String>, got: Elevation },
 }
 
 /// A fetch running: for what, over which box, with which command's parameters, and its answer when it comes.
@@ -140,7 +133,8 @@ impl BimApp {
     /// The Massing tab's site panels: the ground and what stands round it.
     pub(crate) fn site_panels(&mut self, ui: &mut Ui) {
         panel(ui, msg!("Site"), |ui| {
-            let tip = msg!("Terrain from Elevation Data: the ground round the site's place, fetched from an elevation service, as a toposolid");
+            let tip =
+                msg!("Terrain from Elevation Data: the ground round the site's place, fetched from an elevation service, as a toposolid");
             if big_button(
                 ui,
                 Icon::Terrain,
@@ -159,7 +153,8 @@ impl BimApp {
             }
         });
         panel(ui, msg!("Context"), |ui| {
-            let tip = msg!("Import from OpenStreetMap: the buildings round the site's place, fetched from Overpass, as masses on the ground");
+            let tip =
+                msg!("Import from OpenStreetMap: the buildings round the site's place, fetched from Overpass, as masses on the ground");
             if big_button(ui, Icon::FromMap, "Import from OpenStreetMap", self.site.area.as_ref().is_some_and(|a| a.kind == Kind::Osm), tip)
                 .clicked()
             {
@@ -353,7 +348,11 @@ impl BimApp {
                     Ok((Kind::Osm, bbox, params, None))
                 }
                 Kind::Terrain => {
-                    let spacing = if b.spacing.trim().is_empty() { geo::default_spacing(&bbox) } else { typed(&b.spacing, "Spacing (m)")? };
+                    let spacing = if b.spacing.trim().is_empty() {
+                        geo::terrain_spacing(&bbox, geo::TERRAIN_POINTS)
+                    } else {
+                        typed(&b.spacing, "Spacing (m)")?
+                    };
                     let source = Some(SOURCES[b.source].0).filter(|s| !s.is_empty()).map(str::to_string);
                     params["spacing"] = json!(spacing);
                     if let Some(s) = &source {
@@ -644,5 +643,4 @@ impl BimApp {
         };
         self.status = Status { text, error: false };
     }
-
 }

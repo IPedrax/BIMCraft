@@ -12774,11 +12774,14 @@ fn terrain_ground(c: &str, m: &Model, p: &Value, key: &str) -> Result<Option<cra
             _ => return Err(bad(c, format!("`{key}` {g} isn't a toposolid"))),
         },
         None => {
-            let all: Vec<&Toposolid> = m.elements.values().filter_map(|e| if let Element::Toposolid(t) = e { Some(t) } else { None }).collect();
+            let all: Vec<&Toposolid> =
+                m.elements.values().filter_map(|e| if let Element::Toposolid(t) = e { Some(t) } else { None }).collect();
             match all.as_slice() {
                 [] => None,
                 [one] => Some(*one),
-                many => return Err(bad(c, format!("the project has {} toposolids: give the `{key}` id of the one to stand on", many.len()))),
+                many => {
+                    return Err(bad(c, format!("the project has {} toposolids: give the `{key}` id of the one to stand on", many.len())));
+                }
             }
         }
     };
@@ -13138,7 +13141,10 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
                     if m.parameters.len() >= crate::model::MAX_PROJECT_PARAMETERS {
                         return Err(bad(c, "the project has as many parameters as it holds"));
                     }
-                    m.parameters.insert(name.into(), ProjectParameter { kind: ParameterKind::Text, categories: vec!["mass".into()], ..Default::default() });
+                    m.parameters.insert(
+                        name.into(),
+                        ProjectParameter { kind: ParameterKind::Text, categories: vec!["mass".into()], ..Default::default() },
+                    );
                 }
             }
         }
@@ -13522,7 +13528,10 @@ fn declare_text(m: &mut Model, name: &str, category: &str) -> Result<(), String>
         }
         None if full => Err("the project has as many parameters as it holds".into()),
         None => {
-            m.parameters.insert(name.into(), ProjectParameter { kind: ParameterKind::Text, categories: vec![category.into()], ..Default::default() });
+            m.parameters.insert(
+                name.into(),
+                ProjectParameter { kind: ParameterKind::Text, categories: vec![category.into()], ..Default::default() },
+            );
             Ok(())
         }
     }

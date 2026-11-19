@@ -257,8 +257,6 @@ fn fetch_osm_is_refused_without_a_fetcher_over_too_big_a_box_and_on_a_bad_reply(
     );
 }
 
-
-
 #[test]
 fn a_prefetched_reply_runs_the_unchanged_fetch_osm_without_asking_the_real_fetcher_again() {
     let real = Arc::new(Fake::new(overpass_reply()));
@@ -279,7 +277,6 @@ fn a_prefetched_reply_runs_the_unchanged_fetch_osm_without_asking_the_real_fetch
     s.execute("undo", &json!({})).unwrap();
     assert_eq!(masses(&s), 0, "one undo step, as ever");
 }
-
 
 #[test]
 fn fetch_osm_reports_the_query_it_asked_with() {
@@ -315,7 +312,6 @@ fn a_fetcher_with_no_map_tiles_says_so_and_a_tile_is_checked() {
     let held = crate::geo::Prefetched::new(real, Bbox::new(-23.56, -46.64, -23.54, -46.62).unwrap());
     assert_eq!(held.tile(1, 0, 0).unwrap().side, 1);
 }
-
 
 /// A fetcher that has one tile, a pixel.
 struct TileFake;
@@ -489,7 +485,6 @@ fn the_source_asked_for_goes_to_the_fetcher_and_buildings_then_stand_on_the_grou
     assert!(bases.iter().any(|b| *b > 100.0), "{bases:?}");
 }
 
-
 #[test]
 fn prefetched_elevation_serves_the_spacing_and_source_it_was_fetched_for_and_no_others() {
     let real = Arc::new(Fake::new(String::new()));
@@ -659,7 +654,11 @@ fn a_shell_that_can_no_longer_follow_its_mass_is_named_and_the_buildings_still_s
 fn buildings_stand_on_the_toposolid_just_fetched_and_not_on_an_older_one() {
     let mut s = session(Arc::new(Fake::new(overpass_reply())));
     // An older, flat terrain 5 m up: the buildings come in standing on it.
-    run(&mut s, "toposolid", json!({"boundary": [[-100000, -100000], [300000, -100000], [300000, 300000], [-100000, 300000]], "offset": 5000}));
+    run(
+        &mut s,
+        "toposolid",
+        json!({"boundary": [[-100000, -100000], [300000, -100000], [300000, 300000], [-100000, 300000]], "offset": 5000}),
+    );
     run(&mut s, "fetch_osm", json!({"radius": 500}));
     assert!(bases(&s).values().all(|b| (b - 5000.0).abs() < 1e-6), "{:?}", bases(&s));
     run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 25}));
@@ -673,7 +672,6 @@ fn buildings_stand_on_the_toposolid_just_fetched_and_not_on_an_older_one() {
     }
     assert!(now["way/1"] < 1000.0, "not on the old terrain's 5 m: {now:?}");
 }
-
 
 #[test]
 fn place_on_terrain_stands_what_is_chosen_on_the_toposolid_and_says_what_is_not_over_it() {

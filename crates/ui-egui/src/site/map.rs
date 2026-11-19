@@ -12,8 +12,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use bimcraft_core::geo::{Bbox, Fetcher, MAX_FETCH_AREA_KM2, Tile};
 use bimcraft_core::geo::parse_coordinates;
+use bimcraft_core::geo::{Bbox, Fetcher, MAX_FETCH_AREA_KM2, Tile};
 use bimcraft_core::map::{MapView, TileKey, box_note};
 use egui::{
     Align, Align2, Button, Color32, ColorImage, Context, FontId, Id as UiId, Layout, PointerButton, Pos2, Rect, RichText, Sense, Stroke,

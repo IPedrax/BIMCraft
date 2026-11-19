@@ -272,7 +272,6 @@ fn with_no_fetcher_or_no_tiles_the_map_is_lines_and_the_box_can_still_be_drawn()
     assert!(h.query_by_label("Fetch").is_some(), "the area box is still there");
 }
 
-
 #[test]
 fn import_from_openstreetmap_fetches_on_a_thread_and_makes_the_buildings_in_one_step() {
     let fake = Arc::new(Fake::new());
@@ -595,7 +594,6 @@ fn a_box_over_what_one_fetch_may_cover_is_red_and_cannot_be_used() {
     assert!(h.query_by_label_contains("km² (at most 25)").is_some());
 }
 
-
 fn masses_of(h: &Harness<BimApp>) -> Vec<Id> {
     h.state().session.model.elements.iter().filter(|(_, e)| e.category() == "mass").map(|(id, _)| *id).collect()
 }
@@ -691,4 +689,3 @@ fn an_import_says_how_many_entrances_it_placed_and_build_shell_cuts_them_as_door
     press(&mut h, "OK");
     assert_eq!((count(&h, "wall"), count(&h, "door")), (4 + 8, 0));
 }
-

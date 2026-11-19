@@ -123,9 +123,9 @@ mod font;
 mod formula_visibility_tests;
 pub mod geo;
 #[cfg(test)]
-mod geo_tests;
-#[cfg(test)]
 mod geo_site_tests;
+#[cfg(test)]
+mod geo_tests;
 pub mod geom;
 #[cfg(test)]
 mod georef_tests;
@@ -133,9 +133,9 @@ pub mod gltf;
 pub mod glue;
 #[cfg(test)]
 mod glue_tests;
-pub mod ground;
 pub mod graphics;
 pub mod grids;
+pub mod ground;
 pub mod groups;
 pub mod handles;
 #[cfg(test)]
@@ -143,7 +143,6 @@ mod host_void_tests;
 pub mod hosting;
 pub mod hydrant;
 pub mod ids;
-pub mod imagery;
 pub mod ifc;
 #[cfg(test)]
 mod ifc_colour_tests;
@@ -155,6 +154,7 @@ mod ifc_generic_tests;
 mod ifc_geometry_tests;
 #[cfg(test)]
 mod ifc_member_tests;
+pub mod imagery;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
@@ -250,10 +250,10 @@ pub mod shared;
 #[cfg(test)]
 mod shared_parameter_tests;
 pub mod shared_parameters;
+pub mod sheet;
 pub mod shell;
 #[cfg(test)]
 mod shell_tests;
-pub mod sheet;
 pub mod site;
 pub mod skeleton;
 pub mod sketch;
