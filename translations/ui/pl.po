@@ -181,7 +181,7 @@ msgstr ""
 
 #: crates/ui-egui/src/publisher.rs:874
 msgid "A / makes a folder; {{ and }} are braces"
-msgstr ""
+msgstr "A / tworzy folder; {{ oraz }} to nawiasy klamrowe"
 
 #: crates/ui-egui/src/publisher.rs:696
 msgid "A / puts it inside another: Issue/PDF"
