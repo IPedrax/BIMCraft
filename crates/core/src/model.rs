@@ -5379,6 +5379,10 @@ impl Model {
         // A material's patterns behind its foreground and its parameters need no step: a file without them has none. A file
         // may hold a value of a parameter it doesn't have, which is left out.
         crate::materials::tidy(self);
+        // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
+        if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
+            self.codes.methods_into_layers();
+        }
         if self.format < 1 {
             self.resolve();
             if self.elements.keys().next().is_some_and(|&first| first < FIRST_ID) {
