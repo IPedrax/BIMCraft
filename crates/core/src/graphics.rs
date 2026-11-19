@@ -1445,45 +1445,47 @@ impl Look {
             let of_sub = owner.zip(sub).and_then(|k| self.sub_paint.get(&k));
             let Some(over) = of_sub.or_else(|| owner.and_then(|id| self.paint.get(&id))) else { continue };
             let style = if *part == Part::Cut { &over.cut } else { &over.projection };
-            match prim {
-                Prim::Line { color, dash, .. } => {
-                    if *part != Part::Pattern
-                        && let Some([r, g, b]) = style.color
-                    {
-                        *color = Rgb(r, g, b);
-                    }
-                    if !matches!(part, Part::Text | Part::Pattern) {
-                        if let Some(p) = style.weight {
-                            *pen = Some(p);
-                        }
-                        if let Some(k) = style.dash {
-                            *dash = k.pattern(paper);
-                        }
-                    }
-                    if over.halftone {
-                        *color = halftone(*color);
-                    }
-                }
-                Prim::Fill { color, .. } => {
-                    if *part == Part::LinePattern {
-                        if let Some([r, g, b]) = style.color {
+            for prim in prim.paint_mut() {
+                match prim {
+                    Prim::Line { color, dash, .. } => {
+                        if *part != Part::Pattern
+                            && let Some([r, g, b]) = style.color
+                        {
                             *color = Rgb(r, g, b);
                         }
-                        if pen.is_some()
-                            && let Some(p) = style.weight
-                        {
-                            *pen = Some(p);
+                        if !matches!(part, Part::Text | Part::Pattern) {
+                            if let Some(p) = style.weight {
+                                *pen = Some(p);
+                            }
+                            if let Some(k) = style.dash {
+                                *dash = k.pattern(paper);
+                            }
                         }
-                    } else if *part != Part::Pattern
-                        && let Some([r, g, b]) = style.fill
-                    {
-                        *color = Rgb(r, g, b);
+                        if over.halftone {
+                            *color = halftone(*color);
+                        }
                     }
-                    if over.halftone {
-                        *color = halftone(*color);
+                    Prim::Fill { color, .. } => {
+                        if *part == Part::LinePattern {
+                            if let Some([r, g, b]) = style.color {
+                                *color = Rgb(r, g, b);
+                            }
+                            if pen.is_some()
+                                && let Some(p) = style.weight
+                            {
+                                *pen = Some(p);
+                            }
+                        } else if *part != Part::Pattern
+                            && let Some([r, g, b]) = style.fill
+                        {
+                            *color = Rgb(r, g, b);
+                        }
+                        if over.halftone {
+                            *color = halftone(*color);
+                        }
                     }
+                    Prim::Image { .. } | Prim::Text { .. } => {}
                 }
-                Prim::Image { .. } => {}
             }
         }
     }
@@ -1517,14 +1519,14 @@ pub(crate) mod testing {
 
     /// The primitives `id` owns.
     pub(crate) fn owned(d: &Drawing, id: u64) -> Vec<&Prim> {
-        d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect()
+        d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).flat_map(|(p, _)| p.paint()).collect()
     }
 
     /// Pen, colour and dash of the lines `id` owns: `u8::MAX` for a line no pen draws (lettering's).
     /// Each line element `id` draws: its pen, its colour and its dashes, px of a sheet's drawing (on the paper, whatever the zoom).
     pub(crate) fn lines(d: &Drawing, id: u64) -> Vec<(u8, Rgb, Option<Vec<f32>>)> {
         let paper = |x: &f32| (x / d.paper() * 100.0).round() / 100.0;
-        (d.prims.iter().zip(&d.owners).zip(&d.pens))
+        (d.paint_prims().map(|(i, p)| ((p, &d.owners[i]), &d.pens[i])))
             .filter_map(|((p, o), pen)| match p {
                 Prim::Line { color, dash, .. } if *o == Some(id) => {
                     Some((pen.map_or(u8::MAX, |p| p.0), *color, dash.as_ref().map(|v| v.iter().map(paper).collect())))
@@ -1538,12 +1540,12 @@ pub(crate) mod testing {
     pub(crate) fn drawn_near(d: &Drawing, at: P2, r: f32) -> usize {
         let (x, y) = d.view.px(at);
         let near = |p: &(f32, f32)| (p.0 - x).hypot(p.1 - y) <= r;
-        d.prims
-            .iter()
+        d.paint_prims()
+            .map(|(_, p)| p)
             .filter(|p| match p {
                 Prim::Fill { rings, .. } => rings.iter().flatten().any(near),
                 Prim::Line { pts, .. } => pts.iter().any(near),
-                Prim::Image { .. } => false,
+                Prim::Image { .. } | Prim::Text { .. } => false,
             })
             .count()
     }

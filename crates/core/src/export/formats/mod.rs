@@ -117,6 +117,7 @@ pub fn styled(d: &Drawing, setup: &PageSetup) -> Option<Drawing> {
     };
     Some(d.restyled(|p| {
         match p {
+            Prim::Text { .. } => p.clone(), // Drawing::restyled hands the closure only fallback paint.
             Prim::Fill { rings, color } => Prim::Fill { rings: rings.clone(), color: ink(*color, true) },
             Prim::Line { pts, width, color, dash, closed } => Prim::Line {
                 pts: pts.clone(),

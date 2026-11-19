@@ -65,7 +65,7 @@ msgstr "Danh mục"
 msgid "Ceiling Luminaire"
 msgstr "Đèn trần"
 
-#: crates/core/src/render.rs:3848
+#: crates/core/src/render.rs:3904
 msgid "Ceiling Plan"
 msgstr "Mặt bằng trần"
 
@@ -144,8 +144,8 @@ msgstr "Gạch chéo lưới"
 msgid "Cut to Clipboard"
 msgstr ""
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4958
+#: crates/core/src/render.rs:5303
 msgid "DN"
 msgstr "XUỐNG"
 
@@ -516,7 +516,7 @@ msgstr "Kim loại"
 msgid "Mounting Height"
 msgstr "Chiều cao lắp đặt"
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3683
 msgid "NOT ENCLOSED"
 msgstr "KHÔNG KHÉP KÍN"
 
@@ -631,7 +631,7 @@ msgstr ""
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3683
 msgid "REDUNDANT"
 msgstr "THỪA"
 
@@ -904,8 +904,8 @@ msgstr ""
 msgid "Type"
 msgstr "Kiểu"
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4958
+#: crates/core/src/render.rs:5303
 msgid "UP"
 msgstr "LÊN"
 

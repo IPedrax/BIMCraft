@@ -65,7 +65,7 @@ msgstr "Kategoria"
 msgid "Ceiling Luminaire"
 msgstr "Oprawa sufitowa"
 
-#: crates/core/src/render.rs:3848
+#: crates/core/src/render.rs:3904
 msgid "Ceiling Plan"
 msgstr "Rzut sufitów"
 
@@ -144,8 +144,8 @@ msgstr "Kreskowanie krzyżowe"
 msgid "Cut to Clipboard"
 msgstr ""
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4958
+#: crates/core/src/render.rs:5303
 msgid "DN"
 msgstr "W DÓŁ"
 
@@ -516,7 +516,7 @@ msgstr "Metal"
 msgid "Mounting Height"
 msgstr "Wysokość montażu"
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3683
 msgid "NOT ENCLOSED"
 msgstr "NIEZAMKNIĘTY OBSZAR"
 
@@ -631,7 +631,7 @@ msgstr ""
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3683
 msgid "REDUNDANT"
 msgstr "NADMIAROWE"
 
@@ -904,8 +904,8 @@ msgstr ""
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4958
+#: crates/core/src/render.rs:5303
 msgid "UP"
 msgstr "W GÓRĘ"
 

@@ -89,6 +89,15 @@ impl Drawing {
 
 #[derive(Clone)]
 pub enum Prim {
+    /// Notes and title-block lettering: layout in paper mm, placement in pixels, and the exact paint it replaces.
+    /// The fallback contains only fills and lines, already placed, in their original paint order.
+    /// Cropping may leave only a subset of the layout; a text exporter must clip characters itself.
+    /// After `Look::dress`, fallback fills take the override fill colour and lines take its color.
+    Text {
+        frame: NoteFrame,
+        layout: std::sync::Arc<crate::text::Layout>,
+        fallback: Vec<Prim>,
+    },
     Fill {
         rings: Vec<Vec<(f32, f32)>>,
         color: Rgb,
@@ -113,9 +122,33 @@ pub enum Prim {
 }
 
 impl Prim {
+    /// Existing painters use these primitives, in order; lettering keeps its exact fallback paint.
+    pub fn paint(&self) -> &[Prim] {
+        match self {
+            Prim::Text { fallback, .. } => fallback,
+            _ => std::slice::from_ref(self),
+        }
+    }
+    pub(crate) fn paint_mut(&mut self) -> &mut [Prim] {
+        match self {
+            Prim::Text { fallback, .. } => fallback,
+            _ => std::slice::from_mut(self),
+        }
+    }
+
+    fn restyled(&self, f: &impl Fn(&Prim) -> Prim) -> Prim {
+        match self {
+            Prim::Text { frame, layout, fallback } => {
+                Prim::Text { frame: *frame, layout: layout.clone(), fallback: fallback.iter().map(f).collect() }
+            }
+            _ => f(self),
+        }
+    }
+
     /// Its points, px: a fill's rings', a line's, a picture's corners.
     pub fn points(&self) -> Vec<(f32, f32)> {
         match self {
+            Prim::Text { fallback, .. } => fallback.iter().flat_map(Prim::points).collect(),
             Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
             Prim::Line { pts, .. } => pts.clone(),
             Prim::Image { at, width, height, .. } => Prim::corners(*at, *width, *height),
@@ -126,6 +159,10 @@ impl Prim {
     pub(crate) fn moved(self, dx: f32, dy: f32) -> Prim {
         let mv = |pts: Vec<(f32, f32)>| pts.into_iter().map(|(x, y)| (x + dx, y + dy)).collect();
         match self {
+            Prim::Text { mut frame, layout, fallback } => {
+                frame.at = (frame.at.0 + dx, frame.at.1 + dy);
+                Prim::Text { frame, layout, fallback: fallback.into_iter().map(|p| p.moved(dx, dy)).collect() }
+            }
             Prim::Fill { rings, color } => Prim::Fill { rings: rings.into_iter().map(mv).collect(), color },
             Prim::Line { pts, width, color, dash, closed } => Prim::Line { pts: mv(pts), width, color, dash, closed },
             Prim::Image { at, width, height, rgba, ink } => Prim::Image { at: (at.0 + dx, at.1 + dy), width, height, rgba, ink },
@@ -144,6 +181,10 @@ impl Prim {
         let mm = |p: (f32, f32)| P2(f64::from(p.0), f64::from(p.1));
         let px = |p: P2| (p.0 as f32, p.1 as f32);
         match self {
+            Prim::Text { frame, layout, fallback } => {
+                let fallback: Vec<_> = fallback.into_iter().flat_map(|p| p.cropped(lo, hi)).collect();
+                if fallback.is_empty() { Vec::new() } else { vec![Prim::Text { frame, layout, fallback }] }
+            }
             Prim::Fill { rings, color } => {
                 let rings: Vec<Vec<(f32, f32)>> = rings.iter().map(|r| clip_ring(r, lo, hi)).filter(|r| r.len() >= 3).collect();
                 if rings.is_empty() { Vec::new() } else { vec![Prim::Fill { rings, color }] }
@@ -279,11 +320,16 @@ pub struct Drawing {
 }
 
 impl Drawing {
+    /// Paint primitives in drawing order, paired with their top-level index for ownership and style.
+    pub fn paint_prims(&self) -> impl DoubleEndedIterator<Item = (usize, &Prim)> {
+        self.prims.iter().enumerate().flat_map(|(i, p)| p.paint().iter().map(move |p| (i, p)))
+    }
+
     /// A copy through the same view, each primitive as `f` makes it, its owners, parts and pens kept: how it prints in other
-    /// colours or other lines.
+    /// colours or other lines. For lettering, `f` sees its fallback paint; placement and layout are kept.
     pub fn restyled(&self, f: impl Fn(&Prim) -> Prim) -> Drawing {
         let mut d = Drawing::new(self.view);
-        d.prims = self.prims.iter().map(f).collect();
+        d.prims = self.prims.iter().map(|p| p.restyled(&f)).collect();
         d.owners = self.owners.clone();
         d.parts = self.parts.clone();
         d.pens = self.pens.clone();
@@ -523,10 +569,16 @@ impl Drawing {
         let k = self.k;
         let at = |p: &mut (f32, f32)| *p = (about.0 + (p.0 - about.0) * k, about.1 + (p.1 - about.1) * k);
         for prim in self.prims.iter_mut().skip(from).filter(|_| k != 1.0) {
-            match prim {
-                Prim::Fill { rings, .. } => rings.iter_mut().flatten().for_each(at),
-                Prim::Line { pts, .. } => pts.iter_mut().for_each(at),
-                Prim::Image { .. } => {}
+            if let Prim::Text { frame, .. } = prim {
+                at(&mut frame.at);
+                frame.k *= k;
+            }
+            for p in prim.paint_mut() {
+                match p {
+                    Prim::Fill { rings, .. } => rings.iter_mut().flatten().for_each(at),
+                    Prim::Line { pts, .. } => pts.iter_mut().for_each(at),
+                    _ => {}
+                }
             }
         }
     }
@@ -603,7 +655,8 @@ impl Drawing {
         };
         // Each element's nearest primitive: its distance, and how late it's drawn.
         let mut near: std::collections::BTreeMap<Id, (f64, usize)> = std::collections::BTreeMap::new();
-        for (order, (prim, owner)) in self.prims.iter().zip(&self.owners).enumerate() {
+        for (order, prim) in self.paint_prims() {
+            let owner = self.owners.get(order).copied().flatten();
             // What a link builds is drawn and snapped to, never picked.
             let Some(id) = owner.filter(|id| !crate::link::is_linked(*id)) else { continue };
             let d = match prim {
@@ -617,6 +670,7 @@ impl Drawing {
                 }
                 Prim::Line { pts, width, closed, .. } => (edges(&ring(pts), *closed) - f64::from(*width) / 2.0).max(0.0),
                 Prim::Image { at, width, height, rgba, .. } => drawn_near(p, (*at, *width, *height), rgba, tol),
+                Prim::Text { .. } => continue,
             };
             if d <= f64::from(tol) && near.get(&id).is_none_or(|&(b, _)| d <= b) {
                 near.insert(id, (d, order));
@@ -635,7 +689,8 @@ impl Drawing {
         let inside = |q: &(f32, f32)| (lo.0..=hi.0).contains(&q.0) && (lo.1..=hi.1).contains(&q.1);
         // Each element: whether all of it is inside, and whether any of it is.
         let mut seen: std::collections::BTreeMap<Id, (bool, bool)> = std::collections::BTreeMap::new();
-        for (prim, owner) in self.prims.iter().zip(&self.owners) {
+        for (i, prim) in self.paint_prims() {
+            let owner = self.owners.get(i).copied().flatten();
             let Some(id) = owner.filter(|id| !crate::link::is_linked(*id)) else { continue };
             let corners;
             let (rings, closed): (Vec<&[(f32, f32)]>, bool) = match prim {
@@ -645,6 +700,7 @@ impl Drawing {
                     (vec![corners.as_slice()], true)
                 }
                 Prim::Line { pts, closed, .. } => (vec![pts.as_slice()], *closed),
+                Prim::Text { .. } => continue,
             };
             let all = rings.iter().all(|r| r.iter().all(inside));
             let any = rings.iter().any(|r| {
@@ -5780,6 +5836,21 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
 
 /// `layout` lettered where `frame` puts it, in `color`: a note's text, or a title block's.
 pub(crate) fn lettering(d: &mut Drawing, layout: &crate::text::Layout, frame: NoteFrame, color: Rgb) {
+    let from = d.prims.len();
+    lettering_fallback(d, layout, frame, color);
+    let fallback = d.prims.split_off(from);
+    d.owners.truncate(from);
+    d.parts.truncate(from);
+    d.pens.truncate(from);
+    d.subs.truncate(from);
+    if !fallback.is_empty() {
+        let part = std::mem::replace(&mut d.part, Part::Text);
+        d.push(Prim::Text { frame, layout: std::sync::Arc::new(layout.clone()), fallback });
+        d.part = part;
+    }
+}
+
+fn lettering_fallback(d: &mut Drawing, layout: &crate::text::Layout, frame: NoteFrame, color: Rgb) {
     let f = |(x, y): (f32, f32)| frame.px((f64::from(x), f64::from(y)));
     let k = frame.k;
     let part = std::mem::replace(&mut d.part, Part::Text);
@@ -5993,7 +6064,7 @@ fn grid(d: &mut Drawing, m: &Model, g: &Grid, start: P2, end: P2) {
             k: px_per_mm,
             angle: 0.0,
         };
-        lettering(d, &layout, frame, color);
+        lettering_fallback(d, &layout, frame, color);
     }
 }
 
@@ -6189,8 +6260,9 @@ pub fn svg(d: &Drawing) -> String {
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><rect width="{w}" height="{h}" fill="{}"/>"#,
         hex(PAPER)
     );
-    for (i, p) in d.prims.iter().enumerate() {
+    for (i, p) in d.paint_prims() {
         let _ = match p {
+            Prim::Text { .. } => continue,
             Prim::Fill { rings, color } => {
                 let data: Vec<String> = rings.iter().map(|r| path_data(r, true)).collect();
                 write!(s, r#"<path d="{}" fill="{}"/>"#, data.join(" "), hex(*color))
@@ -6344,9 +6416,10 @@ fn picture(width: u32, height: u32, rgba: &[u8]) -> Option<Pixmap> {
 
 /// The display list drawn over what `pm` holds.
 fn paint(pm: &mut Pixmap, d: &Drawing, t: Transform, clip: Option<&tiny_skia::Mask>) {
-    for (i, p) in d.prims.iter().enumerate() {
+    for (i, p) in d.paint_prims() {
         let mut paint = Paint { anti_alias: true, ..Paint::default() };
         match p {
+            Prim::Text { .. } => continue,
             Prim::Fill { rings, color } => {
                 paint.set_color_rgba8(color.0, color.1, color.2, 255);
                 let rings: Vec<&[(f32, f32)]> = rings.iter().map(Vec::as_slice).collect();
@@ -6387,6 +6460,108 @@ fn paint(pm: &mut Pixmap, d: &Drawing, t: Transform, clip: Option<&tiny_skia::Ma
 mod tests {
     use super::*;
     use crate::engine::Session;
+
+    fn text_carrier_frame_matches_fallback(d: &Drawing) {
+        let mut seen = 0;
+        for p in &d.prims {
+            if let Prim::Text { frame, layout, fallback } = p {
+                let mut fresh = Drawing::new(d.view);
+                lettering_fallback(&mut fresh, layout, *frame, INK);
+                let a: Vec<_> = fresh.prims.iter().flat_map(Prim::points).collect();
+                let b: Vec<_> = fallback.iter().flat_map(Prim::points).collect();
+                assert_eq!(a.len(), b.len());
+                assert!(a.iter().zip(b).all(|(a, b)| (a.0 - b.0).hypot(a.1 - b.1) < 0.001));
+                seen += 1;
+            }
+        }
+        assert!(seen > 0);
+    }
+
+    #[test]
+    fn text_carrier_angled_section_underlay_frame_matches_fallback() {
+        let mut s = Session::new();
+        let source = s.execute("section", &serde_json::json!({"start":[-1000,0], "end":[1000,0]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("text", &serde_json::json!({"view":source, "text":"AV note", "at":[1000,0], "angle":17})).unwrap();
+        s.execute("underlay", &serde_json::json!({"view":"Level 1", "source":source, "angle":31, "hide_annotation":false})).unwrap();
+        let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 400, height: 300 };
+        let under = crate::underlay::draw_cancellable(&s.model, None, 100000, view, &|| false).unwrap().unwrap();
+        text_carrier_frame_matches_fallback(&under.drawing);
+    }
+
+    #[test]
+    fn text_carrier_fallback_is_exact() {
+        let mut s = Session::new();
+        s.script(
+            r#"text {"text":"note", "at":[0,0]}
+            grid {"start":[0,-2000], "end":[0,8000]}"#,
+        )
+        .unwrap();
+        let id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Text(_))).unwrap().0;
+        let grids = plan(&s.model, 100000, 400, 300);
+        assert_eq!(grids.prims.iter().filter(|p| matches!(p, Prim::Text { .. })).count(), 1, "no grid-bubble carriers");
+        s.execute(
+            "graphics",
+            &serde_json::json!({"view":100000,"elements":{id.to_string():{
+                "projection":{"color":"#cc5511", "fill":"#1155cc", "weight":8}, "halftone":true
+            }}}),
+        )
+        .unwrap();
+        for font in [crate::text::SANS, crate::text::LETTERING] {
+            let t = crate::text::TextType { font: font.into(), ..Default::default() };
+            let layout = crate::text::layout(&t, "AV g\nNotes 123", &[crate::text::Style { underline: true, ..Default::default() }]);
+            let frame = NoteFrame { at: (24.0, 30.0), k: 5.0, angle: 0.3 };
+            let view = View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 240, height: 160 };
+            let make = |wrapped| {
+                let mut d = Drawing::new(view);
+                d.own(Some(100010));
+                d.push(Prim::Fill { rings: vec![vec![(0.0, 0.0), (220.0, 0.0), (220.0, 150.0), (0.0, 150.0)]], color: POCHE });
+                d.own(Some(id));
+                if wrapped {
+                    super::lettering(&mut d, &layout, frame, INK);
+                } else {
+                    lettering_fallback(&mut d, &layout, frame, INK);
+                }
+                d.own(Some(100012));
+                d.stroke(vec![(30.0, 40.0), (160.0, 40.0)], Pen::PROJECTION, REFERENCE_PLANE, None, false);
+                d
+            };
+            let (mut wrapped, mut plain) = (make(true), make(false));
+            assert_eq!(wrapped.prims.len(), 3);
+            let Prim::Text { layout: carried, frame: placed, .. } = &wrapped.prims[1] else { panic!("no text carrier") };
+            assert_eq!((&**carried, *placed), (&layout, frame));
+            let same = |a: &Drawing, b: &Drawing| {
+                assert_eq!(svg(a), svg(b));
+                assert_eq!(rgba(a, None).unwrap(), rgba(b, None).unwrap());
+                for x in (10..180).step_by(7) {
+                    for y in (15..120).step_by(7) {
+                        assert_eq!(a.pick_all((x as f32, y as f32), 2.0), b.pick_all((x as f32, y as f32), 2.0));
+                    }
+                }
+                for crossing in [true, false] {
+                    assert_eq!(a.in_box((20.0, 20.0), (100.0, 80.0), crossing), b.in_box((20.0, 20.0), (100.0, 80.0), crossing));
+                }
+                assert_eq!(crate::pdf::pdf(&[(a, P2(48.0, 32.0))]), crate::pdf::pdf(&[(b, P2(48.0, 32.0))]));
+            };
+            same(&wrapped, &plain);
+            same(&wrapped.cropped((42.0, 35.0), (142.0, 90.0)).0, &plain.cropped((42.0, 35.0), (142.0, 90.0)).0);
+            for d in [&mut wrapped, &mut plain] {
+                d.prims = std::mem::take(&mut d.prims).into_iter().map(|p| p.moved(7.0, -4.0)).collect();
+            }
+            same(&wrapped, &plain);
+            text_carrier_frame_matches_fallback(&wrapped);
+            text_carrier_frame_matches_fallback(&wrapped.cropped((-10.0, -10.0), (250.0, 170.0)).0);
+            let mut grown = make(true);
+            grown.k = 1.7;
+            grown.grow(0, (13.0, 19.0));
+            text_carrier_frame_matches_fallback(&grown);
+            let setup = crate::export::page::PageSetup { colour: crate::export::page::Colour::Grey, hairlines: true, ..Default::default() };
+            same(&crate::export::formats::styled(&wrapped, &setup).unwrap(), &crate::export::formats::styled(&plain, &setup).unwrap());
+            for d in [&mut wrapped, &mut plain] {
+                Look::of(&s.model, 100000).dress(d);
+            }
+            same(&wrapped, &plain);
+        }
+    }
 
     #[test]
     fn a_plan_is_fitted_where_its_drawing_stands_without_being_drawn() {
@@ -7352,10 +7527,10 @@ mod tests {
     /// The extremes of what `d` draws, px: left, top, right, bottom.
     fn drawn_extent(d: &Drawing) -> [f32; 4] {
         let mut e = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
-        let pts = d.prims.iter().flat_map(|p| match p {
+        let pts = d.paint_prims().flat_map(|(_, p)| match p {
             Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect::<Vec<_>>(),
             Prim::Line { pts, .. } => pts.clone(),
-            Prim::Image { .. } => Vec::new(),
+            Prim::Image { .. } | Prim::Text { .. } => Vec::new(),
         });
         for (x, y) in pts {
             e = [e[0].min(x), e[1].min(y), e[2].max(x), e[3].max(y)];
