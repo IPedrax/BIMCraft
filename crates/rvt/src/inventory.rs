@@ -180,6 +180,8 @@ const NAMES: &[(i64, &str)] = &[
     (-2_000_240, "Levels"),
     (-2_000_182, "Walls: Reveals"),
     (-2_000_181, "Walls: Wall Sweeps"),
+    // Not measured by rvt-rs: its records are of the schema's class `Ramp` (docs/rvt-provenance.md).
+    (-2_000_180, "Ramps"),
     (-2_000_171, "Curtain Wall Mullions"),
     (-2_000_170, "Curtain Panels"),
     (-2_000_160, "Rooms"),

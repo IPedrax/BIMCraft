@@ -500,21 +500,22 @@ fn snowdon_2025s_components_come_in_as_their_revit_families_and_types_most_turne
         let count = |what: &str| -> usize {
             i.skipped.iter().filter(|s| s.contains(what)).filter_map(|s| s.split(' ').next()?.parse::<usize>().ok()).sum()
         };
-        assert_eq!(components(&i).len(), 5638, "{}", path.display());
-        assert_eq!(count("turned as placed"), 4661, "{}", path.display());
+        assert_eq!(components(&i).len(), 5667, "{}", path.display());
+        assert_eq!(count("turned as placed"), 4663, "{}", path.display());
         // Of those, the ones whose own graphics draw a symbol whose solids read and, placed, stand where the record's box does; and
         // those whose graphics draw solids of their own where they stand, or several symbols (a stair's support, a sweep, a mullion).
         // A symbol's solids may be turned ellipses, and its family may nest others (a railing's balusters, a fixture's parts).
-        assert_eq!(count("comes in with its type's shape"), 4418, "{}", path.display());
-        assert_eq!(count("comes in with its shape, read from the file where it stands"), 664, "{}", path.display());
-        // A family of the model for each Revit family the components are of, with the types they are of (numbers, not the file's
-        // names: Autodesk's strings stay out of the tests).
+        assert_eq!(count("comes in with its type's shape"), 4425, "{}", path.display());
+        assert_eq!(count("comes in with its shape, read from the file where it stands"), 769, "{}", path.display());
+        // A family of the model for each Revit family the components are of, and one numbered on from the railings' for the shapes
+        // it has no room left for, with the types they are of (numbers, not the file's names: Autodesk's strings stay out of the
+        // tests).
         let families: std::collections::BTreeSet<&str> = components(&i).iter().map(|c| c.family.as_str()).collect();
         let types: std::collections::BTreeSet<(&str, &str)> =
             components(&i).iter().map(|c| (c.family.as_str(), c.type_name.as_str())).collect();
         // A Revit type is a type for each shape its instances draw (the symbols Revit makes for their instance parameters), and
         // one more for those that come in as boxes beside them.
-        assert_eq!((families.len(), types.len()), (134, 1298), "{}", path.display());
+        assert_eq!((families.len(), types.len()), (135, 1367), "{}", path.display());
         // Every component of a named category is of a Revit type the file names, but those of the system families (stairs' parts,
         // railings, sweeps, slab edges), which are no family instances.
         let imported = components(&i).iter().filter(|c| c.type_name == "Imported" && !c.family.starts_with("Category ")).count();
@@ -659,6 +660,132 @@ fn a_path_whose_own_graphics_draw_its_body_comes_in_with_that_body_whatever_its_
     let shows = family.types[&c.type_name].get("Shape").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
     assert_eq!(family.forms[shows].mesh.len(), 12, "{:?}", i.skipped);
     assert!(i.skipped.iter().any(|s| s.contains("1 wall sweep: comes in with its shape")), "{:?}", i.skipped);
+}
+
+#[test]
+fn a_component_drawing_one_symbol_and_marks_past_it_comes_in_with_its_shape_where_its_own_graphics_give_its_box() {
+    // A stair run: its graphics place its steps (a symbol a foot high) and draw its walk line's point three feet up, which its record
+    // box takes in. The steps, placed, are not its record box, but all it draws is.
+    use crate::project_fixture::{V, ginfo, graphics_block, instance_tree, root, tree_bytes};
+    let mut p = base(2024);
+    let whole = [10.0, 5.0, 0.0, 11.0, 7.0, 3.0];
+    p.recs.push(Rec::new(300, -2_000_919).at(whole, &[]));
+    solid(&mut p, 650, [1.0, 2.0, 1.0]);
+    let square = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut tree = instance_tree(300, 650, square, [10.0, 5.0, 0.0], whole);
+    let up = [V::F64(10.5), V::F64(6.0), V::F64(3.0)];
+    tree.insert(1000, ("GPoint", vec![ginfo(0), V::Seq(up.to_vec()), V::U32(6), V::U32(2), V::U32(0)]));
+    tree.insert(2, root(300, vec![V::Own(3, "GInstance"), V::Own(1000, "GPoint")], whole, whole));
+    p.graphics.extend(graphics_block(300, &tree_bytes(&tree)));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let [c] = components(&i)[..] else { panic!("{:?}", i.skipped) };
+    let family = &i.model.families[&c.family];
+    let shows = family.types[&c.type_name].get("Shape").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+    let mesh = &family.forms[shows].mesh;
+    assert_eq!(mesh.len(), 12, "{:?}", i.skipped);
+    let top = mesh.iter().flatten().map(|p| p[2]).fold(f64::MIN, f64::max);
+    assert!((top - 304.8).abs() < 0.01, "{top}");
+    assert!(i.skipped.iter().any(|s| s.contains("1 stair run: comes in with its shape")), "{:?}", i.skipped);
+}
+
+#[test]
+fn a_component_drawing_its_own_solid_and_a_symbol_with_none_comes_in_with_its_solid() {
+    // A stair run whose graphics hold its steps' solid where it stands, and place a symbol that draws no solid at all.
+    use crate::project_fixture::{V, box_tree, graphics_block, instance_tree, root, tree_bytes};
+    let mut p = base(2024);
+    let whole = [0.0, 0.0, 0.0, 1.0, 2.0, 1.0];
+    p.recs.push(Rec::new(300, -2_000_919).at(whole, &[]));
+    p.graphics.extend(graphics_block(651, &tree_bytes(&[(2, root(651, vec![], whole, whole))].into())));
+    p.extra_ids.push(651);
+    let square = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut tree = box_tree(300, [1.0, 2.0, 1.0], None);
+    let instance = instance_tree(300, 651, square, [0.0; 3], whole).remove(&3).unwrap_or_else(|| panic!("no instance"));
+    tree.insert(5000, instance);
+    tree.insert(2, root(300, vec![V::Own(3, "Geometry"), V::Own(5000, "GInstance")], whole, whole));
+    p.graphics.extend(graphics_block(300, &tree_bytes(&tree)));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let [c] = components(&i)[..] else { panic!("{:?}", i.skipped) };
+    let family = &i.model.families[&c.family];
+    let shows = family.types[&c.type_name].get("Shape").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+    assert_eq!(family.forms[shows].mesh.len(), 12, "{:?}", i.skipped);
+    assert!(i.skipped.iter().any(|s| s.contains("1 stair run: comes in with its shape")), "{:?}", i.skipped);
+}
+
+#[test]
+fn a_shape_its_family_has_no_room_for_comes_in_in_a_family_of_the_same_name_numbered_on() {
+    // Railings that turn (their boxes as wide as long), each drawing a shape of its own, more than one family holds forms for.
+    use crate::project_fixture::{box_tree, graphics_block, tree_bytes};
+    let mut p = base(2024);
+    for k in 0..260u32 {
+        let size = [2.0 + f64::from(k) * 0.001, 2.0, 3.0];
+        p.recs.push(Rec::new(300 + k, -2_000_126).at([0.0, 0.0, 0.0, size[0], size[1], size[2]], &[]));
+        p.graphics.extend(graphics_block(300 + k, &tree_bytes(&box_tree(300 + k, size, None))));
+    }
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    assert_eq!(components(&i).len(), 260, "{:?}", i.skipped);
+    let shown = |c: &&Component| {
+        i.model.families[&c.family].types[&c.type_name].get("Shape").and_then(serde_json::Value::as_u64).is_some_and(|k| k > 0)
+    };
+    assert!(components(&i).iter().all(shown), "{:?}", i.skipped);
+    let families: std::collections::BTreeSet<&str> = components(&i).iter().map(|c| c.family.as_str()).collect();
+    assert_eq!(families, ["Railings", "Railings (2)"].into());
+    // No family holds a type none of them is of.
+    let types: usize = families.iter().map(|f| i.model.families[*f].types.len()).sum();
+    assert_eq!(types, 260);
+}
+
+#[test]
+fn the_families_numbered_on_take_the_shapes_one_has_no_room_for_until_they_too_are_full() {
+    // Shapes of a hundred thousand triangles: three to a family, then the next numbered on, until the last is full.
+    let mut model = std::collections::BTreeMap::new();
+    let mut families = crate::generic::Families::new(["Railings".to_string(), "Railings (3)".to_string()].into());
+    let one = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    let solid = crate::shapes::Shape {
+        triangles: vec![one; bimcraft_core::family::MAX_TRIANGLES],
+        materials: vec![None; bimcraft_core::family::MAX_TRIANGLES],
+        ..crate::shapes::Shape::default()
+    };
+    let names = std::collections::BTreeMap::new();
+    let mut got = Vec::new();
+    for k in 0..3 * (crate::generic::MAX_OVERFLOW + 1) + 2 {
+        got.push(crate::generic::room(&mut model, &mut families, ("Railings", Category::Generic), &format!("T{k}"), &solid, &names));
+    }
+    let named = |n: &str| Some(n.to_string());
+    // A name another family has ("Railings (3)", a Revit family's) is passed over.
+    assert_eq!(
+        got[..9],
+        [
+            named("Railings"),
+            named("Railings"),
+            named("Railings"),
+            named("Railings (2)"),
+            named("Railings (2)"),
+            named("Railings (2)"),
+            named("Railings (4)"),
+            named("Railings (4)"),
+            named("Railings (4)")
+        ]
+    );
+    assert!(got[..3 * (crate::generic::MAX_OVERFLOW + 1)].iter().all(Option::is_some), "{got:?}");
+    assert_eq!(got[3 * (crate::generic::MAX_OVERFLOW + 1)..], [None, None]);
+    // A family that refused a shape keeps no type for it.
+    let types: usize = model.values().map(|f| f.types.len()).sum();
+    assert_eq!(types, 3 * (crate::generic::MAX_OVERFLOW + 1));
+    assert_eq!(model.len(), crate::generic::MAX_OVERFLOW + 1);
+}
+
+#[test]
+fn a_ramp_comes_in_as_a_component_of_the_family_ramps() {
+    let mut p = base(2024);
+    p.recs.push(Rec::new(300, -2_000_180).at([0.0, 0.0, 0.0, 3.0, 12.0, 1.0], &[]));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let [c] = components(&i)[..] else { panic!("{:?}", i.skipped) };
+    assert_eq!(c.family, "Ramps");
+    assert!(i.skipped.iter().any(|s| s.starts_with("1 ramp: comes in as a box")), "{:?}", i.skipped);
 }
 
 /// Moves the planes of a box tree's faces by `place` (their origins, and their directions turned by it about its origin).
