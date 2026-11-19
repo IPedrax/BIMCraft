@@ -237,7 +237,7 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 }
             }
             Kind::Material => {
-                if let Some(t) = to.materials.get_mut(&name).and_then(|m| m.texture.as_mut()) {
+                for t in to.materials.get_mut(&name).into_iter().flat_map(Material::pictures_mut) {
                     here(&Kind::Picture, &mut t.image);
                 }
                 for p in to.materials.get_mut(&name).into_iter().flat_map(Material::fills_mut) {

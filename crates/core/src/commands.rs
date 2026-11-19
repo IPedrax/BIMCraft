@@ -1643,7 +1643,8 @@ other_files(
         &[],
         "{name, color?: \"#rrggbb\" | [r, g, b], transparency?: 0-100, cut?, cut_color?, cut_background?, cut_background_color?, surface?, \
          surface_color?, surface_background?, surface_background_color?, texture?: {kind?, size?: [w, h], angle?, offset?: [x, y], path?, \
-         image?} | null, parameters?: {name: value | null}, rename?, duplicate?: new name, delete?: true} a material of the project's \
+         image?} | null, cut_image?: {size?, angle?, offset?, path?, image?} | null, surface_image?: (the same) | null, \
+         parameters?: {name: value | null}, rename?, duplicate?: new name, delete?: true} a material of the project's \
          library, created or changed: its colour in shaded 3D \
          views, its `transparency` there (percent of what lies behind it that shows through, 0 opaque; the starter Glass has 70), \
          the pattern its cut shows in plans and sections (where a layer is wide enough to hold it), and the one its \
@@ -1656,7 +1657,10 @@ other_files(
          into the project (up to 1024 px a side, 24 pictures), or one the project holds (`image`, its id from `inspect`); null \
          takes the texture away. `cut` and `surface` are the foreground patterns, drawn in `cut_color` and `surface_color` (null, the \
          drawing's ink); `cut_background` and `surface_background` are the patterns behind them, of the same names (`none` or null \
-         for none), in `cut_background_color` and `surface_background_color`. `parameters` sets its values, null or \"\" taking one \
+         for none), in `cut_background_color` and `surface_background_color`. `cut_image` and `surface_image` are image fills: a \
+         picture its cut or its surfaces show in place of both their patterns, a tile of it `size` mm across and up (a metre across \
+         by default), turned `angle` degrees and moved `offset` mm, as a texture's: the PNG or JPEG file at `path` (up to 8 MB, kept \
+         at up to 512 px a side) or one of the project's (`image`); null takes it away. `parameters` sets its values, null or \"\" taking one \
          away: the built-in Mark, Description, Class, Keywords, Comments, Manufacturer, Model, URL (text) and Cost (a number, 0 or more), \
          and project parameters for the `material` category (see `parameter`). `duplicate` copies it under a new name. `rename` \
          renames it, the layers using it following; `delete` takes it away, while no layer uses it. `inspect` lists the library and \
@@ -16023,6 +16027,8 @@ fn material(s: &mut Session, p: &Value) -> R {
             "surface_color",
             "surface_background",
             "surface_background_color",
+            "cut_image",
+            "surface_image",
             "texture",
             "parameters",
             "rename",
@@ -16064,8 +16070,24 @@ fn material(s: &mut Session, p: &Value) -> R {
     match p.get("texture") {
         None => {}
         Some(Value::Null) => mat.texture = None,
-        Some(Value::Object(o)) => mat.texture = Some(texture_param(c, m, o, mat.texture.take())?),
+        Some(Value::Object(o)) => mat.texture = Some(texture_param(c, m, o, mat.texture.take(), "texture")?),
         Some(v) => return Err(bad(c, format!("`texture` is {{kind, size?, angle?, offset?, path?}} or null, not {v}"))),
+    }
+    // A picture in place of the patterns: a texture of kind `image`, from a smaller file.
+    for (key, slot) in [("cut_image", &mut mat.cut_image), ("surface_image", &mut mat.surface_image)] {
+        match p.get(key) {
+            None => {}
+            Some(Value::Null) => *slot = None,
+            Some(Value::Object(o)) => {
+                if let Some(k) = o.keys().find(|k| !["size", "angle", "offset", "path", "image"].contains(&k.as_str())) {
+                    return Err(bad(c, format!("`{key}`: `{k}` isn't one of size, angle, offset, path, image")));
+                }
+                let mut o = o.clone();
+                o.insert("kind".into(), json!("image"));
+                *slot = Some(texture_param(c, m, &o, slot.take(), key)?);
+            }
+            Some(v) => return Err(bad(c, format!("`{key}` is {{size?, angle?, offset?, path?, image?}} or null, not {v}"))),
+        }
     }
     if let Some(v) = p.get("color").filter(|v| !v.is_null()) {
         mat.color = colour(v).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {v}")))?;
@@ -16137,10 +16159,9 @@ fn material(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "material": mat}))
 }
 
-/// The pictures no material's texture is made of, taken out of the project.
+/// The pictures no material's texture or image fill is made of, taken out of the project.
 fn prune_images(m: &mut Model) {
-    let used: BTreeSet<String> =
-        m.materials.values().filter_map(|x| x.texture.as_ref()).filter(|t| t.kind == Kind::Image).map(|t| t.image.clone()).collect();
+    let used: BTreeSet<String> = m.materials.values().flat_map(crate::model::Material::pictures).map(|t| t.image.clone()).collect();
     m.images.retain(|id, _| used.contains(id));
 }
 
@@ -16156,11 +16177,14 @@ fn pair(c: &str, key: &str, v: &Value) -> Result<[f64; 2], String> {
 }
 
 /// A material's texture as the JSON `p` says over its `old` one: kind, size, angle, offset, and for a picture the file to take
-/// into the project (`path`) or the project's own picture (`image`).
-fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Texture>) -> Result<Texture, String> {
+/// into the project (`path`) or the project's own picture (`image`). `what` is `texture`, or the image fill it is
+/// (`cut_image`, `surface_image`), whose picture comes from a smaller file and is kept smaller.
+fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Texture>, what: &str) -> Result<Texture, String> {
     if let Some(k) = p.keys().find(|k| !["kind", "size", "angle", "offset", "path", "image"].contains(&k.as_str())) {
         return Err(bad(c, format!("texture: `{k}` isn't one of kind, size, angle, offset, path, image")));
     }
+    let fill = what != "texture";
+    let (max_bytes, side) = if fill { (texture::FILL_MAX_BYTES, texture::FILL_MAX_SIDE) } else { (texture::MAX_BYTES, texture::MAX_SIDE) };
     let kinds: Vec<&str> = Kind::ALL.iter().map(|k| k.name()).collect();
     let kind = match p.get("kind").filter(|v| !v.is_null()) {
         Some(v) => serde_json::from_value::<Kind>(v.clone())
@@ -16182,15 +16206,21 @@ fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Tex
         (Kind::Image, Some(path), _) => {
             let path = PathBuf::from(path.as_str().ok_or_else(|| bad(c, format!("texture `path` is a file's path, not {path}")))?);
             let len = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-            if len > texture::MAX_BYTES as u64 {
-                return Err(bad(c, format!("{} is too large ({len} bytes)", path.display())));
+            if len > max_bytes as u64 {
+                return Err(bad(
+                    c,
+                    format!("{} is too large ({len} bytes); {what} takes a file of up to {} MB", path.display(), max_bytes >> 20),
+                ));
             }
             let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
             let stem = path.file_stem().map_or_else(|| "picture".into(), |s| s.to_string_lossy().into_owned());
-            let picture = Picture::import(&stem, &bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let picture = Picture::import_within(&stem, &bytes, side).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
             let (id, (w, h)) = (picture.id(), picture.size());
             if !m.images.contains_key(&id) && m.images.len() >= texture::MAX_IMAGES {
-                return Err(bad(c, format!("the project holds {} pictures already; take a texture of one away first", m.images.len())));
+                return Err(bad(
+                    c,
+                    format!("the project holds {} pictures already; take a texture or an image fill of one away first", m.images.len()),
+                ));
             }
             m.images.insert(id.clone(), picture);
             t.image = id;
@@ -16209,7 +16239,7 @@ fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Tex
         (_, None, None) => t.image.clear(),
         _ => return Err(bad(c, "only a texture of kind `image` takes a `path` or an `image`")),
     }
-    t.check(&m.images).map_err(|e| bad(c, format!("texture: {e}")))?;
+    t.check(&m.images).map_err(|e| bad(c, format!("{what}: {e}")))?;
     Ok(t)
 }
 

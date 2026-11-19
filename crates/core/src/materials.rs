@@ -8,7 +8,7 @@ use bimcraft_i18n::ui_msg;
 use serde_json::Value;
 
 use crate::model::{MAX_TEXT, Material, Model, ParameterKind, PatternLayer};
-use crate::texture::{Picture, Sampler};
+use crate::texture::{Kind, Picture, Sampler, Texture};
 
 /// The category of project parameters a material's values are of.
 pub const CATEGORY: &str = "material";
@@ -114,6 +114,16 @@ impl Material {
     pub fn fills(&self) -> impl Iterator<Item = &String> {
         let back = [&self.cut_background, &self.surface_background].into_iter().flatten().filter_map(|l| l.fill.as_ref());
         [&self.cut_pattern, &self.surface_pattern].into_iter().flatten().chain(back)
+    }
+
+    /// Its texture and its image fills, those of pictures: what names the project's pictures.
+    pub fn pictures(&self) -> impl Iterator<Item = &Texture> {
+        [&self.texture, &self.cut_image, &self.surface_image].into_iter().flatten().filter(|t| t.kind == Kind::Image)
+    }
+
+    /// The same, to change.
+    pub fn pictures_mut(&mut self) -> impl Iterator<Item = &mut Texture> {
+        [&mut self.texture, &mut self.cut_image, &mut self.surface_image].into_iter().flatten().filter(|t| t.kind == Kind::Image)
     }
 
     /// The project's fill patterns it shows, by name, to change.

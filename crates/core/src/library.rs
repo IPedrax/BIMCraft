@@ -1688,7 +1688,7 @@ impl Model {
             }
         }
         for m in self.materials.values_mut() {
-            if let Some(tx) = m.texture.as_mut().filter(|tx| !tx.image.is_empty()) {
+            for tx in m.pictures_mut().filter(|tx| !tx.image.is_empty()) {
                 f(&Kind::Picture, &mut tx.image);
             }
         }

@@ -13,7 +13,7 @@ use bimcraft_core::materials::{BUILT_IN, CATEGORY, CUBE_VIEW, cube};
 use bimcraft_core::model::{Material, Model, ParameterKind, Pattern, PatternLayer};
 use bimcraft_core::render::pattern_swatch;
 use bimcraft_core::standard_colors::{self, Collection, Kept};
-use bimcraft_core::texture::{Kind as TextureKind, Texture};
+use bimcraft_core::texture::{FILL_MAX_BYTES, FILL_MAX_SIDE, Kind as TextureKind, Sampler, Texture};
 use bimcraft_i18n::msg;
 use egui::{
     Align, Button, Color32, ColorImage, ComboBox, Context, Grid, Id as UiId, Layout, Mesh, Painter, Pos2, Rect, Response, RichText,
@@ -92,9 +92,11 @@ pub(crate) struct MaterialsDialog {
     pending: BTreeMap<&'static str, [u8; 3]>,
     /// Its transparency as set on the slider, percent (applied once the mouse lets go).
     clear: Option<u8>,
-    /// The texture's fields as typed (a tile's width and height, the angle, the offset across and up), for the material and
-    /// texture they were made from.
-    texture: Option<(String, Texture, [String; 5])>,
+    /// The fields of its texture and of its image fills as typed (a tile's width and height, the angle, the offset across and
+    /// up), by the command's key, for the material and texture they were made from.
+    typed: BTreeMap<&'static str, (String, Texture, [String; 5])>,
+    /// The image fills' tiles as drawn, by material and whether it's the cut's, and what each was drawn of.
+    fills: HashMap<(String, bool), (String, TextureHandle)>,
     /// The tiles drawn for the list, by material, and what each was drawn of.
     tiles: HashMap<String, (String, TextureHandle)>,
     /// The cube as drawn, and what it was drawn of.
@@ -149,7 +151,8 @@ impl MaterialsDialog {
             starred: starred(favorites),
             pending: BTreeMap::new(),
             clear: None,
-            texture: None,
+            typed: BTreeMap::new(),
+            fills: HashMap::new(),
             tiles: HashMap::new(),
             cube: None,
             view: CUBE_VIEW,
@@ -181,6 +184,8 @@ struct Asked {
     star: Option<(String, bool)>,
     /// A picture for the material's texture.
     picture: bool,
+    /// A picture for an image fill: the cut's (true) or the surfaces'.
+    fill_picture: Option<bool>,
     favorites: bool,
     colors: bool,
     parameter: Option<Value>,
@@ -478,6 +483,12 @@ fn settings(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material, a
     });
     for (cut, title) in [(false, msg!("Surface Pattern")), (true, msg!("Cut Pattern"))] {
         heading(ui, t(title));
+        let image = if cut { &m.cut_image } else { &m.surface_image };
+        fill_switch(ui, d, asked, cut, image.is_some());
+        if let Some(x) = image {
+            image_fill(ui, d, model, m, x, cut, asked);
+            continue;
+        }
         Grid::new(("material-patterns", cut)).num_columns(4).spacing(vec2(8.0, 6.0)).min_col_width(0.0).show(ui, |ui| {
             for row in rows(m, cut) {
                 row_label(ui, t(row.label), 86.0);
@@ -539,8 +550,124 @@ fn texture(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material, as
         let (w, h) = p.size();
         ui.label(RichText::new(format!("{} ({w} × {h} px)", p.name())).color(pal().muted));
     }
+    let labels = [msg!("Tile Width"), msg!("Tile Height"), msg!("Texture Angle"), msg!("Texture Offset Across"), msg!("Texture Offset Up")];
+    tile_fields(ui, d, model, x, "texture", labels, asked);
+}
+
+/// Whether a material's surfaces (or its cut) show patterns or a picture: the picture, once a file is picked for it.
+fn fill_switch(ui: &mut Ui, d: &MaterialsDialog, asked: &mut Asked, cut: bool, image: bool) {
+    let (key, names) = if cut {
+        ("cut_image", [msg!("Cut Pattern Fill"), msg!("Cut Image Fill")])
+    } else {
+        ("surface_image", [msg!("Surface Pattern Fill"), msg!("Surface Image Fill")])
+    };
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        row_label(ui, t("Fill"), 86.0);
+        for (on, text, label, hover) in [
+            (!image, msg!("Pattern"), names[0], msg!("A foreground and a background pattern")),
+            (image, msg!("Image"), names[1], msg!("A JPG or PNG picture in place of the patterns")),
+        ] {
+            let r = ui.selectable_label(on, t(text));
+            r.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, on, t(label)));
+            if r.on_hover_text(t(hover)).clicked() && !on {
+                if image {
+                    asked.run = Some(json!({"name": d.picked, key: null}));
+                } else {
+                    asked.fill_picture = Some(cut);
+                }
+            }
+        }
+    });
+}
+
+/// An image fill's tile, drawn once for what it is of.
+fn fill_tile(ctx: &Context, d: &mut MaterialsDialog, model: &Model, m: &Material, x: &Texture, cut: bool) -> Option<egui::TextureId> {
+    let (id, key) = ((d.picked.clone(), cut), format!("{x:?}"));
+    if d.fills.get(&id).is_none_or(|(k, _)| *k != key) {
+        let side = 64;
+        let rgb = Sampler::new(x, m.color, &model.images)?.swatch(side);
+        let image = ColorImage::from_rgb([side, side], &rgb);
+        d.fills.insert(id.clone(), (key, ctx.load_texture("material-image-fill", image, TextureOptions::LINEAR_REPEAT)));
+    }
+    d.fills.get(&id).map(|(_, h)| h.id())
+}
+
+/// A picture `rect` big, or the border of one.
+fn paint_tile(ui: &Ui, rect: Rect, tile: Option<egui::TextureId>) {
+    if let Some(id) = tile {
+        // Repeated at its own proportions, however wide the box.
+        let across = (rect.width() / rect.height().max(1.0)).max(1.0);
+        let up = (rect.height() / rect.width().max(1.0)).max(1.0);
+        ui.painter().image(id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(across, up)), Color32::WHITE);
+    }
+    ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, pal().border), StrokeKind::Inside);
+}
+
+/// An image fill: its picture, another to load in its place, and how big a tile of it is, how turned and moved.
+fn image_fill(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material, x: &Texture, cut: bool, asked: &mut Asked) {
+    let tile = fill_tile(ui.ctx(), d, model, m, x, cut);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        row_label(ui, t("Image"), 86.0);
+        let (rect, _) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::hover());
+        paint_tile(ui, rect, tile);
+        ui.vertical(|ui| {
+            if let Some(p) = model.images.get(&x.image) {
+                let (w, h) = p.size();
+                ui.label(RichText::new(format!("{} ({w} × {h} px)", p.name())).color(pal().muted));
+            }
+            let label = if cut { msg!("Replace Cut Image") } else { msg!("Replace Surface Image") };
+            let r = ui.button(t("Replace Image…"));
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t(label)));
+            let limits = tf(
+                "A JPG or PNG of up to {} MB, kept at up to {} px a side",
+                &[&(FILL_MAX_BYTES >> 20).to_string(), &FILL_MAX_SIDE.to_string()],
+            );
+            if r.on_hover_text(limits).clicked() {
+                asked.fill_picture = Some(cut);
+            }
+        });
+    });
+    let (key, labels) = if cut {
+        (
+            "cut_image",
+            [
+                msg!("Cut Image Width"),
+                msg!("Cut Image Height"),
+                msg!("Cut Image Angle"),
+                msg!("Cut Image Offset Across"),
+                msg!("Cut Image Offset Up"),
+            ],
+        )
+    } else {
+        (
+            "surface_image",
+            [
+                msg!("Surface Image Width"),
+                msg!("Surface Image Height"),
+                msg!("Surface Image Angle"),
+                msg!("Surface Image Offset Across"),
+                msg!("Surface Image Offset Up"),
+            ],
+        )
+    };
+    tile_fields(ui, d, model, x, key, labels, asked);
+}
+
+/// How big a tile of a texture or of an image fill is, how turned and moved: five fields, `labels`, a change made by the
+/// `material` command's `key` once one is typed in.
+fn tile_fields(
+    ui: &mut Ui,
+    d: &mut MaterialsDialog,
+    model: &Model,
+    x: &Texture,
+    key: &'static str,
+    labels: [&'static str; 5],
+    asked: &mut Asked,
+) {
     let units = model.units;
-    if !d.texture.as_ref().is_some_and(|(n, old, _)| *n == d.picked && old == x) {
+    if !d.typed.get(key).is_some_and(|(n, old, _)| *n == d.picked && old == x) {
         let typed = [
             units.length(x.size[0]),
             units.length(x.size[1]),
@@ -548,19 +675,12 @@ fn texture(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material, as
             units.length(x.offset[0]),
             units.length(x.offset[1]),
         ];
-        d.texture = Some((d.picked.clone(), x.clone(), typed));
+        d.typed.insert(key, (d.picked.clone(), x.clone(), typed));
     }
     let picked = d.picked.clone();
-    let Some((_, _, typed)) = &mut d.texture else { return };
-    Grid::new("material-tile").num_columns(2).spacing(vec2(12.0, 6.0)).min_col_width(LABEL).show(ui, |ui| {
-        let rows = [
-            (msg!("Tile Width"), 0),
-            (msg!("Tile Height"), 1),
-            (msg!("Texture Angle"), 2),
-            (msg!("Texture Offset Across"), 3),
-            (msg!("Texture Offset Up"), 4),
-        ];
-        for (label, k) in rows {
+    let Some((_, _, typed)) = d.typed.get_mut(key) else { return };
+    Grid::new(("material-tile", key)).num_columns(2).spacing(vec2(12.0, 6.0)).min_col_width(LABEL).show(ui, |ui| {
+        for (k, label) in labels.into_iter().enumerate() {
             let l = ui.label(t(label));
             let hint = if k == 2 { "°" } else { units.name() };
             let r = ui.add(TextEdit::singleline(&mut typed[k]).desired_width(120.0).hint_text(hint)).labelled_by(l.id);
@@ -569,7 +689,7 @@ fn texture(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material, as
                 match (length(0), length(1), number(&typed[2]), length(3), length(4)) {
                     (Some(w), Some(h), Some(a), Some(ox), Some(oy)) => {
                         if [w, h, a, ox, oy] != [x.size[0], x.size[1], x.angle, x.offset[0], x.offset[1]] {
-                            asked.run = Some(json!({"name": picked, "texture": {"size": [w, h], "angle": a, "offset": [ox, oy]}}));
+                            asked.run = Some(json!({"name": picked, key: {"size": [w, h], "angle": a, "offset": [ox, oy]}}));
                         }
                     }
                     _ => asked.wrong = Some(tf("`{}` is not a size, an angle or an offset", &[&typed[k]])),
@@ -625,10 +745,19 @@ fn preview(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material) {
         for (cut, label) in [(false, msg!("Surface")), (true, msg!("Cut"))] {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                let [fg, bg] = rows(m, cut);
-                let ink = |r: &Row| r.color.map_or(Color32::BLACK, rgb);
-                let layers = [((bg.pattern, bg.fill.as_ref()), ink(&bg)), ((fg.pattern, fg.fill.as_ref()), ink(&fg))];
-                pattern_tile(ui, tile, model, &layers);
+                match if cut { &m.cut_image } else { &m.surface_image } {
+                    Some(x) => {
+                        let picture = fill_tile(ui.ctx(), d, model, m, x, cut);
+                        let (rect, _) = ui.allocate_exact_size(tile, Sense::hover());
+                        paint_tile(ui, rect, picture);
+                    }
+                    None => {
+                        let [fg, bg] = rows(m, cut);
+                        let ink = |r: &Row| r.color.map_or(Color32::BLACK, rgb);
+                        let layers = [((bg.pattern, bg.fill.as_ref()), ink(&bg)), ((fg.pattern, fg.fill.as_ref()), ink(&fg))];
+                        pattern_tile(ui, tile, model, &layers);
+                    }
+                }
                 ui.label(RichText::new(t(label)).small().color(pal().muted));
             });
         }
@@ -881,6 +1010,16 @@ impl BimApp {
         }
     }
 
+    /// The picture at `path` as material `material`'s image fill, of its cut or of its surfaces; what goes wrong said in the
+    /// window.
+    pub(crate) fn load_fill_image(&mut self, material: &str, cut: bool, path: &Path) {
+        let key = if cut { "cut_image" } else { "surface_image" };
+        let ok = self.run("material", json!({"name": material, key: {"path": path.to_string_lossy()}})).is_some();
+        if let Some(d) = self.materials_dialog.as_mut() {
+            d.error = (!ok).then(|| self.status.text.clone());
+        }
+    }
+
     /// The Materials window: Manage > Materials.
     pub(crate) fn materials_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.materials_dialog.take() else { return };
@@ -984,6 +1123,11 @@ impl BimApp {
             self.ask_file(ctx, dialog, false, move |app, path| {
                 app.run("material", json!({"name": material, "texture": {"kind": "image", "path": path.to_string_lossy()}}));
             });
+        }
+        if let Some(cut) = asked.fill_picture {
+            let material = d.picked.clone();
+            let dialog = rfd::AsyncFileDialog::new().add_filter(t("Pictures"), &["jpg", "jpeg", "png"]);
+            self.ask_file(ctx, dialog, false, move |app, path| app.load_fill_image(&material, cut, &path));
         }
         if let Some(n) = asked.picked {
             d.pick(n);

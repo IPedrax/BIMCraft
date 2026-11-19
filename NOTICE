@@ -272,3 +272,29 @@ which carries this licence:
 "RAL" is a trademark of its owner, who has no connection with this project. The
 name appears only to identify the colours. The sRGB values shown are
 approximations worked out from the CIELAB values above.
+
+==============================================================================
+Starter material pictures (crates/core/assets/materials)
+==============================================================================
+
+The pictures of the starter materials Grass, Gravel, Wood, Paving and Water come
+from OpenGameArt.org. Each was shrunk to 128 pixels on its longest side and
+saved again as a JPEG.
+
+"Paving - Grey and slightly greenish bricks- Seamless Texture with normalmap"
+by Keith333, https://opengameart.org/content/paving-grey-and-slightly-greenish-bricks-seamless-texture-with-normalmap
+licensed under CC BY 3.0, https://creativecommons.org/licenses/by/3.0/
+Changed: shrunk and re-encoded.
+
+These are dedicated to the public domain under CC0 1.0
+(https://creativecommons.org/publicdomain/zero/1.0/); they are credited here as
+a courtesy:
+  "Grass Texture,seamless 2d" by surfacecurve,
+    https://opengameart.org/content/grass-textureseamless-2d
+  "Surface pack - ground1.jpg" by prolific,
+    https://opengameart.org/content/surface-pack-ground1jpg
+  "Wood Texture Tiles" by JCW,
+    https://opengameart.org/content/wood-texture-tiles
+  "Photorealistic Texture Pack 3 - PTP-Elements_07-256x256.png" by Screaming
+    Brain Studios,
+    https://opengameart.org/content/photorealistic-texture-pack-3-ptp-elements07-256x256png

@@ -690,6 +690,12 @@ pub struct Material {
     pub cut_background: Option<PatternLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface_background: Option<PatternLayer>,
+    /// A picture its cut and its surfaces show in plans and sections in place of their patterns, foreground and background: a tile
+    /// of it its size in the building, turned and moved as a texture is (of kind `image`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_image: Option<Texture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_image: Option<Texture>,
     /// What its surfaces look like in the 3D view, over its colour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture: Option<Texture>,
@@ -730,6 +736,8 @@ impl Default for Material {
             surface_color: None,
             cut_background: None,
             surface_background: None,
+            cut_image: None,
+            surface_image: None,
             texture: None,
             transparency: 0,
             parameters: BTreeMap::new(),
@@ -4572,6 +4580,37 @@ impl Model {
             // Glass is the one that lets the building behind it show.
             let transparency = if name == "Glass" { GLASS_TRANSPARENCY } else { 0 };
             m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture, transparency, ..Material::default() });
+        }
+        // Ground and finishes shown by a picture: an image fill on their surfaces in plan, the same picture their texture in 3D,
+        // each a tile `size` mm across and up (the pictures' sources are in `assets/materials/README.md` and NOTICE).
+        for (name, file, bytes, color, cut, size) in [
+            (msg!("Grass"), "grass", &include_bytes!("../assets/materials/grass.jpg")[..], [71, 85, 45], Pattern::None, [1000.0, 1000.0]),
+            (
+                msg!("Gravel"),
+                "gravel",
+                &include_bytes!("../assets/materials/gravel.jpg")[..],
+                [106, 98, 70],
+                Pattern::Concrete,
+                [1000.0, 1000.0],
+            ),
+            (msg!("Wood"), "wood", &include_bytes!("../assets/materials/wood.jpg")[..], [154, 112, 66], Pattern::Diagonal, [600.0, 600.0]),
+            (
+                msg!("Paving"),
+                "paving",
+                &include_bytes!("../assets/materials/paving.jpg")[..],
+                [134, 135, 131],
+                Pattern::Concrete,
+                [800.0, 512.0],
+            ),
+            (msg!("Water"), "water", &include_bytes!("../assets/materials/water.jpg")[..], [65, 175, 189], Pattern::None, [2000.0, 2000.0]),
+        ] {
+            let Some(picture) = Picture::bundled(file, bytes) else { continue };
+            let id = picture.id();
+            m.images.insert(id.clone(), picture);
+            let fill = Texture { size, ..Texture::new(Kind::Image) };
+            let fill = Texture { image: id, ..fill };
+            let material = Material { color, cut, surface_image: Some(fill.clone()), texture: Some(fill), ..Material::default() };
+            m.materials.insert(language.word(name).into(), material);
         }
         m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
@@ -8916,6 +8955,11 @@ impl Model {
             }
             if let Some(t) = &x.texture {
                 t.check(&self.images).map_err(|e| format!("material `{n}`: texture: {e}"))?;
+            }
+            for (what, f) in [("cut", &x.cut_image), ("surface", &x.surface_image)] {
+                if let Some(f) = f {
+                    f.check_fill(&self.images).map_err(|e| format!("material `{n}`: {what} image fill: {e}"))?;
+                }
             }
         }
         for (n, f) in &self.families {

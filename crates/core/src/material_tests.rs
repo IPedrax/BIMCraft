@@ -498,3 +498,140 @@ fn a_pattern_has_a_swatch_to_show_in_a_list() {
     }
     assert_ne!(crate::render::pattern_swatch(Pattern::Diagonal, w, h), crate::render::pattern_swatch(Pattern::Grid, w, h));
 }
+
+/// A PNG of `w` by `h` pixels of one colour, written for test `test`, and its path.
+fn png_file(test: &str, w: u32, h: u32, color: [u8; 4]) -> std::path::PathBuf {
+    let folder = std::env::temp_dir().join(format!("bimcraft-image-fill-{test}-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let rgba: Vec<u8> = (0..w * h).flat_map(|_| color).collect();
+    let png = tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(w, h).unwrap()).unwrap().encode_png().unwrap();
+    let path = folder.join("fill.png");
+    std::fs::write(&path, png).unwrap();
+    path
+}
+
+/// The pictures `owner` is drawn with, and what colours show in them.
+fn pictures_of(d: &crate::render::Drawing, owner: u64) -> Vec<Vec<Rgb>> {
+    d.prims
+        .iter()
+        .zip(&d.owners)
+        .filter(|(_, o)| **o == Some(owner))
+        .filter_map(|(p, _)| match p {
+            Prim::Image { rgba, .. } => Some(rgba.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).map(|p| Rgb(p[0], p[1], p[2])).collect()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn an_image_fill_is_taken_in_small_and_shows_in_place_of_a_surfaces_patterns() {
+    let file = png_file("surface", 1200, 600, [10, 120, 200, 255]);
+    let mut s = Session::new();
+    let fill = json!({"path": file, "angle": 30, "offset": [100, 0]});
+    run(&mut s, "material", json!({"name": "Photo", "surface": "horizontal", "surface_color": "#ff0000", "surface_image": fill}));
+    let t = s.model.materials["Photo"].surface_image.clone().unwrap();
+    let (w, h) = s.model.images[&t.image].size();
+    assert!(w <= crate::texture::FILL_MAX_SIDE && h <= crate::texture::FILL_MAX_SIDE, "kept at {w} by {h}");
+    assert_eq!((t.size, t.angle, t.offset), ([1000.0, 500.0], 30.0, [100.0, 0.0]), "a metre across, as tall as the picture");
+    let (f, view) = floor_of(&mut s, "Photo");
+    let d = crate::render::draw(&s.model, 100000, view);
+    let pictures = pictures_of(&d, f);
+    assert_eq!(pictures.len(), 1, "one picture over the floor");
+    assert!(pictures[0].iter().all(|c| *c == Rgb(10, 120, 200)) && pictures[0].len() > 1000, "of the picture's colour");
+    assert!(!inks(&d, f).1.contains(&Rgb(255, 0, 0)), "and no foreground lines");
+    // Taken away, the patterns are back and the picture goes with it.
+    let before = Session::new().model.images.len();
+    run(&mut s, "material", json!({"name": "Photo", "surface_image": null}));
+    assert_eq!(s.model.images.len(), before);
+    let d = crate::render::draw(&s.model, 100000, view);
+    assert!(pictures_of(&d, f).is_empty() && inks(&d, f).1.contains(&Rgb(255, 0, 0)));
+}
+
+#[test]
+fn a_cut_layer_shows_its_image_fill() {
+    let file = png_file("cut", 64, 64, [200, 40, 40, 255]);
+    let mut s = Session::new();
+    run(&mut s, "material", json!({"name": "Stone", "cut": "diagonal", "cut_image": {"path": file, "size": 400}}));
+    assert_eq!(s.model.materials["Stone"].cut_image.as_ref().unwrap().size, [400.0, 400.0]);
+    let layers = json!([{"function": "structure", "material": "Stone", "thickness": 300}]);
+    run(&mut s, "type", json!({"category": "wall", "name": "Stone 300", "layers": layers}));
+    let w = run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "type": "Stone 300"}))["ids"][0].as_u64().unwrap();
+    run(&mut s, "detail", json!({"view": 100000, "detail": "fine"}));
+    let view = View { angle: 0.0, scale: 0.2, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
+    let d = crate::render::draw(&s.model, 100000, view);
+    let pictures = pictures_of(&d, w);
+    assert!(pictures.iter().any(|p| p.contains(&Rgb(200, 40, 40))), "{}", pictures.len());
+    // Its picture is one of the project's, so the cut of another material may show it by its id.
+    let id = s.model.materials["Stone"].cut_image.as_ref().unwrap().image.clone();
+    run(&mut s, "material", json!({"name": "Other", "surface_image": {"image": id}}));
+}
+
+#[test]
+fn an_image_fill_that_is_not_one_is_refused() {
+    let file = png_file("refused", 8, 8, [0, 0, 0, 255]);
+    let mut s = Session::new();
+    let before = s.model.images.clone();
+    let not_a_picture = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+    for bad in [
+        json!({"cut_image": {"path": not_a_picture}}),
+        json!({"cut_image": {"kind": "brick"}}),
+        json!({"cut_image": {"image": "img-nothing"}}),
+        json!({"surface_image": {}}),
+        json!({"surface_image": {"path": file, "size": [0, 10]}}),
+        json!({"surface_image": "photo.png"}),
+    ] {
+        let mut p = bad.clone();
+        p["name"] = json!("Photo");
+        assert!(s.execute("material", &p).is_err(), "{bad}");
+    }
+    assert_eq!(s.model.images, before, "nothing came in");
+    // A file larger than an image fill takes.
+    let big = file.with_file_name("big.png");
+    std::fs::write(&big, vec![0_u8; crate::texture::FILL_MAX_BYTES + 1]).unwrap();
+    let e = s.execute("material", &json!({"name": "Photo", "cut_image": {"path": big}})).unwrap_err();
+    assert!(e.contains("8 MB"), "{e}");
+}
+
+#[test]
+fn a_view_past_its_image_fill_budget_shows_the_rest_in_their_average_colour() {
+    let file = png_file("budget", 16, 16, [30, 160, 60, 255]);
+    let mut s = Session::new();
+    run(&mut s, "material", json!({"name": "Grass", "surface_image": {"path": file}}));
+    let (f, _) = floor_of(&mut s, "Grass");
+    // A view bigger than the budget holds.
+    let side = (crate::render::MAX_IMAGE_FILL as f64).sqrt() as u32 + 200;
+    let view = View { angle: 0.0, scale: f64::from(side) / 4000.0, cx: 3000.0, cy: 2000.0, width: side * 2, height: side };
+    let d = crate::render::draw(&s.model, 100000, view);
+    assert!(pictures_of(&d, f).is_empty());
+    assert!(inks(&d, f).0.contains(&Rgb(30, 160, 60)), "filled in its average colour");
+    assert!(d.notes.iter().any(|n| n.contains("image fills")), "{:?}", d.notes);
+}
+
+#[test]
+fn a_material_with_image_fills_saved_and_read_keeps_them() {
+    let file = png_file("saved", 32, 16, [90, 90, 20, 255]);
+    let mut s = Session::new();
+    let before = s.model.images.len();
+    run(&mut s, "material", json!({"name": "Photo", "cut_image": {"path": file, "angle": 45}, "surface_image": {"path": file}}));
+    let text = serde_json::to_string(&s.model).unwrap();
+    let back = crate::model::Model::read(&text).unwrap().0;
+    assert_eq!(back.materials["Photo"], s.model.materials["Photo"]);
+    assert_eq!(back.images.len(), before + 1, "one picture for both");
+}
+
+#[test]
+fn the_starter_library_has_ground_and_finishes_shown_by_a_picture() {
+    let s = Session::new();
+    for name in ["Grass", "Gravel", "Wood", "Paving", "Water"] {
+        let m = &s.model.materials[name];
+        let fill = m.surface_image.as_ref().unwrap_or_else(|| panic!("{name} has an image fill"));
+        let (w, h) = s.model.images[&fill.image].size();
+        assert!(w.max(h) <= 128 && w.min(h) >= 64, "{name}: {w} by {h}");
+        assert_eq!(m.texture.as_ref(), Some(fill), "{name}: the same picture in 3D");
+    }
+    // Held as the JPEGs they ship as: a new project stays small.
+    let text = serde_json::to_string(&s.model.images).unwrap();
+    assert!(text.len() < 32_000, "{} bytes", text.len());
+    let back = crate::model::Model::read(&serde_json::to_string(&s.model).unwrap()).unwrap().0;
+    assert_eq!(back.images, s.model.images);
+}

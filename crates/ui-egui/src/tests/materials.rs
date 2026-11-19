@@ -148,6 +148,41 @@ fn parameters_are_typed_beside_the_preview_and_new_ones_added_there() {
     assert_eq!(held(&h, "Fire Rating"), Some(json!("A1")));
 }
 
+/// A picture for an image fill: a JPEG of 16 by 8 pixels, `gradient`.
+const FILL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../core/testdata/gradient.jpg");
+
+#[test]
+fn an_image_fill_takes_the_place_of_a_surfaces_patterns_and_is_sized_there() {
+    let mut h = app(BOX);
+    let folder = keep_in(&mut h, "image-fill");
+    let file = std::path::PathBuf::from(FILL);
+    open_materials(&mut h);
+    press(&mut h, "Brick");
+    assert!(h.query_by_label("Surface Foreground Pattern").is_some());
+    h.state_mut().load_fill_image("Brick", false, &file);
+    h.run();
+    assert!(h.state().session.model.materials["Brick"].surface_image.is_some());
+    assert!(h.query_by_label("Surface Foreground Pattern").is_none(), "the patterns make way for it");
+    assert!(h.query_by_label("Cut Foreground Pattern").is_some(), "the cut keeps its own");
+    assert!(h.query_by_label_contains("gradient (16 × 8 px)").is_some());
+    type_into(&mut h, "Surface Image Width", "250");
+    key(&mut h, Key::Enter);
+    type_into(&mut h, "Surface Image Angle", "45");
+    key(&mut h, Key::Enter);
+    let fill = h.state().session.model.materials["Brick"].surface_image.clone().unwrap();
+    assert_eq!((fill.size[0], fill.angle), (250.0, 45.0));
+    // Back to patterns: the picture goes, and the patterns are as they were.
+    press(&mut h, "Surface Pattern Fill");
+    assert!(h.state().session.model.materials["Brick"].surface_image.is_none());
+    assert!(h.query_by_label("Surface Foreground Pattern").is_some());
+    // A file that is no picture is said in the window.
+    h.state_mut().load_fill_image("Brick", true, &folder.join("favorites.json"));
+    h.run();
+    assert!(h.state().session.model.materials["Brick"].cut_image.is_none());
+    assert!(h.state().status.error);
+    let _ = std::fs::remove_dir_all(folder);
+}
+
 #[test]
 fn the_window_fits_a_small_screen() {
     let mut h = app(BOX);
@@ -184,6 +219,8 @@ fn materials_screenshots() {
             pick(&mut h, Role::ComboBox, "Surface Background Pattern");
             save(&mut h, "patterns");
             key(&mut h, Key::Escape);
+            h.state_mut().load_fill_image("Brick", true, std::path::Path::new(FILL));
+            save(&mut h, "image-fill");
             press(&mut h, "New");
             press(&mut h, "Standard Color…");
             type_into(&mut h, "Search by code or name", "red");

@@ -1,7 +1,8 @@
 # Materials
 
 Manage > Materials (`crates/ui-egui/src/materials.rs`) is the project's library in three columns. The left lists the materials,
-with New (Custom or Standard Color), Duplicate, Delete, a search and a star on each. The middle is how the picked one looks. The
+with New (Custom or Standard Color), Duplicate, Delete, a search and a star on each. The middle is how the picked one looks: its surface and its cut
+each switch between Pattern and Image. The
 right is its cube and its parameters. Every change is a `material` command.
 
 ## Patterns
@@ -12,6 +13,22 @@ in code, or one of the project's fill patterns (`fill`), in its own colour. No c
 without the new fields draws as it always did. `render::material_surface` and `render::cut_layer` draw them, background first.
 `Material::fills` and `fills_mut` are every fill pattern a material names: use them wherever a fill pattern's name is checked or renamed.
 The drop-downs show each pattern through `render::pattern_swatch`.
+
+## Image fills
+
+In place of both patterns, a surface or a cut may show a picture (`Material::surface_image`, `cut_image`; the `material` command's
+`surface_image` and `cut_image`). An image fill is a `Texture` of kind `image`, a tile of it `size` mm across and up, turned and
+moved as a texture is, and the project holds its picture in `Model::images` as a texture's. Its file is held to
+`texture::FILL_MAX_BYTES` (8 MB) and kept at `FILL_MAX_SIDE` (512 px a side), smaller than a texture's, because a plan draws it
+pixel by pixel: `render::image_fill` lays a `Prim::Image` over the ring's box on the view, clear outside the ring. A drawing's image
+fills cover at most `render::MAX_IMAGE_FILL` pixels between them; past that, the rest fill in their picture's average colour, with a
+note. Patterns show only at Fine detail and a cut image fill only where a layer is wide enough to hold a pattern; a section box's cap
+fills in the picture's average colour. `Material::pictures` and `pictures_mut` are every picture a material names (its texture and
+its image fills): use them wherever a picture is kept, copied or renamed.
+
+The starter library's Grass, Gravel, Wood, Paving and Water have an image fill on their surfaces and the same picture as their
+texture. Their pictures are in `crates/core/assets/materials`, 128 px JPEGs (18 KB in all) that `Picture::bundled` keeps as they are, so a new
+project stays small. The sources and licences are in that folder's README and in NOTICE. Paving is CC BY 3.0 and must stay credited.
 
 ## Parameters
 
