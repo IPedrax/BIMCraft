@@ -27,6 +27,8 @@ pub const MAX_POINTS: usize = 10_000;
 pub const MAX_FIELDS: usize = 200;
 /// The longest a field's key may be.
 pub const MAX_KEY: usize = 40;
+/// The most papers one title block may list.
+pub const MAX_SIZES: usize = 32;
 /// The longest a text or a field's value may be.
 pub const MAX_TEXT: usize = 1024;
 /// The smallest and largest lettering, mm on paper.
@@ -189,6 +191,10 @@ pub struct TitleBlock {
     /// The family's linework supplies the outer frame. Standard fold marks remain independent.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub template_border: bool,
+    /// The papers it is for (`A3`, `ANSI D`): a sheet that names no title block is drawn with the first of the project's, by
+    /// name, that lists its paper ([`Model::title_block_of`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sizes: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<Stroke>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -210,6 +216,7 @@ impl Default for TitleBlock {
             font: arial(),
             drawing_area: None,
             template_border: false,
+            sizes: Vec::new(),
             lines: vec![
                 Stroke { points: vec![P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)], closed: true, pen: Pen::BORDER, color: None },
                 Stroke { points: vec![P2(0.0, 26.0), P2(w, 26.0)], closed: false, pen: Pen::PROJECTION, color: None },
@@ -319,6 +326,21 @@ pub fn fill(text: &str, values: &BTreeMap<String, String>) -> String {
     out
 }
 
+impl Model {
+    /// The title block sheet `sh` is drawn with, and its name: the one it names, or, when it names none, the first of the
+    /// project's (by name) that lists its paper. None for the built-in title box, and for a sheet with no title block at all.
+    pub fn title_block_of(&self, sh: &crate::model::Sheet) -> Option<(&str, &TitleBlock)> {
+        if sh.has_no_title_block() {
+            return None;
+        }
+        if !sh.title_block.is_empty() {
+            return self.title_blocks.get_key_value(&sh.title_block).map(|(n, t)| (n.as_str(), t));
+        }
+        let paper = crate::model::paper_name(&sh.size);
+        self.title_blocks.iter().find(|(_, t)| t.sizes.iter().any(|s| crate::model::paper_name(s) == paper)).map(|(n, t)| (n.as_str(), t))
+    }
+}
+
 impl TitleBlock {
     /// The fields its lettering names that it doesn't define and that aren't automatic, uppercase.
     pub fn undefined(&self) -> BTreeSet<String> {
@@ -355,6 +377,14 @@ impl TitleBlock {
             && !(lo.0 >= 0.0 && lo.1 >= 0.0 && hi.0 <= paper && hi.1 <= paper && lo.0 < hi.0 && lo.1 < hi.1)
         {
             return Err(format!("{who}: drawing_area needs ordered bottom-left and top-right paper coordinates in mm, from 0 to {paper}"));
+        }
+        if self.sizes.len() > MAX_SIZES {
+            return Err(format!("{who}: it lists {} papers; up to {MAX_SIZES}", self.sizes.len()));
+        }
+        if let Some(bad) = self.sizes.iter().find(|s| s.len() > crate::model::MAX_TEXT || crate::model::paper(s).is_none()) {
+            return Err(format!(
+                "{who}: `{bad}` isn't a paper size: ISO A0–A4 or B1–B4, ARCH A–E or E1–E3, ANSI A–E, SUPER B, or width x height in mm"
+            ));
         }
         let items = self.lines.len() + self.fills.len() + self.texts.len();
         if items > MAX_ITEMS {
@@ -639,7 +669,7 @@ pub fn values(m: &Model, id: impl Key, scale: &str) -> BTreeMap<String, String> 
         out.insert(k.to_string(), v);
     }
     out.extend(m.info_title_values());
-    let tb = m.title_blocks.get(&sheet.title_block);
+    let tb = m.title_block_of(sheet).map(|(_, t)| t);
     for f in tb.iter().flat_map(|t| t.fields.iter()) {
         let key = f.key.to_ascii_uppercase();
         let given = match f.scope {
@@ -755,6 +785,7 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
         height: 0.0,
         drawing_area: None,
         template_border: false,
+        sizes: Vec::new(),
         lines: Vec::new(),
         fills: Vec::new(),
         texts: Vec::new(),

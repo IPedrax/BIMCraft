@@ -3225,18 +3225,23 @@ impl BimApp {
         let (built_in, none) = (t("Built-in"), t("None"));
         let mut chosen = sheet.title_block.clone();
         let mut change: Option<Value> = None;
-        let tb = model.title_blocks.get(&sheet.title_block);
+        let tb = model.title_block_of(sheet).map(|(_, t)| t);
+        // Named by none, a sheet takes the title block that lists its paper, else the built-in one.
+        let automatic = match model.title_block_of(sheet) {
+            Some((n, _)) if sheet.title_block.is_empty() => tf("{} (by paper size)", &[n]),
+            _ => built_in.to_string(),
+        };
         let values = bimcraft_core::sheet::title_values(model, id);
         grid(ui, ("sheet-title-block", id), |ui| {
             let label = ui.label(t("Title Block"));
             let shown = match chosen.as_str() {
-                "" => built_in.to_string(),
+                "" => automatic.clone(),
                 bimcraft_core::titleblock::NONE => none.to_string(),
                 _ => chosen.clone(),
             };
             let r =
                 ComboBox::from_id_salt(("sheet-title-block-pick", id)).selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
-                    ui.selectable_value(&mut chosen, String::new(), built_in);
+                    ui.selectable_value(&mut chosen, String::new(), automatic.clone());
                     // No border, title box or folding marks, for one drawn on the sheet itself.
                     ui.selectable_value(&mut chosen, bimcraft_core::titleblock::NONE.to_string(), none);
                     for n in model.title_blocks.keys() {
@@ -3264,7 +3269,7 @@ impl BimApp {
             self.run("modify", p);
         }
         ui.horizontal(|ui| {
-            let name = tb.is_some().then(|| sheet.title_block.clone());
+            let name = model.title_block_of(sheet).map(|(n, _)| n.to_string());
             if ui.button(t("Edit Title Blocks…")).clicked() {
                 self.open_title_blocks(name.as_deref());
             }
