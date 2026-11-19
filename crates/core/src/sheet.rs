@@ -186,7 +186,7 @@ fn room(m: &Model, sheet: impl Key) -> Room {
     let size_name = sh.map(|s| s.size.as_str()).unwrap_or("A3");
     let paper = sh.and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
     let margins = m.standard().sheet_margins(size_name);
-    let own = sh.and_then(|s| m.title_blocks.get(&s.title_block));
+    let own = sh.and_then(|s| m.title_block_of(s)).map(|(_, t)| t);
     if let Some([lo, hi]) = own.and_then(|t| t.drawing_area) {
         return Room { inside: [lo.0, lo.1, hi.0, hi.1], title: None, middle: (lo + hi) * 0.5, paper };
     }
@@ -283,7 +283,7 @@ fn free_spot(m: &Model, sheet: Guid, view: impl Key, scale: f64) -> Option<P2> {
 /// [`spot`], refused when the view and its title are larger than the drawing area its sheet's title block gives.
 pub fn automatic_center(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> Result<P2, String> {
     let sheet = m.guid(sheet);
-    let area = m.sheet(sheet).and_then(|s| m.title_blocks.get(&s.title_block)).and_then(|t| t.drawing_area);
+    let area = m.sheet(sheet).and_then(|s| m.title_block_of(s)).and_then(|(_, t)| t.drawing_area);
     if let Some([lo, hi]) = area {
         let b = footprint(m, view, scale).ok_or_else(|| "the viewport frame cannot be measured at this scale".to_string())?;
         let (taken, available) = (P2(b[2] - b[0], b[3] - b[1]), hi - lo);
@@ -375,7 +375,7 @@ fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Vi
     let (project, std) = (&m.name, m.standard());
     let margins = std.sheet_margins(&sheet.size);
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
-    let template = m.title_blocks.get(&sheet.title_block);
+    let template = m.title_block_of(sheet).map(|(_, t)| t);
     if !template.is_some_and(|t| t.template_border) {
         d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
     }

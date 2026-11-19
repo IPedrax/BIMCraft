@@ -1463,8 +1463,8 @@ other_files(
         "title_block",
         "Title Blocks",
         &[],
-        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, lines?, fills?, \
-         texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
+        "{name?, like?, starter?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, sizes?, \
+         lines?, fills?, texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
          drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
          project's title blocks, its title fields' values and the automatic fields. drawing_area [[left,bottom],[right,top]] is in sheet mm for automatic placement; template_border:true omits the standard frame and keeps fold marks. Other lengths are mm on paper from the title \
          block's bottom left corner: `width` and `height` its box; `font` what letters its texts (Arial unless told; any the system has); `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
@@ -1476,7 +1476,12 @@ other_files(
          command line read as DXF) drawn at full size on paper, in `units` (auto: the file's own, else mm): its lines, arcs, \
          circles and polylines as lines, its solid hatches as fills, its texts as texts, moved to its extents' corner, which \
          become its box; each key its texts name becomes a sheet field, or keeps the field it was. A new one starts as the \
-         built-in title box drawn as one (`like` another), and what's given goes over it",
+         built-in title box drawn as one (`like` another, or a `starter`: a ready-made one with the project's information in it, which the \
+         listing names: ISO 7200, ASME Y14.1 and NBR 16752 each for small papers and large ones, original layouts with their labels in the \
+         project's language), and what's given goes over it. `sizes` [\"A3\", \"ANSI D\", …] are the papers it is for: a sheet that names no \
+         title block is drawn with the first of the project's, by name, that lists its paper, else the built-in one; a sheet's `elements` \
+         say it as `title_block_by_size`. A starter lists its papers, so loading one changes how the sheets of those papers are drawn \
+         (`sizes: []` leaves it for sheets that name it)",
         title_block,
         // The DXF or DWG `path` names, when it names one.
         Files::Conditional,
@@ -4520,7 +4525,11 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("paper".into(), json!(paper(&sh.size)));
             // What its title block's fields say, filled in; and which of them are its own to give.
             extra.insert("title_values".into(), json!(sheet::title_values(m, id)));
-            if let Some(tb) = m.title_blocks.get(&sh.title_block) {
+            if let Some((name, tb)) = m.title_block_of(sh) {
+                // Named by none, drawn with the one that lists its paper.
+                if sh.title_block.is_empty() {
+                    extra.insert("title_block_by_size".into(), json!(name));
+                }
                 let own: Vec<&str> =
                     tb.fields.iter().filter(|f| f.scope == crate::titleblock::Scope::Sheet).map(|f| f.key.as_str()).collect();
                 extra.insert("sheet_fields".into(), json!(own));
@@ -15818,6 +15827,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         &[
             "name",
             "like",
+            "starter",
             "rename",
             "delete",
             "path",
@@ -15827,15 +15837,37 @@ fn title_block(s: &mut Session, p: &Value) -> R {
             "font",
             "drawing_area",
             "template_border",
+            "sizes",
             "lines",
             "fills",
             "texts",
             "fields",
         ],
     )?;
-    let Some(name) = name_param(c, p, "name")? else {
-        let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
-        return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
+    // A starter, by name: a ready-made title block, its labels in the project's language, to start from.
+    let starter = match string(c, p, "starter")? {
+        None => None,
+        Some(n) => {
+            let made = crate::title_starters::make(&n, s.model.language).ok_or_else(|| {
+                bad(c, format!("there's no starter `{n}`; the starters are {}", crate::title_starters::names().join(", ")))
+            })?;
+            Some((n.trim().to_string(), made))
+        }
+    };
+    let name = match (name_param(c, p, "name")?, &starter) {
+        (Some(name), _) => name,
+        (None, Some((n, _))) => {
+            crate::title_starters::names().into_iter().find(|s| s.eq_ignore_ascii_case(n)).map_or_else(|| n.clone(), str::to_string)
+        }
+        (None, None) => {
+            let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
+            return Ok(json!({
+                "title_blocks": s.model.title_blocks,
+                "values": s.model.title_values,
+                "auto": auto,
+                "starters": crate::title_starters::names(),
+            }));
+        }
     };
     if flag(c, p, "delete")? {
         let m = &s.model;
@@ -15852,12 +15884,23 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"deleted": name}));
     }
     let m = &s.model;
-    let mut t = match (m.title_blocks.get(&name), name_param(c, p, "like")?) {
-        (Some(t), _) => t.clone(),
-        (None, Some(like)) => {
+    let like = name_param(c, p, "like")?;
+    if starter.is_some() && like.is_some() {
+        return Err(bad(c, "`starter` and `like` both say what to start from; give one"));
+    }
+    let mut t = match (m.title_blocks.get(&name), like, starter) {
+        (Some(_), _, Some(_)) => {
+            return Err(bad(
+                c,
+                format!("there's already a title block `{name}`; give the starter another `name`, or change that one without `starter`"),
+            ));
+        }
+        (Some(t), ..) => t.clone(),
+        (None, Some(like), _) => {
             m.title_blocks.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no title block `{like}` to start from")))?
         }
-        (None, None) => TitleBlock::default(),
+        (None, None, Some((_, made))) => made,
+        (None, None, None) => TitleBlock::default(),
     };
     let mut notes = Vec::new();
     let mut left_out = BTreeMap::new();
@@ -15877,7 +15920,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         }
         // The fields it had keep their labels, whose and defaults where the drawing still names them.
         let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
-        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, ..read };
+        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, sizes: t.sizes.clone(), ..read };
         left_out = out;
     } else if p.get("units").is_some() {
         return Err(bad(c, "`units` is the unit of the DXF `path` names"));
@@ -15885,7 +15928,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     // What's given goes over it, read as a file reads one: a key it hasn't is an error.
     let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
     if let Some(o) = v.as_object_mut() {
-        for key in ["width", "height", "font", "drawing_area", "template_border", "lines", "fills", "texts", "fields"] {
+        for key in ["width", "height", "font", "drawing_area", "template_border", "sizes", "lines", "fills", "texts", "fields"] {
             match p.get(key) {
                 None => {}
                 Some(Value::Null) => {
@@ -15901,6 +15944,15 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     for f in &mut t.fields {
         f.key = f.key.trim().to_ascii_uppercase();
     }
+    // Each paper once, as the sheets name it.
+    let mut papers: Vec<String> = Vec::new();
+    for z in &t.sizes {
+        let z = crate::model::paper_name(z);
+        if !papers.contains(&z) {
+            papers.push(z);
+        }
+    }
+    t.sizes = papers;
     let m = s.model_mut();
     let name = match name_param(c, p, "rename")? {
         Some(to) if to != name => {
@@ -15917,6 +15969,16 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     let undefined = t.undefined();
     if m.title_blocks.get(&name) != Some(&t) {
         m.title_blocks.insert(name.clone(), t.clone());
+    }
+    // A paper another title block lists too: of the two, the one named first is drawn on sheets that name none.
+    for z in &t.sizes {
+        if let Some((other, _)) =
+            m.title_blocks.iter().find(|(n, o)| **n != name && o.sizes.iter().any(|x| crate::model::paper_name(x) == *z))
+        {
+            notes.push(format!(
+                "paper {z} is also listed by title block `{other}`; of the two, the one named first is drawn on sheets that name none"
+            ));
+        }
     }
     let mut out = json!({"name": name, "title_block": t});
     if !undefined.is_empty() {
