@@ -92,9 +92,9 @@ fn scalar(v: &Value) -> bool {
     !matches!(v, Value::Array(_) | Value::Object(_))
 }
 
-/// A list of a few plain values, shown in one cell.
+/// A list of plain values, shown in one cell: however long, so a row doesn't change its editor while one is typed.
 fn short_list(v: &Value) -> bool {
-    v.as_array().is_some_and(|a| a.len() <= 8 && a.iter().all(scalar))
+    v.as_array().is_some_and(|a| a.iter().all(scalar))
 }
 
 /// A value that fits a table's cell, once an object of plain values (and of such objects) is flattened.
@@ -242,11 +242,52 @@ fn put(row: &mut Value, col: &str, to: Value) {
 
 /// A list as a cell shows it, and as it is typed back: values between commas.
 fn list_text(v: &Value) -> String {
-    v.as_array().map_or_else(|| cell_text(v), |a| a.iter().map(cell_text).collect::<Vec<_>>().join(", "))
+    v.as_array().map_or_else(|| cell_text(v), |a| a.iter().map(item_text).collect::<Vec<_>>().join(", "))
 }
 
+/// An item of a list as it is typed: in quotes where it would not read back as itself (a text with a comma, or one that
+/// reads as a number or a word such as `true`).
+fn item_text(v: &Value) -> String {
+    let text = cell_text(v);
+    match v {
+        Value::String(s) if text.contains(',') || text.starts_with('"') || cell_value(&text) != *v => {
+            serde_json::to_string(s).unwrap_or(text)
+        }
+        _ => text,
+    }
+}
+
+/// A list as typed: values between commas, a value in quotes taken as that text whole; or the list itself, written as JSON.
 fn list_value(typed: &str) -> Value {
-    Value::Array(typed.split(',').map(str::trim).filter(|x| !x.is_empty()).map(cell_value).collect())
+    if typed.trim_start().starts_with('[')
+        && let Ok(list @ Value::Array(_)) = serde_json::from_str::<Value>(typed)
+    {
+        return list;
+    }
+    let mut items = Vec::new();
+    let mut rest = typed;
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            break;
+        }
+        // A quoted item: the text between its quotes, as JSON reads it.
+        if rest.starts_with('"') {
+            let mut de = serde_json::Deserializer::from_str(rest).into_iter::<String>();
+            if let Some(Ok(text)) = de.next() {
+                items.push(Value::String(text));
+                rest = &rest[de.byte_offset()..];
+                rest = rest.trim_start().strip_prefix(',').unwrap_or(rest);
+                continue;
+            }
+        }
+        let (item, after) = rest.split_once(',').unwrap_or((rest, ""));
+        if !item.trim().is_empty() {
+            items.push(cell_value(item.trim()));
+        }
+        rest = after;
+    }
+    Value::Array(items)
 }
 
 /// How wide a column of text is: as its longest value, within reason.
@@ -508,6 +549,7 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                         egui::TextEdit::singleline(&mut text).desired_width(*w).hint_text("—")
                     };
                     let r = ui.add_enabled(open, edit.id(typing));
+                    ui.data_mut(|d| d.get_temp_mut_or_default::<Drawn>(egui::Id::new("codes cells drawn")).0.insert(typing));
                     let r = if spread {
                         r.on_disabled_hover_text(t("This row gives this value in the columns after it"))
                     } else {
@@ -538,19 +580,31 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
 #[derive(Clone, Default)]
 struct Typing(String);
 
-/// No cell stays in typing: the rows were replaced or one was taken away, so the ids of the cells now name others' cells.
+/// No cell stays in typing: the rows were replaced or one was taken away, so the ids of the cells now name others' cells,
+/// and their undo history goes with them.
 fn stop_typing(ui: &Ui) {
     ui.memory_mut(|m| {
         if let Some(f) = m.focused() {
             m.surrender_focus(f);
         }
     });
-    ui.data_mut(|d| d.remove_by_type::<Typing>());
+    forget_typing(ui.ctx());
 }
 
-/// Forgets what cells held as typed: the dialog closed, nothing is being typed.
+/// The cells drawn while the dialog is open, so their typing and undo history go when it closes.
+#[derive(Clone, Default)]
+struct Drawn(std::collections::HashSet<egui::Id>);
+
+/// Forgets what cells held as typed, and their undo history: the dialog closed, so a cancelled edit can't come back.
 pub(crate) fn forget_typing(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.remove_by_type::<Typing>());
+    ctx.data_mut(|d| {
+        d.remove_by_type::<Typing>();
+        let key = egui::Id::new("codes cells drawn");
+        for id in d.get_temp::<Drawn>(key).unwrap_or_default().0 {
+            d.remove::<egui::text_edit::TextEditState>(id);
+        }
+        d.remove::<Drawn>(key);
+    });
 }
 
 /// A table's column in words: `demand_kva.over` is "Demand (kVA) over", `connection_mm2.copper` "Connection (mm²) copper".
@@ -1913,5 +1967,393 @@ mod tests {
                 ])
             );
         }
+    }
+
+    // G7c: long lists, undo after Cancel, a list column a row added lacks, items with commas (the review's cases).
+
+    #[test]
+    fn review_codes_long_list_keeps_receiving_input() {
+        let mut h = g7_table(json!([{"name":"one","list":[0],"source":"keep"}]));
+        g7_type(&mut h, "one", "List", "1,2,3,4,5,6,7,8,9");
+        review_append(&mut h, &[", 10"]);
+        assert_eq!(h.state().0, json!([{"name":"one","list":[1,2,3,4,5,6,7,8,9,10],"source":"keep"}]));
+    }
+
+    #[test]
+    fn review_codes_long_list_through_ok() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "10,20,30,40,50,60,70,80");
+        review_append(&mut h, &[",", "90", ",", "100"]);
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_codes_cancelled_list_edit_cannot_return_via_undo() {
+        let mut h = g7_dialog("energisa");
+        let expected = g7r2_entrance(&h);
+        g7_type(&mut h, "T4", "Breaker (A)", "999");
+        h.run_steps(5);
+        g7_type(&mut h, "T4", "Breaker (A)", "998");
+        h.run_steps(5);
+        h.get_by_label("Cancel").click();
+        h.run();
+        review_expect_entrance(&h, &expected);
+
+        review_open_entrance(&mut h);
+        g7_cell(&h, "T4", "Breaker (A)").focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        g7_ok(&mut h);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_codes_appending_preserves_existing_list_items_and_types() {
+        let mut h = g7_table(json!([{"name":"one","list":["125", "true", "A, B"],"source":"keep"}]));
+        g7_cell(&h, "one", "List").focus();
+        h.run();
+        review_append(&mut h, &[", final"]);
+        assert_eq!(h.state().0, json!([{"name":"one","list":["125", "true", "A, B", "final"],"source":"keep"}]));
+    }
+
+    #[test]
+    fn a_list_shown_reads_back_as_itself() {
+        // What a list cell shows reads back as the same list: texts with commas, quotes, numbers or words in them.
+        for v in [json!(["125", "true", "A, B", "say \"hi\"", "", " x "]), json!([125, true, null, 1.5, "plain"]), json!([])] {
+            let shown = list_text(&v);
+            let back = list_value(&shown);
+            assert_eq!(back, v, "{v} shown as {shown}");
+        }
+        assert_eq!(list_value("\"a, b\", c"), json!(["a, b", "c"]));
+        assert_eq!(list_value("\"open, x"), json!(["\"open", "x"]));
+    }
+
+    // The review's cases (G7c).
+    // Paste inside codes::tree::tests, alongside the g7 and review helpers.
+
+    #[test]
+    fn review_g7c_codes_appending_preserves_quoted_items_and_types() {
+        let items = json!(["a,\"b\"", "C:\\temp, logs", "one\ntwo", "\"starts", "007", "1e3", "true", "", null, 2, false]);
+        let mut h = g7_table(json!([{"name":"one","list":items,"source":"keep"}]));
+        let mut expected = h.state().0.clone();
+        expected[0]["list"].as_array_mut().unwrap().push(json!("final"));
+        review_cell_at(&h, 0, "List").focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::End);
+        h.event(egui::Event::Text(", final".into()));
+        h.run();
+        assert_eq!(h.state().0, expected);
+    }
+
+    #[test]
+    fn review_g7c_codes_typed_escapes_make_one_item_each() {
+        let mut h = g7_table(json!([{"name":"one","list":[0],"source":"keep"}]));
+        g7_type(&mut h, "one", "List", r#""say \"hi\"", "C:\\temp", "one\ntwo", "007", "1e3", true, "", null"#);
+        assert_eq!(
+            h.state().0,
+            json!([{"name":"one","list":["say \"hi\"","C:\\temp","one\ntwo","007","1e3",true,"",null],"source":"keep"}])
+        );
+    }
+
+    #[test]
+    fn review_g7c_codes_closing_quote_finishes_the_item() {
+        let mut h = g7_table(json!([{"name":"one","list":[0],"source":"keep"}]));
+        g7_type(&mut h, "one", "List", "\"open, x");
+        review_append(&mut h, &["\""]);
+        assert_eq!(h.state().0, json!([{"name":"one","list":["open, x"],"source":"keep"}]));
+    }
+
+    #[test]
+    fn review_g7c_codes_bracketed_list_reaches_session() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "[1,2]");
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([1, 2]);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7c_codes_long_list_does_not_move_the_edit_to_a_neighbor() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "10,20,30,40,50,60,70,80");
+        for suffix in [",90", ",100", ",110", ",120", ",130", ",140", ",150", ",160", ",170", ",180", ",190", ",200"] {
+            h.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::End);
+            h.event(egui::Event::Text(suffix.into()));
+            h.run();
+        }
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] =
+            json!([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7c_codes_tsv_paste_reads_quoted_list_into_a_plain_table() {
+        let mut h = g7_table(json!([{"name":"one","list":0,"source":"keep"}]));
+        review_g7c_paste_tsv(
+            &mut h,
+            "name\tlist\tsource\none\t[\"a,b\",\"say \\\"hi\\\"\",\"C:\\\\temp\",\"one\\ntwo\",\"007\",\"1e3\",\"\",null,2]\tkeep\n",
+        );
+        assert_eq!(
+            h.state().0,
+            json!([{"name":"one","list":["a,b","say \"hi\"","C:\\temp","one\ntwo","007","1e3","",null,2],"source":"keep"}])
+        );
+    }
+
+    #[test]
+    fn review_g7c_codes_tsv_copy_round_trips_quoted_list_items() {
+        let rows = json!([{"name":"one","list":["a,b","say \"hi\"","C:\\temp","one\ntwo","1e3","",null,2],"source":"keep"}]);
+        let mut source = g7_table(rows.clone());
+        let text = review_g7c_copy_tsv(&mut source);
+        let mut target = g7_table(json!([{"name":"two","list":0,"source":"old"}]));
+        review_g7c_paste_tsv(&mut target, &text);
+        assert_eq!(target.state().0, rows);
+    }
+
+    fn review_g7c_paste_tsv(target: &mut Harness<'_, (Value, String)>, text: &str) {
+        target.get_by(|n| n.role() == Role::MultilineTextInput && n.value().is_none_or(|value| value.is_empty())).focus();
+        target.run();
+        target.event(egui::Event::Paste(text.into()));
+        target.run();
+        target.get_by_label("Use Pasted Rows").click_accesskit();
+        target.run();
+    }
+
+    fn review_g7c_copy_tsv(source: &mut Harness<'_, (Value, String)>) -> String {
+        source.get_by_label("Copy").click_accesskit();
+        source.step();
+        source
+            .output()
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+            .expect("Copy sent no text to the clipboard")
+    }
+
+    #[test]
+    fn review_g7c_codes_cancelled_object_table_edits_cannot_return() {
+        for redo in [false, true] {
+            let mut h = g7_dialog("energisa");
+            let expected = g7r2_entrance(&h);
+            g7_type(&mut h, "T4", "Breaker (A)", "999");
+            h.run_steps(5);
+            g7_type(&mut h, "T4", "Breaker (A)", "998");
+            h.run_steps(5);
+            if redo {
+                h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+                h.run();
+            }
+            h.get_by_label("Cancel").click_accesskit();
+            h.run();
+            review_expect_entrance(&h, &expected);
+            review_open_entrance(&mut h);
+            g7_cell(&h, "T4", "Breaker (A)").focus();
+            h.run();
+            let modifiers = if redo { egui::Modifiers::COMMAND | egui::Modifiers::SHIFT } else { egui::Modifiers::COMMAND };
+            h.key_press_modifiers(modifiers, egui::Key::Z);
+            h.run();
+            g7_ok(&mut h);
+            review_expect_entrance(&h, &expected);
+        }
+    }
+
+    #[test]
+    fn review_g7c_codes_ok_keeps_project_history_across_dialogs() {
+        let mut h = g7_dialog("energisa");
+        let original = g7r2_entrance(&h);
+        let mut expected = original.clone();
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "91");
+        h.run_steps(5);
+        g7_type(&mut h, "T4", "Breaker (A)", "92");
+        h.run_steps(5);
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([92]);
+        review_expect_entrance(&h, &expected);
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        review_expect_entrance(&h, &original);
+        h.state_mut().session.execute("redo", &json!({})).unwrap();
+        review_expect_entrance(&h, &expected);
+        review_open_entrance(&mut h);
+        g7_cell(&h, "T4", "Breaker (A)").focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        g7_ok(&mut h);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7c_codes_deleted_row_undo_cannot_write_into_its_successor() {
+        let mut h = g7_table(json!([{"name":"old","number":12},{"name":"successor","number":23}]));
+        g7_type(&mut h, "old", "Number", "96");
+        h.run_steps(5);
+        g7_type(&mut h, "old", "Number", "97");
+        h.run_steps(5);
+        h.get_all_by_label("×").next().unwrap().click_accesskit();
+        h.run();
+        g7_cell(&h, "successor", "Number").focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        assert_eq!(h.state().0, json!([{"name":"successor","number":23}]));
+    }
+
+    #[test]
+    fn review_g7c_codes_dialog_cleanup_leaves_external_undo_intact() {
+        let mut h = Harness::builder().with_step_dt(0.25).build_ui_state(
+            |ui, (rows, pasted, outside, close): &mut (Value, String, String, bool)| {
+                ui.text_edit_singleline(outside);
+                if *close {
+                    forget_typing(ui.ctx());
+                    *close = false;
+                } else {
+                    editor(ui, "g7c.external-check", "rows", rows, &Hints::default(), pasted);
+                }
+            },
+            (json!([{"name":"one","list":[0]}]), String::new(), "external original".into(), false),
+        );
+        h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some("external original")).focus();
+        h.run_steps(5);
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text("external changed".into()));
+        h.run_steps(5);
+        g7_type(&mut h, "one", "List", "91,92");
+        h.state_mut().3 = true;
+        h.step();
+        h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some("external changed")).focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        assert_eq!(h.state().2, "external original");
+    }
+
+    #[test]
+    fn review_g7c_codes_mixed_column_keeps_number_after_clearing() {
+        let mut h = g7_table(json!([{"name":"one","list":[1,2]},{"name":"two","list":15}]));
+        g7_type(&mut h, "two", "List", "16");
+        assert_eq!(h.state().0[1]["list"], json!(16));
+        g7_type(&mut h, "two", "List", "");
+        review_append(&mut h, &["17"]);
+        assert_eq!(h.state().0, json!([{"name":"one","list":[1,2]},{"name":"two","list":17}]));
+    }
+
+    #[test]
+    fn review_g7c_codes_mixed_scalar_edit_reaches_the_session() {
+        let mut h = g7_dialog("energisa");
+        let row = g7r2_t4(&g7r2_entrance(&h));
+        g7r2_seed_entrance(&mut h, |rows| {
+            rows[0]["columns"]["review_mixed"] = json!([11, 12]);
+            rows[row]["columns"]["review_mixed"] = json!(15);
+        });
+        let mut expected = g7r2_entrance(&h);
+        g7_type(&mut h, "T4", "Review mixed", "");
+        review_append(&mut h, &["17"]);
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["columns"]["review_mixed"] = json!(17);
+        review_expect_entrance(&h, &expected);
+    }
+
+    // The confirmation's cases (G7c).
+    // Insert inside codes::tree::tests. These cases use the existing egui_kittest helpers.
+
+    #[test]
+    fn review_g7cr2_codes_cleared_list_stays_empty() {
+        let mut h = g7_table(json!([{"name":"one","list":[1,2]},{"name":"two","list":[3]}]));
+        g7_type(&mut h, "one", "List", "");
+        g7_cell(&h, "two", "List").focus();
+        h.run();
+        assert_eq!(h.state().0, json!([{"name":"one","list":[]},{"name":"two","list":[3]}]));
+    }
+
+    #[test]
+    fn review_g7cr2_codes_json_list_typed_one_character_at_a_time_reaches_session() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "[");
+        review_append(&mut h, &["1", ",", "2", "]"]);
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([1, 2]);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7cr2_codes_list_text_can_start_with_a_bracket() {
+        for (typed, item) in [("[draft]", "[draft]"), (r#""[1,2]""#, "[1,2]")] {
+            let mut h = g7_table(json!([{"name":"one","list":[0]}]));
+            g7_type(&mut h, "one", "List", typed);
+            review_append(&mut h, &[", final"]);
+            assert_eq!(h.state().0, json!([{"name":"one","list":[item,"final"]}]));
+        }
+    }
+
+    #[test]
+    fn review_g7cr2_codes_delete_unrelated_row_keeps_neighbor_edit() {
+        let mut h = g7_table(json!([{"name":"keep","number":23},{"name":"remove","number":12}]));
+        review_g7cr2_edit_number_twice(&mut h, "keep");
+        h.get_all_by_label("×").nth(1).unwrap().click_accesskit();
+        h.run();
+        review_g7cr2_undo_number(&mut h, "keep");
+        assert_eq!(h.state().0, json!([{"name":"keep","number":97}]));
+    }
+
+    #[test]
+    fn review_g7cr2_codes_paste_keeps_replacement_when_cell_undo_is_pressed() {
+        let mut h = g7_table(json!([{"name":"old","number":12}]));
+        review_g7cr2_edit_number_twice(&mut h, "old");
+        review_g7c_paste_tsv(&mut h, "name\tnumber\nreplacement\t23\n");
+        review_g7cr2_undo_number(&mut h, "replacement");
+        assert_eq!(h.state().0, json!([{"name":"replacement","number":23}]));
+    }
+
+    #[test]
+    fn review_g7cr2_codes_undo_still_works_without_row_changes() {
+        let mut h = g7_table(json!([{"name":"keep","number":23},{"name":"neighbor","number":12}]));
+        review_g7cr2_edit_number_twice(&mut h, "keep");
+        review_g7cr2_undo_number(&mut h, "keep");
+        assert_eq!(h.state().0, json!([{"name":"keep","number":96},{"name":"neighbor","number":12}]));
+    }
+
+    fn review_g7cr2_edit_number_twice(h: &mut Harness<'_, (Value, String)>, row: &str) {
+        g7_type(h, row, "Number", "96");
+        h.run_steps(5);
+        g7_type(h, row, "Number", "97");
+        h.run_steps(5);
+        assert_eq!(h.state().0[0]["number"], json!(97));
+    }
+
+    fn review_g7cr2_undo_number(h: &mut Harness<'_, (Value, String)>, row: &str) {
+        g7_cell(h, row, "Number").focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+    }
+
+    #[test]
+    fn review_g7cr2_codes_undo_preserves_bracketed_text_item() {
+        let original = json!([{"name":"one","list":["[1]"]}]);
+        let mut h = g7_table(original.clone());
+        g7_cell(&h, "one", "List").focus();
+        h.run_steps(5);
+        review_append(&mut h, &[", tail"]);
+        h.run_steps(5);
+        assert_eq!(h.state().0, json!([{"name":"one","list":["[1]","tail"]}]));
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        assert_eq!(h.state().0, original);
     }
 }
