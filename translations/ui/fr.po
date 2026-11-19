@@ -4767,7 +4767,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:15351
+#: crates/core/src/commands.rs:15364
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -12381,7 +12381,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propriétés au-dessus du Navigateur de projet, à gauche, comme au départ"
 
 #: crates/core/src/commands.rs:704
-#: crates/core/src/commands.rs:10122
+#: crates/core/src/commands.rs:10135
 msgid "Property Line"
 msgstr ""
 
@@ -16699,7 +16699,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:716
-#: crates/core/src/commands.rs:10164
+#: crates/core/src/commands.rs:10177
 msgid "Toposolid"
 msgstr ""
 
@@ -17170,7 +17170,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:15689
+#: crates/core/src/commands.rs:15702
 msgid "Unnamed"
 msgstr "Sans nom"
 

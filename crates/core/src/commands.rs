@@ -7838,18 +7838,22 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     let project = s.model.section_as::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand").filter(|(_, own)| *own);
     let project = project.map(|(m, _)| m);
     // Each of the project's amendments' own method, wherever it stands: named, a utility under another answers by its own.
-    let held: Vec<bd::Method> = s
+    // The one on top answers, the project's or BIMCraft's: a copy under BIMCraft's own is passed over.
+    let held: Vec<(bd::Method, bool)> = s
         .model
         .held_wholes::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
         .into_iter()
-        .filter(|(_, _, own)| *own)
-        .map(|(m, _, _)| m)
+        .map(|(m, _, own)| (m, own))
         .collect();
+    fn on_top(mut held: Vec<(bd::Method, bool)>, named: &dyn Fn(&bd::Method) -> bool) -> Option<(bd::Method, bool)> {
+        let i = held.iter().position(|(m, _)| named(m))?;
+        Some(held.swap_remove(i))
+    }
     let m: Held<bd::Method> = match (string(c, p, "standard")?, string(c, p, "utility")?) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
-        (Some(s), None) => match project.filter(|m| m.standard == s).or_else(|| held.into_iter().find(|m| m.standard == s)) {
-            Some(m) => Held::Project(Box::new(m)),
-            None => Held::Library(
+        (Some(s), None) => match project.filter(|m| m.standard == s).map(|m| (m, true)).or_else(|| on_top(held, &|m| m.standard == s)) {
+            Some((m, true)) => Held::Project(Box::new(m)),
+            _ => Held::Library(
                 bd::methods()
                     .iter()
                     .find(|m| m.standard == s)
@@ -7858,9 +7862,13 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
         },
         (None, Some(u)) => {
             let named = |m: &bd::Method| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u));
-            match project.filter(|m| named(m)).or_else(|| held.into_iter().find(|m| named(m))) {
-                Some(m) => Held::Project(Box::new(m)),
-                None => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
+            match project.filter(|m| named(m)).map(|m| (m, true)).or_else(|| on_top(held, &named)) {
+                Some((m, true)) => Held::Project(Box::new(m)),
+                // BIMCraft's on top: its method of that standard.
+                Some((m, false)) if bd::methods().iter().any(|x| x.standard == m.standard) => Held::Library(
+                    bd::methods().iter().find(|x| x.standard == m.standard).ok_or_else(|| bad(c, format!("no method `{}`", m.standard)))?,
+                ),
+                _ => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
                     || bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())),
                 )?),
             }
@@ -8122,12 +8130,17 @@ fn demand(s: &mut Session, p: &Value) -> R {
     }
     // The utility's own unit demand, as its amendment holds it, wherever it stands among the project's amendments: never
     // the rules of another utility layered with it.
+    // Of two versions of it, the one on top answers, the project's or BIMCraft's.
     let project = s
         .model
         .held_wholes::<d::Standard>(crate::codes::Discipline::Electrical, "unit_demand", "method")
         .into_iter()
-        .find(|(u, _, own)| *own && u.utility.eq_ignore_ascii_case(&utility))
-        .map(|(u, source, _)| (u, source.unwrap_or_else(|| "changed in this project".into())));
+        .find(|(u, _, _)| u.utility.eq_ignore_ascii_case(&utility))
+        .and_then(|(u, source, own)| match own {
+            true => Some((u, source.unwrap_or_else(|| "changed in this project".into()))),
+            // BIMCraft's on top: its own, with its own source.
+            false => d::find(&utility).cloned(),
+        });
     if project.is_none()
         && let Some((u, member)) = crate::entrance::find(&utility)
     {
