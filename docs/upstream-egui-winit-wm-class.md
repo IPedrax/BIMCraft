@@ -1,11 +1,11 @@
-# Апстрим-патч: пустой instance в `WM_CLASS` (`egui-winit`)
+# Upstream patch: an empty `WM_CLASS` instance (`egui-winit`)
 
-Заготовка для PR в `emilk/egui`. Вендоринг в BIMCraft: `vendor/egui-winit` + `[patch.crates-io]` в корневом
-`Cargo.toml` (см. [packaging.md](areas/packaging.md), пункт про `egui-winit`).
+A draft for a PR in `emilk/egui`. BIMCraft vendors the crate meanwhile: `vendor/egui-winit` plus the
+`[patch.crates-io]` entry in the root `Cargo.toml` (see [packaging.md](areas/packaging.md), the `egui-winit` bullet).
 
-## Что не так
+## What is wrong
 
-`egui-winit` 0.36.2, `crates/egui-winit/src/lib.rs`: `app_id` уходит как `general`, а `instance` — пустой.
+`egui-winit` 0.36.2, `crates/egui-winit/src/lib.rs`: `app_id` goes in as `general`, while `instance` is empty.
 
 ```rust
 #[cfg(all(feature = "wayland", target_os = "linux"))]
@@ -15,25 +15,26 @@ if let Some(app_id) = _app_id {
 }
 ```
 
-`winit` 0.30.13 хранит имя в общем для Wayland и X11 поле `platform_specific.name`, а X11-бэкенд строит из него
-`WM_CLASS` как `(instance, general)`. Итог на X11: `WM_CLASS(STRING) = "", "io.github.ipedrax.bimcraft"` —
-пустой `res_name` нарушает ICCCM и ломает сопоставление окон с приложениями. Например, GNOME Shell 46 сначала
-сверяет instance с таблицей `StartupWMClass`, и пустое значение попадает в ключ `""`, который создаёт любой ярлык
-с пустым `StartupWMClass=` (у Flatpak-ярлыка Remmina он пустой): окно BIMCraft привязывается к чужой иконке.
+`winit` 0.30.13 keeps the name in `platform_specific.name`, a field shared by Wayland and X11, and the X11
+backend builds `WM_CLASS` from it as `(instance, general)`. The result on X11 is
+`WM_CLASS(STRING) = "", "io.github.ipedrax.bimcraft"`: an empty `res_name` violates ICCCM and breaks matching
+windows to applications. For example, GNOME Shell 46 checks the instance against the `StartupWMClass` table
+before the class, and an empty value lands on the `""` key that any launcher with an empty `StartupWMClass=`
+creates (Remmina's Flatpak launcher has one): the BIMCraft window is bound to the wrong icon.
 
-Wayland-бэкенд берёт только `name.general`, поэтому второй аргумент на Wayland ни на что не влияет.
+The Wayland backend reads only `name.general`, so the second argument changes nothing there.
 
-## Патч
+## The patch
 
 ```diff
 -        window_attributes = window_attributes.with_name(app_id, "");
 +        window_attributes = window_attributes.with_name(app_id.as_str(), app_id.as_str());
 ```
 
-`with_name(general, instance)` принимает `impl Into<String>`; `app_id` — `String`, `.as_str()` нужен, чтобы
-не переместить его.
+`with_name(general, instance)` takes `impl Into<String>`; `app_id` is a `String`, and `.as_str()` keeps it from
+being moved.
 
-## Текст PR (английский)
+## PR text (English)
 
 Title: `egui-winit: set a non-empty WM_CLASS instance on X11`
 
@@ -55,14 +56,14 @@ To check: build an eframe example on X11, `xprop WM_CLASS` — both fields equal
 on its own launcher.
 ```
 
-## Проверка у себя
+## Checking locally
 
 ```
-xprop -id <окно> WM_CLASS
+xprop -id <window> WM_CLASS
 # WM_CLASS(STRING) = "io.github.ipedrax.bimcraft", "io.github.ipedrax.bimcraft"
 ```
 
-## Удаление вендоринга
+## Removing the vendored copy
 
-Когда релиз `egui-winit` содержит этот патч: обновить `egui`/`eframe`, удалить `vendor/egui-winit` и
-`[patch.crates-io]` из корневого `Cargo.toml`, пересобрать.
+Once a release of `egui-winit` carries this patch: bump `egui`/`eframe`, delete `vendor/egui-winit` and the
+`[patch.crates-io]` section of the root `Cargo.toml`, and rebuild.
