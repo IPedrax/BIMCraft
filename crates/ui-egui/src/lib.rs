@@ -60,6 +60,7 @@ mod linestyles;
 mod lineweights;
 mod links;
 mod markdown;
+mod materials;
 mod mep;
 mod mesh;
 mod minimap;
@@ -996,7 +997,7 @@ pub struct BimApp {
     /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
     deleting_rooms: Option<Vec<Id>>,
     type_dialog: Option<properties::TypeDialog>,
-    materials_dialog: Option<properties::MaterialsDialog>,
+    materials_dialog: Option<materials::MaterialsDialog>,
     family_dialog: Option<properties::FamilyDialog>,
     /// The Favorites window, while it's open; where the favorites file is, when the app was told (else the usual place).
     favorites_dialog: Option<favorites::FavoritesDialog>,
@@ -5581,7 +5582,7 @@ impl BimApp {
         panel(ui, "Settings", |ui| {
             let tip = msg!("Materials: the project's library, each material's colour in 3D and the patterns its cut and its surfaces show");
             if big_button(ui, Icon::Materials, "Materials", self.materials_dialog.is_some(), tip).clicked() {
-                self.materials_dialog = Some(properties::MaterialsDialog::new(&self.session.model));
+                self.materials_dialog = Some(materials::MaterialsDialog::new(&self.session.model, self.favorites_path.as_ref()));
             }
             let tip = msg!("Favorites: the materials and families you keep for every project; add one to this project with a click");
             if big_button(ui, Icon::Favorite, "Favorites", self.favorites_dialog.is_some(), tip).clicked() {

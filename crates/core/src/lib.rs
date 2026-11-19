@@ -158,6 +158,9 @@ pub mod lines;
 pub mod link;
 pub mod loads;
 pub mod massing;
+#[cfg(test)]
+mod material_tests;
+pub mod materials;
 pub mod memory;
 pub mod mesh_in;
 #[cfg(test)]
@@ -197,6 +200,7 @@ pub mod publish;
 mod publish_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
+pub mod ral;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;
@@ -324,3 +328,4 @@ mod text_tests;
 #[cfg(test)]
 mod profile_tests;
 pub mod profiles;
+pub mod standard_colors;

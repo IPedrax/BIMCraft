@@ -26,9 +26,9 @@ use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind,
     Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
-    PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, Railing, RailingType,
-    Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft,
-    Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    PARAMETER_CATEGORIES, ParameterKind, Pattern, PatternLayer, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, Railing,
+    RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section,
+    SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -1641,8 +1641,10 @@ other_files(
         "material",
         "Materials",
         &[],
-        "{name, color?: \"#rrggbb\" | [r, g, b], transparency?: 0-100, cut?, surface?, texture?: {kind?, size?: [w, h], angle?, offset?: [x, y], path?, \
-         image?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
+        "{name, color?: \"#rrggbb\" | [r, g, b], transparency?: 0-100, cut?, cut_color?, cut_background?, cut_background_color?, surface?, \
+         surface_color?, surface_background?, surface_background_color?, texture?: {kind?, size?: [w, h], angle?, offset?: [x, y], path?, \
+         image?} | null, parameters?: {name: value | null}, rename?, duplicate?: new name, delete?: true} a material of the project's \
+         library, created or changed: its colour in shaded 3D \
          views, its `transparency` there (percent of what lies behind it that shows through, 0 opaque; the starter Glass has 70), \
          the pattern its cut shows in plans and sections (where a layer is wide enough to hold it), and the one its \
          surfaces show at its size in the building (a floor's top in plan, a ceiling's underside in its ceiling plan). Patterns: \
@@ -1652,9 +1654,30 @@ other_files(
          moved `offset` mm: a pattern drawn in code, `kind` brick, block, boards, concrete, plaster, tile, roof, fabric, metal \
          or insulation (at its natural size unless `size` says); or `image`, a picture: the PNG or JPEG file at `path`, taken \
          into the project (up to 1024 px a side, 24 pictures), or one the project holds (`image`, its id from `inspect`); null \
-         takes the texture away. `rename` renames it, the layers using it following; `delete` takes it away, while no layer \
-         uses it. `inspect` lists the library and the pictures",
+         takes the texture away. `cut` and `surface` are the foreground patterns, drawn in `cut_color` and `surface_color` (null, the \
+         drawing's ink); `cut_background` and `surface_background` are the patterns behind them, of the same names (`none` or null \
+         for none), in `cut_background_color` and `surface_background_color`. `parameters` sets its values, null or \"\" taking one \
+         away: the built-in Mark, Description, Class, Keywords, Comments, Manufacturer, Model, URL (text) and Cost (a number, 0 or more), \
+         and project parameters for the `material` category (see `parameter`). `duplicate` copies it under a new name. `rename` \
+         renames it, the layers using it following; `delete` takes it away, while no layer uses it. `inspect` lists the library and \
+         the pictures",
         material,
+        Files::Conditional,
+    )
+    .menu("Manage > Materials"),
+    edit_files(
+        "standard_color",
+        "Standard Colors",
+        &[],
+        "{action?: list|create|import|remove, collection?, search?, code?, name?, file?, source?, replace?, path?} collections of named \
+         colours, as near as a screen comes: `RAL` (RAL Classic, the default) and `CSS` ship with BIMCraft, and each says its `source`. \
+         `list` (the default) gives a collection's colours, those whose code or name holds every word of `search`, and the \
+         `collections` there are. `create` (the default given a `code`) makes a material of colour `code`, solid on its surfaces and \
+         where it is cut, named `RAL 3020 Traffic red` or `name`; one of that name already there is left as it is (`created` false). \
+         `import` keeps the CSV `file` as the user's own collection named `collection`, for every project, never inside one: a row \
+         is `code, name, #rrggbb` or `code, name, r, g, b`, with `source` saying where it is from and `replace` to replace one of that \
+         name; `remove` takes one of the user's away. `path` is the file they are kept in; by default beside the user's favorites",
+        crate::standard_colors::command,
         Files::Conditional,
     )
     .menu("Manage > Materials"),
@@ -15957,10 +15980,66 @@ fn place(s: &mut Session, p: &Value) -> R {
     Ok(out)
 }
 
+/// A pattern a material shows, as `v` names it: one drawn in code, or one of the project's fill patterns.
+fn material_pattern(c: &str, m: &Model, key: &str, v: &Value) -> Result<(Pattern, Option<String>), String> {
+    if let Ok(pattern) = serde_json::from_value::<Pattern>(v.clone()) {
+        return Ok((pattern, None));
+    }
+    if let Some(n) = v.as_str().map(str::trim).filter(|n| m.fill_patterns.contains_key(*n)) {
+        return Ok((Pattern::None, Some(n.to_string())));
+    }
+    let names: Vec<String> = Pattern::ALL.iter().map(|p| json!(p).as_str().unwrap_or_default().to_string()).collect();
+    Err(bad(c, format!("`{key}`: {v} isn't a pattern: one of {}, or a fill pattern of the project's", names.join(", "))))
+}
+
+/// The colour `v` names for `key`, or none for null.
+fn material_colour(c: &str, key: &str, v: &Value) -> Result<Option<[u8; 3]>, String> {
+    if v.is_null() {
+        return Ok(None);
+    }
+    colour(v).map(Some).ok_or_else(|| bad(c, format!("`{key}` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {v}")))
+}
+
 fn material(s: &mut Session, p: &Value) -> R {
     let c = "material";
+    only(
+        c,
+        p,
+        &[
+            "name",
+            "color",
+            "transparency",
+            "cut",
+            "cut_color",
+            "cut_background",
+            "cut_background_color",
+            "surface",
+            "surface_color",
+            "surface_background",
+            "surface_background_color",
+            "texture",
+            "parameters",
+            "rename",
+            "duplicate",
+            "delete",
+        ],
+    )?;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let m = s.model_mut();
+    if let Some(copy) = string(c, p, "duplicate")? {
+        let copy = copy.trim().to_string();
+        if copy.is_empty() {
+            return Err(bad(c, "`duplicate` needs a name for the copy"));
+        }
+        let Some(mat) = m.materials.get(&name).cloned() else {
+            return Err(bad(c, format!("the library has no `{name}` to duplicate")));
+        };
+        if m.materials.contains_key(&copy) {
+            return Err(bad(c, format!("the library already has `{copy}`")));
+        }
+        m.materials.insert(copy.clone(), mat.clone());
+        return Ok(json!({"name": copy, "material": mat}));
+    }
     if flag(c, p, "delete")? {
         if !m.materials.contains_key(&name) {
             return Err(bad(c, format!("the library has no `{name}`")));
@@ -15995,18 +16074,40 @@ fn material(s: &mut Session, p: &Value) -> R {
     // A pattern drawn in code by its name, or one of the project's fill patterns.
     for (key, slot, fill) in [("cut", &mut mat.cut, &mut mat.cut_pattern), ("surface", &mut mat.surface, &mut mat.surface_pattern)] {
         if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
-            if let Ok(pattern) = serde_json::from_value::<Pattern>(v.clone()) {
-                (*slot, *fill) = (pattern, None);
-            } else if let Some(n) = v.as_str().map(str::trim).filter(|n| m.fill_patterns.contains_key(*n)) {
-                (*slot, *fill) = (Pattern::None, Some(n.to_string()));
-            } else {
-                let names: Vec<String> = Pattern::ALL.iter().map(|p| json!(p).as_str().unwrap_or_default().to_string()).collect();
-                return Err(bad(
-                    c,
-                    format!("`{key}`: {v} isn't a pattern: one of {}, or a fill pattern of the project's", names.join(", ")),
-                ));
+            (*slot, *fill) = material_pattern(c, m, key, v)?;
+        }
+    }
+    for (key, slot) in [("cut_color", &mut mat.cut_color), ("surface_color", &mut mat.surface_color)] {
+        if let Some(v) = p.get(key) {
+            *slot = material_colour(c, key, v)?;
+        }
+    }
+    // What shows behind the foreground: `none` or null takes it away, and its colour may come before its pattern.
+    for (key, tint, slot) in [
+        ("cut_background", "cut_background_color", &mut mat.cut_background),
+        ("surface_background", "surface_background_color", &mut mat.surface_background),
+    ] {
+        if let Some(v) = p.get(key) {
+            let (pattern, fill) = if v.is_null() { (Pattern::None, None) } else { material_pattern(c, m, key, v)? };
+            *slot = (pattern != Pattern::None || fill.is_some()).then(|| PatternLayer {
+                pattern,
+                fill,
+                color: slot.as_ref().and_then(|l| l.color),
+            });
+        }
+        if let Some(v) = p.get(tint) {
+            let color = material_colour(c, tint, v)?;
+            match slot {
+                Some(layer) => layer.color = color,
+                None if color.is_some() => *slot = Some(PatternLayer { color, ..PatternLayer::default() }),
+                None => {}
             }
         }
+    }
+    match p.get("parameters") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(values)) => crate::materials::set_values(m, &mut mat, values).map_err(|e| bad(c, e))?,
+        Some(v) => return Err(bad(c, format!("`parameters` is {{name: value}}, not {v}"))),
     }
     let name = match string(c, p, "rename")? {
         Some(to) => {
@@ -16195,6 +16296,11 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
                 params.remove(name);
             }
         }
+        if gone.iter().any(|g| g == crate::materials::CATEGORY) {
+            m.materials.values_mut().for_each(|x| {
+                x.parameters.remove(name);
+            });
+        }
     };
     // A view filter with a rule on it keeps it: taking it away would change what the filter picks out.
     let in_use = |m: &Model, name: &str, gone: &[String]| {
@@ -16246,7 +16352,8 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
         let valued = elements.values().any(|e| {
             let theirs = e.family().and_then(|(f, _)| families.get(f)).is_some_and(|f| f.parameters.iter().any(|q| q.name == name));
             param.categories.iter().any(|k| k == e.category()) && !theirs && e.params().is_some_and(|ps| ps.contains_key(&name))
-        }) || !param.type_values.is_empty();
+        }) || !param.type_values.is_empty()
+            || m.materials.values().any(|x| x.parameters.contains_key(&name));
         if kind != param.kind && valued {
             return Err(bad(c, format!("`{name}` has values of its kind; take them away before it holds another")));
         }
@@ -16334,6 +16441,11 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
             }
             for f in m.view_filters.values_mut().filter(|f| f.categories.iter().any(|k| param.categories.contains(k))) {
                 f.rules.iter_mut().filter(|r| r.field == name).for_each(|r| r.field = to.clone());
+            }
+            for x in m.materials.values_mut() {
+                if let Some(v) = x.parameters.remove(&name) {
+                    x.parameters.insert(to.clone(), v);
+                }
             }
             for e in m.elements.values_mut() {
                 if let Element::Tag(t) = e
@@ -22471,7 +22583,7 @@ fn fill_pattern(s: &mut Session, p: &Value) -> R {
         if let Some((user, _)) = m.region_types.iter().find(|(_, t)| uses(t)) {
             return Err(bad(c, format!("filled region type `{user}` fills with `{name}`; give it another first")));
         }
-        let shows = |x: &crate::model::Material| [&x.cut_pattern, &x.surface_pattern].into_iter().flatten().any(|n| *n == name);
+        let shows = |x: &crate::model::Material| x.fills().any(|n| *n == name);
         if let Some((user, _)) = m.materials.iter().find(|(_, x)| shows(x)) {
             return Err(bad(c, format!("material `{user}` shows `{name}`; give it another first")));
         }

@@ -148,6 +148,8 @@ impl MaterialEntry {
             m.images.insert(id.clone(), picture.clone());
         }
         m.materials.insert(name.to_string(), self.material.clone());
+        // The values of parameters this project hasn't stay behind.
+        crate::materials::tidy(m);
         Ok(())
     }
 }

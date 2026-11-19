@@ -1724,7 +1724,7 @@ impl Model {
             m.element.lib_refs_mut(f);
         }
         for x in self.materials.values_mut() {
-            for p in [&mut x.cut_pattern, &mut x.surface_pattern].into_iter().flatten() {
+            for p in x.fills_mut() {
                 f(&Kind::FillPattern, p);
             }
         }

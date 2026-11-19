@@ -103,13 +103,14 @@ fn the_materials_window_offers_the_projects_fill_patterns_besides_its_own() {
     press(&mut h, "Manage");
     press(&mut h, "Materials");
     press(&mut h, "New");
-    choose(&mut h, "Cut Pattern", "Sand");
+    press(&mut h, "Custom");
+    choose(&mut h, "Cut Foreground Pattern", "Sand");
     let m = &h.state().session.model.materials["Material 1"];
     assert_eq!((m.cut_pattern.as_deref(), m.surface_pattern.as_deref()), (Some("Sand"), None));
-    choose(&mut h, "Surface Pattern", "Tile 300");
+    choose(&mut h, "Surface Foreground Pattern", "Tile 300");
     assert_eq!(h.state().session.model.materials["Material 1"].surface_pattern.as_deref(), Some("Tile 300"));
     // And the combo shows the one it has.
-    assert_eq!(combo_value(&h, "Cut Pattern"), "Sand");
+    assert_eq!(combo_value(&h, "Cut Foreground Pattern"), "Sand");
 }
 
 /// Three walls of a corner, up to Level 2, made a model group.
