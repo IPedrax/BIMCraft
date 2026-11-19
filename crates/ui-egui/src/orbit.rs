@@ -637,7 +637,7 @@ fn draw_chain(p: &egui::Painter, m: &bimcraft_core::model::Model, points: &[P3],
         p.line_segment([a, b], Stroke::new(2.0, pal().accent));
         if edges > 1 {
             let long = dims3d::reading(points[i], points[(i + 1) % n]).0;
-            crate::canvas::tag(p, a + (b - a) * 0.5 + vec2(0.0, -6.0), egui::Align2::CENTER_BOTTOM, m.units.length(long));
+            crate::canvas::tag(p, a + (b - a) * 0.5 + vec2(0.0, -6.0), egui::Align2::CENTER_BOTTOM, m.length(long));
         }
     }
     for q in &on {
@@ -647,9 +647,9 @@ fn draw_chain(p: &egui::Painter, m: &bimcraft_core::model::Model, points: &[P3],
         return;
     }
     let (total, area) = dims3d::chain_reading(points, closed);
-    let mut text = if edges > 1 { tf("Total {}", &[&m.units.with_unit(total)]) } else { m.units.with_unit(total) };
+    let mut text = if edges > 1 { tf("Total {}", &[&m.with_unit(total)]) } else { m.with_unit(total) };
     if edges == 1 {
-        let [x, y, z] = dims3d::reading(points[0], points[1]).1.map(|d| m.units.length(d));
+        let [x, y, z] = dims3d::reading(points[0], points[1]).1.map(|d| m.length(d));
         text = format!("{text}\nΔX {x}  ΔY {y}  ΔZ {z}");
     }
     if let Some(a) = area {
@@ -850,6 +850,47 @@ impl Orbit {
             self.fit_requested = None;
             self.fit_from = None;
         }
+    }
+
+    /// Whether a fit asked for (Zoom to Fit, Home) is still to come.
+    pub(crate) fn fitting(&self) -> bool {
+        self.fit_target.is_some()
+    }
+
+    /// `cam`, of a picture in `rect` at `ppp` pixels a point, zoomed by the wheel and turned or panned by the middle button (Shift
+    /// orbits, Alt and the primary button stand in for it) over `response`, a widget lying over the view's own (Zoom In Region's),
+    /// as [`zoom`](Self::zoom) and [`navigate`](Self::navigate) do over the view's, about what `scene` shows. The primary button
+    /// alone is that widget's.
+    pub(crate) fn wheel_and_middle(
+        &mut self,
+        ui: &Ui,
+        rect: Rect,
+        ppp: f32,
+        response: &egui::Response,
+        cam: Camera,
+        scene: Option<&Scene>,
+    ) -> Camera {
+        let input = Input::read(ui, rect, response, ppp, None, None);
+        let cam = self.zoom(ui.ctx(), &input, cam, scene);
+        let held = response.dragged_by(PointerButton::Primary) && !input.alt;
+        self.navigate(ui, response, &input, cam, held, false, false, scene).cam
+    }
+
+    /// The hand let go: a drag turning or panning the view, or a selection box, ended without its release being seen (the widget
+    /// it was over, Zoom In Region's, is gone).
+    pub(crate) fn let_go(&mut self) {
+        self.drag = None;
+        self.before = None;
+        self.select = None;
+    }
+
+    /// A fit asked for and not yet done, given up: the camera is being set otherwise (Previous Pan/Zoom), and the fit must not
+    /// come back over it.
+    pub(crate) fn cancel_fit(&mut self) {
+        self.fit_worker = None;
+        self.fit_target = None;
+        self.fit_requested = None;
+        self.fit_from = None;
     }
 
     /// Home: the camera turned to Revit's default orientation and fitted over the model on the worker, through `lens`.
@@ -1545,7 +1586,7 @@ impl BimApp {
                     params["view"] = json!(v);
                 }
                 if let Some(made) = self.run("dimension_3d", params) {
-                    let long = self.session.model.units.with_unit(made["length"].as_f64().unwrap_or(0.0));
+                    let long = self.session.model.with_unit(made["length"].as_f64().unwrap_or(0.0));
                     self.status = Status { text: tf("Aligned dimension: {}", &[&long]), error: false };
                 }
             }
@@ -2331,7 +2372,7 @@ impl BimApp {
             }
             let at = screen([to.0, to.1, z]);
             if h.vertical() && at.is_finite() {
-                crate::canvas::tag(&p, at + vec2(14.0, -8.0), egui::Align2::LEFT_BOTTOM, model.units.with_unit(z));
+                crate::canvas::tag(&p, at + vec2(14.0, -8.0), egui::Align2::LEFT_BOTTOM, model.with_unit(z));
             }
         }
         if let Some(id) = single.filter(|_| o.placement_drag.is_none()) {
@@ -2375,7 +2416,7 @@ impl BimApp {
             {
                 p.line_segment([from, at], Stroke::new(1.0, pal().accent));
                 let long = P2(b[0], b[1]).dist(P2(q[0], q[1])).hypot(q[2] - b[2]);
-                crate::canvas::tag(&p, at + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.units.with_unit(long));
+                crate::canvas::tag(&p, at + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.with_unit(long));
             }
             let diamond = [vec2(0.0, -6.0), vec2(6.0, 0.0), vec2(0.0, 6.0), vec2(-6.0, 0.0)].map(|d| at + d).to_vec();
             p.add(egui::Shape::closed_line(diamond, Stroke::new(2.0, pal().accent)));
@@ -2442,7 +2483,7 @@ impl BimApp {
                     let n = vec2(-u.y, u.x) * 3.0;
                     p.add(egui::Shape::convex_polygon(vec![tip, tip - u * 7.0 + n, tip - u * 7.0 - n], pal().accent, Stroke::NONE));
                 }
-                crate::canvas::tag(&p, a + (b - a) * 0.5 + vec2(-6.0, 0.0), egui::Align2::RIGHT_CENTER, model.units.length(up.abs()));
+                crate::canvas::tag(&p, a + (b - a) * 0.5 + vec2(-6.0, 0.0), egui::Align2::RIGHT_CENTER, model.length(up.abs()));
             }
             // What's held, where the drag takes it.
             for at in held.iter().filter_map(|q| top_at(*q)) {
@@ -2494,7 +2535,7 @@ impl BimApp {
                         (true, false) => typed_z.unwrap_or(surface),
                         _ => surface,
                     };
-                    crate::canvas::tag(&p, to + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.units.length(z));
+                    crate::canvas::tag(&p, to + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.length(z));
                     match split_start.and_then(on_top) {
                         Some(start) => {
                             p.line_segment([screen(start), to], Stroke::new(1.5, pal().accent));

@@ -278,9 +278,14 @@ impl DimensionType {
         }
     }
 
-    /// A length as it shows one, in `project` units unless it has its own.
-    pub fn length(&self, project: Units, mm: f64) -> String {
-        rounded(self.units.unwrap_or(project), self.decimals, mm)
+    /// A length as it shows one, in `project` units unless it has its own, to its own decimals, else (in the project's
+    /// units) the project's `project_decimals`.
+    pub fn length(&self, project: Units, project_decimals: Option<u8>, mm: f64) -> String {
+        match self.units {
+            Some(own) => rounded(own, self.decimals, mm),
+            None if self.decimals.is_some() => rounded(project, self.decimals, mm),
+            None => project.length_to(mm, project_decimals),
+        }
     }
 }
 

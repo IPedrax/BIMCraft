@@ -47,7 +47,7 @@ impl ProjectInfoDialog {
                     kind: p.kind,
                     description: p.description.clone(),
                     read_only: p.read_only,
-                    typed: parameter_shown(p.kind, &v, m.units),
+                    typed: parameter_shown(p.kind, &v, m),
                     on: v.as_bool().unwrap_or(false),
                 }
             })

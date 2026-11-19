@@ -2235,7 +2235,7 @@ fn section_bare(m: &Model, w: &SectionWork, id: impl Key, cancelled: &(dyn Fn() 
 
 /// The room, px, the widest level name or height takes past the end of a section's line, drawn at the size it is laid out at.
 fn level_names(m: &Model) -> f32 {
-    m.levels().iter().map(|(_, l)| font::width(&l.name, 10.0).max(font::width(&m.units.length(m.level_shown(l)), 10.0))).fold(0.0, f32::max)
+    m.levels().iter().map(|(_, l)| font::width(&l.name, 10.0).max(font::width(&m.length(m.level_shown(l)), 10.0))).fold(0.0, f32::max)
         + 12.0
 }
 
@@ -2777,7 +2777,7 @@ fn section_base_cancellable(
         let (a, b) = (d.view.px(P2(from, l.elevation)), d.view.px(P2(to, l.elevation)));
         let dash = d.note_dash(&[12.0, 4.0]);
         d.stroke(vec![a, b], Pen::PROJECTION, INK, dash, false);
-        for (text, dy) in [(l.name.clone(), -8.0), (m.units.length(m.level_shown(l)), 8.0)] {
+        for (text, dy) in [(l.name.clone(), -8.0), (m.length(m.level_shown(l)), 8.0)] {
             let h = d.px(10.0);
             d.text(&text, (b.0 + d.px(8.0) + font::width(&text, h) / 2.0, b.1 + d.px(dy)), h, INK);
         }

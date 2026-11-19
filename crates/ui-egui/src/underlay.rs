@@ -451,7 +451,7 @@ impl BimApp {
                     ui.end_row();
                     if !u.placed() {
                         ui.label("");
-                        let (x, y) = (model.units.length(u.offset.0), model.units.length(u.offset.1));
+                        let (x, y) = (model.length(u.offset.0), model.length(u.offset.1));
                         let angle = format!("{}", (u.angle * 100.0).round() / 100.0);
                         ui.weak(tf("Moved {}, {}; turned {}°", &[&x, &y, &angle]));
                         ui.end_row();

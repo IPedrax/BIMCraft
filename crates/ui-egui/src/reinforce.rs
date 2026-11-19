@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use bimcraft_i18n::msg;
 
-use bimcraft_core::model::{Element, Id};
+use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::units::Units;
 use egui::{Align, ComboBox, Context, Id as UiId, Layout, RichText, TextEdit, Ui, WidgetInfo, WidgetType};
 use serde_json::{Value, json};
@@ -284,7 +284,7 @@ impl ReinforceDialog {
     }
 
     /// The fields, filled as the parameters of a preset say.
-    fn load(&mut self, units: Units, params: &serde_json::Map<String, Value>) {
+    fn load(&mut self, m: &Model, params: &serde_json::Map<String, Value>) {
         self.values.clear();
         let p = Value::Object(params.clone());
         for g in self.form.groups() {
@@ -293,7 +293,7 @@ impl ReinforceDialog {
                     let text = match f.kind {
                         Kind::Count => format!("{}", v.round()),
                         Kind::Diameter | Kind::Number => format!("{v}"),
-                        Kind::Length => units.length(v),
+                        Kind::Length => m.field(v),
                     };
                     self.values.insert(f.path, text);
                 }
@@ -303,13 +303,13 @@ impl ReinforceDialog {
             Some(Value::Object(o)) => {
                 for (face, key) in [("top", "cover_top"), ("bottom", "cover_bottom"), ("sides", "cover_sides")] {
                     if let Some(v) = o.get(face).and_then(Value::as_f64) {
-                        self.values.insert(key, units.length(v));
+                        self.values.insert(key, m.field(v));
                     }
                 }
             }
             Some(v) => {
                 if let Some(x) = v.as_f64() {
-                    self.values.insert("cover", units.length(x));
+                    self.values.insert("cover", m.field(x));
                 }
             }
             None => {}
@@ -325,7 +325,7 @@ impl ReinforceDialog {
             }
         }
         if let Some(v) = p.get("clearance").and_then(Value::as_f64) {
-            self.values.insert("clearance", units.length(v));
+            self.values.insert("clearance", m.field(v));
         }
     }
 
@@ -566,7 +566,7 @@ impl BimApp {
         if let Some(n) = chosen
             && let Some(p) = self.session.model.reinforcement.get(&n).map(|p| p.params.clone())
         {
-            d.load(units, &p);
+            d.load(&self.session.model, &p);
             (d.preset, d.error) = (n, String::new());
         }
         if save {
