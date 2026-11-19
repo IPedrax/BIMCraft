@@ -172,7 +172,7 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:16570
+#: crates/core/src/commands.rs:16579
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -262,9 +262,9 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:16315
-#: crates/core/src/commands.rs:16331
-#: crates/core/src/commands.rs:21226
+#: crates/core/src/commands.rs:16324
+#: crates/core/src/commands.rs:16340
+#: crates/core/src/commands.rs:21235
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -513,7 +513,7 @@ msgid "Membrane"
 msgstr "Membrana"
 
 #: crates/core/src/commands.rs:4524
-#: crates/core/src/commands.rs:19771
+#: crates/core/src/commands.rs:19780
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -682,7 +682,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tegole"
 
-#: crates/core/src/commands.rs:13886
+#: crates/core/src/commands.rs:13895
 msgid "Room"
 msgstr "Zona"
 
@@ -724,8 +724,8 @@ msgstr "Massetto"
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
-#: crates/core/src/commands.rs:16249
-#: crates/core/src/commands.rs:21225
+#: crates/core/src/commands.rs:16258
+#: crates/core/src/commands.rs:21234
 msgid "Section"
 msgstr "Sezione"
 
@@ -934,7 +934,7 @@ msgstr ""
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:16908
+#: crates/core/src/commands.rs:16917
 msgid "Unnamed"
 msgstr "Senza nome"
 

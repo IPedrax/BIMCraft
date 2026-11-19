@@ -172,7 +172,7 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:16570
+#: crates/core/src/commands.rs:16579
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -262,9 +262,9 @@ msgstr "Điện chiếu sáng"
 msgid "Electrical Power"
 msgstr "Điện động lực"
 
-#: crates/core/src/commands.rs:16315
-#: crates/core/src/commands.rs:16331
-#: crates/core/src/commands.rs:21226
+#: crates/core/src/commands.rs:16324
+#: crates/core/src/commands.rs:16340
+#: crates/core/src/commands.rs:21235
 msgid "Elevation"
 msgstr "Mặt đứng"
 
@@ -513,7 +513,7 @@ msgid "Membrane"
 msgstr "Màng"
 
 #: crates/core/src/commands.rs:4524
-#: crates/core/src/commands.rs:19771
+#: crates/core/src/commands.rs:19780
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -682,7 +682,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Ngói"
 
-#: crates/core/src/commands.rs:13886
+#: crates/core/src/commands.rs:13895
 msgid "Room"
 msgstr "Phòng"
 
@@ -724,8 +724,8 @@ msgstr "Lớp vữa láng"
 msgid "Seat Height"
 msgstr "Chiều cao mặt ghế"
 
-#: crates/core/src/commands.rs:16249
-#: crates/core/src/commands.rs:21225
+#: crates/core/src/commands.rs:16258
+#: crates/core/src/commands.rs:21234
 msgid "Section"
 msgstr "Mặt cắt"
 
@@ -934,7 +934,7 @@ msgstr "Chiều cao không giới hạn"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:16908
+#: crates/core/src/commands.rs:16917
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 

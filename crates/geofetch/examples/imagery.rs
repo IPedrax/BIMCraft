@@ -28,7 +28,6 @@ use std::sync::Arc;
 
 use bimcraft_core::geo::GeoSource;
 use bimcraft_core::geom::P2;
-use bimcraft_core::georef::Location;
 use bimcraft_core::imagery;
 use bimcraft_core::texture::Picture;
 use bimcraft_geofetch::Geofetch;
@@ -270,7 +269,8 @@ fn decoded(bytes: &[u8], format: Format) -> (String, Option<[u8; 3]>) {
         Format::Png | Format::Jpeg => match Picture::import("probe", bytes) {
             Ok(picture) => {
                 let (w, h) = picture.size();
-                (format!("{w}x{h}"), picture.flat())
+                let flat = bimcraft_core::texture::decode_rgb(bytes).ok().and_then(|(_, _, rgb)| bimcraft_core::texture::flat_rgb(&rgb));
+                (format!("{w}x{h}"), flat)
             }
             Err(why) => (format!("unreadable: {why}"), None),
         },
@@ -480,9 +480,16 @@ fn warp(args: &[String]) -> Result<(), String> {
     let true_north = number_or(args, 5, "true north in degrees", 0.0)?;
     let max_side = number_or(args, 6, "pixels along the long side", f64::from(imagery::DEFAULT_SIDE))? as u32;
     let out = out_dir(args.get(7))?;
-    // The project: its origin at the place, turned as asked; the picture covers the box round the origin.
-    let location = Location { latitude, longitude, elevation: 0.0, true_north, crs: None };
-    let projector = location.projector()?;
+    // The project: its site at the place, on WGS 84's UTM zone there, turned as asked (true north `true_north` degrees
+    // counter-clockwise of project north); the picture covers the box round the origin.
+    let mut session = bimcraft_core::engine::Session::new();
+    let name = session.model.coordinates.active.clone();
+    let crs = format!("EPSG:{}", bimcraft_core::geo::utm_epsg(longitude, latitude));
+    session.execute(
+        "location",
+        &serde_json::json!({"name": name, "crs": crs, "latitude": latitude, "longitude": longitude, "angle": -true_north}),
+    )?;
+    let projector = bimcraft_core::geo::Projector::of(&session.model)?;
     let lonlat = |p: P2| projector.lonlat(p);
     let extent = [-width_m * 500.0, -height_m * 500.0, width_m * 500.0, height_m * 500.0];
     let envelope = imagery::envelope(extent, &lonlat)?;
@@ -516,12 +523,12 @@ fn warp(args: &[String]) -> Result<(), String> {
             "-grid.png",
             &encode_png(raster.width, raster.height, &grid_overlay(&raster.rgba, raster.width, raster.height, extent, 100.0))?,
         )?;
-        let grid = location.grid()?;
-        let [a, d, b, e, c, f] = imagery::world_file(&grid, extent, raster.width, raster.height);
+        let site = projector.site();
+        let [a, d, b, e, c, f] = imagery::world_file(site, extent, raster.width, raster.height);
         let world = save(".pgw", format!("{a:.10}\n{d:.10}\n{b:.10}\n{e:.10}\n{c:.4}\n{f:.4}\n").as_bytes())?;
         let clear = raster.rgba.as_chunks::<4>().0.iter().filter(|p| p[3] == 0).count();
         let note = format!(
-            "source: {} ({})\ncredit: {}\nterms: {}\nfetched from the cache: {}\nzoom {}, tiles of {:.3} m a pixel, {} x {} tiles\npicture: {} x {} px over {width_m} x {height_m} m, {:.1}% without imagery\nproject: origin at {latitude}, {longitude}, true north {true_north} degrees\ngrid of the world file: EPSG:{} ({}); the file has no CRS of its own, name it when opening\nextent in the project's plane, mm: west {}, south {}, east {}, north {}\n",
+            "source: {} ({})\ncredit: {}\nterms: {}\nfetched from the cache: {}\nzoom {}, tiles of {:.3} m a pixel, {} x {} tiles\npicture: {} x {} px over {width_m} x {height_m} m, {:.1}% without imagery\nproject: origin at {latitude}, {longitude}, true north {true_north} degrees\ngrid of the world file: {} ({}); the file has no CRS of its own, name it when opening\nextent in the project's plane, mm: west {}, south {}, east {}, north {}\n",
             source.name,
             source.id,
             source.credit,
@@ -534,8 +541,8 @@ fn warp(args: &[String]) -> Result<(), String> {
             raster.width,
             raster.height,
             100.0 * clear as f64 / (raster.width as f64 * raster.height as f64),
-            grid.epsg,
-            grid.name,
+            site.crs,
+            site.description.clone().unwrap_or_default(),
             extent[0],
             extent[1],
             extent[2],

@@ -218,15 +218,11 @@ impl BimApp {
     /// What the picked box goes into: the area box's four degrees.
     fn use_map(&mut self) {
         let Some(b) = self.site.map.take() else { return };
-        match (b.pick, b.area) {
-            (Pick::Area, Some(x)) => {
-                if let Some(a) = self.site.area.as_mut() {
-                    a.around = false;
-                    (a.south, a.west, a.north, a.east, a.error) =
-                        (degrees(x.south), degrees(x.west), degrees(x.north), degrees(x.east), None);
-                }
-            }
-            _ => {}
+        if let (Pick::Area, Some(x)) = (b.pick, b.area)
+            && let Some(a) = self.site.area.as_mut()
+        {
+            a.around = false;
+            (a.south, a.west, a.north, a.east, a.error) = (degrees(x.south), degrees(x.west), degrees(x.north), degrees(x.east), None);
         }
     }
 

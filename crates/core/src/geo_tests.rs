@@ -27,16 +27,6 @@ struct Fake {
     imagery_asked: Mutex<Vec<(String, crate::imagery::Plan)>>,
     /// The sources it has no imagery of.
     no_imagery: Vec<&'static str>,
-    /// What it is untruthful about in the imagery it gives.
-    lie: Option<Lie>,
-}
-
-/// How a fetcher can be wrong about the imagery it brings: hostile, as a file is.
-#[derive(Clone, Copy)]
-enum Lie {
-    Source,
-    Plan,
-    Mosaic,
 }
 
 impl Fake {
@@ -49,7 +39,6 @@ impl Fake {
             holes: 0,
             imagery_asked: Mutex::default(),
             no_imagery: Vec::new(),
-            lie: None,
         }
     }
 }
@@ -102,16 +91,7 @@ impl GeoSource for Fake {
                 mosaic.put(col, row, &tile)?;
             }
         }
-        let mut got = Imagery { source: source.into(), plan: plan.clone(), mosaic, cached: false };
-        match self.lie {
-            Some(Lie::Source) => got.source = "usgs".into(),
-            Some(Lie::Plan) => got.plan.zoom = got.plan.zoom.saturating_sub(1),
-            Some(Lie::Mosaic) => {
-                got.mosaic.rgb.pop();
-            }
-            None => {}
-        }
-        Ok(got)
+        Ok(Imagery { source: source.into(), plan: plan.clone(), mosaic, cached: false })
     }
 
     fn attribution(&self, what: &str) -> String {
