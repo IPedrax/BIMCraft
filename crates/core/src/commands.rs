@@ -18176,7 +18176,7 @@ fn favorite(s: &mut Session, p: &Value) -> R {
                 _ => kept.title_blocks.remove(&name).is_some(),
             };
             if !gone {
-                return Err(bad(c, format!("there's no favorite {kind} `{name}`")));
+                return Err(bad(c, format!("there's no favorite {} `{name}`", kind.replace('_', " "))));
             }
             kept.write(&path).map_err(|e| bad(c, e))?;
             Ok(json!({"deleted": name, "kind": kind}))
