@@ -788,7 +788,9 @@ least), a picture in it resampled through its transform. The picture of the page
 which an older version, leaving `pdfs` out of a file, shows instead.
 
 Its fills are drawn by the non-zero rule, as every output fills (PNG, SVG, a sheet's PDF, and the window, which takes a placed
-image's shapes as `render::Part::Picture` and fills one of several rings as it fills a letter): a glyph's counters stay open as
+image's shapes as `render::Part::Picture`, fills them as it fills a letter and feathers every edge half a point each side,
+`canvas::feather`: a mesh has no anti-aliasing of its own, and without it a stroke thinner than a pixel, a serif letter's bars
+at a plan's zoom, showed or vanished by where it fell between pixels): a glyph's counters stay open as
 they're wound, and an even-odd fill's rings are wound again by how many of the others each lies in (`pdf_in::wind_even_odd`),
 so a frame's opening stays open too. Text is its fonts' own outlines where the PDF embeds them, as most do (a subset of each).
 A font it only names comes from `pdf_in::interpreter`'s resolver: one of PDF's standard families (Helvetica or Arial, Times or

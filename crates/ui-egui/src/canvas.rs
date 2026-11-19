@@ -813,11 +813,24 @@ pub(crate) fn paint_prim(
         _ => None,
     };
     match prim {
-        // Notes, compound pattern glyphs and a PDF's shapes use the non-zero fill rule, preserving counters and overlapping
-        // contours. Single-contour fills (including dots) keep their ordinary polygon rendering below.
-        Prim::Fill { rings, color: c }
-            if part == render::Part::Text || (matches!(part, render::Part::LinePattern | render::Part::Picture) && rings.len() > 1) =>
-        {
+        // What a placed image or PDF fills (its letters, mostly): by the non-zero rule, every edge feathered, so a stroke thinner
+        // than a pixel (a serif letter's bars at a plan's zoom) shades the pixels it crosses rather than missing them all.
+        Prim::Fill { rings, color: c } if part == render::Part::Picture => {
+            let fill = color(*c);
+            let mut mesh = Mesh::default();
+            for tri in letter(rings).iter() {
+                let first = mesh.vertices.len() as u32;
+                for q in tri {
+                    mesh.colored_vertex(at.pos(*q), fill);
+                }
+                mesh.add_triangle(first, first + 1, first + 2);
+            }
+            feather(&mut mesh, rings, at, fill);
+            out(Shape::mesh(mesh));
+        }
+        // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
+        // Single-contour fills (including dots) keep their ordinary polygon rendering below.
+        Prim::Fill { rings, color: c } if part == render::Part::Text || (part == render::Part::LinePattern && rings.len() > 1) => {
             let fill = accent.map_or(color(*c), |a| a.0);
             let mut mesh = Mesh::default();
             for tri in letter(rings).iter() {
@@ -887,6 +900,36 @@ pub(crate) fn paint_prim(
                     out(Shape::line(pts, stroke));
                 }
             }
+        }
+    }
+}
+
+/// How far an edge's feather reaches each side of it, points: a pixel across in all, as egui feathers what it fills itself.
+const FEATHER: f32 = 0.5;
+
+/// Each edge of `rings` (wound for the non-zero rule, its holes the other way), as `at` places them, given a strip from
+/// [`FEATHER`] inside it in `fill` to as far outside it clear: what a mesh, which egui doesn't feather, needs to shade an edge as
+/// much as it covers a pixel. The fill is on the same side of every edge, the side its largest ring winds round.
+fn feather(mesh: &mut Mesh, rings: &[Vec<(f32, f32)>], at: Place, fill: Color32) {
+    let area = |r: &[(f32, f32)]| (0..r.len()).map(|i| r[i].0 * r[(i + 1) % r.len()].1 - r[(i + 1) % r.len()].0 * r[i].1).sum::<f32>();
+    let Some(s) = rings.iter().map(|r| area(r)).max_by(|a, b| a.abs().total_cmp(&b.abs())).map(f32::signum) else { return };
+    for r in rings.iter().filter(|r| r.len() >= 2) {
+        for i in 0..r.len() {
+            let (a, b) = (at.pos(r[i]), at.pos(r[(i + 1) % r.len()]));
+            let d = b - a;
+            let len = d.length();
+            if len.is_nan() || len <= 1e-4 {
+                continue;
+            }
+            // Away from the fill: the fill is to the left of an edge of a ring that winds positively.
+            let away = vec2(d.y, -d.x) / len * s * FEATHER;
+            let first = mesh.vertices.len() as u32;
+            mesh.colored_vertex(a - away, fill);
+            mesh.colored_vertex(b - away, fill);
+            mesh.colored_vertex(b + away, Color32::TRANSPARENT);
+            mesh.colored_vertex(a + away, Color32::TRANSPARENT);
+            mesh.add_triangle(first, first + 1, first + 2);
+            mesh.add_triangle(first, first + 2, first + 3);
         }
     }
 }

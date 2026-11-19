@@ -136,13 +136,10 @@ mod tests {
     use bimcraft_core::render::{Part, Prim, Rgb};
     use egui::{Color32, Pos2, Shape, pos2};
 
-    /// What a frame (a square with a square opening, wound the other way) of a placed PDF paints, `selected` or not: each mesh
-    /// vertex's colour, and whether its triangles cover `q`.
-    fn frame(selected: bool, q: Pos2) -> (Vec<Color32>, bool) {
-        let ring = |a: f32, b: f32| vec![(a, a), (b, a), (b, b), (a, b)];
-        let mut inner = ring(10.0, 20.0);
-        inner.reverse();
-        let prim = Prim::Fill { rings: vec![ring(0.0, 30.0), inner], color: Rgb(10, 10, 10) };
+    /// What the fill `rings` of a placed PDF paints, `selected` or not: each mesh vertex's colour, and whether its triangles
+    /// cover `q`.
+    fn painted(rings: Vec<Vec<(f32, f32)>>, selected: bool, q: Pos2) -> (Vec<Color32>, bool) {
+        let prim = Prim::Fill { rings, color: Rgb(10, 10, 10) };
         let set: std::collections::HashSet<Id> = if selected { [7].into() } else { Default::default() };
         let mut shapes = Vec::new();
         let clip = Rect::from_min_max(pos2(-100.0, -100.0), pos2(100.0, 100.0));
@@ -171,13 +168,35 @@ mod tests {
         (colours, covers)
     }
 
+    fn ring(x0: f32, y0: f32, x1: f32, y1: f32) -> Vec<(f32, f32)> {
+        vec![(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    }
+
+    /// A square with a square opening, wound the other way.
+    fn frame() -> Vec<Vec<(f32, f32)>> {
+        let mut inner = ring(10.0, 10.0, 20.0, 20.0);
+        inner.reverse();
+        vec![ring(0.0, 0.0, 30.0, 30.0), inner]
+    }
+
     #[test]
     fn a_selected_pdfs_shapes_keep_their_colours_and_an_opening_stays_open() {
-        let (plain, _) = frame(false, pos2(5.0, 15.0));
-        let (lit, covers_frame) = frame(true, pos2(5.0, 15.0));
+        let (plain, _) = painted(frame(), false, pos2(5.0, 15.0));
+        let (lit, covers_frame) = painted(frame(), true, pos2(5.0, 15.0));
         assert!(!plain.is_empty() && lit == plain, "selected, it is drawn in its own colours (a tint goes over it)");
         assert!(covers_frame, "the frame is filled");
-        assert!(!frame(true, pos2(15.0, 15.0)).1, "its opening is not");
+        assert!(!painted(frame(), true, pos2(15.0, 15.0)).1, "its opening is not");
+    }
+
+    #[test]
+    fn a_pdfs_stroke_thinner_than_a_pixel_still_shades_the_pixels_it_crosses() {
+        // A serif letter's bar, 0.4 px tall inside the row of pixels centred at 10.5 but short of the centre: its own triangles
+        // miss every pixel, its edges' feather shades that row's, and not the next.
+        let bar = || vec![ring(0.0, 10.55, 20.0, 10.95)];
+        let (colours, covers) = painted(bar(), false, pos2(5.0, 10.5));
+        assert!(covers, "its row shades it");
+        assert!(colours.iter().any(|c| c.a() == 0) && colours.iter().any(|c| c.a() == 255), "feathered from ink to clear");
+        assert!(!painted(bar(), false, pos2(5.0, 11.5)).1, "and the next row doesn't");
     }
 
     #[test]
