@@ -557,12 +557,17 @@ impl Drawing {
     /// on screen (y runs down).
     pub(crate) fn text_turned(&mut self, text: &str, (x, y): (f32, f32), height: f32, angle: f32, color: Rgb) {
         // Only this lettering path substitutes '?' directly. Notes have their own font fallback.
+        let mut shown: String = text.chars().take(40).collect();
+        if shown.chars().count() < text.chars().count() {
+            shown.push('…');
+        }
         for ch in text.chars() {
             if self.notes.len() >= 32 {
                 break;
             }
             if !font::has(ch) {
-                let note = format!("Drawing lettering has no glyph for U+{:04X}; drawn as a question mark (?)", ch as u32);
+                let note =
+                    format!("Drawing lettering has no glyph for «{ch}» (U+{:04X}) in «{shown}»; drawn as a question mark (?)", ch as u32);
                 if !self.notes.contains(&note) {
                     self.notes.push(note);
                 }
