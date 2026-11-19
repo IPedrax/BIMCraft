@@ -688,7 +688,7 @@ msgstr "Adicionar retângulo"
 
 #: crates/ui-egui/src/codes/tree.rs:395
 #: crates/ui-egui/src/codes/tree.rs:412
-#: crates/ui-egui/src/codes/tree.rs:650
+#: crates/ui-egui/src/codes/tree.rs:679
 #: crates/ui-egui/src/codes.rs:827
 #: crates/ui-egui/src/curtain.rs:339
 msgid "Add Row"
@@ -4728,9 +4728,9 @@ msgid "Delete this code from the project. If the project uses it, its rules are 
 msgstr "Excluir este código do projeto. Se o projeto o usa, as regras são mantidas."
 
 #: crates/ui-egui/src/codes/tree.rs:389
-#: crates/ui-egui/src/codes/tree.rs:486
-#: crates/ui-egui/src/codes/tree.rs:563
-#: crates/ui-egui/src/codes/tree.rs:639
+#: crates/ui-egui/src/codes/tree.rs:494
+#: crates/ui-egui/src/codes/tree.rs:577
+#: crates/ui-egui/src/codes/tree.rs:666
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr "Excluir esta linha"
@@ -16460,11 +16460,11 @@ msgstr "Este projeto não tem níveis. Adicione um com a ferramenta Nível."
 msgid "This project has {}, the file {}"
 msgstr "Este projeto tem {}, o arquivo {}"
 
-#: crates/ui-egui/src/codes/tree.rs:556
+#: crates/ui-egui/src/codes/tree.rs:566
 msgid "This row gives one value for these columns"
 msgstr "Esta linha dá um valor só para estas colunas"
 
-#: crates/ui-egui/src/codes/tree.rs:554
+#: crates/ui-egui/src/codes/tree.rs:564
 msgid "This row gives this value in the columns after it"
 msgstr "Esta linha dá este valor nas colunas seguintes"
 

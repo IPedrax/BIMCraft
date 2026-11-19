@@ -474,9 +474,17 @@ fn plain_table(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, pasted: 
             for (i, row) in rows.iter_mut().enumerate() {
                 let cells = flat(row);
                 for (j, c) in cells.iter().enumerate() {
-                    let mut text = cell_text(c);
+                    // An empty cell is empty to type in: its dash is a hint, not text typed after.
+                    let mut text = if c.is_null() { String::new() } else { cell_text(c) };
                     let w = if c.is_string() { width_of(std::iter::once(text.chars().count())) } else { 64.0 };
-                    if ui.add(egui::TextEdit::singleline(&mut text).desired_width(w)).changed() {
+                    // As in a table of objects: the text typed while it is typed in, under an id of its own, so its undo
+                    // history goes when the rows change or the dialog closes.
+                    // Under the table's own place in the window: two tables whose paths read alike (a key with a dot in it)
+                    // never share a cell.
+                    let typing = ui.make_persistent_id(("plain cell", i, j));
+                    typed_so_far(ui, typing, &mut text);
+                    if ui.add(egui::TextEdit::singleline(&mut text).desired_width(w).hint_text("—").id(typing)).changed() {
+                        ui.data_mut(|d| d.insert_temp(typing, Typing(text.clone())));
                         set_flat(row, j, cell_value(&text));
                     }
                 }
@@ -492,6 +500,7 @@ fn plain_table(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, pasted: 
     });
     if let Some(i) = gone {
         rows.remove(i);
+        stop_typing(ui);
     }
     table_tools(ui, rows, pasted);
 }
@@ -501,6 +510,14 @@ fn plain_table(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, pasted: 
 fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pasted: &mut String) {
     let cols = object_columns(rows);
     let literal = literal_columns(rows);
+    // Columns rows hold lists in, and those they hold a plain value in. A cell this row lacks (a row added) takes a list in a
+    // list column, and in one holding both when what is typed has a comma or is written as one; a cell it holds empty (a
+    // value cleared on the way to another) takes a list only so written.
+    let holds = |f: fn(&Value) -> bool| -> std::collections::BTreeSet<String> {
+        cols.iter().filter(|c| rows.iter().any(|r| get(r, c).is_some_and(f))).cloned().collect()
+    };
+    let lists = holds(Value::is_array);
+    let plains = holds(|v| scalar(v) && !v.is_null());
     let widths: Vec<f32> = cols
         .iter()
         .map(|c| {
@@ -532,14 +549,8 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                     let mut text = if now.is_null() || spread { String::new() } else { list_text(&now) };
                     // While a cell is typed in, it keeps what was typed (a list's comma at its end, a number's zeros after its
                     // point), not what that reads as so far; left, it shows what it holds again.
-                    let typing = egui::Id::new((id, "cell", i, c.as_str()));
-                    if ui.memory(|m| m.has_focus(typing)) {
-                        if let Some(Typing(was)) = ui.data(|d| d.get_temp::<Typing>(typing)) {
-                            text = was;
-                        }
-                    } else {
-                        ui.data_mut(|d| d.remove::<Typing>(typing));
-                    }
+                    let typing = ui.make_persistent_id(("cell", i, c.as_str()));
+                    typed_so_far(ui, typing, &mut text);
                     // A column inside a value this row gives whole is not one it can be typed in.
                     let lit = literal.get(c).map(Vec::as_slice);
                     let open = !spread && lit.map_or_else(|| reachable(row, c), |keys| get(row, c).is_some() || reachable_at(row, keys));
@@ -549,7 +560,6 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                         egui::TextEdit::singleline(&mut text).desired_width(*w).hint_text("—")
                     };
                     let r = ui.add_enabled(open, edit.id(typing));
-                    ui.data_mut(|d| d.get_temp_mut_or_default::<Drawn>(egui::Id::new("codes cells drawn")).0.insert(typing));
                     let r = if spread {
                         r.on_disabled_hover_text(t("This row gives this value in the columns after it"))
                     } else {
@@ -557,7 +567,11 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                     };
                     if r.changed() {
                         ui.data_mut(|d| d.insert_temp(typing, Typing(text.clone())));
-                        write(row, c, if now.is_array() { list_value(&text) } else { cell_value(&text) }, lit);
+                        let written_as_list = text.contains(',') || text.trim_start().starts_with('[');
+                        let lacked = get(row, c).is_none();
+                        let list =
+                            now.is_array() || (now.is_null() && lists.contains(c) && (written_as_list || (lacked && !plains.contains(c))));
+                        write(row, c, if list { list_value(&text) } else { cell_value(&text) }, lit);
                     }
                 }
                 if ui.small_button("×").on_hover_text(t("Delete this row")).clicked() {
@@ -579,6 +593,19 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
 /// What a cell holds as typed while it is typed in (`object_table`).
 #[derive(Clone, Default)]
 struct Typing(String);
+
+/// While cell `typing` is typed in, `text` is what was typed, not what it reads as so far; left, what it holds. The cell
+/// is counted among those whose typing and undo history go when the rows change or the dialog closes.
+fn typed_so_far(ui: &Ui, typing: egui::Id, text: &mut String) {
+    if ui.memory(|m| m.has_focus(typing)) {
+        if let Some(Typing(was)) = ui.data(|d| d.get_temp::<Typing>(typing)) {
+            *text = was;
+        }
+    } else {
+        ui.data_mut(|d| d.remove::<Typing>(typing));
+    }
+    ui.data_mut(|d| d.get_temp_mut_or_default::<Drawn>(egui::Id::new("codes cells drawn")).0.insert(typing));
+}
 
 /// No cell stays in typing: the rows were replaced or one was taken away, so the ids of the cells now name others' cells,
 /// and their undo history goes with them.
@@ -646,6 +673,8 @@ fn cards(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, hints: &Hints,
     }
     if let Some(i) = gone {
         rows.remove(i);
+        // The cards after it take its place, and its tables' cells' ids.
+        stop_typing(ui);
     }
     if ui.small_button(t("Add Row")).clicked()
         && let Some(last) = rows.last()
@@ -2355,5 +2384,771 @@ mod tests {
         h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
         h.run();
         assert_eq!(h.state().0, original);
+    }
+
+    // G7d: a row added in a list column, positional tables, and the rest the reviews of G7c left.
+
+    #[test]
+    fn review_g7c_codes_cancelled_plain_table_numbers_cannot_return() {
+        let mut h = g7_dialog("energisa");
+        review_g7c_open_temperature_table(&mut h);
+        let expected = review_g7c_temperature_table(&h);
+        assert_eq!(expected[0][1], json!(1.22));
+        review_g7c_type_temperature(&mut h, "1.22", "1.27");
+        review_g7c_type_temperature(&mut h, "1.27", "1.28");
+        h.get_by_label("Cancel").click_accesskit();
+        h.run();
+        assert_eq!(review_g7c_temperature_table(&h), expected);
+        review_g7c_open_temperature_table(&mut h);
+        review_g7c_temperature_input(&h, "1.22").focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        g7_ok(&mut h);
+        assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
+        assert_eq!(review_g7c_temperature_table(&h), expected);
+    }
+
+    fn review_g7c_open_temperature_table(h: &mut Harness<'_, crate::BimApp>) {
+        let app = h.state_mut();
+        let mut dialog = crate::codes::CodesDialog::new(&app.session.model);
+        dialog.tab = 3;
+        dialog.tab_mut(Discipline::Electrical).section = "circuits".into();
+        dialog.table = Some(("circuits".into(), "temperature_air".into()));
+        app.codes_dialog = Some(dialog);
+        h.run();
+    }
+
+    fn review_g7c_temperature_table(h: &Harness<'_, crate::BimApp>) -> Value {
+        h.state().session.model.resolve_code(Discipline::Electrical, "circuits").value["temperature_air"].clone()
+    }
+
+    fn review_g7c_temperature_input<'a>(h: &'a Harness<'_, crate::BimApp>, text: &'a str) -> egui_kittest::Node<'a> {
+        h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some(text))
+    }
+
+    fn review_g7c_type_temperature(h: &mut Harness<'_, crate::BimApp>, before: &str, after: &str) {
+        review_g7c_temperature_input(h, before).focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text(after.into()));
+        h.run_steps(5);
+    }
+
+    #[test]
+    fn review_codes_added_row_accepts_list_from_earlier_nbr5410_rows() {
+        let doc = g7_electrical_files().into_iter().find(|(name, _)| name == "nbr-5410").unwrap().1;
+        let rows = doc["sections"]["bath_volumes"]["volumes"][1]["allows"].as_array().unwrap();
+        let mut h = review_data_table(rows);
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        review_type_at(&mut h, rows.len(), "Kinds", "heater");
+        review_type_at(&mut h, rows.len(), "Any of", "selv");
+        review_type_at(&mut h, rows.len(), "Classes", "I, II");
+        review_type_at(&mut h, rows.len(), "Source", "review");
+        let mut expected = rows.clone();
+        expected.push(json!({"kinds":["heater"],"any_of":["selv"],"classes":["I","II"],"source":"review"}));
+        assert_eq!(h.state().0, json!(expected));
+    }
+
+    #[test]
+    fn review_g7c_codes_added_row_accepts_list_beside_existing_number() {
+        let mut h = g7_table(json!([{"name":"one","list":[1,2]},{"name":"two","number":15}]));
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        review_type_at(&mut h, 2, "List", "3,4");
+        assert_eq!(h.state().0[0], json!({"name":"one","list":[1,2]}));
+        assert_eq!(h.state().0[1], json!({"name":"two","number":15}));
+        assert_eq!(h.state().0[2]["list"], json!([3, 4]));
+    }
+
+    #[test]
+    fn review_g7cr2_codes_added_row_in_mixed_column_accepts_list() {
+        let mut h = g7_table(json!([{"name":"list row","list":[1,2]},{"name":"number row","list":15}]));
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        review_type_at(&mut h, 2, "List", "3,4");
+        assert_eq!(h.state().0[0], json!({"name":"list row","list":[1,2]}));
+        assert_eq!(h.state().0[1], json!({"name":"number row","list":15}));
+        assert_eq!(h.state().0[2]["list"], json!([3, 4]));
+    }
+
+    #[test]
+    fn review_g7cr2_codes_positional_paste_keeps_replacement_when_undo_is_pressed() {
+        let mut h = g7_table(json!([[12, 31]]));
+        for (before, after) in [("12", "96"), ("96", "97")] {
+            h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some(before)).focus();
+            h.run();
+            h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+            h.event(egui::Event::Text(after.into()));
+            h.run_steps(5);
+        }
+        assert_eq!(h.state().0, json!([[97, 31]]));
+        let paste = review_g7c_copy_tsv(&mut g7_table(json!([[23, 41]])));
+        review_g7c_paste_tsv(&mut h, &paste);
+        assert_eq!(h.state().0, json!([[23, 41]]));
+        h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some("23")).focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        assert_eq!(h.state().0, json!([[23, 41]]));
+    }
+
+    #[test]
+    fn review_g7cr2_codes_positional_paste_keeps_numbers_through_ok() {
+        let mut h = g7_dialog("energisa");
+        let mut dialog = crate::codes::CodesDialog::new(&h.state().session.model);
+        dialog.tab = 3;
+        dialog.tab_mut(Discipline::Electrical).section = "circuits".into();
+        dialog.table = Some(("circuits".into(), "temperature_air".into()));
+        h.state_mut().codes_dialog = Some(dialog);
+        h.run();
+
+        let temperature =
+            |app: &crate::BimApp| app.session.model.resolve_code(Discipline::Electrical, "circuits").value["temperature_air"].clone();
+        let mut expected = temperature(h.state());
+        assert_eq!(expected[0][1], json!(1.22));
+        for (before, after) in [("1.22", "1.27"), ("1.27", "1.28")] {
+            h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some(before)).focus();
+            h.run();
+            h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+            h.event(egui::Event::Text(after.into()));
+            h.run_steps(5);
+        }
+
+        expected[0][1] = json!(1.29);
+        let tsv = as_tsv(&expected);
+        h.get_by(|n| n.role() == Role::MultilineTextInput && n.value().is_none_or(|value| value.is_empty())).focus();
+        h.run();
+        h.event(egui::Event::Paste(tsv));
+        h.run();
+        h.get_by_label("Use Pasted Rows").click_accesskit();
+        h.run();
+
+        h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some("1.29")).focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run();
+        g7_ok(&mut h);
+        assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
+        assert_eq!(temperature(h.state()), expected);
+    }
+
+    #[test]
+    fn review_g7cr2_codes_added_row_in_mixed_column_keeps_list_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7r2_seed_entrance(&mut h, |rows| {
+            rows[0]["columns"]["review_mixed"] = json!([11, 12]);
+            rows.as_array_mut().unwrap().last_mut().unwrap()["columns"]["review_mixed"] = json!(15);
+        });
+        let mut expected = g7r2_entrance(&h);
+        let rows = expected["tables"][0]["rows"].as_array_mut().unwrap();
+        let row = rows.len();
+
+        h.get_all_by_label("Add Row").next().unwrap().click_accesskit();
+        h.run();
+        for (header, text) in [
+            ("Name", "T7 review"),
+            ("Phases", "3"),
+            ("Demand (kVA) over", "81.5"),
+            ("Demand (kVA) up to", "100"),
+            ("Breaker (A)", "225"),
+            ("Review mixed", "3,4"),
+        ] {
+            review_type_at(&mut h, row, header, text);
+        }
+        g7_ok(&mut h);
+        assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
+        let after = g7r2_entrance(&h);
+        let saved_rows = after["tables"][0]["rows"].as_array().unwrap();
+        assert_eq!(&saved_rows[..row], rows.as_slice());
+        assert_eq!(saved_rows[row]["name"], json!("T7 review"));
+        assert_eq!(saved_rows[row]["columns"]["review_mixed"], json!([3, 4]));
+    }
+
+    // The review's cases (G7d).
+
+    fn g7d_review_input<'a, S>(h: &'a Harness<'_, S>, value: &Value) -> egui_kittest::Node<'a> {
+        // An empty cell shows nothing (its dash is a hint).
+        let text = if value.is_null() { String::new() } else { cell_text(value) };
+        h.query_all_by(move |n| n.role() == Role::TextInput && n.value().unwrap_or_default() == text)
+            .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+            .unwrap_or_else(|| panic!("input for {value:?} missing"))
+    }
+
+    fn g7d_review_undo<S>(h: &mut Harness<'_, S>) {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        h.run_steps(4);
+    }
+
+    fn g7d_review_replace<S>(h: &mut Harness<'_, S>, new: &str) {
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        if new.is_empty() {
+            h.key_press(egui::Key::Backspace);
+        } else {
+            h.event(egui::Event::Text(new.into()));
+        }
+        h.run_steps(5);
+    }
+
+    #[test]
+    fn review_g7d_codes_plain_text_with_comma_in_existing_null_and_added_rows() {
+        let original = json!([{"name":"one","note":"old"},{"name":"two","note":null}]);
+        let mut h = g7_table(original);
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        for (row, text) in [(0, "north, east"), (1, "south, west"), (2, "center, outside")] {
+            review_type_at(&mut h, row, "Note", text);
+        }
+        assert_eq!(
+            h.state().0,
+            json!([
+                {"name":"one","note":"north, east"},
+                {"name":"two","note":"south, west"},
+                {"name":null,"note":"center, outside"}
+            ])
+        );
+    }
+
+    #[test]
+    fn review_g7d_codes_one_item_in_list_only_column_with_missing_last_cell() {
+        let mut h = g7_table(json!([{"name":"one","values":[1]},{"name":"two"}]));
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        review_cell_at(&h, 2, "Values").focus();
+        h.run();
+        review_append(&mut h, &["2", "5"]);
+        assert_eq!(h.state().0[2]["values"], json!([25]));
+    }
+
+    fn g7d_review_seed_mixed(h: &mut Harness<'_, crate::BimApp>, last: Option<Value>) {
+        g7r2_seed_entrance(h, |rows| {
+            rows[0]["columns"]["audit_kind"] = json!([11, 12]);
+            rows[1]["columns"]["audit_kind"] = json!(15);
+            if let Some(value) = last {
+                rows.as_array_mut().unwrap().last_mut().unwrap()["columns"]["audit_kind"] = value;
+            }
+        });
+    }
+
+    fn g7d_review_added_entrance(h: &mut Harness<'_, crate::BimApp>) -> usize {
+        let row = g7r2_entrance(h)["tables"][0]["rows"].as_array().unwrap().len();
+        h.get_all_by_label("Add Row").next().unwrap().click_accesskit();
+        h.run();
+        for (header, input) in
+            [("Name", "Audit G7d"), ("Phases", "3"), ("Demand (kVA) over", "81.5"), ("Demand (kVA) up to", "100"), ("Breaker (A)", "225")]
+        {
+            review_type_at(h, row, header, input);
+        }
+        row
+    }
+
+    fn g7d_review_saved_added_entrance(h: &mut Harness<'_, crate::BimApp>, before: &Value, row: usize, expected: Value) {
+        g7_ok(h);
+        assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
+        let current = g7r2_entrance(h);
+        let rows = current["tables"][0]["rows"].as_array().unwrap();
+        assert_eq!(&rows[..row], before["tables"][0]["rows"].as_array().unwrap().as_slice());
+        assert_eq!(rows[row]["name"], json!("Audit G7d"));
+        assert_eq!(rows[row]["columns"]["audit_kind"], expected);
+    }
+
+    #[test]
+    fn review_g7d_codes_mixed_added_after_missing_cell_single_event_list_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7d_review_seed_mixed(&mut h, None);
+        let before = g7r2_entrance(&h);
+        let row = g7d_review_added_entrance(&mut h);
+        review_type_at(&mut h, row, "Audit kind", "3,4");
+        g7d_review_saved_added_entrance(&mut h, &before, row, json!([3, 4]));
+    }
+
+    #[test]
+    fn review_g7d_codes_mixed_added_after_scalar_starts_as_plain_then_accepts_brackets() {
+        let mut h = g7_dialog("energisa");
+        g7d_review_seed_mixed(&mut h, Some(json!(18)));
+        let before = g7r2_entrance(&h);
+        let row = g7d_review_added_entrance(&mut h);
+        review_type_at(&mut h, row, "Audit kind", "25");
+        let draft = &h.state().codes_dialog.as_ref().unwrap().tabs[2].rules["entrance"]["tables"][0]["rows"][row]["columns"]["audit_kind"];
+        assert_eq!(draft, &json!(25));
+        review_type_at(&mut h, row, "Audit kind", "[25]");
+        g7d_review_saved_added_entrance(&mut h, &before, row, json!([25]));
+    }
+
+    #[test]
+    fn review_g7d_codes_mixed_existing_scalar_clears_and_retypes_as_scalar_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7d_review_seed_mixed(&mut h, None);
+        let mut expected = g7r2_entrance(&h);
+        review_cell_at(&h, 1, "Audit kind").focus();
+        g7d_review_replace(&mut h, "");
+        review_append(&mut h, &["2", "5"]);
+        expected["tables"][0]["rows"][1]["columns"]["audit_kind"] = json!(25);
+        g7_ok(&mut h);
+        review_expect_entrance(&h, &expected);
+    }
+
+    fn g7d_review_dialog(discipline: Discipline, code: &str, section: &str, rule: &str) -> Harness<'static, crate::BimApp> {
+        let mut session = Session::new();
+        session.execute("building_code", &json!({"discipline": discipline.key(), "set": code})).unwrap();
+        let mut app = crate::BimApp::new(session);
+        g7d_review_open(&mut app, discipline, section, rule);
+        Harness::builder().with_size([1800.0, 1600.0]).with_step_dt(0.25).build_ui_state(|ui, app| app.codes_window(ui.ctx()), app)
+    }
+
+    fn g7d_review_open(app: &mut crate::BimApp, discipline: Discipline, section: &str, rule: &str) {
+        let mut dialog = crate::codes::CodesDialog::new(&app.session.model);
+        dialog.tab = Discipline::ALL.iter().position(|d| *d == discipline).unwrap() + 1;
+        dialog.tab_mut(discipline).section = section.into();
+        dialog.table = Some((section.into(), rule.into()));
+        app.codes_dialog = Some(dialog);
+    }
+
+    fn g7d_review_saved(h: &Harness<'_, crate::BimApp>, discipline: Discipline, section: &str, rule: &str) -> Value {
+        h.state().session.model.resolve_code(discipline, section).value[rule].clone()
+    }
+
+    fn g7d_review_expect_saved(h: &Harness<'_, crate::BimApp>, discipline: Discipline, section: &str, rule: &str, expected: &Value) {
+        assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
+        assert_eq!(&g7d_review_saved(h, discipline, section, rule), expected);
+    }
+
+    #[test]
+    fn review_g7d_codes_temperature_slow_decimal_after_ok_then_undo_redo_and_reopen() {
+        let mut h = g7d_review_dialog(Discipline::Electrical, "nbr-5410", "circuits", "temperature_air");
+        let table = |h: &Harness<'_, crate::BimApp>| g7d_review_saved(h, Discipline::Electrical, "circuits", "temperature_air");
+        let original = table(&h);
+        g7d_review_input(&h, &original[0][1]).focus();
+        g7d_review_replace(&mut h, "1");
+        review_append(&mut h, &[".", "0", "0", "7"]);
+        g7_ok(&mut h);
+        let mut expected = original.clone();
+        expected[0][1] = json!(1.007);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &expected);
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        assert_eq!(table(&h), original);
+        h.state_mut().session.execute("redo", &json!({})).unwrap();
+        assert_eq!(table(&h), expected);
+        g7d_review_open(h.state_mut(), Discipline::Electrical, "circuits", "temperature_air");
+        h.run();
+        g7d_review_input(&h, &json!(1.007)).focus();
+        h.run();
+        g7d_review_undo(&mut h);
+        g7_ok(&mut h);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &expected);
+    }
+
+    fn g7d_review_delete_at_y<S>(h: &mut Harness<'_, S>, y: f32) {
+        h.get_all_by_label("×")
+            .min_by(|a, b| (a.rect().center().y - y).abs().total_cmp(&(b.rect().center().y - y).abs()))
+            .unwrap()
+            .click_accesskit();
+        h.run_steps(4);
+    }
+
+    #[test]
+    fn review_g7d_codes_temperature_deleted_row_cannot_write_to_successor() {
+        let mut h = g7d_review_dialog(Discipline::Electrical, "nbr-5410", "circuits", "temperature_air");
+        let mut expected = g7d_review_saved(&h, Discipline::Electrical, "circuits", "temperature_air");
+        let old = expected[0][1].clone();
+        let successor = expected[1][1].clone();
+        let input = g7d_review_input(&h, &old);
+        let y = input.rect().center().y;
+        input.focus();
+        g7d_review_replace(&mut h, "1.26");
+        g7d_review_replace(&mut h, "1.27");
+        g7d_review_delete_at_y(&mut h, y);
+        g7d_review_input(&h, &successor).focus();
+        h.run();
+        g7d_review_undo(&mut h);
+        g7_ok(&mut h);
+        expected.as_array_mut().unwrap().remove(0);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &expected);
+    }
+
+    #[test]
+    fn review_g7d_codes_deleting_vent_card_cannot_undo_into_another_rule() {
+        let mut h = g7d_review_dialog(Discipline::Plumbing, "nbr", "drainage", "vent_stacks");
+        let mut expected = g7d_review_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks");
+        let input = g7d_review_input(&h, &expected[0]["longest"][0][1]);
+        let cell_center = input.rect().center();
+        input.focus();
+        g7d_review_replace(&mut h, "46.26");
+        g7d_review_replace(&mut h, "46.27");
+        let header = h.get_by(|n| n.role() == Role::Label && n.value().as_deref() == Some("#1")).parent().unwrap();
+        header.get_by_label("×").click_accesskit();
+        h.run_steps(4);
+        assert_eq!(
+            h.state().codes_dialog.as_ref().unwrap().tabs[4].rules["drainage"]["vent_stacks"][0],
+            expected[1],
+            "the first vent-stack row after deleting card #1"
+        );
+        h.get_all_by(|n| n.role() == Role::TextInput)
+            .min_by(|a, b| a.rect().center().distance(cell_center).total_cmp(&b.rect().center().distance(cell_center)))
+            .unwrap()
+            .focus();
+        h.run();
+        g7d_review_undo(&mut h);
+        g7_ok(&mut h);
+        expected.as_array_mut().unwrap().remove(0);
+        g7d_review_expect_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks", &expected);
+    }
+
+    #[test]
+    fn review_g7d_codes_ragged_positional_rows_keep_their_own_values_and_undo() {
+        let mut h = g7_table(json!([[11, 12, 13], [21], [31, [32, 33]], [41, 42]]));
+        for (old, first, final_value) in [(12, "12.26", "12.27"), (21, "21.26", "21.27"), (32, "32.26", "32.27"), (42, "42.26", "42.27")] {
+            g7d_review_input(&h, &json!(old)).focus();
+            g7d_review_replace(&mut h, first);
+            g7d_review_replace(&mut h, final_value);
+        }
+        g7d_review_undo(&mut h);
+        assert_eq!(h.state().0, json!([[11, 12.27, 13], [21.27], [31, [32.27, 33]], [41, 42.26]]));
+    }
+
+    fn g7d_review_bundled_tables() -> Vec<(String, &'static Vec<Value>)> {
+        fn walk<'a>(value: &'a Value, path: String, tables: &mut Vec<(String, &'a Vec<Value>)>) {
+            if let Some(rows) = value.as_array() {
+                if !rows.is_empty() && rows.iter().all(Value::is_array) {
+                    tables.push((path, rows));
+                } else {
+                    for (i, row) in rows.iter().enumerate() {
+                        walk(row, format!("{path}[{i}]"), tables);
+                    }
+                }
+            } else if let Some(object) = value.as_object() {
+                for (key, child) in object {
+                    walk(child, format!("{path}.{key}"), tables);
+                }
+            }
+        }
+
+        let mut tables = Vec::new();
+        for code in bimcraft_core::codes::codes() {
+            for (section, value) in &code.sections {
+                walk(value, format!("{}:{section}", code.code), &mut tables);
+            }
+        }
+        tables
+    }
+
+    fn g7d_review_first_number(value: &mut Value) -> Option<&mut Value> {
+        if value.is_array() {
+            value.as_array_mut().unwrap().iter_mut().find_map(g7d_review_first_number)
+        } else {
+            value.is_number().then_some(value)
+        }
+    }
+
+    #[test]
+    fn review_g7d_codes_all_bundled_positional_tables_keep_slow_decimal_in_its_cell() {
+        let tables = g7d_review_bundled_tables();
+        let mut failures = Vec::new();
+        for (path, rows) in &tables {
+            let mut expected = json!(rows);
+            let cell = g7d_review_first_number(&mut expected[0]).unwrap_or_else(|| panic!("no numeric cell in {path}"));
+            let old = cell.clone();
+            *cell = json!(123.007);
+            let mut h = review_data_table(rows);
+            g7d_review_input(&h, &old).focus();
+            g7d_review_replace(&mut h, "123");
+            review_append(&mut h, &[".", "0", "0", "7"]);
+            if h.state().0 != expected {
+                failures.push(format!("{path}: {:?} (expected {:?})", h.state().0[0], expected[0]));
+            }
+        }
+        assert!(failures.is_empty(), "{} of {} tables:\n{}", failures.len(), tables.len(), failures.join("\n"));
+    }
+
+    fn g7d_review_focus_at_x(h: &Harness<'_, (Value, String)>, x: f32) {
+        h.get_all_by(|n| n.role() == Role::TextInput)
+            .filter(|n| (n.rect().left() - x).abs() < 6.0)
+            .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+            .unwrap()
+            .focus();
+    }
+
+    #[test]
+    fn review_g7d_codes_bundled_positional_tables_discard_deleted_row_history() {
+        let mut failures = Vec::new();
+        let mut checked = 0;
+        for (path, rows) in g7d_review_bundled_tables() {
+            let first = flat(&rows[0]);
+            let column = first.iter().position(Value::is_number).unwrap();
+            if rows.len() < 2 || column >= flat(&rows[1]).len() {
+                continue;
+            }
+            let mut h = review_data_table(rows);
+            let target = g7d_review_input(&h, &first[column]);
+            let x = target.rect().left();
+            target.focus();
+            g7d_review_replace(&mut h, "981.125");
+            g7d_review_replace(&mut h, "981.375");
+            let y = g7d_review_input(&h, &json!(981.375)).rect().center().y;
+            g7d_review_delete_at_y(&mut h, y);
+            g7d_review_focus_at_x(&h, x);
+            h.run();
+            g7d_review_undo(&mut h);
+            let expected = json!(&rows[1..]);
+            if h.state().0 != expected {
+                failures.push(format!("{path}: first row {:?}, expected {:?}", h.state().0[0], expected[0]));
+            }
+            checked += 1;
+        }
+        assert!(failures.is_empty(), "{} of {checked} tables:\n{}", failures.len(), failures.join("\n"));
+    }
+
+    #[test]
+    fn review_g7d_codes_bundled_positional_tables_discard_history_after_paste() {
+        let mut failures = Vec::new();
+        let mut checked = 0;
+        for (path, rows) in g7d_review_bundled_tables() {
+            if !rows.iter().all(|r| r.as_array().is_some_and(|a| a.len() >= 2 && a.iter().all(scalar))) {
+                continue;
+            }
+            let mut h = review_data_table(rows);
+            let mut expected = json!(rows);
+            let cell = g7d_review_first_number(&mut expected[0]).unwrap();
+            let old = cell.clone();
+            *cell = json!(982.625);
+            h.get_by(|n| n.role() == Role::MultilineTextInput && n.value().is_none_or(|v| v.is_empty())).focus();
+            h.run();
+            h.event(egui::Event::Paste(as_tsv(&expected)));
+            h.run();
+            g7d_review_input(&h, &old).focus();
+            g7d_review_replace(&mut h, "981.125");
+            g7d_review_replace(&mut h, "981.375");
+            h.get_by_label("Use Pasted Rows").click_accesskit();
+            h.run_steps(4);
+            g7d_review_input(&h, &json!(982.625)).focus();
+            h.run();
+            g7d_review_undo(&mut h);
+            if h.state().0 != expected {
+                failures.push(format!("{path}: first row {:?}, expected {:?}", h.state().0[0], expected[0]));
+            }
+            checked += 1;
+        }
+        assert!(failures.is_empty(), "{} of {checked} tables:\n{}", failures.len(), failures.join("\n"));
+    }
+
+    #[test]
+    fn review_g7d_codes_temperature_cancel_and_reopen_cannot_restore_draft() {
+        let mut h = g7d_review_dialog(Discipline::Electrical, "nbr-5410", "circuits", "temperature_air");
+        let original = g7d_review_saved(&h, Discipline::Electrical, "circuits", "temperature_air");
+        g7d_review_input(&h, &original[0][1]).focus();
+        g7d_review_replace(&mut h, "1.26");
+        g7d_review_replace(&mut h, "1.27");
+        h.get_by_label("Cancel").click_accesskit();
+        h.run_steps(4);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &original);
+        g7d_review_open(h.state_mut(), Discipline::Electrical, "circuits", "temperature_air");
+        h.run();
+        g7d_review_input(&h, &original[0][1]).focus();
+        h.run();
+        g7d_review_undo(&mut h);
+        g7_ok(&mut h);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &original);
+    }
+
+    #[test]
+    fn review_g7d_codes_temperature_copy_paste_and_undo_keeps_pasted_number_through_ok() {
+        let mut h = g7d_review_dialog(Discipline::Electrical, "nbr-5410", "circuits", "temperature_air");
+        let mut expected = g7d_review_saved(&h, Discipline::Electrical, "circuits", "temperature_air");
+        expected[0][1] = json!(1.32);
+        let tsv = review_g7c_copy_tsv(&mut g7_table(expected.clone()));
+        h.get_by(|n| n.role() == Role::MultilineTextInput && n.value().is_none_or(|value| value.is_empty())).focus();
+        h.run();
+        h.event(egui::Event::Paste(tsv));
+        h.run();
+        g7d_review_input(&h, &json!(1.22)).focus();
+        g7d_review_replace(&mut h, "1.26");
+        g7d_review_replace(&mut h, "1.27");
+        h.get_by_label("Use Pasted Rows").click_accesskit();
+        h.run_steps(4);
+        g7d_review_input(&h, &expected[0][1]).focus();
+        h.run();
+        g7d_review_undo(&mut h);
+        g7_ok(&mut h);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &expected);
+    }
+
+    #[test]
+    fn review_g7d_codes_positional_literal_dot_path_keeps_draft_in_its_own_table() {
+        let mut h = g7_table(json!({"group":{"table":[[11,12]]},"group.table":[[21,22]]}));
+        let literal_y = h
+            .get_by(|n| n.label().is_some_and(|label| label.starts_with("Group Table ·") || label.starts_with("Group table ·")))
+            .rect()
+            .center()
+            .y;
+        let header = h
+            .get_all_by_label("2")
+            .min_by(|a, b| (a.rect().center().y - literal_y).abs().total_cmp(&(b.rect().center().y - literal_y).abs()))
+            .unwrap()
+            .rect();
+        let input = h
+            .get_all_by(|n| n.role() == Role::TextInput)
+            .min_by(|a, b| (a.rect().left() - header.left()).abs().total_cmp(&(b.rect().left() - header.left()).abs()))
+            .unwrap()
+            .rect();
+        let pos = egui::pos2(input.center().x, header.center().y + 23.0);
+        h.event(egui::Event::PointerMoved(pos));
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+        h.run();
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+        g7d_review_replace(&mut h, "26");
+        assert_eq!(h.state().0, json!({"group":{"table":[[11,12]]},"group.table":[[21,26]]}));
+    }
+
+    #[test]
+    fn review_g7d_codes_positional_literal_dot_path_changes_only_its_own_rule_through_ok() {
+        let mut h = g7_dialog("energisa");
+        g7r2_seed_entrance(&mut h, |rows| {
+            rows[0]["columns"]["audit_shape"] = json!({"group":{"table":[[11,12]]},"group.table":[[21,22]]});
+        });
+        let mut expected = g7r2_entrance(&h);
+        expected["tables"][0]["rows"][0]["columns"]["audit_shape"]["group.table"][0][1] = json!(26);
+        g7d_review_input(&h, &json!(22)).focus();
+        g7d_review_replace(&mut h, "26");
+        g7_ok(&mut h);
+        let got = g7r2_entrance(&h);
+        assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
+        assert_eq!(got["tables"][0]["rows"][0]["columns"]["audit_shape"], expected["tables"][0]["rows"][0]["columns"]["audit_shape"]);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_g7d_codes_temperature_null_cell_accepts_number_without_erasing_display_dash() {
+        let mut h = g7d_review_dialog(Discipline::Electrical, "nbr-5410", "circuits", "temperature_air");
+        let mut expected = g7d_review_saved(&h, Discipline::Electrical, "circuits", "temperature_air");
+        let row = expected.as_array().unwrap().iter().position(|row| row[1].is_null()).unwrap();
+        // The empty cell beside that row's first one (other fields of the dialog may be empty too).
+        let at = g7d_review_input(&h, &expected[row][0]).rect();
+        h.query_all_by(|n| n.role() == Role::TextInput && n.value().unwrap_or_default().is_empty())
+            .filter(|n| (n.rect().center().y - at.center().y).abs() < 2.0 && n.rect().left() > at.left())
+            .min_by(|a, b| a.rect().left().total_cmp(&b.rect().left()))
+            .unwrap()
+            .focus();
+        h.run();
+        review_append(&mut h, &["0", ".", "4", "7"]);
+        expected[row][1] = json!(0.47);
+        g7_ok(&mut h);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &expected);
+    }
+
+    // The confirmation's cases (G7d).
+    // Include inside codes::tree::tests at 7cb22130.
+
+    #[test]
+    fn review_g7dr2_codes_card_and_collapsing_section_keep_separate_tables() {
+        let mut h = g7_table(json!({
+            "cards": [
+                {"name": "card", "positional": [[11, 12]], "records": [{"value": 31}]}
+            ],
+            "section": {
+                "positional": [[21, 22]], "records": [{"value": 41}]
+            }
+        }));
+        g7d_review_input(&h, &json!(12)).focus();
+        g7d_review_replace(&mut h, "12.");
+        review_append(&mut h, &["0", "7"]);
+        g7d_review_input(&h, &json!(41)).focus();
+        g7d_review_replace(&mut h, "41.");
+        review_append(&mut h, &["0", "9"]);
+
+        assert_eq!(
+            h.state().0,
+            json!({
+                "cards": [
+                    {"name": "card", "positional": [[11, 12.07]], "records": [{"value": 31}]}
+                ],
+                "section": {
+                    "positional": [[21, 22]], "records": [{"value": 41.09}]
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn review_g7dr2_codes_horizontal_scroll_keeps_an_active_edit_in_its_cell() {
+        for positional in [true, false] {
+            let row = if positional {
+                json!([101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112])
+            } else {
+                json!({"a":101, "b":102, "c":103, "d":104, "e":105, "f":106,
+                       "g":107, "h":108, "i":109, "j":110, "k":111, "l":112})
+            };
+            let mut expected = json!([row]);
+            let mut h = Harness::builder().with_size([410.0, 300.0]).with_step_dt(0.25).build_ui_state(
+                |ui, (rows, pasted)| editor(ui, "scroll", "rows", rows, &Hints::default(), pasted),
+                (expected.clone(), String::new()),
+            );
+            let pointer = g7d_review_input(&h, &json!(103)).rect().center();
+            let initial_x = g7d_review_input(&h, &json!(104)).rect().center().x;
+            g7d_review_input(&h, &json!(103)).focus();
+            g7d_review_replace(&mut h, "103.");
+            h.event(egui::Event::PointerMoved(pointer));
+            h.event(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                delta: egui::vec2(-90.0, 0.0),
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(8);
+            // Verify the wheel gesture actually exercised horizontal scrolling.
+            let moved = h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some("104"));
+            assert!(moved.rect().center().x < initial_x - 20.0);
+            review_append(&mut h, &["0", "7"]);
+            if positional {
+                expected[0][2] = json!(103.07);
+            } else {
+                expected[0]["c"] = json!(103.07);
+            }
+            assert_eq!(h.state().0, expected);
+        }
+    }
+
+    #[test]
+    fn review_g7dr2_codes_deleting_one_card_preserves_the_other_cards_active_edit_through_ok() {
+        let mut h = g7d_review_dialog(Discipline::Plumbing, "nbr", "drainage", "vent_stacks");
+        let mut expected = g7d_review_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks");
+        g7d_review_input(&h, &expected[1]["longest"][0][1]).focus();
+        g7d_review_replace(&mut h, "30.");
+        review_append(&mut h, &["0", "7"]);
+        h.get_by(|n| n.role() == Role::Label && n.value().as_deref() == Some("#1")).parent().unwrap().get_by_label("×").click_accesskit();
+        h.run_steps(4);
+        expected[1]["longest"][0][1] = json!(30.07);
+        expected.as_array_mut().unwrap().remove(0);
+        g7_ok(&mut h);
+        g7d_review_expect_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks", &expected);
+    }
+
+    #[test]
+    fn review_g7dr2_codes_two_different_dialogs_in_the_same_context_keep_separate_edits() {
+        let mut h = g7d_review_dialog(Discipline::Plumbing, "nbr", "drainage", "vent_stacks");
+        let plumbing = g7d_review_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks");
+        g7d_review_input(&h, &plumbing[0]["longest"][0][1]).focus();
+        g7d_review_replace(&mut h, "46.26");
+        g7d_review_replace(&mut h, "46.27");
+        h.get_by_label("Cancel").click_accesskit();
+        h.run_steps(4);
+        g7d_review_expect_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks", &plumbing);
+
+        h.state_mut().session.execute("building_code", &json!({"discipline":"electrical", "set":"nbr-5410"})).unwrap();
+        g7d_review_open(h.state_mut(), Discipline::Electrical, "circuits", "temperature_air");
+        h.run_steps(4);
+        let mut electrical = g7d_review_saved(&h, Discipline::Electrical, "circuits", "temperature_air");
+        g7d_review_input(&h, &electrical[0][1]).focus();
+        h.run();
+        g7d_review_undo(&mut h);
+        let electrical_tab =
+            h.state().codes_dialog.as_ref().unwrap().tabs.iter().find(|tab| tab.discipline == Discipline::Electrical).unwrap();
+        assert_eq!(electrical_tab.rules["circuits"]["temperature_air"], electrical);
+        g7d_review_replace(&mut h, "1.007");
+        electrical[0][1] = json!(1.007);
+        g7_ok(&mut h);
+        g7d_review_expect_saved(&h, Discipline::Electrical, "circuits", "temperature_air", &electrical);
+        g7d_review_expect_saved(&h, Discipline::Plumbing, "drainage", "vent_stacks", &plumbing);
     }
 }

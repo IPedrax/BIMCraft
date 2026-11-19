@@ -688,7 +688,7 @@ msgstr ""
 
 #: crates/ui-egui/src/codes/tree.rs:395
 #: crates/ui-egui/src/codes/tree.rs:412
-#: crates/ui-egui/src/codes/tree.rs:650
+#: crates/ui-egui/src/codes/tree.rs:679
 #: crates/ui-egui/src/codes.rs:827
 #: crates/ui-egui/src/curtain.rs:339
 msgid "Add Row"
@@ -4728,9 +4728,9 @@ msgid "Delete this code from the project. If the project uses it, its rules are 
 msgstr ""
 
 #: crates/ui-egui/src/codes/tree.rs:389
-#: crates/ui-egui/src/codes/tree.rs:486
-#: crates/ui-egui/src/codes/tree.rs:563
-#: crates/ui-egui/src/codes/tree.rs:639
+#: crates/ui-egui/src/codes/tree.rs:494
+#: crates/ui-egui/src/codes/tree.rs:577
+#: crates/ui-egui/src/codes/tree.rs:666
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr ""
@@ -16460,11 +16460,11 @@ msgstr "Dit project heeft geen niveaus. Voeg er een toe met het gereedschap Nive
 msgid "This project has {}, the file {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:556
+#: crates/ui-egui/src/codes/tree.rs:566
 msgid "This row gives one value for these columns"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:554
+#: crates/ui-egui/src/codes/tree.rs:564
 msgid "This row gives this value in the columns after it"
 msgstr ""
 
