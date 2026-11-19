@@ -483,6 +483,9 @@ pub(crate) fn place(
     Ok(())
 }
 
+/// Why a symbol has no shape when its graphics draw nothing solid: one placed beside what an element draws adds nothing to it.
+pub(crate) const NO_SOLID: &str = "its graphics hold no solid";
+
 /// The most symbols deep one symbol's nested families may go.
 pub(crate) const MAX_NESTING: usize = 8;
 
@@ -536,7 +539,7 @@ fn drawn_in(
             out.faces += inner.faces;
         }
         if out.triangles.is_empty() {
-            return Err("its graphics hold no solid".to_string());
+            return Err(NO_SOLID.to_string());
         }
         usable(&out.triangles)?;
         if !fills(&out.triangles, &out.marks, &out.tight) {
@@ -768,7 +771,7 @@ pub(crate) fn shape(tree: &Tree, layouts: &Layouts) -> Step<Shape> {
         return Ok(out);
     }
     if out.triangles.is_empty() {
-        return Err("its graphics hold no solid".to_string());
+        return Err(NO_SOLID.to_string());
     }
     usable(&out.triangles)?;
     if !fills(&out.triangles, &out.marks, &tight) {
