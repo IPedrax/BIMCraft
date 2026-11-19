@@ -703,3 +703,27 @@ wall {"points": [[4000, 1000], [4000, 5000]]}"#;
     );
     assert_eq!(refs.len(), 2);
 }
+
+#[test]
+fn the_aligned_dimension_takes_a_components_centre_lines_where_it_is_clicked() {
+    // Issue 537: a component is dimensioned by its family's reference planes, as Revit dimensions a family instance.
+    let family = r#"family {"name": "Box", "types": {"A": {}}, "forms": [{"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 100}]}"#;
+    let script = format!(
+        "{BOX}\n{family}\ncomponent {{\"family\": \"Box\", \"type\": \"A\", \"at\": [1000, 1000]}}\ncomponent {{\"family\": \"Box\", \"type\": \"A\", \"at\": [3000, 1500]}}"
+    );
+    let mut h = app(&script);
+    let boxes = ids(&h, "component");
+    press(&mut h, "Annotate");
+    press(&mut h, "Aligned");
+    // On each box, by its line across it: Center (Left/Right), through its middle.
+    click(&mut h, P2(1000.0, 1050.0));
+    click(&mut h, P2(3000.0, 1550.0));
+    click(&mut h, P2(2000.0, 3000.0));
+    let dims = ids(&h, "dimension");
+    assert_eq!(dims.len(), 1);
+    let d = dimension(&h, dims[0]);
+    let model = &h.state().session.model;
+    assert_eq!(d.refs.iter().filter_map(|r| model.elements.id(r.id)).collect::<Vec<_>>(), boxes);
+    assert!(d.refs.iter().all(|r| r.face == bimcraft_core::model::Face::Across), "{:?}", d.refs);
+    assert_eq!(field(&h, dims[0], "values"), json!([2000.0]));
+}

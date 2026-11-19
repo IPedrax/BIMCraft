@@ -1261,13 +1261,17 @@ other_files(
          a column's or structural column's centre line along its angle (the default; west to east at angle 0), `across`, \
          its centre line square to that (south to north), its left or right face (of its angle's direction: north or \
          south), or its start or end cap (west or east); a round column has only its two centre lines (radial: its edge); \
-         a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one). With `point: \
+         a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one); a component's \
+         reference planes that stand upright and are a reference, where it stands: its centre line along it (the default, \
+         its family's Center (Front/Back)), `across` (Center (Left/Right)), or any other plane of its family by its GUID, \
+         `face: {plane: GUID}`. With `point: \
          start|end`, {id, face?, point} is the point at that end of the line: a wall's centre line's end, a face's \
          corner, a column's corner or centre line's end, a grid's, a detail line's (of any shape) or a jamb's end. Or a \
          point [x, y] on one of those lines (for radial and diameter, on a round edge; for arc_length, on the arc), or \
          {endpoint: [x, y]}, the end of one nearest it, within 100 mm, found in the plan of `level` as it draws it: among \
          the walls and columns its cut plane passes through, whatever level they stand on (a column from a level below \
-         that runs up through it too), their doors and windows, the grids and the plan's detail lines. It follows what it \
+         that runs up through it too), their doors and windows, the grids, the components on its level (their \
+         reference planes) and the plan's detail lines. It follows what it \
          measures",
         dimension,
     ),
@@ -12799,8 +12803,16 @@ fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
         }
         _ => false,
     }));
+    // A component's reference planes stay within [`COMPONENT_REACH`] of where it stands, the most a family's planes are
+    // drawn out: those on the level.
+    out.extend(m.rare("component").into_iter().filter(
+        |&id| matches!(m.elements.get(id), Some(Element::Component(c)) if c.level == level && c.at.dist(p) <= reach + COMPONENT_REACH),
+    ));
     out
 }
+
+/// How far a component's reference planes may reach from its insertion point in plan, mm, for finding the one near a point.
+const COMPONENT_REACH: f64 = 5000.0;
 
 /// Of the lines a plan of `level` shows that `keep` takes (walls' faces, centre lines and ends,
 /// doors' and windows' centres and jambs, grids, the centre lines and faces of the columns it cuts), the nearest `p`,
@@ -12825,6 +12837,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
         Some(e @ (Element::Column(_) | Element::StructuralColumn(_))) => m.column_cut_by(e, level),
         Some(Element::Grid(_)) => true,
         Some(Element::Stair(st)) => st.level == level || st.top_level == Some(level),
+        Some(Element::Component(c)) => c.level == level,
         _ => false,
     })
     .filter_map(|id| m.reference_at(id, p, &keep))
@@ -13072,7 +13085,7 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
                 let first = refs.first().and_then(|r| m.reference_line(r).ok());
                 let keep = |l: Line| first.is_none_or(|(a, b)| geom::parallel(a, b, l.0, l.1) == (kind == DimKind::Aligned));
                 reference_near(m, level, q, keep)
-                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column or grid line"))?
+                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column, grid line or component's plane"))?
             }
             None => serde_json::from_value::<Reference>(v.clone())
                 .map_err(|e| bad(c, format!("{v} is not a reference {{id, face?}} or a point [x, y]: {e}")))?,
@@ -20263,6 +20276,7 @@ fn reference_way(r: &Reference) -> String {
         Face::Start => "start",
         Face::End => "end",
         Face::Edge(_) => "stair edge",
+        Face::Plane(_) => "reference plane",
     };
     match r.point {
         Some(End::Start) => format!("{face}'s start"),
