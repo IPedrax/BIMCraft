@@ -1006,11 +1006,7 @@ fn a_method_a_project_changed_before_amendments_held_it_still_answers_as_changed
             assert!(left_out.is_empty(), "{} {key}: {left_out:?}", code.code);
             *older.model_mut() = m;
             older.model.check().unwrap_or_else(|e| panic!("{} {key}: the read file is a valid project: {e}", code.code));
-            if code.amends.is_empty() {
-                // A country's method, held by the base: not moved (a slice of its own), and not lost.
-                assert!(older.model.codes.choice(Discipline::Electrical).changes.contains_key(key), "{} {key}: kept", code.code);
-                continue;
-            }
+            // A country's method, held by the base, too: into an amendment of the project's own over it.
             let got = run(&mut older, cmd, probe.clone());
             let answer = |r: &Value| if key == "building_demand" { r["demand"].clone() } else { r["category"].clone() };
             assert_eq!(answer(&got), answer(&expected), "{} {key}: the older file's change, asked {probe}", code.code);

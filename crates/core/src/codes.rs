@@ -1125,6 +1125,11 @@ impl Codes {
     pub fn methods_into_layers(&mut self) {
         for (d, key) in WHOLE {
             let Some(changed) = self.choice(d).changes.get(key).cloned() else { continue };
+            // An empty change changes nothing.
+            if changed.is_empty() {
+                self.choice_mut(d).changes.remove(key);
+                continue;
+            }
             let field = match key {
                 "unit_demand" => "utility",
                 "entrance" => "id",
@@ -1141,7 +1146,10 @@ impl Codes {
                 .filter(|c| !c.amends.is_empty())
                 .find(|c| whole_section(c, key).is_some_and(|w| wanted.is_none() || named(&w) == wanted))
                 .map(|c| c.code.clone());
-            let Some(target) = target else { continue };
+            let Some(target) = target else {
+                self.method_into_own_amendment(d, key, field, changed);
+                continue;
+            };
             let Some(mut whole) = self.find(d, &target).and_then(|c| whole_section(c, key)) else { continue };
             // A code holds 10 000 sources and kinds at most (`BuildingCode::check`): one at the brim keeps the change where it is.
             let room = self.find(d, &target).is_some_and(|c| c.sources.len().max(c.kinds.len()) + changed.len() <= 10_000);
@@ -1169,6 +1177,62 @@ impl Codes {
             own.sections.insert(key.to_string(), Value::Object(whole));
             self.choice_mut(d).changes.remove(key);
         }
+    }
+
+    /// An older file's change of method `key` that no amendment holds (the base's method, or a utility none of the
+    /// project's amendments is): an amendment of the project's own over the base, on top of the others, holding the method
+    /// changed (the library's of the utility or standard it names, else the one in force, with the change over it), so it
+    /// answers as the rules in force showed it and saves, exports and resets as any amendment does.
+    fn method_into_own_amendment(&mut self, d: Discipline, key: &str, field: &str, changed: Map<String, Value>) {
+        // No room for one more of the project's codes or one more amendment: the change stays where it is, as before.
+        if self.own.len() >= MAX_OWN || self.choice(d).amendments.len() >= MAX_AMENDMENTS || changed.len() > 10_000 {
+            return;
+        }
+        let wanted = changed.get(field).and_then(Value::as_str).map(str::to_string);
+        // The library's method of the identity the change names, where it has one; else what is in force without the change.
+        let library = wanted.as_deref().and_then(|w| {
+            of(d).find(|c| {
+                whole_section(c, key).is_some_and(|m| m.get(field).and_then(Value::as_str).is_some_and(|n| n.eq_ignore_ascii_case(w)))
+            })
+        });
+        let mut whole = match library {
+            Some(c) => whole_section(c, key).unwrap_or_default(),
+            None => layered(self, d, key).value,
+        };
+        let base = self.base(d).code.clone();
+        // A name of its own, never one the project or BIMCraft has.
+        let stem = wanted.clone().unwrap_or_else(|| self.base(d).name.clone());
+        let taken = |n: &str| self.own.iter().any(|c| c.code.eq_ignore_ascii_case(n)) || own_name(n).is_err();
+        // The stem is shortened, never the mark, so a long stem still makes names of their own.
+        let Some(name) = (1..100)
+            .map(|i| if i == 1 { " (project)".to_string() } else { format!(" (project {i})") })
+            .map(|mark| {
+                let stem: String = stem.chars().take(MAX_NAME.saturating_sub(mark.chars().count())).collect();
+                format!("{}{mark}", stem.trim_end()).trim().to_string()
+            })
+            .find(|n| !taken(n))
+        else {
+            return;
+        };
+        let mut code = BuildingCode {
+            discipline: d,
+            code: name.clone(),
+            name: name.clone(),
+            amends: base,
+            based_on: library.map(|c| c.code.clone()).unwrap_or_default(),
+            note: "A change of a method from an older file, kept as the project made it.".into(),
+            ..BuildingCode::default()
+        };
+        for (rule, v) in changed {
+            code.sources.insert(format!("{key}.{rule}"), Source::Text(format!("{name}: changed in this project")));
+            code.kinds.insert(format!("{key}.{rule}"), Kind::Assumption);
+            whole.insert(rule, v);
+        }
+        code.sections.insert(key.to_string(), Value::Object(whole));
+        self.own.push(code);
+        let choice = self.choice_mut(d);
+        choice.amendments.push(name);
+        choice.changes.remove(key);
     }
 
     pub fn choice(&self, d: Discipline) -> &Choice {

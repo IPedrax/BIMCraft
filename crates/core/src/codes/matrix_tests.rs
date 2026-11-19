@@ -1726,6 +1726,24 @@ mod one_on_top {
             assert_eq!(answer(&mut s, "demand", &p).unwrap().as_f64(), Some(50.0));
         }
     }
+
+    #[test]
+    fn named_and_implicit_legacy_change_of_library_method_with_no_amendment() {
+        let cpfl = find(D, "cpfl").unwrap();
+        let mut s = Session::new();
+        let rules = changed(cpfl, "unit_demand", 1);
+        s.model_mut().codes.electrical.changes.insert("unit_demand".into(), rules.as_object().unwrap().clone());
+        let path = dir().join("g3-legacy-unheld.bimc");
+        run(&mut s, "save", json!({"path": path}));
+        let mut t = Session::new();
+        run(&mut t, "open", json!({"path": path}));
+        assert_eq!(display(&mut t, "unit_demand"), rules);
+        let mut failures = Vec::new();
+        for p in [json!({"area": 40}), json!({"utility": "CPFL", "area": 40})] {
+            probe(&mut failures, "project-wide change after reopen", &mut t, "demand", &p, &json!(33.0));
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
 }
 
 #[test]
@@ -1927,6 +1945,29 @@ mod review_g3b {
             }
         }
     }
+
+    #[test]
+    fn legacy_project_change_to_base_entrance_answers_as_displayed() {
+        let mut s = Session::new();
+        choose(&mut s, &["fecoergs"]);
+        bc(&mut s, json!({"save": "ReviewBaseEntrance"}));
+        expect_breaker(&mut s, &fecoergs(), 50.0);
+        let method = changed(find(D, "fecoergs").unwrap(), "entrance", 1);
+        let changes = json!({"tables": method["tables"]});
+        s.model_mut().codes.choice_mut(D).changes.insert("entrance".into(), changes.as_object().unwrap().clone());
+        let path = dir().join("review-g3b-legacy-project-change.bimc");
+        run(&mut s, "save", json!({"path": path}));
+        let mut opened = Session::new();
+        run(&mut opened, "open", json!({"path": path}));
+
+        let shown = bc(&mut opened, json!({}));
+        let rules = run(&mut opened, "code_rules", json!({"discipline": "electrical", "section": "entrance"}));
+        let tables = rules["sections"][0]["rules"].as_array().unwrap().iter().find(|r| r["rule"] == "tables").unwrap();
+        let displayed = &shown["sections"]["entrance"]["tables"][0]["rows"][0]["breaker_a"][0];
+        let displayed_rules = &tables["value"][0]["rows"][0]["breaker_a"][0];
+        let actual = breaker(&mut opened, &fecoergs());
+        assert_eq!((displayed.as_f64(), displayed_rules.as_f64(), actual), (Some(51.0), Some(51.0), Ok(51.0)));
+    }
 }
 
 /// Saving and exporting with methods in several layers and keys, and group members (G3b's confirmation).
@@ -2047,6 +2088,351 @@ mod review_g3br2 {
                 json!({"utility": member, "installed_kw": 3, "system": "220/380", "phases": 1})
             };
             breaker(&mut s, p, expected);
+        }
+    }
+}
+
+/// An older file's change of a method no amendment holds (G2b and its review).
+mod legacy_demand_review {
+    use super::*;
+
+    const D: Discipline = Discipline::Electrical;
+
+    fn code(s: &mut Session, mut params: Value) -> Value {
+        params["discipline"] = json!("electrical");
+        run(s, "building_code", params)
+    }
+
+    fn choose(s: &mut Session, amendments: &[&str]) {
+        code(s, json!({"set": "nbr-5410", "amendments": amendments}));
+    }
+
+    fn patch(s: &mut Session, key: &str, rules: Value) {
+        s.model_mut().codes.choice_mut(D).changes.insert(key.into(), rules.as_object().unwrap().clone());
+    }
+
+    fn reopen(s: &mut Session, name: &str) -> Session {
+        let path = dir().join(format!("legacy-demand-review-{name}.bimc"));
+        run(s, "save", json!({"path": path}));
+        let mut reopened = Session::new();
+        run(&mut reopened, "open", json!({"path": path}));
+        reopened
+    }
+
+    fn rated_breaker(s: &mut Session, params: &Value) -> Result<f64, String> {
+        let reply = s.execute("demand", params)?;
+        let n = &reply["category"]["breaker_a"];
+        n.as_f64().or_else(|| n[0].as_f64()).ok_or_else(|| format!("sem disjuntor: {reply}"))
+    }
+
+    fn entrance(utility: &str) -> Value {
+        json!({"utility": utility, "installed_kw": 8, "phases": 1})
+    }
+
+    fn building_number(s: &mut Session, params: &Value) -> Result<f64, String> {
+        let reply = s.execute("building_demand", params)?;
+        reply["demand"].as_f64().ok_or_else(|| format!("sem demanda: {reply}"))
+    }
+
+    fn amendment(s: &mut Session, name: &str, key: &str, method: Value) {
+        code(s, json!({"set": "nbr-5410", "create": name, "amendments": [name]}));
+        code(s, json!({"amend": name, "rules": {key: method}}));
+    }
+
+    /// The amendment an older file's change of a method went into, the project's own.
+    fn project_layer(s: &Session) -> String {
+        s.model.codes.own.iter().find(|c| c.code.ends_with("(project)")).map(|c| c.code.clone()).unwrap_or_default()
+    }
+
+    #[test]
+    fn partial_entrance_over_library_changes_only_its_utility_and_can_reset() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let method = changed(find(D, "fecoergs").unwrap(), key, 1);
+        let params = entrance("FECOERGS");
+        assert_eq!(rated_breaker(&mut s, &params), Ok(50.0));
+        patch(&mut s, key, json!({"tables": method["tables"]}));
+        let mut s = reopen(&mut s, "library-tables");
+        let changed = rated_breaker(&mut s, &params);
+        let cpfl = rated_breaker(&mut s, &json!({"utility": "CPFL", "area": 40}));
+        let layer = project_layer(&s);
+        code(&mut s, json!({"amend": layer, "reset": key}));
+        assert_eq!((changed, cpfl, rated_breaker(&mut s, &params)), (Ok(51.0), Ok(32.0), Ok(50.0)));
+    }
+
+    #[test]
+    fn partial_entrance_migrates_into_amendment_and_keeps_its_identity() {
+        let mut s = Session::new();
+        let key = "entrance";
+        choose(&mut s, &["energisa", "fecoergs"]);
+        let method = changed(find(D, "fecoergs").unwrap(), key, 1);
+        patch(&mut s, key, json!({"tables": method["tables"]}));
+        let mut s = reopen(&mut s, "amendment-tables");
+        let energisa = json!({"utility": "EAC", "system": "220/380", "installed_kw": 3, "phases": 1});
+        assert_eq!(rated_breaker(&mut s, &entrance("FECOERGS")), Ok(51.0));
+        assert_eq!(rated_breaker(&mut s, &energisa), Ok(30.0));
+        code(&mut s, json!({"amend": "fecoergs", "reset": key}));
+        assert_eq!(rated_breaker(&mut s, &entrance("FECOERGS")), Ok(50.0));
+    }
+
+    #[test]
+    fn legacy_building_factor_answers_by_standard_and_resets() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        patch(&mut s, key, changed(find(D, "cemig").unwrap(), key, 1));
+        let mut s = reopen(&mut s, "building-standard");
+        let p = json!({"standard": "CEMIG ND-5.2", "dwellings": [{"count": 20, "area": 120}]});
+        let ce = json!({"utility": "CELESC", "dwellings": p["dwellings"]});
+        let changed = building_number(&mut s, &p);
+        let other = building_number(&mut s, &ce);
+        let layer = project_layer(&s);
+        code(&mut s, json!({"amend": layer, "reset": key}));
+        assert_eq!((changed, other, building_number(&mut s, &p)), (Ok(88.595), Ok(53.157), Ok(62.017)));
+    }
+
+    #[test]
+    fn legacy_partial_entrance_with_another_identity_preserves_energisa_networks() {
+        let mut s = Session::new();
+        let key = "entrance";
+        choose(&mut s, &["fecoergs"]);
+        let method = changed(find(D, "energisa").unwrap(), key, 1);
+        patch(&mut s, key, json!({"id": "ENERGISA", "tables": method["tables"]}));
+        let mut s = reopen(&mut s, "energisa-identity");
+        let group = json!({"utility": "ENERGISA", "system": "220/380", "installed_kw": 3, "phases": 1});
+        let mut member = group.clone();
+        member["utility"] = json!("EAC");
+        assert_eq!(
+            (rated_breaker(&mut s, &group), rated_breaker(&mut s, &member), rated_breaker(&mut s, &entrance("FECOERGS"))),
+            (Ok(31.0), Ok(31.0), Ok(50.0)),
+        );
+    }
+
+    #[test]
+    fn legacy_change_stays_above_older_layer_after_xml_export_import() {
+        let mut original = Session::new();
+        choose(&mut original, &["fecoergs", "hidropan"]);
+        let key = "entrance";
+        let method = changed(find(D, "energisa").unwrap(), key, 1);
+        patch(&mut original, key, method);
+        let mut original = reopen(&mut original, "export");
+        let params = json!({"utility": "EAC", "system": "220/380", "installed_kw": 3, "phases": 1});
+        let pre = rated_breaker(&mut original, &params);
+        let mut implicit = params.clone();
+        implicit.as_object_mut().unwrap().remove("utility");
+        let pre_implicit = rated_breaker(&mut original, &implicit);
+        let path = dir().join("legacy-demand-review-export.xml");
+        run(&mut original, "building_code_export", json!({"discipline": "electrical", "name": "Review Legacy Export", "path": path}));
+        let mut imported = Session::new();
+        run(&mut imported, "building_code_import", json!({"set": true, "path": path}));
+        let named = rated_breaker(&mut imported, &params);
+        let unnamed = rated_breaker(&mut imported, &implicit);
+        assert_eq!((pre, pre_implicit, named, unnamed), (Ok(31.0), Ok(31.0), Ok(31.0), Ok(31.0)));
+    }
+    #[test]
+    fn empty_legacy_patch_leaves_named_method_and_implicit_precedence_unchanged() {
+        let mut s = Session::new();
+        choose(&mut s, &["fecoergs"]);
+        // An empty patch stays in Choice::changes when no amendment holds its section.
+        patch(&mut s, "unit_demand", json!({}));
+        let mut s = reopen(&mut s, "empty-patch");
+        let implicit = json!({"installed_kw": 8, "phases": 1});
+        assert_eq!(rated_breaker(&mut s, &implicit), Ok(50.0));
+        assert_eq!(rated_breaker(&mut s, &json!({"utility": "CPFL", "area": 40})), Ok(32.0));
+    }
+
+    #[test]
+    fn legacy_unit_demand_beats_entrance_in_the_top_amendment() {
+        let mut s = Session::new();
+        let mut layer = changed(find(D, "fecoergs").unwrap(), "entrance", 1);
+        layer["id"] = json!("CPFL");
+        layer["members"] = json!([]);
+        amendment(&mut s, "Review CPFL Entrance", "entrance", layer);
+        let method = changed(find(D, "cpfl").unwrap(), "unit_demand", 1);
+        patch(&mut s, "unit_demand", method);
+        let mut s = reopen(&mut s, "unit-beats-entrance");
+        let named = rated_breaker(&mut s, &json!({"utility": "CPFL", "area": 40}));
+        let implicit = rated_breaker(&mut s, &json!({"area": 40}));
+        assert_eq!((named, implicit), (Ok(33.0), Ok(33.0)));
+    }
+
+    #[test]
+    fn legacy_cpfl_change_preserves_celesc_precedence_across_sections() {
+        let mut s = Session::new();
+        let mut layer = changed(find(D, "fecoergs").unwrap(), "entrance", 1);
+        layer["id"] = json!("CELESC");
+        layer["members"] = json!([]);
+        amendment(&mut s, "Review CELESC Entrance", "entrance", layer);
+        choose(&mut s, &["Review CELESC Entrance", "celesc"]);
+        let key = "unit_demand";
+        code(&mut s, json!({"amend": "celesc", "rules": {key: changed(find(D, "celesc").unwrap(), key, 2)}}));
+        let params = entrance("CELESC");
+        assert_eq!(rated_breaker(&mut s, &params), Ok(52.0));
+        patch(&mut s, key, changed(find(D, "cpfl").unwrap(), key, 1));
+        let mut s = reopen(&mut s, "unrelated-cpfl-change");
+        assert_eq!(rated_breaker(&mut s, &params), Ok(52.0));
+    }
+
+    #[test]
+    fn partial_entrance_over_project_base_can_reset() {
+        let mut s = Session::new();
+        choose(&mut s, &["fecoergs"]);
+        code(&mut s, json!({"save": "Review FECOERGS Base"}));
+        let method = changed(find(D, "fecoergs").unwrap(), "entrance", 1);
+        patch(&mut s, "entrance", json!({"tables": method["tables"]}));
+        let mut s = reopen(&mut s, "base-tables");
+        let p = entrance("FECOERGS");
+        let changed = rated_breaker(&mut s, &p);
+        let layer = project_layer(&s);
+        code(&mut s, json!({"amend": layer, "reset": "entrance"}));
+        assert_eq!((changed, rated_breaker(&mut s, &p)), (Ok(51.0), Ok(50.0)));
+    }
+    #[test]
+    fn empty_legacy_patch_does_not_promote_a_library_method_above_a_held_entrance() {
+        let mut s = Session::new();
+        choose(&mut s, &["hidropan", "cemig"]);
+        let p = json!({"installed_kw": 8, "phases": 1});
+        assert_eq!(rated_breaker(&mut s, &p), Ok(35.0));
+        patch(&mut s, "unit_demand", json!({}));
+        let mut s = reopen(&mut s, "empty-patch-above-entrance");
+        assert_eq!(rated_breaker(&mut s, &p), Ok(35.0));
+    }
+
+    // The confirmation's cases (G2b): names and room at the edges.
+    fn legacy_entrance_patch(s: &mut Session) {
+        let method = changed(find(D, "fecoergs").unwrap(), "entrance", 1);
+        patch(s, "entrance", json!({"tables": method["tables"]}));
+    }
+
+    fn legacy_capacity(s: &mut Session, count: usize, hold: bool) {
+        for i in 0..count {
+            let name = format!("Review capacity {i}");
+            code(s, json!({"create": name}));
+            if hold {
+                s.model_mut().codes.choice_mut(D).amendments.push(name);
+            }
+        }
+    }
+
+    #[test]
+    fn review_legacy_full_amendment_list_still_opens_and_answers() {
+        let mut s = Session::new();
+        legacy_capacity(&mut s, MAX_AMENDMENTS, true);
+        legacy_entrance_patch(&mut s);
+        s.model.check().expect("the model before migration is valid");
+        let opened = reopen(&mut s, "review-full-amendments");
+        // No room for another amendment: the change stays among the project's own, as before, and the file opens.
+        assert!(opened.model.codes.choice(D).changes.contains_key("entrance"));
+    }
+
+    #[test]
+    fn review_legacy_exact_name_collision_and_command_lifecycle() {
+        let mut s = Session::new();
+        amendment(&mut s, "FECOERGS (project)", "building_demand", changed(find(D, "cemig").unwrap(), "building_demand", 1));
+        let cemig = json!({"standard": "CEMIG ND-5.2", "dwellings": [{"count": 20, "area": 120}]});
+        let method = changed(find(D, "fecoergs").unwrap(), "entrance", 1);
+        patch(&mut s, "entrance", json!({"id": "FECOERGS", "tables": method["tables"]}));
+        let p = entrance("FECOERGS");
+        let mut opened = reopen(&mut s, "review-collision-lifecycle");
+        assert_eq!(rated_breaker(&mut opened, &p), Ok(51.0));
+        assert_eq!(building_number(&mut opened, &cemig), Ok(88.595));
+        let layer = opened.model.codes.layers(D).last().unwrap().code.clone();
+        let edited = changed(find(D, "fecoergs").unwrap(), "entrance", 2);
+        code(&mut opened, json!({"amend": layer, "rules": {"entrance": {"tables": edited["tables"]}}}));
+        assert_eq!(rated_breaker(&mut opened, &p), Ok(52.0));
+        assert!(opened.execute("building_code", &json!({"discipline": "electrical", "delete": layer})).is_err());
+        assert_eq!(rated_breaker(&mut opened, &p), Ok(52.0));
+        code(&mut opened, json!({"amend": layer, "reset": "entrance"}));
+        assert_eq!(rated_breaker(&mut opened, &p), Ok(50.0));
+        code(&mut opened, json!({"delete": layer}));
+        assert_eq!(rated_breaker(&mut opened, &p), Ok(50.0));
+        assert_eq!(building_number(&mut opened, &cemig), Ok(88.595));
+    }
+
+    #[test]
+    fn review_legacy_three_changes_keep_each_number() {
+        let mut s = Session::new();
+        for (library, key) in [("cpfl", "unit_demand"), ("cemig", "building_demand"), ("energisa", "entrance")] {
+            patch(&mut s, key, changed(find(D, library).unwrap(), key, 1));
+        }
+        let mut opened = reopen(&mut s, "review-three");
+        assert_eq!(rated_breaker(&mut opened, &json!({"utility": "CPFL", "area": 40})), Ok(33.0));
+        assert_eq!(
+            building_number(&mut opened, &json!({"standard": "CEMIG ND-5.2", "dwellings": [{"count": 20, "area": 120}]})),
+            Ok(88.595)
+        );
+        assert_eq!(rated_breaker(&mut opened, &json!({"utility": "EAC", "system": "220/380", "installed_kw": 3, "phases": 1})), Ok(31.0));
+    }
+
+    #[test]
+    fn review_legacy_two_keys_with_same_utility_name_keep_both_answers() {
+        let mut s = Session::new();
+        patch(&mut s, "unit_demand", changed(find(D, "cpfl").unwrap(), "unit_demand", 1));
+        let mut building = changed(find(D, "cemig").unwrap(), "building_demand", 1);
+        building["standard"] = json!("CPFL");
+        building["utilities"] = json!(["CPFL"]);
+        patch(&mut s, "building_demand", building);
+        let mut opened = reopen(&mut s, "review-two-keys");
+        assert_eq!(rated_breaker(&mut opened, &json!({"utility": "CPFL", "area": 40})), Ok(33.0));
+        assert_eq!(building_number(&mut opened, &json!({"utility": "CPFL", "dwellings": [{"count": 20, "area": 120}]})), Ok(88.595));
+    }
+
+    #[test]
+    fn review_legacy_library_code_stem_preserves_library_answers() {
+        let mut s = Session::new();
+        let mut method = changed(find(D, "energisa").unwrap(), "entrance", 1);
+        // This identity is also a reserved library code identifier.
+        method["id"] = json!("fecoergs");
+        patch(&mut s, "entrance", method);
+        let mut opened = reopen(&mut s, "review-reserved-stem");
+        let p = json!({"system": "220/380", "installed_kw": 3, "phases": 1});
+        assert_eq!(rated_breaker(&mut opened, &p), Ok(31.0));
+        let mut clean = Session::new();
+        choose(&mut clean, &["fecoergs"]);
+        assert_eq!(rated_breaker(&mut clean, &entrance("FECOERGS")), Ok(50.0));
+    }
+
+    #[test]
+    fn review_legacy_building_code_reports_the_same_effective_rules_after_open() {
+        let mut s = Session::new();
+        legacy_entrance_patch(&mut s);
+        let before = code(&mut s, json!({}));
+        let mut opened = reopen(&mut s, "review-building-code");
+        let after = code(&mut opened, json!({}));
+        assert_eq!(before["sections"]["entrance"], after["sections"]["entrance"]);
+        assert_eq!(rated_breaker(&mut opened, &entrance("FECOERGS")), Ok(51.0));
+        let mut reopened = reopen(&mut opened, "review-building-code-second");
+        assert_eq!(after, code(&mut reopened, json!({})));
+        assert_eq!(rated_breaker(&mut reopened, &entrance("FECOERGS")), Ok(51.0));
+    }
+
+    #[test]
+    fn review_legacy_63_character_base_still_opens_and_answers() {
+        let mut s = Session::new();
+        choose(&mut s, &["fecoergs"]);
+        let base = "R".repeat(63);
+        code(&mut s, json!({"save": base}));
+        legacy_entrance_patch(&mut s);
+        s.model.check().expect("the model before migration is valid");
+        let mut opened = reopen(&mut s, "review-63");
+        assert_eq!(rated_breaker(&mut opened, &entrance("FECOERGS")), Ok(51.0));
+    }
+
+    #[test]
+    fn review_legacy_64_character_base_and_collision_keep_the_project_answer() {
+        for (tag, collision) in [("free", false), ("taken", true)] {
+            let mut s = Session::new();
+            choose(&mut s, &["fecoergs"]);
+            let base = "R".repeat(64);
+            if collision {
+                code(&mut s, json!({"save": base}));
+            } else {
+                // A 64-character display name and a shorter identifier are valid in a file.
+                code(&mut s, json!({"save": "Review long display"}));
+                s.model_mut().codes.own.iter_mut().find(|c| c.code == "Review long display").unwrap().name = base;
+            }
+            legacy_entrance_patch(&mut s);
+            let mut opened = reopen(&mut s, &format!("review-long-{tag}"));
+            assert_eq!(rated_breaker(&mut opened, &entrance("FECOERGS")), Ok(51.0), "{tag}");
         }
     }
 }
