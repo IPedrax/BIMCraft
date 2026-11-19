@@ -472,7 +472,7 @@ msgstr "Membrana"
 #: crates/core/src/commands.rs:18499
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
-#: crates/core/src/model.rs:6382
+#: crates/core/src/model.rs:6386
 msgid "Metal"
 msgstr "Metallo"
 

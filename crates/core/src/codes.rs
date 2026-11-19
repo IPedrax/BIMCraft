@@ -1099,6 +1099,61 @@ impl Codes {
         *self == Codes::default()
     }
 
+    /// A file from before a utility's or a country's method was changed in its amendment (#502) keeps the project's change
+    /// of one among its own changes, where nothing reads it now (`building_code` refuses to put one there). It goes into the
+    /// layer whose method it changed, as `amend` puts a change today: the layer whose method names the same utility or
+    /// standard, else the last that holds the method (the one in force when the file was saved), copied as the project's
+    /// if it is BIMCraft's. A change no amendment holds (a country's method, a utility not chosen) stays where it is, as does
+    /// one a project with as many codes of its own as it may keep would need a copy for.
+    pub fn methods_into_layers(&mut self) {
+        for (d, key) in WHOLE {
+            let Some(changed) = self.choice(d).changes.get(key).cloned() else { continue };
+            let field = match key {
+                "unit_demand" => "utility",
+                "entrance" => "id",
+                _ => "standard",
+            };
+            let named = |m: &Map<String, Value>| m.get(field).and_then(Value::as_str).map(str::to_lowercase);
+            let wanted = named(&changed);
+            // An amendment's: a country's method, held by the base, is left as it is (a copy of a base under its own
+            // name would be a project code BIMCraft has).
+            let target = self
+                .layers(d)
+                .iter()
+                .rev()
+                .filter(|c| !c.amends.is_empty())
+                .find(|c| whole_section(c, key).is_some_and(|w| wanted.is_none() || named(&w) == wanted))
+                .map(|c| c.code.clone());
+            let Some(target) = target else { continue };
+            let Some(mut whole) = self.find(d, &target).and_then(|c| whole_section(c, key)) else { continue };
+            // A code holds 10 000 sources and kinds at most (`BuildingCode::check`): one at the brim keeps the change where it is.
+            let room = self.find(d, &target).is_some_and(|c| c.sources.len().max(c.kinds.len()) + changed.len() <= 10_000);
+            if !room {
+                continue;
+            }
+            if !self.own.iter().any(|k| k.code == target && k.discipline == d) {
+                if self.own.len() >= MAX_OWN {
+                    continue;
+                }
+                let Some(mut copy) = self.find(d, &target).cloned() else { continue };
+                copy.default = false;
+                copy.superseded_by.clear();
+                copy.based_on = copy.code.clone();
+                self.own.push(copy);
+            }
+            let Some(own) = self.own.iter_mut().find(|k| k.code == target && k.discipline == d) else { continue };
+            for (rule, v) in changed {
+                if whole.get(&rule) != Some(&v) {
+                    own.sources.insert(format!("{key}.{rule}"), Source::Text(format!("{target}: changed in this project")));
+                    own.kinds.insert(format!("{key}.{rule}"), Kind::Assumption);
+                }
+                whole.insert(rule, v);
+            }
+            own.sections.insert(key.to_string(), Value::Object(whole));
+            self.choice_mut(d).changes.remove(key);
+        }
+    }
+
     pub fn choice(&self, d: Discipline) -> &Choice {
         match d {
             Discipline::Architectural => &self.architectural,
