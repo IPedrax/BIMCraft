@@ -195,19 +195,37 @@ fn resetting_a_preset_gives_the_standard_layout_of_its_profile_and_keeps_it() {
 fn a_panel_taken_out_in_edit_tools_leaves_the_tab_and_comes_back() {
     for rev in [false, true] {
         let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        // Hide the panel with its box.
         if rev {
-            // Rev's Edit Tools is in the title bar's chip, with the scale and the presets.
             press(&mut h, "Team");
         }
         press(&mut h, "Edit Tools");
-        h.get_by_role_and_label(Role::CheckBox, "Build").scroll_to_me();
+        let node = h.get_by_role_and_label(Role::CheckBox, "Build");
+        assert_eq!(node.accesskit_node().toggled(), Some(egui::accesskit::Toggled::True), "rev {rev}: shown to begin with");
+        node.scroll_to_me();
         h.run();
         let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
         click_at(&mut h, at);
         press(&mut h, "Done");
         assert!(h.state().panels_hidden.contains("tab:Architecture/Build"), "rev {rev}");
         assert!(h.query_by_label("Wall").is_none(), "the panel and its tools left the tab (rev {rev})");
-        // Find still has its tools.
+        // The same box brings it back.
+        if rev {
+            press(&mut h, "Team");
+        }
+        press(&mut h, "Edit Tools");
+        let node = h.get_by_role_and_label(Role::CheckBox, "Build");
+        assert_eq!(node.accesskit_node().toggled(), Some(egui::accesskit::Toggled::False), "rev {rev}: the hidden panel's box is clear");
+        node.scroll_to_me();
+        h.run();
+        let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
+        click_at(&mut h, at);
+        press(&mut h, "Done");
+        assert!(!h.state().panels_hidden.contains("tab:Architecture/Build"), "rev {rev}");
+        assert!(h.query_by_label("Wall").is_some(), "rev {rev}");
+        // Hidden again for Find, set directly: the tool Find picks raises a contextual tab over the architecture one.
+        h.state_mut().panels_hidden.insert("tab:Architecture/Build".to_string());
+        h.run();
         h.key_press_modifiers(Modifiers::COMMAND, Key::K);
         h.run();
         h.event(egui::Event::Text("wall".to_string()));
@@ -215,19 +233,6 @@ fn a_panel_taken_out_in_edit_tools_leaves_the_tab_and_comes_back() {
         key(&mut h, Key::Enter);
         assert!(matches!(h.state().tool, Tool::Wall(_)), "Find still has the tool (rev {rev})");
         key(&mut h, Key::Escape);
-        // And the box brings it back: the Architecture tab again, whatever tool Find took.
-        press(&mut h, "Architecture");
-        if rev {
-            press(&mut h, "Team");
-        }
-        press(&mut h, "Edit Tools");
-        h.get_by_role_and_label(Role::CheckBox, "Build").scroll_to_me();
-        h.run();
-        let at = h.get_by_role_and_label(Role::CheckBox, "Build").rect().center();
-        click_at(&mut h, at);
-        press(&mut h, "Done");
-        assert!(!h.state().panels_hidden.contains("tab:Architecture/Build"), "rev {rev}");
-        assert!(h.query_by_label("Wall").is_some(), "rev {rev}");
     }
 }
 
