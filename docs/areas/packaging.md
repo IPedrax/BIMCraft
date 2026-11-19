@@ -9,6 +9,10 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   and actionlint on the workflow, run the Linux one through, and install the deb in a clean container. The app id is
   `io.github.ipedrax.bimcraft` everywhere (`APP_ID`, the desktop file, AppStream, the Flatpak, the bundle); the icons come
   from `packaging/icons.sh`.
+- The root `Cargo.toml` patches `egui-winit` to `vendor/egui-winit`, which is 0.36.2 with one line changed: the window's
+  X11 `WM_CLASS` instance is the app id, not an empty string (GNOME Shell matched the empty one to any launcher with an empty
+  `StartupWMClass`, Remmina's Flatpak one). Check at each release whether `egui-winit` upstream sets a non-empty instance; when
+  it does, bump `egui`/`eframe`, delete `vendor/` and the `[patch.crates-io]` section, and rebuild.
 - File types are registered by every package, and a new extension goes in all of them (`bimcraft_core::files` names them): a
   project is `application/x-bimcraft` (the globs `*.bimc`, `*.bimt`, `*.bimb` and the old `*.bimcraft` in the MIME XML, the
   `BIMCraft.Project` ProgId's extensions in `bimcraft.wxs`, the `io.github.ipedrax.bimcraft.project` type's in `Info.plist.in`) and a
