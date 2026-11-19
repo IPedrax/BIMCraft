@@ -3,7 +3,9 @@
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::grids::GridType;
+use bimcraft_core::language::Language;
 use bimcraft_core::library::Kind;
+use bimcraft_core::lines::{LinePattern, Segment};
 use bimcraft_core::model::{Element, Model};
 use bimcraft_core::pen::Pen;
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
@@ -252,10 +254,13 @@ fn a_grid_type_with_a_missing_pattern_or_bad_lettering_is_refused() {
     assert!(e.contains(&format!("grid {g}")) && e.contains("there's no grid type `Nope` (there are:"), "{e}");
 }
 
-#[test]
-fn a_file_of_format_twenty_opens_with_every_grid_in_the_default_type() {
-    let mut s = Session::new();
-    let g = grid(&mut s);
+/// The line patterns of a file from before grid types: the six of the day, and none for grids.
+const OLD_PATTERNS: [&str; 6] = ["Centre", "Dash", "Dash Dot", "Dot", "Hidden", "Long Dash"];
+
+/// A file as a build before grid types wrote it: format 20, no grid types, grids without a type, only the six patterns
+/// of the day, and no grid pattern entries in the library.
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
+fn file_of_format_twenty(s: &Session) -> Value {
     let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     v["format"] = json!(20);
     assert!(v.as_object_mut().unwrap().remove("grid_types").is_some(), "a file of 20 holds no grid types");
@@ -264,11 +269,115 @@ fn a_file_of_format_twenty_opens_with_every_grid_in_the_default_type() {
             e.as_object_mut().unwrap().remove("type");
         }
     }
+    v["line_patterns"].as_object_mut().unwrap().retain(|name, _| OLD_PATTERNS.contains(&name.as_str()));
+    v["library"]
+        .as_object_mut()
+        .unwrap()
+        .retain(|_, e| !(e["kind"] == json!("line-pattern") && e["name"].as_str().is_some_and(|n| n.starts_with("Grid - "))));
+    v
+}
+
+#[test]
+fn a_file_of_format_twenty_opens_with_every_grid_in_the_default_type() {
+    let mut s = Session::new();
+    let g = grid(&mut s);
+    let v = file_of_format_twenty(&s);
     let (m, left_out) = Model::read(&v.to_string()).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
-    assert!(!m.grid_types.is_empty(), "the starter set is put back");
-    assert_eq!(grid_type_name(&m, g), "Grid - ISO 128");
     assert_eq!(m.check(), Ok(()));
+    // The five patterns its starter grid types draw in, each as its standard reads them, mm on paper.
+    for (name, segments) in [
+        ("Grid - ISO Dash Dot", vec![Segment::Dash(12.7), Segment::Space(3.2), Segment::Dot, Segment::Space(3.2)]),
+        ("Grid - DIN Dash Dot", vec![Segment::Dash(20.0), Segment::Space(4.0), Segment::Dot, Segment::Space(4.0)]),
+        ("Grid - ASME Chain", vec![Segment::Dash(20.0), Segment::Space(3.0), Segment::Dash(5.0), Segment::Space(3.0)]),
+        (
+            "Grid - Architectural Chain",
+            vec![
+                Segment::Dash(15.0),
+                Segment::Space(2.0),
+                Segment::Dash(2.0),
+                Segment::Space(2.0),
+                Segment::Dash(2.0),
+                Segment::Space(2.0),
+            ],
+        ),
+        ("Grid - Compact Dash Dot", vec![Segment::Dash(6.0), Segment::Space(1.5), Segment::Dot, Segment::Space(1.5)]),
+    ] {
+        assert_eq!(m.line_patterns.get(name), Some(&LinePattern(segments)), "{name}");
+    }
+    assert_eq!(m.line_patterns.len(), OLD_PATTERNS.len() + 5, "nothing else is added");
+    assert_eq!(m.grid_types, bimcraft_core::grids::default_types(), "the starter set is put back");
+    assert_eq!(grid_type_name(&m, g), "Grid - ISO 128");
+}
+
+#[test]
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
+fn a_grid_pattern_the_project_has_is_kept() {
+    let mut s = Session::new();
+    let _ = grid(&mut s);
+    let mut v = file_of_format_twenty(&s);
+    v["line_patterns"]["Grid - ASME Chain"] = json!([{"dash": 1.0}, {"space": 1.0}]);
+    let (m, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(m.line_patterns["Grid - ASME Chain"], LinePattern(vec![Segment::Dash(1.0), Segment::Space(1.0)]));
+    assert_eq!(m.line_patterns.len(), OLD_PATTERNS.len() + 5, "the other four are added");
+    assert_eq!(m.check(), Ok(()));
+}
+
+#[test]
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
+fn a_file_of_format_twenty_one_still_refuses_a_type_whose_pattern_is_gone() {
+    let mut s = Session::new();
+    let _ = grid(&mut s);
+    let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(v["format"], json!(bimcraft_core::model::FORMAT));
+    assert!(v["line_patterns"].as_object_mut().unwrap().remove("Grid - ASME Chain").is_some());
+    let (m, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert!(!m.line_patterns.contains_key("Grid - ASME Chain"), "a file of 21 is left alone");
+    let e = m.check().unwrap_err();
+    assert!(e.contains("grid type `Grid - ASME Y14.2`") && e.contains("there's no line pattern `Grid - ASME Chain`"), "{e}");
+}
+
+#[test]
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
+fn a_migrated_file_of_twenty_saves_and_reopens_the_same() {
+    let mut s = Session::new();
+    let g = grid(&mut s);
+    let v = file_of_format_twenty(&s);
+    let (first, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(first.check(), Ok(()));
+    let (second, left_out) = Model::read(&first.to_json().unwrap()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(second.check(), Ok(()));
+    assert_eq!(second.line_patterns, first.line_patterns);
+    assert_eq!(second.grid_types, first.grid_types);
+    assert_eq!(grid_type_name(&second, g), "Grid - ISO 128");
+}
+
+#[test]
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
+fn a_non_english_project_gets_grid_patterns_named_as_its_types_are() {
+    let mut s = Session::new();
+    let g = grid(&mut s);
+    let mut v = file_of_format_twenty(&s);
+    v["language"] = json!("de");
+    let (m, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(m.language, Language::German);
+    assert_eq!(m.check(), Ok(()));
+    // Every starter type draws in a pattern the project has, named as the type names it.
+    for (name, t) in &m.grid_types {
+        if let Some(p) = &t.line_pattern {
+            assert!(m.line_patterns.contains_key(p), "grid type `{name}` draws in `{p}`, which is there");
+        }
+    }
+    for (name, pattern) in bimcraft_core::lines::grid_patterns(Language::German) {
+        assert_eq!(m.line_patterns.get(&name), Some(&pattern), "{name}");
+    }
+    assert_eq!(m.line_patterns.keys().filter(|n| n.starts_with("Grid - ")).count(), 5);
+    assert!(m.grid_types.contains_key(&grid_type_name(&m, g)), "the grid is of a starter type");
 }
 
 #[test]
