@@ -77,11 +77,12 @@ pub fn in_force(codes: &Codes, d: Discipline, name: &str) -> BuildingCode {
 pub fn in_force_layered(codes: &Codes, d: Discipline, name: &str) -> Result<Vec<BuildingCode>, String> {
     let base = in_force(codes, d, name);
     let layers = codes.layers(d);
-    let split: Vec<&str> = super::WHOLE
-        .iter()
-        .filter(|(wd, k)| *wd == d && layers.iter().filter(|c| c.sections.contains_key(*k)).count() > 1)
-        .map(|(_, k)| *k)
-        .collect();
+    // Every method held, once more than one layer holds any: which answers depends on the layers' order across keys too (a
+    // utility's entrance in one layer, its unit demand in another), so each layer's methods keep their place.
+    let whole: Vec<&str> = super::WHOLE.iter().filter(|(wd, _)| *wd == d).map(|(_, k)| *k).collect();
+    let holders = layers.iter().filter(|c| whole.iter().any(|k| c.sections.contains_key(*k))).count();
+    let split: Vec<&str> =
+        if holders > 1 { whole.into_iter().filter(|k| layers.iter().any(|c| c.sections.contains_key(*k))).collect() } else { Vec::new() };
     if split.is_empty() {
         return Ok(vec![base]);
     }

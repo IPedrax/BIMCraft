@@ -8104,43 +8104,53 @@ fn demand(s: &mut Session, p: &Value) -> R {
             "entrance",
         ],
     )?;
-    // Not given: the utility whose code the project is held to (its unit demand's, else its entrance categories').
-    let own_utility = |r: Option<(String, bool)>| r.filter(|(_, own)| *own).map(|(u, _)| u);
+    // The utilities' methods the project's layers hold, each with its layer's place from the top.
     let electrical = crate::codes::Discipline::Electrical;
-    let utility = string(c, p, "utility")?
-        .or_else(|| own_utility(s.model.section_as::<d::Standard>(electrical, "unit_demand").map(|(x, own)| (x.utility, own))))
-        .or_else(|| own_utility(s.model.section_as::<crate::entrance::Utility>(electrical, "entrance").map(|(x, own)| (x.id, own))))
-        .ok_or_else(|| {
-            bad(
-                c,
-                format!(
-                    "`utility` is required: {}, {}; or hold the project to a utility's code in Manage > Building Codes",
-                    d::names().join(", "),
-                    crate::entrance::names().join(", ")
-                ),
-            )
-        })?;
-    // The project's utility, as its amendment holds it and the project changed it; else BIMCraft's.
-    // Each amendment's own entrance, wherever it stands: one utility's never answers for another's.
-    for (u, _, own) in s.model.held_wholes::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance", "rule") {
-        let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
-        if own && (u.id.eq_ignore_ascii_case(&utility) || member.is_some()) {
-            return demand_table(p, &utility, &u, member);
-        }
-    }
-    // The utility's own unit demand, as its amendment holds it, wherever it stands among the project's amendments: never
-    // the rules of another utility layered with it.
-    // Of two versions of it, the one on top answers, the project's or BIMCraft's.
-    let project = s
-        .model
-        .held_wholes::<d::Standard>(crate::codes::Discipline::Electrical, "unit_demand", "method")
+    let entrances = s.model.held_wholes_at::<crate::entrance::Utility>(electrical, "entrance", "rule");
+    let units = s.model.held_wholes_at::<d::Standard>(electrical, "unit_demand", "method");
+    // Not given: the utility of the method on top (its entrance's or its unit demand's; the entrance in one layer).
+    let on_top = entrances
+        .iter()
+        .map(|(u, .., at)| (*at, u.id.clone()))
+        .chain(units.iter().map(|(u, .., at)| (*at, u.utility.clone())))
+        .min_by_key(|(at, _)| *at)
+        .map(|(_, id)| id);
+    let utility = string(c, p, "utility")?.or(on_top).ok_or_else(|| {
+        bad(
+            c,
+            format!(
+                "`utility` is required: {}, {}; or hold the project to a utility's code in Manage > Building Codes",
+                d::names().join(", "),
+                crate::entrance::names().join(", ")
+            ),
+        )
+    })?;
+    // The utility's method, of the layers that hold one for it (its service entrance or its unit demand, the project's or
+    // BIMCraft's), the one on top: never another utility's layered with it, never a version under another of its own.
+    // A member of a group of utilities answers by its group's methods too (its unit demand is the group's).
+    let groups: Vec<String> = entrances
+        .iter()
+        .filter(|(u, ..)| u.members.iter().any(|m| m.id.eq_ignore_ascii_case(&utility)))
+        .map(|(u, ..)| u.id.clone())
+        .chain(crate::entrance::find(&utility).filter(|(_, m)| m.is_some()).map(|(u, _)| u.id.clone()))
+        .collect();
+    let entrance = entrances
         .into_iter()
-        .find(|(u, _, _)| u.utility.eq_ignore_ascii_case(&utility))
-        .and_then(|(u, source, own)| match own {
-            true => Some((u, source.unwrap_or_else(|| "changed in this project".into()))),
-            // BIMCraft's on top: its own, with its own source.
-            false => d::find(&utility).cloned(),
-        });
+        .find(|(u, ..)| u.id.eq_ignore_ascii_case(&utility) || u.members.iter().any(|m| m.id.eq_ignore_ascii_case(&utility)));
+    let unit = units
+        .into_iter()
+        .find(|(u, ..)| u.utility.eq_ignore_ascii_case(&utility) || groups.iter().any(|g| u.utility.eq_ignore_ascii_case(g)));
+    if let Some((u, _, _, at)) = &entrance
+        && unit.as_ref().is_none_or(|(.., under)| at <= under)
+    {
+        let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
+        return demand_table(p, &utility, u, member);
+    }
+    let project = unit.and_then(|(u, source, own, _)| match own {
+        true => Some((u, source.unwrap_or_else(|| "changed in this project".into()))),
+        // BIMCraft's on top: its own, with its own source.
+        false => d::find(&utility).cloned(),
+    });
     if project.is_none()
         && let Some((u, member)) = crate::entrance::find(&utility)
     {

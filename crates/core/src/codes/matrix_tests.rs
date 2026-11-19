@@ -1234,10 +1234,10 @@ mod at_the_limit {
 #[test]
 fn two_versions_of_a_utility_answer_by_the_one_on_top() {
     // A project's copy of a utility (`Lower`, its method changed) and BIMCraft's, both held: the one on top answers, in
-    // either order, for every utility's unit and building demand (G3; the service entrance is G3b's).
+    // either order, for every utility's method (G3, G3b).
     let mut asked = 0;
     for code in of(Discipline::Electrical).filter(|c| !c.amends.is_empty()) {
-        for key in ["unit_demand", "building_demand"] {
+        for key in ["unit_demand", "building_demand", "entrance"] {
             if !code.sections.contains_key(key) {
                 continue;
             }
@@ -1272,7 +1272,7 @@ fn two_versions_of_a_utility_answer_by_the_one_on_top() {
             }
         }
     }
-    assert!(asked >= 12, "cases asked ({asked})");
+    assert!(asked >= 16, "cases asked ({asked})");
 }
 
 /// Two versions of a utility, and the one on top (G3 and what its review found).
@@ -1335,8 +1335,7 @@ mod one_on_top {
         let mut failed = Vec::new();
         let mut tested = Vec::new();
         for code in of(D).filter(|c| c.amends == "nbr-5410") {
-            // The service entrance's order is G3b's.
-            for key in ["unit_demand", "building_demand"] {
+            for key in ["unit_demand", "entrance", "building_demand"] {
                 let Some(method) = code.sections.get(key) else {
                     continue;
                 };
@@ -1402,7 +1401,7 @@ mod one_on_top {
                 }
             }
         }
-        assert_eq!(tested.len(), 7, "{tested:?}");
+        assert_eq!(tested.len(), 12, "{tested:?}");
         assert!(failed.is_empty(), "{} different answers:\n{}", failed.len(), failed.join("\n"));
     }
 
@@ -1662,6 +1661,71 @@ mod one_on_top {
         }
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
+
+    // G3b: the service entrance among versions.
+
+    #[test]
+    fn group_member_with_both_orders() {
+        let code = find(D, "fecoergs").unwrap();
+        let method = &code.sections["entrance"];
+        let (cmd, mut p) = method_probe(code, "entrance", method);
+        p["utility"] = json!("CERTEL");
+        let mut s = Session::new();
+        let lib = answer(&mut s, cmd, &p).unwrap();
+        assert!(lib.is_number(), "{lib}");
+        make_copy(&mut s, code, "entrance", "GroupCopy", 1);
+        choose(&mut s, &["GroupCopy"]);
+        let changed = answer(&mut s, cmd, &p).unwrap();
+        assert_ne!(changed, lib);
+        let mut failures = Vec::new();
+        for (order, expected) in [(["GroupCopy", "fecoergs"], lib), (["fecoergs", "GroupCopy"], changed)] {
+            choose(&mut s, &order);
+            for utility in ["CERTEL", "certel"] {
+                p["utility"] = json!(utility);
+                probe(&mut failures, &format!("{order:?}"), &mut s, cmd, &p, &expected);
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    #[test]
+    fn top_library_entrance_over_own_unit_demand_and_entrance() {
+        let fecoergs = find(D, "fecoergs").unwrap();
+        let celesc = find(D, "celesc").unwrap();
+        let mut s = Session::new();
+        make_copy(&mut s, fecoergs, "entrance", "EntranceCopy", 1);
+        make_copy(&mut s, celesc, "unit_demand", "UnitCopy", 2);
+        choose(&mut s, &["UnitCopy", "EntranceCopy", "fecoergs"]);
+        bc(&mut s, json!({"amend": "UnitCopy", "rules": {"unit_demand": {"utility": "FECOERGS"}}}));
+        let p = json!({"utility": "FECOERGS", "installed_kw": 8, "phases": 1});
+        let mut reference = Session::new();
+        let want = answer(&mut reference, "demand", &p).unwrap();
+        assert!(want.is_number());
+        assert_eq!(display(&mut s, "entrance"), fecoergs.sections["entrance"]);
+        let mut failed = Vec::new();
+        probe(&mut failed, "library entrance on top, named", &mut s, "demand", &p, &want);
+        probe(&mut failed, "library entrance on top, implicit", &mut s, "demand", &json!({"installed_kw": 8, "phases": 1}), &want);
+        assert!(failed.is_empty(), "{}", failed.join("\n"));
+    }
+
+    #[test]
+    fn review_fecoergs_three_layers_is_50_a() {
+        let mut s = Session::new();
+        make_copy(&mut s, find(D, "fecoergs").unwrap(), "entrance", "EntranceCopy", 1);
+        make_copy(&mut s, find(D, "celesc").unwrap(), "unit_demand", "UnitCopy", 2);
+        choose(&mut s, &["UnitCopy", "EntranceCopy", "fecoergs"]);
+        bc(&mut s, json!({"amend": "UnitCopy", "rules": {"unit_demand": {"utility": "FECOERGS"}}}));
+        let mut p = json!({"installed_kw": 8, "phases": 1});
+        for utility in [Some("FECOERGS"), None] {
+            match utility {
+                Some(id) => p["utility"] = json!(id),
+                None => {
+                    p.as_object_mut().unwrap().remove("utility");
+                }
+            }
+            assert_eq!(answer(&mut s, "demand", &p).unwrap().as_f64(), Some(50.0));
+        }
+    }
 }
 
 #[test]
@@ -1683,6 +1747,306 @@ fn a_utility_held_alone_answers_as_bimcrafts_own_word_for_word() {
                 o.remove("utility");
             }
             assert_eq!(run(&mut held, cmd, implicit), named, "{} {key}: by none, as by name", code.code);
+        }
+    }
+}
+
+/// A utility's methods across layers, members and saving (G3b's review).
+mod review_g3b {
+    use super::*;
+
+    const D: Discipline = Discipline::Electrical;
+
+    fn bc(s: &mut Session, mut p: Value) -> Value {
+        p["discipline"] = json!("electrical");
+        run(s, "building_code", p)
+    }
+
+    fn copy(s: &mut Session, name: &str, origin: &str, key: &str, identity: Option<&str>, delta: u32) {
+        let code = find(D, origin).unwrap();
+        let mut method = changed(code, key, delta);
+        if let Some(id) = identity {
+            if key == "entrance" {
+                method["id"] = json!(id);
+                method["members"] = json!([]);
+            } else {
+                method["utility"] = json!(id);
+            }
+        }
+        bc(s, json!({"set": "nbr-5410", "create": name, "amendments": [name]}));
+        bc(s, json!({"amend": name, "rules": {key: method}}));
+    }
+
+    fn choose(s: &mut Session, order: &[&str]) {
+        bc(s, json!({"set": "nbr-5410", "amendments": order}));
+    }
+
+    fn breaker(s: &mut Session, p: &Value) -> Result<f64, String> {
+        let reply = s.execute("demand", p)?;
+        let n = &reply["category"]["breaker_a"];
+        n.as_f64().or_else(|| n[0].as_f64()).ok_or_else(|| format!("sem disjuntor: {reply}"))
+    }
+
+    fn expect_breaker(s: &mut Session, p: &Value, expected: f64) {
+        assert_eq!(breaker(s, p), Ok(expected), "{p}");
+    }
+
+    fn fecoergs() -> Value {
+        json!({"utility": "fEcOeRgS", "installed_kw": 8, "phases": 1})
+    }
+
+    fn mixed_layers() -> Session {
+        let mut s = Session::new();
+        copy(&mut s, "Entrada", "fecoergs", "entrance", None, 1);
+        copy(&mut s, "Unidade", "celesc", "unit_demand", Some("FECOERGS"), 2);
+        choose(&mut s, &["Entrada", "fecoergs", "Unidade"]);
+        s
+    }
+
+    #[test]
+    fn unit_above_two_entrances_survives_building_code_save() {
+        let mut s = mixed_layers();
+        let before = breaker(&mut s, &fecoergs());
+        bc(&mut s, json!({"save": "ReviewMixedSaved"}));
+        let after = breaker(&mut s, &fecoergs());
+        assert_eq!((before, after), (Ok(52.0), Ok(52.0)));
+    }
+
+    #[test]
+    fn unit_above_two_entrances_survives_xml_roundtrip() {
+        let mut s = mixed_layers();
+        let before = breaker(&mut s, &fecoergs());
+        let path = dir().join("review-g3b-mixed.xml");
+        run(&mut s, "building_code_export", json!({"discipline": "electrical", "path": path, "name": "ReviewMixedXml"}));
+        let mut imported = Session::new();
+        run(&mut imported, "building_code_import", json!({"path": path, "set": true}));
+        let after = breaker(&mut imported, &fecoergs());
+        assert_eq!((before, after), (Ok(52.0), Ok(52.0)));
+    }
+
+    #[test]
+    fn unit_above_two_entrances_survives_bimc_and_reset() {
+        let mut s = mixed_layers();
+        let before = breaker(&mut s, &fecoergs());
+        let path = dir().join("review-g3b-mixed.bimc");
+        run(&mut s, "save", json!({"path": path, "compress": true}));
+        let mut reopened = Session::new();
+        run(&mut reopened, "open", json!({"path": path}));
+        let after = breaker(&mut reopened, &fecoergs());
+        bc(&mut reopened, json!({"amend": "Unidade", "reset": "unit_demand"}));
+        let reset = breaker(&mut reopened, &fecoergs());
+        assert_eq!((before, after, reset), (Ok(52.0), Ok(52.0), Ok(50.0)));
+    }
+
+    #[test]
+    fn implicit_utility_is_the_entrance_in_force_over_another_utility() {
+        let mut s = Session::new();
+        choose(&mut s, &["celesc", "fecoergs"]);
+        expect_breaker(&mut s, &fecoergs(), 50.0);
+        expect_breaker(&mut s, &json!({"utility": "celesc", "installed_kw": 8, "phases": 1}), 50.0);
+        // Give the other utility a different number so an accidental match cannot pass.
+        bc(&mut s, json!({"amend": "celesc", "rules": {"unit_demand": changed(find(D, "celesc").unwrap(), "unit_demand", 2)}}));
+        expect_breaker(&mut s, &json!({"installed_kw": 8, "phases": 1}), 50.0);
+    }
+
+    #[test]
+    fn group_unit_above_group_entrance_answers_for_its_member() {
+        let mut s = Session::new();
+        copy(&mut s, "Grupo unidade", "celesc", "unit_demand", Some("FECOERGS"), 2);
+        choose(&mut s, &["fecoergs", "Grupo unidade"]);
+        expect_breaker(&mut s, &fecoergs(), 52.0);
+        expect_breaker(&mut s, &json!({"utility": "cErTeL", "installed_kw": 8, "phases": 1}), 52.0);
+    }
+
+    #[test]
+    fn member_unit_above_group_entrance_answers_for_that_member() {
+        let mut s = Session::new();
+        copy(&mut s, "Certel unidade", "celesc", "unit_demand", Some("CERTEL"), 2);
+        choose(&mut s, &["fecoergs", "Certel unidade"]);
+        expect_breaker(&mut s, &fecoergs(), 50.0);
+        expect_breaker(&mut s, &json!({"utility": "cErTeL", "installed_kw": 8, "phases": 1}), 52.0);
+        choose(&mut s, &["Certel unidade", "fecoergs"]);
+        expect_breaker(&mut s, &json!({"utility": "cErTeL", "installed_kw": 8, "phases": 1}), 50.0);
+    }
+
+    #[test]
+    fn entrance_and_unit_on_the_same_layer_answer_by_entrance() {
+        let mut s = Session::new();
+        copy(&mut s, "Ambos", "fecoergs", "entrance", None, 1);
+        let mut unit = changed(find(D, "celesc").unwrap(), "unit_demand", 2);
+        unit["utility"] = json!("FECOERGS");
+        bc(&mut s, json!({"amend": "Ambos", "rules": {"unit_demand": unit}}));
+        choose(&mut s, &["Ambos"]);
+        expect_breaker(&mut s, &fecoergs(), 51.0);
+        expect_breaker(&mut s, &json!({"installed_kw": 8, "phases": 1}), 51.0);
+    }
+
+    #[test]
+    fn member_entry_and_group_entrance_follow_layer_order() {
+        let mut s = Session::new();
+        copy(&mut s, "Certel entrada", "fecoergs", "entrance", Some("CERTEL"), 3);
+        let p = json!({"utility": "cErTeL", "installed_kw": 8, "phases": 1});
+        choose(&mut s, &["fecoergs", "Certel entrada"]);
+        expect_breaker(&mut s, &p, 53.0);
+        expect_breaker(&mut s, &fecoergs(), 50.0);
+        choose(&mut s, &["Certel entrada", "fecoergs"]);
+        expect_breaker(&mut s, &p, 50.0);
+    }
+
+    #[test]
+    fn entrance_above_two_units_survives_save_and_xml() {
+        let mut s = Session::new();
+        copy(&mut s, "Unidade baixa", "celesc", "unit_demand", Some("FECOERGS"), 2);
+        copy(&mut s, "Unidade alta", "celesc", "unit_demand", Some("FECOERGS"), 3);
+        copy(&mut s, "Entrada alta", "fecoergs", "entrance", None, 1);
+        choose(&mut s, &["Unidade baixa", "Unidade alta", "Entrada alta"]);
+        let before = breaker(&mut s, &fecoergs());
+        let path = dir().join("review-g3b-entrance-over.xml");
+        run(&mut s, "building_code_export", json!({"discipline": "electrical", "path": path, "name": "ReviewEntranceXml"}));
+        let mut imported = Session::new();
+        run(&mut imported, "building_code_import", json!({"path": path, "set": true}));
+        bc(&mut s, json!({"save": "ReviewEntranceSaved"}));
+        assert_eq!(
+            (before, breaker(&mut s, &fecoergs()), breaker(&mut imported, &fecoergs())),
+            (Ok(51.0), Ok(51.0), Ok(51.0)),
+            "before, building_code save, XML"
+        );
+    }
+
+    #[test]
+    fn every_group_member_answers_with_and_without_its_library_layer() {
+        for (group, system, load, expected) in [("fecoergs", "127/220", 8, 50.0), ("energisa", "220/380", 3, 30.0)] {
+            let code = find(D, group).unwrap();
+            let mut s = Session::new();
+            for order in [&[][..], &[group][..]] {
+                choose(&mut s, order);
+                for member in code.sections["entrance"]["members"].as_array().unwrap() {
+                    let id = member["id"].as_str().unwrap().to_ascii_lowercase();
+                    expect_breaker(&mut s, &json!({"utility": id, "installed_kw": load, "system": system, "phases": 1}), expected);
+                }
+            }
+        }
+    }
+}
+
+/// Saving and exporting with methods in several layers and keys, and group members (G3b's confirmation).
+mod review_g3br2 {
+    use super::*;
+
+    const D: Discipline = Discipline::Electrical;
+    const UNIT: &str = "unit_demand";
+    const BUILDING: &str = "building_demand";
+
+    fn bc(s: &mut Session, mut p: Value) -> Value {
+        p["discipline"] = json!("electrical");
+        run(s, "building_code", p)
+    }
+
+    fn unit(s: &mut Session, name: &str, utility: &str) {
+        let mut method = changed(find(D, "celesc").unwrap(), UNIT, 2);
+        method["utility"] = json!(utility);
+        bc(s, json!({"set": "nbr-5410", "create": name, "amendments": [name]}));
+        bc(s, json!({"amend": name, "rules": {UNIT: method}}));
+    }
+
+    fn breaker(s: &mut Session, p: Value, expected: f64) {
+        let reply = run(s, "demand", p.clone());
+        let n = &reply["category"]["breaker_a"];
+        assert_eq!(n.as_f64().or_else(|| n[0].as_f64()), Some(expected), "{p}");
+    }
+
+    fn xml(s: &mut Session, name: &str) -> (Session, Value) {
+        let path = dir().join(format!("g3br2-{name}.xml"));
+        let reply = run(s, "building_code_export", json!({"discipline": "electrical", "path": path, "name": name}));
+        let mut imported = Session::new();
+        run(&mut imported, "building_code_import", json!({"path": path, "set": true}));
+        (imported, reply)
+    }
+
+    #[test]
+    fn single_utility_stays_one_code_and_answers_52_a() {
+        let mut s = Session::new();
+        unit(&mut s, "Celesc local", "Celesc");
+        let p = json!({"installed_kw": 8, "phases": 1});
+        breaker(&mut s, p.clone(), 52.0);
+        let (mut imported, reply) = xml(&mut s, "Single exported");
+        assert_eq!(reply["codes"], 1);
+        breaker(&mut imported, p.clone(), 52.0);
+        bc(&mut s, json!({"save": "Single saved"}));
+        assert!(s.model.codes.choice(D).amendments.is_empty());
+        breaker(&mut s, p, 52.0);
+    }
+
+    fn cemig_celesc_answers(s: &mut Session) {
+        breaker(s, json!({"installed_kw": 8, "phases": 1}), 52.0);
+        for selector in [json!({"utility": "CEMIG"}), json!({"standard": "CEMIG ND-5.2"}), json!({})] {
+            let mut p = selector;
+            p["dwellings"] = json!([{"count": 20, "area": 120}]);
+            assert_eq!(run(s, "building_demand", p)["demand"].as_f64(), Some(88.595));
+        }
+        let reply = run(s, "code_rules", json!({"discipline": "electrical", "section": BUILDING}));
+        let factor = reply["sections"][0]["rules"].as_array().unwrap().iter().find(|r| r["rule"] == "factor").unwrap();
+        assert_eq!(factor["value"].as_f64(), Some(2.0));
+    }
+
+    fn mixed_keys(name: &str) -> Session {
+        let mut s = Session::new();
+        unit(&mut s, name, "Celesc");
+        bc(&mut s, json!({"amendments": ["cemig", name]}));
+        bc(&mut s, json!({"amend": "cemig", "rules": {BUILDING: changed(find(D, "cemig").unwrap(), BUILDING, 1)}}));
+        s
+    }
+
+    #[test]
+    fn cemig_building_below_celesc_unit_survives_a_64_character_package_name() {
+        let mut s = mixed_keys("Celesc local");
+        cemig_celesc_answers(&mut s);
+        let (mut imported, _) = xml(&mut s, &"X".repeat(64));
+        cemig_celesc_answers(&mut imported);
+        bc(&mut s, json!({"save": "S".repeat(64)}));
+        cemig_celesc_answers(&mut s);
+        let path = dir().join("g3br2.bimc");
+        run(&mut s, "save", json!({"path": path, "compress": true}));
+        let mut reopened = Session::new();
+        run(&mut reopened, "open", json!({"path": path}));
+        cemig_celesc_answers(&mut reopened);
+    }
+
+    #[test]
+    fn nec_base_with_celesc_unit_survives_save_and_xml() {
+        let mut s = Session::new();
+        let name = "Celesc over NEC";
+        let method = changed(find(D, "celesc").unwrap(), UNIT, 2);
+        bc(&mut s, json!({"set": "nec", "create": name, "amendments": [name]}));
+        bc(&mut s, json!({"amend": name, "rules": {UNIT: method}}));
+        let check = |s: &mut Session| {
+            breaker(s, json!({"installed_kw": 8, "phases": 1}), 52.0);
+            for mut p in [json!({"standard": "NEC 220.84"}), json!({})] {
+                p["dwellings"] = json!([{"count": 30, "demand": 20}]);
+                assert_eq!(run(s, "building_demand", p)["demand"].as_f64(), Some(198.0));
+            }
+        };
+        check(&mut s);
+        let (mut imported, _) = xml(&mut s, "NEC exported");
+        check(&mut imported);
+        bc(&mut s, json!({"save": "NEC saved"}));
+        check(&mut s);
+    }
+
+    #[test]
+    fn energisa_members_follow_group_unit_and_entrance_in_both_orders() {
+        let mut s = Session::new();
+        unit(&mut s, "Energisa local", "Energisa");
+        let group = find(D, "energisa").unwrap();
+        let member = group.sections["entrance"]["members"][0]["id"].as_str().unwrap();
+        for (order, expected) in [(["energisa", "Energisa local"], 52.0), (["Energisa local", "energisa"], 30.0)] {
+            bc(&mut s, json!({"amendments": order}));
+            let p = if expected == 52.0 {
+                json!({"utility": member, "installed_kw": 8, "phases": 1})
+            } else {
+                json!({"utility": member, "installed_kw": 3, "system": "220/380", "phases": 1})
+            };
+            breaker(&mut s, p, expected);
         }
     }
 }

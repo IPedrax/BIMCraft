@@ -1546,15 +1546,22 @@ impl Model {
     /// its rule `about` and whether it is the project's (an amendment changed in it, or its own code): what a command
     /// naming a utility reads, so a utility held under another answers by its own rules.
     pub fn held_wholes<T: DeserializeOwned>(&self, d: Discipline, key: &str, about: &str) -> Vec<(T, Option<String>, bool)> {
+        self.held_wholes_at(d, key, about).into_iter().map(|(t, source, own, _)| (t, source, own)).collect()
+    }
+
+    /// `held_wholes`, each with its layer's place counted from the top (0 the last), so methods of different keys held
+    /// for one utility can be told apart by the layer, the one on top answering.
+    pub fn held_wholes_at<T: DeserializeOwned>(&self, d: Discipline, key: &str, about: &str) -> Vec<(T, Option<String>, bool, usize)> {
         self.codes
             .layers(d)
             .iter()
             .rev()
-            .filter_map(|c| {
+            .enumerate()
+            .filter_map(|(at, c)| {
                 let rules = whole_section(c, key)?;
                 let t = serde_json::from_value(Value::Object(rules)).ok()?;
                 let own = find(d, &c.code).is_none_or(|lib| !std::ptr::eq(lib, *c));
-                Some((t, c.source(key, about).or_else(|| find(d, &c.based_on).and_then(|o| o.source(key, about))), own))
+                Some((t, c.source(key, about).or_else(|| find(d, &c.based_on).and_then(|o| o.source(key, about))), own, at))
             })
             .collect()
     }

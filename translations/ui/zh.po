@@ -4767,7 +4767,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:15364
+#: crates/core/src/commands.rs:15374
 msgid "Dependent"
 msgstr "相关"
 
@@ -12381,7 +12381,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 
 #: crates/core/src/commands.rs:704
-#: crates/core/src/commands.rs:10135
+#: crates/core/src/commands.rs:10145
 msgid "Property Line"
 msgstr ""
 
@@ -16699,7 +16699,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:716
-#: crates/core/src/commands.rs:10177
+#: crates/core/src/commands.rs:10187
 msgid "Toposolid"
 msgstr ""
 
@@ -17170,7 +17170,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:15702
+#: crates/core/src/commands.rs:15712
 msgid "Unnamed"
 msgstr "未命名"
 
