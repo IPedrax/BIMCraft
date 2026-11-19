@@ -58,12 +58,12 @@ fn too_long(p: &Piece, stock: f64) -> String {
     )
 }
 
-fn write_table(c: &str, path: &str, t: &schedule::Table, sheet: &str) -> Result<(), String> {
+pub(super) fn write_table(c: &str, path: &str, t: &schedule::Table, sheet: &str) -> Result<(), String> {
     let bytes = if path.to_lowercase().ends_with(".xlsx") { schedule::to_xlsx(t, sheet) } else { schedule::to_csv(t).into_bytes() };
     std::fs::write(path, bytes).map_err(|e| bad(c, format!("{path}: {e}")))
 }
 
-fn column(heading: &str, kind: schedule::Kind) -> schedule::Column {
+pub(super) fn column(heading: &str, kind: schedule::Kind) -> schedule::Column {
     schedule::Column { heading: heading.to_string(), kind }
 }
 

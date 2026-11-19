@@ -41,6 +41,7 @@ use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod bars;
+mod quantities;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -811,6 +812,28 @@ other_files(
                  workbook. Reads the project; changes nothing. Returns diameters (grade, diameter, stock_bars, pieces, used_mm, waste_mm, waste_percent, \
                  bought_kg, used_kg, reusable_offcuts, patterns: count, pieces {host_mark, mark, length, ids}, offcut), coil, totals and notes",
         run: bars::cut_plan,
+        undoable: false,
+        menu: None,
+        files: Files::Conditional,
+    },
+    Command {
+        id: "quantities",
+        label: ui_msg!("Quantities"),
+        // The desktop's Materials page answers QT (`BimApp::shortcut`), as a listed shortcut must.
+        aliases: &["QT"],
+        params: "{level?, ids?, by?, categories?, path?} what the project's beams, columns, structural columns, footings, strip footings and floors \
+                 come to in concrete (`volume_m3`), formwork (`formwork_m2`) and steel (`rebar_kg`, the bars that name the member as their host, \
+                 and `rebar_ratio`, kg per m³ of its concrete): by level, in elevation order, and by category. `level` is a level's name or id \
+                 and `ids` are members (none: the whole project); `categories` names some of beam, column, structuralcolumn, footing, stripfooting \
+                 and floor. `by` is a project parameter's name: each level and category is split by its value (up to 1,000 values), so \
+                 cast-in-place, precast and the rest are told apart. Bars that name no host are a line of their own on their level, so the steel \
+                 is the steel list's. The rules are BIMCraft's own and are written in the notes: a beam is counted between its concrete columns' faces \
+                 and loses the thickness of a structural floor on each side that floor covers; a column stops at the floor over it; a floor's forms \
+                 are its soffit net of what carries it and its free edges. A steel section is weighed under Weight and is not here. `path` writes \
+                 the rows as a .csv or an .xlsx workbook. Reads the project; changes nothing. Returns rows (level, category, value with `by`, \
+                 count, volume_m3, formwork_m2, rebar_kg, rebar_ratio, formwork_ratio), levels (the same per level, with its id), total and \
+                 notes. `schedule` with `template` \"materials_summary\" makes the same, without `by`, as a schedule in the project",
+        run: quantities::quantities,
         undoable: false,
         menu: None,
         files: Files::Conditional,
@@ -2986,7 +3009,10 @@ other_files(
          the project's bars, grouped, named in the project's language (`name` says otherwise): `host` (an element's id) and `level` (a name \
          or id) keep one host's or one level's bars, and put the host's id or the level's name in the default name; `show` is \
          `count`, `weight` or `both` (both) and takes the weight or the count column out; `fields`, `filters`, `sort` and `grouped` \
-         given with it replace the template's",
+         given with it replace the template's. `template` \"materials_summary\" (`level` a level's name or id) makes a \
+         schedule of beams, columns, structural columns, footings, strip footings and floors, by level and category, with their count, \
+         volume, formwork area and rebar weight, each totalled, as `quantities` works them out; it cannot split by a project parameter, \
+         which `quantities` with `by` does",
         schedule,
         Files::Write,
     ),
@@ -4676,6 +4702,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         | Element::PlanView(_)
         | Element::ProjectInfo(_) => {}
     }
+    // What a member comes to in concrete and in formwork, where it has them (`quantities`).
+    extra.extend(crate::quantities::fields(m, rooms, id, e).into_iter().map(|(k, v)| (k.to_string(), v)));
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
         o.extend(extra);
@@ -5718,7 +5746,10 @@ fn with_notes(mut reply: Value, notes: &[String]) -> Value {
 fn schedule(s: &mut Session, p: &Value) -> R {
     let c = "schedule";
     // A steel template is this same call, a schedule of bars, with its fields, filters and sort filled in where the call gives none.
-    let template = choice(c, p, "template", &["steel_list", "steel_summary"], "")?;
+    let template = choice(c, p, "template", &["steel_list", "steel_summary", "materials_summary"], "")?;
+    if template == "materials_summary" {
+        return quantities::materials_summary(s, p);
+    }
     if !template.is_empty() {
         let m = &s.model;
         if string(c, p, "category")?.is_some_and(|k| category(&k) != "rebar") {

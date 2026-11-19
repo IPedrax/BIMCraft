@@ -225,6 +225,21 @@ impl Bars {
         Bars { of, groups, marks: RefCell::new(HashMap::new()) }
     }
 
+    /// The weight in kg of the bars hosted by `host`, summed as the steel list sums them: each bar's diameter by its length along its points.
+    pub fn weight(&self, m: &Model, host: Guid) -> f64 {
+        self.groups.get(&Group::Host(host)).map_or(0.0, |bars| weigh(m, bars))
+    }
+
+    /// The weight in kg of every bar of the model, hosted or not.
+    pub fn total(&self, m: &Model) -> f64 {
+        self.groups.values().map(|bars| weigh(m, bars)).sum()
+    }
+
+    /// The weight in kg of the bars of `level` that have no host.
+    pub fn unhosted(&self, m: &Model, level: Guid) -> f64 {
+        self.groups.get(&Group::Level(level)).map_or(0.0, |bars| weigh(m, bars))
+    }
+
     /// The number of bar `id`'s mark among its group's.
     pub fn number(&self, m: &Model, id: Id) -> Option<usize> {
         let group = *self.of.get(&id)?;
@@ -248,6 +263,16 @@ impl Bars {
         };
         marks.get(&id).copied()
     }
+}
+
+/// What bars `ids` weigh together, kg.
+fn weigh(m: &Model, ids: &[Id]) -> f64 {
+    ids.iter()
+        .filter_map(|b| match m.elements.get(*b) {
+            Some(Element::Rebar(rb)) => Some(rebar::weight_kg(rb.diameter, rebar::length(&rb.path))),
+            _ => None,
+        })
+        .sum()
 }
 
 /// The host's `Mark` parameter, which is empty where the bar has no host or the host has none.
