@@ -127,7 +127,8 @@ mod tests {
             let mut session = Session::new();
             session.execute("level", &json!({"name": level, "elevation": 1500})).unwrap();
             session.execute("wall", &json!({"points": [[0, 0], [8000, 0]]})).unwrap();
-            session.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000], "name": "Розріз"})).unwrap();
+            // A section looks to the left of its line's direction: at y = -1000 it looks north at the wall on y = 0.
+            session.execute("section", &json!({"start": [-1000, -1000], "end": [9000, -1000], "name": "Розріз"})).unwrap();
             session
         };
         // A section names its levels in the drawing lettering, so a Ukrainian name is a lettering path too.
