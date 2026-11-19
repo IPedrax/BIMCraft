@@ -54,6 +54,38 @@ impl Object {
     }
 }
 
+/// Where a family made from a 3D model came from: the file (an absolute path), the object of it, how it was read (an OBJ's
+/// `units` and `up`) and where in the file, mm, the family's origin stands. Reading the file again rebuilds its forms about
+/// that same point, so its components stay where they are and show what the file holds now.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Source {
+    pub path: String,
+    pub object: String,
+    pub origin: [f64; 3],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub units: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub up: Option<String>,
+}
+
+impl Source {
+    /// What's wrong with it, if anything: a text too long, a number not finite or out of range.
+    pub fn check(&self) -> Result<(), String> {
+        for (what, v) in
+            [("path", Some(&self.path)), ("object", Some(&self.object)), ("units", self.units.as_ref()), ("up", self.up.as_ref())]
+        {
+            if v.is_some_and(|v| v.len() > crate::model::MAX_TEXT) {
+                return Err(format!("its source's `{what}` is longer than {} bytes", crate::model::MAX_TEXT));
+            }
+        }
+        if self.origin.iter().any(|v| !v.is_finite() || v.abs() > MAX_COORD) {
+            return Err(format!("its source's `origin` {:?} is not a point within {MAX_COORD} mm", self.origin));
+        }
+        Ok(())
+    }
+}
+
 /// A file read.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Read {

@@ -1707,6 +1707,10 @@ pub struct Link {
     /// By base points or shared coordinates, where it stood when last worked out with its file loaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placed: Option<Placed>,
+    /// Unloaded, as Manage Links unloads it: it stays where it stands and draws nothing, and opening the project doesn't
+    /// read its file. `reload` loads it again. An older version leaves it out of a file and loads the link.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unloaded: bool,
 }
 
 /// Where a link stood when it was last worked out with its file loaded: its origin in plan, its turn, degrees, and how far it

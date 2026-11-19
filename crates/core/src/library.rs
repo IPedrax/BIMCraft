@@ -1446,7 +1446,7 @@ impl Model {
 
 /// Each name `g` holds of a library entry, given to `f` with what it names, which may put another in its place: a view's
 /// template, filters, phase, phase filter, design options, its linework's line styles and the CAD drawings whose layers it hides.
-fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
+pub(crate) fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
     for o in g.categories.values_mut().chain(g.elements.values_mut()).chain(g.filters.iter_mut().map(|a| &mut a.over)) {
         for name in o.patterns_mut() {
             f(&Kind::FillPattern, name);

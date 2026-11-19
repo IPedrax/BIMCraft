@@ -7,11 +7,15 @@ pub mod align;
 #[cfg(test)]
 mod align_tests;
 pub mod alignment;
+pub mod assets;
+#[cfg(test)]
+mod assets_tests;
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
 pub mod bath;
+pub mod bima;
 pub mod bimc;
 pub mod bounds;
 pub mod bridge;
@@ -156,6 +160,8 @@ pub mod lenient;
 pub mod library;
 pub mod lines;
 pub mod link;
+#[cfg(test)]
+mod links_tests;
 pub mod loads;
 pub mod massing;
 pub mod memory;

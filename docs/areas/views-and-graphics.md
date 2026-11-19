@@ -737,7 +737,24 @@ link at the height of one of the project's (1 mm) is that level, another comes i
 them without knowing: `Look::with` makes a linked id halftone, and picking never answers one (`Drawing::pick_all`, `in_box`, `Image::pick`,
 `in_box`, `shows` and `Mesh::pick` leave them out). The commands that make an image (`render`, `save` to svg, png or pdf) draw `seen`; the desktop's
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
-To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
+To do: a link's graphics overrides and visibility per view, hosting on a linked wall.
+
+### Manage Links
+
+`links {kind?}` (`link/manage.rs`) lists, as Revit's Manage Links does, every file the project reads from elsewhere, a tab for
+each kind: `projects` and `ifc` (links, by their path's extension), `cad` (`Model::cads`, linked or imported), `clouds`, `models`
+(families made by `import_mesh`, which keep `Family::source`: the file's absolute path, the object, the OBJ's units and up, and
+the point the family stands on in the file) and `pdf` and `images` (not yet anything). There's one row for each file, as Revit
+lists a link's type: `path` as kept, `path_type`, `resolved` (relative to the project's file), `status` (loaded, not loaded,
+unloaded, not found, imported) and its `instances` with their `ids`.
+
+`unload {id}` sets `Link::unloaded` on every link of that file and drops it from `loaded`. It's an undo step, and it's kept in
+the file, so `open` (`relink`) doesn't read the link. `reload {id}` loads it again, and `reload` without an id reads only the
+loaded links. `reload_from {id, path}` points every link of the file at another and reads it; a file that can't be read
+refuses the command. `reload_cad {cad, path}` is a drawing's Reload From, which links an imported drawing from then on.
+`reload_mesh {path, from?}` rebuilds each family of a 3D model from the object of its name, about the point it stood on, so
+its components stay. The window is `crates/ui-egui/src/manage_links.rs` (Insert > Link and Manage > Project Location);
+tests are `links_tests.rs` and `tests/manage_links.rs`.
 
 ## Grid types
 

@@ -6648,6 +6648,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 
 mod adaptive_modelling;
 mod align;
+mod asset_manager;
 mod assistant;
 mod autosave;
 mod browser;
@@ -6686,6 +6687,7 @@ mod lines;
 mod lineweights;
 mod links;
 mod look;
+mod manage_links;
 mod mep;
 mod minimap;
 mod notes;

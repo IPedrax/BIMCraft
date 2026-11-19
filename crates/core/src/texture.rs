@@ -264,6 +264,24 @@ impl Picture {
         Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(png), levels: Arc::new(chain(base)) })
     }
 
+    /// A picture named `name` of the PNG `png` as it is, byte for byte: how a `.bima` brings back one a project held, its id
+    /// the same. A file that isn't a PNG is taken as [`Picture::import`] takes it.
+    pub fn from_png(name: &str, png: Vec<u8>) -> Result<Picture, String> {
+        if png.len() > MAX_BYTES {
+            return Err(format!("it's {} bytes; a picture's file is up to {MAX_BYTES}", png.len()));
+        }
+        if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+            return Picture::import(name, &png);
+        }
+        let base = decode(&png)?;
+        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(png), levels: Arc::new(chain(shrunk(base))) })
+    }
+
+    /// The PNG it is kept as.
+    pub fn png(&self) -> &[u8] {
+        &self.png
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }

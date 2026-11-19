@@ -49,6 +49,7 @@ mod publisher;
 mod stairgrips;
 mod stairtype;
 pub use gpu::limits_for;
+mod asset_manager;
 mod graphics;
 mod gridtypes;
 mod groups;
@@ -59,6 +60,7 @@ pub mod lang;
 mod linestyles;
 mod lineweights;
 mod links;
+mod manage_links;
 mod markdown;
 mod mep;
 mod mesh;
@@ -1087,6 +1089,8 @@ pub struct BimApp {
     pub(crate) survey_moves: bimcraft_core::coordinates::Move,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
+    pub(crate) manage_links: Option<manage_links::ManageLinks>,
+    pub(crate) asset_manager: Option<asset_manager::AssetManager>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
     /// Manage > Run Script, while open.
@@ -1927,6 +1931,8 @@ impl BimApp {
             survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
             purge_dialog: None,
+            manage_links: None,
+            asset_manager: None,
             select_by_id: None,
             run_script: None,
             work_plane: None,
@@ -2596,6 +2602,8 @@ impl BimApp {
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
+            || self.manage_links.is_some()
+            || self.asset_manager.is_some()
             || self.select_by_id.is_some()
             || self.run_script.is_some()
             || self.work_plane.as_ref().is_some_and(|d| d.picking.is_none())
@@ -5549,6 +5557,12 @@ impl BimApp {
             if big_button(ui, Icon::LinkCad, "Link CAD", self.cad_box.as_ref().is_some_and(|b| b.linked()), tip).clicked() {
                 self.cad_dialog = Some(true);
             }
+            let tip = msg!(
+                "Manage Links: every linked model, IFC, CAD drawing, point cloud and 3D model, its path and status and how many instances place it; Reload, Reload From and Unload"
+            );
+            if big_button(ui, Icon::Link, "Manage Links", self.manage_links.is_some(), tip).clicked() {
+                self.open_manage_links();
+            }
         });
         panel(ui, msg!("Import"), |ui| {
             let tip = msg!(
@@ -5582,6 +5596,12 @@ impl BimApp {
             let tip = msg!("Materials: the project's library, each material's colour in 3D and the patterns its cut and its surfaces show");
             if big_button(ui, Icon::Materials, "Materials", self.materials_dialog.is_some(), tip).clicked() {
                 self.materials_dialog = Some(properties::MaterialsDialog::new(&self.session.model));
+            }
+            let tip = msg!(
+                "Asset Manager: the project's materials, fill types and patterns, line patterns and styles and pictures, where each is used, and their import and export as a .bima file"
+            );
+            if big_button(ui, Icon::Materials, "Asset Manager", self.asset_manager.is_some(), tip).clicked() {
+                self.open_asset_manager();
             }
             let tip = msg!("Favorites: the materials and families you keep for every project; add one to this project with a click");
             if big_button(ui, Icon::Favorite, "Favorites", self.favorites_dialog.is_some(), tip).clicked() {
@@ -5733,6 +5753,10 @@ impl BimApp {
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
             if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
                 self.link_dialog = true;
+            }
+            let tip = "Manage Links: every linked model, IFC, CAD drawing, point cloud and 3D model, its path and status and how many instances place it; Reload, Reload From and Unload";
+            if big_button(ui, Icon::Link, "Manage Links", self.manage_links.is_some(), tip).clicked() {
+                self.open_manage_links();
             }
             let tip = msg!(
                 "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
@@ -7300,6 +7324,8 @@ impl BimApp {
         self.findings_window(ctx);
         self.coordinates_window(ctx);
         self.options_window(ctx);
+        self.manage_links_window(ctx);
+        self.asset_manager_window(ctx);
         self.purge_window(ctx);
         self.cowork_window(ctx);
         self.lend_window(ctx);

@@ -1,6 +1,8 @@
 # Manage Links and the Asset Manager: plan
 
-Status: planned (draft PR). Each step lands as its own commit, with its test, and this file says where it stands.
+Status: steps 1–5 and 8–11 built (draft PR #540); 6 and 7, pictures and PDFs placed in views, are next. Each step lands with
+its test, and this file says where it stands. How it works now: [views and graphics](areas/views-and-graphics.md#manage-links)
+and [assets](areas/assets.md).
 
 Two dialogs, each with a command under it, so the CLI, scripts and MCP get the same thing the window shows:
 
@@ -38,8 +40,9 @@ Two dialogs, each with a command under it, so the CLI, scripts and MCP get the s
 3. **Core: Reload From.** `reload {id, path}` (and `reload_cad {cad, path}`) reads another file in its place. Every instance
    of that file follows, and a file that can't be read leaves everything as it was. Tests: one, failure rolls back.
 4. **Core: CAD, clouds and 3D models in the list.** Linked and imported CAD with their instances; scans and the
-   `PointCloud`s that place them, reloaded from their source; families made by `import_mesh` remember their file
-   (`Family::source`), so a 3D model is listed with its components and can be read again.
+   `PointCloud`s that place them (listed as imported: a scan's file isn't kept, so it isn't reloaded yet); families made by
+   `import_mesh` remember their file (`Family::source`), so a 3D model is listed with its components and `reload_mesh`
+   reads it again, or another file in its place.
 5. **Desktop: Manage Links.** Insert > Link and Manage > Manage Project get **Manage Links**. A tab for each kind, a table
    of name, status, instances, saved path and path type, and Reload, Reload From…, Unload and Add…. Tested with egui_kittest.
 

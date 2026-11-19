@@ -195,11 +195,85 @@ other_files(
     other_files(
         "reload",
         "Reload Links",
-        "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` \
-         (the names) and `failed` ({name, error})",
+        "{id?} read the file of the link `id` again, for every link of that file, loading it if it was unloaded; or, without \
+         `id`, the file of every link that is loaded: for a project that changed on disk. Returns `reloaded` (the links' names) \
+         and `failed` ({name, error})",
         reload,
         Files::Read,
     ),
+    edit_files(
+        "reload_from",
+        "Reload From",
+        &[],
+        "{id, path} Reload From, as Manage Links has it: the file `path` (a .bimc, .bimcraft or .ifc) read in place of the one \
+         link `id` reads, for every link of that file, each staying where it stands and loaded again if it was unloaded. A \
+         relative `path` is relative to this project's file. A file that can't be read changes nothing. Returns `path`, \
+         `links` (their names) and `elements`, how many the file holds",
+        reload_from,
+        Files::Read,
+    ),
+    edit(
+        "unload",
+        "Unload Link",
+        &[],
+        "{id} unloads link `id`'s file, as Manage Links does: every link of that file stays where it stands and draws \
+         nothing, and opening the project doesn't read it, until `reload` names one of them. Returns `unloaded` (the links' \
+         names) and `path`",
+        unload,
+    ),
+    other(
+        "assets",
+        "Asset Manager",
+        "{kind?: materials|fill_types|fill_patterns|line_patterns|line_styles|pictures} what the project draws with, as the \
+         Asset Manager lists it: a list for each kind (`kind` answers its own alone), a row each with its `name`, library `id` \
+         and `guid`, `uses` and `used_by`, where it is used: `{kind: element, id, category}` (a detail line its style, a face \
+         painted its material, a filled region its type), `{kind: type, category, name, what}` (a wall type's layer, a pipe \
+         type's material), or `{kind, name}` of a family, a material (its picture and fill patterns), a fill_type (its \
+         patterns), a line_style (its pattern), a grid_type, a view_template, a group (a member of its type) or a \
+         phase_override. A picture has its `size`, px, and `label`, the name it came in with. It changes nothing",
+        assets,
+    )
+    .menu("Manage > Asset Manager"),
+    other_files(
+        "export_assets",
+        "Export Assets",
+        "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} writes the \
+         project's assets to a .bima file, to bring into another project with `import_assets`: those the lists name (a list \
+         given as true takes every asset of its kind), or with none, every asset. What they need goes with them: a material's \
+         fill patterns and picture, a fill type's patterns, a line style's line pattern. A .bima is a zip: `assets.json` (each \
+         asset by name, with its GUID and its value as a project file writes it) and each picture as `images/<id>.png`, the \
+         PNG the project holds. Returns `path` and how many of each kind it holds",
+        export_assets,
+        Files::Write,
+    ),
+    edit_files(
+        "import_assets",
+        "Import Assets",
+        &[],
+        "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?, existing?: \
+         skip|replace|rename} brings the assets of a .bima file (`export_assets`) into the project: those the lists name (true \
+         for every asset of a kind), or with none, all of them, and what they need. An asset whose name the project has is \
+         `existing`: skip (the default) keeps the project's, and what needs it uses it; replace puts the file's in its place; \
+         rename brings it in as `name 2`, `name 3`…, and what came with it names it so. A picture the project holds (the \
+         same pixels) is the project's. Each new asset keeps its GUID where the project has none of it. An asset this version \
+         can't read is left out and said; a file of a newer format is refused. Returns `added`, `replaced`, `skipped`, \
+         `renamed` ({kind, from, to}) and `left_out` ({kind, name, why})",
+        import_assets,
+        Files::Read,
+    ),
+    other_files(
+        "links",
+        "Manage Links",
+        "{kind?: projects|ifc|cad|pdf|images|clouds|models} every file the project reads from elsewhere, as Revit's Manage Links \
+         lists them: a list for each kind (`kind` answers its own alone), one row for each file however many instances place \
+         it. A row has `name`, `path` as the project keeps it (null for what was imported and keeps no path), `path_type` \
+         (relative to this project's file, or absolute), `resolved` (where that is), `status` (loaded, not loaded, not found, or \
+         imported: held in the project and not read again), `instances` (how many elements place it) and their `ids` (a link's, with each one's `names`); a CAD \
+         drawing's and a scan's `source`, the file it came from. It changes nothing",
+        links,
+        Files::Read,
+    )
+    .menu("Manage > Manage Links"),
     other_files(
         "save",
         "Save",
@@ -343,6 +417,18 @@ other_files(
         Files::Read,
     ),
     edit_files(
+        "reload_mesh",
+        "Reload 3D Model",
+        &[],
+        "{path, from?} reads the 3D model `path` again (an OBJ or glTF brought in by `import_mesh`, its path as `links` lists it \
+         under `models`), or with `from` another file in its place (Reload From): each family made from it has its forms \
+         rebuilt from the object of its name, about the point it stood on, so its components stay where they are and show what \
+         the file holds now. Returns `path`, `reloaded` (the families) and `missing` (those whose object the file no longer has, \
+         left as they were)",
+        reload_mesh,
+        Files::Read,
+    ),
+    edit_files(
         "import_cad",
         "Import CAD",
         &[],
@@ -376,8 +462,9 @@ other_files(
         "reload_cad",
         "Reload CAD",
         &[],
-        "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project \
-         does too). Returns whether it changed",
+        "{cad, path?} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the \
+         project does too); with `path`, Reload From: reads that file in its place (an imported drawing too), linked to it from \
+         then on. Returns whether it changed",
         reload_cad,
         Files::Read,
     ),
@@ -5071,17 +5158,21 @@ fn read_link(s: &Session, path: &str) -> Result<Arc<Model>, String> {
 
 /// What every link of the project reads, again; the links that couldn't be read, as `{name, error}`.
 fn relink(s: &mut Session) -> Vec<Value> {
-    let links: Vec<(Id, String, String)> = s
+    let links: Vec<(Id, String, String, bool)> = s
         .model
         .elements
         .iter()
         .filter_map(|(id, e)| match e {
-            Element::Link(l) => Some((*id, l.name.clone(), l.path.clone())),
+            Element::Link(l) => Some((*id, l.name.clone(), l.path.clone(), l.unloaded)),
             _ => None,
         })
         .collect();
     let mut failed = Vec::new();
-    for (_, name, path) in links {
+    for (_, name, path, unloaded) in links {
+        if unloaded {
+            Arc::make_mut(&mut s.model).loaded.remove(&path);
+            continue;
+        }
         match read_link(s, &path) {
             Ok(m) => {
                 Arc::make_mut(&mut s.model).loaded.insert(path, m);
@@ -5116,7 +5207,8 @@ fn link_model(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", other.coordinates.names().join(", "))));
     }
     let elements = other.elements.len();
-    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None };
+    let link =
+        crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None, unloaded: false };
     let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
     let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
     let theirs = link.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
@@ -5137,32 +5229,189 @@ fn link_model(s: &mut Session, p: &Value) -> R {
 fn reload(s: &mut Session, p: &Value) -> R {
     let c = "reload";
     let only = id_opt(c, p, "id")?;
-    if let Some(id) = only
-        && !matches!(s.model.elements.get(id), Some(Element::Link(_)))
-    {
-        return Err(bad(c, format!("element {id} is not a link")));
-    }
-    let want: Vec<(String, String)> = s
-        .model
-        .elements
-        .iter()
-        .filter(|(id, _)| only.is_none_or(|o| s.model.same(**id, o)))
-        .filter_map(|(_, e)| match e {
-            Element::Link(l) => Some((l.name.clone(), l.path.clone())),
-            _ => None,
-        })
-        .collect();
-    let (mut reloaded, mut failed) = (Vec::new(), Vec::new());
-    for (name, path) in want {
-        match read_link(s, &path) {
-            Ok(m) => {
-                Arc::make_mut(&mut s.model).loaded.insert(path, m);
-                reloaded.push(name);
+    // One link names its file, which every instance of it reads; without one, every file a loaded link reads.
+    let paths: Vec<String> = match only {
+        Some(id) => match s.model.elements.get(id) {
+            Some(Element::Link(l)) => vec![l.path.clone()],
+            _ => return Err(bad(c, format!("element {id} is not a link"))),
+        },
+        None => {
+            let mut paths: Vec<String> = Vec::new();
+            for e in s.model.elements.values() {
+                if let Element::Link(l) = e
+                    && !l.unloaded
+                    && !paths.contains(&l.path)
+                {
+                    paths.push(l.path.clone());
+                }
             }
-            Err(error) => failed.push(json!({"name": name, "error": error})),
+            paths
+        }
+    };
+    let (mut reloaded, mut failed) = (Vec::new(), Vec::new());
+    for path in paths {
+        let names = link_names(s, &path);
+        match read_link(s, &path) {
+            Ok(other) => {
+                let m = Arc::make_mut(&mut s.model);
+                m.loaded.insert(path.clone(), other);
+                let unloaded: Vec<Id> = m
+                    .elements
+                    .iter()
+                    .filter(|(_, e)| matches!(e, Element::Link(l) if l.path == path && l.unloaded))
+                    .map(|(id, _)| *id)
+                    .collect();
+                for id in unloaded {
+                    if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+                        l.unloaded = false;
+                    }
+                }
+                reloaded.extend(names);
+            }
+            Err(error) => failed.extend(names.into_iter().map(|name| json!({"name": name, "error": error}))),
         }
     }
     Ok(json!({"reloaded": reloaded, "failed": failed}))
+}
+
+/// The names of the links that read `path`, in id order.
+fn link_names(s: &Session, path: &str) -> Vec<String> {
+    s.model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Link(l) if l.path == path => Some(l.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Reload From, as Manage Links does: every link of the file link `id` reads, reading `path` in its place.
+fn reload_from(s: &mut Session, p: &Value) -> R {
+    let c = "reload_from";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a link, is required"))?;
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the file to read in its place, is required"))?;
+    let old = match s.model.elements.get(id) {
+        Some(Element::Link(l)) => l.path.clone(),
+        _ => return Err(bad(c, format!("element {id} is not a link"))),
+    };
+    let other = read_link(s, &path).map_err(|e| bad(c, e))?;
+    let elements = other.elements.len();
+    let names = link_names(s, &old);
+    let m = s.model_mut();
+    let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Link(l) if l.path == old)).map(|(id, _)| *id).collect();
+    for id in ids {
+        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+            l.path.clone_from(&path);
+            l.unloaded = false;
+        }
+    }
+    m.loaded.remove(&old);
+    m.loaded.insert(path.clone(), other);
+    Ok(json!({"path": path, "links": names, "elements": elements}))
+}
+
+/// Unload, as Manage Links does: every link of the file link `id` reads stays where it stands, drawing nothing.
+fn unload(s: &mut Session, p: &Value) -> R {
+    let c = "unload";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a link, is required"))?;
+    let path = match s.model.elements.get(id) {
+        Some(Element::Link(l)) => l.path.clone(),
+        _ => return Err(bad(c, format!("element {id} is not a link"))),
+    };
+    let names = link_names(s, &path);
+    let m = s.model_mut();
+    let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Link(l) if l.path == path)).map(|(id, _)| *id).collect();
+    for id in ids {
+        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+            l.unloaded = true;
+        }
+    }
+    m.loaded.remove(&path);
+    Ok(json!({"unloaded": names, "path": path}))
+}
+
+fn assets(s: &mut Session, p: &Value) -> R {
+    let c = "assets";
+    let kind = string(c, p, "kind")?;
+    if let Some(k) = &kind
+        && !crate::assets::KINDS.contains(&k.as_str())
+    {
+        return Err(bad(c, format!("`kind` is {}, not `{k}`", crate::assets::KIND_NAMES)));
+    }
+    Ok(crate::assets::list(&s.model, kind.as_deref()))
+}
+
+/// Which assets an export or an import takes: by kind, a list of names or true for all of the kind; none named, every one.
+fn asset_selection(c: &str, p: &Value) -> Result<crate::bima::Selection, String> {
+    let mut sel = crate::bima::Selection::new();
+    for kind in crate::assets::KINDS {
+        match p.get(kind) {
+            v if absent(v) => {}
+            Some(Value::Bool(true)) => {
+                sel.insert(kind.to_string(), None);
+            }
+            Some(Value::Array(a)) if a.len() <= crate::bima::MAX_ASSETS => {
+                let names: Option<BTreeSet<String>> = a.iter().map(|v| v.as_str().map(str::to_string)).collect();
+                let names = names.ok_or_else(|| bad(c, format!("`{kind}` lists names, or is true for all of them")))?;
+                sel.insert(kind.to_string(), Some(names));
+            }
+            Some(v) => return Err(bad(c, format!("`{kind}` lists names, or is true for all of them, not {v}"))),
+            None => {}
+        }
+    }
+    Ok(sel)
+}
+
+fn export_assets(s: &mut Session, p: &Value) -> R {
+    let c = "export_assets";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the .bima file to write, is required"))?;
+    let sel = asset_selection(c, p)?;
+    for (kind, names) in &sel {
+        let have = crate::assets::names(&s.model, kind);
+        if let Some(missing) = names.iter().flatten().find(|n| !have.contains(n)) {
+            return Err(bad(c, format!("the project has no {} named `{missing}`", kind.trim_end_matches('s').replace('_', " "))));
+        }
+    }
+    let (bytes, counts) = crate::bima::export(&s.model, &sel).map_err(|e| bad(c, e))?;
+    let full = beside(s, &path);
+    crate::bimc::write(&full, &bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let mut reply = json!({"path": full.to_string_lossy()});
+    for (kind, n) in counts {
+        reply[kind] = json!(n);
+    }
+    Ok(reply)
+}
+
+fn import_assets(s: &mut Session, p: &Value) -> R {
+    let c = "import_assets";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the .bima file to read, is required"))?;
+    let sel = asset_selection(c, p)?;
+    let existing = match string(c, p, "existing")? {
+        None => crate::bima::Existing::Skip,
+        Some(e) => {
+            crate::bima::Existing::parse(&e).ok_or_else(|| bad(c, format!("`existing` is {}, not `{e}`", crate::bima::Existing::NAMES)))?
+        }
+    };
+    let full = beside(s, &path);
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > crate::bima::MAX_FILE {
+        return Err(bad(c, format!("{} is {size} bytes; an assets file is up to {}", full.display(), crate::bima::MAX_FILE)));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let done = crate::bima::import(s.model_mut(), &bytes, &sel, existing).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    Ok(done.json())
+}
+
+fn links(s: &mut Session, p: &Value) -> R {
+    let c = "links";
+    let kind = string(c, p, "kind")?;
+    if let Some(k) = &kind
+        && !crate::link::manage::KINDS.contains(&k.as_str())
+    {
+        return Err(bad(c, format!("`kind` is {}, not `{k}`", crate::link::manage::KIND_NAMES)));
+    }
+    Ok(crate::link::manage::list(&s.model, s.path.as_deref(), kind.as_deref()))
 }
 
 fn save(s: &mut Session, p: &Value) -> R {
@@ -9641,13 +9890,9 @@ fn off_layers(cad: &Cad) -> BTreeSet<String> {
 }
 
 /// A DXF drawing brought in, or one the project holds placed again, as an element: Revit's Import CAD (and Link CAD).
-fn import_mesh(s: &mut Session, p: &Value) -> R {
-    use crate::family::{Category, Family, Form, MAX_FORMS};
-    let c = "import_mesh";
-    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: an .obj, .gltf or .glb file"))?);
-    let level = level_param(c, &s.model, p, "level")?;
-    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
-    let format = ext(&path);
+/// The 3D model at `path` read as `import_mesh` reads it, an OBJ in `units` with `up` its file's up axis.
+fn read_mesh(c: &str, path: &Path, units: Option<&str>, up: Option<&str>) -> Result<crate::mesh_in::Read, String> {
+    let format = ext(path);
     let beside = |name: &str| -> Option<Vec<u8>> {
         // Only a file beside it or under it: a name that climbs out (`..`) or is absolute is not read.
         let rel = Path::new(name);
@@ -9659,18 +9904,18 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
         let f = dir.join(rel);
         (std::fs::metadata(&f).ok()?.len() <= crate::mesh_in::MAX_BYTES as u64).then(|| std::fs::read(f).ok()).flatten()
     };
-    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+    let size = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
     if size > crate::mesh_in::MAX_BYTES as u64 {
         return Err(bad(c, format!("{} is larger than {} MB", path.display(), crate::mesh_in::MAX_BYTES >> 20)));
     }
-    let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let read = match format.as_str() {
+    let bytes = std::fs::read(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    match format.as_str() {
         "obj" => {
-            let mm = match string(c, p, "units")? {
+            let mm = match units {
                 None => 1000.0,
-                Some(u) => crate::cloud::unit(&u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
+                Some(u) => crate::cloud::unit(u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
             };
-            let up_is_y = match string(c, p, "up")?.as_deref() {
+            let up_is_y = match up {
                 None | Some("y") => true,
                 Some("z") => false,
                 Some(other) => return Err(bad(c, format!("`up` is y or z, not {other}"))),
@@ -9679,14 +9924,63 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
             crate::mesh_in::obj(&text, mm, up_is_y, |lib| beside(lib).map(|b| String::from_utf8_lossy(&b).into_owned()))
         }
         "gltf" | "glb" => {
-            if !absent(p.get("units")) || !absent(p.get("up")) {
+            if units.is_some() || up.is_some() {
                 return Err(bad(c, "a glTF is in metres with y up, as its specification says: give no `units` or `up`"));
             }
             crate::mesh_in::gltf(&bytes, beside)
         }
         other => return Err(bad(c, format!("bring in an .obj, .gltf or .glb, not `.{other}`"))),
     }
-    .map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    .map_err(|e| bad(c, format!("{}: {e}", path.display())))
+}
+
+/// Where object `o` of a 3D model stands: the middle of its base, mm, rounded to a thousandth.
+fn mesh_origin(o: &crate::mesh_in::Object) -> [f64; 3] {
+    let pts = o.parts.iter().flat_map(|p| p.tris.iter().flatten());
+    let (lo, hi) = pts.fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), q| {
+        ([lo[0].min(q[0]), lo[1].min(q[1]), lo[2].min(q[2])], [hi[0].max(q[0]), hi[1].max(q[1]), hi[2].max(q[2])])
+    });
+    [((lo[0] + hi[0]) / 2.0 * 1e3).round() / 1e3, ((lo[1] + hi[1]) / 2.0 * 1e3).round() / 1e3, (lo[2] * 1e3).round() / 1e3]
+}
+
+/// The forms of object `o` about `origin`, a form for each of its materials; the colours the file gives them in `colours`.
+fn mesh_forms(o: &crate::mesh_in::Object, origin: [f64; 3], colours: &mut BTreeMap<String, [u8; 4]>) -> Vec<crate::family::Form> {
+    o.parts
+        .iter()
+        .map(|part| {
+            let material = if part.material.name == "Default" { String::new() } else { part.material.name.clone() };
+            if let (false, Some(rgba)) = (material.is_empty(), part.material.rgba) {
+                colours.entry(material.clone()).or_insert(rgba);
+            }
+            let local = |q: &[f64; 3]| [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0);
+            let mesh: Vec<[[f64; 3]; 3]> = part.tris.iter().map(|t| [local(&t[0]), local(&t[1]), local(&t[2])]).collect();
+            crate::family::Form { mesh: Arc::new(mesh), material, ..crate::family::Form::default() }
+        })
+        .collect()
+}
+
+/// The materials a 3D model named that the project hadn't (`known`), coloured as the file says.
+fn mesh_colours(m: &mut Model, known: &std::collections::HashSet<String>, colours: BTreeMap<String, [u8; 4]>) {
+    m.adopt_materials();
+    for (name, [r, g, b, a]) in colours.into_iter().filter(|(n, _)| !known.contains(n)) {
+        if let Some(x) = m.materials.get_mut(&name) {
+            x.color = [r, g, b];
+            x.transparency = (100 - u16::from(a) * 100 / 255) as u8;
+        }
+    }
+}
+
+fn import_mesh(s: &mut Session, p: &Value) -> R {
+    use crate::family::{Category, Family, MAX_FORMS};
+    let c = "import_mesh";
+    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: an .obj, .gltf or .glb file"))?);
+    let level = level_param(c, &s.model, p, "level")?;
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let (units, up) =
+        if absent(p.get("units")) && absent(p.get("up")) { (None, None) } else { (string(c, p, "units")?, string(c, p, "up")?) };
+    let read = read_mesh(c, &path, units.as_deref(), up.as_deref())?;
+    // Where it is kept, so Manage Links finds it whatever folder the project is later opened from.
+    let kept = std::path::absolute(&path).unwrap_or_else(|_| path.clone()).to_string_lossy().into_owned();
     let mut left_out: BTreeMap<String, usize> = read.left_out.clone();
     if read.objects.is_empty() {
         let why = if left_out.is_empty() { String::new() } else { format!(" (left out: {left_out:?})") };
@@ -9697,36 +9991,20 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
     let mut colours: BTreeMap<String, [u8; 4]> = BTreeMap::new();
     let (mut families, mut components) = (Vec::new(), Vec::new());
     for o in read.objects {
-        let pts = o.parts.iter().flat_map(|p| p.tris.iter().flatten());
-        let (lo, hi) = pts.fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), q| {
-            ([lo[0].min(q[0]), lo[1].min(q[1]), lo[2].min(q[2])], [hi[0].max(q[0]), hi[1].max(q[1]), hi[2].max(q[2])])
-        });
         // The family stands on its base, its middle on its origin; the component puts it back where the file has it.
-        let origin =
-            [((lo[0] + hi[0]) / 2.0 * 1e3).round() / 1e3, ((lo[1] + hi[1]) / 2.0 * 1e3).round() / 1e3, (lo[2] * 1e3).round() / 1e3];
+        let origin = mesh_origin(&o);
         if o.parts.len() > MAX_FORMS {
             *left_out.entry(format!("objects of more than {MAX_FORMS} materials")).or_default() += 1;
             continue;
         }
-        let forms: Vec<Form> = o
-            .parts
-            .iter()
-            .map(|part| {
-                let material = if part.material.name == "Default" { String::new() } else { part.material.name.clone() };
-                if let (false, Some(rgba)) = (material.is_empty(), part.material.rgba) {
-                    colours.entry(material.clone()).or_insert(rgba);
-                }
-                let local = |q: &[f64; 3]| [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0);
-                let mesh: Vec<[[f64; 3]; 3]> = part.tris.iter().map(|t| [local(&t[0]), local(&t[1]), local(&t[2])]).collect();
-                Form { mesh: Arc::new(mesh), material, ..Form::default() }
-            })
-            .collect();
+        let forms = mesh_forms(&o, origin, &mut colours);
         let stem = if o.name.trim().is_empty() { "Imported".to_string() } else { o.name.clone() };
         let name = (1..=1000)
             .map(|n| if n == 1 { stem.clone() } else { format!("{} ({n})", stem.chars().take(MAX_TEXT - 8).collect::<String>()) })
             .find(|n| !m.families.contains_key(n))
             .ok_or_else(|| bad(c, format!("the project has too many families named `{stem}`")))?;
-        let mut family = Family { category: Category::Generic, forms, ..Family::default() };
+        let source = crate::mesh_in::Source { path: kept.clone(), object: o.name.clone(), origin, units: units.clone(), up: up.clone() };
+        let mut family = Family { category: Category::Generic, forms, source: Some(source), ..Family::default() };
         family.types.insert("Imported".into(), BTreeMap::new());
         if let Err(why) = family.check(&|_| true) {
             *left_out.entry(format!("objects whose family can't be made ({why})")).or_default() += 1;
@@ -9753,14 +10031,49 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
     if components.is_empty() {
         return Err(bad(c, format!("nothing of {} could come in: {left_out:?}", path.display())));
     }
-    m.adopt_materials();
-    for (name, [r, g, b, a]) in colours.into_iter().filter(|(n, _)| !known.contains(n)) {
-        if let Some(x) = m.materials.get_mut(&name) {
-            x.color = [r, g, b];
-            x.transparency = (100 - u16::from(a) * 100 / 255) as u8;
-        }
-    }
+    mesh_colours(m, &known, colours);
     Ok(json!({"components": components, "families": families, "left_out": left_out}))
+}
+
+/// Reload a 3D model, as Manage Links does: the file the families made from it name read again (or, with `from`, another
+/// file in its place), each family's forms rebuilt from its object about the point it stood on, so its components stay.
+fn reload_mesh(s: &mut Session, p: &Value) -> R {
+    let c = "reload_mesh";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the 3D model's file as Manage Links lists it, is required"))?;
+    let from = string(c, p, "from")?;
+    let of_it: Vec<(String, crate::mesh_in::Source)> = s
+        .model
+        .families
+        .iter()
+        .filter_map(|(n, f)| f.source.as_ref().filter(|src| src.path == path).map(|src| (n.clone(), src.clone())))
+        .collect();
+    let Some((_, first)) = of_it.first() else {
+        return Err(bad(c, format!("no family of the project was made from `{path}`")));
+    };
+    let read_from = from.clone().unwrap_or_else(|| path.clone());
+    let read_path = PathBuf::from(&read_from);
+    let read = read_mesh(c, &read_path, first.units.as_deref(), first.up.as_deref())?;
+    let kept = match &from {
+        Some(_) => std::path::absolute(&read_path).unwrap_or(read_path.clone()).to_string_lossy().into_owned(),
+        None => path.clone(),
+    };
+    let m = s.model_mut();
+    let known: std::collections::HashSet<String> = m.materials.keys().cloned().collect();
+    let mut colours: BTreeMap<String, [u8; 4]> = BTreeMap::new();
+    let (mut reloaded, mut missing) = (Vec::new(), Vec::new());
+    for (name, source) in of_it {
+        let Some(object) = read.objects.iter().find(|o| o.name == source.object) else {
+            missing.push(name);
+            continue;
+        };
+        let forms = mesh_forms(object, source.origin, &mut colours);
+        let Some(family) = m.families.get_mut(&name) else { continue };
+        family.forms = forms;
+        family.source = Some(crate::mesh_in::Source { path: kept.clone(), ..source });
+        reloaded.push(name);
+    }
+    mesh_colours(m, &known, colours);
+    Ok(json!({"path": kept, "reloaded": reloaded, "missing": missing}))
 }
 
 fn import_cad(s: &mut Session, p: &Value) -> R {
@@ -10021,12 +10334,19 @@ fn reload_cad(s: &mut Session, p: &Value) -> R {
     let c = "reload_cad";
     let name = string(c, p, "cad")?.ok_or_else(|| bad(c, "`cad`, the name of a linked CAD drawing, is required"))?;
     let cad = s.model.cads.get(&name).cloned().ok_or_else(|| bad(c, format!("the project holds no CAD drawing named `{name}`")))?;
-    let path = cad
-        .path()
-        .map(str::to_string)
-        .ok_or_else(|| bad(c, format!("CAD drawing `{name}` isn't linked; bring it in again with `import_cad` and `link`")))?;
+    // Reload From: another file, which the drawing is linked to from then on.
+    let path = match string(c, p, "path")? {
+        Some(path) => path,
+        None => cad
+            .path()
+            .map(str::to_string)
+            .ok_or_else(|| bad(c, format!("CAD drawing `{name}` isn't linked; give `path`, a file to reload it from")))?,
+    };
     let (bytes, _) = read_dxf_file(s, &path).map_err(|e| bad(c, e))?;
     if cad.same_bytes(&bytes) {
+        if cad.path() != Some(path.as_str()) {
+            s.model_mut().cads.insert(name.clone(), cad.linked(Some(path)));
+        }
         return Ok(json!({"cad": name, "changed": false}));
     }
     let new = Cad::new(cad.source(), Some(path.clone()), bytes).map_err(|e| bad(c, format!("{path}: {e}")))?;
