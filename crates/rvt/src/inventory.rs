@@ -180,6 +180,8 @@ const NAMES: &[(i64, &str)] = &[
     (-2_000_240, "Levels"),
     (-2_000_182, "Walls: Reveals"),
     (-2_000_181, "Walls: Wall Sweeps"),
+    // Not measured by rvt-rs: its records are of the schema's class `Ramp` (docs/rvt-provenance.md).
+    (-2_000_180, "Ramps"),
     (-2_000_171, "Curtain Wall Mullions"),
     (-2_000_170, "Curtain Panels"),
     (-2_000_160, "Rooms"),
@@ -633,25 +635,39 @@ impl crate::Revit {
                 named.offer(e.id, number, (e.name, e.category));
             }
         }
-        // The shapes of the symbols drawn, each partition that holds one inflated again.
+        // The shapes of the symbols drawn, each partition that holds one inflated again; then those the symbols read nest, a round
+        // for each depth of nesting, and the nested drawn into those nesting them.
         let drawn = drawn.into_values();
-        let mut shapes = BTreeMap::new();
+        let mut shapes: BTreeMap<u32, std::result::Result<crate::shapes::Shape, String>> = BTreeMap::new();
         if let Some(layouts) = &layouts {
-            let mut by_partition: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
-            let symbols: BTreeSet<u32> =
+            let mut symbols: BTreeSet<u32> =
                 drawn.values().filter_map(|d| d.as_ref().ok()).flat_map(|d| d.placed.iter().map(|(s, _)| *s)).collect();
-            for symbol in symbols {
-                if let Some((_, k, at)) = trees.get(&symbol) {
-                    by_partition.entry(*k).or_default().push((symbol, *at));
+            for _ in 0..=crate::shapes::MAX_NESTING {
+                let mut by_partition: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
+                for symbol in &symbols {
+                    if let Some((_, k, at)) = trees.get(symbol) {
+                        by_partition.entry(*k).or_default().push((*symbol, *at));
+                    }
+                }
+                for (k, symbols) in by_partition {
+                    let Some(name) = names.get(k) else { continue };
+                    let buf = self.inflate_all(name)?.bytes;
+                    for (symbol, at) in symbols {
+                        let shape = crate::graphics::read(&buf, at, layouts).and_then(|tree| crate::shapes::shape(&tree, layouts));
+                        shapes.insert(symbol, shape);
+                    }
+                }
+                symbols = shapes
+                    .values()
+                    .filter_map(|s| s.as_ref().ok())
+                    .flat_map(|s| s.placed.iter().map(|(n, _)| *n))
+                    .filter(|n| !shapes.contains_key(n))
+                    .collect();
+                if symbols.is_empty() {
+                    break;
                 }
             }
-            for (k, symbols) in by_partition {
-                let Some(name) = names.get(k) else { continue };
-                let buf = self.inflate_all(name)?.bytes;
-                for (symbol, at) in symbols {
-                    shapes.insert(symbol, crate::graphics::read(&buf, at, layouts).and_then(|tree| crate::shapes::shape(&tree, layouts)));
-                }
-            }
+            crate::shapes::nest(&mut shapes);
         }
         if !wide {
             let header = tags.data_header();

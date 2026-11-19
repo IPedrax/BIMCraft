@@ -51,7 +51,7 @@ use crate::inventory::{Gathered, Inventory, Wants, category_name};
 use crate::openings::{family_of, symbol_of};
 use crate::placement::Transform;
 use crate::records::Record;
-use crate::shapes::{MAX_TRIANGLES, Shape as Solid};
+use crate::shapes::Shape as Solid;
 
 /// How a category's box stands for its elements: as their envelope, as a path's only where it runs along an axis, or as a whole
 /// only where it holds no box of its parts' categories.
@@ -62,6 +62,9 @@ pub(crate) enum Shape {
     Whole(&'static [i64]),
 }
 
+/// The most families numbered on from one (`Railings (2)`, …) that take the shapes it has no room left for.
+pub(crate) const MAX_OVERFLOW: usize = 8;
+
 /// A stair's parts' categories: runs, landings and supports.
 const STAIR_PARTS: &[i64] = &[-2_000_919, -2_000_920, -2_000_123];
 /// A truss's or a beam system's: structural framing.
@@ -69,7 +72,7 @@ const FRAMES: &[i64] = &[crate::framing::OST_STRUCTURAL_FRAMING];
 
 /// The categories whose placed elements come in as boxes: Revit's id, the family's name and kind, what one is called in the notes, and
 /// how its box stands for it.
-pub(crate) const KINDS: [(i64, &str, Category, &str, Shape); 37] = [
+pub(crate) const KINDS: [(i64, &str, Category, &str, Shape); 38] = [
     (-2_008_049, "Pipe Fittings", Category::PipeFitting, "pipe fitting", Shape::Envelope),
     (-2_008_010, "Duct Fittings", Category::Generic, "duct fitting", Shape::Envelope),
     (-2_008_020, "Flex Ducts", Category::Generic, "flex duct", Shape::Envelope),
@@ -95,6 +98,7 @@ pub(crate) const KINDS: [(i64, &str, Category, &str, Shape); 37] = [
     (-2_000_920, "Stair Landings", Category::Generic, "stair landing", Shape::Envelope),
     (-2_000_123, "Stair Supports", Category::Generic, "stair support", Shape::Envelope),
     (-2_000_120, "Stairs", Category::Generic, "stair", Shape::Whole(STAIR_PARTS)),
+    (-2_000_180, "Ramps", Category::Generic, "ramp", Shape::Envelope),
     (-2_000_126, "Railings", Category::Generic, "railing", Shape::Path),
     (-2_000_170, "Curtain Panels", Category::Generic, "curtain panel", Shape::Path),
     (-2_000_171, "Curtain Wall Mullions", Category::Generic, "mullion", Shape::Path),
@@ -380,12 +384,19 @@ fn boxed(b: &[f64; 6]) -> Boxed {
 
 /// The model's name of each family the components are made in, by category and Revit family (none: the category's own family), and
 /// the names taken.
-struct Families {
+pub(crate) struct Families {
     taken: BTreeSet<String>,
     made: BTreeMap<(i64, Option<u32>), String>,
+    /// The families numbered on from one, by its name and their number.
+    more: BTreeMap<(String, usize), String>,
 }
 
 impl Families {
+    /// Families named so that none takes a name of `taken`.
+    pub(crate) fn new(taken: BTreeSet<String>) -> Self {
+        Families { taken, made: BTreeMap::new(), more: BTreeMap::new() }
+    }
+
     /// The name of the family of `category` named `revit` in the file (none: the category's, `fallback`), a name no other family of
     /// the model has.
     fn name(&mut self, category: i64, revit: Option<&(u32, String)>, fallback: &str) -> String {
@@ -398,10 +409,21 @@ impl Families {
         self.made.insert(key, name.clone());
         name
     }
+
+    /// The name of the `n`th family numbered on from `family`, for the shapes it has no room left for: `family (2)` where no other
+    /// family has that name.
+    fn overflow(&mut self, family: &str, n: usize) -> String {
+        if let Some(name) = self.more.get(&(family.to_string(), n)) {
+            return name.clone();
+        }
+        let name = fresh(&mut self.taken, family);
+        self.more.insert((family.to_string(), n), name.clone());
+        name
+    }
 }
 
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered, inv: &Inventory) {
-    let mut families = Families { taken: cx.model.families.keys().cloned().collect(), made: BTreeMap::new() };
+    let mut families = Families::new(cx.model.families.keys().cloned().collect());
     let read = Read { f, g, inv };
     for (category, family, kind, label, shape) in KINDS {
         boxes(cx, &read, &mut families, None, category, (family, kind, label), shape);
@@ -464,10 +486,14 @@ fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
         Some(Err(why)) => Err(format!("the shape it draws is not read: {}", short(why))),
         Some(Ok(shape)) => Ok(shape),
     };
+    // One symbol whose box, placed, is the element's is its type's shape, shared. One whose box is not may still be what the element
+    // draws, with marks of its own past it (a stair run's steps, and its walk line above them): it is then the element's own, below,
+    // where all it draws gives its record's box.
     if let ([(symbol, at)], None) = (&d.placed[..], &d.body) {
         let shape = shape_of(symbol)?;
-        fits(shape, at, &r.bbox)?;
-        return Ok(Drawn { own: false, symbol: *symbol, at: *at, shape: std::borrow::Cow::Borrowed(shape) });
+        if fits(shape, at, &r.bbox).is_ok() {
+            return Ok(Drawn { own: false, symbol: *symbol, at: *at, shape: std::borrow::Cow::Borrowed(shape) });
+        }
     }
     // Its own: the solids it draws and each symbol placed, in the project's axes, then moved to the corner of the box round all
     // it draws, so two alike elements are one shape.
@@ -475,22 +501,12 @@ fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
     let mut materials: Vec<Option<u32>> = d.body.as_ref().map(|b| b.materials.clone()).unwrap_or_default();
     let mut marks = d.marks.clone();
     for (symbol, t) in &d.placed {
-        let shape = shape_of(symbol)?;
-        let (_, mirrored, _) = pose(t).ok_or("a symbol it places is placed by no turn")?;
-        if tris.len() + shape.triangles.len() > MAX_TRIANGLES {
-            return Err(format!("it draws more than {MAX_TRIANGLES} triangles"));
+        // A symbol that draws nothing solid adds nothing (a stair run's, beside the solid of its steps); should it hold what the
+        // element's box takes in, what is read falls short of that box and the element is refused below.
+        if matches!(g.shapes.get(symbol), Some(Err(why)) if why == crate::shapes::NO_SOLID) {
+            continue;
         }
-        let place = |p: [f64; 3]| -> [f64; 3] {
-            std::array::from_fn(|k| t.origin[k] * 304.8 + p[0] * t.axes[0][k] + p[1] * t.axes[1][k] + p[2] * t.axes[2][k])
-        };
-        tris.extend(
-            shape
-                .triangles
-                .iter()
-                .map(|[a, b, c]| if mirrored { [place(*a), place(*c), place(*b)] } else { [place(*a), place(*b), place(*c)] }),
-        );
-        marks.extend(shape.marks.iter().map(|p| place(*p)));
-        materials.extend(&shape.materials);
+        crate::shapes::place(shape_of(symbol)?, t, &mut tris, &mut marks, &mut materials)?;
     }
     if !crate::shapes::fills(&tris, &marks, &d.tight) {
         return Err("what it draws is not the box its graphics give round their solids".to_string());
@@ -502,10 +518,43 @@ fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
     let solids = d.body.as_ref().map_or(0, |b| b.solids) + d.placed.len();
     let faces = d.body.as_ref().map_or(0, |b| b.faces);
     materials.resize(tris.len(), None);
-    let shape = Solid { triangles, solids, faces, whole, marks: Vec::new(), materials };
+    let shape = Solid { triangles, solids, faces, whole, materials, ..Solid::default() };
     let at = Transform { axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], origin: corner };
     fits(&shape, &at, &r.bbox)?;
     Ok(Drawn { own: true, symbol: r.id, at, shape: std::borrow::Cow::Owned(shape) })
+}
+
+/// The family that shows `drawn` for type `type_name`: `family`, or where it has no room left, the first of those numbered on from it
+/// ([`MAX_OVERFLOW`] of them, made as needed) that has; none where none has. A family that refuses the shape keeps no type for it.
+pub(crate) fn room(
+    model: &mut BTreeMap<String, Family>,
+    families: &mut Families,
+    (family, kind): (&str, Category),
+    type_name: &str,
+    shape: &Solid,
+    names: &BTreeMap<u32, String>,
+) -> Option<String> {
+    for n in 0..=MAX_OVERFLOW {
+        let name = if n == 0 { family.to_string() } else { families.overflow(family, n) };
+        let made = model.contains_key(&name);
+        let held = model.entry(name.clone()).or_insert_with(|| box_family(kind));
+        if held.types.len() >= MAX_TYPES && !held.types.contains_key(type_name) {
+            continue;
+        }
+        let had = held.types.contains_key(type_name);
+        if show(held, type_name, shape, names) {
+            return Some(name);
+        }
+        if !had {
+            held.types.remove(type_name);
+        }
+        if !made {
+            // A family new and empty has room for any shape one form may be; one that refuses it is of no use to the next.
+            model.remove(&name);
+            return None;
+        }
+    }
+    None
 }
 
 /// The box round a shape, millimetres in its family's axes.
@@ -525,7 +574,7 @@ fn extent(shape: &Solid) -> [f64; 6] {
 /// has no name for: the family's own, as its category says). Whether it is drawn so. A family that would hold more than
 /// [`MAX_FORMS`] forms, or whose types would build more than [`MAX_BUILT`] triangles together (its shapes, and a box of a dozen or so
 /// for each type that may be added), keeps the box for its type.
-fn show(family: &mut Family, type_name: &str, solid: &Solid, names: &BTreeMap<u32, String>) -> bool {
+pub(crate) fn show(family: &mut Family, type_name: &str, solid: &Solid, names: &BTreeMap<u32, String>) -> bool {
     if let Some(k) = family.types.get(type_name).and_then(|t| t.get(SHOWS)) {
         return k.as_u64().is_some_and(|k| k > 0);
     }
@@ -697,13 +746,22 @@ fn boxes(
             cx.left_out(label, r.id, "its family holds as many types as one family may");
             continue;
         }
-        let drawn = match &p.draws {
-            Ok(d) if show(made, &type_name, &d.shape, &g.materials) => Some(d),
-            _ => {
-                made.types.entry(type_name.clone()).or_default();
-                None
-            }
+        let (drawn, family) = match &p.draws {
+            Ok(d) => match room(&mut cx.model.families, families, (&p.family, kind), &type_name, &d.shape, &g.materials) {
+                Some(family) => (Some(d), family),
+                None => (None, p.family.clone()),
+            },
+            Err(_) => (None, p.family.clone()),
         };
+        if drawn.is_none() {
+            // A path that turns came in for its shape alone: its box is no body, so with no room for the shape it is left out.
+            if p.draws.is_ok() && matches!(taken, Shape::Path) && !runs_along(&r.bbox) {
+                let why = "its box is the envelope of a path that turns or runs across the axes, not its body, and its family holds as many                            shapes as one family may";
+                cx.left_out(label, r.id, why);
+                continue;
+            }
+            cx.model.families.entry(p.family.clone()).or_insert_with(|| box_family(kind)).types.entry(type_name.clone()).or_default();
+        }
         let built = (|| -> Result<Component, String> {
             let (level, elevation) = level_at(cx, f, r.bbox[2].min(p.stand.bottom))?;
             let mut params = BTreeMap::new();
@@ -725,7 +783,7 @@ fn boxes(
             }
             Ok(Component {
                 tilt,
-                family: p.family.clone(),
+                family: family.clone(),
                 type_name: type_name.clone(),
                 level,
                 at: point(at[0], at[1]),
@@ -746,7 +804,10 @@ fn boxes(
                     (Some(d), ..) => cx.note(label, r.id, if d.own { DRAWN } else { SHAPED }),
                     (None, None, Err(not)) => cx.note(label, r.id, &format!("{turned_so}; {not}")),
                     (None, None, Ok(_)) => cx.note(label, r.id, &format!("{turned_so}; its family holds as many shapes as one family may")),
-                    (None, Some(why), _) => cx.note(label, r.id, &format!("{box_so}; {why}")),
+                    (None, Some(why), Err(not)) => cx.note(label, r.id, &format!("{box_so}; {why}; {not}")),
+                    (None, Some(why), Ok(_)) => {
+                        cx.note(label, r.id, &format!("{box_so}; {why}; its family holds as many shapes as one family may"))
+                    }
                 }
             }
             Err(why) => cx.left_out(label, r.id, &why),
