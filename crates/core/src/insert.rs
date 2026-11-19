@@ -238,6 +238,12 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     here(&Kind::LinePattern, p);
                 }
             }
+            // A title block's logos name pictures as this project does.
+            Kind::TitleBlock => {
+                for l in to.title_blocks.get_mut(&name).into_iter().flat_map(|t| t.logos.iter_mut()) {
+                    here(&Kind::Picture, &mut l.image);
+                }
+            }
             // A grid type's pattern follows too: a project may hold one of the same name with another GUID, or none.
             Kind::GridType => {
                 if let Some(p) = to.grid_types.get_mut(&name).and_then(|t| t.line_pattern.as_mut()) {

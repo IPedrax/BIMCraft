@@ -382,7 +382,7 @@ fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Vi
     if let Some(tb) = template {
         let at = P2(paper.0 - margins.right - tb.width, margins.bottom);
         let scale = scale_value(views, m.language, m.units);
-        crate::titleblock::draw(d, tb, at, &crate::titleblock::values(m, id, &scale));
+        crate::titleblock::draw(d, tb, at, &crate::titleblock::values(m, id, &scale), &m.images);
         if margins.folding_marks {
             draw_folding_marks(d, paper, &sheet.size, margins);
         }

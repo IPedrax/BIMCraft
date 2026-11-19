@@ -1692,6 +1692,9 @@ impl Model {
                 f(&Kind::Picture, &mut tx.image);
             }
         }
+        for l in self.title_blocks.values_mut().flat_map(|t| t.logos.iter_mut()) {
+            f(&Kind::Picture, &mut l.image);
+        }
         for vf in self.view_filters.values_mut() {
             rules_refs(&mut [], &mut vf.rules, f);
         }

@@ -206,3 +206,26 @@ fn new_from_starter_makes_a_title_block_for_its_papers_and_the_sheets_of_those_p
     h.run();
     assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Title Block").value().as_deref(), Some("ISO 7200 A4-A3 (by paper size)"));
 }
+
+#[test]
+fn the_logos_tab_lists_a_title_blocks_pictures_and_takes_one_away() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("logo.png");
+    // Any picture will do: a plan drawn to a PNG.
+    let script = format!(
+        "{BOX}\nrender {}\ntitle_block {}",
+        json!({"view": "Level 1", "path": file, "width": 120, "height": 80}),
+        json!({"name": "T", "logos": [{"path": file, "at": [2, 2], "width": 20}]})
+    );
+    let mut h = app(&script);
+    assert_eq!(h.state().session.model.title_blocks["T"].logos.len(), 1);
+    h.state_mut().open_title_blocks(Some("T"));
+    h.run();
+    press(&mut h, "Logos");
+    assert!(h.query_by_label("Add Logo…").is_some() && h.query_by_label("Remove logo").is_some());
+    press(&mut h, "Remove logo");
+    press_near(&mut h, "Apply", "Cancel");
+    let m = &h.state().session.model;
+    assert!(m.title_blocks["T"].logos.is_empty(), "the logo is gone from the title block");
+    assert!(m.images.is_empty(), "and its picture from the project");
+}

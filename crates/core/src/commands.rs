@@ -1481,7 +1481,11 @@ other_files(
          project's language), and what's given goes over it. `sizes` [\"A3\", \"ANSI D\", …] are the papers it is for: a sheet that names no \
          title block is drawn with the first of the project's, by name, that lists its paper, else the built-in one; a sheet's `elements` \
          say it as `title_block_by_size`. A starter lists its papers, so loading one changes how the sheets of those papers are drawn \
-         (`sizes: []` leaves it for sheets that name it)",
+         (`sizes: []` leaves it for sheets that name it). `logos` [{path | image, at: [x, y], width?, height?}] places pictures in it, under its \
+         lines and lettering: a `path` is a PNG or a JPEG file (kept in the project once, as a texture's picture is; a transparent PNG \
+         is over white), an `image` a picture of the project's; `at` is its bottom left corner and `width` or `height` its size in mm \
+         from the title block's bottom left corner (one alone keeps its proportions; up to 250 mm a side, 8 to a title block); the \
+         list replaces the block's, `[]` or null takes them all away",
         title_block,
         // The DXF or DWG `path` names, when it names one.
         Files::Conditional,
@@ -15813,6 +15817,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
             "sizes",
             "lines",
             "fills",
+            "logos",
             "texts",
             "fields",
         ],
@@ -15854,6 +15859,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("sheet {} is drawn with `{name}`; give it another title block first", sh.number)));
         }
         s.model_mut().title_blocks.remove(&name);
+        prune_images(s.model_mut());
         return Ok(json!({"deleted": name}));
     }
     let m = &s.model;
@@ -15893,7 +15899,14 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         }
         // The fields it had keep their labels, whose and defaults where the drawing still names them.
         let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
-        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, sizes: t.sizes.clone(), ..read };
+        t = TitleBlock {
+            fields,
+            drawing_area: t.drawing_area,
+            template_border: t.template_border,
+            sizes: t.sizes.clone(),
+            logos: t.logos.clone(),
+            ..read
+        };
         left_out = out;
     } else if p.get("units").is_some() {
         return Err(bad(c, "`units` is the unit of the DXF `path` names"));
@@ -15927,6 +15940,10 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     }
     t.sizes = papers;
     let m = s.model_mut();
+    // Its logos: the project's pictures by id, or files read in; each a picture, a place and a size.
+    if let Some(v) = p.get("logos") {
+        t.logos = logos_param(c, m, v)?;
+    }
     let name = match name_param(c, p, "rename")? {
         Some(to) if to != name => {
             if m.title_blocks.contains_key(&to) {
@@ -15954,6 +15971,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         }
     }
     let mut out = json!({"name": name, "title_block": t});
+    prune_images(m);
     if !undefined.is_empty() {
         out["undefined"] = json!(undefined);
     }
@@ -16098,11 +16116,81 @@ fn material(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "material": mat}))
 }
 
-/// The pictures no material's texture is made of, taken out of the project.
+/// The pictures no material's texture and no title block's logo is made of, taken out of the project.
 fn prune_images(m: &mut Model) {
-    let used: BTreeSet<String> =
+    let mut used: BTreeSet<String> =
         m.materials.values().filter_map(|x| x.texture.as_ref()).filter(|t| t.kind == Kind::Image).map(|t| t.image.clone()).collect();
+    used.extend(m.title_blocks.values().flat_map(|t| t.logos.iter().map(|l| l.image.clone())));
     m.images.retain(|id, _| used.contains(id));
+}
+
+/// A title block's `logos` as `title_block` takes them: `[{path | image, at, width?, height?}, …]`, null for none. A `path`
+/// is a PNG or a JPEG file, read into the project's pictures; an `image` is one the project holds. `at` is its bottom left
+/// corner and `width` and `height` its size in mm, from the title block's bottom left corner; one of them alone keeps the
+/// picture's proportions.
+fn logos_param(c: &str, m: &mut Model, v: &Value) -> Result<Vec<crate::titleblock::Logo>, String> {
+    use crate::titleblock::{Logo, MAX_LOGOS};
+    let list = match v {
+        Value::Null => return Ok(Vec::new()),
+        Value::Array(a) => a,
+        _ => return Err(bad(c, format!("`logos` is [{{path or image, at, width?, height?}}, …], not {v}"))),
+    };
+    if list.len() > MAX_LOGOS {
+        return Err(bad(c, format!("a title block holds up to {MAX_LOGOS} logos, not {}", list.len())));
+    }
+    let mut out = Vec::new();
+    for (i, e) in list.iter().enumerate() {
+        let o = e.as_object().ok_or_else(|| bad(c, format!("logo {i} is {{path or image, at, width?, height?}}, not {e}")))?;
+        if let Some(k) = o.keys().find(|k| !["path", "image", "at", "width", "height"].contains(&k.as_str())) {
+            return Err(bad(c, format!("logo {i}: `{k}` isn't one of path, image, at, width, height")));
+        }
+        let (path, image) = (o.get("path").filter(|v| !v.is_null()), o.get("image").filter(|v| !v.is_null()));
+        let (id, (pw, ph)) = match (path, image) {
+            (Some(_), Some(_)) => {
+                return Err(bad(
+                    c,
+                    format!("logo {i} names its picture by `path` (a file) or by `image` (one the project holds): give one"),
+                ));
+            }
+            (None, None) => return Err(bad(c, format!("logo {i} needs its file, `path`, or a picture of the project's, `image`"))),
+            (Some(path), None) => {
+                let path = PathBuf::from(path.as_str().ok_or_else(|| bad(c, format!("logo {i}: `path` is a file's path, not {path}")))?);
+                let len = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+                if len > texture::MAX_BYTES as u64 {
+                    return Err(bad(c, format!("{} is too large ({len} bytes)", path.display())));
+                }
+                let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+                let stem = path.file_stem().map_or_else(|| "logo".into(), |s| s.to_string_lossy().into_owned());
+                let picture = Picture::import(&stem, &bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+                let (id, size) = (picture.id(), picture.size());
+                if !m.images.contains_key(&id) && m.images.len() >= texture::MAX_IMAGES {
+                    return Err(bad(
+                        c,
+                        format!("the project holds {} pictures already; take a texture or a logo away first", m.images.len()),
+                    ));
+                }
+                m.images.insert(id.clone(), picture);
+                (id, size)
+            }
+            (None, Some(image)) => {
+                let id = image.as_str().ok_or_else(|| bad(c, format!("logo {i}: `image` is a picture's id, not {image}")))?.to_string();
+                let size =
+                    m.images.get(&id).map(Picture::size).ok_or_else(|| bad(c, format!("logo {i}: the project holds no picture `{id}`")))?;
+                (id, size)
+            }
+        };
+        let at = point_opt(c, e, "at")?
+            .ok_or_else(|| bad(c, format!("logo {i} needs `at`: [x, y] mm from the title block's bottom left corner")))?;
+        let aspect = ph as f64 / pw.max(1) as f64;
+        let (width, height) = match (num(c, e, "width")?, num(c, e, "height")?) {
+            (Some(w), Some(h)) => (w, h),
+            (Some(w), None) => (w, w * aspect),
+            (None, Some(h)) => (h / aspect.max(f64::MIN_POSITIVE), h),
+            (None, None) => return Err(bad(c, format!("logo {i} needs a `width` or a `height`, mm"))),
+        };
+        out.push(Logo { image: id, at, width, height });
+    }
+    Ok(out)
 }
 
 /// Two numbers, `[a, b]`, or one for both.

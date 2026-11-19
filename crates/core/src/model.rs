@@ -8774,6 +8774,9 @@ impl Model {
         }
         for (n, t) in &self.title_blocks {
             t.check(n)?;
+            if let Some((i, l)) = t.logos.iter().enumerate().find(|(_, l)| !self.images.contains_key(&l.image)) {
+                return Err(format!("title block `{n}`: logo {i} is of picture `{}`, which the project doesn't hold", l.image));
+            }
         }
         crate::titleblock::check_values("the project's title fields", &self.title_values)?;
         if self.spot_coordinate_types.len() > crate::spots::MAX_TYPES {

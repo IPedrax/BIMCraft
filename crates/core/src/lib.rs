@@ -258,6 +258,8 @@ mod timber;
 pub mod title_starters;
 pub mod titleblock;
 #[cfg(test)]
+mod titleblock_logos_tests;
+#[cfg(test)]
 mod titleblock_tests;
 pub mod triad;
 pub mod triangulation;
