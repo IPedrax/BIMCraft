@@ -231,7 +231,7 @@ impl Units {
 }
 
 /// The scales a metric project offers, 1 : n.
-const METRIC_SCALES: [f64; 10] = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0];
+const METRIC_SCALES: [f64; 13] = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 75.0, 100.0, 150.0, 200.0, 250.0, 500.0, 1000.0];
 /// The scales a project in inches or feet offers: 12" to 1/32" to the foot, then 1" to 10' to 1" to 200'.
 const IMPERIAL_SCALES: [f64; 22] = [
     1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0, 192.0, 256.0, 384.0, 120.0, 240.0, 360.0, 480.0, 600.0, 1200.0,
@@ -300,6 +300,9 @@ mod tests {
         }
         assert!(Units::Inches.scales().iter().all(|n| !Units::Inches.scale(*n).starts_with("1 :")), "every one offered is named");
         assert_eq!(Units::Metres.scales(), &METRIC_SCALES);
+        // The scales offices draw at most, 1 : 75, 1 : 150 and 1 : 250 with them, from finest to coarsest.
+        assert!([75.0, 150.0, 250.0].iter().all(|n| Units::Metres.scales().contains(n)));
+        assert!(Units::Metres.scales().windows(2).all(|w| w[0] < w[1]));
         assert_eq!((m.default_scale(), ft.default_scale()), (100.0, 96.0));
         // Typed: n, 1 : n, or the paper's length to the model's.
         assert_eq!(m.parse_scale("75"), Some(75.0));
