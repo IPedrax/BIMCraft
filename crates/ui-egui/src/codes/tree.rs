@@ -371,7 +371,19 @@ fn table_tools(ui: &mut Ui, rows: &mut Vec<Value>, pasted: &mut String) {
         if ui.small_button(t("Add Row")).clicked() {
             let blank = match rows.last() {
                 Some(Value::Object(o)) => {
-                    Value::Object(o.iter().map(|(k, v)| (k.clone(), if v.is_object() { blank_of(v) } else { Value::Null })).collect())
+                    // A list stays a list, empty, so what is typed in it reads as one.
+                    Value::Object(
+                        o.iter()
+                            .map(|(k, v)| {
+                                let blank = match v {
+                                    Value::Object(_) => blank_of(v),
+                                    Value::Array(_) => Value::Array(Vec::new()),
+                                    _ => Value::Null,
+                                };
+                                (k.clone(), blank)
+                            })
+                            .collect(),
+                    )
                 }
                 Some(Value::Array(_)) => rows.last().map(blank_of).unwrap_or(Value::Null),
                 _ => Value::Null,
@@ -392,6 +404,7 @@ fn table_tools(ui: &mut Ui, rows: &mut Vec<Value>, pasted: &mut String) {
         if take && let Some(Value::Array(new)) = from_tsv(pasted, &Value::Array(rows.clone())) {
             *rows = new;
             pasted.clear();
+            stop_typing(ui);
         }
     }
 }
@@ -471,18 +484,37 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
             for (i, row) in rows.iter_mut().enumerate() {
                 for (c, w) in cols.iter().zip(&widths) {
                     let now = get(row, c).cloned().unwrap_or(Value::Null);
+                    // An object this row gives here is spread over the columns after it, which are the ones typed in: this
+                    // cell would overwrite them all.
+                    let spread = now.is_object();
                     // An empty cell is empty to type in: its dash is a hint, not text typed after.
-                    let mut text = if now.is_null() { String::new() } else { list_text(&now) };
+                    let mut text = if now.is_null() || spread { String::new() } else { list_text(&now) };
+                    // While a cell is typed in, it keeps what was typed (a list's comma at its end, a number's zeros after its
+                    // point), not what that reads as so far; left, it shows what it holds again.
+                    let typing = egui::Id::new((id, "cell", i, c.as_str()));
+                    if ui.memory(|m| m.has_focus(typing)) {
+                        if let Some(Typing(was)) = ui.data(|d| d.get_temp::<Typing>(typing)) {
+                            text = was;
+                        }
+                    } else {
+                        ui.data_mut(|d| d.remove::<Typing>(typing));
+                    }
                     // A column inside a value this row gives whole is not one it can be typed in.
                     let lit = literal.get(c).map(Vec::as_slice);
-                    let open = lit.map_or_else(|| reachable(row, c), |keys| get(row, c).is_some() || reachable_at(row, keys));
-                    let r = if c == "source" || *w >= 300.0 {
-                        ui.add_enabled(open, egui::TextEdit::multiline(&mut text).desired_width(*w).desired_rows(1).hint_text("—"))
+                    let open = !spread && lit.map_or_else(|| reachable(row, c), |keys| get(row, c).is_some() || reachable_at(row, keys));
+                    let edit = if c == "source" || *w >= 300.0 {
+                        egui::TextEdit::multiline(&mut text).desired_width(*w).desired_rows(1).hint_text("—")
                     } else {
-                        ui.add_enabled(open, egui::TextEdit::singleline(&mut text).desired_width(*w).hint_text("—"))
+                        egui::TextEdit::singleline(&mut text).desired_width(*w).hint_text("—")
                     };
-                    let r = r.on_disabled_hover_text(t("This row gives one value for these columns"));
+                    let r = ui.add_enabled(open, edit.id(typing));
+                    let r = if spread {
+                        r.on_disabled_hover_text(t("This row gives this value in the columns after it"))
+                    } else {
+                        r.on_disabled_hover_text(t("This row gives one value for these columns"))
+                    };
                     if r.changed() {
+                        ui.data_mut(|d| d.insert_temp(typing, Typing(text.clone())));
                         write(row, c, if now.is_array() { list_value(&text) } else { cell_value(&text) }, lit);
                     }
                 }
@@ -495,8 +527,30 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
     });
     if let Some(i) = gone {
         rows.remove(i);
+        // The rows after it take its place, and its cells' ids: no cell stays in typing, so what was typed in it goes with
+        // it, never into the row after.
+        stop_typing(ui);
     }
     table_tools(ui, rows, pasted);
+}
+
+/// What a cell holds as typed while it is typed in (`object_table`).
+#[derive(Clone, Default)]
+struct Typing(String);
+
+/// No cell stays in typing: the rows were replaced or one was taken away, so the ids of the cells now name others' cells.
+fn stop_typing(ui: &Ui) {
+    ui.memory_mut(|m| {
+        if let Some(f) = m.focused() {
+            m.surrender_focus(f);
+        }
+    });
+    ui.data_mut(|d| d.remove_by_type::<Typing>());
+}
+
+/// Forgets what cells held as typed: the dialog closed, nothing is being typed.
+pub(crate) fn forget_typing(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove_by_type::<Typing>());
 }
 
 /// A table's column in words: `demand_kva.over` is "Demand (kVA) over", `connection_mm2.copper` "Connection (mm²) copper".
@@ -723,7 +777,7 @@ mod tests {
         let mut h = g7_table(json!([{"name":"seed","a":{"b":12},"list":["old"],"source":"end"},{"name":"last","list":["new"]}]));
         h.get_by_label("Add Row").click_accesskit();
         h.run();
-        assert_eq!(h.state().0[2], json!({"name":null,"list":null}));
+        assert_eq!(h.state().0[2], json!({"name":null,"list":[]}));
         let name = h
             .get_all_by(|n| n.role() == Role::TextInput && matches!(n.value().as_deref(), None | Some("")))
             .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()).then_with(|| b.rect().left().total_cmp(&a.rect().left())))
@@ -740,7 +794,7 @@ mod tests {
         h.get_all_by_label("×").last().unwrap().click_accesskit();
         h.run();
         assert_eq!(h.state().0.as_array().unwrap().len(), 2);
-        assert_eq!(staged, json!({"name":"added","a":{"b":25},"list":null}));
+        assert_eq!(staged, json!({"name":"added","a":{"b":25},"list":[]}));
     }
 
     #[test]
@@ -1195,5 +1249,669 @@ mod tests {
         assert!(h.state().codes_dialog.is_none());
         let actual = g7r2_entrance(&h);
         assert_eq!(actual["tables"][0]["rows"][row], expected["tables"][0]["rows"][row]);
+    }
+
+    // G7b: the whole cell of an object, lists typed slowly, a row added (the reviews' cases, to the contract).
+    #[test]
+    fn g7b_a_created_child_leaves_the_whole_cell_empty() {
+        let mut h = g7_table(json!([{"name":"nested","a":{"b":12}},{"name":"whole","a":"keep"},{"name":"missing"}]));
+        g7_type(&mut h, "missing", "A b", "25");
+        let child = g7_cell(&h, "missing", "A b").value();
+        let parent = g7_cell(&h, "missing", "A").value();
+        // The object made is in its own columns; the cell of the whole shows nothing to type over.
+        assert_eq!(child.as_deref(), Some("25"));
+        assert!(matches!(parent.as_deref(), None | Some("")), "{parent:?}");
+    }
+
+    #[test]
+    fn g7b_the_whole_cell_of_an_object_does_not_overwrite_its_columns() {
+        let mut h = g7_table(json!([{"name":"nested","a":{"b":12,"c":33},"source":"end"},{"name":"whole","a":"keep","source":"other"}]));
+        g7_type(&mut h, "nested", "A", "5");
+        assert_eq!(h.state().0[0]["a"], json!({"b":12,"c":33}));
+    }
+
+    #[test]
+    fn g7b_dialog_fecoergs_one_cell_edited_is_the_only_change() {
+        let mut h = g7_dialog("fecoergs");
+        let before = h.state().session.model.resolve_code(Discipline::Electrical, "entrance").value;
+        let row = before["tables"][0]["rows"].as_array().unwrap().iter().position(|r| r["name"] == "A1").unwrap();
+        let parent_before = g7_cell(&h, "A1", "Resistive (kW)").value();
+        g7_type(&mut h, "A1", "Resistive (kW) fn", "25");
+        let parent_after = g7_cell(&h, "A1", "Resistive (kW)").value();
+        g7_ok(&mut h);
+        let after = h.state().session.model.resolve_code(Discipline::Electrical, "entrance").value;
+        let mut expected = json!(before);
+        expected["tables"][0]["rows"][row]["columns"]["resistive_kw"]["fn"] = json!(25);
+        assert!(Value::Object(after) == expected, "the edit should be the only difference in the resolved section");
+        assert_eq!(parent_after, parent_before);
+    }
+
+    #[test]
+    fn g7b_dialog_fecoergs_whole_cell_is_closed_and_keeps_its_number() {
+        let mut h = g7_dialog("fecoergs");
+        // The cell of the whole object is closed: nothing typed there reaches its columns.
+        assert!(g7_cell(&h, "A1", "Resistive (kW)").accesskit_node().is_disabled());
+        g7_ok(&mut h);
+        assert!(h.state().codes_dialog.is_none());
+        let after = h.state().session.model.resolve_code(Discipline::Electrical, "entrance").value;
+        let row = after["tables"][0]["rows"].as_array().unwrap().iter().find(|r| r["name"] == "A1").unwrap();
+        assert_eq!(row["columns"]["resistive_kw"]["fn"], json!(5.4));
+    }
+
+    #[test]
+    fn g7b_a_list_typed_over_several_frames_keeps_its_commas() {
+        let mut h = g7_table(json!([{"name":"one","list":["old"]}]));
+        g7_type(&mut h, "one", "List", "a");
+        for s in [",", " ", "b"] {
+            h.key_press(egui::Key::End);
+            h.event(egui::Event::Text(s.into()));
+            h.run();
+        }
+        assert_eq!(h.state().0[0]["list"], json!(["a", "b"]));
+    }
+
+    #[test]
+    fn g7b_a_row_added_keeps_a_list_a_list() {
+        let mut h = g7_table(json!([
+            {"name":"seed","columns":{"a":{"b":12,"c":13}},"breaker_a":[63,80],"source":"table"},
+            {"name":"last","columns":{"a":{"c":15}},"breaker_a":[100,125],"source":"last source"}
+        ]));
+        h.get_by_label("Add Row").click_accesskit();
+        h.run();
+        let name = h
+            .get_all_by(|n| n.role() == Role::TextInput && matches!(n.value().as_deref(), None | Some("")))
+            .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()).then_with(|| b.rect().left().total_cmp(&a.rect().left())))
+            .unwrap();
+        name.focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text("added".into()));
+        h.run();
+        g7_type(&mut h, "added", "A c", "24");
+        g7_type(&mut h, "added", "A b", "25");
+        g7_type(&mut h, "added", "Breaker (A)", "100, 125");
+        let row = &h.state().0[2];
+        assert_eq!(row["columns"]["a"]["c"], json!(24));
+        assert_eq!(
+            (&row["columns"]["a"]["b"], &row["breaker_a"]),
+            (&json!(25), &json!([100, 125])),
+            "new nested cells and comma-separated list in the cloned row"
+        );
+    }
+
+    #[test]
+    fn g7b_dialog_a_breaker_list_typed_slowly_is_saved_as_typed() {
+        let mut h = g7_dialog("energisa");
+        g7_type(&mut h, "T4", "Breaker (A)", "100");
+        for s in [",", " ", "1", "2", "5"] {
+            h.key_press(egui::Key::End);
+            h.event(egui::Event::Text(s.into()));
+            h.run();
+        }
+        g7_ok(&mut h);
+        assert!(h.state().codes_dialog.is_none());
+        let after = h.state().session.model.resolve_code(Discipline::Electrical, "entrance").value;
+        let row = after["tables"][0]["rows"].as_array().unwrap().iter().find(|r| r["name"] == "T4").unwrap();
+        assert_eq!(row["breaker_a"], json!([100, 125]));
+    }
+
+    // The review's cases (G7b).
+    // Paste inside codes::tree::tests, alongside the existing g7 helpers.
+
+    fn review_append<S>(h: &mut Harness<'_, S>, pieces: &[&str]) {
+        for piece in pieces {
+            h.key_press(egui::Key::End);
+            h.event(egui::Event::Text((*piece).into()));
+            h.run();
+        }
+    }
+
+    fn review_open_entrance(h: &mut Harness<'_, crate::BimApp>) {
+        let app = h.state_mut();
+        let mut d = crate::codes::CodesDialog::new(&app.session.model);
+        d.tab = 3;
+        d.tab_mut(Discipline::Electrical).section = "entrance".into();
+        d.table = Some(("entrance".into(), "tables".into()));
+        app.codes_dialog = Some(d);
+        h.run();
+    }
+
+    fn review_expect_entrance(h: &Harness<'_, crate::BimApp>, expected: &Value) {
+        let got = g7r2_entrance(h);
+        assert!(
+            &got == expected && h.state().codes_dialog.is_none(),
+            "dialog error: {:?}; T4 actual: {}; T4 expected: {}",
+            h.state().codes_dialog.as_ref().map(|d| &d.error),
+            got["tables"][0]["rows"][g7r2_t4(&got)],
+            expected["tables"][0]["rows"][g7r2_t4(expected)]
+        );
+    }
+
+    fn review_leaving_list(how: &str) {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "90");
+        review_append(&mut h, &[",", " ", "1", "2", "0"]);
+        match how {
+            "Tab" => h.key_press(egui::Key::Tab),
+            "click" => g7_cell(&h, "T4", "Name").click(),
+            // OK, without leaving the cell.
+            _ => {}
+        }
+        h.run();
+        if how != "OK" {
+            assert!(!g7_cell(&h, "T4", "Breaker (A)").is_focused());
+        }
+        h.get_by_label("OK").click();
+        h.run();
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([90, 120]);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_codes_list_then_tab() {
+        review_leaving_list("Tab");
+    }
+
+    #[test]
+    fn review_codes_list_then_click_elsewhere() {
+        review_leaving_list("click");
+    }
+
+    #[test]
+    fn review_codes_list_then_ok() {
+        review_leaving_list("OK");
+    }
+
+    #[test]
+    fn review_codes_two_lists_and_source() {
+        let mut h = g7_table(json!([
+            {"name":"one","list":[1],"second":[2],"source":"source 1"},
+            {"name":"two","list":[3],"second":[4],"source":"source 2"}
+        ]));
+        g7_type(&mut h, "one", "List", "10");
+        review_append(&mut h, &[",", "20"]);
+        g7_type(&mut h, "one", "Second", "30");
+        review_append(&mut h, &[",", "40"]);
+        g7_type(&mut h, "two", "Source", "two\nlines");
+        assert_eq!(
+            h.state().0,
+            json!([
+                {"name":"one","list":[10,20],"second":[30,40],"source":"source 1"},
+                {"name":"two","list":[3],"second":[4],"source":"two\nlines"}
+            ])
+        );
+    }
+
+    #[test]
+    fn review_codes_list_then_add_row() {
+        let mut h = g7_table(json!([
+            {"name":"one","list":[1],"group":{"limit":12,"options":[2,3]},"source":"original"}
+        ]));
+        g7_type(&mut h, "one", "List", "10");
+        review_append(&mut h, &[",", "20"]);
+        h.get_by_label("Add Row").click();
+        h.run();
+        let name_x = h.get_by_label("Name").rect().left();
+        h.get_all_by(|n| n.role() == Role::TextInput)
+            .filter(|n| (n.rect().left() - name_x).abs() < 12.0)
+            .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+            .unwrap()
+            .focus();
+        h.run();
+        h.event(egui::Event::Text("two".into()));
+        h.run();
+        g7_type(&mut h, "two", "Group limit", "25");
+        g7_type(&mut h, "two", "Group options", "5");
+        review_append(&mut h, &[",", "6"]);
+        g7_type(&mut h, "two", "List", "30");
+        review_append(&mut h, &[",", "40"]);
+        g7_type(&mut h, "two", "Source", "my source");
+        assert_eq!(
+            h.state().0,
+            json!([
+                {"name":"one","list":[10,20],"group":{"limit":12,"options":[2,3]},"source":"original"},
+                {"name":"two","list":[30,40],"group":{"limit":25,"options":[5,6]},"source":"my source"}
+            ])
+        );
+    }
+
+    #[test]
+    fn review_codes_list_then_delete_row() {
+        let mut h = g7_table(json!([
+            {"name":"one","list":[1],"source":"first"},
+            {"name":"two","list":[2],"source":"second"}
+        ]));
+        g7_type(&mut h, "one", "List", "10");
+        review_append(&mut h, &[","]);
+        h.get_all_by_label("×").next().unwrap().click();
+        h.run();
+        h.event(egui::Event::Text("99".into()));
+        h.run();
+        assert_eq!(h.state().0, json!([{"name":"two","list":[2],"source":"second"}]));
+    }
+
+    #[test]
+    fn review_codes_list_then_delete_row_accesskit() {
+        let mut h = g7_table(json!([
+            {"name":"one","list":[1],"source":"first"},
+            {"name":"two","list":[2],"source":"second"}
+        ]));
+        g7_type(&mut h, "one", "List", "10");
+        review_append(&mut h, &[","]);
+        h.get_all_by_label("×").next().unwrap().click_accesskit();
+        h.run();
+        h.event(egui::Event::Text("99".into()));
+        h.run();
+        assert_eq!(h.state().0, json!([{"name":"two","list":[2],"source":"second"}]));
+    }
+
+    #[test]
+    fn review_codes_cancel_reopen_then_append() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "999");
+        review_append(&mut h, &[","]);
+        h.get_by_label("Cancel").click();
+        h.run();
+        review_expect_entrance(&h, &expected);
+
+        review_open_entrance(&mut h);
+        g7_cell(&h, "T4", "Breaker (A)").focus();
+        h.run();
+        review_append(&mut h, &[",", "63"]);
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"].as_array_mut().unwrap().push(json!(63));
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_codes_clear_list_through_ok() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "");
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([]);
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_codes_mixed_object_and_plain_in_both_orders() {
+        let nested = json!({"name":"nested","a":{"b":5.4,"c":33},"source":"nested source"});
+        let plain = json!({"name":"plain","a":8,"source":"plain source"});
+        for rows in [json!([nested, plain]), json!([plain, nested])] {
+            let mut expected = rows.clone();
+            let mut h = g7_table(rows);
+            g7_type(&mut h, "plain", "A", "25");
+            g7_cell(&h, "nested", "A").click();
+            h.run();
+            h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+            h.event(egui::Event::Text("91".into()));
+            h.run();
+            let rows = expected.as_array_mut().unwrap();
+            rows.iter_mut().find(|row| row["name"] == "plain").unwrap()["a"] = json!(25);
+            assert_eq!(h.state().0, expected);
+        }
+    }
+
+    #[test]
+    fn review_codes_fecoergs_whole_cell_keeps_original_through_ok() {
+        let mut h = g7_dialog("fecoergs");
+        let expected = g7r2_entrance(&h);
+        g7_type(&mut h, "A1", "Resistive (kW)", "91");
+        g7_ok(&mut h);
+        assert!(
+            g7r2_entrance(&h) == expected && h.state().codes_dialog.is_none(),
+            "A1 actual: {}; dialog error: {:?}",
+            g7r2_entrance(&h)["tables"][0]["rows"][0],
+            h.state().codes_dialog.as_ref().map(|d| &d.error)
+        );
+    }
+
+    #[test]
+    fn review_codes_typing_a_list_into_an_empty_cell_keeps_focus() {
+        let mut h = g7_table(json!([{"name":"one","list":null,"source":"keep"}]));
+        g7_type(&mut h, "one", "List", "[1,2]");
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text("3,4".into()));
+        h.run();
+        assert_eq!(h.state().0, json!([{"name":"one","list":[3,4],"source":"keep"}]));
+    }
+
+    fn review_cell_at<'a, S>(h: &'a Harness<'_, S>, row: usize, header: &str) -> egui_kittest::Node<'a> {
+        let label = h.get_all_by_label(header).min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap();
+        let x = label.rect().left();
+        let y = label.rect().top();
+        let mut cells: Vec<_> = h
+            .get_all_by(|n| matches!(n.role(), Role::TextInput | Role::MultilineTextInput))
+            .filter(|n| (n.rect().left() - x).abs() < 12.0 && n.rect().top() > y)
+            .collect();
+        cells.sort_by(|a, b| a.rect().top().total_cmp(&b.rect().top()));
+        cells.into_iter().nth(row).unwrap_or_else(|| panic!("missing cell {row} / {header}"))
+    }
+
+    fn review_type_at<S>(h: &mut Harness<'_, S>, row: usize, header: &str, text: &str) {
+        review_cell_at(h, row, header).focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text(text.into()));
+        h.run();
+    }
+
+    fn review_data_table(rows: &[Value]) -> Harness<'static, (Value, String)> {
+        Harness::builder().with_size([5000.0, 2600.0]).with_step_dt(0.25).build_ui_state(
+            |ui, (rows, pasted)| editor(ui, "review", "rows", rows, &Hints::default(), pasted),
+            (json!(rows), String::new()),
+        )
+    }
+
+    #[test]
+    fn review_codes_electrical_catalogue_table_samples() {
+        let mut differences = Vec::new();
+        for (name, doc) in g7_electrical_files() {
+            let mut real_tables = Vec::new();
+            g7_tables(&doc["sections"], &mut real_tables);
+            for (table_no, rows) in real_tables.into_iter().enumerate() {
+                let mut paths = std::collections::BTreeSet::new();
+                for row in rows {
+                    g7_paths(row, &mut Vec::new(), &mut paths);
+                }
+                let mut cases = Vec::new();
+                let mut numeric = false;
+                for path in &paths {
+                    let at = |row: &Value| -> Option<Value> { path.iter().try_fold(row, |v, key| v.get(key)).cloned() };
+                    let header = |path: &[String]| column_name(path.join(".").trim_start_matches("columns."));
+                    if !numeric && let Some(i) = rows.iter().position(|r| at(r).is_some_and(|v| v.is_number())) {
+                        numeric = true;
+                        cases.push((i, header(path), "25", g7_expected(&rows[i], path, json!(25)).unwrap(), false));
+                    }
+                    if let Some(i) = rows.iter().position(|r| at(r).is_some_and(|v| v.is_array())) {
+                        let value = at(&rows[i]).unwrap();
+                        let (text, expected) = if value.as_array().unwrap().first().is_some_and(Value::is_number) {
+                            ("90", json!([90, 120]))
+                        } else {
+                            ("I", json!(["I", "II"]))
+                        };
+                        cases.push((i, header(path), text, g7_expected(&rows[i], path, expected).unwrap(), true));
+                    }
+                    if let Some(i) = rows.iter().position(|r| at(r).is_some_and(|v| v.is_object())) {
+                        cases.push((i, header(path), "25", rows[i].clone(), false));
+                        if let Some(i) = rows.iter().position(|r| at(r).is_some_and(|v| v.is_string())) {
+                            cases.push((i, header(path), "review", g7_expected(&rows[i], path, json!("review")).unwrap(), false));
+                        }
+                    }
+                }
+                if cases.is_empty() {
+                    let path = paths.iter().next().expect("object table has an editable leaf");
+                    let i = rows.iter().position(|row| path.iter().try_fold(row, |v, key| v.get(key)).is_some()).unwrap();
+                    let header = column_name(path.join(".").trim_start_matches("columns."));
+                    let expected = g7_expected(&rows[i], path, json!("review")).unwrap();
+                    cases.push((i, header, "review", expected, false));
+                }
+                for (i, header, text, expected_row, array) in cases {
+                    let mut h = review_data_table(rows);
+                    review_type_at(&mut h, i, &header, text);
+                    if array {
+                        let tail = if text == "90" { "120" } else { "II" };
+                        review_append(&mut h, &[",", " ", tail]);
+                    }
+                    let mut expected = rows.to_vec();
+                    expected[i] = expected_row;
+                    if h.state().0 != json!(expected) {
+                        differences.push(format!(
+                            "{name} table {table_no} row {i} {header}: actual {}; expected {}",
+                            h.state().0[i],
+                            expected[i]
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(differences.is_empty(), "{}", differences.join("\n"));
+    }
+
+    #[test]
+    fn review_codes_slow_decimal_through_ok() {
+        let mut h = g7_dialog("fecoergs");
+        let mut expected = g7r2_entrance(&h);
+        let row = expected["tables"][0]["rows"].as_array().unwrap().iter().position(|r| r["name"] == "A1").unwrap();
+        g7_type(&mut h, "A1", "Resistive (kW) fn", "5");
+        review_append(&mut h, &[".", "0", "0", "4"]);
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["columns"]["resistive_kw"]["fn"] = json!(5.004);
+        let actual = g7r2_entrance(&h);
+        assert_eq!(actual["tables"][0]["rows"][row], expected["tables"][0]["rows"][row]);
+        assert!(actual == expected);
+    }
+
+    #[test]
+    fn review_codes_slow_list_round_trips_bimc_and_xml() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "90");
+        review_append(&mut h, &[",", "120"]);
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([90, 120]);
+        review_expect_entrance(&h, &expected);
+
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("review.bimc");
+        let xml = dir.path().join("review.xml");
+        let session = &mut h.state_mut().session;
+        session.execute("save", &json!({"path":project})).unwrap();
+        session.execute("building_code_export", &json!({"path":xml,"discipline":"electrical","name":"Review"})).unwrap();
+
+        let mut opened = Session::new();
+        opened.execute("open", &json!({"path":project})).unwrap();
+        assert!(Value::Object(opened.model.resolve_code(Discipline::Electrical, "entrance").value) == expected, ".bimc");
+        let mut imported = Session::new();
+        imported.execute("building_code_import", &json!({"path":xml,"set":true})).unwrap();
+        assert!(Value::Object(imported.model.resolve_code(Discipline::Electrical, "entrance").value) == expected, "XML");
+    }
+
+    #[test]
+    fn review_codes_delete_accesskit_cannot_write_to_successor_in_session() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "90");
+        review_append(&mut h, &[","]);
+        let y = g7_cell(&h, "T4", "Breaker (A)").rect().center().y;
+        h.get_all_by_label("×").find(|n| (n.rect().center().y - y).abs() < 8.0).unwrap().click_accesskit();
+        h.run();
+        h.event(egui::Event::Text("120".into()));
+        h.run();
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"].as_array_mut().unwrap().remove(row);
+        let got = g7r2_entrance(&h);
+        let successor = &got["tables"][0]["rows"][row];
+        assert!(
+            got == expected && h.state().codes_dialog.is_none(),
+            "successor: {successor}; expected: {}; dialog: {:?}",
+            expected["tables"][0]["rows"][row],
+            h.state().codes_dialog.as_ref().map(|d| &d.error)
+        );
+    }
+
+    // The confirmation's cases (G7b).
+    // Insert inside codes::tree::tests in the archive copy.
+
+    fn g7br2_close_with_draft(accept: bool, pointer: bool) {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        let before = h.ctx.data(|d| d.count::<Typing>());
+        g7_type(&mut h, "T4", "Breaker (A)", "90");
+        review_append(&mut h, &[",", "120", ","]);
+        assert!(h.ctx.data(|d| d.count::<Typing>()) > before, "no staged cell text");
+        let button = h.get_by_label(if accept { "OK" } else { "Cancel" });
+        if pointer {
+            button.click();
+        } else {
+            button.click_accesskit();
+        }
+        h.run_steps(4);
+        if accept {
+            expected["tables"][0]["rows"][row]["breaker_a"] = json!([90, 120]);
+        }
+        review_expect_entrance(&h, &expected);
+        assert_eq!(h.ctx.data(|d| d.count::<Typing>()), before, "closed dialog retained staged cell text");
+    }
+
+    #[test]
+    fn review_codes_r2_no_draft_after_accesskit_ok() {
+        g7br2_close_with_draft(true, false);
+    }
+
+    #[test]
+    fn review_codes_r2_no_draft_after_accesskit_cancel() {
+        g7br2_close_with_draft(false, false);
+    }
+
+    #[test]
+    fn review_codes_r2_no_draft_after_pointer_ok() {
+        g7br2_close_with_draft(true, true);
+    }
+
+    #[test]
+    fn review_codes_r2_no_draft_after_pointer_cancel() {
+        g7br2_close_with_draft(false, true);
+    }
+
+    fn g7br2_paste_while_editing(pointer: bool) {
+        let mut h = g7_table(json!([{"name":"old","a":1},{"name":"last","a":2}]));
+        h.state_mut().1 = "name\ta\nreplacement\t17\nlast\t23".into();
+        h.run();
+        g7_type(&mut h, "old", "A", "91");
+        let paste = h.get_by_label("Use Pasted Rows");
+        if pointer {
+            paste.click();
+        } else {
+            paste.click_accesskit();
+        }
+        h.run();
+        let expected = json!([{"name":"replacement","a":17},{"name":"last","a":23}]);
+        assert_eq!(h.state().0, expected);
+        // No new edit of the replacement row has been requested.
+        review_append(&mut h, &["4"]);
+        assert_eq!(h.state().0, expected);
+    }
+
+    #[test]
+    fn review_codes_r2_paste_replaces_focused_row_by_pointer() {
+        g7br2_paste_while_editing(true);
+    }
+
+    #[test]
+    fn review_codes_r2_paste_replaces_focused_row_by_accesskit() {
+        g7br2_paste_while_editing(false);
+    }
+
+    #[test]
+    fn review_codes_r2_plain_cell_and_single_event_number() {
+        let mut h = g7_table(json!([{"name":"one","label":"before","number":12},{"name":"two","label":"keep","number":21}]));
+        g7_type(&mut h, "one", "Label", "after");
+        g7_type(&mut h, "one", "Number", "5.004");
+        g7_type(&mut h, "two", "Label", "also kept");
+        assert_eq!(h.state().0, json!([{"name":"one","label":"after","number":5.004},{"name":"two","label":"also kept","number":21}]));
+    }
+
+    fn g7br2_replace_input(h: &mut Harness<'_, (Value, String)>, old: &str, new: &str) {
+        h.get_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some(old)).focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text(new.into()));
+        h.run();
+    }
+
+    #[test]
+    fn review_codes_r2_plain_list_table_edits_and_adds() {
+        let mut h = g7_table(json!([[17, 22], [33, 44]]));
+        g7br2_replace_input(&mut h, "17", "55");
+        h.get_by_label("Add Row").click();
+        h.run();
+        assert_eq!(h.state().0, json!([[55, 22], [33, 44], [null, null]]));
+    }
+
+    #[test]
+    fn review_codes_r2_card_form_and_nested_table_edit() {
+        let mut h = g7_table(json!([
+            {"name":"one","label":"before","rows":[{"name":"inner","limit":12}]},
+            {"name":"two","label":"keep","rows":[{"name":"other","limit":21}]}
+        ]));
+        g7br2_replace_input(&mut h, "before", "after");
+        g7_type(&mut h, "inner", "Limit", "34");
+        assert_eq!(
+            h.state().0,
+            json!([
+                {"name":"one","label":"after","rows":[{"name":"inner","limit":34}]},
+                {"name":"two","label":"keep","rows":[{"name":"other","limit":21}]}
+            ])
+        );
+    }
+
+    #[test]
+    fn review_codes_r2_switch_tables_keeps_edits_at_their_rules() {
+        let mut h = g7_dialog("energisa");
+        let mut expected = g7r2_entrance(&h);
+        let row = g7r2_t4(&expected);
+        g7_type(&mut h, "T4", "Breaker (A)", "90,120");
+        let label = crate::codes::named("entrance", "members").0;
+        h.get_all_by_label(&label).rfind(|n| n.accesskit_node().role() == Role::Button).unwrap().click_accesskit();
+        h.run();
+        let seat = h
+            .get_all_by(|n| n.role() == Role::TextInput && n.value().as_deref() == Some("Rio Branco"))
+            .next()
+            .expect("Members editor did not open");
+        seat.focus();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text("Rio Branco atualizado".into()));
+        h.run();
+        let label = crate::codes::named("entrance", "tables").0;
+        h.get_all_by_label(&label).rfind(|n| n.accesskit_node().role() == Role::Button).unwrap().click_accesskit();
+        h.run();
+        g7_ok(&mut h);
+        expected["tables"][0]["rows"][row]["breaker_a"] = json!([90, 120]);
+        expected["members"][0]["seat"] = json!("Rio Branco atualizado");
+        review_expect_entrance(&h, &expected);
+    }
+
+    #[test]
+    fn review_codes_r2_leaving_cell_discards_raw_draft() {
+        let mut h = g7_table(json!([{"name":"one","list":[1]},{"name":"two","list":[2]}]));
+        let before = h.ctx.data(|d| d.count::<Typing>());
+        g7_type(&mut h, "one", "List", "10");
+        review_append(&mut h, &[","]);
+        assert!(h.ctx.data(|d| d.count::<Typing>()) > before);
+        g7_cell(&h, "two", "List").focus();
+        h.run_steps(3);
+        assert_eq!(h.state().0, json!([{"name":"one","list":[10]},{"name":"two","list":[2]}]));
+        assert_eq!(h.ctx.data(|d| d.count::<Typing>()), before);
+    }
+
+    #[test]
+    fn review_codes_r2_add_row_while_number_is_focused() {
+        for pointer in [false, true] {
+            let mut h = g7_table(json!([{"name":"one","limit":12},{"name":"two","limit":21}]));
+            g7_type(&mut h, "two", "Limit", "50");
+            let add = h.get_by_label("Add Row");
+            if pointer {
+                add.click();
+            } else {
+                add.click_accesskit();
+            }
+            h.run();
+            assert_eq!(
+                h.state().0,
+                json!([
+                    {"name":"one","limit":12},{"name":"two","limit":50},{"name":null,"limit":null}
+                ])
+            );
+        }
     }
 }

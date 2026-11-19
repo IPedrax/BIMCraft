@@ -687,7 +687,7 @@ msgstr ""
 
 #: crates/ui-egui/src/codes/tree.rs:354
 #: crates/ui-egui/src/codes/tree.rs:371
-#: crates/ui-egui/src/codes/tree.rs:542
+#: crates/ui-egui/src/codes/tree.rs:596
 #: crates/ui-egui/src/codes.rs:827
 #: crates/ui-egui/src/curtain.rs:339
 msgid "Add Row"
@@ -3957,7 +3957,7 @@ msgid "Copper"
 msgstr "Kupfer"
 
 #: crates/core/src/commands.rs:2238
-#: crates/ui-egui/src/codes/tree.rs:381
+#: crates/ui-egui/src/codes/tree.rs:393
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -4010,7 +4010,7 @@ msgstr "Bericht kopieren"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "ID, GUID und IFC GlobalId kopieren"
 
-#: crates/ui-egui/src/codes/tree.rs:381
+#: crates/ui-egui/src/codes/tree.rs:393
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
@@ -4727,9 +4727,9 @@ msgid "Delete this code from the project. If the project uses it, its rules are 
 msgstr ""
 
 #: crates/ui-egui/src/codes/tree.rs:348
-#: crates/ui-egui/src/codes/tree.rs:432
-#: crates/ui-egui/src/codes/tree.rs:489
-#: crates/ui-egui/src/codes/tree.rs:531
+#: crates/ui-egui/src/codes/tree.rs:445
+#: crates/ui-egui/src/codes/tree.rs:521
+#: crates/ui-egui/src/codes/tree.rs:585
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr ""
@@ -11118,7 +11118,7 @@ msgstr ""
 msgid "Paste onto these levels:"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:389
+#: crates/ui-egui/src/codes/tree.rs:401
 msgid "Paste rows here"
 msgstr ""
 
@@ -16459,8 +16459,12 @@ msgstr "Dieses Projekt enthält keine Geschosse. Mit dem Werkzeug Geschoss eines
 msgid "This project has {}, the file {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:484
+#: crates/ui-egui/src/codes/tree.rs:514
 msgid "This row gives one value for these columns"
+msgstr ""
+
+#: crates/ui-egui/src/codes/tree.rs:512
+msgid "This row gives this value in the columns after it"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3885
@@ -17241,7 +17245,7 @@ msgstr "Obere Begrenzung"
 msgid "Use"
 msgstr "Verwenden"
 
-#: crates/ui-egui/src/codes/tree.rs:390
+#: crates/ui-egui/src/codes/tree.rs:402
 msgid "Use Pasted Rows"
 msgstr ""
 
