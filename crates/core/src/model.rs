@@ -5549,6 +5549,14 @@ impl Model {
         if self.grid_types.is_empty() {
             self.grid_types = crate::grids::types(self.language);
         }
+        // A file from before grid types holds none of the grid line patterns either: those its starter types draw in are
+        // added. Its `grid_types` are filled from the starter set on reading, so it is the format that tells it apart. One
+        // of the same name stays as it is.
+        if self.format < FORMAT {
+            for (name, pattern) in crate::lines::grid_patterns(self.language) {
+                self.line_patterns.entry(name).or_insert(pattern);
+            }
+        }
         let wanted = crate::grids::default_type(&self.grid_types, self.language).cloned().unwrap_or_default();
         for e in self.elements.values_mut() {
             if let Element::Grid(g) = e
