@@ -2,6 +2,7 @@
 
 use serde_json::{Value, json};
 
+use super::matrix_tests::{breakers_up, method_probe};
 use super::*;
 use crate::engine::Session;
 
@@ -951,4 +952,208 @@ fn a_system_naming_a_voltage_an_older_project_took_away_is_refused() {
         json!({"discipline": "electrical", "rules": {"distribution_systems": {"127 DC": {"phases": 1, "wires": 2, "l_n": "127 V"}}}});
     assert!(s.execute("building_code", &system).is_err());
     assert!(!s.model.distribution_systems.contains_key("127 DC"));
+}
+
+#[test]
+fn a_method_a_project_changed_before_amendments_held_it_still_answers_as_changed() {
+    // Before a utility's method was changed in its amendment, a project kept the change among its own (`changes`), and
+    // `demand` read it there. Such a file answers as it did: the same as the change made in the amendment today.
+    let mut checked = 0;
+    for code in of(Discipline::Electrical) {
+        for key in ["unit_demand", "building_demand", "entrance"] {
+            let Some(original) = code.sections.get(key) else { continue };
+            let mut changed = original.clone();
+            if key == "building_demand" {
+                changed["factor"] = json!(2.0);
+            } else {
+                breakers_up(&mut changed);
+            }
+            let held = |s: &mut Session| {
+                let p = if code.amends.is_empty() {
+                    json!({"discipline": "electrical", "set": code.code})
+                } else {
+                    json!({"discipline": "electrical", "set": code.amends, "amendments": [code.code]})
+                };
+                run(s, "building_code", p);
+            };
+            let (cmd, probe) = method_probe(code, key, &changed);
+            // Today's way: the change in its amendment; a country's method, held by the base, in the project's copy of it.
+            let mut today = Session::new();
+            held(&mut today);
+            if code.amends.is_empty() {
+                let mut copy = code.clone();
+                copy.code = format!("{} (project)", code.code);
+                copy.based_on = code.code.clone();
+                copy.sections.insert(key.into(), changed.clone());
+                let codes = &mut *today.model_mut().codes;
+                codes.own.push(copy.clone());
+                codes.choice_mut(Discipline::Electrical).code = Some(copy.code.clone());
+            } else {
+                run(&mut today, "building_code", json!({"discipline": "electrical", "amend": code.code, "rules": {key: changed}}));
+            }
+            let expected = run(&mut today, cmd, probe.clone());
+            // The older file: the change among the project's own, read back from its text.
+            let mut older = Session::new();
+            held(&mut older);
+            older
+                .model_mut()
+                .codes
+                .choice_mut(Discipline::Electrical)
+                .changes
+                .insert(key.into(), changed.as_object().cloned().unwrap_or_default());
+            let text = serde_json::to_string(&*older.model).unwrap();
+            let (m, left_out) = crate::model::Model::read(&text).unwrap();
+            assert!(left_out.is_empty(), "{} {key}: {left_out:?}", code.code);
+            *older.model_mut() = m;
+            older.model.check().unwrap_or_else(|e| panic!("{} {key}: the read file is a valid project: {e}", code.code));
+            if code.amends.is_empty() {
+                // A country's method, held by the base: not moved (a slice of its own), and not lost.
+                assert!(older.model.codes.choice(Discipline::Electrical).changes.contains_key(key), "{} {key}: kept", code.code);
+                continue;
+            }
+            let got = run(&mut older, cmd, probe.clone());
+            let answer = |r: &Value| if key == "building_demand" { r["demand"].clone() } else { r["category"].clone() };
+            assert_eq!(answer(&got), answer(&expected), "{} {key}: the older file's change, asked {probe}", code.code);
+            assert!(
+                !older.model.codes.choice(Discipline::Electrical).changes.contains_key(key),
+                "{} {key}: moved into its layer",
+                code.code
+            );
+            if !code.amends.is_empty() {
+                // It is the amendment's now: a change made today wins, and a reset takes both away.
+                let mut again = original.clone();
+                if key == "building_demand" {
+                    again["factor"] = json!(3.0);
+                } else {
+                    breakers_up(&mut again);
+                    breakers_up(&mut again);
+                }
+                let mut edited = Session::new();
+                *edited.model_mut() = (*older.model).clone();
+                run(&mut edited, "building_code", json!({"discipline": "electrical", "amend": code.code, "rules": {key: again}}));
+                let mut fresh = Session::new();
+                held(&mut fresh);
+                run(&mut fresh, "building_code", json!({"discipline": "electrical", "amend": code.code, "rules": {key: again}}));
+                assert_eq!(
+                    answer(&run(&mut edited, cmd, probe.clone())),
+                    answer(&run(&mut fresh, cmd, probe.clone())),
+                    "{} {key}: edited after",
+                    code.code
+                );
+                let mut reset = Session::new();
+                *reset.model_mut() = (*older.model).clone();
+                run(&mut reset, "building_code", json!({"discipline": "electrical", "amend": code.code, "reset": key}));
+                let mut library = Session::new();
+                held(&mut library);
+                assert_eq!(
+                    answer(&run(&mut reset, cmd, probe.clone())),
+                    answer(&run(&mut library, cmd, probe.clone())),
+                    "{} {key}: reset",
+                    code.code
+                );
+                // Another utility chosen in its place answers by its own method, not by the change.
+                if let Some(other) =
+                    of(Discipline::Electrical).find(|o| o.code != code.code && o.amends == code.amends && o.sections.contains_key(key))
+                {
+                    let (ocmd, oprobe) = method_probe(other, key, &other.sections[key]);
+                    let mut swapped = Session::new();
+                    *swapped.model_mut() = (*older.model).clone();
+                    run(&mut swapped, "building_code", json!({"discipline": "electrical", "amendments": [other.code]}));
+                    let mut plain = Session::new();
+                    run(&mut plain, "building_code", json!({"discipline": "electrical", "set": other.amends, "amendments": [other.code]}));
+                    assert_eq!(
+                        answer(&run(&mut swapped, ocmd, oprobe.clone())),
+                        answer(&run(&mut plain, ocmd, oprobe.clone())),
+                        "{} {key}: {} chosen instead",
+                        code.code,
+                        other.code
+                    );
+                }
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked >= 8, "every utility's method was asked ({checked})");
+}
+
+#[test]
+fn an_older_files_method_change_goes_to_the_utility_it_names_or_else_to_the_one_in_force() {
+    // Two utilities held, one over the other. A whole method that names the lower one goes into the lower one; a change
+    // that names none (a rule or two, as an older dialog kept it) into the one in force when the file was saved, the upper.
+    let mut checked = 0;
+    let all: Vec<&BuildingCode> = of(Discipline::Electrical).collect();
+    for code in all.iter().copied().filter(|c| !c.amends.is_empty()) {
+        for key in ["unit_demand", "building_demand", "entrance"] {
+            let Some(original) = code.sections.get(key) else { continue };
+            let Some(over) = all.iter().find(|o| o.code != code.code && o.amends == code.amends && o.sections.contains_key(key)) else {
+                continue;
+            };
+            let answer = |r: &Value| if key == "building_demand" { r["demand"].clone() } else { r["category"].clone() };
+            let held = json!({"discipline": "electrical", "set": code.amends, "amendments": [code.code, over.code]});
+            let older = |changed: Value| {
+                let mut s = Session::new();
+                run(&mut s, "building_code", held.clone());
+                s.model_mut()
+                    .codes
+                    .choice_mut(Discipline::Electrical)
+                    .changes
+                    .insert(key.into(), changed.as_object().cloned().unwrap_or_default());
+                let (m, _) = crate::model::Model::read(&serde_json::to_string(&*s.model).unwrap()).unwrap();
+                *s.model_mut() = m;
+                s
+            };
+            let today = |target: &str, rules: Value| -> Result<Session, String> {
+                let mut s = Session::new();
+                run(&mut s, "building_code", held.clone());
+                s.execute("building_code", &json!({"discipline": "electrical", "amend": target, "rules": {key: rules}}))?;
+                Ok(s)
+            };
+            // The lower one's whole method, named.
+            let mut changed = original.clone();
+            if key == "building_demand" {
+                changed["factor"] = json!(2.0);
+            } else {
+                breakers_up(&mut changed);
+            }
+            let Ok(mut expected) = today(&code.code, changed.clone()) else { continue }; // refused under another (G9)
+            let mut got = older(changed);
+            assert_eq!(
+                got.model.resolve_code(Discipline::Electrical, key).value,
+                expected.model.resolve_code(Discipline::Electrical, key).value,
+                "{} named, under {}: the rules in force",
+                code.code,
+                over.code
+            );
+            for c in [code, *over] {
+                let (cmd, probe) = method_probe(c, key, &c.sections[key]);
+                assert_eq!(
+                    answer(&run(&mut got, cmd, probe.clone())),
+                    answer(&run(&mut expected, cmd, probe.clone())),
+                    "{} named, under {}: asked {probe}",
+                    code.code,
+                    over.code
+                );
+            }
+            // A change that names no utility: the one in force, the upper.
+            let field = if key == "building_demand" { "factor" } else { "source" };
+            let partial = json!({field: if key == "building_demand" { json!(2.5) } else { json!("changed") }});
+            if let Ok(mut expected) = today(&over.code, partial.clone()) {
+                let mut got = older(partial);
+                for c in [code, *over] {
+                    let (cmd, probe) = method_probe(c, key, &c.sections[key]);
+                    let a = run(&mut got, cmd, probe.clone());
+                    let b = run(&mut expected, cmd, probe.clone());
+                    assert_eq!(
+                        (answer(&a), &a["source"]),
+                        (answer(&b), &b["source"]),
+                        "unnamed change, {} under {}: asked {probe}",
+                        code.code,
+                        over.code
+                    );
+                }
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked >= 4, "pairs asked ({checked})");
 }

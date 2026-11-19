@@ -264,6 +264,7 @@ pub mod symbol_set;
 pub mod text;
 pub mod texture;
 mod timber;
+pub mod title_starters;
 pub mod titleblock;
 #[cfg(test)]
 mod titleblock_tests;
@@ -278,6 +279,8 @@ mod units_tests;
 #[cfg(test)]
 mod vertical_tools_tests;
 pub mod view3d;
+#[cfg(test)]
+mod wall_mitre_tests;
 #[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;

@@ -938,6 +938,19 @@ sheet when nothing is selected. No title block of the project's may be called `n
 entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
 shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
 
+**Starters and papers.** A title block lists the papers it is for (`sizes`, `A3`, `ANSI D`, kept once in capitals; under Size in the
+editor as Papers). A sheet that names no title block is drawn with the first of the project's, by name, that lists its paper
+(`Model::title_block_of`), else with the built-in box; `none` and a name still mean what they did, and a sheet's `elements` say which
+one by size as `title_block_by_size`, its Properties as `NAME (by paper size)`. `title_block {starter: …}` (the dialog's New from
+starter) starts one from a ready-made stamp, `title_starters.rs`: ISO 7200, ASME Y14.1 and NBR 16752, each for small papers (A4 and A3,
+ANSI A and B) and large (A2 to A0, ANSI C to E), 6 in all, named in the command's listing. They are original layouts: a ruled grid of
+cells, each a small label over a field, built from the data fields those standards ask for (project, client, title, organization,
+sheet number, scale, date, revision, created and approved by, page) and not from any CAD vendor's title blocks. Every field is
+automatic (Manage > Project Information fills them) but Checked by and Approved by, each sheet's own, and the labels come in the
+project's language (`Language::word`, the project catalogs). Their numbers are unchecked against the standards' texts. Loading one
+changes how the sheets of its papers are drawn, so `sizes: []` leaves it for the sheets that name it; two blocks that list one paper
+are told in the reply's `notes`, and the one named first wins.
+
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
 circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their
