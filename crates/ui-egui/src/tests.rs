@@ -3654,6 +3654,50 @@ fn the_type_selectors_list_stays_in_the_window_and_scrolls() {
 }
 
 #[test]
+fn a_nudge_is_ten_pixels_worth_rounded_down_to_one_two_or_five() {
+    // Pixels a millimetre: 10 px is 125 mm, 250 mm, 667 mm, 33 mm and half a millimetre.
+    for (scale, step) in [(0.08, 100.0), (0.04, 200.0), (0.015, 500.0), (0.3, 20.0), (20.0, 1.0), (f64::NAN, 1.0), (0.0, 1.0)] {
+        assert_eq!(crate::nudge_step(scale), step, "{scale} px/mm");
+    }
+}
+
+#[test]
+fn the_arrow_keys_nudge_the_selection_a_step_the_zoom_gives_and_shift_ten() {
+    // Issue 529: as in Revit, the arrow keys move what is selected a little, without Move.
+    let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000]}}"));
+    let column = ids(&h, "column")[0];
+    let at = |h: &Harness<BimApp>| serde_json::from_value::<[f64; 2]>(field(h, column, "at")).unwrap();
+    // Nothing selected: the arrows move nothing.
+    key(&mut h, Key::ArrowRight);
+    assert_eq!(at(&h), [4000.0, 3000.0]);
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(h.state().selection, vec![column]);
+    let key_of = h.state().plan_key().unwrap();
+    let step = crate::nudge_step(h.state().canvas.view(key_of).unwrap().scale);
+    assert!(step >= 1.0);
+    key(&mut h, Key::ArrowRight);
+    assert_eq!(at(&h), [4000.0 + step, 3000.0]);
+    key(&mut h, Key::ArrowUp);
+    assert_eq!(at(&h), [4000.0 + step, 3000.0 + step]);
+    // Shift: ten steps.
+    shift_key(&mut h, Key::ArrowLeft);
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0 + step]);
+    key(&mut h, Key::ArrowDown);
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0]);
+    // Each press is a Move of its own: Undo takes back the last one alone, and the column stays selected for more.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0 + step]);
+    // Another tool has the arrows to itself.
+    key(&mut h, Key::Escape);
+    h.state_mut().selection = vec![column];
+    h.state_mut().tool = Tool::Wall(Vec::new());
+    h.run();
+    key(&mut h, Key::ArrowRight);
+    assert_eq!(at(&h), [4000.0 - 9.0 * step, 3000.0 + step]);
+}
+
+#[test]
 fn space_turns_a_column_taken_up_and_dragged_and_the_drag_goes_on() {
     // Issue 470: as in Revit, Space while a placed element is dragged turns it a quarter turn about its own point.
     let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000]}}"));

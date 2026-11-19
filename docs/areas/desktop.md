@@ -269,6 +269,11 @@ mouse don't have (`Orbit::navigate`, issue 459). A primary drag alone never move
 selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
 them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
+In Modify the arrow keys nudge the selection, as Revit's do (`BimApp::nudge_keys`, issue 529): right, left, up or down on screen in a
+plan or a ceiling plan however it is turned, along its line or up in a section or an elevation (`move` with its `view`). A step is
+`NUDGE_PX` pixels at the view's zoom rounded down to 1, 2 or 5 times a power of ten, at least a millimetre (`nudge_step`); Shift
+makes it ten. Each press is one `move` and one Undo step, under Move's rules. A field with the keyboard, a dialog or another tool
+keeps the arrows.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
 model (`spacemouse.rs`): the cap pans, pulling it toward you zooms in, twisting it turns the view about the vertical and tilting
 it raises or lowers the eye, about the middle of the picture, while the window has focus. Like the hand it moves only the active
