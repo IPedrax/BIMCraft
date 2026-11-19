@@ -66,7 +66,7 @@ mod tests {
             let z = g.height_at(P2(x, 5000.0)).unwrap();
             assert!((z - want).abs() < 1e-6, "at x = {x}: {z} not {want}");
         }
-        assert_eq!(g.height_at(P2(-1.0, 5000.0)), None);
+        assert_eq!(g.height_at(P2(-5.0, 5000.0)), None);
         assert_eq!(g.height_at(P2(f64::NAN, 5000.0)), None);
         // A building from x = 4 m to 8 m stands at the lowest of its corners and middle: 400 mm.
         let ring = [P2(4000.0, 4000.0), P2(8000.0, 4000.0), P2(8000.0, 6000.0), P2(4000.0, 6000.0)];

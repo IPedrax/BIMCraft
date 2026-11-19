@@ -75,7 +75,10 @@ fn buildings_become_masses_with_their_heights_and_their_osm_ids() {
     assert_eq!(house.params.get("OSM Building"), Some(&json!("house")));
     let area = crate::geom::area(&house.footprint());
     assert!((380e6..430e6).contains(&area), "20 m by 20 m, about: {area} mm²");
-    assert!(house.footprint().iter().all(|p| p.0 > -1.0 && p.1 > -1.0), "from the origin, which is where the location is");
+    // North east of the origin, which is where the site is. The project's axes are the map grid's (upstream's convention: project
+    // north is grid north unless the site is turned), here about 0.65 degrees off true north, so a corner north of another is a
+    // little west of it.
+    assert!(house.footprint().iter().all(|p| p.0 > -500.0 && p.1 > -500.0), "from the origin, which is where the site is");
     let (_, other) = all.iter().find(|(_, m)| osm_id(m) == "way/2").unwrap();
     assert_eq!(other.height, 9000.0, "three levels of 3 m");
     assert_eq!(other.name, "way/2", "named for its id when the file names it nothing");
@@ -94,8 +97,12 @@ fn buildings_stand_on_the_terrain_at_its_lowest_under_them() {
     let data = file(&[way(1, &square(0.0005, 0.0005, 20.0), r#""building":"yes","height":"10""#)]);
     let r = run(&mut s, "import_osm", json!({"data": data}));
     let (_, m) = masses(&s).remove(0);
-    // About 51 m east of the origin: 5.1 m of ground at the west wall.
-    assert!((m.base_offset - 5100.0).abs() < 60.0, "{}", m.base_offset);
+    // About 51 m east of the origin: the ground is x / 10 high, so it stands at the lowest of its corners and middle.
+    let ring = m.footprint();
+    let n = ring.len() as f64;
+    let middle = ring.iter().map(|q| q.0).sum::<f64>() / n;
+    let want = ring.iter().map(|q| q.0).chain([middle]).fold(f64::MAX, f64::min) / 10.0;
+    assert!((m.base_offset - want).abs() < 1.0 && (want - 5100.0).abs() < 150.0, "{} against {want}", m.base_offset);
     assert_eq!(m.height, 10000.0);
     assert_eq!(r["off_terrain"], 0);
     // Past the edge of the terrain there is no ground to find: it stands at the level, and the report says so.

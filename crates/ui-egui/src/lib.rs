@@ -90,6 +90,7 @@ mod ribbon;
 mod script;
 mod section;
 mod section_box;
+mod site;
 mod section_worker;
 pub mod settings;
 mod shape;
@@ -1094,6 +1095,8 @@ pub struct BimApp {
     pub(crate) plugins: bimcraft_plugin::Plugins,
     pub(crate) plugin_tabs: Vec<bimcraft_plugin::RibbonTab>,
     pub(crate) plugins_dialog: bool,
+    /// The site tools' boxes (the Massing tab's Site and Context panels) and the fetch running for one.
+    site: site::Site,
     /// A report a plugin's function asked the window to show, while it is open.
     pub(crate) plugin_report: Option<plugins::PluginReport>,
     /// A plugin's function whose path the user is choosing in the system's dialog: its command, and the parameters with
@@ -1942,6 +1945,7 @@ impl BimApp {
             plugins: bimcraft_plugin::Plugins::empty(),
             plugin_tabs: Vec::new(),
             plugins_dialog: false,
+            site: site::Site::default(),
             plugin_report: None,
             plugin_pick: None,
             plugins_job: None,
@@ -2298,6 +2302,7 @@ impl BimApp {
         self.poll_swap(&ctx);
         self.poll_export(&ctx);
         self.poll_plugins(&ctx);
+        self.poll_site(&ctx);
         self.poll_autosave(&ctx);
         self.fly_frame(&ctx);
         self.keys(&ctx);
@@ -2633,6 +2638,7 @@ impl BimApp {
             || self.autosave.show_recovery
             || self.installing()
             || self.importing()
+            || self.fetching()
             || self.report_open()
             || self.export_dialog.as_ref().is_some_and(|d| !d.picking)
             // An open menu takes the keys: Esc closes it, not the tool.
@@ -5186,6 +5192,7 @@ impl BimApp {
                 }
             });
         });
+        self.site_panels(ui);
     }
 
     /// Show Mass (MH): the masses in the view on screen, hidden if they show and shown if they're hidden.
@@ -7356,6 +7363,7 @@ impl BimApp {
     }
 
     fn dialogs(&mut self, ctx: &Context) {
+        self.site_windows(ctx);
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
         self.group_conflict_window(ctx);
