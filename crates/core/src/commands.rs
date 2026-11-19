@@ -678,7 +678,8 @@ other_files(
          width. `walls`, `floors`, `roof`, `doors` (all true) leave one out. Up to 200 masses at a time, in one step; one that has walls, floors or a roof made by face already is \
          skipped (`update_by_face` makes them follow the mass). Ordinary elements from then on, marked as the by-face ones are",
         building_shell,
-    ),    edit(
+    ),
+    edit(
         "fetch_osm",
         "Fetch OpenStreetMap",
         &[],
@@ -689,7 +690,8 @@ other_files(
          give it to `import_osm` as `data`. The reply is `import_osm`'s, with `fetched` (the box, its area, the bytes, and whether they \
          came from the cache) and the credit OpenStreetMap's licence asks for",
         fetch_osm,
-    ),    edit(
+    ),
+    edit(
         "fetch_terrain",
         "Fetch Terrain",
         &[],
@@ -715,7 +717,7 @@ other_files(
          one by default), `offset` mm above it. One not over the toposolid is skipped and said; reports what moved, from what to what",
         place_on_terrain,
     ),
-    edit(
+    edit_files(
         "import_osm",
         "Import OpenStreetMap",
         &[],
@@ -733,7 +735,9 @@ other_files(
          to 200) also makes the shell of those masses (`building_shell`). Reports what was made, updated and skipped, and why. Data \
          (c) OpenStreetMap contributors, under the ODbL",
         import_osm,
-    ),    edit(
+        Files::Read,
+    ),
+    edit(
         "update_by_face",
         ui_msg!("Update to Face"),
         &["UF"],
