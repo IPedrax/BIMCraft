@@ -3079,9 +3079,13 @@ impl BimApp {
                 self.open_reinforce();
                 return true;
             }
-            // The steel list and the cut plan: commands with these aliases, and one dialog.
-            "BL" | "CU" => {
-                self.open_steel(self.typed == "CU");
+            // The materials, the steel list and the cut plan: commands with these aliases, and one dialog.
+            "BL" | "CU" | "QT" => {
+                self.open_steel(match self.typed.as_str() {
+                    "CU" => steel::Page::Plan,
+                    "QT" => steel::Page::Materials,
+                    _ => steel::Page::List,
+                });
                 return true;
             }
             "VV" | "VG" => {

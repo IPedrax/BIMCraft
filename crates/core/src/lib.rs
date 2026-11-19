@@ -204,6 +204,9 @@ mod pset_tests;
 pub mod publish;
 #[cfg(test)]
 mod publish_tests;
+pub mod quantities;
+#[cfg(test)]
+mod quantities_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 #[cfg(test)]
