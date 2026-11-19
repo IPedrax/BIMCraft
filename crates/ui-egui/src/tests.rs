@@ -3654,6 +3654,56 @@ fn the_type_selectors_list_stays_in_the_window_and_scrolls() {
 }
 
 #[test]
+fn space_turns_a_column_taken_up_and_dragged_and_the_drag_goes_on() {
+    // Issue 470: as in Revit, Space while a placed element is dragged turns it a quarter turn about its own point.
+    let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000]}}"));
+    let column = ids(&h, "column")[0];
+    let (a, b) = (h.state().screen(P2(4000.0, 3000.0)), h.state().screen(P2(5000.0, 2000.0)));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.25, 0.5] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    key(&mut h, Key::Space);
+    assert_eq!(field(&h, column, "angle"), json!(90.0), "turned while it is dragged");
+    assert_eq!(field(&h, column, "at"), json!([4000.0, 3000.0]), "about its own point, not yet moved");
+    for t in [0.75, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    let at = serde_json::from_value::<[f64; 2]>(field(&h, column, "at")).unwrap();
+    assert!(at[0] > 4500.0 && at[1] < 2500.0, "the drag went on: {at:?}");
+    assert_eq!(field(&h, column, "angle"), json!(90.0));
+    // Selected and not dragged, Space turns it again where it stands.
+    assert_eq!(h.state().selection, vec![column]);
+    key(&mut h, Key::Space);
+    assert_eq!(field(&h, column, "angle"), json!(180.0));
+    assert_eq!(serde_json::from_value::<[f64; 2]>(field(&h, column, "at")).unwrap(), at);
+}
+
+#[test]
+fn space_turns_a_selected_component_and_leaves_a_walls_flip_alone() {
+    let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"Bed\", \"type\": \"900 x 2000\", \"at\": [2000, 2000]}}"));
+    let bed = ids(&h, "component")[0];
+    h.state_mut().selection = vec![bed];
+    h.run();
+    key(&mut h, Key::Space);
+    assert_eq!((field(&h, bed, "angle"), field(&h, bed, "at")), (json!(90.0), json!([2000.0, 2000.0])));
+    assert_eq!(h.state().session.history().last(), Some(&"Rotate"));
+    // A wall has a flip, which Space keeps doing: it isn't turned.
+    let wall = ids(&h, "wall")[0];
+    h.state_mut().selection = vec![wall];
+    h.run();
+    key(&mut h, Key::Space);
+    assert_eq!(h.state().session.history().last(), Some(&"Flip"));
+}
+
+#[test]
 fn the_component_tool_places_a_familys_type_that_space_turns() {
     let mut h = app(BOX);
     tool(&mut h, "Component");

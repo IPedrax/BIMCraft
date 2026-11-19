@@ -2785,6 +2785,10 @@ impl BimApp {
         // a door or a window, so holding Shift or Space cannot fill the Undo history.
         let plain_space =
             |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
+        // Space on a component or a column taken up again, dragged or alone in the selection: a quarter turn, as Revit's.
+        if ctx.input(|i| i.events.iter().any(plain_space)) && self.space_turn() {
+            pressed(Modifiers::NONE, Key::Space);
+        }
         if matches!(self.tool, Tool::Door | Tool::Window | Tool::Modify)
             && ctx.input(|i| i.events.iter().any(plain_space))
             && self.opening_space()
@@ -3759,6 +3763,33 @@ impl BimApp {
                     || m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any())
             })
             .collect()
+    }
+
+    /// Space in Modify on a selection with nothing to flip: a quarter turn counter-clockwise, as Revit's Space gives a component
+    /// taken up again. While the selection is dragged it turns as it goes, about the one element's own point (a component's or
+    /// a column's), else about the point it was taken by, and the drag goes on with it turned. Not dragged, one component or
+    /// column selected turns about its own point. Whether it turned: else Space is left to the flips.
+    fn space_turn(&mut self) -> bool {
+        if self.tool != Tool::Modify
+            || self.selection.is_empty()
+            || self.sketch.is_some()
+            || !matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_))
+            || !self.flippable().is_empty()
+        {
+            return false;
+        }
+        let m = &self.session.model;
+        let own = match self.selection.as_slice() {
+            &[id] => match m.elements.get(id) {
+                Some(Element::Component(c)) if c.adaptive.is_none() => Some(c.at),
+                Some(Element::Column(c)) => Some(c.at),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(about) = own.or_else(|| self.canvas.moving_from()) else { return false };
+        let ids = self.selection.clone();
+        self.run("rotate", json!({"ids": ids, "about": [about.0, about.1], "angle": 90.0})).is_some()
     }
 
     /// The selected walls, stairs and openings turned over, in one Undo step: Revit's flip arrows, or Space. Stairs selected climb
