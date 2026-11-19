@@ -81,6 +81,8 @@ pub enum Kind {
     View3D,
     Sheet,
     Schedule,
+    /// A reinforced member's detail drawing.
+    RebarDetail,
     /// The whole project.
     Project,
 }
@@ -95,6 +97,7 @@ impl Kind {
             Kind::View3D => "3D View",
             Kind::Sheet => "Sheet",
             Kind::Schedule => "Schedule",
+            Kind::RebarDetail => "Reinforcement Detail",
             Kind::Project => "Project",
         }
     }
@@ -102,7 +105,7 @@ impl Kind {
     /// What content it can be made into.
     pub fn gives(self) -> &'static [Takes] {
         match self {
-            Kind::Plan | Kind::Section | Kind::Elevation | Kind::Sheet => &[Takes::Drawing],
+            Kind::Plan | Kind::Section | Kind::Elevation | Kind::Sheet | Kind::RebarDetail => &[Takes::Drawing],
             Kind::View3D => &[Takes::Drawing, Takes::Model],
             Kind::Schedule => &[Takes::Table, Takes::Drawing],
             Kind::Project => &[Takes::Model],
@@ -120,6 +123,7 @@ pub fn kind_of(m: &Model, id: Option<Id>) -> Option<Kind> {
         Element::View3D(_) => Kind::View3D,
         Element::Sheet(_) => Kind::Sheet,
         Element::Schedule(_) => Kind::Schedule,
+        Element::RebarDetail(_) => Kind::RebarDetail,
         _ => return None,
     })
 }

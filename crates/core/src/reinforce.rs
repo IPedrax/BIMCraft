@@ -27,17 +27,37 @@ pub struct Bar {
 
 /// A host's own axes: `a` along it, `b` across and `c` up in its section, from the point `o`. Lengths of a bar are measured
 /// along them.
-struct Frame {
-    o: P3,
-    a: P3,
-    b: P3,
-    c: P3,
+pub(crate) struct Frame {
+    pub(crate) o: P3,
+    pub(crate) a: P3,
+    pub(crate) b: P3,
+    pub(crate) c: P3,
 }
 
 impl Frame {
     fn at(&self, a: f64, b: f64, c: f64) -> P3 {
         add(add(add(self.o, mul(self.a, a)), mul(self.b, b)), mul(self.c, c))
     }
+}
+
+/// A beam's own axes and size, which its bars and its detail drawing are measured in.
+pub(crate) struct Located {
+    pub(crate) frame: Frame,
+    pub(crate) length: f64,
+    pub(crate) width: f64,
+    pub(crate) depth: f64,
+    pub(crate) round: bool,
+}
+
+/// The frame of beam `host` (its centre line's start, along it, across it and up), over its level; none for what has no type.
+pub(crate) fn beam_frame(m: &Model, host: &Element) -> Option<Located> {
+    let g = m.run_geom(host)?;
+    let along = unit(sub(g.b, g.a));
+    let across = unit([-along[1], along[0], 0.0]);
+    let up = crate::view3d::cross(along, across);
+    let level = m.level_of(host).map_or(0.0, |l| m.elevation(l));
+    let frame = Frame { o: [g.a[0], g.a[1], g.a[2] - level], a: along, b: across, c: up };
+    Some(Located { frame, length: g.length(), width: g.width, depth: g.depth, round: g.round })
 }
 
 /// How far the concrete reaches past a bar's outer face: at the top and bottom faces of a beam, a footing or a floor (the ends
@@ -495,17 +515,12 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
     let x = Common { cover: cv, grade, grade_stirrup, clearance };
     let (bars, notes) = match host {
         Element::Beam(_) => {
-            let g = m.run_geom(host).ok_or("reinforce: the beam has no type")?;
-            if g.round {
+            let b = beam_frame(m, host).ok_or("reinforce: the beam has no type")?;
+            if b.round {
                 return Err("reinforce: a round beam isn't reinforced yet; a rectangular one is".into());
             }
-            let along = unit(sub(g.b, g.a));
-            let across = unit([-along[1], along[0], 0.0]);
-            let up = crate::view3d::cross(along, across);
-            let level = m.level_of(host).map_or(0.0, |l| m.elevation(l));
-            let f = Frame { o: [g.a[0], g.a[1], g.a[2] - level], a: along, b: across, c: up };
-            let bars = beam(&f, g.length(), (g.width, g.depth), &x, a)?;
-            let notes = check.map(|n| n.beam((g.width, g.depth), &x.cover, &f, &bars)).unwrap_or_default();
+            let bars = beam(&b.frame, b.length, (b.width, b.depth), &x, a)?;
+            let notes = check.map(|n| n.beam((b.width, b.depth), &x.cover, &b.frame, &bars)).unwrap_or_default();
             (bars, notes)
         }
         Element::Column(col) | Element::StructuralColumn(col) => {
@@ -701,7 +716,7 @@ fn beam(f: &Frame, len: f64, (w, h): (f64, f64), x: &Common, mut a: Args) -> Res
 }
 
 /// How far `p` is from the frame's origin along `axis`.
-fn along(f: &Frame, axis: P3, p: P3) -> f64 {
+pub(crate) fn along(f: &Frame, axis: P3, p: P3) -> f64 {
     let v = sub(p, f.o);
     v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2]
 }

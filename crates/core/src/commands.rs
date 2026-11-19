@@ -42,6 +42,7 @@ use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod bars;
 mod quantities;
+mod rebar_detail;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -847,6 +848,23 @@ other_files(
          the project; `reinforce` with `preset` takes it and lets what is given with it replace its own. Without `name`, lists them. \
          It is not checked against any host until it arms one",
         reinforcement_preset,
+    ),
+    // No alias yet: DD is the desktop's, and a listed shortcut must work there.
+    edit(
+        "rebar_detail",
+        "Reinforcement Detail",
+        &[],
+        "{host | hosts, stations?, scale?, list?, sheet?, replace?} the detail drawing of reinforced beams (`hosts` up to 1,000): one view \
+         for each, named in the project's language, which goes on a sheet and prints with it. It draws the beam's elevation with every set \
+         of bars (bars that are copies one step apart: the stirrups of a zone, a row of bottom bars) tagged `N2 7 ø5 c/10 C=118` (mark, \
+         count, diameter in mm, spacing where the bars spread along the beam, cut length, in the project's unit), its length and each zone \
+         of stirrups dimensioned, a section at each of `stations` (mm along the beam, up to 6; none: the middle of each zone of stirrups) \
+         at twice the scale, and, unless `list` is false, the beam's steel list with each bar's shape sketched. It is drawn from the beam and \
+         its bars as they are, so reinforcing the beam again changes it. `scale` is its 1 : n (50). `sheet` (a number or id) places it \
+         there. A beam that has a detail keeps it, its name and its place, and takes the values given; `replace` first sets them back to \
+         the defaults. A beam with no bars is refused: `reinforce` it first. Returns views (id, name, host, scale, stations, list, sets: \
+         mark, layer, diameter, grade, count, spacing, length, tag, ids) and, with `sheet`, viewports",
+        rebar_detail::rebar_detail,
     ),
     edit(
         "demand_factors",
@@ -4695,6 +4713,11 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("slots".into(), json!(crate::electrical::slot_count(m, b)));
             }
         }
+        Element::RebarDetail(rd) => {
+            if let Some(h) = m.elements.id(rd.host) {
+                extra.insert("host_id".into(), json!(h));
+            }
+        }
         Element::Grid(_)
         | Element::RefPlane(_)
         | Element::Schedule(_)
@@ -5693,6 +5716,18 @@ fn render_view(s: &mut Session, p: &Value) -> R {
     if let Some((id, name, kind)) = cut {
         let (png, notes) = render::section_png_noted(m, id, render::section_fit(m, id, w3, h3)).map_err(|e| bad(c, e))?;
         return png_reply(c, p, png, with_notes(json!({"width": w3, "height": h3, "view": name, "kind": kind}), &notes));
+    }
+    // A rebar detail, by name or id: drawn as a sheet draws it, at its scale.
+    let detail = m.elements.iter().find_map(|(id, e)| match e {
+        Element::RebarDetail(rd) if view.and_then(Value::as_str) == Some(rd.name.as_str()) || view.and_then(Value::as_u64) == Some(*id) => {
+            Some((*id, rd.name.clone(), rd.scale))
+        }
+        _ => None,
+    });
+    if let Some((id, name, scale)) = detail {
+        let d = sheet::draw_view(m, id, scale).ok_or_else(|| bad(c, format!("{name} has nothing to draw")))?;
+        let info = with_notes(json!({"width": d.view.width, "height": d.view.height, "view": name, "kind": "rebar detail"}), &d.notes);
+        return png_reply(c, p, render::png(&d)?, info);
     }
     // A sheet, by number, name or id, unless a level is called that.
     let level = match view {
@@ -19111,7 +19146,7 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
     match &mut e {
         Element::Level(_) => return Err(bad(c, format!("level {id} has no place in plan; change its elevation, or add a level"))),
         Element::Sheet(_) => return Err(bad(c, format!("sheet {id} has no place in plan; move the views on it"))),
-        Element::Schedule(_) | Element::PanelSchedule(_) | Element::PlanView(_) => {
+        Element::Schedule(_) | Element::PanelSchedule(_) | Element::RebarDetail(_) | Element::PlanView(_) => {
             return Err(bad(c, format!("{category} {id} has no place in plan; move its viewport on its sheet")));
         }
         Element::ProjectInfo(_) => {
@@ -21579,6 +21614,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Circuit(x)) => gone.contains(&x.panel),
                 // And its panel schedules.
                 Some(Element::PanelSchedule(v)) => gone.contains(&v.panel),
+                // A member takes its detail.
+                Some(Element::RebarDetail(v)) => gone.contains(&v.host),
                 _ => false,
             };
             if hosted {
@@ -21727,6 +21764,8 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::Circuit(x) => gone.contains(&x.panel),
                         // A panel schedule hangs on its board, as its viewports hang on it.
                         Element::PanelSchedule(v) => gone.contains(&v.panel),
+                        // A reinforced member's detail hangs on it.
+                        Element::RebarDetail(v) => gone.contains(&v.host),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),

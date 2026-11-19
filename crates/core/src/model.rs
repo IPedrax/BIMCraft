@@ -2640,6 +2640,7 @@ macro_rules! visit_refs {
                 }
             }
             Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
+            Element::RebarDetail(rd) => f(& $($m)? rd.host),
             Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::ProjectInfo(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
@@ -2834,6 +2835,9 @@ pub enum Element {
     Circuit(crate::electrical::Circuit),
     /// A distribution board's load schedule, a view of its own.
     PanelSchedule(crate::panel_schedule::PanelSchedule),
+    /// A reinforced member's detail drawing, a view of its own that goes on a sheet: its bars' sets tagged, its sections and its
+    /// steel list, drawn from the member and its bars as they are ([`crate::rebar_detail`]).
+    RebarDetail(crate::rebar_detail::RebarDetail),
     /// The project's information (Revit's Project Information): one in a project at most.
     #[serde(rename = "project")]
     ProjectInfo(crate::project_info::ProjectInfo),
@@ -3046,6 +3050,7 @@ impl Element {
             Element::Tag(_) => "tag",
             Element::Circuit(_) => "circuit",
             Element::PanelSchedule(_) => "panelschedule",
+            Element::RebarDetail(_) => "rebardetail",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -6518,6 +6523,7 @@ impl Model {
             | Element::Viewport(_)
             | Element::Schedule(_)
             | Element::PanelSchedule(_)
+            | Element::RebarDetail(_)
             | Element::Link(_)
             | Element::ProjectInfo(_)
             | Element::Dimension3D(_)
@@ -7477,6 +7483,7 @@ impl Model {
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
             Some(Element::PanelSchedule(ps)) => Some(&ps.name),
+            Some(Element::RebarDetail(rd)) => Some(&rd.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
@@ -7487,7 +7494,7 @@ impl Model {
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
         let mut ids: BTreeSet<Id> = lookup.levels().collect();
-        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "view3d"] {
+        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "rebardetail", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
@@ -9379,6 +9386,12 @@ impl Model {
                 crate::panel_schedule::check(self, &who, ps)?;
                 if !view_names.insert(ps.name.as_str()) {
                     return Err(format!("{who}: another view is already named `{}`", ps.name));
+                }
+            }
+            Element::RebarDetail(rd) => {
+                crate::rebar_detail::check(self, &who, rd)?;
+                if !view_names.insert(rd.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", rd.name));
                 }
             }
             Element::Level(l) => {
