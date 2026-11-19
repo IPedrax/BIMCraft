@@ -693,12 +693,20 @@ pub struct BimApp {
     settings_page: Option<settings::Page>,
     /// Find (Ctrl+K), while it's open: what is typed in it.
     find: Option<String>,
-    /// The project's scale, the tools the user took out, whether Edit Tools is on, and the kept presets (`presets.rs`); with what
-    /// Settings' preset name field holds and why the last save was refused.
+    /// The project's scale, the tools and panels the user took out, whether Edit Tools is on, and the kept presets
+    /// (`presets.rs`); with what Settings' preset name field holds and why the last save was refused.
     scale: presets::Scale,
     tools_hidden: BTreeSet<String>,
+    /// The ribbon panels the user took out (`tab:<tab>/<panel>`): their tools stay in Find and in Edit Tools.
+    panels_hidden: BTreeSet<String>,
+    /// The panel keys the window has drawn, which the preset editor lists under their tabs.
+    panel_keys: BTreeSet<String>,
     editing_tools: bool,
     presets: Vec<presets::Preset>,
+    /// The preset last applied, which the title bar's chip names and marks: none until one is used.
+    active_preset: Option<String>,
+    /// The preset being edited, if its dialog is open: its draft is not the window until the preset is used.
+    preset_editor: Option<presets::PresetEditor>,
     preset_name: String,
     preset_note: Option<String>,
     settings_path: Option<PathBuf>,
@@ -1618,6 +1626,26 @@ const TABS: [(Tab, &str, Icon); 14] = [
     (Tab::Modify, "Modify", Icon::Modify),
 ];
 
+/// The panels each built-in tab draws, for the preset editor: a panel's key is `tab:<tab>/<panel>` (`ТЗ-019`). `ribbon::panel`
+/// keeps what it draws, and these make the list complete before a tab is opened. A panel a tool, a script or a plugin adds still
+/// comes from the drawing; `Tab::Modify` lists the panels it always draws, the tool in hand adding the rest.
+const PANELS: [(Tab, &[&str]); 14] = [
+    (Tab::Architecture, &["Select", "Build", "Circulation", "Room & Area", "Opening", "Datum"]),
+    (Tab::Structure, &["Select", "Structure", "Reinforcement", "Quantities", "Foundation"]),
+    (Tab::Plumbing, &["Select", "Plumbing & Piping"]),
+    (Tab::Electrical, &["Select", "Electrical", "Symbols", "Conduit & Wire"]),
+    (Tab::Lightning, &["Select", "Capture & Descent", "Earthing"]),
+    (Tab::Data, &["Select", "Outlets & Equipment", "Cabling"]),
+    (Tab::Insert, &["Link", "Import"]),
+    (Tab::Annotate, &["Select", "Dimension", "Detail", "Region", "Text", "Measure", "Tag"]),
+    (Tab::Massing, &["Conceptual Mass", "Model by Face"]),
+    (Tab::Collaborate, &["Work Together"]),
+    (Tab::View, &["Graphics", "Create", "Sheet Composition", "Windows"]),
+    (Tab::Manage, &["Settings", "Inquiry", "Phasing", "Design Options", "Macros"]),
+    (Tab::PyAddins, &["Scripts", "Run"]),
+    (Tab::Modify, &["Select", "Properties", "Clipboard"]),
+];
+
 /// A tab on the Tools palette's rail: its icon, lit while it is open; its name for screen readers and in its tooltip.
 fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
     let label = t(label);
@@ -1699,8 +1727,12 @@ impl BimApp {
             find: None,
             scale: presets::Scale::default(),
             tools_hidden: BTreeSet::new(),
+            panels_hidden: BTreeSet::new(),
+            panel_keys: BTreeSet::new(),
             editing_tools: false,
             presets: Vec::new(),
+            active_preset: None,
+            preset_editor: None,
             preset_name: String::new(),
             preset_note: None,
             settings_path: None,
@@ -2259,6 +2291,7 @@ impl BimApp {
         };
         style::follow(&ctx, look);
         ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
+        ribbon::panel_rules(self.panels_hidden.clone());
         // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
         // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
         // window stays in English and says why.
@@ -2350,9 +2383,6 @@ impl BimApp {
         // The ribbon is Rev's: BIMCraft's tools are a palette (`Palette::Tools`), which Rev never shows. A family document (an
         // adaptive family open) has a ribbon, palettes and a view of its own, as Revit's family editor, in either profile.
         let family = self.family_doc();
-        if style::rev() {
-            self.docking.show(dock::Palette::Tools, false);
-        }
         if style::rev() || family {
             let card = style::card([true, true, true, false]);
             Panel::top("ribbon")
@@ -2416,6 +2446,13 @@ impl BimApp {
                 self.tools_hidden.insert(name);
             }
         }
+        for key in ribbon::take_toggled_panels() {
+            if !self.panels_hidden.remove(&key) {
+                self.panels_hidden.insert(key);
+            }
+        }
+        // The panels drawn since the last frame: what the preset editor lists.
+        self.panel_keys.extend(ribbon::take_seen_panels());
         self.keep_settings(&ctx);
         self.track_sketch();
         if self.own_bar() {
@@ -4415,6 +4452,8 @@ impl BimApp {
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         (fresh.compact, fresh.profile, fresh.scale) = (self.compact, self.profile, self.scale);
         (fresh.tools_hidden, fresh.presets) = (std::mem::take(&mut self.tools_hidden), std::mem::take(&mut self.presets));
+        fresh.active_preset = self.active_preset.take();
+        (fresh.panels_hidden, fresh.panel_keys) = (std::mem::take(&mut self.panels_hidden), std::mem::take(&mut self.panel_keys));
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
@@ -4757,9 +4796,11 @@ impl BimApp {
                     if icon_button(ui, icon, label).clicked() {
                         self.fold_ribbon(!self.ribbon_min);
                     }
-                    // Edit Tools on: the ribbon's buttons are boxes to tick until this.
-                    if self.editing_tools && ui.button(t("Done")).clicked() {
-                        self.editing_tools = false;
+                    // Edit Tools on: the ribbon's buttons are boxes to tick until this, which keeps the layout in the selected preset.
+                    if self.editing_tools
+                        && ui.button(t("Done")).on_hover_text(t("Done keeps the tools, panels and layout in the selected preset")).clicked()
+                    {
+                        self.edit_tools(false);
                     }
                 });
             });
@@ -4810,6 +4851,10 @@ impl BimApp {
 
     /// The panels of `tab`: on the ribbon side by side, in the Tools palette as rows.
     fn tab_content(&mut self, ui: &mut Ui, tab: Tab) {
+        // The panels' keys: `tab:<tab>/<panel>`, a plugin's `tab:plugin:<name>/<panel>`, a contextual tab's `tab:Modify/…`.
+        let name = self.tab_name(tab);
+        ribbon::set_tab(&name);
+        ribbon::begin_tab();
         match tab {
             Tab::Architecture => self.architecture_tab(ui),
             Tab::Structure => self.structure_tab(ui),
@@ -4827,12 +4872,50 @@ impl BimApp {
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
         }
+        if ribbon::drawn_panels() == 0 && ribbon::hidden_panels() > 0 {
+            self.empty_tab_notice(ui, &name);
+        }
+    }
+
+    /// The name a tab's panels' keys carry: its English name, `plugin:<name>` for a plugin's tab, `Modify` for the contextual
+    /// tab, which the same panels draw.
+    fn tab_name(&self, tab: Tab) -> String {
+        match tab {
+            // The manifest's name, never translated: a key must read the same in every language.
+            Tab::Plugin(i) => {
+                let name = self.plugin_tabs.get(i).and_then(|t| t.name.clone()).unwrap_or_else(|| "Plugins".to_string());
+                format!("plugin:{name}")
+            }
+            Tab::Modify | Tab::Context => "Modify".to_string(),
+            tab => TABS.iter().find(|(t, ..)| *t == tab).map_or("", |(_, label, _)| *label).to_string(),
+        }
+    }
+
+    /// The panel keys the preset editor lists: every built-in tab's panels, whether it has been opened or not, and every plugin
+    /// tab's declared panels. A tool's or a script's own panels join them from what the window has drawn (`panel_keys`).
+    pub(crate) fn known_panel_keys(&self) -> BTreeSet<String> {
+        let mut keys = BTreeSet::new();
+        for (tab, panels) in PANELS {
+            let name = self.tab_name(tab);
+            for panel in panels {
+                keys.insert(format!("tab:{name}/{panel}"));
+            }
+        }
+        for tab in &self.plugin_tabs {
+            let name = tab.name.clone().unwrap_or_else(|| "Plugins".to_string());
+            for panel in &tab.panels {
+                keys.insert(format!("tab:plugin:{name}/{}", panel.name));
+            }
+        }
+        keys
     }
 
     /// BIMCraft's Tools palette, in place of the ribbon: a rail of the ribbon's tabs down its left, and beside it, as rows under their
     /// panels' names, the Select panel, the tool in hand's or the selection's (the contextual tab's, named for it) and the open tab's.
     pub(crate) fn tool_column(&mut self, ui: &mut Ui) {
         let open = if self.tab == Tab::Context { self.back } else { self.tab };
+        // The Select panel belongs to the open tab: its key, and the tab's panels' keys, follow it.
+        ribbon::set_tab(&self.tab_name(open));
         // The rail and the rows side by side, each in a rect of its own: what is wider than the rows' is cut, never widens the column.
         let all = ui.available_rect_before_wrap();
         let rail = all.with_max_x(all.left() + 36.0).shrink2(vec2(2.0, 4.0));
@@ -4862,9 +4945,11 @@ impl BimApp {
             ScrollArea::both().id_salt(scroll).auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(rows.width() - 12.0);
                 let edit = if self.editing_tools { msg!("Done") } else { msg!("Edit Tools") };
-                let tip = msg!("Tick the tools this palette shows; Find still has the others");
+                let tip = msg!(
+                    "Tick the tools and panels this window shows; Done keeps them, and the palette layout, in the selected preset; Find still has the others"
+                );
                 if ui.button(t(edit)).on_hover_text(t(tip)).clicked() {
-                    self.editing_tools = !self.editing_tools;
+                    self.edit_tools(!self.editing_tools);
                 }
                 ribbon::rows(ui, |ui| self.select_panel(ui));
                 ribbon::skip_select(true);
@@ -4872,6 +4957,7 @@ impl BimApp {
                 if let Some(name) = &context {
                     ui.add_space(8.0);
                     ui.label(RichText::new(name).color(pal().context).strong());
+                    ribbon::set_tab("Modify");
                     ribbon::rows(ui, |ui| self.modify_tab(ui));
                 }
                 // The Modify tab is what the contextual rows already are.
@@ -5504,7 +5590,7 @@ impl BimApp {
             let tip = msg!("Show or hide the palettes, and pick the interface's language");
             let r = big_button(ui, Icon::Interface, "User Interface", false, tip);
             ribbon::choices(ui, &r, false, |ui| {
-                for p in dock::Palette::ALL {
+                for p in dock::Palette::known() {
                     let mut on = self.docking.shown(p);
                     if ui.checkbox(&mut on, t(p.name())).changed() {
                         self.show_palette(p, on);
@@ -7325,7 +7411,12 @@ impl BimApp {
         self.paste_window(ctx);
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
+        // The preset editor is the dialog on top: Escape closes it alone, leaving the Settings window behind it open.
+        if self.preset_editor.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.preset_editor = None;
+        }
         self.settings_window(ctx);
+        self.preset_editor_window(ctx);
         self.new_project_window(ctx);
         self.plugins_window(ctx);
         self.plugin_report_window(ctx);

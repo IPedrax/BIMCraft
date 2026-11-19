@@ -11,7 +11,7 @@ use egui_kittest::kittest::NodeT;
 use serde_json::json;
 
 use super::*;
-use crate::dock::{Docking, Palette};
+use crate::dock::{Docking, Palette, Policy};
 
 const KEY: &str = "sk-test-0123456789abcdef";
 const WALL: &str = r#"{"command":"wall","params":{"points":[[0,0],[4000,0]]}}"#;
@@ -362,7 +362,7 @@ fn a_saved_key_this_build_cannot_open_or_a_damaged_or_plain_one_is_not_used() {
 fn a_settings_file_from_before_the_assistant_leaves_it_closed() {
     let old = json!({"left": [{"tabs": ["Properties"], "active": 0}], "right": [{"tabs": ["Project Browser"], "active": 0}],
         "bottom": [], "floats": [], "closed": ["Tools"], "home": {}});
-    let d = Docking::from_json(&old);
+    let d = Docking::from_json(&old, Policy::Live, &Palette::known());
     assert!(!d.shown(Palette::Assistant) && d.shown(Palette::Properties));
     let mut d = d;
     d.show(Palette::Assistant, true);
