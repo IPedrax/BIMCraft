@@ -509,6 +509,40 @@ pub(crate) fn settings_fit(m: &Model, before: &crate::codes::Codes, codes: &crat
             }
         }
     }
+    // A system the codes now hold, or hold otherwise, is one the `distribution_system` command would take: what it asks of
+    // the voltages it names (a three-phase one's line and neutral voltages about √3 apart), with the voltages the project
+    // would have. One naming a voltage the project wouldn't have is the next check's.
+    let resolve = |c: &crate::codes::Codes, key: &str| crate::codes::resolve_in(c, Electrical, key).value;
+    let mut voltages = m.voltages.clone();
+    let named = resolve(codes, "voltages");
+    // One the codes named before and name no more is back as a new project has it, as `from_codes` puts it back.
+    for k in resolve(before, "voltages").keys().filter(|k| !named.contains_key(*k)) {
+        if let Some(x) = starter().voltages.get(k) {
+            voltages.insert(k.clone(), x.clone());
+        }
+    }
+    for (k, v) in named {
+        match serde_json::from_value::<Voltage>(v) {
+            Ok(x) => {
+                voltages.insert(k, x);
+            }
+            Err(_) => {
+                voltages.remove(&k);
+            }
+        }
+    }
+    let systems_were = resolve(before, "distribution_systems");
+    for (k, v) in resolve(codes, "distribution_systems") {
+        if v.is_null() || systems_were.get(&k) == Some(&v) {
+            continue;
+        }
+        let Ok(x) = serde_json::from_value::<DistributionSystem>(v) else { continue };
+        if x.voltage_names().all(|n| voltages.contains_key(n))
+            && let Err(e) = x.check(&k, &voltages)
+        {
+            return Err(e);
+        }
+    }
     let was = unsupplied(m, before, before);
     match unsupplied(m, before, codes).into_iter().find(|p| !was.contains(p)) {
         Some((system, voltage)) => Err(format!(
