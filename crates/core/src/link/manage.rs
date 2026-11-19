@@ -37,6 +37,7 @@ pub fn list(m: &Model, project: Option<&Path>, kind: Option<&str>) -> Value {
             "cad" => cads(m, project),
             "clouds" => clouds(m),
             "models" => models(m),
+            "images" => images(m, project),
             _ => Vec::new(),
         };
         out.insert((*k).to_string(), Value::Array(rows));
@@ -139,6 +140,39 @@ fn models(m: &Model) -> Vec<Value> {
             let name = Path::new(&path).file_name().map_or_else(|| path.clone(), |s| s.to_string_lossy().into_owned());
             let mut row = json!({"name": name, "families": families, "instances": ids.len(), "ids": ids});
             let status = if located(&mut row, None, &path).is_file() { "loaded" } else { "not found" };
+            row["status"] = json!(status);
+            row
+        })
+        .collect()
+}
+
+/// The images placed in plans, one row for each picture and file: linked ones by their file, imported ones by the picture
+/// the project holds.
+fn images(m: &Model, project: Option<&Path>) -> Vec<Value> {
+    // A picture and the file it's linked to, if it is: the images placed from it.
+    type Placed = ((String, Option<String>), Vec<Id>);
+    let mut files: Vec<Placed> = Vec::new();
+    for (id, e) in m.elements.iter() {
+        let Element::Image(im) = e else { continue };
+        let key = (im.picture.clone(), im.path.clone());
+        match files.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, ids)) => ids.push(*id),
+            None => files.push((key, vec![*id])),
+        }
+    }
+    files
+        .into_iter()
+        .map(|((picture, path), ids)| {
+            let label = m.images.get(&picture).map_or_else(|| picture.clone(), |p| p.name().to_string());
+            let mut row = json!({"name": label, "picture": picture, "instances": ids.len(), "ids": ids, "path": null});
+            let status = match &path {
+                None => "imported",
+                Some(path) if located(&mut row, project, path).is_file() => "loaded",
+                Some(_) => "not found",
+            };
+            if let Some(path) = &path {
+                row["name"] = json!(Path::new(path).file_name().map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned()));
+            }
             row["status"] = json!(status);
             row
         })

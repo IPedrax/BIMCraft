@@ -68,3 +68,30 @@ fn reload_from_reads_the_file_picked() {
     assert_eq!(walls_drawn(&mut h), 1);
     let _ = (std::fs::remove_file(&a), std::fs::remove_file(&b));
 }
+
+#[test]
+fn a_linked_image_is_placed_on_the_plan_selected_and_listed_on_the_images_tab() {
+    let path = std::env::temp_dir().join(format!("bimcraft-ui-manage-links-image-{}.png", std::process::id()));
+    // A blank drawing's picture: a white PNG of 4 by 4 px.
+    let view = bimcraft_core::render::View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 4, height: 4 };
+    let png = bimcraft_core::render::png(&bimcraft_core::render::Drawing::new(view)).unwrap();
+    std::fs::write(&path, png).unwrap();
+    let mut h = app("");
+    h.state_mut().image_path(&path, true);
+    h.run();
+    let ids = ids(&h, "image");
+    assert_eq!(ids.len(), 1, "{}", h.state().status.text);
+    assert!(h.state().selection.contains(&ids[0]), "what came in is selected");
+    h.state_mut().open_manage_links();
+    h.run();
+    let d = h.state_mut().manage_links.as_mut().unwrap();
+    d.tab = bimcraft_ui_images_tab();
+    let rows = d.rows();
+    assert_eq!((rows.len(), rows[0]["status"].clone()), (1, json!("loaded")), "{rows:?}");
+    let _ = std::fs::remove_file(&path);
+}
+
+/// Where Manage Links has its Images tab.
+fn bimcraft_ui_images_tab() -> usize {
+    crate::manage_links::TABS.iter().position(|(k, _)| *k == "images").unwrap()
+}

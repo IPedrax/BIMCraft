@@ -449,6 +449,30 @@ other_files(
         import_cad,
         Files::Read,
     ),
+    edit_files(
+        "image",
+        "Image",
+        &[],
+        "{path | picture, level?, view?, at?: [x, y], width?, link?} places a picture in the plans of `level` (the first unless \
+         given), or with `view` (a plan) in that view only, as Revit's Insert > Image: a PNG or JPEG file (`path`, taken into \
+         the project at up to 1024 px a side, one picture for the same pixels) or a picture the project holds (`picture`, its \
+         id from `assets`). Its middle stands on `at` (the origin unless given), `width` mm across (10 mm a pixel unless \
+         given), as tall as its pixels say; it is drawn under the model, as a CAD import is, and moves and copies as any \
+         element. `link: true` keeps its file, which `reload_image` and Manage Links read again. Returns `id`, `picture`, \
+         `size` (px), `width` and `height` (mm)",
+        image,
+        Files::Read,
+    ),
+    edit_files(
+        "reload_image",
+        "Reload Image",
+        &[],
+        "{id, path?} reads linked image `id`'s file again, for every image placed from it; with `path`, Reload From: that file \
+         in its place (an image brought in unlinked too), linked to it from then on. Each keeps its middle and its width. \
+         Returns `picture` and `images`, the ids of those that read it",
+        reload_image,
+        Files::Read,
+    ),
     edit(
         "cad_layers",
         "CAD Layers",
@@ -4366,6 +4390,17 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
     }
     match e {
+        Element::Image(im) => {
+            if let Some(p) = m.images.get(&im.picture) {
+                let (w, h) = p.size();
+                extra.insert("source".into(), json!(p.name()));
+                extra.insert("size".into(), json!([w, h]));
+            }
+            extra.insert("height".into(), json!(im.height(m)));
+            if let Some(path) = &im.path {
+                extra.insert("linked".into(), json!(path));
+            }
+        }
         Element::CadImport(ci) => {
             if let Some(cad) = m.cads.get(&ci.cad) {
                 extra.insert("source".into(), json!(cad.source()));
@@ -10074,6 +10109,88 @@ fn reload_mesh(s: &mut Session, p: &Value) -> R {
     }
     mesh_colours(m, &known, colours);
     Ok(json!({"path": kept, "reloaded": reloaded, "missing": missing}))
+}
+
+/// The picture of the PNG or JPEG file at `path`, as the project would hold it.
+fn read_picture(c: &str, s: &Session, path: &str) -> Result<crate::texture::Picture, String> {
+    let full = beside(s, path);
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > texture::MAX_BYTES as u64 {
+        return Err(bad(c, format!("{} is {size} bytes; a picture's file is up to {}", full.display(), texture::MAX_BYTES)));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let name = full.file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned());
+    Picture::import(&name, &bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))
+}
+
+fn image(s: &mut Session, p: &Value) -> R {
+    let c = "image";
+    let m = &s.model;
+    let (level, view) = if absent(p.get("view")) {
+        (level_param(c, m, p, "level")?, None)
+    } else {
+        let (level, plan) = plan_param(c, m, p, "view")?;
+        if !absent(p.get("level")) && level_param(c, m, p, "level")? != level {
+            return Err(bad(c, "`view` is a plan of another level than `level`; give the one, or a plan of the other"));
+        }
+        (level, Some(plan.unwrap_or(level)))
+    };
+    let link = flag(c, p, "link")?;
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let (picture, path) = match (string(c, p, "path")?, string(c, p, "picture")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, one the project holds; not both")),
+        (None, None) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, the id of one the project holds")),
+        (None, Some(id)) => {
+            if link {
+                return Err(bad(c, "`link` keeps the file a picture comes from: give `path`"));
+            }
+            let held = m.images.get(&id).cloned().ok_or_else(|| bad(c, format!("the project holds no picture `{id}`")))?;
+            (held, None)
+        }
+        (Some(path), None) => (read_picture(c, s, &path)?, link.then_some(path)),
+    };
+    let (w, h) = picture.size();
+    let width = match num(c, p, "width")? {
+        Some(w) => w,
+        None => w as f64 * 10.0,
+    };
+    let id = picture.id();
+    let m = s.model_mut();
+    m.images.entry(id.clone()).or_insert(picture);
+    let placed = crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path };
+    let height = placed.height(m);
+    let new = m.insert(Element::Image(placed));
+    Ok(json!({"id": new, "picture": id, "size": [w, h], "width": width, "height": height}))
+}
+
+fn reload_image(s: &mut Session, p: &Value) -> R {
+    let c = "reload_image";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, an image, is required"))?;
+    let Some(Element::Image(im)) = s.model.elements.get(id) else { return Err(bad(c, format!("element {id} is not an image"))) };
+    let (old, was) = (im.picture.clone(), im.path.clone());
+    let path = match (string(c, p, "path")?, &was) {
+        (Some(path), _) => path,
+        (None, Some(path)) => path.clone(),
+        (None, None) => return Err(bad(c, format!("image {id} isn't linked; give `path`, a file to reload it from"))),
+    };
+    let picture = read_picture(c, s, &path)?;
+    let new = picture.id();
+    let m = s.model_mut();
+    m.images.entry(new.clone()).or_insert(picture);
+    // Every image of the same picture and file reads it: Revit reloads a linked image's type, its instances with it.
+    let of_it: Vec<Id> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::Image(x) if x.picture == old && x.path == was)).map(|(id, _)| *id).collect();
+    for i in &of_it {
+        if let Some(Element::Image(x)) = m.elements.get_mut(*i) {
+            x.picture.clone_from(&new);
+            x.path = Some(path.clone());
+        }
+    }
+    // The picture it showed, if nothing else shows it now.
+    if old != new && !m.library_uses().contains_key(&(LibKind::Picture, old.clone())) {
+        m.images.remove(&old);
+    }
+    Ok(json!({"picture": new, "images": of_it}))
 }
 
 fn import_cad(s: &mut Session, p: &Value) -> R {
@@ -19364,6 +19481,13 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 ));
             }
             (ci.at, ci.angle) = turned(f, ci.at, ci.angle);
+        }
+        Element::Image(im) => {
+            if mo.mirror {
+                return Err(bad(c, format!("image {id} can't be mirrored; mirror the picture, or move it")));
+            }
+            // It stands square to the plan: turned, its middle goes round and it stays upright.
+            im.at = f(im.at);
         }
         Element::PointCloud(pc) => {
             if mo.mirror {

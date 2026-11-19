@@ -744,7 +744,7 @@ To do: a link's graphics overrides and visibility per view, hosting on a linked 
 `links {kind?}` (`link/manage.rs`) lists, as Revit's Manage Links does, every file the project reads from elsewhere, a tab for
 each kind: `projects` and `ifc` (links, by their path's extension), `cad` (`Model::cads`, linked or imported), `clouds`, `models`
 (families made by `import_mesh`, which keep `Family::source`: the file's absolute path, the object, the OBJ's units and up, and
-the point the family stands on in the file) and `pdf` and `images` (not yet anything). There's one row for each file, as Revit
+the point the family stands on in the file), `images` (the pictures placed in plans, a row for each picture and file) and `pdf` (not yet anything). There's one row for each file, as Revit
 lists a link's type: `path` as kept, `path_type`, `resolved` (relative to the project's file), `status` (loaded, not loaded,
 unloaded, not found, imported) and its `instances` with their `ids`.
 
@@ -755,6 +755,18 @@ refuses the command. `reload_cad {cad, path}` is a drawing's Reload From, which 
 `reload_mesh {path, from?}` rebuilds each family of a 3D model from the object of its name, about the point it stood on, so
 its components stay. The window is `crates/ui-egui/src/manage_links.rs` (Insert > Link and Manage > Project Location);
 tests are `links_tests.rs` and `tests/manage_links.rs`.
+
+### Images in plans
+
+`image {path | picture, level?, view?, at?, width?, link?}` places an `Element::Image` (`model::PlacedImage`), as Revit's Insert >
+Image and Link Image do: a picture of `Model::images` (`texture::Picture`, the one store pictures have, so the same pixels are one
+picture, at most `MAX_SIDE` px a side and `MAX_IMAGES` of them) with its middle on `at` on a level, `width` mm across and as tall as its
+pixels say, in every plan of its level or one (`view`). `render::images` draws it under the CAD drawings and the model: the
+picture's nearest pixel to each of the view's, clipped to the view, as one `Prim::Image` owned by the element, so it's picked,
+moved (`transform` moves its middle; a turn keeps it upright, a mirror is refused) and deleted as any element. Linked, it keeps
+its file (`path`), which `reload_image {id, path?}` reads again for every image of that picture and file, and Manage Links lists on
+its Images tab; the picture it showed goes when nothing else shows it. The Asset Manager lists it among the picture's users.
+Tests: `image_tests.rs`. Still to come: on sheets and in sections, turned, and pictures larger than a texture's.
 
 ## Grid types
 

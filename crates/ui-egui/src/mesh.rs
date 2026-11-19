@@ -40,3 +40,23 @@ impl BimApp {
         self.status = crate::Status { text, error: false };
     }
 }
+
+impl BimApp {
+    /// Insert > Image, or Link Image with `link`: the PNG or JPEG the user picks, placed on the plan on screen.
+    pub(crate) fn image_dialog(&mut self, ctx: &Context, link: bool) {
+        let dialog = rfd::AsyncFileDialog::new().add_filter(t("Images (PNG, JPEG)"), &["png", "jpg", "jpeg"]);
+        self.ask_file(ctx, dialog, false, move |app, path| {
+            app.image_path(&path, link);
+        });
+    }
+
+    /// The picture at `path` placed in the middle of the level of the plan on screen, and selected; with `link`, its file kept.
+    pub(crate) fn image_path(&mut self, path: &std::path::Path, link: bool) {
+        let mut p = json!({"path": path.to_string_lossy(), "link": link});
+        if let Some(level) = self.plan_level() {
+            p["level"] = json!(level);
+        }
+        let Some(v) = self.run("image", p) else { return };
+        self.selection = v["id"].as_u64().into_iter().collect();
+    }
+}

@@ -47,6 +47,7 @@ fn can(kind: &str, row: &Value) -> (bool, bool, bool) {
         "projects" | "ifc" => (true, true, row["status"] != "unloaded"),
         "cad" => (row["path"].is_string(), true, false),
         "models" => (true, true, false),
+        "images" => (row["path"].is_string(), true, false),
         _ => (false, false, false),
     }
 }
@@ -90,6 +91,8 @@ impl BimApp {
             ("cad", Some(path)) => ("reload_cad", json!({"cad": row["name"], "path": path})),
             ("models", None) => ("reload_mesh", json!({"path": row["path"]})),
             ("models", Some(path)) => ("reload_mesh", json!({"path": row["path"], "from": path})),
+            ("images", None) => ("reload_image", json!({"id": first})),
+            ("images", Some(path)) => ("reload_image", json!({"id": first, "path": path})),
             _ => return false,
         };
         let Some(v) = self.run(cmd, p) else { return false };
@@ -203,6 +206,7 @@ impl BimApp {
         let extensions: Vec<&str> = match kind {
             "cad" => vec!["dwg", "dxf"],
             "models" => vec!["obj", "gltf", "glb"],
+            "images" => vec!["png", "jpg", "jpeg"],
             _ => crate::links::link_extensions(),
         };
         let dialog = rfd::AsyncFileDialog::new().add_filter(t("Files of this kind"), &extensions);

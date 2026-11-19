@@ -277,6 +277,11 @@ impl Picture {
         Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(png), levels: Arc::new(chain(shrunk(base))) })
     }
 
+    /// Its pixels at its full size: its width and height, px, and their red, green and blue, row by row from the top.
+    pub fn pixels(&self) -> (usize, usize, &[u8]) {
+        self.levels.first().map_or((0, 0, &[][..]), |l| (l.w, l.h, &l.rgb[..]))
+    }
+
     /// The PNG it is kept as.
     pub fn png(&self) -> &[u8] {
         &self.png

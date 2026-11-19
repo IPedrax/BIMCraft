@@ -3181,6 +3181,46 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     d.own(None);
 }
 
+/// The images a plan shows, under its CAD drawings and the model: those placed on its level, in each of its plans or in this one
+/// only. Each is its picture's pixels, the nearest to each of the view's, upright whatever way the view is turned.
+fn images(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::ids::Guid, look: &Look) {
+    let (vw, vh) = (d.view.width as f64, d.view.height as f64);
+    for (id, e) in m.rare("image").into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
+        let Element::Image(im) = e else { continue };
+        if im.level != level || im.view.is_some_and(|v| v != key) || !look.shows(id) {
+            continue;
+        }
+        let (Some(picture), Some(h)) = (m.images.get(&im.picture), im.height(m)) else { continue };
+        let (pw, ph, rgb) = picture.pixels();
+        let (cx, cy) = d.view.px(im.at);
+        let (w_px, h_px) = (im.width * d.view.scale, h * d.view.scale);
+        let (x0, y0) = (f64::from(cx) - w_px / 2.0, f64::from(cy) - h_px / 2.0);
+        // The part of it in the view, whole pixels.
+        let (a, b) = (x0.max(0.0).floor(), y0.max(0.0).floor());
+        let (c, dd) = ((x0 + w_px).min(vw).ceil(), (y0 + h_px).min(vh).ceil());
+        if !(c > a && dd > b) || pw == 0 || ph == 0 {
+            continue;
+        }
+        let (cols, rows) = ((c - a) as usize, (dd - b) as usize);
+        let mut rgba = Vec::with_capacity(cols * rows * 4);
+        for y in 0..rows {
+            let v = ((b + y as f64 + 0.5 - y0) / h_px * ph as f64).floor();
+            for x in 0..cols {
+                let u = ((a + x as f64 + 0.5 - x0) / w_px * pw as f64).floor();
+                if u < 0.0 || v < 0.0 || u >= pw as f64 || v >= ph as f64 {
+                    rgba.extend([0, 0, 0, 0]);
+                    continue;
+                }
+                let i = (v as usize * pw + u as usize) * 3;
+                rgba.extend([rgb[i], rgb[i + 1], rgb[i + 2], 255]);
+            }
+        }
+        d.own(Some(id));
+        d.push(Prim::Image { at: (a as f32, b as f32), width: cols as u32, height: rows as u32, rgba, ink: false });
+    }
+    d.own(None);
+}
+
 /// The CAD drawings a plan shows, under all the rest but its scans, as Revit draws an import in the background: those placed on
 /// its level, in each of its plans or in this one only, of the layers the import and the view show. Each entity is drawn in its
 /// colour (the view's ink where it has none, or the import draws in black), its pen and its linetype; a solid hatch filled, a
@@ -3308,6 +3348,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
         scans(&mut d, m, &range, &look);
+        images(&mut d, m, key, level, &look);
         cad_imports(&mut d, m, key, level, &look);
     }
     // A ceiling plan isn't cropped: the crop region is the floor plan's.

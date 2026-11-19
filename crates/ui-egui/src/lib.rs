@@ -5577,6 +5577,18 @@ impl BimApp {
             if big_button(ui, Icon::Component, "Import 3D Model", false, tip).clicked() {
                 self.import_mesh_dialog(ui.ctx());
             }
+            let tip = msg!(
+                "Image: a PNG or JPEG picture placed under the model in the plans of this plan's level, moved and sized as an element"
+            );
+            let r = big_button(ui, Icon::Component, "Image", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), false);
+                }
+                if ui.button(t("Link Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), true);
+                }
+            });
         });
     }
 

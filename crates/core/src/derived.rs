@@ -141,6 +141,7 @@ pub const RARE: &[&str] = &[
     "refplane",
     "pointcloud",
     "cadimport",
+    "image",
     "mass",
     "link",
     "column",

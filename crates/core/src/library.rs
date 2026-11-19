@@ -1599,6 +1599,7 @@ impl crate::model::Element {
                 }
             }
             Element::CadImport(ci) => f(&Kind::Cad, &mut ci.cad),
+            Element::Image(im) => f(&Kind::Picture, &mut im.picture),
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
