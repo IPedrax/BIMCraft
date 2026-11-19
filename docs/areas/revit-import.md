@@ -82,13 +82,16 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   names the material it is drawn in (a mesh its own), and the family holds a mesh for each material its type's shape uses, one that
   names none in the family's own; and each material comes in with **its look**, its shading colour and transparency, read from its
   object by the schema's fields (`data::Look`, given to the model's material of its name once the import has made them), so walls'
-  and floors' layers show their colours too. The graphics are found in the second pass and the
-  symbols drawn read after it, each partition that holds one inflated again (`Gathered::drawn`, a `shapes::Drawing` for each
-  element, and `Gathered::shapes`); the provenance rows say what was measured, and what is not read (a cone, a Hermite or ruled
-  surface, an ellipse turned, a family nested in a symbol, which come in as boxes saying why; a family whose shapes would build
-  more triangles together than a family may keeps the box for its other types, and a component whose family would pass the types a
-  family may hold is left out). Snowdon 2025's architectural model
-  brings in 5,621 components, 4,341 with their type's shape and 592 with a shape of their own, in 134 families of 1,197 types.
+  and floors' layers show their colours too. A symbol whose family **nests** others draws them in, each nested symbol's shape
+  placed by its transform (`shapes::nest`, up to `MAX_NESTING` deep; one nesting itself, or one not read, leaves it a box), and a
+  profile turned may be an ellipse. A family keeps a box for a type whose shape would take its types past the triangles one family
+  may build (`family::MAX_BUILT`), as it does past `MAX_FORMS`. The graphics are found in the second pass and the
+  symbols drawn read after it, each partition that holds one inflated again, and the symbols those nest in a round for each depth
+  (`Gathered::drawn`, a `shapes::Drawing` for each element, and `Gathered::shapes`); the provenance rows say what was measured, and
+  what is not read (a cone, a Hermite or ruled surface, and solids standing outside the box Revit gives round a symbol's solids,
+  which its view conditions would explain, all of which come in as boxes saying why; a component whose family would pass the
+  types a family may hold is left out). Snowdon 2025's architectural model brings in
+  5,638 components, 4,418 with their type's shape and 664 with a shape of their own, in 134 families of 1,298 types.
   A box is a fair stand-in only for some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit),
   where its graphics draw no shape that reads, only where it runs along an axis, so one that turns a corner or runs across the
   axes, whose box is a block where there is none, is left out with that; and a whole (a stair,
