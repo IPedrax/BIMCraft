@@ -787,7 +787,7 @@ fn paste_one(to: &mut Model, clip: &Clip, t: &Target, models: bool) -> Result<Pa
             Element::Spot(s) if s.host.is_some_and(|h| !copied(&h) && !here(&h)) => {
                 need = Some("it goes with what it measures; copy that too")
             }
-            Element::Dimension(d) if d.refs.iter().any(|r| !copied(&r.id) && !here(&r.id)) => {
+            Element::Dimension(d) if d.refs.iter().any(|r| !copied(&r.target()) && !here(&r.target())) => {
                 need = Some("it goes with what it measures; copy that too")
             }
             Element::Dimension3D(_) if !t.in_place => need = Some("it measures the model where it was; paste it to the same place"),

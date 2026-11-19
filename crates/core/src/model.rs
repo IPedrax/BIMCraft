@@ -1260,7 +1260,9 @@ impl Face {
 }
 
 /// A line a dimension measures to, or with `point`, the point at one end of it: a wall's centre line's end, a face's
-/// corner, a detail line's or a grid's end, a jamb's end at either face of its wall.
+/// corner, a detail line's or a grid's end, a jamb's end at either face of its wall. With `link`, an element of a linked
+/// model's: `id` is its GUID in the linked file, which never changes, and `link` the link, this project's element; it is
+/// measured in the link's model and placed as the link stands ([`Model::link_map`]).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
@@ -1269,12 +1271,25 @@ pub struct Reference {
     pub face: Face,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub point: Option<End>,
+    /// The link whose model `id` is an element of. New in file format 21.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Guid>,
 }
 
 impl Reference {
     /// Element `id`'s line `face`.
     pub fn line(id: Guid, face: Face) -> Reference {
-        Reference { id, face, point: None }
+        Reference { id, face, point: None, link: None }
+    }
+
+    /// The same reference, as the linked model it names an element of sees it: without its `link`.
+    pub fn own(self) -> Reference {
+        Reference { link: None, ..self }
+    }
+
+    /// The element of this project it points at: its own, or for a linked model's, its link.
+    pub fn target(&self) -> Guid {
+        self.link.unwrap_or(self.id)
     }
 
     /// The same of a mirrored element, which runs back the other way ([`Face::mirrored`]): the end of a line along it
@@ -2683,8 +2698,12 @@ macro_rules! visit_refs {
             Element::Dimension(d) => {
                 f(& $($m)? d.level);
                 if let Some(g) = & $($m)? d.view { f(g) }
+                // A reference to a linked model's element points at its link: its `id` is the linked file's.
                 for r in & $($m)? d.refs {
-                    f(& $($m)? r.id);
+                    match & $($m)? r.link {
+                        Some(link) => f(link),
+                        None => f(& $($m)? r.id),
+                    }
                 }
             }
             Element::Tag(t) => {
@@ -5541,7 +5560,7 @@ impl Model {
         // so `settle_origins` on read makes it the family's origin and moves nothing: its instances stay where they were drawn.
         // 20 to 21: dimensions in sections and elevations. A file of 20 holds none, so nothing to do.
         // 20 to 21: dimensions measuring to a component's reference planes (`Face::Plane`, and a component's `centre` and
-        // `across`). A file of 20 holds none, so nothing to do.
+        // `across`), and to a linked model's elements (`Reference::link`). A file of 20 holds none, so nothing to do.
         // 20 to 21: the building codes. `codes_from_386` above takes a file's `building_code`, `stair_rules` and `building_codes` into
         // `codes`; a file of 20 holds none of them, so nothing to do.
         self.format = FORMAT;
@@ -7709,11 +7728,28 @@ impl Model {
         })
     }
 
+    /// Where link `link` (this project's element) stands: its model as it was loaded, and the map from that model's plan to
+    /// this project's, turned and moved as the views draw it ([`crate::link::placement`]). A link that isn't loaded, or that
+    /// is no link, gives why.
+    pub fn link_map(&self, link: Guid) -> Result<(&Model, impl Fn(P2) -> P2 + use<>), String> {
+        let Some(Element::Link(l)) = self.elements.get(link) else { return Err(format!("{link} isn't a link of this project")) };
+        let other = self.loaded.get(&l.path).ok_or_else(|| format!("link {} isn't loaded", l.name))?;
+        let (at, angle, _) = crate::link::placement(self, l, other);
+        let (sin, cos) = angle.to_radians().sin_cos();
+        Ok((other.as_ref(), move |p: P2| P2(p.0 * cos - p.1 * sin + at.0, p.0 * sin + p.1 * cos + at.1)))
+    }
+
     /// The line `r` measures to, or why there is none. A straight wall's lines reach as far as its
     /// plan outline does, past the ends it shares; its ends, a curved wall's too, and a door's or a
     /// window's centre and jambs, run across it from face to face. Its centre is its centre line,
     /// wherever its location line is.
     pub fn reference_line(&self, r: &Reference) -> Result<Line, String> {
+        // A linked model's element: measured there, placed as the link stands.
+        if let Some(link) = r.link {
+            let (other, map) = self.link_map(link)?;
+            let (a, b) = other.reference_line(&r.own()).map_err(|e| format!("in the linked model: {e}"))?;
+            return Ok((map(a), map(b)));
+        }
         match (self.elements.get(r.id), r.face) {
             (Some(Element::Stair(st)), Face::Edge(i)) => crate::stairs::reference_edges(self, st)
                 .get(i as usize)
@@ -7809,6 +7845,10 @@ impl Model {
     /// line does, and a face where the wall's outline turns off it (a corner, mitred where walls join); a curved wall's
     /// faces are arcs, ending square to its ends; a detail line of any shape ends where it does.
     pub fn reference_point(&self, r: &Reference) -> Result<P2, String> {
+        if let Some(link) = r.link {
+            let (other, map) = self.link_map(link)?;
+            return other.reference_point(&r.own()).map(map).map_err(|e| format!("in the linked model: {e}"));
+        }
         let Some(end) = r.point else { return Err(format!("{} {} is measured to as a line", self.cat(r.id), self.shown(r.id))) };
         let pick = |(a, b): Line| if end == End::Start { a } else { b };
         match (self.elements.get(r.id), r.face) {
@@ -7862,7 +7902,7 @@ impl Model {
         };
         faces
             .iter()
-            .flat_map(|&face| [End::Start, End::End].map(|point| Reference { id, face, point: Some(point) }))
+            .flat_map(|&face| [End::Start, End::End].map(|point| Reference { id, face, point: Some(point), link: None }))
             .filter_map(|r| Some((r, self.reference_point(&r).ok()?)))
             .collect()
     }
@@ -8029,6 +8069,9 @@ impl Model {
     /// curved wall's, of its centre line or one of its faces.
     pub fn reference_arc(&self, r: &Reference) -> Result<(P2, f64), String> {
         let what = "a radial dimension measures round columns and curved walls";
+        if r.link.is_some() {
+            return Err(format!("{what} of the project's own, not of a linked model"));
+        }
         match self.elements.get(r.id) {
             Some(e) if e.column().is_some() => match (e.column(), self.column_type(e)) {
                 (Some(c), Some(t)) if t.round => Ok((c.at, t.width / 2.0)),
@@ -8063,6 +8106,9 @@ impl Model {
     /// or a detail line that is an arc.
     pub fn reference_sweep(&self, r: &Reference) -> Result<(P2, f64, f64, f64), String> {
         let what = "an arc length dimension measures along curved walls and arcs";
+        if r.link.is_some() {
+            return Err(format!("{what} of the project's own, not of a linked model"));
+        }
         match self.elements.get(r.id) {
             Some(Element::Wall(w)) => {
                 let axis = walls::Axis::of(w);
@@ -9833,8 +9879,23 @@ impl Model {
                 }
                 let linear = d.kind == DimKind::Linear;
                 let along = self.measured_along(d);
+                // A linked model's element is measured, never held: no locks, no equality, no alignment, and in a plan.
+                if let Some(r) = d.refs.iter().find(|r| r.link.is_some()) {
+                    if vertical || d.equal || !d.locked.is_empty() || d.alignment {
+                        return Err(format!(
+                            "{who}: it measures to a linked model's element, which a dimension only measures: in a plan, with no locks or equality"
+                        ));
+                    }
+                    if let Some(l) = r.link
+                        && !matches!(self.elements.get(l), Some(Element::Link(_)))
+                    {
+                        return Err(format!("{who}: {l} isn't a link of this project"));
+                    }
+                }
                 let mut seen = BTreeSet::new();
                 let mut first: Option<(Reference, Line)> = None;
+                // A link that isn't loaded, or changed so the element is gone, leaves the dimension standing, undrawn.
+                let mut lost = false;
                 for r in &d.refs {
                     match d.kind {
                         DimKind::Radial => {
@@ -9855,8 +9916,15 @@ impl Model {
                     if r.point.is_some() && d.kind == DimKind::Angular {
                         return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
                     }
-                    let line = crate::drawing_plane::reference(self, d.view, r).map_err(|e| format!("{who}: {e}"))?;
-                    if !seen.insert((r.id, r.face, r.point)) {
+                    let line = match crate::drawing_plane::reference(self, d.view, r) {
+                        Ok(line) => line,
+                        Err(_) if r.link.is_some() => {
+                            lost = true;
+                            continue;
+                        }
+                        Err(e) => return Err(format!("{who}: {e}")),
+                    };
+                    if !seen.insert((r.id, r.face, r.point, r.link)) {
                         let at = match r.point {
                             Some(End::Start) => "start of its ",
                             Some(End::End) => "end of its ",
@@ -9891,7 +9959,7 @@ impl Model {
                         }
                     }
                 }
-                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() {
+                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() && !lost {
                     return Err(format!("{who}: its points are all in one place, so it has no way to run"));
                 }
             }

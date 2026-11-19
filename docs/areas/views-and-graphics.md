@@ -801,7 +801,14 @@ A component is measured as Revit measures a family instance, by its family's ref
 537): those that stand upright, seen edge on in plan, and are a reference (Strong, Weak or one of the named sides and middles, never Not a
 Reference), each where it stands for the component's values (`Family::flexed`), mirrored, turned and moved with it as its symbols are. Its datums
 are its centre lines, `Centre` along it (Center (Front/Back)) and `Across` (Center (Left/Right)), as a column's; any other plane is
-`Face::Plane(GUID)`. A component tilted off the plan or placed by adaptive points has none. `reference_geometry` gives either as
+`Face::Plane(GUID)`. A component tilted off the plan or placed by adaptive points has none. A linked model's element is
+measured as Revit measures into a link: the reference keeps the link (`Reference::link`, the project's element) and the element's
+GUID in the linked file, which never change, so it survives the link moved, reloaded or linked twice (`link::origin_of` finds them
+for an element the views bring in, whose id there, from `LINKED` up, is given anew each time). It is measured in the link's model
+and placed as the link stands (`Model::link_map`, the views' own `link::placement`). It only measures: no locks, no equality, no
+alignment, and only in a plan. `visit_refs` gives the link for it, so taking the link away takes its references (a dimension left with
+one goes), and `Model::check` keeps a dimension whose link isn't loaded, or whose element is gone, undrawn rather than refuse the
+project. A point given to the command is found in the views' model (`link::seen`), linked walls and all. `reference_geometry` gives either as
 a line, a point as a line of no length, and `crossings` lays
 them along the way the dimension measures (`measured_along`): a linear one's `orient` (horizontal or vertical), else square to its first line,
 else from its first point to the next elsewhere. `Model::check` refuses a line not parallel to the first, or not square to a linear one's line,

@@ -158,6 +158,8 @@ pub mod lenient;
 pub mod library;
 pub mod lines;
 pub mod link;
+#[cfg(test)]
+mod link_dims_tests;
 pub mod loads;
 pub mod massing;
 pub mod memory;

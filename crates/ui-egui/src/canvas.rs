@@ -302,6 +302,11 @@ impl Shown {
         self.drawing.pick_all(self.own(at), tol / self.place.k)
     }
 
+    /// [`Shown::pick_all`] with what links build too: what a dimension may measure to.
+    pub(crate) fn pick_all_measured(&self, at: (f32, f32), tol: f32) -> Vec<Id> {
+        self.drawing.pick_all_measured(self.own(at), tol / self.place.k)
+    }
+
     fn in_box(&self, a: (f32, f32), b: (f32, f32), crossing: bool) -> Vec<Id> {
         self.drawing.in_box(self.own(a), self.own(b), crossing)
     }
@@ -2396,8 +2401,9 @@ impl BimApp {
                 Tool::Mirror { draw: false, .. } => d.pick(q, PICK).filter(|id| !model.reference_lines(*id).is_empty()),
                 // Something to measure to: with a line parallel to the first one picked, or for an angle,
                 // one across it.
+                // A link's walls too, as Revit measures into a link: the command keeps the link and the wall's GUID there.
                 Tool::Dimension(_, refs) => {
-                    d.pick_all(q, PICK).into_iter().find(|id| dimension_pick(&model, refs, *id, view.mm(q), near).is_some())
+                    d.pick_all_measured(q, PICK).into_iter().find(|id| dimension_pick(&model, refs, *id, view.mm(q), near).is_some())
                 }
                 Tool::Angular(refs) if refs.len() < 2 => d
                     .pick_all(q, PICK)

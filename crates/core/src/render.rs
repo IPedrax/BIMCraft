@@ -588,6 +588,16 @@ impl Drawing {
     /// Every element drawn within `tol` px of `at`, in the order [`Drawing::pick`] prefers them:
     /// what Tab cycles through.
     pub fn pick_all(&self, at: (f32, f32), tol: f32) -> Vec<Id> {
+        self.pick_all_of(at, tol, false)
+    }
+
+    /// [`Drawing::pick_all`] with what links build too, by the ids the views give them: what a dimension may measure to, as
+    /// Revit's measure into a link (`Reference::link`). Nothing else picks them.
+    pub fn pick_all_measured(&self, at: (f32, f32), tol: f32) -> Vec<Id> {
+        self.pick_all_of(at, tol, true)
+    }
+
+    fn pick_all_of(&self, at: (f32, f32), tol: f32, linked: bool) -> Vec<Id> {
         let p = P2(f64::from(at.0), f64::from(at.1));
         let ring = |pts: &[(f32, f32)]| -> Vec<P2> { pts.iter().map(|&(x, y)| P2(f64::from(x), f64::from(y))).collect() };
         let edges = |pts: &[P2], closed: bool| {
@@ -604,8 +614,9 @@ impl Drawing {
         // Each element's nearest primitive: its distance, and how late it's drawn.
         let mut near: std::collections::BTreeMap<Id, (f64, usize)> = std::collections::BTreeMap::new();
         for (order, (prim, owner)) in self.prims.iter().zip(&self.owners).enumerate() {
-            // What a link builds is drawn and snapped to, never picked.
-            let Some(id) = owner.filter(|id| !crate::link::is_linked(*id)) else { continue };
+            // What a link builds is drawn and snapped to, never picked, but by a dimension; the fills that union it are no
+            // element's.
+            let Some(id) = owner.filter(|id| *id != crate::link::UNION && (linked || !crate::link::is_linked(*id))) else { continue };
             let d = match prim {
                 Prim::Fill { rings, .. } => {
                     let rings: Vec<Vec<P2>> = rings.iter().map(|r| ring(r)).collect();

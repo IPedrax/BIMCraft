@@ -1264,7 +1264,10 @@ other_files(
          a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one); a component's \
          reference planes that stand upright and are a reference, where it stands: its centre line along it (the default, \
          its family's Center (Front/Back)), `across` (Center (Left/Right)), or any other plane of its family by its GUID, \
-         `face: {plane: GUID}`. With `point: \
+         `face: {plane: GUID}`. A linked model's element too: `{id, face?, link}`, `id` its GUID in the linked file and \
+         `link` the link, or the id the views give it (from 100000000 up), which the dimension keeps as those; it is measured \
+         where the link stands and follows it, is never locked or kept equal, and stays, undrawn, while the link isn't \
+         loaded. With `point: \
          start|end`, {id, face?, point} is the point at that end of the line: a wall's centre line's end, a face's \
          corner, a column's corner or centre line's end, a grid's, a detail line's (of any shape) or a jamb's end. Or a \
          point [x, y] on one of those lines (for radial and diameter, on a round edge; for arc_length, on the arc), or \
@@ -13047,7 +13050,14 @@ fn dimension(s: &mut Session, p: &Value) -> R {
 }
 
 /// `refs` of a dimension being made or edited: references, `{endpoint}`, or points near what the plan shows.
-fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: DimKind, given: &[Value]) -> Result<Vec<Reference>, String> {
+fn dimension_refs(
+    c: &str,
+    m: &Arc<Model>,
+    level: Guid,
+    view: Option<Guid>,
+    kind: DimKind,
+    given: &[Value],
+) -> Result<Vec<Reference>, String> {
     if given.len() > MAX_POINTS {
         return Err(bad(c, format!("`refs` has more than {MAX_POINTS} references")));
     }
@@ -13064,13 +13074,15 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
             })
             .collect();
     }
+    // What the plan draws, the links' elements with the project's: a point finds a linked wall as it finds one of its own.
+    let seen = crate::link::seen(m);
     for v in given {
         let near = |q: P2, what: &str| bad(c, format!("no {what} at [{}, {}] on {}", q.0, q.1, level_name(m, level)));
         let endpoint = v.get("endpoint").filter(|_| v.as_object().is_some_and(|o| o.len() == 1));
         if let Some(e) = endpoint {
             let q = point(e).ok_or_else(|| bad(c, format!("`endpoint` is a point [x, y], not {e}")))?;
             refs.push(
-                endpoint_near(m, level, view, q)
+                endpoint_near(&seen, level, view, q)
                     .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a column, a grid or a detail line"))?,
             );
             continue;
@@ -13082,9 +13094,9 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
             Some(q) if kind == DimKind::ArcLength => sweep_near(m, level, view, q).ok_or_else(|| near(q, "curved wall or arc"))?,
             Some(q) => {
                 // After the first: one parallel to it, or for an angle, one across it.
-                let first = refs.first().and_then(|r| m.reference_line(r).ok());
+                let first = refs.first().and_then(|r| seen.reference_line(r).ok());
                 let keep = |l: Line| first.is_none_or(|(a, b)| geom::parallel(a, b, l.0, l.1) == (kind == DimKind::Aligned));
-                reference_near(m, level, q, keep)
+                reference_near(&seen, level, q, keep)
                     .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column, grid line or component's plane"))?
             }
             None => serde_json::from_value::<Reference>(v.clone())
@@ -13092,7 +13104,28 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
         };
         refs.push(r);
     }
-    Ok(refs.into_iter().map(|r| resolved_reference(m, r)).collect())
+    Ok(refs.into_iter().map(|r| resolved_reference(m, kept_reference(m, &seen, r))).collect())
+}
+
+/// Reference `r` as this project keeps it: to an element the views bring in from a link (by its id there, from
+/// [`crate::ids::LINKED`] up, or by its GUID there), it names the link and the element's GUID in the linked file, which never
+/// change ([`crate::link::origin_of`]); to the project's own, as it is.
+fn kept_reference(m: &Arc<Model>, seen: &Model, mut r: Reference) -> Reference {
+    if r.link.is_some() {
+        return r;
+    }
+    let shown = match r.id.pending() {
+        Some(id) => Some(id),
+        None if m.elements.id(r.id).is_none() => seen.elements.id(r.id),
+        None => None,
+    };
+    if let Some(id) = shown.filter(|id| crate::link::is_linked(*id))
+        && let Some((link, g)) = crate::link::origin_of(m, id)
+    {
+        r.id = g;
+        r.link = Some(m.guid(link));
+    }
+    r
 }
 
 /// Whether two stations' references are one segment's two ends, in either order.
@@ -20263,7 +20296,7 @@ fn resolved_reference(m: &Model, mut r: Reference) -> Reference {
 
 /// Whether two references name the same line or point.
 fn same_reference(a: &Reference, b: &Reference) -> bool {
-    a.id == b.id && a.face == b.face && a.point == b.point
+    a.id == b.id && a.face == b.face && a.point == b.point && a.link == b.link
 }
 
 /// How `hold` names a reference the segment doesn't end at, for an error.
@@ -21608,11 +21641,11 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
     while let Some(id) = dimensions.pop_first() {
         let guid = m.guid(id);
         let Some(Element::Dimension(d)) = m.elements.get(id) else { continue };
-        if gone.contains(&guid) || !d.refs.iter().any(|r| gone.contains(&r.id)) {
+        if gone.contains(&guid) || !d.refs.iter().any(|r| gone.contains(&r.target())) {
             continue;
         }
         let mut d = d.clone();
-        d.refs.retain(|r| !gone.contains(&r.id));
+        d.refs.retain(|r| !gone.contains(&r.target()));
         if d.refs.len() < 2 {
             gone.insert(guid);
             // The oracle visits dimensions once in id order; preserve that ordering even
@@ -21771,10 +21804,10 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for (id, guid, e) in m.elements.with_guids() {
         if let Element::Dimension(d) = e
             && !gone.contains(&guid)
-            && d.refs.iter().any(|r| gone.contains(&r.id))
+            && d.refs.iter().any(|r| gone.contains(&r.target()))
         {
             let mut d = d.clone();
-            d.refs.retain(|r| !gone.contains(&r.id));
+            d.refs.retain(|r| !gone.contains(&r.target()));
             if d.refs.len() < 2 {
                 gone.insert(guid);
             } else {
