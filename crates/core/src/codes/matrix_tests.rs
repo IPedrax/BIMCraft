@@ -1230,3 +1230,459 @@ mod at_the_limit {
         }
     }
 }
+
+#[test]
+fn two_versions_of_a_utility_answer_by_the_one_on_top() {
+    // A project's copy of a utility (`Lower`, its method changed) and BIMCraft's, both held: the one on top answers, in
+    // either order, for every utility's unit and building demand (G3; the service entrance is G3b's).
+    let mut asked = 0;
+    for code in of(Discipline::Electrical).filter(|c| !c.amends.is_empty()) {
+        for key in ["unit_demand", "building_demand"] {
+            if !code.sections.contains_key(key) {
+                continue;
+            }
+            let answer = |s: &mut Session| {
+                let (cmd, probe) = method_probe(code, key, &code.sections[key]);
+                let r = run(s, cmd, probe);
+                if key == "building_demand" { r["demand"].clone() } else { r["category"].clone() }
+            };
+            let held = |amendments: Value| {
+                let mut s = Session::new();
+                run(&mut s, "building_code", json!({"discipline": "electrical", "set": code.amends, "amendments": amendments}));
+                s
+            };
+            // The copy: the utility changed, exported under another name.
+            let mut source = held(json!([code.code]));
+            run(
+                &mut source,
+                "building_code",
+                json!({"discipline": "electrical", "amend": code.code, "rules": {key: changed(code, key, 1)}}),
+            );
+            let changed_answer = answer(&mut source);
+            let file = dir().join(format!("lower-{}-{key}.xml", code.code));
+            run(&mut source, "building_code_export", json!({"path": file, "discipline": "electrical", "code": code.code, "name": "Lower"}));
+            let library_answer = answer(&mut held(json!([code.code])));
+            assert_ne!(changed_answer, library_answer, "{} {key}: the change shows", code.code);
+            for (order, expected) in [(json!(["Lower", code.code]), &library_answer), (json!([code.code, "Lower"]), &changed_answer)] {
+                let mut s = Session::new();
+                run(&mut s, "building_code_import", json!({"path": file, "set": false}));
+                run(&mut s, "building_code", json!({"discipline": "electrical", "set": code.amends, "amendments": order}));
+                assert_eq!(&answer(&mut s), expected, "{} {key} held as {order}: the one on top answers", code.code);
+                asked += 1;
+            }
+        }
+    }
+    assert!(asked >= 12, "cases asked ({asked})");
+}
+
+/// Two versions of a utility, and the one on top (G3 and what its review found).
+mod one_on_top {
+    use super::*;
+
+    const D: Discipline = Discipline::Electrical;
+
+    fn bc(s: &mut Session, mut p: Value) -> Value {
+        p["discipline"] = json!("electrical");
+        run(s, "building_code", p)
+    }
+
+    fn choose(s: &mut Session, order: &[&str]) {
+        bc(s, json!({"set": "nbr-5410", "amendments": order}));
+    }
+
+    fn make_copy(s: &mut Session, code: &BuildingCode, key: &str, name: &str, delta: u32) {
+        let mut source = Session::new();
+        choose(&mut source, &[&code.code]);
+        bc(&mut source, json!({"amend": code.code, "rules": {key: changed(code, key, delta)}}));
+        let file = dir().join(format!("g3-{}-{key}-{name}.xml", code.code));
+        run(&mut source, "building_code_export", json!({"path": file, "discipline": "electrical", "code": code.code, "name": name}));
+        run(s, "building_code_import", json!({"path": file, "set": false}));
+    }
+
+    fn answer(s: &mut Session, cmd: &str, p: &Value) -> Result<Value, String> {
+        s.execute(cmd, p).map(|v| {
+            if cmd == "building_demand" {
+                v["demand"].clone()
+            } else {
+                let breaker = &v["category"]["breaker_a"];
+                if breaker.is_array() { breaker[0].clone() } else { breaker.clone() }
+            }
+        })
+    }
+
+    fn display(s: &mut Session, key: &str) -> Value {
+        let said = bc(s, json!({}));
+        let r = run(s, "code_rules", json!({"discipline": "electrical", "section": key}));
+        let got: serde_json::Map<String, Value> = r["sections"][0]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| (v["rule"].as_str().unwrap().to_string(), v["value"].clone()))
+            .collect();
+        assert_eq!(Value::Object(got), said["sections"][key]);
+        said["sections"][key].clone()
+    }
+
+    fn probe(failures: &mut Vec<String>, label: &str, s: &mut Session, cmd: &str, p: &Value, wanted: &Value) {
+        let got = answer(s, cmd, p);
+        if got.as_ref() != Ok(wanted) {
+            failures.push(format!("{label}: {cmd} {p}: expected {wanted}, got {got:?}"));
+        }
+    }
+
+    #[test]
+    fn all_library_methods_and_copies() {
+        let mut failed = Vec::new();
+        let mut tested = Vec::new();
+        for code in of(D).filter(|c| c.amends == "nbr-5410") {
+            // The service entrance's order is G3b's.
+            for key in ["unit_demand", "building_demand"] {
+                let Some(method) = code.sections.get(key) else {
+                    continue;
+                };
+                let id = &*code.code;
+                tested.push(format!("{id}/{key}"));
+                let (cmd, params) = method_probe(code, key, method);
+                let mut s = Session::new();
+                let lib = answer(&mut s, cmd, &params).unwrap();
+                assert!(lib.is_number(), "{id}/{key}: {lib}");
+                make_copy(&mut s, code, key, "ReviewCopyA", 1);
+                make_copy(&mut s, code, key, "ReviewCopyB", 2);
+                let mut only = params.clone();
+                only.as_object_mut().unwrap().remove("utility");
+                only.as_object_mut().unwrap().remove("standard");
+                let mut by_utility = only.clone();
+                by_utility["utility"] = if cmd == "building_demand" { method["utilities"][0].clone() } else { params["utility"].clone() };
+                let mut lower_case = by_utility.clone();
+                lower_case["utility"] = json!(by_utility["utility"].as_str().unwrap().to_ascii_lowercase());
+                let mut refs = Vec::new();
+                for name in ["ReviewCopyA", "ReviewCopyB"] {
+                    choose(&mut s, &[name]);
+                    refs.push((answer(&mut s, cmd, &params).unwrap(), display(&mut s, key)));
+                }
+                assert_ne!(lib, refs[0].0);
+                assert_ne!(refs[0].0, refs[1].0);
+                if cmd == "demand" {
+                    for (i, (breaker, _)) in refs.iter().enumerate() {
+                        assert_eq!(breaker.as_f64().unwrap(), lib.as_f64().unwrap() + (i + 1) as f64);
+                    }
+                }
+                choose(&mut s, &[id]);
+                let lib_rules = display(&mut s, key);
+                for (order, want, rules) in [
+                    ([id, "ReviewCopyA"], &refs[0].0, &refs[0].1),
+                    (["ReviewCopyA", id], &lib, &lib_rules),
+                    (["ReviewCopyA", "ReviewCopyB"], &refs[1].0, &refs[1].1),
+                    (["ReviewCopyB", "ReviewCopyA"], &refs[0].0, &refs[0].1),
+                ] {
+                    choose(&mut s, &order);
+                    let label = format!("{id}/{key} {order:?}");
+                    assert_eq!(&display(&mut s, key), rules, "{label}");
+                    for p in [&params, &by_utility, &lower_case, &only] {
+                        probe(&mut failed, &label, &mut s, cmd, p, want);
+                    }
+                }
+                // NBR 5410's CEMIG has no unit or entrance method. CPFL has no building method.
+                let no_method = if key == "building_demand" { "cpfl" } else { "cemig" };
+                choose(&mut s, &["ReviewCopyA", no_method]);
+                for p in [&params, &by_utility, &lower_case] {
+                    probe(&mut failed, "library top without section", &mut s, cmd, p, &refs[0].0);
+                }
+                probe(&mut failed, "implicit with no section on top", &mut s, cmd, &only, &refs[0].0);
+                // Different utility with the same section on top forces lookup by identity.
+                if let Some(other) = of(D).find(|o| o.amends == code.amends && o.code != code.code && o.sections.contains_key(key)) {
+                    choose(&mut s, &["ReviewCopyA", id, &other.code]);
+                    for p in [&params, &by_utility, &lower_case] {
+                        probe(&mut failed, "other utility on top of library", &mut s, cmd, p, &lib);
+                    }
+                    choose(&mut s, &[id, "ReviewCopyA", &other.code]);
+                    for p in [&params, &by_utility, &lower_case] {
+                        probe(&mut failed, "other utility on top of copy", &mut s, cmd, p, &refs[0].0);
+                    }
+                }
+            }
+        }
+        assert_eq!(tested.len(), 7, "{tested:?}");
+        assert!(failed.is_empty(), "{} different answers:\n{}", failed.len(), failed.join("\n"));
+    }
+
+    #[test]
+    fn cpfl_same_identity_reset_save_export_and_reopen() {
+        let cpfl = find(D, "cpfl").unwrap();
+        let p = json!({"utility": "cpfl", "area": 40});
+        let mut failed = Vec::new();
+        for (order, expected) in [(["ResetCopy", "cpfl"], 32.0), (["cpfl", "ResetCopy"], 33.0)] {
+            let mut s = Session::new();
+            make_copy(&mut s, cpfl, "unit_demand", "ResetCopy", 1);
+            choose(&mut s, &order);
+            let before = display(&mut s, "unit_demand");
+            let mut implicit = p.clone();
+            implicit.as_object_mut().unwrap().remove("utility");
+            let expected = json!(expected);
+            for params in [&p, &implicit] {
+                probe(&mut failed, "before persistence", &mut s, "demand", params, &expected);
+            }
+            let bimc = dir().join("g3-same-identity.bimc");
+            run(&mut s, "save", json!({"path": bimc, "compress": true}));
+            let mut reopened = Session::new();
+            run(&mut reopened, "open", json!({"path": bimc}));
+            let xml = dir().join("g3-same-identity.xml");
+            run(&mut s, "building_code_export", json!({"path": xml, "discipline": "electrical", "name": "ReviewExport"}));
+            let mut imported = Session::new();
+            run(&mut imported, "building_code_import", json!({"path": xml, "set": true}));
+            let mut saved = Session::new();
+            *saved.model_mut() = (*s.model).clone();
+            bc(&mut saved, json!({"save": "ReviewSave"}));
+            for (label, t) in [("bimc", &mut reopened), ("xml", &mut imported), ("building_code save", &mut saved)] {
+                assert_eq!(display(t, "unit_demand"), before, "{order:?} {label}");
+                for params in [&p, &implicit] {
+                    probe(&mut failed, label, t, "demand", params, &expected);
+                }
+            }
+            bc(&mut s, json!({"amend": "ResetCopy", "reset": "unit_demand"}));
+            for params in [&p, &implicit] {
+                probe(&mut failed, "reset copy", &mut s, "demand", params, &json!(32.0));
+            }
+        }
+        assert!(failed.is_empty(), "{}", failed.join("\n"));
+    }
+
+    #[test]
+    fn building_demand_country_base_without_amendments() {
+        let nec = find(D, "nec").unwrap();
+        let key = "building_demand";
+        let (cmd, p) = method_probe(nec, key, &nec.sections[key]);
+        let mut s = Session::new();
+        let want = answer(&mut s, cmd, &p).unwrap();
+        assert!(want.is_number());
+        bc(&mut s, json!({"set": "nec", "amendments": []}));
+        assert_eq!(display(&mut s, key), nec.sections[key]);
+        let mut implicit = p.clone();
+        implicit.as_object_mut().unwrap().remove("standard");
+        assert_eq!(answer(&mut s, cmd, &p), Ok(want.clone()));
+        assert_eq!(answer(&mut s, cmd, &implicit), Ok(want));
+    }
+    #[test]
+    fn covered_building_library_across_save_and_xml_roundtrip() {
+        let cemig = find(D, "cemig").unwrap();
+        let key = "building_demand";
+        let (cmd, params) = method_probe(cemig, key, &cemig.sections[key]);
+        let mut s = Session::new();
+        let library = answer(&mut s, cmd, &params).unwrap();
+        make_copy(&mut s, cemig, key, "CoveredCopy", 1);
+        choose(&mut s, &["CoveredCopy", "cemig", "celesc"]);
+        let before = answer(&mut s, cmd, &params).unwrap();
+        let effective = display(&mut s, key);
+        let xml = dir().join("g3-covered-building-library.xml");
+        run(&mut s, "building_code_export", json!({"path": xml, "discipline": "electrical", "name": "BuildingExport"}));
+        let mut imported = Session::new();
+        run(&mut imported, "building_code_import", json!({"path": xml, "set": true}));
+        bc(&mut s, json!({"save": "BuildingSave"}));
+        let mut failed = Vec::new();
+        if before != library {
+            failed.push(format!("before persistence: expected {library}, got {before}"));
+        }
+        for (label, t) in [("save", &mut s), ("xml", &mut imported)] {
+            assert_eq!(display(t, key), effective);
+            probe(&mut failed, label, t, cmd, &params, &before);
+        }
+        assert!(failed.is_empty(), "{}", failed.join("\n"));
+    }
+
+    // The confirmation's cases (G3).
+    // Insert inside matrix_tests::one_on_top.
+
+    #[test]
+    fn review_building_both_orders_survive_all_roundtrips() {
+        let mut failures = Vec::new();
+        for (id, library) in [("celesc", 53.157), ("cemig", 62.017), ("fecoergs", 53.157), ("hidropan", 53.157)] {
+            let code = find(D, id).unwrap();
+            let key = "building_demand";
+            let method = &code.sections[key];
+            let other = if id == "celesc" { "cemig" } else { "celesc" };
+            let (_, standard) = method_probe(code, key, method);
+            let utility = json!({"utility": method["utilities"][0], "dwellings": standard["dwellings"]});
+            let mut s = Session::new();
+            make_copy(&mut s, code, key, "RoundtripCopy", 1);
+            for (pair, expected) in [(["RoundtripCopy", id], library), ([id, "RoundtripCopy"], 88.595)] {
+                choose(&mut s, &[pair[0], pair[1], other]);
+                let mut check = |stage: &str, t: &mut Session| {
+                    for p in [&standard, &utility] {
+                        probe(&mut failures, &format!("{id} {pair:?} {stage}"), t, "building_demand", p, &json!(expected));
+                    }
+                    let factors: Vec<_> = t
+                        .model
+                        .codes
+                        .layers(D)
+                        .iter()
+                        .filter_map(|layer| layer.sections.get(key))
+                        .filter(|rules| rules["standard"] == method["standard"])
+                        .map(|rules| rules["factor"].as_f64().unwrap())
+                        .collect();
+                    let library_factor = method["factor"].as_f64().unwrap();
+                    let expected_factors = if pair[0] == id { vec![library_factor, 2.0] } else { vec![2.0, library_factor] };
+                    if factors != expected_factors {
+                        failures.push(format!("{id} {pair:?} {stage}: expected both factors {expected_factors:?}, got {factors:?}"));
+                    }
+                    // Check the rule in force for the unrelated utility as well.
+                    let expected_other = if other == "cemig" { 62.017 } else { 53.157 };
+                    probe(
+                        &mut failures,
+                        &format!("{id} {pair:?} {stage}, implicit"),
+                        t,
+                        "building_demand",
+                        &json!({"dwellings": standard["dwellings"]}),
+                        &json!(expected_other),
+                    );
+                };
+                check("before", &mut s);
+                let bimc = dir().join("g3r2-building.bimc");
+                run(&mut s, "save", json!({"path": bimc, "compress": true}));
+                let mut reopened = Session::new();
+                run(&mut reopened, "open", json!({"path": bimc}));
+                check("bimc", &mut reopened);
+                let xml = dir().join("g3r2-building.xml");
+                run(&mut s, "building_code_export", json!({"path": xml, "discipline": "electrical", "name": "BuildingExport"}));
+                let mut imported = Session::new();
+                run(&mut imported, "building_code_import", json!({"path": xml, "set": true}));
+                check("xml", &mut imported);
+                let mut saved = Session::new();
+                *saved.model_mut() = (*s.model).clone();
+                bc(&mut saved, json!({"save": "BuildingSave"}));
+                check("building_code save", &mut saved);
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    #[test]
+    fn review_named_and_implicit_with_or_without_a_single_amendment() {
+        for (id, key) in [
+            ("fecoergs", "entrance"),
+            ("cpfl", "unit_demand"),
+            ("cemig", "building_demand"),
+            ("celesc", "building_demand"),
+            ("fecoergs", "building_demand"),
+            ("hidropan", "building_demand"),
+        ] {
+            let code = find(D, id).unwrap();
+            let method = &code.sections[key];
+            let (cmd, standard_or_named) = method_probe(code, key, method);
+            let mut named = standard_or_named.clone();
+            let mut implicit = named.clone();
+            implicit.as_object_mut().unwrap().remove("standard");
+            implicit.as_object_mut().unwrap().remove("utility");
+            if cmd == "building_demand" {
+                named = implicit.clone();
+                named["utility"] = method["utilities"][0].clone();
+            }
+            let mut none = Session::new();
+            choose(&mut none, &[]);
+            let baseline = run(&mut none, cmd, named.clone());
+            assert!(none.execute(cmd, &implicit).is_err(), "{id}: no utility in force");
+            let mut held = Session::new();
+            choose(&mut held, &[id]);
+            for params in [named, standard_or_named, implicit] {
+                assert_eq!(run(&mut held, cmd, params), baseline, "{id}: all output, including source");
+            }
+        }
+    }
+
+    #[test]
+    fn review_group_member_held_alone_keeps_50_a_and_source() {
+        let mut none = Session::new();
+        let mut held = Session::new();
+        choose(&mut held, &["fecoergs"]);
+        for id in ["CERTEL", "certel"] {
+            let p = json!({"utility": id, "installed_kw": 8, "phases": 1});
+            let baseline = run(&mut none, "demand", p.clone());
+            assert_eq!(answer(&mut held, "demand", &p).unwrap().as_f64(), Some(50.0));
+            assert_eq!(run(&mut held, "demand", p), baseline);
+        }
+    }
+
+    #[test]
+    fn review_separate_entrance_and_unit_demand_keep_their_own_rules() {
+        let mut s = Session::new();
+        choose(&mut s, &["fecoergs", "cpfl"]);
+        let entrance = json!({"utility": "FECOERGS", "installed_kw": 8, "phases": 1});
+        let unit = json!({"utility": "CPFL", "area": 40});
+        let implicit = json!({"area": 40});
+        assert_eq!(answer(&mut s, "demand", &entrance).unwrap().as_f64(), Some(50.0));
+        for p in [&unit, &implicit] {
+            assert_eq!(answer(&mut s, "demand", p).unwrap().as_f64(), Some(32.0));
+        }
+    }
+
+    #[test]
+    fn review_project_edits_win_and_survive_reopen_and_xml() {
+        let mut s = Session::new();
+        choose(&mut s, &["fecoergs", "cpfl", "cemig"]);
+        for (id, key) in [("fecoergs", "entrance"), ("cpfl", "unit_demand"), ("cemig", "building_demand")] {
+            let code = find(D, id).unwrap();
+            bc(&mut s, json!({"amend": id, "rules": {key: changed(code, key, 1)}}));
+        }
+        let check = |t: &mut Session| {
+            for (cmd, p, expected) in [
+                ("demand", json!({"utility": "CERTEL", "installed_kw": 8, "phases": 1}), 51.0),
+                ("demand", json!({"utility": "CPFL", "area": 40}), 33.0),
+                ("demand", json!({"area": 40}), 33.0),
+                ("building_demand", json!({"utility": "CEMIG", "dwellings": [{"count": 20, "area": 120}]}), 88.595),
+                ("building_demand", json!({"standard": "CEMIG ND-5.2", "dwellings": [{"count": 20, "area": 120}]}), 88.595),
+                ("building_demand", json!({"dwellings": [{"count": 20, "area": 120}]}), 88.595),
+            ] {
+                assert_eq!(answer(t, cmd, &p).unwrap().as_f64(), Some(expected), "{cmd} {p}");
+            }
+        };
+        check(&mut s);
+        let bimc = dir().join("g3r2-project-edits.bimc");
+        run(&mut s, "save", json!({"path": bimc, "compress": true}));
+        let mut reopened = Session::new();
+        run(&mut reopened, "open", json!({"path": bimc}));
+        check(&mut reopened);
+        let xml = dir().join("g3r2-project-edits.xml");
+        run(&mut s, "building_code_export", json!({"path": xml, "discipline": "electrical", "name": "EditExport"}));
+        let mut imported = Session::new();
+        run(&mut imported, "building_code_import", json!({"path": xml, "set": true}));
+        check(&mut imported);
+    }
+
+    #[test]
+    fn review_project_unit_demand_above_library_entrance_for_same_utility() {
+        let mut s = Session::new();
+        make_copy(&mut s, find(D, "celesc").unwrap(), "unit_demand", "UnitCopy", 2);
+        choose(&mut s, &["fecoergs", "UnitCopy"]);
+        bc(&mut s, json!({"amend": "UnitCopy", "rules": {"unit_demand": {"utility": "FECOERGS"}}}));
+        let mut failures = Vec::new();
+        for p in [json!({"utility": "FECOERGS", "installed_kw": 8, "phases": 1}), json!({"installed_kw": 8, "phases": 1})] {
+            let actual = answer(&mut s, "demand", &p).unwrap().as_f64().unwrap();
+            if actual != 52.0 {
+                failures.push(format!("{p}: expected the project's 52 A, got {actual} A"));
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+}
+
+#[test]
+fn a_utility_held_alone_answers_as_bimcrafts_own_word_for_word() {
+    // Held as BIMCraft has it, alone: `demand` answers exactly as BIMCraft's own, its source too, by name and by none.
+    for code in of(Discipline::Electrical).filter(|c| !c.amends.is_empty()) {
+        for key in ["unit_demand", "entrance"] {
+            if !code.sections.contains_key(key) {
+                continue;
+            }
+            let (cmd, probe) = method_probe(code, key, &code.sections[key]);
+            let mut held = Session::new();
+            run(&mut held, "building_code", json!({"discipline": "electrical", "set": code.amends, "amendments": [code.code]}));
+            let mut none = Session::new();
+            let named = run(&mut held, cmd, probe.clone());
+            assert_eq!(named, run(&mut none, cmd, probe.clone()), "{} {key}: held alone, as BIMCraft's own", code.code);
+            let mut implicit = probe.clone();
+            if let Some(o) = implicit.as_object_mut() {
+                o.remove("utility");
+            }
+            assert_eq!(run(&mut held, cmd, implicit), named, "{} {key}: by none, as by name", code.code);
+        }
+    }
+}

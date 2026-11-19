@@ -141,7 +141,7 @@ msgstr "Datauttag"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:15351
+#: crates/core/src/commands.rs:15364
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -226,9 +226,9 @@ msgstr "Elbelysning"
 msgid "Electrical Power"
 msgstr "Elkraft"
 
-#: crates/core/src/commands.rs:15096
-#: crates/core/src/commands.rs:15112
-#: crates/core/src/commands.rs:19954
+#: crates/core/src/commands.rs:15109
+#: crates/core/src/commands.rs:15125
+#: crates/core/src/commands.rs:19967
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -411,7 +411,7 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:9374
+#: crates/core/src/commands.rs:9387
 #: crates/core/src/model.rs:4672
 msgid "Level"
 msgstr "Nivå"
@@ -452,7 +452,7 @@ msgstr "Beteckning"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:12137
+#: crates/core/src/commands.rs:12150
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -469,7 +469,7 @@ msgid "Membrane"
 msgstr "Membran"
 
 #: crates/core/src/commands.rs:4422
-#: crates/core/src/commands.rs:18499
+#: crates/core/src/commands.rs:18512
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -574,7 +574,7 @@ msgstr ""
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:10122
+#: crates/core/src/commands.rs:10135
 msgid "Property Line"
 msgstr ""
 
@@ -606,7 +606,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:12667
+#: crates/core/src/commands.rs:12680
 msgid "Room"
 msgstr "Rum"
 
@@ -642,8 +642,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:15030
-#: crates/core/src/commands.rs:19953
+#: crates/core/src/commands.rs:15043
+#: crates/core/src/commands.rs:19966
 msgid "Section"
 msgstr "Sektion"
 
@@ -796,7 +796,7 @@ msgstr "Platta 300"
 msgid "Timber"
 msgstr "Trä"
 
-#: crates/core/src/commands.rs:10164
+#: crates/core/src/commands.rs:10177
 msgid "Toposolid"
 msgstr ""
 
@@ -834,7 +834,7 @@ msgstr "Obegränsad höjd"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15689
+#: crates/core/src/commands.rs:15702
 msgid "Unnamed"
 msgstr "Namnlös"
 
