@@ -404,24 +404,29 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         r.rect.width()
     } else {
         let shown = ui.vertical(|ui| {
-            let row = ui.scope(|ui| {
-                if !on {
-                    ui.set_opacity(0.45);
-                }
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    add(ui);
-                })
-            });
             if editing {
-                // The panel's name is its box: ticked shows it, cleared takes it out and keeps its tools' boxes here.
+                // The panel's name is its box: ticked shows it, cleared takes it out and keeps its tools' boxes here. It stands
+                // over the tools, where a short ribbon cannot clip it.
                 let mut shown = on;
                 let r = ui.checkbox(&mut shown, t(title));
                 if r.changed() {
                     toggle_panel(&key);
                 }
+                ui.scope(|ui| {
+                    if !on {
+                        ui.set_opacity(0.45);
+                    }
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        add(ui);
+                    })
+                });
                 r
             } else {
+                let row = ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    add(ui);
+                });
                 let font = FontId::proportional(11.5);
                 let text = ui.painter().layout_no_wrap(name.to_string(), font.clone(), pal().muted).size().x;
                 let (r, title_row) = ui.allocate_exact_size(vec2(row.response.rect.width().max(text + 24.0), 16.0), Sense::click());
