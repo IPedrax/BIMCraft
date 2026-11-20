@@ -145,6 +145,8 @@ fn a_binding_assigned_twice_belongs_to_the_first_action() {
         version: 2,
         profile: crate::shortcuts::Profile::Custom,
         bindings: vec![("cmd.move".to_string(), vec!["Ctrl+D".to_string()]), ("cmd.copy".to_string(), vec!["Ctrl+D".to_string()])],
+        active_preset: None,
+        presets: Vec::new(),
     };
     let set = Shortcuts::from_config(&config);
     assert_eq!(set.binding_owner(parse_binding("Ctrl+D").unwrap()).map(|s| s.to_string()), Some("cmd.move".to_string()));

@@ -393,6 +393,8 @@ impl BimApp {
         self.compressed_save = kept.compressed_save;
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.shortcuts = crate::shortcuts::Shortcuts::from_config(&kept.shortcuts);
+        self.shortcut_presets = kept.shortcuts.presets.clone();
+        self.active_shortcut_preset = kept.shortcuts.active_preset.clone();
         crate::shortcuts::publish(&self.shortcuts);
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
@@ -418,6 +420,15 @@ impl BimApp {
     /// Lets the 3D view be drawn on the card `state` is the window's, when the user asks (Settings > Performance).
     pub fn use_graphics_card(&mut self, state: &eframe::egui_wgpu::RenderState) {
         self.card.state = Some(state.clone());
+    }
+
+    /// The bindings and the presets as the settings file keeps them: the current set, the user's
+    /// snapshots, and the preset the set came from.
+    fn shortcuts_config(&self) -> crate::shortcuts::Config {
+        let mut config = self.shortcuts.to_config();
+        config.presets = self.shortcut_presets.clone();
+        config.active_preset = self.active_shortcut_preset.clone();
+        config
     }
 
     fn settings_now(&self, theme: ThemePreference) -> Settings {
@@ -447,7 +458,7 @@ impl BimApp {
             compressed_save: self.compressed_save,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
-            shortcuts: self.shortcuts.to_config(),
+            shortcuts: self.shortcuts_config(),
             system_title_bar: self.system_title_bar,
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,

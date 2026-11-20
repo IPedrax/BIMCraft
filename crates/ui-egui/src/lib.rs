@@ -1025,6 +1025,10 @@ pub struct BimApp {
     /// The action bindings: several per action, chords and Revit-style sequences.
     pub shortcuts: shortcuts::Shortcuts,
     pub shortcuts_dialog: shortcuts::ShortcutsDialog,
+    /// The user's named snapshots of the bindings, kept in `settings.json`; built-in presets are generated.
+    pub shortcut_presets: Vec<shortcuts::ShortcutPreset>,
+    /// The preset the current set came from: `builtin:<code>` or a user's name.
+    pub active_shortcut_preset: Option<String>,
     open_units: bool,
     /// Where the Options Bar was drawn last frame, for a view's navigation bar to keep clear of it (nothing when it isn't there).
     options_rect: Rect,
@@ -1913,6 +1917,8 @@ impl BimApp {
             show_shortcuts: false,
             shortcuts: shortcuts::Shortcuts::default(),
             shortcuts_dialog: shortcuts::ShortcutsDialog::default(),
+            shortcut_presets: Vec::new(),
+            active_shortcut_preset: None,
             angle_edit: None,
             snaps: Snaps::default(),
             show_snaps: false,

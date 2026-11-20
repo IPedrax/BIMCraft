@@ -29,6 +29,15 @@ const MAX_LINES: usize = 10_000;
 pub const MAX_BINDINGS: usize = 4096;
 /// The most bindings one action may have.
 pub const MAX_PER_ACTION: usize = 32;
+/// The most named presets kept, as many as the layout presets.
+pub const MAX_PRESETS: usize = 32;
+/// The longest name a preset has, as the layout presets' names.
+pub const MAX_PRESET_NAME: usize = 64;
+/// The most bindings every preset together may hold: with the current set this stays well inside
+/// `settings::MAX_FILE`, so a file this build writes is always one it can read back.
+pub const MAX_PRESET_BINDINGS_TOTAL: usize = 8_192;
+/// How a built-in preset is named in `active_preset`, apart from a user's preset of the same name.
+const BUILTIN_PREFIX: &str = "builtin:";
 
 /// An action's stable id: `cmd.move`, `ui.file.save_as`, `legacy.<name>`.
 pub type ActionId = Arc<str>;
@@ -181,6 +190,145 @@ impl Profile {
             Profile::Custom => "Custom",
         }
     }
+}
+
+/// A named snapshot of a full binding set, kept in `settings.json`. Built-in presets are generated
+/// from `Shortcuts::defaults` and are never stored: only the user's own are.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShortcutPreset {
+    pub name: String,
+    /// The starting set the snapshot came from, so Reset Action and the dialog's base note agree with it.
+    pub base: Profile,
+    /// Action id to canonical binding strings, as `Config::bindings` holds them.
+    pub bindings: Vec<(String, Vec<String>)>,
+}
+
+impl ShortcutPreset {
+    /// Keeps `s` under `name`; none when the name is empty or too long.
+    pub fn from_shortcuts(name: &str, s: &Shortcuts) -> Option<ShortcutPreset> {
+        Some(ShortcutPreset { name: preset_name(name)?, base: s.profile, bindings: s.to_config().bindings })
+    }
+
+    /// The set this preset holds. Unknown actions, reserved chords and conflicts are skipped one by
+    /// one, as a hand-edited settings file is, so one bad line cannot take the preset down.
+    pub fn to_shortcuts(&self) -> Shortcuts {
+        let mut s = Shortcuts::empty(self.base);
+        for (action, keys) in &self.bindings {
+            if registry().get(action).is_none() {
+                continue;
+            }
+            for key in keys.iter().take(MAX_PER_ACTION) {
+                let Ok(b) = parse_binding(key) else { continue };
+                if check_assignable(b).is_err() {
+                    continue;
+                }
+                let _ = s.add_binding(action, b, false);
+            }
+        }
+        s
+    }
+
+    pub fn binding_count(&self) -> usize {
+        self.bindings.iter().map(|(_, keys)| keys.len()).sum()
+    }
+
+    pub fn to_json(&self) -> Value {
+        json!({
+            "name": self.name,
+            "base": self.base.code(),
+            "bindings": self
+                .bindings
+                .iter()
+                .map(|(action, keys)| json!({"action": action, "keys": keys}))
+                .collect::<Vec<_>>(),
+        })
+    }
+
+    /// Reads a preset as hostile as any file: a name is required, actions and keys are bounded.
+    pub fn from_json(v: &Value) -> Option<ShortcutPreset> {
+        let name = preset_name(v.get("name")?.as_str()?)?;
+        let base = v.get("base").and_then(Value::as_str).and_then(Profile::from_code).unwrap_or(Profile::Custom);
+        let mut bindings: Vec<(String, Vec<String>)> = Vec::new();
+        let mut total = 0;
+        for entry in v.get("bindings").and_then(Value::as_array).into_iter().flatten() {
+            if bindings.len() >= MAX_BINDINGS {
+                break;
+            }
+            let Some(action) = entry.get("action").and_then(Value::as_str).filter(|a| !a.is_empty()) else { continue };
+            let keys: Vec<String> = entry
+                .get("keys")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).take(MAX_PER_ACTION).collect())
+                .unwrap_or_default();
+            if keys.is_empty() {
+                continue;
+            }
+            total += keys.len();
+            if total > MAX_BINDINGS {
+                break;
+            }
+            bindings.push((action.to_string(), keys));
+        }
+        Some(ShortcutPreset { name, base, bindings })
+    }
+}
+
+/// One entrant in the dialog's preset list: a built-in starting set or a name the user kept.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PresetChoice {
+    BuiltIn(Profile),
+    User(String),
+}
+
+impl PresetChoice {
+    /// The choice a set that starts from `profile` shows: its own built-in preset, or BIMCraft's for
+    /// a set that has no starting set of its own.
+    pub fn for_profile(profile: Profile) -> PresetChoice {
+        match profile {
+            Profile::Custom => PresetChoice::BuiltIn(Profile::BimCraft),
+            p => PresetChoice::BuiltIn(p),
+        }
+    }
+
+    /// How the choice is kept in `active_preset`: `builtin:<code>` or the user's name.
+    pub fn key(&self) -> String {
+        match self {
+            PresetChoice::BuiltIn(p) => format!("{BUILTIN_PREFIX}{}", p.code()),
+            PresetChoice::User(name) => name.clone(),
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<PresetChoice> {
+        match key.strip_prefix(BUILTIN_PREFIX) {
+            Some(code) => Profile::from_code(code).filter(|p| *p != Profile::Custom).map(PresetChoice::BuiltIn),
+            None => Some(PresetChoice::User(preset_name(key)?)),
+        }
+    }
+
+    /// The label the dialog shows: a built-in's own name, or the user's name as typed.
+    pub fn label(&self) -> &str {
+        match self {
+            PresetChoice::BuiltIn(p) => p.name(),
+            PresetChoice::User(name) => name,
+        }
+    }
+}
+
+/// A preset's name as it is kept: trimmed, not empty, at most `MAX_PRESET_NAME` characters, and
+/// never in the `builtin:` form that tells a built-in preset apart in `active_preset`.
+pub fn preset_name(name: &str) -> Option<String> {
+    let name = name.trim();
+    (!name.is_empty() && name.chars().count() <= MAX_PRESET_NAME && !name.to_ascii_lowercase().starts_with(BUILTIN_PREFIX))
+        .then(|| name.to_string())
+}
+
+/// The built-in preset `name` means, if any, so a user's preset cannot take a built-in's name.
+pub fn builtin_named(name: &str) -> Option<Profile> {
+    let name = name.trim();
+    Profile::CHOICES.into_iter().find(|p| {
+        p.name().eq_ignore_ascii_case(name)
+            || Lang::ALL.iter().any(|l| translated_in(*l, p.name()).is_some_and(|w| w.eq_ignore_ascii_case(name)))
+    })
 }
 
 /// An action the user can bind, or one the dialog shows with a reason.
@@ -1351,6 +1499,32 @@ pub struct Config {
     pub profile: Profile,
     /// Action id to canonical binding strings, in the order the action has them.
     pub bindings: Vec<(String, Vec<String>)>,
+    /// The preset the current set came from, as `PresetChoice::key`; none when no preset or the set
+    /// was edited past it. Only a label: the bindings above are what runs.
+    pub active_preset: Option<String>,
+    /// The user's named snapshots. Built-in presets come from `Profile::CHOICES` and are not stored.
+    pub presets: Vec<ShortcutPreset>,
+}
+
+/// The presets a settings object holds: named, unique, bounded in number and in bindings.
+fn read_presets(v: Option<&Value>) -> Vec<ShortcutPreset> {
+    let mut out: Vec<ShortcutPreset> = Vec::new();
+    let mut total = 0;
+    for p in v.and_then(Value::as_array).into_iter().flatten() {
+        if out.len() >= MAX_PRESETS {
+            break;
+        }
+        let Some(p) = ShortcutPreset::from_json(p) else { continue };
+        if out.iter().any(|q| q.name.eq_ignore_ascii_case(&p.name)) || builtin_named(&p.name).is_some() {
+            continue;
+        }
+        if total + p.binding_count() > MAX_PRESET_BINDINGS_TOTAL {
+            continue;
+        }
+        total += p.binding_count();
+        out.push(p);
+    }
+    out
 }
 
 impl Config {
@@ -1359,7 +1533,7 @@ impl Config {
     }
 
     pub fn to_json(&self) -> Value {
-        json!({
+        let mut out = json!({
             "version": self.version,
             "profile": self.profile.code(),
             "bindings": self
@@ -1367,7 +1541,12 @@ impl Config {
                 .iter()
                 .map(|(action, keys)| json!({"action": action, "keys": keys}))
                 .collect::<Vec<_>>(),
-        })
+            "presets": self.presets.iter().map(ShortcutPreset::to_json).collect::<Vec<_>>(),
+        });
+        if let Some(active) = &self.active_preset {
+            out["active_preset"] = json!(active);
+        }
+        out
     }
 
     /// Reads the v2 object; a legacy object (`{"WA": "Wall"}`) is migrated over `base`.
@@ -1392,7 +1571,18 @@ impl Config {
                     bindings.push((action.to_string(), keys));
                 }
             }
-            return Config { version: 2, profile, bindings };
+            let presets = read_presets(obj.get("presets"));
+            // A name that no longer exists is a label without a list: the set itself is still valid.
+            let active_preset = obj
+                .get("active_preset")
+                .and_then(Value::as_str)
+                .and_then(PresetChoice::from_key)
+                .filter(|c| match c {
+                    PresetChoice::BuiltIn(_) => true,
+                    PresetChoice::User(name) => presets.iter().any(|p| &p.name == name),
+                })
+                .map(|c| c.key());
+            return Config { version: 2, profile, bindings, active_preset, presets };
         }
         // The old format: key -> English action name. Each becomes a sequence over the base profile.
         if obj.is_empty() {
@@ -1410,7 +1600,10 @@ impl Config {
             let _ = migrated.add_binding(&id, binding, true);
         }
         migrated.profile = Profile::Custom;
-        migrated.to_config()
+        let mut config = migrated.to_config();
+        config.presets = base.presets.clone();
+        config.active_preset = base.active_preset.clone();
+        config
     }
 }
 
@@ -1681,6 +1874,8 @@ impl Shortcuts {
                 .filter(|(_, keys)| !keys.is_empty())
                 .map(|(id, keys)| (id.to_string(), keys.iter().map(|b| display_binding(*b)).collect()))
                 .collect(),
+            active_preset: None,
+            presets: Vec::new(),
         }
     }
 
@@ -2182,6 +2377,13 @@ pub struct ImportPreview {
     pub backup: Option<String>,
 }
 
+/// What the preset name field is for: keeping the current set under a new name, or renaming one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PresetEditor {
+    SaveAs,
+    Rename,
+}
+
 /// The Keyboard Shortcuts dialog.
 pub struct ShortcutsDialog {
     pub search: String,
@@ -2189,7 +2391,18 @@ pub struct ShortcutsDialog {
     pub category: Option<Category>,
     pub sort: SortColumn,
     pub ascending: bool,
-    pub profile_pick: Profile,
+    pub preset_pick: PresetChoice,
+    /// The preset the pending set came from, or none when it was edited past it.
+    pub active_preset: Option<String>,
+    pub preset_name: String,
+    pub preset_editor: Option<PresetEditor>,
+    /// Set when the name field opens, so it takes the keyboard without a click.
+    pub preset_focus: bool,
+    pub preset_note: Option<String>,
+    pub preset_failed: bool,
+    pub confirm_preset_apply: Option<PresetChoice>,
+    pub confirm_preset_delete: Option<String>,
+    pub confirm_preset_overwrite: Option<String>,
     pub pending: Shortcuts,
     pub original: Shortcuts,
     pub capture: Option<Capture>,
@@ -2212,7 +2425,16 @@ impl Default for ShortcutsDialog {
             category: None,
             sort: SortColumn::Category,
             ascending: true,
-            profile_pick: s.profile,
+            preset_pick: PresetChoice::for_profile(s.profile),
+            active_preset: None,
+            preset_name: String::new(),
+            preset_editor: None,
+            preset_focus: false,
+            preset_note: None,
+            preset_failed: false,
+            confirm_preset_apply: None,
+            confirm_preset_delete: None,
+            confirm_preset_overwrite: None,
             pending: s.clone(),
             original: s,
             capture: None,
@@ -2295,13 +2517,181 @@ impl BimApp {
         if !self.show_shortcuts {
             self.shortcuts_dialog =
                 ShortcutsDialog { pending: self.shortcuts.clone(), original: self.shortcuts.clone(), ..ShortcutsDialog::default() };
-            self.shortcuts_dialog.profile_pick = self.shortcuts.profile;
+            self.shortcuts_dialog.preset_pick = self
+                .active_shortcut_preset
+                .as_deref()
+                .and_then(PresetChoice::from_key)
+                .unwrap_or_else(|| PresetChoice::for_profile(self.shortcuts.profile));
+            self.shortcuts_dialog.active_preset = self.active_shortcut_preset.clone();
         }
         self.show_shortcuts = true;
     }
 
+    /// The set a preset choice stands for: a built-in's defaults, or the user's snapshot.
+    fn preset_set(&self, choice: &PresetChoice) -> Option<Shortcuts> {
+        match choice {
+            PresetChoice::BuiltIn(p) => Some(Shortcuts::defaults(*p)),
+            PresetChoice::User(name) => {
+                self.shortcut_presets.iter().find(|p| &p.name == name).map(ShortcutPreset::to_shortcuts)
+            }
+        }
+    }
+
+    /// The set the active preset's key names, if it is still there.
+    fn preset_set_for_key(&self, key: &str) -> Option<Shortcuts> {
+        PresetChoice::from_key(key).and_then(|choice| self.preset_set(&choice))
+    }
+
+    /// Whether the pending set is exactly the preset `choice` holds.
+    fn pending_matches(&self, choice: &PresetChoice) -> bool {
+        self.preset_set(choice).is_some_and(|set| set.to_config().bindings == self.shortcuts_dialog.pending.to_config().bindings)
+    }
+
+    /// Whether the pending set has moved away from the preset it came from.
+    fn active_preset_modified(&self) -> bool {
+        self.shortcuts_dialog
+            .active_preset
+            .as_deref()
+            .and_then(|key| self.preset_set_for_key(key))
+            .is_some_and(|set| set.to_config().bindings != self.shortcuts_dialog.pending.to_config().bindings)
+    }
+
+    /// Replaces the set being edited with a preset's; Apply Changes is still what keeps it.
+    fn apply_preset_choice(&mut self, choice: PresetChoice) {
+        let Some(set) = self.preset_set(&choice) else {
+            self.shortcuts_dialog.preset_failed = true;
+            self.shortcuts_dialog.preset_note = Some(t("That preset is no longer there").to_string());
+            return;
+        };
+        self.shortcuts_dialog.pending = set;
+        self.shortcuts_dialog.active_preset = Some(choice.key());
+        self.shortcuts_dialog.confirm_preset_apply = None;
+        self.shortcuts_dialog.preset_failed = false;
+        self.shortcuts_dialog.preset_note = None;
+        self.shortcuts_dialog.error = None;
+        self.shortcuts_dialog.message = Some(tf("Preset “{}” applied to the pending set.", &[choice.label()]));
+    }
+
+    /// Keeps the set being edited under `name`, on top of the same name, when `replace`.
+    fn save_preset_named(&mut self, name: &str, replace: bool) {
+        let note = |app: &mut BimApp, text: String| {
+            app.shortcuts_dialog.preset_failed = true;
+            app.shortcuts_dialog.preset_note = Some(text);
+        };
+        let Some(name) = preset_name(name) else {
+            note(self, t("A preset needs a name, of at most 64 letters").to_string());
+            return;
+        };
+        if let Some(builtin) = builtin_named(&name) {
+            note(self, tf("“{}” is a built-in preset's name", &[builtin.name()]));
+            return;
+        }
+        let existing = self.shortcut_presets.iter().position(|p| p.name.eq_ignore_ascii_case(&name));
+        if existing.is_some() && !replace {
+            self.shortcuts_dialog.confirm_preset_overwrite = Some(name);
+            return;
+        }
+        if existing.is_none() && self.shortcut_presets.len() >= MAX_PRESETS {
+            note(self, t("That is as many presets as are kept: delete one first").to_string());
+            return;
+        }
+        let Some(preset) = ShortcutPreset::from_shortcuts(&name, &self.shortcuts_dialog.pending) else {
+            note(self, t("A preset needs a name, of at most 64 letters").to_string());
+            return;
+        };
+        let total: usize = self
+            .shortcut_presets
+            .iter()
+            .filter(|p| !p.name.eq_ignore_ascii_case(&name))
+            .map(ShortcutPreset::binding_count)
+            .sum();
+        if total + preset.binding_count() > MAX_PRESET_BINDINGS_TOTAL {
+            note(self, t("The presets hold as many bindings as are kept: delete one first").to_string());
+            return;
+        }
+        match existing {
+            Some(i) => self.shortcut_presets[i] = preset,
+            None => self.shortcut_presets.push(preset),
+        }
+        // The current set has not changed; it is now exactly what this preset keeps. The label is
+        // kept only when that set was already applied, so Cancel cannot leave a preset marked active
+        // over a set that never took its bindings.
+        self.shortcuts_dialog.active_preset = Some(name.clone());
+        if self.shortcuts.to_config().bindings == self.shortcuts_dialog.pending.to_config().bindings {
+            self.active_shortcut_preset = Some(name.clone());
+        }
+        self.shortcuts_dialog.preset_pick = PresetChoice::User(name.clone());
+        self.shortcuts_dialog.preset_editor = None;
+        self.shortcuts_dialog.preset_name.clear();
+        self.shortcuts_dialog.confirm_preset_overwrite = None;
+        self.shortcuts_dialog.preset_failed = false;
+        self.shortcuts_dialog.preset_note = Some(tf("Preset “{}” saved.", &[name.as_str()]));
+    }
+
+    /// Renames a user's preset; the bindings and the active label follow it.
+    fn rename_preset(&mut self, from: &str, to: &str) {
+        let note = |app: &mut BimApp, text: String| {
+            app.shortcuts_dialog.preset_failed = true;
+            app.shortcuts_dialog.preset_note = Some(text);
+        };
+        let Some(to) = preset_name(to) else {
+            note(self, t("A preset needs a name, of at most 64 letters").to_string());
+            return;
+        };
+        if builtin_named(&to).is_some() {
+            note(self, t("Built-in presets cannot be renamed or deleted").to_string());
+            return;
+        }
+        if to == from {
+            self.shortcuts_dialog.preset_editor = None;
+            self.shortcuts_dialog.preset_name.clear();
+            return;
+        }
+        if self.shortcut_presets.iter().any(|p| p.name.eq_ignore_ascii_case(&to)) {
+            note(self, tf("A preset named “{}” already exists", &[to.as_str()]));
+            return;
+        }
+        let Some(i) = self.shortcut_presets.iter().position(|p| p.name == from) else {
+            note(self, t("That preset is no longer there").to_string());
+            return;
+        };
+        self.shortcut_presets[i].name = to.clone();
+        if self.active_shortcut_preset.as_deref() == Some(from) {
+            self.active_shortcut_preset = Some(to.clone());
+        }
+        if self.shortcuts_dialog.active_preset.as_deref() == Some(from) {
+            self.shortcuts_dialog.active_preset = Some(to.clone());
+        }
+        if self.shortcuts_dialog.preset_pick == PresetChoice::User(from.to_string()) {
+            self.shortcuts_dialog.preset_pick = PresetChoice::User(to.clone());
+        }
+        self.shortcuts_dialog.preset_editor = None;
+        self.shortcuts_dialog.preset_name.clear();
+        self.shortcuts_dialog.confirm_preset_delete = None;
+        self.shortcuts_dialog.preset_failed = false;
+        self.shortcuts_dialog.preset_note = Some(tf("Preset “{}” renamed.", &[to.as_str()]));
+    }
+
+    /// Deletes a user's preset; the current set stays as it is and loses only its label.
+    fn delete_preset(&mut self, name: &str) {
+        let Some(i) = self.shortcut_presets.iter().position(|p| p.name == name) else { return };
+        self.shortcut_presets.remove(i);
+        if self.active_shortcut_preset.as_deref() == Some(name) {
+            self.active_shortcut_preset = None;
+        }
+        if self.shortcuts_dialog.active_preset.as_deref() == Some(name) {
+            self.shortcuts_dialog.active_preset = None;
+        }
+        if self.shortcuts_dialog.preset_pick == PresetChoice::User(name.to_string()) {
+            self.shortcuts_dialog.preset_pick = PresetChoice::for_profile(self.shortcuts_dialog.pending.profile);
+        }
+        self.shortcuts_dialog.confirm_preset_delete = None;
+        self.shortcuts_dialog.preset_note = Some(tf("Preset “{}” deleted.", &[name]));
+    }
+
     fn apply_shortcuts(&mut self) {
         self.shortcuts = self.shortcuts_dialog.pending.clone();
+        self.active_shortcut_preset = self.shortcuts_dialog.active_preset.clone();
         self.shortcuts_dialog.original = self.shortcuts.clone();
         self.shortcuts_dialog.message = Some(t("Keyboard shortcuts applied.").to_string());
         self.shortcuts_dialog.error = None;
@@ -2633,6 +3023,8 @@ impl BimApp {
         let mut apply = false;
         let mut discard = false;
         let mut escape_closes = false;
+        // Esc while the preset name field is open closes the field, not the dialog.
+        let mut preset_escape = false;
 
         let r = Modal::new(UiId::new("shortcuts"), t("Keyboard Shortcuts")).width(1280.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
@@ -2661,23 +3053,153 @@ impl BimApp {
                         }
                     });
                 });
-                // Profile choice changes the whole set, not the filter: it sits apart from them.
+                // Presets replace the whole set, not the filter: they sit apart from it.
                 ui.add_space(4.0);
                 ui.separator();
                 ui.add_space(2.0);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(t("Profile")).strong());
-                    ComboBox::from_id_salt("shortcut-profile").selected_text(self.shortcuts_dialog.profile_pick.name()).show_ui(ui, |ui| {
-                        for p in Profile::CHOICES {
-                            ui.selectable_value(&mut self.shortcuts_dialog.profile_pick, p, p.name());
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(t("Keyboard presets")).strong());
+                    ComboBox::from_id_salt("shortcut-preset")
+                        .selected_text(self.shortcuts_dialog.preset_pick.label().to_string())
+                        .show_ui(ui, |ui| {
+                            ui.label(RichText::new(t("Built-in")).small().color(pal().muted));
+                            for p in Profile::CHOICES {
+                                let choice = PresetChoice::BuiltIn(p);
+                                if ui.selectable_label(self.shortcuts_dialog.preset_pick == choice, p.name()).clicked() {
+                                    self.shortcuts_dialog.preset_pick = choice;
+                                }
+                            }
+                            if !self.shortcut_presets.is_empty() {
+                                ui.separator();
+                                ui.label(RichText::new(t("My presets")).small().color(pal().muted));
+                                for preset in self.shortcut_presets.clone() {
+                                    let choice = PresetChoice::User(preset.name.clone());
+                                    if ui.selectable_label(self.shortcuts_dialog.preset_pick == choice, &preset.name).clicked() {
+                                        self.shortcuts_dialog.preset_pick = choice;
+                                    }
+                                }
+                            }
+                        });
+                    if ui.button(t("Apply Preset")).clicked() {
+                        let choice = self.shortcuts_dialog.preset_pick.clone();
+                        if self.pending_matches(&choice) {
+                            self.apply_preset_choice(choice);
+                        } else {
+                            self.shortcuts_dialog.confirm_preset_apply = Some(choice);
                         }
-                    });
-                    if ui.button(t("Apply Profile")).clicked() {
-                        self.shortcuts_dialog.pending = Shortcuts::defaults(self.shortcuts_dialog.profile_pick);
-                        self.shortcuts_dialog.message =
-                            Some(tf("Profile “{}” applied to the pending set.", &[self.shortcuts_dialog.profile_pick.name()]));
+                    }
+                    if ui.button(t("Save Current as Preset…")).clicked() {
+                        self.shortcuts_dialog.preset_editor = Some(PresetEditor::SaveAs);
+                        self.shortcuts_dialog.preset_name.clear();
+                        self.shortcuts_dialog.preset_focus = true;
+                        self.shortcuts_dialog.preset_failed = false;
+                        self.shortcuts_dialog.preset_note = None;
+                    }
+                    let editable = matches!(self.shortcuts_dialog.preset_pick, PresetChoice::User(_));
+                    if ui.add_enabled(editable, egui::Button::new(t("Rename Preset…"))).clicked() {
+                        self.shortcuts_dialog.preset_editor = Some(PresetEditor::Rename);
+                        self.shortcuts_dialog.preset_name = self.shortcuts_dialog.preset_pick.label().to_string();
+                        self.shortcuts_dialog.preset_focus = true;
+                        self.shortcuts_dialog.preset_failed = false;
+                        self.shortcuts_dialog.preset_note = None;
+                    }
+                    if ui.add_enabled(editable, egui::Button::new(t("Delete Preset"))).clicked()
+                        && let PresetChoice::User(name) = self.shortcuts_dialog.preset_pick.clone()
+                    {
+                        self.shortcuts_dialog.confirm_preset_delete = Some(name);
+                    }
+                    if self.shortcuts_dialog.active_preset.is_some() {
+                        let modified = self.active_preset_modified();
+                        let label = if modified { t("modified") } else { t("active") };
+                        ui.label(RichText::new(label).color(if modified { pal().muted } else { pal().accent_ink }));
                     }
                 });
+                if let Some(editor) = self.shortcuts_dialog.preset_editor {
+                    ui.group(|ui| {
+                        let caption = if editor == PresetEditor::SaveAs { t("Preset name") } else { t("New name") };
+                        let label = ui.label(caption);
+                        let field = ui
+                            .add(TextEdit::singleline(&mut self.shortcuts_dialog.preset_name).desired_width(220.0));
+                        if std::mem::take(&mut self.shortcuts_dialog.preset_focus) {
+                            field.request_focus();
+                        }
+                        let field = field.labelled_by(label.id);
+                        let base = match &self.shortcuts_dialog.preset_pick {
+                            PresetChoice::User(name) => self
+                                .shortcut_presets
+                                .iter()
+                                .find(|p| &p.name == name)
+                                .map_or(self.shortcuts_dialog.pending.profile, |p| p.base),
+                            PresetChoice::BuiltIn(p) => *p,
+                        };
+                        ui.label(RichText::new(tf("Based on: {}", &[base.name()])).color(pal().muted));
+                        let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                        let escape = ui.input(|i| i.key_pressed(Key::Escape));
+                        ui.horizontal(|ui| {
+                            let save = ui.button(t("Save Preset")).clicked() || enter;
+                            let cancel = ui.button(t("Cancel")).clicked() || escape;
+                            if save {
+                                let name = self.shortcuts_dialog.preset_name.clone();
+                                match editor {
+                                    PresetEditor::SaveAs => self.save_preset_named(&name, false),
+                                    PresetEditor::Rename => {
+                                        if let PresetChoice::User(from) = self.shortcuts_dialog.preset_pick.clone() {
+                                            self.rename_preset(&from, &name);
+                                        }
+                                    }
+                                }
+                            } else if cancel {
+                                self.shortcuts_dialog.preset_editor = None;
+                                self.shortcuts_dialog.preset_name.clear();
+                                self.shortcuts_dialog.preset_note = None;
+                                preset_escape = escape;
+                            }
+                        });
+                    });
+                }
+                if let Some(choice) = self.shortcuts_dialog.confirm_preset_apply.clone() {
+                    ui.group(|ui| {
+                        ui.label(tf("Replace the set being edited with “{}”?", &[choice.label()]));
+                        ui.horizontal(|ui| {
+                            if ui.button(t("Replace")).clicked() {
+                                self.apply_preset_choice(choice.clone());
+                            }
+                            if ui.button(t("Cancel")).clicked() {
+                                self.shortcuts_dialog.confirm_preset_apply = None;
+                            }
+                        });
+                    });
+                }
+                if let Some(name) = self.shortcuts_dialog.confirm_preset_delete.clone() {
+                    ui.group(|ui| {
+                        ui.label(tf("Delete the preset “{}”?", &[name.as_str()]));
+                        ui.horizontal(|ui| {
+                            if ui.button(t("Delete")).clicked() {
+                                self.delete_preset(&name);
+                            }
+                            if ui.button(t("Cancel")).clicked() {
+                                self.shortcuts_dialog.confirm_preset_delete = None;
+                            }
+                        });
+                    });
+                }
+                if let Some(name) = self.shortcuts_dialog.confirm_preset_overwrite.clone() {
+                    ui.group(|ui| {
+                        ui.label(tf("A preset named “{}” already exists. Replace it?", &[name.as_str()]));
+                        ui.horizontal(|ui| {
+                            if ui.button(t("Replace")).clicked() {
+                                self.save_preset_named(&name, true);
+                            }
+                            if ui.button(t("Cancel")).clicked() {
+                                self.shortcuts_dialog.confirm_preset_overwrite = None;
+                            }
+                        });
+                    });
+                }
+                if let Some(note) = self.shortcuts_dialog.preset_note.clone() {
+                    let colour = if self.shortcuts_dialog.preset_failed { pal().error } else { pal().accent_ink };
+                    ui.label(RichText::new(note).color(colour));
+                }
                 ui.add_space(2.0);
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -2718,7 +3240,10 @@ impl BimApp {
                         ui.label(t("Return every action to the starting profile?"));
                         ui.horizontal(|ui| {
                             if ui.button(t("Reset")).clicked() {
-                                self.shortcuts_dialog.pending = Shortcuts::defaults(self.shortcuts_dialog.profile_pick);
+                                let profile = self.shortcuts_dialog.pending.profile;
+                                self.shortcuts_dialog.pending = Shortcuts::defaults(profile);
+                                self.shortcuts_dialog.active_preset =
+                                    (profile != Profile::Custom).then(|| PresetChoice::BuiltIn(profile).key());
                                 self.shortcuts_dialog.confirm_reset_all = false;
                             }
                             if ui.button(t("Cancel")).clicked() {
@@ -3016,11 +3541,17 @@ impl BimApp {
         if escape_closes {
             self.show_shortcuts = false;
             self.shortcuts_dialog.pending = self.shortcuts.clone();
+            self.shortcuts_dialog.active_preset = self.active_shortcut_preset.clone();
             self.shortcuts_dialog.capture = None;
             self.shortcuts_dialog.import = None;
             self.shortcuts_dialog.confirm_discard = false;
             self.shortcuts_dialog.confirm_reset_all = false;
-        } else if (discard || close || r.should_close()) && !self.shortcuts_dialog.confirm_discard {
+            self.shortcuts_dialog.preset_editor = None;
+            self.shortcuts_dialog.preset_note = None;
+            self.shortcuts_dialog.confirm_preset_apply = None;
+            self.shortcuts_dialog.confirm_preset_delete = None;
+            self.shortcuts_dialog.confirm_preset_overwrite = None;
+        } else if (discard || close || r.should_close()) && !self.shortcuts_dialog.confirm_discard && !preset_escape {
             let changed = self.shortcuts_dialog.pending.to_config() != self.shortcuts_dialog.original.to_config();
             if changed {
                 self.shortcuts_dialog.confirm_discard = true;
@@ -3028,13 +3559,21 @@ impl BimApp {
                 self.show_shortcuts = false;
                 self.shortcuts_dialog.capture = None;
                 self.shortcuts_dialog.import = None;
+                self.shortcuts_dialog.preset_editor = None;
+                self.shortcuts_dialog.preset_note = None;
             }
         } else if discard && self.shortcuts_dialog.confirm_discard {
             self.show_shortcuts = false;
             self.shortcuts_dialog.pending = self.shortcuts.clone();
+            self.shortcuts_dialog.active_preset = self.active_shortcut_preset.clone();
             self.shortcuts_dialog.capture = None;
             self.shortcuts_dialog.import = None;
             self.shortcuts_dialog.confirm_discard = false;
+            self.shortcuts_dialog.preset_editor = None;
+            self.shortcuts_dialog.preset_note = None;
+            self.shortcuts_dialog.confirm_preset_apply = None;
+            self.shortcuts_dialog.confirm_preset_delete = None;
+            self.shortcuts_dialog.confirm_preset_overwrite = None;
         }
     }
 
@@ -3227,6 +3766,7 @@ impl BimApp {
                             }
                         }
                         self.shortcuts_dialog.pending = set;
+                        self.shortcuts_dialog.active_preset = None;
                         self.shortcuts_dialog.import = None;
                         self.shortcuts_dialog.error = None;
                         self.shortcuts_dialog.message = Some(tf(
@@ -3413,8 +3953,13 @@ mod tests {
     #[test]
     fn a_clipboard_chord_in_the_settings_is_dropped() {
         let id = registry().resolve("cmd.move").unwrap();
-        let config =
-            Config { version: 2, profile: Profile::Custom, bindings: vec![(id.to_string(), vec!["Ctrl+C".to_string(), "MV".to_string()])] };
+        let config = Config {
+            version: 2,
+            profile: Profile::Custom,
+            bindings: vec![(id.to_string(), vec!["Ctrl+C".to_string(), "MV".to_string()])],
+            active_preset: None,
+            presets: Vec::new(),
+        };
         let loaded = Shortcuts::from_config(&config);
         assert_eq!(loaded.bindings(&id), [parse_binding("MV").unwrap()], "Ctrl+C is not loaded");
     }
@@ -3560,5 +4105,69 @@ mod tests {
     fn the_help_file_is_not_an_import_and_markdown_is_a_file_to_read_only() {
         let _ = Session::new();
         assert_eq!(parse_shortcuts("# BIMCraft — keyboard shortcuts\n").bindings.len(), 0);
+    }
+
+    #[test]
+    fn a_preset_snapshots_a_set_and_reads_back() {
+        let mut s = Shortcuts::defaults(Profile::BimCraft);
+        let id = registry().resolve("cmd.wall").unwrap();
+        s.add_binding(&id, parse_binding("Ctrl+Shift+W").unwrap(), true).unwrap();
+        let preset = ShortcutPreset::from_shortcuts("  Work  ", &s).unwrap();
+        assert_eq!(preset.name, "Work");
+        assert_eq!(preset.base, Profile::BimCraft);
+        assert_eq!(preset.to_shortcuts().to_config().bindings, s.to_config().bindings);
+        assert_eq!(ShortcutPreset::from_json(&preset.to_json()), Some(preset));
+        assert!(ShortcutPreset::from_shortcuts("   ", &s).is_none());
+        assert!(ShortcutPreset::from_shortcuts(&"x".repeat(MAX_PRESET_NAME + 1), &s).is_none());
+    }
+
+    #[test]
+    fn settings_keep_the_presets_and_drop_the_broken_ones() {
+        let base = Config::defaults(Profile::BimCraft);
+        let mut config = base.clone();
+        config.presets.push(ShortcutPreset {
+            name: "Work".into(),
+            base: Profile::BimCraft,
+            bindings: vec![("cmd.wall".into(), vec!["WA".into()])],
+        });
+        config.active_preset = Some("Work".into());
+        assert_eq!(Config::from_json(&config.to_json(), &base), config);
+
+        let mut hostile = config.to_json();
+        let presets = hostile["presets"].as_array_mut().unwrap();
+        presets.push(json!({"name": "work", "bindings": []}));
+        presets.push(json!({"name": "Revit-like", "bindings": []}));
+        presets.push(json!({"name": "", "bindings": []}));
+        let read = Config::from_json(&hostile, &base);
+        assert_eq!(read.presets.len(), 1, "a duplicate, a built-in's name and an empty name are left out");
+
+        let mut stray = config.to_json();
+        stray["active_preset"] = json!("gone");
+        assert_eq!(Config::from_json(&stray, &base).active_preset, None, "a name with no preset is no label");
+    }
+
+    #[test]
+    fn a_built_in_preset_and_a_users_preset_of_that_name_are_told_apart() {
+        assert_eq!(PresetChoice::BuiltIn(Profile::Revit).key(), "builtin:revit");
+        assert_eq!(PresetChoice::from_key("builtin:revit"), Some(PresetChoice::BuiltIn(Profile::Revit)));
+        assert_eq!(PresetChoice::from_key("Work"), Some(PresetChoice::User("Work".into())));
+        assert_eq!(PresetChoice::from_key("builtin:custom"), None);
+        assert!(builtin_named("revit-like").is_some());
+        assert!(builtin_named("Work").is_none());
+    }
+
+    #[test]
+    fn a_preset_skips_unknown_actions_and_reserved_chords_one_by_one() {
+        let preset = ShortcutPreset {
+            name: "Hostile".into(),
+            base: Profile::Custom,
+            bindings: vec![
+                ("cmd.move".into(), vec!["Ctrl+C".into(), "MV".into()]),
+                ("no.such.action".into(), vec!["QQ".into()]),
+            ],
+        };
+        let set = preset.to_shortcuts();
+        assert_eq!(set.bindings("cmd.move"), [parse_binding("MV").unwrap()], "the clipboard chord is dropped");
+        assert!(set.bindings("no.such.action").is_empty());
     }
 }
