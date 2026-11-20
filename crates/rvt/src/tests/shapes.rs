@@ -440,6 +440,22 @@ fn a_flat_face_takes_the_points_of_an_edge_its_curved_neighbour_puts_on_its_curv
 }
 
 #[test]
+fn a_shape_whose_solids_fill_the_box_round_all_its_graphics_reads_though_they_pass_the_tight_one() {
+    // A stair's tread: its nosing reaches past the box its graphics give round its solids (`m_tightbBox`), which leaves it out, but
+    // its solids fill the other box (`m_bBox`) exactly. Here a cube 2 by 3 by 4 ft, the tight box a foot short of its top.
+    let mut objects = box_tree(500, [2.0, 3.0, 4.0], None);
+    let cube = [0.0, 0.0, 0.0, 2.0, 3.0, 4.0];
+    let short = [0.0, 0.0, 0.0, 2.0, 3.0, 3.0];
+    objects.insert(2, root(500, vec![V::Own(3, "Geometry")], cube, short));
+    let s = shape_of(&objects).unwrap();
+    assert_eq!(s.triangles.len(), 12);
+    // Past both boxes, it is not read: the other box a foot short of its top too.
+    objects.insert(2, root(500, vec![V::Own(3, "Geometry")], short, short));
+    let why = shape_of(&objects).unwrap_err();
+    assert!(why.contains("not the box"), "{why}");
+}
+
+#[test]
 fn a_face_whose_loops_bound_two_regions_and_a_hole_is_cut_as_each() {
     let s = Surface::Plane { origin: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0] };
     let square = |x: f64, y: f64, w: f64| vec![[x, y], [x + w, y], [x + w, y + w], [x, y + w]];
