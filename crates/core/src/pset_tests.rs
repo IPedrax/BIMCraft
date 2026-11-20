@@ -252,3 +252,97 @@ fn the_parameter_command_says_where_its_values_go_in_ifc_and_refuses_what_ifc_ca
         assert_eq!(s.model.parameters, before, "{bad}");
     }
 }
+
+/// What the first element of `category` in `m` reads of parameter `name`: its own value, or its type's.
+fn reads<'a>(m: &'a Model, category: &str, name: &str) -> Option<&'a Value> {
+    let p = m.parameters.get(name)?;
+    m.elements.values().filter(|e| e.category() == category).find_map(|e| crate::parameters::value_of(m, e, name, p))
+}
+
+/// `file` with Uniclass 2015's references put in: `walls` coded `wall_code` (but the last, `odd`, when given), `doors`
+/// Door systems, under a reference of their group.
+fn with_uniclass(file: &str, walls: &[String], odd: Option<&str>, doors: &[String]) -> String {
+    let (most, last) = match odd {
+        Some(_) => walls.split_at(walls.len() - 1),
+        None => (walls, &[][..]),
+    };
+    let mut extra = format!(
+        "#900001=IFCCLASSIFICATION('NBS','2015',$,'Uniclass 2015',$,$,$);
+#900002=IFCCLASSIFICATIONREFERENCE($,'Ss_25_10_30_35','Brick and block wall systems',#900001,$,$);
+#900003=IFCRELASSOCIATESCLASSIFICATION('0aaaaaaaaaaaaaaaaaaaa1',$,$,$,({}),#900002);
+#900004=IFCCLASSIFICATIONREFERENCE($,'Ss_25_30',$,#900001,$,$);
+#900005=IFCCLASSIFICATIONREFERENCE($,'Ss_25_30_20','Door systems',#900004,$,$);
+#900006=IFCRELASSOCIATESCLASSIFICATION('0aaaaaaaaaaaaaaaaaaaa2',$,$,$,({}),#900005);
+",
+        most.join(","),
+        doors.join(",")
+    );
+    if let Some(code) = odd {
+        extra.push_str(&format!(
+            "#900007=IFCCLASSIFICATIONREFERENCE($,'{code}',$,#900001,$,$);
+#900008=IFCRELASSOCIATESCLASSIFICATION('0aaaaaaaaaaaaaaaaaaaa3',$,$,$,({}),#900007);
+",
+            last.join(",")
+        ));
+    }
+    with(file, &extra)
+}
+
+#[test]
+fn a_known_systems_references_come_back_as_its_tables_parameters_and_go_out_again_as_references() {
+    // Uniclass from another program, with no tables loaded here: its codes come in as the parameters Uniclass's tables would
+    // fill, Ss's of each type as Uniclass has them, and the next export writes them as the references they came in as.
+    let s = house();
+    let file = crate::ifc::export(&s.model);
+    let (walls, doors) = (of_class(&file, "IFCWALL"), of_class(&file, "IFCDOOR"));
+    let i = ifc(with_uniclass(&file, &walls, None, &doors).as_bytes(), "x").unwrap();
+    let p = &i.model.parameters["Uniclass Ss Number"];
+    assert_eq!(p.classification, Some(Classification { system: "Uniclass 2015".into(), edition: Some("2015".into()) }));
+    assert_eq!(p.scope, crate::model::Scope::Type, "Systems are a type's");
+    assert_eq!(p.categories, ["door", "wall"]);
+    assert_eq!(i.model.parameters["Uniclass Ss Title"].scope, crate::model::Scope::Type);
+    assert!(i.model.elements.values().filter_map(Element::params).all(|v| !v.contains_key("Uniclass Ss Number")), "no element's own");
+    assert_eq!(reads(&i.model, "wall", "Uniclass Ss Number"), Some(&json!("Ss_25_10_30_35")));
+    assert_eq!(reads(&i.model, "wall", "Uniclass Ss Title"), Some(&json!("Brick and block wall systems")));
+    assert_eq!(reads(&i.model, "door", "Uniclass Ss Number"), Some(&json!("Ss_25_30_20")));
+    // Uniclass's own GUIDs, so its tables find them.
+    for n in ["Uniclass Ss Number", "Uniclass Ss Title"] {
+        let own = i.model.library.guid(&crate::library::Kind::Parameter, n);
+        assert_eq!(own, Some(crate::classification::parameter_guid(n)), "{n}");
+    }
+
+    let again = crate::ifc::export(&i.model);
+    let systems = of_class(&again, "IFCCLASSIFICATION");
+    assert_eq!(systems.len(), 1, "{again}");
+    assert!(body(&again, &systems[0]).contains("'2015'") && body(&again, &systems[0]).contains("'Uniclass 2015'"));
+    assert_eq!(of_class(&again, "IFCCLASSIFICATIONREFERENCE").len(), 2);
+    assert_eq!(of_class(&again, "IFCRELASSOCIATESCLASSIFICATION").len(), 2);
+    let wall = of_class(&again, "IFCWALL").remove(0);
+    assert!(sets_of(&again, &wall).values().flatten().all(|n| n != "Uniclass Ss Number"), "{:?}", sets_of(&again, &wall));
+    let back = ifc(again.as_bytes(), "x").unwrap();
+    let (q, p) = (&back.model.parameters["Uniclass Ss Number"], &i.model.parameters["Uniclass Ss Number"]);
+    assert_eq!((&q.scope, &q.categories, &q.classification), (&p.scope, &p.categories, &p.classification));
+    assert_eq!(reads(&back.model, "wall", "Uniclass Ss Number"), Some(&json!("Ss_25_10_30_35")));
+    assert_eq!(reads(&back.model, "door", "Uniclass Ss Number"), Some(&json!("Ss_25_30_20")));
+}
+
+#[test]
+fn a_type_takes_the_code_most_of_its_elements_hold_and_the_others_are_said() {
+    // Four walls of one type, one of them coded otherwise: Ss is a type's, so the type takes the three's.
+    let s = house();
+    let file = crate::ifc::export(&s.model);
+    let (walls, doors) = (of_class(&file, "IFCWALL"), of_class(&file, "IFCDOOR"));
+    assert_eq!(walls.len(), 4);
+    let i = ifc(with_uniclass(&file, &walls, Some("Ss_25_10_30"), &doors).as_bytes(), "x").unwrap();
+    let m = &i.model;
+    let p = &m.parameters["Uniclass Ss Number"];
+    assert_eq!(p.scope, crate::model::Scope::Type);
+    let codes: Vec<&Value> = m
+        .elements
+        .values()
+        .filter(|e| e.category() == "wall")
+        .filter_map(|e| crate::parameters::value_of(m, e, "Uniclass Ss Number", p))
+        .collect();
+    assert_eq!(codes, [&json!("Ss_25_10_30_35"); 4]);
+    assert!(i.skipped.iter().any(|w| w.contains("Uniclass Ss Number") && w.contains("1 wall")), "{:?}", i.skipped);
+}

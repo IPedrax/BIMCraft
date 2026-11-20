@@ -19,11 +19,15 @@ mod browser;
 mod cad;
 mod camera;
 mod canvas;
+mod classification;
+mod clipboard;
 mod clouds;
+mod codes;
 mod context;
 pub mod control;
 mod coordinates;
 pub mod cowork;
+mod curtain;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -37,19 +41,25 @@ mod fillpatterns;
 mod filter;
 mod find;
 mod finishes;
+mod fly;
 mod footer;
 mod gpu;
 mod printsets;
 mod publisher;
+mod stairgrips;
+mod stairtype;
 pub use gpu::limits_for;
 mod graphics;
+mod gridtypes;
 mod groups;
+mod guide_refs;
 pub mod icons;
 mod inquiry;
 pub mod lang;
 mod linestyles;
 mod lineweights;
 mod links;
+mod markdown;
 mod mep;
 mod mesh;
 mod minimap;
@@ -58,6 +68,7 @@ mod notes;
 mod objectstyles;
 mod opening;
 mod orbit;
+pub mod pacing;
 mod panelsched;
 mod paper;
 mod parameters;
@@ -65,9 +76,11 @@ mod phasing;
 mod plugins;
 mod popup;
 mod presets;
+pub mod project_templates;
 mod projectinfo;
 mod properties;
 mod purge;
+mod pyaddins;
 pub mod recent;
 mod reinforce;
 mod renames;
@@ -87,6 +100,7 @@ pub mod spacemouse;
 mod spots;
 mod standards;
 mod start;
+mod steel;
 mod structure;
 mod style;
 mod swap;
@@ -97,10 +111,12 @@ mod titlebar;
 mod titleblocks;
 mod triad;
 mod typeprops;
+mod underlay;
 mod updates;
 mod view_worker;
 pub mod window;
 mod workplane;
+mod zoom;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -111,7 +127,7 @@ use bimcraft_core::dims::Placing as DimMode;
 use bimcraft_core::engine::{self, Session};
 use bimcraft_core::files;
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Id, Justify, Location, Model, RAMP_WIDTH, Reference, RoomArea, STAIR_WIDTH};
+use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Id, Justify, LeaderKind, Location, Model, Reference, RoomArea, STAIR_WIDTH};
 use bimcraft_core::snap::{Kind as Snap, Snaps};
 use bimcraft_core::units::Units;
 use bimcraft_core::{element_json, render, schedule, stairs};
@@ -172,8 +188,21 @@ pub enum Tool {
     ReferencePlane(Option<P2>),
     /// Move the selection: its base point, once clicked.
     Move(Option<P2>),
+    /// Place grid lines on a curtain wall: hover to see where, click to place, Esc to stop.
+    CurtainGrid {
+        wall: Id,
+        way: bimcraft_core::curtain::GridWay,
+    },
+    /// Take stretches of a curtain wall's grid lines off, or put them back: hover to see which, click, Esc to stop.
+    CurtainSegment {
+        wall: Id,
+    },
     /// Copy the selection: its base point, once clicked.
     Copy(Option<P2>),
+    /// Paste from Clipboard: what's pasted follows the cursor until a click puts it down (`clipboard.rs`).
+    Paste,
+    /// Aligned to Picked Level: a click on a level line in a section or an elevation pastes onto it.
+    PickLevel,
     /// Rotate the selection about `centre`: the start of the angle, once clicked; with `place`, the
     /// next click moves the centre.
     Rotate {
@@ -225,6 +254,8 @@ pub enum Tool {
     Linework,
     /// Place Detail Group: the Options Bar's group type where clicked.
     DetailGroup,
+    /// Place Model Group: the Options Bar's model group type where clicked, on the view's level.
+    ModelGroup,
     /// Repeating Detail: the Options Bar's group along a line, its start once clicked.
     RepeatingDetail(Option<P2>),
     /// Lay the material in the Options Bar over the face clicked in the 3D view, as Revit's Paint does.
@@ -347,6 +378,8 @@ enum Tab {
     Collaborate,
     View,
     Manage,
+    /// The user's Python scripts: the Player, and the buttons made of them.
+    PyAddins,
     Modify,
     Context,
     /// A tab a plugin declared, by its place in [`BimApp::plugin_tabs`].
@@ -370,6 +403,7 @@ fn tab_key(tab: Tab) -> u64 {
         Tab::Modify => 11,
         Tab::Context => 12,
         Tab::Collaborate => 13,
+        Tab::PyAddins => 14,
         Tab::Plugin(i) => 100 + i as u64,
     }
 }
@@ -378,7 +412,10 @@ fn tab_key(tab: Tab) -> u64 {
 #[derive(Clone, Debug, PartialEq)]
 enum Pending {
     Recover(bimcraft_core::autosave::Backup),
+    /// An empty project.
     New,
+    /// A new project from the template at the path (`project_templates.rs`).
+    Template(PathBuf),
     Open,
     /// The sample house, as a project nobody has saved ([`bimcraft_core::sample::SAMPLE`]).
     Sample,
@@ -409,7 +446,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 58] = [
+const SHORTCUTS: [(&str, &str); 70] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -468,9 +505,48 @@ const SHORTCUTS: [(&str, &str); 58] = [
     ("CW", msg!("Co-Work")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
+    // Revit's fly has none; the 3D view's fly mode.
+    ("FY", msg!("Fly Mode")),
     // Revit has none for its title blocks; no command or tool takes TB.
     ("TB", "Title Blocks"),
+    // Revit has no building codes, and none of these for its stairs; letters it doesn't use.
+    ("BC", "Building Codes"),
+    ("CK", "Code Check"),
+    ("TS", "Convert to Sketch"),
+    ("SY", "Separate Storeys"),
+    // Revit has no PyAddins: letters free in both, Reload as Load Scripts and Stop as eXit Script.
+    ("PY", "Player"),
+    ("RS", "Run Script"),
+    ("LS", "Reload"),
+    ("NS", "New Script"),
+    ("XS", "Stop"),
+    // Revit has no Classification Manager; CI is free there and here.
+    ("CI", "Classification Manager"),
+    // Revit has no Underlay Settings of this kind (its Underlay is a plan's range of levels); UD is free there and here.
+    ("UD", "Underlay Settings"),
 ];
+
+/// How far an arrow key nudges the selection on screen, in pixels, before [`nudge_step`] rounds it to a length.
+const NUDGE_PX: f64 = 10.0;
+
+/// The length an arrow key nudges by in a view of `scale` pixels a millimetre: [`NUDGE_PX`] pixels' worth, rounded down to 1, 2
+/// or 5 times a power of ten, so a step reads as a round number at any zoom; a millimetre at the least.
+pub(crate) fn nudge_step(scale: f64) -> f64 {
+    let raw = NUDGE_PX / scale;
+    if !raw.is_finite() || raw <= 1.0 {
+        return 1.0;
+    }
+    let power = 10f64.powf(raw.log10().floor());
+    let lead = raw / power;
+    power
+        * if lead >= 5.0 {
+            5.0
+        } else if lead >= 2.0 {
+            2.0
+        } else {
+            1.0
+        }
+}
 
 /// Removes the key events a shortcut took, so no other handler runs the same command. Matching is
 /// on the event's logical key, its physical key and its exact modifiers.
@@ -576,12 +652,17 @@ pub struct BimApp {
     pub session: Session,
     /// A scenario being run on the window (`bimcraft --bench`): it drives the window and times its frames.
     pub bench: Option<bench::Bench>,
+    /// The window's own pacing of its frames where the system's vsync doesn't (Windows: `pacing.rs`). None where it doesn't
+    /// pace them (other systems, the tests).
+    pub frames: Option<pacing::Pacer>,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
     /// The window draws its own title bar (`titlebar.rs`): the desktop's `main` says so where the system lets it (Windows and
     /// Linux), unless `system_title_bar`, the user's ask for the system's (Settings > User Interface, kept in `settings.json`).
     pub own_title_bar: bool,
     pub system_title_bar: bool,
+    /// Manage > Classification Manager, while it's open.
+    classification: Option<classification::ClassificationManager>,
     /// The active view, which takes the tools: a tab of `views`, or one of `floating`.
     pub sheet: Sheet,
     pub tool: Tool,
@@ -622,8 +703,20 @@ pub struct BimApp {
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
     background_grid_dialog: Option<background_grid::GridDialog>,
+    /// The underlay of the view on screen, made and kept on the card (`underlay.rs`).
+    pub(crate) underlay: underlay::Layer,
+    /// Underlay Settings, open for this view.
+    pub(crate) underlay_dialog: Option<Id>,
+    /// Underlay Settings' Move or Rotate, picking in the view.
+    pub(crate) underlay_edit: Option<underlay::Edit>,
+    /// A colour being picked in Underlay Settings, set once the hand lets go.
+    pub(crate) underlay_color: Option<[u8; 3]>,
+    /// What Underlay Settings' last change was refused for.
+    pub(crate) underlay_error: Option<String>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// How guides and the live drawing's aids are drawn (Manage > Snaps): the refined look, or the classic one to compare it with.
+    guide_style: style::GuideStyle,
     /// Whether Save and Save As write the project zipped (File > Settings > Files, the File menu): off, plain JSON.
     pub(crate) compressed_save: bool,
     /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
@@ -688,6 +781,25 @@ pub struct BimApp {
     /// The Floor tool makes structural floors; the Beam tool's justification and height over the level; the footing tools'
     /// thickness and the height of their tops.
     floor_structural: bool,
+    /// Pick Walls' Options Bar: whether a boundary line goes on a wall's core face (else its finish) and how far out
+    /// from the face it lies, in the project's units. They last while the sketch is open.
+    pub(crate) pick_core: bool,
+    pub(crate) pick_offset: String,
+    /// Pick Walls' line on the other side of its wall, as Space flips it: its face mirrored across the wall.
+    pub(crate) pick_flip: bool,
+    /// Walls' Outline: the line of the walls the contour follows (their centre line, their interior or their exterior
+    /// face), which component of a wall that face is (its finish or its core) and how far out from it the line lies.
+    pub(crate) outline_side: crate::sketch::OutlineSide,
+    pub(crate) outline_core: bool,
+    pub(crate) outline_offset: String,
+    /// A centre-line outline offset to the outside of the loop, as Space turns it; by default it goes inside.
+    pub(crate) outline_flip: bool,
+    /// Walls' Outline asked for and its Options Bar open: the contour is made when DRAW is pressed there.
+    pub(crate) outline_pending: bool,
+    /// The walls picked for Walls' Outline: DRAW follows these alone, and with none it follows every wall of the level.
+    pub(crate) outline_walls: BTreeSet<Id>,
+    /// The sketch Line chain's first and last line indices while Offset draws it: corners are trimmed to meet.
+    pub(crate) sketch_line_chain: Option<(usize, usize)>,
     run_justify: Justify,
     beam_offset: String,
     /// The Options Bar's justification and offset of the run tools not on screen, by category, and whose are.
@@ -699,6 +811,35 @@ pub struct BimApp {
     /// Extrusion tool's profile, a shed's rather than a gable's; the Dormer tool's width and height,
     /// and whether its front has a window.
     stair_width: String,
+    /// The Stair tool's winders: how many treads a turn is made of, none for a landing.
+    stair_winders: u32,
+    /// How the Stair tool draws: along a line, straight or in arcs; a spiral about a centre; or riser by riser.
+    stair_shape: StairShape,
+    /// Whether the segment the Stair tool draws next is a landing, not a flight of steps.
+    stair_landing: bool,
+    /// What each segment drawn so far is: a landing, an arc, and how wide it was asked to be.
+    stair_kinds: Vec<(bool, bool, Option<f64>)>,
+    /// The Stair tool's top (none: the level above), its height when unconnected, and whether it stands on every level on
+    /// the way.
+    stair_top: Option<Option<Id>>,
+    stair_height: String,
+    stair_multistorey: bool,
+    /// Whether the Stair tool keeps one tread depth the whole stair through (on as it starts), or lets each flight's
+    /// treads stretch to end where it is drawn.
+    pub(crate) stair_lock_going: bool,
+    /// Whether the Stair tool draws a stair from its top down: the first click is where it arrives.
+    pub(crate) stair_from_top: bool,
+    /// The Stair tool's riser height and tread depth as typed: empty, the type's rules or the building code's.
+    pub(crate) stair_riser: String,
+    pub(crate) stair_tread: String,
+    /// The nearest stair inside the rules to the one being drawn, while it is outside them: its riser, tread and width,
+    /// which Tab takes.
+    pub(crate) stair_offer: std::cell::Cell<Option<(f64, f64, f64)>>,
+    /// Which way the Stair tool's spiral winds.
+    stair_clockwise: bool,
+    /// The Stair tool's location line, the line of the stair the clicks are on, and how far the stair stands from it.
+    stair_line: bimcraft_core::model::StairLine,
+    stair_offset: String,
     roof_slope: String,
     /// The scale being typed in the view control bar's Scale menu.
     scale_text: String,
@@ -771,6 +912,8 @@ pub struct BimApp {
     note_text: String,
     /// Notes written with a leader: the Text tool's first click is the point it reaches, kept here with its view.
     pub(crate) note_leader: bool,
+    /// How that leader runs: straight, in two segments or curved.
+    pub(crate) note_leader_kind: LeaderKind,
     pub(crate) note_arrow: Option<(Id, P2)>,
     /// The note being written on the canvas.
     note_edit: Option<notes::NoteEdit>,
@@ -781,6 +924,24 @@ pub struct BimApp {
     spot_type_dialog: Option<spots::SpotTypeDialog>,
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
+    curtain_editor: Option<curtain::CurtainEditor>,
+    /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
+    curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// With a mullion's whole grid picked, the other places on it.
+    curtain_more: Vec<bimcraft_core::curtain::Address>,
+    /// Where the Curtain Grid tool would place a line: the wall, how far, and the way.
+    curtain_hover: Option<(Id, f64, bimcraft_core::curtain::GridWay)>,
+    /// The part of the selected curtain wall a Tab would go to next, under the cursor.
+    curtain_aim: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The stretch of a grid line Add/Remove Segments would take off or put back.
+    curtain_segment_hover: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The layout of the curtain wall a frame works with, kept while the model is the same.
+    curtain_laid: curtain::Laid,
+    /// The model the malformed curtain walls were last looked for in, those it had, and those being asked about.
+    curtain_seen: Option<Arc<Model>>,
+    curtain_known: std::collections::BTreeSet<Id>,
+    curtain_asking: std::collections::BTreeSet<Id>,
+    grid_type_dialog: Option<gridtypes::GridTypeDialog>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -788,6 +949,15 @@ pub struct BimApp {
     linework_style: String,
     /// The detail group type Place Detail Group places.
     group_type: String,
+    /// The model group type Place Model Group places, and whether what it places is flexible.
+    model_group_type: String,
+    group_flexible: bool,
+    /// Create Group's question for a selection that can't make one group: what each kind would take of it.
+    group_split: Option<bimcraft_core::groups::Split>,
+    /// Edit Group's Add or Remove, picking.
+    group_pick: Option<groups::GroupPick>,
+    /// A command refused because it would change a group from inside, while the window asks what to do with it.
+    group_conflict: Option<groups::Conflict>,
     /// The Repeating Detail tool's spacing, as typed.
     repeat_spacing: String,
     /// The Detail Line tool's Chain: each click ends a line and starts the next; off, two clicks make one line.
@@ -842,8 +1012,11 @@ pub struct BimApp {
     snap_once: Option<Once>,
     /// The Measure tool's last ruler: where it starts and ends.
     measured: Option<(P2, P2)>,
-    /// Tab pressed over the plan, taken from egui's focus keys: cycle what's under the cursor.
+    /// Tab pressed over the plan, taken from egui's focus keys: step the numbers a shape is typed by, or before its first
+    /// point cycle what's under the cursor.
     tab_cycle: bool,
+    /// Shift+Tab pressed over the plan: cycle the lines of the wall under the pointer, mid-chain or before the first point.
+    face_cycle: bool,
     /// What a window handed over that `pace` kept back for the frames after the one it came in.
     held: Vec<Event>,
     /// The Keyboard Shortcuts dialog is open (KS); the Manage tab drops its Project Units menu open
@@ -904,6 +1077,13 @@ pub struct BimApp {
     /// The files File > Open Recent lists, and where they are kept (see [`BimApp::keep_recent_in`]; none until the app is told).
     recent: recent::Recent,
     recent_path: Option<std::path::PathBuf>,
+    /// The templates New lists, and where they are kept (see [`BimApp::keep_templates_in`]; none until the app is told).
+    templates: project_templates::Templates,
+    templates_path: Option<std::path::PathBuf>,
+    /// The New Project popup is up (`project_templates.rs`).
+    new_project_popup: bool,
+    /// The template picked in Settings > Templates.
+    template_picked: Option<usize>,
     /// The start page: up when the window opens on no project, and from the quick access bar's Home.
     home: start::Home,
     parameter_manager: Option<parameters::ParameterManager>,
@@ -920,6 +1100,7 @@ pub struct BimApp {
     project_info_dialog: Option<projectinfo::ProjectInfoDialog>,
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
+    steel_dialog: Option<steel::SteelDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
     /// The slot picked in the panel schedule on screen.
     panel_slot: Option<u32>,
@@ -941,6 +1122,10 @@ pub struct BimApp {
     mode_width: f32,
     /// Manage > Technical Standards, while open.
     standards_dialog: Option<standards::StandardsDialog>,
+    /// Manage > Building Codes, while open.
+    codes_dialog: Option<codes::CodesDialog>,
+    /// The stair whose findings against the building code are shown in a window.
+    code_findings: Option<Id>,
     /// The plugins of the user's folder, the tabs they put on the ribbon, and the Plugins window while it is open.
     pub(crate) plugins: bimcraft_plugin::Plugins,
     pub(crate) plugin_tabs: Vec<bimcraft_plugin::RibbonTab>,
@@ -953,8 +1138,6 @@ pub struct BimApp {
     pub(crate) plugin_pick: Option<(String, serde_json::Map<String, serde_json::Value>)>,
     /// The folder being read on a thread of its own, so the first frame isn't kept waiting by it.
     plugins_job: Option<std::sync::mpsc::Receiver<bimcraft_plugin::Plugins>>,
-    /// Manage > Electrical Settings, while open.
-    electrical_dialog: Option<electrical::ElectricalDialog>,
     /// Manage > Coordinates, while it is open.
     coordinates_dialog: Option<coordinates::CoordinatesDialog>,
     /// How the Survey Point goes when it's dragged, moved or typed in Properties: clipped (the point alone, the world staying)
@@ -974,6 +1157,18 @@ pub struct BimApp {
     selection_filter: Option<filter::SelectionFilter>,
     /// What was last put on the clipboard.
     pub copied: Option<String>,
+    /// What Copy to Clipboard last kept, for a paste the system clipboard has nothing of BIMCraft's for.
+    pub(crate) clip_text: Option<Arc<str>>,
+    /// The clipboard Paste from Clipboard or Aligned to Picked Level places, while its tool is on.
+    pub(crate) pasting: Option<clipboard::Pasting>,
+    /// What the right-click menu asked of the clipboard, for the next frame.
+    pub(crate) clip_request: Option<clipboard::Request>,
+    /// A paste the ribbon asked the system clipboard's text for, and when.
+    pub(crate) paste_asked: Option<(clipboard::PasteMode, f64)>,
+    /// Aligned to Selected Levels' or Selected Views' list, while it's open.
+    pub(crate) paste_choose: Option<clipboard::Choose>,
+    /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.
+    pub(crate) paste_where: Option<clipboard::Pasting>,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
@@ -983,6 +1178,8 @@ pub struct BimApp {
     component_angle: f64,
     /// Hinge hand for this run of the Door tool. Facing follows the pointer.
     door_flip_hand: bool,
+    /// Face for this run of the Window tool, over the one the pointer's side picks.
+    window_flip_facing: bool,
     /// An adaptive component's points clicked so far, in the project, before the last one places it.
     pub(crate) adaptive_clicks: Vec<[f64; 3]>,
     /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
@@ -1033,6 +1230,8 @@ pub struct BimApp {
     cowork_ai: cowork::Ai,
     /// A host with guests in that was asked to close: asking whether to end the session (false), or told to (true).
     cowork_quit: Option<bool>,
+    /// The user's Python scripts: the folder, the Player's forms, the run going on.
+    pub(crate) pyaddins: pyaddins::PyAddins,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// A big project being read on a thread of its own (`opening.rs`).
@@ -1089,6 +1288,19 @@ fn height_options(ui: &mut Ui, m: &Model, level: Id, top: &mut Option<Option<Id>
     if now.is_none() {
         ui.add(TextEdit::singleline(height).desired_width(64.0).hint_text(m.units.name())).labelled_by(label.id);
     }
+}
+
+/// How the Stair tool draws a stair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StairShape {
+    /// Along a line, the stretch to the next click straight.
+    Straight,
+    /// Along a line, the stretch to the next click an arc leaving the one before smoothly.
+    Arc,
+    /// About a centre.
+    Spiral,
+    /// Riser by riser.
+    Risers,
 }
 
 /// The params for the top an Options Bar set from the plan of `level`: up to a level, or
@@ -1450,7 +1662,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 const FLOATING_CARD: f32 = 30.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
-const TABS: [(Tab, &str, Icon); 13] = [
+const TABS: [(Tab, &str, Icon); 14] = [
     (Tab::Architecture, msg!("Architecture"), Icon::Wall),
     (Tab::Structure, msg!("Structure"), Icon::Beam),
     (Tab::Plumbing, msg!("Plumbing"), Icon::Pipe),
@@ -1463,6 +1675,7 @@ const TABS: [(Tab, &str, Icon); 13] = [
     (Tab::Collaborate, msg!("Collaborate"), Icon::Cowork),
     (Tab::View, msg!("View"), Icon::View3D),
     (Tab::Manage, msg!("Manage"), Icon::Settings),
+    (Tab::PyAddins, "PyAddins", Icon::Script),
     (Tab::Modify, "Modify", Icon::Modify),
 ];
 
@@ -1485,6 +1698,9 @@ fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
     r.on_hover_text(label)
 }
 
+/// The ribbon's name for the Wall tool drawing a curtain wall type.
+const CURTAIN_TOOL: &str = msg!("Curtain Wall");
+
 impl BimApp {
     pub fn new(session: Session) -> BimApp {
         let first = Sheet::Plan(session.model.levels().first().map_or(0, |(id, _)| *id));
@@ -1497,6 +1713,7 @@ impl BimApp {
             os_events: None,
             own_title_bar: false,
             system_title_bar: false,
+            classification: None,
             sheet: first,
             tool: Tool::Modify,
             selection: Vec::new(),
@@ -1527,7 +1744,13 @@ impl BimApp {
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
+            underlay: Default::default(),
+            underlay_dialog: None,
+            underlay_edit: None,
+            underlay_color: None,
+            underlay_error: None,
             grid_snapping: false,
+            guide_style: style::GuideStyle::default(),
             compressed_save: false,
             cut_fills_3d: true,
             show_origin: true,
@@ -1555,6 +1778,16 @@ impl BimApp {
             column_top: None,
             column_height: units.length(3000.0),
             floor_structural: false,
+            pick_core: true,
+            pick_offset: String::new(),
+            pick_flip: false,
+            outline_side: crate::sketch::OutlineSide::Interior,
+            outline_core: true,
+            outline_offset: String::new(),
+            outline_flip: false,
+            outline_pending: false,
+            outline_walls: BTreeSet::new(),
+            sketch_line_chain: None,
             run_justify: Justify::Top,
             beam_offset: units.length(0.0),
             run_kept: BTreeMap::new(),
@@ -1562,6 +1795,21 @@ impl BimApp {
             footing_thickness: units.length(400.0),
             footing_top: units.length(0.0),
             stair_width: units.length(STAIR_WIDTH),
+            stair_winders: 0,
+            stair_shape: StairShape::Straight,
+            stair_landing: false,
+            stair_kinds: Vec::new(),
+            stair_clockwise: false,
+            stair_top: None,
+            stair_height: units.length(bimcraft_core::model::DEFAULT_HEIGHT),
+            stair_multistorey: false,
+            stair_lock_going: true,
+            stair_from_top: false,
+            stair_riser: String::new(),
+            stair_tread: String::new(),
+            stair_offer: std::cell::Cell::new(None),
+            stair_line: Default::default(),
+            stair_offset: units.length(0.0),
             roof_slope: "30".into(),
             scale_text: String::new(),
             roof_overhang: units.length(500.0),
@@ -1573,7 +1821,7 @@ impl BimApp {
             railings: true,
             ramp_top: Some(None),
             ramp_height: units.length(600.0),
-            ramp_width: units.length(RAMP_WIDTH),
+            ramp_width: units.length(bimcraft_core::codes::library_rules::<bimcraft_core::codes::checks::RampRules>().width),
             ramp_slope: "8.33".into(),
             ceiling_height: units.length(CEILING_HEIGHT),
             floor_slope: "5".into(),
@@ -1608,16 +1856,33 @@ impl BimApp {
             tag_label: String::new(),
             note_text: String::new(),
             note_leader: false,
+            note_leader_kind: LeaderKind::Straight,
             note_arrow: None,
             note_edit: None,
             text_type_dialog: None,
             dimension_type_dialog: None,
             spot_type_dialog: None,
             spot_grip: None,
+            curtain_editor: None,
+            curtain_part: None,
+            curtain_more: Vec::new(),
+            curtain_hover: None,
+            curtain_aim: None,
+            curtain_segment_hover: None,
+            curtain_laid: Default::default(),
+            curtain_seen: None,
+            curtain_known: Default::default(),
+            curtain_asking: Default::default(),
+            grid_type_dialog: None,
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
             group_type: String::new(),
+            model_group_type: String::new(),
+            group_flexible: false,
+            group_split: None,
+            group_pick: None,
+            group_conflict: None,
             repeat_spacing: "200".into(),
             line_chain: true,
             drawing: draw::Drawing::default(),
@@ -1643,6 +1908,7 @@ impl BimApp {
             cad_box: None,
             link_box: None,
             tab_cycle: false,
+            face_cycle: false,
             held: Vec::new(),
             show_shortcuts: false,
             shortcuts: shortcuts::Shortcuts::default(),
@@ -1656,6 +1922,7 @@ impl BimApp {
             options_rect: Rect::NOTHING,
             canvas: canvas::Canvas::default(),
             bench: None,
+            frames: None,
             orbit: orbit::Orbit::default(),
             active_3d: None,
             card: gpu::Card::default(),
@@ -1683,6 +1950,10 @@ impl BimApp {
             favorites_path: None,
             recent: recent::Recent::default(),
             recent_path: None,
+            templates: project_templates::Templates::default(),
+            templates_path: None,
+            new_project_popup: false,
+            template_picked: None,
             home: start::Home::default(),
             paint_material: String::new(),
             parameter_manager: None,
@@ -1694,6 +1965,7 @@ impl BimApp {
             display_dialog: None,
             project_info_dialog: None,
             reinforce_dialog: None,
+            steel_dialog: None,
             reinforce_kept: BTreeMap::new(),
             panel_slot: None,
             line_weights_dialog: None,
@@ -1704,13 +1976,14 @@ impl BimApp {
             sketch: None,
             mode_width: 0.0,
             standards_dialog: None,
+            codes_dialog: None,
+            code_findings: None,
             plugins: bimcraft_plugin::Plugins::empty(),
             plugin_tabs: Vec::new(),
             plugins_dialog: false,
             plugin_report: None,
             plugin_pick: None,
             plugins_job: None,
-            electrical_dialog: None,
             coordinates_dialog: None,
             survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
@@ -1722,11 +1995,18 @@ impl BimApp {
             ids_of_selection: None,
             selection_filter: None,
             copied: None,
+            clip_text: None,
+            pasting: None,
+            paste_asked: None,
+            clip_request: None,
+            paste_choose: None,
+            paste_where: None,
             active_option: None,
             new_schedule: None,
             component: None,
             component_angle: 0.0,
             door_flip_hand: false,
+            window_flip_facing: false,
             adaptive_clicks: Vec::new(),
             adaptive_grip: None,
             placement_plane: None,
@@ -1753,6 +2033,7 @@ impl BimApp {
             cowork_seen: cowork::Seen::default(),
             cowork_ai: cowork::Ai::default(),
             cowork_quit: None,
+            pyaddins: pyaddins::PyAddins::default(),
             revit_job: None,
             opening: None,
             swapping: swap::Swapping::default(),
@@ -1791,6 +2072,7 @@ impl BimApp {
     pub(crate) fn pump(&mut self, ctx: &Context) {
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(ctx);
+        self.poll_pyaddins(ctx);
         self.pump_cowork(ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them, and joining a Co-Work session puts the host's there) starts it over, as File > New
@@ -1811,6 +2093,8 @@ impl BimApp {
                 self.status = Status::default();
                 Some(v)
             }
+            // A group conflict is asked about in its own dialog (`group_conflict_window`), not said again in the corner.
+            Err(e) if self.group_conflict.is_some() && bimcraft_core::groups::is_conflict(&e) => None,
             Err(e) => {
                 self.status = Status { text: e, error: true };
                 None
@@ -1828,6 +2112,14 @@ impl BimApp {
         };
         if let (Err(e), true) = (&result, matches!(id, "undo" | "redo")) {
             self.light_refused(e);
+        }
+        // A mark names what stood when it was made: undo or redo can take that away or move it.
+        if matches!(id, "undo" | "redo") && result.is_ok() {
+            self.canvas.guides_reset();
+        }
+        // A change that would break a group from inside: the window asks what to do (Ungroup, Create New Type, Cancel).
+        if let Err(e) = &result {
+            self.conflict_refused(id, params, e);
         }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
@@ -1887,7 +2179,11 @@ impl BimApp {
             | Tool::PatternCorner(_)
             | Tool::SpecifyPoint
             | Tool::ExportRegion(_)
+            | Tool::Paste
+            | Tool::PickLevel
             | Tool::Acquire => None,
+            Tool::CurtainGrid { .. } => Some(msg!("Place Curtain Grid")),
+            Tool::CurtainSegment { .. } => Some(msg!("Add/Remove Segments")),
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1901,6 +2197,7 @@ impl BimApp {
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
+            Tool::ModelGroup => Some(msg!("Place Model Group")),
             Tool::RepeatingDetail(_) => Some(msg!("Place Repeating Detail")),
             Tool::DetailLine(_) if self.drawing.insulation.is_some() => Some(msg!("Place Insulation")),
             Tool::DetailLine(_) if self.drawing.cloud.is_some() => Some(msg!("Place Revision Cloud")),
@@ -2043,6 +2340,7 @@ impl BimApp {
         self.poll_export(&ctx);
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
+        self.fly_frame(&ctx);
         self.keys(&ctx);
         self.family_keys(&ctx);
         self.os_requests(&ctx);
@@ -2241,6 +2539,7 @@ impl BimApp {
             self.view_control_bar(ui);
         }
         self.temp_frame(ui);
+        self.edit_group_frame(ui);
     }
 
     /// Properties (PP): shown, or hidden.
@@ -2266,6 +2565,8 @@ impl BimApp {
                 &mut self.wall_height,
                 &mut self.column_height,
                 &mut self.stair_width,
+                &mut self.stair_offset,
+                &mut self.stair_height,
                 &mut self.roof_overhang,
                 &mut self.offset,
                 &mut self.ceiling_height,
@@ -2276,7 +2577,7 @@ impl BimApp {
             ];
             for field in fields {
                 if let Some(mm) = from.parse(field) {
-                    *field = to.length(mm);
+                    *field = to.field(mm);
                 }
             }
             self.units = to;
@@ -2284,6 +2585,15 @@ impl BimApp {
         let m = &self.session.model;
         // What's selected is the model's elements, and Site's points (by their library ids).
         self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
+        let selected = self.selection.as_slice();
+        self.curtain_part = self.curtain_part.filter(|(id, at)| selected == [*id] && self.curtain_laid.of(m, *id).has(*at));
+        if self.curtain_part.is_none() {
+            self.curtain_more.clear();
+        }
+        if matches!(self.tool, Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } if !m.wall(wall).is_some_and(|w| bimcraft_core::curtain::pattern(m, w).is_some()))
+        {
+            self.tool = Tool::Modify;
+        }
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
         let docs: Vec<editor::tabs::DocId> = self.families.iter().map(|d| d.id).collect();
         let exists = |s: &Sheet| match s {
@@ -2325,6 +2635,9 @@ impl BimApp {
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
+            || self.curtain_editor.is_some()
+            || !self.curtain_asking.is_empty()
+            || self.grid_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -2338,8 +2651,8 @@ impl BimApp {
             || self.display_dialog.is_some()
             || self.project_info_dialog.is_some()
             || self.reinforce_dialog.is_some()
+            || self.steel_dialog.is_some()
             || self.line_weights_dialog.is_some()
-            || self.electrical_dialog.is_some()
             || self.coordinates_dialog.as_ref().is_some_and(|d| !d.picking())
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
@@ -2381,6 +2694,38 @@ impl BimApp {
         if self.keys_taken(ctx) || self.active_family().is_some() {
             return;
         }
+        let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
+        // Space in Walls' Outline's Offset field turns a centre-line offset from the inside to the outside, instead of
+        // typing a space.
+        if self.outline_pending
+            && self.outline_side == crate::sketch::OutlineSide::Axis
+            && ctx.memory(|m| m.has_focus(egui::Id::new("outline-offset")))
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            self.outline_flip = !self.outline_flip;
+            ctx.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(t) if t.trim().is_empty())));
+            return;
+        }
+        // Space in Pick Walls' Offset field flips the line to the other face of its wall.
+        if matches!(self.tool, Tool::SketchPick)
+            && ctx.memory(|m| m.has_focus(egui::Id::new("pick-offset")))
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            self.pick_flip = !self.pick_flip;
+            ctx.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(t) if t.trim().is_empty())));
+            return;
+        }
+        // Space in the Offset field flips the side the offset is drawn on, instead of typing a space: the preview and
+        // the line the last click makes follow it.
+        if self.target().is_some()
+            && self.shape().takes_offset()
+            && ctx.memory(|m| m.has_focus(egui::Id::new("draw-offset")))
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            self.drawing.offset_flip = !self.drawing.offset_flip;
+            ctx.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(t) if t.trim().is_empty())));
+            return;
+        }
         if ctx.input(|i| i.pointer.any_click()) {
             self.typed.clear();
         }
@@ -2392,7 +2737,6 @@ impl BimApp {
             self.global_shortcuts(ctx, &events);
             return;
         }
-
         // Chords first: an exact match, on the physical key, so Ctrl+D and Ctrl+Shift+D are two
         // different bindings and a Russian layout still gives Ctrl+D. Ctrl is never part of a sequence:
         // a combination runs only when Keyboard Shortcuts assigned it.
@@ -2411,16 +2755,44 @@ impl BimApp {
             if let Some(action) = self.shortcuts.action_for_chord(&chord).cloned() {
                 handled.push((*key, *physical_key, *modifiers));
                 self.typed.clear();
+                // Mid-chain, undo is the chain's: a typed number goes first, as in a field; then the point and the segment
+                // built to it, never a step of the model behind it. A chain has no redo.
+                if action.as_ref() == "cmd.undo" && self.chain_active() {
+                    if self.typed_length.is_empty() && self.drawing.other.is_empty() {
+                        self.undo_chain_point();
+                    } else {
+                        self.clear_typed();
+                    }
+                    continue;
+                }
+                if action.as_ref() == "cmd.redo" && self.chain_active() {
+                    continue;
+                }
                 self.run_shortcut(ctx, &action);
             }
         }
         consume_key_events(ctx, &handled);
 
+        // Ctrl+A with a reading field in hand selects that field for overwrite, as a text field does: it is taken before
+        // the two-letter shortcuts, so it neither waits for a second letter nor reaches the canvas's Select All.
+        if self.drawing.armed && self.line_angle_field() && pressed(Modifiers::COMMAND, Key::A) {
+            self.drawing.selected = true;
+            self.typed.clear();
+        }
+        // Ctrl+C, Ctrl+X and Ctrl+V: the selection to the clipboard, and back.
+        if self.sketch.is_none() {
+            self.clipboard_events(ctx);
+        }
+        if self.orbit.placement_drag_active() && (pressed(Modifiers::SHIFT, Key::Escape) || pressed(Modifiers::NONE, Key::Escape)) {
+            self.orbit.cancel_placement_drag();
+            self.status = Status::default();
+            return;
+        }
         // Contextual keys of a tool: Esc, Enter, Tab, Backspace, Space and the arrows are reserved.
-        let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(Modifiers::NONE, Key::Escape) {
             self.typed.clear();
-            if !self.cancel_pattern_pick() {
+            // A custom fill pattern picked is brought back, as Underlay Settings' Move or Rotate is stopped.
+            if !self.cancel_pattern_pick() && !self.cancel_underlay_edit() {
                 self.escape();
             }
         }
@@ -2435,6 +2807,10 @@ impl BimApp {
         }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        if enter && let Sheet::Section(view) = self.sheet {
+            self.vertical_enter(view);
+            enter = false;
+        }
         if enter && self.dimension_refs_edit.is_some() {
             self.commit_dimension_refs();
             enter = false;
@@ -2451,6 +2827,8 @@ impl BimApp {
                 }
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
+                (Tool::Stair(_), true) if self.stair_shape == StairShape::Risers => self.finish_stair_sketch(level),
+                (Tool::Stair(_), true) if self.stair_shape != StairShape::Spiral => self.finish_stair_path(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
                 (Tool::SketchLine(_), true) if self.shape().open_ended() => self.finish_open_shape(),
@@ -2460,8 +2838,19 @@ impl BimApp {
             // A snap override typed was for that point.
             self.snap_once = None;
         }
-        if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
+        if self.drawing.selected && pressed(Modifiers::NONE, Key::Backspace) {
+            // A whole-selected field is cleared by Backspace, not clipped a digit at a time: the number goes and the field
+            // catches up with the pointer again.
+            self.typed_length.clear();
+            self.drawing.selected = false;
+        } else if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
             self.typed_length.pop();
+        }
+        // Backspace in a wall or detail line chain takes its last point back, and the segment built to it, so the model and
+        // the chain stay one drawing.
+        if self.typed_length.is_empty() && self.drawing.other.is_empty() && self.chain_active() && pressed(Modifiers::NONE, Key::Backspace)
+        {
+            self.undo_chain_point();
         }
         // Backspace while a dimension is being picked takes its last reference out.
         if pressed(Modifiers::NONE, Key::Backspace)
@@ -2472,15 +2861,30 @@ impl BimApp {
         {
             refs.pop();
         }
-        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke
-        // changes a door, so holding Space cannot fill the Undo history.
+        if pressed(Modifiers::NONE, Key::Delete) {
+            // While a field is whole-selected, Delete empties that field rather than deleting the selection.
+            if self.drawing.selected {
+                self.typed_length.clear();
+                self.drawing.selected = false;
+            } else {
+                self.delete();
+            }
+        }
+        // The arrow keys nudge the selection, as Revit's do.
+        self.nudge_keys(ctx);
+        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke turns a wall,
+        // a door or a window, so holding Shift or Space cannot fill the Undo history.
         let plain_space =
             |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
-        if matches!(self.tool, Tool::Door | Tool::Modify) && ctx.input(|i| i.events.iter().any(plain_space)) && self.door_space() {
+        // Space on a component or a column taken up again, dragged or alone in the selection: a quarter turn, as Revit's.
+        if ctx.input(|i| i.events.iter().any(plain_space)) && self.space_turn() {
             pressed(Modifiers::NONE, Key::Space);
         }
-        if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
-            self.flip();
+        if matches!(self.tool, Tool::Door | Tool::Window | Tool::Modify)
+            && ctx.input(|i| i.events.iter().any(plain_space))
+            && self.opening_space()
+        {
+            pressed(Modifiers::NONE, Key::Space);
         }
         // Space while rotating: the next click places the centre, as Revit's Space does.
         if let Tool::Rotate { place, start, .. } | Tool::RotateNorth { place, start, .. } = &mut self.tool
@@ -2488,6 +2892,18 @@ impl BimApp {
         {
             *place = true;
             *start = None;
+        }
+        // Space while Walls' Outline follows a centre line: its offset goes from the loop's inside to its outside.
+        if self.outline_pending && self.outline_side == crate::sketch::OutlineSide::Axis && pressed(Modifiers::NONE, Key::Space) {
+            self.outline_flip = !self.outline_flip;
+        }
+        // Space while Pick Walls is on: its line goes to the other face of the wall.
+        if matches!(self.tool, Tool::SketchPick) && pressed(Modifiers::NONE, Key::Space) {
+            self.pick_flip = !self.pick_flip;
+        }
+        // Space while a Draw tool is on: its Offset goes to the other side, in the preview and in what the click makes.
+        if self.target().is_some() && self.shape().takes_offset() && pressed(Modifiers::NONE, Key::Space) {
+            self.drawing.offset_flip = !self.drawing.offset_flip;
         }
         // Space steps the Dimension tool's lay: Auto, Aligned, Horizontal, Vertical.
         if let Tool::Dimension(mode, _) = &mut self.tool
@@ -2498,9 +2914,15 @@ impl BimApp {
         if matches!(self.tool, Tool::Component | Tool::Fixture(_)) && pressed(Modifiers::NONE, Key::Space) {
             self.component_angle = (self.component_angle + 90.0) % 360.0;
         }
-
-        // A digit starts a length while a tool is picking its next point, and everything typed
-        // after it (feet, inches, fractions, a unit) is the length's until Enter.
+        // F8 is the one function key for the guides. F11 is free: the system may use it for full screen.
+        if pressed(Modifiers::NONE, Key::F8) {
+            self.toggle_alignment_guides();
+        }
+        // Q marks the point or edge under the pointer as a temporary snap reference, before the first point too.
+        if pressed(Modifiers::NONE, Key::Q) && matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_)) {
+            self.pin_under_cursor();
+            ctx.request_repaint();
+        }
         let typed: String = ctx.input(|i| {
             i.events
                 .iter()
@@ -2515,8 +2937,16 @@ impl BimApp {
         // without Ctrl are no shortcut.
         for ch in typed.chars() {
             let listening = self.base().is_some() || self.filleting() || self.rotating();
-            let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
+            // A bearing west of east is negative, so the angle field takes its sign; Rotate always has.
+            let negative_angle = self.drawing.field == 1 && self.line_angle_field();
+            let sign = ch == '-' && (self.rotating() || negative_angle) && self.typed_length.is_empty();
             if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
+                // The field `Tab` armed holds what is selected, so the first digit replaces it instead of appending.
+                if self.drawing.selected {
+                    self.typed_length.clear();
+                    self.drawing.selected = false;
+                }
+                self.drawing.armed = true;
                 self.typed_length.push(ch);
             }
         }
@@ -2617,6 +3047,50 @@ impl BimApp {
         if !self.execute_action(ctx, action) {
             self.status = Status { text: t("That shortcut has nothing to do here").to_string(), error: true };
         }
+    }
+
+    /// The arrow keys move what Modify has selected a step across the view, as Revit's nudge does: right, left, up or down on
+    /// screen in a plan however it is turned, along its line or up in a section or an elevation. A step is [`NUDGE_PX`] pixels
+    /// at the view's zoom ([`nudge_step`]), and Shift makes it ten. Each press is one Move, so Undo takes them back one by one,
+    /// and Move's rules hold: doors and windows slide along their walls, joined walls stretch, pinned elements stay.
+    fn nudge_keys(&mut self, ctx: &Context) {
+        if !matches!(self.tool, Tool::Modify) || self.selection.is_empty() || self.sketch.is_some() {
+            return;
+        }
+        let key = match self.sheet {
+            Sheet::Plan(k) | Sheet::Ceiling(k) | Sheet::Section(k) => k,
+            _ => return,
+        };
+        let Some(view) = self.canvas.view(key) else { return };
+        // Steps right and up on screen. Shift's first: a plain arrow's pattern matches one pressed with Shift too.
+        let mut steps = P2(0.0, 0.0);
+        for (k, dir) in [
+            (Key::ArrowRight, P2(1.0, 0.0)),
+            (Key::ArrowLeft, P2(-1.0, 0.0)),
+            (Key::ArrowUp, P2(0.0, 1.0)),
+            (Key::ArrowDown, P2(0.0, -1.0)),
+        ] {
+            for (m, n) in [(Modifiers::SHIFT, 10.0), (Modifiers::NONE, 1.0)] {
+                let count = ctx.input_mut(|i| i.count_and_consume_key(m, k));
+                steps = steps + dir * (n * count as f64);
+            }
+        }
+        if steps.length() == 0.0 {
+            return;
+        }
+        // Screen right and up as the model's directions: a plan oriented to true north is turned on screen.
+        let o = view.mm((0.0, 0.0));
+        let (right, up) = ((view.mm((1.0, 0.0)) - o).unit(), (view.mm((0.0, -1.0)) - o).unit());
+        let by = (right * steps.0 + up * steps.1) * nudge_step(view.scale);
+        if !by.is_finite() {
+            return;
+        }
+        let by = [(by.0 * 1e3).round() / 1e3 + 0.0, (by.1 * 1e3).round() / 1e3 + 0.0];
+        let ids = self.selection.clone();
+        match self.sheet {
+            Sheet::Section(view) => self.run("move", json!({"view": view, "ids": ids, "by": by})),
+            _ => self.run("move", json!({"ids": ids, "by": by})),
+        };
     }
 
     /// The shortcuts a text field leaves alone: Save, Save As, Open, New, Find, Settings, Export PDF and Properties.
@@ -2744,23 +3218,32 @@ impl BimApp {
         self.floor_structural = matches!(picked.map(|(_, e)| e), Some(Element::Floor(f)) if f.structural);
     }
 
-    /// Select All Instances (SA): every element the open view shows of a type selected, a
-    /// component's type being its family's.
+    /// SA retains the visible-in-view scope; the menus also offer the entire project.
     fn select_all_instances(&mut self) {
-        let m = Arc::clone(&self.session.model);
-        // One look at every element the view shows: a component's room is found among its level's rooms once.
-        let rooms = bimcraft_core::rooms::Rooms::new(&m);
-        let type_of = |id: &Id| {
-            let e = bimcraft_core::element_json_with(&m, *id, &rooms);
-            e["type"].is_string().then(|| [e["category"].clone(), e["family"].clone(), e["type"].clone()])
-        };
-        let types: Vec<[Value; 3]> = self.selection.iter().filter_map(type_of).collect();
-        if types.is_empty() {
+        if !self
+            .selection
+            .iter()
+            .filter_map(|id| self.session.model.elements.get(*id))
+            .any(|e| bimcraft_core::selection::instance_type(e).is_some())
+        {
             self.status = Status { text: t("select an element that has a type first").into(), error: true };
             return;
         }
-        let found = self.shown().into_iter().filter(|id| type_of(id).is_some_and(|k| types.contains(&k))).collect();
-        self.pick_up(found, Modifiers::NONE);
+        self.select_instances(json!({"ids": self.selection}), context::InstanceScope::View);
+    }
+
+    /// Both menus query the same core matching logic. View candidates come from the
+    /// active view, including temporary visibility; the project scope omits that limit.
+    fn select_instances(&mut self, mut params: Value, scope: context::InstanceScope) {
+        if scope == context::InstanceScope::View {
+            // The linked view model may draw linked ids; project selection contains only local instances.
+            params["within"] =
+                json!(self.shown().into_iter().filter(|id| self.session.model.elements.contains_key(id)).collect::<Vec<_>>());
+        }
+        if let Some(reply) = self.run("select_instances", params) {
+            let found = reply["ids"].as_array().map(|ids| ids.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
+            self.pick_up(found, Modifiers::NONE);
+        }
     }
 
     /// Match Properties (MA): with one element selected, its type is the one the next element drawn
@@ -2798,7 +3281,7 @@ impl BimApp {
     /// section or an elevation cuts and what its picture shows past its line; in 3D, the whole
     /// model but for what is hidden. Nothing on a sheet or in a schedule has a type to select.
     fn shown(&mut self) -> BTreeSet<Id> {
-        let m = Arc::clone(&self.session.model);
+        let m = self.view_model();
         let owners = |d: render::Drawing| d.owners.into_iter().flatten().collect::<BTreeSet<Id>>();
         // Fitted at any size: what a view shows doesn't depend on it.
         let (w, h) = (1600, 1000);
@@ -2812,9 +3295,9 @@ impl BimApp {
                 let seen = render::section_picture(&m, id, view, &[]).map(|i| i.shows()).unwrap_or_default();
                 owners(render::section(&m, id, view)).into_iter().chain(seen).collect()
             }
-            // The whole model, but for what the default 3D view hides.
+            // The whole model, but for what the 3D view open hides.
             Sheet::View3D => {
-                let look = bimcraft_core::graphics::Look::of_3d(&m);
+                let look = bimcraft_core::graphics::Look::of_3d_view(&m, self.active_3d());
                 m.elements.keys().copied().filter(|id| look.shows(*id)).collect()
             }
             Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => BTreeSet::new(),
@@ -2829,7 +3312,16 @@ impl BimApp {
 
     fn set_tool(&mut self, mut tool: Tool) {
         self.adaptive_clicks.clear();
+        if !matches!(tool, Tool::Paste | Tool::PickLevel) {
+            self.pasting = None;
+        }
         self.note_arrow = None;
+        // Another tool takes the Options Bar: Walls' Outline's own closes, putting no outline in the sketch. The Modify
+        // arrow is the one Walls' Outline itself uses, so choosing it leaves the mode on.
+        self.sketch_line_chain = None;
+        if tool != Tool::Modify {
+            self.leave_walls_outline();
+        }
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -2884,10 +3376,11 @@ impl BimApp {
         }
         if tool == Tool::Level {
             let top = self.session.model.levels().last().map_or(0.0, |(_, l)| l.elevation);
-            self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
+            self.new_level = (self.session.model.field(top + 3000.0), String::new());
         }
         let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
-        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits {
+        let placing_grid = matches!(tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. });
+        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits && !placing_grid {
             self.selection.clear();
         }
         if tool != Tool::Modify && !picks {
@@ -2912,6 +3405,7 @@ impl BimApp {
         }
         self.snap_once = None;
         self.door_flip_hand = false;
+        self.window_flip_facing = false;
         self.tool = tool;
         // Floor sketches its outline at once, as Revit's does (Walls' Outline puts the walls' in the sketch).
         if self.tool == Tool::Floor
@@ -3054,37 +3548,117 @@ impl BimApp {
         }
     }
 
-    /// While placing a swinging door Space changes only its pending hand. With one selected,
-    /// step through the four Opens tiles in order with the same instance edit as a tile click.
-    fn door_space(&mut self) -> bool {
-        let m = &self.session.model;
+    /// While placing a swinging door Space changes only its pending hand; while placing a window it changes the
+    /// pending face. With one door selected, step through the four Opens tiles in order with the same instance edit
+    /// as a tile click.
+    fn opening_space(&mut self) -> bool {
         match self.tool {
             Tool::Door if self.plan_level().is_some() => {
-                let (family, ty) = self.opening_pick("door");
-                if !ty.as_deref().is_some_and(|t| m.single_swing_door(family.as_deref(), t)) {
+                if !self.picked_door_swings() {
                     return false;
                 }
                 self.door_flip_hand = !self.door_flip_hand;
             }
+            Tool::Window if self.plan_level().is_some() => self.window_flip_facing = !self.window_flip_facing,
             Tool::Modify if self.sketch.is_none() => {
-                let &[id] = self.selection.as_slice() else { return false };
-                let Some(Element::Door(o)) = m.elements.get(id) else { return false };
-                if !m.single_swing_door(o.family.as_deref(), &o.type_name) {
+                let ids = self.flippable();
+                if ids.is_empty() {
                     return false;
                 }
-                // Hand alternates every step; facing changes when hand wraps back to as placed.
-                self.run("modify", json!({"id": id, "flip_hand": !o.flip_hand, "flip_facing": o.flip_facing ^ o.flip_hand}));
+                self.run("flip", json!({"ids": ids, "cycle": "auto"}));
             }
             _ => return false,
         }
         true
     }
 
-    /// The selected walls turned round about their location lines: Revit's flip arrows, or Space.
+    /// Whether the Door tool's picked type is a swing door, whose hinge Space can turn.
+    fn picked_door_swings(&self) -> bool {
+        let (family, ty) = self.opening_pick("door");
+        ty.as_deref().is_some_and(|t| self.session.model.door_flips(family.as_deref(), t).hand)
+    }
+
+    /// Whether every selected element is an opening that Space can turn, so the status can say what Space does.
+    fn selection_flips(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty()
+            && self.selection.iter().all(|id| m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any()))
+    }
+
+    /// Whether the selection is only doors with no Opens positions, so Space has no swing to turn.
+    fn selection_has_no_swing(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty()
+            && self
+                .selection
+                .iter()
+                .all(|id| matches!(m.elements.get(*id), Some(Element::Door(o)) if !m.door_flips(o.family.as_deref(), &o.type_name).any()))
+    }
+
+    /// The selected elements Space and Flip turn over: walls, stairs, and doors and windows whose type flips.
+    fn flippable(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        self.selection
+            .iter()
+            .copied()
+            .filter(|id| {
+                m.wall(*id).is_some()
+                    || matches!(m.elements.get(*id), Some(Element::Stair(_)))
+                    || m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any())
+            })
+            .collect()
+    }
+
+    /// Space in Modify on a selection with nothing to flip: a quarter turn counter-clockwise, as Revit's Space gives a component
+    /// taken up again. While the selection is dragged it turns as it goes, about the one element's own point (a component's or
+    /// a column's), else about the point it was taken by, and the drag goes on with it turned. Not dragged, one component or
+    /// column selected turns about its own point. Whether it turned: else Space is left to the flips.
+    fn space_turn(&mut self) -> bool {
+        if self.tool != Tool::Modify
+            || self.selection.is_empty()
+            || self.sketch.is_some()
+            || !matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_))
+            || !self.flippable().is_empty()
+        {
+            return false;
+        }
+        let m = &self.session.model;
+        let own = match self.selection.as_slice() {
+            &[id] => match m.elements.get(id) {
+                Some(Element::Component(c)) if c.adaptive.is_none() => Some(c.at),
+                Some(Element::Column(c)) => Some(c.at),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(about) = own.or_else(|| self.canvas.moving_from()) else { return false };
+        let ids = self.selection.clone();
+        self.run("rotate", json!({"ids": ids, "about": [about.0, about.1], "angle": 90.0})).is_some()
+    }
+
+    /// The selected walls, stairs and openings turned over, in one Undo step: Revit's flip arrows, or Space. Stairs selected climb
+    /// the other way.
     fn flip(&mut self) {
-        let walls = self.selected_walls();
-        if !walls.is_empty() {
-            self.run("flip", json!({"ids": walls}));
+        let ids = self.flippable();
+        if !ids.is_empty() {
+            self.run("flip", json!({"ids": ids, "cycle": "auto"}));
+        }
+    }
+
+    /// The stairs in the selection.
+    fn selected_stairs(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        self.selection.iter().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::Stair(_)))).collect()
+    }
+
+    /// Code Check (CK) of stair `id`: the rules it breaks in a window, or that it meets them all.
+    fn code_check(&mut self, id: Id) {
+        let m = &self.session.model;
+        let outside = matches!(m.elements.get(id), Some(Element::Stair(st)) if !bimcraft_core::codes::stair_findings(m, st).is_empty());
+        if outside {
+            self.code_findings = Some(id);
+        } else {
+            self.status = Status { text: t("This stair meets every rule of the project's building code.").to_string(), error: false };
         }
     }
 
@@ -3150,6 +3724,11 @@ impl BimApp {
         }
     }
 
+    /// A wall or detail line chain with a point already placed.
+    fn chain_active(&self) -> bool {
+        matches!(self.tool, Tool::Wall(_) | Tool::DetailLine(_)) && self.base().is_some()
+    }
+
     /// The level of the plan on screen, a floor plan or a ceiling plan (of a plan view, its level's).
     pub(crate) fn plan_level(&self) -> Option<Id> {
         self.plan_key().and_then(|key| self.session.model.plan_level(key))
@@ -3166,6 +3745,21 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // A number being typed, or a field armed with Tab, goes first, and the field back to Length: the point it is for
+        // is still wanted, and a stale locked length must not linger. The next Esc drops the chain.
+        if !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty() || self.drawing.armed {
+            self.clear_typed();
+            return;
+        }
+        // Esc drops the drawing's marked references with the points they were marked for.
+        self.canvas.guides_reset();
+        // Walls' Outline's Options Bar clears its walls first: the mode itself stays on.
+        if self.outline_pending {
+            self.outline_walls.clear();
+            self.selection.clear();
+            self.status = Status::default();
+            return;
+        }
         // A note's leader point clicked goes first, the Text tool staying on.
         if self.note_arrow.take().is_some() {
             self.status = Status::default();
@@ -3179,6 +3773,10 @@ impl BimApp {
         }
         // Edit Dimension References goes next: the dimension stays as it was.
         if self.dimension_refs_edit.take().is_some() {
+            return;
+        }
+        // Edit Group's Add or Remove picking stops, the edit going on.
+        if self.group_pick.take().is_some() {
             return;
         }
         // A dimension segment picked goes, leaving its dimension as it was.
@@ -3196,6 +3794,7 @@ impl BimApp {
         }
         self.typed.clear();
         self.ribbon_peek = false;
+        self.sketch_line_chain = None;
         // A snap override waiting for its point goes first, leaving what's being drawn.
         if self.snap_once.take().is_some() {
             return;
@@ -3276,6 +3875,11 @@ impl BimApp {
             }
             return;
         }
+        // With one part of a curtain wall picked, that part, and never the wall.
+        if let Some((id, at)) = self.curtain_part {
+            self.delete_curtain_part(id, at);
+            return;
+        }
         // Under Modify Sub Elements, what of the shape is selected.
         if self.shape_delete() {
             return;
@@ -3311,12 +3915,13 @@ impl BimApp {
         match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) | Sheet::Paper(id) => self.canvas.fit(id),
             Sheet::View3D => self.fit3d(),
-            Sheet::Family(_, None) => {
+            // A family's view, whichever is shown (`editor/zoom.rs`).
+            Sheet::Family(..) => {
                 if let Some(ed) = self.active_family_mut() {
-                    ed.orbit.fit();
+                    ed.zoom_to_fit();
                 }
             }
-            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
+            Sheet::Schedule(_) | Sheet::Table(_) => {}
         }
     }
 
@@ -3350,6 +3955,7 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        let changed_vertical_plane = self.sheet != sheet && (matches!(self.sheet, Sheet::Section(_)) || matches!(sheet, Sheet::Section(_)));
         // A family document's view: its tab after the document's others (after the project's and the documents' before it),
         // and the document showing it. The project's tool, selection and views are left as they are.
         if let Sheet::Family(id, view) = sheet {
@@ -3373,6 +3979,11 @@ impl BimApp {
             }
         }
         self.canvas.drawing.suspend();
+        if self.sheet != sheet {
+            self.underlay.suspend();
+            // Move or Rotate was picking in the view left.
+            self.underlay_edit = None;
+        }
         if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);
         }
@@ -3382,6 +3993,12 @@ impl BimApp {
         }
         // The selection is the model's, not the view's: it stays, whatever view comes up.
         self.clear_typed();
+        if changed_vertical_plane
+            && matches!(self.tool, Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. })
+        {
+            self.tool = Tool::Modify;
+            self.dimension_reference_hover = None;
+        }
         self.snap_once = None;
         // A ruler belongs to the view it was laid in.
         self.measured = None;
@@ -3389,8 +4006,12 @@ impl BimApp {
         // Elevation in sections, Demolish in sections and 3D); any other view takes clicks to select.
         let works = match sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) => true,
-            Sheet::Section(_) => matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish),
-            Sheet::View3D => matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint),
+            Sheet::Section(_) => {
+                matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
+            Sheet::View3D => {
+                matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
             Sheet::Paper(_) => self.tool == Tool::Text,
             _ => false,
         };
@@ -3523,6 +4144,13 @@ impl BimApp {
             p["compress"] = json!(self.compressed_save);
         }
         let saved = self.run("save", p).is_some();
+        // A template saved is listed for New, and the project's own file is still the one it saves to.
+        if saved && ext == files::TEMPLATE {
+            self.note_template(path);
+            let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            self.status = Status { text: tf("Saved the template {}; New lists it.", &[&name]), error: false };
+            return true;
+        }
         // Exports (IFC, glTF, the sheets' PDF) leave the project unsaved.
         if saved && !matches!(ext.as_str(), "ifc" | "glb" | "pdf") {
             self.saved = Arc::clone(&self.session.model);
@@ -3549,7 +4177,9 @@ impl BimApp {
     fn save_as(&mut self, ctx: &Context, then: Option<Pending>) {
         let later = ctx.clone();
         self.ask_path(ctx, msg!("BIMCraft project"), &files::SAVED, move |app, p| {
+            // A template saved leaves the project unsaved, so what waited on the save waits on.
             if app.save_to(&p)
+                && !app.dirty()
                 && let Some(then) = then
             {
                 app.proceed(then, &later);
@@ -3559,7 +4189,7 @@ impl BimApp {
 
     /// Asks, in the system's file dialog, where to save, and calls `then` with the path in a later frame: the first of `exts` is
     /// what it offers and what a path with none of them gets.
-    fn ask_path(&mut self, ctx: &Context, what: &str, exts: &[&str], then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
+    pub(crate) fn ask_path(&mut self, ctx: &Context, what: &str, exts: &[&str], then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
         let name = files::file_name(&self.session.model.name, exts.first().copied().unwrap_or_default());
         let exts: Vec<String> = exts.iter().map(|e| e.to_string()).collect();
         let dialog = rfd::AsyncFileDialog::new().add_filter(t(what), &exts).set_file_name(name);
@@ -3579,13 +4209,22 @@ impl BimApp {
             }
             return self.active_family().is_some();
         }
+        self.open_project_file(path, false)
+    }
+
+    /// Open a project or an IFC file, or with `template` start a new project from one: its content with no file.
+    pub(crate) fn open_project_file(&mut self, path: &Path, template: bool) -> bool {
         // A big file is read on a thread of its own, the window drawing meanwhile, with a box and Cancel (`opening.rs`). A Co-Work
         // guest's commands go to the host, so it opens as it always did.
         let big = std::fs::metadata(path).is_ok_and(|m| m.len() >= opening::IN_BACKGROUND);
         if big && !matches!(self.cowork, Some(cowork::Live::Guest(_))) {
-            return self.open_in_background(path);
+            return self.open_in_background(path, template);
         }
-        let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else {
+        let mut p = json!({"path": path.to_string_lossy()});
+        if template {
+            p["as_template"] = json!(true);
+        }
+        let Some(reply) = self.run("open", p) else {
             self.open_failed(path);
             return false;
         };
@@ -3606,9 +4245,15 @@ impl BimApp {
     pub(crate) fn opened(&mut self, path: &Path, reply: &Value) {
         self.retire_autosave();
         self.reopened();
-        self.note_recent(path);
-        self.autosave_document();
         let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        // A template is let go once read: it is listed among the templates, not the recent projects, and the project is new.
+        if reply["template"] == json!(true) {
+            self.note_template(path);
+            self.status = Status { text: tf("A new project from the template {}: Save asks where to put it.", &[&name]), error: false };
+        } else {
+            self.note_recent(path);
+        }
+        self.autosave_document();
         if reply["format"].is_string() {
             self.status = Status { text: import_note(&name, reply), error: false };
         } else if let Some(left_out) = reply["left_out"].as_array() {
@@ -3648,6 +4293,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        fresh.guide_style = self.guide_style;
         fresh.compressed_save = self.compressed_save;
         fresh.cut_fills_3d = self.cut_fills_3d;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
@@ -3675,8 +4321,10 @@ impl BimApp {
         (fresh.bench, fresh.opening) = (self.bench.take(), self.opening.take());
         fresh.swapping = std::mem::take(&mut self.swapping);
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
+        (fresh.templates, fresh.templates_path) = (std::mem::take(&mut self.templates), self.templates_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
+        fresh.pyaddins = self.pyaddins.carried();
         fresh.home = self.home.put_away();
         // A new or opened project keeps the plugins and their tabs: they are the user's folder, not the project's, and the
         // session's external commands were already registered. Re-registering puts them back if the project replaced them.
@@ -3742,6 +4390,9 @@ impl BimApp {
                     self.reopened();
                     self.autosave_document();
                 }
+            }
+            Pending::Template(path) => {
+                self.open_template(&path);
             }
             Pending::Sample => self.open_sample(),
             Pending::OpenPath(path) => {
@@ -4048,6 +4699,7 @@ impl BimApp {
             Tab::View => self.view_tab(ui),
             Tab::Collaborate => self.collaborate_tab(ui),
             Tab::Manage => self.manage_tab(ui),
+            Tab::PyAddins => self.pyaddins_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
         }
@@ -4081,7 +4733,9 @@ impl BimApp {
             });
         });
         ui.scope_builder(UiBuilder::new().max_rect(rows), |ui| {
-            ScrollArea::both().id_salt("tool-column").auto_shrink([false, false]).show(ui, |ui| {
+            // Edit Profile can be reached near the bottom of this column. Its draft opens with the editing tools visible.
+            let scroll = if self.editing_roof_profile() { "roof-profile-tools" } else { "tool-column" };
+            ScrollArea::both().id_salt(scroll).auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(rows.width() - 12.0);
                 let edit = if self.editing_tools { msg!("Done") } else { msg!("Edit Tools") };
                 let tip = msg!("Tick the tools this palette shows; Find still has the others");
@@ -4143,7 +4797,7 @@ impl BimApp {
         // As Revit's: New and Open, each of a project or a family.
         SubMenuButton::new(t("New")).ui(ui, |ui| {
             if item(ui, msg!("Project"), cmd(Key::N)) {
-                self.guard(Pending::New, ctx);
+                self.new_project();
             }
             if item(ui, msg!("Family…"), None) {
                 self.new_family_dialog = Some(bimcraft_core::family::Category::Generic);
@@ -4171,9 +4825,15 @@ impl BimApp {
             if item(ui, "Save", cmd(Key::S)) {
                 self.save(ctx, None);
             }
-            if item(ui, msg!("Save As…"), save_as) {
-                self.save_as(ctx, None);
-            }
+            // As Revit's: Save As a project, or as a template New starts projects from.
+            SubMenuButton::new(t("Save As")).ui(ui, |ui| {
+                if item(ui, msg!("Project…"), save_as) {
+                    self.save_as(ctx, None);
+                }
+                if item(ui, msg!("Template…"), None) {
+                    self.save_as_template(ctx);
+                }
+            });
             // As in Settings > Files: kept for every save after.
             ui.checkbox(&mut self.compressed_save, t("Compressed save"))
                 .on_hover_text(t("⚠ A compressed project is much smaller, but saving and opening it take longer."));
@@ -4226,13 +4886,35 @@ impl BimApp {
                 }
             }
         });
+        // Edit Group's Add, Remove, Finish and Cancel, beside Select on every tab while a group is edited.
+        self.edit_group_panel(ui);
     }
 
     fn tools(&mut self, ui: &mut Ui, name: &str, tools: Tools) {
         panel(ui, name, |ui| {
             for (icon, label, tip, tool) in tools {
-                let active = structure::same_tool(&self.tool, tool);
+                // In the panel's list and the palette only: the ribbon has no width to spare for it, and the Wall tool's Type
+                // Selector offers the same types.
+                if *label == CURTAIN_TOOL && !ribbon::listing() {
+                    continue;
+                }
+                // Wall and Curtain Wall are one tool, told apart by the type it draws.
+                let curtain_type =
+                    self.types.get("wall").is_some_and(|n| self.session.model.types.wall.get(n).is_some_and(|t| t.curtain.is_some()));
+                let wall = matches!(tool, Tool::Wall(_));
+                let active = structure::same_tool(&self.tool, tool) && (!wall || curtain_type == (*label == CURTAIN_TOOL));
                 if big_button(ui, *icon, label, active, tip).clicked() {
+                    if wall && curtain_type != (*label == CURTAIN_TOOL) {
+                        let m = &self.session.model;
+                        let name = if *label == CURTAIN_TOOL {
+                            m.types.wall.iter().find(|(_, t)| t.curtain.is_some()).map(|(n, _)| n.clone())
+                        } else {
+                            m.default_type("wall").map(String::from)
+                        };
+                        if let Some(name) = name {
+                            self.types.insert("wall", name);
+                        }
+                    }
                     self.set_tool(tool.clone());
                 }
             }
@@ -4312,6 +4994,12 @@ impl BimApp {
             msg!("Build"),
             &[
                 (Icon::Wall, "Wall", msg!("Wall (WA): each click builds a wall; Enter or Esc ends the chain"), Tool::Wall(Vec::new())),
+                (
+                    Icon::Wall,
+                    CURTAIN_TOOL,
+                    msg!("Curtain Wall: a wall divided by its type's pattern into panels and mullions"),
+                    Tool::Wall(Vec::new()),
+                ),
                 (Icon::Door, "Door", msg!("Door (DR): click a wall"), Tool::Door),
                 (Icon::Window, "Window", msg!("Window (WN): click a wall"), Tool::Window),
                 (Icon::Column, "Column", msg!("Column (CL): click where it stands"), Tool::Column),
@@ -4336,7 +5024,7 @@ impl BimApp {
                 (
                     Icon::Stair,
                     "Stair",
-                    msg!("Stair: click where it starts, then where its run ends; a landing turns it"),
+                    msg!("Stair: click where the stair starts, then where each flight or landing ends"),
                     Tool::Stair(Vec::new()),
                 ),
                 (
@@ -4830,11 +5518,20 @@ impl BimApp {
             if big_button(ui, Icon::Settings, "Technical Standards", self.standards_dialog.is_some(), &tip).clicked() {
                 self.standards_dialog = Some(standards::StandardsDialog::new(&self.session.model));
             }
+            let tip = tf(
+                "Building Codes: the rules stairs and railings are held to (NBR, IBC, DIN, JIS), which the project may change; now {}",
+                &[t(&self.session.model.building_code().name)],
+            );
+            if big_button(ui, Icon::Stair, "Building Codes", self.codes_dialog.is_some(), &tip).clicked() {
+                self.codes_dialog = Some(codes::CodesDialog::new(&self.session.model));
+            }
             let tip = msg!(
                 "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
             );
-            if big_button(ui, Icon::Wire, "Electrical Settings", self.electrical_dialog.is_some(), tip).clicked() {
-                self.electrical_dialog = Some(electrical::ElectricalDialog::new(&self.session.model));
+            // The settings are the first sections of the Building Codes' Electrical tab.
+            let open = self.codes_dialog.as_ref().is_some_and(codes::CodesDialog::on_electrical_settings);
+            if big_button(ui, Icon::Wire, "Electrical Settings", open, tip).clicked() {
+                self.codes_dialog = Some(codes::CodesDialog::electrical_settings(&self.session.model));
             }
             // Object styles, snaps and units, stacked.
             stacked(ui, |ui| {
@@ -4852,10 +5549,21 @@ impl BimApp {
                 let tip = tf("Project Units (UN): how lengths show and read; now {}", &[&t(now.label()).to_lowercase()]);
                 let r = stacked_button(ui, Icon::Units, msg!("Project Units"), false, &tip);
                 let asked = self.open_units;
+                let places = self.session.model.decimals_shown();
                 let opened = ribbon::choices(ui, &r, asked, |ui| {
                     for u in Units::ALL {
                         if ui.selectable_label(u == now, t(u.label())).clicked() {
                             self.run("units", json!({"length": u.name()}));
+                        }
+                    }
+                    // The places lengths show, each as it writes a metre; inches and feet-inches show sixteenths.
+                    if let Some(range) = now.decimals() {
+                        ui.separator();
+                        ui.weak(t("Decimal places"));
+                        for d in range {
+                            if ui.selectable_label(Some(d) == places, now.with_unit_to(1000.0, Some(d))).clicked() {
+                                self.run("units", json!({"decimals": d}));
+                            }
                         }
                     }
                 });
@@ -4887,6 +5595,13 @@ impl BimApp {
                     }
                 }
             });
+            // New and seldom wanted: the first of Settings' tools handed over when the window is narrow.
+            let tip = msg!(
+                "Classification Manager (CI): a classification system's tables and parameters, codes picked by hand for the selection, or proposed by the AI assistant"
+            );
+            if big_button(ui, Icon::Classify, "Classification Manager", self.classification.is_some(), tip).clicked() {
+                self.open_classification();
+            }
         });
         // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
         // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
@@ -4962,6 +5677,9 @@ impl BimApp {
                 self.edit_type();
             }
         });
+        self.clipboard_panel(ui);
+        // Create Group, and with a group or a member selected, Revit's Group panel.
+        self.group_panels(ui);
         // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
         let dimension = matches!(self.selection.as_slice(), [id]
             if matches!(self.session.model.elements.get(*id), Some(Element::Dimension(d)) if !d.alignment));
@@ -4981,8 +5699,9 @@ impl BimApp {
             });
         }
         // Hide in View, and Override Graphics: what the selection does in the view on screen.
+        // Kept whole while the ribbon makes room: what it offers depends on the selection (Unhide only for what's hidden).
         if !self.selection.is_empty() && self.graphic_view().is_some() {
-            panel(ui, "View", |ui| {
+            ribbon::kept(ui, "View", |ui| {
                 let tip = msg!("Hide Element (EH): leave the selected elements out of this view");
                 if big_button(ui, Icon::Visibility, "Hide Element", false, tip).clicked() {
                     self.hide_selection(false);
@@ -5121,6 +5840,135 @@ impl BimApp {
                 self.vertex_buttons(ui);
             });
         }
+        // The Stair tool: how its line is drawn, and whether the next stretch of it is steps or a landing.
+        if matches!(self.tool, Tool::Stair(_)) {
+            panel(ui, msg!("Draw"), |ui| {
+                let shapes = [
+                    (StairShape::Straight, Icon::Line, "Straight", msg!("Straight: the next stretch of the stair runs in a straight line")),
+                    (
+                        StairShape::Arc,
+                        Icon::TangentArc,
+                        "Arc",
+                        msg!("Arc: the next stretch curves, carrying on smoothly from the one before it"),
+                    ),
+                    (
+                        StairShape::Spiral,
+                        Icon::Circle,
+                        "Spiral",
+                        msg!("Spiral: click the centre first, then where the stair starts. It winds round the centre."),
+                    ),
+                    (
+                        StairShape::Risers,
+                        Icon::Stair,
+                        "By Risers",
+                        msg!("By Risers: draw each riser yourself with two clicks, left end first. Press Enter when you are done."),
+                    ),
+                ];
+                for (shape, icon, label, tip) in shapes {
+                    if big_button(ui, icon, label, self.stair_shape == shape, tip).clicked() && self.stair_shape != shape {
+                        // A line goes on from straight to arc; a spiral or a stair by risers starts again.
+                        let line = |s: StairShape| matches!(s, StairShape::Straight | StairShape::Arc);
+                        if !(line(shape) && line(self.stair_shape)) {
+                            self.tool = Tool::Stair(Vec::new());
+                            self.stair_kinds.clear();
+                        }
+                        self.stair_shape = shape;
+                    }
+                }
+            });
+            if matches!(self.stair_shape, StairShape::Straight | StairShape::Arc) {
+                panel(ui, msg!("Segment"), |ui| {
+                    let tip = msg!("Steps: the next stretch you draw is a flight of steps");
+                    if big_button(ui, Icon::Stair, "Steps", !self.stair_landing, tip).clicked() {
+                        self.stair_landing = false;
+                    }
+                    let tip = msg!("Landing: the next stretch you draw is a landing, as long as you draw it");
+                    if big_button(ui, Icon::Landing, "Landing", self.stair_landing, tip).clicked() {
+                        self.stair_landing = true;
+                    }
+                    let tip = msg!(
+                        "Lock Tread Depth: keep every tread the same depth. Turn it off to let each flight stretch or squeeze its treads, within the rules, so it ends exactly where you click."
+                    );
+                    if big_button(ui, Icon::TreadLock, "Lock Tread Depth", self.stair_lock_going, tip).clicked() {
+                        self.stair_lock_going = !self.stair_lock_going;
+                    }
+                    let tip = msg!(
+                        "Draw from Top: start where the stair arrives upstairs and draw it down. Useful when the top landing has to sit in an exact spot."
+                    );
+                    if big_button(ui, Icon::StairFromTop, "Draw from Top", self.stair_from_top, tip).clicked() {
+                        self.stair_from_top = !self.stair_from_top;
+                    }
+                });
+            }
+        }
+        // Stairs selected: which way they climb, and what their building code says of them.
+        let stairs = self.selected_stairs();
+        if !stairs.is_empty() && self.tool == Tool::Modify {
+            panel(ui, msg!("Modify Stair"), |ui| {
+                let tip = msg!("Flip (Space): make the stair climb the other way, so its top becomes its foot");
+                if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
+                    self.flip();
+                }
+                let tip = msg!("Convert to Sketch: turn every riser into a line you can drag by its ends, to match an odd shape");
+                if let [id] = stairs.as_slice()
+                    && matches!(self.session.model.elements.get(*id), Some(Element::Stair(st)) if st.sketch.is_empty())
+                    && big_button(ui, Icon::StairSketch, "Convert to Sketch", false, tip).clicked()
+                {
+                    self.run("stair_sketch", json!({"id": id}));
+                }
+                let tip = msg!("Convert Back: make this sketched stair the stair it was before it was converted");
+                if let [id] = stairs.as_slice()
+                    && matches!(self.session.model.elements.get(*id), Some(Element::Stair(st)) if st.unsketched.is_some())
+                    && big_button(ui, Icon::Stair, "Convert Back", false, tip).clicked()
+                {
+                    self.run("stair_sketch", json!({"id": id, "back": true}));
+                }
+                // Connect Levels: the stair climbs on to a level picked, standing again on each level on the way.
+                if let [id] = stairs.as_slice()
+                    && let Some(Element::Stair(st)) = self.session.model.elements.get(*id)
+                {
+                    let m = &self.session.model;
+                    let base = m.elevation(st.level);
+                    let above: Vec<(String, bimcraft_core::model::Guid)> = (m.levels().into_iter())
+                        .filter(|(_, l)| l.elevation > base + 1e-6)
+                        .filter_map(|(lid, l)| Some((l.name.clone(), m.elements.guid(lid)?)))
+                        .collect();
+                    let (multi, top) = (st.multistorey, st.top_level);
+                    let tip = msg!("Connect Levels: carry the stair on up to a level you pick, repeating it on every level on the way");
+                    let r = big_button(ui, Icon::StairLevels, "Connect Levels", multi, tip);
+                    let mut pick: Option<Value> = None;
+                    egui::Popup::menu(&r).show(|ui| {
+                        ui.set_min_width(160.0);
+                        for (name, guid) in &above {
+                            if ui.selectable_label(multi && top == Some(*guid), name).clicked() {
+                                pick = Some(json!({"ids": [id], "top_level": name, "multistorey": true}));
+                            }
+                        }
+                        if multi {
+                            ui.separator();
+                            if ui.button(t("Disconnect Levels")).clicked() {
+                                let next = above.first().map(|(n, _)| n.clone());
+                                pick = Some(json!({"ids": [id], "multistorey": false, "top_level": next}));
+                            }
+                        }
+                    });
+                    if let Some(p) = pick {
+                        self.run("modify", p);
+                    }
+                    let tip = msg!("Separate Storeys: make each storey its own stair, so you can change one without the others");
+                    if multi && big_button(ui, Icon::StairLevels, "Separate Storeys", false, tip).clicked() {
+                        self.run("stair_storeys", json!({"id": id}));
+                    }
+                }
+                let tip = msg!("Code Check: see which building code rules this stair breaks, and what to change");
+                if let [id] = stairs.as_slice()
+                    && big_button(ui, Icon::StairCheck, "Code Check", self.code_findings.is_some(), tip).clicked()
+                {
+                    self.code_check(*id);
+                }
+            });
+        }
+        self.curtain_grid_panel(ui);
         // Walls selected: Revit's Modify Wall panel.
         let walls = self.selected_walls();
         let attachable = self.selected_attachable();
@@ -5240,7 +6088,8 @@ impl BimApp {
             self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
             return;
         }
-        if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
+        // Nothing to set: Modify, and a paste being placed.
+        if self.context().is_none() && matches!(self.tool, Tool::Modify | Tool::Paste | Tool::PickLevel) && self.note_edit.is_none() {
             self.options_rect = Rect::NOTHING;
             return;
         }
@@ -5284,11 +6133,15 @@ impl BimApp {
                 return;
             }
             if self.sketch.is_some() {
+                let pending = self.outline_pending;
                 self.sketch_options(ui);
-                match self.tool {
-                    Tool::SketchLine(_) => self.shape_options(ui),
-                    Tool::Offset => self.offset_options(ui),
-                    _ => {}
+                // Walls' Outline's own Options Bar stands alone until its DRAW.
+                if !pending {
+                    match self.tool {
+                        Tool::SketchLine(_) => self.shape_options(ui),
+                        Tool::Offset => self.offset_options(ui),
+                        _ => {}
+                    }
                 }
                 return;
             }
@@ -5296,6 +6149,7 @@ impl BimApp {
                 Tool::Wall(_) => self.wall_options(ui),
                 Tool::Linework => self.linework_options(ui),
                 Tool::DetailGroup => self.group_options(ui),
+                Tool::ModelGroup => self.model_group_options(ui),
                 Tool::RepeatingDetail(_) => {
                     self.group_options(ui);
                     let l = ui.label(t("Spacing:"));
@@ -5369,9 +6223,66 @@ impl BimApp {
                     self.elevation_base(ui);
                 }
                 Tool::Stair(_) => {
+                    use bimcraft_core::model::StairLine;
+                    if let Some(level) = self.plan_level() {
+                        height_options(ui, &self.session.model, level, &mut self.stair_top, &mut self.stair_height, "stair-top");
+                        // Up past the level above, it can stand on each level on the way.
+                        let m = &self.session.model;
+                        let top = self.stair_top.unwrap_or(None).map(|t| m.elevation(t));
+                        let above = m.level_above(level).map(|g| m.elevation(g));
+                        if let (Some(top), Some(above)) = (top, above)
+                            && top > above + 1.0
+                        {
+                            ui.checkbox(&mut self.stair_multistorey, t("Multistorey")).on_hover_text(t(
+                                "Repeat the stair on every level on the way up, each storey with as many risers as its height needs",
+                            ));
+                        }
+                    }
+                    let lines = [(StairLine::Left, "Run: Left"), (StairLine::Centre, "Run: Center"), (StairLine::Right, "Run: Right")];
+                    let l = ui.label(t("Location Line:"));
+                    let now = lines.iter().find(|(k, _)| *k == self.stair_line).map_or("", |(_, s)| s);
+                    ComboBox::from_id_salt("stair-location-line")
+                        .selected_text(t(now))
+                        .show_ui(ui, |ui| {
+                            for (k, s) in lines {
+                                ui.selectable_value(&mut self.stair_line, k, t(s));
+                            }
+                        })
+                        .response
+                        .labelled_by(l.id)
+                        .on_hover_text(t("The line of the stair your clicks follow. It stays put when you change the width."));
+                    let l = ui.label(t("Offset:"));
+                    let hint = self.session.model.units.name();
+                    ui.add(TextEdit::singleline(&mut self.stair_offset).desired_width(56.0).hint_text(hint)).labelled_by(l.id);
                     let l = ui.label(t("Width:"));
                     let hint = self.session.model.units.name();
-                    ui.add(TextEdit::singleline(&mut self.stair_width).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    ui.add(TextEdit::singleline(&mut self.stair_width).desired_width(64.0).hint_text(hint))
+                        .labelled_by(l.id)
+                        .on_hover_text(t("How wide the stair is. Change it between clicks to give the next flight or landing its own width."));
+                    // The riser and the tread: as typed, to match a drawing exactly; empty, as the rules say.
+                    let m = &self.session.model;
+                    let kind = self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default();
+                    let rules = bimcraft_core::codes::limits_of(m, &kind).rules;
+                    let l = ui.label(t("Riser:"));
+                    ui.add(TextEdit::singleline(&mut self.stair_riser).desired_width(56.0).hint_text(m.length(rules.riser)))
+                        .labelled_by(l.id)
+                        .on_hover_text(t("The most a riser may be: the stair takes as many risers as it needs to stay under it. Leave it empty to follow the rules."));
+                    let l = ui.label(t("Tread:"));
+                    ui.add(TextEdit::singleline(&mut self.stair_tread).desired_width(56.0).hint_text(m.length(rules.going)))
+                        .labelled_by(l.id)
+                        .on_hover_text(t("How deep each tread is. Leave it empty to follow the rules."));
+                    let l = ui.label(t("Winders:"));
+                    let tip = t("How many winder treads turn a corner where two flights meet without a landing. 0 puts a landing there.");
+                    ui.add(egui::DragValue::new(&mut self.stair_winders).range(0..=30)).labelled_by(l.id).on_hover_text(tip);
+                    if self.stair_winders > 0 && !self.session.model.stair_rules().winders {
+                        let code = t(&self.session.model.building_code().name).to_string();
+                        ui.label(RichText::new(tf("Against {}", &[&code])).color(codes::OUTSIDE)).on_hover_text(t(
+                            "This building code does not allow winders. The stair is still built, and marked outside the rules.",
+                        ));
+                    }
+                    if self.stair_shape == StairShape::Spiral {
+                        ui.checkbox(&mut self.stair_clockwise, t("Clockwise"));
+                    }
                     ui.checkbox(&mut self.railings, t("Railings"));
                 }
                 Tool::Ramp(_) => {
@@ -5460,6 +6371,9 @@ impl BimApp {
                         .labelled_by(l.id);
                     if ui.checkbox(&mut self.note_leader, t("Leader")).changed() {
                         self.note_arrow = None;
+                    }
+                    if self.note_leader {
+                        notes::leader_type(ui, &mut self.note_leader_kind);
                     }
                 }
                 Tool::Attach => {
@@ -5689,6 +6603,20 @@ impl BimApp {
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
+        match self.group_pick() {
+            Some(groups::GroupPick::Add) if self.tool == Tool::Modify => {
+                return msg!("Add to Group: click a greyed element, or drag a box, to add it to the group. Esc or Add again stops.");
+            }
+            Some(groups::GroupPick::Remove) if self.tool == Tool::Modify => {
+                return msg!("Remove from Group: click a member, or drag a box, to take it out of the group. Esc or Remove again stops.");
+            }
+            _ if self.editing_group().is_some() && self.tool == Tool::Modify => {
+                return msg!(
+                    "Edit Group: only the group's members can be picked and changed; the rest is greyed. Finish Edit Group keeps it."
+                );
+            }
+            _ => {}
+        }
         if self.picking_pattern_lines() {
             return msg!("Select fill pattern lines then press Enter");
         }
@@ -5700,7 +6628,7 @@ impl BimApp {
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
                 return msg!(
-                    "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+                    "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms. Alt (Option on a Mac) and the left button stand in for the middle one."
                 );
             }
             (Sheet::Paper(_), Tool::Modify) => {
@@ -5716,6 +6644,15 @@ impl BimApp {
                 return msg!("Type the note in the Options Bar, then click where it goes.");
             }
             (Sheet::Section(_), Tool::Spot) => return msg!("Click a point to mark its height."),
+            (Sheet::Section(_), Tool::Dimension(..)) => {
+                return msg!("Pick levels, perpendicular grids or detail lines in this view, then click to place the dimension.");
+            }
+            (Sheet::Section(_), Tool::Move(_)) => {
+                return msg!(
+                    "Pick a base and destination in this view. Move supports its annotations, straight-wall openings and unhosted components."
+                );
+            }
+            (Sheet::Section(_), Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
             // Demolish picks in these views as it does in a plan; Paint in the 3D view alone.
             (Sheet::View3D | Sheet::Section(_), Tool::Demolish) | (Sheet::View3D, Tool::Paint | Tool::Unpaint) => {}
             // Shape Editing works on the floor's top in the 3D view too.
@@ -5730,6 +6667,9 @@ impl BimApp {
                 );
             }
             (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
+            (Sheet::View3D, Tool::Paste) => return msg!("Click on the work plane where the pasted elements go. Esc cancels."),
+            // A paste follows the cursor in these views as in a plan; a section's level lines are picked.
+            (Sheet::Section(_) | Sheet::Paper(_), Tool::Paste) | (Sheet::Section(_), Tool::PickLevel) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }
@@ -5746,13 +6686,24 @@ impl BimApp {
             );
         }
         match &self.tool {
+            Tool::Modify if self.selection_flips() => {
+                msg!("Space flips the hand or facing; the flip controls on the plan do the same.")
+            }
+            Tool::Modify if self.selection_has_no_swing() => msg!("This door has no swing to flip."),
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
-            Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
-            Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
+            Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point; Q pins a guide there."),
+            Tool::Wall(_) => msg!(
+                "Click the next point; Enter or Esc ends the chain, Shift keeps it square. Tab steps length and angle, or the wall's lines; Backspace or Ctrl+Z takes back the last point and wall; Q pins a guide."
+            ),
             Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),
             Tool::Attach => msg!("Pick a roof or a floor: the tops of what's selected follow its underside."),
-            Tool::Door => msg!("Click a wall to place the door."),
-            Tool::Window => msg!("Click a wall to place the window."),
+            Tool::Door if !self.picked_door_swings() => msg!("This door has no swing to flip. Click a wall to place it."),
+            Tool::Door => {
+                msg!("Click a wall to place the door. Space flips the hinge; the pointer's side of the wall sets the swing.")
+            }
+            Tool::Window => {
+                msg!("Click a wall to place the window. Space flips its face; the pointer's side sets which face is out.")
+            }
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
             Tool::RoomSeparator(None) => msg!("Click the separation line's start."),
             Tool::RoomSeparator(Some(_)) => msg!("Click the line's next point; each click places a line. Esc ends the chain."),
@@ -5761,7 +6712,18 @@ impl BimApp {
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
             Tool::ReferencePlane(None) => msg!("Click to enter the reference plane's start point."),
             Tool::ReferencePlane(Some(_)) => msg!("Click to enter the reference plane's end point."),
+            Tool::CurtainGrid { way: bimcraft_core::curtain::GridWay::Vertical, .. } => {
+                msg!("Click on the curtain wall to place a vertical grid. Esc ends.")
+            }
+            Tool::CurtainGrid { .. } => {
+                msg!("Click on the curtain wall in a section, an elevation or the 3D view to place a horizontal grid. Esc ends.")
+            }
+            Tool::CurtainSegment { .. } => {
+                msg!("Click a stretch of a grid line in a section, an elevation or the 3D view to take it off or put it back. Esc ends.")
+            }
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
+            Tool::Paste => msg!("Click where the pasted elements go. Esc cancels."),
+            Tool::PickLevel => msg!("Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Rotate { place: true, .. } => msg!("Click the centre of rotation."),
@@ -5802,7 +6764,7 @@ impl BimApp {
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
             Tool::Linework => msg!("Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."),
-            Tool::DetailGroup => msg!("Click where the group's origin goes."),
+            Tool::DetailGroup | Tool::ModelGroup => msg!("Click where the group's origin goes."),
             Tool::RepeatingDetail(None) => msg!("Click where the repeating detail starts."),
             Tool::RepeatingDetail(Some(_)) => msg!("Click where it ends: the group repeats along the line every spacing."),
             Tool::Paint => msg!("Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever."),
@@ -5840,9 +6802,28 @@ impl BimApp {
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
             Tool::Run(..) | Tool::Stand(_) => structure::hint(&self.tool).unwrap_or_default(),
             Tool::Component | Tool::Fixture(_) => msg!("Click where the component goes; Space turns it a quarter turn."),
-            Tool::Stair(pts) if pts.is_empty() => msg!("Click where the stair starts: the middle of its first riser."),
-            Tool::Stair(pts) if pts.len() == 1 => {
-                msg!("Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels.")
+            Tool::Stair(pts) if self.stair_shape == StairShape::Risers && pts.len() % 2 == 0 => {
+                msg!("Click the left end of the next riser, going up. Enter makes the stair of the risers drawn; Esc cancels.")
+            }
+            Tool::Stair(_) if self.stair_shape == StairShape::Risers => msg!("Click the right end of this riser."),
+            Tool::Stair(pts) if pts.is_empty() && self.stair_shape == StairShape::Spiral => {
+                msg!("Click the centre the spiral stair winds about.")
+            }
+            Tool::Stair(_) if self.stair_shape == StairShape::Spiral => {
+                msg!("Click where it starts: the middle of its first riser. Esc cancels.")
+            }
+            Tool::Stair(pts) if pts.is_empty() => {
+                msg!("Click where the stair starts. It is drawn along the line you click, a flight or a landing at a time.")
+            }
+            Tool::Stair(_) if self.stair_landing => {
+                msg!(
+                    "Click where this landing ends. Steps, in the ribbon, goes on with a flight; a double click or Enter finishes the stair."
+                )
+            }
+            Tool::Stair(_) => {
+                msg!(
+                    "Click where this flight ends: past the top, the stair is done. Landing, in the ribbon, draws a landing next; a double click or Enter finishes the stair as drawn, its top under its top level by what is not drawn."
+                )
             }
             Tool::Ramp(pts) if pts.is_empty() => msg!("Click where the ramp starts: the middle of its foot."),
             Tool::Ramp(pts) if pts.len() == 1 => {
@@ -5850,7 +6831,7 @@ impl BimApp {
                     "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
                 )
             }
-            Tool::Stair(_) | Tool::Ramp(_) => {
+            Tool::Ramp(_) => {
                 msg!("Click which way the next run goes from the landing: on, left, right, or back beside it.")
             }
             Tool::Railing(pts) if pts.is_empty() => msg!("Click a stair or a ramp for a railing down each side, or the start of a path."),
@@ -5872,8 +6853,10 @@ impl BimApp {
             Tool::Mass(pts) if pts.is_empty() => msg!("Click the first corner of the mass's footprint."),
             Tool::Mass(pts) if pts.len() < 3 => msg!("Click the footprint's next corner. Esc cancels."),
             Tool::Mass(_) => msg!("Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."),
-            Tool::DetailLine(pts) if pts.is_empty() => msg!("Click where the detail line starts."),
-            Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
+            Tool::DetailLine(pts) if pts.is_empty() => msg!("Click where the detail line starts; Q pins a guide there."),
+            Tool::DetailLine(_) => msg!(
+                "Click its next point; Enter finishes it, the first point again closes it; Tab steps length and angle; Backspace or Ctrl+Z takes back the last point and line; Q pins a guide. Esc cancels."
+            ),
             Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
             Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
             Tool::ModifySubElements => {
@@ -6068,7 +7051,7 @@ impl BimApp {
         if let Some(id) = self.showing_panel_schedule() {
             return self.panel_schedule_view(ui, id);
         }
-        let Some((_, sc)) = self.shown_schedule() else { return };
+        let Some((id, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();
         let mut chosen = None;
@@ -6079,7 +7062,7 @@ impl BimApp {
             let name = self.view_name(self.sheet);
             ui.label(RichText::new(&name).heading());
             ui.add_space(8.0);
-            match schedule::table(&self.session.model, &sc) {
+            match schedule::table_kept(&self.session.model, id, &sc) {
                 Err(e) => {
                     ui.label(e);
                 }
@@ -6087,9 +7070,9 @@ impl BimApp {
                     ui.label(RichText::new(tf("No rows yet: the {} is empty.", &[&name.to_lowercase()])).color(pal().muted));
                 }
                 Ok(table) => {
-                    let units = self.session.model.units;
+                    let (units, decimals) = (self.session.model.units, self.session.model.decimals);
                     let said = |c: &schedule::Column, v: &Value| {
-                        let text = schedule::shown(units, c.kind, v);
+                        let text = schedule::shown_to(units, decimals, c.kind, v);
                         if v.is_boolean() { t(&text).to_string() } else { text }
                     };
                     // A row is highlighted while what it lists is selected; a click on it picks that.
@@ -6148,6 +7131,9 @@ impl BimApp {
     fn dialogs(&mut self, ctx: &Context) {
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
+        self.group_conflict_window(ctx);
+        self.group_split_window(ctx);
+        self.keep_to_group();
         self.family_type_properties(ctx);
         self.materials_window(ctx);
         self.favorites_window(ctx);
@@ -6162,6 +7148,7 @@ impl BimApp {
         self.family_closed_from_home();
         self.snaps_window(ctx);
         self.parameters_window(ctx);
+        self.classification_window(ctx);
         self.new_schedule_window(ctx);
         self.schedule_window(ctx);
         self.graphics_window(ctx);
@@ -6171,6 +7158,7 @@ impl BimApp {
         self.display_window(ctx);
         self.project_info_window(ctx);
         self.reinforce_window(ctx);
+        self.steel_window(ctx);
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);
@@ -6179,9 +7167,13 @@ impl BimApp {
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
+        self.curtain_editor_window(ctx);
+        self.curtain_message(ctx);
+        self.grid_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
-        self.electrical_window(ctx);
+        self.codes_window(ctx);
+        self.findings_window(ctx);
         self.coordinates_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
@@ -6189,6 +7181,7 @@ impl BimApp {
         self.lend_window(ctx);
         self.quit_window(ctx);
         self.knock_window(ctx);
+        self.pyaddins_windows(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }
@@ -6205,12 +7198,15 @@ impl BimApp {
         self.run_script_window(ctx);
         self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
+        self.paste_window(ctx);
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
+        self.new_project_window(ctx);
         self.plugins_window(ctx);
         self.plugin_report_window(ctx);
         self.background_grid_window(ctx);
+        self.underlay_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.opening_box(ctx);
@@ -6273,12 +7269,40 @@ impl BimApp {
     }
 }
 
+impl BimApp {
+    /// Where the window paces its own frames: the present mode for its card, set once, and the wait that keeps frames from
+    /// coming closer than the monitor's refresh. Only a frame's first pass waits: a sizing pass egui asks for comes at once.
+    fn pace_frame(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        let Some(pacer) = self.frames.as_mut() else { return };
+        if ctx.current_pass_index() > 0 {
+            return;
+        }
+        if !pacer.configured {
+            if let Some(state) = frame.wgpu_render_state() {
+                let mut config = state.surface_config;
+                config.present_mode = pacing::present_for(state.adapter.get_info().backend, config.present_mode);
+                frame.set_wgpu_surface_config(config);
+            }
+            pacer.configured = true;
+        }
+        let now = std::time::Instant::now();
+        let every = pacer.every(now, || frame.winit_window()?.current_monitor()?.refresh_rate_millihertz());
+        let wait = pacer.wait(now, every);
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+        }
+    }
+}
+
 impl eframe::App for BimApp {
     /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
     /// window is minimised.
     fn logic(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        self.pace_frame(ctx, frame);
         if let Some(mut bench) = self.bench.take() {
-            bench.step(self, ctx, frame.info().cpu_usage.unwrap_or(0.0));
+            // eframe counts the frame before's wait as its processor time.
+            let slept = self.frames.as_ref().map_or(0.0, |p| p.slept.0.as_secs_f32());
+            bench.step(self, ctx, (frame.info().cpu_usage.unwrap_or(0.0) - slept).max(0.0));
             self.bench = Some(bench);
         }
         self.pump(ctx);
@@ -6295,9 +7319,24 @@ impl eframe::App for BimApp {
             bench.input(raw);
         }
         self.pace(&mut raw.events);
-        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight.
+        // Flying, the pointer is hidden (and on X11, which can't lock it, still roams the window): a click would act on
+        // whatever it happens to be over.
+        if self.orbit.fly.is_some() {
+            raw.events.retain(|e| !matches!(e, Event::PointerButton { .. }));
+        }
+        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight. Tab steps the
+        // reading's fields; Shift+Tab steps the lines of the wall under the pointer, which a chain in hand would
+        // otherwise never reach, `Tab` being the fields' from its first point on. Where no chain is drawn, it is Tab.
         if self.canvas.hovering() && self.active_family().is_none() && !ctx.egui_wants_keyboard_input() {
-            self.tab_cycle |= raw.events.iter().any(|e| matches!(e, Event::Key { key: Key::Tab, pressed: true, .. }));
+            for event in &raw.events {
+                if let Event::Key { key: Key::Tab, pressed: true, modifiers, .. } = event {
+                    if modifiers.shift {
+                        self.face_cycle = true;
+                    } else {
+                        self.tab_cycle = true;
+                    }
+                }
+            }
             raw.events.retain(|e| !matches!(e, Event::Key { key: Key::Tab, .. }));
         }
     }

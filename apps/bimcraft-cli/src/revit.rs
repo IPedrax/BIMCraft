@@ -163,7 +163,7 @@ pub mod tests {
         const WALLS: i64 = -2_000_011;
         let mut p = Project::new(2024);
         p.levels = vec![Lev::new(10, "Level 1", 0.0), Lev::new(11, "Level 2", 10.0)];
-        p.mats = vec![Mat { id: 700, name: "Brick".into() }, Mat { id: 701, name: "Concrete".into() }];
+        p.mats = vec![Mat { id: 700, name: "Brick".into(), look: None }, Mat { id: 701, name: "Concrete".into(), look: None }];
         p.types = vec![TypeRec::new(500, WALLS), TypeRec::new(700, -2_000_700), TypeRec::new(701, -2_000_700)];
         p.types[1].kind = KIND_MATERIAL;
         p.types[2].kind = KIND_MATERIAL;

@@ -278,9 +278,14 @@ impl DimensionType {
         }
     }
 
-    /// A length as it shows one, in `project` units unless it has its own.
-    pub fn length(&self, project: Units, mm: f64) -> String {
-        rounded(self.units.unwrap_or(project), self.decimals, mm)
+    /// A length as it shows one, in `project` units unless it has its own, to its own decimals, else (in the project's
+    /// units) the project's `project_decimals`.
+    pub fn length(&self, project: Units, project_decimals: Option<u8>, mm: f64) -> String {
+        match self.units {
+            Some(own) => rounded(own, self.decimals, mm),
+            None if self.decimals.is_some() => rounded(project, self.decimals, mm),
+            None => project.length_to(mm, project_decimals),
+        }
     }
 }
 
@@ -351,13 +356,18 @@ impl Placing {
     /// The kind and orientation of a dimension placed this way through `at` between `refs`. A line picked fixes the way
     /// an automatic one runs: square to it.
     pub fn kind(self, m: &Model, refs: &[Reference], at: P2) -> (DimKind, Option<Orient>) {
+        self.kind_in(m, None, refs, at)
+    }
+
+    pub fn kind_in(self, m: &Model, view: Option<crate::ids::Guid>, refs: &[Reference], at: P2) -> (DimKind, Option<Orient>) {
         match self {
             Placing::Aligned => (DimKind::Aligned, None),
             Placing::Horizontal => (DimKind::Linear, Some(Orient::Horizontal)),
             Placing::Vertical => (DimKind::Linear, Some(Orient::Vertical)),
             Placing::Auto if refs.iter().any(|r| r.point.is_none()) => (DimKind::Aligned, None),
             Placing::Auto => {
-                let points: Vec<P2> = refs.iter().filter_map(|r| m.reference_point(r).ok()).collect();
+                let points: Vec<P2> =
+                    refs.iter().filter_map(|r| crate::drawing_plane::reference(m, view, r).ok().map(|(a, _)| a)).collect();
                 match Orient::follow(&points, at) {
                     Some(o) => (DimKind::Linear, Some(o)),
                     None => (DimKind::Aligned, None),

@@ -91,6 +91,7 @@ fn found_otherwise(e: &Element) -> bool {
             | Element::Dimension(_)
             | Element::Spot(_)
             | Element::DetailGroup(_)
+            | Element::ModelGroup(_)
             | Element::RepeatingDetail(_)
             | Element::Column(_)
             | Element::StructuralColumn(_)
@@ -153,6 +154,11 @@ pub const RARE: &[&str] = &[
     "schedule",
     "panelschedule",
     "view3d",
+    "stair",
+    // A storey's ceilings, which a stair's headroom is measured to.
+    "ceiling",
+    "modelgroup",
+    "detailgroup",
 ];
 
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
@@ -562,7 +568,10 @@ impl Lookup {
     }
 }
 
-/// A model's [`Lookup`], once asked for, and the one of the model it was copied from.
+/// What a model derives, once asked for: its lookup, its levels' room plans and its schedules' tables. A command's copy
+/// starts with none of the plans or tables — it makes them again — and with the lookup of the model it was copied from,
+/// which it can bring up to date. The plans and tables are keyed by the elements' state and read the project's settings and
+/// types too: a `&mut Model` change to any of those, outside a command, must reset `Derived` or replace the model.
 #[derive(Default)]
 pub struct Derived {
     /// The lookup, with the elements' token and version it is of.
@@ -577,6 +586,10 @@ pub struct Derived {
     /// The box round every solid ([`crate::model::Model::model_box`]), with what it was made of: making every solid again for it
     /// cost a tower's 3D view seconds a frame.
     model_box: Mutex<Option<KeptBox>>,
+    /// Each level's rooms' plan, with the token and version of the elements it is of.
+    plans: Mutex<Option<KeptPlans>>,
+    /// Each schedule's table, with the token and version of the elements it is of.
+    tables: Mutex<Option<KeptTables>>,
 }
 
 /// A model's box, with the token and version of its elements and the types, families and materials it was made of.
@@ -591,6 +604,8 @@ type KeptBox = (
 
 type KeptShafts = (u64, u64, Arc<Vec<ShaftReach>>);
 type KeptIndex = (u64, u64, crate::shared::Identity<crate::model::Types>, Arc<crate::walls::Index>);
+type KeptPlans = (u64, u64, HashMap<(Guid, bool), Arc<crate::rooms::Plan>>);
+type KeptTables = (u64, u64, HashMap<crate::schedule::TableKey, Arc<crate::schedule::Table>>);
 
 /// A shaft as a slab asks of it: its span, its plan box [x0, y0, x1, y1] and its outline.
 #[derive(Debug)]
@@ -645,6 +660,33 @@ impl Derived {
         made
     }
 
+    /// What `make` finds of the plan of `key`'s level, kept until the elements change.
+    pub(crate) fn room_plan(
+        &self,
+        elements: &Elements,
+        key: (Guid, bool),
+        make: impl FnOnce() -> crate::rooms::Plan,
+    ) -> Arc<crate::rooms::Plan> {
+        let (token, version) = elements.state();
+        if let Ok(now) = self.plans.lock()
+            && let Some((t, v, plans)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && let Some(plan) = plans.get(&key)
+        {
+            return Arc::clone(plan);
+        }
+        let made = Arc::new(make());
+        if let Ok(mut now) = self.plans.lock() {
+            if now.as_ref().is_none_or(|(t, v, _)| (*t, *v) != (token, version)) {
+                *now = Some((token, version, HashMap::new()));
+            }
+            if let Some((_, _, plans)) = now.as_mut() {
+                plans.insert(key, Arc::clone(&made));
+            }
+        }
+        made
+    }
+
     /// The box round every solid of `m`, made by `make` and kept until what it is made of changes.
     pub(crate) fn model_box(
         &self,
@@ -666,6 +708,43 @@ impl Derived {
             *now = Some((token, version, m.types.identity(), m.families.identity(), m.materials.identity(), made));
         }
         made
+    }
+
+    /// What `make` finds of the table of `key`'s schedule, kept until the elements change.
+    pub(crate) fn kept_table(
+        &self,
+        elements: &Elements,
+        key: crate::schedule::TableKey,
+        make: impl FnOnce() -> Result<crate::schedule::Table, String>,
+    ) -> Result<Arc<crate::schedule::Table>, String> {
+        let (token, version) = elements.state();
+        if let Ok(now) = self.tables.lock()
+            && let Some((t, v, tables)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && let Some(table) = tables.get(&key)
+        {
+            return Ok(Arc::clone(table));
+        }
+        let made = Arc::new(make()?);
+        if let Ok(mut now) = self.tables.lock() {
+            if now.as_ref().is_none_or(|(t, v, _)| (*t, *v) != (token, version)) {
+                *now = Some((token, version, HashMap::new()));
+            }
+            if let Some((_, _, tables)) = now.as_mut() {
+                tables.insert(key, Arc::clone(&made));
+            }
+        }
+        Ok(made)
+    }
+
+    /// Let go of the kept plans and tables: what a model on its way into the undo history need not carry.
+    pub(crate) fn forget(&self) {
+        if let Ok(mut plans) = self.plans.lock() {
+            *plans = None;
+        }
+        if let Ok(mut tables) = self.tables.lock() {
+            *tables = None;
+        }
     }
 
     /// The lookup of `elements` if it is made already: what asks only where it costs nothing.
@@ -704,6 +783,8 @@ impl Clone for Derived {
             shafts: Mutex::new(None),
             index: Mutex::new(None),
             model_box: Mutex::new(None),
+            plans: Mutex::new(None),
+            tables: Mutex::new(None),
         }
     }
 }

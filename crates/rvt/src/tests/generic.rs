@@ -179,9 +179,545 @@ fn a_mutation_sweep_over_a_project_of_boxes_never_panics_and_what_comes_in_check
         p.recs.push(Rec::new(301, PLUMBING_FIXTURES).at([0.0, 0.0, 0.0, 2.0, 1.0, 3.0], &[]));
         p.recs.push(Rec::new(302, GENERIC_MODELS).at([4.0, 4.0, 15.0, 5.0, 6.0, 16.0], &[]));
         p.recs.push(Rec::new(303, -2_008_123).at([4.0, 4.0, 15.0, 5.0, 6.0, 16.0], &[]));
+        // A typed, turned one: its symbol, its name and its placement in its data are mutated too.
+        let local = [0.0, 0.0, 0.0, 2.0, 1.0, 2.5];
+        desk(&mut p, 650, "Desk", local);
+        placed(&mut p, 304, 650, local, 0.5, [10.0, 5.0, 0.0]);
+        // And its graphics: what it draws, and the symbol's solid.
+        solid(&mut p, 650, [2.0, 1.0, 2.5]);
+        draws(&mut p, 304, 650, 0.5, [10.0, 5.0, 0.0], envelope(local, 0.5, [10.0, 5.0, 0.0]));
         p.members = 3;
         super::sweep(&p, 0x2e3d_4c5b_6a79_8897 ^ u64::from(release), 800, |i, round| {
-            assert!(components(i).len() <= 4, "round {round}");
+            assert!(components(i).len() <= 5, "round {round}");
+            for c in components(i) {
+                assert!(c.angle.is_finite() && c.at.0.is_finite() && c.at.1.is_finite(), "round {round}");
+                for v in c.params.values() {
+                    assert!(v.as_f64().is_some_and(f64::is_finite), "round {round}: {v}");
+                }
+            }
         });
     }
+}
+
+const FURNITURE: i64 = -2_000_080;
+
+/// The box round `local` (a box in the family's own axes, feet) turned by `angle` radians about up and moved to `origin`: the record
+/// box Revit writes for such an instance.
+fn envelope(local: [f64; 6], angle: f64, origin: [f64; 3]) -> [f64; 6] {
+    let (sin, cos) = angle.sin_cos();
+    let mut b = [f64::INFINITY, f64::INFINITY, local[2] + origin[2], f64::NEG_INFINITY, f64::NEG_INFINITY, local[5] + origin[2]];
+    for x in [local[0], local[3]] {
+        for y in [local[1], local[4]] {
+            let (px, py) = (origin[0] + x * cos - y * sin, origin[1] + x * sin + y * cos);
+            b[0] = b[0].min(px);
+            b[1] = b[1].min(py);
+            b[3] = b[3].max(px);
+            b[4] = b[4].max(py);
+        }
+    }
+    b
+}
+
+/// A furniture symbol `symbol` named `name`, whose box in the family's axes is `local`.
+fn desk(p: &mut crate::project_fixture::Project, symbol: u32, name: &str, local: [f64; 6]) {
+    use crate::project_fixture::NameEntry;
+    p.recs.push(Rec { placed: false, ..Rec::new(symbol, FURNITURE) }.at(local, &[]));
+    p.names.push(NameEntry { id: symbol, name: name.into(), category: FURNITURE });
+}
+
+/// A furniture instance of `symbol`, turned by `angle` about `origin`, its record box the symbol's box placed so.
+fn placed(p: &mut crate::project_fixture::Project, id: u32, symbol: u32, local: [f64; 6], angle: f64, origin: [f64; 3]) {
+    use crate::project_fixture::{Block, transform_bytes};
+    p.recs.push(Rec::new(id, FURNITURE).at(envelope(local, angle, origin), &[u64::from(symbol), u64::from(id)]));
+    p.data.push(Block { id, payload: transform_bytes(angle, origin) });
+}
+
+fn param(c: &Component, name: &str) -> f64 {
+    c.params.get(name).and_then(serde_json::Value::as_f64).unwrap_or(f64::NAN)
+}
+
+#[test]
+fn a_turned_component_comes_in_as_its_types_box_at_its_placement_with_its_types_name() {
+    for release in [2019, 2024] {
+        let mut p = base(release);
+        // A desk 2 by 1 ft and 2.5 ft tall whose family's origin is its corner, turned 30 degrees about (10, 5) on level 1.
+        let local = [0.0, 0.0, 0.0, 2.0, 1.0, 2.5];
+        desk(&mut p, 650, "Desk 60x30", local);
+        placed(&mut p, 300, 650, local, 30f64.to_radians(), [10.0, 5.0, 0.0]);
+        let i = import(&p);
+        let [c] = components(&i)[..] else { panic!("Revit {release}: {:?}", i.skipped) };
+        assert_eq!((c.family.as_str(), c.type_name.as_str()), ("Furniture", "Desk 60x30"), "Revit {release}");
+        assert_eq!((c.at.0, c.at.1, c.offset), (3048.0, 1524.0, 0.0), "Revit {release}");
+        assert!((c.angle - 30.0).abs() < 1e-3, "Revit {release}: {}", c.angle);
+        let got = ["Width", "Depth", "Height", "Offset X", "Offset Y"].map(|n| param(c, n));
+        assert_eq!(got, [609.6, 304.8, 762.0, 304.8, 152.4], "Revit {release}");
+        assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+        // Its body is the desk where Revit has it: the 3D view's box of it is the record's box.
+        let ids: std::collections::HashSet<_> =
+            i.model.elements.iter().filter(|(_, e)| matches!(e, Element::Component(_))).map(|(id, _)| *id).collect();
+        let boxes = bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids);
+        let [(lo, hi)] = boxes.values().copied().collect::<Vec<_>>()[..] else { panic!("Revit {release}: {boxes:?}") };
+        let want = envelope(local, 30f64.to_radians(), [10.0, 5.0, 0.0]).map(|f| f * 304.8);
+        let got = [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]];
+        assert!(got.iter().zip(want).all(|(g, w)| (g - w).abs() < 0.5), "Revit {release}: {got:?} against {want:?}");
+        let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+        assert!(says("1 furniture item: comes in as a box of its type's box, turned as placed"), "{:?}", i.skipped);
+        assert!(!says("comes in as a box of its record's box"), "{:?}", i.skipped);
+    }
+}
+
+#[test]
+fn components_of_two_types_are_two_types_of_their_categorys_family() {
+    let mut p = base(2024);
+    let (a, b) = ([0.0, 0.0, 0.0, 2.0, 1.0, 2.5], [-1.5, -1.5, 0.0, 1.5, 1.5, 2.4]);
+    desk(&mut p, 650, "Desk", a);
+    desk(&mut p, 651, "Round Table", b);
+    placed(&mut p, 300, 650, a, 0.0, [10.0, 5.0, 0.0]);
+    placed(&mut p, 301, 651, b, 0.0, [20.0, 5.0, 0.0]);
+    placed(&mut p, 302, 650, a, std::f64::consts::FRAC_PI_2, [30.0, 5.0, 0.0]);
+    let i = import(&p);
+    let got: Vec<(&str, f64)> = components(&i).iter().map(|c| (c.type_name.as_str(), c.angle)).collect();
+    assert_eq!(got, [("Desk", 0.0), ("Round Table", 0.0), ("Desk", 90.0)]);
+    let family = &i.model.families["Furniture"];
+    assert_eq!(family.types.keys().map(String::as_str).collect::<Vec<_>>(), ["Desk", "Round Table"]);
+    assert_eq!(i.model.families.keys().filter(|n| n.starts_with("Furniture")).count(), 1);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+}
+
+#[test]
+fn a_component_whose_placement_does_not_give_its_record_box_comes_in_as_that_box_and_says_why() {
+    let local = [0.0, 0.0, 0.0, 2.0, 1.0, 2.5];
+    // The symbol's box placed so is not the record's box: the record wins, with its type's name.
+    let mut p = base(2024);
+    desk(&mut p, 650, "Desk", local);
+    placed(&mut p, 300, 650, local, 30f64.to_radians(), [10.0, 5.0, 0.0]);
+    p.recs.iter_mut().filter(|r| r.id == 300).for_each(|r| r.bbox[3] += 1.0);
+    // No placement in its data.
+    desk(&mut p, 651, "Chair", local);
+    p.recs.push(Rec::new(301, FURNITURE).at([20.0, 5.0, 0.0, 22.0, 6.0, 2.5], &[651, 301]));
+    // A placement, and a type with no name entry: the reader does not know which type it is.
+    p.recs.push(Rec { placed: false, ..Rec::new(652, FURNITURE) }.at(local, &[]));
+    placed(&mut p, 302, 652, local, 0.5, [40.0, 5.0, 0.0]);
+    let i = import(&p);
+    let got: Vec<(&str, f64, f64, f64)> =
+        components(&i).iter().map(|c| (c.type_name.as_str(), c.angle, param(c, "Offset X"), param(c, "Offset Y"))).collect();
+    assert_eq!(got, [("Desk", 0.0, 0.0, 0.0), ("Chair", 0.0, 0.0, 0.0), ("Imported", 0.0, 0.0, 0.0)], "{:?}", i.skipped);
+    let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+    let told = |why: &str, id: &str| {
+        i.skipped.iter().any(|s| s.contains("comes in as a box of its record's box") && s.contains(why) && s.contains(id))
+    };
+    assert!(told("its type's box, placed, is not its record's box", "ids 300)"), "{:?}", i.skipped);
+    assert!(told("its placement is not read", "ids 301)"), "{:?}", i.skipped);
+    assert!(told("its type is not known", "ids 302)"), "{:?}", i.skipped);
+    assert!(!says("turned as placed"), "{:?}", i.skipped);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+}
+
+/// As Revit 2025 writes them: a type with no record of its own, named by a name entry its instances' first lists hold, and a family
+/// named by one their second lists hold (where they do).
+fn named(p: &mut crate::project_fixture::Project, id: u32, name: &str) {
+    p.names.push(crate::project_fixture::NameEntry { id, name: name.into(), category: FURNITURE });
+}
+
+/// A furniture instance of type `ty` (and family `family`, where it names one), its box in its own axes `local`, turned by `angle`
+/// about `origin`.
+fn instance(
+    p: &mut crate::project_fixture::Project,
+    (id, ty, family): (u32, u64, Option<u64>),
+    local: [f64; 6],
+    angle: f64,
+    origin: [f64; 3],
+) {
+    use crate::project_fixture::{Block, transform_bytes};
+    let mut r = Rec::new(id, FURNITURE).at(envelope(local, angle, origin), &[ty, u64::from(id)]);
+    r.refs2 = family.into_iter().collect();
+    p.recs.push(r);
+    p.data.push(Block { id, payload: transform_bytes(angle, origin) });
+}
+
+#[test]
+fn a_type_and_a_family_named_only_by_name_entries_make_a_family_of_that_name_with_that_type() {
+    let mut p = base(2025);
+    named(&mut p, 700, "36\" Diameter");
+    named(&mut p, 701, "Table-Dining Round");
+    named(&mut p, 710, "Seat");
+    named(&mut p, 711, "Chair-Breuer");
+    let table = [-1.5, -1.5, 0.0, 1.5, 1.5, 2.5];
+    // Square to the axes, naming its family; square, not naming it (its type's other instances say which it is).
+    instance(&mut p, (300, 700, Some(701)), table, 0.0, [10.0, 5.0, 0.0]);
+    instance(&mut p, (301, 700, None), table, std::f64::consts::PI, [20.0, 5.0, 0.0]);
+    // A chair whose family's origin is at its back: square at a quarter turn, and turned by 30 degrees.
+    let chair = [-1.0, 0.0, 0.0, 1.0, 1.5, 3.0];
+    instance(&mut p, (302, 710, Some(711)), chair, std::f64::consts::FRAC_PI_2, [30.0, 5.0, 0.0]);
+    instance(&mut p, (303, 710, Some(711)), chair, 30f64.to_radians(), [40.0, 5.0, 0.0]);
+    let i = import(&p);
+    let got: Vec<(&str, &str, f64, [f64; 5])> = components(&i)
+        .iter()
+        .map(|c| {
+            let ps = ["Width", "Depth", "Height", "Offset X", "Offset Y"].map(|n| param(c, n));
+            (c.family.as_str(), c.type_name.as_str(), c.angle, ps)
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("Table-Dining Round", "36\" Diameter", 0.0, [914.4, 914.4, 762.0, 0.0, 0.0]),
+            ("Table-Dining Round", "36\" Diameter", 180.0, [914.4, 914.4, 762.0, 0.0, 0.0]),
+            ("Chair-Breuer", "Seat", 90.0, [609.6, 457.2, 914.4, 0.0, 228.6]),
+            ("Chair-Breuer", "Seat", 30.0, [609.6, 457.2, 914.4, 0.0, 228.6]),
+        ],
+        "{:?}",
+        i.skipped
+    );
+    let at: Vec<(f64, f64)> = components(&i).iter().map(|c| (c.at.0, c.at.1)).collect();
+    assert_eq!(at, [(3048.0, 1524.0), (6096.0, 1524.0), (9144.0, 1524.0), (12192.0, 1524.0)]);
+    assert_eq!(i.model.families["Table-Dining Round"].category, Category::Furniture);
+    assert!(i.model.families.keys().all(|n| n != "Furniture"), "no element fell back to the category's family");
+    // Each solid stands on its record's box.
+    let ids: std::collections::HashSet<_> =
+        i.model.elements.iter().filter(|(_, e)| matches!(e, Element::Component(_))).map(|(id, _)| *id).collect();
+    let boxes = bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids);
+    let records: Vec<[f64; 6]> = p.recs.iter().filter(|r| r.category == FURNITURE).map(|r| r.bbox.map(|f| f * 304.8)).collect();
+    let solids: Vec<[f64; 6]> = boxes.values().map(|(lo, hi)| [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]).collect();
+    for (s, r) in solids.iter().zip(&records) {
+        assert!(s.iter().zip(r).all(|(a, b)| (a - b).abs() < 0.5), "{s:?} against {r:?}");
+    }
+    assert!(
+        i.skipped.iter().any(|s| s.contains("4 furniture items: comes in as a box of its type's box, turned as placed")),
+        "{:?}",
+        i.skipped
+    );
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+}
+
+#[test]
+fn a_type_and_a_family_named_only_by_name_entries_are_read_from_2025_on() {
+    // The finding was measured on 2025 files alone: before that, a type is a family symbol, and a name entry alone names nothing.
+    for (release, want) in [(2024, ("Furniture", "Imported")), (2025, ("Chair-Breuer", "Seat"))] {
+        let mut p = base(release);
+        named(&mut p, 710, "Seat");
+        named(&mut p, 711, "Chair-Breuer");
+        instance(&mut p, (302, 710, Some(711)), [-1.0, 0.0, 0.0, 1.0, 1.5, 3.0], 0.0, [30.0, 5.0, 0.0]);
+        let i = import(&p);
+        let [c] = components(&i)[..] else { panic!("Revit {release}: {:?}", i.skipped) };
+        assert_eq!((c.family.as_str(), c.type_name.as_str()), want, "Revit {release}");
+        assert!(i.model.check().is_ok(), "Revit {release}: {:?}", i.model.check());
+    }
+}
+
+#[test]
+fn a_turned_instance_whose_type_no_square_instance_measures_comes_in_as_its_record_box() {
+    let mut p = base(2025);
+    named(&mut p, 710, "Seat");
+    named(&mut p, 711, "Chair-Breuer");
+    let chair = [-1.0, 0.0, 0.0, 1.0, 1.5, 3.0];
+    instance(&mut p, (303, 710, Some(711)), chair, 30f64.to_radians(), [40.0, 5.0, 0.0]);
+    let i = import(&p);
+    let [c] = components(&i)[..] else { panic!("{:?}", i.skipped) };
+    assert_eq!((c.family.as_str(), c.type_name.as_str(), c.angle), ("Chair-Breuer", "Seat", 0.0));
+    assert!(
+        i.skipped
+            .iter()
+            .any(|s| s.contains("comes in as a box of its record's box") && s.contains("no instance of its type stands square")),
+        "{:?}",
+        i.skipped
+    );
+}
+
+const LIGHTING: i64 = -2_001_120;
+
+/// A placement of axes `axes` (the instance's X, Y and Z in project axes) at `origin`, as its data holds it: the rotation row by row.
+fn axes_bytes(axes: [[f64; 3]; 3], origin: [f64; 3]) -> Vec<u8> {
+    let rows = (0..3).flat_map(|i| [axes[0][i], axes[1][i], axes[2][i]]);
+    rows.chain(origin).flat_map(f64::to_le_bytes).collect()
+}
+
+/// The box round `local` placed by `axes` at `origin`.
+fn placed_by(local: [f64; 6], axes: [[f64; 3]; 3], origin: [f64; 3]) -> [f64; 6] {
+    let mut b = [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    for x in [local[0], local[3]] {
+        for y in [local[1], local[4]] {
+            for z in [local[2], local[5]] {
+                for k in 0..3 {
+                    let v = origin[k] + x * axes[0][k] + y * axes[1][k] + z * axes[2][k];
+                    b[k] = b[k].min(v);
+                    b[k + 3] = b[k + 3].max(v);
+                }
+            }
+        }
+    }
+    b
+}
+
+#[test]
+fn a_component_hung_upside_down_or_on_a_wall_comes_in_turned_and_one_on_a_slope_as_its_record_box() {
+    let mut p = base(2025);
+    for (id, name) in [(700, "2x2"), (701, "Troffer"), (710, "Sconce"), (711, "Wall Light")] {
+        p.names.push(crate::project_fixture::NameEntry { id, name: name.into(), category: LIGHTING });
+    }
+    // A troffer hung from a ceiling at 9 ft: its Z down; a sconce on a wall facing east, its Y up; one on a slope.
+    let troffer = [-1.0, -1.0, -0.5, 1.0, 1.0, 0.0];
+    let down = [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]];
+    let sconce = [-0.5, 0.0, 0.0, 0.5, 1.0, 0.75];
+    let wall = [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]];
+    let slope = [[0.6, 0.0, 0.8], [0.0, 1.0, 0.0], [-0.8, 0.0, 0.6]];
+    let placed = [
+        (300u32, 700u64, 701u64, troffer, down, [10.0, 5.0, 9.0]),
+        (301, 710, 711, sconce, wall, [20.0, 5.0, 5.0]),
+        (302, 710, 711, sconce, slope, [30.0, 5.0, 5.0]),
+    ];
+    for (id, ty, family, local, axes, origin) in placed {
+        let mut r = Rec::new(id, LIGHTING).at(placed_by(local, axes, origin), &[ty, u64::from(id)]);
+        r.refs2 = vec![family];
+        p.recs.push(r);
+        p.data.push(crate::project_fixture::Block { id, payload: axes_bytes(axes, origin) });
+    }
+    let i = import(&p);
+    let got: Vec<(&str, &str, f64)> = components(&i).iter().map(|c| (c.family.as_str(), c.type_name.as_str(), c.angle)).collect();
+    assert_eq!(got, [("Troffer", "2x2", 0.0), ("Wall Light", "Sconce", 90.0), ("Wall Light", "Sconce", 0.0)], "{:?}", i.skipped);
+    // The two that turn stand on their record boxes; the one on a slope is its record box.
+    let ids: std::collections::HashSet<_> =
+        i.model.elements.iter().filter(|(_, e)| matches!(e, Element::Component(_))).map(|(id, _)| *id).collect();
+    let boxes = bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids);
+    let solids: Vec<[f64; 6]> = boxes.values().map(|(lo, hi)| [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]).collect();
+    for (s, (_, _, _, local, axes, origin)) in solids.iter().zip(placed) {
+        let r = placed_by(local, axes, origin).map(|f| f * 304.8);
+        assert!(s.iter().zip(r).all(|(a, b)| (a - b).abs() < 0.5), "{s:?} against {r:?}");
+    }
+    let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+    assert!(says("2 lighting fixtures: comes in as a box of its type's box, turned as placed"), "{:?}", i.skipped);
+    assert!(says("none of its axes stands upright") && says("ids 302)"), "{:?}", i.skipped);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+}
+
+#[test]
+fn snowdon_2025s_components_come_in_as_their_revit_families_and_types_most_turned_as_placed() {
+    // Autodesk's Snowdon Towers architectural sample as Revit 2025 installs it: its types have no records of their own, so each is
+    // known by the name entry its instances' first lists hold, and its family by the one their second lists hold.
+    for path in super::samples_of("Snowdon Towers Sample Architectural.rvt") {
+        let i = crate::import_path(&path, "x").unwrap();
+        assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+        let count = |what: &str| -> usize {
+            i.skipped.iter().filter(|s| s.contains(what)).filter_map(|s| s.split(' ').next()?.parse::<usize>().ok()).sum()
+        };
+        assert_eq!(components(&i).len(), 5621, "{}", path.display());
+        assert_eq!(count("turned as placed"), 4660, "{}", path.display());
+        // Of those, the ones whose own graphics draw a symbol whose solids read and, placed, stand where the record's box does; and
+        // those whose graphics draw solids of their own where they stand, or several symbols (a stair's support, a sweep, a mullion).
+        assert_eq!(count("comes in with its type's shape"), 4341, "{}", path.display());
+        assert_eq!(count("comes in with its shape, read from the file where it stands"), 592, "{}", path.display());
+        // A family of the model for each Revit family the components are of, with the types they are of (numbers, not the file's
+        // names: Autodesk's strings stay out of the tests).
+        let families: std::collections::BTreeSet<&str> = components(&i).iter().map(|c| c.family.as_str()).collect();
+        let types: std::collections::BTreeSet<(&str, &str)> =
+            components(&i).iter().map(|c| (c.family.as_str(), c.type_name.as_str())).collect();
+        // A Revit type is a type for each shape its instances draw (the symbols Revit makes for their instance parameters), and
+        // one more for those that come in as boxes beside them.
+        assert_eq!((families.len(), types.len()), (134, 1197), "{}", path.display());
+        // Every component of a named category is of a Revit type the file names, but those of the system families (stairs' parts,
+        // railings, sweeps, slab edges), which are no family instances.
+        let imported = components(&i).iter().filter(|c| c.type_name == "Imported" && !c.family.starts_with("Category ")).count();
+        assert!(imported < 700, "{imported}");
+    }
+}
+
+/// Graphics for instance `id`: it draws `symbol` turned by `angle` about up at `origin`, its record box `whole`.
+fn draws(p: &mut crate::project_fixture::Project, id: u32, symbol: u32, angle: f64, origin: [f64; 3], whole: [f64; 6]) {
+    use crate::project_fixture::{graphics_block, instance_tree, tree_bytes};
+    let (s, c) = angle.sin_cos();
+    let axes = [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]];
+    p.graphics.extend(graphics_block(id, &tree_bytes(&instance_tree(id, symbol, axes, origin, whole))));
+}
+
+/// Graphics for symbol `id`: a box `size` feet across from its origin.
+fn solid(p: &mut crate::project_fixture::Project, id: u32, size: [f64; 3]) {
+    use crate::project_fixture::{box_tree, graphics_block, tree_bytes};
+    p.graphics.extend(graphics_block(id, &tree_bytes(&box_tree(id, size, None))));
+    p.extra_ids.push(id);
+}
+
+#[test]
+fn a_component_whose_graphics_draw_a_symbol_comes_in_with_that_shape_turned_as_placed() {
+    let mut p = base(2024);
+    let local = [0.0, 0.0, 0.0, 2.0, 1.0, 2.5];
+    desk(&mut p, 650, "Desk 60x30", local);
+    solid(&mut p, 650, [2.0, 1.0, 2.5]);
+    // Instance 300 draws its type, turned 30 degrees; 301 draws a symbol Revit made for its own parameters, a foot longer; 302's
+    // graphics are not in the file.
+    let longer = [0.0, 0.0, 0.0, 3.0, 1.0, 2.5];
+    solid(&mut p, 651, [3.0, 1.0, 2.5]);
+    for (id, drawn, box_, angle, origin) in [
+        (300, Some(650), local, 30f64.to_radians(), [10.0, 5.0, 0.0]),
+        (301, Some(651), longer, 0.0, [20.0, 5.0, 0.0]),
+        (302, None, local, 0.0, [30.0, 5.0, 0.0]),
+    ] {
+        placed(&mut p, id, 650, box_, angle, origin);
+        if let Some(symbol) = drawn {
+            draws(&mut p, id, symbol, angle, origin, envelope(box_, angle, origin));
+        }
+    }
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let by_at = |x: f64| components(&i).into_iter().find(|c| (c.at.0 - x).abs() < 1.0);
+    let (Some(a), Some(b), Some(c)) = (by_at(3048.0), by_at(6096.0), by_at(9144.0)) else { panic!("{:?}", i.skipped) };
+    assert_eq!([a.type_name.as_str(), b.type_name.as_str(), c.type_name.as_str()], ["Desk 60x30", "Desk 60x30 (2)", "Desk 60x30 (3)"]);
+    assert!((a.angle - 30.0).abs() < 1e-3 && a.offset == 0.0, "{} {}", a.angle, a.offset);
+    // The family shows its box for a type with no shape, and each type with one its own form.
+    let family = &i.model.families["Furniture"];
+    let shows = |t: &str| family.types[t].get("Shape").and_then(serde_json::Value::as_u64);
+    assert_eq!([shows("Desk 60x30"), shows("Desk 60x30 (2)"), shows("Desk 60x30 (3)")], [Some(1), Some(2), None]);
+    assert_eq!(family.forms.len(), 3);
+    assert!(family.forms[0].mesh.is_empty() && family.forms[1].mesh.len() == 12 && family.forms[2].mesh.len() == 12);
+    let longest = family.forms[2].mesh.iter().flatten().map(|p| p[0]).fold(0.0, f64::max);
+    assert!((longest - 914.4).abs() < 0.02, "{longest}");
+    // Placed, the shape stands where its record box says.
+    let notes = i.skipped.join("\n");
+    assert!(notes.contains("2 furniture items: comes in with its type's shape, read from the file and turned as placed"), "{notes}");
+    assert!(notes.contains("the file holds no graphics of it"), "{notes}");
+}
+
+#[test]
+fn a_component_whose_symbol_placed_is_not_its_record_box_comes_in_as_a_box() {
+    let mut p = base(2024);
+    let local = [0.0, 0.0, 0.0, 2.0, 1.0, 2.5];
+    desk(&mut p, 650, "Desk", local);
+    solid(&mut p, 650, [2.0, 1.0, 2.5]);
+    placed(&mut p, 300, 650, local, 0.0, [10.0, 5.0, 0.0]);
+    // Its graphics draw the symbol a foot east of where its record box stands.
+    draws(&mut p, 300, 650, 0.0, [11.0, 5.0, 0.0], envelope(local, 0.0, [11.0, 5.0, 0.0]));
+    let i = import(&p);
+    let [c] = components(&i)[..] else { panic!("{:?}", i.skipped) };
+    assert!(!i.model.families["Furniture"].types[&c.type_name].contains_key("Shape"));
+    let notes = i.skipped.join("\n");
+    assert!(notes.contains("the symbol it draws, placed, is not its record's box"), "{notes}");
+}
+
+#[test]
+fn a_component_drawn_mirrored_on_its_side_or_on_a_slope_comes_in_with_its_shape_placed_so() {
+    let mut p = base(2024);
+    let local = [0.0, 0.0, 0.0, 2.0, 1.0, 2.5];
+    desk(&mut p, 650, "Desk", local);
+    solid(&mut p, 650, [2.0, 1.0, 2.5]);
+    // Mirrored (its Y flipped), lying on its side (its Z level, facing south) and tilted on a slope.
+    let mirrored = [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]];
+    let side = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]];
+    let slope = [[0.6, 0.0, 0.8], [0.0, 1.0, 0.0], [-0.8, 0.0, 0.6]];
+    let placed = [(300u32, mirrored, [10.0, 5.0, 0.0]), (301, side, [20.0, 5.0, 1.0]), (302, slope, [30.0, 5.0, 0.0])];
+    for (id, axes, origin) in placed {
+        let whole = placed_by(local, axes, origin);
+        p.recs.push(Rec::new(id, FURNITURE).at(whole, &[650, u64::from(id)]));
+        p.data.push(crate::project_fixture::Block { id, payload: axes_bytes(axes, origin) });
+        use crate::project_fixture::{graphics_block, instance_tree, tree_bytes};
+        p.graphics.extend(graphics_block(id, &tree_bytes(&instance_tree(id, 650, axes, origin, whole))));
+    }
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let notes = i.skipped.join("\n");
+    assert!(notes.contains("3 furniture items: comes in with its type's shape"), "{notes}");
+    let by_at = |x: f64| components(&i).into_iter().find(|c| (c.at.0 - x).abs() < 1.0);
+    let (Some(a), Some(b), Some(c)) = (by_at(3048.0), by_at(6096.0), by_at(9144.0)) else { panic!("{notes}") };
+    assert!(a.mirrored && a.tilt.is_none() && a.angle == 0.0, "{a:?}");
+    assert!(!b.mirrored && b.tilt.is_some() && !c.mirrored && c.tilt.is_some(), "{b:?} {c:?}");
+    // Each stands, in the model's 3D scene, where its record box says.
+    for (c, (_, axes, origin)) in [a, b, c].into_iter().zip(placed) {
+        let id = i.model.elements.iter().find(|(_, e)| matches!(e, Element::Component(k) if k == c)).map(|(id, _)| *id);
+        let ids: std::collections::HashSet<_> = id.into_iter().collect();
+        let boxes = bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids);
+        let [(lo, hi)] = boxes.values().copied().collect::<Vec<_>>()[..] else { panic!("{boxes:?}") };
+        let want = placed_by(local, axes, origin).map(|f| f * 304.8);
+        let got = [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]];
+        assert!(got.iter().zip(want).all(|(g, w)| (g - w).abs() < 0.5), "{got:?} against {want:?}");
+    }
+}
+
+#[test]
+fn a_path_whose_own_graphics_draw_its_body_comes_in_with_that_body_whatever_its_box() {
+    // A wall sweep running across the axes: its box is no body, but its graphics draw its solid where it stands (here a box, turned
+    // 30 degrees, as Revit writes a sweep's solid in the project's axes).
+    let mut p = base(2024);
+    let local = [0.0, 0.0, 0.0, 6.0, 0.5, 0.5];
+    let (a, origin) = (30f64.to_radians(), [10.0, 5.0, 3.0]);
+    let whole = envelope(local, a, origin);
+    p.recs.push(Rec::new(300, -2_000_181).at(whole, &[]));
+    use crate::project_fixture::{box_tree, graphics_block, root, tree_bytes};
+    // The sweep's solid: a box tree whose points are turned and moved where it stands.
+    let mut tree = box_tree(300, [6.0, 0.5, 0.5], None);
+    let (s, c) = a.sin_cos();
+    let place = |x: f64, y: f64, z: f64| [origin[0] + x * c - y * s, origin[1] + x * s + y * c, origin[2] + z];
+    for (_, fields) in tree.values_mut() {
+        for v in fields.iter_mut() {
+            turn(v, &place);
+        }
+    }
+    tree.insert(2, root(300, vec![crate::project_fixture::V::Own(3, "Geometry")], whole, whole));
+    p.graphics.extend(graphics_block(300, &tree_bytes(&tree)));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let [c] = components(&i)[..] else { panic!("{:?}", i.skipped) };
+    let family = &i.model.families[&c.family];
+    let shows = family.types[&c.type_name].get("Shape").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+    assert_eq!(family.forms[shows].mesh.len(), 12, "{:?}", i.skipped);
+    assert!(i.skipped.iter().any(|s| s.contains("1 wall sweep: comes in with its shape")), "{:?}", i.skipped);
+}
+
+/// Moves the planes of a box tree's faces by `place` (their origins, and their directions turned by it about its origin).
+fn turn(v: &mut crate::project_fixture::V, place: &dyn Fn(f64, f64, f64) -> [f64; 3]) {
+    use crate::project_fixture::V;
+    match v {
+        V::Inline("Plane", fields) => {
+            let p = |v: &V| match v {
+                V::Seq(xs) => match xs[..] {
+                    [V::F64(x), V::F64(y), V::F64(z)] => Some([x, y, z]),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let (Some(o), Some(x), Some(y)) = (p(&fields[1]), p(&fields[2]), p(&fields[3])) else { return };
+            let zero = place(0.0, 0.0, 0.0);
+            let dir = |d: [f64; 3]| {
+                let q = place(d[0], d[1], d[2]);
+                [q[0] - zero[0], q[1] - zero[1], q[2] - zero[2]]
+            };
+            fields[1] = crate::project_fixture::p3(place(o[0], o[1], o[2]));
+            fields[2] = crate::project_fixture::p3(dir(x));
+            fields[3] = crate::project_fixture::p3(dir(y));
+        }
+        V::Seq(vs) | V::Counted(vs) => vs.iter_mut().for_each(|v| turn(v, place)),
+        _ => {}
+    }
+}
+
+#[test]
+fn a_shapes_faces_come_in_in_the_materials_they_are_drawn_in() {
+    // A desk whose top is oak (its face names the material) and the rest by its category (no material named).
+    let mut p = base(2024);
+    p.mats.push(crate::project_fixture::Mat { id: 720, name: "Oak".into(), look: Some(([104, 79, 49], 0.0)) });
+    let mut oak = crate::project_fixture::TypeRec::new(720, -2_000_700);
+    oak.kind = crate::project_fixture::KIND_MATERIAL;
+    p.types.push(oak);
+    let local = [0.0, 0.0, 0.0, 2.0, 1.0, 2.5];
+    desk(&mut p, 650, "Desk", local);
+    use crate::project_fixture::{box_tree, element_id, graphics_block, tree_bytes};
+    let mut tree = box_tree(650, [2.0, 1.0, 2.5], None);
+    let top = tree.values_mut().filter(|(class, _)| *class == "Face").nth(1).map(|(_, fields)| fields);
+    if let Some(fields) = top {
+        fields[3] = element_id(720);
+    }
+    p.graphics.extend(graphics_block(650, &tree_bytes(&tree)));
+    p.extra_ids.push(650);
+    placed(&mut p, 300, 650, local, 0.0, [10.0, 5.0, 0.0]);
+    draws(&mut p, 300, 650, 0.0, [10.0, 5.0, 0.0], envelope(local, 0.0, [10.0, 5.0, 0.0]));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let [c] = components(&i)[..] else { panic!("{:?}", i.skipped) };
+    let family = &i.model.families[&c.family];
+    let k = family.types[&c.type_name].get("Shape").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    let shown: Vec<(&str, usize)> = family
+        .forms
+        .iter()
+        .filter(|f| f.visible == Some(bimcraft_core::family::Expr::Formula(format!("Shape = {k}"))))
+        .map(|f| (f.material.as_str(), f.mesh.len()))
+        .collect();
+    assert_eq!(shown, [("", 10), ("Oak", 2)], "{:?}", i.skipped);
+    assert_eq!(i.model.materials.get("Oak").map(|m| m.color), Some([104, 79, 49]));
 }

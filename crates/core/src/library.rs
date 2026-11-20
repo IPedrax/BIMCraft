@@ -20,7 +20,7 @@ use crate::ids::{Guid, Id};
 
 /// Where the library's ids start, counting down.
 pub const LAST_ID: Id = 999_999;
-use crate::model::{Element, Model};
+use crate::model::{Element, Model, Wall};
 use serde_json::Value;
 
 /// What a library entry is.
@@ -52,12 +52,15 @@ pub enum Kind {
     FillPattern,
     FilledRegionType,
     DetailGroup,
+    ModelGroup,
     TextType,
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
     DimensionType,
     /// A spot coordinate type: how a spot coordinate draws and reads.
     SpotCoordinateType,
+    /// A grid type, which says how a grid draws and letters its name.
+    GridType,
     /// A voltage the electrical settings define, with the band a device may read within.
     Voltage,
     /// A distribution system, which names the voltages it supplies.
@@ -76,6 +79,8 @@ pub enum Kind {
     PrintSet,
     /// A publishing set: print sets in folders, each written as a format.
     PublishSet,
+    /// A classification table loaded into the project.
+    Classification,
 }
 
 impl Kind {
@@ -102,10 +107,12 @@ impl Kind {
             Kind::FillPattern => "fill pattern".into(),
             Kind::FilledRegionType => "filled region type".into(),
             Kind::DetailGroup => "detail group".into(),
+            Kind::ModelGroup => "model group".into(),
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
             Kind::SpotCoordinateType => "spot coordinate type".into(),
+            Kind::GridType => "grid type".into(),
             Kind::Voltage => "voltage".into(),
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
@@ -115,6 +122,7 @@ impl Kind {
             Kind::CoordinatePoint => "coordinate point".into(),
             Kind::PrintSet => ui_msg!("print set").into(),
             Kind::PublishSet => ui_msg!("publishing set").into(),
+            Kind::Classification => "classification table".into(),
         }
     }
 
@@ -127,6 +135,7 @@ impl Kind {
             "family" => Kind::Family,
             "parameter" => Kind::Parameter,
             "dictionary" => Kind::Dictionary,
+            "classification" => Kind::Classification,
             "view-filter" => Kind::ViewFilter,
             "view-template" => Kind::ViewTemplate,
             "phase" => Kind::Phase,
@@ -140,10 +149,12 @@ impl Kind {
             "fill-pattern" => Kind::FillPattern,
             "filled-region-type" => Kind::FilledRegionType,
             "detail-group" => Kind::DetailGroup,
+            "model-group" => Kind::ModelGroup,
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
             "spot-coordinate-type" => Kind::SpotCoordinateType,
+            "grid-type" => Kind::GridType,
             "voltage" => Kind::Voltage,
             "distribution-system" => Kind::DistributionSystem,
             "wire-type" => Kind::WireType,
@@ -180,10 +191,12 @@ impl fmt::Display for Kind {
             Kind::FillPattern => f.write_str("fill-pattern"),
             Kind::FilledRegionType => f.write_str("filled-region-type"),
             Kind::DetailGroup => f.write_str("detail-group"),
+            Kind::ModelGroup => f.write_str("model-group"),
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
             Kind::SpotCoordinateType => f.write_str("spot-coordinate-type"),
+            Kind::GridType => f.write_str("grid-type"),
             Kind::Voltage => f.write_str("voltage"),
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
@@ -193,6 +206,7 @@ impl fmt::Display for Kind {
             Kind::CoordinatePoint => f.write_str("coordinate-point"),
             Kind::PrintSet => f.write_str("print-set"),
             Kind::PublishSet => f.write_str("publish-set"),
+            Kind::Classification => f.write_str("classification"),
         }
     }
 }
@@ -685,8 +699,13 @@ impl Model {
                 "ceiling" => self.types.ceiling.remove(name).is_some(),
                 "railing" => self.types.railing.remove(name).is_some(),
                 "room" => self.types.room.remove(name).is_some(),
+                "stair" => self.types.stair.remove(name).is_some(),
+                "curtainpanel" => self.types.curtain_panel.remove(name).is_some(),
+                "mullion" => self.types.mullion.remove(name).is_some(),
+                "cornermullion" => self.types.corner_mullion.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
+                "toposolid" => self.types.toposolid.remove(name).is_some(),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
                 _ => false,
             },
@@ -699,6 +718,7 @@ impl Model {
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
             Kind::TitleBlock => self.title_blocks.remove(name).is_some(),
+            Kind::GridType => self.grid_types.remove(name).is_some(),
             _ => false,
         }
     }
@@ -727,8 +747,13 @@ impl Model {
                 "ceiling" => mv(&mut self.types.ceiling, from, to),
                 "railing" => mv(&mut self.types.railing, from, to),
                 "room" => mv(&mut self.types.room, from, to),
+                "stair" => mv(&mut self.types.stair, from, to),
+                "curtainpanel" => mv(&mut self.types.curtain_panel, from, to),
+                "mullion" => mv(&mut self.types.mullion, from, to),
+                "cornermullion" => mv(&mut self.types.corner_mullion, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
+                "toposolid" => mv(&mut self.types.toposolid, from, to),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| mv(t, from, to)),
                 _ => false,
             },
@@ -736,6 +761,7 @@ impl Model {
                 (Some((f, old)), Some((g, new))) if f == g => self.families.get_mut(f).is_some_and(|fam| mv(&mut fam.types, old, new)),
                 _ => false,
             },
+            Kind::GridType => mv(&mut self.grid_types, from, to),
             _ => false,
         }
     }
@@ -820,6 +846,10 @@ impl Model {
         add(Kind::Type("ceiling".into()), &mut t.ceiling.keys());
         add(Kind::Type("railing".into()), &mut t.railing.keys());
         add(Kind::Type("room".into()), &mut t.room.keys());
+        add(Kind::Type("stair".into()), &mut t.stair.keys());
+        add(Kind::Type("curtainpanel".into()), &mut t.curtain_panel.keys());
+        add(Kind::Type("mullion".into()), &mut t.mullion.keys());
+        add(Kind::Type("cornermullion".into()), &mut t.corner_mullion.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -832,6 +862,7 @@ impl Model {
         add(Kind::Family, &mut self.families.keys());
         add(Kind::Parameter, &mut self.parameters.keys());
         add(Kind::Dictionary, &mut self.dictionaries.keys());
+        add(Kind::Classification, &mut self.classification.tables.keys());
         add(Kind::ViewFilter, &mut self.view_filters.keys());
         add(Kind::ViewTemplate, &mut self.view_templates.keys());
         add(Kind::Phase, &mut self.phases.iter());
@@ -850,10 +881,12 @@ impl Model {
         add(Kind::FillPattern, &mut self.fill_patterns.keys());
         add(Kind::FilledRegionType, &mut self.region_types.keys());
         add(Kind::DetailGroup, &mut self.detail_groups.keys());
+        add(Kind::ModelGroup, &mut self.model_groups.keys());
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
         add(Kind::SpotCoordinateType, &mut self.spot_coordinate_types.keys());
+        add(Kind::GridType, &mut self.grid_types.keys());
         add(Kind::Voltage, &mut self.voltages.keys());
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
@@ -964,6 +997,9 @@ impl Model {
         for (n, x) in &t.floor {
             add("layer", "floor type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
         }
+        for (n, x) in &t.toposolid {
+            add("layer", "toposolid type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
+        }
         for (n, x) in &t.roof {
             add("layer", "roof type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
         }
@@ -984,6 +1020,9 @@ impl Model {
         }
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
+        }
+        for (n, g) in &self.model_groups {
+            add("member", "model group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
         }
         // An element's sketch lines, then a floor's or a roof's shape's points and split lines, the element named by its GUID,
         // which never changes.
@@ -1102,6 +1141,9 @@ impl Model {
         for x in t.floor.values_mut() {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
+        for x in t.toposolid.values_mut() {
+            x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
+        }
         for x in t.roof.values_mut() {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
@@ -1135,7 +1177,7 @@ impl Model {
                 f.resolve_dimension_refs(&parts);
             }
         }
-        for g in self.detail_groups.values_mut() {
+        for g in self.detail_groups.values_mut().chain(self.model_groups.values_mut()) {
             g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
         for e in self.elements.values_mut() {
@@ -1338,7 +1380,8 @@ impl Model {
             .flat_map(|x| x.layers.iter_mut())
             .chain(t.floor.values_mut().flat_map(|x| x.layers.iter_mut()))
             .chain(t.roof.values_mut().flat_map(|x| x.layers.iter_mut()))
-            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()));
+            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()))
+            .chain(t.toposolid.values_mut().flat_map(|x| x.layers.iter_mut()));
         for l in layers {
             (l.id, l.guid) = (0, Guid::default());
         }
@@ -1354,10 +1397,16 @@ impl Model {
             f.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
-        for g in self.detail_groups.values_mut() {
+        for g in self.detail_groups.values_mut().chain(self.model_groups.values_mut()) {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for e in self.elements.values_mut() {
+            if let crate::model::Element::Wall(w) = e
+                && let Some(c) = &mut w.curtain
+            {
+                c.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+                c.grids.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            }
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             }
@@ -1494,12 +1543,20 @@ impl crate::model::Element {
         use crate::model::{Element, run_arm};
         let category = self.category().to_string();
         match self {
-            Element::Wall(w) => f(&Kind::Type(category), &mut w.type_name),
+            Element::Wall(w) => {
+                f(&Kind::Type(category), &mut w.type_name);
+                if let Some(c) = &mut w.curtain {
+                    c.names_mut(f);
+                }
+            }
             Element::Floor(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Toposolid(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
+            // A stair of no type names none.
+            Element::Stair(x) if !x.type_name.is_empty() => f(&Kind::Type(category), &mut x.type_name),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => f(&Kind::Type(category), &mut c.type_name),
             run_arm!(r) => f(&Kind::Type(category), &mut r.type_name),
             Element::Door(o) | Element::Window(o) => match &mut o.family {
@@ -1530,6 +1587,7 @@ impl crate::model::Element {
             }
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
             Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
+            Element::ModelGroup(g) => f(&Kind::ModelGroup, &mut g.type_name),
             Element::RepeatingDetail(r) => f(&Kind::DetailGroup, &mut r.type_name),
             Element::FilledRegion(r) => {
                 f(&Kind::FilledRegionType, &mut r.type_name);
@@ -1544,6 +1602,7 @@ impl crate::model::Element {
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
+            Element::Grid(g) => f(&Kind::GridType, &mut g.type_name),
             // Neither the built-in one nor none is an entry of the library.
             Element::Sheet(sh) if !sh.title_block.is_empty() && !sh.has_no_title_block() => f(&Kind::TitleBlock, &mut sh.title_block),
             Element::Spot(sp) => {
@@ -1594,6 +1653,7 @@ impl Model {
         for d in self.parameters.values_mut().filter_map(|p| p.dictionary.as_mut()) {
             f(&Kind::Dictionary, d);
         }
+        self.classification.lib_refs_mut(f);
         let t = &mut *self.types;
         let layers = t
             .wall
@@ -1601,7 +1661,8 @@ impl Model {
             .flat_map(|x| x.layers.iter_mut())
             .chain(t.floor.values_mut().flat_map(|x| x.layers.iter_mut()))
             .chain(t.roof.values_mut().flat_map(|x| x.layers.iter_mut()))
-            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()));
+            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()))
+            .chain(t.toposolid.values_mut().flat_map(|x| x.layers.iter_mut()));
         for l in layers.filter(|l| !l.material.is_empty()) {
             f(&Kind::Material, &mut l.material);
         }
@@ -1615,6 +1676,15 @@ impl Model {
             }
             if let Some(ceiling) = &mut r.ceiling {
                 f(&Kind::Type("ceiling".into()), ceiling);
+            }
+        }
+        for l in t.wall.values_mut().filter_map(|x| x.curtain.as_mut()) {
+            l.names_mut(f);
+        }
+        let mullions = t.mullion.values_mut().chain(t.corner_mullion.values_mut()).map(|x| &mut x.material);
+        for material in t.curtain_panel.values_mut().map(|x| &mut x.material).chain(mullions) {
+            if !material.is_empty() {
+                f(&Kind::Material, material);
             }
         }
         for m in self.materials.values_mut() {
@@ -1647,7 +1717,10 @@ impl Model {
         for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
             f(&Kind::LinePattern, p);
         }
-        for m in self.detail_groups.values_mut().flat_map(|g| g.members.iter_mut()) {
+        for p in self.grid_types.values_mut().filter_map(|t| t.line_pattern.as_mut()) {
+            f(&Kind::LinePattern, p);
+        }
+        for m in self.detail_groups.values_mut().chain(self.model_groups.values_mut()).flat_map(|g| g.members.iter_mut()) {
             m.element.lib_refs_mut(f);
         }
         for x in self.materials.values_mut() {
@@ -1747,10 +1820,11 @@ impl Model {
 }
 
 /// The kinds of part an element holds, as [`element_parts`] names them.
-const ELEMENT_PARTS: [&str; 3] = ["sketch line", "shape point", "split line"];
+const ELEMENT_PARTS: [&str; 5] = ["sketch line", "shape point", "split line", "curtain part", "curtain grid"];
 
 /// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
-/// points and its split lines, each with what it is, its place in its list, its id and its GUID.
+/// points and its split lines, then a curtain wall's edited parts, each with what it is, its place in its list, its id and its
+/// GUID.
 fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     let mut out: Vec<(&'static str, usize, Id, Guid)> = Vec::new();
     if let Some(lines) = e.sketch() {
@@ -1759,6 +1833,10 @@ fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     if let Some(sh) = e.shape().filter(|sh| !sh.is_empty()) {
         out.extend(sh.points.iter().enumerate().map(|(k, x)| ("shape point", k, x.id, x.guid)));
         out.extend(sh.lines.iter().enumerate().map(|(k, x)| ("split line", k, x.id, x.guid)));
+    }
+    if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
+        out.extend(c.parts.iter().enumerate().map(|(k, x)| ("curtain part", k, x.id, x.guid)));
+        out.extend(c.grids.iter().enumerate().map(|(k, x)| ("curtain grid", k, x.id, x.guid)));
     }
     out
 }
@@ -1771,6 +1849,10 @@ fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
     if let Some(sh) = e.shape_mut().filter(|sh| !sh.is_empty()) {
         sh.points.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
         sh.lines.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+    }
+    if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
+        c.parts.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+        c.grids.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
     }
 }
 

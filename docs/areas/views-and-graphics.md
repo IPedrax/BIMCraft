@@ -130,7 +130,10 @@ terms, and goes with it. `render::detail_line` draws it in its style's pen with 
 pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
 any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
 Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again; the Options Bar's Line Style and
-Chain; the Draw panel's other shapes, below) and Manage > Line Styles (`linestyles.rs`: styles and patterns on two tabs of one
+Chain; the Draw panel's other shapes, below). While a wall or a detail line chains, Backspace and Ctrl+Z take back its last point
+and the segment built to it (`BimApp::undo_chain_point`), so a point cannot outlive its wall or line; a shape still being clicked (an
+arc, a spline, a polyline or a revision cloud's line) has made nothing yet, so it loses the point alone. Manage > Line Styles
+(`linestyles.rs`: styles and patterns on two tabs of one
 draft, applied as one undo step). Patterns > New Pattern or Edit opens the separate Line Pattern Creator
 (`linestyles/creator.rs`), with a live straight/curved preview and segment controls, add, reorder and delete. Save Pattern
 updates the library draft; Cancel Pattern discards just the creator, and the parent Cancel discards the whole draft.
@@ -217,7 +220,9 @@ use the separate font fallback below, so a character outside the drawing letteri
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
 rename): Revit's font, size (its capitals' height on paper, mm), bold, italic, underline, width factor, colour, and a border
-`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts. A project starts
+`border_offset` mm on paper round its text in pen `border_pen`, from whose side nearer its end a leader starts: straight from
+there, in two segments (a shoulder level with the note, its lettering's height long, then to the point), or as an arc bowing from
+that shoulder's corner (`LeaderKind`, the note's `leader_kind`; straight unless told). A project starts
 with 2.5mm, 3.5mm and 5mm in Arial; `text_type` makes, renames and deletes them (none in use). A type's font is a name:
 any font the system has, or one we carry (IBM Plex Sans, IBM Plex Mono, BIMCraft Lettering: `font.rs`'s single-stroke
 capitals). `text/system.rs` lists the system's fonts once (`system::index`): it looks through the folders Linux, Windows
@@ -247,25 +252,26 @@ and which the desktop's editor reads for its caret, its selection and a click's 
 A file of format 7 has notes with a `size`: reading it gives each a type of that size (`Model::typed_notes`), and `Model::check`
 refuses a `size` left on one. A note holds up to `MAX_NOTE` (4,000) characters and `MAX_RUNS` (1,000) runs.
 
-Detail groups (`groups.rs`) are Revit's: `create_group` (GP) makes the detail lines, filled regions and text notes given,
-all of one view, into a group type (`Model::detail_groups`) holding them as `Member`s about the middle of them, in no
-view, and puts one `DetailGroup` element in their place. Members are parts (`HasPart`, `parts_now`): each has its own id
-and GUID, and their line styles and region types are library references like an element's (`lib_refs_mut`), so renames
-reach them; `Model::check` holds each to what the same element in a view must be (`annotation_ok`). A placed group is an
-origin, an angle and `mirrored`; `groups::placed` gives its members as elements of its view (through
-`commands::transform`, as Move and Rotate take elements), which `render::detail_group` draws, regions under lines and notes,
-all owned by the group, so it picks, moves, rotates and mirrors as one. `ungroup` (UG) puts those elements back in the view;
-`group_type` renames a type (its groups follow) or deletes it while nothing is of it. A `RepeatingDetail` places a group
+Detail groups (`groups.rs`) are Revit's, and so are model groups: both are written up in [groups](groups.md). `create_group`
+(GP) makes the detail lines, filled regions, text notes and dimensions given, all of one view (a dimension only with what it
+measures), into a group type (`Model::detail_groups`) holding them as `Member`s about the middle of them, with their view a
+token, and puts one `DetailGroup` element in their place whose members are those elements, kept as they are. Members are parts
+(`HasPart`, `parts_now`): each has its own id and GUID, and their line styles and region types are library references like an
+element's (`lib_refs_mut`), so renames reach them; `Model::check` holds each to what the same element in a view must be
+(`annotation_ok`). A placed group is an origin, an angle and `mirrored`; `groups::place` makes its members from its type
+(through `commands::transform`, as Move and Rotate take elements), and they are drawn, picked and snapped to as any element:
+a click on one picks its group (`groups::group_picks`), Tab the member. `ungroup` (UG) leaves its members as plain elements;
+`group_type` renames a type (its groups follow) or deletes it while nothing is of it. A `RepeatingDetail` places a group's type
 along a line every `spacing` from its start, each turned along it (at most `MAX_REPEATS`), as Revit's Repeating Detail
-Component does with a detail component. A view draws every member of every group and repeat in it each time, so
-`Model::check` caps what one view places: a group counts its type's members, a repeating detail its members once for each
-repeat, and `MAX_PLACED` (10,000) is the most in a view (measured with the probe `probe_the_cost_of_the_most_hatched_regions_a_view_may_place`,
+Component does with a detail component; those are drawn, never elements. A view draws every member of every group and repeat in
+it each time, so `Model::check` caps what one view's detail groups and repeating details place: a group its type's members, a
+repeating detail its members once for each repeat, and `MAX_PLACED` (10,000) is the most in a view (measured with the probe `probe_the_cost_of_the_most_hatched_regions_a_view_may_place`,
 10,000 hatched regions take about 0.1 s to draw at 3 m across and 0.5 s at 30 m across, 2.8 million primitives, on a machine that
 is not busy, in a dev build (the core is built at opt-level 2 there) and in release alike, and up to 0.29 s and 1.10 s in the dev
 build on a busy one; the 200,000 it once allowed took 6 s and 30 million primitives). A placed member that is a huge circle costs
 more (the probe `probe_the_cost_of_placed_members_that_are_huge_circles`: 8,192 points each, about 0.2 ms to draw and 3 to 5 ms to
 rasterize, 8 ms on a busy machine), so a view at the cap of them can take a minute or more to render; the cap stays. A member note keeps its own angle under a pure mirror
-(it still reads the right way round) and turns with the group's angle. The file holds a group's members as elements, and
+(it still reads the right way round) and turns with the group's angle. The file holds a group type's members as elements, and
 `Model::read` leaves out of them what this build doesn't know, as it does for any element
 (`/detail_groups/<name>/members/<i>/element/...`). Deleting a line style that a filled region or a group's member is drawn in
 is refused with the region's or the group's name. On the desktop, Annotate > Detail has Detail Group, Repeating Detail and
@@ -278,7 +284,10 @@ would fail on one with a serde error, so 6 makes it say that the file is from a 
 in a file of 5 changes, so `Model::migrate` has no step for 5 to 6.
 
 The Options Bar's Offset puts a line, an arc or a polyline beside the points clicked; a rectangle, a polygon or a circle grows
-by it as a whole (`grown`, its corners joined), and a spline or an ellipse takes none (`Shape::offsets`). Modify's Offset takes
+by it as a whole (`grown`, its corners joined), an ellipse grows or shrinks by it, a partial ellipse is set beside the
+points clicked, and only a spline takes none (`Shape::takes_offset`). While a Draw tool
+draws, its next line is previewed where the Offset would put it; Pick Lines previews the line beside the one under the
+pointer, and Space flips the Offset to the other side, the preview and the line the last click makes following it. Modify's Offset takes
 ellipses and splines too, as a spline through points within `FIT_TOL` of the true offset (`curves::offset_fit`), refused where
 it would fold over itself. While a shape is drawn its numbers can be typed (`draw::numbers`, `reading`, `typed`): a rectangle's
 width and height (Tab between them, the canvas taking the Tab from egui's focus), a circle's or a polygon's radius, the third
@@ -296,6 +305,11 @@ a plan clears the voids' slice at its cut plane within the wall's faces (`render
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
 surfaces meet at an angle or end, found once) drawn through the faces; a pixel within two of a line picks its element.
+
+A mesh form's faces are its own, not its planes: `facets` welds the triangles that share an edge, at a micron, and groups those that
+turn less than `SMOOTH` degrees there, so the side of a 24-sided post is one surface while two squares in one plane are two faces.
+`Scene::face_at` returns the triangles of the face clicked — the one a work plane is set on too — where before it took every
+triangle of the element lying in that face's plane.
 
 A view's graphics (`graphics.rs`; `Level`, `Section` and `View3D` each hold `graphics`) hide and override by category, by view
 filter (`Model::view_filters`: categories and a schedule filter's rules, `schedule::picks`) and by element: an element's own beats
@@ -419,7 +433,10 @@ Bar, and opens the new view: `BimApp::active_3d` is the 3D view the 3D tab shows
 view it shows, and a camera view picked on a plan passes the picked one, so both show the same Name, Eye, Target and Focal Length
 and edit it the same way (`camera` for the camera, `modify` for the name). Graphics, phasing and the section box stay with the view
 on screen (`graphic_view`), not with a camera view picked on a plan: its mark shows its camera, its project parameters and its
-phase. A camera view shows no Azimuth or Elevation: those
+phase. Each 3D view is drawn, picked, fitted and capped as its own Visibility/Graphics say (`Look::of_3d_view`): `render` with a
+camera view's name, and the 3D tab through `Orbit::show_view`, which carries the view to its scene, fit and cap jobs and makes the
+mesh again when another view is shown (`view3d::scene_kept_in` keeps it only while that view looks as it did). A camera view
+shows no Azimuth or Elevation: those
 (`View3D::azimuth`, `View3D::elevation`) only frame a 3D view **without** a camera on a sheet (`sheet::framing`, `camera_of`), so a
 view on a sheet whose view has a camera shows its name alone. A camera edit while its view is on screen drops the on-screen
 camera (`Orbit::camera`), so the next frame stands the view from the model and the settled hand has nothing old to write back. A
@@ -722,7 +739,54 @@ them without knowing: `Look::with` makes a linked id halftone, and picking never
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
 To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
 
+## Grid types
+
+A grid (`Grid`, the `grid` command) is a named axis for dimensions and snaps, and it draws in a grid type (`grids.rs`,
+`Model::grid_types`, a library entry `Kind::GridType`, the `grid_type` command), as a dimension draws in a dimension type. A
+grid names its type (`type`) as a file names any type; a new grid takes the project's default type, `Grid - ISO 128`.
+`Model::type_names("grid")` and `Model::default_type("grid")` are what fills a Type Selector and enables Edit Type, and a
+grid's type is checked like a dimension's (`Model::check`).
+
+| Field | Meaning | Default |
+|---|---|---|
+| `line_pattern` | A line pattern of the project by name (`lines.rs`), its lengths mm on paper; none, a solid line | `Grid - ISO Dash Dot` for the ISO type |
+| `line_pen` | The pen the line and its bubble are drawn in | 4 (0.18 mm on paper) |
+| `color` | The line's and its name's colour | `[60, 100, 150]` |
+| `font`, `text_size` | The name's font (the system's, IBM Plex or our lettering, as a text type's) and capitals, mm on paper | Arial, 2.5 mm |
+| `bold`, `italic`, `underline`, `width_factor` | Its lettering | off, 1.0 |
+
+A pattern is in mm on paper, so its chain scales with the view's scale and reads the same on every sheet, as a detail
+line's does; the renderer turns it into pixels with `sheet::DENSITY * d.paper` and raises every segment to at least 2 px,
+so the dot of a chain stays visible in egui's kept canvas. The bubble's radius follows its name (`max(2.2 mm, 0.6 ·
+text_size + half the laid-out name)`), and its name is laid out by `text::layout` in the type's text and centred in it.
+A view's Visibility/Graphics is applied after the type, so it still overrides the dash, the colour and the weight, and
+hides the category; the type is only the default.
+
+A project starts with six types (`grids::types`), one reading of each standard rather than an exhaustive one — lengths in
+the standards are fixed in line-weight groups, and bubble sizes may be an office standard of their own:
+
+| Type | Pattern | Pen (mm on paper) | Text | Source |
+|---|---|---|---|---|
+| `Grid - ISO 128` | 12.7 / 3.2 / dot / 3.2 | 4 (0.18) | 2.5 mm | ISO 128-2 chain line; ISO 128-23; EN ISO 7519 |
+| `Grid - DIN 1356` | 20 / 4 / dot / 4 | 7 (0.25) | 2.5 mm | DIN 1356-1; DIN 15-1 (Strichpunktlinie) |
+| `Grid - ASME Y14.2` | 20 / 3 / 5 / 3 | 9 (0.30) | 3.5 mm | ASME Y14.2 centre line |
+| `Grid - Architectural` | 15 / 2 / 2 / 2 / 2 / 2 | 4 (0.18) | 2.5 mm | office practice, not a standard |
+| `Grid - Continuous` | solid | 4 (0.18) | 2.5 mm | coordination and zone grids (NCS practice) |
+| `Grid - Compact` | 6 / 1.5 / dot / 1.5 | 4 (0.18) | 2.0 mm | templates for dense plans, not a standard |
+
+The set is open: any type may be changed, duplicated or made on any pattern of the project, and put on any grid. The
+Project Browser's Families lists the project's grid types under Grids, where a right click deletes one nothing uses. A type a
+grid uses can't be deleted; `purge` leaves grid types alone, as it leaves text and dimension types. `insert` brings a grid
+type, and the line pattern it names, from another project, and format 21 holds them: a file of 20 or before opens with each
+grid in `Grid - ISO 128` (or the first type there is) and the starter set put back (`Model::typed_grids`).
+
 ## Dimensions
+
+Sections/elevations use `drawing_plane::reference` for aligned/linear dimensions: levels, grids perpendicular to the
+view line and detail references owned by that view. Their placement is `[along,height]`, and both `level` and `view`
+hold the view GUID. Format 21 protects that interpretation; format 20 needs no data conversion. These dimensions
+measure only: locks, equality and driving values are refused. The plan reference/constraint behavior below remains
+unchanged. See [vertical drawing tools](desktop.md#drawing-tools-in-sections-and-elevations) for the supported input.
 
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines
 (`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a column's or structural column's two
@@ -835,6 +899,19 @@ sheet when nothing is selected. No title block of the project's may be called `n
 entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
 shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
 
+**Starters and papers.** A title block lists the papers it is for (`sizes`, `A3`, `ANSI D`, kept once in capitals; under Size in the
+editor as Papers). A sheet that names no title block is drawn with the first of the project's, by name, that lists its paper
+(`Model::title_block_of`), else with the built-in box; `none` and a name still mean what they did, and a sheet's `elements` say which
+one by size as `title_block_by_size`, its Properties as `NAME (by paper size)`. `title_block {starter: …}` (the dialog's New from
+starter) starts one from a ready-made stamp, `title_starters.rs`: ISO 7200, ASME Y14.1 and NBR 16752, each for small papers (A4 and A3,
+ANSI A and B) and large (A2 to A0, ANSI C to E), 6 in all, named in the command's listing. They are original layouts: a ruled grid of
+cells, each a small label over a field, built from the data fields those standards ask for (project, client, title, organization,
+sheet number, scale, date, revision, created and approved by, page) and not from any CAD vendor's title blocks. Every field is
+automatic (Manage > Project Information fills them) but Checked by and Approved by, each sheet's own, and the labels come in the
+project's language (`Language::word`, the project catalogs). Their numbers are unchecked against the standards' texts. Loading one
+changes how the sheets of its papers are drawn, so `sizes: []` leaves it for the sheets that name it; two blocks that list one paper
+are told in the reply's `notes`, and the one named first wins.
+
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
 circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their
@@ -909,3 +986,45 @@ the line the elevation looks at, the elevation turns round and its line comes ov
 reference as it was; moved whole across (the Move tool, or with other things), the line turns round where it stands. Changing
 the line (its grips, `crop`) pins the mark where it stood. `mark` is FORMAT 18's too, so a build that reads up to 17 never draws
 the mark back at the middle.
+
+## Underlays
+
+A plan, a section or an elevation may show another view under it (or over it). It is Archicad's Trace & Reference, not Revit's
+Underlay: Revit's shows a plan the elements of a range of levels, looking down or up, which BIMCraft doesn't offer (a view's range
+and orientation are its own, and a ceiling plan shows no underlay). It is a working aid, not printed, exported or put on sheets.
+Any plan (a level's or a plan view), section or elevation but itself can be shown, drawn as its own view range, graphics
+(Visibility/Graphics, its template, detail level, scale) and crop draw it. It is the view's own, saved with it (`Level::underlay`, `PlanView::underlay`, `Section::underlay`: `underlay.rs`'s
+`Underlay`), and a duplicate of the view has it too; deleting the view an underlay shows takes it off the views that showed it. The
+`underlay` command sets it: `source` (null takes it off), `on`, `color`,
+`fills`, `hide_annotation` (on by default: dimensions, tags, notes, grids, levels, marks and other annotation categories,
+`graphics::ANNOTATION`, and all lettering), `front` (over the view, rather than behind), `offset`, `angle`, `move`, `rotate`
+about `about`, and `reset`.
+
+- **Fitted by the internal origin.** A plan's coordinates are the model's; a section's run along its line from its start, and up
+  from 0, so the internal origin falls at its projection on the line, at height 0 (`underlay::origin`). The underlay's points go
+  to `origin(target) + offset + R(angle) (p - origin(source))` (`underlay::place`); `source_view` turns that into the `View` the
+  source is drawn through, so a plan source is drawn by `render::draw` straight into the target's pixels, turned however it is.
+  A section draws only square to its axes: it is drawn over a square that still covers the view once turned, then its lines
+  are turned and its picture resampled (`turned`).
+- **One colour, never picked.** `restyle` draws every line in the underlay's colour and every fill and pattern in a light wash
+  of it (or leaves them out without `fills`), and owns none of it, so nothing in it is ever picked or highlighted. A section's
+  picture of what it sees past its line comes as a picture of its own (`Underlaid::picture`), its ink in the colour and its
+  paper clear. What lies outside the target's crop region is cut away (`cropped_to`).
+- **Snapped to.** `Underlaid::segments` are its lines in the target's coordinates; `snap::snap_with` adds the nearest of them
+  (at most 256) to a plan's snaps, so ends, middles and crossings with the plan's own lines snap; a section's Move and Rotate
+  snap to them with `snap::among`.
+- **On screen** (`crates/ui-egui/src/underlay.rs`). The view's own drawing comes first: the underlay is asked of a worker of its
+  own (`view_worker::Latest`, which keeps a section's `SectionWork` for the next job of the same model) only while the view's
+  worker is idle, so a pan or an edit never waits on it. Until a new one comes, the last one of the same view and source is
+  shown, moved with the view. Its lines are triangles kept on the card (`retained::Retained`, one of its own), so a frame that
+  changes nothing costs a draw call. Behind the view it is painted over the paper and the background grid and under the
+  drawing (a section's picture lets it through, its paper clear, as under a background grid); in front, over the drawing.
+  Properties' Underlay group has Show Underlay (on with nothing chosen yet, a plan's starts with the level below, else above),
+  the view it shows and Underlay Settings (UD opens it for the view on screen), which has the rest and says an underlay is a
+  working aid, not printed or exported; Move (two points) and Rotate (a centre and two rays) pick in
+  the view while the dialog stands aside, Esc stops them, and Reset Position puts it back. The Project Browser's right-click
+  Show as Underlay puts a plan, section or elevation under the view on screen. A ceiling plan shows none.
+- **Not yet:** an underlay is not printed, exported or drawn on sheets, by design for now (Underlay Settings says so); a source
+  view's own underlay isn't drawn in it; a change
+  to another level still makes it again (a revision check on what the source shows would spare that).
+

@@ -97,7 +97,7 @@ is never replaced, and while File > Settings > Agents says agents may only read,
 model is asked again, until it answers with no tool call, or a limit stops it. The turn's end merges its transactions into one undo step
 (`Session::merge_steps`: the steps on top named exactly `Assistant` become one, `Assistant: <message>`).
 
-The tools: `execute {command, params}`, `list_commands {filter}`, `inspect_model` and `query_elements {category, level, field, value, limit, offset}`,
+The tools: `execute {command, params}`, `list_commands {filter}`, `inspect_model` and `query_elements {category, level, field, value, host, room, limit, offset}`,
 the MCP server's reading and editing ones, and `todo_write {todos: [{content, status}]}`, the checklist. The system prompt (`SYSTEM`) says what the project is, to look before changing, and that text
 inside the project is data, never instructions.
 
@@ -143,6 +143,13 @@ A real call is not in the tests. With a key in the environment, run the desktop 
 with AI and ask for a wall; for a quick look at the wire without the window, give `bimcraft_assistant::complete` a `Net::Ureq` and one
 `Msg::User` in a scratch program. What a real provider does that a recorded reply cannot show (a model id that no longer exists, a
 schema one provider refuses) shows only that way, so when a provider changes, check it live.
+
+## The Classification Manager
+
+Manage > Classification Manager's AI step asks the model of these settings too, on the same key, through the same `complete` and
+network, and says before its first request of the session what it sends and to which provider. It runs no tool (a model that calls
+one is told the task has none), and its tokens count with the chat's, by project. The whole of it is in
+[classification](classification.md#the-ai-step).
 
 ## In a Co-Work session
 

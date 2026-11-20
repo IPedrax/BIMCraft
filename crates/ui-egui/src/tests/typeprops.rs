@@ -91,3 +91,81 @@ impl BimApp {
         self.edit_type();
     }
 }
+
+#[test]
+fn a_stair_type_shows_its_model_then_its_graphics_and_only_the_sizes_its_construction_uses() {
+    let mut h = app(r#"stair {"start": [0, 0], "angle": 0, "type": "Monolithic 150mm"}"#);
+    let of = ids(&h, "stair")[0];
+    h.state_mut().select_and_edit_type(of);
+    h.run();
+    for label in ["Model", "Graphics", "Slab Thickness", "Walk Line Arrow", "Cut Mark", "Finish Edge Profile"] {
+        assert!(h.query_by_label(label).is_some(), "no `{label}`");
+    }
+    // A monolithic stair has no stringers to size.
+    assert!(h.query_by_label("Stringer Width").is_none());
+    h.state_mut().type_dialog.as_mut().unwrap().set_construction("stringers");
+    h.run();
+    assert!(h.query_by_label("Stringer Width").is_some() && h.query_by_label("Slab Thickness").is_none());
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!(m.types.stair["Monolithic 150mm"].built(), bimcraft_core::model::Construction::Stringers);
+}
+
+/// A project in metres, which shows two decimals: a layer 3 mm thick reads 0.00, and a sill of 55 mm 0.06. Type Properties
+/// reads its fields whole when OK or Apply is pressed, so a field left alone must not take what it shows for its value.
+const FINE: &str = r#"units {"length": "m"}
+type {"category": "wall", "name": "Thin", "thickness": 3.0, "layers": [{"function": "structure", "material": "", "thickness": 3.0}]}
+type {"category": "wall", "name": "Thin Two", "thickness": 103.0, "layers": [{"function": "finish", "material": "", "thickness": 3.0}, {"function": "structure", "material": "", "thickness": 100.0}]}
+type {"category": "window", "name": "Slot", "width": 1200.0, "height": 1003.0, "sill": 55.0}"#;
+
+/// Type Properties of the `category` type `name`, open.
+fn open_type_of(h: &mut Harness<BimApp>, category: &'static str, name: &str) {
+    h.state_mut().type_dialog = Some(crate::properties::TypeDialog::new(&h.state().session.model, category, name.into(), Vec::new()));
+    h.run();
+}
+
+/// The `n`th text field named `label` given `text` in place of what it held, as a user selecting all and typing does.
+fn retype(h: &mut Harness<BimApp>, label: &str, n: usize, text: &str) {
+    h.get_all_by_role_and_label(Role::TextInput, label).nth(n).expect("the field").focus();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.get_all_by_role_and_label(Role::TextInput, label).nth(n).expect("the field").type_text(text);
+    h.run();
+}
+
+#[test]
+fn ok_in_type_properties_keeps_a_thickness_the_project_s_units_show_as_nothing() {
+    let mut h = app(&format!("{BOX}\n{FINE}"));
+    open_type_of(&mut h, "wall", "Thin");
+    press(&mut h, "OK");
+    assert!(h.state().type_dialog.is_none(), "{}", h.state().status.text);
+    let m = &h.state().session.model;
+    assert_eq!(m.types.wall["Thin"].thickness, 3.0);
+    assert_eq!(m.type_layers("wall", "Thin").iter().map(|l| l.thickness).collect::<Vec<_>>(), [3.0]);
+}
+
+#[test]
+fn editing_one_layer_leaves_the_thickness_of_the_others_as_it_was() {
+    let mut h = app(&format!("{BOX}\n{FINE}"));
+    open_type_of(&mut h, "wall", "Thin Two");
+    // The second layer, the structure, to 0.2 m: the finish, 3 mm, reads 0.00 and was not touched.
+    retype(&mut h, "Thickness", 1, "0.2");
+    press(&mut h, "OK");
+    assert!(h.state().type_dialog.is_none(), "{}", h.state().status.text);
+    let layers = h.state().session.model.type_layers("wall", "Thin Two").iter().map(|l| l.thickness).collect::<Vec<_>>();
+    assert_eq!(layers, [3.0, 200.0]);
+}
+
+#[test]
+fn editing_one_size_of_a_type_leaves_its_other_sizes_as_they_were() {
+    let mut h = app(&format!("{BOX}\n{FINE}"));
+    open_type_of(&mut h, "window", "Slot");
+    retype(&mut h, "Width", 0, "1.5");
+    press(&mut h, "OK");
+    assert!(h.state().type_dialog.is_none(), "{}", h.state().status.text);
+    let t = h.state().session.model.types.window["Slot"];
+    assert_eq!((t.width, t.height, t.sill), (1500.0, 1003.0, 55.0));
+    // Filled again from the model, a field says what it holds.
+    open_type_of(&mut h, "window", "Slot");
+    assert_eq!(h.state().type_dialog.as_ref().and_then(|d| d.field_text("sill")), Some("55 mm"));
+}

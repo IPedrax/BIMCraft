@@ -36,7 +36,7 @@ pub(super) fn level_named(i: &Imported, name: &str) -> bimcraft_core::ids::Guid 
 pub(super) fn base(release: u32) -> Project {
     let mut p = Project::new(release);
     p.levels = vec![Lev::new(10, "Level 1", 0.0), Lev::new(11, "Level 2", 10.0)];
-    p.mats = vec![Mat { id: 700, name: "Brick".into() }, Mat { id: 701, name: "Concrete".into() }];
+    p.mats = vec![Mat { id: 700, name: "Brick".into(), look: None }, Mat { id: 701, name: "Concrete".into(), look: None }];
     p.types = vec![TypeRec::new(500, WALLS), TypeRec::new(700, -2_000_700), TypeRec::new(701, -2_000_700)];
     p.types[1].kind = crate::project_fixture::KIND_MATERIAL;
     p.types[2].kind = crate::project_fixture::KIND_MATERIAL;
@@ -670,7 +670,7 @@ fn a_material_found_twice_is_named_only_where_its_copies_agree() {
     let layer = |extra: Option<(u32, &str)>| {
         let mut p = base(2024);
         if let Some((id, name)) = extra {
-            p.mats.push(Mat { id, name: name.into() });
+            p.mats.push(Mat { id, name: name.into(), look: None });
         }
         straight(&mut p, 100, false);
         import(&p).model.types.wall["Brick wall"].layers[0].material.clone()
@@ -678,4 +678,20 @@ fn a_material_found_twice_is_named_only_where_its_copies_agree() {
     assert_eq!(layer(None), "Brick");
     assert_eq!(layer(Some((700, "Brick"))), "Brick", "the same name twice");
     assert_eq!(layer(Some((700, "Clinker"))), "", "two names for one material");
+}
+
+#[test]
+fn a_material_comes_in_with_its_shading_colour_and_transparency() {
+    // Its look follows its name in its object, by the fields the file's schema gives `Material`: the wall's brick layer shows
+    // brick red; glass, named by nothing in the project, is not made.
+    for release in [2023, 2024, 2025] {
+        let mut p = base(release);
+        p.mats[0].look = Some(([121, 83, 68], 0.0));
+        p.mats[1].look = Some(([150, 150, 150], 0.25));
+        straight(&mut p, 100, false);
+        let i = import(&p);
+        let looks = |n: &str| i.model.materials.get(n).map(|m| (m.color, m.transparency));
+        assert_eq!((looks("Brick"), looks("Concrete")), (Some(([121, 83, 68], 0)), Some(([150, 150, 150], 25))), "Revit {release}");
+        assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    }
 }

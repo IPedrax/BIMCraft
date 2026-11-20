@@ -11,3 +11,4 @@ target/
 
 # Headless UI visual-verification exports.
 /crates/ui-egui/target/
+__pycache__/

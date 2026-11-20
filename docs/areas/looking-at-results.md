@@ -19,6 +19,9 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   real network code is a throwaway program in a scratch folder that calls `net::Ureq` and `check` against api.github.com; run it
   after touching `net.rs`, since a fake can't show what ureq or GitHub do (ureq's body limit once failed a real 8.9 MB download at
   its last byte, which only a real or a loopback server shows).
+- Guides and snapping: after touching `alignment.rs`, `snap.rs`, `guide_refs.rs` or the guide ink, run the galleries:
+  `BIMCRAFT_GUIDES_DUMP=<folder> cargo test -p bimcraft-ui-egui --lib guides -- --test-threads=1` writes the
+  Classic/Refined A/B pair, the twelve audit scenes and the 45° shaft; with the variable unset they write nothing.
 - Plans: `bimcraft-cli run --sample --save /tmp/plan.png`, then read the PNG. After any drawing change, look at it. A level's
   reflected ceiling plan: `render {"view": "Level 1", "ceiling": true, "path": "/tmp/rcp.png"}`.
 - 3D: `bimcraft-cli run --sample --cmd 'render {"view": "{3D}", "path": "/tmp/3d.png"}'` (`azimuth` and `elevation`

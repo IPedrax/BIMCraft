@@ -2509,6 +2509,8 @@ impl BimApp {
             "Linework" => self.set_tool(Tool::Linework),
             "Create Group" => self.create_group(),
             "Ungroup" => self.ungroup(),
+            "Place Model Group" => self.set_tool(Tool::ModelGroup),
+            "Restore All Excluded" => self.restore_excluded(),
             "Join into Polyline" => self.join_polyline(),
             "Explode Polyline" => self.explode_polyline(),
             "Detail Line" => self.set_tool(Tool::DetailLine(Vec::new())),
@@ -2529,6 +2531,48 @@ impl BimApp {
             "Wireframe" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Wireframe),
             "Hidden Line" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::HiddenLine),
             "Shaded" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Shaded),
+            "Fly Mode" => self.toggle_fly(),
+            "Building Codes" => {
+                self.codes_dialog = Some(crate::codes::CodesDialog::new(&self.session.model));
+            }
+            // The stair selected: its code check, or it made a sketch or a stair for each storey.
+            "Code Check" => {
+                if let [id] = self.selected_stairs().as_slice() {
+                    self.code_check(*id);
+                }
+            }
+            "Convert to Sketch" => {
+                self.run("stair_sketch", json!({"id": self.selection.first()}));
+            }
+            "Separate Storeys" => {
+                self.run("stair_storeys", json!({"id": self.selection.first()}));
+            }
+            "Player" => self.toggle_player(),
+            "Run Script" => self.run_open_pyaddin(),
+            "Reload" => self.reload_pyaddins(),
+            "New Script" => self.pyaddins.new_script = Some(self.pyaddins.free_name()),
+            "Stop" => self.stop_pyaddin(),
+            "Classification Manager" => self.open_classification(),
+            // A curtain wall's tools, on the one alone selected.
+            "Curtain Grid" => {
+                if let Some(wall) = self.curtain_alone() {
+                    self.set_tool(Tool::CurtainGrid { wall, way: bimcraft_core::curtain::GridWay::Vertical });
+                }
+            }
+            "Add/Remove Segments" => {
+                if let Some(wall) = self.curtain_alone() {
+                    self.set_tool(Tool::CurtainSegment { wall });
+                }
+            }
+            "Replace Panel with Wall" => self.replace_panel_with_wall(),
+            // The plan, section or elevation on screen: its underlay's settings, where a view with none picks one.
+            "Underlay Settings" => match self.underlay_target() {
+                Some(view) => self.underlay_dialog = Some(view),
+                None => {
+                    let text = t("Underlay Settings is for a plan, a section or an elevation").to_string();
+                    self.status = crate::Status { text, error: true };
+                }
+            },
             "Project Units" => {
                 self.tab = Tab::Manage;
                 self.open_units = true;

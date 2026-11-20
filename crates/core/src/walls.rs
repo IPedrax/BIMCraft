@@ -11,6 +11,7 @@ mod compound;
 mod index;
 pub(crate) use index::{Index, reach};
 
+use crate::curves::Curve;
 use crate::geom::{self, P2};
 use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, Opening, TOL, Wall};
 
@@ -47,6 +48,15 @@ impl Axis {
 
     pub fn radius(&self) -> Option<f64> {
         self.arc.map(|a| a.1)
+    }
+
+    /// The box round it that holds its body: an arc may bulge past its ends, so the box round its circle, else its ends.
+    /// What a cheap "is anything near the cursor" asks before a wall's heights or an opening's type are worked out.
+    pub fn extent(&self) -> [P2; 2] {
+        match (self.centre(), self.radius()) {
+            (Some(c), Some(r)) => [c + P2(-r, -r), c + P2(r, r)],
+            _ => [self.start, self.end],
+        }
     }
 
     /// An arc's centre, radius, the angle its start lies at from the centre and how far it sweeps (radians,
@@ -200,6 +210,162 @@ pub fn centre(m: &Model, w: &Wall) -> f64 {
     (ext + int) / 2.0
 }
 
+/// A wall's face across its thickness: its location line, a finish face or a core face. The exterior side is the
+/// one to its left, as [`faces`] says; `Centre` is the line half way through the wall.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Face {
+    /// The line half way through the wall ([`centre`]).
+    #[default]
+    Centre,
+    /// The finish on the left side.
+    ExteriorFinish,
+    /// The finish on the right side.
+    InteriorFinish,
+    /// The structural core's face on the left side.
+    ExteriorCore,
+    /// The structural core's face on the right side.
+    InteriorCore,
+}
+
+impl Face {
+    /// Every face, as a command or a window names one.
+    pub const ALL: [Face; 5] = [Face::Centre, Face::ExteriorFinish, Face::InteriorFinish, Face::ExteriorCore, Face::InteriorCore];
+
+    /// Its name in a command: `centre`, `exterior-finish`, `interior-finish`, `exterior-core`, `interior-core`.
+    pub fn named(self) -> &'static str {
+        match self {
+            Face::Centre => "centre",
+            Face::ExteriorFinish => "exterior-finish",
+            Face::InteriorFinish => "interior-finish",
+            Face::ExteriorCore => "exterior-core",
+            Face::InteriorCore => "interior-core",
+        }
+    }
+
+    /// The face `s` names (also `center`), if it names one.
+    pub fn parse(s: &str) -> Option<Face> {
+        Some(match s {
+            "centre" | "center" => Face::Centre,
+            "exterior-finish" => Face::ExteriorFinish,
+            "interior-finish" => Face::InteriorFinish,
+            "exterior-core" => Face::ExteriorCore,
+            "interior-core" => Face::InteriorCore,
+            _ => return None,
+        })
+    }
+
+    /// Whether it is a core face rather than a finish one.
+    pub fn is_core(self) -> bool {
+        matches!(self, Face::ExteriorCore | Face::InteriorCore)
+    }
+
+    /// The same face on the other side of the wall: a finish on its finish, a core on its core. The centre line has
+    /// no other side.
+    pub fn flipped(self) -> Face {
+        match self {
+            Face::ExteriorFinish => Face::InteriorFinish,
+            Face::InteriorFinish => Face::ExteriorFinish,
+            Face::ExteriorCore => Face::InteriorCore,
+            Face::InteriorCore => Face::ExteriorCore,
+            Face::Centre => Face::Centre,
+        }
+    }
+
+    /// The face on the same side that is the core's, or the finish's.
+    pub fn with_core(self, core: bool) -> Face {
+        match (self, core) {
+            (Face::ExteriorFinish | Face::ExteriorCore, true) => Face::ExteriorCore,
+            (Face::ExteriorFinish | Face::ExteriorCore, false) => Face::ExteriorFinish,
+            (Face::InteriorFinish | Face::InteriorCore, true) => Face::InteriorCore,
+            (Face::InteriorFinish | Face::InteriorCore, false) => Face::InteriorFinish,
+            (Face::Centre, _) => Face::Centre,
+        }
+    }
+
+    /// Which way, left of the location line, the line `off` mm away from this face lies: outward from the wall for a
+    /// finish or a core face, and to the left for the centre line.
+    fn away(self, off: f64) -> f64 {
+        match self {
+            Face::InteriorFinish | Face::InteriorCore => -off,
+            Face::Centre | Face::ExteriorFinish | Face::ExteriorCore => off,
+        }
+    }
+}
+
+/// The faces of a wall's structural core: how far to the left of its location line the core's exterior and interior
+/// faces lie; none for a wall type with no structural layer.
+pub fn core_faces(m: &Model, w: &Wall) -> Option<(f64, f64)> {
+    let t = m.types.wall.get(&w.type_name)?;
+    let mut core: Option<(f64, f64)> = None;
+    let mut at = 0.0;
+    for l in &t.layers {
+        if l.function == Function::Structure {
+            core = Some((core.map_or(at, |c| c.0), at + l.thickness));
+        }
+        at += l.thickness;
+    }
+    let (c0, c1) = core?;
+    let ext = depth(t.thickness, &t.layers, w.location);
+    Some((ext - c0, ext - c1))
+}
+
+/// How far to the left of a wall's location line a face lies; none for a core face of a wall that has no core.
+pub fn face_offset(m: &Model, w: &Wall, face: Face) -> Option<f64> {
+    match face {
+        Face::Centre => Some(centre(m, w)),
+        Face::ExteriorFinish => Some(faces(m, w).0),
+        Face::InteriorFinish => Some(faces(m, w).1),
+        Face::ExteriorCore => core_faces(m, w).map(|c| c.0),
+        Face::InteriorCore => core_faces(m, w).map(|c| c.1),
+    }
+}
+
+/// The line of a wall's face, out `offset` mm from it, cut at both ends where the wall's cap meets it: the line a
+/// boundary picked on a wall lies on. A core face of a wall with no core falls back to its finish face. None for a
+/// wall that isn't there or a line with no length.
+pub fn face_line(m: &Model, id: Id, face: Face, offset: f64) -> Option<Curve> {
+    face_line_in(m, id, face, offset, None)
+}
+
+/// [`face_line`], its joins found through `index` when there is one.
+pub(crate) fn face_line_in(m: &Model, id: Id, face: Face, offset: f64, index: Option<&Index>) -> Option<Curve> {
+    let w = m.wall(id)?;
+    let base = face_offset(m, w, face).or_else(|| match face {
+        Face::ExteriorCore => face_offset(m, w, Face::ExteriorFinish),
+        Face::InteriorCore => face_offset(m, w, Face::InteriorFinish),
+        _ => None,
+    })?;
+    let at = base + face.away(offset);
+    let axis = Axis::of(w);
+    // A face that is one of the layers' boundaries keeps the corner a compound type shares; any other line is cut
+    // where the wall's cap crosses it.
+    if let Some(k) = boundaries(m, w).iter().position(|o| (*o - at).abs() <= 1e-9) {
+        let line = layer_geometry(m, id, index).lines.get(k).cloned()?;
+        return curve_of(&axis, line, at);
+    }
+    let len = axis.length();
+    let ends = [end_geometry(m, id, false, index, &|_| true), end_geometry(m, id, true, index, &|_| true)];
+    let mut line = axis.points(0.0, len, at);
+    if line.len() < 2 {
+        return None;
+    }
+    for (i, end) in ends.iter().enumerate() {
+        let last = line.len() - 1;
+        line[if i == 0 { 0 } else { last }] = on_cap(&axis, &end.outline, i == 1, at);
+    }
+    curve_of(&axis, line, at)
+}
+
+/// `line` through the points of a face: an arc of a curved wall, else a straight line.
+fn curve_of(axis: &Axis, line: Vec<P2>, off: f64) -> Option<Curve> {
+    let (start, end) = (line.first().copied()?, line.last().copied()?);
+    if axis.arc().is_some() && line.len() >= 2 {
+        Some(Curve::arc_through(start, end, axis.at(axis.length() / 2.0, off)))
+    } else {
+        Some(Curve::line(start, end))
+    }
+}
+
 /// Whether two walls overlap in height, so they join.
 pub fn stacked(m: &Model, a: &Wall, b: &Wall) -> bool {
     m.base_z(a) < m.top_z(b) && m.base_z(b) < m.top_z(a)
@@ -263,6 +429,8 @@ pub(crate) struct Arm {
     pub(crate) cw: P2,
     pub(crate) centre: P2,
     pub(crate) thick: f64,
+    /// A curtain wall ending where a plain wall does: it doesn't mitre, the plain wall ends square against it.
+    pub(crate) butts: bool,
 }
 
 /// Wall `w` leaving the node at its start, or with `at_end`, at its end.
@@ -273,7 +441,17 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
     let t = axis.tangent(s);
     // Leaving from its end, it goes back: its interior face is on the counter-clockwise side.
     let (way, ccw, cw) = if at_end { (t * -1.0, int, ext) } else { (t, ext, int) };
-    Arm { id, at_end, mine, way, ccw: axis.at(s, ccw), cw: axis.at(s, cw), centre: axis.at(s, (ext + int) / 2.0), thick: ext - int }
+    Arm {
+        id,
+        at_end,
+        mine,
+        way,
+        ccw: axis.at(s, ccw),
+        cw: axis.at(s, cw),
+        centre: axis.at(s, (ext + int) / 2.0),
+        thick: ext - int,
+        butts: false,
+    }
 }
 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
@@ -283,6 +461,10 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, id, w, at_end, true)];
+    // A wall standing in a curtain wall's cell joins nothing, and nothing it.
+    if w.panel_of.is_some() {
+        return (arms, false);
+    }
     let mut through = false;
     // A wall that refuses to join meets nothing at this end: its own square end is its whole cap.
     if !w.join {
@@ -290,6 +472,8 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
     }
     // A wall that refuses to join is no candidate for anyone either: neither side is mitred.
     let joins = |o: &Wall| o.join && stacked(m, w, o);
+    let plain = crate::curtain::pattern(m, w).is_none();
+    let butts = |o: &Wall| plain && crate::curtain::pattern(m, o).is_some();
     let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
         Some(index) => Box::new(index.neighbours_at(id, node).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
         // The walls whose location lines come within the thickest wall's thickness of the node (those that end at it,
@@ -304,16 +488,16 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
     // Where they meet is asked first: whether they overlap in height takes both walls' heights, under any roof or floor
     // they're attached to.
     for (other, o) in candidates {
-        if other == id || !keep(o) {
+        if other == id || !keep(o) || o.panel_of.is_some() {
             continue;
         }
         if o.start.dist(node) <= TOL {
             if joins(o) {
-                arms.push(arm(m, other, o, false, false));
+                arms.push(Arm { butts: butts(o), ..arm(m, other, o, false, false) });
             }
         } else if o.end.dist(node) <= TOL {
             if joins(o) {
-                arms.push(arm(m, other, o, true, false));
+                arms.push(Arm { butts: butts(o), ..arm(m, other, o, true, false) });
             }
         } else {
             // A wall it ends on: the node within its thickness, between its ends.
@@ -323,8 +507,18 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
             if s > TOL && s < ax.length() - TOL && (int - TOL..=ext + TOL).contains(&across) && ax.distance(node, across) <= TOL && joins(o)
             {
                 let (t, (e, i), c) = (ax.tangent(s), (ax.at(s, ext), ax.at(s, int)), ax.at(s, (ext + int) / 2.0));
-                arms.push(Arm { id: other, at_end: false, mine: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int });
-                arms.push(Arm { id: other, at_end: false, mine: false, way: t * -1.0, ccw: i, cw: e, centre: c, thick: ext - int });
+                arms.push(Arm { id: other, at_end: false, mine: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int, butts: false });
+                arms.push(Arm {
+                    id: other,
+                    at_end: false,
+                    mine: false,
+                    way: t * -1.0,
+                    ccw: i,
+                    cw: e,
+                    centre: c,
+                    thick: ext - int,
+                    butts: false,
+                });
                 through = true;
             }
         }
@@ -338,7 +532,8 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
 /// it at any angle, their faces running on until they cross (no farther from the node than the
 /// thickest is thick, either way: past that, the end is square); a wall it ends on stops it at its
 /// face. At a square compound Butt the shared cap follows the structure around the corner.
-/// Where three or more walls meet, the node itself fills between them.
+/// Where three or more walls meet, the node itself fills between them. A curtain wall takes no part in a mitre: its parts are
+/// laid out on their own, and a plain wall ending at the end of one ends square at its far face.
 pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
     cap_in(m, id, at_end, None)
 }
@@ -363,11 +558,22 @@ impl WallEnd {
 fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> WallEnd {
     let Some(w) = m.wall(id) else { return WallEnd::default() };
     let (arms, through) = arms(m, id, at_end, index, keep);
+    let (against, arms): (Vec<Arm>, Vec<Arm>) = arms.into_iter().partition(|a| a.butts);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
     let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
     if n < 2 {
-        return WallEnd::plain(vec![me.cw, me.ccw]);
+        // Square, and against a curtain wall run on or back to its far face: its parts stand clear of any mitre.
+        let reach = |a: &Arm| {
+            [a.cw, a.ccw]
+                .into_iter()
+                .filter_map(|face| geom::line_intersection(me.centre, me.centre + me.way, face, face + a.way))
+                .map(|c| (c - me.centre).dot(me.way))
+                .filter(|d| d.abs() <= 2.0 * me.thick.max(a.thick))
+                .fold(f64::MAX, f64::min)
+        };
+        let d = against.iter().map(reach).fold(f64::MAX, f64::min);
+        return WallEnd::plain(if d < f64::MAX { vec![me.cw + me.way * d, me.ccw + me.way * d] } else { vec![me.cw, me.ccw] });
     }
     if n == 2
         && !through
@@ -381,7 +587,8 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
     // end. A crossing far along the wall is no corner at all: two walls meeting at a shallow angle cross metres in.
     let meet = |face: P2, other: P2, other_way: P2| {
         geom::line_intersection(face, face + me.way, other, other + other_way)
-            .filter(|c| (-limit..=limit).contains(&(*c - node).dot(me.way)))
+            // A face crossing exactly at the thickness can round just past it.
+            .filter(|c| (*c - node).dot(me.way).abs() <= limit + 1e-6)
             .unwrap_or(face)
     };
     let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
@@ -754,12 +961,13 @@ pub struct Hole {
     pub top: f64,
 }
 
-/// The hole `o` cuts in wall `w`: its type's width either side of its offset and its height above its
-/// sill. Which jamb a leaf is hinged on, and which way it opens, is the opening's, not the hole's.
+/// The hole `o` cuts in wall `w`: its type's width either side of its middle and its height above its bottom
+/// (`Model::opening_middle`). Which jamb a leaf is hinged on, and which way it opens, is the opening's, not the hole's.
 pub fn hole(m: &Model, w: &Wall, e: &Element, o: &Opening) -> Option<Hole> {
     let t = m.opening_type(e)?;
-    let bottom = m.own_base(w) + o.sill;
-    Some(Hole { s0: o.offset - t.width / 2.0, s1: o.offset + t.width / 2.0, bottom, top: bottom + t.height })
+    let (middle, sill) = m.opening_middle(o);
+    let bottom = m.own_base(w) + sill;
+    Some(Hole { s0: middle - t.width / 2.0, s1: middle + t.width / 2.0, bottom, top: bottom + t.height })
 }
 
 /// A column's base and top: what it's attached to, or a level plane.
@@ -1065,6 +1273,82 @@ mod tests {
         let lines = layer_lines(&s.model, 100003);
         assert_eq!(lines.len(), 5);
         assert!(near(lines[2][0], P2(0.0, 2070.0)) && near(lines[2][1], P2(5000.0, 2070.0)));
+    }
+
+    #[test]
+    fn a_walls_core_faces_lie_where_its_layers_put_them() {
+        let s = session(
+            r#"type {"category": "wall", "name": "C60", "layers": [{"function": "finish", "thickness": 50}, {"function": "structure", "thickness": 100}, {"function": "finish", "thickness": 50}]}
+               wall {"points": [[0, 0], [5000, 0]], "type": "C60"}
+               wall {"points": [[0, 2000], [5000, 2000]], "type": "C60", "location": "exterior-finish"}
+               wall {"points": [[0, 4000], [5000, 4000]], "type": "C60", "location": "interior-core"}
+               wall {"points": [[0, 6000], [5000, 6000]], "type": "C60", "location": "exterior-core"}"#,
+        );
+        let m = &s.model;
+        let ids: Vec<Id> = m.elements.keys().copied().filter(|id| m.wall(*id).is_some()).collect();
+        let at = |id| {
+            let w = m.wall(id).unwrap_or_else(|| panic!("no wall {id}"));
+            (core_faces(m, w), face_offset(m, w, Face::Centre), faces(m, w))
+        };
+        assert_eq!(at(ids[0]), (Some((50.0, -50.0)), Some(0.0), (100.0, -100.0)));
+        assert_eq!(at(ids[1]), (Some((-50.0, -150.0)), Some(-100.0), (0.0, -200.0)));
+        assert_eq!(at(ids[2]), (Some((100.0, 0.0)), Some(50.0), (150.0, -50.0)));
+        assert_eq!(at(ids[3]), (Some((0.0, -100.0)), Some(-50.0), (50.0, -150.0)));
+    }
+
+    #[test]
+    fn a_wall_without_a_core_falls_back_to_its_finish_face() {
+        let s = session(r#"wall {"points": [[0, 0], [5000, 0]]}"#);
+        let m = &s.model;
+        let w = m.wall(100002).unwrap_or_else(|| panic!("no wall"));
+        assert_eq!(core_faces(m, w), None);
+        let line = face_line(m, 100002, Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
+        assert!(near(line.start(), P2(0.0, 100.0)) && near(line.end(), P2(5000.0, 100.0)), "{line:?}");
+        assert!(face_line(m, 100002, Face::ExteriorFinish, 0.0).is_some(), "the finish is there");
+    }
+
+    #[test]
+    fn face_lines_of_walls_meeting_at_a_corner_cross_on_the_same_point() {
+        let s = session(
+            r#"type {"category": "wall", "name": "C60", "layers": [{"function": "finish", "thickness": 50}, {"function": "structure", "thickness": 100}, {"function": "finish", "thickness": 50}]}
+               wall {"points": [[0, 0], [4000, 0]], "type": "C60"}
+               wall {"points": [[0, 0], [0, -4000]], "type": "C60"}"#,
+        );
+        let m = &s.model;
+        let ids: Vec<Id> = m.elements.keys().copied().filter(|id| m.wall(*id).is_some()).collect();
+        let a = face_line(m, ids[0], Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
+        let b = face_line(m, ids[1], Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
+        // Each face line is cut at its wall's cap; their lines cross on the corner's bisector, 50 mm out from
+        // each location line, where the floor outline miters them.
+        let cross = geom::line_intersection(a.start(), a.end(), b.start(), b.end()).unwrap_or_else(|| panic!("parallel"));
+        assert!(near(cross, P2(50.0, 50.0)), "{a:?} {b:?} {cross:?}");
+    }
+
+    #[test]
+    fn a_curved_walls_face_line_is_an_arc_at_the_faces_off_the_axis() {
+        let s = session(r#"wall {"points": [[0, 0], [4000, 0]], "arc": 180}"#);
+        let m = &s.model;
+        let w = m.wall(100002).unwrap_or_else(|| panic!("no wall"));
+        let axis = Axis::of(w);
+        let line = face_line(m, 100002, Face::InteriorFinish, 0.0).unwrap_or_else(|| panic!("no line"));
+        assert!(near(line.start(), axis.at(0.0, -100.0)) && near(line.end(), axis.at(axis.length(), -100.0)), "{line:?}");
+        let centre = axis.centre().unwrap_or_else(|| panic!("no centre"));
+        assert!(line.points().iter().all(|p| (p.dist(centre) - 2100.0).abs() < 1.0), "its face runs 2100 mm from the centre");
+    }
+
+    #[test]
+    fn a_face_lines_offset_moves_it_away_from_the_wall() {
+        let s = session(r#"wall {"points": [[0, 0], [5000, 0]]}"#);
+        let m = &s.model;
+        let at = |face, off: f64| {
+            let line = face_line(m, 100002, face, off).unwrap_or_else(|| panic!("no line"));
+            line.start()
+        };
+        assert!(near(at(Face::ExteriorFinish, 0.0), P2(0.0, 100.0)));
+        assert!(near(at(Face::ExteriorFinish, 50.0), P2(0.0, 150.0)), "out from the exterior face");
+        assert!(near(at(Face::ExteriorFinish, -50.0), P2(0.0, 50.0)), "in toward the wall");
+        assert!(near(at(Face::InteriorFinish, 0.0), P2(0.0, -100.0)));
+        assert!(near(at(Face::InteriorFinish, 50.0), P2(0.0, -150.0)), "out from the interior face");
     }
 
     #[test]

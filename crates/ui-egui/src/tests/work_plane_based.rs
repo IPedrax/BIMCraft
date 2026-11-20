@@ -149,7 +149,8 @@ fn properties_show_revits_level_and_elevation_from_level_for_a_component_not_wor
     let c = *ids(&h, "component").last().unwrap();
     h.state_mut().selection = vec![c];
     h.run();
-    assert!(h.query_by_label("Level").is_some());
+    // Its row's box, not the ribbon's Level tool (Datum keeps it at 1280).
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Level").is_some());
     assert!(h.query_by_label("Height Offset From Level").is_none());
     let elevation = h.get_by_role_and_label(Role::TextInput, "Elevation from Level").value().unwrap_or_default();
     assert_eq!(elevation, "450", "the same value, under Revit's name");

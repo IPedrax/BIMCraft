@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use crate::DimMode;
 use crate::icons::Icon;
 use crate::lang::{t, tf};
+use crate::steel::Page;
 use crate::{BimApp, Status, Tool, big_button, panel, top_params};
 
 /// The command that makes elements of `category`.
@@ -70,7 +71,7 @@ impl BimApp {
         }
         let was = (self.run_justify, std::mem::take(&mut self.beam_offset));
         self.run_kept.insert(self.run_loaded, was);
-        let zero = self.session.model.units.length(0.0);
+        let zero = self.session.model.length(0.0);
         (self.run_justify, self.beam_offset) =
             self.run_kept.remove(category).unwrap_or_else(|| (bimcraft_core::runs::default_justify(category), zero));
         self.run_loaded = category;
@@ -103,6 +104,24 @@ impl BimApp {
             let tip = msg!("Reinforce (RF): bars by rules for the selected beam, column, footing or floor");
             if big_button(ui, Icon::Rebar, "Reinforce", self.reinforce_dialog.is_some(), tip).clicked() {
                 self.open_reinforce();
+            }
+        });
+        panel(ui, msg!("Quantities"), |ui| {
+            let open = self.steel_dialog.as_ref().map(|d| d.page);
+            let tip =
+                msg!("Materials (QT): what the beams, columns, footings and floors come to in concrete, formwork and steel, by level");
+            if big_button(ui, Icon::Beam, "Materials", open == Some(Page::Materials), tip).clicked() {
+                self.open_steel(Page::Materials);
+            }
+            let tip = msg!(
+                "Steel List (BL): every bar's mark, shape, count, length and weight, by level or for the project, as a list or as schedules"
+            );
+            if big_button(ui, Icon::Schedule, "Steel List", open == Some(Page::List), tip).clicked() {
+                self.open_steel(Page::List);
+            }
+            let tip = msg!("Cut Plan (CU): how many stock bars of the length you type to buy for the bars, and which pieces go in each");
+            if big_button(ui, Icon::Rebar, "Cut Plan", open == Some(Page::Plan), tip).clicked() {
+                self.open_steel(Page::Plan);
             }
         });
         panel(ui, msg!("Foundation"), |ui| {

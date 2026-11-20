@@ -303,7 +303,7 @@ fn a_file_keeps_its_pivots_and_a_file_of_28_reads_unchanged() {
     assert!(
         text.contains(&format!("\"format\": {}", crate::model::FORMAT)) || text.contains(&format!("\"format\":{}", crate::model::FORMAT))
     );
-    assert_eq!(crate::model::FORMAT, 20);
+    const { assert!(crate::model::FORMAT >= 20) };
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Swing"].lines, s.model.families["Swing"].lines);
@@ -466,4 +466,26 @@ fn t26_the_leaf_with_always_vertical_off_swings_the_same() {
             .collect()
     };
     assert_eq!(points(&off), points(&on), "Always Vertical off on the leaf changes nothing at 45°");
+}
+
+/// Issue 465: two planes pivoting on each other's crossings, with a locked dimension to one, as the hostile sweep has them.
+/// The family is refused for its pivots, and its problems are found without solving it: the solve would follow the cycle
+/// 257 deep, about 2 MiB of stack unoptimised (the sweep's thread overflowed). Here a thread of 512 KiB is enough.
+#[test]
+fn a_family_whose_planes_pivot_on_each_other_is_refused_without_solving_it() {
+    let (a, b) = ("1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f7");
+    let f: Family = serde_json::from_value(json!({
+        "types": {"A": {}},
+        "planes": [
+            {"guid": a, "start": [0, -1000, 0], "end": [0, 1000, 0], "up": [0, 0, 1],
+             "pivot": {"to": {"planes": [b, CENTER_FRONT_BACK]}, "angle": 90}},
+            {"guid": b, "start": [-1000, 5, 0], "end": [1000, 5, 0], "up": [0, 0, 1],
+             "pivot": {"to": {"planes": [a, CENTER_LEFT_RIGHT]}, "angle": 45}}
+        ],
+        "dimensions": [{"refs": [{"plane": a}, {"plane": CENTER_LEFT_RIGHT}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 500}]}]
+    }))
+    .unwrap();
+    assert!(f.check_pivots().is_err());
+    let (errors, _) = std::thread::Builder::new().stack_size(512 << 10).spawn(move || f.problems(&|_| true)).unwrap().join().unwrap();
+    assert!(!errors.is_empty(), "refused");
 }

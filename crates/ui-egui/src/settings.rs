@@ -26,7 +26,7 @@ use crate::assistant::Secret;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t, tf};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
-use crate::style::{Profile, Scheme, pal};
+use crate::style::{GuideStyle, Profile, Scheme, pal};
 use crate::updates::failed;
 
 /// The settings file's name, in the folder of the favorites.
@@ -121,6 +121,8 @@ pub struct Settings {
     pub high_contrast: [u8; 3],
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
+    /// How guides and the live drawing's aids are drawn: the refined look, or the classic one to compare it with.
+    pub guide_style: GuideStyle,
     /// Save and Save As write the project zipped (`bimcraft_core::bimc`): a much smaller file, slower to save and open.
     pub compressed_save: bool,
     /// The plans' old origin marker (now the Internal Origin, Site's in Visibility/Graphics: kept so a settings file reads
@@ -184,6 +186,7 @@ impl Settings {
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
+            "guide_style": self.guide_style.code(),
             "compressed_save": self.compressed_save,
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
@@ -233,6 +236,7 @@ impl Settings {
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
+            guide_style: v["guide_style"].as_str().and_then(GuideStyle::from_code).unwrap_or(base.guide_style),
             compressed_save: v["compressed_save"].as_bool().unwrap_or(base.compressed_save),
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
@@ -307,6 +311,7 @@ pub enum Page {
     Performance,
     Graphics,
     Files,
+    Templates,
     Agents,
     Assistant,
     Cowork,
@@ -314,8 +319,17 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 8] =
-        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Cowork, Page::Updates];
+    pub const ALL: [Page; 9] = [
+        Page::Interface,
+        Page::Performance,
+        Page::Graphics,
+        Page::Files,
+        Page::Templates,
+        Page::Agents,
+        Page::Assistant,
+        Page::Cowork,
+        Page::Updates,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -323,6 +337,7 @@ impl Page {
             Page::Performance => msg!("Performance"),
             Page::Graphics => "Graphics",
             Page::Files => msg!("Files"),
+            Page::Templates => msg!("Templates"),
             Page::Agents => msg!("Agents"),
             Page::Assistant => msg!("Assistant"),
             Page::Cowork => msg!("Co-Work"),
@@ -374,6 +389,7 @@ impl BimApp {
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
+        self.guide_style = kept.guide_style;
         self.compressed_save = kept.compressed_save;
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.shortcuts = crate::shortcuts::Shortcuts::from_config(&kept.shortcuts);
@@ -427,6 +443,7 @@ impl BimApp {
             window: self.window.kept,
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
+            guide_style: self.guide_style,
             compressed_save: self.compressed_save,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
@@ -483,6 +500,7 @@ impl BimApp {
                             Page::Performance => self.performance_page(ui),
                             Page::Graphics => self.graphics_page(ui),
                             Page::Files => self.files_page(ui),
+                            Page::Templates => self.templates_page(ui, ctx),
                             Page::Agents => self.agents_page(ui),
                             Page::Assistant => self.assistant_page(ui),
                             Page::Cowork => self.cowork_page(ui),

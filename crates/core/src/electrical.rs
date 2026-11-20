@@ -252,6 +252,17 @@ fn title(who: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether a new project starts with entry `name` of settings section `key`.
+pub(crate) fn starter_has(key: &str, name: &str) -> bool {
+    let s = starter();
+    match key {
+        "voltages" => s.voltages.contains_key(name),
+        "distribution_systems" => s.distribution_systems.contains_key(name),
+        "wire_types" => s.wire_types.contains_key(name),
+        _ => false,
+    }
+}
+
 /// What a new project starts with.
 #[derive(Default, Deserialize)]
 struct Starter {
@@ -288,6 +299,349 @@ pub fn start_system(units: Units) -> &'static str {
 /// The wire type a new circuit starts with, for a project in `units`.
 pub fn start_wire(units: Units) -> &'static str {
     if units.imperial() { "Cu THHN 90 °C" } else { "Cu PVC 70 °C" }
+}
+
+/// The electrical code's sections that hold the settings, an entry a rule by its name: what a project's code (its layers, then
+/// its changes) names comes into the project's settings when the code changes, and what the project changes in its settings
+/// goes into the code. An entry set to null is one the project took away.
+pub const SECTIONS: [&str; 3] = ["voltages", "distribution_systems", "wire_types"];
+
+/// A settings section of a code, read: each entry is the setting it names, or null.
+fn entries<T: serde::de::DeserializeOwned>(v: &serde_json::Value) -> Result<Vec<(String, Option<T>)>, String> {
+    let serde_json::Value::Object(o) = v else { return Err("the settings are entries by name".into()) };
+    o.iter()
+        .map(|(k, x)| match x {
+            serde_json::Value::Null => Ok((k.clone(), None)),
+            x => serde_json::from_value::<T>(x.clone()).map(|t| (k.clone(), Some(t))).map_err(|e| format!("`{k}`: {e}")),
+        })
+        .collect()
+}
+
+/// The check of a code's `voltages`.
+pub(crate) fn voltages_section(v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    for (k, x) in entries::<Voltage>(v)? {
+        x.map_or(Ok(()), |x| x.check(&k))?;
+    }
+    Ok(v.clone())
+}
+
+/// The check of a code's `distribution_systems`: the voltages each names are checked against the project's, once in it.
+pub(crate) fn systems_section(v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let all = BTreeMap::new();
+    for (k, x) in entries::<DistributionSystem>(v)? {
+        if let Some(x) = x {
+            match x.check(&k, &all) {
+                Err(e) if !e.contains("voltage") => return Err(e),
+                _ => {}
+            }
+        }
+    }
+    Ok(v.clone())
+}
+
+/// The check of a code's `wire_types`.
+pub(crate) fn wires_section(v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    for (k, x) in entries::<WireType>(v)? {
+        x.map_or(Ok(()), |x| x.check(&k))?;
+    }
+    Ok(v.clone())
+}
+
+/// Brings the settings the project's electrical code names into the project, `before` being the codes it had: an entry the
+/// code names is added, or takes the code's values; one it sets to null is taken away; one the codes named before and no
+/// longer name goes back to what a new project has, or away when a new project has none. An entry the codes never named stays
+/// (the project's own from before its settings were in its code), and so does one an element still names (a board's system,
+/// a circuit's voltage or wire type, a system's voltage), so that no element is left naming nothing. Voltages first, as
+/// systems name them.
+///
+/// A new entry that finds its kind full waits for what goes away; one that still finds no room is returned, by what it is,
+/// for the command to refuse.
+pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) -> Vec<String> {
+    use crate::codes::Discipline::Electrical;
+    use serde_json::Value;
+    let now = |m: &Model, key: &str| m.resolve_code(Electrical, key).value;
+    let was = |key: &str| crate::codes::resolve_in(before, Electrical, key).value;
+    // What the codes named before (or took away) and name no more, by section.
+    let gone = |now: &serde_json::Map<String, Value>, key: &str| -> Vec<String> {
+        was(key).into_iter().filter(|(k, _)| !now.contains_key(k)).map(|(k, _)| k).collect()
+    };
+    // What elements name, the systems' voltages aside.
+    let mut boards_on = std::collections::BTreeSet::new();
+    let mut circuit_voltages = std::collections::BTreeSet::new();
+    let mut circuit_wires = std::collections::BTreeSet::new();
+    for e in m.elements.values() {
+        match e {
+            Element::Component(Component { panel: Some(p), .. }) => boards_on.extend(p.distribution.clone()),
+            Element::Circuit(c) => {
+                circuit_voltages.extend(c.voltage.clone());
+                if let Some(w) = &c.wires {
+                    circuit_wires.extend(w.each().into_iter().filter_map(|(_, r)| r.map(|r| r.wire_type.clone())));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let (mut late_voltages, mut late_systems, mut late_wires) = (Vec::new(), Vec::new(), Vec::new());
+    let voltages = now(m, "voltages");
+    for (k, v) in &voltages {
+        if let Ok(x) = serde_json::from_value::<Voltage>(v.clone())
+            && x.check(k).is_ok()
+        {
+            if m.voltages.contains_key(k) || m.voltages.len() < MAX_VOLTAGES {
+                m.voltages.insert(k.clone(), x);
+            } else {
+                late_voltages.push((k.clone(), x));
+            }
+        }
+    }
+    // One a new project has is back first, as the systems coming back name it.
+    let voltages_gone = gone(&voltages, "voltages");
+    for k in &voltages_gone {
+        if let Some(x) = starter().voltages.get(k) {
+            m.voltages.insert(k.clone(), x.clone());
+        }
+    }
+    // A system is checked with the voltages the project will have, those still waiting for room too: a voltage freed by what
+    // goes makes room for them before the end.
+    let mut ahead = m.voltages.clone();
+    ahead.extend(late_voltages.iter().cloned());
+    let systems = now(m, "distribution_systems");
+    for (k, v) in &systems {
+        if let Ok(x) = serde_json::from_value::<DistributionSystem>(v.clone()) {
+            if m.distribution_systems.contains_key(k) || m.distribution_systems.len() < MAX_SYSTEMS {
+                if x.check(k, &ahead).is_ok() {
+                    m.distribution_systems.insert(k.clone(), x);
+                }
+            } else {
+                late_systems.push((k.clone(), x));
+            }
+        }
+    }
+    let taken: Vec<String> = systems.iter().filter(|(_, v)| v.is_null()).map(|(k, _)| k.clone()).collect();
+    for k in taken.iter().chain(&gone(&systems, "distribution_systems")) {
+        if boards_on.contains(k) {
+            continue;
+        }
+        match starter().distribution_systems.get(k) {
+            Some(x) if !systems.contains_key(k) && x.check(k, &ahead).is_ok() => {
+                m.distribution_systems.insert(k.clone(), x.clone());
+            }
+            _ => {
+                m.distribution_systems.remove(k);
+            }
+        }
+    }
+    let wires = now(m, "wire_types");
+    for (k, v) in &wires {
+        if let Ok(x) = serde_json::from_value::<WireType>(v.clone())
+            && x.check(k).is_ok()
+        {
+            if m.wire_types.contains_key(k) || m.wire_types.len() < MAX_WIRE_TYPES {
+                m.wire_types.insert(k.clone(), x);
+            } else {
+                late_wires.push((k.clone(), x));
+            }
+        }
+    }
+    let taken: Vec<String> = wires.iter().filter(|(_, v)| v.is_null()).map(|(k, _)| k.clone()).collect();
+    for k in taken.iter().chain(&gone(&wires, "wire_types")) {
+        if circuit_wires.contains(k) {
+            continue;
+        }
+        match starter().wire_types.get(k) {
+            Some(x) if !wires.contains_key(k) => {
+                m.wire_types.insert(k.clone(), x.clone());
+            }
+            _ => {
+                m.wire_types.remove(k);
+            }
+        }
+    }
+    // A voltage last, as a system still in the project may name it.
+    let named: std::collections::BTreeSet<String> = m.distribution_systems.values().flat_map(|d| d.voltage_names().cloned()).collect();
+    let taken: Vec<String> = voltages.iter().filter(|(_, v)| v.is_null()).map(|(k, _)| k.clone()).collect();
+    for k in taken.iter().chain(voltages_gone.iter().filter(|k| !starter().voltages.contains_key(*k))) {
+        if !named.contains(k) && !circuit_voltages.contains(k) {
+            m.voltages.remove(k);
+        }
+    }
+    // What found its kind full, now that what goes has gone: voltages first, as systems name them.
+    let mut full = Vec::new();
+    for (k, x) in late_voltages {
+        if m.voltages.len() < MAX_VOLTAGES {
+            m.voltages.insert(k, x);
+        } else {
+            full.push(format!("voltage `{k}`"));
+        }
+    }
+    for (k, x) in late_systems {
+        if m.distribution_systems.len() >= MAX_SYSTEMS {
+            full.push(format!("distribution system `{k}`"));
+        } else if x.check(&k, &ahead).is_ok() {
+            m.distribution_systems.insert(k, x);
+        }
+    }
+    for (k, x) in late_wires {
+        if m.wire_types.len() < MAX_WIRE_TYPES {
+            m.wire_types.insert(k, x);
+        } else {
+            full.push(format!("wire type `{k}`"));
+        }
+    }
+    full
+}
+
+/// The voltages the distribution systems in force under `codes` name that the project would not have, as (system, voltage):
+/// a voltage is had when the codes name it, or when it is one of the project's own they don't take away.
+fn unsupplied(m: &Model, before: &crate::codes::Codes, codes: &crate::codes::Codes) -> std::collections::BTreeSet<(String, String)> {
+    use crate::codes::Discipline::Electrical;
+    let resolve = |c: &crate::codes::Codes, key: &str| crate::codes::resolve_in(c, Electrical, key).value;
+    let (voltages, voltages_were) = (resolve(codes, "voltages"), resolve(before, "voltages"));
+    // One the codes don't name is had as `from_codes` leaves it: what a new project has where the codes named it before, the
+    // project's own where they never did.
+    let has = |v: &str| match voltages.get(v) {
+        Some(x) => !x.is_null(),
+        None if voltages_were.contains_key(v) => starter().voltages.contains_key(v),
+        None => m.voltages.contains_key(v),
+    };
+    let (systems, systems_were) = (resolve(codes, "distribution_systems"), resolve(before, "distribution_systems"));
+    // The systems in force: the codes', and the project's own no code named (one the codes named before goes back to what a
+    // new project has).
+    let own = m
+        .distribution_systems
+        .iter()
+        .filter(|(k, _)| !systems.contains_key(*k) && !systems_were.contains_key(*k))
+        .map(|(k, d)| (k.clone(), serde_json::json!(d)));
+    let back = starter().distribution_systems.iter().filter(|(k, _)| !systems.contains_key(*k) && systems_were.contains_key(*k));
+    let own = own.chain(back.map(|(k, d)| (k.clone(), serde_json::json!(d))));
+    let mut out = std::collections::BTreeSet::new();
+    for (k, v) in systems.clone().into_iter().chain(own) {
+        let Ok(x) = serde_json::from_value::<DistributionSystem>(v) else { continue };
+        out.extend(x.voltage_names().filter(|n| !has(n)).map(|n| (k.clone(), n.clone())));
+    }
+    out
+}
+
+/// Whether `codes` keep the project's settings whole, where `before` did: each distribution system in force names a voltage
+/// the project has (a system naming none would never reach the project's settings, and a voltage taken away under a system
+/// leaves it naming nothing), and none an element names is set to null (a board's system, a circuit's voltage or wire type),
+/// as the dialog's commands refuse to take those away.
+pub(crate) fn settings_fit(m: &Model, before: &crate::codes::Codes, codes: &crate::codes::Codes) -> Result<(), String> {
+    use crate::codes::Discipline::Electrical;
+    let mut named: [std::collections::BTreeSet<&str>; 3] = Default::default();
+    for e in m.elements.values() {
+        match e {
+            Element::Component(Component { panel: Some(p), .. }) => named[1].extend(p.distribution.as_deref()),
+            Element::Circuit(c) => {
+                named[0].extend(c.voltage.as_deref());
+                if let Some(w) = &c.wires {
+                    named[2].extend(w.each().into_iter().filter_map(|(_, r)| r.map(|r| r.wire_type.as_str())));
+                }
+            }
+            _ => {}
+        }
+    }
+    for (key, named) in SECTIONS.iter().zip(&named) {
+        let was = crate::codes::resolve_in(before, Electrical, key).value;
+        for (k, v) in crate::codes::resolve_in(codes, Electrical, key).value {
+            if v.is_null() && named.contains(k.as_str()) && was.get(&k).is_none_or(|w| !w.is_null()) {
+                return Err(format!("`{}` of {key} is one an element of the project names: change that first", shown(&k)));
+            }
+        }
+    }
+    // A system the codes now hold, or hold otherwise, is one the `distribution_system` command would take: what it asks of
+    // the voltages it names (a three-phase one's line and neutral voltages about √3 apart), with the voltages the project
+    // would have. One naming a voltage the project wouldn't have is the next check's.
+    let resolve = |c: &crate::codes::Codes, key: &str| crate::codes::resolve_in(c, Electrical, key).value;
+    let mut voltages = m.voltages.clone();
+    let named = resolve(codes, "voltages");
+    // One the codes named before and name no more is back as a new project has it, as `from_codes` puts it back.
+    for k in resolve(before, "voltages").keys().filter(|k| !named.contains_key(*k)) {
+        if let Some(x) = starter().voltages.get(k) {
+            voltages.insert(k.clone(), x.clone());
+        }
+    }
+    for (k, v) in named {
+        match serde_json::from_value::<Voltage>(v) {
+            Ok(x) => {
+                voltages.insert(k, x);
+            }
+            Err(_) => {
+                voltages.remove(&k);
+            }
+        }
+    }
+    let systems_were = resolve(before, "distribution_systems");
+    for (k, v) in resolve(codes, "distribution_systems") {
+        if v.is_null() || systems_were.get(&k) == Some(&v) {
+            continue;
+        }
+        let Ok(x) = serde_json::from_value::<DistributionSystem>(v) else { continue };
+        if x.voltage_names().all(|n| voltages.contains_key(n))
+            && let Err(e) = x.check(&k, &voltages)
+        {
+            return Err(e);
+        }
+    }
+    let was = unsupplied(m, before, before);
+    match unsupplied(m, before, codes).into_iter().find(|p| !was.contains(p)) {
+        Some((system, voltage)) => Err(format!(
+            "distribution system `{}` names voltage `{}`, which the project wouldn't have: change the system first, or add the voltage",
+            shown(&system),
+            shown(&voltage)
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Whether two values are the same, a number by its value (`277` is `277.0`).
+fn same(a: &serde_json::Value, b: &serde_json::Value) -> bool {
+    use serde_json::Value::*;
+    match (a, b) {
+        (Number(x), Number(y)) => x.as_f64() == y.as_f64(),
+        (Array(x), Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same(x, y)),
+        (Object(x), Object(y)) => {
+            // A field left out is the one set to null.
+            let keys: std::collections::BTreeSet<&std::string::String> = x.keys().chain(y.keys()).collect();
+            keys.into_iter().all(|k| same(x.get(k).unwrap_or(&Null), y.get(k).unwrap_or(&Null)))
+        }
+        _ => a == b,
+    }
+}
+
+/// Writes a setting the project changed into its electrical code, as the project's change of rule `name` of `key`: its value,
+/// or none when it was taken away. A change that leaves it as the code's layers have it is no change; one taken away that no
+/// layer names leaves nothing behind, unless a new project has it.
+pub(crate) fn to_codes(m: &mut Model, key: &str, name: &str, value: Option<serde_json::Value>) {
+    use crate::codes::Discipline::Electrical;
+    let layered = crate::codes::layered(&m.codes, Electrical, key).value;
+    let mut codes = (*m.codes).clone();
+    let changes = codes.choice_mut(Electrical).changes.entry(key.to_string()).or_default();
+    match (value, layered.get(name)) {
+        (Some(v), Some(was)) if same(was, &v) => {
+            changes.remove(name);
+        }
+        (Some(v), _) => {
+            changes.insert(name.to_string(), v);
+        }
+        (None, Some(_)) => {
+            changes.insert(name.to_string(), serde_json::Value::Null);
+        }
+        // One a new project has is taken away for good: said, so that it doesn't come back on import.
+        (None, None) if starter_has(key, name) => {
+            changes.insert(name.to_string(), serde_json::Value::Null);
+        }
+        (None, None) => {
+            changes.remove(name);
+        }
+    }
+    if changes.is_empty() {
+        codes.choice_mut(Electrical).changes.remove(key);
+    }
+    if codes != *m.codes {
+        m.codes = crate::shared::Shared::new(codes);
+    }
 }
 
 /// The settings are within what the project may hold, and a system names voltages it has.

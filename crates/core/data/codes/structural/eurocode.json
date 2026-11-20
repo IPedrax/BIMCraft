@@ -1,0 +1,76 @@
+{
+ "code": "eurocode",
+ "discipline": "structural",
+ "name": "Eurocodes (recommended values)",
+ "edition": "EN 1990:2002, EN 1991-1-1:2002",
+ "region": "Europe",
+ "references": [
+  "EN 1990:2002 Basis of structural design, Annex A1",
+  "EN 1991-1-1:2002 Actions on structures, densities, self-weight, imposed loads"
+ ],
+ "note": "The values the Eurocodes recommend, which each country's National Annex may change: pick your country's and change what it sets. A reference: nothing checks these yet. Typed from public summaries and unchecked.",
+ "sections": {
+  "loads": {
+   "gamma_g": 1.35,
+   "gamma_q": 1.5,
+   "psi_0_residential_office": 0.7,
+   "psi_1_residential_office": 0.5,
+   "psi_2_residential_office": 0.3,
+   "imposed": [
+    {
+     "category": "A",
+     "use": "domestic and residential floors",
+     "qk": 2.0
+    },
+    {
+     "category": "A",
+     "use": "stairs",
+     "qk": 2.0
+    },
+    {
+     "category": "A",
+     "use": "balconies",
+     "qk": 2.5
+    },
+    {
+     "category": "B",
+     "use": "offices",
+     "qk": 3.0
+    },
+    {
+     "category": "C3",
+     "use": "areas without obstacles to moving people",
+     "qk": 5.0
+    },
+    {
+     "category": "D1",
+     "use": "general retail",
+     "qk": 4.0
+    },
+    {
+     "category": "E1",
+     "use": "storage",
+     "qk": 7.5
+    },
+    {
+     "category": "H",
+     "use": "roofs not accessible",
+     "qk": 0.4
+    }
+   ],
+   "unit_weights": [
+    {
+     "material": "reinforced concrete",
+     "kn_m3": 25.0
+    },
+    {
+     "material": "steel",
+     "kn_m3": 78.5
+    }
+   ]
+  }
+ },
+ "sources": {
+  "loads": "EN 1990 Table A1.1 and A1.2(B), EN 1991-1-1 Tables 6.2 and A.1, recommended values (unchecked)"
+ }
+}

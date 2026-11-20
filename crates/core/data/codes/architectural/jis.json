@@ -1,0 +1,64 @@
+{
+ "code": "jis",
+ "discipline": "architectural",
+ "name": "Building Standards Law of Japan",
+ "region": "Japan",
+ "references": [
+  "Building Standards Law Enforcement Order, articles 23 to 25 (stairs, landings, handrails)"
+ ],
+ "note": "The row for buildings not otherwise listed; schools, theatres and large shops have stricter rows, a dwelling a looser one. A winder's going is measured 300 from its narrow end. The order gives no riser minimum, going maximum, step rule, headroom, riser count or uniformity: those are forgiving numbers.",
+ "sections": {
+  "stairs": {
+   "riser": 180,
+   "going": 260,
+   "riser_min": 100,
+   "riser_max": 220,
+   "going_min": 210,
+   "going_max": 400,
+   "step_min": 550,
+   "step_max": 650,
+   "width_min": 750,
+   "headroom": 2000,
+   "flight_rise_max": 4000,
+   "flight_risers_max": 40,
+   "landing_rule": "fixed",
+   "landing_length": 1200,
+   "winders": true,
+   "walk_line": "narrow_side",
+   "walk_line_offset": 300,
+   "winder_going_min": 210,
+   "winder_narrow_min": 100,
+   "nosing_max": 40,
+   "open_risers": true,
+   "uniformity": 10,
+   "handrail_min": 750,
+   "handrail_max": 1100,
+   "guard_min": 1100
+  }
+ },
+ "sources": {
+  "stairs.riser_max": "Enforcement Order article 23, its table (unchecked)",
+  "stairs.going_min": "Enforcement Order article 23, its table (unchecked)",
+  "stairs.width_min": "Enforcement Order article 23, its table (unchecked)",
+  "stairs.winder_narrow_min": "Enforcement Order article 23, its table (unchecked)",
+  "stairs.walk_line_offset": "Enforcement Order article 23, its table (unchecked)",
+  "stairs.flight_rise_max": "Enforcement Order article 24 (unchecked)",
+  "stairs.handrail_min": "Enforcement Order article 25 (unchecked)",
+  "stairs.riser_min": "Not in the code: a forgiving number",
+  "stairs.going_max": "Not in the code: a forgiving number",
+  "stairs.step_min": "Not in the code: a forgiving number",
+  "stairs.step_max": "Not in the code: a forgiving number",
+  "stairs.headroom": "Not in the code: a forgiving number",
+  "stairs.flight_risers_max": "Not in the code: a forgiving number",
+  "stairs.uniformity": "Not in the code: a forgiving number"
+ },
+ "kinds": {
+  "stairs.riser_min": "forgiving",
+  "stairs.going_max": "forgiving",
+  "stairs.step_min": "forgiving",
+  "stairs.step_max": "forgiving",
+  "stairs.headroom": "forgiving",
+  "stairs.flight_risers_max": "forgiving",
+  "stairs.uniformity": "forgiving"
+ }
+}

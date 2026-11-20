@@ -154,6 +154,13 @@ pub const REPLACES: &[&str] = &["new", "open", "recover", "highrise", "tower"];
 
 /// What a refusal of a session that may only read says, after what the command would do and before what would let it edit.
 pub const READ_ONLY: &str = "which is read-only for agents";
+/// A place in the undo history, which [`Session::squash`] joins the steps after.
+#[derive(Clone, Debug)]
+pub struct Mark {
+    steps: usize,
+    dropped: usize,
+    resets: usize,
+}
 
 /// The commands that copy what stands: a copy is made in the session's phase and isn't taken down with its original.
 const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
@@ -174,6 +181,8 @@ pub struct Session {
     pub(crate) checks: usize,
     /// How many times the project was replaced, so a transaction knows its history went with it.
     resets: usize,
+    /// How many of the oldest undo steps were dropped past [`UNDO_LIMIT`], so a [`Mark`] still finds its place.
+    dropped: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
     /// The formats it exports to (`export`): the core's, and any the app registers (the DWG writer, from the DWG bridge).
@@ -197,6 +206,8 @@ pub struct Session {
     /// Whether a Co-Work guest's command is running ([`crate::cowork::run_for_guest`]): then no command may read or write a file, so a
     /// guest never reaches the host's disk.
     pub(crate) no_files: bool,
+    /// What Copy to Clipboard or Cut last kept (`clipboard.rs`'s text), which `paste` takes when it isn't given one.
+    pub clipboard: Option<Arc<str>>,
     /// How many steps were made, which numbers them.
     steps_made: u64,
     /// Whether a dry run is under way ([`Session::script_dry_run`]): then each command is looked at as it is about to run, with
@@ -206,6 +217,11 @@ pub struct Session {
     /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
     /// check what it changes ([`Model::check_changed`]).
     verified: Option<Arc<Model>>,
+    /// What a command does to a group it would change from inside, while `resolve_group` runs it: ungroup it, or make it a type
+    /// of its own. None: the command is refused ([`crate::groups::CONFLICT`]).
+    pub(crate) group_fix: Option<crate::groups::commands::Fix>,
+    /// The group in Edit Group, if one is: its members change freely until Finish or Cancel.
+    pub(crate) group_edit: Option<Box<crate::groups::commands::GroupEdit>>,
 }
 
 impl Default for Session {
@@ -268,6 +284,7 @@ impl Session {
             #[cfg(test)]
             checks: 0,
             resets: 0,
+            dropped: 0,
             dwg: None,
             exports: crate::export::Registry::default(),
             external: Vec::new(),
@@ -275,9 +292,12 @@ impl Session {
             author: None,
             progress: None,
             no_files: false,
+            clipboard: None,
             steps_made: 0,
             dry_run: false,
             verified: None,
+            group_fix: None,
+            group_edit: None,
         }
     }
 
@@ -294,6 +314,36 @@ impl Session {
         self.resets += 1;
         self.undo.clear();
         self.redo.clear();
+        self.group_edit = None;
+    }
+
+    /// The group instance in Edit Group, by GUID, if one is: front ends pick its members as themselves and show its panel.
+    pub fn editing_group(&self) -> Option<crate::ids::Guid> {
+        self.group_edit.as_ref().map(|e| e.group)
+    }
+
+    /// Leaves Edit Group with the project as it is: a Co-Work guest's copy, once the edit it follows has ended on the host.
+    pub fn end_group_edit(&mut self) {
+        self.group_edit = None;
+    }
+
+    /// What Edit Group lets a front end pick and change, if a group is in it ([`crate::groups::Scope`]).
+    pub fn group_scope(&self) -> Option<crate::groups::Scope> {
+        self.group_edit.as_ref().and_then(|ed| crate::groups::Scope::of(&self.model, ed))
+    }
+
+    /// Back to `model`, a model a command left that passed, with the undo steps after the first `undo_len` forgotten: Cancel
+    /// of Edit Group.
+    pub(crate) fn rewind(&mut self, model: Arc<Model>, undo_len: usize) {
+        self.undo.truncate(undo_len);
+        self.redo.clear();
+        self.verified = Some(Arc::clone(&model));
+        self.model = model;
+    }
+
+    /// How many undo steps there are.
+    pub(crate) fn undo_len(&self) -> usize {
+        self.undo.len()
     }
 
     /// [`Session::reset`] to a model already shared: one read on another session (a window's open on a thread of its own).
@@ -304,6 +354,7 @@ impl Session {
         self.resets += 1;
         self.undo.clear();
         self.redo.clear();
+        self.group_edit = None;
     }
 
     /// Takes `model` as the project, with no history of its own: a Co-Work guest's copy taking in the host's
@@ -435,7 +486,7 @@ impl Session {
     /// [`Session::execute`] of a command found, as any session runs it.
     fn perform(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
         // A library entry's GUID, wherever a command takes a name, is that name.
-        let named = named(&self.model, params);
+        let named = named(&self.model, cmd.id, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let verified = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
@@ -523,6 +574,14 @@ impl Session {
                         assert!(self.model.library_in_step(), "the library isn't in step after `{}`", cmd.id);
                     }
                 }
+                // A curtain wall's thickness and the walls in its cells follow what this changed.
+                let lost = if verified && !crate::curtain::may_be_out_of_date(&self.model, &before) {
+                    Vec::new()
+                } else if crate::curtain::out_of_date(&self.model) {
+                    crate::curtain::sync(self.model_mut())
+                } else {
+                    Vec::new()
+                };
                 // A room frozen keeps the boundary it has now; one thawed lets it go. After a verified model, only a room the
                 // command changed can be either.
                 let unsettled = |e: &Element| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some());
@@ -532,6 +591,14 @@ impl Session {
                 };
                 if unsettled {
                     self.model_mut().keep_rooms();
+                }
+                // A family whose origin the command moved (a reload, an edit of its planes) moves its instances by as much, so
+                // they stay where they stand (O1); a project the command replaced was settled as it was read.
+                if !REPLACES.contains(&cmd.id) {
+                    let settled = !self.model.origins_unsettled(&before);
+                    if !settled {
+                        self.model_mut().settle_origins(Some(&before));
+                    }
                 }
                 // A hosted component goes where its plane is, or onto its plane where the command moved it.
                 let unsettled = self.model.unsettled(Some(&before));
@@ -562,6 +629,11 @@ impl Session {
                             cmd.id
                         );
                     }
+                    // A group moved is placed again from its type; one changed from inside is a conflict.
+                    // What it placed has parts and members of types to give ids.
+                    if crate::groups::keep(self, &before, first_new)? && !self.model.library_in_step() {
+                        self.model_mut().sync_library();
+                    }
                 }
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file
                 // from before may break; Insert from File brings in what it finds.
@@ -587,7 +659,7 @@ impl Session {
                         }
                         checked
                     })
-                    .map(|()| v)
+                    .map(|()| crate::curtain::warn_of_lost(v, &lost))
             });
         match result {
             Err(e) => {
@@ -600,9 +672,11 @@ impl Session {
                 self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
                     let step = self.stamped(Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) });
+                    before.derived.forget();
                     self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
+                        self.dropped += 1;
                     }
                     self.redo.clear();
                 }
@@ -614,7 +688,7 @@ impl Session {
     /// [`Session::execute`] of a command a plugin registered. The plugin's closure runs the function in its
     /// sandbox and wraps it in its own transaction; here the model is only guarded, as for any command.
     fn execute_external(&mut self, cmd: ExternalCommand, name: &str, params: &Value) -> Result<Value, String> {
-        let named = named(&self.model, params);
+        let named = named(&self.model, name, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let verified = self.verified.clone();
@@ -784,9 +858,11 @@ impl Session {
                     self.redo = redo;
                 } else {
                     let step = self.stamped(Step { checked, ..Step::new(label, &before, &self.model) });
+                    before.derived.forget();
                     undo.push((step, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
+                        self.dropped += 1;
                     }
                     self.redo.clear();
                 }
@@ -806,6 +882,7 @@ impl Session {
         let Some((first, before)) = steps.next() else { return };
         drop(steps);
         let step = Step { checked: first.checked, by: first.by, ..self.stamped(Step::new(to, &before, &self.model)) };
+        before.derived.forget();
         self.undo.push((step, before));
     }
 
@@ -813,6 +890,27 @@ impl Session {
     fn stamped(&mut self, step: Step) -> Step {
         self.steps_made += 1;
         Step { by: self.author.clone(), n: self.steps_made, ..step }
+    }
+
+    /// Where the history stands, for [`Session::squash`].
+    pub fn mark(&self) -> Mark {
+        Mark { steps: self.undo.len(), dropped: self.dropped, resets: self.resets }
+    }
+
+    /// The undo steps made since `mark`, as one named `label`: a run of commands that came one at a time (a PyAddin's,
+    /// a frame at a time in the window) and is taken back as one. Fewer than two, or a project replaced since, is left.
+    pub fn squash(&mut self, mark: &Mark, label: &'static str) {
+        if self.resets != mark.resets {
+            return;
+        }
+        let at = mark.steps.saturating_sub(self.dropped - mark.dropped);
+        if self.undo.len() < at + 2 {
+            return;
+        }
+        let mut squashed = self.undo.split_off(at);
+        let (first, before) = squashed.swap_remove(0);
+        let step = Step { checked: first.checked, by: first.by, ..self.stamped(Step::new(label, &before, &self.model)) };
+        self.undo.push((step, before));
     }
 
     /// What elements from id `first` on, which a command just made, are made in: the session's phase
@@ -867,7 +965,9 @@ impl Session {
             let Some((mut step, model)) = from.pop() else { break };
             label = step.label.clone();
             std::mem::swap(&mut step.checked, &mut checked);
-            to.push((step, std::mem::replace(&mut self.model, model)));
+            let replaced = std::mem::replace(&mut self.model, model);
+            replaced.derived.forget();
+            to.push((step, replaced));
         }
         if checked {
             self.verified = Some(Arc::clone(&self.model));
@@ -987,6 +1087,7 @@ impl Session {
         self.undo[at].0.undone = true;
         let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &now));
         let step = Step { by: Some(by.into()), undoes: Some(n), inverse, checked, ..self.stamped(Step::new(&label, &now, &m)) };
+        now.derived.forget();
         self.undo.push((step, now));
         if self.undo.len() > UNDO_LIMIT {
             self.undo.remove(0);
@@ -1298,9 +1399,10 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// `params` with every string that is a library entry's GUID put as the entry's name; none when there's no such string.
-fn named(m: &Model, params: &Value) -> Option<Value> {
-    fn walk(m: &Model, v: &mut Value, changed: &mut bool) {
+/// `params` of command `id` with every string that is a library entry's GUID put as the entry's name; none when there's no such
+/// string.
+fn named(m: &Model, id: &str, params: &Value) -> Option<Value> {
+    fn walk(m: &Model, v: &mut Value, kept: &[&str], changed: &mut bool) {
         match v {
             Value::String(s) => {
                 if let Some((_, e)) = crate::ids::Guid::parse(s).filter(|g| g.pending().is_none()).and_then(|g| m.library.by_guid(g)) {
@@ -1309,17 +1411,20 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
                     *changed = true;
                 }
             }
-            Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, changed)),
-            // A `guid` field says which thing it is, as a definition for a dictionary does, and `definition` which one a family's parameter is tied to: they stay GUIDs.
-            Value::Object(o) => {
-                o.iter_mut().filter(|(k, _)| !matches!(k.as_str(), "guid" | "definition")).for_each(|(_, x)| walk(m, x, changed))
-            }
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, kept, changed)),
+            Value::Object(o) => o.iter_mut().filter(|(k, _)| !kept.contains(&k.as_str())).for_each(|(_, x)| walk(m, x, kept, changed)),
             _ => {}
         }
     }
+    // A `guid` field says which thing it is, as a definition for a dictionary does, and `definition` which one a family's parameter is tied to: they stay GUIDs.
+    // So do `classify`'s `target` and an answer's `key`, which may be a type's; other commands' fields of those names are named as before.
+    let kept: &[&str] = match id {
+        "classify" | "classification_answer" => &["guid", "definition", "target", "key"],
+        _ => &["guid", "definition"],
+    };
     let mut v = params.clone();
     let mut changed = false;
-    walk(m, &mut v, &mut changed);
+    walk(m, &mut v, kept, &mut changed);
     changed.then_some(v)
 }
 
@@ -1345,4 +1450,21 @@ fn sync_oracle(m: &Model, before: &Model) -> Option<(Model, Model)> {
     let mut whole = m.clone();
     whole.sync_library_with(&mut counter());
     Some((incremental, whole))
+}
+
+#[cfg(test)]
+mod named_tests {
+    use super::*;
+
+    #[test]
+    fn a_target_or_key_stays_a_guid_for_classifications_commands_alone() {
+        let s = Session::new();
+        let name = "Exterior - 300mm";
+        let g = s.model.library.guid(&crate::library::Kind::Type("wall".into()), name).unwrap().to_string();
+        let p = json!({"assign": [{"target": g}], "key": g, "type": g});
+        assert_eq!(named(&s.model, "classify", &p), Some(json!({"assign": [{"target": g}], "key": g, "type": name})));
+        assert_eq!(named(&s.model, "classification_answer", &p), Some(json!({"assign": [{"target": g}], "key": g, "type": name})));
+        // Any other command's fields of those names take a GUID as the entry's name, as they did before classification.
+        assert_eq!(named(&s.model, "title_block", &p), Some(json!({"assign": [{"target": name}], "key": name, "type": name})));
+    }
 }

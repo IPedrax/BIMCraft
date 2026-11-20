@@ -10,6 +10,7 @@ use bimcraft_i18n::{msg, ui_msg};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -112,6 +113,15 @@ pub struct Table {
     pub totals: Option<Vec<Value>>,
 }
 
+/// What a table is of: a schedule element, or one every project has, by its category.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum TableKey {
+    /// A schedule element, by its GUID.
+    Element(crate::ids::Guid),
+    /// One every project has, by its category ([`VIEWS`]), while it is not the project's own.
+    Builtin(String),
+}
+
 /// The schedules every project has, as views: each one's category, and its name. Each is the
 /// project's own once it's placed on a sheet or changed.
 pub const VIEWS: [(&str, &str); 7] = [
@@ -204,6 +214,7 @@ const MARK: Own = ("Mark", Kind::Text, From::Key("mark"));
 const OPERATION: Own = (msg!("Operation"), Kind::Text, From::Operation);
 const NAME: Own = ("Name", Kind::Text, From::Key("name"));
 const HOST: Own = ("Wall", Kind::Number, From::Ref("host"));
+const HOST_WALL: Own = ("Wall", Kind::Number, From::Key("host"));
 const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
@@ -218,6 +229,10 @@ const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// The formwork a member needs (`quantities`), in m², the weight of the bars it hosts, kg, and that over its volume, kg/m³.
+const FORMWORK: Own = (msg!("Formwork Area"), Kind::Area, From::Key("formwork_m2"));
+const REBAR_WEIGHT: Own = (msg!("Rebar Weight"), Kind::Number, From::Key("rebar_kg"));
+const REBAR_RATIO: Own = (msg!("Rebar Ratio"), Kind::Number, From::Key("rebar_ratio"));
 /// Where it stands in the active location's shared coordinates: its point, at its base.
 const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
 const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
@@ -249,6 +264,10 @@ const SHARED: (&str, usize, &[Own]) = (
         PHASE_CREATED,
         PHASE_DEMOLISHED,
         DESIGN_OPTION,
+        VOLUME,
+        FORMWORK,
+        REBAR_WEIGHT,
+        REBAR_RATIO,
     ],
 );
 
@@ -294,6 +313,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     ("wall", 6, &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    // A curtain wall's parts have no ids of their own: `host` is its wall, what picking a row selects.
+    ("curtainpanel", 5, &[TYPE, WIDTH, HEIGHT, AREA, HOST_WALL, THICKNESS, COUNT]),
+    ("mullion", 3, &[TYPE, LENGTH, HOST_WALL, COUNT]),
     (
         "floor",
         5,
@@ -309,9 +331,14 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    ("toposolid", 5, &[NAME, LEVEL, AREA, VOLUME, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "roof",
         4,
@@ -345,6 +372,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -368,6 +399,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -387,6 +422,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -408,6 +447,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SECTION_AREA,
             WEIGHT_PER_METRE,
             WEIGHT,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -423,9 +466,32 @@ const OWN: &[(&str, usize, &[Own])] = &[
             (msg!("Weight"), Kind::Number, From::Key("weight_kg")),
             ("Host", Kind::Number, From::Ref("host")),
             ("Layer", Kind::Text, From::Key("layer")),
+            MARK,
+            (msg!("Host Mark"), Kind::Text, From::Key("host_mark")),
+            (msg!("Shape"), Kind::Text, From::Key("shape_label")),
         ],
     ),
-    ("stripfooting", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "stripfooting",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            LENGTH,
+            WIDTH,
+            DEPTH,
+            SYSTEM,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
+        ],
+    ),
     (
         "pipe",
         6,
@@ -719,7 +785,7 @@ pub(crate) fn field_value_with(m: &Model, id: impl crate::ids::Key, name: &str, 
 /// units, a yes or no as `Yes` or `No`): what a tag shows.
 pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
     let (kind, v) = field_value_with(m, id, name, rooms)?;
-    Some(shown(m.units, kind, &v))
+    Some(shown_to(m.units, m.decimals, kind, &v))
 }
 
 /// The fields a schedule of category `cat` shows unless it chooses.
@@ -1098,6 +1164,7 @@ impl Row<'_> {
             "floor" => m.types.floor.get(ty).map(|t| &t.layers),
             "roof" => m.types.roof.get(ty).map(|t| &t.layers),
             "ceiling" => m.types.ceiling.get(ty).map(|t| &t.layers),
+            "toposolid" => m.types.toposolid.get(ty).map(|t| &t.layers),
             _ => None,
         };
         let named = |l: &&crate::model::Layer| !l.material.trim().is_empty();
@@ -1133,6 +1200,9 @@ fn fine(x: f64) -> f64 {
 /// a multi-category one lists. Of mass floors, a mass at each level it crosses, with its floor area there, its perimeter
 /// and the volume up to the next such level or its top.
 fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, Value)> {
+    if matches!(cat, "curtainpanel" | "mullion") {
+        return curtain_parts(m, cat);
+    }
     if cat == MULTI {
         let cats = listed(sc);
         let rooms = Rooms::new(m);
@@ -1164,6 +1234,47 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
         }
     }
     out
+}
+
+/// A row for each panel or each mullion of the project's curtain walls.
+fn curtain_parts<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
+    use crate::curtain::{self, Address, PartKind};
+    let kind = if cat == "mullion" { PartKind::Mullion } else { PartKind::Panel };
+    let mut out = Vec::new();
+    for (&id, e) in &m.elements {
+        let Element::Wall(w) = e else { continue };
+        if curtain::pattern(m, w).is_none() {
+            continue;
+        }
+        let laid = curtain::layout(m, w);
+        for p in &laid.parts {
+            let Some(s) = laid.shapes.get(p.shape as usize).filter(|s| s.kind == kind) else { continue };
+            let [along, up, across] = s.size;
+            let json = match kind {
+                PartKind::Panel => serde_json::json!({
+                    "id": id, "host": id, "type": s.type_name, "width": along, "height": up, "thickness": across,
+                    "area_m2": crate::commands::m2(along * up),
+                }),
+                PartKind::Mullion => {
+                    let length = if matches!(p.address, Address::Vertical { .. } | Address::Corner { .. }) { up } else { along };
+                    serde_json::json!({"id": id, "host": id, "type": s.type_name, "length": length})
+                }
+            };
+            out.push((id, e, json));
+        }
+    }
+    out
+}
+
+/// [`table`], kept with the model for the state its elements are in: what a view asks of it on every repaint. `view` names
+/// the schedule `sc` is: the element's id, or `None` for a schedule every project has. A command's copy of the model makes
+/// the table again.
+pub fn table_kept(m: &Model, view: Option<Id>, sc: &Schedule) -> Result<Arc<Table>, String> {
+    let key = match view {
+        Some(id) => TableKey::Element(m.guid(id)),
+        None => TableKey::Builtin(sc.of.clone()),
+    };
+    m.derived.kept_table(&m.elements, key, || table(m, sc))
 }
 
 /// Schedule `sc`'s table: a column for each of its fields, a row for each element its filters keep,
@@ -1317,9 +1428,14 @@ pub fn heading(units: Units, column: &Column) -> String {
 /// so the column lines up; other numbers to the hundredth; yes or no as `Yes` or `No` (English,
 /// for the caller to say in its language); text as it is.
 pub fn shown(units: Units, kind: Kind, v: &Value) -> String {
+    shown_to(units, None, kind, v)
+}
+
+/// [`shown`] with lengths to a project's `decimals` (`Model::decimals`).
+pub fn shown_to(units: Units, decimals: Option<u8>, kind: Kind, v: &Value) -> String {
     match (v, kind) {
         (Value::Bool(b), _) => (if *b { msg!("Yes") } else { msg!("No") }).into(),
-        (v, Kind::Length) if v.is_number() => units.length(v.as_f64().unwrap_or(0.0)),
+        (v, Kind::Length) if v.is_number() => units.length_to(v.as_f64().unwrap_or(0.0), decimals),
         (v, Kind::Area) if v.is_number() => format!("{:.2}", units.area(v.as_f64().unwrap_or(0.0) * 1e6).0),
         (Value::Number(x), _) => format!("{}", (x.as_f64().unwrap_or(0.0) * 100.0).round() / 100.0 + 0.0),
         (v, _) => cell(v),
@@ -1443,6 +1559,81 @@ mod tests {
             ]
         );
         assert!(t.totals.is_none());
+    }
+
+    #[test]
+    fn a_schedules_table_is_kept_for_the_model_and_made_again_after_an_edit() {
+        let mut s = house();
+        let sc = of("rooms");
+        let a = table_kept(&s.model, None, &sc).unwrap();
+        let b = table_kept(&s.model, None, &sc).unwrap();
+        assert!(Arc::ptr_eq(&a, &b), "a second look at one model finds the table it found");
+        let t = table(&s.model, &sc).unwrap();
+        assert_eq!(
+            (&a.columns, &a.rows, &a.ids, &a.totals),
+            (&t.columns, &t.rows, &t.ids, &t.totals),
+            "the kept table is the one made again"
+        );
+        let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
+        s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
+        let c = table_kept(&s.model, None, &sc).unwrap();
+        assert!(!Arc::ptr_eq(&a, &c), "an edit's model finds the table again");
+        let oracle = table(&s.model, &sc).unwrap();
+        assert_eq!(
+            (&c.columns, &c.rows, &c.ids, &c.totals),
+            (&oracle.columns, &oracle.rows, &oracle.ids, &oracle.totals),
+            "the table made again is the oracle's"
+        );
+    }
+
+    #[test]
+    fn a_kept_table_is_made_again_when_the_same_models_elements_change() {
+        let s = house();
+        let sc = of("rooms");
+        let mut m = (*s.model).clone();
+        let a = table_kept(&m, None, &sc).unwrap();
+        let wall = m.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
+        if let Some(Element::Wall(w)) = m.elements.get_mut(wall) {
+            w.height += 10.0;
+        }
+        let b = table_kept(&m, None, &sc).unwrap();
+        assert!(!Arc::ptr_eq(&a, &b), "the same model's changed elements find the table again");
+        let oracle = table(&m, &sc).unwrap();
+        assert_eq!(
+            (&b.columns, &b.rows, &b.ids, &b.totals),
+            (&oracle.columns, &oracle.rows, &oracle.ids, &oracle.totals),
+            "the table made again is the oracle's"
+        );
+    }
+
+    #[test]
+    fn an_edit_lets_go_of_the_table_its_undo_step_kept() {
+        let mut s = house();
+        let sc = of("rooms");
+        let a = table_kept(&s.model, None, &sc).unwrap();
+        let weak = Arc::downgrade(&a);
+        drop(a);
+        let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
+        s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model in the undo history lets go of its table");
+        let b = table_kept(&s.model, None, &sc).unwrap();
+        let weak = Arc::downgrade(&b);
+        drop(b);
+        s.execute("undo", &json!({})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model a step back leaves lets go of its table");
+    }
+
+    #[test]
+    fn a_built_in_schedule_and_the_projects_own_are_kept_apart() {
+        let mut s = house();
+        s.execute("schedule", &json!({"name": "Rooms", "category": "rooms"})).unwrap();
+        let (id, sc) =
+            s.model.elements.iter().find_map(|(id, e)| if let Element::Schedule(sc) = e { Some((*id, sc.clone())) } else { None }).unwrap();
+        let a = table_kept(&s.model, None, &of("rooms")).unwrap();
+        let b = table_kept(&s.model, Some(id), &sc).unwrap();
+        assert!(!Arc::ptr_eq(&a, &b), "the built-in and the project's own are kept apart");
+        let again = table_kept(&s.model, Some(id), &sc).unwrap();
+        assert!(Arc::ptr_eq(&b, &again), "and each answer is kept");
     }
 
     #[test]

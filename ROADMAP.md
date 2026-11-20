@@ -85,13 +85,13 @@ The goal is the editing tools a working architect reaches for every hour.
 | Arrays, linear and radial, optionally kept as a group | M |
 | Groups (model groups) with group types, edit group, and exclude a member | L |
 | Pin and unpin: done (`pin` and `unpin`, PN and UP, keep elements where they are, and the commands that place, draw or delete them refuse them, `modify`'s placing fields included); a selection filter (`selection.rs`) and match type properties (`match_properties`, MA): done | S |
-| Locked and equal dimension constraints: done (`constraints.rs`: padlocks and EQ on aligned and linear dimensions, kept after every command); dimensions bound to parameters (labels): done in the Family Editor | M |
+| Locked and equal dimension constraints: done (`constraints.rs`: padlocks and EQ on aligned and linear dimensions, kept after every command); ~~dimensions bound to parameters (labels)~~: done in the Family Editor | M |
 | Copy to the clipboard, and paste aligned to the same place, to selected levels or to the current view | M |
 | Join and cut geometry (wall to floor, column to wall cleanups in plan and section) | M |
 | Wall openings (rectangular cuts) and wall profile editing (an elevation sketch) | M |
 | Wall sweeps and reveals as profiles along a wall | M |
 | ~~Room separation lines~~; ~~room bounding on and off per wall~~ | S | Room separation lines done (`room_separator`, an `IfcVirtualElement` in IFC); a wall's `room_bounding` turns off. Columns don't bound rooms yet |
-| **Curtain walls**: grid lines, mullion types, panel types (glass, solid, door panel); curtain systems on faces later | XL |
+| **Curtain walls**: ~~a grid pattern with panel and mullion types, an editor for it, fit and justification, butt and mitre joins, one part's own type, a wall in a panel's place, panels and mullions shown, hidden and painted apart in a view, corner mullions, a wall's own grids, added or moved by hand, Tab through its parts and grids, Fit Evenly, restarting the row pattern at the levels a wall crosses, segments of a grid taken off to merge panels~~. Left: rotated, diagonal and brick patterns; sizing by clear glass; embedding in a basic wall; curved walls and sloped tops; curtain systems on faces; custom mullion profiles; Curtain Panel door families; silicone joints between panels; saved patterns; Revit and IFC import of curtain walls | XL |
 
 Not scheduled yet: stacked walls as a type, in-place elements, and floor and roof shape editing by sub-element.
 
@@ -136,11 +136,12 @@ left is mostly content.
 | Item | Size |
 |---|---|
 | Family editor sketch mode: done (sketches drawn on screen, extrusions, blends, revolves, sweeps and swept blends and their voids; reference planes and lines drawn in the family's views; a work plane per form; Pick Lines with Lock); left: 3D sweep paths and constraints on a sweep's profile | XL |
-| 2D sketch constraint solver: done (dimensions labelled with parameters, EQ, Align and padlocks, angular dimensions, pivots) | L |
-| Hosted families on floors, ceilings and faces: Place on Face (T16) done, on the sides of walls and the tops and bottoms of floors, ceilings and roofs; their voids cut the host (T16b) | L |
+| ~~2D sketch constraint solver~~: done (dimensions labelled with parameters, EQ, Align and padlocks, angular dimensions, pivots) | L |
+| ~~Hosted families on floors, ceilings and faces~~: Place on Face (T16) done, on the sides of walls and the tops and bottoms of floors, ceilings and roofs; their voids cut the host (T16b) | L |
 | Nested and shared families: done; left: type catalogs (CSV), arrays of nested instances, a Family Type parameter choosing a nested type | M |
+| Curtain wall detail, once the family editor is done: detail items nested in a mullion's profile, so a curtain wall can show more detail in its drawings than its model has | M |
 | Shared parameters file (Manage > Shared Parameters): done in the core (`shared_parameters` command: Revit's tab-separated layout read and written, parameters loaded into families by GUID and exported from them); left: the desktop dialog, and shared parameters as project parameters and in schedules by GUID | S |
-| Visibility per view direction and detail level for a family's forms and symbols: done | M |
+| ~~Visibility per view direction and detail level for a family's forms and symbols~~: done | M |
 | Sections that cut family forms: done for doors, windows, casework, generic models, equipment, racks and pipe fittings and accessories (poché in the form's own shape, holes left open); furniture and fixtures are shown beyond the cut, as in Revit; left: a form's material's cut pattern in place of poché | S |
 | A starter content library: original, openly licensed (CC0 or CC-BY) doors, windows, furniture, casework, fixtures and profiles (32 families ship today: furniture, casework, doors, windows, and the Plumbing, Electrical, SPDA and Data tabs' fixtures) | L (ongoing) |
 | A curated GitHub repository of openly licensed families, browsed, previewed and loaded from inside BIMCraft (search, categories, thumbnails, versions). Clean-room content only, checked before it's accepted; the download goes through the same rules as the updater (capped, digest-checked, never run) | M |
@@ -245,7 +246,7 @@ incremental validation (0.5), and links (0.9).
 | Discipline | First slice | Size |
 |---|---|---|
 | **Structure** | First slice done: beams, structural columns, isolated and wall footings, structural floors, with types, schedules, IFC and the Structure tab ([design](docs/disciplines.md)). Left: braces (a sloped run, `IfcMember`), joins and framing types, slab foundations, beam systems, an analytical model exported to open formats | L |
-| **Site** | Toposolids from points or contours (and imported DXF or LandXML), pads, property lines with bearings, cut and fill quantities | L |
+| **Site** | First slice partly done: toposolids from a boundary and survey points (Create from Sketch), elevation points and split lines through the floor shape editor, contours, 3D, schedules and IFC; property lines with bearings are in (`property_line`, with no tool yet). Left: Create from Import (CSV points, 3D DXF contours, LandXML), a toposolid type (layers, contour display by type), pads, sub-divide, graded region, cut and fill quantities, and the desktop's Toposolid tool | L |
 | **Massing** | Extruded and lofted masses (a top outline, or a lean for a sloped one), mass floors you can run again, gross floor area, Show Mass, and walls, floors and roofs by face that follow the mass on Update to Face are in. Left: blends between outlines of different corner counts, revolved masses, curtain systems by face, and elements that follow the mass by themselves | M |
 | **MEP** | First slice done: the Plumbing, Electrical, SPDA (lightning protection) and Data tabs, designed with Structure's in [docs/disciplines.md](docs/disciplines.md): pipes, conduits, cable trays, wires, conductors and cabling as runs in systems (`IfcSystem`), fixtures, fittings, boards, devices, terminals, outlets and racks as family categories with starter families of their own drawing, schedules, IFC out and back. Electrical devices carry connectors (voltage, poles, load and power factor for each type). A family says which fixture or fitting it is (`kind`), which IFC writes as its predefined type and reads back. Left: fittings and pipe connectors (a pipe network that knows where it ends), auto-routing, sizing, circuits and panel schedules, Visibility/Graphics by fixture category | XL+ |
 

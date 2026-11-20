@@ -82,6 +82,10 @@ For example, a space-only coordination file may yield levels but no usable build
   failure falls back to serial work. No model mutations run concurrently.
 * An IFC railing with a nonpositive/unmeasurable height is skipped with a diagnostic before a bad
   type enters the library. It no longer invalidates the entire project import.
+* A level's room plan and a schedule's table are kept with the model's derived answers, keyed by the
+  elements' state: a repaint of one model asks the answer it already made, and a command's model makes
+  it again. The full computation stays the oracle the kept answer is tested against, and a command's
+  copy starts with none: the model it replaces lets them go when it goes into the undo history.
 
 Regression tests compare parallel geometry and raster depth, picking and smooth-light buffers
 with the serial implementation. Existing rendering tests cover transparent materials, textures,
@@ -354,7 +358,9 @@ view lets show (a tinted one at least 35%). Edges and level lines stay the opaqu
 with its walls 60% see-through differs from the processor's picture in 255 pixels of 307,200, with a mass in it 192.
 
 This was measured before the mesh cap was removed. The several-million-triangle measurement and current limits are in the
-[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards, macOS and Windows remain unmeasured here.
+[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards and macOS remain unmeasured here. On Windows (2026-11-15, Radeon RX 590, Ryzen, 12 threads) the core's numbers above
+matched Linux's (plan redrawn 7.6 ms, the scene built in 260 ms, a changing-camera frame 132 ms); the window was slow only because the
+driver's vsync held it to 32 frames a second or fewer, which the window now paces itself ([the desktop](areas/desktop.md), Frame pacing).
 
 ## Verification
 

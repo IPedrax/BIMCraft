@@ -57,12 +57,14 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Task | Read |
 |---|---|
 | Levels, walls, floors, roofs, ceilings, shafts, stairs | [levels, walls and roofs](../../docs/areas/levels-walls-roofs.md) |
+| Building codes, their rules and checks (fast and spatial) | [building codes](../../docs/areas/building-codes.md) |
 | Plans, sections, 3D, visibility and graphics, templates, scale and detail | [views and graphics](../../docs/areas/views-and-graphics.md), [performance](../../docs/performance.md) |
 | Schedules and project parameters | [schedules](../../docs/areas/schedules.md), [parameters](../../docs/areas/parameters.md) |
 | Phases and design options | [phasing](../../docs/areas/phasing.md) |
 | Masses and what they make | [masses](../../docs/areas/massing.md) |
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
+| Concrete, formwork and steel of a member, bar marks, the steel list, the cut plan | [quantities](../../docs/areas/quantities.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
 | Coordinates: base and survey points, locations, shared coordinates | [coordinates](../../docs/areas/coordinates.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
@@ -76,8 +78,10 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
   share runs in about 25 seconds, the whole workspace's in a couple of minutes once built.
 - That one, `hostile_params_never_panic_or_break_the_model` (`tests.rs`), sweeps every command with every hostile input and takes about a
   minute on twelve cores; its cost grows with the commands and the payloads. Run it before you finish (`cargo test --workspace`); CI
-  always does. A new command gets payloads with its real keys and a target in the sweep's base project (the detailing commands' are
-  `detail_tests::sweep_payloads`, which also makes the base's detail lines, regions, group and Linework).
+  runs it on Linux only, with the two random-edit oracles of the 3D scene (`view3d::update::tests::random_edits_*`): they check the
+  model's logic, and were two thirds of the core's test time on Windows. A new command gets payloads with its real keys and a
+  target in the sweep's base project (the detailing commands' are `detail_tests::sweep_payloads`, which also makes the base's
+  detail lines, regions, group and Linework).
 - Drawings and IFC are tested through their output (pixels of the PNG, entity references in the STEP file), not through the
   structures that make them.
 
@@ -92,9 +96,11 @@ repeated. A new area's tests go in their own file or module, not on the end of `
 The core caches what it works out from the model and keeps the whole computation as the oracle of each cache
 ([the plan](../../docs/spatial-core-plan.md), [performance](../../docs/performance.md)). Its modules:
 
-- `derived.rs`: what elements point at, both ways, the walls by plan tile and height, components and runs by height band, and the
-  kinds a project has few of, kept with each model and brought up to date by what changed (`Model::lookup`).
-- `rooms.rs`: rooms' boundaries, each level's found once. `shared.rs`: copy-on-write geometry definitions and allocation identities.
+- `derived.rs`: what elements point at, both ways, the walls by plan tile and height, components and runs by height band, the
+  kinds a project has few of, and each level's room plan and each schedule's table kept for the elements' state (a command's
+  copy makes them again). The lookup is brought up to date by what changed (`Model::lookup`).
+- `rooms.rs`: rooms' boundaries, each level's found once for the model, its plan kept with `derived`. `shared.rs`: copy-on-write
+  geometry definitions and allocation identities.
 - `ids/revisions.rs`: runtime revision columns. `bounds.rs`: byte-budgeted conservative primitive bounds. `family/bounds.rs`:
   conservative form envelopes without triangulation.
 - `view3d/update.rs`: a scene brought up to date by what an edit changed. `view3d/fragments.rs`: bounded primitive fragment reuse.

@@ -178,6 +178,10 @@ fn main() -> ExitCode {
         app.show_start_page();
     }
     app.revit = revit_reader();
+    // The user's PyAddins folder, beside the favorites: the Player's scripts and the PyAddins tab's buttons.
+    if let Some(store) = bimcraft_pyaddins::Store::default_store() {
+        app.use_pyaddins(store);
+    }
     if let Some(file) = later {
         app.open_later(file);
     }
@@ -187,6 +191,7 @@ fn main() -> ExitCode {
     // The recent files sit beside the favorites too; the files the arguments opened are the newest.
     if let Some(path) = &favorites {
         app.keep_recent_in(bimcraft_ui_egui::recent::beside(path));
+        app.keep_templates_in(bimcraft_ui_egui::project_templates::beside(path));
         for file in &opened {
             app.note_recent(file);
         }
@@ -223,6 +228,13 @@ fn main() -> ExitCode {
         viewport = viewport.with_icon(icon);
     }
     let mut options = eframe::NativeOptions { viewport, centered: true, ..Default::default() };
+    // Windows' vsync held the window to a fraction of the screen's rate, so there the window presents without it and paces
+    // itself (`bimcraft_ui_egui::pacing`).
+    let pacing = bimcraft_ui_egui::pacing::system_policy();
+    options.wgpu_options.surface.present_mode = pacing.start;
+    if pacing.paced {
+        app.frames = Some(bimcraft_ui_egui::pacing::Pacer::default());
+    }
     let mut setup = eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     if let Some(backends) = graphics.backends() {
         setup.instance_descriptor.backends = backends;

@@ -96,6 +96,8 @@ pub(crate) struct Import {
     pub roofs: HashMap<u32, Id>,
     /// What was left out or noted, by (left out, kind, reason): the ids it concerned. Told as one line each in the end.
     groups: BTreeMap<(bool, String, String), Vec<u32>>,
+    /// How each material the file names looks, by its name, given to the model's material of that name once they are made.
+    pub looks: BTreeMap<String, crate::data::Look>,
 }
 
 impl Import {
@@ -255,6 +257,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
         curtain: BTreeSet::new(),
         roofs: HashMap::new(),
         groups: BTreeMap::new(),
+        looks: BTreeMap::new(),
     };
     let release = survey.release;
     let (facts, inv) = Facts::of(survey);
@@ -269,7 +272,9 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     rooms::wanted(&facts, &mut wants);
     pipes::wanted(&facts, &mut wants.data);
     ducts::wanted(&facts, &mut wants.data);
+    generic::wanted(&facts, &mut wants);
     let gathered = revit.gather(release, &facts.tags, &facts.ids, &wants).map_err(e)?;
+    cx.looks = gathered.looks.iter().filter_map(|(id, l)| Some((gathered.materials.get(id)?.clone(), *l))).collect();
     walls::import(&mut cx, &facts, &gathered);
     floors::import(&mut cx, &facts, &gathered);
     roofs::import(&mut cx, &facts, &gathered);
@@ -280,7 +285,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     pipes::import(&mut cx, &facts, &gathered);
     ducts::import(&mut cx, &facts, &gathered);
     framing::import(&mut cx, &facts);
-    generic::import(&mut cx, &facts, &inv);
+    generic::import(&mut cx, &facts, &gathered, &inv);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))
 }
@@ -377,6 +382,13 @@ fn unread(cx: &mut Import, inv: &Inventory) {
 /// What breaks a rule is left out with the rule (a wall takes its doors and windows along), then the model is checked once more.
 fn finish(mut cx: Import, schema: String) -> Result<Imported, String> {
     cx.model.adopt_materials();
+    // Each material the model makes of the file's takes its look: its shading colour, and how much shows through it, in percent.
+    for (name, look) in &cx.looks {
+        if let Some(m) = cx.model.materials.get_mut(name) {
+            m.color = look.color;
+            m.transparency = (look.transparency * 100.0).round().clamp(0.0, 100.0) as u8;
+        }
+    }
     // What the import put in the library (types, materials) and its parts get their ids and GUIDs, as `Model::check` asks.
     cx.model.sync_library();
     let m = &mut cx.model;

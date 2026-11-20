@@ -585,6 +585,22 @@ fn batch(v: &Value) -> Result<Vec<(String, Value)>, String> {
         .collect()
 }
 
+/// Edit Group is a session's, so in a session the host's: a guest's copy follows the edit its window started there (`ok`, the
+/// host's answer), so that it shows the edit and picks the group's members as the host does. A Cancel the host refused had no
+/// edit there to cancel, so none is followed either.
+fn follow_group_edit(session: &mut Session, command: &str, params: &Value, ok: bool) {
+    match bimcraft_core::engine::find(command).map(|c| c.id) {
+        // shortcut: what the host's session adds to the edit by itself (what is drawn meanwhile) isn't followed, so the copy
+        // picks it only after Finish; the host would send its edit, were that wanted.
+        Some("edit_group" | "add_to_group" | "remove_from_group") if ok => {
+            let _ = session.execute(command, params);
+        }
+        Some("finish_group") if ok => session.end_group_edit(),
+        Some("cancel_group") => session.end_group_edit(),
+        _ => {}
+    }
+}
+
 /// A guest's side of a session.
 pub struct Joined {
     guest: Guest,
@@ -735,7 +751,9 @@ impl Joined {
             },
             Place::Host => {
                 let msg = json!({"op": "execute", "command": command, "params": params, "phase": session.phase, "option": session.option});
-                self.ask(session, msg)
+                let answer = self.ask(session, msg);
+                follow_group_edit(session, command, params, answer.is_ok());
+                answer
             }
         }
     }

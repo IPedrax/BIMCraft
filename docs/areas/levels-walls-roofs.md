@@ -138,6 +138,30 @@ With no requested level, or with the host's own level requested, placement keeps
 raised wall base offsets. A supplied level is validated even with an explicit `wall`. Existing host-fit checks and rollback
 still refuse a sill below the host base or at/above its top. This is a placement conversion, with no native format change;
 moving a level later does not rehost an existing opening.
+
+Select one native roof by extrusion and use **Edit Profile**. The desktop opens 3D facing the roof's upright reference
+plane: local X is distance along `extrusion.line`, local Y is height above its reference level plus offset. The profile
+describes the roof's underside; thickness and layers still come from its type. Extrusion Start and End remain independent
+instance properties, sweeping perpendicular to that plane. The footprint's Slope field is hidden on extrusion instances:
+their pitch comes from the profile's segment rise/run.
+
+The draft reuses sketch lines, selection, joined endpoint grips, Delete and local Undo. Line/Polyline draw straight
+segments; Split, Trim/Extend, Offset and Vertex use the existing sketch operations. A selected line also exposes its start
+and end Along/Height coordinates in project length units. The shared `snap::among` resolves draft geometry and angle
+constraints in those local coordinates, without treating world-plan geometry as profile geometry. Model-edge picking,
+curved profiles and general sketch Move/Copy/Mirror are not added. Existing 3D Align reports its limitation.
+
+`sketch::extrusion_profile` orders straight segments drawn in either direction into one open chain. It refuses gaps,
+branches, overlaps, closed/curved shapes and vertical segments. Finish sends only `extrusion.profile` to existing `modify`;
+`Model::check` remains the authority on bounds and extrusion validity, and a refusal leaves both model and history intact.
+Successful Finish is one model Undo step and reselects the roof; Cancel drops the draft and reselects it. No new file
+format, roof geometry engine, CLI command or MCP mutation path is introduced. Save/reopen, hosts, layers and exports
+continue to read the same roof data.
+
+Tests: `sketch::tests::extrusion_profile_*` covers ordering, invalid topology, shared modify, identity, attached-wall
+heights and reopen/history; `tests/sketch3d.rs` covers contextual activation, Finish/Cancel and real grip/numeric editing
+of a rotated/offset roof in both desktop profiles. `BIMCRAFT_EXTRUSION_DUMP` requests optional graphics captures.
+
 A roof by footprint is the straight skeleton of its outline and its `courtyards` (`skeleton::faces`: the outline
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after
@@ -159,9 +183,41 @@ line cuts in two (an edge lying along an old one), the lines' own `slope` (0 set
 Over the walls (`floor_outline`, which `roof_footprint` grows by the overhang), a loop of them standing free inside the outer
 ones, joined to none of them and with no room in it, is a courtyard, open through the floor and the roof; one joined to them,
 or with a room in it, is rooms, and both run over it.
+`floor_outline_faces` (the `floor` command's `outline` and `outline_offset`, and Walls' Outline in the desktop's floor
+sketch) runs the outline along a face of each wall instead: `interior-...` is the side the floor is on and `exterior-...` the
+other, and `-finish` is the finish face while `-core` is the structural core's (`walls::core_faces`), which a wall type with
+no structural layer has not, and asks for a finish face instead. `-core` is what the desktop picks first, as Revit's Pick
+Walls does with Extend into wall (to core); `centre` (with an offset too) is the wall's centre line, and no offset along it
+is still `floor_outline`'s joined outline, so a project from before this change keeps its floor. A centre-line Outline Offset
+goes toward the floor inside the loop by default, on every wall whatever way it was drawn; Space turns it to the outside, and
+again inside. Walls' Outline on the desktop
+opens the Options Bar instead of putting lines in at once: it chooses the line the outline follows (Wall Centre Line,
+Interior Face or Exterior Face), the wall component that face is (Finish or Core), an Outline Offset from it and DRAW, which
+puts the outline in the sketch as another one: DRAW adds a contour, it does not replace the ones already there, and one whose
+lines are exactly those of a contour already in the sketch is refused with a message instead of drawn twice. If a core face is
+asked for and a wall has no structural layer, the outline follows that wall's finish face and the status says so; the
+`floor {outline: "*core"}` command still refuses such a wall by name. A corner of
+the contour follows the lines of its two walls on to where they cross (a square corner, never a 45° cut) whatever the
+offset. Individual Pick Walls lines of the same Offset are joined the same way at the corners they share, including the
+closing corner of a loop. Walls' Outline takes the Modify arrow: a wall
+clicked is picked or unpicked, and a box drawn round walls picks them as a box does in Modify (left to right what it
+encloses, right to left what it crosses). DRAW follows just the picked walls; with none picked it follows every wall of the
+level. The panel stays open after DRAW, so the line or the walls can be changed and drawn again; Esc clears the walls
+picked, the Modify arrow keeps the mode on, and another tool, Finish or Cancel leaves it (choosing a Draw tool puts that
+tool on instead). `sketch {"wall": ..., "face": ..., "offset": ...}` gives one wall's face line for MCP and scripts, using
+the same line, face names and finish fallback as the UI. Pick Walls and Walls' Outline take an Offset as well, and an
+`outline_offset`: a positive one moves the line away from the wall, through its thickness, and a negative one toward its
+inside. The line Pick Walls places in a
+sketch remembers its wall, face and offset only while that sketch is open: while Pick Walls is on, the line the click would
+place is previewed on the face under the pointer, and Space flips it to the other face of its wall. Selecting the line in
+Modify shows the wall, Extend
+into wall (to core) and Offset, and Flip (or a double click) puts it on the other side of the wall. A line changed by hand
+(a grip, a trim, a fillet, an offset or a split) stops following its wall. After Finish the floor is its outline's
+coordinates like any other: a wall moved later does not move the floor under it, unlike Revit's line kept tied to its wall.
 `Model::roof_faces` are its slopes, each the loops round it in plan (a slope can close round a courtyard whose far side is a
 gable) with the plane of its underside, trimmed where it `join`s another; `Model::roof_pieces` are those less their holes
-and its `openings`, convex where cut. A floor's top is at its level plus `offset`,
+and its `openings`, convex where cut. A floor sketch of nested loops makes a floor for each region `sketch::solve` finds: the
+outer one with its holes, and a region inside a hole (an island) as another floor. A floor's top is at its level plus `offset`,
 or with a slope arrow, there at the arrow's tail and rising `slope` degrees toward its head (`Model::floor_top`); it's its
 type's thickness across the slope, so plumb it's thicker. Its `openings` are holes inside it, apart, and `Model::floor_slabs`
 what's left, convex where cut. A floor's `shape` (IDEAS MOD-16, [design](../shape-editing.md)) folds its top into planes:
@@ -215,7 +271,41 @@ are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
-its side (`stairs::railing`), so it goes wherever its host goes. `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
+its side (`stairs::railing`), so it goes wherever its host goes. A stair's `start` is on its location line
+(`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
+the line stays when the width changes. A turn is straight on, back beside the run, or any angle from 5 to 135 degrees (the runs then share the turn's inside
+corner). A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may
+wind instead (`winders` treads fanned round the turn's inside corner, `stairs::wind`; they are `Layout::pads` too, the last
+`Layout::winders` of a turn's). With `balance`, the winders run that many treads into the flight on each side and all of the
+turn's steps are equal along the walk line and the inside string (`stairs::balanced`), so none comes to a point. A `multistorey` stair with a top level several levels up is the stair of its first storey (`Model::flight`, `stairs::first`)
+standing again on each level on the way (`Model::storeys`, `stairs::storeys`; `stairs::stair` is all of them), each storey with
+its own count of risers. A stair's type (`Model::types.stair`, `StairType`; none for a stair solid to its level) is what it is built of: `stairs::parts`
+gives its solids, a slab of the type's `waist` under the steps or treads, risers and stringers standing free. A stair with a `sketch` is drawn by hand: a line for each riser and no runs (`stairs::sketched`), each tread the ground to the
+next riser or its own outline; `stair_sketch` (`stairs::as_sketch`) makes one of a stair made by runs and turns. A stair with a `spiral` (`radius` to its middle line, signed for the side its centre is on, and `sweep`) has no runs: its
+treads are pieces of a ring (`stairs::spiral`), all of them `Layout::pads`. A stair type's `construction` (`Construction`: monolithic, stringers, a centre
+stringer or treads fixed in a wall; none, read from its sizes by `StairType::built`) says what carries its treads, and
+`landing_stringers` runs a stringed stair's stringers round its landings' free edges; `stairs::parts_tagged` names each solid's
+part (`graphics::StairPart`: runs, risers, landings, supports, finishes, headroom), which a view's stair subcategories hide and
+override (Visibility/Graphics, `graphics::STAIR_SUBS`; Headroom, `stairs::clearance`, off until shown). A finish's front edge
+takes the type's `finish_profile` (`stairs::profiled`); its plan symbol, its `arrow`, `walk_start`, `cut_mark` and
+`walk_rounded`; a plan view may show every stair its own way (`stair_display`, `Graphics::stairs`). A stair's plan edges are
+references a dimension measures to (`Face::Edge`, `stairs::reference_edges`). IFC writes a stair's flights, landings, stringers
+(`IfcMember .STRINGER.`) and finishes as its type builds them, with `Pset_StairCommon`, `Pset_StairFlightCommon`, the flights'
+lengths and `BIMCraft_Stair` (the stair and its type as JSON), which an import makes a stair again. `stair_storeys` makes a
+multistorey stair a stair for each storey; `stair_sketch {back}` makes a converted stair the stair it was (`Stair::unsketched`).
+A project's **building code** is the rules its stairs are held to (the codes, their sources, a project's own, XML, and the
+rule that every check is fast and spatial: [building codes](building-codes.md)): a new stair starts with its riser, going and
+landing length, `landings: "auto"` places the landings due, and `stair_check` (and `code_check`, `code_findings` on a stair)
+lists what a stair is outside of, with the number and the fix.
+`flip` on a stair makes it climb the other way over the same ground (`stairs::flipped`). A stair's grips, where they are and
+what a drag of one makes of the stair, are `stairs::grips` and `stairs::dragged`; the desktop's `stairgrips.rs` draws them on
+the plan and runs `modify` on release.
+`stairs::headroom` finds the floors standing over a stair's steps with less than the code's headroom, which `stair_check` reports
+and `stair_opening` cuts open with a shaft through each (`stairs::united` is the outline round the steps). `stair_solve` (`codes::solve`) proposes the stairs nearest one that fit the rules, least change first, and makes one with `apply`.
+Nothing is ever refused for breaking a rule: winders under a
+code without them are built and reported. The desktop's is Manage > Building Codes (`ui-egui/src/codes.rs`), apart from
+Technical Standards, which is about drafting. Where stairs are going, and why: [an advanced stair
+tool](../stair-tool-plan.md). `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
 called `category`, the tag every element carries.
 
 Sketches (`sketch.rs`) are how an outline is drawn, the one solver everything with an outline and holes uses: floors,
@@ -259,7 +349,9 @@ first and says what's wrong for whoever drew it (`sketch::friendly`: what to fix
 units, and the lines by id) with those lines in the error colour; solved, it runs the command. Draw has every shape of
 the Draw panel (`draw.rs`; lines, rectangles, polygons, circles, the arcs, Fillet Arc on two sketch lines, splines, ellipses,
 polylines, Pick Lines: see [views and graphics](views-and-graphics.md)) and Pick Walls (a line along each wall's location
-line, an arc along an arc wall); a sketch line is any curve, so a circle or an ellipse is a loop of its own. Modify picks
+line, an arc along an arc wall, or on the face the pointer is on and its core or finish, out by the Options Bar's
+Offset); a sketch line is any curve, so a circle or an ellipse is a loop of its own. Walls' Outline asks on the Options
+Bar where its outline runs and which walls it follows, and puts it in the sketch on DRAW. Modify picks
 sketch lines (a click, a window box from the left, a crossing box from the right), a picked line's handles (its corners, a
 spline's points, a circle's centre) are grips that take every one joined there with them, and Delete removes them; Ctrl+Z takes back a line; the plan's snaps take the
 sketch's own ends, middles, crossings and curves as well as visible view-specific detail (`snap::in_sketch`). Floor, Ceiling, Roof and Shaft each start a new one (Boundary

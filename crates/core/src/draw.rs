@@ -135,9 +135,15 @@ impl Shape {
     }
 
     /// Whether the Options Bar's Offset puts what it draws beside the points clicked. A closed shape grows by it instead;
-    /// a spline, an ellipse and a fillet take none.
+    /// a spline and a fillet take none.
     pub fn offsets(self) -> bool {
-        matches!(self, Shape::Line | Shape::Arc | Shape::CentreArc | Shape::TangentArc | Shape::Polyline)
+        matches!(self, Shape::Line | Shape::Arc | Shape::CentreArc | Shape::TangentArc | Shape::Polyline | Shape::PartialEllipse)
+    }
+
+    /// Whether the Options Bar has an Offset for it: beside the points clicked, or a closed shape grown or shrunk all
+    /// round. A spline and a fillet take none.
+    pub fn takes_offset(self) -> bool {
+        !matches!(self, Shape::Spline | Shape::FitSpline | Shape::Fillet)
     }
 
     /// Whether, chained, the next starts where it ended.
@@ -226,7 +232,10 @@ pub fn make(shape: Shape, points: &[P2], o: &Options, tangent: Option<P2>) -> Op
             if second <= TOL {
                 return None;
             }
-            vec![Curve::Ellipse { centre: c, radii: [c.dist(a), second], angle: u.1.atan2(u.0).to_degrees(), span: None }]
+            vec![grown(
+                &Curve::Ellipse { centre: c, radii: [c.dist(a), second], angle: u.1.atan2(u.0).to_degrees(), span: None },
+                o.offset,
+            )?]
         }
         (Shape::PartialEllipse, &[a, b, t]) if apart(a, b) => {
             // Across from `b` to `a` round the side `t` is on: from parameter 0 (at `b`) to 180 (at `a`) when it's to the
@@ -241,7 +250,7 @@ pub fn make(shape: Shape, points: &[P2], o: &Options, tangent: Option<P2>) -> Op
         }
         _ => return None,
     };
-    // A closed shape grew by the offset as a whole, above; a spline or an ellipse takes none (the Options Bar hides it).
+    // A closed shape grew by the offset as a whole, above; a spline takes none (the Options Bar hides it).
     let beside = o.offset != 0.0 && o.offset.is_finite() && shape.offsets();
     let made: Vec<Curve> = if beside { made.iter().map(|c| offset(c, o.offset)).collect::<Option<Vec<Curve>>>()? } else { made };
     made.iter().all(|c| c.check("").is_ok()).then_some(made)

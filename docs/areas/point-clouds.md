@@ -90,7 +90,7 @@ and can't tell, since what the scans come to is the whole `Look` for every frame
 A plan snaps to a scan where its cut plane cuts it, to trace what was measured: of the points within `snap::CUT_BAND` of the cut,
 the nearest to the cursor seen from above (`Kind::Point`, "Point Cloud", switched by `Snaps::cloud` in Manage > Snaps). It comes
 after what the model has to snap to (ends, middles, centres, crossings), so a wall's end beats a point nearer the cursor, and
-before the perpendicular, the angle guides and a wall's centre line. `snap::cloud_point` turns the cursor into each shown scan's
+before the perpendicular, the angle guides and a wall's own line. `snap::cloud_point` turns the cursor into each shown scan's
 own terms and asks `Cloud::nearest`, which looks only in the squares of the scan's `Grid` (its points by `CELL` mm squares from
 above, made the first time something snaps to it and shared by its clones) that the reach touches, so a snap on millions of points
 costs microseconds.

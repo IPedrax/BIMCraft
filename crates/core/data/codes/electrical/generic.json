@@ -1,0 +1,39 @@
+{
+ "code": "generic",
+ "discipline": "electrical",
+ "name": "No building code",
+ "default": true,
+ "note": "No code's numbers. The sections a module reads come from the first of BIMCraft's codes that has them, and say so.",
+ "sections": {
+  "voltages": {
+   "230 V": {
+    "nominal": 230,
+    "min": 207,
+    "max": 253
+   },
+   "400 V": {
+    "nominal": 400,
+    "min": 360,
+    "max": 440
+   }
+  },
+  "distribution_systems": {
+   "230/400 V": {
+    "phases": 3,
+    "wires": 4,
+    "l_l": "400 V",
+    "l_n": "230 V",
+    "l_g": "230 V",
+    "ground": "TN-S"
+   }
+  }
+ },
+ "sources": {
+  "voltages": "IEC 60038, the 230/400 V system of Europe and most of the world; a band of 10 % either way",
+  "distribution_systems": "IEC 60038, the 230/400 V system of Europe and most of the world; a band of 10 % either way"
+ },
+ "kinds": {
+  "voltages": "practice",
+  "distribution_systems": "practice"
+ }
+}

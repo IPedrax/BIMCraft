@@ -41,7 +41,7 @@ fn with_group(members: usize) -> Session {
             revision: None,
         }),
     };
-    s.model_mut().detail_groups.insert("G".into(), GroupType { members: (0..members).map(line).collect() });
+    s.model_mut().detail_groups.insert("G".into(), GroupType { members: (0..members).map(line).collect(), ..Default::default() });
     s.model_mut().sync_library();
     s
 }
@@ -293,7 +293,8 @@ fn a_line_style_a_group_member_or_a_region_uses_is_kept_and_the_error_says_which
     let a = id_of(&run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0], "style": "Thick"})));
     run(&mut s, "create_group", json!({"ids": [a], "name": "Section Mark"}));
     let e = err(&mut s, "line_style", json!({"name": "Thick", "delete": true}));
-    assert!(e.contains("detail group `Section Mark` has a member drawn in `Thick`"), "{e}");
+    // The group's member is an element of its own now, and named as one.
+    assert!(e.contains(&format!("detail line {a} is drawn in `Thick`")), "{e}");
     // A region of the project, bounded in a style.
     let sq = json!([[[0, 0], [1000, 0]], [[1000, 0], [1000, 1000]], [[1000, 1000], [0, 1000]], [[0, 1000], [0, 0]]]);
     let r = id_of(&run(&mut s, "filled_region", json!({"sketch": sq, "line_style": "Edge"})));
@@ -302,7 +303,7 @@ fn a_line_style_a_group_member_or_a_region_uses_is_kept_and_the_error_says_which
     // In a group, the region's style is named with the group too.
     run(&mut s, "create_group", json!({"ids": [r], "name": "Boxes"}));
     let e = err(&mut s, "line_style", json!({"name": "Edge", "delete": true}));
-    assert!(e.contains("detail group `Boxes` has a member drawn in `Edge`"), "{e}");
+    assert!(e.contains(&format!("filled region {r} is bounded in `Edge`")), "{e}");
     // A style nothing uses is deleted as ever.
     run(&mut s, "line_style", json!({"name": "Overhead Lines", "delete": true}));
 }
@@ -314,9 +315,8 @@ fn a_mirrored_group_turns_its_notes_with_it_and_keeps_them_readable() {
     let note = id_of(&run(&mut s, "text", json!({"text": "Fix", "at": [0, 0], "angle": 30})));
     run(&mut s, "create_group", json!({"ids": [note], "name": "Note"}));
     let angle = |s: &Session, turn: f64, mirrored: bool| {
-        let g =
-            crate::groups::DetailGroup { view: s.model.guid(100000), type_name: "Note".into(), at: P2(0.0, 0.0), angle: turn, mirrored };
-        match crate::groups::placed(&s.model, &g).first() {
+        let p = crate::groups::Placement { at: P2(0.0, 0.0), angle: turn, mirrored };
+        match crate::groups::placed_type(&s.model, "Note", s.model.guid(100000), p).first() {
             Some(Element::Text(n)) => n.angle,
             e => panic!("{e:?}"),
         }
@@ -452,6 +452,16 @@ fn a_regions_or_floors_pattern_origin_and_angle_show_in_elements_and_align_moves
     // Aligned again from there it stays; a floor takes it the same way; and what can't be aligned says why.
     assert_eq!(s.model.align_pattern(region, reference, after), Ok(to));
     assert_eq!(s.model.align_pattern(floor, reference, line), Ok(P2(50.0, 0.0)));
+    // A toposolid takes it the same way, and its pattern frame goes with it when it moves and turns.
+    let topo = id_of(&run(&mut s, "toposolid", json!({"boundary": [[0, 0], [4000, 0], [4000, 4000], [0, 4000]]})));
+    assert_eq!(s.model.align_pattern(topo, reference, line), Ok(P2(50.0, 0.0)));
+    run(&mut s, "modify", json!({"id": topo, "pattern_origin": [50, 0], "pattern_angle": 45}));
+    run(&mut s, "move", json!({"ids": [topo], "by": [1000, 500]}));
+    let e = crate::element_json(&s.model, topo);
+    assert_eq!((e["pattern_origin"].clone(), e["pattern_angle"].clone()), (json!([1050.0, 500.0]), json!(45.0)), "{e}");
+    run(&mut s, "rotate", json!({"ids": [topo], "about": [0, 0], "angle": 90}));
+    let e = crate::element_json(&s.model, topo);
+    assert_eq!((e["pattern_origin"].clone(), e["pattern_angle"].clone()), (json!([-500.0, 1050.0]), json!(135.0)), "{e}");
     let e = s.model.align_pattern(region, (P2(0.0, 0.0), P2(1000.0, 0.0)), line).unwrap_err();
     assert!(e.contains("parallel"), "{e}");
     let e = s.model.align_pattern(region, (P2(5.0, 5.0), P2(5.0, 5.0)), line).unwrap_err();

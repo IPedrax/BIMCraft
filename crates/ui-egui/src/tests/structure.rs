@@ -184,11 +184,13 @@ fn the_structure_tabs_floor_is_a_structural_one_and_the_architecture_tabs_is_not
     let mut h = app(BOX);
     structural(&mut h, "Floor: Structural");
     press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floors = ids(&h, "floor");
     assert_eq!(field(&h, floors[0], "structural"), json!(true));
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floors = ids(&h, "floor");
     assert_eq!(floors.len(), 2);
@@ -207,6 +209,7 @@ fn revits_shortcuts_pick_the_structure_tools() {
     shortcut(&mut h, "SB");
     assert!(matches!(h.state().sketch.as_ref().map(|s| s.of), Some(crate::sketch::Of::Floor(_))), "a floor's sketch");
     press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     assert_eq!(field(&h, ids(&h, "floor")[0], "structural"), json!(true));
     shortcut(&mut h, "CL");

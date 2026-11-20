@@ -12,16 +12,29 @@ images and PDFs as underlays are still to come.
 sections. From the header it takes `$INSUNITS` (the drawing's unit, `Dxf::unit` and `Dxf::scale`, mm to each of its units),
 `$ACADVER` and `$LTSCALE`; from the tables its layers (colour, off when the colour is negative, frozen by flag, linetype, line
 weight) and its linetypes' dash patterns; from the blocks section the blocks; and from the entities section what model space
-draws (an entity with code 67 set is paper space's, and left out). Entities come in as a short list of `Shape`s, in the
+draws (an entity with code 67 set is paper space's, and left out, unless model space draws nothing: then the sheet laid out in paper space comes in instead, from ENTITIES or else the `*Paper_Space` block, in paper units with paper space's extents, `Dxf::paper` says so and the reply's `notes` too). Entities come in as a short list of `Shape`s, in the
 drawing's own units: LINE, LWPOLYLINE and POLYLINE (bulges become arcs; a 3D mesh or polyface is left out), CIRCLE, ARC,
 ELLIPSE (as a polyline), SPLINE (its fit points, else its control points), POINT, TEXT and MTEXT (its formatting codes taken
 out, aligned as the file says), SOLID and TRACE, and HATCH (its boundary loops, solid or patterned; a patterned one is drawn as a
 pale fill of its colour, since its pattern isn't kept). An INSERT places its block's entities, scaled, turned and arrayed, up to
 `MAX_DEPTH` blocks deep; an entity on layer 0 of a block takes the insert's layer, and one by block its colour. DIMENSION draws
-its anonymous block. What the reader doesn't know (3DFACE, a viewport, an image, a proxy) is counted by kind in
+its anonymous block, and ACAD_TABLE (a schedule of areas, a legend, a list of sheets) the block AutoCAD keeps of how the table
+looks (`*T…`), from the table's insertion point, so a drawing that is only a table comes in too. What the reader doesn't know (3DFACE, a viewport, an image, a proxy) is counted by kind in
 `Dxf::left_out`, and the command lists it. The text itself is read as UTF-8 where it is, and else by the code page the header names in
 `$DWGCODEPAGE`: the East Asian pages and the Windows ones decode through `encoding_rs`, and a page without a decoder here (the DOS
 ones) reads as Latin-1, as it always has.
+
+Lines, polylines and points keep their elevation, `Entity::z`, where the file gives one: an LWPOLYLINE's (code 38) and a 2D
+POLYLINE's (its own point's z) for the whole of it, a 3D POLYLINE's (flag 8) for each vertex, and a LINE's ends and a POINT's z.
+`Z::Flat` is one elevation for all of an entity, `Z::Each` one for each point of its shape; an entity whose file gives no z has
+none (not 0). A downward extrusion (code 230 below 0) turns an LWPOLYLINE's and a 2D polyline's elevation over, since theirs is
+in the entity's own coordinate system; lines, points and 3D polylines are in the world's. A block's elevations go through each
+INSERT's z (code 30) and z scale (43), turned over too by an INSERT extruded downward; a block's own base point's z is not
+read. An elevation that isn't a number a drawing can hold leaves that entity without one (counted in `left_out` as "an
+elevation it can't read") rather than refusing the file, since drawing never needed it. Most programs write a flat
+drawing's lines and polylines at z 0, so `elevations` counts them; a range that isn't all 0 is what marks a contour map. A 3D polyline's segments are straight, so a bulge on its vertices is ignored. Drawing,
+extents, picking and snapping stay in plan: only `import_cad`'s reply (`elevations`, how many have one and their range, mm, by
+layer) and `cad_query` (`z`) read elevations. They are what a contour map carries, for terrain made from it.
 
 A file is hostile: `MAX_BYTES` caps its size, `MAX_PAIRS` its pairs, `MAX_SHAPES` the shapes, `MAX_WORK` the points the blocks
 may multiply into, and every coordinate is a finite number within `MAX_FILE_COORD` (one past that is left out as "past what a
@@ -32,7 +45,7 @@ drawing holds"). A file that ends after a group code, a value that isn't a numbe
 The core reads no DWG of its own. `crates/dwg` (`bimcraft-dwg`) is a bridge: the acadrust crate (pure Rust, MPL-2.0, used
 unmodified as a separate library; its DWG code is ported from ACadSharp, MIT, after the Open Design Alliance's published DWG
 specification; NOTICE carries both) reads the file in failsafe mode, and its DXF writer writes what it read as ASCII DXF, which
-`dxf.rs` reads as any other. `Limits` holds a DWG to 64 MB before the decoder runs and its DXF to `dxf::MAX_BYTES` while it is
+`dxf.rs` reads as any other. `Limits` holds a DWG to 128 MB before the decoder runs and its DXF to `dxf::MAX_BYTES` (512 MB) while it is
 written; a read that left object records out says how many, of which kinds, in `import_cad`'s `notes` (the desktop puts them on
 the status bar). The project holds the DXF, so a project file opens where no DWG reader is.
 
@@ -73,7 +86,7 @@ The engine removes a drawing nothing places after each command, and forgets the 
   everywhere or, with `view`, in that view (its Visibility/Graphics, which `graphics` also sets with `layers`).
 - `reload_cad` reads a linked drawing's file again; opening a project does so for each (`cads_not_reloaded` names those whose
   file is gone, which keep what they had).
-- `cad_query` names the entity nearest a point: its layer, kind, colour and linetype (Revit's Query).
+- `cad_query` names the entity nearest a point: its layer, kind, colour and linetype (Revit's Query), and its elevation, mm, when it has one.
 - `move`, `rotate`, `copy` and `delete` take an import as any element; `mirror` is refused, since a drawing's text would read
   backwards; `modify` changes its level, `at`, `angle`, `scale` and `colors`.
 

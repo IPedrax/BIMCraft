@@ -27,12 +27,13 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 47] = [
+pub const MODEL: [&str; 48] = [
     "wall",
     "floor",
     "ceiling",
     "shaft",
     "mass",
+    "toposolid",
     "door",
     "window",
     "room",
@@ -110,6 +111,9 @@ pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
 
+/// The parts of a curtain wall, which Object Styles has a row each for, as Revit's Curtain Panels and Curtain Wall Mullions.
+pub const CURTAIN_PARTS: [&str; 2] = ["curtainpanel", "mullion"];
+
 /// A subcategory: a part of a category a view hides, shows and overrides apart from the rest, as Revit's (Rooms >
 /// Reference). It is held in a view's graphics by its `key`, as a category is; `off` ones are hidden unless the view shows
 /// them. A category hidden hides its subcategories. Some are a kind of element of their own (`roomseparator`), others a
@@ -136,7 +140,54 @@ pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
     Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
     Sub { key: "surveypoint", parent: "site", name: ui_msg!("Survey Point"), off: true },
+    Sub { key: "stairrun", parent: "stair", name: ui_msg!("Runs"), off: false },
+    Sub { key: "stairriser", parent: "stair", name: ui_msg!("Risers"), off: false },
+    Sub { key: "stairlanding", parent: "stair", name: ui_msg!("Landings"), off: false },
+    Sub { key: "stairsupport", parent: "stair", name: ui_msg!("Stringers and Supports"), off: false },
+    Sub { key: "stairfinish", parent: "stair", name: ui_msg!("Finishes"), off: false },
+    Sub { key: "stairpath", parent: "stair", name: ui_msg!("Walk Line and Arrow"), off: false },
+    Sub { key: "staircutmark", parent: "stair", name: ui_msg!("Cut Marks"), off: false },
+    Sub { key: "stairnumber", parent: "stair", name: ui_msg!("Tread Numbers"), off: false },
+    Sub { key: "stairheadroom", parent: "stair", name: ui_msg!("Headroom"), off: true },
+    Sub { key: "curtainpanel", parent: "wall", name: ui_msg!("Curtain Panels"), off: false },
+    Sub { key: "mullion", parent: "wall", name: ui_msg!("Mullions"), off: false },
 ];
+
+/// A stair's subcategories, in the order a part of a stair's solid or its plan names one by (`StairPart as usize`).
+pub const STAIR_SUBS: [&str; 9] =
+    ["stairrun", "stairriser", "stairlanding", "stairsupport", "stairfinish", "stairpath", "staircutmark", "stairnumber", "stairheadroom"];
+
+/// What a part of a stair is, for its subcategory: the index into [`STAIR_SUBS`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StairPart {
+    Runs,
+    Risers,
+    Landings,
+    Supports,
+    Finishes,
+    Path,
+    CutMark,
+    Numbers,
+    Headroom,
+}
+
+impl StairPart {
+    /// Its subcategory's key.
+    pub fn key(self) -> &'static str {
+        STAIR_SUBS.get(self as usize).copied().unwrap_or("stair")
+    }
+
+    /// The part a solid tagged `tag` is (1 + its index; 0, none).
+    pub fn of_tag(tag: u8) -> Option<StairPart> {
+        use StairPart::*;
+        [Runs, Risers, Landings, Supports, Finishes, Path, CutMark, Numbers, Headroom].get(usize::from(tag).checked_sub(1)?).copied()
+    }
+
+    /// The tag a solid of this part carries.
+    pub fn tag(self) -> u8 {
+        self as u8 + 1
+    }
+}
 
 /// The subcategory `key` is, if it is one.
 pub fn sub(key: &str) -> Option<&'static Sub> {
@@ -295,7 +346,7 @@ pub enum Dash {
 
 impl Dash {
     /// The on and off lengths a line is drawn with, px, on paper `k` times [`crate::sheet::DENSITY`] pixels to the mm.
-    fn pattern(self, k: f32) -> Option<Vec<f32>> {
+    pub(crate) fn pattern(self, k: f32) -> Option<Vec<f32>> {
         match self {
             Dash::Solid => None,
             Dash::Dashed => crate::render::on_paper(&crate::render::DASHED, k),
@@ -551,6 +602,9 @@ pub struct Graphics {
     /// The layers of each CAD drawing it hides, by the drawing's name: Revit's Imported Categories, layer by layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layers: BTreeMap<String, BTreeSet<String>>,
+    /// How stairs show in this view's plan, in place of what their types say; none, as each type says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stairs: Option<crate::model::PlanShows>,
     /// Which north is up in a plan: project north, or true north (turned by the active location's angle to it).
     #[serde(skip_serializing_if = "Orientation::is_project")]
     pub orientation: Orientation,
@@ -602,6 +656,7 @@ impl Graphics {
         let mut g = self.clone();
         if t.controls.contains(&Group::Categories) {
             g.categories = t.graphics.categories.clone();
+            g.stairs = t.graphics.stairs;
         }
         if t.controls.contains(&Group::Filters) {
             g.filters = t.graphics.filters.clone();
@@ -1076,12 +1131,37 @@ pub struct Look {
     display: crate::view3d::DisplayOptions,
     /// How it looks at a family's forms and at what detail, which their Visibility Settings read (F8).
     forms: crate::family::visibility::FormView,
+    /// The parts of stairs it hides, a bit for each tag ([`StairPart::tag`]); none, those hidden unless a view shows them.
+    parts_hidden: Option<u16>,
+    /// What the view's rows for a curtain wall's panels and its mullions say.
+    parts: [Override; 2],
+}
+
+/// The bits of the stair parts graphics `g` hides; with none, those off unless shown.
+fn parts_mask(g: Option<&Graphics>) -> u16 {
+    STAIR_SUBS.iter().enumerate().fold(0u16, |mask, (i, key)| {
+        let hidden = g.map_or_else(|| off_unless_shown(key), |g| g.hides(key));
+        if hidden { mask | (1 << (i + 1)) } else { mask }
+    })
+}
+
+/// The key of the row in Visibility/Graphics and Object Styles a part of a curtain wall is under.
+pub(crate) fn part_row(kind: crate::curtain::PartKind) -> &'static str {
+    match kind {
+        crate::curtain::PartKind::Panel => CURTAIN_PARTS[0],
+        crate::curtain::PartKind::Mullion => CURTAIN_PARTS[1],
+    }
 }
 
 /// `c` halfway to the paper.
-fn halftone(c: Rgb) -> Rgb {
+pub(crate) fn halftone(c: Rgb) -> Rgb {
     let half = |v: u8| v + (255 - v) / 2;
     Rgb(half(c.0), half(c.1), half(c.2))
+}
+
+/// `c` as a view's halftone draws it.
+pub(crate) fn halftoned(c: Rgb) -> Rgb {
+    halftone(c)
 }
 
 impl Look {
@@ -1154,13 +1234,24 @@ impl Look {
         m.default_3d().map_or_else(|| Look::with(m, &Graphics::default()), |id| Look::of(m, id))
     }
 
+    /// What 3D view `view` looks like: as its own graphics say when it is a 3D view (a camera view, or `{3D}` itself), else
+    /// as the default 3D view looks ([`Look::of_3d`]).
+    pub fn of_3d_view(m: &Model, view: Option<Id>) -> Look {
+        match view {
+            Some(v) if matches!(m.elements.get(v), Some(Element::View3D(_))) => Look::of(m, v),
+            _ => Look::of_3d(m),
+        }
+    }
+
     /// What a view with graphics `own` looks like.
     /// ponytail: worked out on every draw; cache it per model and view if a filter on a slow field
     /// (a room's area) makes redraws slow.
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
         let forms = crate::family::visibility::FormView { detail: g.detail, ..Default::default() };
-        let mut look = Look { style: g.style, layers: own.layers.clone(), forms, ..Look::default() };
+        let mut look =
+            Look { style: g.style, layers: own.layers.clone(), forms, parts_hidden: Some(parts_mask(Some(&g))), ..Look::default() };
+        look.parts = CURTAIN_PARTS.map(|c| g.categories.get(c).cloned().unwrap_or_default());
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
@@ -1261,6 +1352,11 @@ impl Look {
         !self.hidden.contains(&id)
     }
 
+    /// Whether the view draws part `part` of element `id` (a stair's, by its tag; 0, the whole of it).
+    pub fn shows_part(&self, id: Id, part: u8) -> bool {
+        self.shows(id) && (part == 0 || self.parts_hidden.unwrap_or_else(|| parts_mask(None)) & (1u16 << part.min(15)) == 0)
+    }
+
     /// The colour of element `id`'s fill where the view cuts it, which is `default` unless it says
     /// otherwise: what the drawing code fills the union of cut walls with.
     pub fn cut_fill(&self, id: Id, default: Rgb) -> Rgb {
@@ -1297,7 +1393,43 @@ impl Look {
 
     /// Whether it changes anything.
     pub fn is_plain(&self) -> bool {
-        self.hidden.is_empty() && self.paint.is_empty()
+        self.hidden.is_empty()
+            && self.paint.is_empty()
+            && self.parts_hidden.unwrap_or_else(|| parts_mask(None)) == 0
+            && self.parts.iter().all(Override::is_empty)
+    }
+
+    /// What the view's row says of a part of a curtain wall.
+    pub(crate) fn part(&self, kind: crate::curtain::PartKind) -> &Override {
+        &self.parts[kind as usize]
+    }
+
+    /// Whether the view draws this part of a curtain wall, its wall being drawn.
+    pub fn shows_curtain_part(&self, kind: crate::curtain::PartKind) -> bool {
+        !self.part(kind).hidden
+    }
+
+    /// `base`, or the colour `pick` finds in what the view says of a part (`kind`) or else of its element, lighter if either is
+    /// in halftone. A part's row goes over its wall's.
+    fn coloured(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb, pick: impl Fn(&Override) -> Option<[u8; 3]>) -> Rgb {
+        let (part, own) = (kind.map(|k| self.part(k)), self.paint.get(&id));
+        let c = part.and_then(&pick).or_else(|| own.and_then(&pick)).map_or(base, |[r, g, b]| Rgb(r, g, b));
+        if part.is_some_and(|o| o.halftone) || own.is_some_and(|o| o.halftone) { halftone(c) } else { c }
+    }
+
+    /// [`Look::surface`], for what may be a part of a curtain wall.
+    pub(crate) fn surface_of(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb) -> Rgb {
+        self.coloured(kind, id, base, |o| o.projection.fill)
+    }
+
+    /// [`Look::edge`], for what may be a part of a curtain wall.
+    pub(crate) fn edge_of(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb) -> Rgb {
+        self.coloured(kind, id, base, |o| o.projection.color)
+    }
+
+    /// [`Look::transparency`], for what may be a part of a curtain wall: its row's, else its element's.
+    pub(crate) fn transparency_of(&self, kind: Option<crate::curtain::PartKind>, id: Id) -> u8 {
+        kind.map(|k| self.part(k).transparency).filter(|t| *t > 0).unwrap_or_else(|| self.transparency(id))
     }
 
     /// `d` with its primitives drawn as the view says: the colours, weights and dashes of each

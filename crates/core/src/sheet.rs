@@ -63,7 +63,7 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
             render::section_extent(m, work.get_or_init(|| render::SectionWork::new(m)), view, k, 1.0)?.to_vec()
         }
         Element::Schedule(sc) => {
-            let (width, height) = table_size(&sc.name, &table_of(m, sc));
+            let (width, height) = table_size(&sc.name, &table_of(m, m.elements.id(view), sc));
             return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
         }
         Element::PanelSchedule(ps) => {
@@ -186,7 +186,7 @@ fn room(m: &Model, sheet: impl Key) -> Room {
     let size_name = sh.map(|s| s.size.as_str()).unwrap_or("A3");
     let paper = sh.and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
     let margins = m.standard().sheet_margins(size_name);
-    let own = sh.and_then(|s| m.title_blocks.get(&s.title_block));
+    let own = sh.and_then(|s| m.title_block_of(s)).map(|(_, t)| t);
     if let Some([lo, hi]) = own.and_then(|t| t.drawing_area) {
         return Room { inside: [lo.0, lo.1, hi.0, hi.1], title: None, middle: (lo + hi) * 0.5, paper };
     }
@@ -283,7 +283,7 @@ fn free_spot(m: &Model, sheet: Guid, view: impl Key, scale: f64) -> Option<P2> {
 /// [`spot`], refused when the view and its title are larger than the drawing area its sheet's title block gives.
 pub fn automatic_center(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> Result<P2, String> {
     let sheet = m.guid(sheet);
-    let area = m.sheet(sheet).and_then(|s| m.title_blocks.get(&s.title_block)).and_then(|t| t.drawing_area);
+    let area = m.sheet(sheet).and_then(|s| m.title_block_of(s)).and_then(|(_, t)| t.drawing_area);
     if let Some([lo, hi]) = area {
         let b = footprint(m, view, scale).ok_or_else(|| "the viewport frame cannot be measured at this scale".to_string())?;
         let (taken, available) = (P2(b[2] - b[0], b[3] - b[1]), hi - lo);
@@ -375,7 +375,7 @@ fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Vi
     let (project, std) = (&m.name, m.standard());
     let margins = std.sheet_margins(&sheet.size);
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
-    let template = m.title_blocks.get(&sheet.title_block);
+    let template = m.title_block_of(sheet).map(|(_, t)| t);
     if !template.is_some_and(|t| t.template_border) {
         d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
     }
@@ -431,10 +431,12 @@ struct Table {
     totals: bool,
 }
 
-fn table_of(m: &Model, sc: &Schedule) -> Table {
-    let t = schedule::table(m, sc).unwrap_or(schedule::Table { columns: Vec::new(), rows: Vec::new(), ids: Vec::new(), totals: None });
+fn table_of(m: &Model, view: Option<Id>, sc: &Schedule) -> Table {
+    let empty = schedule::Table { columns: Vec::new(), rows: Vec::new(), ids: Vec::new(), totals: None };
+    let kept = schedule::table_kept(m, view, sc).ok();
+    let t = kept.as_deref().unwrap_or(&empty);
     let said = |c: &schedule::Column, v: &serde_json::Value| {
-        let s = schedule::shown(m.units, c.kind, v);
+        let s = schedule::shown_to(m.units, m.decimals, c.kind, v);
         if v.is_boolean() { m.language.word(&s).to_string() } else { s }
     };
     let mut rows: Vec<Vec<String>> = t.rows.iter().map(|r| r.iter().zip(&t.columns).map(|(v, c)| said(c, v)).collect()).collect();
@@ -466,8 +468,8 @@ fn table_size(name: &str, t: &Table) -> (u32, u32) {
 
 /// Schedule `sc` as a ruled table from its top left corner at `(x, y)` px: its title, then its
 /// headings and its rows, a column each, its totals under a heavier rule.
-fn table(d: &mut Drawing, m: &Model, sc: &Schedule, (x, y): (f32, f32)) {
-    let t = table_of(m, sc);
+fn table(d: &mut Drawing, m: &Model, view: Option<Id>, sc: &Schedule, (x, y): (f32, f32)) {
+    let t = table_of(m, view, sc);
     let (w, h) = table_size(&sc.name, &t);
     // On whole pixels, so its rules come out crisp.
     let (x, y, w, h) = (x.round(), y.round(), w as f32, h as f32);
@@ -564,7 +566,7 @@ fn view_into(
         }
         // Its title is its first row; it has no view title under it.
         Some(Element::Schedule(sc)) => {
-            table(d, m, sc, (ox, oy));
+            table(d, m, m.elements.id(id), sc, (ox, oy));
             return Some(false);
         }
         Some(Element::PanelSchedule(ps)) => {
@@ -699,17 +701,11 @@ pub(crate) fn draw_traced(m: &Model, id: impl Key) -> Option<(Drawing, Vec<(usiz
         }
     }
     for &(nid, e) in &on {
-        if let Element::DetailGroup(g) = e
-            && g.view == guid
-        {
-            d.own(Some(nid));
-            render::detail_group(&mut d, m, g);
-        }
         if let Element::RepeatingDetail(r) = e
             && r.view == guid
         {
             d.own(Some(nid));
-            r.groups().iter().for_each(|g| render::detail_group(&mut d, m, g));
+            render::detail_members(&mut d, m, &r.members(m));
         }
         if let Element::Text(n) = e
             && n.view == guid
@@ -841,8 +837,9 @@ mod tests {
                place {"sheet": "A101", "view": "Room Areas", "at": [100, 220]}"#,
         )
         .unwrap();
-        let sc = s.model.elements.values().find_map(|e| if let Element::Schedule(sc) = e { Some(sc.clone()) } else { None }).unwrap();
-        let t = table_of(&s.model, &sc);
+        let (id, sc) =
+            s.model.elements.iter().find_map(|(id, e)| if let Element::Schedule(sc) = e { Some((*id, sc.clone())) } else { None }).unwrap();
+        let t = table_of(&s.model, Some(id), &sc);
         assert_eq!(t.headings, ["Name", "Area (m²)", "Big"]);
         assert_eq!(t.rows, [vec!["Living", "48.00", "Yes"], vec!["Total", "48.00", ""]]);
         assert!(t.totals);
@@ -851,7 +848,7 @@ mod tests {
         let (frame, _) = frame(&s.model, vp).unwrap();
         assert_eq!(frame.height as f32, TITLE_ROW + 3.0 * ROW);
         s.execute("language", &serde_json::json!({"code": "pt"})).unwrap();
-        let t = table_of(&s.model, &sc);
+        let t = table_of(&s.model, Some(id), &sc);
         assert_eq!((t.headings[1].as_str(), t.rows[0][2].as_str(), t.rows[1][0].as_str()), ("Área (m²)", "Sim", "Total"));
     }
 

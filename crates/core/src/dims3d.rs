@@ -215,7 +215,7 @@ pub fn marks_of(m: &Model, owner: Id, d: &Dimension3D, cam: &Camera, mm: f64) ->
         }
     }
     // Its number, along the line, on the side of it away from what it measures, reading from the left.
-    let text = t.length(m.units, dist(p, q));
+    let text = t.length(m.units, m.decimals, dist(p, q));
     let h = t.text_size * mm;
     let read = if along.0 < -1e-9 || (along.0.abs() <= 1e-9 && along.1 > 0.0) { (-along.0, -along.1) } else { along };
     let up = (read.1, -read.0);

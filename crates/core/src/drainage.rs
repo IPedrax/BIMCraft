@@ -16,78 +16,133 @@
 //! that yields them, so they stay tables. A blank cell of a table means "not allowed" and is kept as 0, never filled from another
 //! table. Tabela 7 is complete, DN 100 to 400, as printed (checked against the standard's page).
 
-/// The DNs of the standard's tables, smallest first.
-pub const DNS: &[f64] = &[40.0, 50.0, 75.0, 100.0, 150.0, 200.0, 250.0, 300.0, 400.0];
+use serde::{Deserialize, Serialize};
 
-/// The smallest DN of a building drain ("coletor predial").
-pub const MAIN_MIN_DN: f64 = 100.0;
+/// A row of the vent stacks' table: the DN served, the units up to, and by vent DN the longest length (m).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VentRow {
+    pub served: f64,
+    pub units: f64,
+    pub longest: Vec<[f64; 2]>,
+}
 
-/// Tabela 5: the units a branch of each DN carries.
-const BRANCH: &[(f64, f64)] = &[(40.0, 3.0), (50.0, 6.0), (75.0, 20.0), (100.0, 160.0)];
+/// The tables drains and vents are sized by: the Plumbing tab's Sanitary Drainage section (`data/codes/plumbing/nbr.json`). A
+/// blank of a table (not allowed) is 0, never filled from another table.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DrainageRules {
+    /// The DNs of the tables, smallest first.
+    pub dns: Vec<f64>,
+    /// The smallest DN of a building drain.
+    pub main_min_dn: f64,
+    /// Branches: [DN, units].
+    pub branch: Vec<[f64; 2]>,
+    /// The slopes of the building drains' columns, as fractions.
+    pub main_slopes: Vec<f64>,
+    /// Building drains and collectors: [DN, units at each slope…].
+    pub main: Vec<Vec<f64>>,
+    /// Stacks: [DN, units up to three floors, units above].
+    pub stack: Vec<[f64; 3]>,
+    /// Branch vents: [units up to, DN], without and with a water closet in the group.
+    pub branch_vent_no_wc: Vec<[f64; 2]>,
+    pub branch_vent_wc: Vec<[f64; 2]>,
+    pub vent_stacks: Vec<VentRow>,
+    /// A trap's DN and the longest run from it to its vent, mm.
+    pub trap_to_vent: Vec<[f64; 2]>,
+}
 
-/// Tabela 7's slopes (fractions) and, by DN, the units a building drain carries at each (0: not allowed at that slope).
-const MAIN_SLOPES: [f64; 4] = [0.005, 0.01, 0.02, 0.04];
-const MAIN: &[(f64, [f64; 4])] = &[
-    (100.0, [0.0, 180.0, 216.0, 250.0]),
-    (150.0, [0.0, 700.0, 840.0, 1000.0]),
-    (200.0, [1400.0, 1600.0, 1920.0, 2300.0]),
-    (250.0, [2500.0, 2900.0, 3500.0, 4200.0]),
-    (300.0, [3900.0, 4600.0, 5600.0, 6700.0]),
-    (400.0, [7000.0, 8300.0, 10000.0, 12000.0]),
-];
+impl crate::codes::Section for DrainageRules {
+    const DISCIPLINE: crate::codes::Discipline = crate::codes::Discipline::Plumbing;
+    const KEY: &'static str = "drainage";
+    fn check(&self) -> Result<(), String> {
+        let ok = |v: &f64| v.is_finite() && (0.0..=1.0e6).contains(v);
+        let rows = self.branch.len() + self.main.len() + self.stack.len() + self.vent_stacks.len() + self.trap_to_vent.len();
+        if self.dns.is_empty() || self.dns.len() > 100 || rows > 2000 || self.vent_stacks.iter().any(|r| r.longest.len() > 100) {
+            return Err("drainage: some DNs, and 2000 rows at most".into());
+        }
+        let all = self
+            .dns
+            .iter()
+            .chain([&self.main_min_dn])
+            .chain(self.branch.iter().flatten())
+            .chain(&self.main_slopes)
+            .chain(self.main.iter().flatten())
+            .chain(self.stack.iter().flatten())
+            .chain(self.branch_vent_no_wc.iter().flatten())
+            .chain(self.branch_vent_wc.iter().flatten())
+            .chain(self.vent_stacks.iter().flat_map(|r| [&r.served, &r.units].into_iter().chain(r.longest.iter().flatten())))
+            .chain(self.trap_to_vent.iter().flatten());
+        let mut all = all;
+        if !all.all(ok) {
+            return Err("drainage: every number of the tables is from 0 to a million".into());
+        }
+        if self.dns.windows(2).any(|w| w[0] >= w[1]) || self.main_slopes.windows(2).any(|w| w[0] >= w[1]) {
+            return Err("drainage: `dns` and `main_slopes` go from the smallest up".into());
+        }
+        if self.main.iter().any(|r| r.len() != self.main_slopes.len() + 1) {
+            return Err("drainage: each row of `main` is a DN and the units at each of `main_slopes`".into());
+        }
+        Ok(())
+    }
+}
 
-/// Tabela 6: the units a stack of each DN carries: (DN, up to three floors, more than three).
-const STACK: &[(f64, f64, f64)] = &[
-    (40.0, 4.0, 8.0),
-    (50.0, 10.0, 24.0),
-    (75.0, 30.0, 70.0),
-    (100.0, 240.0, 500.0),
-    (150.0, 960.0, 1900.0),
-    (200.0, 2200.0, 3600.0),
-    (250.0, 3800.0, 5600.0),
-    (300.0, 6000.0, 8400.0),
-];
+fn find(table: &[[f64; 2]], dn: f64) -> Option<f64> {
+    table.iter().find(|r| (r[0] - dn).abs() < 1e-9).map(|r| r[1])
+}
 
-/// Tabela 8: a group of fixtures' units up to which a branch vent has the DN, without and with a water closet in the group.
-const BRANCH_VENT_NO_WC: &[(f64, f64)] = &[(12.0, 40.0), (18.0, 50.0), (36.0, 75.0)];
-const BRANCH_VENT_WC: &[(f64, f64)] = &[(17.0, 50.0), (60.0, 75.0)];
+impl DrainageRules {
+    /// The units a drain of `dn` carries: a branch's, a building drain's by slope, a stack's by the building's `floors`. 0
+    /// where the table has none: a blank means "not allowed", and a branch never borrows the building drains' table.
+    pub fn capacity(&self, dn: f64, slope: f64, role: Role, floors: u32) -> f64 {
+        match role {
+            Role::Stack => self.stack.iter().find(|r| (r[0] - dn).abs() < 1e-9).map_or(0.0, |r| if floors > 3 { r[2] } else { r[1] }),
+            Role::Branch => find(&self.branch, dn).unwrap_or(0.0),
+            Role::Main => {
+                let column = self.main_slopes.iter().rposition(|s| slope + 1e-9 >= *s);
+                let row = self.main.iter().find(|r| r.first().is_some_and(|d| (d - dn).abs() < 1e-9));
+                column.and_then(|c| row.and_then(|r| r.get(c + 1).copied())).unwrap_or(0.0)
+            }
+        }
+    }
 
-/// Tabela 2: (DN of the stack or drain served, units up to, and by vent DN the longest length in metres).
-/// One row of Tabela 2: the DN served, its units, and by vent DN the longest length (m).
-type VentRow = (f64, f64, &'static [(f64, f64)]);
-const VENT_STACKS: &[VentRow] = &[
-    (40.0, 8.0, &[(40.0, 46.0)]),
-    (40.0, 10.0, &[(40.0, 30.0)]),
-    (50.0, 12.0, &[(40.0, 23.0), (50.0, 61.0)]),
-    (50.0, 20.0, &[(40.0, 15.0), (50.0, 46.0)]),
-    (75.0, 10.0, &[(40.0, 13.0), (50.0, 46.0), (75.0, 317.0)]),
-    (75.0, 21.0, &[(40.0, 10.0), (50.0, 33.0), (75.0, 247.0)]),
-    (75.0, 53.0, &[(40.0, 8.0), (50.0, 29.0), (75.0, 207.0)]),
-    (75.0, 102.0, &[(40.0, 8.0), (50.0, 26.0), (75.0, 189.0)]),
-    (100.0, 43.0, &[(50.0, 11.0), (75.0, 76.0), (100.0, 299.0)]),
-    (100.0, 140.0, &[(50.0, 8.0), (75.0, 61.0), (100.0, 229.0)]),
-    (100.0, 320.0, &[(50.0, 7.0), (75.0, 52.0), (100.0, 195.0)]),
-    (100.0, 530.0, &[(50.0, 6.0), (75.0, 46.0), (100.0, 177.0)]),
-    (150.0, 500.0, &[(75.0, 10.0), (100.0, 40.0), (150.0, 305.0)]),
-    (150.0, 1100.0, &[(75.0, 8.0), (100.0, 31.0), (150.0, 238.0)]),
-    (150.0, 2000.0, &[(75.0, 7.0), (100.0, 26.0), (150.0, 201.0)]),
-    (150.0, 2900.0, &[(75.0, 6.0), (100.0, 23.0), (150.0, 183.0)]),
-    (200.0, 1800.0, &[(100.0, 10.0), (150.0, 73.0), (200.0, 286.0)]),
-    (200.0, 3400.0, &[(100.0, 7.0), (150.0, 57.0), (200.0, 219.0)]),
-    (200.0, 5600.0, &[(100.0, 6.0), (150.0, 49.0), (200.0, 186.0)]),
-    (200.0, 7600.0, &[(100.0, 5.0), (150.0, 43.0), (200.0, 171.0)]),
-    (250.0, 4000.0, &[(150.0, 24.0), (200.0, 94.0), (250.0, 293.0)]),
-    (250.0, 7200.0, &[(150.0, 18.0), (200.0, 73.0), (250.0, 225.0)]),
-    (250.0, 11000.0, &[(150.0, 16.0), (200.0, 60.0), (250.0, 192.0)]),
-    (250.0, 15000.0, &[(150.0, 14.0), (200.0, 55.0), (250.0, 174.0)]),
-    (300.0, 7300.0, &[(150.0, 9.0), (200.0, 37.0), (250.0, 116.0), (300.0, 287.0)]),
-    (300.0, 13000.0, &[(150.0, 7.0), (200.0, 29.0), (250.0, 90.0), (300.0, 219.0)]),
-    (300.0, 20000.0, &[(150.0, 6.0), (200.0, 24.0), (250.0, 76.0), (300.0, 186.0)]),
-    (300.0, 26000.0, &[(150.0, 5.0), (200.0, 22.0), (250.0, 70.0), (300.0, 152.0)]),
-];
+    /// The smallest DN that carries `units`, at least `floor` (and, a building drain, at least `main_min_dn`); none when
+    /// the tables end.
+    pub fn smallest(&self, units: f64, slope: f64, role: Role, floors: u32, floor: f64) -> Option<f64> {
+        let floor = if role == Role::Main { floor.max(self.main_min_dn) } else { floor };
+        self.dns.iter().copied().find(|dn| *dn + 1e-9 >= floor && self.capacity(*dn, slope, role, floors) >= units)
+    }
 
-/// Tabela 1: a trap's DN and the longest run from it to its vent, in millimetres.
-pub const TRAP_TO_VENT: &[(f64, f64)] = &[(40.0, 1000.0), (50.0, 1200.0), (75.0, 1800.0), (100.0, 2400.0)];
+    /// A branch vent's DN for the units of the group it vents (none: more than the table gives).
+    pub fn branch_vent(&self, units: f64, with_wc: bool) -> Option<f64> {
+        let table = if with_wc { &self.branch_vent_wc } else { &self.branch_vent_no_wc };
+        table.iter().find(|r| units <= r[0]).map(|r| r[1])
+    }
+
+    fn vent_row(&self, served_dn: f64, units: f64) -> Option<&VentRow> {
+        self.vent_stacks.iter().find(|r| (r.served - served_dn).abs() < 1e-9 && units <= r.units)
+    }
+
+    /// A vent stack's smallest DN for the stack (or drain) it serves, its units and its length in metres.
+    pub fn vent_stack(&self, served_dn: f64, units: f64, length_m: f64) -> Option<f64> {
+        let row = self.vent_row(served_dn, units)?;
+        self.dns.iter().copied().find(|dn| find(&row.longest, *dn).is_some_and(|max| max + 1e-9 >= length_m))
+    }
+
+    /// The longest length (m) a vent of `dn` may have for the stack (or drain) served and its units.
+    pub fn vent_stack_limit(&self, served_dn: f64, units: f64, dn: f64) -> Option<f64> {
+        find(&self.vent_row(served_dn, units)?.longest, dn)
+    }
+
+    /// The longest run from a trap of `dn` to its vent, mm.
+    pub fn trap_distance(&self, dn: f64) -> Option<f64> {
+        find(&self.trap_to_vent, dn)
+    }
+}
+
+fn library() -> std::sync::Arc<DrainageRules> {
+    crate::codes::library_rules::<DrainageRules>()
+}
 
 /// What a drain is: a branch from fixtures, a building drain or collector, or a stack.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,54 +163,37 @@ impl Role {
     }
 }
 
-fn find<T: Copy>(table: &[(f64, T)], dn: f64) -> Option<T> {
-    table.iter().find(|r| (r.0 - dn).abs() < 1e-9).map(|r| r.1)
-}
-
-/// The units a drain of `dn` carries: a branch from Tabela 5, a building drain from Tabela 7 by slope, a stack from Tabela 6 by the
-/// building's `floors`. 0 when the table has none for it: a blank in Tabela 7 (DN 100 and 150 at 0.5 %, a slope flatter than 0.5 %)
-/// means "not allowed", and a branch never borrows the building-drain table, nor the other way round.
+/// The units a drain of `dn` carries, by the library's tables.
 pub fn capacity(dn: f64, slope: f64, role: Role, floors: u32) -> f64 {
-    match role {
-        Role::Stack => STACK.iter().find(|r| (r.0 - dn).abs() < 1e-9).map_or(0.0, |r| if floors > 3 { r.2 } else { r.1 }),
-        Role::Branch => find(BRANCH, dn).unwrap_or(0.0),
-        Role::Main => {
-            let column = MAIN_SLOPES.iter().rposition(|s| slope + 1e-9 >= *s);
-            column.and_then(|c| find(MAIN, dn).and_then(|row| row.get(c).copied())).unwrap_or(0.0)
-        }
-    }
+    library().capacity(dn, slope, role, floors)
 }
 
-/// The smallest DN that carries `units`, at least `floor` (and, a building drain, at least [`MAIN_MIN_DN`]); none when the tables end.
+/// The smallest DN that carries `units`, by the library's tables.
 pub fn smallest(units: f64, slope: f64, role: Role, floors: u32, floor: f64) -> Option<f64> {
-    let floor = if role == Role::Main { floor.max(MAIN_MIN_DN) } else { floor };
-    DNS.iter().copied().find(|dn| *dn + 1e-9 >= floor && capacity(*dn, slope, role, floors) >= units)
+    library().smallest(units, slope, role, floors, floor)
 }
 
-/// A branch vent's DN for the units of the group it vents (none: more than Tabela 8 gives).
+/// A branch vent's DN, by the library's table.
 pub fn branch_vent(units: f64, with_wc: bool) -> Option<f64> {
-    let table = if with_wc { BRANCH_VENT_WC } else { BRANCH_VENT_NO_WC };
-    table.iter().find(|r| units <= r.0).map(|r| r.1)
+    library().branch_vent(units, with_wc)
 }
 
-/// A vent stack's smallest DN among the DNs for the stack (or drain) it serves, its units and its length in metres.
+/// A vent stack's smallest DN, by the library's table.
 pub fn vent_stack(served_dn: f64, units: f64, length_m: f64) -> Option<f64> {
-    let row = VENT_STACKS.iter().find(|r| (r.0 - served_dn).abs() < 1e-9 && units <= r.1)?;
-    DNS.iter().copied().find(|dn| find(row.2, *dn).is_some_and(|max| max + 1e-9 >= length_m))
+    library().vent_stack(served_dn, units, length_m)
 }
 
-/// The longest length (m) a vent of `dn` may have for the stack (or drain) served and its units.
+/// The longest length (m) a vent of `dn` may have, by the library's table.
 pub fn vent_stack_limit(served_dn: f64, units: f64, dn: f64) -> Option<f64> {
-    let row = VENT_STACKS.iter().find(|r| (r.0 - served_dn).abs() < 1e-9 && units <= r.1)?;
-    find(row.2, dn)
+    library().vent_stack_limit(served_dn, units, dn)
 }
 
-/// The longest run from a trap of `dn` to its vent, mm.
+/// The longest run from a trap of `dn` to its vent, mm, by the library's table.
 pub fn trap_distance(dn: f64) -> Option<f64> {
-    find(TRAP_TO_VENT, dn)
+    library().trap_distance(dn)
 }
 
-/// The units of a fixture kind and the smallest DN of its drain (Tabela 3, from the fixtures library, `data/plumbing.json`).
+/// The units of a fixture kind and the smallest DN of its drain (Tabela 3, from the fixtures library).
 pub fn fixture(kind: &str) -> Option<(f64, f64)> {
     crate::plumbing::fixture(kind).map(|f| (f.uhc, f.drain_dn))
 }
