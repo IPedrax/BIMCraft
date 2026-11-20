@@ -742,52 +742,59 @@ impl Ledger {
     }
 
     /// Select the method in the ledger before letting the command compute the answer.
+    /// The method a probe's answer comes from, chosen from the ledger's layers as the commands' contract says: of the
+    /// layers holding one for the identity the probe names, the one on top, the project's or BIMCraft's (a copy under
+    /// BIMCraft's own is passed over).
     fn probe_method(&self, cmd: &str, p: &Value) -> Option<(&'static str, Map<String, Value>)> {
         let layers = self.layers();
-        let own_by_identity = |key, matches: &dyn Fn(&Map<String, Value>) -> bool| {
-            layers
-                .iter()
-                .rev()
-                .filter_map(|(name, code)| {
-                    if !matches!(code, CodeRef::Own(_)) {
-                        return None;
-                    }
-                    Self::whole_of(name, code, key).filter(matches)
-                })
-                .next()
+        let named_in = |v: Option<&Value>, n: &str| v.and_then(Value::as_str).is_some_and(|x| x.eq_ignore_ascii_case(n));
+        let lists = |w: &Map<String, Value>, field: &str, n: &str| {
+            w.get(field).and_then(Value::as_array).is_some_and(|a| a.iter().any(|m| named_in(m.get("id").or(Some(m)), n)))
         };
         match cmd {
             "demand" => {
                 let utility = p["utility"].as_str().expect("demand probe names a utility");
-                let named = |v: Option<&Value>| v.and_then(Value::as_str).is_some_and(|n| n.eq_ignore_ascii_case(utility));
-                if let Some(w) = own_by_identity("entrance", &|w| {
-                    named(w.get("id"))
-                        || w.get("members")
-                            .and_then(Value::as_array)
-                            .is_some_and(|members| members.iter().any(|member| named(member.get("id"))))
-                }) {
-                    return Some(("entrance", w));
+                // A member of a group answers by its group's methods too: the groups that list it, held or BIMCraft's.
+                let mut groups: Vec<String> = layers
+                    .iter()
+                    .filter_map(|(n, c)| Self::whole_of(n, c, "entrance"))
+                    .filter(|w| lists(w, "members", utility))
+                    .filter_map(|w| w.get("id").and_then(Value::as_str).map(str::to_string))
+                    .collect();
+                if let Some((g, Some(_))) = bimcraft_core::entrance::find(utility) {
+                    groups.push(g.id.clone());
                 }
-                own_by_identity("unit_demand", &|w| named(w.get("utility"))).map(|w| ("unit_demand", w))
+                // Layer by layer from the top; in one layer, the entrance before the unit demand.
+                layers.iter().rev().find_map(|(n, c)| {
+                    if let Some(w) = Self::whole_of(n, c, "entrance")
+                        && (named_in(w.get("id"), utility) || lists(&w, "members", utility))
+                    {
+                        return Some(("entrance", w));
+                    }
+                    Self::whole_of(n, c, "unit_demand")
+                        .filter(|w| {
+                            std::iter::once(utility).chain(groups.iter().map(String::as_str)).any(|g| named_in(w.get("utility"), g))
+                        })
+                        .map(|w| ("unit_demand", w))
+                })
             }
             "building_demand" => {
                 let key = "building_demand";
-                let (top, from) = self.resolved(key, true);
                 let named = |w: &Map<String, Value>| {
                     if let Some(s) = p["standard"].as_str() {
                         w.get("standard").and_then(Value::as_str) == Some(s)
                     } else if let Some(u) = p["utility"].as_str() {
-                        w.get("utilities")
-                            .and_then(Value::as_array)
-                            .is_some_and(|us| us.iter().any(|n| n.as_str().is_some_and(|n| n.eq_ignore_ascii_case(u))))
+                        lists(w, "utilities", u)
                     } else {
                         true
                     }
                 };
-                if from.values().any(|f| *f != From::Lib) && named(&top) {
-                    return Some((key, top));
+                // Naming none: the method in force, if the project holds one.
+                if p.get("standard").is_none() && p.get("utility").is_none() {
+                    let (top, from) = self.resolved(key, true);
+                    return (from.values().any(|f| *f != From::Lib) && !top.is_empty()).then_some((key, top));
                 }
-                own_by_identity(key, &named).map(|w| (key, w))
+                layers.iter().rev().find_map(|(n, c)| Self::whole_of(n, c, key).filter(named).map(|w| (key, w)))
             }
             _ => None,
         }
@@ -1098,8 +1105,11 @@ impl Run {
     }
 
     fn oracle(&mut self) -> Vec<Value> {
+        self.oracle_for(&lib().probes)
+    }
+
+    fn oracle_for(&mut self, probes: &[(&str, Value)]) -> Vec<Value> {
         let base = self.l.injected();
-        let probes = &lib().probes;
         let methods: Vec<_> = probes.iter().map(|(cmd, p)| self.l.probe_method(cmd, p)).collect();
         let key = serde_json::to_string(&(&base.sections, &methods)).expect("oracle key");
         if let Some(a) = self.memo.get(&key) {
@@ -1694,4 +1704,144 @@ fn saved_pack_uses_character_limit_and_keeps_occupied_names() {
         assert!(same(&held.sections["unit_demand"], &codes::find(E, origin).unwrap().sections["unit_demand"]));
     }
     assert!(s.model.codes.find(E, &taken).unwrap().sections.is_empty());
+}
+
+fn confirm_run(dir: &tempfile::TempDir) -> Run {
+    let mut run = Run::new(dir.path().display().to_string(), false);
+    confirm_set(&mut run, json!({"set": "nbr-5410"}));
+    run
+}
+
+fn confirm_set(run: &mut Run, p: Value) {
+    set_code(&mut run.s, p.clone());
+    run.l.building_code(&p);
+}
+
+fn confirm_answers(run: &mut Run, cmd: &str, p: &Value) -> (Value, Value) {
+    // The campaign memo only varies the method and base. These tests vary the probe as well.
+    run.memo.clear();
+    let reference = run.oracle_for(&[(cmd, p.clone())]).remove(0);
+    let live = ask(&mut run.s, cmd, p);
+    (live, reference)
+}
+
+fn confirm_entrance(utility: &str) -> Value {
+    let mut entrance = codes::find(E, "energisa").unwrap().sections["entrance"].clone();
+    entrance["id"] = json!(utility);
+    entrance["tables"][0]["rows"][0]["breaker_a"][0] = json!(31);
+    entrance
+}
+
+#[test]
+fn confirm_demand_uses_the_higher_layer_across_sections() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut run = confirm_run(&dir);
+    confirm_set(&mut run, json!({"create": "Entrance", "amendments": ["Entrance", "celesc"]}));
+    confirm_set(&mut run, json!({"amend": "Entrance", "rules": {"entrance": confirm_entrance("CELESC")}}));
+    // Editing the library holder creates a project copy, so both competing methods are own.
+    let mut unit = codes::find(E, "celesc").unwrap().sections["unit_demand"].clone();
+    unit["method"]["table"]["networks"][0]["rows"][0]["breaker"] = json!(52);
+    confirm_set(&mut run, json!({"amend": "celesc", "rules": {"unit_demand": unit}}));
+    let p = json!({"utility": "CELESC", "installed_kw": 3, "phases": 1});
+    let (live, reference) = confirm_answers(&mut run, "demand", &p);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    let breaker = |answer: &Value| {
+        let a = &answer["category"]["breaker_a"];
+        a.as_f64().or_else(|| a[0].as_f64())
+    };
+    let unit_on_top = (breaker(&live), breaker(&reference));
+
+    confirm_set(&mut run, json!({"amendments": ["celesc"]}));
+    let (live, reference) = confirm_answers(&mut run, "demand", &p);
+    assert_eq!((breaker(&live), breaker(&reference)), (Some(52.0), Some(52.0)));
+
+    confirm_set(&mut run, json!({"amendments": ["celesc", "Entrance"]}));
+    let (live, reference) = confirm_answers(&mut run, "demand", &p);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["category"]["breaker_a"][0].as_f64(), Some(31.0));
+    assert_eq!(unit_on_top, (Some(52.0), Some(52.0)));
+}
+
+#[test]
+fn confirm_demand_higher_library_layer_of_the_same_utility() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut run = confirm_run(&dir);
+    confirm_set(&mut run, json!({"create": "Enel copy", "amendments": ["enel", "Enel copy"]}));
+    let mut unit = codes::find(E, "enel").unwrap().sections["unit_demand"].clone();
+    unit["method"]["annexes"]["networks"][0]["rows"][5]["breaker"] = json!(51);
+    confirm_set(&mut run, json!({"amend": "Enel copy", "rules": {"unit_demand": unit}}));
+    let p = json!({"utility": "ENEL", "network": "aerial", "installed_kw": 18, "phases": 3});
+    let (live, reference) = confirm_answers(&mut run, "demand", &p);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["category"]["breaker_a"].as_f64(), Some(51.0));
+    confirm_set(&mut run, json!({"amendments": []}));
+    assert_eq!(ask(&mut run.s, "demand", &p)["category"]["breaker_a"].as_f64(), Some(50.0));
+
+    confirm_set(&mut run, json!({"amendments": ["Enel copy", "enel"]}));
+    let (live, reference) = confirm_answers(&mut run, "demand", &p);
+    assert_eq!((live["category"]["breaker_a"].as_f64(), reference["category"]["breaker_a"].as_f64()), (Some(50.0), Some(50.0)),);
+}
+
+#[test]
+fn confirm_demand_group_member_and_group_unit_method() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut run = confirm_run(&dir);
+    confirm_set(&mut run, json!({"create": "Group unit", "amendments": ["Group unit"]}));
+    let mut unit = codes::find(E, "celesc").unwrap().sections["unit_demand"].clone();
+    unit["utility"] = json!("ENERGISA");
+    unit["method"]["table"]["networks"][0]["rows"][0]["breaker"] = json!(52);
+    confirm_set(&mut run, json!({"amend": "Group unit", "rules": {"unit_demand": unit}}));
+    let member = json!({"utility": "EAC", "installed_kw": 3, "phases": 1});
+    let (live, reference) = confirm_answers(&mut run, "demand", &member);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    // A member answers by its group's unit demand, which the project holds.
+    let b = &live["category"]["breaker_a"];
+    assert_eq!(b.as_f64().or_else(|| b[0].as_f64()), Some(52.0), "{live}");
+
+    let group = json!({"utility": "ENERGISA", "installed_kw": 3, "phases": 1});
+    let (live, reference) = confirm_answers(&mut run, "demand", &group);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["category"]["breaker_a"].as_f64(), Some(52.0));
+
+    confirm_set(&mut run, json!({"amendments": ["Group unit", "energisa"]}));
+    confirm_set(&mut run, json!({"amend": "energisa", "rules": {"entrance": confirm_entrance("ENERGISA")}}));
+    let (live, reference) = confirm_answers(&mut run, "demand", &member);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["group"], "ENERGISA");
+    assert_eq!(live["category"]["breaker_a"][0].as_f64(), Some(31.0));
+}
+
+#[test]
+fn confirm_building_demand_without_selector_and_by_other_utility() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut run = confirm_run(&dir);
+    let mut p = json!({"dwellings": [{"count": 20, "area": 100}, {"count": 16, "area": 80}]});
+    let (live, reference) = confirm_answers(&mut run, "building_demand", &p);
+    assert!(live["error"].is_string() && same(&live, &reference), "{live} != {reference}");
+
+    confirm_set(&mut run, json!({"amendments": ["celesc"]}));
+    let (live, reference) = confirm_answers(&mut run, "building_demand", &p);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["standard"], "CELESC N-321.0003");
+    assert_eq!(live["factor"].as_f64(), Some(1.2));
+
+    confirm_set(&mut run, json!({"amendments": ["celesc", "hidropan"]}));
+    confirm_set(&mut run, json!({"amend": "celesc", "rules": {"building_demand": {"factor": 2.0}}}));
+    confirm_set(&mut run, json!({"amend": "hidropan", "rules": {"building_demand": {"factor": 3.0}}}));
+    let (live, reference) = confirm_answers(&mut run, "building_demand", &p);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["standard"], "HIDROPAN RIC BT 2014");
+    assert_eq!(live["factor"].as_f64(), Some(3.0));
+
+    p["utility"] = json!("celesc");
+    let (live, reference) = confirm_answers(&mut run, "building_demand", &p);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["standard"], "CELESC N-321.0003");
+    assert_eq!(live["factor"].as_f64(), Some(2.0));
+
+    confirm_set(&mut run, json!({"amend": "celesc", "reset": true}));
+    let (live, reference) = confirm_answers(&mut run, "building_demand", &p);
+    assert!(same(&live, &reference), "{live} != {reference}");
+    assert_eq!(live["standard"], "CELESC N-321.0003");
+    assert_eq!(live["factor"].as_f64(), Some(1.2));
 }
