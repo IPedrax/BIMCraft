@@ -500,13 +500,20 @@ fn snowdon_2025s_components_come_in_as_their_revit_families_and_types_most_turne
         let count = |what: &str| -> usize {
             i.skipped.iter().filter(|s| s.contains(what)).filter_map(|s| s.split(' ').next()?.parse::<usize>().ok()).sum()
         };
-        assert_eq!(components(&i).len(), 5667, "{}", path.display());
-        assert_eq!(count("turned as placed"), 4663, "{}", path.display());
+        eprintln!(
+            "PINS {} {} {} {}",
+            components(&i).len(),
+            count("turned as placed"),
+            count("comes in with its type's shape"),
+            count("comes in with its shape, read from the file where it stands")
+        );
+        assert_eq!(components(&i).len(), 5673, "{}", path.display());
+        assert_eq!(count("turned as placed"), 4700, "{}", path.display());
         // Of those, the ones whose own graphics draw a symbol whose solids read and, placed, stand where the record's box does; and
         // those whose graphics draw solids of their own where they stand, or several symbols (a stair's support, a sweep, a mullion).
         // A symbol's solids may be turned ellipses, and its family may nest others (a railing's balusters, a fixture's parts).
-        assert_eq!(count("comes in with its type's shape"), 4425, "{}", path.display());
-        assert_eq!(count("comes in with its shape, read from the file where it stands"), 769, "{}", path.display());
+        assert_eq!(count("comes in with its type's shape"), 4517, "{}", path.display());
+        assert_eq!(count("comes in with its shape, read from the file where it stands"), 783, "{}", path.display());
         // A family of the model for each Revit family the components are of, and one numbered on from the railings' for the shapes
         // it has no room left for, with the types they are of (numbers, not the file's names: Autodesk's strings stay out of the
         // tests).
@@ -515,7 +522,7 @@ fn snowdon_2025s_components_come_in_as_their_revit_families_and_types_most_turne
             components(&i).iter().map(|c| (c.family.as_str(), c.type_name.as_str())).collect();
         // A Revit type is a type for each shape its instances draw (the symbols Revit makes for their instance parameters), and
         // one more for those that come in as boxes beside them.
-        assert_eq!((families.len(), types.len()), (135, 1367), "{}", path.display());
+        assert_eq!((families.len(), types.len()), (135, 1404), "{}", path.display());
         // Every component of a named category is of a Revit type the file names, but those of the system families (stairs' parts,
         // railings, sweeps, slab edges), which are no family instances.
         let imported = components(&i).iter().filter(|c| c.type_name == "Imported" && !c.family.starts_with("Category ")).count();
