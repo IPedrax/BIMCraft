@@ -32,6 +32,8 @@ const LISTS: [(&str, &str, &str); 3] = [
     ("wire_type", "wire_types", "wire_type"),
 ];
 const TARGETS: [&str; 6] = ["unit_demand", "entrance", "building_demand", "circuits", "conduit_fill", "surge"];
+/// A utility's or a country's method, changed only in the code that holds it (`amend`), never among the project's changes.
+const WHOLES: [&str; 3] = ["unit_demand", "entrance", "building_demand"];
 const OWN_NAMES: [&str; 5] = ["P1", "P2", "P3", "S1", "S2"];
 
 struct Rng(u64);
@@ -295,7 +297,11 @@ fn lib() -> &'static Lib {
                         let mut g = Session::new();
                         let _ = g.execute("building_code", &bc(setup.clone()));
                         let rule: &str = rule.as_str();
-                        if g.execute("building_code", &bc(json!({"rules": {key: {rule: nv.clone()}}}))).is_err() {
+                        let change = match WHOLES.contains(&key) {
+                            true => json!({"amend": c.code, "rules": {key: {rule: nv.clone()}}}),
+                            false => json!({"rules": {key: {rule: nv.clone()}}}),
+                        };
+                        if g.execute("building_code", &bc(change)).is_err() {
                             continue;
                         }
                         let after: Vec<Value> = probes.iter().map(|(c, p)| ask(&mut g, c, p)).collect();
@@ -334,6 +340,10 @@ fn lib() -> &'static Lib {
             *by.entry(format!("{}/{}", m.holder, m.section)).or_default() += 1;
         }
         eprintln!("mutations by holder/section: {by:?}");
+        // Each kind of rule the codes hold is changed somewhere, so a change the commands refuse can't leave it untried.
+        for key in TARGETS {
+            assert!(muts.iter().any(|m| m.section == key), "no change of `{key}` moves an answer: the generator can't reach it");
+        }
         Lib { probes, named, answers, muts, starter, bases, amendments, other, tmp }
     })
 }
@@ -441,17 +451,7 @@ impl Ledger {
         // A utility's or a country's method (`codes::WHOLE`) is one layer's alone: an own copy keeps the rules of the code it
         // was made from that it did not take out, and the layer replaces whatever is under it.
         let section_of = |n: &str, c: &CodeRef| -> Option<Map<String, Value>> {
-            let own = c.section(key)?;
-            if !whole_key {
-                return Some(own.clone());
-            }
-            let origin = match c {
-                CodeRef::Own(o) => codes::find(E, &o.based_on).or_else(|| codes::find(E, n)),
-                CodeRef::Lib(_) => None,
-            };
-            let mut out = origin.and_then(|o| o.section(key)).cloned().unwrap_or_default();
-            out.extend(own.clone());
-            Some(out)
+            if whole_key { Self::whole_of(n, c, key) } else { c.section(key).cloned() }
         };
         let lay = |out: &mut Resolved| {
             for (n, c) in &layers {
@@ -499,6 +499,40 @@ impl Ledger {
         let base = &layers[0];
         let based_on = if base.1.based_on().is_empty() { base.0.clone() } else { base.1.based_on().to_string() };
         Own { amends: String::new(), based_on, sections: keys.into_iter().map(|k| (k.clone(), self.resolved(&k, true).0)).collect() }
+    }
+
+    /// The rules in force kept as codes called `name`: the snapshot, and where more than one layer holds a utility's or a
+    /// country's method, each of those layers' methods as an amendment over it, in the layers' order (one code keeps one
+    /// method a section), named after the code and the layer, never a name taken.
+    fn saved(&self, name: &str) -> Vec<(String, Own)> {
+        let layers = self.layers();
+        let mut out = vec![(name.to_string(), self.snapshot())];
+        let split: Vec<&str> = codes::sections()
+            .iter()
+            .filter(|d| d.discipline == E && codes::is_whole(E, d.key))
+            .map(|d| d.key)
+            .filter(|k| layers.iter().filter(|(_, c)| c.section(k).is_some()).count() > 1)
+            .collect();
+        if split.is_empty() {
+            return out;
+        }
+        let mut taken: Vec<String> = self.own.keys().map(|k| k.to_lowercase()).collect();
+        taken.push(name.to_lowercase());
+        for (n, c) in &layers {
+            let sections: BTreeMap<String, Map<String, Value>> =
+                split.iter().filter_map(|k| Self::whole_of(n, c, k).map(|w| ((*k).to_string(), w))).collect();
+            if sections.is_empty() {
+                continue;
+            }
+            let code = (1..)
+                .map(|i| if i == 1 { format!("{name} · {n}") } else { format!("{name} · {n} ({i})") })
+                .find(|x| !taken.contains(&x.to_lowercase()))
+                .expect("a name");
+            taken.push(code.to_lowercase());
+            let based_on = if c.based_on().is_empty() { n.clone() } else { c.based_on().to_string() };
+            out.push((code, Own { amends: name.to_string(), based_on, sections }));
+        }
+        out
     }
 
     fn trim(&mut self) {
@@ -606,10 +640,12 @@ impl Ledger {
             }
         }
         if let Some(name) = s("save") {
-            let snap = self.snapshot();
-            self.own.insert(name.clone(), snap);
+            let saved = self.saved(&name);
+            self.amendments = saved.iter().skip(1).map(|(n, _)| n.clone()).collect();
+            for (n, own) in saved {
+                self.own.insert(n, own);
+            }
             self.base = Some(name);
-            self.amendments.clear();
             self.changes.clear();
         }
         if let Some(name) = s("delete")
@@ -689,11 +725,29 @@ impl Ledger {
         }
     }
 
-    /// The codes a fresh project holds that has only the ledger's rules in force, as its own changes.
+    /// A utility's or a country's method (`codes::WHOLE`) as layer `n` holds it: an own copy keeps the rules of the code it
+    /// was made from that it did not take out.
+    fn whole_of(n: &str, c: &CodeRef, key: &str) -> Option<Map<String, Value>> {
+        let own = c.section(key)?;
+        let origin = match c {
+            CodeRef::Own(o) => codes::find(E, &o.based_on).or_else(|| codes::find(E, n)),
+            CodeRef::Lib(_) => None,
+        };
+        let mut out = origin.and_then(|o| o.section(key)).cloned().unwrap_or_default();
+        out.extend(own.clone());
+        Some(out)
+    }
+
+    /// The codes a fresh project holds that has only the ledger's rules in force: a base of its own with the rules, and over
+    /// it one amendment of its own for each layer that holds a utility's or a country's method, in the ledger's order, each
+    /// with that layer's methods (a command naming a utility reads the one on top that holds it, not only the top one).
     fn injected(&self) -> Codes {
         let mut c = Codes::default();
         let mut own = BuildingCode { code: "ORACLE".into(), name: "ORACLE".into(), discipline: E, ..BuildingCode::default() };
         for def in codes::sections().iter().filter(|d| d.discipline == E && !SETTINGS.contains(&d.key)) {
+            if codes::is_whole(E, def.key) {
+                continue;
+            }
             let (v, from) = self.resolved(def.key, true);
             if from.values().any(|f| *f != From::Lib) {
                 own.sections.insert(def.key.into(), Value::Object(v));
@@ -701,6 +755,22 @@ impl Ledger {
         }
         c.electrical.code = Some("ORACLE".into());
         c.own.push(own);
+        let wholes: Vec<&str> =
+            codes::sections().iter().filter(|d| d.discipline == E && codes::is_whole(E, d.key)).map(|d| d.key).collect();
+        for (i, (n, code)) in self.layers().iter().enumerate() {
+            let name = format!("ORACLE {i}");
+            let mut layer =
+                BuildingCode { code: name.clone(), name: name.clone(), discipline: E, amends: "ORACLE".into(), ..BuildingCode::default() };
+            for key in &wholes {
+                if let Some(w) = Self::whole_of(n, code, key) {
+                    layer.sections.insert((*key).into(), Value::Object(w));
+                }
+            }
+            if !layer.sections.is_empty() {
+                c.electrical.amendments.push(name);
+                c.own.push(layer);
+            }
+        }
         c
     }
 }
@@ -935,11 +1005,11 @@ impl Run {
                 let held: Option<Vec<(String, Own)>> = match kind {
                     0 => {
                         p["discipline"] = json!("electrical");
-                        Some(vec![(name.clone(), self.l.snapshot())])
+                        Some(self.l.saved(&name))
                     }
                     1 => {
                         p["all"] = json!(true);
-                        Some(vec![(name.clone(), self.l.snapshot())])
+                        Some(self.l.saved(&name))
                     }
                     _ => {
                         p["discipline"] = json!("electrical");
@@ -985,7 +1055,7 @@ impl Run {
 
     fn oracle(&mut self) -> Vec<Value> {
         let codes = self.l.injected();
-        let key = serde_json::to_string(&codes.own[0].sections).unwrap_or_default();
+        let key = serde_json::to_string(&codes.own.iter().map(|c| &c.sections).collect::<Vec<_>>()).unwrap_or_default();
         if let Some(a) = self.memo.get(&key) {
             return a.clone();
         }
@@ -1213,7 +1283,12 @@ fn gen_op(r: &mut Rng, l: &Ledger, nochange: bool) -> Op {
                         m.value.clone()
                     };
                     let (sec, rule) = (m.section.as_str(), m.rule.as_str());
-                    Op::Bc(bc(json!({"rules": {sec: {rule: v}}})))
+                    // A method is changed in the code holding it, where the project holds that code; else the project's
+                    // change is tried, and refused.
+                    match WHOLES.contains(&sec) && held.contains(&m.holder) {
+                        true => Op::Bc(bc(json!({"amend": m.holder, "rules": {sec: {rule: v}}}))),
+                        false => Op::Bc(bc(json!({"rules": {sec: {rule: v}}}))),
+                    }
                 }
             }
             35..=48 if !nochange && !held.is_empty() => {
