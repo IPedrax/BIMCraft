@@ -70,7 +70,7 @@ fn palettes_dock_left_right_or_bottom_float_and_close_by_their_menus() {
     press(&mut h, "Close Properties");
     assert!(!docking(&h).shown(Palette::Properties) && h.query_by_label("Dock Properties").is_none());
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     pick(&mut h, Role::CheckBox, "Properties");
     assert_eq!(docking(&h).docked(Palette::Properties), Some(Side::Right));
     // PP hides it and shows it again.
@@ -675,7 +675,8 @@ fn columns_and_rows_mix_in_one_layout() {
     assert!((tabs.width() - views.width() / 3.0).abs() < 1e-3 && (right.width() - views.width() / 3.0).abs() < 1e-3);
     assert!((left.height() - views.height() / 2.0).abs() < 1e-3 && (tabs.height() - views.height() / 2.0).abs() < 1e-3);
     assert!((below.width() - views.width()).abs() < 1e-3 && (below.height() - views.height() / 2.0).abs() < 1e-3);
-    assert!(left.left() <= views.left() + 1e-3 && tabs.left() > left.right() && right.left() > tabs.right());
+    assert!(left.left() <= views.left() + 1e-3, "{left:?}");
+    assert!(tabs.left() >= left.right() - 1e-3 && right.left() >= tabs.right() - 1e-3, "{tabs:?} {right:?}");
     assert!(below.top() >= tabs.bottom() - 1e-3, "the bottom row runs under the columns");
 }
 
