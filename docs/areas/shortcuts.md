@@ -55,12 +55,41 @@ In the dialog:
 
 When a combination is already taken, the dialog reports the conflict and offers Replace, which removes it from the other action.
 
-## Profiles
+## Starting sets and presets
+
+A **starting set** is a built-in set of bindings that comes from the code. A **preset** is a named
+snapshot of a full set that the user keeps in `settings.json`. Presets are application settings: they
+survive New/Open and are never written into a project.
+
+### Starting sets
 
 - **BIMCraft**: the starting set: the familiar two-letter commands (`WA`, `DR`, `WN`, `RM`, `CL`, `DI`, `TG`, `MV`, `CO`, `RO`, `MM`, `DM`, `AL`, `OF`, `DW`, `ZF`, `TL`, `CS`, `PP`, `NP`, `SA`, `VV`, `EH`, `HH`, `KS`, and others) plus the chords `Ctrl+S`, `Ctrl+O`, `Ctrl+N`, `Ctrl+K`, `Ctrl+,`, `Ctrl+P`, `Ctrl+Z`, `F8`, `F2`, `F3`, `Ctrl+0`, and others.
 - **Revit-like**: mostly sequences.
 - **Archicad-like**: the same, plus `Ctrl+D` for Move.
 - **Empty**: no bindings.
+
+These four are read-only: they can be applied, but not renamed or deleted.
+
+### Keyboard presets
+
+The Keyboard Shortcuts dialog has a **Keyboard presets** block, apart from the filters. It lists the
+four built-in sets under **Built-in** and the user's snapshots under **My presets**.
+
+- **Save Current as Preset…** keeps the set being edited under a name. The name is trimmed, must not
+  be empty and is at most 64 characters; it is unique among all presets, built-in ones included.
+  Saving does not change the current set.
+- **Apply Preset** replaces the set being edited. If that set has changes, the dialog asks first;
+  **Cancel** or `Esc` rolls the whole dialog back, the applied preset included.
+- **Apply Changes** is still what writes the set to `settings.json`. Presets themselves are saved as
+  soon as they are created, renamed or deleted.
+- **Rename Preset…** and **Delete Preset** work on the user's presets only. Deleting the active preset
+  leaves the current set as it is and only drops its label.
+- A preset is marked **active** while the set matches it and **modified** once a binding differs.
+- Limits: 32 presets, 64 characters per name, 4,096 bindings in one preset, 8,192 bindings across
+  all presets.
+
+Applying a built-in set sets the starting set the Reset Action command returns to. A user's preset
+keeps the starting set it was saved from.
 
 ### Home and F8/F11 changes
 
@@ -170,17 +199,30 @@ These can be assigned with a warning: `Delete`, `F1`–`F12`, `Ctrl+Alt+…` (Al
 {
   "shortcuts": {
     "version": 2,
-    "profile": "bimcraft",
+    "profile": "custom",
     "bindings": [
-      {"action": "cmd.move", "keys": ["MV"]},
+      {"action": "cmd.move", "keys": ["Ctrl+D", "MV"]},
       {"action": "cmd.wall", "keys": ["WA"]},
       {"action": "ui.view.home", "keys": ["Ctrl+D"]}
+    ],
+    "active_preset": "Work keys",
+    "presets": [
+      {
+        "name": "Work keys",
+        "base": "archicad",
+        "bindings": [
+          {"action": "cmd.move", "keys": ["Ctrl+D", "MV"]},
+          {"action": "cmd.wall", "keys": ["WA"]}
+        ]
+      }
     ]
   }
 }
 ```
 
 The file stores the full effective set, not only differences from the starting profile, so an update does not bring back bindings the user deleted. The old `{"WA": "Wall"}` form is migrated on first load.
+
+`presets` and `active_preset` are optional and are ignored by builds that do not know them, which still read `bindings` as before. A built-in set in `active_preset` is written as `builtin:<code>` (`builtin:archicad`); a user's preset is written by its name. Presets are application settings: exporting or importing a `.bks` file changes the current set only, never the preset list.
 
 ## How to see every combination
 
