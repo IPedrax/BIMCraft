@@ -173,8 +173,9 @@ the draft curve, keeps its id, GUID and style, and moves joined endpoints so a c
 reference stays fixed. Changes use the sketch's Ctrl+Z history and reach the model only through Finish Edit Mode; Cancel
 leaves the model as it was. Invalid geometry leaves the draft and reference intact, and undo or Escape drops stale picks.
 
-A sketch line picked alone in Modify has a small palette over the view at its middle (`BimApp::edge_palette`, both profiles): Add
-Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
+A sketch line picked alone in Modify has a small palette over a plan at its middle (`BimApp::edge_palette`, both profiles): Add
+Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. Edit Profile
+and a sketch in the 3D view have none: the ribbon has the same tools. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
 Offset. Trim highlights sketch candidates and keeps its first pick lit; its prompt says which line to pick and to click
 the part to keep. A failed trim leaves that first pick available for another target; a successful edit clears the error.
 Multiple Trim keeps the boundary across successive target edits while that indexed line is unchanged, and drops it if
@@ -200,6 +201,15 @@ is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre
 running from the centre), and the angle is the exact one between the snapped points. Digits typed over the view while Rotate
 (or Rotate Project North) waits for its angle are the angle (`BimApp::typed_angle`, a leading minus turns clockwise), shown
 on the ghost as "45° (Enter)", and Enter turns by it.
+Scale (RE, `scale.rs`) is `Tool::Scale(Step)`: `Choose` while its popup asks how (`BimApp::scaling` keeps the choice, the
+percentage and the length from one use to the next), `Base(factor)` waiting for the point that stays, `First` and `Second(a)` for
+the two points (snapped through `found`, Shift squaring the second, a line and its length following the cursor), and
+`Length(a, b)` while the popup at the second click asks the length they come to. It starts only in a plan, a ceiling plan, a
+section or an elevation and with something selected it takes (`bimcraft_core::scale::scalable`; `BimApp::scale_refused` says
+why not), and runs the core's `scale_elements` in the view's own terms, so a section's detail lines scale by its along and up.
+The plan's preview draws what it scales grown about the point (`ghost_of` with the factor, the percentage's at the cursor, the
+length's as typed). What the core leaves out goes in the status bar, each with why. The 3D view and sheets show nothing it
+takes, so it says so there.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and

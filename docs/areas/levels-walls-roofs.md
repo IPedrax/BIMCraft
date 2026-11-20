@@ -30,6 +30,60 @@ neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it o
 footing under such a wall stops at its face as if it were a wall too. The desktop's right-click menu offers Disallow Join and
 Allow Join for the walls and runs selected (`context::Action`, a `modify {join}` command).
 
+Where a wall joins one that stops lower (or starts higher), its end changes there (`walls::cap_heights`): up to the lower wall's
+top the two mitre, and above it the taller wall's end is square, as far out as the corner reached (`walls::cap_at`), so it closes
+the corner over the lower wall instead of showing its mitre's 45° face. `walls::prisms` parts a wall's end prisms at those
+heights, a plan cuts its outline at its cut plane's height (`walls::outline_at`, `layer_geometry_at`), and IFC writes such a wall as
+shells of its prisms.
+
+A wall's `slant` (Revit's Cross-Section Slanted, Angle From Vertical; Properties' Angle From Vertical (°)) leans its faces that many
+degrees from upright about its location line at its base, toward its exterior positive, up to `walls::MAX_SLANT` (60°) either way.
+At each height its faces are moved across as it leans and widened by the slope (`walls::faces_at`), and everything that finds a
+wall's ends takes the height (`arms`, `end_geometry`, `cap_with`), so slanted walls mitre with each other and with upright ones at
+every height. Its solid is `walls/slant.rs`: pieces lofted between its outlines at their bottoms and tops, cut along it as an
+upright wall's prisms are (an arc's chords, its openings' jambs) and up it at its openings and its joins' heights; each corner's
+bottom and top follow what its base and top are attached to at the point it has leant to, so a curved slanted wall attached top
+and bottom is a cone between a floor and a roof. The 3D view and sections draw those meshes (a section in poché, its layers not drawn yet); in 3D a curved one's faces are one
+smooth surface across its pieces (`view3d::shared_faces`), shaded across them with no edge where one piece meets the next, as an
+upright curved wall's are. A plan cuts the wall where it
+has leant to at its cut plane and sees its foot below in projection (and the top of one that stops under the plane), but where the
+cut covers it, and IFC writes them as face sets. A join a slanted wall takes part in is worked out one way at every height, so it
+keeps its shape as it rises: its corner is where the walls' centre lines cross there, the same point for every wall at the node, a
+face's crossing allowed twice the thickest wall's thickness from it; a corner that moves off the node farther than three times as far as the walls lean at their
+tops and their thickness (walls nearly in line, leaning unlike, would meet in a spike metres long) is no corner, and each ends square
+at its own end there, at every height alike. A wall ending on a slanted one is found ending on it at
+their feet, and stops at its face, as far as that wall reaches, at every height. An upright wall joined at an end to a slanted one is
+lofted too (`slant::lofted`), so its end follows the slanted wall's face up the wall as Revit's does, an edited profile's included
+(each stretch between its edges' planes), and every lofted piece is held between its wall's own bottom and top corner by corner.
+`wall_shape_tests` sweeps corners from 30° to 165° and T-junctions at many leans.
+
+Doors and windows in a slanted wall cut it with upright jambs and a level sill and head, through its lean, whichever way they stand:
+an opening whose family cuts with voids of its own leaves its rectangle to them, as in an upright wall, and the voids always lean
+with the wall (`Model::host_lean`), so they cut the same hole either way (`slant::pieces`, `pieces_rect` where cutting fails); a plan
+cuts the gap where the wall has leant to; IFC deepens the opening's void by the lean and leans a family's voids with the wall. How the
+door or window itself stands is Revit's Orientation, an instance check box (`slanted`, Slanted with Wall in Properties): by default
+Vertical, upright where the wall has leant to halfway up it, so its leaf or glass and a family's forms stand plumb across the leaning
+wall; slanted, it stands where the wall has leant to at its sill and leans on with it (`Model::opening_frame`, `opening_lean`), staying
+in the wall all the way up. In an upright wall the two are the same.
+
+A straight, upright, unattached wall can have its shape in elevation edited (Revit's Edit Profile): `profile` holds loops of
+`[along, up]` mm from its start and its base, the first its outline and the others holes, which `modify {id, profile}` sets and
+`profile: []` resets. `Model::check` keeps the outline running from its start to its end and standing on its base, so it still joins
+at its ends and its doors' sills are measured as before, and not crossing itself. `walls/profile.rs` cuts the wall at each corner of
+the profile; between two cuts each stretch it covers is a prism from one edge's plane to another's, less its openings
+(`profile::stack`), so 3D, sections and IFC take it as they take any wall, and a plan cuts it only where the profile reaches the cut
+plane (`walls::plan_cut`). Its top for its openings and its height are the profile's (`walls::top_at`, `heights`). On the desktop it is Revit's
+Edit Profile: Modify | Walls has a Mode panel (Edit Profile, and Reset Profile once the wall has one) for one such wall selected; beside it
+the Modify Wall panel yields (`ribbon::yielding`), so a narrow ribbon lists Attach and Detach before it takes the Modify panel's tools. In a view that looks at the wall (a section or an elevation
+whose line runs along it, or the 3D view) Edit Profile is sketch mode on the wall's face (`sketch::Of::Profile`): its outline and holes
+are sketch lines in the wall's `[along, up]` frame on an upright `sketch3d::Surface::Profile`, which a section's camera shows as the 3D view's
+does, so they can be deleted and the outline sketched again with the Draw panel, Modify's grips and Delete, as a floor's boundary is;
+points snap as a plan's do, with Manage > Snaps' switches (`snap::among`): to the lines' ends, middles and crossings, the nearest
+point of a line, the wall's base, its ends and the levels across it (`profile::traces`), else to 10 mm; Shift keeps a step square.
+A floor's sketch on the 3D view's work plane snaps to its level's plan the same way. Finish Edit Mode solves the lines into one outline with holes and sets the profile (the
+wall's own rectangle sets none), one undo step. A plan can't show the shape: there Go To View lists the sections and elevations along
+the wall and the 3D view, and Open View opens the one picked in sketch mode (`crates/ui-egui/src/profile.rs`).
+
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
 unattached, with the same base and top; each type three layers, finish, structure and finish, each with a material and a

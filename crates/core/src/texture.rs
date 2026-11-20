@@ -16,8 +16,10 @@ use crate::render::Rgb;
 
 /// Pictures one project may hold.
 pub const MAX_IMAGES: usize = 24;
-/// The longest side a picture is kept at, px: a larger one is halved down to it.
+/// The longest side a material's picture is kept at, px: a larger one is halved down to it.
 pub const MAX_SIDE: usize = 1024;
+/// The longest side a picture placed in a view is kept at, px: a drawing needs more than a texture does.
+pub const MAX_PLACED_SIDE: usize = 4096;
 /// What a file may be before it's refused: bytes, and pixels.
 pub const MAX_BYTES: usize = 32 << 20;
 const MAX_PIXELS: u64 = 16_000_000;
@@ -224,7 +226,8 @@ impl PartialEq for Picture {
     }
 }
 
-/// How a picture goes in a project file: its name, and its PNG as base64.
+/// How a picture goes in a project file: its name, and its file as base64 under `png`, the name it has always had. It's a
+/// PNG, or a JPEG kept as it came, which every version reads, as both are read from their first bytes.
 #[derive(Serialize, Deserialize)]
 struct PictureFile {
     name: String,
@@ -254,14 +257,64 @@ impl<'de> Deserialize<'de> for Picture {
 }
 
 impl Picture {
-    /// A picture named `name` from the bytes of a PNG or a JPEG file; refused if it's neither, or too big to hold. It's
-    /// kept as a PNG, at most [`MAX_SIDE`] px a side.
+    /// A picture named `name` from the bytes of a PNG or a JPEG file, for a material's texture; refused if it's neither, or too
+    /// big to hold. It's kept at most [`MAX_SIDE`] px a side.
     pub fn import(name: &str, bytes: &[u8]) -> Result<Picture, String> {
-        let base = shrunk(decode(bytes)?);
-        let rgba: Vec<u8> = base.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
-        let size = tiny_skia::IntSize::from_wh(base.w as u32, base.h as u32).ok_or("it has no size")?;
-        let png = tiny_skia::Pixmap::from_vec(rgba, size).ok_or("it has no size")?.encode_png().map_err(|e| e.to_string())?;
-        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(png), levels: Arc::new(chain(base)) })
+        Picture::import_at(name, bytes, MAX_SIDE)
+    }
+
+    /// [`Picture::import`], kept at most `side` px a side. A file that fits is kept as it came, byte for byte: a JPEG stays
+    /// a JPEG, as small as it was. One halved to fit is written again as what it was, a JPEG (at quality 90) or a PNG.
+    pub fn import_at(name: &str, bytes: &[u8], side: usize) -> Result<Picture, String> {
+        let full = decode(bytes)?;
+        let whole = full.w.max(full.h) <= side;
+        let base = shrunk_to(full, side);
+        let file = if whole {
+            bytes.to_vec()
+        } else if is_jpeg(bytes) {
+            let (w, h) = (u16::try_from(base.w).map_err(|_| "it's too wide")?, u16::try_from(base.h).map_err(|_| "it's too tall")?);
+            let mut out = Vec::new();
+            jpeg_encoder::Encoder::new(&mut out, 90).encode(&base.rgb, w, h, jpeg_encoder::ColorType::Rgb).map_err(|e| e.to_string())?;
+            out
+        } else {
+            let rgba: Vec<u8> = base.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+            let size = tiny_skia::IntSize::from_wh(base.w as u32, base.h as u32).ok_or("it has no size")?;
+            tiny_skia::Pixmap::from_vec(rgba, size).ok_or("it has no size")?.encode_png().map_err(|e| e.to_string())?
+        };
+        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(file), levels: Arc::new(chain(base)) })
+    }
+
+    /// Whether it is kept as a JPEG (else a PNG).
+    pub fn is_jpeg(&self) -> bool {
+        is_jpeg(&self.png)
+    }
+
+    /// The extension of the file it is kept as.
+    pub fn extension(&self) -> &'static str {
+        if self.is_jpeg() { "jpg" } else { "png" }
+    }
+
+    /// A picture named `name` of the PNG or JPEG `file` as it is, byte for byte: how a `.bima` brings back one a project held,
+    /// its id the same. Anything else is taken as [`Picture::import`] takes it.
+    pub fn from_file(name: &str, file: Vec<u8>) -> Result<Picture, String> {
+        if file.len() > MAX_BYTES {
+            return Err(format!("it's {} bytes; a picture's file is up to {MAX_BYTES}", file.len()));
+        }
+        if !(file.starts_with(b"\x89PNG\r\n\x1a\n") || is_jpeg(&file)) {
+            return Picture::import(name, &file);
+        }
+        let base = decode(&file)?;
+        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(file), levels: Arc::new(chain(shrunk(base))) })
+    }
+
+    /// Its pixels at its full size: its width and height, px, and their red, green and blue, row by row from the top.
+    pub fn pixels(&self) -> (usize, usize, &[u8]) {
+        self.levels.first().map_or((0, 0, &[][..]), |l| (l.w, l.h, &l.rgb[..]))
+    }
+
+    /// The file it is kept as: a PNG, or a JPEG as it came.
+    pub fn file(&self) -> &[u8] {
+        &self.png
     }
 
     pub fn name(&self) -> &str {
@@ -280,12 +333,23 @@ impl Picture {
     }
 }
 
-/// `level` halved down until neither side is longer than [`MAX_SIDE`].
-fn shrunk(mut level: Level) -> Level {
-    while level.w.max(level.h) > MAX_SIDE {
+/// `level` halved down until neither side is longer than [`MAX_PLACED_SIDE`]: a picture as a project holds it, which
+/// [`Picture::import`] has already brought to [`MAX_SIDE`] for a material.
+fn shrunk(level: Level) -> Level {
+    shrunk_to(level, MAX_PLACED_SIDE)
+}
+
+/// `level` halved down until neither side is longer than `side`.
+fn shrunk_to(mut level: Level, side: usize) -> Level {
+    while level.w.max(level.h) > side.max(1) {
         level = level.halved();
     }
     level
+}
+
+/// Whether `bytes` are a JPEG's.
+fn is_jpeg(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xD8, 0xFF])
 }
 
 /// Whether `w` by `h` px is a size to take.
