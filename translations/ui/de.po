@@ -4766,7 +4766,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:15397
+#: crates/core/src/commands.rs:15413
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -12380,7 +12380,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschaften über dem Projektbrowser, links, wie zu Beginn"
 
 #: crates/core/src/commands.rs:704
-#: crates/core/src/commands.rs:10168
+#: crates/core/src/commands.rs:10184
 msgid "Property Line"
 msgstr ""
 
@@ -16698,7 +16698,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:716
-#: crates/core/src/commands.rs:10210
+#: crates/core/src/commands.rs:10226
 msgid "Toposolid"
 msgstr ""
 
@@ -17169,7 +17169,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:15735
+#: crates/core/src/commands.rs:15751
 msgid "Unnamed"
 msgstr "Unbenannt"
 

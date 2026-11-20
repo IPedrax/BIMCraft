@@ -7839,26 +7839,32 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     let project = project.map(|(m, _)| m);
     // Each of the project's amendments' own method, wherever it stands: named, a utility under another answers by its own.
     // The one on top answers, the project's or BIMCraft's: a copy under BIMCraft's own is passed over.
-    let held: Vec<(bd::Method, bool)> = s
-        .model
-        .held_wholes::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
-        .into_iter()
-        .map(|(m, _, own)| (m, own))
-        .collect();
+    let held_at = s.model.held_wholes_at::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard");
+    let places: Vec<(usize, String, Vec<String>)> =
+        held_at.iter().map(|(m, .., at)| (*at, m.standard.clone(), m.utilities.clone())).collect();
+    let held: Vec<(bd::Method, bool)> = held_at.into_iter().map(|(m, _, own, _)| (m, own)).collect();
     fn on_top(mut held: Vec<(bd::Method, bool)>, named: &dyn Fn(&bd::Method) -> bool) -> Option<(bd::Method, bool)> {
         let i = held.iter().position(|(m, _)| named(m))?;
         Some(held.swap_remove(i))
     }
-    // A layer whose method for the standard or utility asked can't be read, over the one that would answer: refused.
     let (standard_asked, utility_asked) = (string(c, p, "standard")?, string(c, p, "utility")?);
-    if let Some(asked) = standard_asked.as_deref().or(utility_asked.as_deref()) {
-        let answering = s
-            .model
-            .held_wholes_at::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
-            .into_iter()
-            .find(|(m, ..)| m.standard.eq_ignore_ascii_case(asked) || m.utilities.iter().any(|u| u.eq_ignore_ascii_case(asked)))
-            .map(|(.., at)| at);
-        if let Some(code) = s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", asked, answering)
+    if standard_asked.is_some() && utility_asked.is_some() {
+        return Err(bad(c, "give `standard` or `utility`, not both"));
+    }
+    // A layer whose method for the standard or utility asked can't be read, over the one that would answer: refused. Each
+    // is named as the method is chosen below: a standard by its name as written, a utility in the list whatever the case.
+    let asked = standard_asked.as_deref().map(|n| ("standard", n, true)).or(utility_asked.as_deref().map(|n| ("utilities", n, false)));
+    if let Some((field, asked, exact)) = asked {
+        let answering = places
+            .iter()
+            .find(|(_, standard, utilities)| match exact {
+                true => standard == asked,
+                false => utilities.iter().any(|u| u.eq_ignore_ascii_case(asked)),
+            })
+            .map(|(at, ..)| *at);
+        let names = |v: &serde_json::Map<String, Value>| crate::model::Model::names_field(v, field, asked, exact);
+        if let Some((code, _)) =
+            s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", answering, &names)
         {
             return Err(bad(c, format!("{code}'s method for `{asked}` can't be read: reset it in Manage > Building Codes, or fix it")));
         }
@@ -8156,11 +8162,21 @@ fn demand(s: &mut Session, p: &Value) -> R {
         .find(|(u, ..)| u.utility.eq_ignore_ascii_case(&utility) || groups.iter().any(|g| u.utility.eq_ignore_ascii_case(g)));
     // A layer whose method for this utility can't be read, over the one that would answer: refused, never passed over.
     let answering = entrance.as_ref().map(|e| e.3).into_iter().chain(unit.as_ref().map(|u| u.3)).min();
-    let unreadable = s
-        .model
-        .unreadable_over::<crate::entrance::Utility>(electrical, "entrance", &utility, answering)
-        .or_else(|| s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", &utility, answering));
-    if let Some(code) = unreadable {
+    // Each named as the method is chosen above: an entrance by its id or a member's, a unit demand by its utility or
+    // its group's; of the two, the one higher up is named.
+    use crate::model::Model as M;
+    let by_entrance =
+        |v: &serde_json::Map<String, Value>| M::names_field(v, "id", &utility, false) || M::names_field(v, "members", &utility, false);
+    let by_unit =
+        |v: &serde_json::Map<String, Value>| std::iter::once(&utility).chain(&groups).any(|n| M::names_field(v, "utility", n, false));
+    let unreadable = [
+        s.model.unreadable_over::<crate::entrance::Utility>(electrical, "entrance", answering, &by_entrance),
+        s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", answering, &by_unit),
+    ]
+    .into_iter()
+    .flatten()
+    .min_by_key(|(_, at)| *at);
+    if let Some((code, _)) = unreadable {
         return Err(bad(c, format!("{code}'s method for `{utility}` can't be read: reset it in Manage > Building Codes, or fix it")));
     }
     if let Some((u, _, _, at)) = &entrance

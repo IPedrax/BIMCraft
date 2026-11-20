@@ -141,7 +141,7 @@ msgstr "Prise de données"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:15397
+#: crates/core/src/commands.rs:15413
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -226,9 +226,9 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:15142
 #: crates/core/src/commands.rs:15158
-#: crates/core/src/commands.rs:20000
+#: crates/core/src/commands.rs:15174
+#: crates/core/src/commands.rs:20016
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -411,7 +411,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:9420
+#: crates/core/src/commands.rs:9436
 #: crates/core/src/model.rs:4672
 msgid "Level"
 msgstr "Niveau"
@@ -452,7 +452,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:12183
+#: crates/core/src/commands.rs:12199
 msgid "Mass"
 msgstr "Volume"
 
@@ -469,7 +469,7 @@ msgid "Membrane"
 msgstr "Membrane"
 
 #: crates/core/src/commands.rs:4422
-#: crates/core/src/commands.rs:18545
+#: crates/core/src/commands.rs:18561
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -574,7 +574,7 @@ msgstr ""
 msgid "Project"
 msgstr "Projet"
 
-#: crates/core/src/commands.rs:10168
+#: crates/core/src/commands.rs:10184
 msgid "Property Line"
 msgstr ""
 
@@ -606,7 +606,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:12713
+#: crates/core/src/commands.rs:12729
 msgid "Room"
 msgstr "Pièce"
 
@@ -642,8 +642,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:15076
-#: crates/core/src/commands.rs:19999
+#: crates/core/src/commands.rs:15092
+#: crates/core/src/commands.rs:20015
 msgid "Section"
 msgstr "Coupe"
 
@@ -796,7 +796,7 @@ msgstr "Carrelage 300"
 msgid "Timber"
 msgstr "Bois"
 
-#: crates/core/src/commands.rs:10210
+#: crates/core/src/commands.rs:10226
 msgid "Toposolid"
 msgstr ""
 
@@ -834,7 +834,7 @@ msgstr "Hauteur non délimitée"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15735
+#: crates/core/src/commands.rs:15751
 msgid "Unnamed"
 msgstr "Sans nom"
 

@@ -1630,38 +1630,47 @@ impl Model {
             .collect()
     }
 
-    /// Whether a layer whose method `key` can't be read (a file edited by hand, or from an older version) names `asked`
-    /// (a utility, a member of a group, or a standard) above the place `answering` (from the top, as `held_wholes_at` counts;
-    /// none: anywhere): its code, so a command refuses rather than let a version under it answer. What it names is read
-    /// from its own text (`id`, `utility`, `standard`, `utilities`, its members), else from the library code it is a copy of.
-    pub fn unreadable_over<T: DeserializeOwned>(&self, d: Discipline, key: &str, asked: &str, answering: Option<usize>) -> Option<String> {
-        let names = |w: &Map<String, Value>| -> (Vec<String>, Option<Vec<String>>) {
-            let text = |k: &str| w.get(k).and_then(Value::as_str).map(str::to_string);
-            let mut own: Vec<String> = ["id", "utility", "standard"].iter().filter_map(|k| text(k)).collect();
-            if let Some(Value::Array(a)) = w.get("utilities") {
-                own.extend(a.iter().filter_map(Value::as_str).map(str::to_string));
-            }
-            let members = w
-                .get("members")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string)).collect::<Vec<_>>());
-            (own, members)
-        };
-        let is = |n: &String| n.eq_ignore_ascii_case(asked);
-        self.codes.layers(d).into_iter().rev().enumerate().take_while(|(at, _)| answering.is_none_or(|a| *at < a)).find_map(|(_, c)| {
-            let rules = whole_section(c, key)?;
-            if serde_json::from_value::<T>(Value::Object(rules.clone())).is_ok() {
+    /// The highest layer above the place `answering` (from the top, as `held_wholes_at` counts; none: anywhere) whose
+    /// method `key` can't be read (a file edited by hand, or from an older version) and whose identity `names` accepts: its
+    /// code and place, so a command refuses rather than let a version under it answer. `names` reads the identity's fields
+    /// (`id`, `utility`, `standard`, `utilities`, `members`) as the command's own selector reads them; a field the layer's
+    /// text holds in its own shape is its own, else the library code it is a copy of says it (its text may have lost it).
+    pub fn unreadable_over<T: DeserializeOwned>(
+        &self,
+        d: Discipline,
+        key: &str,
+        answering: Option<usize>,
+        names: &dyn Fn(&Map<String, Value>) -> bool,
+    ) -> Option<(String, usize)> {
+        const FIELDS: [&str; 5] = ["id", "utility", "standard", "utilities", "members"];
+        let shaped = |k: &str, v: &Value| if matches!(k, "utilities" | "members") { v.is_array() } else { v.is_string() };
+        self.codes.layers(d).into_iter().rev().enumerate().take_while(|(at, _)| answering.is_none_or(|a| *at < a)).find_map(|(at, c)| {
+            // A section that is no method at all (not even an object) can't be read either.
+            let raw = c.sections.get(key)?;
+            if raw.is_object() && whole_section(c, key).is_some_and(|w| serde_json::from_value::<T>(Value::Object(w)).is_ok()) {
                 return None;
             }
-            let (mut own, mut members) = names(&rules);
-            // A copy of a library code names what that code names too (its own text may have lost it).
-            if let Some(o) = [c.based_on.as_str(), c.code.as_str()].into_iter().find_map(|n| find(d, n)).and_then(|o| o.section(key)) {
-                let (o_own, o_members) = names(o);
-                own.extend(o_own);
-                members = members.or(o_members);
+            let origin = [c.based_on.as_str(), c.code.as_str()].into_iter().find_map(|n| find(d, n)).filter(|o| !std::ptr::eq(*o, c));
+            let mut view = Map::new();
+            for k in FIELDS {
+                let own = raw.get(k).filter(|v| shaped(k, v));
+                if let Some(v) = own.or_else(|| origin.and_then(|o| o.section(key)).and_then(|o| o.get(k)).filter(|v| shaped(k, v))) {
+                    view.insert(k.to_string(), v.clone());
+                }
             }
-            (own.iter().any(is) || members.is_some_and(|m| m.iter().any(is))).then(|| c.code.clone())
+            names(&view).then(|| (c.code.clone(), at))
         })
+    }
+
+    /// Whether an identity field of a method's text (`unreadable_over`) is `asked`, as a command compares it: `exact`, or
+    /// whatever the case. A list (`utilities`, or `members` by their ids) holds it.
+    pub fn names_field(view: &Map<String, Value>, field: &str, asked: &str, exact: bool) -> bool {
+        let is = |n: &str| if exact { n == asked } else { n.eq_ignore_ascii_case(asked) };
+        match view.get(field) {
+            Some(Value::String(n)) => is(n),
+            Some(Value::Array(a)) => a.iter().any(|v| v.as_str().or_else(|| v.get("id").and_then(Value::as_str)).is_some_and(is)),
+            _ => false,
+        }
     }
 
     /// The rules the project's stairs and railings are held to.

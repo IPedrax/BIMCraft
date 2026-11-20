@@ -2551,3 +2551,317 @@ mod legacy_demand_review {
         layer.sections.get_mut(key).unwrap()[field] = json!("ilegível");
     }
 }
+
+mod unreadable_method_contract_review {
+    use super::*;
+
+    const D: Discipline = Discipline::Electrical;
+
+    fn codes(s: &mut Session, mut p: Value) -> Value {
+        p["discipline"] = json!("electrical");
+        run(s, "building_code", p)
+    }
+
+    fn select(s: &mut Session, layers: &[&str]) {
+        codes(s, json!({"set": "nbr-5410", "amendments": layers}));
+    }
+
+    fn add(s: &mut Session, name: &str, key: &str, method: Value) {
+        codes(s, json!({"create": name, "set": "nbr-5410", "amendments": [name]}));
+        codes(s, json!({"amend": name, "rules": {key: method}}));
+    }
+
+    fn replace(s: &mut Session, name: &str, key: &str, field: &str, value: Value) {
+        let layer = s.model_mut().codes.own.iter_mut().find(|c| c.code == name).unwrap();
+        layer.sections.get_mut(key).unwrap()[field] = value;
+    }
+
+    fn legacy_file(s: &mut Session, name: &str) -> std::path::PathBuf {
+        let path = dir().join(format!("unreadable-contract-{name}.bimc"));
+        run(s, "save", json!({"path": path}));
+        path
+    }
+
+    fn reopen(s: &mut Session, name: &str) -> Session {
+        let path = legacy_file(s, name);
+        let mut opened = Session::new();
+        run(&mut opened, "open", json!({"path": path}));
+        opened
+    }
+
+    fn supply() -> Value {
+        json!({"installed_kw": 8, "phases": 1})
+    }
+
+    fn dwellings() -> Value {
+        json!({"dwellings": [{"count": 20, "area": 120}]})
+    }
+
+    fn breaker(s: &mut Session, p: &Value) -> f64 {
+        let result = run(s, "demand", p.clone());
+        let n = &result["category"]["breaker_a"];
+        n.as_f64().or_else(|| n[0].as_f64()).unwrap_or_else(|| panic!("missing breaker: {result}"))
+    }
+
+    fn building(s: &mut Session, p: &Value) -> f64 {
+        run(s, "building_demand", p.clone())["demand"].as_f64().unwrap()
+    }
+
+    fn refuses(s: &mut Session, command: &str, p: &Value, layer: &str) {
+        let result = s.execute(command, p);
+        match result {
+            Err(e) => assert!(e.contains(layer), "expected refusal naming {layer}: {e}"),
+            Ok(reply) => panic!("expected refusal naming {layer}: demand={}, breaker={}", reply["demand"], reply["category"]["breaker_a"]),
+        }
+    }
+
+    #[test]
+    fn unnamed_demand_keeps_readable_winner_when_a_different_identity_is_broken() {
+        let mut s = Session::new();
+        let fecoergs = find(D, "fecoergs").unwrap();
+        add(&mut s, "Broken implicit FECOERGS", "entrance", changed(fecoergs, "entrance", 1));
+        // CELESC holds the readable method in the highest layer. Its method has a different identity.
+        // The visible entrance stays valid for a legacy file, and CELESC is now above it for the implicit request.
+        select(&mut s, &["fecoergs", "Broken implicit FECOERGS", "hidropan", "celesc"]);
+        replace(&mut s, "Broken implicit FECOERGS", "entrance", "tables", json!("bad"));
+        let mut s = reopen(&mut s, "implicit-other");
+        assert_eq!(breaker(&mut s, &supply()), 50.0);
+    }
+
+    #[test]
+    fn unnamed_demand_refuses_if_the_readable_default_has_a_broken_newer_method() {
+        let mut s = Session::new();
+        let celesc = find(D, "celesc").unwrap();
+        let mut other = changed(find(D, "fecoergs").unwrap(), "entrance", 2);
+        other["id"] = json!("CELESC");
+        add(&mut s, "Broken implicit CELESC", "entrance", other);
+        add(&mut s, "Readable default CELESC", "unit_demand", changed(celesc, "unit_demand", 1));
+        // Exercise the lookup before the file validator, which is covered by a separate test.
+        select(&mut s, &["hidropan", "Readable default CELESC", "Broken implicit CELESC"]);
+        replace(&mut s, "Broken implicit CELESC", "entrance", "tables", json!("bad"));
+        refuses(&mut s, "demand", &supply(), "Broken implicit CELESC");
+    }
+
+    #[test]
+    fn nameless_broken_amendment_does_not_block_named_utility() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let fecoergs = find(D, "fecoergs").unwrap();
+        add(&mut s, "Unattributed entrance", key, changed(fecoergs, key, 1));
+        select(&mut s, &["fecoergs", "Unattributed entrance", "hidropan"]);
+        let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "Unattributed entrance").unwrap();
+        let rules = own.sections.get_mut(key).unwrap().as_object_mut().unwrap();
+        for field in ["id", "utility", "standard", "utilities", "members"] {
+            rules.remove(field);
+        }
+        let mut s = reopen(&mut s, "unattributed");
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        assert_eq!(breaker(&mut s, &p), 50.0);
+    }
+
+    #[test]
+    fn broken_unit_above_entrance_refuses_for_the_same_utility() {
+        let mut s = Session::new();
+        let mut unit = changed(find(D, "celesc").unwrap(), "unit_demand", 1);
+        unit["utility"] = json!("FeCoErGs");
+        add(&mut s, "Broken FECOERGS unit", "unit_demand", unit);
+        select(&mut s, &["fecoergs", "Broken FECOERGS unit", "celesc"]);
+        replace(&mut s, "Broken FECOERGS unit", "unit_demand", "method", json!("bad"));
+        let mut s = reopen(&mut s, "unit-above-entrance");
+        let mut p = supply();
+        p["utility"] = json!("fEcOeRgS");
+        refuses(&mut s, "demand", &p, "Broken FECOERGS unit");
+    }
+
+    #[test]
+    fn broken_entrance_above_unit_refuses_for_the_same_utility() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let mut entrance = changed(find(D, "fecoergs").unwrap(), key, 1);
+        entrance["id"] = json!("CELESC");
+        add(&mut s, "Broken CELESC entrance", key, entrance);
+        select(&mut s, &["celesc", "Broken CELESC entrance", "hidropan"]);
+        replace(&mut s, "Broken CELESC entrance", key, "tables", json!("bad"));
+        let mut s = reopen(&mut s, "entrance-above-unit");
+        let mut p = supply();
+        p["utility"] = json!("CELESC");
+        refuses(&mut s, "demand", &p, "Broken CELESC entrance");
+    }
+
+    #[test]
+    fn member_listed_only_in_the_broken_entrance_gets_a_named_refusal() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let mut method = changed(find(D, "energisa").unwrap(), key, 1);
+        method["members"].as_array_mut().unwrap().push(json!({"id": "Local Review Only", "seat": "Local"}));
+        add(&mut s, "Broken private member entrance", key, method);
+        select(&mut s, &["energisa", "Broken private member entrance", "hidropan"]);
+        replace(&mut s, "Broken private member entrance", key, "tables", json!("bad"));
+        let mut s = reopen(&mut s, "only-member");
+        let p = json!({"utility": "local review only", "system": "220/380", "installed_kw": 3, "phases": 1});
+        refuses(&mut s, "demand", &p, "Broken private member entrance");
+    }
+
+    #[test]
+    fn broken_group_unit_blocks_older_entrance_for_its_member() {
+        let mut s = Session::new();
+        let mut unit = changed(find(D, "celesc").unwrap(), "unit_demand", 1);
+        unit["utility"] = json!("ENERGISA");
+        add(&mut s, "Broken ENERGISA unit", "unit_demand", unit);
+        select(&mut s, &["energisa", "Broken ENERGISA unit", "celesc"]);
+        let p = json!({"utility": "eAc", "installed_kw": 3, "phases": 1});
+        assert_eq!(breaker(&mut s, &p), 51.0);
+        replace(&mut s, "Broken ENERGISA unit", "unit_demand", "method", json!("bad"));
+        let mut s = reopen(&mut s, "broken-group-unit");
+        refuses(&mut s, "demand", &p, "Broken ENERGISA unit");
+    }
+
+    #[test]
+    fn a_matching_standard_name_cannot_hide_a_broken_utility_method() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let cemig = find(D, "cemig").unwrap();
+        add(&mut s, "Broken CEMIG building", key, changed(cemig, key, 1));
+        let mut other = changed(cemig, key, 2);
+        other["standard"] = json!("CEMIG");
+        other["utilities"] = json!(["Independent building utility"]);
+        add(&mut s, "Unrelated building standard", key, other);
+        select(&mut s, &["cemig", "Broken CEMIG building", "Unrelated building standard"]);
+        let mut p = dwellings();
+        p["utility"] = json!("cEmIg");
+        assert_eq!(building(&mut s, &p), 88.595);
+        replace(&mut s, "Broken CEMIG building", key, "factor", json!("bad"));
+        let mut s = reopen(&mut s, "standard-shields-utility");
+        refuses(&mut s, "building_demand", &p, "Broken CEMIG building");
+    }
+
+    #[test]
+    fn an_unrelated_broken_standard_named_like_a_utility_does_not_block_it() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let mut other = changed(find(D, "cemig").unwrap(), key, 1);
+        other["standard"] = json!("CEMIG");
+        other["utilities"] = json!(["Independent building utility"]);
+        add(&mut s, "Broken unrelated standard", key, other);
+        select(&mut s, &["cemig", "Broken unrelated standard", "celesc"]);
+        replace(&mut s, "Broken unrelated standard", key, "factor", json!("bad"));
+        let mut s = reopen(&mut s, "unrelated-standard");
+        let mut p = dwellings();
+        p["utility"] = json!("CEMIG");
+        assert_eq!(building(&mut s, &dwellings()), 53.157);
+        assert_eq!(building(&mut s, &p), 62.017);
+    }
+
+    #[test]
+    fn case_variant_that_cannot_answer_by_standard_cannot_hide_a_broken_method() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let cemig = find(D, "cemig").unwrap();
+        add(&mut s, "Broken exact standard", key, changed(cemig, key, 1));
+        let mut other = changed(cemig, key, 2);
+        other["standard"] = json!("cemig nd-5.2");
+        add(&mut s, "Different case standard", key, other);
+        select(&mut s, &["cemig", "Broken exact standard", "Different case standard"]);
+        let mut p = dwellings();
+        p["standard"] = json!("CEMIG ND-5.2");
+        assert_eq!(building(&mut s, &p), 88.595);
+        replace(&mut s, "Broken exact standard", key, "factor", json!("bad"));
+        let mut s = reopen(&mut s, "standard-case");
+        refuses(&mut s, "building_demand", &p, "Broken exact standard");
+    }
+
+    #[test]
+    fn resetting_the_named_section_recovers_the_older_answer() {
+        let mut s = Session::new();
+        let key = "entrance";
+        add(&mut s, "Broken reset target", key, changed(find(D, "fecoergs").unwrap(), key, 1));
+        select(&mut s, &["fecoergs", "Broken reset target", "hidropan"]);
+        replace(&mut s, "Broken reset target", key, "tables", json!("bad"));
+        let mut s = reopen(&mut s, "reset");
+        run(&mut s, "level", json!({"name": "Independent review level", "elevation": 3000}));
+        codes(&mut s, json!({"amend": "Broken reset target", "reset": key}));
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        assert_eq!(breaker(&mut s, &p), 50.0);
+    }
+    #[test]
+    fn whole_non_object_section_of_library_copy_refuses_instead_of_using_the_older_entrance() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let method = changed(find(D, "fecoergs").unwrap(), key, 1);
+        add(&mut s, "Older scalar test", key, method);
+        select(&mut s, &["Older scalar test", "fecoergs", "hidropan"]);
+        codes(&mut s, json!({"amend": "fecoergs", "rules": {key: changed(find(D, "fecoergs").unwrap(), key, 2)}}));
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        assert_eq!(breaker(&mut s, &p), 52.0);
+        let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "fecoergs").unwrap();
+        own.sections.insert(key.into(), json!("old representation"));
+        let mut s = reopen(&mut s, "scalar-library-copy");
+        refuses(&mut s, "demand", &p, "fecoergs");
+    }
+
+    #[test]
+    fn an_entrance_standard_is_not_the_name_of_a_different_utility() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let mut other = changed(find(D, "hidropan").unwrap(), key, 1);
+        other["standard"] = json!("FECOERGS");
+        add(&mut s, "Unrelated entrance standard", key, other);
+        select(&mut s, &["fecoergs", "Unrelated entrance standard", "hidropan"]);
+        replace(&mut s, "Unrelated entrance standard", key, "tables", json!("bad"));
+        let mut s = reopen(&mut s, "unrelated-entrance-standard");
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        assert_eq!(breaker(&mut s, &p), 50.0);
+    }
+
+    #[test]
+    fn named_demand_uses_library_when_a_different_utility_is_broken() {
+        let mut s = Session::new();
+        let key = "entrance";
+        add(&mut s, "Broken HIDROPAN for library check", key, changed(find(D, "hidropan").unwrap(), key, 1));
+        select(&mut s, &["Broken HIDROPAN for library check", "hidropan"]);
+        replace(&mut s, "Broken HIDROPAN for library check", key, "tables", json!("bad"));
+        let mut s = reopen(&mut s, "library-unrelated");
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        assert_eq!(breaker(&mut s, &p), 50.0);
+    }
+
+    #[test]
+    fn demand_names_the_highest_broken_method_for_the_requested_utility() {
+        let mut s = Session::new();
+        let fecoergs = find(D, "fecoergs").unwrap();
+        add(&mut s, "Lower broken entrance", "entrance", changed(fecoergs, "entrance", 1));
+        let mut unit = changed(find(D, "celesc").unwrap(), "unit_demand", 2);
+        unit["utility"] = json!("FECOERGS");
+        add(&mut s, "Highest broken unit", "unit_demand", unit);
+        select(&mut s, &["fecoergs", "Lower broken entrance", "Highest broken unit", "hidropan", "celesc"]);
+        replace(&mut s, "Lower broken entrance", "entrance", "tables", json!("bad"));
+        replace(&mut s, "Highest broken unit", "unit_demand", "method", json!("bad"));
+        let mut s = reopen(&mut s, "two-broken");
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        refuses(&mut s, "demand", &p, "Highest broken unit");
+    }
+    #[test]
+    fn an_explicit_identity_on_a_copy_keeps_the_original_utility_independent() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let library = find(D, "fecoergs").unwrap();
+        add(&mut s, "Older original identity", key, changed(library, key, 1));
+        select(&mut s, &["Older original identity", "fecoergs", "hidropan"]);
+        let mut renamed = changed(library, key, 2);
+        renamed["id"] = json!("Independent supply utility");
+        renamed["members"] = json!([]);
+        codes(&mut s, json!({"amend": "fecoergs", "rules": {key: renamed}}));
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        assert_eq!(breaker(&mut s, &p), 51.0);
+        replace(&mut s, "fecoergs", key, "tables", json!("bad"));
+        let mut s = reopen(&mut s, "copy-with-own-identity");
+        assert_eq!(breaker(&mut s, &p), 51.0);
+    }
+}
