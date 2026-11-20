@@ -44,6 +44,8 @@ icon_names! {
     ThinLines,
     Schedule,
     CloseInactive,
+    Tile,
+    DockAll,
     Interface,
     Properties,
     TypeProperties,
@@ -431,6 +433,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(7.0, 7.0), (21.0, 7.0), (21.0, 21.0), (7.0, 21.0)]);
             g.line(&[(11.0, 11.0), (17.0, 17.0)]);
             g.line(&[(17.0, 11.0), (11.0, 17.0)]);
+        }
+        Icon::Tile => {
+            // Four equal cells: the views tiled.
+            g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);
+            g.line(&[(12.0, 4.0), (12.0, 20.0)]);
+            g.line(&[(3.0, 12.0), (21.0, 12.0)]);
+        }
+        Icon::DockAll => {
+            // A tab bar over one view: every window docked again.
+            g.closed(&[(3.0, 9.0), (21.0, 9.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.closed(&[(3.0, 3.0), (21.0, 3.0), (21.0, 7.0), (3.0, 7.0)]);
+            g.line(&[(8.0, 3.0), (8.0, 7.0)]);
+            g.line(&[(14.0, 3.0), (14.0, 7.0)]);
+            if !compact {
+                g.line(&[(7.0, 13.0), (17.0, 13.0)]);
+            }
         }
         Icon::Interface => {
             g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);

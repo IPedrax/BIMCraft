@@ -644,6 +644,13 @@ pub struct BimApp {
     front: Sheet,
     /// Views floating in windows of their own.
     floating: Vec<dock::FloatView>,
+    /// How the views' area is laid out: the tabbed view, columns and rows, or a tile of equal cells.
+    arrange: dock::Arrange,
+    /// The whole area the views take this frame, between the palettes and under their tab bar.
+    views_rect: Rect,
+    /// The views' area as this frame lays it out: the windows off the tab bar, and the pane the tabs show.
+    placements: Vec<(Sheet, Rect)>,
+    tab_pane: Rect,
     /// A view other than the active one is being drawn: it takes no clicks.
     passive: bool,
     /// Where the palettes are, and what is being dragged.
@@ -1682,6 +1689,10 @@ impl BimApp {
             views: vec![first],
             front: first,
             floating: Vec::new(),
+            arrange: dock::Arrange::Tabs,
+            views_rect: Rect::NOTHING,
+            placements: Vec::new(),
+            tab_pane: Rect::NOTHING,
             passive: false,
             docking: dock::Docking::default(),
             dragging: None,
@@ -2400,26 +2411,46 @@ impl BimApp {
             let front = self.front;
             // A schedule's table keeps its rows clear of the tabs.
             let table = matches!(self.sheet, Sheet::Schedule(_) | Sheet::Table(_));
-            if style::compact() || table {
+            let arranged = self.arrange != dock::Arrange::Tabs;
+            if style::compact() || table || arranged {
                 Panel::top("view-tabs")
                     .frame(Frame::new().inner_margin(Margin { left: g, right: g, top: g, bottom: 4 }))
                     .show_separator_line(false)
                     .show(ui, |ui| {
                         self.view_tabs(ui);
                     });
-                self.view_pane(ui, front);
                 self.tabs_foot = f32::NEG_INFINITY;
+                // The views' area is what the tab bar leaves; columns and cells are counted inside it.
+                self.views_rect = ui.available_rect_before_wrap();
+                self.arrange_views();
+                match self.arrange {
+                    // The tabbed pane in its column, the windows beside it drawn as windows of their own below.
+                    dock::Arrange::Split => {
+                        let pane = self.tab_pane;
+                        ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| self.view_pane(ui, front));
+                    }
+                    // Every view is a cell of the tile, drawn as a window below.
+                    dock::Arrange::Tile => {}
+                    dock::Arrange::Tabs => self.view_pane(ui, front),
+                }
             } else {
                 // A drawn view fills the pane, and its tabs float over its top left corner on a card of their own: drawn after
                 // it, so they are over it for the hand too.
                 let pane = ui.available_rect_before_wrap();
+                self.views_rect = pane;
                 ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| self.view_pane(ui, front));
                 let card = style::card([true, false, true, false]).inner_margin(Margin::same(2));
                 // A child that takes no room of the pane's: over the view, not after it.
                 let mut over = ui.new_child(UiBuilder::new().id_salt("view-tabs").max_rect(pane));
                 self.tabs_foot = card.show(&mut over, |ui| self.view_tabs(ui)).response.rect.bottom();
+                self.arrange_views();
             }
-            self.work = self.pane.with_min_y(self.pane.top().max(self.tabs_foot));
+            // The palettes dock round the active view: its cell, column or row, or the pane its tab shows.
+            self.work = if arranged { self.active_rect() } else { self.pane.with_min_y(self.pane.top().max(self.tabs_foot)) };
+            if arranged {
+                // The Options Bar and the navigation bar follow the active cell, not the pane behind it.
+                self.view_rect = self.work;
+            }
         });
         self.options_bar(&ctx);
         self.edge_palette(&ctx);
@@ -2476,8 +2507,10 @@ impl BimApp {
         if !floating {
             self.view_control_bar(ui);
         }
-        // What the floating tabs and view control bar take of the view's height: a tab and a bar each, and a gap round each.
-        self.canvas.room = if floating { 2.0 * (FLOATING_CARD + f32::from(style::gap())) } else { 0.0 };
+        // What the floating tabs and view control bar take of the view's height: a tab and a bar each, and a gap round each;
+        // in Split and Tile the tabs stand above the views' area, so only the bar floats.
+        let cards = if self.arrange == dock::Arrange::Tabs { 2.0 } else { 1.0 };
+        self.canvas.room = if floating { cards * (FLOATING_CARD + f32::from(style::gap())) } else { 0.0 };
         self.view_rect = ui.available_rect_before_wrap();
         self.pane = self.view_rect;
         // The plan sets the cursor each frame it shows.
@@ -2583,6 +2616,8 @@ impl BimApp {
         if !self.views.contains(&self.front) {
             self.front = self.views.last().copied().unwrap_or(self.sheet);
         }
+        // A split without a window on an edge, or fewer than two views, is the tabbed view again.
+        self.settle_arrange();
         if self.tab == Tab::Context && self.context().is_none() {
             self.tab = self.back;
         }
@@ -4329,6 +4364,7 @@ impl BimApp {
             if self.sheet == sheet {
                 self.open_sheet(self.front);
             }
+            self.settle_arrange();
             return;
         }
         // The project keeps a tab of its own.
@@ -4341,6 +4377,7 @@ impl BimApp {
         {
             self.open_sheet(last);
         }
+        self.settle_arrange();
     }
 
     // ---------- files ----------
@@ -5603,6 +5640,19 @@ impl BimApp {
                 let active = self.sheet;
                 self.views.retain(|v| *v == active);
                 self.floating.retain(|f| f.sheet == active);
+                self.arrange = dock::Arrange::Tabs;
+            }
+            let tiled = self.arrange == dock::Arrange::Tile;
+            let tip = msg!("Tile Views: every open view in an equal cell, four of them in the four corners");
+            let tile = ui.add_enabled_ui(self.project_views() >= 2, |ui| big_button(ui, Icon::Tile, "Tile Views", tiled, tip));
+            if tile.inner.clicked() {
+                self.tile_views();
+            }
+            let float_or_split = !self.floating.is_empty() || self.arrange != dock::Arrange::Tabs;
+            let tip = msg!("Dock All Views: every floating view back onto the tab bar, in one view under the tabs");
+            let dock = ui.add_enabled_ui(float_or_split, |ui| big_button(ui, Icon::DockAll, "Dock All Views", false, tip));
+            if dock.inner.clicked() {
+                self.dock_all_views();
             }
             let tip = msg!("Show or hide the palettes, and pick the interface's language");
             let r = big_button(ui, Icon::Interface, "User Interface", false, tip);
