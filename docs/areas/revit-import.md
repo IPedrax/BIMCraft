@@ -99,8 +99,8 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   triangles as they give it (a thin rim between two arcs, whose chords cross) is cut again with its edges following the curves its
   curved neighbours put them on (`shapes::along`), and edges that meet only in space (at a pole) are joined there
   (`shapes::chain`). Snowdon 2025's architectural model brings in
-  5,646 components, 4,608 with their type's shape and 795 with a shape of their own (every stair run among them), in 134 families
-  (one of them the railings' numbered on) of 1,418 types.
+  5,654 components, 4,614 with their type's shape and 795 with a shape of their own (every stair run among them), in 137 families
+  (one of them the railings' numbered on) of 1,424 types.
   A box is a fair stand-in only for some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit),
   where its graphics draw no shape that reads, only where it runs along an axis, so one that turns a corner or runs across the
   axes, whose box is a block where there is none, is left out with that, as is one whose shape reads where no family of its name has
@@ -111,8 +111,10 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   names as its host) comes in as a BIMCraft curtain wall of a pattern of neither panels nor mullions, 0 mm thick and set out by its
   exterior face, which draws nothing of its own: its panels and mullions come in as components with their shapes, so its facade is
   Revit's. A curved one, which a BIMCraft curtain wall cannot be, is left out, and a wall of a type with no layers that nothing
-  names comes in as the plane of its box. A door or a window whose nearest wall is a curtain wall is set in no other wall, and a
-  curtain grid line (class `CurtainGridLine`) is left out, its box being no body.
+  names comes in as the plane of its box. A door or a window whose nearest wall is a curtain wall (a door panel of the grid) is set
+  in no other wall: a BIMCraft curtain wall holds one only in a wall in its cell, so it comes in as a component of a generic family
+  of its Revit family's name, with its shape (`openings::in_curtain`, `Import::in_curtain`, `generic::Scope::Only`). A curtain grid
+  line (class `CurtainGridLine`) is left out, its box being no body.
 
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line
