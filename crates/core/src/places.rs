@@ -279,22 +279,22 @@ const BAND: &str = ui_msg!("Zone on the national datum");
 const WORLD: &str = ui_msg!("UTM zone on WGS 84");
 const LOCAL: &str = ui_msg!("Local grid");
 
-/// A country's national grids, by EPSG code.
+/// A country's national grids, by EPSG code (chronologically most recent first, followed by older versions).
 fn grids(iso: &str) -> &'static [u32] {
     match iso {
         "GB" => &[27700],
-        "IE" => &[2157],
+        "IE" => &[2157, 29903],
         "NL" => &[28992],
-        "FR" => &[2154],
-        "CH" | "LI" => &[2056],
-        "BE" => &[3812],
+        "FR" => &[2154, 27572],
+        "CH" | "LI" => &[2056, 21781],
+        "BE" => &[3812, 31370],
         "PT" => &[3763],
         "PL" => &[2180],
-        "SE" => &[3006],
+        "SE" => &[3006, 3021],
         "FI" => &[3067],
         "CZ" | "SK" => &[5514],
         "AT" => &[31287],
-        "IT" => &[6875],
+        "IT" => &[6875, 3003],
         "GR" => &[2100],
         "HU" => &[23700],
         "IS" => &[3057],
@@ -395,6 +395,30 @@ pub fn systems(p: &Place) -> Vec<Suggestion> {
     systems_at(&p.iso, &p.region, p.lon, p.lat)
 }
 
+/// The map systems proposed for a point `(lon, lat)` in WGS 84 degrees, using the nearest known place's country/region
+/// (within ~5°) when one is nearby, and always including the WGS 84 UTM zone at `lon`, `lat`.
+pub fn systems_near(lon: f64, lat: f64) -> Vec<Suggestion> {
+    if !lon.is_finite() || !lat.is_finite() {
+        return Vec::new();
+    }
+    let cos_lat = lat.to_radians().cos();
+    let best = data()
+        .cities
+        .iter()
+        .filter_map(|c| {
+            let dlat = c.lat - lat;
+            let dlon = (c.lon - lon) * cos_lat;
+            let d2 = dlat * dlat + dlon * dlon;
+            (d2 <= 25.0).then_some((d2, c))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, c)| c);
+    match best {
+        Some(c) => systems_at(&c.iso, &c.region, lon, lat),
+        None => systems_at("", "", lon, lat),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,5 +463,16 @@ mod tests {
         ] {
             assert!(grids(iso).iter().all(|c| crs::lookup(*c).is_ok()), "{iso}");
         }
+    }
+
+    #[test]
+    fn systems_near_proposes_local_and_utm() {
+        let leuven = systems_near(4.7, 50.88);
+        assert!(leuven.iter().any(|s| s.info.code == 3812), "expected Belgian Lambert 2008: {leuven:?}");
+        assert!(leuven.last().is_some_and(|s| s.info.name.starts_with("WGS 84 / UTM zone 31N")));
+
+        let ocean = systems_near(-30.0, 0.0);
+        assert_eq!(ocean.len(), 1);
+        assert!(ocean[0].info.name.starts_with("WGS 84 / UTM zone 26N"));
     }
 }

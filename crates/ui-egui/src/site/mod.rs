@@ -12,6 +12,7 @@ use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::Duration;
 
 use bimcraft_core::geo::{self, Bbox, Layers, Prefetched, Reply};
+use bimcraft_core::places;
 use bimcraft_i18n::msg;
 use egui::{Align, Button, Context, Grid, Id as UiId, Layout, Response, RichText, ScrollArea, TextEdit, Ui};
 use serde_json::{Value, json};
@@ -48,6 +49,8 @@ pub(crate) struct AreaBox {
     east: String,
     default_height: String,
     level_height: String,
+    /// When the site has no place on Earth yet, the projected CRS chosen for the bbox's centre.
+    selected_crs: Option<u32>,
     error: Option<String>,
 }
 
@@ -136,8 +139,17 @@ impl BimApp {
             east: String::new(),
             default_height: units.length(6000.0),
             level_height: units.length(3000.0),
+            selected_crs: None,
             error: None,
         });
+    }
+
+    /// Projected CRSs proposed for `(lon, lat)`, ordered from the most recent national/regional grid to older/global fallbacks.
+    fn proposed_crs(&self, lon: f64, lat: f64) -> Vec<(u32, String, String)> {
+        places::systems_near(lon, lat)
+            .into_iter()
+            .map(|s| (s.info.code, s.info.name, t(s.why).to_string()))
+            .collect()
     }
 
     /// The box the area says: a distance round the origin, or four typed degrees; and small enough.
@@ -169,8 +181,17 @@ impl BimApp {
         let area = self.area_bbox(b);
         let live = area.as_ref().map(|x| x.area_km2()).map_err(Clone::clone);
         let area = area.ok();
+        let needs_place = geo::Projector::of(&self.session.model).is_err();
+        let proposed = if needs_place {
+            area.map(|x| self.proposed_crs((x.west + x.east) * 0.5, (x.south + x.north) * 0.5)).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let unit = self.session.model.units.name();
         let Some(b) = self.site.area.as_mut() else { return };
+        if needs_place && !proposed.is_empty() && !b.selected_crs.is_some_and(|c| proposed.iter().any(|(p, _, _)| *p == c)) {
+            b.selected_crs = Some(proposed[0].0);
+        }
         let mut pick = None;
         let (mut ok, mut close) = (false, false);
         let r = Modal::new(UiId::new("site-area"), title).width(480.0).show(ctx, |ui| {
@@ -211,6 +232,27 @@ impl BimApp {
                     ),
                     Err(e) => ui.label(RichText::new(e).color(pal().muted)),
                 };
+                if needs_place {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(t("Projected coordinate system")).strong());
+                    if proposed.is_empty() {
+                        ui.label(
+                            RichText::new(t("No site location is set. Pick on Map or enter a box of degrees to see available systems."))
+                                .color(pal().muted),
+                        );
+                    } else {
+                        ui.label(
+                            RichText::new(t("Sets Manage > Location to this area's centre using the chosen system:"))
+                                .color(pal().muted),
+                        );
+                        for (code, name, why) in &proposed {
+                            ui.horizontal(|ui| {
+                                ui.radio_value(&mut b.selected_crs, Some(*code), format!("EPSG:{code} — {name}"));
+                                ui.label(RichText::new(why).color(pal().muted).small());
+                            });
+                        }
+                    }
+                }
                 // What will be asked of Overpass, as it will be asked: it follows the area and the check above.
                 ui.add_space(6.0);
                 egui::CollapsingHeader::new(t("Overpass query")).id_salt("site-query").default_open(true).show(ui, |ui| match area {
@@ -269,7 +311,22 @@ impl BimApp {
         };
         // The commands' own checks, before anyone waits for the network: no place on Earth, a bad height.
         if geo::Projector::of(&self.session.model).is_err() {
-            return self.area_error(no_place());
+            let Some(code) = b.selected_crs else {
+                return self.area_error(no_place());
+            };
+            let (center_lon, center_lat) = ((bbox.west + bbox.east) * 0.5, (bbox.south + bbox.north) * 0.5);
+            let site_name = self.session.model.coordinates.active.clone();
+            if let Err(e) = self.session.execute(
+                "location",
+                &json!({
+                    "name": site_name,
+                    "crs": format!("EPSG:{code}"),
+                    "latitude": center_lat,
+                    "longitude": center_lon,
+                }),
+            ) {
+                return self.area_error(e);
+            }
         }
         let Some(geo) = self.session.geo.clone() else {
             return self.area_error(t("This BIMCraft has no network access.").to_string());

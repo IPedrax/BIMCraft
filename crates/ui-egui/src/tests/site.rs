@@ -544,3 +544,28 @@ fn an_import_says_how_many_entrances_it_placed_and_build_shell_cuts_them_as_door
     press(&mut h, "OK");
     assert_eq!((count(&h, "wall"), count(&h, "door")), (4 + 8, 0));
 }
+
+#[test]
+fn a_box_with_no_place_proposes_crs_for_the_region_and_sets_location_on_fetch() {
+    let fake = Arc::new(Fake::new());
+    let mut h = app(BOX);
+    h.state_mut().session.geo = Some(fake.clone());
+    h.run();
+    press(&mut h, "Massing");
+    press(&mut h, "Import from OpenStreetMap");
+    press(&mut h, "A box of degrees");
+    type_into(&mut h, "South (°)", "50.87");
+    type_into(&mut h, "West (°)", "4.69");
+    type_into(&mut h, "North (°)", "50.89");
+    type_into(&mut h, "East (°)", "4.71");
+    // Belgian Lambert 2008 (most recent) and Belgian Lambert 72 (older) are both proposed, newest first.
+    assert!(h.query_by_label_contains("EPSG:3812").is_some());
+    assert!(h.query_by_label_contains("EPSG:31370").is_some());
+    // Selecting an older version (Belgian Lambert 72) and fetching sets Manage > Location automatically.
+    h.get_by_label_contains("EPSG:31370").click();
+    h.run();
+    fetch(&mut h);
+    until_fetched(&mut h);
+    press(&mut h, "Close");
+    assert_eq!(h.state().session.model.site().crs, "EPSG:31370");
+}
