@@ -246,3 +246,83 @@ fn the_bars_ground_and_the_windows_edges_are_no_unnamed_tab_stops() {
         }
     }
 }
+
+/// A context with its fonts begun, for measuring a title as the bar does.
+fn measuring() -> egui::Context {
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    ctx
+}
+
+#[test]
+fn the_windows_title_names_the_file_before_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = own(BOX);
+    h.state_mut().session.path = Some(dir.path().join("Sample House.bimcraft"));
+    let title = "Sample House · Project · Floor Plan: Level 1 · BIMCraft";
+    assert_eq!(h.state().window_title("Floor Plan: Level 1"), title);
+    assert!(asked(&mut h).contains(&ViewportCommand::Title(title.to_owned())), "the system's bar hears it");
+}
+
+#[test]
+fn a_project_never_saved_keeps_the_title_it_had() {
+    let h = own(BOX);
+    assert_eq!(h.state().window_title("Floor Plan: Level 1"), "Project · Floor Plan: Level 1 · BIMCraft");
+    assert_eq!(h.state().bar_title("Floor Plan: Level 1", 2000.0, &measuring()), "Project · Floor Plan: Level 1");
+}
+
+#[test]
+fn the_windows_own_title_bar_names_the_file_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = own(BOX);
+    h.state_mut().session.path = Some(dir.path().join("Sample House.bimcraft"));
+    let title = h.state().bar_title("Floor Plan: Level 1", 2000.0, &measuring());
+    assert_eq!(title, "Sample House · Project · Floor Plan: Level 1");
+    assert_eq!(title.split(" · ").count(), 3, "the file, the project and the view");
+    assert!(!title.contains(".bimcraft"), "the file's extension stays out of the bar");
+}
+
+#[test]
+fn the_unsaved_star_stays_on_the_project_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = own(BOX);
+    h.state_mut().session.path = Some(dir.path().join("Sample House.bimcraft"));
+    let _ = h.state_mut().run("wall", json!({"points": [[0, 0], [1000, 0]]}));
+    assert_eq!(h.state().window_title("Floor Plan: Level 1"), "Sample House · Project* · Floor Plan: Level 1 · BIMCraft");
+    assert_eq!(h.state().bar_title("Floor Plan: Level 1", 2000.0, &measuring()), "Sample House · Project · Floor Plan: Level 1");
+}
+
+#[test]
+fn a_long_file_name_gives_way_to_the_project_and_the_view() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = own(BOX);
+    let stem = "a".repeat(120);
+    h.state_mut().session.path = Some(dir.path().join(format!("{stem}.bimcraft")));
+    let ctx = measuring();
+    assert_eq!(h.state().bar_title("Floor Plan: Level 1", 200.0, &ctx), "Project · Floor Plan: Level 1");
+    assert!(h.state().bar_title("Floor Plan: Level 1", 2000.0, &ctx).starts_with(&format!("{stem} · ")));
+    assert!(h.state().window_title("Floor Plan: Level 1").starts_with(&format!("{stem} · ")));
+}
+
+#[test]
+fn save_as_renames_the_file_in_the_title_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = own(BOX);
+    h.state_mut().session.path = Some(dir.path().join("First.bimcraft"));
+    assert!(h.state().window_title("Floor Plan: Level 1").starts_with("First · "));
+    h.state_mut().session.path = Some(dir.path().join("Second.bimcraft"));
+    let title = "Second · Project · Floor Plan: Level 1 · BIMCraft";
+    assert_eq!(h.state().window_title("Floor Plan: Level 1"), title);
+    assert!(asked(&mut h).contains(&ViewportCommand::Title(title.to_owned())));
+}
+
+#[test]
+fn a_family_document_keeps_its_own_title_and_never_the_projects_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = own(BOX);
+    h.state_mut().session.path = Some(dir.path().join("Sample House.bimcraft"));
+    h.state_mut().edit_family("Table");
+    let family = h.state().family_title().expect("the family document has the window");
+    assert!(!family.contains("Sample House"), "the project's file is no part of a family's title");
+    assert!(asked(&mut h).contains(&ViewportCommand::Title(format!("{family} · BIMCraft"))));
+}
