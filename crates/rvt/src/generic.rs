@@ -508,7 +508,7 @@ fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
         }
         crate::shapes::place(shape_of(symbol)?, t, &mut tris, &mut marks, &mut materials)?;
     }
-    if !crate::shapes::fills(&tris, &marks, &d.tight) {
+    if !crate::shapes::fills_either(&tris, &marks, &d.tight, &d.whole) {
         return Err("what it draws is not the box its graphics give round their solids".to_string());
     }
     let corner = [d.whole[0], d.whole[1], d.whole[2]];

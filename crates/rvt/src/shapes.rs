@@ -872,7 +872,7 @@ fn drawn_in(
             return Err(NO_SOLID.to_string());
         }
         usable(&out.triangles)?;
-        if !fills(&out.triangles, &out.marks, &out.tight) {
+        if !fills_either(&out.triangles, &out.marks, &out.tight, &out.whole) {
             return Err("its solids read are not the box its graphics give round them".to_string());
         }
         Ok(())
@@ -965,51 +965,59 @@ fn unread(name: &str) -> bool {
 /// The solids of `tree` (its `Geometry` objects) as triangles into `out`, millimetres in the tree's axes: whether every face reads,
 /// and both faces of every edge put its points in one place. The solids and faces read.
 fn solids(r: &Reader, out: &mut Vec<[P3; 3]>, materials: &mut Vec<Option<u32>>) -> Step<(usize, usize)> {
-    let tree = r.tree;
     let (mut count, mut faces_read) = (0, 0);
-    for solid in tree.objects.values().filter(|o| r.name(o) == "Geometry") {
+    for o in r.tree.objects.values().filter(|o| r.name(o) == "Geometry") {
         count += 1;
-        let faces: Vec<u32> = match r.get(solid, "m_pFaces")?.list() {
-            Some(l) => l.iter().filter_map(|v| if let Value::Owned(i, _) = v { Some(*i) } else { None }).collect(),
-            None => return Err("a solid's faces are no list".to_string()),
-        };
-        let mut surfaces = Surfaces::new();
-        for &i in &faces {
-            let face = tree.get(i).ok_or_else(|| format!("face {i} is not in the tree"))?;
-            surfaces.insert(i, r.surface(face)?);
-        }
-        // Both faces of each edge must put its points in the same place.
-        let edges = r.get(solid, "m_pEdges")?.list().ok_or("a solid's edges are no list")?;
-        for v in edges {
-            let Value::Owned(e, _) = v else { continue };
-            let edge = tree.get(*e).ok_or_else(|| format!("edge {e} is not in the tree"))?;
-            let sides = r.get(edge, "m_pFace")?.list().ok_or("an edge's faces are no list")?;
-            let on: Vec<&Surface> = (0..2).filter_map(|k| sides.get(k).and_then(Value::weak)).filter_map(|f| surfaces.get(&f)).collect();
-            if let [a, b] = on[..] {
-                for (p, q) in r.edge_points(edge, 0)?.into_iter().zip(r.edge_points(edge, 1)?) {
-                    if dist(a.at(p), b.at(q)) > MEET {
-                        return Err("two faces put a point of the edge between them in different places".to_string());
-                    }
+        faces_read += solid(r, o, out, materials)?;
+    }
+    Ok((count, faces_read))
+}
+
+/// One solid, a `Geometry`, as triangles into `out` (and their materials into `materials`): whether every face reads, and both faces
+/// of every edge put its points in one place. The faces read.
+fn solid(r: &Reader, solid: &Obj, out: &mut Vec<[P3; 3]>, materials: &mut Vec<Option<u32>>) -> Step<usize> {
+    let tree = r.tree;
+    let mut faces_read = 0;
+    let faces: Vec<u32> = match r.get(solid, "m_pFaces")?.list() {
+        Some(l) => l.iter().filter_map(|v| if let Value::Owned(i, _) = v { Some(*i) } else { None }).collect(),
+        None => return Err("a solid's faces are no list".to_string()),
+    };
+    let mut surfaces = Surfaces::new();
+    for &i in &faces {
+        let face = tree.get(i).ok_or_else(|| format!("face {i} is not in the tree"))?;
+        surfaces.insert(i, r.surface(face)?);
+    }
+    // Both faces of each edge must put its points in the same place.
+    let edges = r.get(solid, "m_pEdges")?.list().ok_or("a solid's edges are no list")?;
+    for v in edges {
+        let Value::Owned(e, _) = v else { continue };
+        let edge = tree.get(*e).ok_or_else(|| format!("edge {e} is not in the tree"))?;
+        let sides = r.get(edge, "m_pFace")?.list().ok_or("an edge's faces are no list")?;
+        let on: Vec<&Surface> = (0..2).filter_map(|k| sides.get(k).and_then(Value::weak)).filter_map(|f| surfaces.get(&f)).collect();
+        if let [a, b] = on[..] {
+            for (p, q) in r.edge_points(edge, 0)?.into_iter().zip(r.edge_points(edge, 1)?) {
+                if dist(a.at(p), b.at(q)) > MEET {
+                    return Err("two faces put a point of the edge between them in different places".to_string());
                 }
             }
         }
-        for &i in &faces {
-            let face = tree.get(i).ok_or_else(|| format!("face {i} is not in the tree"))?;
-            let surface = surfaces.get(&i).ok_or("a face has no surface")?;
-            // Cut as its edges' points give it; where that fails (a thin face between two curves whose points, joined straight,
-            // cross), again with its edges following the curves its curved neighbours put them on.
-            let mut cut = Vec::new();
-            if let Err(why) = triangles(surface, &r.loops(face, i, &surfaces, false)?, &mut cut) {
-                cut.clear();
-                let fine = r.loops(face, i, &surfaces, true)?;
-                triangles(surface, &fine, &mut cut).map_err(|_| format!("a face is not cut into triangles: {why}"))?;
-            }
-            out.extend(cut);
-            materials.resize(out.len(), material_of(r, face, "m_renderStyleId"));
-            faces_read += 1;
-        }
     }
-    Ok((count, faces_read))
+    for &i in &faces {
+        let face = tree.get(i).ok_or_else(|| format!("face {i} is not in the tree"))?;
+        let surface = surfaces.get(&i).ok_or("a face has no surface")?;
+        // Cut as its edges' points give it; where that fails (a thin face between two curves whose points, joined straight,
+        // cross), again with its edges following the curves its curved neighbours put them on.
+        let mut cut = Vec::new();
+        if let Err(why) = triangles(surface, &r.loops(face, i, &surfaces, false)?, &mut cut) {
+            cut.clear();
+            let fine = r.loops(face, i, &surfaces, true)?;
+            triangles(surface, &fine, &mut cut).map_err(|_| format!("a face is not cut into triangles: {why}"))?;
+        }
+        out.extend(cut);
+        materials.resize(out.len(), material_of(r, face, "m_renderStyleId"));
+        faces_read += 1;
+    }
+    Ok(faces_read)
 }
 
 /// The points, lines and arcs a tree draws (`GPoint`, `GLine`, `GArc`: nodes of its groups, not a surface's profile), as points
@@ -1042,6 +1050,32 @@ fn marks(r: &Reader) -> Step<Vec<P3>> {
         }
     }
     Ok(out.into_iter().map(|p| scale(MM, p)).collect())
+}
+
+/// Whether triangles `tris` and points `marks` (millimetres) fill the box a tree's root gives round its solids (`m_tightbBox`,
+/// [`fills`]), or else the box round all it draws (`m_bBox`) while reaching every side of the first: the box round the solids may
+/// leave out solids Revit draws (a tread's nosing), where the other is the box round them exactly; one the solids stop short of
+/// still holds a solid not read.
+pub(crate) fn fills_either(tris: &[[P3; 3]], marks: &[P3], tight: &[f64; 6], whole: &[f64; 6]) -> bool {
+    fills(tris, marks, tight) || (fills(tris, marks, whole) && reaches(tris, marks, tight))
+}
+
+/// Whether triangles `tris` and points `marks` (millimetres; one past the box counts as at it) reach every side of box `b` (feet),
+/// to [`slack`].
+fn reaches(tris: &[[P3; 3]], marks: &[P3], b: &[f64; 6]) -> bool {
+    let mut e = [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    let points = tris.iter().flatten().map(|p| p.map(|v| v / MM));
+    let marks = marks.iter().map(|p| std::array::from_fn::<f64, 3, _>(|k| (p[k] / MM).clamp(b[k].min(b[k + 3]), b[k + 3].max(b[k]))));
+    for p in points.chain(marks) {
+        for k in 0..3 {
+            e[k] = e[k].min(p[k]);
+            e[k + 3] = e[k + 3].max(p[k]);
+        }
+    }
+    (0..3).all(|k| {
+        let s = slack(b[k + 3] - b[k]);
+        e[k] <= b[k] + s && e[k + 3] >= b[k + 3] - s
+    })
 }
 
 /// Whether triangles `tris` and points `marks` (millimetres) fill box `tight` (feet), the box the graphics give round their
@@ -1110,7 +1144,7 @@ pub(crate) fn shape(tree: &Tree, layouts: &Layouts) -> Step<Shape> {
         return Err(NO_SOLID.to_string());
     }
     usable(&out.triangles)?;
-    if !fills(&out.triangles, &out.marks, &tight) {
+    if !fills_either(&out.triangles, &out.marks, &tight, &whole) {
         return Err("its solids read are not the box its graphics give round them".to_string());
     }
     Ok(out)

@@ -91,15 +91,16 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   has; `generic::room`, up to `MAX_OVERFLOW` of them), and a type keeps a box only where none has room. The graphics are found in the second pass and the
   symbols drawn read after it, each partition that holds one inflated again, and the symbols those nest in a round for each depth
   (`Gathered::drawn`, a `shapes::Drawing` for each element, and `Gathered::shapes`); the provenance rows say what was measured, and
-  what is not read (solids standing outside the box Revit gives round a symbol's solids, which its view conditions would explain,
-  which come in as boxes saying why; a component whose family would pass the types a family may hold is left out). Faces lie on
+  what is not read (solids standing outside both boxes Revit gives round a symbol, which its view conditions would explain, which
+  come in as boxes saying why; solids outside the box round its solids alone are read where they fill the box round all it
+  draws, `shapes::fills_either`; a component whose family would pass the types a family may hold is left out). Faces lie on
   planes, cylinders, cones, surfaces of revolution, ruled surfaces and bicubic Hermite surfaces, and profiles are lines, arcs,
   ellipses and cubic Hermite splines (`shapes.rs`). An edge's points are only a sampling of it: a face that is not cut into
   triangles as they give it (a thin rim between two arcs, whose chords cross) is cut again with its edges following the curves its
   curved neighbours put them on (`shapes::along`), and edges that meet only in space (at a pole) are joined there
   (`shapes::chain`). Snowdon 2025's architectural model brings in
-  5,673 components, 4,517 with their type's shape and 783 with a shape of their own (every stair run among them), in 135 families
-  (one of them the railings' numbered on) of 1,404 types.
+  5,678 components, 4,608 with their type's shape and 795 with a shape of their own (every stair run among them), in 135 families
+  (one of them the railings' numbered on) of 1,419 types.
   A box is a fair stand-in only for some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit),
   where its graphics draw no shape that reads, only where it runs along an axis, so one that turns a corner or runs across the
   axes, whose box is a block where there is none, is left out with that, as is one whose shape reads where no family of its name has
