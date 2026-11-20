@@ -238,6 +238,9 @@ pub mod rooms;
 mod run_join_tests;
 pub mod runs;
 pub mod sample;
+pub mod scale;
+#[cfg(test)]
+mod scale_tests;
 pub mod schedule;
 #[cfg(test)]
 mod section_box_tests;
@@ -283,8 +286,9 @@ mod units_tests;
 mod vertical_tools_tests;
 pub mod view3d;
 #[cfg(test)]
-mod wall_shape_tests;
 mod wall_mitre_tests;
+#[cfg(test)]
+mod wall_shape_tests;
 #[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;

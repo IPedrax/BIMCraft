@@ -201,6 +201,15 @@ is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre
 running from the centre), and the angle is the exact one between the snapped points. Digits typed over the view while Rotate
 (or Rotate Project North) waits for its angle are the angle (`BimApp::typed_angle`, a leading minus turns clockwise), shown
 on the ghost as "45° (Enter)", and Enter turns by it.
+Scale (RE, `scale.rs`) is `Tool::Scale(Step)`: `Choose` while its popup asks how (`BimApp::scaling` keeps the choice, the
+percentage and the length from one use to the next), `Base(factor)` waiting for the point that stays, `First` and `Second(a)` for
+the two points (snapped through `found`, Shift squaring the second, a line and its length following the cursor), and
+`Length(a, b)` while the popup at the second click asks the length they come to. It starts only in a plan, a ceiling plan, a
+section or an elevation and with something selected it takes (`bimcraft_core::scale::scalable`; `BimApp::scale_refused` says
+why not), and runs the core's `scale_elements` in the view's own terms, so a section's detail lines scale by its along and up.
+The plan's preview draws what it scales grown about the point (`ghost_of` with the factor, the percentage's at the cursor, the
+length's as typed). What the core leaves out goes in the status bar, each with why. The 3D view and sheets show nothing it
+takes, so it says so there.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and

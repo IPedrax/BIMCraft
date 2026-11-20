@@ -3358,6 +3358,15 @@ impl BimApp {
                     self.clear_typed();
                 }
             }
+            // The point that stays, or the two whose length is typed: snapped as any point, Shift squaring the second.
+            &Tool::Scale(step) => {
+                let from: Vec<P2> = match step {
+                    crate::scale::Step::Second(a) => vec![a],
+                    _ => Vec::new(),
+                };
+                let pt = self.snap_point(m, level, v, at, &from, mods.shift && !from.is_empty());
+                self.scale_point(pt);
+            }
             &Tool::Rotate { centre, start, place } => {
                 self.tool = match (place, start) {
                     (true, _) => Tool::Rotate { centre: self.snap_point(m, level, v, at, &[], false), start: None, place: false },
@@ -5947,6 +5956,41 @@ impl BimApp {
                     p.add(Shape::closed_line(g.outer.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
                     let (area, unit) = m.units.area(g.area());
                     label(cursor, format!("{area:.2} {unit}"));
+                }
+                return;
+            }
+            &Tool::Scale(step) => {
+                use crate::scale::Step;
+                let cross = |c: Pos2| {
+                    p.circle_stroke(c, 5.0, stroke);
+                    p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
+                    p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
+                };
+                // What it scales, as it would stand, about the point on screen `c`.
+                let taken = self.scaled_selection();
+                let grown = |c: Pos2, k: f64| ghost_of(&taken, &|pt: Pos2| c + (pt - c) * k as f32);
+                match step {
+                    Step::Choose => {}
+                    Step::Base(k) => {
+                        let c = sc.screen(self.found(sc, q, &[], false));
+                        cross(c);
+                        grown(c, k);
+                        label(cursor, format!("{}%", (k * 1e4).round() / 100.0));
+                    }
+                    Step::First => cross(sc.screen(self.found(sc, q, &[], false))),
+                    Step::Second(a) => {
+                        let b = self.found(sc, q, &[a], shift);
+                        cross(sc.screen(a));
+                        p.line_segment([sc.screen(a), sc.screen(b)], stroke);
+                        label(cursor, m.length(a.dist(b)));
+                    }
+                    Step::Length(a, b) => {
+                        cross(sc.screen(a));
+                        p.line_segment([sc.screen(a), sc.screen(b)], stroke);
+                        if let Some((about, k)) = self.scale_typed() {
+                            grown(sc.screen(about), k);
+                        }
+                    }
                 }
                 return;
             }

@@ -57,6 +57,7 @@ icon_names! {
     Cut,
     CopyClipboard,
     Rotate,
+    Scale,
     MirrorPick,
     MirrorDraw,
     Align,
@@ -517,6 +518,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // A circular arc with a tangential return arrow; no floating arrowhead.
             g.line(&[(1.5, 15.0), (4.0, 12.0), (6.5, 15.0)]);
             g.arc((12.0, 12.0), 8.0, -90.0, 180.0);
+        }
+        Icon::Scale => {
+            // A small square grown into a big one from the corner they share, an arrow out along the diagonal.
+            g.closed(&[(3.0, 21.0), (3.0, 14.0), (10.0, 14.0), (10.0, 21.0)]);
+            g.line(&[(3.0, 11.0), (3.0, 3.0), (21.0, 3.0), (21.0, 21.0), (13.0, 21.0)]);
+            g.line(&[(8.0, 16.0), (17.0, 7.0)]);
+            g.line(&[(12.0, 7.0), (17.0, 7.0), (17.0, 12.0)]);
         }
         Icon::MirrorPick => {
             // Mirrored triangles around a dashed picked axis.

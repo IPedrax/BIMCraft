@@ -91,6 +91,7 @@ mod renames;
 mod retained;
 pub mod revit;
 mod ribbon;
+mod scale;
 mod script;
 mod section;
 mod section_box;
@@ -229,6 +230,9 @@ pub enum Tool {
     ExportRegion(Option<P2>),
     /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
     Acquire,
+    /// Scale the selection's annotation, CAD drawings, images and PDFs: how (`scale.rs`), then the point that stays or two
+    /// points and the length between them.
+    Scale(scale::Step),
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
     Mirror {
         draw: bool,
@@ -1145,6 +1149,8 @@ pub struct BimApp {
     pub(crate) paste_choose: Option<clipboard::Choose>,
     /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.
     pub(crate) paste_where: Option<clipboard::Pasting>,
+    /// Scale's popups: how it scales, the percentage and the length typed.
+    pub(crate) scaling: scale::Options,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
@@ -1979,6 +1985,7 @@ impl BimApp {
             clip_request: None,
             paste_choose: None,
             paste_where: None,
+            scaling: scale::Options { percent: "100".into(), ..Default::default() },
             active_option: None,
             new_schedule: None,
             component: None,
@@ -2135,6 +2142,7 @@ impl BimApp {
             | Tool::Copy(_)
             | Tool::Rotate { .. }
             | Tool::RotateNorth { .. }
+            | Tool::Scale(_)
             | Tool::Mirror { .. }
             | Tool::Align(_)
             | Tool::Trim(_)
@@ -2761,6 +2769,10 @@ impl BimApp {
         }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        // Scale's length is typed in its own popup, which takes its Enter.
+        if matches!(self.tool, Tool::Scale(_)) {
+            enter = false;
+        }
         if enter && let Sheet::Section(view) = self.sheet {
             self.vertical_enter(view);
             enter = false;
@@ -3256,6 +3268,7 @@ impl BimApp {
                 Some("move") => Tool::Move(None),
                 Some("copy") => Tool::Copy(None),
                 Some("rotate") => Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false },
+                Some("scale_elements") => Tool::Scale(scale::Step::Choose),
                 Some("corner") => Tool::Trim(None),
                 Some("split") => Tool::Split,
                 Some("linework") => Tool::Linework,
@@ -3580,8 +3593,17 @@ impl BimApp {
         if matches!(tool, Tool::Paint | Tool::Unpaint) && self.sheet != Sheet::View3D {
             self.open_sheet(Sheet::View3D);
         }
-        // Move, Copy, Rotate and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
-        let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
+        // Scale asks first whether there's anything here it takes, and then how.
+        if let Tool::Scale(_) = tool {
+            if let Some(why) = self.scale_refused() {
+                self.status = Status { text: why, error: true };
+                return;
+            }
+            tool = Tool::Scale(scale::Step::Choose);
+            (self.scaling.error, self.scaling.focused) = (None, false);
+        }
+        // Move, Copy, Rotate, Scale and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
+        let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Scale(_) | Tool::Mirror { .. });
         let picks = matches!(
             tool,
             Tool::Align(_)
@@ -3966,6 +3988,7 @@ impl BimApp {
             | Tool::Section(start)
             | Tool::SlopeArrow(start)
             | Tool::AddSplitLine(start) => *start,
+            Tool::Scale(scale::Step::Second(a)) => Some(*a),
             Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
                 pts.last().copied()
             }
@@ -4282,6 +4305,7 @@ impl BimApp {
             | Tool::DetailLine(pts) => pts.clear(),
             Tool::Move(_)
             | Tool::Copy(_)
+            | Tool::Scale(_)
             | Tool::SlopeArrow(_)
             | Tool::ModifySubElements
             | Tool::AddPoint
@@ -6090,6 +6114,13 @@ impl BimApp {
                     some,
                 ),
                 (
+                    Icon::Scale,
+                    "Scale",
+                    msg!("Scale (RE): annotation, CAD drawings, images and PDFs, by a percentage or by a length between two points"),
+                    Some(Tool::Scale(scale::Step::Choose)),
+                    some,
+                ),
+                (
                     Icon::Trim,
                     "Trim/Extend to Corner",
                     msg!("Trim/Extend to Corner (TR): pick two walls or two lines, on the parts to keep"),
@@ -6350,7 +6381,7 @@ impl BimApp {
                 for row in rows {
                     ui.horizontal(|ui| {
                         let taken = |tool: &Option<Tool>| {
-                            !images || matches!(tool, None | Some(Tool::Move(_) | Tool::Copy(_) | Tool::Mirror { .. }))
+                            !images || matches!(tool, None | Some(Tool::Move(_) | Tool::Copy(_) | Tool::Scale(_) | Tool::Mirror { .. }))
                         };
                         for (icon, label, tip, tool, enabled) in row.iter().filter(|b| taken(&b.3)) {
                             let active = tool.as_ref().is_some_and(|t| on(t, &self.tool) && *t != Tool::Modify);
@@ -7067,6 +7098,11 @@ impl BimApp {
             Tool::RotateNorth { start: Some(_), .. } => {
                 msg!("Click the end of the angle: the model turns, and true north with it, so nothing moves in the world. Esc cancels.")
             }
+            Tool::Scale(scale::Step::Choose) => msg!("Scale: choose by a percentage or by a length between two points, then OK."),
+            Tool::Scale(scale::Step::Base(_)) => msg!("Click the point that stays: the selection grows or shrinks about it. Esc cancels."),
+            Tool::Scale(scale::Step::First) => msg!("Click the first point, the one that stays. Esc cancels."),
+            Tool::Scale(scale::Step::Second(_)) => msg!("Click the second point: then type the length between them. Esc cancels."),
+            Tool::Scale(scale::Step::Length(..)) => msg!("Type the new length between the two points and press Enter. Esc cancels."),
             Tool::Mirror { draw: false, .. } => msg!("Pick a wall or grid to mirror across."),
             Tool::Mirror { draw: true, start: None } => msg!("Click the start of the mirror axis."),
             Tool::Mirror { draw: true, start: Some(_) } => msg!("Click the end of the mirror axis."),
@@ -7524,6 +7560,7 @@ impl BimApp {
         self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
         self.paste_window(ctx);
+        self.scale_window(ctx);
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);

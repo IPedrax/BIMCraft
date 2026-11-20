@@ -2458,6 +2458,19 @@ other_files(
         mirror,
     ),
     edit(
+        "scale_elements",
+        ui_msg!("Scale"),
+        &["RE"],
+        "{ids: [id,…], about: [x, y], factor} makes annotation, CAD drawings, images and PDFs `factor` times their size \
+         about `about`, which stays, in the terms they're drawn in (a plan's x and y; a section's or an elevation's along \
+         and up). Detail lines and filled regions (their arcs' and circles' radii too), a repeating detail's path, a \
+         dimension's line, a CAD import's units and an image's or a PDF's width; patterns and what a type or a family draws \
+         keep their size. Text, tags, spot dimensions, groups, families, links and model elements are left out, each with \
+         why; with nothing left to scale it is refused. `factor` is from 0.001 to 1000. Returns {scaled, left_out: \
+         [{id, why}]}",
+        scale_elements,
+    ),
+    edit(
         "corner",
         ui_msg!("Trim/Extend to Corner"),
         &["TR"],
@@ -21525,6 +21538,37 @@ fn mirror(s: &mut Session, p: &Value) -> R {
     }
     relocate(c, s, &crate::groups::with_members(&s.model, &ids), &mo, None)?;
     Ok(json!({"mirrored": ids}))
+}
+
+fn scale_elements(s: &mut Session, p: &Value) -> R {
+    let c = "scale_elements";
+    only(c, p, &["ids", "about", "factor"])?;
+    let ids = ids_param(c, &s.model, p)?;
+    let about = point_req(c, p, "about")?;
+    let k = num(c, p, "factor")?.ok_or_else(|| bad(c, "`factor`, how many times bigger (0.5 halves), is required"))?;
+    if !crate::scale::FACTORS.contains(&k) {
+        return Err(bad(c, format!("`factor` is from 0.001 to 1000 times the size, not {k}")));
+    }
+    let m = &s.model;
+    let (mut scaled, mut left_out) = (Vec::new(), Vec::new());
+    for &id in &ids {
+        let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        match crate::scale::scaled(e, about, k) {
+            Ok(e) => scaled.push((id, e)),
+            Err(why) => left_out.push(json!({"id": id, "why": why})),
+        }
+    }
+    if scaled.is_empty() {
+        let why = left_out.first().and_then(|l| l["why"].as_str()).unwrap_or("nothing to scale");
+        return Err(bad(c, format!("nothing selected is scaled: {why}")));
+    }
+    let ids: Vec<Id> = scaled.iter().map(|(id, _)| *id).collect();
+    refuse_pinned(c, m, &ids, "scale")?;
+    let m = s.model_mut();
+    for (id, e) in scaled {
+        m.elements.insert(id, e);
+    }
+    Ok(json!({"scaled": ids, "left_out": left_out}))
 }
 
 fn corner(s: &mut Session, p: &Value) -> R {

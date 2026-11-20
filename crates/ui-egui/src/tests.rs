@@ -6819,6 +6819,7 @@ mod reinforce;
 mod revit;
 mod ribbon_fit;
 mod rooms;
+mod scale;
 mod section_box;
 mod shape3d;
 mod sheets;
