@@ -370,7 +370,8 @@ fn turned(r: &Record, t: Option<&Transform>, ty: TypeBox) -> Result<Stand, &'sta
 /// The placed elements of the categories read here: their placements are read from their data, and what they draw from their own
 /// graphics, with the shapes of the symbols drawn.
 pub(crate) fn wanted(f: &Facts, out: &mut Wants) {
-    let mine: Vec<u32> = f.current.values().filter(|r| reads(r.category)).map(|r| r.id).collect();
+    let mut mine: Vec<u32> = f.current.values().filter(|r| reads(r.category)).map(|r| r.id).collect();
+    mine.extend(crate::openings::in_curtain(f));
     out.placements.extend(&mine);
     out.drawings.extend(mine);
 }
@@ -426,7 +427,13 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered, inv: &Inventory) 
     let mut families = Families::new(cx.model.families.keys().cloned().collect());
     let read = Read { f, g, inv };
     for (category, family, kind, label, shape) in KINDS {
-        boxes(cx, &read, &mut families, None, category, (family, kind, label), shape);
+        boxes(cx, &read, &mut families, Scope::Named, category, (family, kind, label), shape);
+    }
+    // The doors and windows set in curtain walls, which a BIMCraft curtain wall holds only in a wall in its cell: components of a
+    // family of their own (a BIMCraft door's family stands in a wall), drawn as Revit draws them.
+    let in_curtain = std::mem::take(&mut cx.in_curtain);
+    for (category, family, label) in [(crate::openings::OST_DOORS, "Doors", "door"), (crate::openings::OST_WINDOWS, "Windows", "window")] {
+        boxes(cx, &read, &mut families, Scope::Only(&in_curtain), category, (family, Category::Generic, label), Shape::Envelope);
     }
     let unnamed: BTreeSet<i64> = inv.elements.iter().filter(|e| e.placed && by_id(e.category)).map(|e| e.category).collect();
     if unnamed.is_empty() {
@@ -439,7 +446,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered, inv: &Inventory) 
             cx,
             &read,
             &mut families,
-            Some(&known),
+            Scope::Unnamed(&known),
             category,
             (&format!("Category {category}"), Category::Generic, &label),
             Shape::Envelope,
@@ -611,18 +618,33 @@ struct Read<'a> {
     inv: &'a Inventory,
 }
 
-/// The placed elements of `category` as components of the family `family` (made with the first), told as `label`, where their box
-/// stands for them as `taken` says; those of a category with no name (`known` is the boxes of the elements of the others) whose box is
-/// one of `known` are left out.
+/// Which placed elements of a category come in as components.
+#[derive(Clone, Copy)]
+enum Scope<'a> {
+    /// All of a category the table names.
+    Named,
+    /// All of a category with no name, but those whose box is one of these (the boxes of the elements of the others).
+    Unnamed(&'a BTreeSet<Boxed>),
+    /// Only these (the doors and windows set in curtain walls).
+    Only(&'a BTreeSet<u32>),
+}
+
+/// The placed elements of `category` that `scope` takes as components of the family `family` (made with the first), told as
+/// `label`, where their box stands for them as `taken` says.
 fn boxes(
     cx: &mut Import,
     &Read { f, g, inv }: &Read,
     families: &mut Families,
-    known: Option<&BTreeSet<Boxed>>,
+    scope: Scope,
     category: i64,
     (family, kind, label): (&str, Category, &str),
     taken: Shape,
 ) {
+    let known = match scope {
+        Scope::Unnamed(k) => Some(k),
+        _ => None,
+    };
+    let records = || f.of_category(category).filter(move |r| if let Scope::Only(o) = scope { o.contains(&r.id) } else { true });
     let (box_so, turned_so, flat) = if known.is_some() {
         (
             "comes in as a box of its record's box: its category has no name here, and its shape and its connectors are not read",
@@ -642,7 +664,7 @@ fn boxes(
     // from the instances that stand square (where they disagree, none).
     let mut type_family: BTreeMap<u32, Option<(u32, String)>> = BTreeMap::new();
     let mut type_box: BTreeMap<u32, Option<[f64; 6]>> = BTreeMap::new();
-    for r in f.of_category(category) {
+    for r in records() {
         let Some((ty, _)) = symbol_of(r, &symbols, g, category, f.release) else { continue };
         if let Some(fam) = family_of(r, g, category, f.release) {
             let held = type_family.entry(ty).or_insert_with(|| Some(fam.clone()));
@@ -659,7 +681,7 @@ fn boxes(
     }
     // What comes in, and how: each element's family, type and stand, and what it draws where its shape is used.
     let mut plans: Vec<Plan> = Vec::new();
-    for r in f.of_category(category) {
+    for r in records() {
         // A model group is no body, and terrain's box is a solid block over the site: neither is a box of anything.
         if f.tags.group == Some(r.class_tag) {
             cx.left_out(label, r.id, "it is a model group (class ElementGroup): its members come in on their own, and its box is no body");
@@ -819,7 +841,11 @@ fn boxes(
             Err(why) => cx.left_out(label, r.id, &why),
         }
     }
-    // A placed element with no volume (a flat symbol drawn in plan) has no body to import.
+    // A placed element with no volume (a flat symbol drawn in plan) has no body to import (a door's or a window's is told by
+    // `openings.rs`).
+    if matches!(scope, Scope::Only(_)) {
+        return;
+    }
     for e in inv.elements.iter().filter(|e| e.placed && e.category == category && !f.current.contains_key(&e.id)) {
         cx.left_out(label, e.id, flat);
     }

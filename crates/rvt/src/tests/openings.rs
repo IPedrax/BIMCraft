@@ -114,7 +114,19 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     assert_eq!(host(250).as_deref(), Some("Wall 300"));
     assert_eq!(host(95), None, "{:?}", i.skipped);
     assert_eq!(host(410), None);
-    assert!(i.skipped.iter().any(|s| s.contains("its host is a curtain wall") && s.contains("95") && s.contains("410")), "{:?}", i.skipped);
+    // They come in as components of a family of their own (a BIMCraft door stands in a wall), drawn as Revit draws them.
+    let doors: Vec<&bimcraft_core::model::Component> = i
+        .model
+        .elements
+        .values()
+        .filter_map(|e| if let bimcraft_core::model::Element::Component(c) = e { Some(c) } else { None })
+        .filter(|c| c.family == "Doors")
+        .collect();
+    assert_eq!(doors.len(), 2, "{:?}", i.skipped);
+    let said = |what: &str| i.skipped.iter().any(|s| s.contains(what) && s.contains("95") && s.contains("410"));
+    assert!(said("its host is a curtain wall") && said("comes in as a component"), "{:?}", i.skipped);
+    assert!(said("2 doors: comes in as a box"), "{:?}", i.skipped);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
 }
 
 /// A wall at an angle: from (0, 5) ft, 15 ft long along `direction`, 10 ft tall.

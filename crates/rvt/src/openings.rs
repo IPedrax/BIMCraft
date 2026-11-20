@@ -140,6 +140,19 @@ struct Pending {
 /// does not.
 const MAX_FITTED_OVERLAP: f64 = 0.1;
 
+/// The doors and windows whose nearest wall is one the parts of a curtain wall name as their host: those that may come in as
+/// components (`Import::in_curtain` says which do), whose graphics are read for it.
+pub(crate) fn in_curtain(f: &Facts) -> Vec<u32> {
+    let walls: BTreeSet<u32> = f.of_category(crate::walls::OST_WALLS).map(|r| r.id).collect();
+    let hosts = crate::walls::curtain_hosts(f);
+    [OST_DOORS, OST_WINDOWS]
+        .into_iter()
+        .flat_map(|c| f.of_category(c))
+        .filter(|r| candidates(r, &walls).first().is_some_and(|w| hosts.contains(w)))
+        .map(|r| r.id)
+        .collect()
+}
+
 /// Why a door or a window whose host is a curtain wall is not set in it.
 const CURTAIN_HOST: &str = "its host is a curtain wall, which holds a door or a window only in a wall set in its cell";
 
@@ -239,6 +252,11 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             })();
             match read {
                 Ok(p) => pending.push(p),
+                // A door or a window in a curtain wall comes in as a component of its family, drawn as Revit draws it.
+                Err(why) if why == CURTAIN_HOST => {
+                    cx.note(label, r.id, &format!("{why}: it comes in as a component of its family"));
+                    cx.in_curtain.insert(r.id);
+                }
                 Err(why) => cx.left_out(label, r.id, &why),
             }
         }
