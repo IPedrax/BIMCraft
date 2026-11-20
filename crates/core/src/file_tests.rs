@@ -181,3 +181,32 @@ fn a_check_on_every_core_says_what_the_check_one_by_one_says() {
         assert_eq!(e, one_by_one(m));
     }
 }
+
+#[test]
+fn a_file_naming_a_line_pattern_it_doesnt_hold_opens_with_it_replaced_by_solid_and_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = house();
+    s.execute("line_pattern", &json!({"name": "Chain", "segments": [{"dash": 4}, {"space": 1}]})).unwrap();
+    s.execute("line_style", &json!({"name": "Chained", "pen": 2, "pattern": "Chain"})).unwrap();
+    s.execute("grid_type", &json!({"name": "Zig", "like": "Grid - ISO 128", "line_pattern": "Chain"})).unwrap();
+    let path = dir.path().join("house.bimc");
+    s.execute("save", &json!({"path": path})).unwrap();
+    // The pattern goes missing, as it does in a file edited by hand or one an older BIMCraft wrote without it.
+    let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    file["line_patterns"].as_object_mut().unwrap().remove("Chain");
+    std::fs::write(&path, file.to_string()).unwrap();
+    // The open doesn't fail for it: the references draw solid, and the reply says what was replaced.
+    let mut t = Session::new();
+    let reply = t.execute("open", &json!({"path": path})).unwrap();
+    let warnings = reply["warnings"].as_array().expect("the reply says what was replaced");
+    assert!(warnings.contains(&json!("line style `Chained`: line pattern `Chain` was replaced with Solid")), "{warnings:?}");
+    assert!(warnings.contains(&json!("grid type `Zig`: line pattern `Chain` was replaced with Solid")), "{warnings:?}");
+    assert_eq!(t.model.line_styles["Chained"].pattern, None);
+    assert_eq!(t.model.grid_types["Zig"].line_pattern, None);
+    // And a file that holds its patterns opens saying nothing.
+    let again = dir.path().join("whole.bimc");
+    s.execute("save", &json!({"path": again})).unwrap();
+    let mut u = Session::new();
+    let reply = u.execute("open", &json!({"path": again})).unwrap();
+    assert!(reply.get("warnings").is_none(), "{reply}");
+}
