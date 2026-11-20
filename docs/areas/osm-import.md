@@ -1,9 +1,9 @@
 # OpenStreetMap import
 
-`import_osm` brings the buildings of an OpenStreetMap file into the project as masses standing on the ground. The code is
-`crates/core/src/osm.rs` (pure: reads files, finds buildings; no model, no I/O), `import_osm` in `commands.rs` (projects, drapes,
+`import_osm` brings the buildings of an OpenStreetMap file into the project as masses standing at a level. The code is
+`crates/core/src/osm.rs` (pure: reads files, finds buildings; no model, no I/O), `import_osm` in `commands.rs` (projects,
 makes the masses) and `geo::Projector` (the active site's way between WGS84 and the plan); the tests are `osm.rs` and
-`osm_import_tests.rs`. The ground it stands on is a [toposolid](site.md) (`ground::Ground`); the project's site must have a map system and
+`osm_import_tests.rs`. Buildings stand at their level, whatever the ground is (a [toposolid](site.md) is not read); the project's site must have a map system and
 a place first (`location {name, crs, latitude, longitude}`, Manage > Location: [coordinates](coordinates.md)). Project north is the site's:
 grid north unless the site is turned, so a building drawn along latitude and longitude lies a little turned in plan, by the grid's
 convergence there.
@@ -71,9 +71,8 @@ The scheme at https://wiki.openstreetmap.org/wiki/Simple_3D_Buildings, as far as
 ## What it makes
 
 A `Mass` for each building: its outline counter-clockwise in project mm (through `Projector`, built once for the whole import),
-`height` = height - min_height, `base_offset` = the lowest ground under the outline's corners and middle (`Ground::lowest` of the
-toposolid; the only one, or `terrain`) minus the level's elevation, plus `min_height`. With no terrain, or outside it
-(`off_terrain` in the reply), it stands at the level; terrain fetched afterwards (`fetch_terrain`) stands it on the ground then, with its walls, floors and roof if it has them. A Mass cannot have a courtyard, so a building with one is cut into masses that leave it open (`pieces`); one too big to cut is filled (`courtyards_filled`).
+`height` = height - min_height, `base_offset` = `min_height`: it stands at `level`'s elevation (there is no ground model here; standing
+the buildings on a toposolid is left to a follow-up). A Mass cannot have a courtyard, so a building with one is cut into masses that leave it open (`pieces`); one too big to cut is filled (`courtyards_filled`).
 
 Each keeps the project parameters `OSM Id` (`way/123`), `OSM Building`, `OSM Name` and `OSM Levels` (text, declared for masses by
 the command). **Importing again** updates a mass with the same `OSM Id` in place (same id and GUID, so walls made from it keep their
@@ -92,12 +91,6 @@ outline) and **kept on the mass** in the text parameter `OSM Entrances`: `x,y,ki
 characters. The reply counts `entrances` (placed), `entrances_by_kind`, `entrances_unplaced` (with `entrances_unplaced_list`, the first
 20) and `entrances_dropped` (what did not fit the parameter). Bad numbers (`1e999`, `-1`, `tall`) leave the number out, not the entrance.
 `building_shell` then cuts each into the wall nearest it as a door ([masses](massing.md#building-shell)).
-
-## Seeing them in plans
-
-A plan draws a mass (dashed) where its cut plane passes through it, as Revit's does. The masses of a sloping site stand at the
-ground, so on ground higher than a level's cut plane (1200 mm over it by default) they are not in that level's plan: raise the plan's
-view range, or add levels at the site's heights. The 3D view and schedules show every one.
 
 ## Checking it
 

@@ -37,16 +37,7 @@ impl std::fmt::Display for NetError {
 /// What the fetcher asks the network: three kinds of request, each with a cap on the reply.
 pub trait Net: Send + Sync {
     fn get(&self, url: &str, limit: u64) -> Result<Reply, NetError>;
-    /// `len` bytes of `url` from `start`: a part of a big file.
-    fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Reply, NetError>;
     fn post(&self, url: &str, content_type: &str, body: &[u8], limit: u64) -> Result<Reply, NetError>;
-}
-
-/// A part of a path made from a tile address template: text as written, or a number to be put in (one to ten digits).
-#[derive(Clone, Debug, PartialEq)]
-enum Piece {
-    Text(String),
-    Number,
 }
 
 /// The paths of an entry that are its.
@@ -56,8 +47,6 @@ enum Path {
     Prefix(String),
     /// This path and no other.
     Exact(String),
-    /// A tile address's: its text as written and its numbers where they go, nothing before, between or after.
-    Pattern(Vec<Piece>),
 }
 
 impl Path {
@@ -65,111 +54,25 @@ impl Path {
         match self {
             Path::Prefix(prefix) => path.starts_with(prefix.as_str()),
             Path::Exact(exact) => path == exact,
-            Path::Pattern(pieces) => {
-                let mut rest = path;
-                for piece in pieces {
-                    match piece {
-                        Piece::Text(text) => match rest.strip_prefix(text.as_str()) {
-                            Some(after) => rest = after,
-                            None => return false,
-                        },
-                        Piece::Number => {
-                            let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
-                            if !(1..=10).contains(&digits) {
-                                return false;
-                            }
-                            rest = rest.get(digits..).unwrap_or_default();
-                        }
-                    }
-                }
-                rest.is_empty()
-            }
         }
     }
 }
 
-/// Where a request may go: a host, exactly as named, the paths it may take, and, for a service that can only be asked by query, the
-/// query it may carry: each pair in turn, its key, and its value either exactly as written or, where it is a number to be put in,
-/// one to ten digits.
+/// Where a request may go: a host, exactly as named, and the paths it may take. A request carries no query.
 #[derive(Clone, Debug, PartialEq)]
 struct Entry {
     host: String,
     path: Path,
-    query: Option<Vec<(String, Option<String>)>>,
 }
 
 impl Entry {
     fn prefix(host: &str, prefix: &str) -> Entry {
-        Entry { host: host.into(), path: Path::Prefix(prefix.into()), query: None }
+        Entry { host: host.into(), path: Path::Prefix(prefix.into()) }
     }
 
-    /// The entry for the tile addresses of `template` (`https://host/path/{z}/{x}/{y}.ext`, or `https://host/path?a=b&c={y}`): the
-    /// path as the template has it, and the query pair by pair. None if the template is not one that can be matched so.
-    fn of_template(template: &str) -> Option<Entry> {
-        let (host, rest) = template.strip_prefix("https://")?.split_once('/')?;
-        let (path, query) = match rest.split_once('?') {
-            Some((path, query)) => (path, Some(query)),
-            None => (rest, None),
-        };
-        let host = host.to_ascii_lowercase();
-        // The path in pieces: its text, and a number where there is a `{...}`. A number is followed by text that is not a digit.
-        let mut pieces = Vec::new();
-        let mut rest = format!("/{path}");
-        while let Some(open) = rest.find('{') {
-            let close = open + rest.get(open..)?.find('}')?;
-            if open > 0 {
-                pieces.push(Piece::Text(rest.get(..open)?.to_string()));
-            } else if pieces.last() == Some(&Piece::Number) {
-                return None;
-            }
-            pieces.push(Piece::Number);
-            rest = rest.get(close + 1..)?.to_string();
-            if rest.starts_with(|c: char| c.is_ascii_digit()) {
-                return None;
-            }
-        }
-        if !rest.is_empty() {
-            pieces.push(Piece::Text(rest));
-        }
-        let Some(query) = query else {
-            return matches!(pieces.first(), Some(Piece::Text(t)) if t.len() > 1).then(|| Entry {
-                host,
-                path: Path::Pattern(pieces),
-                query: None,
-            });
-        };
-        let [Piece::Text(path)] = pieces.as_slice() else { return None };
-        let pairs = query
-            .split('&')
-            .map(|pair| {
-                let (key, value) = pair.split_once('=')?;
-                let number = value.starts_with('{') && value.ends_with('}');
-                Some((key.to_string(), (!number).then(|| value.to_string())))
-            })
-            .collect::<Option<Vec<_>>>()?;
-        Some(Entry { host, path: Path::Exact(path.clone()), query: Some(pairs) })
-    }
-
-    /// Whether a request to `path` (and `query`, if it has one) on `host` is one this entry names.
+    /// Whether a request to `path` on `host` is one this entry names.
     fn allows(&self, host: &str, path: &str, query: Option<&str>) -> bool {
-        if self.host != host || !self.path.matches(path) {
-            return false;
-        }
-        match (&self.query, query) {
-            (None, None) => true,
-            (Some(rule), Some(query)) => {
-                let pairs: Vec<&str> = query.split('&').collect();
-                pairs.len() == rule.len()
-                    && pairs.iter().zip(rule).all(|(pair, (key, value))| match pair.split_once('=') {
-                        Some((k, v)) if k == key => match value {
-                            Some(literal) => v == literal,
-                            None => (1..=10).contains(&v.len()) && v.bytes().all(|b| b.is_ascii_digit()),
-                        },
-                        _ => false,
-                    })
-            }
-            _ => false,
-        }
+        query.is_none() && self.host == host && self.path.matches(path)
     }
 }
 
@@ -180,17 +83,13 @@ pub struct Allow(Vec<Entry>);
 pub const OVERPASS: &str = "https://overpass-api.de/api/interpreter";
 
 impl Allow {
-    /// The services the fetcher uses: Overpass, the terrain tiles, the Copernicus bucket, OpenStreetMap's map tiles, and the tiles of
-    /// each aerial imagery source in the core's table (`bimcraft_core::imagery::SOURCES`), as far as its addresses go and no further.
+    /// The services the fetcher uses: Overpass and OpenStreetMap's map tiles, as far as their addresses go and no further.
     pub fn standard() -> Allow {
-        let mut entries = vec![
+        let entries = vec![
             Entry::prefix("overpass-api.de", "/api/"),
-            Entry::prefix("s3.amazonaws.com", "/elevation-tiles-prod/"),
-            Entry::prefix("copernicus-dem-30m.s3.amazonaws.com", "/"),
             // The map the picker draws: one host, tiles only.
             Entry::prefix("tile.openstreetmap.org", "/"),
         ];
-        entries.extend(bimcraft_core::imagery::SOURCES.iter().filter_map(|s| Entry::of_template(s.template)));
         Allow(entries)
     }
 
@@ -238,7 +137,7 @@ impl Allow {
         {
             return Err(wrong());
         }
-        self.0.push(Entry { host, path: Path::Exact(path.to_string()), query: None });
+        self.0.push(Entry { host, path: Path::Exact(path.to_string()) });
         Ok(self)
     }
 }
@@ -364,7 +263,6 @@ pub fn reason(body: &[u8]) -> Option<String> {
 /// How a request goes.
 enum Kind<'a> {
     Get,
-    Range(u64, u64),
     Post(&'a str, &'a [u8]),
 }
 
@@ -409,10 +307,6 @@ impl Ureq {
             let host = host_of(&url);
             let response = match kind {
                 Kind::Get => self.agent.get(&url).config().timeout_global(Some(budget)).build().call(),
-                Kind::Range(start, len) => {
-                    let range = format!("bytes={start}-{}", start.saturating_add(len.saturating_sub(1)));
-                    self.agent.get(&url).config().timeout_global(Some(budget)).build().header("Range", range.as_str()).call()
-                }
                 Kind::Post(content_type, body) => {
                     self.agent.post(&url).config().timeout_global(Some(budget)).build().header("Content-Type", *content_type).send(*body)
                 }
@@ -444,12 +338,6 @@ impl Ureq {
                 };
                 return Err(NetError { message, status: Some(status.as_u16()), retry_after });
             }
-            if let Kind::Range(start, _) = kind
-                && *start > 0
-                && status.as_u16() != 206
-            {
-                return Err(NetError::new(format!("{host}: it did not honour the range asked for")));
-            }
             let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).map(str::to_string);
             // The cap is exact: a body of the cap's size is fine, one byte more is too large.
             let mut body = Vec::new();
@@ -469,10 +357,6 @@ impl Net for Ureq {
         self.request(url, &Kind::Get, limit, QUICK)
     }
 
-    fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Reply, NetError> {
-        self.request(url, &Kind::Range(start, len), len, QUICK)
-    }
-
     fn post(&self, url: &str, content_type: &str, body: &[u8], limit: u64) -> Result<Reply, NetError> {
         self.request(url, &Kind::Post(content_type, body), limit, SLOW)
     }
@@ -489,10 +373,8 @@ mod tests {
         for url in [
             "https://overpass-api.de/api/interpreter",
             "https://OVERPASS-API.DE/api/interpreter",
-            "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/14/6069/9294.png",
             "https://tile.openstreetmap.org/12/1517/2332.png",
             "https://TILE.openstreetmap.org/0/0/0.png",
-            "https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_S24_00_W047_00_DEM/Copernicus_DSM_COG_10_S24_00_W047_00_DEM.tif",
         ] {
             assert!(a.allows(url), "{url}");
         }
@@ -512,10 +394,7 @@ mod tests {
             "https://overpass-api.de/api/interpreter?data=x",
             "https://overpass-api.de/api/interpreter#x",
             "https://overpass-api.de\\@evil.com/api/",
-            "https://s3.amazonaws.com/other-bucket/x",
-            "https://s3.amazonaws.com/elevation-tiles-prod/../other-bucket/x",
-            "https://s3.amazonaws.com.evil.com/elevation-tiles-prod/x",
-            "https://evil.s3.amazonaws.com/elevation-tiles-prod/x",
+            "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/14/6069/9294.png",
             "https://github.com/",
             "http://tile.openstreetmap.org/12/1517/2332.png",
             "https://tile.openstreetmap.org:8443/12/1517/2332.png",
@@ -536,114 +415,6 @@ mod tests {
         ] {
             assert!(!a.allows(url), "{url}");
         }
-    }
-
-    #[test]
-    fn every_source_in_the_table_is_reached_by_the_addresses_it_makes_and_by_no_other() {
-        use bimcraft_core::imagery::SOURCES;
-        let a = Allow::standard();
-        for s in SOURCES {
-            for (z, x, y) in [(s.min_zoom, 0, 0), (s.max_zoom, 1, 1), (12, 1000, 7)] {
-                if s.url(z, x, y).is_err() {
-                    continue;
-                }
-                let url = s.url(z, x, y).unwrap();
-                assert!(a.allows(&url), "{url}");
-                let host = url.trim_start_matches("https://").split('/').next().unwrap().to_string();
-                for (what, bad) in [
-                    ("an extra pair", format!("{url}&extra=1")),
-                    ("a query on the end", format!("{url}?extra=1")),
-                    ("a fragment", format!("{url}#x")),
-                    ("plain http", url.replacen("https://", "http://", 1)),
-                    ("credentials", url.replacen("https://", "https://user@", 1)),
-                    ("a port", url.replacen(&host, &format!("{host}:8443"), 1)),
-                    ("a look-alike host", url.replacen("https://", "https://evil.", 1)),
-                    ("a host with ours in its path", url.replacen("https://", "https://evil.com/", 1)),
-                    ("a way up the path", url.replacen(&host, &format!("{host}/.."), 1)),
-                    ("an escape", url.replacen(&host, &format!("{host}/%2e%2e"), 1)),
-                ] {
-                    assert!(!a.allows(&bad), "{} with {what}: {bad}", s.id);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn a_source_asked_by_query_is_reached_by_that_query_and_no_other() {
-        use bimcraft_core::imagery::SOURCES;
-        let Some(s) = SOURCES.iter().find(|s| s.template.contains('?')) else { return };
-        let a = Allow::standard();
-        let url = s.url(17, 5, 7).unwrap();
-        assert!(a.allows(&url) && a.allows(&s.url(0, 0, 0).unwrap()), "{url}");
-        let (path, query) = url.split_once('?').unwrap();
-        let pairs: Vec<&str> = query.split('&').collect();
-        let mut swapped = pairs.clone();
-        swapped.swap(0, 1);
-        let mut doubled = pairs.clone();
-        doubled.push(pairs[pairs.len() - 1]);
-        let mut cut = pairs.clone();
-        cut.remove(1);
-        let mut other = vec![];
-        for (i, pair) in pairs.iter().enumerate() {
-            // The literal pairs, each changed; the numbers, each made something else.
-            let (key, value) = pair.split_once('=').unwrap();
-            if !["tilematrix", "tilerow", "tilecol"].contains(&key) {
-                let mut changed = pairs.clone();
-                let wrong = format!("{key}={value}x");
-                changed[i] = &wrong;
-                other.push((format!("{key} changed"), format!("{path}?{}", changed.join("&"))));
-            }
-        }
-        for bad in ["-7", "", "7.0", "0x7", "%37", "77777777777", "7a", "+7", " 7"] {
-            other.push((
-                format!("tilerow {bad:?}"),
-                format!(
-                    "{path}?{}",
-                    pairs
-                        .iter()
-                        .map(|p| if p.starts_with("tilerow=") { format!("tilerow={bad}") } else { (*p).to_string() })
-                        .collect::<Vec<_>>()
-                        .join("&")
-                ),
-            ));
-        }
-        for (what, bad) in [
-            ("two pairs swapped", format!("{path}?{}", swapped.join("&"))),
-            ("a pair repeated", format!("{path}?{}", doubled.join("&"))),
-            ("a pair left out", format!("{path}?{}", cut.join("&"))),
-            ("no query", path.to_string()),
-            ("an empty query", format!("{path}?")),
-            ("another path", format!("{}/x?{query}", path)),
-            ("the path's case", format!("{}?{query}", path.to_ascii_lowercase())),
-            ("a semicolon", format!("{path}?{}", query.replacen('&', ";", 1))),
-            ("a doubled &", format!("{path}?{}", query.replacen('&', "&&", 1))),
-        ] {
-            other.push((what.to_string(), bad));
-        }
-        for (what, bad) in other {
-            assert!(!a.allows(&bad), "{what}: {bad}");
-        }
-    }
-
-    #[test]
-    fn a_query_pair_with_nothing_after_the_equals_sign_is_a_literal_like_any_other() {
-        let Some(entry) = Entry::of_template("https://geo.example/wmts?layer=l&style=&row={y}") else {
-            panic!("a template with an empty pair")
-        };
-        assert!(entry.allows("geo.example", "/wmts", Some("layer=l&style=&row=7")));
-        for bad in [
-            "layer=l&style=default&row=7",
-            "layer=l&style=x&row=7",
-            "layer=l&row=7",
-            "layer=l&style&row=7",
-            "layer=l&style=&&row=7",
-            "layer=l&style=&row=",
-            "layer=l&style=&row=x",
-            "style=&layer=l&row=7",
-        ] {
-            assert!(!entry.allows("geo.example", "/wmts", Some(bad)), "{bad}");
-        }
-        assert!(Allow(vec![entry]).allows("https://geo.example/wmts?layer=l&style=&row=7"));
     }
 
     #[test]
@@ -806,22 +577,6 @@ mod tests {
     }
 
     #[test]
-    fn a_range_asks_for_those_bytes_and_takes_no_more_than_that() {
-        let server = Server::start(|seen, _| match seen.header("range") {
-            Some("bytes=10-19") => http(206, &[("Content-Range", "bytes 10-19/100")], &[1u8; 10]),
-            Some(_) => http(416, &[], b""),
-            // A server that ignores the range and sends everything.
-            None => http(200, &[], &[2u8; 1000]),
-        });
-        let c = client(&server);
-        assert_eq!(c.get_range(&format!("{}/f", server.base), 10, 10).unwrap().body, [1u8; 10]);
-        assert_eq!(c.get_range(&format!("{}/f", server.base), 0, 5).unwrap_err().status, Some(416));
-        let sent = Server::start(|_, _| http(200, &[], &[2u8; 1000]));
-        let e = client(&sent).get_range(&format!("{}/f", sent.base), 10, 10).unwrap_err();
-        assert!(e.message.contains("too large") || e.message.contains("range"), "{e}");
-    }
-
-    #[test]
     fn redirects_are_followed_by_hand_and_only_to_where_they_may_go() {
         let server = Server::start(|seen, base| match seen.path.as_str() {
             "/a" => http(302, &[("Location", "/b")], b""),
@@ -853,7 +608,6 @@ mod tests {
             assert!(c.get(&url, 100).unwrap_err().message.contains("won't fetch"), "{url}");
         }
         assert!(c.post("https://example.com/", "text/plain", b"x", 100).unwrap_err().message.contains("won't fetch"));
-        assert!(c.get_range("https://example.com/", 0, 1).unwrap_err().message.contains("won't fetch"));
         assert!(server.requests().is_empty(), "nothing reached it");
     }
 }

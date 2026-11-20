@@ -67,7 +67,7 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Concrete, formwork and steel of a member, bar marks, the steel list, the cut plan | [quantities](../../docs/areas/quantities.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
 | Coordinates: base and survey points, locations, shared coordinates | [coordinates](../../docs/areas/coordinates.md) |
-| OpenStreetMap buildings, their shells, fetching buildings and ground | [OSM import](../../docs/areas/osm-import.md), [geofetch](../../docs/areas/geofetch.md), [masses](../../docs/areas/massing.md#building-shell) |
+| OpenStreetMap buildings, their shells, fetching buildings | [OSM import](../../docs/areas/osm-import.md), [geofetch](../../docs/areas/geofetch.md), [masses](../../docs/areas/massing.md#building-shell) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
 
 ## Testing

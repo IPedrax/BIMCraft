@@ -1,13 +1,11 @@
 //! Where to fetch from, and what comes back: a bounding box on the Earth, the tiles of the Web Mercator map that cover it, the
-//! Overpass query for its buildings, a grid of elevations, and the hook (`GeoSource`) an app attaches to do the fetching. All pure:
-//! the core never touches the network, so `fetch_osm` and `fetch_terrain` ask the hook, and a build without one refuses them.
+//! Overpass query for its buildings, and the hook (`GeoSource`) an app attaches to do the fetching. All pure: the core never touches
+//! the network, so `fetch_osm` asks the hook, and a build without one refuses it.
 //! What an app's hook returns is hostile, as a file is: the commands check it.
 
 use std::sync::Arc;
 
 use crate::geom::P2;
-
-use crate::imagery::{Imagery, Plan};
 
 /// The most area one fetch may cover, km².
 pub const MAX_FETCH_AREA_KM2: f64 = 25.0;
@@ -15,10 +13,8 @@ pub const MAX_FETCH_AREA_KM2: f64 = 25.0;
 pub const DEFAULT_FETCH_RADIUS_M: f64 = 1000.0;
 /// The most map tiles one fetch may need.
 pub const MAX_TILES: usize = 100;
-/// The finest Web Mercator zoom the elevation tiles go to.
+/// The finest Web Mercator zoom the map is drawn at.
 pub const MAX_ZOOM: u8 = 15;
-/// The most nodes an elevation grid may have.
-pub const MAX_GRID_NODES: usize = 4_000_000;
 /// Earth's mean radius, km.
 const RADIUS_KM: f64 = 6371.0088;
 /// Metres in a degree of latitude, near enough.
@@ -178,121 +174,11 @@ pub fn overpass_query(b: &Bbox, layers: Layers) -> String {
     q
 }
 
-/// A regular grid of heights (metres) from `west` and `north`, a node every `dlon` east and `dlat` south, row after row from the north.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ElevationGrid {
-    pub west: f64,
-    pub north: f64,
-    pub dlon: f64,
-    pub dlat: f64,
-    pub cols: usize,
-    pub rows: usize,
-    /// NaN where there is none.
-    pub values: Vec<f32>,
-}
-
-impl ElevationGrid {
-    pub fn new(west: f64, north: f64, dlon: f64, dlat: f64, cols: usize, rows: usize, values: Vec<f32>) -> Result<ElevationGrid, String> {
-        if ![west, north, dlon, dlat].iter().all(|x| x.is_finite()) || dlon <= 0.0 || dlat <= 0.0 {
-            return Err("an elevation grid needs finite corners and steps above 0".into());
-        }
-        if cols < 2 || rows < 2 || cols.checked_mul(rows).is_none_or(|n| n > MAX_GRID_NODES) {
-            return Err(format!("an elevation grid is 2 or more nodes each way and at most {MAX_GRID_NODES} in all, not {cols} x {rows}"));
-        }
-        if values.len() != cols * rows {
-            return Err(format!("an elevation grid of {cols} x {rows} has {} heights, not {}", cols * rows, values.len()));
-        }
-        Ok(ElevationGrid { west, north, dlon, dlat, cols, rows, values })
-    }
-
-    /// Whether it is what [`ElevationGrid::new`] would have made: its fields are public, and what a fetcher returns is not trusted.
-    pub fn check(&self) -> Result<(), String> {
-        if ![self.west, self.north, self.dlon, self.dlat].iter().all(|x| x.is_finite()) || self.dlon <= 0.0 || self.dlat <= 0.0 {
-            return Err("an elevation grid needs finite corners and steps above 0".into());
-        }
-        if self.cols < 2 || self.rows < 2 || self.cols.checked_mul(self.rows).is_none_or(|n| n > MAX_GRID_NODES) {
-            return Err(format!(
-                "an elevation grid is 2 or more nodes each way and at most {MAX_GRID_NODES} in all, not {} x {}",
-                self.cols, self.rows
-            ));
-        }
-        if self.values.len() != self.cols * self.rows {
-            return Err(format!(
-                "an elevation grid of {} x {} has {} heights, not {}",
-                self.cols,
-                self.rows,
-                self.cols * self.rows,
-                self.values.len()
-            ));
-        }
-        Ok(())
-    }
-
-    /// The height at a place, from the four nodes round it: none off the grid or where one of them has none.
-    pub fn sample(&self, lon: f64, lat: f64) -> Option<f64> {
-        if !lon.is_finite() || !lat.is_finite() {
-            return None;
-        }
-        let (fx, fy) = ((lon - self.west) / self.dlon, (self.north - lat) / self.dlat);
-        // A place on the edge of the grid is on it, whatever the last bit of the division says.
-        const EDGE: f64 = 1e-9;
-        let (last_x, last_y) = ((self.cols - 1) as f64, (self.rows - 1) as f64);
-        if !(-EDGE..=last_x + EDGE).contains(&fx) || !(-EDGE..=last_y + EDGE).contains(&fy) {
-            return None;
-        }
-        let (fx, fy) = (fx.clamp(0.0, last_x), fy.clamp(0.0, last_y));
-        let (i, j) = ((fx.floor() as usize).min(self.cols - 2), (fy.floor() as usize).min(self.rows - 2));
-        let (tx, ty) = (fx - i as f64, fy - j as f64);
-        let at = |c: usize, r: usize| f64::from(self.values[r * self.cols + c]);
-        let (v00, v10, v01, v11) = (at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1));
-        let z = (v00 * (1.0 - tx) + v10 * tx) * (1.0 - ty) + (v01 * (1.0 - tx) + v11 * tx) * ty;
-        [v00, v10, v01, v11].iter().all(|v| v.is_finite()).then_some(z)
-    }
-}
-
-/// The nodes of a grid: where each is (lon, lat), row after row from the north, and how many columns and rows there are.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Nodes {
-    pub at: Vec<(f64, f64)>,
-    pub cols: usize,
-    pub rows: usize,
-}
-
-/// The nodes of a grid over the box, a node every `spacing` metres (lon, lat) from its north west corner, row after row, and how many
-/// columns and rows; or why it would have more than `most` (or [`MAX_GRID_NODES`]).
-pub fn nodes(b: &Bbox, spacing: f64, most: usize) -> Result<Nodes, String> {
-    if !spacing.is_finite() || spacing <= 0.0 {
-        return Err(format!("`spacing` is a distance in metres above 0, not {spacing}"));
-    }
-    let dlat = spacing / METRES_PER_DEGREE;
-    let dlon = spacing / (METRES_PER_DEGREE * b.centre().1.to_radians().cos().max(1e-3));
-    let (cols, rows) = (((b.east - b.west) / dlon).floor() + 1.0, ((b.north - b.south) / dlat).floor() + 1.0);
-    let limit = most.min(MAX_GRID_NODES);
-    if cols * rows > limit as f64 {
-        return Err(format!(
-            "a `spacing` of {spacing} m over this box would make {} nodes, more than the {limit} allowed: use a larger `spacing` or a smaller box",
-            cols * rows
-        ));
-    }
-    let (cols, rows) = (cols as usize, rows as usize);
-    let at = (0..rows).flat_map(|j| (0..cols).map(move |i| (b.west + i as f64 * dlon, b.north - j as f64 * dlat))).collect();
-    Ok(Nodes { at, cols, rows })
-}
-
 /// What an Overpass fetch brings.
 #[derive(Clone, Debug)]
 pub struct Reply {
     pub text: String,
     /// It was kept from an earlier fetch.
-    pub cached: bool,
-}
-
-/// What an elevation fetch brings.
-#[derive(Clone, Debug)]
-pub struct Elevation {
-    pub grid: ElevationGrid,
-    /// Which source it came from: `terrarium` or `copernicus`.
-    pub source: String,
     pub cached: bool,
 }
 
@@ -327,85 +213,37 @@ impl Tile {
 pub trait GeoSource: Send + Sync {
     /// The Overpass reply to `query` for `bbox`.
     fn overpass(&self, bbox: &Bbox, query: &str) -> Result<Reply, String>;
-    /// A grid of heights over `bbox` at about `spacing` metres, from `source` (`terrarium`, `copernicus`; none, the best there is).
-    fn elevation(&self, bbox: &Bbox, spacing: f64, source: Option<&str>) -> Result<Elevation, String>;
-    /// The credit that goes with the data: `osm`, or an elevation source's name; `tiles` is the map's.
+    /// The credit that goes with the data: `osm`; `tiles` is the map's.
     fn attribution(&self, what: &str) -> String;
     /// The picture of the map tile at `zoom`, column `x`, row `y`: what the map a place is picked on is drawn with. A fetcher with
     /// none says so.
     fn tile(&self, _zoom: u8, _x: u32, _y: u32) -> Result<Tile, String> {
         Err("this BIMCraft has no map tiles: give the place as latitude and longitude".into())
     }
-    /// The aerial imagery of `plan` from the source called `source` (`imagery::SOURCES`), as a mosaic of tiles. A fetcher with none
-    /// says so. What it returns is checked by the commands, as a file is.
-    fn imagery(&self, _source: &str, _plan: &Plan) -> Result<Imagery, String> {
-        Err("this BIMCraft has no aerial imagery to fetch".into())
-    }
-    /// How far the imagery fetch that is running has got, from another thread: the tiles done, and the tiles in all. None for a
-    /// fetcher that does not say, or when none has begun.
-    fn imagery_progress(&self) -> Option<(usize, usize)> {
-        None
-    }
 }
 
 /// A fetcher an app attached.
 pub type Fetcher = Arc<dyn GeoSource>;
 
-/// The spacing, metres, `fetch_terrain` uses when none is given: as fine as keeps the nodes to about 36,000, and no finer than 10 m.
-pub fn default_spacing(b: &Bbox) -> f64 {
-    (b.area_km2() * 1e6 / 36_000.0).sqrt().ceil().max(10.0)
-}
-
-/// The most heights a terrain fetched for a toposolid takes inside its box: a toposolid's top holds
-/// [`MAX_SHAPE_POINTS`](crate::model::MAX_SHAPE_POINTS), four of them its corners.
-pub const TERRAIN_POINTS: usize = crate::model::MAX_SHAPE_POINTS - 4;
-
-/// The spacing, metres, a terrain of box `b` is fetched at when none is asked for: [`default_spacing`], or wider where that would make
-/// more than `most` nodes.
-pub fn terrain_spacing(b: &Bbox, most: usize) -> f64 {
-    let mut spacing = default_spacing(b);
-    for _ in 0..400 {
-        if nodes(b, spacing, most).is_ok() {
-            break;
-        }
-        spacing = (spacing * 1.05).ceil();
-    }
-    spacing
-}
-
-/// What an app fetched on a thread of its own, held so the commands `fetch_osm` and `fetch_terrain` can be run on the main thread over it:
-/// they ask this for the same box, query, spacing and source, and are answered at once, from memory. One validation path, one undo
+/// What an app fetched on a thread of its own, held so the command `fetch_osm` can be run on the main thread over it: it asks this
+/// for the same box and query, and is answered at once, from memory. One validation path, one undo
 /// step and one report, and the window never waits on the network. Anything else is refused, never fetched; the credits are the real
 /// source's.
 pub struct Prefetched {
     inner: Fetcher,
     bbox: Bbox,
     osm: Option<(String, Reply)>,
-    heights: Option<(f64, Option<String>, Elevation)>,
-    imagery: Option<Imagery>,
 }
 
 impl Prefetched {
     /// Nothing held yet, for `bbox`; `inner` names the credits.
     pub fn new(inner: Fetcher, bbox: Bbox) -> Prefetched {
-        Prefetched { inner, bbox, osm: None, heights: None, imagery: None }
-    }
-
-    /// Holds the imagery fetched: it is handed back for the source and plan it was fetched for.
-    pub fn with_imagery(mut self, got: Imagery) -> Prefetched {
-        self.imagery = Some(got);
-        self
+        Prefetched { inner, bbox, osm: None }
     }
 
     /// Holds the Overpass `reply` to `query`.
     pub fn with_osm(mut self, query: String, reply: Reply) -> Prefetched {
         self.osm = Some((query, reply));
-        self
-    }
-
-    /// Holds the heights fetched at `spacing` from `source` (as it was asked for).
-    pub fn with_elevation(mut self, spacing: f64, source: Option<String>, got: Elevation) -> Prefetched {
-        self.heights = Some((spacing, source, got));
         self
     }
 }
@@ -418,30 +256,12 @@ impl GeoSource for Prefetched {
         }
     }
 
-    fn elevation(&self, bbox: &Bbox, spacing: f64, source: Option<&str>) -> Result<Elevation, String> {
-        match &self.heights {
-            Some((sp, src, got)) if *bbox == self.bbox && *sp == spacing && src.as_deref() == source => Ok(got.clone()),
-            _ => Err("these are not the heights that were fetched: ask again from the Site tab".into()),
-        }
-    }
-
     fn attribution(&self, what: &str) -> String {
         self.inner.attribution(what)
     }
 
     fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<Tile, String> {
         self.inner.tile(zoom, x, y)
-    }
-
-    fn imagery_progress(&self) -> Option<(usize, usize)> {
-        self.inner.imagery_progress()
-    }
-
-    fn imagery(&self, source: &str, plan: &Plan) -> Result<Imagery, String> {
-        match &self.imagery {
-            Some(got) if got.source == source && got.plan == *plan => Ok(got.clone()),
-            _ => Err("this is not the imagery that was fetched: ask again from the Site tab".into()),
-        }
     }
 }
 
@@ -734,53 +554,5 @@ mod tests {
             "{}",
             overpass_query(&tiny, Layers::default())
         );
-    }
-
-    #[test]
-    fn a_grid_of_heights_is_sampled_between_its_nodes() {
-        // z = 10 * (lon - west) + 100 * (north - lat): a plane, 5 x 4 nodes a tenth of a degree apart.
-        let (west, north) = (-47.0, -23.0);
-        let values: Vec<f32> =
-            (0..4).flat_map(|r| (0..5).map(move |c| (10.0 * (c as f64 * 0.1) + 100.0 * (r as f64 * 0.1)) as f32)).collect();
-        let g = ElevationGrid::new(west, north, 0.1, 0.1, 5, 4, values.clone()).unwrap();
-        for (lon, lat) in [(-47.0, -23.0), (-46.63, -23.17), (-46.6, -23.3), (-46.77, -23.04)] {
-            let z = g.sample(lon, lat).unwrap_or_else(|| panic!("no height at {lon} {lat}"));
-            assert!(near(z, 10.0 * (lon - west) + 100.0 * (north - lat), 1e-4), "{lon} {lat}: {z}");
-        }
-        assert_eq!(
-            (g.sample(-47.01, -23.1), g.sample(-46.5, -23.1), g.sample(-46.8, -22.9), g.sample(-46.8, -23.31)),
-            (None, None, None, None)
-        );
-        assert_eq!(g.sample(f64::NAN, -23.1), None);
-        // A node with no height leaves the cells round it without one.
-        let mut holey = values;
-        holey[6] = f32::NAN;
-        let g = ElevationGrid::new(west, north, 0.1, 0.1, 5, 4, holey).unwrap();
-        assert_eq!(g.sample(-46.85, -23.15), None);
-        assert!(g.sample(-46.65, -23.25).is_some());
-        for bad in [
-            ElevationGrid::new(west, north, 0.0, 0.1, 5, 4, vec![0.0; 20]),
-            ElevationGrid::new(west, north, 0.1, -0.1, 5, 4, vec![0.0; 20]),
-            ElevationGrid::new(west, north, 0.1, 0.1, 5, 4, vec![0.0; 19]),
-            ElevationGrid::new(west, north, 0.1, 0.1, 1, 4, vec![0.0; 4]),
-            ElevationGrid::new(f64::NAN, north, 0.1, 0.1, 5, 4, vec![0.0; 20]),
-            ElevationGrid::new(west, north, 0.1, 0.1, 5000, 5000, Vec::new()),
-        ] {
-            assert!(bad.is_err());
-        }
-    }
-
-    #[test]
-    fn nodes_are_laid_out_a_spacing_apart_and_never_too_many() {
-        let b = block();
-        let Nodes { at: n, cols, rows } = nodes(&b, 100.0, 50_000).unwrap();
-        assert_eq!(n.len(), cols * rows);
-        // 2.2 km by 2.2 km at 100 m: 23 or so on each side.
-        assert!((20..=26).contains(&cols) && (20..=26).contains(&rows), "{cols} x {rows}");
-        assert!(n[0].0 >= b.west - 1e-9 && n[0].1 <= b.north + 1e-9, "from the north west corner");
-        assert!(n.iter().all(|(lon, lat)| b.contains(*lon, *lat)));
-        assert!(nodes(&b, 1.0, 50_000).unwrap_err().contains("spacing"));
-        assert!(nodes(&b, 0.0, 50_000).is_err() && nodes(&b, f64::NAN, 50_000).is_err() && nodes(&b, -1.0, 50_000).is_err());
-        assert!(nodes(&b, 100.0, 10).is_err());
     }
 }

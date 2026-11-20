@@ -195,7 +195,7 @@ msgstr "BIMCraft 项目或 IFC 文件。"
 msgid "A BIMCraft project, an IFC or a Revit file."
 msgstr "BIMCraft 项目、IFC 或 Revit 文件。"
 
-#: crates/ui-egui/src/site/mod.rs:246
+#: crates/ui-egui/src/site/mod.rs:189
 msgid "A box of degrees"
 msgstr ""
 
@@ -243,7 +243,7 @@ msgstr "由尺寸标注确定：解锁该尺寸标注后才能在此处修改。
 msgid "A direction from the last point sticks to multiples of this angle, from east and from the line before; a dashed guide shows it"
 msgstr "从上一点出发的方向会吸附到该角度的整数倍（相对于正东方向和前一条线）；以虚线导向线显示"
 
-#: crates/ui-egui/src/site/mod.rs:245
+#: crates/ui-egui/src/site/mod.rs:188
 msgid "A distance round the project's origin"
 msgstr ""
 
@@ -429,10 +429,6 @@ msgstr "符号只在平面中绘制：只能更改其详细程度"
 
 #: crates/ui-egui/src/titleblocks.rs:146
 msgid "A text names a field as {KEY}. A project field has one value for every sheet; a sheet field, each sheet's own, filled in under Properties. The automatic fields need no definition:"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:508
-msgid "A toposolid of {} heights, every {} m, from {}"
 msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:503
@@ -944,7 +940,7 @@ msgstr "接闪器 (AT)：在屋顶上单击处放置接闪器；按空格键旋�
 msgid "Air Terminals"
 msgstr "接闪器"
 
-#: crates/core/src/commands.rs:2286
+#: crates/core/src/commands.rs:2264
 #: crates/ui-egui/src/editor/document.rs:633
 #: crates/ui-egui/src/editor/sketch.rs:1528
 #: crates/ui-egui/src/editor.rs:1132
@@ -987,7 +983,7 @@ msgstr ""
 msgid "Aligned"
 msgstr "对齐"
 
-#: crates/core/src/commands.rs:1316
+#: crates/core/src/commands.rs:1294
 #: crates/ui-egui/src/editor/document.rs:493
 msgid "Aligned Dimension"
 msgstr "对齐尺寸标注"
@@ -1000,7 +996,7 @@ msgstr "对齐尺寸标注 (DI)：拾取平行的参照平面、拉伸端面或�
 msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, or endpoints, then click where the dimension line goes"
 msgstr "对齐尺寸标注 (DI)：拾取平行的墙面、墙端、门、窗、轴网或端点，然后单击尺寸线所在位置"
 
-#: crates/core/src/commands.rs:1347
+#: crates/core/src/commands.rs:1325
 msgid "Aligned Dimension in 3D"
 msgstr "三维对齐尺寸标注"
 
@@ -1855,7 +1851,7 @@ msgstr ""
 msgid "Bathtub"
 msgstr "浴缸"
 
-#: crates/core/src/commands.rs:1115
+#: crates/core/src/commands.rs:1093
 #: crates/ui-egui/src/steel.rs:282
 msgid "Beam"
 msgstr "梁"
@@ -2055,13 +2051,13 @@ msgstr "浏览…"
 msgid "Build"
 msgstr "构建"
 
-#: crates/ui-egui/src/site/mod.rs:166
+#: crates/ui-egui/src/site/mod.rs:120
 #: crates/ui-egui/src/site/shell.rs:48
 #: crates/ui-egui/src/site/shell.rs:134
 msgid "Build Shell"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:164
+#: crates/ui-egui/src/site/mod.rs:118
 msgid "Build Shell: the outer walls, a floor at each storey, the roof and the doors of the selected buildings, as their OpenStreetMap tags describe them"
 msgstr ""
 
@@ -2178,7 +2174,7 @@ msgstr ""
 msgid "CSV table"
 msgstr ""
 
-#: crates/core/src/commands.rs:1163
+#: crates/core/src/commands.rs:1141
 msgid "Cable Tray"
 msgstr "电缆桥架"
 
@@ -2186,7 +2182,7 @@ msgstr "电缆桥架"
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "电缆桥架 (CT)：单击起点和终点；连续单击可为每一段创建一段桥架"
 
-#: crates/core/src/commands.rs:1197
+#: crates/core/src/commands.rs:1175
 msgid "Cabling"
 msgstr "布线"
 
@@ -2216,7 +2212,7 @@ msgstr "计算值…"
 msgid "Came in: {}"
 msgstr "已导入：{}"
 
-#: crates/core/src/commands.rs:3164
+#: crates/core/src/commands.rs:3142
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:5550
 #: crates/ui-egui/src/properties.rs:310
@@ -2280,8 +2276,8 @@ msgstr "相机：单击视点所在位置，再单击其观察的目标：创建
 #: crates/ui-egui/src/shortcuts.rs:413
 #: crates/ui-egui/src/shortcuts.rs:541
 #: crates/ui-egui/src/site/map.rs:278
-#: crates/ui-egui/src/site/mod.rs:309
-#: crates/ui-egui/src/site/mod.rs:579
+#: crates/ui-egui/src/site/mod.rs:229
+#: crates/ui-egui/src/site/mod.rs:403
 #: crates/ui-egui/src/site/shell.rs:71
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:755
@@ -2643,7 +2639,7 @@ msgstr ""
 msgid "Checking for updates…"
 msgstr "正在检查更新…"
 
-#: crates/core/src/commands.rs:4992
+#: crates/core/src/commands.rs:4970
 msgid "Checking the model"
 msgstr ""
 
@@ -3538,7 +3534,7 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:510
 #: crates/ui-egui/src/shortcuts.rs:579
-#: crates/ui-egui/src/site/mod.rs:610
+#: crates/ui-egui/src/site/mod.rs:434
 #: crates/ui-egui/src/steel.rs:478
 #: crates/ui-egui/src/underlay.rs:467
 msgid "Close"
@@ -3677,7 +3673,7 @@ msgstr "颜色"
 msgid "Colour on plans"
 msgstr "平面图中的颜色"
 
-#: crates/core/src/commands.rs:1087
+#: crates/core/src/commands.rs:1065
 #: crates/ui-egui/src/curtain.rs:325
 #: crates/ui-egui/src/steel.rs:283
 msgid "Column"
@@ -3732,7 +3728,7 @@ msgstr "紧凑"
 msgid "Comparison"
 msgstr "比较"
 
-#: crates/core/src/commands.rs:2212
+#: crates/core/src/commands.rs:2190
 #: crates/ui-egui/src/editor/document.rs:467
 msgid "Component"
 msgstr "构件"
@@ -3771,7 +3767,7 @@ msgstr "混凝土砌块"
 msgid "Concrete cover by exposure class, steel ratios, bars, stirrups and skin bars, used by the reinforcement check."
 msgstr ""
 
-#: crates/core/src/commands.rs:1155
+#: crates/core/src/commands.rs:1133
 msgid "Conduit"
 msgstr "线管"
 
@@ -3923,17 +3919,13 @@ msgstr "构造"
 msgid "Content"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:155
+#: crates/ui-egui/src/site/mod.rs:111
 msgid "Context"
 msgstr ""
 
 #: crates/ui-egui/src/dimtypes.rs:108
 msgid "Continuous"
 msgstr "连续"
-
-#: crates/ui-egui/src/site/mod.rs:365
-msgid "Contour interval: `{}` is not a length"
-msgstr ""
 
 #: crates/ui-egui/src/settings.rs:807
 msgid "Control port"
@@ -4036,7 +4028,7 @@ msgstr ""
 msgid "Copper"
 msgstr "铜"
 
-#: crates/core/src/commands.rs:2337
+#: crates/core/src/commands.rs:2315
 #: crates/ui-egui/src/codes/tree.rs:318
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
@@ -4047,7 +4039,7 @@ msgstr "铜"
 #: crates/ui-egui/src/lib.rs:6781
 #: crates/ui-egui/src/parameters.rs:1269
 #: crates/ui-egui/src/plugins.rs:363
-#: crates/ui-egui/src/site/mod.rs:104
+#: crates/ui-egui/src/site/mod.rs:80
 msgid "Copy"
 msgstr "复制"
 
@@ -4095,7 +4087,7 @@ msgstr "复制其 ID、GUID 和 IFC GlobalId"
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
-#: crates/core/src/commands.rs:2344
+#: crates/core/src/commands.rs:2322
 #: crates/ui-egui/src/clipboard.rs:225
 #: crates/ui-egui/src/context.rs:129
 msgid "Copy to Clipboard"
@@ -4510,7 +4502,7 @@ msgstr "剖切图案"
 msgid "Cut Pen"
 msgstr "剖切笔号"
 
-#: crates/core/src/commands.rs:875
+#: crates/core/src/commands.rs:853
 #: crates/ui-egui/src/steel.rs:394
 #: crates/ui-egui/src/structure.rs:123
 msgid "Cut Plan"
@@ -4529,7 +4521,7 @@ msgstr "剖切面"
 msgid "Cut an opening in the floor above the stair where the headroom is too low"
 msgstr ""
 
-#: crates/core/src/commands.rs:2354
+#: crates/core/src/commands.rs:2332
 #: crates/ui-egui/src/clipboard.rs:219
 #: crates/ui-egui/src/context.rs:128
 msgid "Cut to Clipboard"
@@ -4735,7 +4727,7 @@ msgstr ""
 msgid "Delete Checked"
 msgstr ""
 
-#: crates/core/src/commands.rs:1404
+#: crates/core/src/commands.rs:1382
 msgid "Delete Dimension Segment"
 msgstr ""
 
@@ -4859,7 +4851,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:16579
+#: crates/core/src/commands.rs:16270
 msgid "Dependent"
 msgstr "相关"
 
@@ -5102,7 +5094,7 @@ msgstr "尺寸标注文字"
 msgid "Dimension Text Placement:"
 msgstr "尺寸文字对齐:"
 
-#: crates/core/src/commands.rs:2298
+#: crates/core/src/commands.rs:2276
 msgid "Dimension Value"
 msgstr "尺寸标注值"
 
@@ -5291,7 +5283,7 @@ msgstr ""
 msgid "Doors at the entrances"
 msgstr ""
 
-#: crates/core/src/commands.rs:1305
+#: crates/core/src/commands.rs:1283
 msgid "Dormer"
 msgstr "老虎窗"
 
@@ -5343,7 +5335,7 @@ msgstr "双击选项卡名称也有同样效果；之后单击选项卡会显示
 msgid "Down"
 msgstr "下移"
 
-#: crates/core/src/commands.rs:1179
+#: crates/core/src/commands.rs:1157
 msgid "Down Conductor"
 msgstr "引下线"
 
@@ -5420,7 +5412,7 @@ msgstr ""
 msgid "Draw the 3D view on the graphics card"
 msgstr "使用显卡绘制三维视图"
 
-#: crates/ui-egui/src/site/mod.rs:247
+#: crates/ui-egui/src/site/mod.rs:190
 msgid "Draw the box on a map"
 msgstr ""
 
@@ -5449,7 +5441,7 @@ msgstr "绘制中…"
 msgid "Drawn by"
 msgstr ""
 
-#: crates/core/src/commands.rs:1144
+#: crates/core/src/commands.rs:1122
 msgid "Duct"
 msgstr "风管"
 
@@ -5555,7 +5547,7 @@ msgstr ""
 msgid "Earthing"
 msgstr "接地"
 
-#: crates/core/src/commands.rs:1188
+#: crates/core/src/commands.rs:1166
 msgid "Earthing Conductor"
 msgstr "接地线"
 
@@ -5881,7 +5873,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:3646
+#: crates/core/src/commands.rs:3624
 msgid "Elements"
 msgstr "图元"
 
@@ -5914,10 +5906,6 @@ msgstr "高程基准："
 
 #: crates/ui-egui/src/spots.rs:337
 msgid "Elevation Indicator"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:268
-msgid "Elevation data"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:335
@@ -6410,20 +6398,16 @@ msgstr "英尺"
 msgid "Feet and inches"
 msgstr "英尺和英寸"
 
-#: crates/ui-egui/src/site/mod.rs:310
+#: crates/ui-egui/src/site/mod.rs:230
 msgid "Fetch"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:559
+#: crates/ui-egui/src/site/mod.rs:390
 msgid "Fetching"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:552
+#: crates/ui-egui/src/site/mod.rs:387
 msgid "Fetching buildings from OpenStreetMap…"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:553
-msgid "Fetching elevation data…"
 msgstr ""
 
 #: crates/ui-egui/src/titleblocks.rs:210
@@ -6511,7 +6495,7 @@ msgstr "填充区域 (FR)：在此视图中绘制以图案填充的区域"
 msgid "Filled region"
 msgstr "填充区域"
 
-#: crates/core/src/commands.rs:2442
+#: crates/core/src/commands.rs:2420
 msgid "Fillet Arc"
 msgstr "圆角弧"
 
@@ -7152,7 +7136,7 @@ msgstr ""
 msgid "Give an API key in the Assistant settings, or set {} in the environment."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:298
+#: crates/ui-egui/src/site/mod.rs:219
 msgid "Give the area first: the query is made from its box."
 msgstr ""
 
@@ -7462,11 +7446,11 @@ msgstr "距标高的高度偏移"
 msgid "Height Offset:"
 msgstr "高度偏移："
 
-#: crates/ui-egui/src/site/mod.rs:338
+#: crates/ui-egui/src/site/mod.rs:256
 msgid "Height of a building with none: `{}` is not a length"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:345
+#: crates/ui-egui/src/site/mod.rs:261
 msgid "Height of a level: `{}` is not a length"
 msgstr ""
 
@@ -7852,13 +7836,13 @@ msgstr "导入 CAD：导入项目的 DWG 或 DXF 图纸，绘制在某标高平�
 msgid "Import DXF…"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:158
-#: crates/ui-egui/src/site/mod.rs:222
-#: crates/ui-egui/src/site/mod.rs:504
+#: crates/ui-egui/src/site/mod.rs:114
+#: crates/ui-egui/src/site/mod.rs:167
+#: crates/ui-egui/src/site/mod.rs:378
 msgid "Import from OpenStreetMap"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:157
+#: crates/ui-egui/src/site/mod.rs:113
 msgid "Import from OpenStreetMap: the buildings round the site's place, fetched from Overpass, as masses on the ground"
 msgstr ""
 
@@ -8148,7 +8132,7 @@ msgstr "隔离类别 (IC)"
 msgid "Isolate Element (HI)"
 msgstr "隔离图元 (HI)"
 
-#: crates/core/src/commands.rs:1107
+#: crates/core/src/commands.rs:1085
 #: crates/ui-egui/src/steel.rs:285
 msgid "Isolated Footing"
 msgstr "独立基础"
@@ -9354,7 +9338,7 @@ msgstr "体量楼层 (MF)：在所选体量穿过的每个标高处创建一个�
 msgid "Massing"
 msgstr "体量建模"
 
-#: crates/core/src/commands.rs:2262
+#: crates/core/src/commands.rs:2240
 msgid "Match Properties"
 msgstr "匹配属性"
 
@@ -9441,7 +9425,7 @@ msgstr "最大角度"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:3278
+#: crates/core/src/commands.rs:3256
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -9893,7 +9877,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr "安装高度"
 
-#: crates/core/src/commands.rs:2313
+#: crates/core/src/commands.rs:2291
 #: crates/ui-egui/src/editor/document.rs:648
 #: crates/ui-egui/src/underlay.rs:441
 msgid "Move"
@@ -11119,8 +11103,8 @@ msgstr "悬挑："
 msgid "Overhead Lines"
 msgstr "上方线"
 
-#: crates/ui-egui/src/site/mod.rs:295
-#: crates/ui-egui/src/site/mod.rs:573
+#: crates/ui-egui/src/site/mod.rs:216
+#: crates/ui-egui/src/site/mod.rs:398
 msgid "Overpass query"
 msgstr ""
 
@@ -11332,7 +11316,7 @@ msgstr ""
 msgid "Passphrase:"
 msgstr ""
 
-#: crates/core/src/commands.rs:2362
+#: crates/core/src/commands.rs:2340
 #: crates/ui-egui/src/clipboard.rs:56
 #: crates/ui-egui/src/clipboard.rs:206
 #: crates/ui-egui/src/context.rs:130
@@ -11770,7 +11754,7 @@ msgstr "拾取相交的线，然后单击尺寸标注的放置位置。"
 msgid "Pick more references, or click away from them where the dimension line goes; Tab steps over the faces, axes and corners of the element under the cursor. A picked reference clicked again is taken out, Backspace takes out the last, Esc starts over. Space steps Auto, Aligned, Horizontal, Vertical."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:247
+#: crates/ui-egui/src/site/mod.rs:190
 msgid "Pick on Map…"
 msgstr ""
 
@@ -11880,12 +11864,12 @@ msgstr "图片…"
 msgid "Pieces"
 msgstr ""
 
-#: crates/core/src/commands.rs:2270
+#: crates/core/src/commands.rs:2248
 #: crates/ui-egui/src/context.rs:124
 msgid "Pin"
 msgstr ""
 
-#: crates/core/src/commands.rs:1133
+#: crates/core/src/commands.rs:1111
 msgid "Pipe"
 msgstr "管道"
 
@@ -12145,14 +12129,6 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:6659
 msgid "Place on Face"
 msgstr "放置在面上"
-
-#: crates/ui-egui/src/site/mod.rs:151
-msgid "Place on Terrain"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:150
-msgid "Place on Terrain: stands the selected masses, columns, footings, components and walls on the toposolid under them"
-msgstr ""
 
 #: crates/ui-egui/src/lib.rs:6656
 msgid "Place on Work Plane"
@@ -12516,7 +12492,7 @@ msgstr ""
 msgid "Project Browser"
 msgstr "项目浏览器"
 
-#: crates/core/src/commands.rs:2013
+#: crates/core/src/commands.rs:1991
 #: crates/ui-egui/src/projectinfo.rs:111
 msgid "Project Information"
 msgstr ""
@@ -12648,8 +12624,8 @@ msgstr "属性 (PP)：显示或隐藏面板"
 msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 
-#: crates/core/src/commands.rs:776
-#: crates/core/src/commands.rs:10233
+#: crates/core/src/commands.rs:754
+#: crates/core/src/commands.rs:10211
 msgid "Property Line"
 msgstr ""
 
@@ -12736,13 +12712,13 @@ msgstr "象限点"
 msgid "Quality"
 msgstr ""
 
-#: crates/core/src/commands.rs:892
+#: crates/core/src/commands.rs:870
 #: crates/ui-egui/src/steel.rs:390
 #: crates/ui-egui/src/structure.rs:109
 msgid "Quantities"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:600
+#: crates/ui-egui/src/site/mod.rs:424
 msgid "Query used"
 msgstr ""
 
@@ -12793,7 +12769,7 @@ msgstr "半径符号"
 msgid "Radius:"
 msgstr "半径："
 
-#: crates/core/src/commands.rs:1272
+#: crates/core/src/commands.rs:1250
 msgid "Railing"
 msgstr "栏杆扶手"
 
@@ -12814,7 +12790,7 @@ msgstr ""
 msgid "Rainfall, slopes, roughness, the minimum downpipe and the downpipe charts."
 msgstr ""
 
-#: crates/core/src/commands.rs:1261
+#: crates/core/src/commands.rs:1239
 msgid "Ramp"
 msgstr "坡道"
 
@@ -12855,7 +12831,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4949
+#: crates/core/src/commands.rs:4927
 msgid "Reading the file"
 msgstr ""
 
@@ -13596,7 +13572,7 @@ msgstr ""
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/commands.rs:1283
+#: crates/core/src/commands.rs:1261
 msgid "Roof"
 msgstr "屋顶"
 
@@ -13636,7 +13612,7 @@ msgstr "屋面瓦"
 msgid "Roof's slope"
 msgstr "屋顶的坡度"
 
-#: crates/core/src/commands.rs:758
+#: crates/core/src/commands.rs:736
 msgid "Room"
 msgstr "房间"
 
@@ -13709,7 +13685,7 @@ msgstr ""
 msgid "RotZ (degrees)"
 msgstr ""
 
-#: crates/core/src/commands.rs:2380
+#: crates/core/src/commands.rs:2358
 #: crates/ui-egui/src/editor/document.rs:668
 #: crates/ui-egui/src/underlay.rs:444
 msgid "Rotate"
@@ -14022,7 +13998,7 @@ msgstr "比例：此视图所代表的图纸，为模型的 1 : n；其注释和
 msgid "Scan"
 msgstr "扫描"
 
-#: crates/core/src/commands.rs:3058
+#: crates/core/src/commands.rs:3036
 msgid "Schedule"
 msgstr "明细表"
 
@@ -14317,10 +14293,6 @@ msgstr ""
 
 #: crates/ui-egui/src/classification.rs:516
 msgid "Select the elements of the next type (or element) with no code"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:633
-msgid "Select what is to stand on the terrain first."
 msgstr ""
 
 #: crates/ui-egui/src/classification.rs:538
@@ -14790,10 +14762,6 @@ msgstr ""
 msgid "Single Door"
 msgstr "单扇门"
 
-#: crates/ui-egui/src/site/mod.rs:135
-msgid "Site"
-msgstr ""
-
 #: crates/ui-egui/src/codes.rs:1372
 msgid "Site and Climate"
 msgstr ""
@@ -15170,7 +15138,7 @@ msgstr "通过点的样条曲线：单击它经过的点；按 Enter 完成"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "样条曲线：单击其控制点；按 Enter 完成"
 
-#: crates/core/src/commands.rs:2422
+#: crates/core/src/commands.rs:2400
 msgid "Split"
 msgstr "拆分"
 
@@ -15194,7 +15162,7 @@ msgstr "请在线的两端之间拆分。"
 msgid "Split by:"
 msgstr ""
 
-#: crates/core/src/commands.rs:1467
+#: crates/core/src/commands.rs:1445
 msgid "Spot Coordinate"
 msgstr ""
 
@@ -15206,7 +15174,7 @@ msgstr ""
 msgid "Spot Coordinates"
 msgstr ""
 
-#: crates/core/src/commands.rs:1457
+#: crates/core/src/commands.rs:1435
 msgid "Spot Elevation"
 msgstr "高程点"
 
@@ -15214,7 +15182,7 @@ msgstr "高程点"
 msgid "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"
 msgstr "高程点 (EL)：单击楼板、屋顶或楼梯；在剖面中则单击一个点"
 
-#: crates/core/src/commands.rs:1501
+#: crates/core/src/commands.rs:1479
 #: crates/ui-egui/src/lib.rs:2169
 #: crates/ui-egui/src/lib.rs:5385
 msgid "Spot Slope"
@@ -15228,7 +15196,7 @@ msgstr "点坡度：在平面中单击楼板或屋顶；箭头指向下坡方向
 msgid "Square Grid"
 msgstr "方格"
 
-#: crates/core/src/commands.rs:1206
+#: crates/core/src/commands.rs:1184
 msgid "Stair"
 msgstr "楼梯"
 
@@ -15254,10 +15222,6 @@ msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:649
 msgid "Stairs on the Level Below"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:282
-msgid "Stand the imported buildings on the new ground"
 msgstr ""
 
 #: crates/ui-egui/src/reinforce.rs:515
@@ -15472,7 +15436,7 @@ msgstr ""
 msgid "Structural"
 msgstr "结构"
 
-#: crates/core/src/commands.rs:1097
+#: crates/core/src/commands.rs:1075
 #: crates/ui-egui/src/steel.rs:284
 msgid "Structural Column"
 msgstr "结构柱"
@@ -15817,10 +15781,6 @@ msgstr "删除此命令为该构件生成的钢筋；手工绘制的钢筋保留
 msgid "Take off categories the file doesn't list"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:281
-msgid "Take the project's ground height from the data, when it has none"
-msgstr ""
-
 #: crates/ui-egui/src/properties.rs:2695
 msgid "Take this landing away: the runs on its two sides become one"
 msgstr ""
@@ -15930,21 +15890,11 @@ msgstr "临时隔离图元"
 msgid "Temporary dimension {}"
 msgstr "临时尺寸标注 {}"
 
-#: crates/ui-egui/src/site/mod.rs:141
-#: crates/ui-egui/src/site/mod.rs:223
-#: crates/ui-egui/src/site/mod.rs:540
-msgid "Terrain from Elevation Data"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:137
-msgid "Terrain from Elevation Data: the ground round the site's place, fetched from an elevation service, as a toposolid"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:816
 msgid "Test Placement"
 msgstr ""
 
-#: crates/core/src/commands.rs:1359
+#: crates/core/src/commands.rs:1337
 #: crates/core/src/family.rs:357
 #: crates/ui-egui/src/editor/document.rs:558
 #: crates/ui-egui/src/editor.rs:268
@@ -16428,11 +16378,7 @@ msgstr ""
 msgid "The project would then have {} warnings."
 msgstr "届时项目将有 {} 个警告。"
 
-#: crates/ui-egui/src/site/mod.rs:516
-msgid "The project's ground height is now {} m above sea level"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:123
+#: crates/ui-egui/src/site/mod.rs:99
 msgid "The project's site has no place on Earth yet: give it a map system and its latitude and longitude in Manage > Location first."
 msgstr ""
 
@@ -16642,10 +16588,6 @@ msgstr "项目的电压（单位为伏），以及设备读数允许的范围。
 msgid "The voltages the project uses, each with the lowest and highest a device may get."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:536
-msgid "The walls of {} buildings could not follow them and were left: {}"
-msgstr ""
-
 #: crates/ui-egui/src/export/mod.rs:349
 #: crates/ui-egui/src/export/mod.rs:556
 msgid "The whole project: {}"
@@ -16775,12 +16717,12 @@ msgstr "细线 (TL)：所有线条均为一个像素宽"
 msgid "Thinking"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:239
+#: crates/ui-egui/src/site/mod.rs:182
 msgid "This BIMCraft has no network access (BIMCRAFT_NO_NETWORK is set, or it runs in a sandbox that has none)."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:381
-#: crates/ui-egui/src/site/mod.rs:433
+#: crates/ui-egui/src/site/mod.rs:275
+#: crates/ui-egui/src/site/mod.rs:322
 msgid "This BIMCraft has no network access."
 msgstr ""
 
@@ -17086,8 +17028,8 @@ msgstr "上层，沿北向钢筋"
 msgid "Topology: {} ({} triangles)"
 msgstr ""
 
-#: crates/core/src/commands.rs:788
-#: crates/core/src/commands.rs:10275
+#: crates/core/src/commands.rs:766
+#: crates/core/src/commands.rs:10253
 msgid "Toposolid"
 msgstr ""
 
@@ -17191,7 +17133,7 @@ msgstr "修剪/延伸单个图元"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "修剪/延伸单个图元：拾取边界线，然后在要保留的部分上拾取要更改的线"
 
-#: crates/core/src/commands.rs:2396
+#: crates/core/src/commands.rs:2374
 #: crates/ui-egui/src/editor/sketch.rs:1523
 #: crates/ui-egui/src/sketch.rs:1218
 #: crates/ui-egui/src/sketch.rs:1705
@@ -17562,15 +17504,15 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:16917
+#: crates/core/src/commands.rs:16608
 msgid "Unnamed"
 msgstr "未命名"
 
-#: crates/core/src/commands.rs:4966
+#: crates/core/src/commands.rs:4944
 msgid "Unpacking the project"
 msgstr ""
 
-#: crates/core/src/commands.rs:2279
+#: crates/core/src/commands.rs:2257
 #: crates/ui-egui/src/context.rs:125
 msgid "Unpin"
 msgstr ""
@@ -17609,7 +17551,7 @@ msgstr ""
 msgid "Update now"
 msgstr "立即更新"
 
-#: crates/core/src/commands.rs:738
+#: crates/core/src/commands.rs:716
 msgid "Update to Face"
 msgstr "更新到面"
 
@@ -18065,7 +18007,7 @@ msgstr "墙中心线"
 msgid "Wall Component:"
 msgstr ""
 
-#: crates/core/src/commands.rs:1125
+#: crates/core/src/commands.rs:1103
 #: crates/ui-egui/src/steel.rs:286
 msgid "Wall Footing"
 msgstr "条形基础"
@@ -18074,7 +18016,7 @@ msgstr "条形基础"
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "条形基础 (FW)：在墙下单击起点和终点，或连续单击"
 
-#: crates/core/src/commands.rs:2328
+#: crates/core/src/commands.rs:2306
 msgid "Wall Length"
 msgstr ""
 
@@ -18341,7 +18283,7 @@ msgstr "窗明细表"
 msgid "Windows"
 msgstr "窗口"
 
-#: crates/core/src/commands.rs:1171
+#: crates/core/src/commands.rs:1149
 msgid "Wire"
 msgstr "导线"
 
@@ -19565,7 +19507,7 @@ msgstr ""
 msgid "{} are in your Co-Work session: closing BIMCraft ends it for them, and they keep a read-only copy."
 msgstr "{} 在你的 Co-Work 会话中：关闭 BIMCraft 会为他们结束会话，他们会保留一份只读副本。"
 
-#: crates/ui-egui/src/site/mod.rs:476
+#: crates/ui-egui/src/site/mod.rs:350
 msgid "{} are not over the terrain: they stand at the level"
 msgstr ""
 
@@ -19589,19 +19531,11 @@ msgstr ""
 msgid "{} buildings already have walls, floors or a roof made by face: Update to Face makes them follow the mass"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:529
-msgid "{} buildings are not over the new ground and stay where they were"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:472
+#: crates/ui-egui/src/site/mod.rs:346
 msgid "{} buildings made, {} updated, {} left out"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:522
-msgid "{} buildings stand on the new ground"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:483
+#: crates/ui-egui/src/site/mod.rs:357
 msgid "{} buildings with courtyards cut into {} pieces that leave them open"
 msgstr ""
 
@@ -19645,7 +19579,7 @@ msgstr ""
 msgid "{} copy"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:479
+#: crates/ui-egui/src/site/mod.rs:353
 msgid "{} courtyards filled in"
 msgstr ""
 
@@ -19679,11 +19613,11 @@ msgstr ""
 msgid "{} ended the session"
 msgstr "{} 结束了会话"
 
-#: crates/ui-egui/src/site/mod.rs:491
+#: crates/ui-egui/src/site/mod.rs:365
 msgid "{} entrances and exits placed on their buildings"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:494
+#: crates/ui-egui/src/site/mod.rs:368
 msgid "{} entrances are not on any building"
 msgstr ""
 
@@ -19777,12 +19711,12 @@ msgstr ""
 msgid "{} joined the session"
 msgstr "{} 加入了会话"
 
-#: crates/ui-egui/src/site/mod.rs:555
+#: crates/ui-egui/src/site/mod.rs:388
 msgid "{} km²"
 msgstr ""
 
 #: crates/ui-egui/src/site/map.rs:468
-#: crates/ui-egui/src/site/mod.rs:287
+#: crates/ui-egui/src/site/mod.rs:209
 msgid "{} km² (at most {})"
 msgstr ""
 
@@ -19842,10 +19776,6 @@ msgstr ""
 msgid "{} of the selection left out"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:525
-msgid "{} of their walls, floors and roofs followed"
-msgstr ""
-
 #: crates/ui-egui/src/classification.rs:529
 msgid "{} of {} classified"
 msgstr ""
@@ -19862,10 +19792,6 @@ msgstr ""
 #: crates/ui-egui/src/stairgrips.rs:140
 msgid "{} of {} risers"
 msgstr "{} 个踢面（共 {} 个）"
-
-#: crates/ui-egui/src/site/mod.rs:569
-msgid "{} of {} tiles"
-msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:6729
 #: crates/ui-egui/src/orbit.rs:2429
@@ -19884,11 +19810,11 @@ msgstr "{} 打开了另一个项目"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} 已打开，但略去了 {} 个此版本不认识的字段；保存时这些字段将不再保留。"
 
-#: crates/ui-egui/src/site/mod.rs:497
+#: crates/ui-egui/src/site/mod.rs:371
 msgid "{} outlines kept: their parts cover too little of them"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:488
+#: crates/ui-egui/src/site/mod.rs:362
 msgid "{} outlines replaced by their building parts"
 msgstr ""
 
@@ -19977,14 +19903,6 @@ msgstr ""
 #: crates/ui-egui/src/inquiry.rs:185
 msgid "{} selected."
 msgstr "已选择 {}。"
-
-#: crates/ui-egui/src/site/mod.rs:640
-msgid "{} stand on the terrain"
-msgstr ""
-
-#: crates/ui-egui/src/site/mod.rs:642
-msgid "{} stand on the terrain; {} are not over it"
-msgstr ""
 
 #: crates/ui-egui/src/steel.rs:231
 msgid "{} stock bars: {} kg bought, {} kg used."
@@ -20140,7 +20058,7 @@ msgstr "{}：`{}` 不是有效的长度"
 #: crates/ui-egui/src/parameters.rs:353
 #: crates/ui-egui/src/properties.rs:3119
 #: crates/ui-egui/src/properties.rs:3940
-#: crates/ui-egui/src/site/mod.rs:118
+#: crates/ui-egui/src/site/mod.rs:94
 #: crates/ui-egui/src/stairtype.rs:236
 msgid "{}: `{}` is not a number"
 msgstr "{}：`{}` 不是数字"
@@ -21202,4 +21120,66 @@ msgstr "上"
 #~ msgstr ""
 #: crates/ui-egui/src/steel.rs:288
 #~ msgid "Steel List and Cut Plan"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:508
+#~ msgid "A toposolid of {} heights, every {} m, from {}"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:365
+#~ msgid "Contour interval: `{}` is not a length"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:268
+#~ msgid "Elevation data"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:553
+#~ msgid "Fetching elevation data…"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:151
+#~ msgid "Place on Terrain"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:150
+#~ msgid "Place on Terrain: stands the selected masses, columns, footings, components and walls on the toposolid under them"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:633
+#~ msgid "Select what is to stand on the terrain first."
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:135
+#~ msgid "Site"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:282
+#~ msgid "Stand the imported buildings on the new ground"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:281
+#~ msgid "Take the project's ground height from the data, when it has none"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:141
+#: crates/ui-egui/src/site/mod.rs:223
+#: crates/ui-egui/src/site/mod.rs:540
+#~ msgid "Terrain from Elevation Data"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:137
+#~ msgid "Terrain from Elevation Data: the ground round the site's place, fetched from an elevation service, as a toposolid"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:516
+#~ msgid "The project's ground height is now {} m above sea level"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:536
+#~ msgid "The walls of {} buildings could not follow them and were left: {}"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:529
+#~ msgid "{} buildings are not over the new ground and stay where they were"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:522
+#~ msgid "{} buildings stand on the new ground"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:525
+#~ msgid "{} of their walls, floors and roofs followed"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:569
+#~ msgid "{} of {} tiles"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:640
+#~ msgid "{} stand on the terrain"
+#~ msgstr ""
+#: crates/ui-egui/src/site/mod.rs:642
+#~ msgid "{} stand on the terrain; {} are not over it"
 #~ msgstr ""

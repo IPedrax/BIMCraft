@@ -135,7 +135,6 @@ pub mod glue;
 mod glue_tests;
 pub mod graphics;
 pub mod grids;
-pub mod ground;
 pub mod groups;
 pub mod handles;
 #[cfg(test)]
@@ -154,7 +153,6 @@ mod ifc_generic_tests;
 mod ifc_geometry_tests;
 #[cfg(test)]
 mod ifc_member_tests;
-pub mod imagery;
 pub mod import;
 pub mod inquiry;
 pub mod insert;

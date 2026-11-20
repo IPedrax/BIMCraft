@@ -88,32 +88,6 @@ fn buildings_become_masses_with_their_heights_and_their_osm_ids() {
 }
 
 #[test]
-fn buildings_stand_on_the_terrain_at_its_lowest_under_them() {
-    let mut s = placed();
-    // 0 to 20 m rising with x over 200 m square: the ground is x / 10 high.
-    let points: Vec<Value> =
-        (0..21).flat_map(|i| (0..21).map(move |j| json!([i as f64 * 10000.0, j as f64 * 10000.0, i as f64 * 1000.0]))).collect();
-    run(&mut s, "toposolid", json!({"boundary": [[0, 0], [200000, 0], [200000, 200000], [0, 200000]], "points": points}));
-    let data = file(&[way(1, &square(0.0005, 0.0005, 20.0), r#""building":"yes","height":"10""#)]);
-    let r = run(&mut s, "import_osm", json!({"data": data}));
-    let (_, m) = masses(&s).remove(0);
-    // About 51 m east of the origin: the ground is x / 10 high, so it stands at the lowest of its corners and middle.
-    let ring = m.footprint();
-    let n = ring.len() as f64;
-    let middle = ring.iter().map(|q| q.0).sum::<f64>() / n;
-    let want = ring.iter().map(|q| q.0).chain([middle]).fold(f64::MAX, f64::min) / 10.0;
-    assert!((m.base_offset - want).abs() < 1.0 && (want - 5100.0).abs() < 150.0, "{} against {want}", m.base_offset);
-    assert_eq!(m.height, 10000.0);
-    assert_eq!(r["off_terrain"], 0);
-    // Past the edge of the terrain there is no ground to find: it stands at the level, and the report says so.
-    let far = file(&[way(2, &square(0.01, 0.0, 20.0), r#""building":"yes","height":"10""#)]);
-    let r = run(&mut s, "import_osm", json!({"data": far}));
-    assert_eq!(r["off_terrain"], 1);
-    let (_, m) = masses(&s).into_iter().find(|(_, m)| osm_id(m) == "way/2").unwrap();
-    assert_eq!(m.base_offset, 0.0);
-}
-
-#[test]
 fn a_part_lifted_off_the_ground_stands_on_its_min_height() {
     let mut s = placed();
     let data = file(&[way(1, &square(0.0, 0.0, 20.0), r#""building:part":"yes","height":"20","min_height":"8""#)]);
@@ -232,18 +206,12 @@ fn what_cannot_be_imported_is_refused_with_what_to_fix() {
         (json!({"data": two_houses(), "bbox": [10, 0, -10, 1]}), "bbox"),
         (json!({"data": two_houses(), "level_height": 5}), "level_height"),
         (json!({"data": two_houses(), "default_height": -1}), "default_height"),
-        (json!({"data": two_houses(), "terrain": 100000}), "toposolid"),
         (json!({"data": two_houses(), "colour": 1}), "colour"),
         (json!({"data": two_houses(), "detail": "all"}), "detail"),
     ] {
         assert!(refused(&mut s, p.clone()).contains(says), "{p}");
     }
     assert!(masses(&s).is_empty(), "nothing was made");
-    // Two terrains: say which.
-    for _ in 0..2 {
-        run(&mut s, "toposolid", json!({"boundary": [[0, 0], [10000, 0], [0, 10000]]}));
-    }
-    assert!(refused(&mut s, json!({"data": two_houses()})).contains("terrain"));
 }
 
 #[test]

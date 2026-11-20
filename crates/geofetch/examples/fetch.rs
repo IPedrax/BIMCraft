@@ -1,9 +1,8 @@
-//! A developer's tool to try the real services, which no test does: Overpass for a box's buildings, or elevation for a box, written
+//! A developer's tool to try the real service, which no test does: Overpass for a box's buildings, written
 //! to a file. It is not part of BIMCraft and is not shipped.
 //!
 //! ```text
 //! cargo run -p bimcraft-geofetch --example fetch -- osm SOUTH WEST NORTH EAST out.json
-//! cargo run -p bimcraft-geofetch --example fetch -- dem SOUTH WEST NORTH EAST SPACING_M out.csv
 //! ```
 //!
 //! Replies and tiles are kept in a folder of the temp folder, so a second run is the cache's.
@@ -37,31 +36,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 fetcher.attribution("osm")
             );
         }
-        "dem" => {
-            let spacing = number(args, 5, "spacing")?;
-            let out = args.get(6).ok_or("the file to write is wanted")?;
-            let got = fetcher.elevation(&bbox, spacing, None)?;
-            let g = &got.grid;
-            let mut csv = String::from("lon,lat,height\n");
-            for r in 0..g.rows {
-                for c in 0..g.cols {
-                    let h = g.values[r * g.cols + c];
-                    if h.is_finite() {
-                        csv.push_str(&format!("{},{},{h}\n", g.west + c as f64 * g.dlon, g.north - r as f64 * g.dlat));
-                    }
-                }
-            }
-            std::fs::write(out, csv).map_err(|e| format!("{out}: {e}"))?;
-            println!(
-                "{} x {} nodes from {}{} to {out}\n{}",
-                g.cols,
-                g.rows,
-                got.source,
-                if got.cached { " (from the cache)" } else { "" },
-                fetcher.attribution(&got.source)
-            );
-        }
-        _ => return Err("the first argument is osm or dem".into()),
+        _ => return Err("the first argument is osm".into()),
     }
     Ok(())
 }

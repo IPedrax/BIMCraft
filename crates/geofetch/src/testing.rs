@@ -147,13 +147,6 @@ impl Net for Fake {
         self.answer("GET", url, &[])
     }
 
-    fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Reply, NetError> {
-        // Asked as a range: the body noted is the range.
-        let reply = self.answer("GET", url, format!("bytes={start}-{}", start + len.saturating_sub(1)).as_bytes())?;
-        let (start, end) = (start as usize, (start + len) as usize);
-        Ok(Reply { body: reply.body.get(start..end.min(reply.body.len())).unwrap_or_default().to_vec(), content_type: reply.content_type })
-    }
-
     fn post(&self, url: &str, _content_type: &str, body: &[u8], _limit: u64) -> Result<Reply, NetError> {
         self.answer("POST", url, body)
     }

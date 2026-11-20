@@ -786,13 +786,12 @@ wide as the selector, a long name cut short and whole in its tooltip; wall types
 
 ## The Massing tab's site tools
 
-`site/` adds two panels to the Massing tab (Revit's Massing & Site), after Model by Face. **Site**: Terrain from Elevation Data opens the
-area box (a distance round the site's place, or a box of degrees; its km² against the 25 km² cap, live; spacing, source, contour interval,
-"Set the site's height" and "Stand the imported buildings on it") and runs `fetch_terrain`; Place on Terrain runs `place_on_terrain` on the
-selection. **Context**: Import from OpenStreetMap opens the same box for `fetch_osm` (default and level heights; the Overpass query it
+`site/` adds one panel, **Context**, to the Massing tab (Revit's Massing & Site), after Model by Face. Import from OpenStreetMap opens the
+area box (a distance round the site's place, or a box of degrees; its km² against the 25 km² cap, live) for `fetch_osm` (default and level
+heights; the Overpass query it
 will ask, live, with Copy), and Build Shell (`site/shell.rs`) runs `building_shell` on the selected masses (Storey height; Outer walls,
-Floors at each storey, Roof, Doors at the entrances), a box saying what was made and the notes. Both fetches run on a thread of their own
-and come back through the unchanged commands ([geofetch](geofetch.md#the-massing-tabs-site-tools)); while one runs the window's keys and
+Floors at each storey, Roof, Doors at the entrances), a box saying what was made and the notes. The fetch runs on a thread of its own
+and comes back through the unchanged command ([geofetch](geofetch.md#the-massing-tabs-site-tools)); while it runs the window's keys and
 agents wait. Where the project is on Earth is Manage > Location's ([coordinates](coordinates.md)): with no place, the area box says so and
 Fetch is off. **Pick on Map** (`site/map.rs`), in the area box's box of degrees, opens OpenStreetMap's map (`GeoSource::tile`, two loader
 threads, only the tiles in view; the credit in the corner): drag to draw the box (Move map turns a drag back into a move; the wheel pressed

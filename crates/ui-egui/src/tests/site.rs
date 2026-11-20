@@ -1,21 +1,16 @@
-//! The Massing tab's site tools, driven as a user drives them: the fetches (OpenStreetMap, elevation) run on a thread of their own
-//! over a fake fetcher (no test reaches the network) and come out of the same commands, round the place Manage > Location gave the
-//! site; Place on Terrain and Build Shell work on the selection.
+//! The Massing tab's site tools, driven as a user drives them: the fetch of OpenStreetMap's buildings runs on a thread of its own
+//! over a fake fetcher (no test reaches the network) and comes out of the same command, round the place Manage > Location gave the
+//! site; Build Shell works on the selection.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use bimcraft_core::geo::{Bbox, Elevation, ElevationGrid, GeoSource, Reply};
+use bimcraft_core::geo::{Bbox, GeoSource, Reply};
 use egui_kittest::kittest::NodeT;
 
 use super::*;
 
 const HOME: (f64, f64) = (-46.6333, -23.5505);
-
-/// The height, metres, the fake's ground has at a place: 760 at home, 1 m more each 100 m east, 2 m more each 100 m north.
-fn ground(lon: f64, lat: f64) -> f64 {
-    760.0 + 1000.0 * (lon - HOME.0) + 2000.0 * (lat - HOME.1)
-}
 
 /// A fetcher that answers from what it holds, after `delay`, and notes what it was asked.
 struct Fake {
@@ -26,26 +21,11 @@ struct Fake {
     /// The map tiles asked for, in order, and whether there are none.
     tiles: Mutex<Vec<(u8, u32, u32)>>,
     no_tiles: bool,
-    /// The imagery sources it has no photographs from.
-    no_imagery: Vec<&'static str>,
-    /// How far an imagery fetch says it has got, while it runs; and whether its tiles were kept from an earlier fetch.
-    progress: Option<(usize, usize)>,
-    cached: bool,
 }
 
 impl Fake {
     fn new() -> Fake {
-        Fake {
-            osm: overpass_reply(),
-            delay: Duration::ZERO,
-            fail: None,
-            asked: Mutex::new(0),
-            tiles: Mutex::default(),
-            no_tiles: false,
-            no_imagery: Vec::new(),
-            progress: None,
-            cached: false,
-        }
+        Fake { osm: overpass_reply(), delay: Duration::ZERO, fail: None, asked: Mutex::new(0), tiles: Mutex::default(), no_tiles: false }
     }
 }
 
@@ -59,25 +39,6 @@ impl GeoSource for Fake {
         }
     }
 
-    fn elevation(&self, bbox: &Bbox, _: f64, source: Option<&str>) -> Result<Elevation, String> {
-        *self.asked.lock().unwrap() += 1;
-        std::thread::sleep(self.delay);
-        if let Some(why) = &self.fail {
-            return Err(why.clone());
-        }
-        let step = 0.0005;
-        let (west, north) = (bbox.west - 2.0 * step, bbox.north + 2.0 * step);
-        let cols = ((bbox.east - west) / step).ceil() as usize + 3;
-        let rows = ((north - bbox.south) / step).ceil() as usize + 3;
-        let values: Vec<f32> =
-            (0..rows).flat_map(|r| (0..cols).map(move |c| ground(west + c as f64 * step, north - r as f64 * step) as f32)).collect();
-        Ok(Elevation {
-            grid: ElevationGrid::new(west, north, step, step, cols, rows, values)?,
-            source: source.unwrap_or("terrarium").to_string(),
-            cached: false,
-        })
-    }
-
     fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<bimcraft_core::geo::Tile, String> {
         self.tiles.lock().unwrap().push((zoom, x, y));
         if self.no_tiles {
@@ -87,38 +48,10 @@ impl GeoSource for Fake {
         Ok(bimcraft_core::geo::Tile { rgba, side: 256, cached: false })
     }
 
-    fn imagery(&self, source: &str, plan: &bimcraft_core::imagery::Plan) -> Result<bimcraft_core::imagery::Imagery, String> {
-        use bimcraft_core::imagery::{Imagery, Mosaic, TILE};
-        *self.asked.lock().unwrap() += 1;
-        std::thread::sleep(self.delay);
-        if let Some(why) = &self.fail {
-            return Err(why.clone());
-        }
-        if self.no_imagery.contains(&source) {
-            return Err(format!("{source} has no imagery of this place"));
-        }
-        // Every tile the same gradient: never one colour.
-        let tile: Vec<u8> = (0..TILE * TILE).flat_map(|k| [(k % TILE) as u8, (k / TILE) as u8, 90]).collect();
-        let mut mosaic = Mosaic::new(plan);
-        for row in 0..plan.rows {
-            for col in 0..plan.cols {
-                mosaic.put(col, row, &tile)?;
-            }
-        }
-        Ok(Imagery { source: source.into(), plan: plan.clone(), mosaic, cached: self.cached })
-    }
-
-    fn imagery_progress(&self) -> Option<(usize, usize)> {
-        self.progress
-    }
-
     fn attribution(&self, what: &str) -> String {
         match what {
             "osm" => "Data (c) OpenStreetMap contributors (ODbL)".into(),
-            other => match bimcraft_core::imagery::source(other) {
-                Some(source) => source.credit.into(),
-                None => format!("Elevation: {other}"),
-            },
+            other => format!("Credit: {other}"),
         }
     }
 }
@@ -187,7 +120,7 @@ fn query_shown(h: &Harness<BimApp>) -> String {
 fn the_massing_tab_has_the_site_tools() {
     let mut h = app(BOX);
     press(&mut h, "Massing");
-    for label in ["Terrain from Elevation Data", "Place on Terrain", "Import from OpenStreetMap", "Build Shell", "Mass"] {
+    for label in ["Import from OpenStreetMap", "Build Shell", "Mass"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
 }
@@ -368,84 +301,6 @@ fn agents_wait_while_a_fetch_runs() {
 }
 
 #[test]
-fn terrain_from_elevation_data_makes_a_toposolid_and_sets_the_sites_height() {
-    let fake = Arc::new(Fake::new());
-    let mut h = located(fake.clone());
-    press(&mut h, "Massing");
-    press(&mut h, "Terrain from Elevation Data");
-    type_into(&mut h, "Distance round the origin (m)", "300");
-    fetch(&mut h);
-    until_fetched(&mut h);
-    assert_eq!(count(&h, "toposolid"), 1);
-    let height = h.state().session.model.site().height;
-    assert!((height - 760_000.0).abs() < 50.0, "the ground at the origin: {height}");
-    assert!(h.query_by_label_contains("toposolid of").is_some());
-    assert!(h.query_by_label_contains("Elevation: terrarium").is_some(), "its credit");
-    assert_eq!(*fake.asked.lock().unwrap(), 1);
-}
-
-/// The base each building that came from OpenStreetMap stands at, by its OSM id.
-fn bases(h: &Harness<BimApp>) -> std::collections::BTreeMap<String, f64> {
-    h.state()
-        .session
-        .model
-        .elements
-        .values()
-        .filter_map(|e| match e {
-            bimcraft_core::model::Element::Mass(ms) => Some((ms.params.get("OSM Id")?.as_str()?.to_string(), ms.base_offset)),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Buildings fetched first, with no ground yet, then the Terrain box opened with the radius typed.
-fn buildings_then_the_terrain_box(fake: Arc<Fake>) -> Harness<'static, BimApp> {
-    let mut h = located(fake);
-    press(&mut h, "Massing");
-    press(&mut h, "Import from OpenStreetMap");
-    type_into(&mut h, "Distance round the origin (m)", "300");
-    fetch(&mut h);
-    until_fetched(&mut h);
-    press(&mut h, "Close");
-    assert!(bases(&h).values().all(|b| *b == 0.0), "no ground yet: {:?}", bases(&h));
-    press(&mut h, "Terrain from Elevation Data");
-    type_into(&mut h, "Distance round the origin (m)", "300");
-    h
-}
-
-#[test]
-fn terrain_fetched_after_the_buildings_stands_them_on_it_unless_the_box_is_unticked() {
-    let mut h = buildings_then_the_terrain_box(Arc::new(Fake::new()));
-    fetch(&mut h);
-    until_fetched(&mut h);
-    let now = bases(&h);
-    assert_eq!(now.len(), 2);
-    assert!(now["way/2"] > 300.0, "the second house is up the slope: {now:?}");
-    assert!(h.query_by_label_contains("buildings stand on the new ground").is_some(), "the result says so");
-    // One undo takes the ground and the buildings' new bases back together.
-    press(&mut h, "Close");
-    h.state_mut().session.execute("undo", &json!({})).unwrap();
-    assert!(bases(&h).values().all(|b| *b == 0.0));
-    // Unticked, they stay where they are.
-    let mut h = buildings_then_the_terrain_box(Arc::new(Fake::new()));
-    pick(&mut h, Role::CheckBox, "Stand the imported buildings on the new ground");
-    fetch(&mut h);
-    until_fetched(&mut h);
-    assert!(bases(&h).values().all(|b| *b == 0.0), "{:?}", bases(&h));
-    assert!(h.query_by_label_contains("buildings stand on the new ground").is_none());
-    assert_eq!(count(&h, "toposolid"), 1, "the ground was made all the same");
-}
-
-#[test]
-fn place_on_terrain_with_nothing_selected_says_what_to_do() {
-    let mut h = located(Arc::new(Fake::new()));
-    press(&mut h, "Massing");
-    h.state_mut().selection.clear();
-    press(&mut h, "Place on Terrain");
-    assert!(h.state().status.error && h.state().status.text.contains("Select"), "{:?}", h.state().status);
-}
-
-#[test]
 fn the_import_box_shows_the_overpass_query_that_will_be_asked() {
     let mut h = located(Arc::new(Fake::new()));
     press(&mut h, "Massing");
@@ -578,7 +433,7 @@ fn a_box_is_drawn_by_a_drag_and_used_by_the_area_box_which_fetches_it() {
 fn a_box_over_what_one_fetch_may_cover_is_red_and_cannot_be_used() {
     let mut h = located(Arc::new(Fake::new()));
     press(&mut h, "Massing");
-    press(&mut h, "Terrain from Elevation Data");
+    press(&mut h, "Import from OpenStreetMap");
     pick(&mut h, Role::RadioButton, "A box of degrees");
     press(&mut h, "Pick on Map…");
     until_tiles(&mut h);

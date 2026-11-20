@@ -1,4 +1,4 @@
-//! Fetching for the desktop app: OpenStreetMap buildings from Overpass and elevation from tiles, behind the core's `GeoSource`. The
+//! Fetching for the desktop app: OpenStreetMap buildings from Overpass and the map's tiles, behind the core's `GeoSource`. The
 //! only code besides the updater that phones home, and only the desktop's `main` attaches it: the core, the CLI and the MCP server
 //! do not depend on it (a test reads their manifests).
 //!
@@ -8,13 +8,8 @@
 //! answers or a server on this machine, never the real services.
 
 pub mod cache;
-pub mod copernicus;
-pub mod imagery;
-pub mod layout;
 pub mod net;
 pub mod overpass;
-pub mod probe;
-pub mod terrarium;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod tiles;
@@ -22,42 +17,26 @@ pub mod tiles;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use bimcraft_core::geo::{Bbox, Elevation, Fetcher, GeoSource, Reply, Tile};
-use bimcraft_core::imagery::{Imagery, Plan};
+use bimcraft_core::geo::{Bbox, Fetcher, GeoSource, Reply, Tile};
 
 use crate::cache::Cache;
-use crate::copernicus::Copernicus;
-use crate::imagery::ImageryTiles;
 use crate::net::{Allow, Net, OVERPASS, Ureq};
 use crate::overpass::Overpass;
-use crate::terrarium::Terrarium;
 use crate::tiles::OsmTiles;
-
-/// The elevation sources there are, as `source` names them, the first being the one used when none is named.
-pub const SOURCES: [&str; 2] = ["terrarium", "copernicus"];
 
 /// What OpenStreetMap's licence asks to be said where its data is used.
 pub const OSM_ATTRIBUTION: &str =
     "Map data (c) OpenStreetMap contributors, available under the Open Database Licence (ODbL): https://www.openstreetmap.org/copyright";
 
-/// The fetcher: Overpass and an elevation source, over one network and one cache.
+/// The fetcher: Overpass and the map's tiles, over one network and one cache.
 pub struct Geofetch {
     overpass: Overpass,
-    terrarium: Terrarium,
-    copernicus: Copernicus,
     tiles: OsmTiles,
-    imagery: ImageryTiles,
 }
 
 impl Geofetch {
     pub fn new(net: Arc<dyn Net>, cache: Arc<Cache>, endpoint: &str) -> Geofetch {
-        Geofetch {
-            overpass: Overpass::new(net.clone(), cache.clone(), endpoint),
-            terrarium: Terrarium::new(net.clone(), cache.clone()),
-            copernicus: Copernicus::new(net.clone(), cache.clone()),
-            tiles: OsmTiles::new(net.clone(), cache.clone()),
-            imagery: ImageryTiles::new(net, cache),
-        }
+        Geofetch { overpass: Overpass::new(net.clone(), cache.clone(), endpoint), tiles: OsmTiles::new(net, cache) }
     }
 
     /// The fetcher the desktop app attaches, or none where it is not wanted: `BIMCRAFT_NO_NETWORK` set, or a Flatpak, which is not
@@ -97,48 +76,15 @@ impl GeoSource for Geofetch {
         self.overpass.fetch(bbox, query)
     }
 
-    fn elevation(&self, bbox: &Bbox, spacing: f64, source: Option<&str>) -> Result<Elevation, String> {
-        match source.unwrap_or(SOURCES[0]) {
-            "terrarium" => {
-                let (grid, cached) = self.terrarium.grid(bbox, spacing)?;
-                Ok(Elevation { grid, source: "terrarium".into(), cached })
-            }
-            "copernicus" => {
-                let (grid, cached) = self.copernicus.grid(bbox, spacing)?;
-                Ok(Elevation { grid, source: "copernicus".into(), cached })
-            }
-            other => Err(format!("there is no elevation source `{other}`: the sources are {}", SOURCES.join(", "))),
-        }
-    }
-
     fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<Tile, String> {
         self.tiles.tile(zoom, x, y)
-    }
-
-    fn imagery_progress(&self) -> Option<(usize, usize)> {
-        self.imagery.progress()
-    }
-
-    fn imagery(&self, source: &str, plan: &Plan) -> Result<Imagery, String> {
-        match bimcraft_core::imagery::source(source) {
-            Some(source) => self.imagery.fetch(source, plan),
-            None => {
-                let names: Vec<&str> = bimcraft_core::imagery::SOURCES.iter().map(|s| s.id).collect();
-                Err(format!("there is no imagery source `{source}`: the sources are {}", names.join(", ")))
-            }
-        }
     }
 
     fn attribution(&self, what: &str) -> String {
         match what {
             "osm" => OSM_ATTRIBUTION.into(),
-            "terrarium" => terrarium::ATTRIBUTION.into(),
-            "copernicus" => copernicus::ATTRIBUTION.into(),
             "tiles" => tiles::ATTRIBUTION.into(),
-            other => match bimcraft_core::imagery::source(other) {
-                Some(source) => source.credit.into(),
-                None => format!("Data from {other}"),
-            },
+            other => format!("Data from {other}"),
         }
     }
 }
@@ -150,29 +96,6 @@ mod tests {
     use crate::testing::{Fake, Scratch};
 
     const GOOD: &str = r#"{"version":0.6,"elements":[]}"#;
-
-    #[test]
-    fn imagery_comes_from_the_source_named_and_is_credited_in_its_words() {
-        use bimcraft_core::imagery::{Plan, SOURCES, source};
-        let s = source("pdok").unwrap();
-        let plan = Plan { zoom: 18, x0: 100, y0: 200, cols: 1, rows: 1, metres_per_pixel: 0.4, width: 10, height: 10 };
-        let net = Arc::new(Fake::new().get(&s.url(18, 100, 200).unwrap(), include_bytes!("../testdata/tile256.jpg")));
-        let f = Geofetch::new(net, Arc::new(Cache::new(None)), OVERPASS);
-        assert_eq!(f.imagery_progress(), None, "no fetch has begun");
-        let got = f.imagery("pdok", &plan).unwrap();
-        assert_eq!((got.source.as_str(), got.mosaic.has.as_slice()), ("pdok", &[true][..]));
-        assert_eq!(f.imagery_progress(), Some((1, 1)), "and it says how far the last one got");
-        assert_eq!(f.attribution("pdok"), s.credit);
-        for sx in SOURCES {
-            assert_eq!(f.attribution(sx.id), sx.credit, "{}", sx.id);
-        }
-        // A source that is not in the table is not made up, and the error names the ones there are.
-        for other in ["nobody", "", "bing", "PDOK"] {
-            let why = f.imagery(other, &plan).unwrap_err();
-            assert!(why.contains("pdok") && why.contains("eox2016"), "{other}: {why}");
-        }
-        assert_eq!(f.attribution("osm"), OSM_ATTRIBUTION, "the others are as they were");
-    }
 
     fn fetcher(net: Arc<Fake>) -> Geofetch {
         Geofetch::new(net, Arc::new(Cache::new(None)), OVERPASS)
@@ -208,23 +131,6 @@ mod tests {
     }
 
     #[test]
-    fn the_source_is_terrarium_unless_another_is_named_and_one_that_is_not_there_is_refused() {
-        let net = Arc::new(Fake::new());
-        let f = fetcher(net.clone());
-        // Nothing to fetch from: the error is the tile's, which shows that terrarium is what was asked, named or not.
-        for named in [None, Some("terrarium")] {
-            let e = f.elevation(&block(), 20.0, named).unwrap_err();
-            assert!(e.contains("tile 13/"), "{named:?}: {e}");
-        }
-        // Copernicus is a source too: with nothing to fetch, it is the lack of its tile that is the answer.
-        assert!(f.elevation(&block(), 20.0, Some("copernicus")).unwrap_err().contains("no Copernicus tile"));
-        for bad in ["", "srtm", "terrarium/../x", "TERRARIUM"] {
-            let e = f.elevation(&block(), 20.0, Some(bad)).unwrap_err();
-            assert!(e.contains("no elevation source") && e.contains("terrarium"), "{bad}: {e}");
-        }
-    }
-
-    #[test]
     fn the_map_tile_hook_is_the_tile_fetchers() {
         let url = tiles::OsmTiles::url(2, 1, 1).unwrap();
         let data: Vec<u8> = (0..256 * 256).flat_map(|_| [10u8, 20, 30]).collect();
@@ -248,8 +154,6 @@ mod tests {
     fn each_kind_of_data_has_its_credit() {
         let f = fetcher(Arc::new(Fake::new()));
         assert!(f.attribution("osm").contains("OpenStreetMap") && f.attribution("osm").contains("ODbL"));
-        assert!(f.attribution("terrarium").contains("Terrain Tiles") && f.attribution("terrarium").contains("joerd"));
-        assert!(f.attribution("copernicus").contains("Copernicus DEM GLO-30") && f.attribution("copernicus").contains("Airbus"));
         assert!(f.attribution("tiles").contains("OpenStreetMap contributors"));
         assert!(f.attribution("something").contains("something"));
     }

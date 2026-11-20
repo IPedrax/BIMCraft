@@ -296,29 +296,6 @@ fn too_big(w: u64, h: u64) -> Result<(), String> {
     Ok(())
 }
 
-/// How far apart, in each of red, green and blue, the pixels of a picture of one colour may be: a map service's empty tile is
-/// one colour give or take what its compression does to it.
-const FLAT_TOLERANCE: f64 = 6.0;
-
-/// The width, height and pixels (RGB, row after row) of a PNG or a JPEG, for what is fetched and is not a project's picture. The
-/// header is checked before anything of its size is made, as for [`Picture::import`].
-pub fn decode_rgb(bytes: &[u8]) -> Result<(usize, usize, Vec<u8>), String> {
-    let level = decode(bytes)?;
-    Ok((level.w, level.h, level.rgb))
-}
-
-/// The colour every pixel of `rgb` (three bytes each) has, give or take [`FLAT_TOLERANCE`], if there is one.
-pub fn flat_rgb(rgb: &[u8]) -> Option<[u8; 3]> {
-    let pixels = rgb.as_chunks::<3>().0;
-    if pixels.is_empty() {
-        return None;
-    }
-    let n = pixels.len() as f64;
-    let mean: [f64; 3] = std::array::from_fn(|k| pixels.iter().map(|p| f64::from(p[k])).sum::<f64>() / n);
-    let one = pixels.iter().all(|p| (0..3).all(|k| (f64::from(p[k]) - mean[k]).abs() <= FLAT_TOLERANCE));
-    one.then(|| mean.map(|m| m.round() as u8))
-}
-
 /// The pixels of a PNG or a JPEG, as RGB.
 fn decode(bytes: &[u8]) -> Result<Level, String> {
     if bytes.len() > MAX_BYTES {

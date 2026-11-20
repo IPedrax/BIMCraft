@@ -683,7 +683,7 @@ other_files(
         "fetch_osm",
         "Fetch OpenStreetMap",
         &[],
-        "{bbox? | radius?, level?, level_height?, default_height?, parts?, terrain?, detail?, replace?} fetches the buildings of an \
+        "{bbox? | radius?, level?, level_height?, default_height?, parts?, entrances?, detail?, replace?} fetches the buildings of an \
          area from OpenStreetMap (Overpass) and makes them as `import_osm` does: `bbox` [south, west, north, east] degrees, or \
          `radius` metres each way round the project's origin (1000 by default); at most 25 km². The project's site must have a \
          map system and a place (`location` with `crs`, `latitude` and `longitude`). Needs a build with network access (the desktop app has it); without one, fetch the Overpass JSON elsewhere and \
@@ -691,45 +691,19 @@ other_files(
          came from the cache) and the credit OpenStreetMap's licence asks for",
         fetch_osm,
     ),
-    edit(
-        "fetch_terrain",
-        "Fetch Terrain",
-        &[],
-        "{bbox? | radius?, spacing?, source?, name?, set_elevation?, interval?, stand_buildings?} fetches the ground of an area and makes \
-         a toposolid of it: `bbox` [south, west, north, east] degrees, or `radius` metres each way round the project's origin (1000 by \
-         default); at most 25 km². A height every `spacing` metres (by default as fine as a toposolid's top holds, at most 1,996 \
-         heights and its four corners, at least 10 m), from `source` (`terrarium` or `copernicus`; by default the best there is). Its \
-         outline is the box. Heights are made project heights: if the site has no height on the map yet and `set_elevation` is true (by \
-         default) the ground at the origin becomes it, so z = 0 is there; otherwise the site's own is taken off. Needs a build with \
-         network access (the desktop app has it); without one, make terrain with `toposolid`. The buildings `import_osm` made (the \
-         masses with an `OSM Id`) are stood on the new ground, each at the lowest ground under its footprint, and what was made from \
-         them by face follows, unless `stand_buildings` is false; one that is not over the new ground stays where it is. Reports the \
-         toposolid, the spacing, the source, whether it came from the cache, `stood` ({moved, off_terrain, shells_updated, \
-         shells_left}) and the credit its data asks for",
-        fetch_terrain,
-    ),
-    edit(
-        "place_on_terrain",
-        "Place on Terrain",
-        &[],
-        "{ids: [ids], terrain?, offset?} stands masses, columns, footings, components and walls on the ground: each at the lowest ground \
-         under its footprint (a wall's along its axis, a component's at its point) of `terrain` (a toposolid's id; the project's only \
-         one by default), `offset` mm above it. One not over the toposolid is skipped and said; reports what moved, from what to what",
-        place_on_terrain,
-    ),
     edit_files(
         "import_osm",
         "Import OpenStreetMap",
         &[],
-        "{path | data, bbox?, level?, level_height?, default_height?, parts?, entrances?, terrain?, detail?, replace?} brings the buildings of an \
+        "{path | data, bbox?, level?, level_height?, default_height?, parts?, entrances?, detail?, replace?} brings the buildings of an \
          OpenStreetMap file in as masses on the ground: `path` (relative to the project's folder) or `data` (the text, or Overpass's \
          JSON itself) of Overpass JSON (`[out:json]`, with `out geom;` or with `out body; >; out skel qt;`) or OSM XML. The project \
          's site must have a map system and a place first (`location` with `crs`, `latitude` and `longitude`). A mass for each closed way and multipolygon tagged `building`, from `height` (\"12\", \
          \"12 m\", \"40 ft\"), else `building:levels` times `level_height` (3000 mm), else `default_height` (6000 mm); `min_height` \
          or `building:min_level` lifts it off the ground; `building:part`s (and `man_made=column`s) come as masses of their own and an \
          outline they cover is left out (`parts: false` keeps outlines only); `roof:*` tags are kept for the shell. `bbox` [south, west, north, east] \
-         degrees keeps only buildings with a corner in it. Each stands at the lowest ground under it of `terrain` (a toposolid's \
-         id; the project's only one by default), else at `level`'s elevation. A building with courtyards is cut into masses that \
+         degrees keeps only buildings with a corner in it. Each stands at `level`'s elevation, so a building stays where the \
+         level is. A building with courtyards is cut into masses that \
          leave them open. Entrances, doors and exits (`entrances`, true) are kept on the building they lie on, as `OSM Entrances`. Each keeps its `OSM Id` (way/123), `OSM Building`, `OSM Name` and `OSM Levels` as parameters; with `replace` (by \
          default) importing again updates a mass in place, keeping its id, and what you added to it. `detail` [\"way/123\", …] (up \
          to 200) also makes the shell of those masses (`building_shell`). Reports what was made, updated and skipped, and why. Data \
@@ -12769,286 +12743,9 @@ fn read_text_file(s: &Session, c: &str, path: &str) -> Result<String, String> {
     std::fs::read_to_string(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))
 }
 
-/// The ground of the toposolid `key` names, else of the project's only one; none in a project with no toposolid. Several and none
-/// named is refused: which one is the ground is the user's to say.
-fn terrain_ground(c: &str, m: &Model, p: &Value, key: &str) -> Result<Option<crate::ground::Ground>, String> {
-    let chosen = match id_opt(c, p, key)? {
-        Some(g) => match m.elements.get(g) {
-            Some(Element::Toposolid(t)) => Some(t),
-            _ => return Err(bad(c, format!("`{key}` {g} isn't a toposolid"))),
-        },
-        None => {
-            let all: Vec<&Toposolid> =
-                m.elements.values().filter_map(|e| if let Element::Toposolid(t) = e { Some(t) } else { None }).collect();
-            match all.as_slice() {
-                [] => None,
-                [one] => Some(*one),
-                many => {
-                    return Err(bad(c, format!("the project has {} toposolids: give the `{key}` id of the one to stand on", many.len())));
-                }
-            }
-        }
-    };
-    Ok(chosen.map(|t| crate::ground::Ground::of(m, t)))
-}
-
-/// The field of an element that holds its height when it stands on the ground: a base offset from its level, or (a component's) an
-/// offset.
-#[derive(Clone, Copy)]
-enum Field {
-    Base,
-    Offset,
-}
-
-/// What `e` stands on the ground by: the points of its footprint, the level it is held to, the field that holds its height and what that
-/// holds now. Err: its category, when it is not something that stands on the ground.
-fn stands_by(m: &Model, e: &Element) -> Result<(Vec<P2>, Guid, Field, f64), &'static str> {
-    Ok(match e {
-        Element::Mass(ms) => (ms.footprint(), ms.level, Field::Base, ms.base_offset),
-        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
-            let mut pts = m.column_outline(e);
-            pts.push(col.at);
-            (pts, col.level, Field::Base, col.base_offset)
-        }
-        Element::Component(comp) => (vec![comp.at], comp.level, Field::Offset, comp.offset),
-        Element::Wall(w) => {
-            // Along its axis, as a straight line from end to end: an arc's belly is not looked at.
-            let pts = (0..=10).map(|i| w.start + (w.end - w.start) * (f64::from(i) / 10.0)).collect();
-            (pts, w.level, Field::Base, w.base_offset)
-        }
-        other => return Err(other.category()),
-    })
-}
-
-/// Sets the height `field` holds of element `id` to `now`.
-fn set_stand(model: &mut Model, id: Id, field: Field, now: f64) {
-    match (model.elements.get_mut(id), field) {
-        (Some(Element::Mass(ms)), _) => ms.base_offset = now,
-        (Some(Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col)), _) => col.base_offset = now,
-        (Some(Element::Wall(w)), _) => w.base_offset = now,
-        (Some(Element::Component(comp)), Field::Offset) => comp.offset = now,
-        _ => {}
-    }
-}
-
-/// The buildings OpenStreetMap's import made: the masses that hold an `OSM Id`.
-fn imported_buildings(m: &Model) -> Vec<Id> {
-    m.elements
-        .iter()
-        .filter_map(|(id, e)| match e {
-            Element::Mass(ms) if ms.params.get("OSM Id").and_then(Value::as_str).is_some_and(|t| !t.is_empty()) => Some(*id),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Stands the imported buildings on toposurface `terrain`, each at the lowest ground under its footprint (as `place_on_terrain` does),
-/// and re-places what was made from each by face (its walls, floors and roof) on the new base. A building not over the terrain stays
-/// where it is, and is counted; a building whose shell cannot follow it (a face is gone) stands all the same and its shell is left as
-/// it was, whole, and named. What it did, as the reply of `fetch_terrain` gives it.
-fn stand_buildings(s: &mut Session, c: &str, terrain: Id) -> Result<Value, String> {
-    let m = &s.model;
-    let Some(Element::Toposolid(t)) = m.elements.get(terrain) else { return Err(bad(c, format!("{terrain} isn't a toposolid"))) };
-    let ground = crate::ground::Ground::of(m, t);
-    let (mut changes, mut off_terrain) = (Vec::new(), 0usize);
-    for id in imported_buildings(m) {
-        let Some((points, level, field, _)) = m.elements.get(id).and_then(|e| stands_by(m, e).ok()) else { continue };
-        match ground.lowest(&points) {
-            Some(z) => changes.push((id, field, z - m.elevation(level))),
-            None => off_terrain += 1,
-        }
-    }
-    let stood: Vec<Id> = changes.iter().map(|(id, ..)| *id).collect();
-    let model = s.model_mut();
-    for (id, field, now) in changes {
-        set_stand(model, id, field, now);
-    }
-    // What was made from each, by face, re-placed on the base it has now: a mass's shell follows whole or not at all.
-    let m = &s.model;
-    let (mut followed, mut left) = (Vec::new(), Vec::new());
-    for mass in &stood {
-        let made: Vec<Id> =
-            m.elements.iter().filter_map(|(id, e)| massing::face_of(e).filter(|(of, _)| m.same(*of, *mass)).map(|_| *id)).collect();
-        let (mut now, mut why) = (Vec::new(), Vec::new());
-        for id in made {
-            match follow_one(m, id) {
-                Some(Ok((e, true))) => now.push((id, e)),
-                Some(Err(reason)) => why.push(reason),
-                _ => {}
-            }
-        }
-        if why.is_empty() {
-            followed.extend(now);
-        } else {
-            left.push(json!({"id": mass, "why": why.join("; ")}));
-        }
-    }
-    let shells_updated = followed.len();
-    for (id, e) in followed {
-        s.model_mut().elements.insert(id, e);
-    }
-    left.truncate(MAX_LISTED);
-    Ok(json!({"moved": stood.len(), "off_terrain": off_terrain, "shells_updated": shells_updated, "shells_left": left}))
-}
-
-fn place_on_terrain(s: &mut Session, p: &Value) -> R {
-    let c = "place_on_terrain";
-    only(c, p, &["ids", "terrain", "offset"])?;
-    let wanted: Vec<Guid> = match p.get("ids") {
-        Some(Value::Array(a)) if !a.is_empty() && a.len() <= MAX_POINTS => a
-            .iter()
-            .map(|v| serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`ids` is a list of element ids, not {v}"))))
-            .collect::<Result<_, _>>()?,
-        other => {
-            return Err(bad(
-                c,
-                format!(
-                    "`ids`, a list of the ids of what to stand on the terrain, is required, not {}",
-                    other.map_or("nothing".into(), Value::to_string)
-                ),
-            ));
-        }
-    };
-    let offset = num(c, p, "offset")?.unwrap_or(0.0);
-    let m = &s.model;
-    let Some(ground) = terrain_ground(c, m, p, "terrain")? else {
-        return Err(bad(c, "no terrain to stand them on: make a toposolid with `toposolid` or `fetch_terrain`"));
-    };
-    let (mut moved, mut skipped, mut changes) = (Vec::new(), Vec::new(), Vec::new());
-    for g in wanted {
-        let Some(id) = m.elements.id(g) else { return Err(bad(c, format!("{g} isn't an element"))) };
-        let Some(e) = m.elements.get(id) else { return Err(bad(c, format!("{g} isn't an element"))) };
-        let (points, level, field, was) = stands_by(m, e).map_err(|category| {
-            bad(
-                c,
-                format!("{id} is a {category}, which can't be stood on the terrain: masses, columns, footings, components and walls can"),
-            )
-        })?;
-        let Some(ground) = ground.lowest(&points) else {
-            skipped.push(json!({"id": id, "why": "it is not over the terrain"}));
-            continue;
-        };
-        let now = ground - m.elevation(level) + offset;
-        changes.push((id, field, now));
-        moved.push(json!({"id": id, "was": was, "now": now}));
-    }
-    if moved.is_empty() {
-        return Err(bad(c, "none of them is over the terrain: move them over it, or the terrain under them"));
-    }
-    let model = s.model_mut();
-    for (id, field, now) in changes {
-        set_stand(model, id, field, now);
-    }
-    Ok(json!({"moved": moved, "skipped": skipped}))
-}
-
-/// Fetches the ground of a box and makes a toposolid of it: upstream's terrain, whose top holds at most
-/// [`crate::geo::TERRAIN_POINTS`] heights, so a box is sampled no finer than that allows.
-fn fetch_terrain(s: &mut Session, p: &Value) -> R {
-    let c = "fetch_terrain";
-    only(c, p, &["bbox", "radius", "spacing", "source", "name", "set_elevation", "interval", "stand_buildings"])?;
-    let Some(geo) = s.geo.clone() else {
-        return Err(bad(c, "this BIMCraft has no network access built in: make terrain with `toposolid`, from points you have"));
-    };
-    let stand = flag_or(c, p, "stand_buildings", true)?;
-    let setting = flag_or(c, p, "set_elevation", true)?;
-    let bbox = fetch_bbox(c, p, &s.model)?;
-    let projector = crate::geo::Projector::of(&s.model).map_err(|why| bad(c, why))?;
-    let most = crate::geo::TERRAIN_POINTS;
-    let spacing = match num(c, p, "spacing")? {
-        Some(x) => x,
-        None => crate::geo::terrain_spacing(&bbox, most),
-    };
-    let interval = num(c, p, "interval")?;
-    if interval.is_some_and(|x| x != 0.0 && x < crate::model::MIN_CONTOUR_INTERVAL) {
-        return Err(bad(c, format!("`interval` is 0 (none) or at least {} mm", crate::model::MIN_CONTOUR_INTERVAL)));
-    }
-    let name = string(c, p, "name")?;
-    let source = match string(c, p, "source")? {
-        Some(t) if t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') && t.len() <= 32 && !t.is_empty() => Some(t),
-        Some(t) => return Err(bad(c, format!("`source` is a name such as terrarium or copernicus, not `{t}`"))),
-        None => None,
-    };
-    // Where the nodes would be, before anyone is asked: a spacing that makes too many for a toposolid is refused here.
-    let grid = crate::geo::nodes(&bbox, spacing, most).map_err(|why| bad(c, format!("{why}; a toposolid holds {most} heights")))?;
-    let got = geo.elevation(&bbox, spacing, source.as_deref()).map_err(|why| bad(c, why))?;
-    got.grid.check().map_err(|why| bad(c, why))?;
-    // The height project z = 0 is at, mm on the map: the site's own, or the ground at the origin.
-    let site_height = projector.height();
-    let (base, set) = if setting && site_height == 0.0 {
-        let (lon, lat) = projector.origin().map_err(|why| bad(c, why))?;
-        match got.grid.sample(lon, lat).filter(|z| z.is_finite()) {
-            Some(z) if (z * 1000.0).abs() <= MAX_COORD => (z * 1000.0, true),
-            _ => {
-                return Err(bad(
-                    c,
-                    "the elevation data has no height at the project's origin, so it cannot become the site's height: give \
-                     `set_elevation` false, or a box that covers the origin",
-                ));
-            }
-        }
-    } else {
-        (site_height, false)
-    };
-    let corners = [(bbox.west, bbox.south), (bbox.east, bbox.south), (bbox.east, bbox.north), (bbox.west, bbox.north)];
-    let mut boundary: Vec<P2> =
-        corners.iter().map(|(lon, lat)| projector.point(*lon, *lat)).collect::<Result<_, _>>().map_err(|why| bad(c, why))?;
-    if geom::area(&boundary) < 0.0 {
-        boundary.reverse();
-    }
-    // The heights inside the box, and at its corners: a node on its edge, which the projection may put a hair outside, is left out.
-    let height = |lon: f64, lat: f64| got.grid.sample(lon, lat).filter(|z| z.is_finite()).map(|z| z * 1000.0 - base);
-    let mut points: Vec<[f64; 3]> = Vec::with_capacity(grid.at.len() + 4);
-    for (lon, lat) in &grid.at {
-        let Some(z) = height(*lon, *lat) else { continue };
-        let q = projector.point(*lon, *lat).map_err(|why| bad(c, why))?;
-        if geom::contains(&boundary, q) && geom::ring_edges(&boundary).all(|(a, b)| geom::dist_to_segment(q, a, b) > 10.0) {
-            points.push([q.0, q.1, z]);
-        }
-    }
-    for ((lon, lat), q) in corners.iter().zip(&boundary) {
-        if let Some(z) = height(*lon, *lat) {
-            points.push([q.0, q.1, z]);
-        }
-    }
-    if points.len() < 3 {
-        return Err(bad(
-            c,
-            format!("the elevation data has no heights over this box ({} of {} nodes have one)", points.len(), grid.at.len()),
-        ));
-    }
-    if set {
-        let m = s.model_mut();
-        let mut g = m.site().clone();
-        g.height = base;
-        g.check().map_err(|why| bad(c, why))?;
-        m.set_site(g);
-    }
-    let n = points.len();
-    let mut q = json!({"points": points, "boundary": boundary});
-    if let Some(name) = name {
-        q["name"] = json!(name);
-    }
-    if let Some(x) = interval {
-        q["interval"] = json!(x);
-    }
-    let mut out = toposolid(s, &q).map_err(|why| why.replacen("toposolid", c, 1))?;
-    out["points"] = json!(n);
-    out["spacing"] = json!(spacing);
-    out["source"] = json!(got.source);
-    out["cached"] = json!(got.cached);
-    out["elevation_set"] = if set { json!(base) } else { Value::Null };
-    out["attribution"] = json!(geo.attribution(&got.source));
-    // The buildings the import made stand on this ground, whichever came first.
-    if stand && let Some(id) = out["id"].as_u64() {
-        out["stood"] = stand_buildings(s, c, id)?;
-    }
-    Ok(out)
-}
-
 fn import_osm(s: &mut Session, p: &Value) -> R {
     let c = "import_osm";
-    only(c, p, &["path", "data", "bbox", "level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"])?;
+    only(c, p, &["path", "data", "bbox", "level", "level_height", "default_height", "parts", "entrances", "detail", "replace"])?;
     let text = match (p.get("path").filter(|v| !v.is_null()), p.get("data").filter(|v| !v.is_null())) {
         (Some(_), Some(_)) => return Err(bad(c, "give `path` or `data`, not both")),
         (None, None) => return Err(bad(c, "`path`, an OpenStreetMap file, or `data`, its text or Overpass's JSON, is required")),
@@ -13123,8 +12820,6 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let projector = crate::geo::Projector::of(m).map_err(|why| bad(c, why))?;
     let level = level_param(c, m, p, "level")?;
-    let level_z = m.elevation(level);
-    let ground = terrain_ground(c, m, p, "terrain")?;
     let osm = crate::osm::parse(&text).map_err(|why| bad(c, why))?;
     let found = crate::osm::buildings(&osm, &options);
 
@@ -13165,8 +12860,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
             known_of.entry(osm_id.split('~').next().unwrap_or(osm_id).to_string()).or_default().push((osm_id.clone(), *id));
         }
     }
-    let (mut made, mut updated, mut courtyards, mut off_terrain, mut pieces_made, mut cut_buildings) =
-        (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut made, mut updated, mut courtyards, mut pieces_made, mut cut_buildings) = (0usize, 0usize, 0usize, 0usize, 0usize);
     let mut skipped: Vec<(String, String)> = found.skipped.iter().map(|k| (k.osm_id.clone(), k.why.clone())).collect();
     let mut ids: Vec<Id> = Vec::new();
     let mut by_osm: std::collections::HashMap<String, Vec<Id>> = std::collections::HashMap::new();
@@ -13232,13 +12926,6 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
             }
         }
         for (osm_id, piece, cut_edges) in outlines.iter().cloned() {
-            let ground = match &ground {
-                Some(g) => g.lowest(&piece).unwrap_or_else(|| {
-                    off_terrain += 1;
-                    level_z
-                }),
-                None => level_z,
-            };
             let cut = |t: &str| -> String { t.chars().take(MAX_TEXT.min(256)).collect() };
             let mut params: BTreeMap<String, Value> = BTreeMap::new();
             params.insert("OSM Id".into(), json!(osm_id));
@@ -13272,7 +12959,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
                 boundary: piece,
                 top_level: None,
                 height: b.height - b.min_height,
-                base_offset: ground - level_z + b.min_height,
+                base_offset: b.min_height,
                 top: None,
                 params,
             };
@@ -13433,7 +13120,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     ids.truncate(MAX_LISTED);
     let mut out = json!({
         "made": made, "updated": updated, "skipped": skipped.len(), "skipped_by_reason": reasons, "skipped_list": listed,
-        "courtyards_filled": courtyards, "off_terrain": off_terrain, "defaulted_height": found.defaulted,
+        "courtyards_filled": courtyards, "defaulted_height": found.defaulted,
         "outlines_replaced": found.replaced, "outlines_kept": found.kept, "pieces": pieces_made, "pieces_of": cut_buildings,
         "entrances": entrances_placed, "entrances_by_kind": by_kind, "entrances_unplaced": entrances_unplaced.len(),
         "entrances_unplaced_list": entrances_unplaced.iter().take(20).collect::<Vec<_>>(), "entrances_dropped": entrances_dropped,
@@ -13474,7 +13161,7 @@ fn fetch_bbox(c: &str, p: &Value, m: &Model) -> Result<crate::geo::Bbox, String>
 
 fn fetch_osm(s: &mut Session, p: &Value) -> R {
     let c = "fetch_osm";
-    only(c, p, &["bbox", "radius", "level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"])?;
+    only(c, p, &["bbox", "radius", "level", "level_height", "default_height", "parts", "entrances", "detail", "replace"])?;
     let Some(geo) = s.geo.clone() else {
         return Err(bad(
             c,
@@ -13484,7 +13171,7 @@ fn fetch_osm(s: &mut Session, p: &Value) -> R {
     };
     // What goes on to the import, checked now, by importing nothing: a refusal should not cost a fetch.
     let mut forward = serde_json::Map::new();
-    for key in ["level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"] {
+    for key in ["level", "level_height", "default_height", "parts", "entrances", "detail", "replace"] {
         if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
             forward.insert(key.into(), v.clone());
         }

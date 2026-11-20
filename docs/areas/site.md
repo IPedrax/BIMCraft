@@ -66,18 +66,9 @@ The triangulation is the floor shape editor's (`triangulation::constrained`), no
 - **File**: `FORMAT` 21, the next release's (0.12 writes and reads 20, and would answer a toposolid with a serde error rather than "saved by a newer BIMCraft").
 - **Visibility/Graphics and Object Styles**: the `toposolid` category.
 
-## From elevation data, and what stands on it
-
-`fetch_terrain` ([geofetch](geofetch.md#ground)) makes a toposolid of a box round the site's place from an elevation service: its
-outline the box, its top's points the heights (at most 1,996 and the box's corners, the cap of a shape's points, so the sampling is no
-finer than that allows), project heights from the site's height on the map. `place_on_terrain {ids, terrain?, offset?}` stands masses,
-columns, footings, components and walls on a toposolid at the lowest ground under them, and `import_osm` stands the buildings it makes
-the same way (`ground::Ground`: the top's faces worked out once, a point looked up in them; on the outline within a millimetre is on
-it). The desktop's Massing tab has both (Terrain from Elevation Data, Place on Terrain).
-
 ## Not yet
 
-- **Create from Import**: CSV points and 3D DXF contours (heights from an elevation service come in: see above).
+- **Create from Import**: CSV points and 3D DXF contours.
 - **The rest of the type**: contour display by type (start and end elevation, line style subcategories), the coarse-scale
   fill pattern and colour, a structural material, and the function. The interval is the instance's for now.
 - **Its layers in 3D**: a toposolid is not split by its compound structure as a floor is, so its sides take its top
