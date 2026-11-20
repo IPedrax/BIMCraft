@@ -239,12 +239,18 @@ impl BimApp {
         }
     }
 
-    /// The family document's two-letter keys, typed with Ctrl held as the project's are: HH, HC, HI, IC and HR, or what
-    /// Keyboard Shortcuts made them. (The document's own Ctrl keys, S, K and a sketch's Z, are taken before these.)
+    /// The family document's two-letter keys, typed without Ctrl as the project's are: HH, HC, HI, IC and HR, or what
+    /// Keyboard Shortcuts made them. (The document's own Ctrl chords, S, K, Z and Y, are handled by their bindings.)
     pub(super) fn family_typed(&mut self, ctx: &Context) {
-        for ch in crate::ctrl_letters(ctx) {
+        for ch in crate::sequence_letters(ctx) {
             self.typed.push(ch);
             self.typed_at = ctx.input(|i| i.time);
+            // A letter that begins no binding is no part of a sequence, and is dropped at once.
+            let started = self.typed.chars().next().and_then(crate::shortcuts::key_of_char);
+            if started.is_some_and(|k| !self.shortcuts.sequence_starts_with(k)) {
+                self.typed.remove(0);
+                continue;
+            }
             if self.typed.len() < 2 {
                 continue;
             }
@@ -252,29 +258,26 @@ impl BimApp {
                 self.typed.clear();
                 continue;
             }
-            // Not a shortcut: the first does its own job as a Ctrl key, and the second waits in its place.
-            let first = self.typed.remove(0);
-            self.family_ctrl_key(first);
+            // Not a shortcut: the first begins no binding, and the second waits in its place.
+            if !(self.typed.len() == 2 && self.shortcuts.text_starts_three(&self.typed)) {
+                self.typed.remove(0);
+            }
         }
-        // A letter left waiting does its own job once Ctrl is let go, or after the wait with Ctrl still held.
+        // A letter left waiting is forgotten after the wait, so a stray key never completes a pair much later.
         if self.typed.len() == 1 {
-            let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
-            let left = crate::CTRL_WAIT - (now - self.typed_at);
-            if held && left > 0.0 {
+            let now = ctx.input(|i| i.time);
+            let left = crate::SEQUENCE_WAIT - (now - self.typed_at);
+            if left > 0.0 {
                 ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
             } else {
-                let letter = self.typed.remove(0);
-                self.family_ctrl_key(letter);
+                self.typed.clear();
             }
         }
     }
 
     /// Whether the two letters in `typed` are one of the family document's shortcuts, which it then does.
     fn family_shortcut(&mut self) -> bool {
-        let action = match self.custom_shortcuts.get(&self.typed) {
-            Some(action) => Some(action.as_str()),
-            None => crate::SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a),
-        };
+        let action = self.shortcuts.action_for_text(&self.typed);
         // Reference Plane, in a family's plan or elevation (F4): the family document's own.
         if self.typed == "RP"
             && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
@@ -305,40 +308,21 @@ impl BimApp {
             return true;
         }
         // The view control bar's Zoom to Fit (ZF, ZE, ZA), in the view shown (`zoom.rs`).
-        if action == Some("Zoom to Fit")
+        if action.as_deref() == Some("ui.view.zoom_fit")
             && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
         {
             ed.zoom_to_fit();
             return true;
         }
-        let asked = match action {
-            Some("Temporary Hide Element") => Asked::Hide { category: false },
-            Some("Temporary Hide Category") => Asked::Hide { category: true },
-            Some("Temporary Isolate Element") => Asked::Isolate { category: false },
-            Some("Temporary Isolate Category") => Asked::Isolate { category: true },
-            Some("Reset Temporary Hide/Isolate") => Asked::Reset,
+        let asked = match action.as_deref() {
+            Some("ui.view.temp_hide_element") => Asked::Hide { category: false },
+            Some("ui.view.temp_hide_category") => Asked::Hide { category: true },
+            Some("ui.view.temp_isolate_element") => Asked::Isolate { category: false },
+            Some("ui.view.temp_isolate_category") => Asked::Isolate { category: true },
+            Some("ui.view.temp_reset") => Asked::Reset,
             _ => return false,
         };
         self.family_temp(asked);
         true
-    }
-
-    /// What a letter typed with Ctrl does on its own in a family document: S saves it, K finds a command, Z undoes (a sketch's
-    /// last change while sketching; the document's history waits for Finish), Y redoes.
-    fn family_ctrl_key(&mut self, letter: char) {
-        match letter {
-            'S' => self.family_save(false),
-            'K' => self.find = Some(String::new()),
-            'Z' | 'Y' => {
-                let Some(ed) = self.active_family_mut() else { return };
-                match (letter, ed.sketch.is_some()) {
-                    ('Z', true) => ed.undo_sketch(),
-                    ('Z', false) => ed.ask.undo = true,
-                    ('Y', false) => ed.ask.redo = true,
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
     }
 }

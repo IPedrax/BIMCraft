@@ -526,12 +526,6 @@ const SHORTCUTS: [(&str, &str); 70] = [
     ("UD", "Underlay Settings"),
 ];
 
-/// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
-/// How long a letter typed with Ctrl held waits for a second one before it does its own job as a Ctrl key (S saves, Z
-/// undoes): a second letter in time makes the two a shortcut (Ctrl held, S then A: Select All Instances). Letting Ctrl go
-/// ends the wait at once.
-pub(crate) const CTRL_WAIT: f64 = 0.5;
-
 /// How far an arrow key nudges the selection on screen, in pixels, before [`nudge_step`] rounds it to a length.
 const NUDGE_PX: f64 = 10.0;
 
@@ -554,34 +548,74 @@ pub(crate) fn nudge_step(scale: f64) -> f64 {
         }
 }
 
-/// The letters and digits typed this frame with Ctrl held (Cmd on a Mac) and no other modifier, taken out of the frame's
-/// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters.
-pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
+/// Removes the key events a shortcut took, so no other handler runs the same command. Matching is
+/// on the event's logical key, its physical key and its exact modifiers.
+pub(crate) fn consume_key_events(ctx: &Context, handled: &[(Key, Option<Key>, Modifiers)]) {
+    if handled.is_empty() {
+        return;
+    }
     ctx.input_mut(|i| {
-        let mut out = Vec::new();
         i.events.retain(|e| {
-            let Event::Key { key, pressed: true, modifiers, .. } = e else { return true };
-            let name = key.name();
-            let mut chars = name.chars();
-            match (modifiers.command && !modifiers.shift && !modifiers.alt, chars.next(), chars.next()) {
-                (true, Some(c), None) if c.is_ascii_alphanumeric() => {
-                    out.push(c.to_ascii_uppercase());
-                    false
+            !matches!(
+                e,
+                Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. }
+                    if handled.iter().any(|(k, p, m)| k == key && p == physical_key && m == modifiers)
+            )
+        })
+    });
+}
+
+/// How long a letter typed without a modifier waits for the next one of its sequence (W for Wall): past it the letter is
+/// forgotten, so a stray key never completes a pair much later.
+pub(crate) const SEQUENCE_WAIT: f64 = 2.0;
+
+/// The letters and digits typed this frame without Ctrl, Alt or Cmd, taken out of the frame's events, upper case: a
+/// sequence is two or three of them, typed as Revit's are (`WA` for Wall), with or without Shift. They are read by their
+/// physical key, so a Russian layout types the same sequences; the family document's own keys come this way. A key held
+/// with Ctrl is no part of a sequence: it is the combination Keyboard Shortcuts gave it, or nothing at all.
+pub(crate) fn sequence_letters(ctx: &Context) -> Vec<char> {
+    ctx.input_mut(|i| {
+        let events = std::mem::take(&mut i.events);
+        let mut out = Vec::new();
+        let mut kept = Vec::with_capacity(events.len());
+        for event in events {
+            match &event {
+                Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. }
+                    if !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd && !modifiers.command =>
+                {
+                    let name = physical_key.unwrap_or(*key).name();
+                    let mut chars = name.chars();
+                    match (chars.next(), chars.next()) {
+                        (Some(c), None) if c.is_ascii_alphanumeric() => out.push(c.to_ascii_uppercase()),
+                        _ => kept.push(event),
+                    }
                 }
-                _ => true,
+                _ => kept.push(event),
             }
-        });
+        }
+        i.events = kept;
         out
     })
 }
 
+/// Every two-letter shortcut and what it does, as the registry's starting sequences. Tests use it
+/// to check that every listed pair resolves.
+#[cfg(test)]
 fn shortcuts() -> Vec<(&'static str, &'static str)> {
-    let aliases = engine::commands().iter().flat_map(|c| c.aliases.iter().map(move |a| (*a, c.label)));
-    SHORTCUTS
-        .into_iter()
-        .chain(mep::FIXTURES.iter().map(|f| (f.letters, f.label)))
-        .chain(aliases.filter(|(a, _)| !SHORTCUTS.iter().any(|(s, _)| s == a)))
-        .collect()
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    for a in crate::shortcuts::registry().actions() {
+        for k in &a.defaults {
+            if !(k.len() == 2 && k.chars().all(|c| c.is_ascii_alphanumeric())) {
+                continue;
+            }
+            // CL is Revit's for two different actions: the dialog lists both, and the context picks one.
+            if *k != "CL" && out.iter().any(|(seen, _)| seen == k) {
+                continue;
+            }
+            out.push((k, a.label));
+        }
+    }
+    out
 }
 
 /// What an IFC import brought in, and the first few things it left out (the core's reasons, in
@@ -988,8 +1022,13 @@ pub struct BimApp {
     /// The Keyboard Shortcuts dialog is open (KS); the Manage tab drops its Project Units menu open
     /// the next time it shows (UN).
     show_shortcuts: bool,
-    pub custom_shortcuts: BTreeMap<String, String>,
+    /// The action bindings: several per action, chords and Revit-style sequences.
+    pub shortcuts: shortcuts::Shortcuts,
     pub shortcuts_dialog: shortcuts::ShortcutsDialog,
+    /// The user's named snapshots of the bindings, kept in `settings.json`; built-in presets are generated.
+    pub shortcut_presets: Vec<shortcuts::ShortcutPreset>,
+    /// The preset the current set came from: `builtin:<code>` or a user's name.
+    pub active_shortcut_preset: Option<String>,
     open_units: bool,
     /// Where the Options Bar was drawn last frame, for a view's navigation bar to keep clear of it (nothing when it isn't there).
     options_rect: Rect,
@@ -1010,7 +1049,8 @@ pub struct BimApp {
     edit: Option<(Id, String, String)>,
     /// The Level tool's elevation and name, as typed in the Options Bar.
     new_level: (String, String),
-    /// The letters typed with Ctrl held, for two-letter shortcuts: one waits for a second ([`CTRL_WAIT`]).
+    /// The letters typed without a modifier, for the two- and three-key sequences (`WA` for Wall): one waits for the next
+    /// ([`SEQUENCE_WAIT`]).
     typed: String,
     /// When the one letter in `typed` was typed, by the window's clock.
     typed_at: f64,
@@ -1279,13 +1319,15 @@ fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Re
 /// A ribbon button: an icon over its label, tinted while its tool is on; as wide as its label, which breaks over two lines
 /// when one would make it wider than `WIDE`.
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
-    ribbon_button(ui, icon, label, active, tip, true, None)
+    let tip = crate::shortcuts::tip_with_shortcuts(label, tip);
+    ribbon_button(ui, icon, label, active, &tip, true, None)
 }
 
 /// A big ribbon button, or its row in a list, whose icon and name are in `own` rather than the theme's ink: Finish Edit Mode's
 /// green and Cancel Edit Mode's red.
 fn inked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, own: Option<Color32>) -> Response {
-    ribbon_button(ui, icon, label, active, tip, true, own)
+    let tip = crate::shortcuts::tip_with_shortcuts(label, tip);
+    ribbon_button(ui, icon, label, active, &tip, true, own)
 }
 
 /// A ribbon button whose label is a plugin's data: it isn't translated, as its manifest wrote it, and it has no icon
@@ -1409,6 +1451,7 @@ pub(crate) fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, t
         return r;
     }
     let (label, tip) = (t(label), t(tip));
+    let tip = crate::shortcuts::tip_with_shortcuts(name, tip);
     let (rect, r) = ui.allocate_exact_size(vec2(30.0, 25.0), Sense::click());
     let enabled = ui.is_enabled();
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, label));
@@ -1666,7 +1709,7 @@ impl BimApp {
     pub fn new(session: Session) -> BimApp {
         let first = Sheet::Plan(session.model.levels().first().map_or(0, |(id, _)| *id));
         let units = session.model.units;
-        BimApp {
+        let app = BimApp {
             saved: Arc::clone(&session.model),
             project: session.model.uid,
             autosave: autosave::State::default(),
@@ -1872,8 +1915,10 @@ impl BimApp {
             face_cycle: false,
             held: Vec::new(),
             show_shortcuts: false,
-            custom_shortcuts: BTreeMap::new(),
+            shortcuts: shortcuts::Shortcuts::default(),
             shortcuts_dialog: shortcuts::ShortcutsDialog::default(),
+            shortcut_presets: Vec::new(),
+            active_shortcut_preset: None,
             angle_edit: None,
             snaps: Snaps::default(),
             show_snaps: false,
@@ -2012,7 +2057,9 @@ impl BimApp {
             opens: Vec::new(),
             dialog: None,
             revit_report: None,
-        }
+        };
+        shortcuts::publish(&app.shortcuts);
+        app
     }
 
     /// Whether the model changed since it was last opened or saved.
@@ -2654,12 +2701,6 @@ impl BimApp {
             return;
         }
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
-        if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::S) {
-            self.save_as(ctx, None);
-        }
-        if pressed(Modifiers::COMMAND, Key::Comma) {
-            self.settings_page = Some(settings::Page::Interface);
-        }
         // Space in Walls' Outline's Offset field turns a centre-line offset from the inside to the outside, instead of
         // typing a space.
         if self.outline_pending
@@ -2691,19 +2732,62 @@ impl BimApp {
             ctx.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(t) if t.trim().is_empty())));
             return;
         }
-        // A text field has the letters: there Ctrl's own keys that aren't a field's act at once, and no shortcut is typed.
-        if ctx.egui_wants_keyboard_input() {
-            for (key, letter) in [(Key::S, 'S'), (Key::O, 'O'), (Key::N, 'N'), (Key::K, 'K'), (Key::P, 'P'), (Key::Num1, '1')] {
-                if pressed(Modifiers::COMMAND, key) {
-                    self.ctrl_key(ctx, letter);
-                }
-            }
+        if ctx.input(|i| i.pointer.any_click()) {
             self.typed.clear();
+        }
+        let events: Vec<Event> = ctx.input(|i| i.events.clone());
+        // A text field keeps its letters, but Save, Save As, Open, New, Find and Settings may be
+        // pressed there: they do not take text away.
+        if ctx.egui_wants_keyboard_input() {
+            self.typed.clear();
+            self.global_shortcuts(ctx, &events);
             return;
         }
-        if self.sketch.is_none() && !self.chain_active() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
-            self.run("redo", json!({}));
+        // Chords first: an exact match, on the physical key, so Ctrl+D and Ctrl+Shift+D are two
+        // different bindings and a Russian layout still gives Ctrl+D. Ctrl is never part of a sequence:
+        // a combination runs only when Keyboard Shortcuts assigned it.
+        let mut handled: Vec<(Key, Option<Key>, Modifiers)> = Vec::new();
+        for event in &events {
+            let Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. } = event else { continue };
+            let physical = physical_key.unwrap_or(*key);
+            // While sketching, Ctrl+Z takes back a line; the model's Undo waits for Finish.
+            if self.sketch.is_some() && modifiers.command && !modifiers.shift && !modifiers.alt && physical == Key::Z {
+                handled.push((*key, *physical_key, *modifiers));
+                self.typed.clear();
+                self.unsketch();
+                continue;
+            }
+            let chord = shortcuts::KeyChord::from_event(physical, *modifiers);
+            if let Some(action) = self.shortcuts.action_for_chord(&chord).cloned() {
+                handled.push((*key, *physical_key, *modifiers));
+                self.typed.clear();
+                // Mid-chain, undo is the chain's: a typed number goes first, as in a field; then the point and the segment
+                // built to it, never a step of the model behind it. A chain has no redo.
+                if action.as_ref() == "cmd.undo" && self.chain_active() {
+                    if self.typed_length.is_empty() && self.drawing.other.is_empty() {
+                        self.undo_chain_point();
+                    } else {
+                        self.clear_typed();
+                    }
+                    continue;
+                }
+                if action.as_ref() == "cmd.redo" && self.chain_active() {
+                    continue;
+                }
+                // A whole-selected field in hand takes Delete first: the number goes, not the selection
+                // behind it. The field is cleared here, as the contextual keys would, and the event is
+                // consumed so no second handler deletes an element.
+                if action.as_ref() == "cmd.delete" && self.drawing.selected && modifiers.is_none() && physical == Key::Delete {
+                    self.typed_length.clear();
+                    self.drawing.selected = false;
+                    handled.push((*key, *physical_key, *modifiers));
+                    continue;
+                }
+                self.run_shortcut(ctx, &action);
+            }
         }
+        consume_key_events(ctx, &handled);
+
         // Ctrl+A with a reading field in hand selects that field for overwrite, as a text field does: it is taken before
         // the two-letter shortcuts, so it neither waits for a second letter nor reaches the canvas's Select All.
         if self.drawing.armed && self.line_angle_field() && pressed(Modifiers::COMMAND, Key::A) {
@@ -2714,20 +2798,18 @@ impl BimApp {
         if self.sketch.is_none() {
             self.clipboard_events(ctx);
         }
-        // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
-        for letter in ctrl_letters(ctx) {
-            self.ctrl_letter(ctx, letter);
-        }
-        self.ctrl_waited(ctx);
         if self.orbit.placement_drag_active() && (pressed(Modifiers::SHIFT, Key::Escape) || pressed(Modifiers::NONE, Key::Escape)) {
             self.orbit.cancel_placement_drag();
             self.status = Status::default();
             return;
         }
-        // Esc while a custom fill pattern is picked brings its dialog back.
-        // And while Underlay Settings' Move or Rotate picks, it stops them and brings the dialog back.
-        if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() && !self.cancel_underlay_edit() {
-            self.escape();
+        // Contextual keys of a tool: Esc, Enter, Tab, Backspace, Space and the arrows are reserved.
+        if pressed(Modifiers::NONE, Key::Escape) {
+            self.typed.clear();
+            // A custom fill pattern picked is brought back, as Underlay Settings' Move or Rotate is stopped.
+            if !self.cancel_pattern_pick() && !self.cancel_underlay_edit() {
+                self.escape();
+            }
         }
         // Enter ends the 3D view's measured chain where it is.
         if self.sheet == Sheet::View3D
@@ -2852,8 +2934,11 @@ impl BimApp {
             self.toggle_alignment_guides();
         }
         // Q marks the point or edge under the pointer as a temporary snap reference, before the first point too.
+        // Q also starts the Quantities sequence (QT): it joins the sequence buffer, so the pin and the
+        // shortcut can share the key.
         if pressed(Modifiers::NONE, Key::Q) && matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_)) {
             self.pin_under_cursor();
+            self.sequence_letter(ctx, 'Q');
             ctx.request_repaint();
         }
         let typed: String = ctx.input(|i| {
@@ -2882,6 +2967,103 @@ impl BimApp {
                 self.drawing.armed = true;
                 self.typed_length.push(ch);
             }
+        }
+
+        // A sequence is typed on the keyboard's row without Ctrl (W and A for Wall), as Revit's are; a tool taking a
+        // typed length keeps the digits and the letters after them, so a length never becomes a sequence.
+        let listening = self.base().is_some() || self.filleting() || self.rotating();
+        self.sequences(ctx, listening);
+        self.sequence_waited(ctx);
+    }
+
+    /// The sequence keys typed this frame: one that starts a two- or three-key binding waits for the next, and one that
+    /// starts none is dropped. Only Ctrl-free keys come here, so a combination runs solely as Keyboard Shortcuts
+    /// assigned it; `listening` is true while a tool takes a typed length, when a digit is the length's and no sequence's.
+    fn sequences(&mut self, ctx: &Context, listening: bool) {
+        let taking = !self.typed_length.is_empty();
+        let letters = ctx.input_mut(|i| {
+            let events = std::mem::take(&mut i.events);
+            let mut out = Vec::new();
+            let mut kept = Vec::with_capacity(events.len());
+            for event in events {
+                let letter = match &event {
+                    Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. }
+                        if !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd && !modifiers.command =>
+                    {
+                        let physical = physical_key.unwrap_or(*key);
+                        crate::shortcuts::is_sequence_key(physical).then_some(physical)
+                    }
+                    _ => None,
+                };
+                let Some(physical) = letter else {
+                    kept.push(event);
+                    continue;
+                };
+                // A digit is a typed length while a tool takes one, and a letter after one is the length's too.
+                let digit = physical.name().chars().next().is_some_and(|c| c.is_ascii_digit());
+                if taking || (listening && digit) {
+                    kept.push(event);
+                    continue;
+                }
+                out.push(physical);
+            }
+            i.events = kept;
+            out
+        });
+        for physical in letters {
+            let Some(letter) = physical.name().chars().next() else { continue };
+            self.sequence_letter(ctx, letter);
+        }
+    }
+
+    /// A sequence key typed: with the one before it, a shortcut; if the two are no binding, the first is dropped and the
+    /// second waits in its place. A plain letter that no sequence names does nothing at all.
+    fn sequence_letter(&mut self, ctx: &Context, letter: char) {
+        self.typed.push(letter);
+        self.typed_at = ctx.input(|i| i.time);
+        loop {
+            // A letter that begins no binding is no part of a sequence, and is dropped at once.
+            let first_started = self.typed.chars().next().and_then(crate::shortcuts::key_of_char);
+            if first_started.is_some_and(|k| !self.shortcuts.sequence_starts_with(k)) {
+                self.typed.remove(0);
+                continue;
+            }
+            if self.typed.len() < 2 {
+                return;
+            }
+            if let Some(action) = self.shortcuts.action_for_text(&self.typed) {
+                self.typed.clear();
+                self.run_shortcut(ctx, &action);
+                return;
+            }
+            // A pair that starts a three-key binding waits for its third letter.
+            if self.typed.len() == 2 && self.shortcuts.text_starts_three(&self.typed) {
+                return;
+            }
+            // The first letter began no binding: it is dropped, and the one after it waits in its place.
+            self.typed.remove(0);
+        }
+    }
+
+    /// A letter left waiting for its second is forgotten after [`SEQUENCE_WAIT`], so a stray key never completes a pair
+    /// much later.
+    fn sequence_waited(&mut self, ctx: &Context) {
+        if self.typed.is_empty() {
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        let left = SEQUENCE_WAIT - (now - self.typed_at);
+        if left > 0.0 {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+            return;
+        }
+        self.typed.clear();
+    }
+
+    /// Runs the action a shortcut names, saying so in the status bar when it has nothing to do here.
+    fn run_shortcut(&mut self, ctx: &Context, action: &shortcuts::ActionId) {
+        if !self.execute_action(ctx, action) {
+            self.status = Status { text: t("That shortcut has nothing to do here").to_string(), error: true };
         }
     }
 
@@ -2929,434 +3111,42 @@ impl BimApp {
         };
     }
 
-    /// A letter typed with Ctrl held: with the one before it, a shortcut; if the two aren't one, the first does its own job
-    /// as a Ctrl key ([`BimApp::ctrl_key`]) and the second waits in its place.
-    fn ctrl_letter(&mut self, ctx: &Context, letter: char) {
-        self.typed.push(letter);
-        self.typed_at = ctx.input(|i| i.time);
-        if self.typed.len() < 2 {
-            return;
-        }
-        if self.shortcut() {
+    /// The shortcuts a text field leaves alone: Save, Save As, Open, New, Find, Settings, Export PDF and Properties.
+    fn global_shortcuts(&mut self, ctx: &Context, events: &[Event]) {
+        const ALLOWED: &[&str] = &[
+            "cmd.save",
+            "ui.file.save_as",
+            "cmd.open",
+            "cmd.new",
+            "ui.find",
+            "ui.settings",
+            "ui.settings.shortcuts",
+            "ui.file.export_pdf",
+            "ui.palette.properties",
+        ];
+        let mut handled: Vec<(Key, Option<Key>, Modifiers)> = Vec::new();
+        for event in events {
+            let Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. } = event else { continue };
+            let physical = physical_key.unwrap_or(*key);
+            let chord = shortcuts::KeyChord::from_event(physical, *modifiers);
+            let Some(action) = self.shortcuts.action_for_chord(&chord).cloned() else { continue };
+            if !ALLOWED.contains(&action.as_ref()) {
+                continue;
+            }
+            handled.push((*key, *physical_key, *modifiers));
             self.typed.clear();
-            return;
+            self.execute_action(ctx, &action);
         }
-        let first = self.typed.remove(0);
-        self.ctrl_key(ctx, first);
+        consume_key_events(ctx, &handled);
     }
 
-    /// A letter left waiting for a second does its own job once Ctrl is let go, or after [`CTRL_WAIT`] with Ctrl still held.
-    fn ctrl_waited(&mut self, ctx: &Context) {
-        if self.typed.len() != 1 {
-            return;
-        }
-        let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
-        let left = CTRL_WAIT - (now - self.typed_at);
-        if held && left > 0.0 {
-            ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
-            return;
-        }
-        let letter = self.typed.remove(0);
-        self.ctrl_key(ctx, letter);
-    }
-
-    /// What a letter typed with Ctrl does on its own: S saves, O opens, N makes a new project, K finds a command, P prints
-    /// to PDF, D shows the start page, Z undoes (a sketch's last line while sketching), Y redoes, 1 shows Properties.
-    fn ctrl_key(&mut self, ctx: &Context, letter: char) {
-        match letter {
-            'S' => self.save(ctx, None),
-            'O' => self.guard(Pending::Open, ctx),
-            'N' => self.new_project(),
-            'K' => self.find = Some(String::new()),
-            'P' => self.open_export(Some("pdf")),
-            'D' => self.toggle_home(),
-            // While sketching, Ctrl+Z takes back a line; the model's steps wait until Finish or Cancel.
-            'Z' if self.sketch.is_some() => self.unsketch(),
-            // Mid-chain, undo is the chain's: a typed number goes first, as in a field; then the point and the segment
-            // built to it, never a step of the model behind it.
-            'Z' => {
-                if self.chain_active() {
-                    if self.typed_length.is_empty() && self.drawing.other.is_empty() {
-                        self.undo_chain_point();
-                    } else {
-                        self.clear_typed();
-                    }
-                } else {
-                    self.run("undo", json!({}));
-                }
-            }
-            'Y' if self.sketch.is_none() && !self.chain_active() => {
-                self.run("redo", json!({}));
-            }
-            '1' => self.toggle_properties(),
-            _ => {}
-        }
-    }
-
-    /// Revit's two-letter shortcuts: the desktop's own ([`SHORTCUTS`]), then the commands' aliases
-    /// (WA, DR, CR…). Whether `typed` is one.
+    /// Revit's two-key shortcuts, kept for the family document and for tests. The window's own
+    /// input path reads physical keys in [`BimApp::keys`].
+    #[cfg(test)]
     fn shortcut(&mut self) -> bool {
-        if let Some(action) = self.custom_shortcuts.get(&self.typed).cloned()
-            && self.execute_shortcut_action(&action)
-        {
-            return true;
-        }
-        let tool = match self.typed.as_str() {
-            "3D" => {
-                self.open_3d(None);
-                return true;
-            }
-            "MD" => Tool::Modify,
-            "MM" => Tool::Mirror { draw: false, start: None },
-            "DM" => Tool::Mirror { draw: true, start: None },
-            "AL" => Tool::Align(None),
-            "OF" => Tool::Offset,
-            "DW" => Tool::Demolish,
-            "LW" => Tool::Linework,
-            "ZF" | "ZE" | "ZA" => {
-                self.fit();
-                return true;
-            }
-            "TL" => {
-                self.thin = !self.thin;
-                return true;
-            }
-            "CS" => {
-                self.create_similar();
-                return true;
-            }
-            "PP" | "VP" => {
-                self.toggle_properties();
-                return true;
-            }
-            "NP" => {
-                self.toggle_browser();
-                return true;
-            }
-            "AI" => {
-                self.toggle_assistant();
-                return true;
-            }
-            "CW" => {
-                self.open_cowork();
-                return true;
-            }
-            "SA" => {
-                self.select_all_instances();
-                return true;
-            }
-            "AG" | "OG" => {
-                self.toggle_alignment_guides();
-                return true;
-            }
-            "KS" => {
-                self.show_shortcuts = true;
-                return true;
-            }
-            // Floor: Structural.
-            "SB" => {
-                self.structural_floor();
-                return true;
-            }
-            // Reinforce the element selected.
-            "RF" => {
-                self.open_reinforce();
-                return true;
-            }
-            // The materials, the steel list and the cut plan: commands with these aliases, and one dialog.
-            "BL" | "CU" | "QT" => {
-                self.open_steel(match self.typed.as_str() {
-                    "CU" => steel::Page::Plan,
-                    "QT" => steel::Page::Materials,
-                    _ => steel::Page::List,
-                });
-                return true;
-            }
-            "VV" | "VG" => {
-                self.open_graphics(0);
-                return true;
-            }
-            "EH" | "VH" => {
-                self.hide_selection(self.typed == "VH");
-                return true;
-            }
-            "WF" | "HL" | "SD" => {
-                let style = match self.typed.as_str() {
-                    "WF" => bimcraft_core::graphics::VisualStyle::Wireframe,
-                    "HL" => bimcraft_core::graphics::VisualStyle::HiddenLine,
-                    _ => bimcraft_core::graphics::VisualStyle::Shaded,
-                };
-                self.set_visual_style(style);
-                return true;
-            }
-            "HH" | "HC" | "HI" | "IC" | "HR" | "RH" => {
-                match self.typed.as_str() {
-                    "HH" => self.temp_hide(false),
-                    "HC" => self.temp_hide(true),
-                    "HI" => self.temp_isolate(false),
-                    "IC" => self.temp_isolate(true),
-                    "HR" => self.temp_reset(),
-                    _ => self.temp_reveal(),
-                }
-                return true;
-            }
-            // What the selection hides comes back; with nothing of it hidden, the list of what the view hides.
-            "PU" => {
-                self.open_purge();
-                return true;
-            }
-            "LK" => {
-                self.link_dialog = true;
-                return true;
-            }
-            "LO" => {
-                self.open_location();
-                return true;
-            }
-            "DP" => {
-                self.duplicate_plan("duplicate");
-                return true;
-            }
-            "BX" => {
-                self.toggle_section_box();
-                return true;
-            }
-            "GD" => {
-                self.open_display();
-                return true;
-            }
-            "FY" => {
-                self.toggle_fly();
-                return true;
-            }
-            "TB" => {
-                self.open_title_blocks(None);
-                return true;
-            }
-            "BC" => {
-                self.codes_dialog = Some(codes::CodesDialog::new(&self.session.model));
-                return true;
-            }
-            // The stair selected: its code check, or it made a sketch or a stair for each storey (the core says why not).
-            "CK" => {
-                if let [id] = self.selected_stairs().as_slice() {
-                    self.code_check(*id);
-                }
-                return true;
-            }
-            "TS" | "SY" => {
-                let command = if self.typed == "TS" { "stair_sketch" } else { "stair_storeys" };
-                self.run(command, json!({"id": self.selection.first()}));
-                return true;
-            }
-            "PY" | "RS" | "LS" | "NS" | "XS" => {
-                match self.typed.as_str() {
-                    "PY" => self.toggle_player(),
-                    "RS" => self.run_open_pyaddin(),
-                    "LS" => self.reload_pyaddins(),
-                    "NS" => self.pyaddins.new_script = Some(self.pyaddins.free_name()),
-                    _ => self.stop_pyaddin(),
-                }
-                return true;
-            }
-            "CI" => {
-                self.open_classification();
-                return true;
-            }
-            // The plan, section or elevation on screen: its underlay's settings, where a view with none picks one.
-            "UD" => {
-                match self.underlay_target() {
-                    Some(view) => self.underlay_dialog = Some(view),
-                    None => {
-                        self.status = Status { text: t("Underlay Settings is for a plan, a section or an elevation").into(), error: true }
-                    }
-                }
-                return true;
-            }
-            "EU" | "UE" => {
-                if self.hidden_selection().0.is_empty() {
-                    self.open_graphics(graphics::ELEMENTS_TAB);
-                } else {
-                    self.unhide_selection(false);
-                }
-                return true;
-            }
-            "VU" => {
-                self.unhide_selection(true);
-                return true;
-            }
-            "EO" => {
-                self.override_selection();
-                return true;
-            }
-            "FT" => {
-                self.filters_dialog = Some(graphics::FiltersDialog::default());
-                return true;
-            }
-            "VT" => {
-                self.open_templates();
-                return true;
-            }
-            "PH" => {
-                self.phasing_dialog = Some(phasing::PhasingDialog::default());
-                return true;
-            }
-            "DO" => {
-                self.options_dialog = Some(phasing::OptionsDialog::default());
-                return true;
-            }
-            // Revit's snap overrides: for the next point picked, that snap alone, or none.
-            "SE" | "SM" | "SI" | "SC" | "SP" | "SQ" | "ST" | "SN" | "SO" | "SS" => {
-                self.snap_once = match self.typed.as_str() {
-                    "SQ" => Some(Once::Only(Snap::Quadrant)),
-                    "ST" => Some(Once::Only(Snap::Tangent)),
-                    "SE" => Some(Once::Only(Snap::Endpoint)),
-                    "SM" => Some(Once::Only(Snap::Midpoint)),
-                    "SI" => Some(Once::Only(Snap::Intersection)),
-                    "SC" => Some(Once::Only(Snap::Centre)),
-                    "SP" => Some(Once::Only(Snap::Perpendicular)),
-                    "SN" => Some(Once::Only(Snap::Nearest)),
-                    "SO" => Some(Once::Off),
-                    _ => None,
-                };
-                return true;
-            }
-            code if mep::fixture_with(code).is_some() => Tool::Fixture(mep::fixture_with(code).map_or("", |f| f.key)),
-            code if mep::run_with(code).is_some() => Tool::Run(mep::run_with(code).unwrap_or("beam"), None),
-            code => match engine::find(code).map(|c| c.id) {
-                Some("wall") => Tool::Wall(Vec::new()),
-                Some("door") => Tool::Door,
-                Some("window") => Tool::Window,
-                Some("room") => Tool::Room,
-                Some("room_separator") => Tool::RoomSeparator(None),
-                Some("level") => Tool::Level,
-                Some("grid") => Tool::Grid(None),
-                Some("reference_plane") => Tool::ReferencePlane(None),
-                Some("move") => Tool::Move(None),
-                Some("copy") => Tool::Copy(None),
-                Some("rotate") => Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false },
-                Some("corner") => Tool::Trim(None),
-                Some("split") => Tool::Split,
-                Some("linework") => Tool::Linework,
-                Some("detail_group") => Tool::DetailGroup,
-                Some("model_group") => Tool::ModelGroup,
-                Some("repeating_detail") => Tool::RepeatingDetail(None),
-                Some("create_group") => {
-                    self.create_group();
-                    return true;
-                }
-                Some("ungroup") => {
-                    self.ungroup();
-                    return true;
-                }
-                Some("edit_group") => {
-                    self.edit_group();
-                    return true;
-                }
-                Some("exclude_member") => {
-                    self.exclude_selected();
-                    return true;
-                }
-                Some("restore_excluded") => {
-                    self.restore_excluded();
-                    return true;
-                }
-                Some("dimension") => Tool::Dimension(DimMode::Aligned, Vec::new()),
-                Some("text") => Tool::Text,
-                Some("detail_line") => {
-                    (self.drawing.insulation, self.drawing.cloud) = (None, None);
-                    Tool::DetailLine(Vec::new())
-                }
-                Some("spot") => Tool::Spot,
-                Some("spot_coordinate") => Tool::SpotCoordinate(None),
-                Some("rotate_project_north") => Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false },
-                Some("specify_coordinates") => {
-                    self.specify_coordinates_pick();
-                    return true;
-                }
-                Some("tag") => Tool::Tag,
-                // Revit's CL is the structural column on its Structure tab, the architectural one elsewhere.
-                Some("column") if self.tab == Tab::Structure || (self.tab == Tab::Context && self.back == Tab::Structure) => {
-                    Tool::Stand("structuralcolumn")
-                }
-                Some("column") => Tool::Column,
-                Some("footing") => Tool::Stand("footing"),
-                Some("mass") => Tool::Mass(Vec::new()),
-                Some("show_mass") => {
-                    self.show_mass();
-                    return true;
-                }
-                Some("filled_region") => {
-                    if let Some(view) = self.plan_key() {
-                        self.start_sketch(sketch::Of::Region { view, masking: false }, Vec::new());
-                    }
-                    return true;
-                }
-                Some(c @ ("mass_floors" | "wall_by_face" | "floor_by_face" | "roof_by_face" | "update_by_face")) => {
-                    self.by_mass(c);
-                    return true;
-                }
-                Some("component") => Tool::Component,
-                Some("section") => Tool::Section(None),
-                Some("measure") => Tool::Measure(None),
-                Some("paint") => Tool::Paint,
-                Some("match_properties") => {
-                    self.match_properties();
-                    return true;
-                }
-                Some("delete") => {
-                    self.delete();
-                    return true;
-                }
-                Some("pin") => {
-                    self.set_pinned(true);
-                    return true;
-                }
-                Some("unpin") => {
-                    self.set_pinned(false);
-                    return true;
-                }
-                Some("fillet") => {
-                    self.set_tool(Tool::DetailLine(Vec::new()));
-                    self.set_shape(draw::Target::Detail, draw::Shape::Fillet);
-                    return true;
-                }
-                Some("join_polyline") => {
-                    self.join_polyline();
-                    return true;
-                }
-                Some("explode") => {
-                    self.explode_polyline();
-                    return true;
-                }
-                // A curtain wall's tools, on the one alone selected; Replace Panel with Wall, on the panel Tab picked.
-                Some("curtain_grid") => {
-                    if let Some(wall) = self.curtain_alone() {
-                        self.set_tool(Tool::CurtainGrid { wall, way: bimcraft_core::curtain::GridWay::Vertical });
-                    }
-                    return true;
-                }
-                Some("curtain_segment") => {
-                    if let Some(wall) = self.curtain_alone() {
-                        self.set_tool(Tool::CurtainSegment { wall });
-                    }
-                    return true;
-                }
-                Some("curtain_panel_wall") => {
-                    self.replace_panel_with_wall();
-                    return true;
-                }
-                // Revit's opens the Project Units dialog; BIMCraft's is the Manage tab's menu.
-                Some("units") => {
-                    self.tab = Tab::Manage;
-                    self.open_units = true;
-                    return true;
-                }
-                _ => return false,
-            },
-        };
-        self.set_tool(tool);
-        true
+        let Some(action) = self.shortcuts.action_for_text(&self.typed) else { return false };
+        let ctx = Context::default();
+        self.execute_action(&ctx, &action)
     }
 
     /// The snaps in force for the next point picked: Manage > Snaps, unless a shortcut (SE, SM, SI,
@@ -4525,7 +4315,8 @@ impl BimApp {
         fresh.compressed_save = self.compressed_save;
         fresh.cut_fills_3d = self.cut_fills_3d;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
-        fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
+        fresh.shortcuts = std::mem::take(&mut self.shortcuts);
+        crate::shortcuts::publish(&fresh.shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
         (fresh.panel_colour, fresh.canvas_colour, fresh.text_colour) = (self.panel_colour, self.canvas_colour, self.text_colour);
         fresh.styled = self.styled;
@@ -5798,7 +5589,7 @@ impl BimApp {
             });
             let tip = msg!("Keyboard Shortcuts (KS): customize, edit, and load shortcut keys");
             if big_button(ui, Icon::Keyboard, "Shortcuts", self.show_shortcuts, tip).clicked() {
-                self.show_shortcuts = true;
+                self.open_shortcuts();
             }
             // Where a room's area is measured, as Revit's Room Area Computation.
             let now = self.session.model.room_area;

@@ -205,7 +205,7 @@ fn stop_ends_a_script_that_would_run_forever() {
     start(&mut h, "Spin");
     h.run_steps(3);
     assert!(h.state().pyaddins.running.is_some());
-    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::X, Key::S]);
+    shortcut(&mut h, "XS");
     h.step();
     h.step();
     until_done(&mut h);

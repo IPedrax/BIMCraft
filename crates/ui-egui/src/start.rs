@@ -44,7 +44,7 @@ enum Thumb {
 #[derive(Default)]
 pub struct Home {
     pub shown: bool,
-    /// Whether it was brought up over a project, which Back (and Ctrl+D, as in Revit) goes back to.
+    /// Whether it was brought up over a project, which Back (and Ctrl+D) goes back to.
     pub over: bool,
     thumbs: HashMap<PathBuf, Thumb>,
     drawn: Option<Receiver<(PathBuf, Option<ColorImage>)>>,
