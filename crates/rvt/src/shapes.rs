@@ -11,11 +11,20 @@
 //! - `CylSurf`: `center + r·cos(u)·xVec + r·sin(u)·yVec + v·zVec`;
 //! - `SurfRev`: its profile curve (`m_pProfileCurve`) at `v`, in the surface's own axes, turned by `u` about its z, and then
 //!   `center + X·xVec + Y·yVec + Z·zVec`; the profile is a `GArc` (`center + r·cos(t)·xVec + r·sin(t)·yVec`), a `GEllipse`
-//!   (`center + xLen·cos(t)·xVec + yLen·sin(t)·yVec`) or a `GLine` (`origin + t·dirVec`).
+//!   (`center + xLen·cos(t)·xVec + yLen·sin(t)·yVec`), a `GLine` (`origin + t·dirVec`) or a `GHermiteSpline` (its nodes, each
+//!   `SplineNode`'s parameter, point and tangent; between two, the cubic Hermite of their points and tangents, the tangents scaled
+//!   by the span between their parameters);
+//! - `RuledSurf`: straight across from its first end to its second, `(1 − v)·A(u) + v·B(u)`, where each end is a profile curve
+//!   above at `u` of the way between its `m_endParams` (`m_pProfileCurve1`, `m_pProfileCurve2`), or where it names none, a point
+//!   (`m_Point1`, `m_Point2`);
+//! - `ConeSurf`: `center + v·(sin(h)·(cos(u)·xVec + sin(u)·yVec) + cos(h)·zVec)`, `h` its `m_halfAngle`, `center` its apex;
+//! - `HermiteSurf`: in each cell of its grid of parameters (`m_uParams`, `m_vParams`), the bicubic Hermite of its corner nodes'
+//!   points, derivatives along `u` and `v` and mixed ones (`SplineSrfNode`; `u` runs fastest in `m_NodeArray`).
 //!
 //! The shape is read only where all of it reads, and it checks: every face of every solid on a surface above, every loop closed,
 //! and both faces of every edge putting each of its points in the same place ([`MEET`]). A face is cut into triangles in its
-//! surface's parameters, curved ones every fifteen degrees, by the core's constrained triangulation. The graphics of a type
+//! surface's parameters, curved ones every fifteen degrees (a spline every third of a span between nodes, a Hermite surface every
+//! half cell), by the core's constrained triangulation. The graphics of a type
 //! may hold more than its solids (lines drawn in plan, the conditions on the views it shows in): only the solids are read, and
 //! a family nested in the type's (a `GInstance`) is drawn in by its own type's shape, placed by its transform ([`nest`]).
 
@@ -37,6 +46,8 @@ const MAX_WALK: usize = 2 * MAX_OBJECTS;
 const STEP: f64 = std::f64::consts::PI / 12.0;
 /// Feet to millimetres.
 const MM: f64 = 304.8;
+/// How many times finer than its faces a curved surface cuts an edge it shares with a flat face ([`Surface::fine`]).
+const CARRY: f64 = 2.0;
 /// The scale the parameters of a face are triangulated at, units to the millimetre: the triangulation joins corners within a
 /// millimetre of its units, and a family's detail is finer than that.
 const FINE: f64 = 100.0;
@@ -54,6 +65,10 @@ fn sub(a: P3, b: P3) -> P3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
+fn dot(a: P3, b: P3) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
 fn cross(a: P3, b: P3) -> P3 {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
@@ -66,8 +81,19 @@ fn dist(a: P3, b: P3) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
-/// A curve a surface of revolution turns.
+/// The most nodes a spline may have.
+const MAX_NODES: usize = 10_000;
+
+/// A node of a cubic Hermite spline: its parameter, its point and the curve's derivative there by its parameter.
 #[derive(Clone, Copy, Debug)]
+pub(crate) struct Node {
+    pub t: f64,
+    pub at: P3,
+    pub tangent: P3,
+}
+
+/// A curve a surface of revolution turns, or a ruled surface runs along.
+#[derive(Clone, Debug)]
 pub(crate) enum Curve {
     Arc {
         center: P3,
@@ -87,46 +113,193 @@ pub(crate) enum Curve {
         rx: f64,
         ry: f64,
     },
+    /// A cubic Hermite spline through its nodes, their parameters rising: between two, the cubic with their points and tangents.
+    Spline(std::sync::Arc<[Node]>),
 }
 
 impl Curve {
     fn at(&self, t: f64) -> P3 {
-        match *self {
-            Curve::Arc { center, x, y, r } => add(center, add(scale(r * t.cos(), x), scale(r * t.sin(), y))),
-            Curve::Line { origin, dir } => add(origin, scale(t, dir)),
-            Curve::Ellipse { center, x, y, rx, ry } => add(center, add(scale(rx * t.cos(), x), scale(ry * t.sin(), y))),
+        match self {
+            &Curve::Arc { center, x, y, r } => add(center, add(scale(r * t.cos(), x), scale(r * t.sin(), y))),
+            &Curve::Line { origin, dir } => add(origin, scale(t, dir)),
+            &Curve::Ellipse { center, x, y, rx, ry } => add(center, add(scale(rx * t.cos(), x), scale(ry * t.sin(), y))),
+            Curve::Spline(nodes) => {
+                // The span `t` lies in, the first or the last where it lies before or past them all.
+                let last = nodes.len().saturating_sub(2);
+                let k = nodes.partition_point(|n| n.t <= t).saturating_sub(1).min(last);
+                let (Some(a), Some(b)) = (nodes.get(k), nodes.get(k + 1)) else { return nodes.first().map_or([0.0; 3], |n| n.at) };
+                let d = b.t - a.t;
+                let ([pa, pb], [ta, tb]) = hermite((t - a.t) / d);
+                add(add(scale(pa, a.at), scale(ta * d, a.tangent)), add(scale(pb, b.at), scale(tb * d, b.tangent)))
+            }
+        }
+    }
+
+    /// The step along it a face is cut at, in its parameter: none along a straight line, a third of a spline's span between nodes.
+    fn step(&self) -> Option<f64> {
+        match self {
+            Curve::Arc { .. } | Curve::Ellipse { .. } => Some(STEP),
+            Curve::Line { .. } => None,
+            Curve::Spline(nodes) => {
+                let (first, last) = (nodes.first()?, nodes.last()?);
+                Some((last.t - first.t) / (3.0 * (nodes.len() - 1) as f64))
+            }
+        }
+    }
+}
+
+/// An end of a ruled surface: a curve between the parameters its ends are at, or a point.
+#[derive(Clone, Debug)]
+pub(crate) enum End {
+    Curve(Curve, [f64; 2]),
+    Point(P3),
+}
+
+impl End {
+    /// The point a part `u` of the way along it (0 at its first end, 1 at its last).
+    fn at(&self, u: f64) -> P3 {
+        match self {
+            End::Curve(c, [t0, t1]) => c.at(t0 + u * (t1 - t0)),
+            End::Point(p) => *p,
+        }
+    }
+
+    /// The step along it a face is cut at, as a part of its length: none along a straight line or at a point.
+    fn step(&self) -> Option<f64> {
+        match self {
+            End::Curve(c, [t0, t1]) if (t1 - t0).abs() > 0.0 => c.step().map(|s| s / (t1 - t0).abs()),
+            _ => None,
         }
     }
 }
 
 /// A surface a face lies on, feet.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Surface {
-    Plane { origin: P3, x: P3, y: P3 },
-    Cylinder { center: P3, x: P3, y: P3, z: P3, r: f64 },
-    Revolved { center: P3, x: P3, y: P3, z: P3, profile: Curve },
+    Plane {
+        origin: P3,
+        x: P3,
+        y: P3,
+    },
+    Cylinder {
+        center: P3,
+        x: P3,
+        y: P3,
+        z: P3,
+        r: f64,
+    },
+    Revolved {
+        center: P3,
+        x: P3,
+        y: P3,
+        z: P3,
+        profile: Curve,
+    },
+    /// Straight lines across from one end to the other: at `(u, v)`, a part `v` of the way from the first end's point a part `u` along
+    /// it to the second's.
+    Ruled {
+        ends: [End; 2],
+    },
+    /// A cone from its apex `center` round its axis `z`, its side `half_angle` from it: `v` down the side, `u` round from `x`.
+    Cone {
+        center: P3,
+        x: P3,
+        y: P3,
+        z: P3,
+        half_angle: f64,
+    },
+    /// A bicubic Hermite surface through a grid of nodes at the parameters `u` and `v` (each rising), `u` running fastest in
+    /// `nodes`: in each cell, the bicubic with its corners' points and derivatives.
+    Hermite {
+        u: std::sync::Arc<[f64]>,
+        v: std::sync::Arc<[f64]>,
+        nodes: std::sync::Arc<[Patch]>,
+    },
+}
+
+/// A node of a Hermite surface: its point, the surface's derivatives there along `u` and `v`, and its mixed one.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Patch {
+    pub at: P3,
+    pub du: P3,
+    pub dv: P3,
+    pub twist: P3,
+}
+
+/// The cubic Hermite weights at `s` (0 to 1 across a span): of the two ends' values, and of their derivatives.
+fn hermite(s: f64) -> ([f64; 2], [f64; 2]) {
+    let (s2, s3) = (s * s, s * s * s);
+    ([2.0 * s3 - 3.0 * s2 + 1.0, 3.0 * s2 - 2.0 * s3], [s3 - 2.0 * s2 + s, s3 - s2])
+}
+
+/// The span of rising parameters `ps` that `t` lies in (the first or the last where it lies before or past them all): its first
+/// index, how far across it `t` is (0 to 1 within it), and its length.
+fn span(ps: &[f64], t: f64) -> Option<(usize, f64, f64)> {
+    let k = ps.partition_point(|p| *p <= t).saturating_sub(1).min(ps.len().checked_sub(2)?);
+    let (a, b) = (ps.get(k)?, ps.get(k + 1)?);
+    Some((k, (t - a) / (b - a), b - a))
 }
 
 impl Surface {
-    fn at(&self, [u, v]: [f64; 2]) -> P3 {
-        match *self {
-            Surface::Plane { origin, x, y } => add(origin, add(scale(u, x), scale(v, y))),
-            Surface::Cylinder { center, x, y, z, r } => add(center, add(scale(r * u.cos(), x), add(scale(r * u.sin(), y), scale(v, z)))),
-            Surface::Revolved { center, x, y, z, profile } => {
+    /// Its point at `(u, v)`, feet.
+    pub(crate) fn at(&self, [u, v]: [f64; 2]) -> P3 {
+        match self {
+            &Surface::Plane { origin, x, y } => add(origin, add(scale(u, x), scale(v, y))),
+            &Surface::Cylinder { center, x, y, z, r } => add(center, add(scale(r * u.cos(), x), add(scale(r * u.sin(), y), scale(v, z)))),
+            &Surface::Revolved { center, x, y, z, ref profile } => {
                 let [a, b, c] = profile.at(v);
                 let (s, k) = u.sin_cos();
                 add(center, add(scale(a * k - b * s, x), add(scale(a * s + b * k, y), scale(c, z))))
             }
+            &Surface::Cone { center, x, y, z, half_angle } => {
+                let (s, k) = half_angle.sin_cos();
+                add(center, scale(v, add(scale(s * u.cos(), x), add(scale(s * u.sin(), y), scale(k, z)))))
+            }
+            Surface::Hermite { u: us, v: vs, nodes } => {
+                let (Some((i, s, du)), Some((j, w, dv))) = (span(us, u), span(vs, v)) else { return [0.0; 3] };
+                let ((pu, tu), (pv, tv)) = (hermite(s), hermite(w));
+                let mut at = [0.0; 3];
+                for (a, b) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    let Some(n) = nodes.get((j + b) * us.len() + i + a) else { return [0.0; 3] };
+                    let terms =
+                        [(pu[a] * pv[b], n.at), (tu[a] * du * pv[b], n.du), (pu[a] * tv[b] * dv, n.dv), (tu[a] * du * tv[b] * dv, n.twist)];
+                    for (k, p) in terms {
+                        at = add(at, scale(k, p));
+                    }
+                }
+                at
+            }
+            Surface::Ruled { ends: [a, b] } => {
+                let (p, q) = (a.at(u), b.at(u));
+                add(p, scale(v, sub(q, p)))
+            }
         }
+    }
+
+    /// The steps an edge between it and a flat face is cut at, in `u` and `v`: finer than [`Surface::steps`], so a thin face
+    /// between two curves (a lamp's rim) keeps clear of itself.
+    pub(crate) fn fine(&self) -> [Option<f64>; 2] {
+        self.steps().map(|s| s.map(|s| s / CARRY))
     }
 
     /// The steps a face on it is cut at, in `u` and `v`: none along a straight direction.
     fn steps(&self) -> [Option<f64>; 2] {
         match self {
             Surface::Plane { .. } => [None, None],
-            Surface::Cylinder { .. } => [Some(STEP), None],
-            Surface::Revolved { profile: Curve::Arc { .. } | Curve::Ellipse { .. }, .. } => [Some(STEP), Some(STEP)],
-            Surface::Revolved { profile: Curve::Line { .. }, .. } => [Some(STEP), None],
+            Surface::Cylinder { .. } | Surface::Cone { .. } => [Some(STEP), None],
+            // Half a cell's span on average each way.
+            Surface::Hermite { u, v, .. } => {
+                let half = |ps: &[f64]| Some((ps.last()? - ps.first()?) / (2.0 * (ps.len() - 1) as f64));
+                [half(u), half(v)]
+            }
+            Surface::Revolved { profile, .. } => [Some(STEP), profile.step()],
+            Surface::Ruled { ends: [a, b] } => {
+                let step = match (a.step(), b.step()) {
+                    (Some(p), Some(q)) => Some(p.min(q)),
+                    (p, q) => p.or(q),
+                };
+                [step, None]
+            }
         }
     }
 }
@@ -186,8 +359,78 @@ impl<'a> Reader<'a, '_, '_> {
                 rx: self.real(o, "m_xLen")?,
                 ry: self.real(o, "m_yLen")?,
             },
-            other => return Err(format!("a surface of revolution turns a {other}, which is not read")),
+            "GHermiteSpline" => self.spline(o)?,
+            other => return Err(format!("a surface's profile is a {other}, which is not read")),
         })
+    }
+
+    /// A bicubic Hermite surface: its nodes (`SplineSrfNode`: point, the two derivatives, the mixed one), one for each pair of its
+    /// parameters (`m_uParams`, `m_vParams`, each at least two and rising), `u` running fastest. One not built, or one that closes
+    /// on itself either way, is not read.
+    fn hermite_surface(&self, s: &'a Obj) -> Step<Surface> {
+        let periodic = self.get(s, "m_periodic")?.list().ok_or("a Hermite surface's periodic flags are no list")?;
+        if !periodic.iter().all(|p| matches!(p, Value::Int(0))) {
+            return Err("a Hermite surface closes on itself (periodic), which is not read".to_string());
+        }
+        if !matches!(self.get(s, "m_constructedOK")?, Value::Int(1)) {
+            return Err("a Hermite surface is marked not built".to_string());
+        }
+        let params = |field: &str| -> Step<Vec<f64>> {
+            let list = self.get(s, field)?.list().ok_or("a Hermite surface's parameters are no list")?;
+            let ps: Vec<f64> = list.iter().map(Value::real).collect::<Option<_>>().ok_or("a Hermite surface's parameter is no number")?;
+            if ps.len() < 2 || ps.len() > MAX_NODES || ps.windows(2).any(|w| w[1] <= w[0]) {
+                return Err("a Hermite surface's parameters are not 2 or more rising".to_string());
+            }
+            Ok(ps)
+        };
+        let (u, v) = (params("m_uParams")?, params("m_vParams")?);
+        let list = self.get(s, "m_NodeArray")?.list().ok_or("a Hermite surface's nodes are no list")?;
+        if u.len().checked_mul(v.len()) != Some(list.len()) || list.len() > MAX_NODES {
+            return Err(format!("a Hermite surface's {} nodes are not its grid of {} by {}", list.len(), u.len(), v.len()));
+        }
+        let mut nodes = Vec::with_capacity(list.len());
+        for n in list {
+            let Value::Object(tag, values) = n else { return Err("a Hermite surface's node is no object".to_string()) };
+            let field = |name: &str| self.layouts.field(*tag, values, name);
+            let tangents = field("m_iTangent").and_then(Value::list).ok_or("a Hermite surface's node has no derivatives")?;
+            let (Some(du), Some(dv)) = (tangents.first().and_then(Value::point), tangents.get(1).and_then(Value::point)) else {
+                return Err("a Hermite surface's node has not two derivatives".to_string());
+            };
+            nodes.push(Patch {
+                at: field("m_iPoint").and_then(Value::point).ok_or("a Hermite surface's node has no point")?,
+                du,
+                dv,
+                twist: field("m_iMixedDer").and_then(Value::point).ok_or("a Hermite surface's node has no mixed derivative")?,
+            });
+        }
+        Ok(Surface::Hermite { u: u.into(), v: v.into(), nodes: nodes.into() })
+    }
+
+    /// A cubic Hermite spline: its nodes (`SplineNode`: parameter, point, tangent), at least two and their parameters rising; one
+    /// that closes on itself is not read.
+    fn spline(&self, o: &'a Obj) -> Step<Curve> {
+        if !matches!(self.get(o, "m_Periodic")?, Value::Int(0)) {
+            return Err("a spline closes on itself (periodic), which is not read".to_string());
+        }
+        let list = self.get(o, "m_NodeArray")?.list().ok_or("a spline's nodes are no list")?;
+        if list.len() < 2 || list.len() > MAX_NODES {
+            return Err(format!("a spline has {} nodes, not 2 to {MAX_NODES}", list.len()));
+        }
+        let mut nodes: Vec<Node> = Vec::with_capacity(list.len());
+        for v in list {
+            let Value::Object(tag, values) = v else { return Err("a spline's node is no object".to_string()) };
+            let field = |name: &str| self.layouts.field(*tag, values, name);
+            let node = Node {
+                t: field("m_iParametr").and_then(Value::real).ok_or("a spline's node has no parameter")?,
+                at: field("m_iPoint").and_then(Value::point).ok_or("a spline's node has no point")?,
+                tangent: field("m_iTangent").and_then(Value::point).ok_or("a spline's node has no tangent")?,
+            };
+            if nodes.last().is_some_and(|n| node.t <= n.t) {
+                return Err("a spline's nodes do not go on in their parameter".to_string());
+            }
+            nodes.push(node);
+        }
+        Ok(Curve::Spline(nodes.into()))
     }
 
     fn surface(&self, face: &'a Obj) -> Step<Surface> {
@@ -208,7 +451,27 @@ impl<'a> Reader<'a, '_, '_> {
                 z: self.point(s, "m_zVec")?,
                 profile: self.curve(self.owned(s, "m_pProfileCurve")?.ok_or("a surface of revolution has no profile")?)?,
             },
+            "RuledSurf" => {
+                Surface::Ruled { ends: [self.end(s, "m_pProfileCurve1", "m_Point1")?, self.end(s, "m_pProfileCurve2", "m_Point2")?] }
+            }
+            "HermiteSurf" => self.hermite_surface(s)?,
+            "ConeSurf" => Surface::Cone {
+                center: self.point(s, "m_center")?,
+                x: self.point(s, "m_xVec")?,
+                y: self.point(s, "m_yVec")?,
+                z: self.point(s, "m_zVec")?,
+                half_angle: self.real(s, "m_halfAngle")?,
+            },
             other => return Err(format!("a face lies on a {other}, which is not read")),
+        })
+    }
+
+    /// An end of ruled surface `s`: the curve its field `curve` names, between its end parameters, or where it names none, the point
+    /// its field `point` gives.
+    fn end(&self, s: &'a Obj, curve: &str, point: &str) -> Step<End> {
+        Ok(match self.owned(s, curve)? {
+            Some(c) => End::Curve(self.curve(c)?, self.get(c, "m_endParams")?.pair().ok_or("a curve's ends are no pair")?),
+            None => End::Point(self.point(s, point)?),
         })
     }
 
@@ -237,8 +500,11 @@ impl<'a> Reader<'a, '_, '_> {
         Ok((side, self.weak(next.get(side))?))
     }
 
-    /// A loop of face `face` in its surface's parameters: its edges' points chained end to end.
-    fn loop_uv(&self, face: u32, lp: &'a Obj, index: u32) -> Step<Vec<[f64; 2]>> {
+    /// A loop of face `face` in its surface's parameters: its edges' points chained end to end; where `carry`, a flat face's taking
+    /// those of an edge its curved neighbour puts on its curve ([`along`]), and a curved face's cut as finely on such an edge.
+    /// `surfaces` are the faces' of its solid.
+    fn loop_uv(&self, face: u32, lp: &'a Obj, index: u32, surfaces: &Surfaces, carry: bool) -> Step<Vec<[f64; 2]>> {
+        let own = surfaces.get(&face).ok_or("a face has no surface")?;
         let mut segments: Vec<Vec<[f64; 2]>> = Vec::new();
         let mut e = self.weak(Some(self.get(lp, "m_next")?))?;
         while e != index && e != 0 {
@@ -251,14 +517,25 @@ impl<'a> Reader<'a, '_, '_> {
             }
             let edge = self.tree.get(e).ok_or_else(|| format!("edge {e} is not in the tree"))?;
             let (side, next) = self.side(edge, face)?;
-            segments.push(self.edge_points(edge, side)?);
+            let mine = self.edge_points(edge, side)?;
+            let neighbour = self.get(edge, "m_pFace")?.list().and_then(|f| f.get(1 - side)).and_then(Value::weak);
+            // An edge between a flat face and a curved one follows the curve on both, at the same points.
+            let carried = match neighbour.and_then(|n| surfaces.get(&n)).filter(|_| carry) {
+                Some(other @ Surface::Plane { .. }) if !matches!(own, Surface::Plane { .. }) => {
+                    let fine = split(&mine, own.fine()).into_iter().map(|(p, _)| p).collect();
+                    (other.fine() == [None, None]).then_some(fine)
+                }
+                Some(other) if matches!(own, Surface::Plane { .. }) => along(own, other, &mine, &self.edge_points(edge, 1 - side)?),
+                _ => None,
+            };
+            segments.push(carried.unwrap_or(mine));
             e = next;
         }
-        Ok(chain(segments))
+        Ok(chain(segments, own))
     }
 
-    /// A face's loops: its outline, then its holes.
-    fn loops(&self, face: &'a Obj, index: u32) -> Step<Vec<Vec<[f64; 2]>>> {
+    /// A face's loops: its outline, then its holes. `surfaces` are the faces' of its solid; `carry` as [`Reader::loop_uv`].
+    fn loops(&self, face: &'a Obj, index: u32, surfaces: &Surfaces, carry: bool) -> Step<Vec<Vec<[f64; 2]>>> {
         let mut out = Vec::new();
         let mut at = match self.get(face, "m_pFirstLoop")? {
             Value::Owned(i, _) => Some(*i),
@@ -270,7 +547,7 @@ impl<'a> Reader<'a, '_, '_> {
                 return Err(format!("a face has more than {MAX_LOOP} loops"));
             }
             let lp = self.tree.get(i).ok_or_else(|| format!("loop {i} is not in the tree"))?;
-            out.push(self.loop_uv(index, lp, i)?);
+            out.push(self.loop_uv(index, lp, i, surfaces, carry)?);
             at = match self.get(lp, "m_nextLoop")? {
                 Value::Owned(i, _) => Some(*i),
                 Value::Null => None,
@@ -286,8 +563,59 @@ fn same(a: [f64; 2], b: [f64; 2]) -> bool {
     (a[0] - b[0]).abs() < 1e-7 && (a[1] - b[1]).abs() < 1e-7
 }
 
-/// Edges' points chained end to end, each turned round where that joins it to the one before.
-fn chain(segments: Vec<Vec<[f64; 2]>>) -> Vec<[f64; 2]> {
+/// The surfaces of a solid's faces, by the faces' indices.
+type Surfaces = std::collections::BTreeMap<u32, Surface>;
+
+/// Points `ps` of a surface's parameters with points put in between each two, so no step is longer than `steps` says (at most a
+/// thousand to a span); each with the index of the point of `ps` it is, where it is one.
+pub(crate) fn split(ps: &[[f64; 2]], steps: [Option<f64>; 2]) -> Vec<([f64; 2], Option<usize>)> {
+    let mut out = Vec::new();
+    for (k, p) in ps.iter().enumerate() {
+        if let Some(q) = ps.get(k + 1) {
+            out.push((*p, Some(k)));
+            let cuts =
+                (0..2).filter_map(|i| steps[i].map(|s| ((q[i] - p[i]).abs() / s).ceil())).fold(1.0_f64, f64::max).min(1_000.0) as usize;
+            for j in 1..cuts {
+                let t = j as f64 / cuts as f64;
+                out.push(([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t], None));
+            }
+        } else {
+            out.push((*p, Some(k)));
+        }
+    }
+    out
+}
+
+/// The points of an edge between flat face `own` and its curved neighbour `other`, in `own`'s parameters: the edge's own points
+/// (`mine` on `own`, `theirs` on `other`), and between each two those `other` puts it at, cut along its parameters as it cuts its
+/// own side of the edge ([`Surface::fine`]), so the edge follows the curve `other` puts it on rather than the straight lines
+/// between its points (a circle's, a lamp's rim), and both faces meet at the same points. None where `own` is curved, `other` is
+/// flat, or a point so put does not lie on `own`.
+pub(crate) fn along(own: &Surface, other: &Surface, mine: &[[f64; 2]], theirs: &[[f64; 2]]) -> Option<Vec<[f64; 2]>> {
+    let Surface::Plane { origin, x, y } = *own else { return None };
+    let steps = other.fine();
+    if steps == [None, None] || mine.len() != theirs.len() || mine.len() < 2 {
+        return None;
+    }
+    // A point of the plane's parameters, where the point lies on it.
+    let (a, b, c) = (dot(x, x), dot(x, y), dot(y, y));
+    let det = a * c - b * b;
+    if det.abs() < 1e-12 {
+        return None;
+    }
+    let on_plane = |p: P3| -> Option<[f64; 2]> {
+        let d = sub(p, origin);
+        let (e, f) = (dot(d, x), dot(d, y));
+        let uv = [(e * c - f * b) / det, (a * f - b * e) / det];
+        (dist(own.at(uv), p) <= MEET).then_some(uv)
+    };
+    split(theirs, steps).into_iter().map(|(q, k)| k.and_then(|k| mine.get(k).copied()).or_else(|| on_plane(other.at(q)))).collect()
+}
+
+/// Edges' points chained end to end, each turned round where that joins it to the one before: by their parameters on `surface`, or
+/// where those differ, by the points they are on it (two edges meeting at a pole, or across a seam).
+pub(crate) fn chain(segments: Vec<Vec<[f64; 2]>>, surface: &Surface) -> Vec<[f64; 2]> {
+    let same = |a: [f64; 2], b: [f64; 2]| same(a, b) || dist(surface.at(a), surface.at(b)) <= MEET;
     let mut out: Vec<[f64; 2]> = Vec::new();
     let next_first = segments.get(1).and_then(|s| s.first().copied());
     let next_last = segments.get(1).and_then(|s| s.last().copied());
@@ -305,12 +633,14 @@ fn chain(segments: Vec<Vec<[f64; 2]>>) -> Vec<[f64; 2]> {
                 if seg.last().is_some_and(|p| same(*p, end)) && !seg.first().is_some_and(|p| same(*p, end)) {
                     seg.reverse();
                 }
-                let skip = usize::from(seg.first().is_some_and(|p| same(*p, end)));
+                // A point the edge before ends at is not put in again; one it meets only on the surface is, so the loop runs
+                // along the pole or the seam between them in the parameters.
+                let skip = usize::from(seg.first().is_some_and(|p| self::same(*p, end)));
                 out.extend(seg.into_iter().skip(skip));
             }
         }
     }
-    if out.len() > 1 && out.first().zip(out.last()).is_some_and(|(a, b)| same(*a, *b)) {
+    if out.len() > 1 && out.first().zip(out.last()).is_some_and(|(a, b)| self::same(*a, *b)) {
         out.pop();
     }
     out
@@ -643,7 +973,7 @@ fn solids(r: &Reader, out: &mut Vec<[P3; 3]>, materials: &mut Vec<Option<u32>>) 
             Some(l) => l.iter().filter_map(|v| if let Value::Owned(i, _) = v { Some(*i) } else { None }).collect(),
             None => return Err("a solid's faces are no list".to_string()),
         };
-        let mut surfaces = std::collections::BTreeMap::new();
+        let mut surfaces = Surfaces::new();
         for &i in &faces {
             let face = tree.get(i).ok_or_else(|| format!("face {i} is not in the tree"))?;
             surfaces.insert(i, r.surface(face)?);
@@ -654,8 +984,7 @@ fn solids(r: &Reader, out: &mut Vec<[P3; 3]>, materials: &mut Vec<Option<u32>>) 
             let Value::Owned(e, _) = v else { continue };
             let edge = tree.get(*e).ok_or_else(|| format!("edge {e} is not in the tree"))?;
             let sides = r.get(edge, "m_pFace")?.list().ok_or("an edge's faces are no list")?;
-            let on: Vec<Surface> =
-                (0..2).filter_map(|k| sides.get(k).and_then(Value::weak)).filter_map(|f| surfaces.get(&f).copied()).collect();
+            let on: Vec<&Surface> = (0..2).filter_map(|k| sides.get(k).and_then(Value::weak)).filter_map(|f| surfaces.get(&f)).collect();
             if let [a, b] = on[..] {
                 for (p, q) in r.edge_points(edge, 0)?.into_iter().zip(r.edge_points(edge, 1)?) {
                     if dist(a.at(p), b.at(q)) > MEET {
@@ -667,8 +996,15 @@ fn solids(r: &Reader, out: &mut Vec<[P3; 3]>, materials: &mut Vec<Option<u32>>) 
         for &i in &faces {
             let face = tree.get(i).ok_or_else(|| format!("face {i} is not in the tree"))?;
             let surface = surfaces.get(&i).ok_or("a face has no surface")?;
-            let loops = r.loops(face, i)?;
-            triangles(surface, &loops, out).map_err(|why| format!("a face is not cut into triangles: {why}"))?;
+            // Cut as its edges' points give it; where that fails (a thin face between two curves whose points, joined straight,
+            // cross), again with its edges following the curves its curved neighbours put them on.
+            let mut cut = Vec::new();
+            if let Err(why) = triangles(surface, &r.loops(face, i, &surfaces, false)?, &mut cut) {
+                cut.clear();
+                let fine = r.loops(face, i, &surfaces, true)?;
+                triangles(surface, &fine, &mut cut).map_err(|_| format!("a face is not cut into triangles: {why}"))?;
+            }
+            out.extend(cut);
             materials.resize(out.len(), material_of(r, face, "m_renderStyleId"));
             faces_read += 1;
         }
