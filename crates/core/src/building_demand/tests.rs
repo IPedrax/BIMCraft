@@ -450,3 +450,15 @@ mod command {
         }
     }
 }
+
+#[test]
+fn each_method_takes_its_least_number_of_dwellings_and_not_one_fewer() {
+    // At the least number a method covers, its diversity is read; one under, there is none (every method, not only the first).
+    for m in methods() {
+        let least = m.min_dwellings;
+        assert!(m.diversity(least, false).is_some(), "{}: no diversity at its least, {least} dwellings", m.standard);
+        if least > 0 {
+            assert!(m.diversity(least - 1, false).is_none(), "{}: a diversity under its least, {least} dwellings", m.standard);
+        }
+    }
+}

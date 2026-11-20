@@ -867,3 +867,46 @@ mod project_s_utility {
         assert!(r.get("category").is_some() || r.get("annex").is_some(), "{r}");
     }
 }
+
+#[test]
+fn every_row_holds_the_load_it_goes_up_to() {
+    // At a row's upper end (inclusive) the row answers, never the next one: every utility's every table, by each method.
+    for (s, _) in standards() {
+        match &s.method {
+            Method::Terms(t) => {
+                for c in &t.categories {
+                    for r in &c.rows {
+                        // At its upper end, and at its demand's where it has one: this row, or one with the same ends.
+                        let d = r.demand_up_to.unwrap_or(0.0);
+                        let got = t.category(&c.system, r.installed_up_to, d).expect("a row up to its own end");
+                        assert_eq!(
+                            (got.installed_up_to, got.demand_up_to),
+                            (r.installed_up_to, r.demand_up_to),
+                            "{} {} {}: up to {} kW",
+                            s.utility,
+                            c.system,
+                            r.name,
+                            r.installed_up_to
+                        );
+                    }
+                }
+            }
+            Method::Annexes(a) => {
+                for annex in &a.networks {
+                    for r in &annex.rows {
+                        let got = a.pick(annex, r.up_to, Some(r.phases)).expect("a row up to its own end");
+                        assert!(got.iter().any(|g| std::ptr::eq(*g, r)), "{} {}: up to {} kW", s.utility, annex.network, r.up_to);
+                    }
+                }
+            }
+            Method::Table(t) => {
+                for n in &t.networks {
+                    for r in &n.rows {
+                        let got = t.pick(n, r.up_to, Some(r.phases)).expect("a row up to its own end");
+                        assert_eq!(got.up_to, r.up_to, "{} {}: up to {} kW", s.utility, n.network, r.up_to);
+                    }
+                }
+            }
+        }
+    }
+}
