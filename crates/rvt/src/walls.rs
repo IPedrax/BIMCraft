@@ -229,6 +229,15 @@ fn box_thickness(c: Curve, bbox: &[f64; 6]) -> Option<f64> {
     (t.is_finite() && t > 0.0).then_some(micron(t))
 }
 
+/// The ids the parts of curtain walls name as their host: what their panels, mullions and grid lines name.
+pub(crate) fn curtain_hosts(f: &Facts) -> BTreeSet<u32> {
+    f.current
+        .values()
+        .filter(|r| r.category == OST_CURTAIN_PANELS || r.category == OST_MULLIONS || f.tags.grid_line == Some(r.class_tag))
+        .flat_map(|r| r.refs.iter().filter_map(|v| u32::try_from(*v).ok()))
+        .collect()
+}
+
 /// The pattern of a curtain wall that comes in from Revit: neither panels nor mullions (they come in as elements of their own), one
 /// cell stretched over the whole wall.
 fn empty_curtain() -> CurtainLayout {
@@ -253,13 +262,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     let types = f.types.get(&OST_WALLS).cloned().unwrap_or_default();
     let mut read: BTreeMap<u32, Option<LayeredType>> = BTreeMap::new();
     let mut made: BTreeMap<(u32, i64), String> = BTreeMap::new();
-    // The walls the parts of a curtain wall name as their host: its panels, its mullions and its grid lines.
-    let hosts: BTreeSet<u32> = f
-        .current
-        .values()
-        .filter(|r| r.category == OST_CURTAIN_PANELS || r.category == OST_MULLIONS || f.tags.grid_line == Some(r.class_tag))
-        .flat_map(|r| r.refs.iter().filter_map(|v| u32::try_from(*v).ok()))
-        .collect();
+    let hosts = curtain_hosts(f);
     for r in f.of_category(OST_WALLS) {
         let who = |why: &str| (r.id, why.to_string());
         let wall = (|| -> Result<(Wall, String), (u32, String)> {
