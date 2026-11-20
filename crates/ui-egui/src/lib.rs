@@ -2774,6 +2774,11 @@ impl BimApp {
                 if action.as_ref() == "cmd.redo" && self.chain_active() {
                     continue;
                 }
+                // A whole-selected field in hand takes Delete first: the number goes, not the selection
+                // behind it. The contextual keys below clear it, so the registry leaves the event alone.
+                if action.as_ref() == "cmd.delete" && self.drawing.selected && modifiers.is_none() && physical == Key::Delete {
+                    continue;
+                }
                 self.run_shortcut(ctx, &action);
             }
         }

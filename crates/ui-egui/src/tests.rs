@@ -6117,8 +6117,7 @@ fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
     h.run();
     // The Manage tab takes about a hundred frames to fit its Settings panel in the smallest window (measured on CI, 2026-11-16),
     // past the harness's 32: frames until the ribbon has settled, then the list.
-    let keys: Vec<Key> = "UN".chars().filter_map(|c| Key::from_name(&c.to_string())).collect();
-    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
+    shortcut(&mut h, "UN");
     for _ in 0..400 {
         h.step();
         if !h.ctx.has_requested_repaint() {

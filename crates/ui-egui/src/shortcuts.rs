@@ -461,6 +461,7 @@ const DIALOG_COMMANDS: &[&str] = &[
     "units",
     "graphics",
     "graphic_display_options",
+    "building_code",
     "duplicate_view",
     "filters_placeholder",
     "reinforce",
@@ -497,6 +498,7 @@ const IMMEDIATE_COMMANDS: &[&str] = &[
     "update_by_face",
     "join_polyline",
     "explode",
+    "stair_storeys",
     "create_group",
     "ungroup",
     "delete",
@@ -1650,7 +1652,9 @@ impl Shortcuts {
             }
             for spec in &a.defaults {
                 if let Ok(b) = parse_binding(spec) {
-                    let _ = s.add_binding(&a.id, b, true);
+                    // The registry's order is the precedence: a command that also claims an alias
+                    // never takes a starting binding from the action listed before it.
+                    let _ = s.add_binding(&a.id, b, false);
                 }
             }
         }
@@ -2531,9 +2535,7 @@ impl BimApp {
     fn preset_set(&self, choice: &PresetChoice) -> Option<Shortcuts> {
         match choice {
             PresetChoice::BuiltIn(p) => Some(Shortcuts::defaults(*p)),
-            PresetChoice::User(name) => {
-                self.shortcut_presets.iter().find(|p| &p.name == name).map(ShortcutPreset::to_shortcuts)
-            }
+            PresetChoice::User(name) => self.shortcut_presets.iter().find(|p| &p.name == name).map(ShortcutPreset::to_shortcuts),
         }
     }
 
@@ -2599,12 +2601,8 @@ impl BimApp {
             note(self, t("A preset needs a name, of at most 64 letters").to_string());
             return;
         };
-        let total: usize = self
-            .shortcut_presets
-            .iter()
-            .filter(|p| !p.name.eq_ignore_ascii_case(&name))
-            .map(ShortcutPreset::binding_count)
-            .sum();
+        let total: usize =
+            self.shortcut_presets.iter().filter(|p| !p.name.eq_ignore_ascii_case(&name)).map(ShortcutPreset::binding_count).sum();
         if total + preset.binding_count() > MAX_PRESET_BINDINGS_TOTAL {
             note(self, t("The presets hold as many bindings as are kept: delete one first").to_string());
             return;
@@ -2754,7 +2752,7 @@ impl BimApp {
     fn execute_command(&mut self, ctx: &Context, id: &str) -> bool {
         match id {
             "new" => {
-                self.guard(Pending::New, ctx);
+                self.new_project();
                 true
             }
             "open" => {
@@ -2900,6 +2898,11 @@ impl BimApp {
             "Create Group" => self.create_group(),
             "Ungroup" => self.ungroup(),
             "Place Model Group" => self.set_tool(Tool::ModelGroup),
+            "Exclude" => self.exclude_selected(),
+            "Edit Group" => self.edit_group(),
+            "Steel List" => self.open_steel(crate::steel::Page::List),
+            "Cut Plan" => self.open_steel(crate::steel::Page::Plan),
+            "Quantities" => self.open_steel(crate::steel::Page::Materials),
             "Restore All Excluded" => self.restore_excluded(),
             "Join into Polyline" => self.join_polyline(),
             "Explode Polyline" => self.explode_polyline(),
@@ -4161,10 +4164,7 @@ mod tests {
         let preset = ShortcutPreset {
             name: "Hostile".into(),
             base: Profile::Custom,
-            bindings: vec![
-                ("cmd.move".into(), vec!["Ctrl+C".into(), "MV".into()]),
-                ("no.such.action".into(), vec!["QQ".into()]),
-            ],
+            bindings: vec![("cmd.move".into(), vec!["Ctrl+C".into(), "MV".into()]), ("no.such.action".into(), vec!["QQ".into()])],
         };
         let set = preset.to_shortcuts();
         assert_eq!(set.bindings("cmd.move"), [parse_binding("MV").unwrap()], "the clipboard chord is dropped");
