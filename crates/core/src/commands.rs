@@ -7849,7 +7849,21 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
         let i = held.iter().position(|(m, _)| named(m))?;
         Some(held.swap_remove(i))
     }
-    let m: Held<bd::Method> = match (string(c, p, "standard")?, string(c, p, "utility")?) {
+    // A layer whose method for the standard or utility asked can't be read, over the one that would answer: refused.
+    let (standard_asked, utility_asked) = (string(c, p, "standard")?, string(c, p, "utility")?);
+    if let Some(asked) = standard_asked.as_deref().or(utility_asked.as_deref()) {
+        let answering = s
+            .model
+            .held_wholes_at::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
+            .into_iter()
+            .find(|(m, ..)| m.standard.eq_ignore_ascii_case(asked) || m.utilities.iter().any(|u| u.eq_ignore_ascii_case(asked)))
+            .map(|(.., at)| at);
+        if let Some(code) = s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", asked, answering)
+        {
+            return Err(bad(c, format!("{code}'s method for `{asked}` can't be read: reset it in Manage > Building Codes, or fix it")));
+        }
+    }
+    let m: Held<bd::Method> = match (standard_asked, utility_asked) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
         (Some(s), None) => match project.filter(|m| m.standard == s).map(|m| (m, true)).or_else(|| on_top(held, &|m| m.standard == s)) {
             Some((m, true)) => Held::Project(Box::new(m)),
@@ -8140,6 +8154,15 @@ fn demand(s: &mut Session, p: &Value) -> R {
     let unit = units
         .into_iter()
         .find(|(u, ..)| u.utility.eq_ignore_ascii_case(&utility) || groups.iter().any(|g| u.utility.eq_ignore_ascii_case(g)));
+    // A layer whose method for this utility can't be read, over the one that would answer: refused, never passed over.
+    let answering = entrance.as_ref().map(|e| e.3).into_iter().chain(unit.as_ref().map(|u| u.3)).min();
+    let unreadable = s
+        .model
+        .unreadable_over::<crate::entrance::Utility>(electrical, "entrance", &utility, answering)
+        .or_else(|| s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", &utility, answering));
+    if let Some(code) = unreadable {
+        return Err(bad(c, format!("{code}'s method for `{utility}` can't be read: reset it in Manage > Building Codes, or fix it")));
+    }
     if let Some((u, _, _, at)) = &entrance
         && unit.as_ref().is_none_or(|(.., under)| at <= under)
     {

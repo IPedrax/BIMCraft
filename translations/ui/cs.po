@@ -4766,7 +4766,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:15374
+#: crates/core/src/commands.rs:15397
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -12380,7 +12380,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Vlastnosti nad Prohlížečem projektu, vlevo, jako ve výchozím nastavení"
 
 #: crates/core/src/commands.rs:704
-#: crates/core/src/commands.rs:10145
+#: crates/core/src/commands.rs:10168
 msgid "Property Line"
 msgstr ""
 
@@ -16698,7 +16698,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:716
-#: crates/core/src/commands.rs:10187
+#: crates/core/src/commands.rs:10210
 msgid "Toposolid"
 msgstr ""
 
@@ -17169,7 +17169,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:15712
+#: crates/core/src/commands.rs:15735
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

@@ -4767,7 +4767,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:15374
+#: crates/core/src/commands.rs:15397
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -12381,7 +12381,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschappen boven de Projectbrowser, links, zoals in het begin"
 
 #: crates/core/src/commands.rs:704
-#: crates/core/src/commands.rs:10145
+#: crates/core/src/commands.rs:10168
 msgid "Property Line"
 msgstr ""
 
@@ -16699,7 +16699,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:716
-#: crates/core/src/commands.rs:10187
+#: crates/core/src/commands.rs:10210
 msgid "Toposolid"
 msgstr ""
 
@@ -17170,7 +17170,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:15712
+#: crates/core/src/commands.rs:15735
 msgid "Unnamed"
 msgstr "Naamloos"
 

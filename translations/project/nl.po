@@ -141,7 +141,7 @@ msgstr "Data-aansluiting"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:15374
+#: crates/core/src/commands.rs:15397
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -226,9 +226,9 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:15119
-#: crates/core/src/commands.rs:15135
-#: crates/core/src/commands.rs:19977
+#: crates/core/src/commands.rs:15142
+#: crates/core/src/commands.rs:15158
+#: crates/core/src/commands.rs:20000
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -411,7 +411,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:9397
+#: crates/core/src/commands.rs:9420
 #: crates/core/src/model.rs:4672
 msgid "Level"
 msgstr "Niveau"
@@ -452,7 +452,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:12160
+#: crates/core/src/commands.rs:12183
 msgid "Mass"
 msgstr "Massa"
 
@@ -469,7 +469,7 @@ msgid "Membrane"
 msgstr "Membraan"
 
 #: crates/core/src/commands.rs:4422
-#: crates/core/src/commands.rs:18522
+#: crates/core/src/commands.rs:18545
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -574,7 +574,7 @@ msgstr ""
 msgid "Project"
 msgstr "Project"
 
-#: crates/core/src/commands.rs:10145
+#: crates/core/src/commands.rs:10168
 msgid "Property Line"
 msgstr ""
 
@@ -606,7 +606,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:12690
+#: crates/core/src/commands.rs:12713
 msgid "Room"
 msgstr "Ruimte"
 
@@ -642,8 +642,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:15053
-#: crates/core/src/commands.rs:19976
+#: crates/core/src/commands.rs:15076
+#: crates/core/src/commands.rs:19999
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -796,7 +796,7 @@ msgstr "Tegel 300"
 msgid "Timber"
 msgstr "Hout"
 
-#: crates/core/src/commands.rs:10187
+#: crates/core/src/commands.rs:10210
 msgid "Toposolid"
 msgstr ""
 
@@ -834,7 +834,7 @@ msgstr "Onbegrensde hoogte"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15712
+#: crates/core/src/commands.rs:15735
 msgid "Unnamed"
 msgstr "Naamloos"
 

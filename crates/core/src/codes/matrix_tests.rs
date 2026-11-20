@@ -1968,6 +1968,26 @@ mod review_g3b {
         let actual = breaker(&mut opened, &fecoergs());
         assert_eq!((displayed.as_f64(), displayed_rules.as_f64(), actual), (Some(51.0), Some(51.0), Ok(51.0)));
     }
+
+    #[test]
+    fn legacy_invalid_entrance_hides_older_method_with_the_same_id() {
+        let mut s = Session::new();
+        copy(&mut s, "Entrada antiga", "fecoergs", "entrance", None, 1);
+        copy(&mut s, "Entrada quebrada", "fecoergs", "entrance", None, 2);
+        // This last layer keeps the resolved section valid, so this legacy file can open.
+        choose(&mut s, &["Entrada antiga", "Entrada quebrada", "hidropan"]);
+        s.model_mut().codes.own.iter_mut().find(|c| c.code == "Entrada quebrada").unwrap().sections.get_mut("entrance").unwrap()["tables"] =
+            json!("invalid");
+        let path = dir().join("review-g3b-invalid.bimc");
+        run(&mut s, "save", json!({"path": path}));
+        let mut opened = Session::new();
+        run(&mut opened, "open", json!({"path": path}));
+        expect_breaker(&mut opened, &json!({"installed_kw": 8, "phases": 1}), 35.0);
+        let broken = breaker(&mut opened, &fecoergs());
+        bc(&mut opened, json!({"amend": "Entrada quebrada", "reset": "entrance"}));
+        let reset = breaker(&mut opened, &fecoergs());
+        assert!(broken.is_err() && reset == Ok(51.0), "broken={broken:?}, reset={reset:?}");
+    }
 }
 
 /// Saving and exporting with methods in several layers and keys, and group members (G3b's confirmation).
@@ -2434,5 +2454,100 @@ mod legacy_demand_review {
             let mut opened = reopen(&mut s, &format!("review-long-{tag}"));
             assert_eq!(rated_breaker(&mut opened, &entrance("FECOERGS")), Ok(51.0), "{tag}");
         }
+    }
+
+    // A method that can't be read, over the one that would answer (the reviews of G2b and G3b).
+
+    #[test]
+    fn unreadable_entrance_of_energisa_local_member_refuses_to_use_older_table() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let mut older = changed(find(D, "energisa").unwrap(), key, 1);
+        older["id"] = json!("Local Review");
+        older["members"] = json!([]);
+        let mut broken = changed(find(D, "energisa").unwrap(), key, 2);
+        broken["members"].as_array_mut().unwrap().push(json!({"id": "Local Review", "seat": "Local"}));
+        amendment(&mut s, "Review Older Group", key, older);
+        amendment(&mut s, "Review Broken Group", key, broken);
+        choose(&mut s, &["Review Older Group", "energisa", "Review Broken Group", "fecoergs"]);
+        damage(&mut s, "Review Broken Group", key, "tables");
+        let mut s = reopen(&mut s, "unreadable-local-member");
+        let local = json!({"utility": "Local Review", "system": "220/380", "installed_kw": 3, "phases": 1});
+        let eac = json!({"utility": "EAC", "system": "220/380", "installed_kw": 3, "phases": 1});
+        assert_eq!(rated_breaker(&mut s, &entrance("FECOERGS")), Ok(50.0));
+        let local_reply = rated_breaker(&mut s, &local);
+        let eac_reply = rated_breaker(&mut s, &eac);
+        assert!(
+            matches!(&local_reply, Err(e) if e.contains("Review Broken Group"))
+                && matches!(&eac_reply, Err(e) if e.contains("Review Broken Group")),
+            "Local Review: {local_reply:?}, EAC: {eac_reply:?}",
+        );
+    }
+
+    #[test]
+    fn unreadable_entrance_below_answering_layer_does_not_block() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let base = find(D, "fecoergs").unwrap();
+        amendment(&mut s, "Review Broken Lower", key, changed(base, key, 1));
+        amendment(&mut s, "Review Readable Upper", key, changed(base, key, 2));
+        choose(&mut s, &["Review Broken Lower", "Review Readable Upper"]);
+        damage(&mut s, "Review Broken Lower", key, "tables");
+        let mut s = reopen(&mut s, "unreadable-below");
+        assert_eq!(rated_breaker(&mut s, &entrance("FECOERGS")), Ok(52.0));
+    }
+
+    #[test]
+    fn unreadable_building_method_blocks_lower_number_by_standard_and_utility() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let cemig = find(D, "cemig").unwrap();
+        amendment(&mut s, "Review Broken Building", key, changed(cemig, key, 1));
+        choose(&mut s, &["cemig", "Review Broken Building", "celesc"]);
+        damage(&mut s, "Review Broken Building", key, "factor");
+        let mut s = reopen(&mut s, "unreadable-building");
+        let groups = json!([{"count": 20, "area": 120}]);
+        let by_standard = building_number(&mut s, &json!({"standard": "CEMIG ND-5.2", "dwellings": groups}));
+        let by_utility = building_number(&mut s, &json!({"utility": "CEMIG", "dwellings": groups}));
+        assert_eq!(building_number(&mut s, &json!({"utility": "CELESC", "dwellings": groups})), Ok(53.157));
+        assert!(
+            matches!(&by_standard, Err(e) if e.contains("Review Broken Building"))
+                && matches!(&by_utility, Err(e) if e.contains("Review Broken Building")),
+            "standard: {by_standard:?}, utility: {by_utility:?}",
+        );
+    }
+
+    #[test]
+    fn unreadable_energisa_group_without_eac_does_not_block_eac() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let mut broken = changed(find(D, "energisa").unwrap(), key, 2);
+        broken["members"].as_array_mut().unwrap().retain(|m| m["id"] != "EAC");
+        amendment(&mut s, "Review Different Group", key, broken);
+        choose(&mut s, &["energisa", "Review Different Group", "fecoergs"]);
+        damage(&mut s, "Review Different Group", key, "tables");
+        let mut s = reopen(&mut s, "unreadable-excludes-eac");
+        let p = json!({"utility": "EAC", "system": "220/380", "installed_kw": 3, "phases": 1});
+        assert_eq!(rated_breaker(&mut s, &p), Ok(30.0));
+    }
+
+    #[test]
+    fn unreadable_entrance_with_corrupted_id_still_identifies_its_library_copy() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let fecoergs = find(D, "fecoergs").unwrap();
+        amendment(&mut s, "Review Older FECOERGS", key, changed(fecoergs, key, 2));
+        choose(&mut s, &["Review Older FECOERGS", "fecoergs", "hidropan"]);
+        code(&mut s, json!({"amend": "fecoergs", "rules": {key: changed(fecoergs, key, 1)}}));
+        let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "fecoergs").unwrap();
+        own.sections.get_mut(key).unwrap()["id"] = json!(17);
+        let mut s = reopen(&mut s, "unreadable-id");
+        let reply = rated_breaker(&mut s, &entrance("FECOERGS"));
+        assert!(matches!(&reply, Err(e) if e.contains("fecoergs")), "{reply:?}");
+    }
+
+    fn damage(s: &mut Session, name: &str, key: &str, field: &str) {
+        let layer = s.model_mut().codes.own.iter_mut().find(|c| c.code == name).unwrap();
+        layer.sections.get_mut(key).unwrap()[field] = json!("ilegível");
     }
 }

@@ -1630,6 +1630,40 @@ impl Model {
             .collect()
     }
 
+    /// Whether a layer whose method `key` can't be read (a file edited by hand, or from an older version) names `asked`
+    /// (a utility, a member of a group, or a standard) above the place `answering` (from the top, as `held_wholes_at` counts;
+    /// none: anywhere): its code, so a command refuses rather than let a version under it answer. What it names is read
+    /// from its own text (`id`, `utility`, `standard`, `utilities`, its members), else from the library code it is a copy of.
+    pub fn unreadable_over<T: DeserializeOwned>(&self, d: Discipline, key: &str, asked: &str, answering: Option<usize>) -> Option<String> {
+        let names = |w: &Map<String, Value>| -> (Vec<String>, Option<Vec<String>>) {
+            let text = |k: &str| w.get(k).and_then(Value::as_str).map(str::to_string);
+            let mut own: Vec<String> = ["id", "utility", "standard"].iter().filter_map(|k| text(k)).collect();
+            if let Some(Value::Array(a)) = w.get("utilities") {
+                own.extend(a.iter().filter_map(Value::as_str).map(str::to_string));
+            }
+            let members = w
+                .get("members")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string)).collect::<Vec<_>>());
+            (own, members)
+        };
+        let is = |n: &String| n.eq_ignore_ascii_case(asked);
+        self.codes.layers(d).into_iter().rev().enumerate().take_while(|(at, _)| answering.is_none_or(|a| *at < a)).find_map(|(_, c)| {
+            let rules = whole_section(c, key)?;
+            if serde_json::from_value::<T>(Value::Object(rules.clone())).is_ok() {
+                return None;
+            }
+            let (mut own, mut members) = names(&rules);
+            // A copy of a library code names what that code names too (its own text may have lost it).
+            if let Some(o) = [c.based_on.as_str(), c.code.as_str()].into_iter().find_map(|n| find(d, n)).and_then(|o| o.section(key)) {
+                let (o_own, o_members) = names(o);
+                own.extend(o_own);
+                members = members.or(o_members);
+            }
+            (own.iter().any(is) || members.is_some_and(|m| m.iter().any(is))).then(|| c.code.clone())
+        })
+    }
+
     /// The rules the project's stairs and railings are held to.
     pub fn stair_rules(&self) -> Arc<StairRules> {
         self.rules::<StairRules>()
