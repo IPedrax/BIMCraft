@@ -2775,8 +2775,12 @@ impl BimApp {
                     continue;
                 }
                 // A whole-selected field in hand takes Delete first: the number goes, not the selection
-                // behind it. The contextual keys below clear it, so the registry leaves the event alone.
+                // behind it. The field is cleared here, as the contextual keys would, and the event is
+                // consumed so no second handler deletes an element.
                 if action.as_ref() == "cmd.delete" && self.drawing.selected && modifiers.is_none() && physical == Key::Delete {
+                    self.typed_length.clear();
+                    self.drawing.selected = false;
+                    handled.push((*key, *physical_key, *modifiers));
                     continue;
                 }
                 self.run_shortcut(ctx, &action);
@@ -2930,8 +2934,11 @@ impl BimApp {
             self.toggle_alignment_guides();
         }
         // Q marks the point or edge under the pointer as a temporary snap reference, before the first point too.
+        // Q also starts the Quantities sequence (QT): it joins the sequence buffer, so the pin and the
+        // shortcut can share the key.
         if pressed(Modifiers::NONE, Key::Q) && matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_)) {
             self.pin_under_cursor();
+            self.sequence_letter(ctx, 'Q');
             ctx.request_repaint();
         }
         let typed: String = ctx.input(|i| {
