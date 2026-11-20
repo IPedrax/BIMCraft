@@ -1663,12 +1663,15 @@ impl Model {
     }
 
     /// Whether an identity field of a method's text (`unreadable_over`) is `asked`, as a command compares it: `exact`, or
-    /// whatever the case. A list (`utilities`, or `members` by their ids) holds it.
+    /// whatever the case. A list (`utilities` of names, `members` by their ids) holds it.
     pub fn names_field(view: &Map<String, Value>, field: &str, asked: &str, exact: bool) -> bool {
         let is = |n: &str| if exact { n == asked } else { n.eq_ignore_ascii_case(asked) };
         match view.get(field) {
             Some(Value::String(n)) => is(n),
-            Some(Value::Array(a)) => a.iter().any(|v| v.as_str().or_else(|| v.get("id").and_then(Value::as_str)).is_some_and(is)),
+            // `utilities` lists names; `members` lists members by their ids (a name alone, in a text that lost its shape).
+            Some(Value::Array(a)) => {
+                a.iter().any(|v| v.as_str().or_else(|| v.get("id").and_then(Value::as_str).filter(|_| field == "members")).is_some_and(is))
+            }
             _ => false,
         }
     }

@@ -2864,4 +2864,105 @@ mod unreadable_method_contract_review {
         let mut s = reopen(&mut s, "copy-with-own-identity");
         assert_eq!(breaker(&mut s, &p), 51.0);
     }
+
+    #[test]
+    fn confirmation_rejects_both_building_selectors_before_reading_broken_method() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let cemig = find(D, "cemig").unwrap();
+        add(&mut s, "Broken selector check", key, changed(cemig, key, 1));
+        select(&mut s, &["cemig", "Broken selector check", "celesc"]);
+        replace(&mut s, "Broken selector check", key, "factor", json!("bad"));
+        let mut s = reopen(&mut s, "r2-both-selectors");
+        let mut p = dwellings();
+        p["standard"] = json!("CEMIG ND-5.2");
+        refuses(&mut s, "building_demand", &p, "Broken selector check");
+        p["utility"] = json!("CEMIG");
+        refuses(&mut s, "building_demand", &p, "give `standard` or `utility`, not both");
+    }
+
+    #[test]
+    fn confirmation_numeric_id_recovers_library_identity() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let library = find(D, "fecoergs").unwrap();
+        add(&mut s, "Older numeric id check", key, changed(library, key, 1));
+        select(&mut s, &["Older numeric id check", "fecoergs", "hidropan"]);
+        codes(&mut s, json!({"amend": "fecoergs", "rules": {key: changed(library, key, 2)}}));
+        let mut p = supply();
+        p["utility"] = json!("fEcOeRgS");
+        assert_eq!(breaker(&mut s, &p), 52.0);
+        replace(&mut s, "fecoergs", key, "id", json!(123));
+        let mut s = reopen(&mut s, "r2-numeric-id");
+        refuses(&mut s, "demand", &p, "fecoergs");
+    }
+
+    #[test]
+    fn confirmation_names_members_from_objects_and_legacy_strings() {
+        let mut s = Session::new();
+        let key = "entrance";
+        let energisa = find(D, "energisa").unwrap();
+        add(&mut s, "Broken member shapes", key, changed(energisa, key, 1));
+        select(&mut s, &["energisa", "Broken member shapes", "hidropan"]);
+        let p = json!({"utility": "eAc", "installed_kw": 3, "phases": 1});
+        let original = breaker(&mut s, &p);
+        assert!(original > 0.0);
+        replace(&mut s, "Broken member shapes", key, "tables", json!("bad"));
+        for (file, member) in [("r2-member-object", json!({"id": "EAC", "seat": "Local"})), ("r2-member-string", json!("EAC"))] {
+            replace(&mut s, "Broken member shapes", key, "members", json!([member]));
+            let mut opened = reopen(&mut s, file);
+            refuses(&mut opened, "demand", &p, "Broken member shapes");
+        }
+    }
+
+    #[test]
+    fn confirmation_broken_unit_matches_a_group_known_only_to_the_library() {
+        let mut s = Session::new();
+        let mut unit = changed(find(D, "celesc").unwrap(), "unit_demand", 1);
+        unit["utility"] = json!("EnErGiSa");
+        add(&mut s, "Broken library-only group unit", "unit_demand", unit);
+        select(&mut s, &["Broken library-only group unit", "celesc"]);
+        let p = json!({"utility": "eAc", "installed_kw": 3, "phases": 1});
+        assert_eq!(breaker(&mut s, &p), 51.0);
+        replace(&mut s, "Broken library-only group unit", "unit_demand", "method", json!("bad"));
+        let mut s = reopen(&mut s, "r2-library-group");
+        refuses(&mut s, "demand", &p, "Broken library-only group unit");
+    }
+
+    #[test]
+    fn confirmation_building_utility_uses_the_highest_answering_layer() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let cemig = find(D, "cemig").unwrap();
+        add(&mut s, "Lower shared utility", key, changed(cemig, key, 1));
+        let mut upper = changed(cemig, key, 2);
+        upper["standard"] = json!("Second method for CEMIG");
+        upper["utilities"] = json!(["CeMiG"]);
+        add(&mut s, "Upper shared utility", key, upper);
+        select(&mut s, &["cemig", "Lower shared utility", "Upper shared utility", "celesc"]);
+        let mut p = dwellings();
+        p["utility"] = json!("cEmIg");
+        assert_eq!(building(&mut s, &p), 132.893);
+        replace(&mut s, "Lower shared utility", key, "factor", json!("bad"));
+        let mut opened = reopen(&mut s, "r2-shared-lower-broken");
+        assert_eq!(building(&mut opened, &p), 132.893);
+        replace(&mut s, "Upper shared utility", key, "factor", json!("bad"));
+        let mut opened = reopen(&mut s, "r2-shared-upper-broken");
+        refuses(&mut opened, "building_demand", &p, "Upper shared utility");
+    }
+
+    #[test]
+    fn confirmation_objects_in_utilities_do_not_name_a_building_utility() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let celesc = find(D, "celesc").unwrap();
+        add(&mut s, "Broken object in utilities", key, changed(celesc, key, 1));
+        select(&mut s, &["cemig", "Broken object in utilities", "celesc"]);
+        let mut p = dwellings();
+        p["utility"] = json!("CEMIG");
+        assert_eq!(building(&mut s, &p), 62.017);
+        replace(&mut s, "Broken object in utilities", key, "utilities", json!([{"id": "CEMIG"}]));
+        let mut s = reopen(&mut s, "r2-object-utilities");
+        assert_eq!(building(&mut s, &p), 62.017);
+    }
 }
