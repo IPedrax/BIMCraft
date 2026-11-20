@@ -20,7 +20,9 @@ along the line at that row's bottom, in that column. Each may be empty. `borders
 mullions run through where they cross. The line that starts a module also closes the one before it.
 
 `type {category: "wall", name, curtain: {columns: {segments}, rows: {segments}, panel?, mullion?, …}}` makes one; `panel` and `mullion`
-fill what is left out, and null means none. A curtain wall type's `thickness` is never given: `curtain::sync` makes it what the
+fill what is left out, and null means none. A pattern may hold neither: a wall of it draws nothing of its own and is 0 mm thick, as
+Revit's curtain wall of empty panels and no mullions is (the Revit import brings a curtain wall in so, its panels and mullions
+elements of their own). A curtain wall type's `thickness` is never given: `curtain::sync` makes it what the
 panels and mullions the pattern uses reach (`envelope`), after every command.
 
 ## The layout

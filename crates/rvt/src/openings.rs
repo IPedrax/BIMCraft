@@ -140,6 +140,9 @@ struct Pending {
 /// does not.
 const MAX_FITTED_OVERLAP: f64 = 0.1;
 
+/// Why a door or a window whose host is a curtain wall is not set in it.
+const CURTAIN_HOST: &str = "its host is a curtain wall, which holds a door or a window only in a wall set in its cell";
+
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     let walls: BTreeSet<u32> = f.of_category(crate::walls::OST_WALLS).map(|r| r.id).collect();
     let mut pending: Vec<Pending> = Vec::new();
@@ -160,6 +163,11 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 // The host is the nearest wall the list names (rvt-rs RE-23, RE-85) that the opening fits in; failing one, the
                 // nearest it names, and then the hole is cut down to what that wall gives. A wall whose box cuts the opening
                 // short is the file's own inconsistency: Revit draws the frame a little past the wall's box.
+                // The nearest a curtain wall: it is the host, and a BIMCraft curtain wall holds a door or a window only in a wall
+                // set in its cell, so it is set in no other wall.
+                if named.first().is_some_and(|w| cx.curtain.contains(w)) {
+                    return Err(CURTAIN_HOST.into());
+                }
                 let mut first: Option<(u32, bimcraft_core::model::Id, f64, f64, f64, f64)> = None;
                 let mut fits = None;
                 let mut unreadable: Option<String> = None;
@@ -198,7 +206,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         return Err(if named.iter().any(|w| !cx.curtain.contains(w)) {
                             format!("its host wall {} was left out", named[0])
                         } else {
-                            "its host is a curtain wall, which BIMCraft has no element for".to_string()
+                            CURTAIN_HOST.to_string()
                         });
                     }
                 };

@@ -9133,7 +9133,13 @@ impl Model {
         crate::curtain::check(self)?;
         for (cat, n, thickness, layers) in self.layered_types() {
             let who = format!("{cat} type `{n}`");
-            size(&format!("{who} thickness"), thickness)?;
+            // A curtain wall type is as thick as its panels and mullions make it: one of neither (Revit's of empty panels and no
+            // mullions, whose panels and mullions an import brings in on their own) is 0 mm thick.
+            if cat == "wall" && self.types.wall.get(n).is_some_and(|t| t.curtain.is_some()) {
+                coord(&format!("{who} thickness"), thickness)?;
+            } else {
+                size(&format!("{who} thickness"), thickness)?;
+            }
             if layers.len() > MAX_LAYERS {
                 return Err(format!("{who}: more than {MAX_LAYERS} layers"));
             }

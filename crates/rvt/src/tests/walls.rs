@@ -241,9 +241,9 @@ fn a_wall_the_reader_cannot_describe_is_left_out_with_the_reason_and_the_others_
     // A wall with no location line comes in along its own box; one whose line is not level is left out.
     assert!(said("no location line").contains("101") && said("long side of its own box").contains("101"), "{:?}", i.skipped);
     assert!(said("not level").contains("102"));
-    // Its type holds a name and no layers: a curtain wall or a storefront, which comes in as the plane its own box gives.
-    assert!(said("its type has no layers").contains("103, 104"), "{:?}", i.skipped);
-    // A type with no layers at all is a curtain wall or a storefront: it comes in as the plane its own box gives.
+    // A record that names no wall type (or two) comes in with a type of its own, as thick as its own box.
+    assert!(said("names no type of the wall category").contains("103, 104"), "{:?}", i.skipped);
+    // A type with no layers that no panel or mullion names: it comes in as the plane its own box gives.
     assert!(said("comes in as the plane").contains("105"), "{:?}", i.skipped);
     assert!(
         !i.skipped.iter().any(|s| s.contains("106") || s.contains("107")),
@@ -272,7 +272,7 @@ fn types_with_one_name_and_different_layers_are_told_apart() {
 }
 
 #[test]
-fn walls_whose_types_have_no_layers_come_in_as_the_plane_their_own_boxes_give() {
+fn walls_whose_types_have_no_layers_come_in_as_curtain_walls_that_draw_nothing_of_their_own() {
     let mut p = base(2024);
     straight(&mut p, 100, false);
     // A type that holds a name and no layers (a storefront), under two walls, and one that holds nothing at all.
@@ -283,17 +283,34 @@ fn walls_whose_types_have_no_layers_come_in_as_the_plane_their_own_boxes_give() 
         p.recs.push(Rec::new(id, WALLS).at([0.0, y - 0.4, 0.0, 10.0, y + 0.4, 10.0], &[10, 11, ty, u64::from(id)]));
         p.data.push(Block { id, payload: line_bytes(0.0, 10.0, [0.0, y, 0.0], [1.0, 0.0, 0.0]) });
     }
+    // One of the storefront's walls curved: a quarter circle of 10 ft round the origin.
+    let half_pi = std::f64::consts::FRAC_PI_2;
+    p.recs.push(Rec::new(104, WALLS).at([0.0, 0.0, 0.0, 10.0, 10.0, 10.0], &[10, 11, 503, 104]));
+    p.data.push(Block { id: 104, payload: arc_bytes([0.0, half_pi], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 10.0, [0.0, 0.0, 0.0]) });
+    // Each names a mullion as its host, as a curtain wall's parts do.
+    for (id, wall) in [(201, 101), (202, 102), (203, 103), (204, 104)] {
+        p.recs.push(Rec::new(id, -2_000_171).at([1.0, 1.0, 1.0, 1.2, 1.2, 9.0], &[wall, u64::from(id)]));
+    }
     let i = import(&p);
-    // A type with no compound structure is a curtain wall or a storefront: each of its walls comes in as the plane its own box
-    // gives, and the note says what of it is not read. A type whose data says nothing at all is named by its thickness, as a
-    // floor's is.
+    // A type with no compound structure is a curtain wall or a storefront, whose panels and mullions are elements of their own:
+    // each of its walls comes in as a BIMCraft curtain wall of a pattern of neither panels nor mullions, 0 mm thick, set out by
+    // its exterior face, which draws nothing of its own. A curved one, which a BIMCraft curtain wall cannot be, is left out.
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
     assert_eq!(walls(&i).len(), 4, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
-    assert!(said("comes in as the plane").contains("3 walls"), "{:?}", i.skipped);
+    assert!(said("draws nothing of its own").contains("3 walls"), "{:?}", i.skipped);
     for id in ["101", "102", "103"] {
-        assert!(said("comes in as the plane").contains(id), "{id}: {:?}", i.skipped);
+        assert!(said("draws nothing of its own").contains(id), "{id}: {:?}", i.skipped);
     }
-    assert!(i.model.types.wall["Storefront"].layers.len() == 1, "one layer, of the box's thickness");
+    assert!(said("curved").contains("104") && said("curved").contains("left out"), "{:?}", i.skipped);
+    let curtain: Vec<(bimcraft_core::model::Id, &bimcraft_core::model::Wall)> =
+        walls(&i).into_iter().filter(|(_, w)| i.model.types.wall[&w.type_name].curtain.is_some()).collect();
+    assert_eq!(curtain.len(), 3);
+    assert!(curtain.iter().all(|(_, w)| w.location == bimcraft_core::model::Location::ExteriorFinish));
+    let storefront = &i.model.types.wall["Storefront"];
+    assert!(storefront.thickness == 0.0 && storefront.layers.is_empty(), "{storefront:?}");
+    let ids: std::collections::HashSet<_> = curtain.iter().map(|(id, _)| *id).collect();
+    assert!(bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids).is_empty());
 }
 
 #[test]
@@ -572,7 +589,7 @@ fn a_type_whose_layers_have_no_width_is_no_wall_type_and_a_layer_whose_material_
         }
         let i = import(&p);
         // A membrane has no width, so its type is no wall and the wall is left out; a layer list that is not framed reads as no
-        // list, so its type is read as a curtain wall's — the plane its box gives — and the note says so.
+        // list, and no panel or mullion names the wall, so it comes in as the plane its box gives and the note says so.
         assert_eq!(walls(&i).len(), 1, "Revit {release}: {:?}", i.skipped);
         assert!(i.skipped.iter().any(|s| s.contains("no layers") && s.contains("Membrane") && s.contains("ids 100")), "{:?}", i.skipped);
         assert!(i.skipped.iter().any(|s| s.contains("comes in as the plane") && s.contains("101")), "{:?}", i.skipped);
@@ -612,8 +629,8 @@ fn a_layer_list_is_a_types_only_when_it_is_framed() {
         p.data[0].payload = payload;
         straight(&mut p, 100, false);
         let i = import(&p);
-        // A layer list that is not framed is no layer list: the type reads as a curtain wall's, and its wall comes in as the plane
-        // its own box gives, which is what the note says.
+        // A layer list that is not framed is no layer list, and no panel or mullion names the wall: it comes in as the plane its
+        // own box gives, which is what the note says.
         assert_eq!(walls(&i).len(), 1, "{:?}", i.skipped);
         assert!(i.skipped.iter().any(|s| s.contains("no layers") && s.contains("comes in as the plane")), "{:?}", i.skipped);
     }
