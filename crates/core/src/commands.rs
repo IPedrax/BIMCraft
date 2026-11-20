@@ -4920,6 +4920,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     budget.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     stage(ui_msg!("Checking the model"));
     m.sync_library();
+    let repairs = m.repair_line_patterns();
+    // The window says these too; the terminal gets them as well, for a bug report pasted from there.
+    for w in &repairs {
+        eprintln!("{}: {w}", path.display());
+    }
     m.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     budget.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     let name = m.name.clone();
@@ -4929,8 +4934,8 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         reply["template"] = json!(true);
     }
     // A formula saying a name its family lacks, which this BIMCraft refuses a command making: the file opens, saying so.
-    let warnings: Vec<String> =
-        s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))).collect();
+    let mut warnings: Vec<String> = repairs;
+    warnings.extend(s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))));
     if !warnings.is_empty() {
         reply["warnings"] = json!(warnings);
     }
