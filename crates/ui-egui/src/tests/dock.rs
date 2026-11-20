@@ -399,6 +399,12 @@ fn title(h: &Harness<BimApp>, sheet: Sheet) -> Pos2 {
     )
 }
 
+/// A view's window title dragged to `to`: the hand takes it on its strip and lets it go there.
+fn drag_view(h: &mut Harness<BimApp>, sheet: Sheet, to: Pos2) {
+    let from = title(h, sheet);
+    drag_screen(h, from, to, PointerButton::Primary);
+}
+
 /// The views' area as this frame laid it out, checked: every column of `width` cells and the tabbed pane is equal,
 /// and their widths add up to the pane's.
 fn assert_columns(h: &Harness<BimApp>, columns: usize, rows: usize) {
@@ -425,7 +431,7 @@ fn one_window_snapped_left_makes_two_equal_columns() {
     h.state_mut().float_view(two, pos2(500.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.left() + 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
     assert_eq!(h.state().arrange, Arrange::Split);
     assert_eq!(h.state().floating[0].edge, Some(Edge::Left));
     assert_eq!(cells(&h).len() + 1, 2, "the window and the tabs: two parts");
@@ -446,9 +452,9 @@ fn two_snapped_windows_make_three_equal_columns_in_the_order_they_were_dropped()
     h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.left() + 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), pos2(views.right() - 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
     assert_eq!(h.state().arrange, Arrange::Split);
     assert_eq!(cells(&h).len() + 1, 3);
     assert_eq!(cells(&h).iter().map(|(s, _)| *s).collect::<Vec<_>>(), [two, Sheet::View3D]);
@@ -466,8 +472,8 @@ fn the_top_magnet_still_docks_a_window_back_into_the_tabs() {
     h.run();
     h.state_mut().float_view(two, pos2(500.0, 300.0));
     h.run();
-    let bar = h.state().tab_bar.center();
-    drag_screen(&mut h, title(&h, two), bar, PointerButton::Primary);
+    let bar = h.state().tab_bar;
+    drag_view(&mut h, two, pos2(bar.right() - 4.0, bar.center().y));
     assert!(h.state().floating.is_empty());
     assert_eq!(h.state().views, [one, two]);
     assert_eq!(h.state().arrange, Arrange::Tabs);
@@ -518,7 +524,7 @@ fn tile_views_of_three_views_leaves_the_last_cell_empty() {
     let cells = cells(&h);
     assert_eq!(cells.len(), 3);
     assert!(cells[0].1.top() <= views.top() + 1e-3 && cells[1].1.top() <= views.top() + 1e-3, "two in the top row");
-    assert!(cells[2].1.top() > views.center().y && cells[2].1.left() <= views.left() + 1e-3, "one in the left of the second row");
+    assert!(cells[2].1.top() >= views.center().y - 1e-3 && cells[2].1.left() <= views.left() + 1e-3, "one in the left of the second row");
     for (_, r) in &cells {
         assert!((r.width() - views.width() / 2.0).abs() < 1e-3, "{r:?}");
         assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
@@ -558,16 +564,16 @@ fn a_window_dragged_out_of_its_column_floats_free_and_then_the_tabs_come_back() 
     h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.left() + 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), pos2(views.right() - 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), views.center(), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, views.center());
     let right = h.state().floating.iter().find(|f| f.sheet == Sheet::View3D).unwrap();
     assert_eq!(right.edge, None);
     assert_eq!(cells(&h).len() + 1, 2, "the left window and the tabs again");
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), views.center(), PointerButton::Primary);
+    drag_view(&mut h, two, views.center());
     assert_eq!(h.state().arrange, Arrange::Tabs);
     assert!(cells(&h).is_empty());
 }
@@ -582,9 +588,9 @@ fn a_resized_window_keeps_the_columns_and_rows_equal() {
     h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.left() + 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), pos2(views.right() - 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
     let kept: Vec<(Pos2, Vec2)> = h.state().floating.iter().map(|f| (f.at, f.size)).collect();
     h.set_size(vec2(1600.0, 800.0));
     h.run();
@@ -601,7 +607,7 @@ fn one_window_snapped_bottom_makes_two_equal_rows_top_down() {
     h.state_mut().float_view(two, pos2(500.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.center().x, views.bottom() - 8.0), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.center().x, views.bottom() - 8.0));
     assert_eq!(h.state().arrange, Arrange::Split);
     assert_eq!(h.state().floating[0].edge, Some(Edge::Bottom));
     assert_eq!(cells(&h).len() + 1, 2);
@@ -624,9 +630,9 @@ fn two_windows_snapped_down_make_three_equal_rows_with_the_new_one_at_the_bottom
     h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.center().x, views.bottom() - 8.0), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.center().x, views.bottom() - 8.0));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), pos2(views.center().x, views.bottom() - 8.0), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, pos2(views.center().x, views.bottom() - 8.0));
     assert_eq!(h.state().arrange, Arrange::Split);
     assert_eq!(cells(&h).len() + 1, 3);
     assert_eq!(cells(&h).iter().map(|(s, _)| *s).collect::<Vec<_>>(), [two, Sheet::View3D]);
@@ -655,9 +661,9 @@ fn columns_and_rows_mix_in_one_layout() {
     h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.left() + 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::Ceiling(level)), pos2(views.center().x, views.bottom() - 8.0), PointerButton::Primary);
+    drag_view(&mut h, Sheet::Ceiling(level), pos2(views.center().x, views.bottom() - 8.0));
     assert_eq!(h.state().arrange, Arrange::Split);
     let views = h.state().views_rect;
     let cells = cells(&h);
@@ -683,13 +689,13 @@ fn the_bottom_left_corner_belongs_to_the_bottom_zone() {
     h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
     h.run();
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, two), pos2(views.left() + 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), pos2(views.right() - 8.0, views.center().y), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), pos2(views.left() + 8.0, views.bottom() - 8.0), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, pos2(views.left() + 8.0, views.bottom() - 8.0));
     assert_eq!(h.state().floating.iter().find(|f| f.sheet == Sheet::View3D).unwrap().edge, Some(Edge::Bottom));
     let views = h.state().views_rect;
-    drag_screen(&mut h, title(&h, Sheet::View3D), pos2(views.left() + 8.0, views.bottom() - 2.0 * 36.0), PointerButton::Primary);
+    drag_view(&mut h, Sheet::View3D, pos2(views.left() + 8.0, views.bottom() - 2.0 * 36.0));
     assert_eq!(h.state().floating.iter().find(|f| f.sheet == Sheet::View3D).unwrap().edge, Some(Edge::Left));
 }
