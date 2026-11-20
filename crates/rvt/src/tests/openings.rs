@@ -94,11 +94,13 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     p.types.push(crate::project_fixture::TypeRec::new(502, WALLS));
     p.data.push(Block { id: 502, payload: crate::project_fixture::name_bytes("Storefront") });
     wall_at(&mut p, 90, 40.0, 502);
+    // A mullion of it, naming it as its host.
+    p.recs.push(Rec::new(91, -2_000_171).at([1.0, 40.0, 0.0, 1.2, 40.2, 10.0], &[90, 91]));
     // Door 200 names walls 80 and 100, both below it: the nearest below is 100. Door 250 names only wall 300, above it.
     door(&mut p, 200, 5.0, &[80, 100]);
     p.recs.push(Rec::new(250, DOORS).at([3.5, 29.6, 0.0, 6.5, 31.2, 7.0], &[300, 600, 250]));
-    // Door 95 names the curtain wall 90 (below it) and wall 100 (above it): the nearest below it is the curtain wall, which comes in
-    // as the plane its box gives, so it is the host. Door 410 names only it.
+    // Door 95 names the curtain wall 90 (below it) and wall 100 (above it): the nearest below it is the curtain wall, its host, which
+    // holds a door only in a wall set in its cell, so it is not set in wall 100 instead. Door 410 names only it.
     door(&mut p, 95, 9.0, &[90, 100]);
     p.recs.push(Rec::new(410, DOORS).at([3.5, 40.0, 0.0, 6.5, 41.2, 7.0], &[90, 600, 410]));
     let (i, from) = super::walls::import_with_origins(&p);
@@ -110,8 +112,9 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     };
     assert_eq!(host(200).as_deref(), Some("Wall 100"), "{:?}", i.skipped);
     assert_eq!(host(250).as_deref(), Some("Wall 300"));
-    assert_eq!(host(95).as_deref(), Some("Wall 90"));
-    assert_eq!(host(410).as_deref(), Some("Wall 90"), "{:?}", i.skipped);
+    assert_eq!(host(95), None, "{:?}", i.skipped);
+    assert_eq!(host(410), None);
+    assert!(i.skipped.iter().any(|s| s.contains("its host is a curtain wall") && s.contains("95") && s.contains("410")), "{:?}", i.skipped);
 }
 
 /// A wall at an angle: from (0, 5) ft, 15 ft long along `direction`, 10 ft tall.

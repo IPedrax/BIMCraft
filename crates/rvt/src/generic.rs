@@ -665,6 +665,12 @@ fn boxes(
             cx.left_out(label, r.id, "it is a model group (class ElementGroup): its members come in on their own, and its box is no body");
             continue;
         }
+        if f.tags.grid_line == Some(r.class_tag) {
+            let why =
+                "it is a curtain grid line (class CurtainGridLine): its mullions and panels come in on their own, and its box is no body";
+            cx.left_out(label, r.id, why);
+            continue;
+        }
         if f.tags.terrain.contains(&Some(r.class_tag)) {
             let why =
                 "it is terrain (class Toposolid or SiteSurface): its surface is not read, and its box would be a solid block over the site";

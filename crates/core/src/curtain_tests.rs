@@ -365,13 +365,26 @@ fn a_bad_pattern_is_refused_saying_what_to_fix() {
         (json!({"panels": [["Nothing"]]}), "Nothing"),
         (json!({"panels": [["Glazed", "Glazed"]]}), "panels"),
         (json!({"vertical": [[{"type": "Nothing"}]]}), "Nothing"),
-        (json!({"panel": null, "mullion": null}), "panel or a mullion"),
         (json!({"min_panel": -1}), "min_panel"),
         (json!({"columns": {"segments": [60]}}), "too small"),
     ] {
         let e = fails(&mut s, "type", grid_of(extra.clone()));
         assert!(e.contains(says), "{extra}: {e}");
     }
+}
+
+#[test]
+fn a_pattern_of_neither_panels_nor_mullions_is_a_curtain_wall_that_draws_nothing_of_its_own() {
+    // As Revit's curtain wall of empty panels and no mullions: a wall, with nothing of its own to draw (an import brings in its
+    // panels and mullions as elements of their own).
+    let mut s = session();
+    grid(&mut s, "Empty", &[1000.0], &[1000.0], json!({"panel": null, "mullion": null}));
+    assert_eq!(s.model.types.wall["Empty"].thickness, 0.0);
+    let id = wall(&mut s, "Empty", 5000.0, 3000.0);
+    assert!(s.model.check().is_ok(), "{:?}", s.model.check());
+    assert!(layout_of(&s, id).parts.is_empty());
+    let ids: std::collections::HashSet<u64> = [id].into();
+    assert!(crate::view3d::Scene::new(&s.model).boxes(&ids).is_empty());
 }
 
 #[test]
