@@ -49,16 +49,19 @@ mod publisher;
 mod stairgrips;
 mod stairtype;
 pub use gpu::limits_for;
+mod asset_manager;
 mod graphics;
 mod gridtypes;
 mod groups;
 mod guide_refs;
 pub mod icons;
+mod image_grips;
 mod inquiry;
 pub mod lang;
 mod linestyles;
 mod lineweights;
 mod links;
+mod manage_links;
 mod markdown;
 mod mep;
 mod mesh;
@@ -890,6 +893,10 @@ pub struct BimApp {
     spot_type_dialog: Option<spots::SpotTypeDialog>,
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
+    /// The selected image's corner being dragged: the image, and which corner.
+    pub(crate) image_grip: Option<(Id, usize)>,
+    /// Insert > PDF's page picker, while a PDF of several pages waits for its page.
+    pub(crate) pdf_page_box: Option<mesh::PdfPageBox>,
     curtain_editor: Option<curtain::CurtainEditor>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
     curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
@@ -1109,6 +1116,8 @@ pub struct BimApp {
     pub(crate) survey_moves: bimcraft_core::coordinates::Move,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
+    pub(crate) manage_links: Option<manage_links::ManageLinks>,
+    pub(crate) asset_manager: Option<asset_manager::AssetManager>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
     /// Manage > Run Script, while open.
@@ -1824,6 +1833,8 @@ impl BimApp {
             dimension_type_dialog: None,
             spot_type_dialog: None,
             spot_grip: None,
+            image_grip: None,
+            pdf_page_box: None,
             curtain_editor: None,
             curtain_part: None,
             curtain_more: Vec::new(),
@@ -1949,6 +1960,8 @@ impl BimApp {
             survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
             purge_dialog: None,
+            manage_links: None,
+            asset_manager: None,
             select_by_id: None,
             run_script: None,
             work_plane: None,
@@ -2618,6 +2631,9 @@ impl BimApp {
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
+            || self.manage_links.is_some()
+            || self.asset_manager.is_some()
+            || self.pdf_page_box.is_some()
             || self.select_by_id.is_some()
             || self.run_script.is_some()
             || self.work_plane.as_ref().is_some_and(|d| d.picking.is_none())
@@ -5652,6 +5668,12 @@ impl BimApp {
             if big_button(ui, Icon::LinkCad, "Link CAD", self.cad_box.as_ref().is_some_and(|b| b.linked()), tip).clicked() {
                 self.cad_dialog = Some(true);
             }
+            let tip = msg!(
+                "Manage Links: every linked model, IFC, CAD drawing, point cloud and 3D model, its path and status and how many instances place it; Reload, Reload From and Unload"
+            );
+            if big_button(ui, Icon::Link, "Manage Links", self.manage_links.is_some(), tip).clicked() {
+                self.open_manage_links();
+            }
         });
         panel(ui, msg!("Import"), |ui| {
             let tip = msg!(
@@ -5666,6 +5688,30 @@ impl BimApp {
             if big_button(ui, Icon::Component, "Import 3D Model", false, tip).clicked() {
                 self.import_mesh_dialog(ui.ctx());
             }
+            let tip = msg!(
+                "Image: a PNG or JPEG picture placed under the model in the plans of this plan's level, moved and sized as an element"
+            );
+            let r = big_button(ui, Icon::Component, "Image", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), false, false);
+                }
+                if ui.button(t("Link Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), true, false);
+                }
+            });
+            let tip = msg!(
+                "PDF: a PDF's first page placed under the model in the plans of this plan's level, at its paper's size at the plan's scale, so a drawing printed at that scale lies true"
+            );
+            let r = big_button(ui, Icon::Sheet, "PDF", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), false, true);
+                }
+                if ui.button(t("Link PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), true, true);
+                }
+            });
         });
     }
 
@@ -5716,8 +5762,11 @@ impl BimApp {
                 }
             });
             // What annotation draws with: pens, line styles and patterns, fill patterns; one button that lists them.
-            let open = self.line_weights_dialog.is_some() || self.line_styles_dialog.is_some() || self.fill_patterns_dialog.is_some();
-            let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns");
+            let open = self.line_weights_dialog.is_some()
+                || self.line_styles_dialog.is_some()
+                || self.fill_patterns_dialog.is_some()
+                || self.asset_manager.is_some();
+            let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns, and the Asset Manager");
             let r = big_button(ui, Icon::AnnotationSettings, "Annotation Settings", open, tip);
             ribbon::choices(ui, &r, false, |ui| {
                 // As wide as its longest name, not the window.
@@ -5738,6 +5787,12 @@ impl BimApp {
                 let tip = msg!("Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn");
                 if list_row(ui, Icon::FillPatterns, "Fill Patterns", false, tip).clicked() {
                     self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
+                }
+                let tip = msg!(
+                    "Asset Manager: the project's materials, fill types and patterns, line patterns and styles and pictures, where each is used, and their import and export as a .bima file"
+                );
+                if list_row(ui, Icon::Materials, "Asset Manager", false, tip).clicked() {
+                    self.open_asset_manager();
                 }
             });
             let now_std = self.session.model.standard();
@@ -5830,13 +5885,8 @@ impl BimApp {
                 self.open_classification();
             }
         });
-        // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
-        // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
-        ribbon::yielding(ui, msg!("Project Location"), |ui| {
-            let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
-            if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
-                self.link_dialog = true;
-            }
+        // Revit's Project Location: where the project stands (a model is linked from Insert > Link).
+        panel(ui, msg!("Project Location"), |ui| {
             let tip = msg!(
                 "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
             );
@@ -5878,6 +5928,12 @@ impl BimApp {
                 self.open_run_script();
             }
         });
+    }
+
+    /// Whether the selection is images and PDFs placed in plans, and nothing else.
+    pub(crate) fn images_selected(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty() && self.selection.iter().all(|id| matches!(m.elements.get(*id), Some(Element::Image(_))))
     }
 
     fn modify_tab(&mut self, ui: &mut Ui) {
@@ -5959,6 +6015,8 @@ impl BimApp {
         }
         // Revit's Modify panel: small buttons in rows. Those taking the selection need one.
         let some = !self.selection.is_empty();
+        // Images and PDFs alone: what they take, moving, copying, mirroring and deleting, and nothing that trims or paints.
+        let images = some && self.images_selected();
         // The button lit while its tool is on (the two Mirrors told apart by how they take the axis).
         let on = |t: &Tool, other: &Tool| match (t, other) {
             (Tool::Mirror { draw: a, .. }, Tool::Mirror { draw: b, .. }) => a == b,
@@ -6262,7 +6320,10 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in rows {
                     ui.horizontal(|ui| {
-                        for (icon, label, tip, tool, enabled) in row {
+                        let taken = |tool: &Option<Tool>| {
+                            !images || matches!(tool, None | Some(Tool::Move(_) | Tool::Copy(_) | Tool::Mirror { .. }))
+                        };
+                        for (icon, label, tip, tool, enabled) in row.iter().filter(|b| taken(&b.3)) {
                             let active = tool.as_ref().is_some_and(|t| on(t, &self.tool) && *t != Tool::Modify);
                             if ui.add_enabled_ui(*enabled, |ui| small_button(ui, *icon, label, active, tip)).inner.clicked() {
                                 match tool {
@@ -6275,6 +6336,10 @@ impl BimApp {
                 }
             });
         });
+        if images {
+            self.mode_panel(ui);
+            return;
+        }
         panel(ui, "Phasing", |ui| {
             let tip = msg!("Demolish (DW): click an element to take it down in the view's phase; click it again to take it back");
             let on = self.graphic_view().is_some();
@@ -7403,6 +7468,9 @@ impl BimApp {
         self.findings_window(ctx);
         self.coordinates_window(ctx);
         self.options_window(ctx);
+        self.manage_links_window(ctx);
+        self.asset_manager_window(ctx);
+        self.pdf_page_window(ctx);
         self.purge_window(ctx);
         self.cowork_window(ctx);
         self.lend_window(ctx);

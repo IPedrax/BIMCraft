@@ -737,7 +737,87 @@ link at the height of one of the project's (1 mm) is that level, another comes i
 them without knowing: `Look::with` makes a linked id halftone, and picking never answers one (`Drawing::pick_all`, `in_box`, `Image::pick`,
 `in_box`, `shows` and `Mesh::pick` leave them out). The commands that make an image (`render`, `save` to svg, png or pdf) draw `seen`; the desktop's
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
-To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
+To do: a link's graphics overrides and visibility per view, hosting on a linked wall.
+
+### Manage Links
+
+`links {kind?}` (`link/manage.rs`) lists, as Revit's Manage Links does, every file the project reads from elsewhere, a tab for
+each kind: `projects` and `ifc` (links, by their path's extension), `cad` (`Model::cads`, linked or imported), `clouds`, `models`
+(families made by `import_mesh`, which keep `Family::source`: the file's absolute path, the object, the OBJ's units and up, and
+the point the family stands on in the file), `images` (the pictures placed in plans, a row for each picture and file) and `pdf` (the PDFs' pages placed, the same way). There's one row for each file, as Revit
+lists a link's type: `path` as kept, `path_type`, `resolved` (relative to the project's file), `status` (loaded, not loaded,
+unloaded, not found, imported) and its `instances` with their `ids`.
+
+`unload {id}` sets `Link::unloaded` on every link of that file and drops it from `loaded`. It's an undo step, and it's kept in
+the file, so `open` (`relink`) doesn't read the link. `reload {id}` loads it again, and `reload` without an id reads only the
+loaded links. `reload_from {id, path}` points every link of the file at another and reads it; a file that can't be read
+refuses the command. `reload_cad {cad, path}` is a drawing's Reload From, which links an imported drawing from then on.
+`reload_mesh {path, from?}` rebuilds each family of a 3D model from the object of its name, about the point it stood on, so
+its components stay. The window is `crates/ui-egui/src/manage_links.rs` (Insert > Link);
+tests are `links_tests.rs` and `tests/manage_links.rs`.
+
+### Images in plans
+
+`image {path | picture, level?, view?, at?, width?, link?}` places an `Element::Image` (`model::PlacedImage`), as Revit's Insert >
+Image and Link Image do: a picture of `Model::images` (`texture::Picture`, the one store pictures have, so the same pixels are one
+picture, at most `MAX_SIDE` px a side and `MAX_IMAGES` of them) with its middle on `at` on a level, `width` mm across and as tall as its
+pixels say, in every plan of its level or one (`view`). `render::images` draws it under the CAD drawings and the model: the
+picture's nearest pixel to each of the view's, clipped to the view, as one `Prim::Image` owned by the element, so it's picked,
+moved (`transform` moves its middle; a turn keeps it upright, a mirror is refused) and deleted as any element. Linked, it keeps
+its file (`path`), which `reload_image {id, path?}` reads again for every image of that picture and file, and Manage Links lists on
+its Images tab; the picture it showed goes when nothing else shows it. The Asset Manager lists it among the picture's users.
+A picture placed is kept up to `texture::MAX_PLACED_SIDE` (4096 px) a side, where a material's is kept to `MAX_SIDE` (1024):
+`Picture::import_at`. A file that fits is kept byte for byte, so a JPEG stays the JPEG it came in as (`Picture::is_jpeg`), as
+small as it was; one halved to fit is written again as what it was (a JPEG at quality 90 through jpeg-encoder, or a PNG). A
+project file holds either under the picture's `png` key, which every version reads (both are known by their first bytes).
+
+A PDF's page is placed the same way, as Revit's Insert > PDF: `image {path: "….pdf", page?}` draws page `page` (from 1) through
+`pdf_in.rs` and hayro (Apache-2.0 OR MIT), over white at up to 150 dpi and 4096 px a side. Unless `width` says, it stands at its paper's size at the plan's
+scale (`graphics::scale_of`), so a drawing printed at that scale lies true over the model. `PlacedImage::page` keeps the page,
+which `reload_image` draws again; Manage Links lists it on its PDF tab. A file past `pdf_in::MAX_BYTES`, an encrypted one, or a
+page it hasn't is refused. `pdf_pages {path}` lists a PDF's pages and their paper sizes, which the desktop's Insert > PDF asks
+from when there is more than one (`mesh.rs`, `PdfPageBox`): each page a card with its picture, drawn small on a thread of its
+own by `pdf_in::thumbnails` (up to `MAX_THUMBNAILS`, stopped when the box closes), so a long PDF never holds the window up.
+A PDF's page stands as tall as its paper's aspect says (`PlacedImage::height`), not its picture's, which whole pixels round.
+
+A PDF's page is drawn as vectors, not as its picture: `pdf_in::drawing` runs hayro's interpreter into a `Device` of its own
+(`Collect`) that keeps each path filled or stroked (flattened to 0.05 pt, with its colour, width and dashes), each glyph as the
+fill of its outline, and each raster picture in the page with its transform, up to `pdf_in::MAX_POINTS` points (past that, and
+for patterns, shadings and stencils, the drawing says `cut_short`). The project keeps the PDF itself (`Model::pdfs`, a
+`PdfDoc` keyed by the id of the page's picture in `Model::images`: deflated, as base64, read again when the project opens),
+and `render::pdf_page` draws its items into the plan each time, a line as wide as it prints at the image's size (a pixel at
+least), a picture in it resampled through its transform. The picture of the page (drawn at up to 2048 px) stays beside it,
+which an older version, leaving `pdfs` out of a file, shows instead.
+
+Its fills are drawn by the non-zero rule, as every output fills (PNG, SVG, a sheet's PDF, and the window, which takes a placed
+image's shapes as `render::Part::Picture`, fills them as it fills a letter and feathers every edge half a point each side,
+`canvas::feather`: a mesh has no anti-aliasing of its own, and without it a stroke thinner than a pixel, a serif letter's bars
+at a plan's zoom, showed or vanished by where it fell between pixels): a glyph's counters stay open as
+they're wound, and an even-odd fill's rings are wound again by how many of the others each lies in (`pdf_in::wind_even_odd`),
+so a frame's opening stays open too. Text is its fonts' own outlines where the PDF embeds them, as most do (a subset of each).
+A font it only names comes from `pdf_in::interpreter`'s resolver: one of PDF's standard families (Helvetica or Arial, Times or
+Times New Roman, Courier or Courier New) is this computer's font of it or one drawn to its widths (`text::system::substitutes`:
+Liberation, Arimo), a CID font is looked for by its own name (`pdf_in::system_font`, its PostScript name read as a family by
+`family_of`), and else hayro's Foxit fonts (BSD-3, in `NOTICE`) draw it. hayro reads an ordinary font of another family in the
+standard one nearest it whatever the computer has, so such a font, and a CID font the computer hasn't, is a stand-in: the page's
+resources name them (`pdf_in::stand_ins`), `image` and `reload_image` return them as `missing_fonts`, `elements` shows them, and
+the desktop says so on placing it and shows them in Properties (Fonts Substituted). It is decided where the project is open:
+the project holds the PDF, never a font. In the window a selected or hovered image keeps its own colours under a light tint
+over its whole page, and a selected one is outlined (`image_grips.rs`, `image_frames`).
+
+With `snaps` (Properties' Snap to Its Lines, a PDF's only) a placed PDF is snapped to as a CAD import is: `snap::pdf_scene`
+gives the straight edges of its strokes and of the shapes it fills near the cursor, their ends and middles, and an edge
+shorter than 2 points (a step of a curve followed) its line alone; a glyph's fill (`Item::Fill::letter`) gives nothing, so
+text doesn't crowd the snaps.
+
+An image draws under the model, or over it with `front` (Properties' Draw in Front of Model): `render::images` runs twice, under
+the CAD drawings and after the model. `flip_x` and `flip_y` are what `mirror` makes of it about an upright or a level line (a
+slanted axis is refused: it stands square to the plan). `modify` takes its `width`, and for its size two keys that aren't
+fields: `height`, and a PDF's `scale` (1 : n, its paper's size n times), each setting the width at its aspect; `elements` shows
+a PDF's `paper` and `scale`. In the desktop its corners are grips (`image_grips.rs`): a drag resizes it about the corner
+across, keeping its aspect, and the Modify tab offers only Move, Copy, the Mirrors and Delete while images alone are
+selected. Tests: `image_tests.rs`, `tests/manage_links.rs`. Still to come: on sheets and in sections, turned, and a PDF's clip
+paths (everything on a page is drawn, clipped or not).
 
 ## Grid types
 

@@ -196,11 +196,94 @@ other_files(
     other_files(
         "reload",
         "Reload Links",
-        "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` \
-         (the names) and `failed` ({name, error})",
+        "{id?} read the file of the link `id` again, for every link of that file, loading it if it was unloaded; or, without \
+         `id`, the file of every link that is loaded: for a project that changed on disk. Returns `reloaded` (the links' names) \
+         and `failed` ({name, error})",
         reload,
         Files::Read,
     ),
+    edit_files(
+        "reload_from",
+        "Reload From",
+        &[],
+        "{id, path} Reload From, as Manage Links has it: the file `path` (a .bimc, .bimcraft or .ifc) read in place of the one \
+         link `id` reads, for every link of that file, each staying where it stands and loaded again if it was unloaded. A \
+         relative `path` is relative to this project's file. A file that can't be read changes nothing. Returns `path`, \
+         `links` (their names) and `elements`, how many the file holds",
+        reload_from,
+        Files::Read,
+    ),
+    edit(
+        "unload",
+        "Unload Link",
+        &[],
+        "{id} unloads link `id`'s file, as Manage Links does: every link of that file stays where it stands and draws \
+         nothing, and opening the project doesn't read it, until `reload` names one of them. Returns `unloaded` (the links' \
+         names) and `path`",
+        unload,
+    ),
+    other(
+        "assets",
+        "Asset Manager",
+        "{kind?: materials|fill_types|fill_patterns|line_patterns|line_styles|pictures} what the project draws with, as the \
+         Asset Manager lists it: a list for each kind (`kind` answers its own alone), a row each with its `name`, library `id` \
+         and `guid`, `uses` and `used_by`, where it is used: `{kind: element, id, category}` (a detail line its style, a face \
+         painted its material, a filled region its type), `{kind: type, category, name, what}` (a wall type's layer, a pipe \
+         type's material), or `{kind, name}` of a family, a material (its picture and fill patterns), a fill_type (its \
+         patterns), a line_style (its pattern), a grid_type, a view_template, a group (a member of its type) or a \
+         phase_override. A picture has its `size`, px, and `label`, the name it came in with. It changes nothing",
+        assets,
+    )
+    .menu("Manage > Asset Manager"),
+    edit(
+        "delete_assets",
+        "Delete Assets",
+        &[],
+        "{materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} takes the named assets \
+         out of the project, as the Asset Manager's Delete does: refused, saying what uses it, for one something else uses \
+         (what is among those named, as a material's own picture, goes with it). Returns `deleted` ({kind, name})",
+        delete_assets,
+    ),
+    other_files(
+        "export_assets",
+        "Export Assets",
+        "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} writes the \
+         project's assets to a .bima file, to bring into another project with `import_assets`: those the lists name (a list \
+         given as true takes every asset of its kind), or with none, every asset. What they need goes with them: a material's \
+         fill patterns and picture, a fill type's patterns, a line style's line pattern. A .bima is a zip: `assets.json` (each \
+         asset by name, with its GUID and its value as a project file writes it) and each picture as `images/<id>.png` or \
+         `.jpg`, the file the project holds. Returns `path` and how many of each kind it holds",
+        export_assets,
+        Files::Write,
+    ),
+    edit_files(
+        "import_assets",
+        "Import Assets",
+        &[],
+        "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?, existing?: \
+         skip|replace|rename} brings the assets of a .bima file (`export_assets`) into the project: those the lists name (true \
+         for every asset of a kind), or with none, all of them, and what they need. An asset whose name the project has is \
+         `existing`: skip (the default) keeps the project's, and what needs it uses it; replace puts the file's in its place; \
+         rename brings it in as `name 2`, `name 3`…, and what came with it names it so. A picture the project holds (the \
+         same pixels) is the project's. Each new asset keeps its GUID where the project has none of it. An asset this version \
+         can't read is left out and said; a file of a newer format is refused. Returns `added`, `replaced`, `skipped`, \
+         `renamed` ({kind, from, to}) and `left_out` ({kind, name, why})",
+        import_assets,
+        Files::Read,
+    ),
+    other_files(
+        "links",
+        "Manage Links",
+        "{kind?: projects|ifc|cad|pdf|images|clouds|models} every file the project reads from elsewhere, as Revit's Manage Links \
+         lists them: a list for each kind (`kind` answers its own alone), one row for each file however many instances place \
+         it. A row has `name`, `path` as the project keeps it (null for what was imported and keeps no path), `path_type` \
+         (relative to this project's file, or absolute), `resolved` (where that is), `status` (loaded, not loaded, not found, or \
+         imported: held in the project and not read again), `instances` (how many elements place it) and their `ids` (a link's, with each one's `names`); a CAD \
+         drawing's and a scan's `source`, the file it came from. It changes nothing",
+        links,
+        Files::Read,
+    )
+    .menu("Manage > Manage Links"),
     other_files(
         "save",
         "Save",
@@ -344,6 +427,18 @@ other_files(
         Files::Read,
     ),
     edit_files(
+        "reload_mesh",
+        "Reload 3D Model",
+        &[],
+        "{path, from?} reads the 3D model `path` again (an OBJ or glTF brought in by `import_mesh`, its path as `links` lists it \
+         under `models`), or with `from` another file in its place (Reload From): each family made from it has its forms \
+         rebuilt from the object of its name, about the point it stood on, so its components stay where they are and show what \
+         the file holds now. Returns `path`, `reloaded` (the families) and `missing` (those whose object the file no longer has, \
+         left as they were)",
+        reload_mesh,
+        Files::Read,
+    ),
+    edit_files(
         "import_cad",
         "Import CAD",
         &[],
@@ -364,6 +459,44 @@ other_files(
         import_cad,
         Files::Read,
     ),
+    edit_files(
+        "image",
+        "Image",
+        &[],
+        "{path | picture, level?, view?, at?: [x, y], width?, link?, page?, front?, snaps?} places a picture in the plans of `level` (the \
+         first unless given), or with `view` (a plan) in that view only, as Revit's Insert > Image and Insert > PDF. A PDF's \
+         `page` (the first unless given) is drawn over white at up to 150 dpi and 4096 px a side, and placed at its paper's \
+         size at the plan's scale unless `width` says, so a drawing made at that scale lies true. A PNG or JPEG file (`path`, taken into \
+         the project as it is, a JPEG staying a JPEG, halved to fit 4096 px a side; one picture for the same file) or a picture the project holds (`picture`, its \
+         id from `assets`). Its middle stands on `at` (the origin unless given), `width` mm across (10 mm a pixel unless \
+         given), as tall as its pixels say; it is drawn under the model, as a CAD import is, and moves and copies as any \
+         element. `link: true` keeps its file, which `reload_image` and Manage Links read again. `front: true` draws it over \
+         the model. `snaps: true` (a PDF's, `modify` sets it after) snaps to its lines and its shapes' edges, their ends and \
+         middles, as a CAD import's; its letters aren't snapped to. A PDF's text is drawn in the \
+         fonts it embeds; one it only names, if of a standard family (Arial or Helvetica, Times New Roman, Courier New), in \
+         this computer's font of it or one of the same widths (Liberation), else in a stand-in. Returns `id`, `picture`, `size` (px), `width` and `height` \
+         (mm), and `missing_fonts`, the fonts drawn in a stand-in, when there are any",
+        image,
+        Files::Read,
+    ),
+    other_files(
+        "pdf_pages",
+        "PDF Pages",
+        "{path} the pages of a PDF, which `image` places one of: `pages` [{page, size: [w, h]}], each page's size on paper, mm. It \
+         changes nothing",
+        pdf_pages,
+        Files::Read,
+    ),
+    edit_files(
+        "reload_image",
+        "Reload Image",
+        &[],
+        "{id, path?, page?} reads linked image `id`'s file again (a PDF's page again, or `page`), for every image placed from it; with `path`, Reload From: that file \
+         in its place (an image brought in unlinked too), linked to it from then on. Each keeps its middle and its width. \
+         Returns `picture` and `images`, the ids of those that read it",
+        reload_image,
+        Files::Read,
+    ),
     edit(
         "cad_layers",
         "CAD Layers",
@@ -377,8 +510,9 @@ other_files(
         "reload_cad",
         "Reload CAD",
         &[],
-        "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project \
-         does too). Returns whether it changed",
+        "{cad, path?} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the \
+         project does too); with `path`, Reload From: reads that file in its place (an imported drawing too), linked to it from \
+         then on. Returns whether it changed",
         reload_cad,
         Files::Read,
     ),
@@ -4310,6 +4444,24 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
     }
     match e {
+        Element::Image(im) => {
+            if let Some(p) = m.images.get(&im.picture) {
+                let (w, h) = p.size();
+                extra.insert("source".into(), json!(p.name()));
+                extra.insert("size".into(), json!([w, h]));
+            }
+            extra.insert("height".into(), json!(im.height(m)));
+            if let Some([w, h]) = im.paper(m) {
+                extra.insert("paper".into(), json!(format!("{} × {} mm", w.round(), h.round())));
+                extra.insert("scale".into(), json!((im.width / w * 100.0).round() / 100.0));
+            }
+            if let Some(missing) = m.pdfs.get(&im.picture).map(|d| d.missing_fonts()).filter(|f| !f.is_empty()) {
+                extra.insert("missing_fonts".into(), json!(missing.join(", ")));
+            }
+            if let Some(path) = &im.path {
+                extra.insert("linked".into(), json!(path));
+            }
+        }
         Element::CadImport(ci) => {
             if let Some(cad) = m.cads.get(&ci.cad) {
                 extra.insert("source".into(), json!(cad.source()));
@@ -5108,17 +5260,21 @@ fn read_link(s: &Session, path: &str) -> Result<Arc<Model>, String> {
 
 /// What every link of the project reads, again; the links that couldn't be read, as `{name, error}`.
 fn relink(s: &mut Session) -> Vec<Value> {
-    let links: Vec<(Id, String, String)> = s
+    let links: Vec<(Id, String, String, bool)> = s
         .model
         .elements
         .iter()
         .filter_map(|(id, e)| match e {
-            Element::Link(l) => Some((*id, l.name.clone(), l.path.clone())),
+            Element::Link(l) => Some((*id, l.name.clone(), l.path.clone(), l.unloaded)),
             _ => None,
         })
         .collect();
     let mut failed = Vec::new();
-    for (_, name, path) in links {
+    for (_, name, path, unloaded) in links {
+        if unloaded {
+            Arc::make_mut(&mut s.model).loaded.remove(&path);
+            continue;
+        }
         match read_link(s, &path) {
             Ok(m) => {
                 Arc::make_mut(&mut s.model).loaded.insert(path, m);
@@ -5153,7 +5309,8 @@ fn link_model(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", other.coordinates.names().join(", "))));
     }
     let elements = other.elements.len();
-    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None };
+    let link =
+        crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None, unloaded: false };
     let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
     let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
     let theirs = link.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
@@ -5174,32 +5331,206 @@ fn link_model(s: &mut Session, p: &Value) -> R {
 fn reload(s: &mut Session, p: &Value) -> R {
     let c = "reload";
     let only = id_opt(c, p, "id")?;
-    if let Some(id) = only
-        && !matches!(s.model.elements.get(id), Some(Element::Link(_)))
-    {
-        return Err(bad(c, format!("element {id} is not a link")));
-    }
-    let want: Vec<(String, String)> = s
-        .model
-        .elements
-        .iter()
-        .filter(|(id, _)| only.is_none_or(|o| s.model.same(**id, o)))
-        .filter_map(|(_, e)| match e {
-            Element::Link(l) => Some((l.name.clone(), l.path.clone())),
-            _ => None,
-        })
-        .collect();
-    let (mut reloaded, mut failed) = (Vec::new(), Vec::new());
-    for (name, path) in want {
-        match read_link(s, &path) {
-            Ok(m) => {
-                Arc::make_mut(&mut s.model).loaded.insert(path, m);
-                reloaded.push(name);
+    // One link names its file, which every instance of it reads; without one, every file a loaded link reads.
+    let paths: Vec<String> = match only {
+        Some(id) => match s.model.elements.get(id) {
+            Some(Element::Link(l)) => vec![l.path.clone()],
+            _ => return Err(bad(c, format!("element {id} is not a link"))),
+        },
+        None => {
+            let mut paths: Vec<String> = Vec::new();
+            for e in s.model.elements.values() {
+                if let Element::Link(l) = e
+                    && !l.unloaded
+                    && !paths.contains(&l.path)
+                {
+                    paths.push(l.path.clone());
+                }
             }
-            Err(error) => failed.push(json!({"name": name, "error": error})),
+            paths
+        }
+    };
+    let (mut reloaded, mut failed) = (Vec::new(), Vec::new());
+    for path in paths {
+        let names = link_names(s, &path);
+        match read_link(s, &path) {
+            Ok(other) => {
+                let m = Arc::make_mut(&mut s.model);
+                m.loaded.insert(path.clone(), other);
+                let unloaded: Vec<Id> = m
+                    .elements
+                    .iter()
+                    .filter(|(_, e)| matches!(e, Element::Link(l) if l.path == path && l.unloaded))
+                    .map(|(id, _)| *id)
+                    .collect();
+                for id in unloaded {
+                    if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+                        l.unloaded = false;
+                    }
+                }
+                reloaded.extend(names);
+            }
+            Err(error) => failed.extend(names.into_iter().map(|name| json!({"name": name, "error": error}))),
         }
     }
     Ok(json!({"reloaded": reloaded, "failed": failed}))
+}
+
+/// The names of the links that read `path`, in id order.
+fn link_names(s: &Session, path: &str) -> Vec<String> {
+    s.model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Link(l) if l.path == path => Some(l.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Reload From, as Manage Links does: every link of the file link `id` reads, reading `path` in its place.
+fn reload_from(s: &mut Session, p: &Value) -> R {
+    let c = "reload_from";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a link, is required"))?;
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the file to read in its place, is required"))?;
+    let old = match s.model.elements.get(id) {
+        Some(Element::Link(l)) => l.path.clone(),
+        _ => return Err(bad(c, format!("element {id} is not a link"))),
+    };
+    let other = read_link(s, &path).map_err(|e| bad(c, e))?;
+    let elements = other.elements.len();
+    let names = link_names(s, &old);
+    let m = s.model_mut();
+    let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Link(l) if l.path == old)).map(|(id, _)| *id).collect();
+    for id in ids {
+        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+            l.path.clone_from(&path);
+            l.unloaded = false;
+        }
+    }
+    m.loaded.remove(&old);
+    m.loaded.insert(path.clone(), other);
+    Ok(json!({"path": path, "links": names, "elements": elements}))
+}
+
+/// Unload, as Manage Links does: every link of the file link `id` reads stays where it stands, drawing nothing.
+fn unload(s: &mut Session, p: &Value) -> R {
+    let c = "unload";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a link, is required"))?;
+    let path = match s.model.elements.get(id) {
+        Some(Element::Link(l)) => l.path.clone(),
+        _ => return Err(bad(c, format!("element {id} is not a link"))),
+    };
+    let names = link_names(s, &path);
+    let m = s.model_mut();
+    let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Link(l) if l.path == path)).map(|(id, _)| *id).collect();
+    for id in ids {
+        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+            l.unloaded = true;
+        }
+    }
+    m.loaded.remove(&path);
+    Ok(json!({"unloaded": names, "path": path}))
+}
+
+fn assets(s: &mut Session, p: &Value) -> R {
+    let c = "assets";
+    let kind = string(c, p, "kind")?;
+    if let Some(k) = &kind
+        && !crate::assets::KINDS.contains(&k.as_str())
+    {
+        return Err(bad(c, format!("`kind` is {}, not `{k}`", crate::assets::KIND_NAMES)));
+    }
+    Ok(crate::assets::list(&s.model, kind.as_deref()))
+}
+
+/// Which assets an export or an import takes: by kind, a list of names or true for all of the kind; none named, every one.
+fn asset_selection(c: &str, p: &Value) -> Result<crate::bima::Selection, String> {
+    let mut sel = crate::bima::Selection::new();
+    for kind in crate::assets::KINDS {
+        match p.get(kind) {
+            v if absent(v) => {}
+            Some(Value::Bool(true)) => {
+                sel.insert(kind.to_string(), None);
+            }
+            Some(Value::Array(a)) if a.len() <= crate::bima::MAX_ASSETS => {
+                let names: Option<BTreeSet<String>> = a.iter().map(|v| v.as_str().map(str::to_string)).collect();
+                let names = names.ok_or_else(|| bad(c, format!("`{kind}` lists names, or is true for all of them")))?;
+                sel.insert(kind.to_string(), Some(names));
+            }
+            Some(v) => return Err(bad(c, format!("`{kind}` lists names, or is true for all of them, not {v}"))),
+            None => {}
+        }
+    }
+    Ok(sel)
+}
+
+fn delete_assets(s: &mut Session, p: &Value) -> R {
+    let c = "delete_assets";
+    let sel = asset_selection(c, p)?;
+    let chosen: Vec<(String, String)> = sel
+        .iter()
+        .flat_map(|(kind, names)| match names {
+            Some(n) => n.iter().map(|n| (kind.clone(), n.clone())).collect::<Vec<_>>(),
+            None => crate::assets::names(&s.model, kind).into_iter().map(|n| (kind.clone(), n)).collect(),
+        })
+        .collect();
+    if chosen.is_empty() {
+        return Err(bad(c, format!("name the assets to delete, by kind: {}", crate::assets::KIND_NAMES)));
+    }
+    let done = crate::assets::delete(s.model_mut(), &chosen).map_err(|e| bad(c, e))?;
+    Ok(json!({"deleted": done.iter().map(|(k, n)| json!({"kind": k, "name": n})).collect::<Vec<_>>()}))
+}
+
+fn export_assets(s: &mut Session, p: &Value) -> R {
+    let c = "export_assets";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the .bima file to write, is required"))?;
+    let sel = asset_selection(c, p)?;
+    for (kind, names) in &sel {
+        let have = crate::assets::names(&s.model, kind);
+        if let Some(missing) = names.iter().flatten().find(|n| !have.contains(n)) {
+            return Err(bad(c, format!("the project has no {} named `{missing}`", kind.trim_end_matches('s').replace('_', " "))));
+        }
+    }
+    let (bytes, counts) = crate::bima::export(&s.model, &sel).map_err(|e| bad(c, e))?;
+    let full = beside(s, &path);
+    crate::bimc::write(&full, &bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let mut reply = json!({"path": full.to_string_lossy()});
+    for (kind, n) in counts {
+        reply[kind] = json!(n);
+    }
+    Ok(reply)
+}
+
+fn import_assets(s: &mut Session, p: &Value) -> R {
+    let c = "import_assets";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the .bima file to read, is required"))?;
+    let sel = asset_selection(c, p)?;
+    let existing = match string(c, p, "existing")? {
+        None => crate::bima::Existing::Skip,
+        Some(e) => {
+            crate::bima::Existing::parse(&e).ok_or_else(|| bad(c, format!("`existing` is {}, not `{e}`", crate::bima::Existing::NAMES)))?
+        }
+    };
+    let full = beside(s, &path);
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > crate::bima::MAX_FILE {
+        return Err(bad(c, format!("{} is {size} bytes; an assets file is up to {}", full.display(), crate::bima::MAX_FILE)));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let done = crate::bima::import(s.model_mut(), &bytes, &sel, existing).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    Ok(done.json())
+}
+
+fn links(s: &mut Session, p: &Value) -> R {
+    let c = "links";
+    let kind = string(c, p, "kind")?;
+    if let Some(k) = &kind
+        && !crate::link::manage::KINDS.contains(&k.as_str())
+    {
+        return Err(bad(c, format!("`kind` is {}, not `{k}`", crate::link::manage::KIND_NAMES)));
+    }
+    Ok(crate::link::manage::list(&s.model, s.path.as_deref(), kind.as_deref()))
 }
 
 fn save(s: &mut Session, p: &Value) -> R {
@@ -9681,13 +10012,9 @@ fn off_layers(cad: &Cad) -> BTreeSet<String> {
 }
 
 /// A DXF drawing brought in, or one the project holds placed again, as an element: Revit's Import CAD (and Link CAD).
-fn import_mesh(s: &mut Session, p: &Value) -> R {
-    use crate::family::{Category, Family, Form, MAX_FORMS};
-    let c = "import_mesh";
-    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: an .obj, .gltf or .glb file"))?);
-    let level = level_param(c, &s.model, p, "level")?;
-    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
-    let format = ext(&path);
+/// The 3D model at `path` read as `import_mesh` reads it, an OBJ in `units` with `up` its file's up axis.
+fn read_mesh(c: &str, path: &Path, units: Option<&str>, up: Option<&str>) -> Result<crate::mesh_in::Read, String> {
+    let format = ext(path);
     let beside = |name: &str| -> Option<Vec<u8>> {
         // Only a file beside it or under it: a name that climbs out (`..`) or is absolute is not read.
         let rel = Path::new(name);
@@ -9699,18 +10026,18 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
         let f = dir.join(rel);
         (std::fs::metadata(&f).ok()?.len() <= crate::mesh_in::MAX_BYTES as u64).then(|| std::fs::read(f).ok()).flatten()
     };
-    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+    let size = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
     if size > crate::mesh_in::MAX_BYTES as u64 {
         return Err(bad(c, format!("{} is larger than {} MB", path.display(), crate::mesh_in::MAX_BYTES >> 20)));
     }
-    let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let read = match format.as_str() {
+    let bytes = std::fs::read(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    match format.as_str() {
         "obj" => {
-            let mm = match string(c, p, "units")? {
+            let mm = match units {
                 None => 1000.0,
-                Some(u) => crate::cloud::unit(&u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
+                Some(u) => crate::cloud::unit(u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
             };
-            let up_is_y = match string(c, p, "up")?.as_deref() {
+            let up_is_y = match up {
                 None | Some("y") => true,
                 Some("z") => false,
                 Some(other) => return Err(bad(c, format!("`up` is y or z, not {other}"))),
@@ -9719,14 +10046,63 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
             crate::mesh_in::obj(&text, mm, up_is_y, |lib| beside(lib).map(|b| String::from_utf8_lossy(&b).into_owned()))
         }
         "gltf" | "glb" => {
-            if !absent(p.get("units")) || !absent(p.get("up")) {
+            if units.is_some() || up.is_some() {
                 return Err(bad(c, "a glTF is in metres with y up, as its specification says: give no `units` or `up`"));
             }
             crate::mesh_in::gltf(&bytes, beside)
         }
         other => return Err(bad(c, format!("bring in an .obj, .gltf or .glb, not `.{other}`"))),
     }
-    .map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    .map_err(|e| bad(c, format!("{}: {e}", path.display())))
+}
+
+/// Where object `o` of a 3D model stands: the middle of its base, mm, rounded to a thousandth.
+fn mesh_origin(o: &crate::mesh_in::Object) -> [f64; 3] {
+    let pts = o.parts.iter().flat_map(|p| p.tris.iter().flatten());
+    let (lo, hi) = pts.fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), q| {
+        ([lo[0].min(q[0]), lo[1].min(q[1]), lo[2].min(q[2])], [hi[0].max(q[0]), hi[1].max(q[1]), hi[2].max(q[2])])
+    });
+    [((lo[0] + hi[0]) / 2.0 * 1e3).round() / 1e3, ((lo[1] + hi[1]) / 2.0 * 1e3).round() / 1e3, (lo[2] * 1e3).round() / 1e3]
+}
+
+/// The forms of object `o` about `origin`, a form for each of its materials; the colours the file gives them in `colours`.
+fn mesh_forms(o: &crate::mesh_in::Object, origin: [f64; 3], colours: &mut BTreeMap<String, [u8; 4]>) -> Vec<crate::family::Form> {
+    o.parts
+        .iter()
+        .map(|part| {
+            let material = if part.material.name == "Default" { String::new() } else { part.material.name.clone() };
+            if let (false, Some(rgba)) = (material.is_empty(), part.material.rgba) {
+                colours.entry(material.clone()).or_insert(rgba);
+            }
+            let local = |q: &[f64; 3]| [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0);
+            let mesh: Vec<[[f64; 3]; 3]> = part.tris.iter().map(|t| [local(&t[0]), local(&t[1]), local(&t[2])]).collect();
+            crate::family::Form { mesh: Arc::new(mesh), material, ..crate::family::Form::default() }
+        })
+        .collect()
+}
+
+/// The materials a 3D model named that the project hadn't (`known`), coloured as the file says.
+fn mesh_colours(m: &mut Model, known: &std::collections::HashSet<String>, colours: BTreeMap<String, [u8; 4]>) {
+    m.adopt_materials();
+    for (name, [r, g, b, a]) in colours.into_iter().filter(|(n, _)| !known.contains(n)) {
+        if let Some(x) = m.materials.get_mut(&name) {
+            x.color = [r, g, b];
+            x.transparency = (100 - u16::from(a) * 100 / 255) as u8;
+        }
+    }
+}
+
+fn import_mesh(s: &mut Session, p: &Value) -> R {
+    use crate::family::{Category, Family, MAX_FORMS};
+    let c = "import_mesh";
+    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: an .obj, .gltf or .glb file"))?);
+    let level = level_param(c, &s.model, p, "level")?;
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let (units, up) =
+        if absent(p.get("units")) && absent(p.get("up")) { (None, None) } else { (string(c, p, "units")?, string(c, p, "up")?) };
+    let read = read_mesh(c, &path, units.as_deref(), up.as_deref())?;
+    // Where it is kept, so Manage Links finds it whatever folder the project is later opened from.
+    let kept = std::path::absolute(&path).unwrap_or_else(|_| path.clone()).to_string_lossy().into_owned();
     let mut left_out: BTreeMap<String, usize> = read.left_out.clone();
     if read.objects.is_empty() {
         let why = if left_out.is_empty() { String::new() } else { format!(" (left out: {left_out:?})") };
@@ -9737,36 +10113,20 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
     let mut colours: BTreeMap<String, [u8; 4]> = BTreeMap::new();
     let (mut families, mut components) = (Vec::new(), Vec::new());
     for o in read.objects {
-        let pts = o.parts.iter().flat_map(|p| p.tris.iter().flatten());
-        let (lo, hi) = pts.fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), q| {
-            ([lo[0].min(q[0]), lo[1].min(q[1]), lo[2].min(q[2])], [hi[0].max(q[0]), hi[1].max(q[1]), hi[2].max(q[2])])
-        });
         // The family stands on its base, its middle on its origin; the component puts it back where the file has it.
-        let origin =
-            [((lo[0] + hi[0]) / 2.0 * 1e3).round() / 1e3, ((lo[1] + hi[1]) / 2.0 * 1e3).round() / 1e3, (lo[2] * 1e3).round() / 1e3];
+        let origin = mesh_origin(&o);
         if o.parts.len() > MAX_FORMS {
             *left_out.entry(format!("objects of more than {MAX_FORMS} materials")).or_default() += 1;
             continue;
         }
-        let forms: Vec<Form> = o
-            .parts
-            .iter()
-            .map(|part| {
-                let material = if part.material.name == "Default" { String::new() } else { part.material.name.clone() };
-                if let (false, Some(rgba)) = (material.is_empty(), part.material.rgba) {
-                    colours.entry(material.clone()).or_insert(rgba);
-                }
-                let local = |q: &[f64; 3]| [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0);
-                let mesh: Vec<[[f64; 3]; 3]> = part.tris.iter().map(|t| [local(&t[0]), local(&t[1]), local(&t[2])]).collect();
-                Form { mesh: Arc::new(mesh), material, ..Form::default() }
-            })
-            .collect();
+        let forms = mesh_forms(&o, origin, &mut colours);
         let stem = if o.name.trim().is_empty() { "Imported".to_string() } else { o.name.clone() };
         let name = (1..=1000)
             .map(|n| if n == 1 { stem.clone() } else { format!("{} ({n})", stem.chars().take(MAX_TEXT - 8).collect::<String>()) })
             .find(|n| !m.families.contains_key(n))
             .ok_or_else(|| bad(c, format!("the project has too many families named `{stem}`")))?;
-        let mut family = Family { category: Category::Generic, forms, ..Family::default() };
+        let source = crate::mesh_in::Source { path: kept.clone(), object: o.name.clone(), origin, units: units.clone(), up: up.clone() };
+        let mut family = Family { category: Category::Generic, forms, source: Some(source), ..Family::default() };
         family.types.insert("Imported".into(), BTreeMap::new());
         if let Err(why) = family.check(&|_| true) {
             *left_out.entry(format!("objects whose family can't be made ({why})")).or_default() += 1;
@@ -9793,14 +10153,207 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
     if components.is_empty() {
         return Err(bad(c, format!("nothing of {} could come in: {left_out:?}", path.display())));
     }
-    m.adopt_materials();
-    for (name, [r, g, b, a]) in colours.into_iter().filter(|(n, _)| !known.contains(n)) {
-        if let Some(x) = m.materials.get_mut(&name) {
-            x.color = [r, g, b];
-            x.transparency = (100 - u16::from(a) * 100 / 255) as u8;
+    mesh_colours(m, &known, colours);
+    Ok(json!({"components": components, "families": families, "left_out": left_out}))
+}
+
+/// Reload a 3D model, as Manage Links does: the file the families made from it name read again (or, with `from`, another
+/// file in its place), each family's forms rebuilt from its object about the point it stood on, so its components stay.
+fn reload_mesh(s: &mut Session, p: &Value) -> R {
+    let c = "reload_mesh";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the 3D model's file as Manage Links lists it, is required"))?;
+    let from = string(c, p, "from")?;
+    let of_it: Vec<(String, crate::mesh_in::Source)> = s
+        .model
+        .families
+        .iter()
+        .filter_map(|(n, f)| f.source.as_ref().filter(|src| src.path == path).map(|src| (n.clone(), src.clone())))
+        .collect();
+    let Some((_, first)) = of_it.first() else {
+        return Err(bad(c, format!("no family of the project was made from `{path}`")));
+    };
+    let read_from = from.clone().unwrap_or_else(|| path.clone());
+    let read_path = PathBuf::from(&read_from);
+    let read = read_mesh(c, &read_path, first.units.as_deref(), first.up.as_deref())?;
+    let kept = match &from {
+        Some(_) => std::path::absolute(&read_path).unwrap_or(read_path.clone()).to_string_lossy().into_owned(),
+        None => path.clone(),
+    };
+    let m = s.model_mut();
+    let known: std::collections::HashSet<String> = m.materials.keys().cloned().collect();
+    let mut colours: BTreeMap<String, [u8; 4]> = BTreeMap::new();
+    let (mut reloaded, mut missing) = (Vec::new(), Vec::new());
+    for (name, source) in of_it {
+        let Some(object) = read.objects.iter().find(|o| o.name == source.object) else {
+            missing.push(name);
+            continue;
+        };
+        let forms = mesh_forms(object, source.origin, &mut colours);
+        let Some(family) = m.families.get_mut(&name) else { continue };
+        family.forms = forms;
+        family.source = Some(crate::mesh_in::Source { path: kept.clone(), ..source });
+        reloaded.push(name);
+    }
+    mesh_colours(m, &known, colours);
+    Ok(json!({"path": kept, "reloaded": reloaded, "missing": missing}))
+}
+
+/// A PDF's page read: its drawing, and its size on paper, mm.
+type PdfRead = (crate::pdf_in::PdfDoc, [f64; 2]);
+
+/// The picture of the PNG or JPEG file at `path`, as the project would hold it; of a PDF, a picture of its page `page` (the
+/// first unless given), and the page read as a drawing.
+fn read_picture(c: &str, s: &Session, path: &str, page: Option<u32>) -> Result<(crate::texture::Picture, Option<PdfRead>), String> {
+    let full = beside(s, path);
+    let pdf = ext(&full) == "pdf";
+    let most = if pdf { crate::pdf_in::MAX_BYTES } else { texture::MAX_BYTES as u64 };
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > most {
+        return Err(bad(c, format!("{} is {size} bytes; a file to place is up to {most}", full.display())));
+    }
+    if page.is_some() && !pdf {
+        return Err(bad(c, "`page` is a PDF's: give a .pdf, or no `page`"));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let name = full.file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned());
+    let at = |e: String| bad(c, format!("{}: {e}", full.display()));
+    if pdf {
+        let n = usize::try_from(page.unwrap_or(1)).unwrap_or(usize::MAX);
+        let (picture, mm, _) = crate::pdf_in::page(&name, bytes.clone(), n).map_err(at)?;
+        let doc = crate::pdf_in::PdfDoc::new(&name, bytes, page.unwrap_or(1)).map_err(at)?;
+        return Ok((picture, Some((doc, mm))));
+    }
+    Ok((Picture::import_at(&name, &bytes, texture::MAX_PLACED_SIDE).map_err(at)?, None))
+}
+
+/// `page`, a PDF's page from 1, if given.
+fn page_param(c: &str, p: &Value) -> Result<Option<u32>, String> {
+    match p.get("page") {
+        v if absent(v) => Ok(None),
+        Some(v) => match v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| *n >= 1) {
+            Some(n) => Ok(Some(n)),
+            None => Err(bad(c, format!("`page` is a PDF's page, from 1, not {v}"))),
+        },
+        None => Ok(None),
+    }
+}
+
+fn image(s: &mut Session, p: &Value) -> R {
+    let c = "image";
+    let m = &s.model;
+    let (level, view) = if absent(p.get("view")) {
+        (level_param(c, m, p, "level")?, None)
+    } else {
+        let (level, plan) = plan_param(c, m, p, "view")?;
+        if !absent(p.get("level")) && level_param(c, m, p, "level")? != level {
+            return Err(bad(c, "`view` is a plan of another level than `level`; give the one, or a plan of the other"));
+        }
+        (level, Some(plan.unwrap_or(level)))
+    };
+    let link = flag(c, p, "link")?;
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let page = page_param(c, p)?;
+    let (picture, path, paper) = match (string(c, p, "path")?, string(c, p, "picture")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, one the project holds; not both")),
+        (None, None) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, the id of one the project holds")),
+        (None, Some(id)) => {
+            if link {
+                return Err(bad(c, "`link` keeps the file a picture comes from: give `path`"));
+            }
+            let held = m.images.get(&id).cloned().ok_or_else(|| bad(c, format!("the project holds no picture `{id}`")))?;
+            (held, None, None)
+        }
+        (Some(path), None) => {
+            let (picture, pdf) = read_picture(c, s, &path, page)?;
+            (picture, link.then_some(path), pdf)
+        }
+    };
+    let (pdf, paper) = match paper {
+        Some((doc, mm)) => (Some(doc), Some(mm)),
+        None => (None, None),
+    };
+    let (w, h) = picture.size();
+    // A PDF's page at its paper's size at the plan's scale, so a drawing made at that scale lies true; a picture, 10 mm a pixel.
+    let width = match (num(c, p, "width")?, paper) {
+        (Some(w), _) => w,
+        (None, Some([mm, _])) => mm * crate::graphics::scale_of(&s.model, view.unwrap_or(level)),
+        (None, None) => w as f64 * 10.0,
+    };
+    let page = paper.map(|_| page.unwrap_or(1));
+    let id = picture.id();
+    let front = flag(c, p, "front")?;
+    let snaps = flag(c, p, "snaps")?;
+    let m = s.model_mut();
+    m.images.entry(id.clone()).or_insert(picture);
+    if let Some(doc) = pdf {
+        m.pdfs.entry(id.clone()).or_insert(doc);
+    }
+    let placed =
+        crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page, front, flip_x: false, flip_y: false, snaps };
+    let height = placed.height(m);
+    let missing = m.pdfs.get(&id).map(|d| d.missing_fonts().to_vec()).unwrap_or_default();
+    let new = m.insert(Element::Image(placed));
+    let mut out = json!({"id": new, "picture": id, "size": [w, h], "width": width, "height": height});
+    if !missing.is_empty() {
+        out["missing_fonts"] = json!(missing);
+    }
+    Ok(out)
+}
+
+fn pdf_pages(s: &mut Session, p: &Value) -> R {
+    let c = "pdf_pages";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, a PDF, is required"))?;
+    let full = beside(s, &path);
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > crate::pdf_in::MAX_BYTES {
+        return Err(bad(c, format!("{} is {size} bytes; a PDF is read up to {}", full.display(), crate::pdf_in::MAX_BYTES)));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let pages = crate::pdf_in::pages(bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let rows: Vec<Value> = pages.iter().enumerate().map(|(i, [w, h])| json!({"page": i + 1, "size": [w.round(), h.round()]})).collect();
+    Ok(json!({"pages": rows}))
+}
+
+fn reload_image(s: &mut Session, p: &Value) -> R {
+    let c = "reload_image";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, an image, is required"))?;
+    let Some(Element::Image(im)) = s.model.elements.get(id) else { return Err(bad(c, format!("element {id} is not an image"))) };
+    let (old, was, was_page) = (im.picture.clone(), im.path.clone(), im.page);
+    let path = match (string(c, p, "path")?, &was) {
+        (Some(path), _) => path,
+        (None, Some(path)) => path.clone(),
+        (None, None) => return Err(bad(c, format!("image {id} isn't linked; give `path`, a file to reload it from"))),
+    };
+    // A PDF's page: the one asked for, else the one it was.
+    let pdf = ext(Path::new(&path)) == "pdf";
+    let page = if pdf { page_param(c, p)?.or(was_page).or(Some(1)) } else { page_param(c, p)? };
+    let (picture, pdf) = read_picture(c, s, &path, page)?;
+    let new = picture.id();
+    let m = s.model_mut();
+    m.images.entry(new.clone()).or_insert(picture);
+    if let Some((doc, _)) = pdf {
+        m.pdfs.insert(new.clone(), doc);
+    }
+    // Every image of the same picture and file reads it: Revit reloads a linked image's type, its instances with it.
+    let of_it: Vec<Id> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::Image(x) if x.picture == old && x.path == was)).map(|(id, _)| *id).collect();
+    for i in &of_it {
+        if let Some(Element::Image(x)) = m.elements.get_mut(*i) {
+            x.picture.clone_from(&new);
+            x.path = Some(path.clone());
+            x.page = page;
         }
     }
-    Ok(json!({"components": components, "families": families, "left_out": left_out}))
+    // The picture it showed, if nothing else shows it now.
+    if old != new && !m.library_uses().contains_key(&(LibKind::Picture, old.clone())) {
+        m.images.remove(&old);
+        m.pdfs.remove(&old);
+    }
+    let mut out = json!({"picture": new, "images": of_it});
+    if let Some(missing) = m.pdfs.get(&new).map(|d| d.missing_fonts()).filter(|f| !f.is_empty()) {
+        out["missing_fonts"] = json!(missing);
+    }
+    Ok(out)
 }
 
 fn import_cad(s: &mut Session, p: &Value) -> R {
@@ -10061,12 +10614,19 @@ fn reload_cad(s: &mut Session, p: &Value) -> R {
     let c = "reload_cad";
     let name = string(c, p, "cad")?.ok_or_else(|| bad(c, "`cad`, the name of a linked CAD drawing, is required"))?;
     let cad = s.model.cads.get(&name).cloned().ok_or_else(|| bad(c, format!("the project holds no CAD drawing named `{name}`")))?;
-    let path = cad
-        .path()
-        .map(str::to_string)
-        .ok_or_else(|| bad(c, format!("CAD drawing `{name}` isn't linked; bring it in again with `import_cad` and `link`")))?;
+    // Reload From: another file, which the drawing is linked to from then on.
+    let path = match string(c, p, "path")? {
+        Some(path) => path,
+        None => cad
+            .path()
+            .map(str::to_string)
+            .ok_or_else(|| bad(c, format!("CAD drawing `{name}` isn't linked; give `path`, a file to reload it from")))?,
+    };
     let (bytes, _) = read_dxf_file(s, &path).map_err(|e| bad(c, e))?;
     if cad.same_bytes(&bytes) {
+        if cad.path() != Some(path.as_str()) {
+            s.model_mut().cads.insert(name.clone(), cad.linked(Some(path)));
+        }
         return Ok(json!({"cad": name, "changed": false}));
     }
     let new = Cad::new(cad.source(), Some(path.clone()), bytes).map_err(|e| bad(c, format!("{path}: {e}")))?;
@@ -18895,6 +19455,21 @@ fn modify(s: &mut Session, p: &Value) -> R {
         for (k, val) in fields {
             let val = match k.as_str() {
                 "id" | "ids" => continue,
+                // An image's height, and a PDF's scale (1 : n, its paper's size n times), set its width: it keeps its aspect.
+                "height" | "scale" if matches!(e, Element::Image(_)) => {
+                    let Element::Image(im) = e else { continue };
+                    let n = val
+                        .as_f64()
+                        .filter(|n| n.is_finite() && *n > 0.0)
+                        .ok_or_else(|| bad(c, format!("image {id}: `{k}` is a number above 0, not {val}")))?;
+                    let width = match k.as_str() {
+                        "height" => im.height(m).filter(|h| *h > 0.0).map(|h| n * im.width / h),
+                        _ => im.paper(m).map(|[w, _]| n * w),
+                    };
+                    let width = width.ok_or_else(|| bad(c, format!("image {id} is no PDF's page: give its `width`")))?;
+                    obj.insert("width".into(), json!(width));
+                    continue;
+                }
                 // A component's Offset from Host: its host's offset on a plane, else its height over its level. Its Work Plane
                 // is what it is on, said, changed with `edit_work_plane`.
                 "offset_from_host" if matches!(e, Element::Component(_)) => {
@@ -19137,6 +19712,25 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 ));
             }
             (ci.at, ci.angle) = turned(f, ci.at, ci.angle);
+        }
+        Element::Image(im) => {
+            // It stands square to the plan: turned, its middle goes round and it stays upright. Mirrored about an upright
+            // line it flips left to right, about a level one top to bottom.
+            if mo.mirror {
+                let (o, x, y) = (f(im.at), f(im.at + P2(1.0, 0.0)), f(im.at + P2(0.0, 1.0)));
+                let (ex, ey) = (x - o, y - o);
+                if (ex.0 + 1.0).abs() < 1e-6 && (ey.1 - 1.0).abs() < 1e-6 {
+                    im.flip_x = !im.flip_x;
+                } else if (ex.0 - 1.0).abs() < 1e-6 && (ey.1 + 1.0).abs() < 1e-6 {
+                    im.flip_y = !im.flip_y;
+                } else {
+                    return Err(bad(
+                        c,
+                        format!("image {id} is mirrored about an upright or a level line only: it stands square to the plan"),
+                    ));
+                }
+            }
+            im.at = f(im.at);
         }
         Element::PointCloud(pc) => {
             if mo.mirror {

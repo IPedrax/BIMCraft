@@ -27,6 +27,9 @@ zune-jpeg = "0.5"
 zune-jpegxl = "0.5"
 zune-core = "0.5"
 jpeg-encoder = "0.7"
+# Draws a PDF's page to place it in a view (Insert > PDF). Its embedded fonts are PDFium's Foxit fonts (BSD-3, in NOTICE),
+# drawn for a PDF's text in the standard fonts it doesn't embed.
+hayro = "0.9"
 # The code pages a DXF's header names: the East Asian ones Latin-1 cannot read.
 encoding_rs = "0.8"
 # Map projections (pure Rust PROJ.4) and EPSG's definitions, for coordinates' WGS84.

@@ -1611,6 +1611,68 @@ pub struct CadImport {
     pub colors: Colors,
 }
 
+/// A picture placed in a plan, as Revit's Insert > Image (and Link Image, with `path`), or a PDF's page as one, as Revit's
+/// Insert > PDF: the project's `picture` (one of
+/// `Model::images`) with its middle on `at` on `level`, `width` mm across and as tall as its pixels say. With a `view`, only
+/// that plan shows it; without, every plan of its level does. It is drawn under the model, as a CAD import is. Linked, it
+/// keeps the file it came from, which `reload_image` reads again; the project holds the picture, so it opens without it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlacedImage {
+    pub picture: String,
+    pub level: Guid,
+    pub at: P2,
+    pub width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<Guid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The page of the PDF it is, from 1, when it's one: `reload_image` draws that page again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
+    /// Drawn over the model rather than under it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub front: bool,
+    /// Mirrored left to right, and top to bottom: what `mirror` about an upright or a level line makes of it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_x: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_y: bool,
+    /// A PDF's page snapped to: its lines' and shapes' edges, their ends and middles, as a CAD import's (`snap.rs`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub snaps: bool,
+}
+
+/// The widest an image placed may be, mm: 10 km.
+pub const MAX_IMAGE_WIDTH: f64 = 1e7;
+
+impl PlacedImage {
+    /// Its PDF page's size on paper, mm, when it is one the project holds as a drawing.
+    pub fn paper(&self, m: &Model) -> Option<[f64; 2]> {
+        let d = m.pdfs.get(&self.picture)?.drawing();
+        Some([d.size[0] * 25.4 / 72.0, d.size[1] * 25.4 / 72.0])
+    }
+
+    /// How tall it stands, mm: its width over its paper's aspect when it's a PDF's page (exact, so a drawing to scale lies
+    /// true), else its picture's; none where the project doesn't hold its picture.
+    pub fn height(&self, m: &Model) -> Option<f64> {
+        let (w, h) = m.images.get(&self.picture)?.size();
+        if let Some([pw, ph]) = m.pdfs.get(&self.picture).map(|d| d.drawing().size)
+            && pw > 0.0
+            && ph > 0.0
+        {
+            return Some(self.width * ph / pw);
+        }
+        (w > 0).then(|| self.width * h as f64 / w as f64)
+    }
+
+    /// Its corners, lower left and upper right, in plan.
+    pub fn bounds(&self, m: &Model) -> Option<[P2; 2]> {
+        let h = self.height(m)?;
+        Some([P2(self.at.0 - self.width / 2.0, self.at.1 - h / 2.0), P2(self.at.0 + self.width / 2.0, self.at.1 + h / 2.0)])
+    }
+}
+
 /// Where a placed drawing's point `p`, in its own units, is in plan, mm.
 pub fn cad_place(ci: &CadImport) -> impl Fn(P2) -> P2 + use<> {
     let (sin, cos) = ci.angle.to_radians().sin_cos();
@@ -1707,6 +1769,10 @@ pub struct Link {
     /// By base points or shared coordinates, where it stood when last worked out with its file loaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placed: Option<Placed>,
+    /// Unloaded, as Manage Links unloads it: it stays where it stands and draws nothing, and opening the project doesn't
+    /// read its file. `reload` loads it again. An older version leaves it out of a file and loads the link.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unloaded: bool,
 }
 
 /// Where a link stood when it was last worked out with its file loaded: its origin in plan, its turn, degrees, and how far it
@@ -2736,6 +2802,10 @@ macro_rules! visit_refs {
                 f(& $($m)? ci.level);
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
+            Element::Image(im) => {
+                f(& $($m)? im.level);
+                if let Some(g) = & $($m)? im.view { f(g) }
+            }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
             Element::PropertyLine(pl) => f(& $($m)? pl.level),
             Element::Toposolid(t) => f(& $($m)? t.level),
@@ -2830,6 +2900,8 @@ pub enum Element {
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// A picture placed in a plan.
+    Image(PlacedImage),
     /// An electrical circuit: devices on a distribution board, behind one breaker.
     Circuit(crate::electrical::Circuit),
     /// A distribution board's load schedule, a view of its own.
@@ -3022,6 +3094,7 @@ impl Element {
             Element::Link(_) => "link",
             Element::PointCloud(_) => "pointcloud",
             Element::CadImport(_) => "cadimport",
+            Element::Image(_) => "image",
             Element::ProjectInfo(_) => crate::project_info::CATEGORY,
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
@@ -4227,6 +4300,10 @@ pub struct Model {
     /// The pictures its materials' textures are made of, by id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub images: BTreeMap<String, Picture>,
+    /// The PDFs' pages its images place, drawn as lines and fills: by the id of the picture of each in `images`, which an
+    /// older version, leaving this out of a file, shows instead.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pdfs: BTreeMap<String, crate::pdf_in::PdfDoc>,
     /// The scans its point clouds place, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::cloud::deserialize_scans")]
     pub clouds: BTreeMap<String, Cloud>,
@@ -4467,6 +4544,7 @@ impl Model {
             types: Types::default().into(),
             materials: BTreeMap::new().into(),
             images: BTreeMap::new(),
+            pdfs: BTreeMap::new(),
             clouds: BTreeMap::new(),
             cads: BTreeMap::new(),
             families: BTreeMap::new().into(),
@@ -6476,6 +6554,7 @@ impl Model {
         match e {
             Element::PointCloud(pc) => Some(pc.level),
             Element::CadImport(ci) => Some(ci.level),
+            Element::Image(im) => Some(im.level),
             Element::ModelGroup(g) => Some(g.level),
             Element::Wall(w) => Some(w.level),
             Element::Floor(f) => Some(f.level),
@@ -8855,6 +8934,9 @@ impl Model {
         for id in self.images.keys() {
             text(&format!("picture `{id}`"), "id", id)?;
         }
+        if let Some(id) = self.pdfs.keys().find(|id| !self.images.contains_key(*id)) {
+            return Err(format!("PDF `{id}` has no picture of its page among the project's pictures"));
+        }
         if self.clouds.len() > crate::cloud::MAX_CLOUDS {
             return Err(format!("the project has {} scans; it holds up to {}", self.clouds.len(), crate::cloud::MAX_CLOUDS));
         }
@@ -9168,6 +9250,7 @@ impl Model {
                     | Element::Mass(_)
                     | Element::PointCloud(_)
                     | Element::CadImport(_)
+                    | Element::Image(_)
                     // One a project: a second is seen only beside the first.
                     | Element::ProjectInfo(_)
             )
@@ -9890,6 +9973,28 @@ impl Model {
                 }
                 if let Some(first) = project_info.replace(id) {
                     return Err(format!("{who}: the project's information is element {first}; a project has one, set with `project_info`"));
+                }
+            }
+            Element::Image(im) => {
+                if !self.images.contains_key(&im.picture) {
+                    return Err(format!("{who}: the project holds no picture `{}`", im.picture));
+                }
+                level_ok(im.level)?;
+                point(&format!("{who} at"), im.at)?;
+                if !(im.width.is_finite() && im.width > 0.0 && im.width <= MAX_IMAGE_WIDTH) {
+                    return Err(format!("{who}: its width is above 0 and up to {MAX_IMAGE_WIDTH} mm, not {}", im.width));
+                }
+                if im.path.as_ref().is_some_and(|p| p.len() > MAX_TEXT) {
+                    return Err(format!("{who}: its path is longer than {MAX_TEXT} bytes"));
+                }
+                if let Some(v) = im.view
+                    && !(matches!(self.elements.get(v), Some(Element::Level(_) | Element::PlanView(_)))
+                        && self.plan_level(v).map(|l| self.guid(l)) == Some(im.level))
+                {
+                    return Err(format!(
+                        "{who}: view {} isn't a plan of its level; an image shows in one of its level's plans",
+                        self.shown(v)
+                    ));
                 }
             }
             Element::CadImport(ci) => {
@@ -10650,6 +10755,7 @@ impl Model {
             types,
             materials,
             images,
+            pdfs,
             clouds,
             cads,
             families,
@@ -10709,6 +10815,7 @@ impl Model {
             && *types == o.types
             && *materials == o.materials
             && *images == o.images
+            && *pdfs == o.pdfs
             && *clouds == o.clouds
             && *cads == o.cads
             && *families == o.families
