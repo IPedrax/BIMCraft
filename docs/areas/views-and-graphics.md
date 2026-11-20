@@ -776,7 +776,9 @@ A PDF's page is placed the same way, as Revit's Insert > PDF: `image {path: "…
 scale (`graphics::scale_of`), so a drawing printed at that scale lies true over the model. `PlacedImage::page` keeps the page,
 which `reload_image` draws again; Manage Links lists it on its PDF tab. A file past `pdf_in::MAX_BYTES`, an encrypted one, or a
 page it hasn't is refused. `pdf_pages {path}` lists a PDF's pages and their paper sizes, which the desktop's Insert > PDF asks
-from when there is more than one (`mesh.rs`, `PdfPageBox`).
+from when there is more than one (`mesh.rs`, `PdfPageBox`): each page a card with its picture, drawn small on a thread of its
+own by `pdf_in::thumbnails` (up to `MAX_THUMBNAILS`, stopped when the box closes), so a long PDF never holds the window up.
+A PDF's page stands as tall as its paper's aspect says (`PlacedImage::height`), not its picture's, which whole pixels round.
 
 A PDF's page is drawn as vectors, not as its picture: `pdf_in::drawing` runs hayro's interpreter into a `Device` of its own
 (`Collect`) that keeps each path filled or stroked (flattened to 0.05 pt, with its colour, width and dashes), each glyph as the
@@ -802,6 +804,11 @@ resources name them (`pdf_in::stand_ins`), `image` and `reload_image` return the
 the desktop says so on placing it and shows them in Properties (Fonts Substituted). It is decided where the project is open:
 the project holds the PDF, never a font. In the window a selected or hovered image keeps its own colours under a light tint
 over its whole page, and a selected one is outlined (`image_grips.rs`, `image_frames`).
+
+With `snaps` (Properties' Snap to Its Lines, a PDF's only) a placed PDF is snapped to as a CAD import is: `snap::pdf_scene`
+gives the straight edges of its strokes and of the shapes it fills near the cursor, their ends and middles, and an edge
+shorter than 2 points (a step of a curve followed) its line alone; a glyph's fill (`Item::Fill::letter`) gives nothing, so
+text doesn't crowd the snaps.
 
 An image draws under the model, or over it with `front` (Properties' Draw in Front of Model): `render::images` runs twice, under
 the CAD drawings and after the model. `flip_x` and `flip_y` are what `mirror` makes of it about an upright or a level line (a

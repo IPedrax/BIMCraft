@@ -463,14 +463,16 @@ other_files(
         "image",
         "Image",
         &[],
-        "{path | picture, level?, view?, at?: [x, y], width?, link?, page?} places a picture in the plans of `level` (the \
+        "{path | picture, level?, view?, at?: [x, y], width?, link?, page?, front?, snaps?} places a picture in the plans of `level` (the \
          first unless given), or with `view` (a plan) in that view only, as Revit's Insert > Image and Insert > PDF. A PDF's \
          `page` (the first unless given) is drawn over white at up to 150 dpi and 4096 px a side, and placed at its paper's \
          size at the plan's scale unless `width` says, so a drawing made at that scale lies true. A PNG or JPEG file (`path`, taken into \
          the project as it is, a JPEG staying a JPEG, halved to fit 4096 px a side; one picture for the same file) or a picture the project holds (`picture`, its \
          id from `assets`). Its middle stands on `at` (the origin unless given), `width` mm across (10 mm a pixel unless \
          given), as tall as its pixels say; it is drawn under the model, as a CAD import is, and moves and copies as any \
-         element. `link: true` keeps its file, which `reload_image` and Manage Links read again. A PDF's text is drawn in the \
+         element. `link: true` keeps its file, which `reload_image` and Manage Links read again. `front: true` draws it over \
+         the model. `snaps: true` (a PDF's, `modify` sets it after) snaps to its lines and its shapes' edges, their ends and \
+         middles, as a CAD import's; its letters aren't snapped to. A PDF's text is drawn in the \
          fonts it embeds; one it only names, if of a standard family (Arial or Helvetica, Times New Roman, Courier New), in \
          this computer's font of it or one of the same widths (Liberation), else in a stand-in. Returns `id`, `picture`, `size` (px), `width` and `height` \
          (mm), and `missing_fonts`, the fonts drawn in a stand-in, when there are any",
@@ -10280,12 +10282,14 @@ fn image(s: &mut Session, p: &Value) -> R {
     let page = paper.map(|_| page.unwrap_or(1));
     let id = picture.id();
     let front = flag(c, p, "front")?;
+    let snaps = flag(c, p, "snaps")?;
     let m = s.model_mut();
     m.images.entry(id.clone()).or_insert(picture);
     if let Some(doc) = pdf {
         m.pdfs.entry(id.clone()).or_insert(doc);
     }
-    let placed = crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page, front, flip_x: false, flip_y: false };
+    let placed =
+        crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page, front, flip_x: false, flip_y: false, snaps };
     let height = placed.height(m);
     let missing = m.pdfs.get(&id).map(|d| d.missing_fonts().to_vec()).unwrap_or_default();
     let new = m.insert(Element::Image(placed));

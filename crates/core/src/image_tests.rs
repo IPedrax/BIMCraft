@@ -381,3 +381,50 @@ fn a_fonts_family_is_read_from_its_postscript_name_and_found_on_the_computer() {
     assert!(system_font(&index, &asked("NoSuchFont")).is_none());
     assert!(system_font(&index, &FontQuery::Standard(StandardFont::Courier)).is_none());
 }
+
+#[test]
+fn a_pdf_that_snaps_is_snapped_to_at_its_lines_ends_and_middles_but_not_its_letters() {
+    use crate::snap::{self, Kind, Reach, Snaps};
+    let dir = dir("snaps");
+    let file = dir.join("line.pdf");
+    // A line across the page, 700 points up, and a word in Helvetica under it.
+    std::fs::write(&file, hand_made_pdf("0 0 0 RG 1 w 100 700 m 400 700 l S BT /F2 24 Tf 100 600 Td (Hi) Tj ET")).unwrap();
+    let mut s = Session::new();
+    // 10 mm a point, the page's top left at (-3000, 4000): the line runs from (-2000, 3000) to (1000, 3000).
+    let id = run(&mut s, "image", json!({"path": file.to_string_lossy(), "width": 6000}))["id"].as_u64().unwrap();
+    let reach = Reach { point: 400.0, line: 120.0 };
+    let at = |s: &Session, q: P2| snap::snap(&s.model, LEVEL, q, reach, &[], false, &Snaps::default());
+    assert_ne!(at(&s, P2(-1950.0, 2960.0)).source, Some(id), "it doesn't snap until asked");
+    run(&mut s, "modify", json!({"id": id, "snaps": true}));
+    let end = at(&s, P2(-1950.0, 2960.0));
+    assert_eq!((end.at, end.kind, end.source), (P2(-2000.0, 3000.0), Kind::Endpoint, Some(id)), "{end:?}");
+    let middle = at(&s, P2(-480.0, 2970.0));
+    assert_eq!((middle.at, middle.kind), (P2(-500.0, 3000.0), Kind::Midpoint), "{middle:?}");
+    // The word's letters, 2000 to 2170 up and 900 below the line: nothing of them is snapped to.
+    assert_ne!(at(&s, P2(-1990.0, 2100.0)).source, Some(id), "a letter isn't snapped to");
+    // Placed snapping from the start.
+    let two = run(&mut s, "image", json!({"path": file.to_string_lossy(), "width": 6000, "at": [20000, 0], "snaps": true}));
+    let Some(crate::model::Element::Image(im)) = s.model.elements.get(two["id"].as_u64().unwrap()) else { panic!() };
+    assert!(im.snaps);
+}
+
+#[test]
+fn a_pdfs_pages_are_drawn_small_one_by_one_until_asked_to_stop() {
+    let dir = dir("thumbs");
+    let bytes = std::fs::read(two_sheets(&dir)).unwrap();
+    let mut got = Vec::new();
+    crate::pdf_in::thumbnails(bytes.clone(), 64, |n, w, h, rgba| {
+        got.push((n, w.max(h), rgba.len() == (w * h * 4) as usize));
+        true
+    })
+    .unwrap();
+    assert_eq!(got, [(1, 64, true), (2, 64, true)], "each page, 64 px on its longer side");
+    let mut first = 0;
+    crate::pdf_in::thumbnails(bytes, 64, |_, _, _, _| {
+        first += 1;
+        false
+    })
+    .unwrap();
+    assert_eq!(first, 1, "stopped after the first");
+    assert!(crate::pdf_in::thumbnails(b"not a pdf".to_vec(), 64, |_, _, _, _| true).is_err());
+}

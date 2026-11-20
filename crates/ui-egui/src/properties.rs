@@ -491,6 +491,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "paper", msg!("Paper Size"), Shown),
             ("Dimensions", "scale", msg!("Scale (1 : n)"), Number),
             ("Graphics", "front", msg!("Draw in Front of Model"), Flag),
+            ("Graphics", "snaps", msg!("Snap to Its Lines"), Flag),
             ("Other", "at", msg!("Position"), Point),
         ],
         "link" => &[
@@ -2347,8 +2348,10 @@ impl BimApp {
                     if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
                         continue;
                     }
-                    // An image has a page, a paper and a scale when it is a PDF's page, and no row of them else.
-                    if ids.len() == 1 && first["category"] == "image" && val.is_null() && key != "front" {
+                    // An image has a page, a paper and a scale when it is a PDF's page, and no row of them else; nor does it snap
+                    // to its lines when it has none to snap to.
+                    let flag = key == "front" || (key == "snaps" && !first["paper"].is_null());
+                    if ids.len() == 1 && first["category"] == "image" && val.is_null() && !flag {
                         continue;
                     }
                     if ids.len() == 1 && !relevant(&first, key) {

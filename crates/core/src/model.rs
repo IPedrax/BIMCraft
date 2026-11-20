@@ -1638,6 +1638,9 @@ pub struct PlacedImage {
     pub flip_x: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub flip_y: bool,
+    /// A PDF's page snapped to: its lines' and shapes' edges, their ends and middles, as a CAD import's (`snap.rs`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub snaps: bool,
 }
 
 /// The widest an image placed may be, mm: 10 km.
@@ -1650,9 +1653,16 @@ impl PlacedImage {
         Some([d.size[0] * 25.4 / 72.0, d.size[1] * 25.4 / 72.0])
     }
 
-    /// How tall it stands, mm: its width over its picture's aspect; none where the project doesn't hold its picture.
+    /// How tall it stands, mm: its width over its paper's aspect when it's a PDF's page (exact, so a drawing to scale lies
+    /// true), else its picture's; none where the project doesn't hold its picture.
     pub fn height(&self, m: &Model) -> Option<f64> {
         let (w, h) = m.images.get(&self.picture)?.size();
+        if let Some([pw, ph]) = m.pdfs.get(&self.picture).map(|d| d.drawing().size)
+            && pw > 0.0
+            && ph > 0.0
+        {
+            return Some(self.width * ph / pw);
+        }
         (w > 0).then(|| self.width * h as f64 / w as f64)
     }
 

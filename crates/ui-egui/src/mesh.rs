@@ -68,7 +68,7 @@ impl BimApp {
                 .map(|p| (p["page"].as_u64().unwrap_or(1), [p["size"][0].as_f64().unwrap_or(0.0), p["size"][1].as_f64().unwrap_or(0.0)]))
                 .collect();
             if pages.len() > 1 {
-                self.pdf_page_box = Some(PdfPageBox { path: path.to_path_buf(), link, pages, page: 1 });
+                self.pdf_page_box = Some(PdfPageBox::new(path, link, pages));
                 return;
             }
         }
@@ -99,37 +99,96 @@ impl BimApp {
     }
 }
 
-/// Insert > PDF's question, for a PDF of more than one page: which page to place.
+/// Insert > PDF's question, for a PDF of more than one page: which page to place, each shown small as it looks.
 pub(crate) struct PdfPageBox {
     pub(crate) path: PathBuf,
     link: bool,
     /// Each page's number and its size on paper, mm.
     pub(crate) pages: Vec<(u64, [f64; 2])>,
     pub(crate) page: u64,
+    /// Each page's picture, by its number, as the thread drawing them hands them over.
+    pub(crate) thumbs: std::collections::HashMap<u64, egui::TextureHandle>,
+    drawn: Option<std::sync::mpsc::Receiver<(u64, egui::ColorImage)>>,
+    /// Set when the box closes, so the thread stops drawing.
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// How big a page's picture is in the page picker, px on its longer side.
+const THUMB: u32 = 150;
+
+impl PdfPageBox {
+    /// The picker for `pages` of the PDF at `path`, its pages drawn small on a thread of their own, so a long PDF doesn't hold the
+    /// window up.
+    pub(crate) fn new(path: &std::path::Path, link: bool, pages: Vec<(u64, [f64; 2])>) -> PdfPageBox {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (file, halt) = (path.to_path_buf(), stop.clone());
+        let _ = std::thread::Builder::new().name("pdf-thumbnails".into()).spawn(move || {
+            // A hostile PDF that panics hayro ends this thread, nothing more.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let small = std::fs::metadata(&file).is_ok_and(|m| m.len() <= bimcraft_core::pdf_in::MAX_BYTES);
+                let Some(bytes) = small.then(|| std::fs::read(&file).ok()).flatten() else { return };
+                let _ = bimcraft_core::pdf_in::thumbnails(bytes, THUMB, |n, w, h, rgba| {
+                    let image = egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], &rgba);
+                    !halt.load(std::sync::atomic::Ordering::Relaxed) && tx.send((n as u64, image)).is_ok()
+                });
+            }));
+        });
+        PdfPageBox { path: path.to_path_buf(), link, pages, page: 1, thumbs: Default::default(), drawn: Some(rx), stop }
+    }
+
+    /// The pages drawn since the last frame, made textures; whether more are coming.
+    fn take_drawn(&mut self, ctx: &Context) -> bool {
+        let Some(rx) = &self.drawn else { return false };
+        loop {
+            match rx.try_recv() {
+                Ok((n, image)) => {
+                    let texture = ctx.load_texture(format!("pdf-page-{n}"), image, egui::TextureOptions::LINEAR);
+                    self.thumbs.insert(n, texture);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.drawn = None;
+                    return false;
+                }
+            }
+        }
+    }
+}
+
+impl Drop for PdfPageBox {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl BimApp {
     /// The page picker, while a PDF waits for its page.
     pub(crate) fn pdf_page_window(&mut self, ctx: &Context) {
         let Some(mut b) = self.pdf_page_box.take() else { return };
+        if b.take_drawn(ctx) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
         let (mut ok, mut close) = (false, false);
         let name = b.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let r = crate::popup::Modal::new(egui::Id::new("pdf-page"), t("Import PDF")).width(420.0).min_height(360.0).show(ctx, |ui| {
+        let r = crate::popup::Modal::new(egui::Id::new("pdf-page"), t("Import PDF")).width(560.0).min_height(480.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add(egui::Label::new(egui::RichText::new(&name).strong()).truncate());
                 ui.label(tf("It has {} pages. Pick the one to place:", &[&b.pages.len().to_string()]));
                 ui.add_space(4.0);
-                egui::ScrollArea::vertical().max_height(240.0).auto_shrink([false, false]).show(ui, |ui| {
-                    for (n, [w, h]) in &b.pages {
-                        let text = tf("Page {}  ({} × {} mm)", &[&n.to_string(), &w.to_string(), &h.to_string()]);
-                        let r = ui.selectable_label(b.page == *n, text);
-                        if r.clicked() {
-                            b.page = *n;
+                egui::ScrollArea::vertical().max_height(380.0).auto_shrink([false, false]).show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for (n, size) in &b.pages {
+                            let r = page_card(ui, *n, *size, b.thumbs.get(n), b.page == *n);
+                            if r.clicked() {
+                                b.page = *n;
+                            }
+                            if r.double_clicked() {
+                                b.page = *n;
+                                ok = true;
+                            }
                         }
-                        if r.double_clicked() {
-                            ok = true;
-                        }
-                    }
+                    });
                 });
             });
             crate::popup::footer(ui, |ui| {
@@ -148,4 +207,37 @@ impl BimApp {
             self.pdf_page_box = Some(b);
         }
     }
+}
+
+/// A page of the picker: its picture (or, until it's drawn, a blank of its shape), its number and its size, outlined when
+/// `picked`; clicked to pick it, double-clicked to place it.
+fn page_card(ui: &mut egui::Ui, n: u64, [w, h]: [f64; 2], thumb: Option<&egui::TextureHandle>, picked: bool) -> egui::Response {
+    let side = THUMB as f32;
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(side + 16.0, side + 52.0), egui::Sense::click());
+    let text = tf("Page {}  ({} × {} mm)", &[&n.to_string(), &w.to_string(), &h.to_string()]);
+    r.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, picked, &text));
+    let p = ui.painter();
+    let pal = crate::style::pal();
+    if picked || r.hovered() {
+        let fill = if picked { pal.select_fill } else { pal.hover_fill };
+        p.rect_filled(rect, 6.0, fill);
+    }
+    if picked {
+        p.rect_stroke(rect, 6.0, egui::Stroke::new(1.5, pal.accent), egui::StrokeKind::Inside);
+    }
+    // The page as its paper is shaped, as big as fits the square above its name.
+    let aspect = if w > 0.0 && h > 0.0 { (w / h) as f32 } else { 1.0 / 2f32.sqrt() };
+    let size = if aspect >= 1.0 { egui::vec2(side, side / aspect) } else { egui::vec2(side * aspect, side) };
+    let square = egui::Rect::from_min_size(rect.min + egui::vec2(8.0, 8.0), egui::vec2(side, side));
+    let page = egui::Rect::from_center_size(square.center(), size);
+    p.rect_filled(page, 0.0, egui::Color32::WHITE);
+    if let Some(t) = thumb {
+        p.image(t.id(), page, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+    }
+    p.rect_stroke(page, 0.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Outside);
+    let below = egui::pos2(rect.center().x, square.bottom() + 6.0);
+    p.text(below, egui::Align2::CENTER_TOP, tf("Page {}", &[&n.to_string()]), egui::FontId::proportional(12.5), pal.text);
+    let mm = format!("{w} × {h} mm");
+    p.text(below + egui::vec2(0.0, 16.0), egui::Align2::CENTER_TOP, mm, egui::FontId::proportional(11.0), pal.muted);
+    r
 }

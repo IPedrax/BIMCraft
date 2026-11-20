@@ -69,8 +69,8 @@ const TOLERANCE: f64 = 0.05;
 /// a page out to draw it.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Item {
-    /// Rings filled in a colour (red, green, blue, alpha), by the even-odd rule or not.
-    Fill { rings: Vec<Vec<[f32; 2]>>, rgba: [u8; 4], even_odd: bool, bounds: [f32; 4] },
+    /// Rings filled in a colour (red, green, blue, alpha), by the even-odd rule or not; `letter` when they are a glyph's.
+    Fill { rings: Vec<Vec<[f32; 2]>>, rgba: [u8; 4], even_odd: bool, letter: bool, bounds: [f32; 4] },
     /// Lines `width` points wide, dashed (on and off, points) or not.
     Stroke { lines: Vec<(Vec<[f32; 2]>, bool)>, rgba: [u8; 4], width: f32, dash: Option<Vec<f32>>, bounds: [f32; 4] },
     /// A picture of `w` by `h` pixels (red, green, blue, alpha), its pixel (x, y) at `m` applied to (x, y) scaled to its own
@@ -203,7 +203,7 @@ impl Collect {
         }
     }
 
-    fn fill(&mut self, path: &hayro::kurbo::BezPath, m: hayro::kurbo::Affine, rgba: [u8; 4], even_odd: bool) {
+    fn fill(&mut self, path: &hayro::kurbo::BezPath, m: hayro::kurbo::Affine, rgba: [u8; 4], even_odd: bool, letter: bool) {
         let mut rings: Vec<Vec<[f32; 2]>> = self.flatten(path, m).into_iter().map(|(p, _)| p).filter(|p| p.len() >= 3).collect();
         if rings.is_empty() || rgba[3] == 0 {
             return;
@@ -212,7 +212,7 @@ impl Collect {
             wind_even_odd(&mut rings);
         }
         let bounds = bounds_of(rings.iter().flatten());
-        self.items.push(Item::Fill { rings, rgba, even_odd, bounds });
+        self.items.push(Item::Fill { rings, rgba, even_odd, letter, bounds });
     }
 
     fn stroke(&mut self, path: &hayro::kurbo::BezPath, m: hayro::kurbo::Affine, rgba: [u8; 4], s: &hayro::hayro_interpret::StrokeProps) {
@@ -239,10 +239,10 @@ impl<'a> hayro::hayro_interpret::Device<'a> for Collect {
         use hayro::hayro_interpret::{DrawMode, FillRule};
         let rgba = self.colour(&props.paint);
         match mode {
-            DrawMode::Fill(rule) => self.fill(path, props.transform, rgba, matches!(rule, FillRule::EvenOdd)),
+            DrawMode::Fill(rule) => self.fill(path, props.transform, rgba, matches!(rule, FillRule::EvenOdd), false),
             DrawMode::Stroke(s) => self.stroke(path, props.transform, rgba, s),
             DrawMode::FillAndStroke(rule, s) => {
-                self.fill(path, props.transform, rgba, matches!(rule, FillRule::EvenOdd));
+                self.fill(path, props.transform, rgba, matches!(rule, FillRule::EvenOdd), false);
                 self.stroke(path, props.transform, rgba, s);
             }
             DrawMode::Invisible => {}
@@ -268,7 +268,7 @@ impl<'a> hayro::hayro_interpret::Device<'a> for Collect {
                     match mode {
                         hayro::hayro_interpret::DrawMode::Invisible => {}
                         hayro::hayro_interpret::DrawMode::Stroke(s) => self.stroke(&o.outline(), m, rgba, s),
-                        _ => self.fill(&o.outline(), m, rgba, false),
+                        _ => self.fill(&o.outline(), m, rgba, false, true),
                     }
                 }
                 Glyph::Type3(t) => t.interpret(self, props.transform, g.transform(), &props.paint),
@@ -322,6 +322,45 @@ impl<'a> hayro::hayro_interpret::Device<'a> for Collect {
     fn pop_clip(&mut self) {}
 
     fn pop_transparency_group(&mut self) {}
+}
+
+/// The most pages [`thumbnails`] draws, and the longest side it draws one, px.
+pub const MAX_THUMBNAILS: usize = 200;
+pub const MAX_THUMBNAIL_SIDE: u32 = 512;
+
+/// The pages of the PDF `bytes`, from the first, each drawn over white `side` px on its longer side (at most
+/// [`MAX_THUMBNAIL_SIDE`]): handed to `each` as it is drawn, with its number from 1, its width and height and its pixels (red,
+/// green, blue and alpha), until `each` says to stop or [`MAX_THUMBNAILS`] are drawn. A page that can't be drawn is passed over.
+pub fn thumbnails(bytes: Vec<u8>, side: u32, mut each: impl FnMut(usize, u32, u32, Vec<u8>) -> bool) -> Result<(), String> {
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(format!("it's {} bytes; a PDF is read up to {MAX_BYTES}", bytes.len()));
+    }
+    if !bytes.starts_with(b"%PDF") {
+        return Err("it isn't a PDF".into());
+    }
+    let pdf = hayro::hayro_syntax::Pdf::new(bytes).map_err(|e| format!("it isn't a PDF BIMCraft can read: {e:?}"))?;
+    let side = f64::from(side.clamp(16, MAX_THUMBNAIL_SIDE));
+    let fonts = interpreter(&Default::default());
+    for (i, p) in pdf.pages().iter().enumerate().take(MAX_THUMBNAILS) {
+        let (w, h) = p.render_dimensions();
+        let (w, h) = (f64::from(w), f64::from(h));
+        if !(w.is_finite() && h.is_finite() && w >= 1.0 && h >= 1.0) {
+            continue;
+        }
+        let k = (side / w.max(h)) as f32;
+        let settings = hayro::PixmapSettings { x_scale: k, y_scale: k, bg_color: hayro::vello_cpu::color::palette::css::WHITE };
+        let pixmap = hayro::render(p, &hayro::RenderCache::new(), &fonts, &hayro::RenderSettings::default(), &settings);
+        let (pw, ph) = (u32::from(pixmap.width()), u32::from(pixmap.height()));
+        // Over white, so every pixel is opaque and its premultiplied colour is its colour.
+        let rgba = pixmap.data_as_u8_slice().to_vec();
+        if pw == 0 || ph == 0 || rgba.len() != pw as usize * ph as usize * 4 {
+            continue;
+        }
+        if !each(i + 1, pw, ph, rgba) {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// How many pages the PDF `bytes` has, and each one's size on paper, mm.

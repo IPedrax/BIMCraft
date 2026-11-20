@@ -182,6 +182,15 @@ fn a_pdf_of_several_pages_asks_which_to_place() {
     let pages = h.state().pdf_page_box.as_ref().map(|b| b.pages.len());
     assert_eq!(pages, Some(2), "{}", h.state().status.text);
     assert!(ids(&h, "image").is_empty(), "nothing placed until a page is picked");
+    // Each page shown small, drawn on a thread of its own.
+    for _ in 0..500 {
+        if h.state().pdf_page_box.as_ref().is_some_and(|b| b.thumbs.len() == 2) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        h.run();
+    }
+    assert_eq!(h.state().pdf_page_box.as_ref().map(|b| b.thumbs.len()), Some(2), "both pages' pictures");
     h.get_by_label_contains("Page 2").click();
     h.run();
     press(&mut h, "OK");
@@ -207,4 +216,24 @@ fn manage_links_is_of_one_size_whatever_its_tab() {
         assert!((now.height() - first.height()).abs() < 0.5 && (now.top() - first.top()).abs() < 0.5, "tab {i}: {first:?} {now:?}");
     }
     let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn a_pdf_snaps_to_its_lines_when_its_box_is_ticked_and_a_picture_has_no_box() {
+    let mut s = Session::new();
+    let sheet = s.execute("sheet", &json!({})).unwrap()["id"].as_u64().unwrap();
+    let file = std::env::temp_dir().join(format!("bimcraft-ui-pdf-snaps-{}.pdf", std::process::id()));
+    s.execute("export", &json!({"format": "pdf", "view": sheet, "path": file})).unwrap();
+    let mut h = app("");
+    h.state_mut().place_image(&file, false, None);
+    h.run();
+    let id = ids(&h, "image")[0];
+    assert!(!image(&h, id).snaps);
+    h.get_by_role_and_label(Role::CheckBox, "Snap to Its Lines").scroll_to_me();
+    h.run();
+    pick(&mut h, Role::CheckBox, "Snap to Its Lines");
+    assert!(image(&h, id).snaps, "ticked, it snaps");
+    let _ = std::fs::remove_file(&file);
+    let (h, _) = with_image("no-snaps");
+    assert!(h.query_by_label("Snap to Its Lines").is_none(), "a picture has no lines to snap to");
 }
