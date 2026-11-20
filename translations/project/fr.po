@@ -264,7 +264,7 @@ msgstr "Alimentation électrique"
 
 #: crates/core/src/commands.rs:15136
 #: crates/core/src/commands.rs:15152
-#: crates/core/src/commands.rs:20047
+#: crates/core/src/commands.rs:20057
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -513,7 +513,7 @@ msgid "Membrane"
 msgstr "Membrane"
 
 #: crates/core/src/commands.rs:4453
-#: crates/core/src/commands.rs:18592
+#: crates/core/src/commands.rs:18602
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -725,7 +725,7 @@ msgid "Seat Height"
 msgstr "Hauteur assise"
 
 #: crates/core/src/commands.rs:15070
-#: crates/core/src/commands.rs:20046
+#: crates/core/src/commands.rs:20056
 msgid "Section"
 msgstr "Coupe"
 
