@@ -1,6 +1,6 @@
 //! The extensions of BIMCraft's files: what a save writes, and what an open still reads (discussion 310).
 //!
-//! A project is a `.bimc`, its backup a `.bimb`, a template a `.bimt` and a family a `.bimf`; a template and a backup hold the
+//! A project is a `.bimc`, its backup a `.bimb`, a template a `.bimt`, a family a `.bimf` and a set of assets a `.bima`; a template and a backup hold the
 //! same JSON as a project. They are short because a long extension eats into a path where systems limit its length. What
 //! earlier versions wrote still opens: a project's `.bimcraft` (and the `.revcraft` before it), and a family's `.json`.
 use std::path::{Path, PathBuf};
@@ -11,6 +11,9 @@ pub const PROJECT: &str = "bimc";
 pub const BACKUP: &str = "bimb";
 pub const TEMPLATE: &str = "bimt";
 pub const FAMILY: &str = "bimf";
+/// A project's assets taken out to share: materials, fill types and patterns, line patterns and styles, and pictures
+/// (`bima.rs`).
+pub const ASSETS: &str = "bima";
 
 /// A project before the short names, and before that.
 pub const OLD_PROJECT: &str = "bimcraft";

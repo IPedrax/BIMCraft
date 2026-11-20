@@ -11,6 +11,15 @@ fn in_browser<'a>(h: &'a Harness<BimApp>, label: &'a str) -> egui_kittest::Node<
     entries.min_by(|a, b| a.rect().center().y.total_cmp(&b.rect().center().y)).unwrap()
 }
 
+/// The wall type `label` in the browser: Floors list a type of the same name and come before Walls, so it is the entry just
+/// under the Walls header.
+fn wall_type<'a>(h: &'a Harness<BimApp>, label: &'a str) -> egui_kittest::Node<'a> {
+    let walls = in_browser(h, "Walls").rect().center().y;
+    let entries = h.get_all_by_label(label);
+    let under = entries.filter(|n| n.rect().center().x < 290.0 && n.accesskit_node().role() == Role::Button && n.rect().center().y > walls);
+    under.min_by(|a, b| a.rect().center().y.total_cmp(&b.rect().center().y)).unwrap()
+}
+
 fn with_spare_types() -> Harness<'static, BimApp> {
     app(&format!(
         "{BOX}\ntype {{\"category\": \"wall\", \"name\": \"Spare 100\", \"thickness\": 100}}\n\
@@ -72,9 +81,12 @@ fn the_browsers_families_list_the_systems_types_and_a_right_click_deletes_an_unu
     let mut h = with_spare_types();
     press(&mut h, "List Families");
     type_into(&mut h, FIND, "generic - 200");
-    // A type in use is refused, saying so.
-    in_browser(&h, "Generic - 200mm").click_secondary();
+    // A type in use is refused, saying so. The browser shows only part of its tree, so scroll to the entry first.
+    wall_type(&h, "Generic - 200mm").scroll_to_me();
     h.run();
+    wall_type(&h, "Generic - 200mm").click_secondary();
+    h.run();
+    assert!(h.query_by_label("Delete").is_some(), "no menu; the entry is at {:?}", wall_type(&h, "Generic - 200mm").rect());
     press(&mut h, "Delete");
     assert!(h.state().status.error && h.state().status.text.contains("is used"), "{}", h.state().status.text);
     assert!(h.state().session.model.types.wall.contains_key("Generic - 200mm"));
@@ -83,4 +95,28 @@ fn the_browsers_families_list_the_systems_types_and_a_right_click_deletes_an_unu
     h.run();
     press(&mut h, "Delete");
     assert!(!h.state().session.model.types.wall.contains_key("Spare 100"));
+}
+
+#[test]
+fn the_browsers_families_list_grids_and_a_right_click_deletes_an_unused_axis_type() {
+    let mut h = app(&format!(
+        "{BOX}\ngrid {{\"start\": [1000, 1000], \"end\": [7000, 1000], \"name\": \"1\"}}\n\
+         grid_type {{\"name\": \"Spare Axis\", \"like\": \"Grid - ISO 128\"}}"
+    ));
+    press(&mut h, "List Families");
+    assert!(h.query_by_label("Grids").is_some(), "grid types are in Families");
+    // The type the grid is of is refused, saying so.
+    type_into(&mut h, FIND, "grid - iso 128");
+    in_browser(&h, "Grid - ISO 128").click_secondary();
+    h.run();
+    press(&mut h, "Delete");
+    assert!(h.state().status.error && h.state().status.text.contains("is used"), "{}", h.state().status.text);
+    assert!(h.state().session.model.grid_types.contains_key("Grid - ISO 128"));
+    // A type no grid is of goes, with its library entry.
+    type_into(&mut h, FIND, "spare axis");
+    in_browser(&h, "Spare Axis").click_secondary();
+    h.run();
+    press(&mut h, "Delete");
+    assert!(!h.state().session.model.grid_types.contains_key("Spare Axis"));
+    assert!(h.state().session.model.library.id(&bimcraft_core::library::Kind::GridType, "Spare Axis").is_none());
 }

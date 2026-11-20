@@ -136,7 +136,11 @@ and moving the pointer across the wall centre swaps its facing; a window's face 
 A click takes the pending hinge or face and the next one starts as placed. With doors or windows selected, Space turns every one it
 can: a swing door steps through the four Opens pictures in Inspector order, a window turns its face, and a sliding or fixed door
 is left alone. Walls in the selection turn as Space always did, and each press is one `flip` and one Undo step. A door's or a window's
-flip capabilities are `Model::opening_flips`, from its operation; the flip arrows on the plan do the same. A selected door or window shows two temporary dimensions from its middle
+flip capabilities are `Model::opening_flips`, from its operation; the flip arrows on the plan do the same. With nothing in the
+selection to flip, Space gives what is taken up again a quarter turn, as Revit's does (`BimApp::space_turn`, issue 470): while the
+selection is dragged it turns as it goes, about the one component's or column's own point or else the point it was taken by
+(`Canvas::moving_from`), and the drag goes on with it turned; not dragged, one component or column selected turns where it stands.
+Each press is one `rotate`. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.
@@ -200,8 +204,13 @@ on the ghost as "45° (Enter)", and Enter turns by it.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
-`show_snap` draw what a pick would land on (a line's or a wall's length is typed at the cursor, and after Tab its angle, degrees counter-clockwise from east, `line_angle_field`;
-Enter places the point along it; an alignment guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
+`show_snap` draw what a pick would land on (a line's or a wall's length is typed at the cursor; `Tab` arms the length and
+then its angle, both degrees counter-clockwise from east (`line_angle_field`), and the typed numbers draw the preview; a
+typed angle stands as typed until the pointer is swept, then mirrors into the quadrant the pointer is in (60, -60, 120
+and -120 for 60), so a line is flipped without retyping it; while a length or angle is in hand, `Ctrl+A` selects that
+field for overwrite, its whole number replaced by the next digit or emptied by Backspace or Delete; Enter or a click places
+the point they show; an alignment
+guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
 borrowed one is anchored at the point being drawn from and runs parallel or square to a straight run near it
 (`AlignmentAxis::Inferred`, `AlignmentGuideService::inferred`), so a line drawn beside a slanted wall comes out
 parallel to it. Where a guide comes from is the drawing's own context, not the whole model: the points of the chain
@@ -215,7 +224,8 @@ which its tag names: `Exterior Face of Wall 100019`, not a bare `Nearest`. Befor
 through the three from the line it has now (`Canvas::wall_face`); once the chain has a point, `Tab` steps the reading's
 fields (length, then angle) and `Shift+Tab` steps the three, a number typed or not (`face_cycle`); for a tool that
 draws no chain (Modify, Dimension, a curtain wall's parts, a section, the 3D view) `Shift+Tab` is `Tab`. The line held is drawn
-in the canvas's hover ink before a click, so a face and a centre line are told apart before they are taken. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
+in the canvas's hover ink before a click, so a face and a centre line are told apart before they are taken. A stair outside the rules takes `Tab` before both: the nearest stair that fits gives its
+riser, tread and width. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
 wall lends one edge pin — marking another of its faces moves the pin (`Marked::Moved`) rather than spending a second of
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
 guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
@@ -227,10 +237,11 @@ two run at once (`find_alignments`), and each fades out 100 px past the point it
 ray from an edge the hand has long left. Shift still squares the point against a collinear or grid ray, and the crossing
 says `Angle` and `On Line`. Guides from the whole model — every wall in it, as Revit does — is
 `Snaps::guides_from_whole_model`, off by default. Manage > Snaps picks how they are drawn (`GuideStyle`): Refined, the default, draws one-physical-pixel
-solid plum hairlines in the canvas's own ink (`style::guide_ink`) — a quiet ray edge to edge, the stronger segment from
-the source to the point it locks, a dot and ring on the source, a crosshair on a free cursor, a dot and a perpendicular
+solid plum hairlines in the canvas's own ink (`style::guide_ink`) — a quiet ray edge to edge, the stronger segment's last
+100 px with the relation fading in from its source, a dot and ring on the source, a crosshair on a free cursor, a dot and a perpendicular
 tick on one guide, a bullseye where two cross (even on a point an angle step also holds), a pill badge and the live length
-beside the segment's middle; Classic keeps the dashed magenta, the blue squares and the tag at the cursor. The badge takes the
+beside the segment's middle; Classic keeps the dashed magenta, the blue squares and the tag at the cursor. Every label is
+kept inside the view's edge, so a name over a point at the top is read a line lower. The badge takes the
 corner round the glyph farthest from the guides through it, so a ray is never cut by the pill, and the live reading sits
 outside the corner's dotted arc in a pill of its own, on the guide ink's paper. The live ruler's graduations and the angle arc are
 finer in the refined look, and Measure's own ruler keeps its weight. Guides are drawn over the plan, never under it: the
@@ -239,6 +250,8 @@ drawn again after the plan's own pass, so neither can be buried by a wall. A sel
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
 a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
+A selected grid's ends are grips by the same code: a drag lengthens, shortens or leans the grid, and runs `move` with `end` (`start` or
+`end`) on release, so the other end stays and `Model::check` refuses a grid with no length.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
@@ -257,6 +270,11 @@ mouse don't have (`Orbit::navigate`, issue 459). A primary drag alone never move
 selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
 them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
+In Modify the arrow keys nudge the selection, as Revit's do (`BimApp::nudge_keys`, issue 529): right, left, up or down on screen in a
+plan or a ceiling plan however it is turned, along its line or up in a section or an elevation (`move` with its `view`). A step is
+`NUDGE_PX` pixels at the view's zoom rounded down to 1, 2 or 5 times a power of ten, at least a millimetre (`nudge_step`); Shift
+makes it ten. Each press is one `move` and one Undo step, under Move's rules. A field with the keyboard, a dialog or another tool
+keeps the arrows.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
 model (`spacemouse.rs`): the cap pans, pulling it toward you zooms in, twisting it turns the view about the vertical and tilting
 it raises or lowers the eye, about the middle of the picture, while the window has focus. Like the hand it moves only the active
@@ -666,7 +684,7 @@ Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortc
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
 typed with Ctrl held (Cmd on a Mac; `ctrl_letters` takes them out of the frame's events, in the project's `keys` and the family document's
 `family_typed` alike), and a custom one is tried before the defaults. Letters typed without Ctrl are no shortcut (digits and a unit still make a
-typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes, Y
+typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes — mid-chain first a typed number, then the chain's last point and the segment built to it, `undo_chain_point` — Y
 redoes, 1 Properties) waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
 Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
 none, or once Ctrl is let go, it does its own job. In a text field Ctrl's keys are the field's, but S, O, N, K, P and 1, which act there at once,
@@ -811,6 +829,23 @@ Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids,
 
 Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
 
+## Lengths in fields
+
+A dialog that fills a field from the model and reads every field back when OK or Apply is pressed (Type Properties, a room type's
+offsets, a stair type's rules, Edit Pattern, a view range, Reinforce, a project parameter's value, a family's type parameters)
+fills a length with `Units::field`, never `Units::length`. `length` is what drawings show, rounded (3 mm in metres is `0.00`), so
+a field left alone would be read back as 0. In mm, cm and m, `field` is `length` while that reads back as the value, else the
+value in mm with its unit (`3 mm`), which `Units::parse` reads. Inches and feet round to a sixteenth of an inch and a hundredth
+of a foot by design, so `field` is `length` there. A field that commits only when its text changes (the Properties palette)
+keeps `length`.
+
+A project also keeps how many places lengths show (`Model::decimals`, the `units` command's `decimals`; Manage > Project Units
+lists them under the units): metres and feet 2 to 5, centimetres 1 to 4, millimetres 0 to 3, none for inches and feet-inches,
+which show sixteenths. None, and the fewest, are what drawings always showed. A change of units starts again at the fewest.
+Code that has a `Model` shows a length with `Model::length`, `Model::with_unit` and `Model::field`, which pass the places on;
+`Units::length` is for code that has only the units (so it shows the fewest places), and dimension types and schedules take
+the places as `DimensionType::length` and `schedule::shown_to` do. Typed lengths are read exactly whatever places are shown.
+
 ## Benchmarking the window
 
 `bimcraft --bench SCENARIO [--bench-out REPORT.json] [FILE]` runs a scenario on the real window and times every frame
@@ -850,3 +885,27 @@ samples are the ones to fix. Measured with it on the annotated 100-storey tower 
 File > Settings > Files has **Compressed save** (a tick in the File menu too), off at first and kept in `settings.json`: on, Save
 and Save As write the project as `save {compress: true}` does, its JSON in a zip (`bimcraft_core::bimc`), several times smaller
 and slower to save and open, as the box says; off, plain JSON. Exports take no such choice, and Open reads either.
+
+## Project templates
+
+A project template is a `.bimt`: the same content as a `.bimc`. The core's `open` reads one (or any project given
+`as_template: true`) and lets the file go: the session has no path, its undo history is empty, and the reply says `template:
+true`, so Save asks where to put the new project and the template is never written over. `save` of a `.bimt` writes a template
+and leaves the session's path as it was: the project still saves to its own file.
+
+New Project (File > New > Project, Ctrl+N, the start page's New Project) shows a popup first (`project_templates.rs`,
+`BimApp::new_project_window`): the templates by file name (with their folder when two share one), the first `MAX_SHOWN` (10)
+of the list, a line saying how many more Settings holds, then **Empty Project** (`Pending::New`, the empty project New always
+made) and **Browse…** (the system's dialog, `.bimt` only). A template picked goes through `guard` as `Pending::Template`, so
+unsaved changes are asked about first; `open_template` opens it, and one that is gone is said and taken off the list. A template
+opened (Browse…, Open, the system's open event) or saved is put first on the list when it isn't on it already, so New shows it;
+one already listed keeps its place. Templates are not added to Open Recent.
+
+The list is the user's, not a project's: `templates.json` beside `recent.json` in the configuration folder (`Templates::load`
+reads it kindly, capped at `MAX_KEPT` entries and 256 KiB; a window made in a test keeps none until `keep_templates_in`).
+Settings > Templates (`Page::Templates`) shows all of it, a line under the tenth marking those New doesn't list, a template
+whose file is gone marked "(not found)", and Add… (at the end), Remove (the entry, never the file), Move Up and Move Down.
+
+File > Save As is a submenu, as Revit's: **Project…** (Ctrl+Shift+S, as before) and **Template…**, which asks for a `.bimt` and
+lists it. A `.bimt` typed in the project's dialog saves a template the same way, and what waited on the save (closing, New)
+waits on, the project still being unsaved.

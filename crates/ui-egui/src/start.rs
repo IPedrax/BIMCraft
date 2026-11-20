@@ -263,7 +263,7 @@ impl BimApp {
         });
         let Some(click) = click else { return };
         match click {
-            Click::New => self.guard(Pending::New, &ctx),
+            Click::New => self.new_project(),
             Click::Open => self.guard(Pending::Open, &ctx),
             Click::NewFamily(c) => {
                 self.new_family(c);

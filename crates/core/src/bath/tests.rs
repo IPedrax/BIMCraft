@@ -127,7 +127,7 @@ fn the_ip_code_by_volume_and_in_a_public_bathroom() {
 #[test]
 fn every_volume_of_every_standard_names_its_source() {
     let sets = rule_sets();
-    assert!(!sets.is_empty(), "data/bath-volumes.json did not load");
+    assert!(!sets.is_empty(), "NBR 5410's `bath_volumes` section did not load");
     for s in sets {
         let n = &s.standard;
         assert!(!n.trim().is_empty() && !s.source.trim().is_empty() && !s.not_covered.trim().is_empty(), "{n}: no source");

@@ -234,6 +234,7 @@ fn new_and_open_keep_the_users_high_contrast_colour_and_settings_json_keeps_it_t
     // write crimson over the settings file.
     h.key_press_modifiers(Modifiers::COMMAND, Key::N);
     h.run();
+    empty_project(&mut h);
     h.run();
     assert!(ids(&h, "wall").is_empty(), "the project is a new one");
     assert_eq!((h.state().scan_contrast, kept()), (blue, json!(blue)), "after New");

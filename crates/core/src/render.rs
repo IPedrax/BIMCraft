@@ -3,7 +3,7 @@
 //! through get a heavy outline and grey poché, and below it a thin one (faint past the view
 //! range's bottom); doors a leaf and swing, windows glass lines, stairs their risers up to the cut
 //! line and a walk line, roofs their ridge and hips (dashed overhead, below the view range's top),
-//! rooms a tag, grids a long dash and a dot with a bubble at each end, dimensions witness lines and ticks
+//! rooms a tag, grids their type's line and a bubble at each end, dimensions witness lines and ticks
 //! (an arc for an angle, an arrow for a radius), door and window tags their mark in a box, text
 //! notes their lines, spot elevations a triangle and their height, sections their line and head,
 //! elevations a marker, sloped floors their slope arrow, shafts their outline and a cross; all of
@@ -23,8 +23,8 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
-    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, LeaderKind, Model, Note,
-    Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Grid, Id, Key, Layer, LeaderKind, Model,
+    Note, Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -51,14 +51,12 @@ pub const POCHE: Rgb = Rgb(168, 168, 168);
 pub const LIGHT_POCHE: Rgb = Rgb(212, 212, 212);
 const INK: Rgb = Rgb(25, 25, 25);
 const FAINT: Rgb = Rgb(120, 120, 120);
-const GRID: Rgb = Rgb(60, 100, 150);
 /// A reference plane's line in plan.
 pub(crate) const REFERENCE_PLANE: Rgb = Rgb(70, 140, 90);
 /// A mass's outline, dashed.
 const MASS: Rgb = Rgb(88, 112, 168);
 /// Room for grid bubbles and the view title around the drawing, px.
 const MARGIN: f64 = 70.0;
-const BUBBLE: f32 = 11.0;
 
 /// What a primitive draws of its element, for the view's overrides: lines and fills in projection
 /// (what lies below the cut plane, beyond a section's line, annotation) or where the view cuts
@@ -72,6 +70,9 @@ pub enum Part {
     Pattern,
     /// Stroke-like pattern graphics: filled dots and font outlines take line colour overrides.
     LinePattern,
+    /// What a placed image or PDF draws: its fills by the non-zero rule (a letter's counters and a frame's opening stay open),
+    /// and kept in their own colours when it is selected or hovered, which a front end shows over the whole of it.
+    Picture,
 }
 
 impl Part {
@@ -2219,7 +2220,7 @@ fn section_bare(m: &Model, w: &SectionWork, id: impl Key, cancelled: &(dyn Fn() 
 
 /// The room, px, the widest level name or height takes past the end of a section's line, drawn at the size it is laid out at.
 fn level_names(m: &Model) -> f32 {
-    m.levels().iter().map(|(_, l)| font::width(&l.name, 10.0).max(font::width(&m.units.length(m.level_shown(l)), 10.0))).fold(0.0, f32::max)
+    m.levels().iter().map(|(_, l)| font::width(&l.name, 10.0).max(font::width(&m.length(m.level_shown(l)), 10.0))).fold(0.0, f32::max)
         + 12.0
 }
 
@@ -2762,7 +2763,7 @@ fn section_base_cancellable(
         let (a, b) = (d.view.px(P2(from, l.elevation)), d.view.px(P2(to, l.elevation)));
         let dash = d.note_dash(&[12.0, 4.0]);
         d.stroke(vec![a, b], Pen::PROJECTION, INK, dash, false);
-        for (text, dy) in [(l.name.clone(), -8.0), (m.units.length(m.level_shown(l)), 8.0)] {
+        for (text, dy) in [(l.name.clone(), -8.0), (m.length(m.level_shown(l)), 8.0)] {
             let h = d.px(10.0);
             d.text(&text, (b.0 + d.px(8.0) + font::width(&text, h) / 2.0, b.1 + d.px(dy)), h, INK);
         }
@@ -2781,7 +2782,7 @@ fn section_base_cancellable(
         {
             let along = (x - v.start).dot(u);
             d.owner = Some(grid_id);
-            grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
+            grid(&mut d, m, g, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST));
         }
     }
     // Reference planes square to it (Revit's rule: their normal across the way it looks), their trace dashed green over
@@ -3222,6 +3223,166 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     d.own(None);
 }
 
+/// The images a plan shows, under its CAD drawings and the model, or with `front` those drawn over the model: those placed on
+/// its level, in each of its plans or in this one only. A PDF's page the project holds as a drawing is drawn as its lines,
+/// fills and pictures; any other image is its picture's pixels, the nearest to each of the view's. Each stands upright
+/// whatever way the view is turned, mirrored as it says.
+fn images(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::ids::Guid, look: &Look, front: bool) {
+    for (id, e) in m.rare("image").into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
+        let Element::Image(im) = e else { continue };
+        if im.front != front || im.level != level || im.view.is_some_and(|v| v != key) || !look.shows(id) {
+            continue;
+        }
+        let Some(h) = im.height(m) else { continue };
+        d.own(Some(id));
+        let part = std::mem::replace(&mut d.part, Part::Picture);
+        match m.pdfs.get(&im.picture) {
+            Some(doc) if !doc.drawing().items.is_empty() => pdf_page(d, im, h, doc.drawing()),
+            _ => picture_image(d, m, im, h),
+        }
+        d.part = part;
+    }
+    d.own(None);
+}
+
+/// Where a point of a placed image is in the view, px, from where it is across and down its picture, 0 to 1.
+fn image_px(view: View, im: &crate::model::PlacedImage, h: f64) -> impl Fn(f64, f64) -> (f32, f32) + use<> {
+    let (left, top, w) = (im.at.0 - im.width / 2.0, im.at.1 + h / 2.0, im.width);
+    let (fx, fy) = (im.flip_x, im.flip_y);
+    move |u: f64, v: f64| {
+        let (u, v) = (if fx { 1.0 - u } else { u }, if fy { 1.0 - v } else { v });
+        view.px(P2(left + u * w, top - v * h))
+    }
+}
+
+/// A placed image's picture, its pixels nearest to each of the view's.
+fn picture_image(d: &mut Drawing, m: &Model, im: &crate::model::PlacedImage, h: f64) {
+    let Some(picture) = m.images.get(&im.picture) else { return };
+    let (pw, ph, rgb) = picture.pixels();
+    let (vw, vh) = (f64::from(d.view.width), f64::from(d.view.height));
+    let (cx, cy) = d.view.px(im.at);
+    let (w_px, h_px) = (im.width * d.view.scale, h * d.view.scale);
+    let (x0, y0) = (f64::from(cx) - w_px / 2.0, f64::from(cy) - h_px / 2.0);
+    // The part of it in the view, whole pixels.
+    let (a, b) = (x0.max(0.0).floor(), y0.max(0.0).floor());
+    let (c, dd) = ((x0 + w_px).min(vw).ceil(), (y0 + h_px).min(vh).ceil());
+    if !(c > a && dd > b) || pw == 0 || ph == 0 {
+        return;
+    }
+    let (cols, rows) = ((c - a) as usize, (dd - b) as usize);
+    let mut rgba = Vec::with_capacity(cols * rows * 4);
+    for y in 0..rows {
+        let mut v = (b + y as f64 + 0.5 - y0) / h_px;
+        if im.flip_y {
+            v = 1.0 - v;
+        }
+        let v = (v * ph as f64).floor();
+        for x in 0..cols {
+            let mut u = (a + x as f64 + 0.5 - x0) / w_px;
+            if im.flip_x {
+                u = 1.0 - u;
+            }
+            let u = (u * pw as f64).floor();
+            if u < 0.0 || v < 0.0 || u >= pw as f64 || v >= ph as f64 {
+                rgba.extend([0, 0, 0, 0]);
+                continue;
+            }
+            let i = (v as usize * pw + u as usize) * 3;
+            rgba.extend([rgb[i], rgb[i + 1], rgb[i + 2], 255]);
+        }
+    }
+    d.push(Prim::Image { at: (a as f32, b as f32), width: cols as u32, height: rows as u32, rgba, ink: false });
+}
+
+/// A PDF's page placed: its fills, its lines (as wide as they print, scaled with the page, a pixel at least) and the pictures
+/// in it, each left out where it lies outside the view.
+fn pdf_page(d: &mut Drawing, im: &crate::model::PlacedImage, h: f64, page: &crate::pdf_in::Drawing) {
+    use crate::pdf_in::Item;
+    let [pw, ph] = page.size;
+    if pw <= 0.0 || ph <= 0.0 {
+        return;
+    }
+    let px = image_px(d.view, im, h);
+    let at = |p: &[f32; 2]| px(f64::from(p[0]) / pw, f64::from(p[1]) / ph);
+    // Pixels for each of the page's points.
+    let k = (im.width * d.view.scale / pw) as f32;
+    let (vw, vh) = (d.view.width as f32, d.view.height as f32);
+    let seen = |b: [f32; 4]| {
+        let (p, q) = (at(&[b[0], b[1]]), at(&[b[2], b[3]]));
+        let (x0, x1, y0, y1) = (p.0.min(q.0), p.0.max(q.0), p.1.min(q.1), p.1.max(q.1));
+        x1 >= 0.0 && x0 <= vw && y1 >= 0.0 && y0 <= vh && (x1 - x0 >= 0.25 || y1 - y0 >= 0.25)
+    };
+    // Over white where it lets the paper through.
+    let rgb = |c: [u8; 4]| {
+        let a = u16::from(c[3]);
+        let over = |v: u8| ((u16::from(v) * a + 255 * (255 - a)) / 255) as u8;
+        Rgb(over(c[0]), over(c[1]), over(c[2]))
+    };
+    for item in &page.items {
+        if !seen(item.bounds()) {
+            continue;
+        }
+        match item {
+            Item::Fill { rings, rgba, .. } => {
+                let rings: Vec<Vec<(f32, f32)>> = rings.iter().map(|r| r.iter().map(at).collect()).collect();
+                d.push(Prim::Fill { rings, color: rgb(*rgba) });
+            }
+            Item::Stroke { lines, rgba, width, dash, .. } => {
+                let width = (width * k).max(1.0);
+                let dash = dash.as_ref().map(|ds| ds.iter().map(|x| (x * k).max(0.5)).collect::<Vec<f32>>());
+                for (pts, closed) in lines {
+                    let pts: Vec<(f32, f32)> = pts.iter().map(at).collect();
+                    d.push(Prim::Line { pts, width, color: rgb(*rgba), dash: dash.clone(), closed: *closed });
+                }
+            }
+            Item::Image { w, h: ih, rgba, m: mm, local, .. } => pdf_picture(d, &at, *w, *ih, rgba, mm, *local),
+        }
+    }
+}
+
+/// A picture inside a PDF's page, at `mm` (its pixels' space to the page's points), drawn into the view by `at`, the view's
+/// pixel nearest each of its own.
+fn pdf_picture(d: &mut Drawing, at: &dyn Fn(&[f32; 2]) -> (f32, f32), w: u32, h: u32, rgba: &[u8], mm: &[f64; 6], local: [f64; 2]) {
+    // Its corners in the view, and the way back from the view to its pixels.
+    let page = |x: f64, y: f64| [(mm[0] * x + mm[2] * y + mm[4]) as f32, (mm[1] * x + mm[3] * y + mm[5]) as f32];
+    let o = at(&page(0.0, 0.0));
+    let ex = at(&page(local[0], 0.0));
+    let ey = at(&page(0.0, local[1]));
+    let (ax, ay, bx, by) = (f64::from(ex.0 - o.0), f64::from(ex.1 - o.1), f64::from(ey.0 - o.0), f64::from(ey.1 - o.1));
+    let det = ax * by - ay * bx;
+    if det.abs() < 1e-9 || w == 0 || h == 0 {
+        return;
+    }
+    let far = (f64::from(ex.0 + ey.0 - o.0), f64::from(ex.1 + ey.1 - o.1));
+    let xs = [f64::from(o.0), f64::from(ex.0), f64::from(ey.0), far.0];
+    let ys = [f64::from(o.1), f64::from(ex.1), f64::from(ey.1), far.1];
+    let (vw, vh) = (f64::from(d.view.width), f64::from(d.view.height));
+    let x0 = xs.iter().copied().fold(f64::MAX, f64::min).max(0.0).floor();
+    let x1 = xs.iter().copied().fold(f64::MIN, f64::max).min(vw).ceil();
+    let y0 = ys.iter().copied().fold(f64::MAX, f64::min).max(0.0).floor();
+    let y1 = ys.iter().copied().fold(f64::MIN, f64::max).min(vh).ceil();
+    if !(x1 > x0 && y1 > y0) {
+        return;
+    }
+    let (cols, rows) = ((x1 - x0) as usize, (y1 - y0) as usize);
+    let mut out = vec![0u8; cols * rows * 4];
+    for r in 0..rows {
+        for c in 0..cols {
+            let (px, py) = (x0 + c as f64 + 0.5 - f64::from(o.0), y0 + r as f64 + 0.5 - f64::from(o.1));
+            let s = (px * by - py * bx) / det;
+            let t = (ax * py - ay * px) / det;
+            if !(0.0..1.0).contains(&s) || !(0.0..1.0).contains(&t) {
+                continue;
+            }
+            let (u, v) = ((s * f64::from(w)) as usize, (t * f64::from(h)) as usize);
+            let i = (v * w as usize + u) * 4;
+            let Some(p) = rgba.get(i..i + 4) else { continue };
+            out[(r * cols + c) * 4..(r * cols + c) * 4 + 4].copy_from_slice(p);
+        }
+    }
+    d.push(Prim::Image { at: (x0 as f32, y0 as f32), width: cols as u32, height: rows as u32, rgba: out, ink: false });
+}
+
 /// The CAD drawings a plan shows, under all the rest but its scans, as Revit draws an import in the background: those placed on
 /// its level, in each of its plans or in this one only, of the layers the import and the view show. Each entity is drawn in its
 /// colour (the view's ink where it has none, or the import draws in black), its pen and its linetype; a solid hatch filled, a
@@ -3349,6 +3510,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
         scans(&mut d, m, &range, &look);
+        images(&mut d, m, key, level, &look, false);
         cad_imports(&mut d, m, key, level, &look);
     }
     // A ceiling plan isn't cropped: the crop region is the floor plan's.
@@ -3691,7 +3853,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             // Cropped, a grid stops at the crop's edge, with its bubbles there.
             Element::Grid(g) => {
                 if let Some((a, b)) = crop.map_or(Some((g.start, g.end)), |[lo, hi]| clip(g.start, g.end, lo, hi)) {
-                    grid(&mut d, a, b, &g.name);
+                    grid(&mut d, m, g, a, b);
                 }
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
@@ -3838,6 +4000,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.owner = Some(id);
             property_label(&mut d, m, pl, &room_labels);
         }
+    }
+    // The images drawn in front of the model.
+    if !up {
+        images(&mut d, m, key, level, &look, true);
     }
     d.model_under_regions(None);
     // Regions replace model backgrounds; non-masking ones retain the visible model foreground.
@@ -6034,25 +6200,41 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
     d.grow(from, c);
 }
 
-/// A grid line drawn as a long dash and a dot, with a bubble holding its name beyond each end.
-fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
+/// A grid line drawn in its type's pattern, pen and colour, with a bubble holding its name beyond each end.
+fn grid(d: &mut Drawing, m: &Model, g: &Grid, start: P2, end: P2) {
+    // A file that names a type it no longer has (a broken file, which `check` wouldn't pass) draws in the project's default.
+    let t = m
+        .grid_types
+        .get(&g.type_name)
+        .or_else(|| crate::grids::default_type(&m.grid_types, m.language).and_then(|n| m.grid_types.get(n)))
+        .cloned()
+        .unwrap_or_default();
+    let color = Rgb(t.color[0], t.color[1], t.color[2]);
+    // Pixels to a mm of paper: the pattern's and the bubble's lengths are paper mm, as a detail line's are.
+    let px_per_mm = sheet::DENSITY as f32 * d.paper;
     let (a, b) = (d.view.px(start), d.view.px(end));
-    // ISO 128-23 draws an axis as a long dash and a dot; a plain dash reads as a hidden edge. The dot
-    // is 2 px because egui's kept canvas loses a 1 px one while a view moves (`retained.rs`).
-    let dash = d.note_dash(&[14.0, 3.0, 2.0, 3.0]);
-    d.stroke(vec![a, b], Pen::PROJECTION, GRID, dash, false);
+    let dash = t.line_pattern.as_ref().and_then(|n| m.line_patterns.get(n)).and_then(|p| grid_dash(p, px_per_mm));
+    d.stroke(vec![a, b], t.line_pen, color, dash, false);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
-    for ((x, y), k) in [(a, -BUBBLE), (b, BUBBLE)] {
-        let from = d.prims.len();
-        let c = (x + dir.0 * k, y + dir.1 * k);
+    let layout = crate::text::layout(&t.text_type(), &g.name, &[]);
+    // Big enough for the name, and never smaller than a quarter of a millimetre of paper across: a ring round nothing reads
+    // as a dot on the end of the line.
+    let r = (0.6 * t.text_size + layout.width.max(layout.height) / 2.0).max(2.2) as f32 * px_per_mm;
+    for ((x, y), k) in [(a, -1.0f32), (b, 1.0f32)] {
+        let c = (x + dir.0 * r * k, y + dir.1 * r * k);
         let ring = (0..32).map(|i| {
-            let t = f64::from(i) * PI / 16.0;
-            (c.0 + BUBBLE * t.cos() as f32, c.1 + BUBBLE * t.sin() as f32)
+            let th = i as f32 * (PI as f32) / 16.0;
+            (c.0 + r * th.cos(), c.1 + r * th.sin())
         });
-        d.stroke(ring.collect(), Pen::BUBBLE, GRID, None, true);
-        d.text(name, c, 10.0, GRID);
-        d.grow(from, (x, y));
+        d.stroke(ring.collect(), t.line_pen, color, None, true);
+        // Its name, centred in the bubble: mm of paper, as a note's lettering is.
+        let frame = NoteFrame {
+            at: (c.0 - layout.width as f32 / 2.0 * px_per_mm, c.1 - layout.height as f32 / 2.0 * px_per_mm),
+            k: px_per_mm,
+            angle: 0.0,
+        };
+        lettering(d, &layout, frame, color);
     }
 }
 
@@ -6118,6 +6300,12 @@ pub(crate) fn origin_marks(d: &mut Drawing, m: &Model, shows: impl Fn(&str) -> b
         d.on_top.extend(d.owner);
     }
     d.owner = None;
+}
+
+/// The on and off lengths of a grid's line pattern in pixels, no segment shorter than 2 px: a dot is 0.01 mm on paper, a
+/// fraction of a pixel that egui's kept canvas loses while a view moves (`retained.rs`), so the dot of a chain would go.
+fn grid_dash(pattern: &crate::lines::LinePattern, px_per_mm: f32) -> Option<Vec<f32>> {
+    pattern.dash(px_per_mm).map(|dash| dash.into_iter().map(|x| x.max(2.0)).collect())
 }
 
 /// A camera's symbol in plan, at its eye: a little body pointing the way it looks, a line to what it looks at, and its name
@@ -6896,7 +7084,7 @@ mod tests {
         let d = section(&s.model, 100010, view);
         assert_eq!(d.pick(at(0.0, 1500.0), 2.0), Some(100005), "the cut is the wall's to pick");
         assert_eq!(d.pick(at(4000.0, 3000.0), 3.0), Some(100001), "Level 2's line");
-        assert_eq!(d.pick(at(0.0, 3700.0), 3.0), Some(100009), "grid 1, where it crosses the section");
+        assert_eq!(d.pick(at(0.0, 3200.0), 3.0), Some(100009), "grid 1, where it crosses the section");
     }
 
     #[test]
@@ -6925,7 +7113,7 @@ mod tests {
         assert_eq!(pixel(&png, p), (255, 255, 255));
         let d = section(&s.model, 100011, view);
         assert!(d.prims.iter().all(|p| !matches!(p, Prim::Fill { color, .. } if *color == POCHE)), "no cut");
-        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3700.0)), 3.0), Some(100009), "grid 1 runs into what it sees");
+        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3200.0)), 3.0), Some(100009), "grid 1 runs into what it sees");
         assert_eq!(
             view3d::Scene::new(&s.model)
                 .cut(&section_camera(&s.model, 100011, view).unwrap().0, &section_camera(&s.model, 100011, view).unwrap().1, &[])
@@ -7038,7 +7226,8 @@ mod tests {
         assert!(d.pick((name.0, name.1 - 16.0 * d.k), 3.0) == Some(100008), "the name past the crop's edge");
         // Grid 1 stops at the crop's edge, its bubble there.
         let (x, y) = d.view.px(P2(0.0, 4000.0));
-        assert_eq!(d.pick((x + 11.0 * d.k, y - 11.0 * d.k), 2.0), Some(100009));
+        let r = bubble(&d, 100009) / 2.0;
+        assert_eq!(d.pick((x + r, y - r), 2.0), Some(100009));
         // A section cropped to the ground floor's lower part: Level 2 isn't in it, and the cut wall stops.
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
         s.execute("crop", &serde_json::json!({"view": 100010, "region": [[0, -100], [5000, 2000]]})).unwrap();
@@ -7257,6 +7446,10 @@ mod tests {
                 Prim::Line { pts, .. } => {
                     Some(pts.iter().map(|p| p.1).fold(f32::MIN, f32::max) - pts.iter().map(|p| p.1).fold(f32::MAX, f32::min))
                 }
+                Prim::Fill { rings, .. } => {
+                    let ys: Vec<f32> = rings.iter().flatten().map(|p| p.1).collect();
+                    (!ys.is_empty()).then(|| ys.iter().copied().fold(f32::MIN, f32::max) - ys.iter().copied().fold(f32::MAX, f32::min))
+                }
                 _ => None,
             })
             .fold(0.0, f32::max)
@@ -7306,24 +7499,23 @@ mod tests {
     fn a_views_scale_sizes_its_annotation_as_paper_at_that_scale_holds_it() {
         let mut s = house();
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
-        // A tenth of a pixel to the mm: at 1 : 50, annotation is the size it has been all along (10 px lettering is
-        // 2 mm of paper, DENSITY px to the mm).
+        // A tenth of a pixel to the mm: at 1 : 50, annotation is paper size (2.5 mm lettering at DENSITY px to the mm).
         let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let grid = |s: &Session, view: View| {
             let d = draw(&s.model, 100000, view);
             (lettering(&d, 100009), bubble(&d, 100009))
         };
         let (text, ring) = grid(&s, view);
-        assert!((text - 10.0).abs() < 1.0 && (ring - 22.0).abs() < 1.0, "{text} {ring}");
+        assert!((8.0..=18.0).contains(&text) && (ring - 31.25).abs() < 2.0, "{text} {ring}");
         // The bubble stands where it did, its middle a bubble's radius, times k, past the grid's end.
         let ends = [view.px(P2(0.0, -2000.0)), view.px(P2(0.0, 8000.0))];
-        assert!((bubble_gap(&draw(&s.model, 100000, view), 100009, ends) - 11.0).abs() < 0.5);
+        assert!((bubble_gap(&draw(&s.model, 100000, view), 100009, ends) - ring / 2.0).abs() < 0.5);
         for (n, k) in [(50, 1.0), (100, 2.0), (200, 4.0), (25, 0.5)] {
             s.execute("scale", &serde_json::json!({"view": 100000, "scale": n})).unwrap();
             let (t, r) = grid(&s, view);
             assert!((t - text * k).abs() < 1.0 && (r - ring * k).abs() < 1.0, "1 : {n}: {t} {r}");
             let gap = bubble_gap(&draw(&s.model, 100000, view), 100009, ends);
-            assert!((gap - 11.0 * k).abs() < 0.5, "1 : {n}: the bubble grows about the grid's end: {gap}");
+            assert!((gap - ring / 2.0 * k).abs() < 0.5, "1 : {n}: the bubble grows about the grid's end: {gap}");
         }
         // Zoomed in twice, the same view's annotation is twice the size: a screen showing 1 mm as 0.2 px, at 1 : 100.
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
@@ -7339,7 +7531,7 @@ mod tests {
         let view = View { angle: 0.0, scale: 0.1, cx: 5000.0, cy: 1500.0, width: 1200, height: 800 };
         s.execute("scale", &serde_json::json!({"view": 100010, "scale": 50})).unwrap();
         let none = lettering(&section(&s.model, 100010, view), 100009);
-        assert!((none - 10.0).abs() < 1.0, "{none}");
+        assert!((8.0..=18.0).contains(&none), "{none}");
         s.execute("scale", &serde_json::json!({"view": 100010, "scale": 100})).unwrap();
         let hundred = lettering(&section(&s.model, 100010, view), 100009);
         assert!((hundred - 2.0 * none).abs() < 1.0, "{hundred}");
@@ -7860,5 +8052,26 @@ mod tests {
                 && matches!(prim, Prim::Line { pts, dash: Some(_), .. } if pts.len() == 2 && (pts[0].0 - x).abs() < 1.0 && (pts[1].0 - x).abs() < 1.0)
         });
         assert!(upright, "upright, 4000 along");
+    }
+
+    /// A grid's chain (F4): lengths scale with the paper, and its dot never falls below 2 px, which egui's kept canvas keeps.
+    #[test]
+    fn a_grid_dash_scales_with_the_paper_and_keeps_its_dot_visible() {
+        let chain = crate::lines::LinePattern(vec![
+            crate::lines::Segment::Dash(12.7),
+            crate::lines::Segment::Space(3.2),
+            crate::lines::Segment::Dot,
+            crate::lines::Segment::Space(3.2),
+        ]);
+        let big = grid_dash(&chain, 5.0).expect("dashed");
+        assert!((big[0] - 63.5).abs() < 1e-3 && (big[1] - 16.0).abs() < 1e-3, "{big:?}");
+        assert!(big[2] >= 2.0, "the dot survives: {big:?}");
+        let small = grid_dash(&chain, 2.5).expect("dashed");
+        assert!((small[0] - 31.75).abs() < 1e-3 && small[2] >= 2.0, "{small:?}");
+        // A pattern too fine to see draws solid, as any line's does.
+        assert_eq!(
+            grid_dash(&crate::lines::LinePattern(vec![crate::lines::Segment::Dash(0.1), crate::lines::Segment::Space(0.05)]), 1.0),
+            None
+        );
     }
 }

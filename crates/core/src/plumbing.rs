@@ -1,14 +1,13 @@
-//! The plumbing fixtures library: what `water_size` and `drain_size` know of each kind of fixture, read from
-//! `data/plumbing.json`, the way `electrical.rs` reads `data/electrical.json`. A row holds the fixture's design flows (L/s: cold, and
+//! The plumbing fixtures library: what `water_size` and `drain_size` know of each kind of fixture, the Plumbing tab's Fixtures
+//! section of the project's building code (`data/codes/plumbing/nbr.json` in BIMCraft's library), which a project may change. A row holds the fixture's design flows (L/s: cold, and
 //! hot where a source gives one), its relative weight (NBR 5626 method of weights), its units of contribution (UHC, NBR 8160) and the
 //! smallest DN of its drain, each group with the source it comes from. A row without a source is refused by [`validate`], and a test
 //! runs it over the shipped file, so a number is never added without saying where it is from.
 
-use serde::Deserialize;
-use std::sync::OnceLock;
+use serde::{Deserialize, Serialize};
 
 /// One fixture of the library.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Fixture {
     /// The name commands take: `wc`, `lav`, …
@@ -33,10 +32,34 @@ pub struct Fixture {
     pub drain_source: String,
 }
 
-#[derive(Default, Deserialize)]
+/// The fixtures a project's sizing knows: the code's section.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-struct Library {
-    fixtures: Vec<Fixture>,
+pub struct Fixtures {
+    pub fixtures: Vec<Fixture>,
+}
+
+impl crate::codes::Section for Fixtures {
+    const DISCIPLINE: crate::codes::Discipline = crate::codes::Discipline::Plumbing;
+    const KEY: &'static str = "fixtures";
+    fn check(&self) -> Result<(), String> {
+        if self.fixtures.len() > 500 {
+            return Err("the fixtures library holds 500 fixtures at most".into());
+        }
+        validate(&self.fixtures)
+    }
+}
+
+impl Fixtures {
+    /// A fixture by its kind.
+    pub fn fixture(&self, kind: &str) -> Option<&Fixture> {
+        self.fixtures.iter().find(|f| f.kind == kind)
+    }
+
+    /// Its kinds, in order.
+    pub fn kinds(&self) -> Vec<String> {
+        self.fixtures.iter().map(|f| f.kind.clone()).collect()
+    }
 }
 
 /// A library is usable when every row names its source and its numbers are positive and finite.
@@ -66,23 +89,19 @@ pub fn validate(fixtures: &[Fixture]) -> Result<(), String> {
     Ok(())
 }
 
-/// The fixtures of the library, in file order. Empty if the shipped file does not read, which a test rules out.
-pub fn fixtures() -> &'static [Fixture] {
-    static LIBRARY: OnceLock<Vec<Fixture>> = OnceLock::new();
-    LIBRARY.get_or_init(|| {
-        let lib: Library = serde_json::from_str(include_str!("../data/plumbing.json")).unwrap_or_default();
-        if validate(&lib.fixtures).is_ok() { lib.fixtures } else { Vec::new() }
-    })
+/// The library's fixtures, as BIMCraft ships them.
+pub fn fixtures() -> std::sync::Arc<Fixtures> {
+    crate::codes::library_rules::<Fixtures>()
 }
 
-/// A fixture by its kind.
-pub fn fixture(kind: &str) -> Option<&'static Fixture> {
-    fixtures().iter().find(|f| f.kind == kind)
+/// One of the library's fixtures by its kind.
+pub fn fixture(kind: &str) -> Option<Fixture> {
+    fixtures().fixture(kind).cloned()
 }
 
-/// The kinds the library has, in file order.
-pub fn kinds() -> Vec<&'static str> {
-    fixtures().iter().map(|f| f.kind.as_str()).collect()
+/// The library's kinds.
+pub fn kinds() -> Vec<String> {
+    fixtures().kinds()
 }
 
 #[cfg(test)]
@@ -106,7 +125,7 @@ mod tests {
 
     #[test]
     fn the_shipped_library_reads_and_every_row_names_its_sources() {
-        let lib: Library = serde_json::from_str(include_str!("../data/plumbing.json")).expect("data/plumbing.json reads");
+        let lib = fixtures();
         assert_eq!(lib.fixtures.len(), 5);
         assert_eq!(validate(&lib.fixtures), Ok(()));
         assert_eq!(kinds(), ["wc", "lav", "sink", "shower", "laundry"]);

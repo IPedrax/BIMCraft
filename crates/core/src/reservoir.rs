@@ -13,22 +13,52 @@
 //!   the Forchheimer pipe diameter. Every check says which of four kinds it is, and what a missing input leaves is `pending`, never
 //!   a verdict.
 
-/// The least reservation, in days of the building's normal consumption (24 h).
-pub const MIN_DAYS: f64 = 1.0;
-/// The potable volume the standard recommends not to pass where the project finds no limit of its own, in days of consumption.
-pub const MAX_DAYS: f64 = 3.0;
-/// Hours the supply has to refill the day's consumption.
-pub const REFILL_HOURS: f64 = 6.0;
-/// Hours it has for a single-family house.
-pub const REFILL_HOURS_HOUSE: f64 = 3.0;
-/// The fewest independent pumps of a pump station.
-pub const MIN_PUMPS: u32 = 2;
-/// The fewest compartments of an elevated reservoir that is not a single-family house's.
-pub const MIN_COMPARTMENTS: u32 = 2;
-/// The share of the potable volume the lower reservoir usually takes, per cent: an engineering practice, never the standard's.
-pub const USUAL_LOWER_PERCENT: f64 = 60.0;
+use serde::{Deserialize, Serialize};
 
-const STANDARD: &str = "NBR 5626:2020, reservation, as read from its text";
+/// The rules a reservation is checked by: the Plumbing tab's Reservation section (`data/codes/plumbing/nbr.json`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReservoirRules {
+    /// The least reservation, in days of the building's normal consumption.
+    pub min_days: f64,
+    /// The potable volume not to pass where the project finds no limit of its own, in days of consumption.
+    pub max_days: f64,
+    /// Hours the supply has to refill the day's consumption, and for a single-family house.
+    pub refill_hours: f64,
+    pub refill_hours_house: f64,
+    /// The fewest independent pumps of a pump station, and compartments of an elevated reservoir not a house's.
+    pub min_pumps: u32,
+    pub min_compartments: u32,
+    /// The share of the potable volume the lower reservoir usually takes, per cent: a practice, never a requirement.
+    pub usual_lower_percent: f64,
+    /// What each check cites.
+    pub standard: String,
+}
+
+impl crate::codes::Section for ReservoirRules {
+    const DISCIPLINE: crate::codes::Discipline = crate::codes::Discipline::Plumbing;
+    const KEY: &'static str = "reservoir";
+    fn check(&self) -> Result<(), String> {
+        for (k, v, most) in [
+            ("min_days", self.min_days, 365.0),
+            ("max_days", self.max_days, 365.0),
+            ("refill_hours", self.refill_hours, 240.0),
+            ("refill_hours_house", self.refill_hours_house, 240.0),
+            ("usual_lower_percent", self.usual_lower_percent, 100.0),
+        ] {
+            if !v.is_finite() || !(0.0..=most).contains(&v) {
+                return Err(format!("reservation: `{k}` is from 0 to {most}, not {v}"));
+            }
+        }
+        if self.refill_hours <= 0.0 || self.refill_hours_house <= 0.0 || self.min_days > self.max_days {
+            return Err("reservation: the refill hours are more than 0, and `min_days` no more than `max_days`".into());
+        }
+        if self.min_pumps > 100 || self.min_compartments > 100 || self.standard.chars().count() > 500 {
+            return Err("reservation: 100 pumps or compartments at most, and a source of 500 characters".into());
+        }
+        Ok(())
+    }
+}
 
 /// What a check rests on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,7 +103,7 @@ pub struct Check {
     pub kind: Kind,
     pub status: Status,
     pub text: String,
-    pub source: &'static str,
+    pub source: String,
 }
 
 #[derive(Clone, Debug)]
@@ -115,44 +145,53 @@ pub struct Outcome {
     pub checks: Vec<Check>,
 }
 
-fn check(id: &'static str, status: Status, text: impl Into<String>) -> Check {
-    Check { id, kind: Kind::Requirement, status, text: text.into(), source: STANDARD }
+fn check(r: &ReservoirRules, id: &'static str, status: Status, text: impl Into<String>) -> Check {
+    Check { id, kind: Kind::Requirement, status, text: text.into(), source: r.standard.clone() }
 }
 
 fn verdict(ok: bool) -> Status {
     if ok { Status::Ok } else { Status::Fail }
 }
 
-/// Sizes the reservation of `i` and checks it: the volumes, the refill flow and the checks of the standard it can make.
+/// Sizes the reservation of `i` by the library's rules.
 pub fn size(i: &Input) -> Outcome {
+    size_by(i, &crate::codes::library_rules::<ReservoirRules>())
+}
+
+/// Sizes the reservation of `i` and checks it by `r`: the volumes, the refill flow and the checks of the standard it can make.
+pub fn size_by(i: &Input, r: &ReservoirRules) -> Outcome {
     let potable_l = i.daily_l * i.days;
     let total_l = potable_l + i.fire_l;
-    let refill_hours = if i.house { REFILL_HOURS_HOUSE } else { REFILL_HOURS };
+    let refill_hours = if i.house { r.refill_hours_house } else { r.refill_hours };
     let min_fill_flow_lps = i.daily_l / (refill_hours * 3600.0);
     let split =
         i.lower_percent.map(|p| Split { lower_percent: p, lower_l: potable_l * p / 100.0, upper_l: potable_l * (100.0 - p) / 100.0 });
     let mut checks = vec![
         check(
+            r,
             "autonomy",
-            verdict(i.days >= MIN_DAYS - 1e-9),
-            format!("{} day(s) of consumption reserved; at least {MIN_DAYS} (24 h)", i.days),
+            verdict(i.days >= r.min_days - 1e-9),
+            format!("{} day(s) of consumption reserved; at least {} (24 h)", i.days, r.min_days),
         ),
         check(
+            r,
             "potability",
-            verdict(i.days <= MAX_DAYS + 1e-9),
+            verdict(i.days <= r.max_days + 1e-9),
             format!(
-                "{} day(s) of potable water; {MAX_DAYS} at most where the project finds no limit of its own, or it shows how the quality is kept; the fire reserve is not counted",
-                i.days
+                "{} day(s) of potable water; {} at most where the project finds no limit of its own, or it shows how the quality is kept; the fire reserve is not counted",
+                i.days, r.max_days
             ),
         ),
     ];
     checks.push(match i.fill_flow_lps {
         Some(q) => check(
+            r,
             "refill",
             verdict(q >= min_fill_flow_lps - 1e-9),
             format!("the supply of {q} L/s against {min_fill_flow_lps:.3} L/s that refills {:.0} L in {refill_hours} h", i.daily_l),
         ),
         None => check(
+            r,
             "refill",
             Status::Pending,
             format!("`fill_flow` (L/s) not given: the supply has to refill the day's consumption in {refill_hours} h, {min_fill_flow_lps:.3} L/s"),
@@ -161,23 +200,27 @@ pub fn size(i: &Input) -> Outcome {
     if !i.house {
         checks.push(match i.compartments {
             Some(n) => check(
+                r,
                 "compartments",
-                verdict(n >= MIN_COMPARTMENTS),
-                format!("{n} compartment(s) in the elevated reservoir; {MIN_COMPARTMENTS} at least, but for a single-family house"),
+                verdict(n >= r.min_compartments),
+                format!("{n} compartment(s) in the elevated reservoir; {} at least, but for a single-family house", r.min_compartments),
             ),
             None => check(
+                r,
                 "compartments",
                 Status::Pending,
-                format!("`compartments` not given: an elevated reservoir has {MIN_COMPARTMENTS} at least"),
+                format!("`compartments` not given: an elevated reservoir has {} at least", r.min_compartments),
             ),
         });
         checks.push(match (i.smallest_l, i.peak_l) {
             (Some(s), Some(p)) => check(
+                r,
                 "smallest_compartment",
                 verdict(s >= p - 1e-9),
                 format!("the smallest compartment holds {s} L; the greatest peak of consumption over a normal maintenance is {p} L"),
             ),
             _ => check(
+                r,
                 "smallest_compartment",
                 Status::Pending,
                 "`smallest_l` and `peak_l` not both given: the smallest compartment holds the greatest peak of consumption over a normal maintenance",
@@ -185,11 +228,12 @@ pub fn size(i: &Input) -> Outcome {
         });
     }
     checks.push(match i.pumps {
-        Some(n) => check("pumps", verdict(n >= MIN_PUMPS), format!("{n} pump(s) of independent operation; {MIN_PUMPS} at least")),
-        None => check("pumps", Status::Pending, format!("`pumps` not given: {MIN_PUMPS} independent pumps at least")),
+        Some(n) => check(r, "pumps", verdict(n >= r.min_pumps), format!("{n} pump(s) of independent operation; {} at least", r.min_pumps)),
+        None => check(r, "pumps", Status::Pending, format!("`pumps` not given: {} independent pumps at least", r.min_pumps)),
     });
     if i.towers >= 2 {
         checks.push(check(
+            r,
             "spare_pump",
             Status::Pending,
             format!(
@@ -198,7 +242,7 @@ pub fn size(i: &Input) -> Outcome {
             ),
         ));
     }
-    Outcome { potable_l, total_l, refill_hours, min_fill_flow_lps, split, suggested_lower_percent: USUAL_LOWER_PERCENT, checks }
+    Outcome { potable_l, total_l, refill_hours, min_fill_flow_lps, split, suggested_lower_percent: r.usual_lower_percent, checks }
 }
 
 #[cfg(test)]

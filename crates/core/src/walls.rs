@@ -689,7 +689,8 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
     // end. A crossing far along the wall is no corner at all: two walls meeting at a shallow angle cross metres in.
     let meet = |face: P2, other: P2, other_way: P2| {
         geom::line_intersection(face, face + me.way, other, other + other_way)
-            .filter(|c| (-limit..=limit).contains(&(*c - hub).dot(me.way)))
+            // A face crossing exactly at the thickness can round just past it.
+            .filter(|c| (*c - hub).dot(me.way).abs() <= limit + 1e-6)
             .unwrap_or(face)
     };
     let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));

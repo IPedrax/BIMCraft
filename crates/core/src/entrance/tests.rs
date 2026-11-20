@@ -11,11 +11,11 @@ fn table(utility: &str, system: &str, use_: &str) -> &'static Table {
 
 #[test]
 fn the_file_reads_and_every_utility_names_its_source() {
-    let all = read().unwrap_or_else(|e| panic!("data/entrance-categories.json does not read: {e}"));
+    // A code's `entrance` section that does not read is left out of the library's list, so the list holds each one that should read.
+    let all = utilities();
     let ids: Vec<&str> = all.iter().map(|u| u.id.as_str()).collect();
     assert_eq!(ids, ["FECOERGS", "HIDROPAN", "ENERGISA", "EQUATORIAL", "COPEL"]);
-    assert_eq!(utilities().len(), all.len());
-    for u in &all {
+    for u in all {
         assert!(!u.source.is_empty() && !u.standard.is_empty() && !u.rule.is_empty(), "{} names no source", u.id);
         assert!(!u.tables.is_empty(), "{} has no table", u.id);
         for t in &u.tables {

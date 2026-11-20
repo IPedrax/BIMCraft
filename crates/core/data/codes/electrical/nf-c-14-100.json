@@ -1,0 +1,109 @@
+{
+ "code": "nf-c-14-100",
+ "discipline": "electrical",
+ "name": "NF C 14-100 (France)",
+ "region": "France",
+ "edition": "SéQuélec GP 16, 2017",
+ "references": [
+  "France's NF C 14-100 (the supply from the network to the connection breaker), as SéQuélec's guide GP 16 (December 2017, the dossier of a collective connection that Enedis and the local distributors ask) works it"
+ ],
+ "note": "A building's demand by this country's method (`building_demand`). The rest of the discipline comes from BIMCraft's library, and says so.",
+ "sections": {
+  "building_demand": {
+   "standard": "NF C 14-100 (SéQuélec GP 16)",
+   "utilities": [],
+   "country": "FR",
+   "source": "France's NF C 14-100 (the supply from the network to the connection breaker), as SéQuélec's guide GP 16 (December 2017, the dossier of a collective connection that Enedis and the local distributors ask) works it: a building's power is the sum of its users' sizing powers times a weighting coefficient by the number of users downstream.",
+   "unit": "kVA",
+   "min_dwellings": 1,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "GP 16, p. 6, the least sizing powers of a dwelling without electric heating, by its main rooms or its floor area",
+    "grades": [
+     {
+      "name": "student",
+      "demand": 3.0,
+      "source": "GP 16, p. 6: a student's dwelling up to 20 m², 3 kVA"
+     },
+     {
+      "name": "1-2 rooms",
+      "demand": 6.0,
+      "source": "GP 16, p. 6: 1 or 2 main rooms or up to 35 m², 6 kVA"
+     },
+     {
+      "name": "3-5 rooms",
+      "demand": 9.0,
+      "source": "GP 16, p. 6: 3 to 5 main rooms or 35 to 100 m², 9 kVA"
+     },
+     {
+      "name": "6+ rooms",
+      "demand": 12.0,
+      "source": "GP 16, p. 6: 6 main rooms or more, or over 100 m², 12 kVA"
+     }
+    ],
+    "least": 3.0
+   },
+   "diversity": {
+    "source": "GP 16, p. 6: the weighting coefficient by the number of users downstream, 1 up to 4 and 0.38 from 50",
+    "kind": "per_dwelling",
+    "steps": [
+     [
+      4,
+      1.0
+     ],
+     [
+      9,
+      0.78
+     ],
+     [
+      14,
+      0.63
+     ],
+     [
+      19,
+      0.53
+     ],
+     [
+      24,
+      0.49
+     ],
+     [
+      29,
+      0.46
+     ],
+     [
+      34,
+      0.44
+     ],
+     [
+      39,
+      0.42
+     ],
+     [
+      49,
+      0.41
+     ],
+     [
+      50,
+      0.38
+     ]
+    ]
+   },
+   "factor": 1.0,
+   "factor_source": "GP 16 applies no growth factor",
+   "factor_on_common": false,
+   "notes": [
+    "The coefficient counts the users downstream; a user other than a dwelling at a limited power (a caretaker's flat, a shop) may be given as a group with its `demand`, so that it is weighted with the dwellings.",
+    "A declared `demand` above a grade's is taken as declared: the grades are the least, not the power asked."
+   ],
+   "not_covered": [
+    "dwellings with electric heating, which GP 16 (p. 7) sizes by its own expressions of the heating power installed",
+    "installations at a watched power (over 36 kVA), which GP 16 adds at the power they need",
+    "the conductors and the voltage drops of the riser and the branches (GP 16, pp. 5 and 8)"
+   ]
+  }
+ },
+ "sources": {
+  "building_demand": "France's NF C 14-100 (the supply from the network to the connection breaker), as SéQuélec's guide GP 16 (December 2017, the dossier of a collective connection that Enedis and the local distributors ask) works it: a building's power is the sum of its users' sizing powers times a weighting coefficient by the number of users downstream."
+ }
+}

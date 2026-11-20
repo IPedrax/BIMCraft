@@ -183,3 +183,26 @@ fn the_size_tab_applies_and_clears_paper_layout() {
     let tb = &h.state().session.model.title_blocks["ESCRITORIO"];
     assert!(!tb.template_border && tb.drawing_area.is_none());
 }
+
+#[test]
+fn new_from_starter_makes_a_title_block_for_its_papers_and_the_sheets_of_those_papers_take_it() {
+    let mut h = app(&format!("{BOX}\nsheet {{\"name\": \"Plantas\"}}"));
+    let sheet = ids(&h, "sheet")[0];
+    press(&mut h, "View");
+    press(&mut h, "Title Blocks");
+    choose(&mut h, "New from starter:", "ISO 7200 A4-A3");
+    let m = &h.state().session.model;
+    assert_eq!(m.title_blocks["ISO 7200 A4-A3"].sizes, ["A4", "A3"]);
+    assert_eq!(m.title_block_of(m.sheet(sheet).unwrap()).map(|(n, _)| n), Some("ISO 7200 A4-A3"), "an A3 sheet takes it");
+    assert!(h.state().title_blocks_dialog.is_some(), "the dialog stays, on the new one");
+    // The papers are typed on the Size tab, and kept once in capitals.
+    press(&mut h, "Size");
+    type_into(&mut h, "Papers", "a3, a2");
+    press_near(&mut h, "Apply", "Cancel");
+    assert_eq!(h.state().session.model.title_blocks["ISO 7200 A4-A3"].sizes, ["A3", "A2"]);
+    // The sheet's Properties say it is drawn by its paper.
+    press(&mut h, "OK");
+    h.state_mut().open_sheet(Sheet::Paper(sheet));
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Title Block").value().as_deref(), Some("ISO 7200 A4-A3 (by paper size)"));
+}

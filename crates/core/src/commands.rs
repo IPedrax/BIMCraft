@@ -26,10 +26,9 @@ use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind,
     Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
-    PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE,
-    RAMP_WIDTH, Railing, RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule,
-    Scope, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading,
-    paper,
+    PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, Railing, RailingType,
+    Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft,
+    Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -42,6 +41,7 @@ use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod bars;
+mod quantities;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -111,9 +111,11 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
+        "{path, as_template?} a .bimc project (and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
          machine has free allows (8 times a project's size, 14 times an IFC's; without the apps' meter, under 256 and 512 MiB) (its `elements` by \
-         category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
+         category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why). A .bimt \
+         template, or any project with `as_template: true`, is read and let go: its content is a new project with no file, so `save` \
+         needs a `path` and never writes over the template; the reply says `template: true`",
         open,
         Files::Read,
     ),
@@ -194,15 +196,99 @@ other_files(
     other_files(
         "reload",
         "Reload Links",
-        "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` \
-         (the names) and `failed` ({name, error})",
+        "{id?} read the file of the link `id` again, for every link of that file, loading it if it was unloaded; or, without \
+         `id`, the file of every link that is loaded: for a project that changed on disk. Returns `reloaded` (the links' names) \
+         and `failed` ({name, error})",
         reload,
         Files::Read,
     ),
+    edit_files(
+        "reload_from",
+        "Reload From",
+        &[],
+        "{id, path} Reload From, as Manage Links has it: the file `path` (a .bimc, .bimcraft or .ifc) read in place of the one \
+         link `id` reads, for every link of that file, each staying where it stands and loaded again if it was unloaded. A \
+         relative `path` is relative to this project's file. A file that can't be read changes nothing. Returns `path`, \
+         `links` (their names) and `elements`, how many the file holds",
+        reload_from,
+        Files::Read,
+    ),
+    edit(
+        "unload",
+        "Unload Link",
+        &[],
+        "{id} unloads link `id`'s file, as Manage Links does: every link of that file stays where it stands and draws \
+         nothing, and opening the project doesn't read it, until `reload` names one of them. Returns `unloaded` (the links' \
+         names) and `path`",
+        unload,
+    ),
+    other(
+        "assets",
+        "Asset Manager",
+        "{kind?: materials|fill_types|fill_patterns|line_patterns|line_styles|pictures} what the project draws with, as the \
+         Asset Manager lists it: a list for each kind (`kind` answers its own alone), a row each with its `name`, library `id` \
+         and `guid`, `uses` and `used_by`, where it is used: `{kind: element, id, category}` (a detail line its style, a face \
+         painted its material, a filled region its type), `{kind: type, category, name, what}` (a wall type's layer, a pipe \
+         type's material), or `{kind, name}` of a family, a material (its picture and fill patterns), a fill_type (its \
+         patterns), a line_style (its pattern), a grid_type, a view_template, a group (a member of its type) or a \
+         phase_override. A picture has its `size`, px, and `label`, the name it came in with. It changes nothing",
+        assets,
+    )
+    .menu("Manage > Asset Manager"),
+    edit(
+        "delete_assets",
+        "Delete Assets",
+        &[],
+        "{materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} takes the named assets \
+         out of the project, as the Asset Manager's Delete does: refused, saying what uses it, for one something else uses \
+         (what is among those named, as a material's own picture, goes with it). Returns `deleted` ({kind, name})",
+        delete_assets,
+    ),
+    other_files(
+        "export_assets",
+        "Export Assets",
+        "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} writes the \
+         project's assets to a .bima file, to bring into another project with `import_assets`: those the lists name (a list \
+         given as true takes every asset of its kind), or with none, every asset. What they need goes with them: a material's \
+         fill patterns and picture, a fill type's patterns, a line style's line pattern. A .bima is a zip: `assets.json` (each \
+         asset by name, with its GUID and its value as a project file writes it) and each picture as `images/<id>.png` or \
+         `.jpg`, the file the project holds. Returns `path` and how many of each kind it holds",
+        export_assets,
+        Files::Write,
+    ),
+    edit_files(
+        "import_assets",
+        "Import Assets",
+        &[],
+        "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?, existing?: \
+         skip|replace|rename} brings the assets of a .bima file (`export_assets`) into the project: those the lists name (true \
+         for every asset of a kind), or with none, all of them, and what they need. An asset whose name the project has is \
+         `existing`: skip (the default) keeps the project's, and what needs it uses it; replace puts the file's in its place; \
+         rename brings it in as `name 2`, `name 3`…, and what came with it names it so. A picture the project holds (the \
+         same pixels) is the project's. Each new asset keeps its GUID where the project has none of it. An asset this version \
+         can't read is left out and said; a file of a newer format is refused. Returns `added`, `replaced`, `skipped`, \
+         `renamed` ({kind, from, to}) and `left_out` ({kind, name, why})",
+        import_assets,
+        Files::Read,
+    ),
+    other_files(
+        "links",
+        "Manage Links",
+        "{kind?: projects|ifc|cad|pdf|images|clouds|models} every file the project reads from elsewhere, as Revit's Manage Links \
+         lists them: a list for each kind (`kind` answers its own alone), one row for each file however many instances place \
+         it. A row has `name`, `path` as the project keeps it (null for what was imported and keeps no path), `path_type` \
+         (relative to this project's file, or absolute), `resolved` (where that is), `status` (loaded, not loaded, not found, or \
+         imported: held in the project and not read again), `instances` (how many elements place it) and their `ids` (a link's, with each one's `names`); a CAD \
+         drawing's and a scan's `source`, the file it came from. It changes nothing",
+        links,
+        Files::Read,
+    )
+    .menu("Manage > Manage Links"),
     other_files(
         "save",
         "Save",
-        "{path?, ifc_origin?, compress?} .bimc saves the project (Save As with a path), as does .bimt (a template): compact JSON, \
+        "{path?, ifc_origin?, compress?} .bimc saves the project (Save As with a path); .bimt saves it as a template, which `open` starts \
+         a new project from, and the project keeps its own file (the reply says `template: true`): compact JSON, \
          or with `compress: true` the same JSON in a zip of one entry, `project.json`, deflated on every core (several times \
          smaller, slower to save and open; a .json path is always plain; `open` reads either); .ifc exports IFC4, its \
          coordinates' origin at `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or \
@@ -277,7 +363,15 @@ other_files(
         level,
     )
     .menu("Architecture > Level"),
-    edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
+    edit(
+        "grid",
+        ui_msg!("Grid"),
+        &["GR"],
+        "{start: [x,y], end: [x,y], name?, type?} a grid line of the project's grid type `type` (its default type \
+         without one); names follow the last grid: 1, 2… or A, B…",
+        grid,
+    )
+    .menu("Architecture > Grid"),
     edit(
         "reference_plane",
         ui_msg!("Reference Plane"),
@@ -333,6 +427,18 @@ other_files(
         Files::Read,
     ),
     edit_files(
+        "reload_mesh",
+        "Reload 3D Model",
+        &[],
+        "{path, from?} reads the 3D model `path` again (an OBJ or glTF brought in by `import_mesh`, its path as `links` lists it \
+         under `models`), or with `from` another file in its place (Reload From): each family made from it has its forms \
+         rebuilt from the object of its name, about the point it stood on, so its components stay where they are and show what \
+         the file holds now. Returns `path`, `reloaded` (the families) and `missing` (those whose object the file no longer has, \
+         left as they were)",
+        reload_mesh,
+        Files::Read,
+    ),
+    edit_files(
         "import_cad",
         "Import CAD",
         &[],
@@ -353,6 +459,44 @@ other_files(
         import_cad,
         Files::Read,
     ),
+    edit_files(
+        "image",
+        "Image",
+        &[],
+        "{path | picture, level?, view?, at?: [x, y], width?, link?, page?, front?, snaps?} places a picture in the plans of `level` (the \
+         first unless given), or with `view` (a plan) in that view only, as Revit's Insert > Image and Insert > PDF. A PDF's \
+         `page` (the first unless given) is drawn over white at up to 150 dpi and 4096 px a side, and placed at its paper's \
+         size at the plan's scale unless `width` says, so a drawing made at that scale lies true. A PNG or JPEG file (`path`, taken into \
+         the project as it is, a JPEG staying a JPEG, halved to fit 4096 px a side; one picture for the same file) or a picture the project holds (`picture`, its \
+         id from `assets`). Its middle stands on `at` (the origin unless given), `width` mm across (10 mm a pixel unless \
+         given), as tall as its pixels say; it is drawn under the model, as a CAD import is, and moves and copies as any \
+         element. `link: true` keeps its file, which `reload_image` and Manage Links read again. `front: true` draws it over \
+         the model. `snaps: true` (a PDF's, `modify` sets it after) snaps to its lines and its shapes' edges, their ends and \
+         middles, as a CAD import's; its letters aren't snapped to. A PDF's text is drawn in the \
+         fonts it embeds; one it only names, if of a standard family (Arial or Helvetica, Times New Roman, Courier New), in \
+         this computer's font of it or one of the same widths (Liberation), else in a stand-in. Returns `id`, `picture`, `size` (px), `width` and `height` \
+         (mm), and `missing_fonts`, the fonts drawn in a stand-in, when there are any",
+        image,
+        Files::Read,
+    ),
+    other_files(
+        "pdf_pages",
+        "PDF Pages",
+        "{path} the pages of a PDF, which `image` places one of: `pages` [{page, size: [w, h]}], each page's size on paper, mm. It \
+         changes nothing",
+        pdf_pages,
+        Files::Read,
+    ),
+    edit_files(
+        "reload_image",
+        "Reload Image",
+        &[],
+        "{id, path?, page?} reads linked image `id`'s file again (a PDF's page again, or `page`), for every image placed from it; with `path`, Reload From: that file \
+         in its place (an image brought in unlinked too), linked to it from then on. Each keeps its middle and its width. \
+         Returns `picture` and `images`, the ids of those that read it",
+        reload_image,
+        Files::Read,
+    ),
     edit(
         "cad_layers",
         "CAD Layers",
@@ -366,8 +510,9 @@ other_files(
         "reload_cad",
         "Reload CAD",
         &[],
-        "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project \
-         does too). Returns whether it changed",
+        "{cad, path?} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the \
+         project does too); with `path`, Reload From: reads that file in its place (an imported drawing too), linked to it from \
+         then on. Returns whether it changed",
         reload_cad,
         Files::Read,
     ),
@@ -804,6 +949,28 @@ other_files(
                  workbook. Reads the project; changes nothing. Returns diameters (grade, diameter, stock_bars, pieces, used_mm, waste_mm, waste_percent, \
                  bought_kg, used_kg, reusable_offcuts, patterns: count, pieces {host_mark, mark, length, ids}, offcut), coil, totals and notes",
         run: bars::cut_plan,
+        undoable: false,
+        menu: None,
+        files: Files::Conditional,
+    },
+    Command {
+        id: "quantities",
+        label: ui_msg!("Quantities"),
+        // The desktop's Materials page answers QT (`BimApp::shortcut`), as a listed shortcut must.
+        aliases: &["QT"],
+        params: "{level?, ids?, by?, categories?, path?} what the project's beams, columns, structural columns, footings, strip footings and floors \
+                 come to in concrete (`volume_m3`), formwork (`formwork_m2`) and steel (`rebar_kg`, the bars that name the member as their host, \
+                 and `rebar_ratio`, kg per m³ of its concrete): by level, in elevation order, and by category. `level` is a level's name or id \
+                 and `ids` are members (none: the whole project); `categories` names some of beam, column, structuralcolumn, footing, stripfooting \
+                 and floor. `by` is a project parameter's name: each level and category is split by its value (up to 1,000 values), so \
+                 cast-in-place, precast and the rest are told apart. Bars that name no host are a line of their own on their level, so the steel \
+                 is the steel list's. The rules are BIMCraft's own and are written in the notes: a beam is counted between its concrete columns' faces \
+                 and loses the thickness of a structural floor on each side that floor covers; a column stops at the floor over it; a floor's forms \
+                 are its soffit net of what carries it and its free edges. A steel section is weighed under Weight and is not here. `path` writes \
+                 the rows as a .csv or an .xlsx workbook. Reads the project; changes nothing. Returns rows (level, category, value with `by`, \
+                 count, volume_m3, formwork_m2, rebar_kg, rebar_ratio, formwork_ratio), levels (the same per level, with its id), total and \
+                 notes. `schedule` with `template` \"materials_summary\" makes the same, without `by`, as a schedule in the project",
+        run: quantities::quantities,
         undoable: false,
         menu: None,
         files: Files::Conditional,
@@ -1339,6 +1506,19 @@ other_files(
         dimension_type,
     ),
     edit(
+        "grid_type",
+        "Grid Types",
+        &[],
+        "{name?, like?, rename?, delete?: true, …values} a grid type of the project's, as Revit's type parameters: Graphics: \
+         `line_pattern` (a line pattern of the project's, mm on paper; null, a solid line), `line_pen` (0 to 16; 4), `color` \
+         (\"#rrggbb\" or [r, g, b]; #3c6496). Text: `font` (as text types take; Arial), `text_size` (2.5 mm), `bold`, \
+         `italic`, `underline`, `width_factor` (1). A new one starts as `like` says, else as the default. A project starts with \
+         `Grid - ISO 128` (a new grid's type), `Grid - DIN 1356`, `Grid - ASME Y14.2`, `Grid - Architectural`, `Grid - \
+         Continuous` and `Grid - Compact`, each on its own line pattern. `rename` renames it, its grids following; `delete` \
+         takes it away while no grid is of it. Without `name`, it lists every type and the project's line patterns",
+        grid_type,
+    ),
+    edit(
         "spot",
         ui_msg!("Spot Elevation"),
         &["EL"],
@@ -1443,8 +1623,8 @@ other_files(
         "title_block",
         "Title Blocks",
         &[],
-        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, lines?, fills?, \
-         texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
+        "{name?, like?, starter?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, sizes?, \
+         lines?, fills?, texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
          drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
          project's title blocks, its title fields' values and the automatic fields. drawing_area [[left,bottom],[right,top]] is in sheet mm for automatic placement; template_border:true omits the standard frame and keeps fold marks. Other lengths are mm on paper from the title \
          block's bottom left corner: `width` and `height` its box; `font` what letters its texts (Arial unless told; any the system has); `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
@@ -1456,7 +1636,12 @@ other_files(
          command line read as DXF) drawn at full size on paper, in `units` (auto: the file's own, else mm): its lines, arcs, \
          circles and polylines as lines, its solid hatches as fills, its texts as texts, moved to its extents' corner, which \
          become its box; each key its texts name becomes a sheet field, or keeps the field it was. A new one starts as the \
-         built-in title box drawn as one (`like` another), and what's given goes over it",
+         built-in title box drawn as one (`like` another, or a `starter`: a ready-made one with the project's information in it, which the \
+         listing names: ISO 7200, ASME Y14.1 and NBR 16752 each for small papers and large ones, original layouts with their labels in the \
+         project's language), and what's given goes over it. `sizes` [\"A3\", \"ANSI D\", …] are the papers it is for: a sheet that names no \
+         title block is drawn with the first of the project's, by name, that lists its paper, else the built-in one; a sheet's `elements` \
+         say it as `title_block_by_size`. A starter lists its papers, so loading one changes how the sheets of those papers are drawn \
+         (`sizes: []` leaves it for sheets that name it)",
         title_block,
         // The DXF or DWG `path` names, when it names one.
         Files::Conditional,
@@ -2197,7 +2382,8 @@ other_files(
          its annotations in drawing coordinates, straight-wall openings in their host (refusing motion off the host), and \
          unhosted non-adaptive components in world coordinates. Other model kinds and `end` are refused in this mode. \
          Without `view`, moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall, one run or one grid \
+         moves (a grid's other end stays, and it keeps some length). One \
          section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
          looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
          an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
@@ -2218,6 +2404,42 @@ other_files(
         &["CO"],
         "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
         copy,
+    ),
+    other(
+        "copy_to_clipboard",
+        msg!("Copy to Clipboard"),
+        "{ids: [id,…], view?} Revit's Copy to Clipboard (Ctrl+C): elements of any view (with the doors and windows of copied \
+         walls, a stair's railings) kept as text for `paste`, here or in another BIMCraft. `view` is the one they're copied in \
+         (a level's plan, a plan view, a section, an elevation, a sheet or a 3D view), which a paste by hand measures from. \
+         Levels, sheets, viewports, views and schedules can't be copied and are left out. Returns {clipboard, count, left_out}; \
+         the session keeps the text for a `paste` without `clipboard`",
+        copy_to_clipboard,
+    ),
+    edit(
+        "cut_to_clipboard",
+        msg!("Cut to Clipboard"),
+        &[],
+        "{ids: [id,…], view?} Revit's Cut (Ctrl+X): `copy_to_clipboard`, and the elements deleted, in one step. Returns \
+         {clipboard, count, left_out, deleted}",
+        cut_to_clipboard,
+    ),
+    edit(
+        "paste",
+        msg!("Paste"),
+        &[],
+        "{clipboard?, mode?, view?, at?: [x, y], by?: [dx, dy], levels?: [level,…], level?, views?: [view,…]} Revit's Paste \
+         (Ctrl+V) of what `copy_to_clipboard` kept (or the text `clipboard` gives, from another BIMCraft), into `view` (the open \
+         one: a level's plan, a plan view, a section, an elevation, a sheet or a 3D view). `mode`: `manual` (Paste from \
+         Clipboard, the default with `at` or `by`): moved `by`, or with its middle `at`, in the view's terms (a plan's x and y; a \
+         section's along and up, the height taking model elements to the nearest level; a 3D view's x and y, with `level` the \
+         level model elements go onto, else their own); `current_view`: view-specific \
+         elements where they were in theirs, model elements onto the plan's level; `same_place`: where they were, on their \
+         levels (by name or height in another project); `levels`: model elements onto each of `levels`, at the same place and \
+         height over the level; `views`: view-specific elements into each of `views`; `picked_level`: model elements onto \
+         `level`. `view` `{3D}` is the default 3D view, made if need be. Between views that look the same way (two plans, parallel sections) a view-specific element keeps its place \
+         in the model; between others, its place in the view. A door or window copied without its wall goes into a wall there; \
+         a tag, a dimension or a railing without what it names, measures or follows is left out. Returns {ids, left_out}",
+        paste,
     ),
     edit(
         "rotate",
@@ -2608,7 +2830,7 @@ other_files(
         "delete_type",
         "Delete Type",
         &[],
-        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…, family?, type?} deletes a type of a category \
+        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type?} deletes a type of a category \
          (`category` and `type`), a family (`family`) or one of a family's types (`family` and `type`), as Revit's Delete on one \
          in the Project Browser does; refused while an element uses it (it says how many), and for the last type of a \
          category or of a family",
@@ -2618,7 +2840,7 @@ other_files(
         "rename_type",
         "Rename Type",
         &[],
-        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…, family?, type, name} renames a type of a category \
+        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type, name} renames a type of a category \
          (`category` and `type`) or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: \
          the elements of it, and what else names it, follow, and it keeps its GUID; refused for a name another type of it has. \
          Text types and filled region types rename with `rename` on `text_type` and `filled_region_type`",
@@ -2668,9 +2890,14 @@ other_files(
         "units",
         "Project Units",
         &["UN"],
-        "{length?: mm|cm|m|in|ft|ft-in} how drawings, schedules and the desktop show lengths, and read typed ones: \
+        "{length?: mm|cm|m|in|ft|ft-in, decimals?: 0..5|null} how drawings, schedules and the desktop show lengths, and read typed ones: \
          millimetres, centimetres, metres, fractional inches, decimal feet, or feet and fractional inches (to 1/16\"); areas \
-         in m², or ft² with inches and feet. The model, and every command, keep millimetres",
+         in m², or ft² with inches and feet. The model, and every command, keep millimetres. `decimals` is how many places \
+         after the point lengths show, in what the project's units allow: metres and feet 2 to 5, centimetres 1 to 4, \
+         millimetres 0 to 3 (so 3 mm in metres can show as 0.003, not 0.00); null, or the fewest, is what drawings have always \
+         shown (metres 2, centimetres 1, millimetres 0, feet 2). Inches and feet-inches show sixteenths and take none. It is kept \
+         with the project, and starts again at its fewest when `length` changes and no `decimals` comes with it. Typed lengths \
+         are read exactly whatever it is. Says `length` and `decimals` (the places shown, null for inches and feet-inches)",
         units,
     )
     .menu("Manage > Project Units"),
@@ -2733,35 +2960,43 @@ other_files(
         "building_code",
         "Building Codes",
         &[],
-        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, electrical?: {demand?, building_demand?}, \
-         reset?: bool} the project's building code, which its stairs and railings are held to (apart from its technical standard, \
-         which is about drafting): `generic` (none, wide ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it \
-         too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
-         rules, unless `keep_rules` keeps the project's own. `stairs` changes rules of the project's own (a state's or a city's \
-         numbers), each by name, mm: `riser` and `going` a new stair starts with; `riser_min`, `riser_max`, `going_min`, `going_max`; \
-         `step_min`, `step_max` (two risers and a going); `width_min`; `headroom`; `flight_rise_max` and `flight_risers_max` (a \
-         landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
-         (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
-         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `electrical` names the \
-         methods the project's electrical demand is worked out by, which `demand` and `building_demand` take when not given one: \
-         `demand` a utility (CPFL, ENEL or CELESC) and `building_demand` a method of data/building-demand.json (its standard, or a \
-         utility that follows it), each null to leave it to the command; the IBC names NEC 220.84, the others none (a country's \
-         utilities differ by region). `reset` takes the project's own rules and methods away, back to its code's; `set` too, \
-         unless `keep_rules`. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
-         (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
-         one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
-         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, the methods \
-         in force (`electrical`), and `all` the codes. The NBR codes' numbers were checked against their texts by a contributor; \
-         the IBC's, DIN's and Japan's were typed from memory of the documents named and are unchecked, as each rule's source says",
+        "{discipline?: architectural|structural|electrical|mechanical|plumbing, set?, amendments?: [code, …], keep_rules?: bool, \
+         rules?: {section: {rule: value, …}, …}, stairs?: {…}, reset?: true|section, save?: name, delete?: name, amend?: code, \
+         create?: name, over?: code} the project's \
+         building code for one discipline (architectural where none is named), apart from its technical standard, which is about \
+         drafting. A code is BIMCraft's (`data/codes/`) or one of the project's own; its rules are grouped in sections (`code_rules` \
+         lists them: stairs, ramps, rooms…; plumbing's fixtures, cold_water, drainage…). `set` chooses the base code and brings its \
+         rules, unless `keep_rules` keeps the project's changes; `amendments` lays codes over it in the order given, the last \
+         winning (a fire brigade's instruction over a standard, a member's document over its group's), each amending the base or \
+         another amendment given. `rules` changes rules for the project (a state's or a city's numbers), each by its name in its \
+         section, whole: a table is given whole; `stairs` is `rules.stairs`. With `amend` (one of the amendments held), `rules` \
+         and `reset` change that amendment instead: one of BIMCraft's becomes the project's copy under its name (reset whole, the \
+         library's again), and a rule set to null leaves it. `create` makes an empty amendment of the project's own over the \
+         base (or the code `over` names), which `amendments` then chooses. The architectural stairs' rules, mm: `riser` and `going` a new stair starts with; \
+         `riser_min`, `riser_max`, `going_min`, `going_max`; `step_min`, `step_max` (two risers and a going); `width_min`; \
+         `headroom`; `flight_rise_max` and `flight_risers_max`; `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; \
+         `winders`, `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
+         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the \
+         project's changes away, all or a section's. `save`: \"name\" keeps the rules in force as a code of the project's own and \
+         holds the project to it; `delete`: \"name\" takes one away (a project held to it keeps its rules; one holding a \
+         utility's or a country's method is refused while the project is held to it). The editions of the \
+         codes chosen are pinned: a newer edition in the library changes nothing until the code is chosen again \
+         (`editions_gone` says where the library no longer has the edition pinned). Nothing is refused for breaking a rule: \
+         `code_check` reports it. The reply gives the base `code`, `name`, `edition`, `references`, `note`, `amendments`, the \
+         rules in force by section (`sections`), what the project changed (`changes`), `all` the codes it may choose, and for \
+         the architectural discipline `stairs` and `changed` (the stair rules changed). Unless a code says it was `checked`, its \
+         numbers are unchecked",
         building_code,
     )
     .menu("Manage > Building Codes"),
     other_files(
         "building_code_export",
         "Export Building Code",
-        "{path, code?, name?} writes a building code as an XML file, to hand to another project or office: the project's, with \
-         the rules it changed, or the one `code` names; `name` is what the file calls it (a code BIMCraft has needs another name \
-         to be read back). A <rule name value/> for each rule, mm",
+        "{path, discipline?, all?: bool, code?, name?} writes building codes as an XML file, to hand to another project or office: \
+         the discipline's rules in force (base, amendments and the project's changes, each rule with its source), or the one \
+         `code` names, or with `all` the five disciplines' in one file; `name` is what the file calls it (a code BIMCraft has \
+         needs another name to be read back). A <section> for each section, a <rule name value/> for each rule (mm), a table \
+         as <rule name json/>",
         building_code_export,
         Files::Write,
     ),
@@ -2769,12 +3004,45 @@ other_files(
         "building_code_import",
         "Import Building Code",
         &[],
-        "{path, name?, set?: bool} reads a building code from an XML file `building_code_export` wrote (or one written by hand: \
-         <building-code name=\"…\"><stairs><rule name=\"riser_max\" value=\"180\"/>…</stairs></building-code>) and keeps it as one of \
-         the project's own, under the file's name or `name`, in place of one of that name; a rule the file leaves out is the generic \
-         code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
+        "{path, name?, set?: bool} reads building codes from an XML file `building_code_export` wrote (one, or a file of all \
+         five; or #386's stairs-only file, or one written by hand: <building-code name=\"…\"><stairs><rule name=\"riser_max\" \
+         value=\"180\"/>…</stairs></building-code>) and keeps each as one of the project's own, under its name or, the first, \
+         `name`. A rule the file leaves out is the code's it is based on (else the discipline's default), and what it holds that \
+         this version doesn't know is listed as `left_out`. `set` holds the project to them: a base is chosen, an amendment laid \
+         over it",
         building_code_import,
         Files::Read,
+    ),
+    other(
+        "code_rules",
+        "Building Code Rules",
+        "{discipline?, section?} the rules in force for a discipline (architectural where none is named), by section: each \
+         `rule`, its `value`, where it comes `from` (the base, an amendment, the library where none of the project's codes has the \
+         section, or the project), its `source` (the document, item and page) and its `kind` (requirement, recommendation, \
+         practice, assumption, historical, forgiving). Each section says what `read_by` it (commands and checks) and whether it is \
+         a `reference` only, which nothing checks yet",
+        code_rules,
+    ),
+    edit(
+        "site_climate",
+        "Site and Climate",
+        &[],
+        "{rain_intensity?, rain_return_period?, thunderstorms?: AQ1|AQ2|AQ3, wind_speed?, ground_snow?, seismic_zone?, \
+         frost_depth?, climate_zone?, altitude?, cooling_design?, heating_design?, sources?: {key: text}} the numbers a code's \
+         maps give for the project's place, shared by every discipline: rainfall mm/h for its return period in years, basic wind \
+         speed m/s, ground snow kN/m², frost depth mm, altitude m, outdoor design temperatures °C; `sources` says, for each, the \
+         map or table it was read from. `null` takes one away. `storm_size` reads the rain and `dps_check` the thunderstorms \
+         when they aren't given",
+        site_climate,
+    ),
+    other(
+        "code_check",
+        "Check Building Codes",
+        "{ids?: [id, …]} where elements are outside the project's building codes: for each element (those in `ids`, else all) \
+         that is outside a rule, its `id`, `category` and `findings`, each the `rule` broken, the element's `value`, the rule's \
+         `limit` and a `message` saying what to change; `count` is how many in all. Stairs today. It reads and never changes \
+         an element: what is outside a rule is still built",
+        code_check,
     ),
     edit(
         "stair_sketch",
@@ -2878,7 +3146,10 @@ other_files(
          the project's bars, grouped, named in the project's language (`name` says otherwise): `host` (an element's id) and `level` (a name \
          or id) keep one host's or one level's bars, and put the host's id or the level's name in the default name; `show` is \
          `count`, `weight` or `both` (both) and takes the weight or the count column out; `fields`, `filters`, `sort` and `grouped` \
-         given with it replace the template's",
+         given with it replace the template's. `template` \"materials_summary\" (`level` a level's name or id) makes a \
+         schedule of beams, columns, structural columns, footings, strip footings and floors, by level and category, with their count, \
+         volume, formwork area and rebar weight, each totalled, as `quantities` works them out; it cannot split by a project parameter, \
+         which `quantities` with `by` does",
         schedule,
         Files::Write,
     ),
@@ -3186,9 +3457,9 @@ other_files(
         "load_points",
         "Residential Load Points",
         "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
-         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are data \
-         (`data/load-points.json`, one rule set for each standard, every row naming its source): `standard` names the set, \
-         `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source`, `lighting_source` and \
+         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are the \
+         project's electrical code's `load_points` section (Manage > Building Codes, NBR 5410 in BIMCraft's codes; every row naming \
+         its source), as the project or an amendment changed them; `standard` names a set of BIMCraft's instead, and the answer gives `standard`, `standard_source`, `lighting_source` and \
          each room's `source`. The rooms are `rooms` (`area` in m², \
          `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
          model, measured inside the walls' finish, with the power outlets and the luminaires that stand in each (the room a \
@@ -3211,8 +3482,8 @@ other_files(
         "Check Residual-Current Protection",
         "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other, standard?} \
          which circuits NBR 5410:2004 asks additional protection by a high-sensitivity residual-current device (DR, 30 mA at most) \
-         for. The rules are data (`data/dr-check.json`, one rule set for each standard, every rule naming its source): `standard` \
-         names the set, `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source` and, \
+         for. The rules are the project's electrical code's `rcd` section (NBR 5410 in BIMCraft's codes, every rule naming its \
+         source), as the project or an amendment changed them; `standard` names a set of BIMCraft's instead, and the answer gives `standard`, `standard_source` and, \
          for each circuit, the `sources` of its `reasons`. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
          pantry-kitchen), laundry, service (service area), garage, wet (another wet internal area) or dry; `kind` is outlet, lighting or \
          fixed (another point of use); `rating` an outlet's rated current in A (32 A at most is covered; unknown, it is taken as covered), \
@@ -3231,8 +3502,9 @@ other_files(
         "Check Bathroom Volumes",
         "{fixture: {outline?: [[x, y], …], shower?: [x, y], floor?, rim?}, things: [{name?, kind, at: [x, y, z], ip?, class?, supply?, voltage?, rcd?, serving?}], public?, standard?} \
          which of the volumes around a bathtub or a shower each thing stands in, and whether it may stand there, as NBR 5410:2004 \
-         item 9.1 asks. The numbers are data (`data/bath-volumes.json`, one rule set for each standard, every volume and every thing \
-         it allows naming its source): `standard` names the set, `NBR 5410:2004` the default and only one so far. `fixture` is the \
+         item 9.1 asks. The numbers are the project's electrical code's `bath_volumes` section (NBR 5410 in BIMCraft's codes, every \
+         volume and every thing it allows naming its source), as the project or an amendment changed them; `standard` names a set of \
+         BIMCraft's instead. `fixture` is the \
          tub, tray or recess in plan (`outline`, mm) or the outlet of a shower with no tray (`shower`), `floor` the level one stands on \
          (mm, 0 by default) and `rim` the tub's rim above it (mm, 0 by default). Volume 0 is the inside up to the rim (none for a shower \
          with no tray); 1 over it up to 2.25 m (0.6 m round a shower with no tray); 2 out 0.60 m more, up to 3 m, so over volume 1 \
@@ -3279,9 +3551,9 @@ other_files(
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
-         the project's building code's when not given (`building_code {electrical: {demand}}`), and required when it names none: \
-         CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
-         06/03/2025) or CELESC (N-321.0001, revision of December 2025), or one whose categories are data (data/entrance-categories.json): \
+         the one the project is held to in Manage > Building Codes when not given, else required: CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
+         06/03/2025) or CELESC (N-321.0001, revision of December 2025), or one whose categories are a building code's (the `entrance` section of its amendment over NBR 5410, as the project \
+         changed it where the project holds it): \
          FECOERGS (the RIC BT REGD 035.01.06 of Rio Grande do Sul's cooperatives; a member such as COPREL or CERTEL by its own name, \
          with its own changes), HIDROPAN (RIC 2014), ENERGISA (NDU 001 version 7.0; a company such as EMT by its own name), \
          EQUATORIAL (NT.00001 revision 09) or COPEL (NTC 901100); any other is refused until its tables are added. A utility of the data takes \
@@ -3319,10 +3591,11 @@ other_files(
         "Building Demand",
         "{utility? | standard?, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
          premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
-         `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
+         `standard` (each the `building_demand` section of a utility's amendment or a country's code; the project's own, as it \
+         changed it, where neither is given: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
          Spain's ITC-BT-10, Portugal's RTIEBT 803.2.4.3, France's NF C 14-100 (SéQuélec GP 16) and the US NEC 220.84; any other is \
-         refused until its entry is added). Given neither, it is the method the project's building code names \
-         (`building_code {electrical: {building_demand}}`), and refused when it names none. D = factor · F(n) · d + common + special + \
+         refused until its entry is added). Given neither, it is the method of the utility's amendment or the country's code the \
+         project is held to (`building_code {discipline: electrical, set | amendments}`), and refused when it holds none. D = factor · F(n) · d + common + special + \
          commercial + premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, \
          looked up in the method's table, an area between two rows taking the next one up) or, where the method takes it, each group's `demand` or a \
          `grade` naming one (ITC-BT-10: basic, elevated; RTIEBT: 1 room, 2-6 rooms, 7+ rooms; GP 16: student, 1-2 rooms, 3-5 rooms, \
@@ -4116,6 +4389,19 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     if m.is_pinned(id) {
         extra.insert("pinned".into(), json!(true));
     }
+    // A ramp, a door or a room held to the project's building code: in short, and each finding (a stair's are below).
+    if matches!(e, Element::Ramp(_) | Element::Door(_) | Element::Room(_)) {
+        let outside = crate::codes::findings(m, id, e);
+        let said = match outside.len() {
+            0 => "Inside the rules".to_string(),
+            1 => "Outside 1 rule".to_string(),
+            n => format!("Outside {n} rules"),
+        };
+        extra.insert("code_check".into(), json!(said));
+        if !outside.is_empty() {
+            extra.insert("code_findings".into(), json!(outside));
+        }
+    }
     // Its type's and its family's GUIDs, beside their names.
     e.clone().lib_refs_mut(&mut |kind, name| {
         let key = match kind {
@@ -4161,6 +4447,24 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
     }
     match e {
+        Element::Image(im) => {
+            if let Some(p) = m.images.get(&im.picture) {
+                let (w, h) = p.size();
+                extra.insert("source".into(), json!(p.name()));
+                extra.insert("size".into(), json!([w, h]));
+            }
+            extra.insert("height".into(), json!(im.height(m)));
+            if let Some([w, h]) = im.paper(m) {
+                extra.insert("paper".into(), json!(format!("{} × {} mm", w.round(), h.round())));
+                extra.insert("scale".into(), json!((im.width / w * 100.0).round() / 100.0));
+            }
+            if let Some(missing) = m.pdfs.get(&im.picture).map(|d| d.missing_fonts()).filter(|f| !f.is_empty()) {
+                extra.insert("missing_fonts".into(), json!(missing.join(", ")));
+            }
+            if let Some(path) = &im.path {
+                extra.insert("linked".into(), json!(path));
+            }
+        }
         Element::CadImport(ci) => {
             if let Some(cad) = m.cads.get(&ci.cad) {
                 extra.insert("source".into(), json!(cad.source()));
@@ -4375,7 +4679,11 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("paper".into(), json!(paper(&sh.size)));
             // What its title block's fields say, filled in; and which of them are its own to give.
             extra.insert("title_values".into(), json!(sheet::title_values(m, id)));
-            if let Some(tb) = m.title_blocks.get(&sh.title_block) {
+            if let Some((name, tb)) = m.title_block_of(sh) {
+                // Named by none, drawn with the one that lists its paper.
+                if sh.title_block.is_empty() {
+                    extra.insert("title_block_by_size".into(), json!(name));
+                }
                 let own: Vec<&str> =
                     tb.fields.iter().filter(|f| f.scope == crate::titleblock::Scope::Sheet).map(|f| f.key.as_str()).collect();
                 extra.insert("sheet_fields".into(), json!(own));
@@ -4549,6 +4857,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         | Element::PlanView(_)
         | Element::ProjectInfo(_) => {}
     }
+    // What a member comes to in concrete and in formwork, where it has them (`quantities`).
+    extra.extend(crate::quantities::fields(m, rooms, id, e).into_iter().map(|(k, v)| (k.to_string(), v)));
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
         o.extend(extra);
@@ -4667,6 +4977,13 @@ fn ifc_survey(_s: &mut Session, p: &Value) -> R {
 fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
+    // A template's content comes in as a new project: the file is let go once it is read.
+    let template = match p.get("as_template") {
+        v if absent(v) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`as_template` is true or false, not {v}"))),
+        None => false,
+    } || ext(&path) == crate::files::TEMPLATE;
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
     let ifc = ext(&path) == "ifc";
     // Held to the memory the machine has free, where the app measures it; else to a fixed size.
@@ -4761,8 +5078,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     m.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     budget.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     let name = m.name.clone();
-    s.reset(m, Some(path.clone()));
+    s.reset(m, (!template).then(|| path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    if template {
+        reply["template"] = json!(true);
+    }
     // A formula saying a name its family lacks, which this BIMCraft refuses a command making: the file opens, saying so.
     let warnings: Vec<String> =
         s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))).collect();
@@ -4810,7 +5130,7 @@ fn select_instances(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, "give selected ids or a library type, not both"));
         }
         let entry = entry_of(c, m, p)?;
-        if !matches!(entry.0, LibKind::Type(_) | LibKind::FamilyType) {
+        if !matches!(entry.0, LibKind::Type(_) | LibKind::FamilyType | LibKind::GridType) {
             return Err(bad(c, "give a type as well as its family"));
         }
         BTreeSet::from([entry])
@@ -4943,17 +5263,21 @@ fn read_link(s: &Session, path: &str) -> Result<Arc<Model>, String> {
 
 /// What every link of the project reads, again; the links that couldn't be read, as `{name, error}`.
 fn relink(s: &mut Session) -> Vec<Value> {
-    let links: Vec<(Id, String, String)> = s
+    let links: Vec<(Id, String, String, bool)> = s
         .model
         .elements
         .iter()
         .filter_map(|(id, e)| match e {
-            Element::Link(l) => Some((*id, l.name.clone(), l.path.clone())),
+            Element::Link(l) => Some((*id, l.name.clone(), l.path.clone(), l.unloaded)),
             _ => None,
         })
         .collect();
     let mut failed = Vec::new();
-    for (_, name, path) in links {
+    for (_, name, path, unloaded) in links {
+        if unloaded {
+            Arc::make_mut(&mut s.model).loaded.remove(&path);
+            continue;
+        }
         match read_link(s, &path) {
             Ok(m) => {
                 Arc::make_mut(&mut s.model).loaded.insert(path, m);
@@ -4988,7 +5312,8 @@ fn link_model(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", other.coordinates.names().join(", "))));
     }
     let elements = other.elements.len();
-    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None };
+    let link =
+        crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None, unloaded: false };
     let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
     let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
     let theirs = link.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
@@ -5009,32 +5334,206 @@ fn link_model(s: &mut Session, p: &Value) -> R {
 fn reload(s: &mut Session, p: &Value) -> R {
     let c = "reload";
     let only = id_opt(c, p, "id")?;
-    if let Some(id) = only
-        && !matches!(s.model.elements.get(id), Some(Element::Link(_)))
-    {
-        return Err(bad(c, format!("element {id} is not a link")));
-    }
-    let want: Vec<(String, String)> = s
-        .model
-        .elements
-        .iter()
-        .filter(|(id, _)| only.is_none_or(|o| s.model.same(**id, o)))
-        .filter_map(|(_, e)| match e {
-            Element::Link(l) => Some((l.name.clone(), l.path.clone())),
-            _ => None,
-        })
-        .collect();
-    let (mut reloaded, mut failed) = (Vec::new(), Vec::new());
-    for (name, path) in want {
-        match read_link(s, &path) {
-            Ok(m) => {
-                Arc::make_mut(&mut s.model).loaded.insert(path, m);
-                reloaded.push(name);
+    // One link names its file, which every instance of it reads; without one, every file a loaded link reads.
+    let paths: Vec<String> = match only {
+        Some(id) => match s.model.elements.get(id) {
+            Some(Element::Link(l)) => vec![l.path.clone()],
+            _ => return Err(bad(c, format!("element {id} is not a link"))),
+        },
+        None => {
+            let mut paths: Vec<String> = Vec::new();
+            for e in s.model.elements.values() {
+                if let Element::Link(l) = e
+                    && !l.unloaded
+                    && !paths.contains(&l.path)
+                {
+                    paths.push(l.path.clone());
+                }
             }
-            Err(error) => failed.push(json!({"name": name, "error": error})),
+            paths
+        }
+    };
+    let (mut reloaded, mut failed) = (Vec::new(), Vec::new());
+    for path in paths {
+        let names = link_names(s, &path);
+        match read_link(s, &path) {
+            Ok(other) => {
+                let m = Arc::make_mut(&mut s.model);
+                m.loaded.insert(path.clone(), other);
+                let unloaded: Vec<Id> = m
+                    .elements
+                    .iter()
+                    .filter(|(_, e)| matches!(e, Element::Link(l) if l.path == path && l.unloaded))
+                    .map(|(id, _)| *id)
+                    .collect();
+                for id in unloaded {
+                    if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+                        l.unloaded = false;
+                    }
+                }
+                reloaded.extend(names);
+            }
+            Err(error) => failed.extend(names.into_iter().map(|name| json!({"name": name, "error": error}))),
         }
     }
     Ok(json!({"reloaded": reloaded, "failed": failed}))
+}
+
+/// The names of the links that read `path`, in id order.
+fn link_names(s: &Session, path: &str) -> Vec<String> {
+    s.model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Link(l) if l.path == path => Some(l.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Reload From, as Manage Links does: every link of the file link `id` reads, reading `path` in its place.
+fn reload_from(s: &mut Session, p: &Value) -> R {
+    let c = "reload_from";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a link, is required"))?;
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the file to read in its place, is required"))?;
+    let old = match s.model.elements.get(id) {
+        Some(Element::Link(l)) => l.path.clone(),
+        _ => return Err(bad(c, format!("element {id} is not a link"))),
+    };
+    let other = read_link(s, &path).map_err(|e| bad(c, e))?;
+    let elements = other.elements.len();
+    let names = link_names(s, &old);
+    let m = s.model_mut();
+    let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Link(l) if l.path == old)).map(|(id, _)| *id).collect();
+    for id in ids {
+        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+            l.path.clone_from(&path);
+            l.unloaded = false;
+        }
+    }
+    m.loaded.remove(&old);
+    m.loaded.insert(path.clone(), other);
+    Ok(json!({"path": path, "links": names, "elements": elements}))
+}
+
+/// Unload, as Manage Links does: every link of the file link `id` reads stays where it stands, drawing nothing.
+fn unload(s: &mut Session, p: &Value) -> R {
+    let c = "unload";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a link, is required"))?;
+    let path = match s.model.elements.get(id) {
+        Some(Element::Link(l)) => l.path.clone(),
+        _ => return Err(bad(c, format!("element {id} is not a link"))),
+    };
+    let names = link_names(s, &path);
+    let m = s.model_mut();
+    let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Link(l) if l.path == path)).map(|(id, _)| *id).collect();
+    for id in ids {
+        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+            l.unloaded = true;
+        }
+    }
+    m.loaded.remove(&path);
+    Ok(json!({"unloaded": names, "path": path}))
+}
+
+fn assets(s: &mut Session, p: &Value) -> R {
+    let c = "assets";
+    let kind = string(c, p, "kind")?;
+    if let Some(k) = &kind
+        && !crate::assets::KINDS.contains(&k.as_str())
+    {
+        return Err(bad(c, format!("`kind` is {}, not `{k}`", crate::assets::KIND_NAMES)));
+    }
+    Ok(crate::assets::list(&s.model, kind.as_deref()))
+}
+
+/// Which assets an export or an import takes: by kind, a list of names or true for all of the kind; none named, every one.
+fn asset_selection(c: &str, p: &Value) -> Result<crate::bima::Selection, String> {
+    let mut sel = crate::bima::Selection::new();
+    for kind in crate::assets::KINDS {
+        match p.get(kind) {
+            v if absent(v) => {}
+            Some(Value::Bool(true)) => {
+                sel.insert(kind.to_string(), None);
+            }
+            Some(Value::Array(a)) if a.len() <= crate::bima::MAX_ASSETS => {
+                let names: Option<BTreeSet<String>> = a.iter().map(|v| v.as_str().map(str::to_string)).collect();
+                let names = names.ok_or_else(|| bad(c, format!("`{kind}` lists names, or is true for all of them")))?;
+                sel.insert(kind.to_string(), Some(names));
+            }
+            Some(v) => return Err(bad(c, format!("`{kind}` lists names, or is true for all of them, not {v}"))),
+            None => {}
+        }
+    }
+    Ok(sel)
+}
+
+fn delete_assets(s: &mut Session, p: &Value) -> R {
+    let c = "delete_assets";
+    let sel = asset_selection(c, p)?;
+    let chosen: Vec<(String, String)> = sel
+        .iter()
+        .flat_map(|(kind, names)| match names {
+            Some(n) => n.iter().map(|n| (kind.clone(), n.clone())).collect::<Vec<_>>(),
+            None => crate::assets::names(&s.model, kind).into_iter().map(|n| (kind.clone(), n)).collect(),
+        })
+        .collect();
+    if chosen.is_empty() {
+        return Err(bad(c, format!("name the assets to delete, by kind: {}", crate::assets::KIND_NAMES)));
+    }
+    let done = crate::assets::delete(s.model_mut(), &chosen).map_err(|e| bad(c, e))?;
+    Ok(json!({"deleted": done.iter().map(|(k, n)| json!({"kind": k, "name": n})).collect::<Vec<_>>()}))
+}
+
+fn export_assets(s: &mut Session, p: &Value) -> R {
+    let c = "export_assets";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the .bima file to write, is required"))?;
+    let sel = asset_selection(c, p)?;
+    for (kind, names) in &sel {
+        let have = crate::assets::names(&s.model, kind);
+        if let Some(missing) = names.iter().flatten().find(|n| !have.contains(n)) {
+            return Err(bad(c, format!("the project has no {} named `{missing}`", kind.trim_end_matches('s').replace('_', " "))));
+        }
+    }
+    let (bytes, counts) = crate::bima::export(&s.model, &sel).map_err(|e| bad(c, e))?;
+    let full = beside(s, &path);
+    crate::bimc::write(&full, &bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let mut reply = json!({"path": full.to_string_lossy()});
+    for (kind, n) in counts {
+        reply[kind] = json!(n);
+    }
+    Ok(reply)
+}
+
+fn import_assets(s: &mut Session, p: &Value) -> R {
+    let c = "import_assets";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the .bima file to read, is required"))?;
+    let sel = asset_selection(c, p)?;
+    let existing = match string(c, p, "existing")? {
+        None => crate::bima::Existing::Skip,
+        Some(e) => {
+            crate::bima::Existing::parse(&e).ok_or_else(|| bad(c, format!("`existing` is {}, not `{e}`", crate::bima::Existing::NAMES)))?
+        }
+    };
+    let full = beside(s, &path);
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > crate::bima::MAX_FILE {
+        return Err(bad(c, format!("{} is {size} bytes; an assets file is up to {}", full.display(), crate::bima::MAX_FILE)));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let done = crate::bima::import(s.model_mut(), &bytes, &sel, existing).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    Ok(done.json())
+}
+
+fn links(s: &mut Session, p: &Value) -> R {
+    let c = "links";
+    let kind = string(c, p, "kind")?;
+    if let Some(k) = &kind
+        && !crate::link::manage::KINDS.contains(&k.as_str())
+    {
+        return Err(bad(c, format!("`kind` is {}, not `{k}`", crate::link::manage::KIND_NAMES)));
+    }
+    Ok(crate::link::manage::list(&s.model, s.path.as_deref(), kind.as_deref()))
 }
 
 fn save(s: &mut Session, p: &Value) -> R {
@@ -5079,6 +5578,10 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": format}));
     }
     let compressed = write_project(s, c, p, &path)?;
+    // A template is a copy for new projects to start from: the project still saves to its own file.
+    if format == crate::files::TEMPLATE {
+        return Ok(json!({"path": path, "format": "bimcraft", "compressed": compressed, "template": true}));
+    }
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft", "compressed": compressed}))
 }
@@ -5577,7 +6080,10 @@ fn with_notes(mut reply: Value, notes: &[String]) -> Value {
 fn schedule(s: &mut Session, p: &Value) -> R {
     let c = "schedule";
     // A steel template is this same call, a schedule of bars, with its fields, filters and sort filled in where the call gives none.
-    let template = choice(c, p, "template", &["steel_list", "steel_summary"], "")?;
+    let template = choice(c, p, "template", &["steel_list", "steel_summary", "materials_summary"], "")?;
+    if template == "materials_summary" {
+        return quantities::materials_summary(s, p);
+    }
     if !template.is_empty() {
         let m = &s.model;
         if string(c, p, "category")?.is_some_and(|k| category(&k) != "rebar") {
@@ -6967,6 +7473,62 @@ fn within(c: &str, p: &Value, key: &str, default: f64, lo: f64, hi: f64) -> Resu
 }
 
 /// A choice among `names`, as text; `default` when absent.
+/// A set of rules an electrical command follows: the project's (its code, amendments and changes), or one of BIMCraft's library.
+enum Held<T: 'static> {
+    Project(Box<T>),
+    Library(&'static T),
+}
+
+impl<T> std::ops::Deref for Held<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        match self {
+            Held::Project(t) => t,
+            Held::Library(t) => t,
+        }
+    }
+}
+
+/// The rules of electrical section `key` a command follows: the project's where `param` names none or names the project's own
+/// (`name` says a set's name), else BIMCraft's of that name, from `all`. `own_only` takes the project's only where one of its
+/// codes or changes holds the section, not the library's (a utility's method, which no project follows by default).
+fn held<T: serde::de::DeserializeOwned>(
+    s: &Session,
+    c: &str,
+    p: &Value,
+    (key, param): (&str, &str),
+    all: &'static [T],
+    name: fn(&T) -> &str,
+    own_only: bool,
+) -> Result<Option<Held<T>>, String> {
+    let project = s.model.section_as::<T>(crate::codes::Discipline::Electrical, key).filter(|(_, own)| *own || !own_only);
+    match p.get(param) {
+        v if absent(v) => Ok(match project {
+            Some((t, _)) => Some(Held::Project(Box::new(t))),
+            None if own_only => None,
+            None => all.first().map(Held::Library),
+        }),
+        Some(Value::String(n)) => {
+            if let Some((t, _)) = project.filter(|(t, _)| name(t) == n) {
+                return Ok(Some(Held::Project(Box::new(t))));
+            }
+            let names: Vec<&str> = all.iter().map(name).collect();
+            all.iter()
+                .find(|t| name(t) == n)
+                .map(|t| Some(Held::Library(t)))
+                .ok_or_else(|| bad(c, format!("`{param}` must be one of {}, got \"{n}\"", names.join(", "))))
+        }
+        Some(v) => Err(bad(c, format!("`{param}` is a name, not {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// The rules of electrical section `key` a command follows: the project's, else BIMCraft's.
+fn rules_of<T: serde::de::DeserializeOwned>(s: &Session, c: &str, key: &str, all: &'static [T]) -> Result<Held<T>, String> {
+    held(s, c, &Value::Null, (key, ""), all, |_| "", false)?
+        .ok_or_else(|| bad(c, format!("the building codes have no `{key}` section (Manage > Building Codes > Electrical)")))
+}
+
 fn choice<'a>(c: &str, p: &'a Value, key: &str, names: &[&str], default: &'a str) -> Result<&'a str, String> {
     match p.get(key) {
         v if absent(v) => Ok(default),
@@ -7193,17 +7755,19 @@ fn circuit_of_model(s: &mut Session, p: &Value) -> R {
     if rating.is_none()
         && let Some(t) = electrical::circuit_totals(m, &x)
         && t.installed_va > 0.0
+        && let Ok(r) = rules_of(s, "circuit", "circuits", crate::nbr5410::rule_sets())
     {
-        let need = t.current_a.max(10.0);
-        x.rating_a = crate::nbr5410::BREAKERS.iter().copied().find(|b| *b >= need).unwrap_or(16.0);
+        let need = t.current_a.max(r.least_breaker);
+        x.rating_a = r.breakers.iter().copied().find(|b| *b >= need).unwrap_or(x.rating_a);
     }
     let id = s.model_mut().insert(Element::Circuit(x));
     Ok(json!({"id": id, "circuit": element_json(&s.model, id)}))
 }
 
-fn circuit_size(_: &mut Session, p: &Value) -> R {
+fn circuit_size(s: &mut Session, p: &Value) -> R {
     use crate::nbr5410::{self as e, Circuit, Insulation, Phases, Use};
     let c = "circuit";
+    let r = rules_of(s, c, "circuits", e::rule_sets())?;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = SIZING_KEYS;
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7213,25 +7777,22 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
     if load <= 0.0 {
         return Err(bad(c, "`load` (W, or VA with `apparent`) is required"));
     }
-    let systems: Vec<&str> = e::SYSTEMS.iter().map(|s| s.0).collect();
-    let system = choice(c, p, "system", &systems, systems[0])?;
-    let methods = e::method_keys();
-    let sections_ok = |x: f64| e::SECTIONS.iter().any(|s| (s - x).abs() < 1e-9);
+    let systems: Vec<&str> = r.systems.iter().map(|s| s.name.as_str()).collect();
+    let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or_default())?;
+    let methods = r.method_keys();
+    let sections_ok = |x: f64| r.sections.iter().any(|s| (s - x).abs() < 1e-9);
     let section = within(c, p, "section", 0.0, 0.0, 1000.0)?;
     if section > 0.0 && !sections_ok(section) {
         return Err(bad(
             c,
-            format!(
-                "`section` must be one of the standard's: {}",
-                e::SECTIONS.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
-            ),
+            format!("`section` must be one of the standard's: {}", r.sections.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")),
         ));
     }
     let breaker = within(c, p, "breaker", 0.0, 0.0, 1000.0)?;
-    if breaker > 0.0 && !e::BREAKERS.iter().any(|b| (b - breaker).abs() < 1e-9) {
+    if breaker > 0.0 && !r.breakers.iter().any(|b| (b - breaker).abs() < 1e-9) {
         return Err(bad(
             c,
-            format!("`breaker` must be one of: {}", e::BREAKERS.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")),
+            format!("`breaker` must be one of: {}", r.breakers.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")),
         ));
     }
     let ambient = match p.get("ambient") {
@@ -7247,20 +7808,20 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
         system: systems.iter().position(|s| *s == system).unwrap_or(0),
         use_: if choice(c, p, "use", &["power", "lighting"], "power")? == "lighting" { Use::Lighting } else { Use::Power },
         length: within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0,
-        method: choice(c, p, "method", &methods, "7")?.to_string(),
+        method: choice(c, p, "method", &methods, &r.default_method)?.to_string(),
         insulation: Insulation::parse(choice(c, p, "insulation", &["pvc", "epr"], "pvc")?).unwrap_or(Insulation::Pvc),
         flexible: choice(c, p, "conductor", &["flexible", "rigid"], "flexible")? == "flexible",
         ambient,
         grouped: within(c, p, "grouped", 1.0, 1.0, 1000.0)?.round() as u32,
         bundle: flag(c, p, "bundle")?,
         spacing: within(c, p, "spacing", 0.0, 0.0, 100_000.0)? / 1000.0,
-        soil: within(c, p, "soil", 2.5, 0.0, 100.0)?,
+        soil: within(c, p, "soil", r.reference_soil_resistivity, 0.0, 100.0)?,
         section,
         breaker,
-        drop_limit: within(c, p, "drop_limit", e::DROP_LIMIT, f64::MIN_POSITIVE, 100.0)?,
+        drop_limit: within(c, p, "drop_limit", r.drop_limit, f64::MIN_POSITIVE, 100.0)?,
         reduced_neutral: flag(c, p, "reduced_neutral")?,
     };
-    let d = e::design(&circuit);
+    let d = e::design(&r, &circuit);
     if let Some(fault) = d.fault {
         return Err(bad(c, fault.message()));
     }
@@ -7280,16 +7841,18 @@ fn circuit_size(_: &mut Session, p: &Value) -> R {
         "breaker_a": n.breaker,
         "carries_a": round(n.carries, 100.0),
         "drop_percent": n.drop.map(|d| round(d.0, 100.0)),
-        "conductors": e::cable_text(circuit.phases, n.section, circuit.reduced_neutral),
+        "conductors": e::cable_text(&r, circuit.phases, n.section, circuit.reduced_neutral),
         "grew": section < n.section - 1e-9 || breaker < n.breaker - 1e-9,
         "chosen": d.chosen.as_ref().map(evaluation),
     }))
 }
 
-fn conduit_fill(_: &mut Session, p: &Value) -> R {
-    use crate::conduit::{self, FAMILIES};
+fn conduit_fill(s: &mut Session, p: &Value) -> R {
+    use crate::conduit;
     use crate::nbr5410::Phases;
     let c = "conduit_fill";
+    let r = rules_of(s, c, "conduit_fill", conduit::rule_sets())?;
+    let sizing = rules_of(s, c, "circuits", crate::nbr5410::rule_sets())?;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["section", "phases", "circuits", "reduced_neutral", "family", "size"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7301,32 +7864,31 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
     }
     let phases = Phases::parse(choice(c, p, "phases", &["FN", "FF", "3F", "3FN"], "FN")?).unwrap_or(Phases::PhaseNeutral);
     let circuits = within(c, p, "circuits", 1.0, 1.0, 1000.0)?.round() as usize;
-    let keys: Vec<&str> = FAMILIES.iter().map(|f| f.key).collect();
-    let family = conduit::family(choice(c, p, "family", &keys, "pvc-thread")?).ok_or_else(|| bad(c, "no such family"))?;
-    let one = conduit::conductors(phases, section, flag(c, p, "reduced_neutral")?);
+    let keys: Vec<&str> = r.families.iter().map(|f| f.key.as_str()).collect();
+    let family = r.family(choice(c, p, "family", &keys, &r.default_family)?).ok_or_else(|| bad(c, "no such family"))?;
+    let one = conduit::conductors(&sizing, phases, section, flag(c, p, "reduced_neutral")?);
     let all: Vec<f64> = (0..circuits).flat_map(|_| one.iter().copied()).collect();
     let source = json!({"maker": family.maker, "document": family.document, "page": family.page, "url": family.url, "inside": "outside less twice the wall"});
-    if let Some(s) = one.iter().find(|s| conduit::cable_diameter(**s).is_none()) {
+    if let Some(s) = one.iter().find(|s| r.cable_diameter(**s).is_none()) {
         return Ok(
             json!({"conductors": all.len(), "pending": format!("the catalogue has no outside diameter for a cable of {s} mm²"), "source": source}),
         );
     }
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
-    let smallest = conduit::smallest(family, &all).map(|s| s.0);
-    let size =
-        match string(c, p, "size")? {
-            None => None,
-            Some(mark) => Some(family.sizes.iter().find(|s| s.0 == mark).ok_or_else(|| {
-                bad(c, format!("`size` must be one of {}", family.sizes.iter().map(|s| s.0).collect::<Vec<_>>().join(", ")))
-            })?),
-        };
-    let fill = size.and_then(|s| conduit::fill(s, &all));
+    let smallest = r.smallest(family, &all).map(|s| s.0.clone());
+    let size = match string(c, p, "size")? {
+        None => None,
+        Some(mark) => Some(family.sizes.iter().find(|s| s.0 == mark).ok_or_else(|| {
+            bad(c, format!("`size` must be one of {}", family.sizes.iter().map(|s| s.0.as_str()).collect::<Vec<_>>().join(", ")))
+        })?),
+    };
+    let fill = size.and_then(|s| r.fill(s, &all));
     Ok(json!({
         "conductors": all.len(),
         "circuits": circuits,
         "sections_mm2": one,
         "smallest": smallest,
-        "size": size.map(|s| s.0),
+        "size": size.map(|s| s.0.as_str()),
         "inside_mm": size.map(|s| round(conduit::inside(s), 100.0)),
         "fill_percent": fill.map(|f| round(f.ratio * 100.0, 10.0)),
         "limit_percent": fill.map(|f| round(f.limit * 100.0, 10.0)),
@@ -7335,9 +7897,12 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn drain_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage::{self, Role};
+fn drain_size(s: &mut Session, p: &Value) -> R {
+    use crate::drainage::Role;
     let c = "drain_size";
+    // The project's rules: its plumbing code's Sanitary Drainage and Fixtures.
+    let rules = s.model.rules::<crate::drainage::DrainageRules>();
+    let library = s.model.rules::<crate::plumbing::Fixtures>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "fixtures", "role", "slope", "floors", "min_dn"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7351,8 +7916,10 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
         Some(Value::Object(f)) => {
             let mut sum = 0.0;
             for (kind, n) in f {
-                let (u, dn) = drainage::fixture(kind)
-                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))))?;
+                let (u, dn) = library
+                    .fixture(kind)
+                    .map(|f| (f.uhc, f.drain_dn))
+                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", library.kinds().join(", "))))?;
                 let n = n
                     .as_f64()
                     .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
@@ -7374,9 +7941,9 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
     let role = Role::parse(choice(c, p, "role", &["branch", "main", "stack"], "branch")?).unwrap_or(Role::Branch);
     let slope = within(c, p, "slope", 0.01, 0.0, 1.0)?;
     let floors = within(c, p, "floors", 1.0, 1.0, 1000.0)?.round() as u32;
-    let dn = drainage::smallest(units, slope, role, floors, minimum)
+    let dn = rules.smallest(units, slope, role, floors, minimum)
         .ok_or_else(|| {
-        let most = drainage::DNS.iter().map(|dn| (*dn, drainage::capacity(*dn, slope, role, floors))).fold((0.0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
+        let most = rules.dns.iter().map(|dn| (*dn, rules.capacity(*dn, slope, role, floors))).fold((0.0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
         bad(
             c,
             format!(
@@ -7385,12 +7952,12 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
             ),
         )
     })?;
-    Ok(json!({"units": units, "dn": dn, "capacity": drainage::capacity(dn, slope, role, floors), "minimum_dn": minimum}))
+    Ok(json!({"units": units, "dn": dn, "capacity": rules.capacity(dn, slope, role, floors), "minimum_dn": minimum}))
 }
 
-fn vent_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage;
+fn vent_size(s: &mut Session, p: &Value) -> R {
     let c = "vent_size";
+    let rules = s.model.rules::<crate::drainage::DrainageRules>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "wc", "stack_dn", "length", "trap_dn"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7400,10 +7967,11 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
     if units <= 0.0 {
         return Err(bad(c, "`units` (UHC of what it vents) is required"));
     }
-    let dns = drainage::DNS;
+    let dns = &rules.dns;
     let mut out = serde_json::Map::new();
     let dn = if absent(p.get("stack_dn")) {
-        drainage::branch_vent(units, flag(c, p, "wc")?)
+        rules
+            .branch_vent(units, flag(c, p, "wc")?)
             .ok_or_else(|| bad(c, format!("{units} UHC is more than the table gives a branch vent (Tabela 8)")))?
     } else {
         let served = within(c, p, "stack_dn", 0.0, 0.0, 1000.0)?;
@@ -7414,77 +7982,86 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
             return Err(bad(c, "`length` (mm, from the foot to the open end) is required with `stack_dn`"));
         }
         let length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
-        let dn = drainage::vent_stack(served, units, length)
+        let dn = rules
+            .vent_stack(served, units, length)
             .ok_or_else(|| bad(c, "no vent of the table (Tabela 2) is long enough for that, or the units pass its last row"))?;
-        out.insert("longest_m".into(), json!(drainage::vent_stack_limit(served, units, dn)));
+        out.insert("longest_m".into(), json!(rules.vent_stack_limit(served, units, dn)));
         dn
     };
     out.insert("dn".into(), json!(dn));
     if !absent(p.get("trap_dn")) {
         let t = within(c, p, "trap_dn", 0.0, 0.0, 1000.0)?;
-        let mm = drainage::trap_distance(t).ok_or_else(|| bad(c, "`trap_dn` must be 40, 50, 75 or 100 (Tabela 1)"))?;
+        let mm = rules.trap_distance(t).ok_or_else(|| {
+            let dns: Vec<String> = rules.trap_to_vent.iter().map(|r| r[0].to_string()).collect();
+            bad(c, format!("`trap_dn` must be one of {} (the trap's table)", dns.join(", ")))
+        })?;
         out.insert("trap_to_vent_mm".into(), json!(mm));
     }
     Ok(Value::Object(out))
 }
 
-/// `demand` for Enel: GRI-0017 leaves the demand to the designer (Anexo A, note 11), so it frames the supply by the installed load,
-/// in its Anexos A, C, D and E (B by the demand current), and carries the designer's demand if one is given.
-fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
-    use crate::demand::{self as d, NETWORKS, Network};
+/// The phases a unit asks, if any.
+fn unit_phases(c: &str, p: &Value) -> Result<Option<u8>, String> {
+    match p.get("phases").filter(|v| !v.is_null()) {
+        None => Ok(None),
+        Some(v) => match v.as_u64() {
+            Some(n @ 1..=3) => Ok(Some(n as u8)),
+            _ => Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
+        },
+    }
+}
+
+/// `demand` by annexes (Enel's GRI-0017): the standard leaves the demand to the designer, so it frames the supply by the installed
+/// load in an annex for each network (one goes by the demand current), and carries the designer's demand if one is given.
+fn demand_by_annexes(p: &Value, utility: &str, source: &str, a: &crate::demand::ByAnnexes) -> R {
     let c = "demand";
     const KEYS: &[&str] = &["utility", "network", "installed_kw", "demand_current_a", "phases", "demand_kva"];
     if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
-        return Err(bad(c, format!("`{k}` isn't one of ENEL's parameters: {}", KEYS.join(", "))));
+        return Err(bad(c, format!("`{k}` isn't one of {utility}'s parameters: {}", KEYS.join(", "))));
     }
-    let name = choice(c, p, "network", NETWORKS, "")?;
+    let networks = a.network_names();
+    let name = choice(c, p, "network", &networks, "")?;
     if name.is_empty() {
-        return Err(bad(c, format!("`network` is required: {}", NETWORKS.join(", "))));
+        return Err(bad(c, format!("`network` is required: {}", networks.join(", "))));
     }
-    let phases = match p.get("phases").filter(|v| !v.is_null()) {
-        None => None,
-        Some(v) => match v.as_u64() {
-            Some(n @ 1..=3) => Some(n as u8),
-            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
-        },
-    };
+    let phases = unit_phases(c, p)?;
     let demand_kva = match p.get("demand_kva").filter(|v| !v.is_null()) {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let note_demand = "GRI-0017 leaves a three-phase supply's demand to the designer, up to 75 kW of installed load (Anexo A, note 11): it is carried as given, never worked out here";
-    let not_covered = "the conduits, the poles and the type of meter box of the annexes, the point of connection, Anexo A to E's other columns, Anexos F to H (Enel Ceará) and the limits of supply by motors, welding machines and X-ray sets";
-    if name == "aerial_delta" {
-        // Anexo B goes by the current the designer's demand draws, not by the installed load.
+    let by = &a.by_current;
+    if name == by.network {
+        // This annex goes by the current the designer's demand draws, not by the installed load.
         if p.get("installed_kw").is_some_and(|v| !v.is_null()) {
-            return Err(bad(c, "Anexo B (`aerial_delta`) goes by `demand_current_a`, not by `installed_kw`"));
+            return Err(bad(c, format!("Anexo {} (`{}`) goes by `demand_current_a`, not by `installed_kw`", by.annex, by.network)));
         }
         if absent(p.get("demand_current_a")) {
-            return Err(bad(c, "`demand_current_a` (the designer's demand current, A) is required for `aerial_delta`"));
+            return Err(bad(c, format!("`demand_current_a` (the designer's demand current, A) is required for `{}`", by.network)));
         }
         let amps = within(c, p, "demand_current_a", 0.0, 0.0, 1.0e6)?;
-        let rows = d::delta_pick(amps, phases);
-        let (category, note) = match &rows {
-            Some(rows) => {
-                let r = rows[0];
-                let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
-                let cat = json!({
+        let rows = a.by_current(amps, phases);
+        let (category, note) = match rows.as_ref().and_then(|r| r.first()) {
+            Some(r) => (
+                json!({
                     "names": r.names,
                     "breaker_a": r.breaker,
-                    "connection_mm2": conn,
+                    "connection_mm2": r.connection,
                     "entry_mm2": r.entry,
-                    "earthing_mm2": r.earth,
+                    "earthing_mm2": r.earthing,
                     "measurement": r.measurement,
-                });
-                (cat, Value::Null)
+                }),
+                Value::Null,
+            ),
+            None => {
+                let last = by.rows.iter().map(|r| r.breaker).fold(0.0, f64::max);
+                (Value::Null, json!(format!("above the last breaker of Anexo {}: {last} A", by.annex)))
             }
-            None => (Value::Null, json!("above the last breaker of Anexo B: 300 A")),
         };
-        let candidates: Vec<&str> = rows.iter().flatten().flat_map(|r| r.names.iter().copied()).collect();
+        let candidates: Vec<&str> = rows.iter().flatten().flat_map(|r| r.names.iter().map(String::as_str)).collect();
         return Ok(json!({
             "utility": utility,
             "source": source,
-            "annex": "B",
+            "annex": by.annex,
             "network": name,
             "installed_kw": Value::Null,
             "demand_current_a": amps,
@@ -7493,88 +8070,85 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
             "candidates": candidates,
             "category_note": note,
             "demand_kva": demand_kva,
-            "demand_note": note_demand,
-            "not_covered": not_covered,
+            "demand_note": a.demand_note,
+            "not_covered": a.not_covered,
         }));
     }
-    let network = Network::parse(name).ok_or_else(|| bad(c, format!("`network` is one of {}", NETWORKS.join(", "))))?;
+    let annex = a.annex(name).ok_or_else(|| bad(c, format!("`network` is one of {}", networks.join(", "))))?;
     if p.get("demand_current_a").is_some_and(|v| !v.is_null()) {
-        return Err(bad(c, "`demand_current_a` is for `aerial_delta` (Anexo B); the other networks go by `installed_kw`"));
+        return Err(bad(
+            c,
+            format!("`demand_current_a` is for `{}` (Anexo {}); the other networks go by `installed_kw`", by.network, by.annex),
+        ));
     }
     if absent(p.get("installed_kw")) {
         return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
     }
     let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
-    let pick = d::enel_pick(network, kw, phases);
-    let (category, candidates, note) = match &pick {
-        Some(k) => {
-            let r = k.rows[0];
-            let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
+    let pick = a.pick(annex, kw, phases);
+    let (category, candidates, note) = match pick.as_ref().and_then(|k| k.first().map(|r| (k, r))) {
+        Some((k, r)) => {
             let cat = json!({
                 "name": r.name,
                 "breaker_a": r.breaker,
-                "connection_mm2": conn,
-                "entry_mm2": {"phase": r.entry.0, "neutral": r.entry.1},
-                "earthing_mm2": r.earth,
+                "connection_mm2": r.connection,
+                "entry_mm2": r.entry,
+                "earthing_mm2": r.earthing,
                 "measurement": r.measurement,
                 "junction_box": r.junction_box,
             });
-            (cat, json!(k.rows.iter().map(|r| r.name).collect::<Vec<_>>()), Value::Null)
+            (cat, json!(k.iter().map(|r| r.name.as_str()).collect::<Vec<_>>()), Value::Null)
         }
-        None if kw > 75.0 && network != Network::Submersible => (
-            Value::Null,
-            json!([]),
-            json!("above 75 kW the unit is served at primary voltage (item 7.4), which this specification does not cover"),
-        ),
-        None => {
-            let last = match network {
-                Network::Aerial => 75,
-                Network::Aerial120240 => 12,
-                Network::Underground => 75,
-                Network::Submersible => 100,
-            };
-            (
-                Value::Null,
-                json!([]),
-                json!(format!("above the last category of Anexo {}: up to {last} kW of installed load", network.annex())),
-            )
-        }
+        None => match annex.primary_above.filter(|limit| kw > *limit) {
+            Some(limit) => (Value::Null, json!([]), json!(a.primary_note.replace("{kw}", &limit.to_string()))),
+            None => {
+                let last = annex.rows.iter().map(|r| r.up_to).fold(0.0, f64::max);
+                (
+                    Value::Null,
+                    json!([]),
+                    json!(format!("above the last category of Anexo {}: up to {last} kW of installed load", annex.annex)),
+                )
+            }
+        },
     };
     Ok(json!({
         "utility": utility,
         "source": source,
-        "annex": network.annex(),
-        "network": network.name(),
+        "annex": annex.annex,
+        "network": annex.network,
         "installed_kw": kw,
         "phases": phases,
         "category": category,
         "candidates": candidates,
         "category_note": note,
         "demand_kva": demand_kva,
-        "demand_note": note_demand,
-        "not_covered": not_covered,
+        "demand_note": a.demand_note,
+        "not_covered": a.not_covered,
     }))
 }
 
-/// `demand` for Celesc: N-321.0001 classes a unit by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01) and leaves a demand to
-/// the designer where a three-phase unit needs one (Tabela 01, note 1), so it frames the supply and carries the designer's demand.
-fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
-    use crate::demand::{self as d, CELESC_NETWORKS};
+/// `demand` by one table (Celesc's N-321.0001): a unit is classed by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01), and
+/// a demand where a three-phase unit needs one is the designer's (Tabela 01, note 1), so it frames the supply and carries the
+/// designer's demand.
+fn demand_by_table(p: &Value, utility: &str, source: &str, t: &crate::demand::ByTable) -> R {
     let c = "demand";
     const KEYS: &[&str] = &["utility", "network", "installed_kw", "phases", "demand_kva"];
     if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
-        return Err(bad(c, format!("`{k}` isn't one of CELESC's parameters: {}", KEYS.join(", "))));
+        return Err(bad(c, format!("`{k}` isn't one of {utility}'s parameters: {}", KEYS.join(", "))));
     }
-    let network = choice(c, p, "network", CELESC_NETWORKS, "220/380")?;
-    let phases = match p.get("phases").filter(|v| !v.is_null()) {
-        None => None,
-        Some(v) => match v.as_u64() {
-            Some(n @ 1..=3) => Some(n as u8),
-            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
-        },
-    };
-    if phases == Some(3) && network == "220/440" {
-        return Err(bad(c, "a 220/440 V network serves single-phase units only (Tabela 01: A and M); take `network: 220/380`"));
+    let names = t.network_names();
+    let name = choice(c, p, "network", &names, names.first().copied().unwrap_or_default())?;
+    let network =
+        t.networks.iter().find(|n| n.network == name).ok_or_else(|| bad(c, format!("`network` is one of {}", names.join(", "))))?;
+    let phases = unit_phases(c, p)?;
+    if let Some(ph) = phases
+        && !network.rows.iter().any(|r| r.phases == ph)
+    {
+        let served: Vec<&str> = t.networks.iter().filter(|n| n.rows.iter().any(|r| r.phases == ph)).map(|n| n.network.as_str()).collect();
+        return Err(bad(
+            c,
+            format!("a {name} V network serves no {ph}-phase unit (Tabela {}); take `network`: {}", t.table, served.join(" or ")),
+        ));
     }
     if absent(p.get("installed_kw")) {
         return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
@@ -7584,47 +8158,43 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let row = d::celesc_pick(network, kw, phases);
-    let (category, note) = match row {
+    let (category, note) = match t.pick(network, kw, phases) {
         Some(r) => {
+            let printed = r.demand_up_to.map(|hi| (r.demand_over.unwrap_or(0.0), hi));
             let cat = json!({
                 "name": r.name,
-                "installed_kw": {"over": r.lo, "up_to": r.hi},
-                "demand_kva": r.demand.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
+                "installed_kw": {"over": r.over, "up_to": r.up_to},
+                "demand_kva": printed.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
                 "breaker_a": r.breaker,
                 "phases": r.phases,
                 "wires": r.wires,
-                "connection_mm2": {"copper": r.connection.0, "aluminium": r.connection.1},
+                "connection_mm2": r.connection,
                 "entry_mm2": r.entry,
-                "earthing_mm2": {"copper": r.earth.0, "copper_clad_steel": r.earth.1},
+                "earthing_mm2": r.earthing,
             });
-            let note = match (r.demand, demand_kva) {
+            let note = match (printed, demand_kva) {
                 (Some((_, hi)), Some(dk)) if dk > hi => {
                     json!(format!("the designer's demand, {dk} kVA, is above the {hi} kVA printed beside {}", r.name))
                 }
-                _ if r.breaker >= 125.0 => json!("a 125 A three-phase supply asks the designer for a demand (Tabela 01, note 1)"),
+                _ if r.breaker >= t.asks_demand_from_breaker => json!(t.asks_demand_note),
                 _ => Value::Null,
             };
             (cat, note)
         }
-        None if network == "220/440" => (Value::Null, json!("above 50 kW a 220/440 V unit is past Tabela 01")),
-        None => (
-            Value::Null,
-            json!("above 75 kW the unit may be served in low voltage only as item 5.2.2.8 allows, with the designer's demand study"),
-        ),
+        None => (Value::Null, json!(network.beyond)),
     };
     Ok(json!({
         "utility": utility,
         "source": source,
-        "table": "01",
-        "network": network,
+        "table": t.table,
+        "network": name,
         "installed_kw": kw,
         "phases": phases,
         "category": category,
         "category_note": note,
         "demand_kva": demand_kva,
-        "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
-        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003: `building_demand`)",
+        "demand_note": t.demand_note,
+        "not_covered": t.not_covered,
     }))
 }
 
@@ -7637,27 +8207,45 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     only(c, p, &["standard", "utility", "dwellings", "common", "common_demand", "special", "commercial", "premises", "as_printed"])?;
     let names = || bd::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
     let utilities = || bd::methods().iter().flat_map(|m| m.utilities.iter().map(String::as_str)).collect::<Vec<_>>().join(", ");
-    let m = match (string(c, p, "standard")?, string(c, p, "utility")?) {
+    // The project's method (its utility's amendment or its country's code, as it changed them) where it names none, or names
+    // the project's own; else BIMCraft's by the standard's or the utility's name.
+    let project = s.model.section_as::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand").filter(|(_, own)| *own);
+    let project = project.map(|(m, _)| m);
+    // Each of the project's amendments' own method, wherever it stands: named, a utility under another answers by its own.
+    let held: Vec<bd::Method> = s
+        .model
+        .held_wholes::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
+        .into_iter()
+        .filter(|(_, _, own)| *own)
+        .map(|(m, _, _)| m)
+        .collect();
+    let m: Held<bd::Method> = match (string(c, p, "standard")?, string(c, p, "utility")?) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
-        (Some(s), None) => bd::methods()
-            .iter()
-            .find(|m| m.standard == s)
-            .ok_or_else(|| bad(c, format!("no method `{s}` in data/building-demand.json: {}", names())))?,
-        (None, Some(u)) => bd::methods()
-            .iter()
-            .find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u)))
-            .ok_or_else(|| bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())))?,
-        // Neither: the method the project's building code names.
-        (None, None) => match &s.model.electrical_methods().building_demand {
-            Some(n) => bd::method(n).ok_or_else(|| {
-                bad(c, format!("the project's building code names `{n}`, which data/building-demand.json doesn't have: {}", names()))
-            })?,
+        (Some(s), None) => match project.filter(|m| m.standard == s).or_else(|| held.into_iter().find(|m| m.standard == s)) {
+            Some(m) => Held::Project(Box::new(m)),
+            None => Held::Library(
+                bd::methods()
+                    .iter()
+                    .find(|m| m.standard == s)
+                    .ok_or_else(|| bad(c, format!("no method `{s}` in the building codes: {}", names())))?,
+            ),
+        },
+        (None, Some(u)) => {
+            let named = |m: &bd::Method| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u));
+            match project.filter(|m| named(m)).or_else(|| held.into_iter().find(|m| named(m))) {
+                Some(m) => Held::Project(Box::new(m)),
+                None => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
+                    || bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())),
+                )?),
+            }
+        }
+        (None, None) => match project {
+            Some(m) => Held::Project(Box::new(m)),
             None => {
                 return Err(bad(
                     c,
                     format!(
-                        "give the `utility` ({}) or the `standard` ({}), or pick a method for the project in Manage > Building Codes \
-                         (`building_code {{electrical: {{building_demand}}}}`)",
+                        "give the `utility` ({}) or the `standard` ({}), or hold the project to a utility's or a country's code in Building Codes",
                         utilities(),
                         names()
                     ),
@@ -7665,6 +8253,7 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
             }
         },
     };
+    let m = &*m;
     let list = match p.get("dwellings") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 1000 => a,
         _ => return Err(bad(c, "`dwellings` is a list of 1 to 1000 groups of dwellings alike, each {count, area | demand | grade}")),
@@ -7749,7 +8338,7 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     }))
 }
 
-/// `demand` for a utility whose categories are data (`data/entrance-categories.json`, `entrance.rs`): its table for the supply system
+/// `demand` for a utility whose categories are data (a building code's `entrance` section, `entrance.rs`): its table for the supply system
 /// and the use frames the unit by the installed load and the designer's demand, as the table prints them, with a member's own changes.
 fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Option<&crate::entrance::Member>) -> R {
     use crate::entrance::{self as e, Unit};
@@ -7848,7 +8437,7 @@ fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Opt
 }
 
 fn demand(s: &mut Session, p: &Value) -> R {
-    use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
+    use crate::demand::{self as d, Air, Load, Motor, OtherUse, Special};
     let c = "demand";
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
@@ -7881,48 +8470,71 @@ fn demand(s: &mut Session, p: &Value) -> R {
             "entrance",
         ],
     )?;
-    // Not given: the utility the project's building code names.
-    let utility = string(c, p, "utility")?.or_else(|| s.model.electrical_methods().demand.clone()).ok_or_else(|| {
-        bad(
-            c,
-            format!(
-                "`utility` is required: {}; or pick one for the project in Manage > Building Codes \
-                 (`building_code {{electrical: {{demand}}}}`)",
-                d::utilities().join(", ")
-            ),
-        )
-    })?;
-    if let Some((u, member)) = crate::entrance::find(&utility) {
+    // Not given: the utility whose code the project is held to (its unit demand's, else its entrance categories').
+    let own_utility = |r: Option<(String, bool)>| r.filter(|(_, own)| *own).map(|(u, _)| u);
+    let electrical = crate::codes::Discipline::Electrical;
+    let utility = string(c, p, "utility")?
+        .or_else(|| own_utility(s.model.section_as::<d::Standard>(electrical, "unit_demand").map(|(x, own)| (x.utility, own))))
+        .or_else(|| own_utility(s.model.section_as::<crate::entrance::Utility>(electrical, "entrance").map(|(x, own)| (x.id, own))))
+        .ok_or_else(|| {
+            bad(
+                c,
+                format!(
+                    "`utility` is required: {}, {}; or hold the project to a utility's code in Manage > Building Codes",
+                    d::names().join(", "),
+                    crate::entrance::names().join(", ")
+                ),
+            )
+        })?;
+    // The project's utility, as its amendment holds it and the project changed it; else BIMCraft's.
+    // Each amendment's own entrance, wherever it stands: one utility's never answers for another's.
+    for (u, _, own) in s.model.held_wholes::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance", "rule") {
+        let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
+        if own && (u.id.eq_ignore_ascii_case(&utility) || member.is_some()) {
+            return demand_table(p, &utility, &u, member);
+        }
+    }
+    // The utility's own unit demand, as its amendment holds it, wherever it stands among the project's amendments: never
+    // the rules of another utility layered with it.
+    let project = s
+        .model
+        .held_wholes::<d::Standard>(crate::codes::Discipline::Electrical, "unit_demand", "method")
+        .into_iter()
+        .find(|(u, _, own)| *own && u.utility.eq_ignore_ascii_case(&utility))
+        .map(|(u, source, _)| (u, source.unwrap_or_else(|| "changed in this project".into())));
+    if project.is_none()
+        && let Some((u, member)) = crate::entrance::find(&utility)
+    {
         return demand_table(p, &utility, u, member);
     }
-    let Some(source) = d::source(&utility) else {
+    let Some((standard, source)) = project.or_else(|| d::find(&utility).cloned()) else {
         return Err(bad(
             c,
             format!(
-                "there are no tables for `{utility}` yet, only {} and, as data, {}: they are the utility's own, and are added from its standard",
-                d::UTILITIES.join(", "),
+                "there are no tables for `{utility}` yet, only {} and {}: they are the utility's own, added as a building code from its standard",
+                d::names().join(", "),
                 crate::entrance::names().join(", ")
             ),
         ));
     };
+    let utility = standard.utility.clone();
+    let source = source.as_str();
+    let g = match &standard.method {
+        d::Method::Annexes(a) => return demand_by_annexes(p, &utility, source, a),
+        d::Method::Table(t) => return demand_by_table(p, &utility, source, t),
+        d::Method::Terms(g) => g,
+    };
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
-    if utility == "ENEL" {
-        return demand_enel(p, &utility, source);
-    }
-    if utility == "CELESC" {
-        return demand_celesc(p, &utility, source);
-    }
     if let Some(k) =
         ["network", "installed_kw", "demand_current_a", "phases", "demand_kva", "entrance"].iter().find(|k| p.get(**k).is_some())
     {
         return Err(bad(
             c,
-            format!(
-                "`{k}` is for utilities ENEL and CELESC: {utility}'s standard takes the loads of its examples, not a category by installed load"
-            ),
+            format!("`{k}` is for a utility that frames a supply by installed load: {utility}'s standard takes the loads of its examples"),
         ));
     }
-    let system = System::parse(choice(c, p, "system", &["127/220", "220/380"], "127/220")?).unwrap_or(System::S127_220);
+    let systems = g.systems();
+    let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or_default())?;
     let area = match p.get("area").filter(|v| !v.is_null()) {
         None => None,
         Some(_) => Some(within(c, p, "area", 0.0, 0.0, 1.0e6)?),
@@ -7984,9 +8596,10 @@ fn demand(s: &mut Session, p: &Value) -> R {
             if let Some(k) = o.keys().find(|k| !["use", "kw", "pf"].contains(&k.as_str())) {
                 return Err(bad(c, format!("`lighting_outlets`: unknown parameter `{k}`")));
             }
-            let kind = choice(c, v, "use", USES, "")?;
+            let uses = g.uses();
+            let kind = choice(c, v, "use", &uses, "")?;
             if kind.is_empty() {
-                return Err(bad(c, format!("`lighting_outlets`: `use` is one of {}", USES.join(", "))));
+                return Err(bad(c, format!("`lighting_outlets`: `use` is one of {}", uses.join(", "))));
             }
             let kw = within(c, v, "kw", f64::NAN, 0.0, 1.0e6)?;
             if kw.is_nan() {
@@ -8004,11 +8617,9 @@ fn demand(s: &mut Session, p: &Value) -> R {
         let n = count(&v, "count", 100_000.0)?;
         if o.get("btu").is_some_and(|x| !x.is_null()) {
             let btu = within(c, &v, "btu", 0.0, 0.0, 1.0e6)?;
-            let (va, w) = d::window_air(btu).ok_or_else(|| {
-                bad(
-                    c,
-                    format!("`btu` {btu} is not in Tabela 8: 7100, 8500, 10000, 12000, 14000, 18000, 21000 or 30000; or give `va` and `w`"),
-                )
+            let (va, w) = g.window_air(btu).ok_or_else(|| {
+                let listed: Vec<String> = g.window_air.iter().map(|r| r.0.to_string()).collect();
+                bad(c, format!("`btu` {btu} is not in Tabela 8: {}; or give `va` and `w`", listed.join(", ")))
             })?;
             air.push(Air { va, w, count: n });
         } else {
@@ -8032,8 +8643,9 @@ fn demand(s: &mut Session, p: &Value) -> R {
                 Some(x @ (1 | 3)) => x as u32,
                 _ => return Err(bad(c, "`motors`: `phases` is 1 or 3 with `cv`")),
             };
-            let (kva, kw) = d::motor(cv, phases).ok_or_else(|| {
-                bad(c, format!("no {cv} cv {}-phase motor in Tabela {}; give `kva` and `kw`", phases, if phases == 1 { 14 } else { 15 }))
+            let (kva, kw) = g.motor(cv, phases).ok_or_else(|| {
+                let table = if phases == 1 { "13" } else { "14" };
+                bad(c, format!("no {cv} cv {phases}-phase motor in Tabela {table}; give `kva` and `kw`"))
             })?;
             motors.push(Motor { kva, kw, count: n });
         } else {
@@ -8050,8 +8662,12 @@ fn demand(s: &mut Session, p: &Value) -> R {
         if let Some(k) = o.keys().find(|k| !["kind", "kw", "count"].contains(&k.as_str())) {
             return Err(bad(c, format!("`special`: unknown parameter `{k}`")));
         }
-        let kind = SpecialKind::parse(choice(c, &v, "kind", SPECIAL_KINDS, "")?)
-            .ok_or_else(|| bad(c, format!("`special`: `kind` is one of {}", SPECIAL_KINDS.join(", "))))?;
+        let kinds = g.special_kinds();
+        let kind = choice(c, &v, "kind", &kinds, "")?;
+        if kind.is_empty() {
+            return Err(bad(c, format!("`special`: `kind` is one of {}", kinds.join(", "))));
+        }
+        let kind = kind.to_string();
         let kw = within(c, &v, "kw", f64::NAN, 0.0, 1.0e6)?;
         if kw.is_nan() {
             return Err(bad(c, "`special`: `kw` is required"));
@@ -8074,17 +8690,18 @@ fn demand(s: &mut Session, p: &Value) -> R {
         hydro: loads("hydromassage", "w")?,
         commercial_air: choice(c, p, "air_use", &["residential", "commercial"], "residential")? == "commercial",
     };
-    let o = d::compute(&input).map_err(|e| bad(c, e))?;
+    let o = g.compute(&input).map_err(|e| bad(c, e))?;
     let r6 = |x: f64| (x * 1.0e6).round() / 1.0e6 + 0.0;
-    let cat = d::category(system, o.installed_kw, o.demand_kva);
+    let cat = g.category(system, o.installed_kw, o.demand_kva);
     let (category, note) = match cat {
         Some(k) => (
-            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
+            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earthing, "phases": k.phases}),
             Value::Null,
         ),
-        None if o.installed_kw > 75.0 => {
-            (Value::Null, json!("above 75 kW the utility serves at primary voltage, which this standard does not cover"))
-        }
+        None if o.installed_kw > g.primary_above => (
+            Value::Null,
+            json!(format!("above {} kW the utility serves at primary voltage, which this standard does not cover", g.primary_above)),
+        ),
         None => (Value::Null, json!("the demand is above the last category of the table")),
     };
     let t = &o.terms;
@@ -8099,14 +8716,17 @@ fn demand(s: &mut Session, p: &Value) -> R {
         "demand_kva_rounded_up": (o.demand_kva - 1.0e-9).ceil(),
         "category": category,
         "category_note": note,
-        "system": if system == System::S127_220 { "127/220" } else { "220/380" },
-        "not_covered": "the poles, boxes, earthing conduit and motor limits of Tabelas 1A to 1C, Tabela 1D (two clients on one pole), the starting of motors (Tabela 12) and the DPS and other requirements of the entry",
+        "system": system,
+        "not_covered": g.not_covered,
     }))
 }
 
-fn dps_check(_: &mut Session, p: &Value) -> R {
-    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, REGIONS, Region, SIGNALS};
+fn dps_check(s: &mut Session, p: &Value) -> R {
+    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, Region};
     let c = "dps_check";
+    let r = rules_of(s, c, "surge", dps::rule_sets())?;
+    let regions = r.region_names();
+    let signal_names: Vec<&str> = r.signals.iter().map(String::as_str).collect();
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
@@ -8129,8 +8749,8 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             "before_dr",
         ],
     )?;
-    let Some(region) = Region::parse(choice(c, p, "region", REGIONS, "")?) else {
-        return Err(bad(c, format!("`region` is required: {}", REGIONS.join(", "))));
+    let Some(region) = Region::parse(choice(c, p, "region", &regions, "")?) else {
+        return Err(bad(c, format!("`region` is required: {}", regions.join(", "))));
     };
     let line = dps::Line {
         overhead: flag(c, p, "overhead")?,
@@ -8155,9 +8775,9 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     let before_dr = flag(c, p, "before_dr")?;
     let system = match p.get("system").filter(|v| !v.is_null()) {
         None => None,
-        Some(v) => match v.as_str().filter(|x| dps::withstand(x).is_some()) {
+        Some(v) => match v.as_str().filter(|x| dps::withstand(&r, x).is_some()) {
             Some(x) => Some(x.to_string()),
-            None => return Err(bad(c, format!("`system` is one of {}, got {v}", dps::SYSTEMS.join(", ")))),
+            None => return Err(bad(c, format!("`system` is one of {}, got {v}", r.systems().join(", ")))),
         },
     };
     let uo = match p.get("uo").filter(|v| !v.is_null()) {
@@ -8169,34 +8789,34 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
         None => {}
         Some(Value::Array(a)) if a.len() <= 1000 => {
             for v in a {
-                let kind = v.as_str().filter(|k| dps::signal_required(k).is_some());
+                let kind = v.as_str().filter(|k| dps::signal_required(&r, k).is_some());
                 let Some(kind) = kind else {
-                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", SIGNALS.join(", "))));
+                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", signal_names.join(", "))));
                 };
                 signals.push(json!({
                     "kind": kind,
                     "required": true,
-                    "why": dps::signal_required(kind),
+                    "why": dps::signal_required(&r, kind),
                     "where": "at the building's entry or exit",
-                    "min_impulse_withstand_kv": dps::SIGNAL_ENTRY_WITHSTAND_KV,
+                    "min_impulse_withstand_kv": r.signal_entry_withstand,
                 }));
             }
         }
-        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", SIGNALS.join(", ")))),
+        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", signal_names.join(", ")))),
     }
-    let v = dps::required(&line);
+    let v = dps::required(&r, &line);
     let mut power = Map::new();
     power.insert("required".into(), json!(v.required));
     power.insert("exempt".into(), json!(v.exempt));
     power.insert("reasons".into(), json!(v.reasons));
     if v.required {
         power.insert("purpose".into(), json!(PURPOSES[purpose as usize]));
-        power.insert("where".into(), json!(dps::place(purpose, existing)));
+        power.insert("where".into(), json!(dps::place(&r, purpose, existing)));
         power.insert(
             "short_circuit".into(),
             json!("the DPS withstands the short-circuit current presumed where it is installed, with the overcurrent device that goes with it, and a DPS with spark gaps interrupts the follow current of that point (6.3.5.2.4 e)"),
         );
-        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(x).map(|w| (x, w))) {
+        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(&r, x).map(|w| (x, w))) {
             power.insert(
                 "up".into(),
                 json!({
@@ -8212,7 +8832,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             let list = if before_dr { dps::schemes_before_dr(e, neutral) } else { dps::schemes(e, neutral) };
             three = list.contains(&3);
             let text: Vec<Value> = list.iter().map(|s| json!({"scheme": s, "connects": dps::scheme_text(*s, e)})).collect();
-            let modes: Vec<Value> = dps::uc_min(e, neutral, uo.unwrap_or(1.0))
+            let modes: Vec<Value> = dps::uc_min(&r, e, neutral, uo.unwrap_or(1.0))
                 .iter()
                 .map(|u| match uo {
                     Some(_) => json!({"between": u.between, "formula": u.formula, "volts": (u.volts * 100.0).round() / 100.0}),
@@ -8220,7 +8840,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
                 })
                 .collect();
             power.insert("uc_min".into(), json!({"uo_v": uo, "modes": modes}));
-            match dps::subsequent_current(e) {
+            match dps::subsequent_current(&r, e) {
                 Some(dps::Subsequent::AtLeastA(a)) => {
                     power.insert("subsequent_current".into(), json!({"neutral_pe_min_a": a}));
                 }
@@ -8243,12 +8863,15 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             Value::Object(o)
         };
         if purpose != Purpose::Direct {
-            power.insert("discharge_ka".into(), extra(dps::discharge(purpose, false, phases), dps::discharge(purpose, true, phases)));
+            power.insert(
+                "discharge_ka".into(),
+                extra(dps::discharge(&r, purpose, false, phases), dps::discharge(&r, purpose, true, phases)),
+            );
         }
         if purpose != Purpose::Line {
-            power.insert("impulse_ka".into(), extra(dps::impulse(false, phases), dps::impulse(true, phases)));
+            power.insert("impulse_ka".into(), extra(dps::impulse(&r, false, phases), dps::impulse(&r, true, phases)));
         }
-        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(purpose), "max_length_m": dps::CONDUCTOR_LENGTH}));
+        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(&r, purpose), "max_length_m": r.conductor_length}));
     }
     Ok(json!({
         "power": power,
@@ -8299,9 +8922,9 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     }
     only(c, p, &["rooms", "alternative", "standard"])?;
     let alternative = flag(c, p, "alternative")?;
-    let names: Vec<&str> = loads::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, loads::DEFAULT)?;
-    let set = loads::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/load-points.json")))?;
+    // The project's electrical code's, as it changed them, or a standard named.
+    let set = held(s, c, p, ("load_points", "standard"), loads::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no load points in the building codes"))?;
     let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
     // (name, kind, area m2, perimeter m, points, kind given)
     let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
@@ -8437,16 +9060,15 @@ fn drawn_points(m: &Model, rooms: &crate::rooms::Rooms) -> (Option<PerRoom>, Opt
     (outlets, lights)
 }
 
-fn dr_check(_: &mut Session, p: &Value) -> R {
+fn dr_check(s: &mut Session, p: &Value) -> R {
     use crate::dr::{self, KINDS, PLACES, Place};
     let c = "dr_check";
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
     only(c, p, &["circuits", "building", "standard"])?;
-    let names: Vec<&str> = dr::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, dr::DEFAULT)?;
-    let set = dr::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/dr-check.json")))?;
+    let set = held(s, c, p, ("rcd", "standard"), dr::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no residual-current device rules in the building codes"))?;
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
     let list = match p.get("circuits") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
@@ -8525,7 +9147,7 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn bath_volumes(_: &mut Session, p: &Value) -> R {
+fn bath_volumes(s: &mut Session, p: &Value) -> R {
     use crate::bath::{self, Bath, CLASSES, Fixture, KINDS, SUPPLIES, Thing};
     let c = "bath_volumes";
     if !p.is_object() {
@@ -8533,9 +9155,8 @@ fn bath_volumes(_: &mut Session, p: &Value) -> R {
     }
     only(c, p, &["fixture", "things", "public", "standard"])?;
     let public = flag(c, p, "public")?;
-    let names: Vec<&str> = bath::rule_sets().iter().map(|r| r.standard.as_str()).collect();
-    let standard = choice(c, p, "standard", &names, bath::DEFAULT)?;
-    let set = bath::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/bath-volumes.json")))?;
+    let set = held(s, c, p, ("bath_volumes", "standard"), bath::rule_sets(), |r| r.standard.as_str(), false)?
+        .ok_or_else(|| bad(c, "no bathroom volumes in the building codes"))?;
     let f = p.get("fixture").filter(|v| v.is_object()).ok_or_else(|| bad(c, "`fixture` {outline | shower, floor?, rim?} is required"))?;
     let at = |e: String| format!("fixture: {e}");
     only(c, f, &["outline", "shower", "floor", "rim"]).map_err(at)?;
@@ -8627,9 +9248,13 @@ fn bath_volumes(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn hydrant_size(_: &mut Session, p: &Value) -> R {
-    use crate::hydrant::{self, MATERIALS, MAX_NOZZLE_HEAD, MAX_SPEED, TYPE_KEYS};
+fn hydrant_size(s: &mut Session, p: &Value) -> R {
+    use crate::hydrant;
     let c = "hydrant_size";
+    // The project's rules: its plumbing code's Hydrants (CBPMESP IT 22 in BIMCraft's library).
+    let rules = s.model.rules::<hydrant::HydrantRules>();
+    let keys: Vec<&str> = rules.types.iter().map(|t| t.key.as_str()).collect();
+    let columns = rules.reserve.len().max(1) as f64;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["region", "column", "area", "type", "hydrants", "inside", "nominal", "material", "length", "rise"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -8646,17 +9271,17 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
     let mut system: Option<(u8, f64)> = None;
     if has_column || has_area {
         if !has_column {
-            return Err(bad(c, "`column` (1 to 5, of IT 22's Tabela 3) is required with `area`"));
+            return Err(bad(c, format!("`column` (1 to {columns}, of the code's reserve table) is required with `area`")));
         }
         if !has_area {
             return Err(bad(c, "`area` (m², built) is required with `column`"));
         }
-        let column = within(c, p, "column", 1.0, 1.0, 5.0)?;
+        let column = within(c, p, "column", 1.0, 1.0, columns)?;
         if column.fract() != 0.0 {
-            return Err(bad(c, "`column` must be a whole number from 1 to 5"));
+            return Err(bad(c, format!("`column` must be a whole number from 1 to {columns}")));
         }
         let area = within(c, p, "area", 0.0, f64::MIN_POSITIVE, 1.0e8)?;
-        system = hydrant::system_for(column as u8, area);
+        system = rules.system_for(column as u8, area);
     }
     let mut out = serde_json::Map::new();
     if let Some((t, rti)) = system {
@@ -8670,12 +9295,12 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
             }
             Some((t, _)) if t != 4 => Some(t.to_string()),
             Some(_) => None,
-            None => return Err(bad(c, "`type` (1, 2, 3, 4-40, 4-65 or 5) or `column` and `area` is required")),
+            None => return Err(bad(c, format!("`type` ({}) or `column` and `area` is required", keys.join(", ")))),
         }
     } else {
-        let key = choice(c, p, "type", TYPE_KEYS, "")?;
-        if let (Some((t, _)), Some(row)) = (system, hydrant::kind(key))
-            && row.1 != t
+        let key = choice(c, p, "type", &keys, "")?;
+        if let (Some((t, _)), Some(row)) = (system, rules.kind(key))
+            && row.kind != t
         {
             return Err(bad(
                 c,
@@ -8689,14 +9314,14 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
     if hydrants.fract() != 0.0 {
         return Err(bad(c, "`hydrants` must be a whole number from 1 to 1000"));
     }
-    let Some(t) = hydrant::kind(&key) else { return Err(bad(c, format!("no system type `{key}`"))) };
-    let flow = hydrant::design_flow(&key, hydrants as u32);
+    let Some(t) = rules.kind(&key) else { return Err(bad(c, format!("no system type `{key}`"))) };
+    let flow = rules.design_flow(&key, hydrants as u32);
     out.insert("type".into(), json!(key));
     out.insert("flow_lpm".into(), json!(flow));
-    out.insert("nozzle_head_mca".into(), json!(t.6));
-    out.insert("hose_dn_mm".into(), json!(t.3));
-    out.insert("hose_length_m".into(), json!(t.4));
-    let mut ok = t.6 <= MAX_NOZZLE_HEAD;
+    out.insert("nozzle_head_mca".into(), json!(t.nozzle_head));
+    out.insert("hose_dn_mm".into(), json!(t.hose_dn));
+    out.insert("hose_length_m".into(), json!(t.hose_length));
+    let mut ok = t.nozzle_head <= rules.max_nozzle_head;
     if absent(p.get("inside")) {
         if !absent(p.get("nominal")) {
             return Err(bad(c, "`nominal` needs the pipe's `inside` diameter (mm)"));
@@ -8704,40 +9329,48 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
         return Ok(Value::Object(out));
     }
     let inside = within(c, p, "inside", 0.0, f64::MIN_POSITIVE, 5000.0)?;
-    let material = choice(c, p, "material", &MATERIALS.iter().map(|m| m.0).collect::<Vec<_>>(), "steel")?;
-    let cf = hydrant::hazen_c(material).unwrap_or(120.0);
+    let materials: Vec<&str> = rules.hazen_c.iter().map(|m| m.material.as_str()).collect();
+    let first = if materials.contains(&"steel") { "steel" } else { materials.first().copied().unwrap_or("") };
+    let material = choice(c, p, "material", &materials, first)?;
+    let cf = rules.hazen_c(material).ok_or_else(|| bad(c, format!("`material` is one of {}", materials.join(", "))))?;
     let length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
     let rise = within(c, p, "rise", 0.0, -MAX_COORD, MAX_COORD)? / 1000.0;
     let (v, j) = (hydrant::speed(flow, inside), hydrant::hazen_j(flow, cf, inside));
     let loss = j * length;
-    let speed_ok = v <= MAX_SPEED + 1e-9;
+    let speed_ok = v <= rules.max_speed + 1e-9;
     ok = ok && speed_ok;
     out.insert("speed_ms".into(), json!(round(v, 100.0)));
     out.insert("speed_ok".into(), json!(speed_ok));
     out.insert("head_loss_m_per_m".into(), json!(round(j, 1.0e5)));
     out.insert("loss_mca".into(), json!(round(loss, 100.0)));
-    out.insert("need_mca".into(), json!(round(t.6 + loss + rise, 100.0)));
+    out.insert("need_mca".into(), json!(round(t.nozzle_head + loss + rise, 100.0)));
     out.insert(
         "need_covers".into(),
         json!("nozzle head + head loss of the straight pipe + rise: not the hose, the fittings or the pressure at the source"),
     );
     if !absent(p.get("nominal")) {
         let nominal = within(c, p, "nominal", 0.0, f64::MIN_POSITIVE, 5000.0)?;
-        let size_ok = nominal + 1e-9 >= hydrant::min_nominal(&key);
+        let size_ok = nominal + 1e-9 >= rules.min_nominal(&key);
         ok = ok && size_ok;
         out.insert("size_ok".into(), json!(size_ok));
     }
     out.insert("ok".into(), json!(ok));
     out.insert(
         "ok_covers".into(),
-        json!("nozzle head within 100 mca, speed within 5 m/s and the pipe's size only: it is not a verdict on the design"),
+        json!(format!(
+            "nozzle head within {} mca, speed within {} m/s and the pipe's size only: it is not a verdict on the design",
+            rules.max_nozzle_head, rules.max_speed
+        )),
     );
     Ok(Value::Object(out))
 }
 
-fn water_size(_: &mut Session, p: &Value) -> R {
-    use crate::water::{self, FITTINGS, MAX_SPEED, MIN_USE_KPA, Method};
+fn water_size(s: &mut Session, p: &Value) -> R {
+    use crate::water::{self, Method};
     let c = "water_size";
+    // The project's rules: its plumbing code's Cold Water and Fixtures.
+    let rules = s.model.rules::<water::WaterRules>();
+    let library = s.model.rules::<crate::plumbing::Fixtures>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["fixtures", "flow", "method", "dn", "length", "fittings", "pressure", "rise"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -8748,20 +9381,21 @@ fn water_size(_: &mut Session, p: &Value) -> R {
             .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
             .ok_or_else(|| bad(c, format!("`{key}`: `{kind}` must be a whole number from 0 to 10000, got {n}")))
     };
-    let method = Method::parse(choice(c, p, "method", &["weights", "sum"], "weights")?).unwrap_or(Method::Weights);
+    let said = choice(c, p, "method", &["weights", "sum"], "weights")?;
+    let method = Method::parse(if absent(p.get("method")) { rules.flow_method.as_str() } else { said }).unwrap_or(Method::Weights);
     let flow = match (absent(p.get("flow")), p.get("fixtures")) {
         (false, f) if !absent(f) => return Err(bad(c, "give `flow` or `fixtures`, not both")),
         (false, _) => within(c, p, "flow", 0.0, f64::MIN_POSITIVE, 1000.0)?,
         (true, Some(Value::Object(f))) => {
             let mut list: Vec<(&str, f64)> = Vec::new();
             for (kind, n) in f {
-                if water::fixture(kind).is_none() {
-                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))));
+                if library.fixture(kind).is_none() {
+                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", library.kinds().join(", "))));
                 }
                 let n = whole("fixtures", kind, n)?;
                 list.push((kind.as_str(), n));
             }
-            water::design_flow(method, &list)
+            rules.design_flow(method, &list, &library)
         }
         (true, Some(v)) if !absent(Some(v)) => return Err(bad(c, format!("`fixtures` must be an object {{kind: count}}, got {v}"))),
         _ => 0.0,
@@ -8770,36 +9404,44 @@ fn water_size(_: &mut Session, p: &Value) -> R {
         return Err(bad(c, "`flow` (L/s) or `fixtures` is required"));
     }
     let dn = if absent(p.get("dn")) {
-        water::smallest_dn(flow).ok_or_else(|| bad(c, "no DN of PVC soldável (20 to 110) keeps the speed within 3 m/s at that flow"))?
+        rules.smallest_dn(flow).ok_or_else(|| {
+            let dns = rules.dns();
+            let (first, last) = (dns.first().copied().unwrap_or(0.0), dns.last().copied().unwrap_or(0.0));
+            bad(c, format!("no DN of the code's pipes ({first} to {last}) keeps the speed within {} m/s at that flow", rules.max_speed))
+        })?
     } else {
         let dn = within(c, p, "dn", 0.0, 0.0, 1000.0)?;
-        water::inside(dn).map(|_| dn).ok_or_else(|| bad(c, "`dn` must be one of 20, 25, 32, 40, 50, 60, 75, 85, 110 (PVC soldável)"))?
+        rules.inside(dn).map(|_| dn).ok_or_else(|| {
+            let dns: Vec<String> = rules.dns().iter().map(|d| d.to_string()).collect();
+            bad(c, format!("`dn` must be one of {} (the code's pipes)", dns.join(", ")))
+        })?
     };
-    let inside = water::inside(dn).ok_or_else(|| bad(c, "`dn` is not a PVC soldável size"))?;
+    let inside = rules.inside(dn).ok_or_else(|| bad(c, "`dn` is not one of the code's pipes"))?;
     let mut length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
     match p.get("fittings") {
         v if absent(v) => {}
         Some(Value::Object(f)) => {
             for (kind, n) in f {
-                let le = water::equivalent_length(dn, kind)
-                    .ok_or_else(|| bad(c, format!("`fittings`: no fitting `{kind}`, use {}", FITTINGS.join(", "))))?;
+                let le = rules
+                    .equivalent_length(dn, kind)
+                    .ok_or_else(|| bad(c, format!("`fittings`: no fitting `{kind}`, use {}", rules.fittings.join(", "))))?;
                 length += le * whole("fittings", kind, n)?;
             }
         }
         Some(v) => return Err(bad(c, format!("`fittings` must be an object {{fitting: count}}, got {v}"))),
         None => {}
     }
-    let (speed, j) = water::head_loss(flow, inside, water::EPS_PVC);
+    let (speed, j) = water::head_loss(flow, inside, rules.roughness);
     let loss = j * length * water::KPA_PER_M;
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
-    let mut ok = speed <= MAX_SPEED + 1e-9;
+    let mut ok = speed <= rules.max_speed + 1e-9;
     let end = if absent(p.get("pressure")) {
         None
     } else {
         let pressure = within(c, p, "pressure", 0.0, 0.0, 1.0e5)?;
         let rise = within(c, p, "rise", 0.0, -MAX_COORD, MAX_COORD)? / 1000.0;
         let end = pressure - loss - rise * water::KPA_PER_M;
-        ok = ok && end >= MIN_USE_KPA;
+        ok = ok && end >= rules.min_use_kpa;
         Some(end)
     };
     Ok(json!({
@@ -8816,7 +9458,7 @@ fn water_size(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn reservoir_size(_: &mut Session, p: &Value) -> R {
+fn reservoir_size(s: &mut Session, p: &Value) -> R {
     use crate::reservoir::{self, Input, Kind, Status};
     let c = "reservoir_size";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
@@ -8881,7 +9523,7 @@ fn reservoir_size(_: &mut Session, p: &Value) -> R {
         smallest_l: optional("smallest_l", 1.0e9)?,
         peak_l: optional("peak_l", 1.0e9)?,
     };
-    let r = reservoir::size(&input);
+    let r = reservoir::size_by(&input, &s.model.rules::<reservoir::ReservoirRules>());
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
     let pending: Vec<&str> = r.checks.iter().filter(|k| k.status == Status::Pending).map(|k| k.id).collect();
     Ok(json!({
@@ -8926,11 +9568,14 @@ fn reservoir_size(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn storm_size(_: &mut Session, p: &Value) -> R {
-    use crate::storm::{self, DEFAULT_RAIN, MIN_SLOPE, N_PVC, Off, Outlet};
+fn storm_size(s: &mut Session, p: &Value) -> R {
+    use crate::storm::{self, Off, Outlet};
     let c = "storm_size";
+    // The project's rules: its plumbing code's Storm Drainage, and the rain of its Site and Climate.
+    let rules = s.model.rules::<storm::StormRules>();
+    let site_rain = s.model.codes.site.rain_intensity.filter(|r| *r > 0.0);
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    const KEYS: &[&str] = &["kind", "area", "rainfall", "flow", "outlet", "gutter", "length", "slope", "inside"];
+    const KEYS: &[&str] = &["kind", "area", "rainfall", "flow", "outlet", "gutter", "length", "slope", "inside", "material"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
@@ -8938,8 +9583,10 @@ fn storm_size(_: &mut Session, p: &Value) -> R {
     if kind.is_empty() {
         return Err(bad(c, "`kind` (downpipe or horizontal) is required"));
     }
-    let mine: &[&str] = if kind == "downpipe" { &["outlet", "gutter", "length"] } else { &["slope", "inside"] };
-    if let Some(key) = ["outlet", "gutter", "length", "slope", "inside"].into_iter().find(|k| o.contains_key(*k) && !mine.contains(k)) {
+    let mine: &[&str] = if kind == "downpipe" { &["outlet", "gutter", "length"] } else { &["slope", "inside", "material"] };
+    if let Some(key) =
+        ["outlet", "gutter", "length", "slope", "inside", "material"].into_iter().find(|k| o.contains_key(*k) && !mine.contains(k))
+    {
         return Err(bad(c, format!("`{key}` does not apply to a {kind}")));
     }
     if !absent(p.get("flow"))
@@ -8948,62 +9595,79 @@ fn storm_size(_: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("`{key}` and `flow` are two ways to give the flow: give one")));
     }
     let outlet = Outlet::parse(choice(c, p, "outlet", &["edge", "funnel"], "edge")?).unwrap_or(Outlet::Edge);
+    // Where the rainfall comes from: given, the project's site, or the code's default for a small roof.
+    let mut rain_from = "given";
     let flow = if absent(p.get("flow")) {
         let area = within(c, p, "area", 0.0, 0.0, 1.0e7)?;
         if area <= 0.0 {
             return Err(bad(c, "`area` (m², the roof that drains) or `flow` (L/min) is required"));
         }
-        if area > storm::DEFAULT_RAIN_MAX_AREA && absent(p.get("rainfall")) {
+        let rain = if !absent(p.get("rainfall")) {
+            within(c, p, "rainfall", rules.default_rain, f64::MIN_POSITIVE, 1000.0)?
+        } else if let Some(r) = site_rain {
+            rain_from = "site";
+            r
+        } else if area > rules.default_rain_max_area {
             return Err(bad(
                 c,
                 format!(
-                    "`rainfall` (mm/h, from the standard's table for the place and return period) is required above {} m²: the default {DEFAULT_RAIN} mm/h is for smaller roofs",
-                    storm::DEFAULT_RAIN_MAX_AREA
+                    "`rainfall` (mm/h, from the standard's table for the place and return period) is required above {} m², or the project's Site and Climate (`site_climate`): the default {} mm/h is for smaller roofs",
+                    rules.default_rain_max_area, rules.default_rain
                 ),
             ));
-        }
-        storm::design_flow(within(c, p, "rainfall", DEFAULT_RAIN, f64::MIN_POSITIVE, 1000.0)?, area)
+        } else {
+            rain_from = "default";
+            rules.default_rain
+        };
+        storm::design_flow(rain, area)
     } else {
+        rain_from = "flow";
         within(c, p, "flow", 0.0, f64::MIN_POSITIVE, 1.0e9)?
     };
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
     if kind == "downpipe" {
         if absent(p.get("gutter")) {
-            return Err(bad(c, "`gutter` (the water depth in the gutter, 50 to 100 mm) is required"));
+            let [lo, hi] = rules.depth_range;
+            return Err(bad(c, format!("`gutter` (the water depth in the gutter, {lo} to {hi} mm) is required")));
         }
         if absent(p.get("length")) {
             return Err(bad(c, "`length` (the downpipe's, mm) is required"));
         }
         let (gutter, length) = (within(c, p, "gutter", 0.0, 0.0, 10_000.0)?, within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0);
-        let d = storm::downpipe_diameter(outlet, flow, gutter, length).map_err(|off| {
+        let d = storm::downpipe_by(&rules, outlet, flow, gutter, length).map_err(|off| {
+            let ([lo, hi], [_, most]) = (rules.depth_range, rules.diameter_axis);
             bad(
                 c,
                 match off {
-                    Off::Depth => "the water depth in the gutter must be 50 to 100 mm: the abacuses stop there",
-                    Off::Length => "a downpipe shorter than 0.3 m is off the abacuses",
-                    Off::Diameter => "more than 150 mm inside is off the abacuses of NBR 10844's Figure 3",
+                    Off::Depth => format!("the water depth in the gutter must be {lo} to {hi} mm: the abacuses stop there"),
+                    Off::Length => format!("a downpipe shorter than {} m is off the abacuses", rules.min_length),
+                    Off::Diameter => format!("more than {most} mm inside is off the code's downpipe abacuses"),
                 },
             )
         })?;
         return Ok(
-            json!({"flow_lpm": round(flow, 100.0), "inside_mm": round(d.diameter, 10.0), "by_depth_mm": round(d.by_depth, 10.0), "by_length_mm": round(d.by_length, 10.0)}),
+            json!({"flow_lpm": round(flow, 100.0), "inside_mm": round(d.diameter, 10.0), "by_depth_mm": round(d.by_depth, 10.0), "by_length_mm": round(d.by_length, 10.0), "rainfall_from": rain_from}),
         );
     }
     if absent(p.get("slope")) {
-        return Err(bad(c, "`slope` (a fraction, 0.005 at least) is required"));
+        return Err(bad(c, format!("`slope` (a fraction, {} at least) is required", rules.min_slope)));
     }
     let slope = within(c, p, "slope", 0.0, 0.0, 1.0)?;
-    if slope + 1e-9 < MIN_SLOPE {
-        return Err(bad(c, "`slope` must be 0.5 % (0.005) at least, NBR 10844"));
+    if slope + 1e-9 < rules.min_slope {
+        return Err(bad(c, format!("`slope` must be {} % ({}) at least, the code's least", rules.min_slope * 100.0, rules.min_slope)));
     }
-    let need = storm::horizontal_diameter(flow, slope, N_PVC);
+    let materials: Vec<&str> = rules.roughness.iter().map(|r| r.material.as_str()).collect();
+    let material = string(c, p, "material")?.unwrap_or_else(|| materials.first().map_or_else(String::new, |m| m.to_string()));
+    let n = rules.n(&material).ok_or_else(|| bad(c, format!("`material` is one of {}", materials.join(", "))))?;
+    let need = storm::horizontal_diameter(flow, slope, n);
     let inside = within(c, p, "inside", 0.0, 0.0, 10_000.0)?;
-    let carries = (inside > 0.0).then(|| storm::manning_flow(inside, slope, N_PVC));
+    let carries = (inside > 0.0).then(|| storm::manning_flow(inside, slope, n));
     Ok(json!({
         "flow_lpm": round(flow, 100.0),
         "inside_mm": round(need, 10.0),
         "carries_lpm": carries.map(|q| round(q, 10.0)),
         "ok": carries.map(|q| q + 1e-9 >= flow),
+        "rainfall_from": rain_from,
     }))
 }
 
@@ -9351,13 +10015,9 @@ fn off_layers(cad: &Cad) -> BTreeSet<String> {
 }
 
 /// A DXF drawing brought in, or one the project holds placed again, as an element: Revit's Import CAD (and Link CAD).
-fn import_mesh(s: &mut Session, p: &Value) -> R {
-    use crate::family::{Category, Family, Form, MAX_FORMS};
-    let c = "import_mesh";
-    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: an .obj, .gltf or .glb file"))?);
-    let level = level_param(c, &s.model, p, "level")?;
-    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
-    let format = ext(&path);
+/// The 3D model at `path` read as `import_mesh` reads it, an OBJ in `units` with `up` its file's up axis.
+fn read_mesh(c: &str, path: &Path, units: Option<&str>, up: Option<&str>) -> Result<crate::mesh_in::Read, String> {
+    let format = ext(path);
     let beside = |name: &str| -> Option<Vec<u8>> {
         // Only a file beside it or under it: a name that climbs out (`..`) or is absolute is not read.
         let rel = Path::new(name);
@@ -9369,18 +10029,18 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
         let f = dir.join(rel);
         (std::fs::metadata(&f).ok()?.len() <= crate::mesh_in::MAX_BYTES as u64).then(|| std::fs::read(f).ok()).flatten()
     };
-    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+    let size = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
     if size > crate::mesh_in::MAX_BYTES as u64 {
         return Err(bad(c, format!("{} is larger than {} MB", path.display(), crate::mesh_in::MAX_BYTES >> 20)));
     }
-    let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let read = match format.as_str() {
+    let bytes = std::fs::read(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    match format.as_str() {
         "obj" => {
-            let mm = match string(c, p, "units")? {
+            let mm = match units {
                 None => 1000.0,
-                Some(u) => crate::cloud::unit(&u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
+                Some(u) => crate::cloud::unit(u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
             };
-            let up_is_y = match string(c, p, "up")?.as_deref() {
+            let up_is_y = match up {
                 None | Some("y") => true,
                 Some("z") => false,
                 Some(other) => return Err(bad(c, format!("`up` is y or z, not {other}"))),
@@ -9389,14 +10049,63 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
             crate::mesh_in::obj(&text, mm, up_is_y, |lib| beside(lib).map(|b| String::from_utf8_lossy(&b).into_owned()))
         }
         "gltf" | "glb" => {
-            if !absent(p.get("units")) || !absent(p.get("up")) {
+            if units.is_some() || up.is_some() {
                 return Err(bad(c, "a glTF is in metres with y up, as its specification says: give no `units` or `up`"));
             }
             crate::mesh_in::gltf(&bytes, beside)
         }
         other => return Err(bad(c, format!("bring in an .obj, .gltf or .glb, not `.{other}`"))),
     }
-    .map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    .map_err(|e| bad(c, format!("{}: {e}", path.display())))
+}
+
+/// Where object `o` of a 3D model stands: the middle of its base, mm, rounded to a thousandth.
+fn mesh_origin(o: &crate::mesh_in::Object) -> [f64; 3] {
+    let pts = o.parts.iter().flat_map(|p| p.tris.iter().flatten());
+    let (lo, hi) = pts.fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), q| {
+        ([lo[0].min(q[0]), lo[1].min(q[1]), lo[2].min(q[2])], [hi[0].max(q[0]), hi[1].max(q[1]), hi[2].max(q[2])])
+    });
+    [((lo[0] + hi[0]) / 2.0 * 1e3).round() / 1e3, ((lo[1] + hi[1]) / 2.0 * 1e3).round() / 1e3, (lo[2] * 1e3).round() / 1e3]
+}
+
+/// The forms of object `o` about `origin`, a form for each of its materials; the colours the file gives them in `colours`.
+fn mesh_forms(o: &crate::mesh_in::Object, origin: [f64; 3], colours: &mut BTreeMap<String, [u8; 4]>) -> Vec<crate::family::Form> {
+    o.parts
+        .iter()
+        .map(|part| {
+            let material = if part.material.name == "Default" { String::new() } else { part.material.name.clone() };
+            if let (false, Some(rgba)) = (material.is_empty(), part.material.rgba) {
+                colours.entry(material.clone()).or_insert(rgba);
+            }
+            let local = |q: &[f64; 3]| [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0);
+            let mesh: Vec<[[f64; 3]; 3]> = part.tris.iter().map(|t| [local(&t[0]), local(&t[1]), local(&t[2])]).collect();
+            crate::family::Form { mesh: Arc::new(mesh), material, ..crate::family::Form::default() }
+        })
+        .collect()
+}
+
+/// The materials a 3D model named that the project hadn't (`known`), coloured as the file says.
+fn mesh_colours(m: &mut Model, known: &std::collections::HashSet<String>, colours: BTreeMap<String, [u8; 4]>) {
+    m.adopt_materials();
+    for (name, [r, g, b, a]) in colours.into_iter().filter(|(n, _)| !known.contains(n)) {
+        if let Some(x) = m.materials.get_mut(&name) {
+            x.color = [r, g, b];
+            x.transparency = (100 - u16::from(a) * 100 / 255) as u8;
+        }
+    }
+}
+
+fn import_mesh(s: &mut Session, p: &Value) -> R {
+    use crate::family::{Category, Family, MAX_FORMS};
+    let c = "import_mesh";
+    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: an .obj, .gltf or .glb file"))?);
+    let level = level_param(c, &s.model, p, "level")?;
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let (units, up) =
+        if absent(p.get("units")) && absent(p.get("up")) { (None, None) } else { (string(c, p, "units")?, string(c, p, "up")?) };
+    let read = read_mesh(c, &path, units.as_deref(), up.as_deref())?;
+    // Where it is kept, so Manage Links finds it whatever folder the project is later opened from.
+    let kept = std::path::absolute(&path).unwrap_or_else(|_| path.clone()).to_string_lossy().into_owned();
     let mut left_out: BTreeMap<String, usize> = read.left_out.clone();
     if read.objects.is_empty() {
         let why = if left_out.is_empty() { String::new() } else { format!(" (left out: {left_out:?})") };
@@ -9407,36 +10116,20 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
     let mut colours: BTreeMap<String, [u8; 4]> = BTreeMap::new();
     let (mut families, mut components) = (Vec::new(), Vec::new());
     for o in read.objects {
-        let pts = o.parts.iter().flat_map(|p| p.tris.iter().flatten());
-        let (lo, hi) = pts.fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), q| {
-            ([lo[0].min(q[0]), lo[1].min(q[1]), lo[2].min(q[2])], [hi[0].max(q[0]), hi[1].max(q[1]), hi[2].max(q[2])])
-        });
         // The family stands on its base, its middle on its origin; the component puts it back where the file has it.
-        let origin =
-            [((lo[0] + hi[0]) / 2.0 * 1e3).round() / 1e3, ((lo[1] + hi[1]) / 2.0 * 1e3).round() / 1e3, (lo[2] * 1e3).round() / 1e3];
+        let origin = mesh_origin(&o);
         if o.parts.len() > MAX_FORMS {
             *left_out.entry(format!("objects of more than {MAX_FORMS} materials")).or_default() += 1;
             continue;
         }
-        let forms: Vec<Form> = o
-            .parts
-            .iter()
-            .map(|part| {
-                let material = if part.material.name == "Default" { String::new() } else { part.material.name.clone() };
-                if let (false, Some(rgba)) = (material.is_empty(), part.material.rgba) {
-                    colours.entry(material.clone()).or_insert(rgba);
-                }
-                let local = |q: &[f64; 3]| [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0);
-                let mesh: Vec<[[f64; 3]; 3]> = part.tris.iter().map(|t| [local(&t[0]), local(&t[1]), local(&t[2])]).collect();
-                Form { mesh: Arc::new(mesh), material, ..Form::default() }
-            })
-            .collect();
+        let forms = mesh_forms(&o, origin, &mut colours);
         let stem = if o.name.trim().is_empty() { "Imported".to_string() } else { o.name.clone() };
         let name = (1..=1000)
             .map(|n| if n == 1 { stem.clone() } else { format!("{} ({n})", stem.chars().take(MAX_TEXT - 8).collect::<String>()) })
             .find(|n| !m.families.contains_key(n))
             .ok_or_else(|| bad(c, format!("the project has too many families named `{stem}`")))?;
-        let mut family = Family { category: Category::Generic, forms, ..Family::default() };
+        let source = crate::mesh_in::Source { path: kept.clone(), object: o.name.clone(), origin, units: units.clone(), up: up.clone() };
+        let mut family = Family { category: Category::Generic, forms, source: Some(source), ..Family::default() };
         family.types.insert("Imported".into(), BTreeMap::new());
         if let Err(why) = family.check(&|_| true) {
             *left_out.entry(format!("objects whose family can't be made ({why})")).or_default() += 1;
@@ -9463,14 +10156,207 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
     if components.is_empty() {
         return Err(bad(c, format!("nothing of {} could come in: {left_out:?}", path.display())));
     }
-    m.adopt_materials();
-    for (name, [r, g, b, a]) in colours.into_iter().filter(|(n, _)| !known.contains(n)) {
-        if let Some(x) = m.materials.get_mut(&name) {
-            x.color = [r, g, b];
-            x.transparency = (100 - u16::from(a) * 100 / 255) as u8;
+    mesh_colours(m, &known, colours);
+    Ok(json!({"components": components, "families": families, "left_out": left_out}))
+}
+
+/// Reload a 3D model, as Manage Links does: the file the families made from it name read again (or, with `from`, another
+/// file in its place), each family's forms rebuilt from its object about the point it stood on, so its components stay.
+fn reload_mesh(s: &mut Session, p: &Value) -> R {
+    let c = "reload_mesh";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, the 3D model's file as Manage Links lists it, is required"))?;
+    let from = string(c, p, "from")?;
+    let of_it: Vec<(String, crate::mesh_in::Source)> = s
+        .model
+        .families
+        .iter()
+        .filter_map(|(n, f)| f.source.as_ref().filter(|src| src.path == path).map(|src| (n.clone(), src.clone())))
+        .collect();
+    let Some((_, first)) = of_it.first() else {
+        return Err(bad(c, format!("no family of the project was made from `{path}`")));
+    };
+    let read_from = from.clone().unwrap_or_else(|| path.clone());
+    let read_path = PathBuf::from(&read_from);
+    let read = read_mesh(c, &read_path, first.units.as_deref(), first.up.as_deref())?;
+    let kept = match &from {
+        Some(_) => std::path::absolute(&read_path).unwrap_or(read_path.clone()).to_string_lossy().into_owned(),
+        None => path.clone(),
+    };
+    let m = s.model_mut();
+    let known: std::collections::HashSet<String> = m.materials.keys().cloned().collect();
+    let mut colours: BTreeMap<String, [u8; 4]> = BTreeMap::new();
+    let (mut reloaded, mut missing) = (Vec::new(), Vec::new());
+    for (name, source) in of_it {
+        let Some(object) = read.objects.iter().find(|o| o.name == source.object) else {
+            missing.push(name);
+            continue;
+        };
+        let forms = mesh_forms(object, source.origin, &mut colours);
+        let Some(family) = m.families.get_mut(&name) else { continue };
+        family.forms = forms;
+        family.source = Some(crate::mesh_in::Source { path: kept.clone(), ..source });
+        reloaded.push(name);
+    }
+    mesh_colours(m, &known, colours);
+    Ok(json!({"path": kept, "reloaded": reloaded, "missing": missing}))
+}
+
+/// A PDF's page read: its drawing, and its size on paper, mm.
+type PdfRead = (crate::pdf_in::PdfDoc, [f64; 2]);
+
+/// The picture of the PNG or JPEG file at `path`, as the project would hold it; of a PDF, a picture of its page `page` (the
+/// first unless given), and the page read as a drawing.
+fn read_picture(c: &str, s: &Session, path: &str, page: Option<u32>) -> Result<(crate::texture::Picture, Option<PdfRead>), String> {
+    let full = beside(s, path);
+    let pdf = ext(&full) == "pdf";
+    let most = if pdf { crate::pdf_in::MAX_BYTES } else { texture::MAX_BYTES as u64 };
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > most {
+        return Err(bad(c, format!("{} is {size} bytes; a file to place is up to {most}", full.display())));
+    }
+    if page.is_some() && !pdf {
+        return Err(bad(c, "`page` is a PDF's: give a .pdf, or no `page`"));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let name = full.file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned());
+    let at = |e: String| bad(c, format!("{}: {e}", full.display()));
+    if pdf {
+        let n = usize::try_from(page.unwrap_or(1)).unwrap_or(usize::MAX);
+        let (picture, mm, _) = crate::pdf_in::page(&name, bytes.clone(), n).map_err(at)?;
+        let doc = crate::pdf_in::PdfDoc::new(&name, bytes, page.unwrap_or(1)).map_err(at)?;
+        return Ok((picture, Some((doc, mm))));
+    }
+    Ok((Picture::import_at(&name, &bytes, texture::MAX_PLACED_SIDE).map_err(at)?, None))
+}
+
+/// `page`, a PDF's page from 1, if given.
+fn page_param(c: &str, p: &Value) -> Result<Option<u32>, String> {
+    match p.get("page") {
+        v if absent(v) => Ok(None),
+        Some(v) => match v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| *n >= 1) {
+            Some(n) => Ok(Some(n)),
+            None => Err(bad(c, format!("`page` is a PDF's page, from 1, not {v}"))),
+        },
+        None => Ok(None),
+    }
+}
+
+fn image(s: &mut Session, p: &Value) -> R {
+    let c = "image";
+    let m = &s.model;
+    let (level, view) = if absent(p.get("view")) {
+        (level_param(c, m, p, "level")?, None)
+    } else {
+        let (level, plan) = plan_param(c, m, p, "view")?;
+        if !absent(p.get("level")) && level_param(c, m, p, "level")? != level {
+            return Err(bad(c, "`view` is a plan of another level than `level`; give the one, or a plan of the other"));
+        }
+        (level, Some(plan.unwrap_or(level)))
+    };
+    let link = flag(c, p, "link")?;
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let page = page_param(c, p)?;
+    let (picture, path, paper) = match (string(c, p, "path")?, string(c, p, "picture")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, one the project holds; not both")),
+        (None, None) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, the id of one the project holds")),
+        (None, Some(id)) => {
+            if link {
+                return Err(bad(c, "`link` keeps the file a picture comes from: give `path`"));
+            }
+            let held = m.images.get(&id).cloned().ok_or_else(|| bad(c, format!("the project holds no picture `{id}`")))?;
+            (held, None, None)
+        }
+        (Some(path), None) => {
+            let (picture, pdf) = read_picture(c, s, &path, page)?;
+            (picture, link.then_some(path), pdf)
+        }
+    };
+    let (pdf, paper) = match paper {
+        Some((doc, mm)) => (Some(doc), Some(mm)),
+        None => (None, None),
+    };
+    let (w, h) = picture.size();
+    // A PDF's page at its paper's size at the plan's scale, so a drawing made at that scale lies true; a picture, 10 mm a pixel.
+    let width = match (num(c, p, "width")?, paper) {
+        (Some(w), _) => w,
+        (None, Some([mm, _])) => mm * crate::graphics::scale_of(&s.model, view.unwrap_or(level)),
+        (None, None) => w as f64 * 10.0,
+    };
+    let page = paper.map(|_| page.unwrap_or(1));
+    let id = picture.id();
+    let front = flag(c, p, "front")?;
+    let snaps = flag(c, p, "snaps")?;
+    let m = s.model_mut();
+    m.images.entry(id.clone()).or_insert(picture);
+    if let Some(doc) = pdf {
+        m.pdfs.entry(id.clone()).or_insert(doc);
+    }
+    let placed =
+        crate::model::PlacedImage { picture: id.clone(), level, at, width, view, path, page, front, flip_x: false, flip_y: false, snaps };
+    let height = placed.height(m);
+    let missing = m.pdfs.get(&id).map(|d| d.missing_fonts().to_vec()).unwrap_or_default();
+    let new = m.insert(Element::Image(placed));
+    let mut out = json!({"id": new, "picture": id, "size": [w, h], "width": width, "height": height});
+    if !missing.is_empty() {
+        out["missing_fonts"] = json!(missing);
+    }
+    Ok(out)
+}
+
+fn pdf_pages(s: &mut Session, p: &Value) -> R {
+    let c = "pdf_pages";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path`, a PDF, is required"))?;
+    let full = beside(s, &path);
+    let size = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if size > crate::pdf_in::MAX_BYTES {
+        return Err(bad(c, format!("{} is {size} bytes; a PDF is read up to {}", full.display(), crate::pdf_in::MAX_BYTES)));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let pages = crate::pdf_in::pages(bytes).map_err(|e| bad(c, format!("{}: {e}", full.display())))?;
+    let rows: Vec<Value> = pages.iter().enumerate().map(|(i, [w, h])| json!({"page": i + 1, "size": [w.round(), h.round()]})).collect();
+    Ok(json!({"pages": rows}))
+}
+
+fn reload_image(s: &mut Session, p: &Value) -> R {
+    let c = "reload_image";
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, an image, is required"))?;
+    let Some(Element::Image(im)) = s.model.elements.get(id) else { return Err(bad(c, format!("element {id} is not an image"))) };
+    let (old, was, was_page) = (im.picture.clone(), im.path.clone(), im.page);
+    let path = match (string(c, p, "path")?, &was) {
+        (Some(path), _) => path,
+        (None, Some(path)) => path.clone(),
+        (None, None) => return Err(bad(c, format!("image {id} isn't linked; give `path`, a file to reload it from"))),
+    };
+    // A PDF's page: the one asked for, else the one it was.
+    let pdf = ext(Path::new(&path)) == "pdf";
+    let page = if pdf { page_param(c, p)?.or(was_page).or(Some(1)) } else { page_param(c, p)? };
+    let (picture, pdf) = read_picture(c, s, &path, page)?;
+    let new = picture.id();
+    let m = s.model_mut();
+    m.images.entry(new.clone()).or_insert(picture);
+    if let Some((doc, _)) = pdf {
+        m.pdfs.insert(new.clone(), doc);
+    }
+    // Every image of the same picture and file reads it: Revit reloads a linked image's type, its instances with it.
+    let of_it: Vec<Id> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::Image(x) if x.picture == old && x.path == was)).map(|(id, _)| *id).collect();
+    for i in &of_it {
+        if let Some(Element::Image(x)) = m.elements.get_mut(*i) {
+            x.picture.clone_from(&new);
+            x.path = Some(path.clone());
+            x.page = page;
         }
     }
-    Ok(json!({"components": components, "families": families, "left_out": left_out}))
+    // The picture it showed, if nothing else shows it now.
+    if old != new && !m.library_uses().contains_key(&(LibKind::Picture, old.clone())) {
+        m.images.remove(&old);
+        m.pdfs.remove(&old);
+    }
+    let mut out = json!({"picture": new, "images": of_it});
+    if let Some(missing) = m.pdfs.get(&new).map(|d| d.missing_fonts()).filter(|f| !f.is_empty()) {
+        out["missing_fonts"] = json!(missing);
+    }
+    Ok(out)
 }
 
 fn import_cad(s: &mut Session, p: &Value) -> R {
@@ -9731,12 +10617,19 @@ fn reload_cad(s: &mut Session, p: &Value) -> R {
     let c = "reload_cad";
     let name = string(c, p, "cad")?.ok_or_else(|| bad(c, "`cad`, the name of a linked CAD drawing, is required"))?;
     let cad = s.model.cads.get(&name).cloned().ok_or_else(|| bad(c, format!("the project holds no CAD drawing named `{name}`")))?;
-    let path = cad
-        .path()
-        .map(str::to_string)
-        .ok_or_else(|| bad(c, format!("CAD drawing `{name}` isn't linked; bring it in again with `import_cad` and `link`")))?;
+    // Reload From: another file, which the drawing is linked to from then on.
+    let path = match string(c, p, "path")? {
+        Some(path) => path,
+        None => cad
+            .path()
+            .map(str::to_string)
+            .ok_or_else(|| bad(c, format!("CAD drawing `{name}` isn't linked; give `path`, a file to reload it from")))?,
+    };
     let (bytes, _) = read_dxf_file(s, &path).map_err(|e| bad(c, e))?;
     if cad.same_bytes(&bytes) {
+        if cad.path() != Some(path.as_str()) {
+            s.model_mut().cads.insert(name.clone(), cad.linked(Some(path)));
+        }
         return Ok(json!({"cad": name, "changed": false}));
     }
     let new = Cad::new(cad.source(), Some(path.clone()), bytes).map_err(|e| bad(c, format!("{path}: {e}")))?;
@@ -9803,7 +10696,17 @@ fn grid(s: &mut Session, p: &Value) -> R {
         Some(n) => n,
         None => next_grid_name(&s.model),
     };
-    let id = s.model_mut().insert(Element::Grid(Grid { name: name.clone(), start, end }));
+    let type_name = match name_param(c, p, "type")? {
+        Some(t) => {
+            if !s.model.grid_types.contains_key(&t) {
+                let there: Vec<&str> = s.model.grid_types.keys().map(String::as_str).collect();
+                return Err(bad(c, format!("there's no grid type `{t}` (there are: {})", there.join(", "))));
+            }
+            t
+        }
+        None => s.model.default_type("grid").map(String::from).unwrap_or_default(),
+    };
+    let id = s.model_mut().insert(Element::Grid(Grid { name: name.clone(), type_name, start, end }));
     Ok(json!({"id": id, "name": name}))
 }
 
@@ -10392,6 +11295,7 @@ fn voltage(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("voltage `{name}` is one distribution system `{system}` supplies: change or delete that first")));
         }
         m.voltages.remove(&name);
+        crate::electrical::to_codes(m, "voltages", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.voltages.get(&name).cloned();
@@ -10416,7 +11320,16 @@ fn voltage(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("there's already a voltage `{to}`")));
             }
             m.voltages.remove(&name);
+            let supplying: Vec<String> =
+                m.distribution_systems.iter().filter(|(_, d)| d.voltage_names().any(|v| *v == name)).map(|(k, _)| k.clone()).collect();
             rename_entry(m, &LibKind::Voltage, &name, &to);
+            crate::electrical::to_codes(m, "voltages", &name, None);
+            // The systems that name it name it again in the code, as they do in the project.
+            for k in supplying {
+                if let Some(d) = m.distribution_systems.get(&k).cloned() {
+                    crate::electrical::to_codes(m, "distribution_systems", &k, Some(json!(d)));
+                }
+            }
             to
         }
         _ => name,
@@ -10426,6 +11339,7 @@ fn voltage(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_VOLTAGES} voltages")));
     }
     m.voltages.insert(name.clone(), v.clone());
+    crate::electrical::to_codes(m, "voltages", &name, Some(json!(v)));
     Ok(json!({"name": name, "voltage": v}))
 }
 
@@ -10447,6 +11361,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("distribution system `{name}` is the one board {first}{more} is on: change that first")));
         }
         m.distribution_systems.remove(&name);
+        crate::electrical::to_codes(m, "distribution_systems", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.distribution_systems.get(&name).cloned();
@@ -10476,6 +11391,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
             }
             m.distribution_systems.remove(&name);
             rename_entry(m, &LibKind::DistributionSystem, &name, &to);
+            crate::electrical::to_codes(m, "distribution_systems", &name, None);
             to
         }
         _ => name,
@@ -10485,6 +11401,7 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_SYSTEMS} distribution systems")));
     }
     m.distribution_systems.insert(name.clone(), d.clone());
+    crate::electrical::to_codes(m, "distribution_systems", &name, Some(json!(d)));
     Ok(json!({"name": name, "distribution_system": d}))
 }
 
@@ -10500,6 +11417,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
         if m.wire_types.remove(&name).is_none() {
             return Err(bad(c, format!("there's no wire type `{name}`")));
         }
+        crate::electrical::to_codes(m, "wire_types", &name, None);
         return Ok(json!({"deleted": name}));
     }
     let was = m.wire_types.get(&name).cloned();
@@ -10535,6 +11453,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
             }
             m.wire_types.remove(&name);
             rename_entry(m, &LibKind::WireType, &name, &to);
+            crate::electrical::to_codes(m, "wire_types", &name, None);
             to
         }
         _ => name,
@@ -10544,6 +11463,7 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the project holds up to {MAX_WIRE_TYPES} wire types")));
     }
     m.wire_types.insert(name.clone(), w.clone());
+    crate::electrical::to_codes(m, "wire_types", &name, Some(json!(w)));
     Ok(json!({"name": name, "wire_type": w}))
 }
 
@@ -13197,6 +14117,79 @@ fn dimension_type(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "type": t}))
 }
 
+fn grid_type(s: &mut Session, p: &Value) -> R {
+    use crate::grids::GridType;
+    let c = "grid_type";
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({
+            "types": s.model.grid_types,
+            "patterns": s.model.line_patterns,
+            "fonts": crate::text::families(),
+        }));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if let Some((id, _)) = m.elements.iter().find(|(_, e)| matches!(e, Element::Grid(g) if g.type_name == name)) {
+            return Err(bad(c, format!("grid {id} is of `{name}`; give it another type first")));
+        }
+        if !m.grid_types.contains_key(&name) {
+            return Err(bad(c, format!("there's no grid type `{name}`")));
+        }
+        if m.grid_types.len() <= 1 {
+            return Err(bad(c, "it's the last grid type: a grid needs one; make another first"));
+        }
+        m.grid_types.remove(&name);
+        return Ok(json!({"deleted": name}));
+    }
+    let t = match (m.grid_types.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => {
+            m.grid_types.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no grid type `{like}` to start from")))?
+        }
+        (None, None) => GridType::default(),
+    };
+    // What it is, with the values given over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e.to_string()))?;
+    let mut font = None;
+    if let Some(o) = v.as_object_mut() {
+        for (key, value) in p.as_object().into_iter().flatten() {
+            match key.as_str() {
+                "name" | "like" | "rename" | "delete" => {}
+                "font" => font = name_param(c, p, "font")?,
+                "color" if !value.is_null() => {
+                    let rgb =
+                        colour(value).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {value}")))?;
+                    o.insert(key.clone(), json!(rgb));
+                }
+                _ => {
+                    o.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+    let mut t: GridType = serde_json::from_value(v).map_err(|e| bad(c, e.to_string()))?;
+    if let Some(f) = font.filter(|f| !f.trim().eq_ignore_ascii_case(t.font.trim())) {
+        t.font = crate::text::known(&f)
+            .ok_or_else(|| bad(c, format!("this system has no font `{f}`; `grid_type` without `name` lists them")))?;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.grid_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a grid type `{to}`")));
+            }
+            m.grid_types.remove(&name);
+            rename_entry(m, &LibKind::GridType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name, &m.line_patterns).map_err(|e| bad(c, e))?;
+    if m.grid_types.get(&name) != Some(&t) {
+        m.grid_types.insert(name.clone(), t.clone());
+    }
+    Ok(json!({"name": name, "type": t}))
+}
+
 fn spot(s: &mut Session, p: &Value) -> R {
     let c = "spot";
     let m = &s.model;
@@ -13805,6 +14798,8 @@ fn sides(c: &str, s: &mut Session, p: &Value, id: Id, level: Guid) -> Result<Vec
 fn ramp(s: &mut Session, p: &Value) -> R {
     let c = "ramp";
     let m = &s.model;
+    // What a new ramp starts with: the project's code's.
+    let new_ramp = m.rules::<crate::codes::checks::RampRules>();
     let start = point_req(c, p, "start")?;
     let angle = climb(c, p, start)?;
     let level = level_param(c, m, p, "level")?;
@@ -13816,8 +14811,8 @@ fn ramp(s: &mut Session, p: &Value) -> R {
         height,
         start,
         angle,
-        width: num(c, p, "width")?.unwrap_or(RAMP_WIDTH),
-        slope: num(c, p, "slope")?.unwrap_or(RAMP_SLOPE),
+        width: num(c, p, "width")?.unwrap_or(new_ramp.width),
+        slope: num(c, p, "slope")?.unwrap_or(new_ramp.slope),
         landings: landings_param(c, p)?,
     };
     let length: f64 = stairs::ramp(m, &r).runs.iter().map(|r| r.length).sum();
@@ -15405,6 +16400,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         &[
             "name",
             "like",
+            "starter",
             "rename",
             "delete",
             "path",
@@ -15414,15 +16410,37 @@ fn title_block(s: &mut Session, p: &Value) -> R {
             "font",
             "drawing_area",
             "template_border",
+            "sizes",
             "lines",
             "fills",
             "texts",
             "fields",
         ],
     )?;
-    let Some(name) = name_param(c, p, "name")? else {
-        let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
-        return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
+    // A starter, by name: a ready-made title block, its labels in the project's language, to start from.
+    let starter = match string(c, p, "starter")? {
+        None => None,
+        Some(n) => {
+            let made = crate::title_starters::make(&n, s.model.language).ok_or_else(|| {
+                bad(c, format!("there's no starter `{n}`; the starters are {}", crate::title_starters::names().join(", ")))
+            })?;
+            Some((n.trim().to_string(), made))
+        }
+    };
+    let name = match (name_param(c, p, "name")?, &starter) {
+        (Some(name), _) => name,
+        (None, Some((n, _))) => {
+            crate::title_starters::names().into_iter().find(|s| s.eq_ignore_ascii_case(n)).map_or_else(|| n.clone(), str::to_string)
+        }
+        (None, None) => {
+            let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
+            return Ok(json!({
+                "title_blocks": s.model.title_blocks,
+                "values": s.model.title_values,
+                "auto": auto,
+                "starters": crate::title_starters::names(),
+            }));
+        }
     };
     if flag(c, p, "delete")? {
         let m = &s.model;
@@ -15439,12 +16457,23 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"deleted": name}));
     }
     let m = &s.model;
-    let mut t = match (m.title_blocks.get(&name), name_param(c, p, "like")?) {
-        (Some(t), _) => t.clone(),
-        (None, Some(like)) => {
+    let like = name_param(c, p, "like")?;
+    if starter.is_some() && like.is_some() {
+        return Err(bad(c, "`starter` and `like` both say what to start from; give one"));
+    }
+    let mut t = match (m.title_blocks.get(&name), like, starter) {
+        (Some(_), _, Some(_)) => {
+            return Err(bad(
+                c,
+                format!("there's already a title block `{name}`; give the starter another `name`, or change that one without `starter`"),
+            ));
+        }
+        (Some(t), ..) => t.clone(),
+        (None, Some(like), _) => {
             m.title_blocks.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no title block `{like}` to start from")))?
         }
-        (None, None) => TitleBlock::default(),
+        (None, None, Some((_, made))) => made,
+        (None, None, None) => TitleBlock::default(),
     };
     let mut notes = Vec::new();
     let mut left_out = BTreeMap::new();
@@ -15464,7 +16493,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         }
         // The fields it had keep their labels, whose and defaults where the drawing still names them.
         let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
-        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, ..read };
+        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, sizes: t.sizes.clone(), ..read };
         left_out = out;
     } else if p.get("units").is_some() {
         return Err(bad(c, "`units` is the unit of the DXF `path` names"));
@@ -15472,7 +16501,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     // What's given goes over it, read as a file reads one: a key it hasn't is an error.
     let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
     if let Some(o) = v.as_object_mut() {
-        for key in ["width", "height", "font", "drawing_area", "template_border", "lines", "fills", "texts", "fields"] {
+        for key in ["width", "height", "font", "drawing_area", "template_border", "sizes", "lines", "fills", "texts", "fields"] {
             match p.get(key) {
                 None => {}
                 Some(Value::Null) => {
@@ -15488,6 +16517,15 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     for f in &mut t.fields {
         f.key = f.key.trim().to_ascii_uppercase();
     }
+    // Each paper once, as the sheets name it.
+    let mut papers: Vec<String> = Vec::new();
+    for z in &t.sizes {
+        let z = crate::model::paper_name(z);
+        if !papers.contains(&z) {
+            papers.push(z);
+        }
+    }
+    t.sizes = papers;
     let m = s.model_mut();
     let name = match name_param(c, p, "rename")? {
         Some(to) if to != name => {
@@ -15504,6 +16542,16 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     let undefined = t.undefined();
     if m.title_blocks.get(&name) != Some(&t) {
         m.title_blocks.insert(name.clone(), t.clone());
+    }
+    // A paper another title block lists too: of the two, the one named first is drawn on sheets that name none.
+    for z in &t.sizes {
+        if let Some((other, _)) =
+            m.title_blocks.iter().find(|(n, o)| **n != name && o.sizes.iter().any(|x| crate::model::paper_name(x) == *z))
+        {
+            notes.push(format!(
+                "paper {z} is also listed by title block `{other}`; of the two, the one named first is drawn on sheets that name none"
+            ));
+        }
     }
     let mut out = json!({"name": name, "title_block": t});
     if !undefined.is_empty() {
@@ -18418,6 +19466,21 @@ fn modify(s: &mut Session, p: &Value) -> R {
         for (k, val) in fields {
             let val = match k.as_str() {
                 "id" | "ids" => continue,
+                // An image's height, and a PDF's scale (1 : n, its paper's size n times), set its width: it keeps its aspect.
+                "height" | "scale" if matches!(e, Element::Image(_)) => {
+                    let Element::Image(im) = e else { continue };
+                    let n = val
+                        .as_f64()
+                        .filter(|n| n.is_finite() && *n > 0.0)
+                        .ok_or_else(|| bad(c, format!("image {id}: `{k}` is a number above 0, not {val}")))?;
+                    let width = match k.as_str() {
+                        "height" => im.height(m).filter(|h| *h > 0.0).map(|h| n * im.width / h),
+                        _ => im.paper(m).map(|[w, _]| n * w),
+                    };
+                    let width = width.ok_or_else(|| bad(c, format!("image {id} is no PDF's page: give its `width`")))?;
+                    obj.insert("width".into(), json!(width));
+                    continue;
+                }
                 // A component's Offset from Host: its host's offset on a plane, else its height over its level. Its Work Plane
                 // is what it is on, said, changed with `edit_work_plane`.
                 "offset_from_host" if matches!(e, Element::Component(_)) => {
@@ -18660,6 +19723,25 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 ));
             }
             (ci.at, ci.angle) = turned(f, ci.at, ci.angle);
+        }
+        Element::Image(im) => {
+            // It stands square to the plan: turned, its middle goes round and it stays upright. Mirrored about an upright
+            // line it flips left to right, about a level one top to bottom.
+            if mo.mirror {
+                let (o, x, y) = (f(im.at), f(im.at + P2(1.0, 0.0)), f(im.at + P2(0.0, 1.0)));
+                let (ex, ey) = (x - o, y - o);
+                if (ex.0 + 1.0).abs() < 1e-6 && (ey.1 - 1.0).abs() < 1e-6 {
+                    im.flip_x = !im.flip_x;
+                } else if (ex.0 - 1.0).abs() < 1e-6 && (ey.1 + 1.0).abs() < 1e-6 {
+                    im.flip_y = !im.flip_y;
+                } else {
+                    return Err(bad(
+                        c,
+                        format!("image {id} is mirrored about an upright or a level line only: it stands square to the plan"),
+                    ));
+                }
+            }
+            im.at = f(im.at);
         }
         Element::PointCloud(pc) => {
             if mo.mirror {
@@ -19073,9 +20155,12 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 walls.insert(id, w);
             }
             Element::Door(o) | Element::Window(o) if moving_guids.contains(&o.host) => {}
-            // Moving one end of a run: the other end stays where it was, as a wall's does.
+            // Moving one end of a run or a grid: the other end stays where it was, as a wall's does.
             mut e => {
                 if let (Some(at_start), Some(me), Some(old)) = (end, e.run_mut(), m.run_of(id)) {
+                    if at_start { me.end = old.end } else { me.start = old.start }
+                }
+                if let (Some(at_start), Element::Grid(me), Some(Element::Grid(old))) = (end, &mut e, m.elements.get(id)) {
                     if at_start { me.end = old.end } else { me.start = old.start }
                 }
                 if let (Some(before), Some(after)) = (m.run_of(id).cloned(), e.run().cloned()) {
@@ -20264,8 +21349,12 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
             }
         }
     };
-    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
+    let is_grid = |one: &Id| matches!(s.model.elements.get(*one), Some(Element::Grid(_)));
+    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some() || is_grid(one)) {
+        return Err(bad(
+            c,
+            "`end` moves an end of one wall or one run, or of one grid, or a part of one section or elevation; give `ids` one of those",
+        ));
     }
     // A group goes with its members.
     let taken = if end.is_none() { crate::groups::with_members(&s.model, &ids) } else { ids.clone() };
@@ -20278,6 +21367,125 @@ fn copy(s: &mut Session, p: &Value) -> R {
     let ids = ids_param(c, &s.model, p)?;
     let by = point_req(c, p, "by")?;
     duplicate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false })
+}
+
+fn copy_to_clipboard(s: &mut Session, p: &Value) -> R {
+    let c = "copy_to_clipboard";
+    only(c, p, &["ids", "id", "view"])?;
+    let (made, _) = clipboard_of(c, s, p)?;
+    Ok(json!({"clipboard": &*made.text, "count": made.count, "left_out": made.left_out}))
+}
+
+/// What `copy_to_clipboard` and `cut_to_clipboard` keep: the clipboard of `ids` in `view`, kept by the session; and the ids
+/// it holds.
+fn clipboard_of(c: &str, s: &mut Session, p: &Value) -> Result<(crate::clipboard::Copied, Vec<Id>), String> {
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    let view = match p.get("view") {
+        v if absent(v) => None,
+        Some(_) => Some(view_param(c, m, p, true)?),
+        None => None,
+    };
+    let made = crate::clipboard::copy(m, &ids, view).map_err(|e| bad(c, e))?;
+    let held = crate::clipboard::read(&made.text).map(|clip| clip.source.ids).map_err(|e| bad(c, e))?;
+    s.clipboard = Some(Arc::from(made.text.as_str()));
+    Ok((made, held))
+}
+
+fn cut_to_clipboard(s: &mut Session, p: &Value) -> R {
+    let c = "cut_to_clipboard";
+    only(c, p, &["ids", "id", "view"])?;
+    let (made, held) = clipboard_of(c, s, p)?;
+    refuse_pinned(c, &s.model, &held, "cut")?;
+    delete(s, &json!({"ids": held})).map_err(|e| bad(c, e.trim_start_matches("delete: ")))?;
+    Ok(json!({"clipboard": &*made.text, "count": made.count, "left_out": made.left_out, "deleted": held}))
+}
+
+fn paste(s: &mut Session, p: &Value) -> R {
+    use crate::clipboard::Mode;
+    let c = "paste";
+    only(c, p, &["clipboard", "mode", "view", "at", "by", "levels", "level", "views"])?;
+    let text: Arc<str> = match p.get("clipboard") {
+        v if absent(v) => {
+            s.clipboard.clone().ok_or_else(|| bad(c, "the clipboard is empty: `copy_to_clipboard` first, or give `clipboard`"))?
+        }
+        Some(Value::String(t)) => Arc::from(t.as_str()),
+        Some(_) => return Err(bad(c, "`clipboard` is the text `copy_to_clipboard` gave")),
+        None => return Err(bad(c, "the clipboard is empty")),
+    };
+    let clip = crate::clipboard::read(&text).map_err(|e| bad(c, e))?;
+    // The default 3D view by its name: made when nothing has made it yet, as a camera or a section box makes it.
+    let default_3d = matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    let view = match p.get("view") {
+        _ if default_3d => Some(match s.model.default_3d() {
+            Some(v) => v,
+            None => s.model_mut().insert(Element::View3D(View3D::default_view())),
+        }),
+        v if absent(v) => None,
+        Some(_) => Some(view_param(c, &s.model, p, true)?),
+        None => None,
+    };
+    let m = &s.model;
+    let (at, by) = (point_opt(c, p, "at")?, point_opt(c, p, "by")?);
+    let level_of = |v: &Value| -> Result<Guid, String> {
+        let id = match v {
+            Value::String(n) if Guid::parse(n).is_none() => m
+                .levels()
+                .into_iter()
+                .find(|(_, l)| l.name == *n)
+                .map(|(id, _)| id)
+                .ok_or_else(|| bad(c, format!("no level named `{n}`")))?,
+            v => element_id(c, m, v)?,
+        };
+        m.level(id).map(|_| m.guid(id)).ok_or_else(|| bad(c, format!("{id} is not a level")))
+    };
+    let list = |key: &str| -> Result<&Vec<Value>, String> {
+        match p.get(key) {
+            Some(Value::Array(a)) if a.len() <= MAX_POINTS => Ok(a),
+            _ => Err(bad(c, format!("`{key}` is a list"))),
+        }
+    };
+    let mode = match string(c, p, "mode")?.as_deref() {
+        None if at.is_none() && by.is_none() => {
+            return Err(bad(
+                c,
+                "give `mode` (manual, current_view, same_place, levels, views or picked_level), or `at` or `by` to paste by hand",
+            ));
+        }
+        None | Some("manual") => {
+            let by = match (at, by) {
+                (_, Some(by)) => by,
+                (Some(at), None) => {
+                    let v = view.ok_or_else(|| bad(c, "a paste by hand needs `view`"))?;
+                    let frame = crate::clipboard::Frame::of(m, v).ok_or_else(|| bad(c, format!("{v} is not a view a paste goes into")))?;
+                    let middle = clip.middle_in(&frame).ok_or_else(|| bad(c, "nothing on the clipboard has a place in that view"))?;
+                    at - middle
+                }
+                (None, None) => return Err(bad(c, "a paste by hand needs `at` or `by`")),
+            };
+            if !(by.0.is_finite() && by.1.is_finite() && by.0.abs() <= MAX_COORD && by.1.abs() <= MAX_COORD) {
+                return Err(bad(c, "`at` or `by` is out of range"));
+            }
+            let level = match p.get("level") {
+                v if absent(v) => None,
+                Some(v) => Some(level_of(v)?),
+                None => None,
+            };
+            Mode::Manual { by: micron(by), level }
+        }
+        Some("current_view") => Mode::CurrentView,
+        Some("same_place") => Mode::SamePlace,
+        Some("levels") => Mode::Levels(list("levels")?.iter().map(level_of).collect::<Result<_, _>>()?),
+        Some("picked_level") => Mode::PickedLevel(level_of(p.get("level").ok_or_else(|| bad(c, "`picked_level` needs `level`"))?)?),
+        Some("views") => Mode::Views(
+            list("views")?.iter().map(|v| view_param(c, m, &json!({"view": v}), true).map(|id| m.guid(id))).collect::<Result<_, _>>()?,
+        ),
+        Some(other) => {
+            return Err(bad(c, format!("`mode` is manual, current_view, same_place, levels, views or picked_level, not `{other}`")));
+        }
+    };
+    let made = crate::clipboard::paste(s.model_mut(), &clip, &mode, view).map_err(|e| bad(c, e))?;
+    Ok(json!({"ids": made.ids, "left_out": made.left_out}))
 }
 
 fn rotate(s: &mut Session, p: &Value) -> R {
@@ -20747,7 +21955,9 @@ fn entry_of(c: &str, m: &Model, p: &Value) -> Result<(LibKind, String), String> 
             if !names.contains(&ty.as_str()) {
                 return Err(bad(c, format!("there is no {cat} type `{ty}`{}", known_names(&names))));
             }
-            Ok((LibKind::Type(cat), ty))
+            // A grid's type is a library entry of its own, not a `type:grid` of the model's types.
+            let kind = if cat == "grid" { LibKind::GridType } else { LibKind::Type(cat) };
+            Ok((kind, ty))
         }
         (None, Some(f), None) => {
             if !m.families.contains_key(&f) {
@@ -20783,6 +21993,9 @@ fn delete_type(s: &mut Session, p: &Value) -> R {
     match &kind {
         LibKind::Type(cat) if m.type_names(cat).len() <= 1 => {
             return Err(bad(c, format!("`{name}` is the last {label}: a {cat} needs one; make another first")));
+        }
+        LibKind::GridType if m.grid_types.len() <= 1 => {
+            return Err(bad(c, format!("`{name}` is the last {label}: a grid needs one; make another first")));
         }
         LibKind::FamilyType if name.split_once(": ").and_then(|(f, _)| m.families.get(f)).is_some_and(|f| f.types.len() <= 1) => {
             return Err(bad(c, format!("`{name}` is its family's last type: delete the family")));
@@ -21283,219 +22496,27 @@ fn standard(s: &mut Session, p: &Value) -> R {
 }
 
 fn building_code(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code";
-    only(c, p, &["set", "keep_rules", "stairs", "electrical", "reset", "save", "delete"])?;
-    let names: Vec<String> = codes::codes().iter().chain(&s.model.building_codes).map(|k| k.code.clone()).collect();
-    let set = match p.get("set") {
-        v if absent(v) => None,
-        Some(Value::String(t)) if names.contains(t) => Some(t.clone()),
-        // The one entry the two Brazilian standards had before they were told apart: NBR 9050's now.
-        Some(Value::String(t)) if t == "nbr" => Some("nbr-9050".to_string()),
-        Some(v) => return Err(bad(c, format!("`set` is one of {}, not {v}", names.join(", ")))),
-        None => None,
-    };
-    let save = string(c, p, "save")?.map(|n| codes::own_name(&n).map_err(|e| bad(c, e))).transpose()?;
-    let delete = string(c, p, "delete")?;
-    if let Some(d) = &delete
-        && !s.model.building_codes.iter().any(|k| k.code == *d)
-    {
-        return Err(bad(c, format!("`delete` takes one of the project's own codes away, and `{d}` is none of them")));
-    }
-    let (keep, reset) = (flag(c, p, "keep_rules")?, flag(c, p, "reset")?);
-    let patch = match p.get("stairs") {
-        v if absent(v) => None,
-        Some(Value::Object(o)) => Some(o),
-        Some(_) => return Err(bad(c, "`stairs` is the rules to change, by name: {width_min: 1100, …}")),
-        None => None,
-    };
-    let named = match p.get("electrical") {
-        v if absent(v) => None,
-        Some(Value::Object(o)) => Some(o),
-        Some(_) => {
-            return Err(bad(c, "`electrical` is the methods to name, by command: {demand: \"CPFL\", building_demand: \"NEC 220.84\"}"));
-        }
-        None => None,
-    };
-    if reset && (patch.is_some() || named.is_some()) {
-        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs` or `electrical`"));
-    }
-    // The project's own rules after this: kept across a change of code only when asked, then changed by `stairs`.
-    let mut own = if reset || (set.is_some() && !keep) { None } else { s.model.stair_rules.clone() };
-    let mut own_methods = if reset || (set.is_some() && !keep) { None } else { s.model.electrical_methods.clone() };
-    let code = set.clone().or_else(|| s.model.building_code.clone());
-    if let Some(named) = named {
-        let base = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
-        let mut methods = own_methods.clone().unwrap_or_else(|| base.electrical.clone());
-        for (k, v) in named {
-            let name = match v {
-                Value::Null => None,
-                Value::String(t) => Some(t.trim()),
-                _ => return Err(bad(c, format!("`electrical.{k}` is a method's name, or null to leave it to the command"))),
-            };
-            match k.as_str() {
-                "demand" => {
-                    let known = crate::demand::utilities();
-                    methods.demand = match name {
-                        Some(u) if !known.contains(&u) => {
-                            return Err(bad(c, format!("`demand` is a utility `demand` has tables for: {}", known.join(", "))));
-                        }
-                        u => u.map(String::from),
-                    };
-                }
-                "building_demand" => {
-                    let all = || crate::building_demand::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
-                    methods.building_demand = match name.map(|n| (n, crate::building_demand::method(n))) {
-                        Some((n, None)) => return Err(bad(c, format!("no method `{n}` in data/building-demand.json: {}", all()))),
-                        found => found.and_then(|(_, m)| m).map(|m| m.standard.clone()),
-                    };
-                }
-                _ => return Err(bad(c, format!("`electrical.{k}` names no command's method; they are demand and building_demand"))),
-            }
-        }
-        own_methods = Some(methods);
-    }
-    if let Some(patch) = patch {
-        let base = own.as_ref().unwrap_or(&code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic()).stairs);
-        let Ok(Value::Object(mut all)) = serde_json::to_value(base) else { return Err(bad(c, "the rules could not be read")) };
-        for (k, v) in patch {
-            if !codes::ORDER.contains(&k.as_str()) {
-                return Err(bad(c, format!("`{k}` is no stair rule; they are {}", codes::ORDER.join(", "))));
-            }
-            all.insert(k.clone(), v.clone());
-        }
-        let rules: codes::StairRules = serde_json::from_value(Value::Object(all)).map_err(|e| bad(c, format!("`stairs`: {e}")))?;
-        rules.check().map_err(|e| bad(c, e))?;
-        own = Some(rules);
-    }
-    let mut code = code;
-    let mut kept = s.model.building_codes.clone();
-    // The rules in force, saved as a code of the project's own, which it is then held to.
-    if let Some(name) = save {
-        let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
-        let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
-        let stairs = own.take().unwrap_or_else(|| from.stairs.clone());
-        let electrical = own_methods.take().unwrap_or_else(|| from.electrical.clone());
-        // A rule kept is still from where the code it came from says; one changed is the project's.
-        let mut sources = from.sources.clone();
-        for rule in stairs.changed(&from.stairs) {
-            sources.insert(rule, format!("{name}: the project's own number"));
-        }
-        let new = codes::BuildingCode {
-            code: name.clone(),
-            name: name.clone(),
-            region: from.region.clone(),
-            references: from.references.clone(),
-            note: format!("The project's own, based on {}.", codes::code(&based_on).map_or(based_on.as_str(), |k| k.name.as_str())),
-            based_on,
-            sources,
-            checked: String::new(),
-            country: from.country.clone(),
-            stairs,
-            electrical,
-        };
-        kept.retain(|k| k.code != name);
-        kept.push(new);
-        code = Some(name);
-    }
-    // One taken away: a project held to it keeps its rules, as its own, under the code it was based on.
-    if let Some(name) = delete
-        && let Some(i) = kept.iter().position(|k| k.code == name)
-    {
-        let gone = kept.remove(i);
-        if code.as_deref() == Some(name.as_str()) {
-            own = own.or(Some(gone.stairs));
-            own_methods = own_methods.or(Some(gone.electrical));
-            code = codes::code(&gone.based_on).map(|k| k.code.clone());
-        }
-    }
-    // Rules and methods that are the code's own are not the project's.
-    let its = code.as_deref().and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k))).unwrap_or(codes::generic());
-    if own.as_ref() == Some(&its.stairs) {
-        own = None;
-    }
-    if own_methods.as_ref() == Some(&its.electrical) {
-        own_methods = None;
-    }
-    if own != s.model.stair_rules
-        || own_methods != s.model.electrical_methods
-        || code != s.model.building_code
-        || kept != s.model.building_codes
-    {
-        let m = s.model_mut();
-        m.stair_rules = own;
-        m.electrical_methods = own_methods;
-        m.building_code = code;
-        m.building_codes = kept;
-    }
-    let m = &s.model;
-    let code = m.building_code();
-    Ok(json!({
-        "code": code.code,
-        "name": code.name,
-        "region": code.region,
-        "references": code.references,
-        "note": code.note,
-        "stairs": m.stair_rules(),
-        "changed": m.stair_rules().changed(&code.stairs),
-        "electrical": m.electrical_methods(),
-        "custom": m.building_codes.iter().any(|k| k.code == code.code),
-        "based_on": code.based_on,
-        "all": codes::codes().iter().map(|k| (k, false)).chain(m.building_codes.iter().map(|k| (k, true))).map(|(k, own)| json!({
-            "code": k.code, "name": k.name, "region": k.region, "references": k.references, "note": k.note, "custom": own,
-        })).collect::<Vec<_>>(),
-    }))
+    crate::codes::command::building_code(s, p)
 }
 
-/// `building_code_export`: the code the project is held to, with the rules it changed, or one named, as an XML file.
 fn building_code_export(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code_export";
-    only(c, p, &["path", "code", "name"])?;
-    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to write"))?;
-    let m = &s.model;
-    let mut code = match string(c, p, "code")? {
-        Some(k) => m.code(&k).cloned().ok_or_else(|| bad(c, format!("no building code `{k}`")))?,
-        // The project's, as it is held to it: with the rules it changed.
-        None => {
-            codes::BuildingCode { stairs: m.stair_rules().clone(), electrical: m.electrical_methods().clone(), ..m.building_code().clone() }
-        }
-    };
-    if let Some(name) = string(c, p, "name")? {
-        code.name = codes::own_name(&name).map_err(|e| bad(c, e))?;
-    }
-    if code.based_on.is_empty() {
-        code.based_on = code.code.clone();
-    }
-    std::fs::write(&path, code.to_xml()).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    Ok(json!({"path": path, "name": code.name, "based_on": code.based_on}))
+    crate::codes::command::building_code_export(s, p)
 }
 
-/// `building_code_import`: a code read from an XML file, kept as one of the project's own.
 fn building_code_import(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code_import";
-    only(c, p, &["path", "name", "set"])?;
-    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to read"))?;
-    let set = flag(c, p, "set")?;
-    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{path}: {e}")))?.len();
-    if size > codes::MAX_XML as u64 {
-        return Err(bad(c, format!("{path}: larger than a building code's file (1 MB)")));
-    }
-    let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    // A file named after a code BIMCraft has (one exported as it was) comes in under another name.
-    let renamed = string(c, p, "name")?;
-    let (code, left_out) = codes::BuildingCode::from_xml(&text, renamed.as_deref()).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    let name = code.code.clone();
-    let m = s.model_mut();
-    m.building_codes.retain(|k| k.code != name);
-    m.building_codes.push(code);
-    if set {
-        m.building_code = Some(name.clone());
-        m.stair_rules = None;
-        m.electrical_methods = None;
-    }
-    Ok(json!({"code": name, "left_out": left_out, "set": set}))
+    crate::codes::command::building_code_import(s, p)
+}
+
+fn code_rules(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::code_rules(s, p)
+}
+
+fn site_climate(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::site_climate(s, p)
+}
+
+fn code_check(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::code_check(s, p)
 }
 
 /// `stair_sketch`: a stair made by its runs and turns becomes one drawn by hand, every riser a line of its own.
@@ -21672,13 +22693,45 @@ fn stair_check(s: &mut Session, p: &Value) -> R {
 
 fn units(s: &mut Session, p: &Value) -> R {
     let c = "units";
-    if let Some(name) = string(c, p, "length")? {
-        let u = Units::from_name(&name).ok_or_else(|| bad(c, format!("`length` is mm, cm, m, in, ft or ft-in, not `{name}`")))?;
-        if u != s.model.units {
-            s.model_mut().units = u;
+    only(c, p, &["length", "decimals"])?;
+    let units = match string(c, p, "length")? {
+        Some(name) => Units::from_name(&name).ok_or_else(|| bad(c, format!("`length` is mm, cm, m, in, ft or ft-in, not `{name}`")))?,
+        None => s.model.units,
+    };
+    let decimals = match p.get("decimals") {
+        // The places of one unit are not another's: new units start at their fewest.
+        None => s.model.decimals.filter(|_| units == s.model.units),
+        Some(Value::Null) => None,
+        Some(v) => {
+            let range = units.decimals().ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "inches and feet-inches show sixteenths of an inch and take no `decimals`: use mm, cm, m or ft, or null, not {v}"
+                    ),
+                )
+            })?;
+            let d = v.as_u64().and_then(|d| u8::try_from(d).ok()).filter(|d| range.contains(d)).ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "`decimals` is {} to {} in {} (null for the {} drawings show), not {v}",
+                        range.start(),
+                        range.end(),
+                        units.name(),
+                        range.start()
+                    ),
+                )
+            })?;
+            // The fewest are what none shows.
+            Some(d).filter(|d| d != range.start())
         }
+    };
+    if units != s.model.units || decimals != s.model.decimals {
+        let m = s.model_mut();
+        (m.units, m.decimals) = (units, decimals);
     }
-    Ok(json!({"length": s.model.units.name()}))
+    Ok(json!({"length": s.model.units.name(), "decimals": s.model.decimals_shown()}))
 }
 
 fn room_area(s: &mut Session, p: &Value) -> R {
@@ -21798,6 +22851,9 @@ fn line_pattern(s: &mut Session, p: &Value) -> R {
         }
         if let Some((user, _)) = m.line_styles.iter().find(|(_, st)| st.pattern.as_deref() == Some(&*name)) {
             return Err(bad(c, format!("`{name}` is line style `{user}`'s pattern; give it another first")));
+        }
+        if let Some((user, _)) = m.grid_types.iter().find(|(_, t)| t.line_pattern.as_deref() == Some(&*name)) {
+            return Err(bad(c, format!("`{name}` is grid type `{user}`'s pattern; give it another first")));
         }
         return Ok(json!({"deleted": name}));
     }

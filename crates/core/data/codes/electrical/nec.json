@@ -1,0 +1,426 @@
+{
+ "code": "nec",
+ "discipline": "electrical",
+ "name": "NFPA 70, National Electrical Code (USA)",
+ "region": "USA",
+ "edition": "2014",
+ "references": [
+  "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units)"
+ ],
+ "note": "A building's demand by this country's method (`building_demand`). The rest of the discipline comes from BIMCraft's library, and says so.",
+ "sections": {
+  "building_demand": {
+   "standard": "NEC 220.84",
+   "utilities": [],
+   "country": "US",
+   "source": "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units): the connected load of all the units, each worked out as 220.84(C) says, times a demand factor by their number; the house loads apart, by Part III. The 2026 edition moves Article 220's load calculations to Article 120 (120.84).",
+   "unit": "kVA",
+   "min_dwellings": 3,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "NEC 220.84(C): each unit's connected load (general lighting and receptacles by floor area, small-appliance and laundry circuits, appliances, cooking, heating or air conditioning), worked out by the designer and given here as its `demand`",
+    "least": 0.0
+   },
+   "diversity": {
+    "source": "NEC Table 220.84 (2014): the demand factor by the number of dwelling units, 45 % for 3 to 5 down to 23 % for 62 and over",
+    "kind": "per_dwelling",
+    "steps": [
+     [
+      5,
+      0.45
+     ],
+     [
+      7,
+      0.44
+     ],
+     [
+      10,
+      0.43
+     ],
+     [
+      11,
+      0.42
+     ],
+     [
+      13,
+      0.41
+     ],
+     [
+      15,
+      0.4
+     ],
+     [
+      17,
+      0.39
+     ],
+     [
+      20,
+      0.38
+     ],
+     [
+      21,
+      0.37
+     ],
+     [
+      23,
+      0.36
+     ],
+     [
+      25,
+      0.35
+     ],
+     [
+      27,
+      0.34
+     ],
+     [
+      30,
+      0.33
+     ],
+     [
+      31,
+      0.32
+     ],
+     [
+      33,
+      0.31
+     ],
+     [
+      36,
+      0.3
+     ],
+     [
+      38,
+      0.29
+     ],
+     [
+      42,
+      0.28
+     ],
+     [
+      45,
+      0.27
+     ],
+     [
+      50,
+      0.26
+     ],
+     [
+      55,
+      0.25
+     ],
+     [
+      61,
+      0.24
+     ],
+     [
+      62,
+      0.23
+     ]
+    ]
+   },
+   "factor": 1.0,
+   "factor_source": "NEC 220.84 applies no growth factor",
+   "factor_on_common": false,
+   "notes": [
+    "Only where no unit is fed by more than one feeder, each unit has electric cooking and each has electric space heating, air conditioning or both (220.84(A)).",
+    "The house loads (corridor lighting, lifts, pumps) go in `common_demand`, worked out by Part III with its own demand factors (220.84(B)).",
+    "The 2026 edition changed what a unit's load counts (general lighting 2 VA/ft², a charger at its nameplate), not this table's bands as far as checked; give the unit's `demand` by the edition the jurisdiction adopted."
+   ],
+   "not_covered": [
+    "each unit's load itself (220.84(C), or 120.84 in the 2026 edition), which comes in as its `demand`",
+    "two dwelling units (220.85) and the exception for units without electric cooking (220.84(A)(2))",
+    "the neutral (220.61) and the service conductors and equipment the load asks"
+   ]
+  },
+  "voltages": {
+   "277 V": {
+    "nominal": 277,
+    "min": 249.3,
+    "max": 304.7
+   },
+   "480 V": {
+    "nominal": 480,
+    "min": 432,
+    "max": 528
+   }
+  },
+  "distribution_systems": {
+   "277/480 V": {
+    "phases": 3,
+    "wires": 4,
+    "l_l": "480 V",
+    "l_n": "277 V",
+    "l_g": "277 V"
+   }
+  },
+  "wire_types": {
+   "Cu THHN 90 °C": {
+    "material": "copper",
+    "temperature": 90,
+    "insulation": "THHN",
+    "note": "NFPA 70 (NEC) Table 310.16, 90 °C column, 30 °C ambient, up to three current-carrying conductors in a raceway. Sizes are AWG or kcmil, kept in mm².",
+    "sizes": [
+     {
+      "section": 2.08,
+      "ampacity": 25,
+      "label": "14 AWG"
+     },
+     {
+      "section": 3.31,
+      "ampacity": 30,
+      "label": "12 AWG"
+     },
+     {
+      "section": 5.26,
+      "ampacity": 40,
+      "label": "10 AWG"
+     },
+     {
+      "section": 8.37,
+      "ampacity": 55,
+      "label": "8 AWG"
+     },
+     {
+      "section": 13.3,
+      "ampacity": 75,
+      "label": "6 AWG"
+     },
+     {
+      "section": 21.2,
+      "ampacity": 95,
+      "label": "4 AWG"
+     },
+     {
+      "section": 26.7,
+      "ampacity": 115,
+      "label": "3 AWG"
+     },
+     {
+      "section": 33.6,
+      "ampacity": 130,
+      "label": "2 AWG"
+     },
+     {
+      "section": 42.4,
+      "ampacity": 145,
+      "label": "1 AWG"
+     },
+     {
+      "section": 53.5,
+      "ampacity": 170,
+      "label": "1/0 AWG"
+     },
+     {
+      "section": 67.4,
+      "ampacity": 195,
+      "label": "2/0 AWG"
+     },
+     {
+      "section": 85,
+      "ampacity": 225,
+      "label": "3/0 AWG"
+     },
+     {
+      "section": 107.2,
+      "ampacity": 260,
+      "label": "4/0 AWG"
+     },
+     {
+      "section": 126.7,
+      "ampacity": 290,
+      "label": "250 kcmil"
+     },
+     {
+      "section": 152,
+      "ampacity": 320,
+      "label": "300 kcmil"
+     },
+     {
+      "section": 177.3,
+      "ampacity": 350,
+      "label": "350 kcmil"
+     },
+     {
+      "section": 202.7,
+      "ampacity": 380,
+      "label": "400 kcmil"
+     },
+     {
+      "section": 253.4,
+      "ampacity": 430,
+      "label": "500 kcmil"
+     },
+     {
+      "section": 304,
+      "ampacity": 475,
+      "label": "600 kcmil"
+     },
+     {
+      "section": 354.7,
+      "ampacity": 520,
+      "label": "700 kcmil"
+     },
+     {
+      "section": 380,
+      "ampacity": 535,
+      "label": "750 kcmil"
+     },
+     {
+      "section": 405.4,
+      "ampacity": 555,
+      "label": "800 kcmil"
+     },
+     {
+      "section": 456,
+      "ampacity": 585,
+      "label": "900 kcmil"
+     },
+     {
+      "section": 506.7,
+      "ampacity": 615,
+      "label": "1000 kcmil"
+     }
+    ]
+   },
+   "Cu THW 75 °C": {
+    "material": "copper",
+    "temperature": 75,
+    "insulation": "THW",
+    "note": "NFPA 70 (NEC) Table 310.16, 75 °C column, 30 °C ambient, up to three current-carrying conductors in a raceway. Sizes are AWG or kcmil, kept in mm².",
+    "sizes": [
+     {
+      "section": 2.08,
+      "ampacity": 20,
+      "label": "14 AWG"
+     },
+     {
+      "section": 3.31,
+      "ampacity": 25,
+      "label": "12 AWG"
+     },
+     {
+      "section": 5.26,
+      "ampacity": 35,
+      "label": "10 AWG"
+     },
+     {
+      "section": 8.37,
+      "ampacity": 50,
+      "label": "8 AWG"
+     },
+     {
+      "section": 13.3,
+      "ampacity": 65,
+      "label": "6 AWG"
+     },
+     {
+      "section": 21.2,
+      "ampacity": 85,
+      "label": "4 AWG"
+     },
+     {
+      "section": 26.7,
+      "ampacity": 100,
+      "label": "3 AWG"
+     },
+     {
+      "section": 33.6,
+      "ampacity": 115,
+      "label": "2 AWG"
+     },
+     {
+      "section": 42.4,
+      "ampacity": 130,
+      "label": "1 AWG"
+     },
+     {
+      "section": 53.5,
+      "ampacity": 150,
+      "label": "1/0 AWG"
+     },
+     {
+      "section": 67.4,
+      "ampacity": 175,
+      "label": "2/0 AWG"
+     },
+     {
+      "section": 85,
+      "ampacity": 200,
+      "label": "3/0 AWG"
+     },
+     {
+      "section": 107.2,
+      "ampacity": 230,
+      "label": "4/0 AWG"
+     },
+     {
+      "section": 126.7,
+      "ampacity": 255,
+      "label": "250 kcmil"
+     },
+     {
+      "section": 152,
+      "ampacity": 285,
+      "label": "300 kcmil"
+     },
+     {
+      "section": 177.3,
+      "ampacity": 310,
+      "label": "350 kcmil"
+     },
+     {
+      "section": 202.7,
+      "ampacity": 335,
+      "label": "400 kcmil"
+     },
+     {
+      "section": 253.4,
+      "ampacity": 380,
+      "label": "500 kcmil"
+     },
+     {
+      "section": 304,
+      "ampacity": 420,
+      "label": "600 kcmil"
+     },
+     {
+      "section": 354.7,
+      "ampacity": 460,
+      "label": "700 kcmil"
+     },
+     {
+      "section": 380,
+      "ampacity": 475,
+      "label": "750 kcmil"
+     },
+     {
+      "section": 405.4,
+      "ampacity": 490,
+      "label": "800 kcmil"
+     },
+     {
+      "section": 456,
+      "ampacity": 520,
+      "label": "900 kcmil"
+     },
+     {
+      "section": 506.7,
+      "ampacity": 545,
+      "label": "1000 kcmil"
+     }
+    ]
+   }
+  }
+ },
+ "sources": {
+  "building_demand": "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units): the connected load of all the units, each worked out as 220.84(C) says, times a demand factor by their number; the house loads apart, by Part III. The 2026 edition moves Article 220's load calculations to Article 120 (120.84).",
+  "voltages": "the 277/480 V system of North America's commercial buildings (a nominal voltage of ANSI C84.1); the band of 10 % either way is BIMCraft's own practice",
+  "distribution_systems": "the 277/480 V system of North America's commercial buildings (a nominal voltage of ANSI C84.1); the band of 10 % either way is BIMCraft's own practice",
+  "wire_types": "each wire type's own note names its table"
+ },
+ "kinds": {
+  "voltages": "practice",
+  "distribution_systems": "practice"
+ }
+}

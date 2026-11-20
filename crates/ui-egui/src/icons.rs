@@ -39,6 +39,8 @@ icon_names! {
     Fit,
     ZoomIn,
     ZoomOut,
+    ZoomRegion,
+    ZoomPrevious,
     ThinLines,
     Schedule,
     CloseInactive,
@@ -51,6 +53,9 @@ icon_names! {
     Plan,
     Move,
     Copy,
+    Paste,
+    Cut,
+    CopyClipboard,
     Rotate,
     MirrorPick,
     MirrorDraw,
@@ -383,6 +388,32 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(7.0, 10.0), (13.0, 10.0)]);
             g.circle((10.0, 10.0), 7.0);
         }
+        Icon::ZoomRegion => {
+            // A dashed window, and a small lens at its corner: Zoom In Region.
+            for (a, b) in [
+                ((3.0, 3.0), (6.0, 3.0)),
+                ((9.0, 3.0), (12.0, 3.0)),
+                ((15.0, 3.0), (17.0, 3.0)),
+                ((17.0, 3.0), (17.0, 5.0)),
+                ((17.0, 8.0), (17.0, 10.0)),
+                ((3.0, 3.0), (3.0, 6.0)),
+                ((3.0, 9.0), (3.0, 12.0)),
+                ((3.0, 15.0), (3.0, 17.0)),
+                ((3.0, 17.0), (5.0, 17.0)),
+                ((8.0, 17.0), (10.0, 17.0)),
+            ] {
+                g.line(&[a, b]);
+            }
+            g.circle((15.5, 15.5), 3.5);
+            g.line(&[(18.0, 18.0), (21.5, 21.5)]);
+        }
+        Icon::ZoomPrevious => {
+            // An arrow curving back over the top, and a small lens under its tail: Previous Pan/Zoom.
+            g.arc((11.0, 11.0), 6.5, 180.0, 360.0);
+            g.line(&[(1.75, 8.0), (4.5, 11.75), (7.25, 8.0)]);
+            g.circle((17.5, 17.0), 3.0);
+            g.line(&[(19.6, 19.1), (22.0, 21.5)]);
+        }
         Icon::ThinLines => {
             g.line(&[(3.0, 6.0), (21.0, 6.0)]);
             g.line(&[(3.0, 12.0), (21.0, 12.0)]);
@@ -460,6 +491,27 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // Equal overlapping rectangles with hidden rear edges removed.
             g.closed(&[(8.0, 3.0), (20.0, 3.0), (20.0, 15.0), (8.0, 15.0)]);
             g.line(&[(8.0, 9.0), (4.0, 9.0), (4.0, 21.0), (16.0, 21.0), (16.0, 15.0)]);
+        }
+        Icon::Paste => {
+            // A clipboard: its board, its clip at the top, and a sheet laid on it.
+            g.closed(&[(4.0, 5.0), (17.0, 5.0), (17.0, 22.0), (4.0, 22.0)]);
+            g.closed(&[(8.0, 3.0), (13.0, 3.0), (13.0, 7.0), (8.0, 7.0)]);
+            g.closed(&[(11.0, 11.0), (21.0, 11.0), (21.0, 21.0), (11.0, 21.0)]);
+        }
+        Icon::Cut => {
+            // Scissors: two rings and the blades crossing above them.
+            g.circle((7.0, 18.0), 3.0);
+            g.circle((17.0, 18.0), 3.0);
+            g.line(&[(9.0, 15.5), (17.0, 3.0)]);
+            g.line(&[(15.0, 15.5), (7.0, 3.0)]);
+        }
+        Icon::CopyClipboard => {
+            // A clipboard with two sheets on it: what's copied, kept.
+            g.closed(&[(4.0, 5.0), (17.0, 5.0), (17.0, 22.0), (4.0, 22.0)]);
+            g.closed(&[(8.0, 3.0), (13.0, 3.0), (13.0, 7.0), (8.0, 7.0)]);
+            g.line(&[(7.0, 11.0), (14.0, 11.0)]);
+            g.line(&[(7.0, 14.0), (14.0, 14.0)]);
+            g.line(&[(7.0, 17.0), (12.0, 17.0)]);
         }
         Icon::Rotate => {
             // A circular arc with a tangential return arrow; no floating arrowhead.

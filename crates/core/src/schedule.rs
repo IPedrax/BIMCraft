@@ -229,6 +229,10 @@ const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// The formwork a member needs (`quantities`), in m², the weight of the bars it hosts, kg, and that over its volume, kg/m³.
+const FORMWORK: Own = (msg!("Formwork Area"), Kind::Area, From::Key("formwork_m2"));
+const REBAR_WEIGHT: Own = (msg!("Rebar Weight"), Kind::Number, From::Key("rebar_kg"));
+const REBAR_RATIO: Own = (msg!("Rebar Ratio"), Kind::Number, From::Key("rebar_ratio"));
 /// Where it stands in the active location's shared coordinates: its point, at its base.
 const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
 const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
@@ -260,6 +264,10 @@ const SHARED: (&str, usize, &[Own]) = (
         PHASE_CREATED,
         PHASE_DEMOLISHED,
         DESIGN_OPTION,
+        VOLUME,
+        FORMWORK,
+        REBAR_WEIGHT,
+        REBAR_RATIO,
     ],
 );
 
@@ -323,6 +331,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
@@ -360,6 +372,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -383,6 +399,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -402,6 +422,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -423,6 +447,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SECTION_AREA,
             WEIGHT_PER_METRE,
             WEIGHT,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -443,7 +471,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
             (msg!("Shape"), Kind::Text, From::Key("shape_label")),
         ],
     ),
-    ("stripfooting", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "stripfooting",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            LENGTH,
+            WIDTH,
+            DEPTH,
+            SYSTEM,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
+        ],
+    ),
     (
         "pipe",
         6,
@@ -737,7 +785,7 @@ pub(crate) fn field_value_with(m: &Model, id: impl crate::ids::Key, name: &str, 
 /// units, a yes or no as `Yes` or `No`): what a tag shows.
 pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
     let (kind, v) = field_value_with(m, id, name, rooms)?;
-    Some(shown(m.units, kind, &v))
+    Some(shown_to(m.units, m.decimals, kind, &v))
 }
 
 /// The fields a schedule of category `cat` shows unless it chooses.
@@ -1380,9 +1428,14 @@ pub fn heading(units: Units, column: &Column) -> String {
 /// so the column lines up; other numbers to the hundredth; yes or no as `Yes` or `No` (English,
 /// for the caller to say in its language); text as it is.
 pub fn shown(units: Units, kind: Kind, v: &Value) -> String {
+    shown_to(units, None, kind, v)
+}
+
+/// [`shown`] with lengths to a project's `decimals` (`Model::decimals`).
+pub fn shown_to(units: Units, decimals: Option<u8>, kind: Kind, v: &Value) -> String {
     match (v, kind) {
         (Value::Bool(b), _) => (if *b { msg!("Yes") } else { msg!("No") }).into(),
-        (v, Kind::Length) if v.is_number() => units.length(v.as_f64().unwrap_or(0.0)),
+        (v, Kind::Length) if v.is_number() => units.length_to(v.as_f64().unwrap_or(0.0), decimals),
         (v, Kind::Area) if v.is_number() => format!("{:.2}", units.area(v.as_f64().unwrap_or(0.0) * 1e6).0),
         (Value::Number(x), _) => format!("{}", (x.as_f64().unwrap_or(0.0) * 100.0).round() / 100.0 + 0.0),
         (v, _) => cell(v),

@@ -64,8 +64,8 @@ impl Tab {
 }
 
 /// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
-const SYSTEM_FAMILIES: [&str; 11] =
-    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing"];
+const SYSTEM_FAMILIES: [&str; 12] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing", "grid"];
 
 /// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -697,7 +697,7 @@ impl BimApp {
     }
 
     /// Families, each its types: one picked, the Component tool places it. Folded but on its own tab.
-    /// Families: each category of the system's (walls, floors, doors…) with its types, then the project's component families.
+    /// Families: each category of the system's (walls, floors, doors, grids…) with its types, then the project's component families.
     /// A right click on a type or a family has Delete, which the project refuses while something uses it.
     fn families_node(&self, open: bool) -> Node {
         let m = &self.session.model;
@@ -747,7 +747,12 @@ impl BimApp {
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
         });
-        Node::group(t("Families"), open, system.chain(curtain).chain(components).collect())
+        // Alphabetical by the name shown, case aside (the families' map order would put capitals first).
+        let mut categories: Vec<Node> = system.chain(curtain).collect();
+        categories.sort_by_key(|n| n.label.to_lowercase());
+        let mut components: Vec<Node> = components.collect();
+        components.sort_by_key(|n| n.label.to_lowercase());
+        Node::group(t("Families"), open, categories.into_iter().chain(components).collect())
     }
 }
 

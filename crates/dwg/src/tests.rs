@@ -275,3 +275,10 @@ fn a_dwgs_contours_keep_their_elevations() {
     let z: Vec<_> = d.entities.iter().filter(|e| e.layer == "CONTOURS").map(|e| e.z.clone()).collect();
     assert_eq!(z, [Some(dxf::Z::Flat(2881.0)), Some(dxf::Z::Flat(2882.0)), Some(dxf::Z::Each(vec![2883.0, 2883.5]))], "{:?}", d.entities);
 }
+
+#[test]
+fn the_limits_hold_the_largest_real_drawings_and_the_dxf_one_is_the_readers() {
+    // Measured on real projects: a DWG of 77 MB, and 301 MB of DXF from one of 38 MB.
+    assert_eq!(Limits::DEFAULT.dwg_bytes, 128 << 20);
+    assert_eq!(Limits::DEFAULT.dxf_bytes, bimcraft_core::dxf::MAX_BYTES);
+}

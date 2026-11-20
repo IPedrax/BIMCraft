@@ -343,11 +343,54 @@ fn material_name(object: &[u8], tag_at: usize, tags: &Tags, wide: bool) -> Optio
     if wide { closed_name(object, from) } else { None }
 }
 
-/// The names of the materials in a partition, each id with the name its object gives, or none where its copies here disagree.
-pub(crate) fn material_names(buf: &[u8], tags: &Tags, wide: bool, ids: &[u32], out: &mut BTreeMap<u32, Option<String>>) {
+/// How a material looks in a shaded view: its colour (red, green, blue) and how much shows through it, 0 to 1 (`m_color` and
+/// `m_transparency`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Look {
+    pub color: [u8; 3],
+    pub transparency: f64,
+}
+
+/// The look of a material named `name` whose object is `object` (from its id), its class `class`: its fields read by the file's
+/// own schema from where its name is written (`m_name`, a count and its UTF-16 units, its class's first field), up to `m_color`.
+/// None where the name is not written so, or what is read there is no look (a colour past 24 bits, a transparency out of 0 to 1).
+fn look(object: &[u8], from: usize, name: &str, layouts: &crate::graphics::Layouts, class: u16) -> Option<Look> {
+    use crate::graphics::Value;
+    let mut written = (name.encode_utf16().count() as u32).to_le_bytes().to_vec();
+    written.extend(name.encode_utf16().flat_map(u16::to_le_bytes));
+    let at = from + memchr::memmem::find(object.get(from..)?, &written)?;
+    let fields = crate::graphics::fields_at(object, at, layouts, class, "m_color").ok()?;
+    let color = match layouts.field(class, &fields, "m_color")? {
+        Value::Int(c) if *c < 1 << 24 => u32::try_from(*c).ok()?.to_le_bytes(),
+        _ => return None,
+    };
+    let transparency = layouts.field(class, &fields, "m_transparency")?.real().filter(|t| (0.0..=1.0).contains(t))?;
+    Some(Look { color: [color[0], color[1], color[2]], transparency })
+}
+
+/// The names of the materials in a partition, each id with the name its object gives, or none where its copies here disagree; and
+/// where `layouts` reads the file's schema, each one's look ([`look`]), none where its copies disagree.
+pub(crate) fn material_names(
+    buf: &[u8],
+    tags: &Tags,
+    wide: bool,
+    ids: &[u32],
+    layouts: Option<&crate::graphics::Layouts>,
+    out: &mut BTreeMap<u32, Option<String>>,
+    looks: &mut BTreeMap<u32, Option<Look>>,
+) {
     let Some(class) = tags.material else { return };
-    let mut note = |id: u32, name: Option<String>| {
+    let mut note = |id: u32, name: Option<String>, object: &[u8], from: usize| {
         let Some(name) = name else { return };
+        if let Some(seen) = layouts.and_then(|l| look(object, from, &name, l, class)) {
+            match looks.get_mut(&id) {
+                None => {
+                    looks.insert(id, Some(seen));
+                }
+                Some(held) if *held != Some(seen) => *held = None,
+                Some(_) => {}
+            }
+        }
         match out.get_mut(&id) {
             None => {
                 out.insert(id, Some(name));
@@ -365,7 +408,7 @@ pub(crate) fn material_names(buf: &[u8], tags: &Tags, wide: bool, ids: &[u32], o
                 continue;
             }
             let object = buf.get(id_at..(id_at + NAME_WINDOW).min(buf.len())).unwrap_or_default();
-            note(id, material_name(object, TAG_AFTER_ID_64, tags, true));
+            note(id, material_name(object, TAG_AFTER_ID_64, tags, true), object, TAG_AFTER_ID_64 + 2);
         }
     } else {
         // `01 00 00 00`, the id, ..., `00 00 00 ff ff ff ff` and the class tag.
@@ -380,7 +423,7 @@ pub(crate) fn material_names(buf: &[u8], tags: &Tags, wide: bool, ids: &[u32], o
             }
             let Some(id) = u32_at(buf, id_at).filter(|&id| declared(ids, id)) else { continue };
             let object = buf.get(id_at..(id_at + NAME_WINDOW).min(buf.len())).unwrap_or_default();
-            note(id, material_name(object, TAG_AFTER_ID_32, tags, false));
+            note(id, material_name(object, TAG_AFTER_ID_32, tags, false), object, TAG_AFTER_ID_32 + 2);
         }
     }
 }

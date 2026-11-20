@@ -67,10 +67,31 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   taken back through a placement whose axes lie along the project's (exact), else the box its type's such instances agree on; a
   placement upside down (a light hung from a ceiling) or on its side (one on a wall) is re-expressed upright where one of its axes
   stands upright. Otherwise (no placement, one on a slope, no type, or a box that disagrees) it comes in as the record's box,
-  unturned, and the note says which. Snowdon 2025's architectural model brings in 3,312 of its 4,683 components turned so, in 133
-  families of 186 types. A box is a fair stand-in only for
-  some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit) only where it runs along an axis, so one
-  that turns a corner or runs across the axes, whose box is a block where there is none, is left out with that; and a whole (a stair,
+  unturned, and the note says which. A component comes in with **its shape** where the file holds it: its own graphics
+  (`graphics.rs`, a tree read breadth first by the fields the file's own schema gives, found by its id) name the symbol it
+  draws and the transform it is drawn by, and that symbol's solids (`shapes.rs`: faces on planes, cylinders and surfaces of
+  revolution, and meshes) read whole, meet along every edge and, with the points and lines drawn beside them, fill the box the
+  graphics give round them; the symbol's whole box, placed, must be the record's box to a millimetre. Its family then shows that shape for its type, a mesh form only that type shows (the
+  type parameter `Shape`, 0 for the box), and each symbol a Revit type's instances draw is a type of its own (`Desk`, `Desk (2)`
+  for one Revit made for an instance's own parameters; those that come in as boxes beside them a type of their own too), placed at
+  the transform's origin and turned by it: in plan where its z is up, else tilted (`Component::tilt`, its family's x and z), and
+  mirrored (`Component::mirrored`) where the transform's axes are a mirror's. An element whose graphics draw solids of their own
+  where it stands (a stair's run, landing or support, a wall sweep, a slab edge) or several symbols (a railing's rails, a mullion)
+  comes in with **a shape of its own**: those solids and each symbol placed by its transform, checked the same way, as a type of
+  its own (elements drawn alike share one), and the note says "where it stands". A shape comes in **in its materials**: each face
+  names the material it is drawn in (a mesh its own), and the family holds a mesh for each material its type's shape uses, one that
+  names none in the family's own; and each material comes in with **its look**, its shading colour and transparency, read from its
+  object by the schema's fields (`data::Look`, given to the model's material of its name once the import has made them), so walls'
+  and floors' layers show their colours too. The graphics are found in the second pass and the
+  symbols drawn read after it, each partition that holds one inflated again (`Gathered::drawn`, a `shapes::Drawing` for each
+  element, and `Gathered::shapes`); the provenance rows say what was measured, and what is not read (a cone, a Hermite or ruled
+  surface, an ellipse turned, a family nested in a symbol, which come in as boxes saying why; a family whose shapes would build
+  more triangles together than a family may keeps the box for its other types, and a component whose family would pass the types a
+  family may hold is left out). Snowdon 2025's architectural model
+  brings in 5,621 components, 4,341 with their type's shape and 592 with a shape of their own, in 134 families of 1,197 types.
+  A box is a fair stand-in only for some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit),
+  where its graphics draw no shape that reads, only where it runs along an axis, so one that turns a corner or runs across the
+  axes, whose box is a block where there is none, is left out with that; and a whole (a stair,
   a truss, a beam system) is left out where its box holds a box of its parts' categories, which come in on their own. Conduits come
   in as boxes and not as runs: the finding that a duct's or a cable tray's data holds its line (below) was made on those two
   categories, and no conduit was looked at. A curtain wall still comes in as the plane of its box, its panels and mullions as boxes

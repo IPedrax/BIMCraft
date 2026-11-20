@@ -8,12 +8,14 @@
 //! its own ([`BimApp::plugin_report_window`]).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::TryRecvError;
 
 use bimcraft_i18n::msg;
 use bimcraft_plugin::{Broken, Entry, Level, Plugin, Plugins, RibbonTab, Status};
 use egui::{Align, Context, Id as UiId, Label, Layout, RichText, ScrollArea, Ui};
 
+use crate::markdown::{self, Document};
 use crate::popup::Modal;
 use crate::{
     BimApp, Tab,
@@ -34,13 +36,101 @@ enum Asked {
     Permit(String, &'static str, bool),
 }
 
+/// How a plugin wrote its report: plain text, as every plugin did before Markdown, or Markdown for the window to lay out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReportFormat {
+    Text,
+    Markdown,
+}
+
+impl ReportFormat {
+    /// The format a report object names; `None` when it names one this version doesn't know.
+    pub(crate) fn named(name: &str) -> Option<ReportFormat> {
+        match name {
+            "text" => Some(ReportFormat::Text),
+            "markdown" => Some(ReportFormat::Markdown),
+            _ => None,
+        }
+    }
+}
+
 /// What a plugin's function asked the window to show: the text it wrote, under the label of the button that ran it, kept
 /// until it is closed. The title and the text are the plugin's own data, so they are not translated.
 pub(crate) struct PluginReport {
     title: String,
     text: String,
+    format: ReportFormat,
+    /// Which report this is: its scroll position is its own, so a new one opens at the top.
+    serial: u64,
+    /// The blocks of a Markdown report, parsed once when the report opens. `None` for a text report, and for a
+    /// Markdown one whose parse failed: the window then shows the source as text.
+    parsed: Option<Document>,
+    /// What the window says above the report: that it was cut, or why its Markdown couldn't be read.
+    warnings: Vec<String>,
     /// Copy was pressed: its button says so.
     copied: bool,
+}
+
+impl PluginReport {
+    /// Holds a report's source, cut to the limit, and parses it when the plugin said it is Markdown.
+    fn new(title: String, text: &str, format: ReportFormat) -> PluginReport {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+        let (text, cut) = cut_report(text);
+        let mut warnings = Vec::new();
+        if cut {
+            warnings.push(t("The report was cut: it is over the 256 KiB limit.").to_string());
+        }
+        let parsed = match format {
+            ReportFormat::Text => None,
+            ReportFormat::Markdown => match markdown::parse(text) {
+                Ok(document) => Some(document),
+                Err(why) => {
+                    warnings.push(tf("The report's Markdown couldn't be read: {}", &[why.as_str()]));
+                    None
+                }
+            },
+        };
+        PluginReport { title, text: text.to_string(), format, serial, parsed, warnings, copied: false }
+    }
+
+    /// The report's source, as the plugin wrote it (cut to the limit): what Copy puts on the clipboard.
+    pub(crate) fn source(&self) -> &str {
+        &self.text
+    }
+}
+
+/// Cuts a report to [`markdown::MAX_REPORT_TEXT`] at a character boundary. It answers the text and whether it was cut.
+fn cut_report(text: &str) -> (&str, bool) {
+    if text.len() <= markdown::MAX_REPORT_TEXT {
+        return (text, false);
+    }
+    let mut end = markdown::MAX_REPORT_TEXT;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    (&text[..end], true)
+}
+
+/// What a plugin's answer's `report` holds: a string is a text report, and an object carries the text and,
+/// optionally, its format. Anything else is refused with one line that says why.
+pub(crate) fn report_parts(report: &serde_json::Value) -> Result<(String, ReportFormat), String> {
+    match report {
+        serde_json::Value::String(text) => Ok((text.clone(), ReportFormat::Text)),
+        serde_json::Value::Object(fields) => {
+            let Some(text) = fields.get("text").and_then(serde_json::Value::as_str) else {
+                return Err("report.text must be a string".to_string());
+            };
+            let format = match fields.get("format") {
+                None => ReportFormat::Text,
+                Some(serde_json::Value::String(name)) => ReportFormat::named(name)
+                    .ok_or_else(|| format!("report.format `{name}` isn't known: only `text` and `markdown` are"))?,
+                Some(other) => return Err(format!("report.format must be a string, not {other}")),
+            };
+            Ok((text.to_string(), format))
+        }
+        other => Err(format!("report must be a string or an object with `text`, not {other}")),
+    }
 }
 
 impl BimApp {
@@ -167,9 +257,10 @@ impl BimApp {
     }
 
     /// Keeps what a plugin's function asked the window to show, for
-    /// [`plugin_report_window`](Self::plugin_report_window) to draw on the next frame.
-    pub(crate) fn open_plugin_report(&mut self, title: String, text: &str) {
-        self.plugin_report = Some(PluginReport { title, text: text.to_string(), copied: false });
+    /// [`plugin_report_window`](Self::plugin_report_window) to draw on the next frame. A Markdown report is parsed here,
+    /// once, and not on every frame.
+    pub(crate) fn open_plugin_report(&mut self, title: String, text: &str, format: ReportFormat) {
+        self.plugin_report = Some(PluginReport::new(title, text, format));
     }
 
     /// Runs a plugin's function as its ribbon button and Find do: one click, no parameters typed. A function whose
@@ -223,12 +314,20 @@ impl BimApp {
         ["path", "file"].into_iter().find(|key| required.iter().any(|r| r.as_str() == Some(key))).map(str::to_string)
     }
 
-    /// Runs the function with `params` and opens its `report`, as the button says what it found.
+    /// Runs the function with `params` and opens its `report`, as the button says what it found. A report the window
+    /// can't read — an unknown format, no text, a number — is refused with one line in the plugin log and opens nothing:
+    /// the function's call itself still succeeded.
     fn finish_plugin_function(&mut self, id: &str, label: String, params: serde_json::Map<String, serde_json::Value>) {
         if let Some(value) = self.run(id, serde_json::Value::Object(params))
-            && let Some(report) = value.get("report").and_then(|v| v.as_str())
+            && let Some(report) = value.get("report")
         {
-            self.open_plugin_report(label, report);
+            match report_parts(report) {
+                Ok((text, format)) => self.open_plugin_report(label, &text, format),
+                Err(why) => {
+                    let plugin = id.strip_prefix("plugin:").and_then(|rest| rest.split_once(':')).map_or("plugins", |(plugin, _)| plugin);
+                    self.plugins.note(plugin, Level::Warning, why);
+                }
+            }
         }
     }
 
@@ -239,13 +338,22 @@ impl BimApp {
         let Some(report) = self.plugin_report.as_ref() else { return };
         let (mut close, mut copy) = (false, false);
         let r = Modal::new(UiId::new("plugin-report"), report.title.clone()).width(680.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
+            crate::popup::body_salted(ui, ("plugin-report-body", report.serial), |ui| {
                 ui.add_space(6.0);
-                for line in report.text.lines() {
-                    if line.is_empty() {
-                        ui.add_space(6.0);
-                    } else {
-                        ui.add(Label::new(RichText::new(line).monospace()).selectable(true));
+                for warning in &report.warnings {
+                    ui.add(Label::new(RichText::new(warning).color(pal().error)).selectable(true));
+                    ui.add_space(4.0);
+                }
+                match (report.format, report.parsed.as_ref()) {
+                    (ReportFormat::Markdown, Some(document)) => markdown::show(ui, document),
+                    _ => {
+                        for line in report.text.lines() {
+                            if line.is_empty() {
+                                ui.add_space(6.0);
+                            } else {
+                                ui.add(Label::new(RichText::new(line).monospace()).selectable(true));
+                            }
+                        }
                     }
                 }
             });
@@ -257,7 +365,7 @@ impl BimApp {
             });
         });
         if copy {
-            ctx.copy_text(report.text.clone());
+            ctx.copy_text(report.source().to_string());
             // The button says it was pressed in the next frame, which nothing else asks for.
             ctx.request_repaint();
         }

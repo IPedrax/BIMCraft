@@ -12,6 +12,9 @@ and GlobalId, an `Axis` curve representation and `ObjectType = BIMCraft_GridAxis
 a native grid. Other IFC readers can display its curve, but will identify it as an annotation, not an `IfcGrid`.
 No extra axes are invented. A project without grids writes neither grid products nor this fallback annotation.
 
+Grid styles are not written: a grid's type, its line pattern, pen, colour and bubble text are BIMCraft's, and IFC carries
+the geometry and names alone (`IfcGridAxis`). Reading a file creates native grids without a style, in the default type.
+
 Import reads external `IfcGrid` U, V and W axes, transforms their curves through the grid's placement and respects
 `SameSense`. A shared axis reference within one grid is read once; the same reference placed by different grids is
 read separately. Distinct axis entities are kept even when their geometry coincides. Ordinary annotations are not

@@ -75,3 +75,17 @@ fn select_instances_treats_null_optional_selectors_as_omitted() {
         s.execute("select_instances", &json!({"ids":null,"category":"wall","type":"Generic - 200mm","family":null,"within":null})).unwrap();
     assert_eq!(reply["ids"], ids);
 }
+
+#[test]
+fn select_instances_finds_the_grids_of_a_grid_type() {
+    let mut s = Session::new();
+    let grids: Vec<u64> = [0, 1000, 2000]
+        .iter()
+        .map(|x| s.execute("grid", &json!({"start": [x, 0], "end": [x, 5000]})).unwrap()["id"].as_u64().unwrap())
+        .collect();
+    s.execute("modify", &json!({"ids": [grids[1]], "type": "Grid - DIN 1356"})).unwrap();
+    let named = s.execute("select_instances", &json!({"category": "grid", "type": "Grid - ISO 128"})).unwrap();
+    assert_eq!(named["ids"], json!([grids[0], grids[2]]));
+    let picked = s.execute("select_instances", &json!({"ids": [grids[1]]})).unwrap();
+    assert_eq!(picked["ids"], json!([grids[1]]));
+}

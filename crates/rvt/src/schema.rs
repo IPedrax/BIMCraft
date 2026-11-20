@@ -1,8 +1,8 @@
 // Portions of this file are ported from rvt-rs (https://github.com/DrunkOnJava/rvt-rs), Apache-2.0,
 // Copyright 2026 Griffin Long, at commit b6086d41b9758fd9b92f42f0a47b8345b9c58056: src/formats.rs (`schema_classes` and
 // its `GrammarReader`: the record grammar of `Formats/Latest`, which rvt-rs credits to STE1200, Discussion #112).
-// Changed: rewritten for BIMCraft; only the class list is kept (name, tag, base, version, field count), field names and
-// types are checked for the grammar and dropped, every read is bounds-checked, and nesting is capped by `MAX_NESTING`.
+// Changed: rewritten for BIMCraft; the class list is kept with each field's name and type (kind, modifier, count, inner type,
+// class), every read is bounds-checked, and nesting is capped by `MAX_NESTING`.
 //! `Formats/Latest`: the schema Revit embeds in every file.
 //!
 //! The stream lists every class Revit serializes, with its fields. A class is known by its **tag**, its place in the list
@@ -25,6 +25,26 @@ const MAX_FIELDS: u32 = 2_000;
 const MAX_ARRAY: u32 = 65_536;
 const MAX_GUIDS: usize = 60_000;
 
+/// A field's type as the schema writes it: the kind byte (`1` and `2` a byte, `4` and `5` a `u32`, `6` and `7` an `f64`, `11`
+/// a `u64`, `13` an array of `inner`, `14` an object), the modifier byte (high nibble `0x10` so many side by side, `0x50` and
+/// `0x60` a `u32`-counted list; low nibble, for an object, `0` by value, `1` owned and `3` weak), a fixed array's count, an
+/// array's inner type, and the class an object or an array of objects names (none for a pointer, whose class is written with it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Type {
+    pub kind: u8,
+    pub modifier: u8,
+    pub count: Option<u32>,
+    pub inner: Option<Box<Type>>,
+    pub class: Option<u16>,
+}
+
+/// One field of a class: its name and type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Field {
+    pub name: String,
+    pub ty: Type,
+}
+
 /// One class of the schema.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Class {
@@ -34,6 +54,8 @@ pub struct Class {
     pub base: Option<u16>,
     pub version: u32,
     pub field_count: u32,
+    /// Its own fields, in the order an object of it is written (its base's come before them).
+    pub fields: Vec<Field>,
 }
 
 /// Every class of a schema, by tag order.
@@ -93,6 +115,13 @@ impl Schema {
 
 type Step<T> = std::result::Result<T, String>;
 
+impl Type {
+    /// Whether the schema writes a class reference after it: an object by value (or a list or array of them).
+    fn names_class(&self) -> bool {
+        self.kind == 0x0e && self.modifier & 0x0f == 0
+    }
+}
+
 struct Reader<'a> {
     data: &'a [u8],
     next_tag: u16,
@@ -144,16 +173,17 @@ impl Reader<'_> {
         Ok((tag, next))
     }
 
-    fn class_ref(&mut self, at: usize, depth: usize) -> Step<usize> {
+    /// A class reference: the tag it names and where it ends.
+    fn class_ref(&mut self, at: usize, depth: usize) -> Step<(u16, usize)> {
         let reference = Self::need(self.u16(at), "class reference", at)?;
         if reference & 0x8000 == 0 {
-            return Ok(at + 2);
+            return Ok((reference, at + 2));
         }
-        Ok(self.inline_class(at + 2, reference, depth)?.1)
+        self.inline_class(at + 2, reference, depth)
     }
 
-    /// Reads a type; returns where it ends.
-    fn field_type(&mut self, at: usize, depth: usize) -> Step<(bool, usize)> {
+    /// Reads a type; returns it and where it ends.
+    fn field_type(&mut self, at: usize, depth: usize) -> Step<(Type, usize)> {
         if depth > MAX_NESTING {
             return Err(format!("types nest too deep at {at:#x}"));
         }
@@ -163,27 +193,34 @@ impl Reader<'_> {
         if !matches!(modifier & 0xf0, 0x00 | 0x10 | 0x50 | 0x60) {
             return Err(format!("unknown modifier {modifier:#04x} at {:#x}", at - 4));
         }
+        let mut ty = Type { kind, modifier, count: None, inner: None, class: None };
         if modifier & 0xf0 == 0x10 {
             let count = Self::need(self.u32(at), "array count", at)?;
             if count > MAX_ARRAY {
                 return Err(format!("array count {count} at {at:#x}"));
             }
+            ty.count = Some(count);
             at += 4;
         }
         if kind == 0x0d {
             if self.data.get(at..at + 5) != Some(&[1, 0, 0, 0, 0x20][..]) {
                 return Err(format!("array filler at {at:#x}"));
             }
-            let (inner_ref, next) = self.field_type(at + 5, depth + 1)?;
-            if inner_ref {
-                return Ok((true, self.class_ref(next, depth)?));
+            let (inner, mut next) = self.field_type(at + 5, depth + 1)?;
+            if inner.names_class() {
+                let (class, end) = self.class_ref(next, depth)?;
+                ty.class = Some(class);
+                next = end;
             }
-            return Ok((false, next));
+            ty.inner = Some(Box::new(inner));
+            return Ok((ty, next));
         }
-        if kind == 0x0e && modifier & 0x0f == 0 {
-            return Ok((true, self.class_ref(at, depth)?));
+        if ty.names_class() {
+            let (class, end) = self.class_ref(at, depth)?;
+            ty.class = Some(class);
+            at = end;
         }
-        Ok((false, at))
+        Ok((ty, at))
     }
 
     fn class(&mut self, at: usize, depth: usize) -> Step<(u16, usize)> {
@@ -208,9 +245,12 @@ impl Reader<'_> {
         if field_count > MAX_FIELDS {
             return Err(format!("field count {field_count} at {:#x}", p - 4));
         }
+        let mut fields = Vec::new();
         for _ in 0..field_count {
-            let (_, next) = self.name(p, 4)?;
-            p = self.field_type(next, depth)?.1;
+            let (name, next) = self.name(p, 4)?;
+            let (ty, end) = self.field_type(next, depth)?;
+            fields.push(Field { name, ty });
+            p = end;
         }
         let guids = Self::need(self.u32(p), "GUID count", p)? as usize;
         p += 4;
@@ -219,7 +259,7 @@ impl Reader<'_> {
             .and_then(|len| p.checked_add(len))
             .filter(|end| *end <= self.data.len() && guids <= MAX_GUIDS)
             .ok_or_else(|| format!("GUID count {guids} at {:#x}", p - 4))?;
-        self.classes.push(Class { tag, name, base, version, field_count });
+        self.classes.push(Class { tag, name, base, version, field_count, fields });
         Ok((tag, p))
     }
 }

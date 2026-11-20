@@ -23,6 +23,7 @@ use serde_json::Value;
 
 use crate::model::{Element, Function, Guid, Id, Layer, Model, Operation, ParameterKind, Railing, RoomArea, heading, mix};
 use crate::phasing;
+use crate::quantities;
 use crate::stairs;
 use crate::view3d::P3;
 use crate::walls::{self, Axis};
@@ -1350,13 +1351,15 @@ fn perimeter(ring: &[P2]) -> f64 {
 /// height), the area of its section (m²), its outer surface (m²) and its volume (m³). The outer surface is the sides only,
 /// perimeter by length, without the two ends, as IFC 4.3 defines it for these sets. IFC gives the gross surface (with the
 /// ends) only when the outer surface and the section can't be given apart, so it isn't written: a reader adds two sections.
-/// Nothing is subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
+/// The gross volume is the section by the length. `net` is what `quantities::take` makes of it, which has the member counted between the
+/// faces of its columns and the floor over its sides taken off a beam; it is written where there is one (a steel section has none).
 fn member_quantities(
     width: f64,
     depth: f64,
     round: bool,
     length: f64,
     profile: Option<&crate::model::Profile>,
+    net: Option<f64>,
 ) -> Vec<(&'static str, &'static str, f64)> {
     let (area, perimeter) = if let Some(p) = profile {
         (p.area(width, depth), p.perimeter(width, depth))
@@ -1365,12 +1368,14 @@ fn member_quantities(
     } else {
         (width * depth, 2.0 * (width + depth))
     };
-    vec![
+    let mut values = vec![
         ("Length", "LENGTH", length),
         ("CrossSectionArea", "AREA", area / 1e6),
         ("OuterSurfaceArea", "AREA", perimeter * length / 1e6),
         ("GrossVolume", "VOLUME", area * length / 1e9),
-    ]
+    ];
+    values.extend(net.map(|v| ("NetVolume", "VOLUME", v)));
+    values
 }
 
 /// What a wall measures, for its `Qto_WallBaseQuantities`: its length along its axis, its thickness and height, its side
@@ -1749,6 +1754,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             holes.entry(host).or_default().push((t.width, t.height, o.sill));
         }
     }
+    // A member's net volume by the rules of `quantities`, which the schedule's Volume follows too.
+    let net_of = |id, e: &Element| quantities::take(m, rooms.quantities(), rooms.takeoff(), id, e).map(|t| t.volume_m3);
     for (&id, e) in &m.elements {
         match e {
             Element::Wall(wl) if crate::curtain::pattern(m, wl).is_some() => {
@@ -2052,12 +2059,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                         ("Width", "LENGTH", if t.round { t.width } else { t.depth }),
                         ("Height", "LENGTH", top - bottom),
                         ("GrossVolume", "VOLUME", volume),
-                        ("NetVolume", "VOLUME", volume),
+                        ("NetVolume", "VOLUME", net_of(id, e).unwrap_or(volume)),
                     ];
                     w.quantities(ent, "Qto_FootingBaseQuantities", &values, id);
                 } else {
                     w.typed_member("IFCCOLUMNTYPE", ".COLUMN.", &col.type_name, (section, String::new()), 5, ent);
-                    let values = member_quantities(t.width, t.depth, t.round, top - bottom, t.profile.as_ref());
+                    let values = member_quantities(t.width, t.depth, t.round, top - bottom, t.profile.as_ref(), net_of(id, e));
                     w.quantities(ent, "Qto_ColumnBaseQuantities", &values, id);
                 }
             }
@@ -2101,7 +2108,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                         // Placed by the line its heights are on, the top, the middle or the bottom of its section.
                         let cardinal = cardinal_point(r.justify, g.vertical());
                         w.typed_member("IFCBEAMTYPE", ".BEAM.", &r.type_name, (section, t.material.clone()), cardinal, ent);
-                        let values = member_quantities(g.width, g.depth, g.round, g.length(), t.profile.as_ref());
+                        let values = member_quantities(g.width, g.depth, g.round, g.length(), t.profile.as_ref(), net_of(id, e));
                         w.quantities(ent, "Qto_BeamBaseQuantities", &values, id);
                     }
                     Element::StripFooting(_) => {
@@ -2114,7 +2121,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                             ("Height", "LENGTH", g.depth),
                             ("CrossSectionArea", "AREA", area / 1e6),
                             ("GrossVolume", "VOLUME", volume),
-                            ("NetVolume", "VOLUME", volume),
+                            ("NetVolume", "VOLUME", net_of(id, e).unwrap_or(volume)),
                         ];
                         w.quantities(ent, "Qto_FootingBaseQuantities", &values, id);
                     }
@@ -3481,6 +3488,49 @@ mod tests {
         dangling(&f);
     }
 
+    /// The net volume a member's quantity set holds is the Volume its schedule row shows: the IFC and the schedule follow one rule.
+    #[test]
+    fn the_ifc_quantities_equal_the_schedule() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        run(&mut s, "type", json!({"category": "beam", "name": "B 300x600", "width": 300, "depth": 600, "material": "Concrete"}));
+        for x in [0, 5000] {
+            run(&mut s, "structural_column", json!({"at": [x, 0]}));
+        }
+        run(&mut s, "beam", json!({"points": [[0, 0], [5000, 0]], "type": "B 300x600", "offset": 3000}));
+        run(&mut s, "level", json!({"name": "L2", "elevation": 3000}));
+        let boundary = json!([[-1000, -2000], [6000, -2000], [6000, 2000], [-1000, 2000]]);
+        run(&mut s, "floor", json!({"boundary": boundary, "level": "L2", "structural": true}));
+        run(&mut s, "footing", json!({"at": [9000, 0], "thickness": 500}));
+        run(&mut s, "strip_footing", json!({"points": [[0, 8000], [5000, 8000]]}));
+        let f = export(&s.model);
+        let in_ifc = |class: &str, set: &str| -> Vec<f64> {
+            let mut v: Vec<f64> = of_kind(&f, class).iter().map(|e| quantities_of(&f, *e, set)["NetVolume"]).collect();
+            v.sort_by(f64::total_cmp);
+            v
+        };
+        let mut in_schedule = |categories: &[&str]| -> Vec<f64> {
+            let mut v = Vec::new();
+            for category in categories {
+                let r =
+                    run(&mut s, "schedule", json!({"name": format!("Volumes of {category}"), "category": category, "fields": ["Volume"]}));
+                v.extend(r["rows"].as_array().unwrap().iter().filter_map(|row| row[0].as_f64()));
+            }
+            v.sort_by(f64::total_cmp);
+            v
+        };
+        for (class, set, categories) in [
+            ("IFCBEAM", "Qto_BeamBaseQuantities", &["beam"][..]),
+            ("IFCCOLUMN", "Qto_ColumnBaseQuantities", &["column", "structuralcolumn"][..]),
+            ("IFCFOOTING", "Qto_FootingBaseQuantities", &["footing", "stripfooting"][..]),
+            ("IFCSLAB", "Qto_SlabBaseQuantities", &["floor"][..]),
+        ] {
+            let (a, b) = (in_ifc(class, set), in_schedule(categories));
+            assert!(!a.is_empty() && a.len() == b.len(), "{class}: {a:?} {b:?}");
+            assert!(a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 2e-3), "{class}: the file has {a:?} and the schedule {b:?}");
+        }
+    }
+
     /// The occurrences an `IfcRelDefinesByType` of the type object `#kind` lists.
     fn occurrences_of(f: &str, kind: u64) -> Vec<u64> {
         let rel =
@@ -3509,7 +3559,9 @@ mod tests {
         assert!(f.contains("IFCBEAMTYPE(") && f.contains("'B 150x600',$,$,$,$,$,$,.BEAM.)"));
         assert_eq!(occurrences_of(&f, kinds[0]), beams);
         let q = quantities_of(&f, beams[0], "Qto_BeamBaseQuantities");
-        assert!(near(q["Length"], 5000.0) && near(q["CrossSectionArea"], 0.09) && !q.contains_key("NetVolume"), "{q:?}");
+        assert!(near(q["Length"], 5000.0) && near(q["CrossSectionArea"], 0.09), "{q:?}");
+        // The net volume has the beam counted to its column's face where one stands at its end, so it is the gross or less.
+        assert!(q["NetVolume"] > 0.0 && q["NetVolume"] <= q["GrossVolume"] + 1e-9, "{q:?}");
         assert!(near(q["GrossVolume"], 0.45) && near(q["OuterSurfaceArea"], 2.0 * (0.15 + 0.6) * 5.0), "the sides only: {q:?}");
         assert!(!q.contains_key("GrossSurfaceArea"), "outer surface and section are given apart: {q:?}");
         let columns = of_kind(&f, "IFCCOLUMN");

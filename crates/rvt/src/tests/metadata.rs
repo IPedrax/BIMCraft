@@ -199,6 +199,51 @@ fn the_schema_names_each_class_with_its_tag_base_and_field_count() {
 }
 
 #[test]
+fn the_schema_keeps_each_fields_name_and_type() {
+    use crate::fixture::{Ty, TypedClass};
+    use crate::schema::{Field, Type};
+    let pair = Ty::fixed(7, 2);
+    let mut bytes = fixture::typed_classes(&[
+        TypedClass {
+            name: "Point",
+            base: None,
+            fields: &[("uv", Ty { kind: 0x0d, modifier: 0x10, count: Some(2), inner: Some(&pair), class: None })],
+        },
+        TypedClass {
+            name: "Face",
+            base: Some(12),
+            fields: &[
+                ("m_pSurf", Ty::object(1, None)),
+                ("m_next", Ty { kind: 0x0e, modifier: 0x13, count: Some(2), inner: None, class: None }),
+                ("m_points", Ty::object(0x50, Some(12))),
+                ("m_id", Ty::plain(11)),
+                ("m_flags", Ty::plain(2)),
+            ],
+        },
+    ]);
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    let schema = crate::schema::Schema::parse(&bytes);
+    assert_eq!(schema.stopped, None);
+    let plain = |kind, modifier, count| Type { kind, modifier, count, inner: None, class: None };
+    let field = |name: &str, ty| Field { name: name.to_string(), ty };
+    let point = schema.by_tag(12).unwrap();
+    let uv = Type { inner: Some(Box::new(plain(7, 0x10, Some(2)))), ..plain(0x0d, 0x10, Some(2)) };
+    assert_eq!(point.fields, [field("uv", uv)]);
+    let face = schema.by_tag(13).unwrap();
+    assert_eq!((face.base, face.field_count), (Some(12), 5));
+    assert_eq!(
+        face.fields,
+        [
+            field("m_pSurf", plain(0x0e, 1, None)),
+            field("m_next", plain(0x0e, 0x13, Some(2))),
+            field("m_points", Type { class: Some(12), ..plain(0x0e, 0x50, None) }),
+            field("m_id", plain(11, 0, None)),
+            field("m_flags", plain(2, 0, None)),
+        ]
+    );
+}
+
+#[test]
 fn a_schema_that_breaks_the_grammar_stops_there_and_keeps_the_classes_before_it() {
     let good = fixture::schema(&[Class { name: "One", fields: &["a"], base: None }, Class { name: "Two", fields: &[], base: None }]);
     let mut bad = good.clone();

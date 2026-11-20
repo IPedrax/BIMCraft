@@ -43,6 +43,15 @@ takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item b
 `Reader::give_up`'s, kept by item (`Reader::unread`): a product left out as having no body says it after `it has no body
 BIMCraft can read: `, and one that came in without part of its body has its own note, `part of its body was left out, …`.
 
+A roof's body is read by `Reader::body_out`: each item whose faces close a body (their vector areas sum to nothing) and
+whose signed volume is negative is wound inside out, so its faces are turned the other way before its top and underside are
+told apart. A mesh that does not close is read as the file winds it.
+
+An `IfcOpeningElement` through a slab, a covering or a roof comes in as a shaft over its body's height, which cuts every floor,
+ceiling and roof it passes through. When its host is a roof (an `IfcRoof`, a roof slab, or a part of an `IfcRoof`), the shaft
+reaches no higher or lower than that roof and its parts, because an exporter's opening often runs on past the roof it voids,
+and the shaft would take a hole out of the roof above it (a dormer's).
+
 ## Shared shapes
 
 A body an `IfcMappedItem` maps (as Tekla writes every bolt and Revit a type's geometry) is read once in its
@@ -114,10 +123,12 @@ wall follows. Reopening keeps those choices and the drawn endpoints, without ext
 location with no attachment property means unattached, so geometric roof inference does not add a link.
 
 Walls without a recognized location still come in from the body's centre line and retain the existing join and roof
-inference. A missing axis, or a layer usage that reverses it, also keeps the generic centre-line reconstruction. Attachment
-targets must have come in as roofs or floors; missing or other-kind targets are ignored. The axis is read through the file's
-placements and length units, so the metadata does not introduce a second coordinate system. Other native wall constraints
-(such as height and top offsets) continue to be inferred from geometry; this set does not preserve all native parameters.
+inference. A wall with no axis runs along its own x or its own y, whichever its body is longer along (x where they
+tie), and is as thick as the body is across that. A missing axis, or a layer usage that reverses it, also keeps the
+generic centre-line reconstruction. Attachment targets must have come in as roofs or floors; missing or other-kind targets
+are ignored. The axis is read through the file's placements and length units, so the metadata does not introduce a second
+coordinate system. Other native wall constraints (such as height and top offsets) continue to be inferred from geometry;
+this set does not preserve all native parameters.
 The native project schema and file format are unchanged.
 
 ## Georeference

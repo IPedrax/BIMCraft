@@ -1265,6 +1265,21 @@ fn a_copied_curtain_wall_brings_the_walls_in_its_cells_and_their_doors() {
 }
 
 #[test]
+fn a_pasted_curtain_wall_brings_the_walls_in_its_cells_and_their_doors_as_a_copied_one_does() {
+    let mut s = session();
+    let id = tall(&mut s);
+    let in_place = replaced(&mut s, id, 0, 0);
+    run(&mut s, "door", json!({"wall": in_place, "offset": 900}));
+    let copied = run(&mut s, "copy_to_clipboard", json!({"ids": [id], "view": 100000}));
+    assert_eq!(copied["count"], 3, "{copied}");
+    let made = run(&mut s, "paste", json!({"view": 100000, "by": [0, 5000]}));
+    assert_eq!(made["ids"].as_array().unwrap().len(), 3, "{made}");
+    let walled: Vec<_> = s.model.elements.values().filter(|e| matches!(e, Element::Wall(w) if w.panel_of.is_some())).collect();
+    assert_eq!(walled.len(), 2);
+    assert_eq!(s.model.elements.values().filter(|e| matches!(e, Element::Door(_))).count(), 2);
+}
+
+#[test]
 fn removing_the_last_interior_grid_keeps_a_walls_edits() {
     let mut s = session();
     let id = gridded(&mut s);

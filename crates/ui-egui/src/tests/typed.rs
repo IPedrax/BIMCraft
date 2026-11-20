@@ -25,26 +25,30 @@ fn cursor_text(h: &Harness<BimApp>, base: P2, to: P2) -> String {
 #[test]
 fn a_lines_cursor_says_which_of_its_length_and_angle_enter_takes() {
     let mut h = line_under_the_cursor(P2(3000.0, 0.0));
-    let before = cursor_text(&h, P2(0.0, 0.0), P2(3000.0, 0.0));
-    assert!(before.starts_with("[3000 mm]"), "the length so far, the field Enter takes first: {before:?}");
+    let idle = cursor_text(&h, P2(0.0, 0.0), P2(3000.0, 0.0));
+    assert!(idle.starts_with("3000 mm") && !idle.contains('['), "no field is in hand until Tab: {idle:?}");
+    key(&mut h, Key::Tab);
+    let armed = cursor_text(&h, P2(0.0, 0.0), P2(3000.0, 0.0));
+    assert!(armed.starts_with("[3000 mm]"), "the first Tab arms the length, the field Enter takes first: {armed:?}");
     key(&mut h, Key::Tab);
     let after = cursor_text(&h, P2(0.0, 0.0), P2(3000.0, 0.0));
-    assert!(after.contains("[0°]"), "Tab puts the angle in brackets, the one Enter takes now: {after:?}");
+    assert!(after.contains("[0°]"), "Tab again puts the angle in brackets, the one Enter takes now: {after:?}");
     key(&mut h, Key::Tab);
     let back = cursor_text(&h, P2(0.0, 0.0), P2(3000.0, 0.0));
     assert!(back.starts_with("[3000 mm]"), "Tab again is the length's: {back:?}");
 }
 
-/// The same as seen: the reading painted for the line changes when Tab moves it to the angle. It did not: the line's
-/// preview drew its own reading, which knew nothing of Tab, so the angle could be typed but nothing said so.
+/// The same as seen: the reading painted for the line changes when Tab takes a field. It did not: the line's preview
+/// drew its own reading, which knew nothing of Tab, so the angle could be typed but nothing said so. The field in hand is
+/// the one in the accent's selection fill.
 #[test]
 fn tab_changes_what_a_detail_lines_cursor_shows() {
     let mut h = line_under_the_cursor(P2(3000.0, 0.0));
-    let reading = |h: &Harness<BimApp>| painted_text(h).into_iter().find(|t| t.contains("mm") && t.contains('['));
-    let before = reading(&h);
+    let boxes = |h: &Harness<BimApp>| painted_boxes(h, crate::style::canvas_pal().accent);
+    let before = boxes(&h);
     key(&mut h, Key::Tab);
-    let after = reading(&h);
-    assert!(after.as_ref().is_some_and(|t| t.contains("[0°]")), "Tab must change what the cursor says: {before:?} -> {after:?}");
+    assert_eq!(boxes(&h), before + 1, "Tab must change what the cursor shows: one field in the selection fill");
+    assert!(painted_text(&h).iter().any(|t| t.contains('°')), "the angle is still read: {:?}", painted_text(&h));
 }
 
 #[test]

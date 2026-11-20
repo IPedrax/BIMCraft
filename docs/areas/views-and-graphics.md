@@ -130,7 +130,10 @@ terms, and goes with it. `render::detail_line` draws it in its style's pen with 
 pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
 any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
 Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again; the Options Bar's Line Style and
-Chain; the Draw panel's other shapes, below) and Manage > Line Styles (`linestyles.rs`: styles and patterns on two tabs of one
+Chain; the Draw panel's other shapes, below). While a wall or a detail line chains, Backspace and Ctrl+Z take back its last point
+and the segment built to it (`BimApp::undo_chain_point`), so a point cannot outlive its wall or line; a shape still being clicked (an
+arc, a spline, a polyline or a revision cloud's line) has made nothing yet, so it loses the point alone. Manage > Line Styles
+(`linestyles.rs`: styles and patterns on two tabs of one
 draft, applied as one undo step). Patterns > New Pattern or Edit opens the separate Line Pattern Creator
 (`linestyles/creator.rs`), with a live straight/curved preview and segment controls, add, reorder and delete. Save Pattern
 updates the library draft; Cancel Pattern discards just the creator, and the parent Cancel discards the whole draft.
@@ -737,7 +740,128 @@ link at the height of one of the project's (1 mm) is that level, another comes i
 them without knowing: `Look::with` makes a linked id halftone, and picking never answers one (`Drawing::pick_all`, `in_box`, `Image::pick`,
 `in_box`, `shows` and `Mesh::pick` leave them out). The commands that make an image (`render`, `save` to svg, png or pdf) draw `seen`; the desktop's
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
-To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
+To do: a link's graphics overrides and visibility per view, hosting on a linked wall.
+
+### Manage Links
+
+`links {kind?}` (`link/manage.rs`) lists, as Revit's Manage Links does, every file the project reads from elsewhere, a tab for
+each kind: `projects` and `ifc` (links, by their path's extension), `cad` (`Model::cads`, linked or imported), `clouds`, `models`
+(families made by `import_mesh`, which keep `Family::source`: the file's absolute path, the object, the OBJ's units and up, and
+the point the family stands on in the file), `images` (the pictures placed in plans, a row for each picture and file) and `pdf` (the PDFs' pages placed, the same way). There's one row for each file, as Revit
+lists a link's type: `path` as kept, `path_type`, `resolved` (relative to the project's file), `status` (loaded, not loaded,
+unloaded, not found, imported) and its `instances` with their `ids`.
+
+`unload {id}` sets `Link::unloaded` on every link of that file and drops it from `loaded`. It's an undo step, and it's kept in
+the file, so `open` (`relink`) doesn't read the link. `reload {id}` loads it again, and `reload` without an id reads only the
+loaded links. `reload_from {id, path}` points every link of the file at another and reads it; a file that can't be read
+refuses the command. `reload_cad {cad, path}` is a drawing's Reload From, which links an imported drawing from then on.
+`reload_mesh {path, from?}` rebuilds each family of a 3D model from the object of its name, about the point it stood on, so
+its components stay. The window is `crates/ui-egui/src/manage_links.rs` (Insert > Link);
+tests are `links_tests.rs` and `tests/manage_links.rs`.
+
+### Images in plans
+
+`image {path | picture, level?, view?, at?, width?, link?}` places an `Element::Image` (`model::PlacedImage`), as Revit's Insert >
+Image and Link Image do: a picture of `Model::images` (`texture::Picture`, the one store pictures have, so the same pixels are one
+picture, at most `MAX_SIDE` px a side and `MAX_IMAGES` of them) with its middle on `at` on a level, `width` mm across and as tall as its
+pixels say, in every plan of its level or one (`view`). `render::images` draws it under the CAD drawings and the model: the
+picture's nearest pixel to each of the view's, clipped to the view, as one `Prim::Image` owned by the element, so it's picked,
+moved (`transform` moves its middle; a turn keeps it upright, a mirror is refused) and deleted as any element. Linked, it keeps
+its file (`path`), which `reload_image {id, path?}` reads again for every image of that picture and file, and Manage Links lists on
+its Images tab; the picture it showed goes when nothing else shows it. The Asset Manager lists it among the picture's users.
+A picture placed is kept up to `texture::MAX_PLACED_SIDE` (4096 px) a side, where a material's is kept to `MAX_SIDE` (1024):
+`Picture::import_at`. A file that fits is kept byte for byte, so a JPEG stays the JPEG it came in as (`Picture::is_jpeg`), as
+small as it was; one halved to fit is written again as what it was (a JPEG at quality 90 through jpeg-encoder, or a PNG). A
+project file holds either under the picture's `png` key, which every version reads (both are known by their first bytes).
+
+A PDF's page is placed the same way, as Revit's Insert > PDF: `image {path: "….pdf", page?}` draws page `page` (from 1) through
+`pdf_in.rs` and hayro (Apache-2.0 OR MIT), over white at up to 150 dpi and 4096 px a side. Unless `width` says, it stands at its paper's size at the plan's
+scale (`graphics::scale_of`), so a drawing printed at that scale lies true over the model. `PlacedImage::page` keeps the page,
+which `reload_image` draws again; Manage Links lists it on its PDF tab. A file past `pdf_in::MAX_BYTES`, an encrypted one, or a
+page it hasn't is refused. `pdf_pages {path}` lists a PDF's pages and their paper sizes, which the desktop's Insert > PDF asks
+from when there is more than one (`mesh.rs`, `PdfPageBox`): each page a card with its picture, drawn small on a thread of its
+own by `pdf_in::thumbnails` (up to `MAX_THUMBNAILS`, stopped when the box closes), so a long PDF never holds the window up.
+A PDF's page stands as tall as its paper's aspect says (`PlacedImage::height`), not its picture's, which whole pixels round.
+
+A PDF's page is drawn as vectors, not as its picture: `pdf_in::drawing` runs hayro's interpreter into a `Device` of its own
+(`Collect`) that keeps each path filled or stroked (flattened to 0.05 pt, with its colour, width and dashes), each glyph as the
+fill of its outline, and each raster picture in the page with its transform, up to `pdf_in::MAX_POINTS` points (past that, and
+for patterns, shadings and stencils, the drawing says `cut_short`). The project keeps the PDF itself (`Model::pdfs`, a
+`PdfDoc` keyed by the id of the page's picture in `Model::images`: deflated, as base64, read again when the project opens),
+and `render::pdf_page` draws its items into the plan each time, a line as wide as it prints at the image's size (a pixel at
+least), a picture in it resampled through its transform. The picture of the page (drawn at up to 2048 px) stays beside it,
+which an older version, leaving `pdfs` out of a file, shows instead.
+
+Its fills are drawn by the non-zero rule, as every output fills (PNG, SVG, a sheet's PDF, and the window, which takes a placed
+image's shapes as `render::Part::Picture`, fills them as it fills a letter and feathers every edge half a point each side,
+`canvas::feather`: a mesh has no anti-aliasing of its own, and without it a stroke thinner than a pixel, a serif letter's bars
+at a plan's zoom, showed or vanished by where it fell between pixels): a glyph's counters stay open as
+they're wound, and an even-odd fill's rings are wound again by how many of the others each lies in (`pdf_in::wind_even_odd`),
+so a frame's opening stays open too. Text is its fonts' own outlines where the PDF embeds them, as most do (a subset of each).
+A font it only names comes from `pdf_in::interpreter`'s resolver: one of PDF's standard families (Helvetica or Arial, Times or
+Times New Roman, Courier or Courier New) is this computer's font of it or one drawn to its widths (`text::system::substitutes`:
+Liberation, Arimo), a CID font is looked for by its own name (`pdf_in::system_font`, its PostScript name read as a family by
+`family_of`), and else hayro's Foxit fonts (BSD-3, in `NOTICE`) draw it. hayro reads an ordinary font of another family in the
+standard one nearest it whatever the computer has, so such a font, and a CID font the computer hasn't, is a stand-in: the page's
+resources name them (`pdf_in::stand_ins`), `image` and `reload_image` return them as `missing_fonts`, `elements` shows them, and
+the desktop says so on placing it and shows them in Properties (Fonts Substituted). It is decided where the project is open:
+the project holds the PDF, never a font. In the window a selected or hovered image keeps its own colours under a light tint
+over its whole page, and a selected one is outlined (`image_grips.rs`, `image_frames`).
+
+With `snaps` (Properties' Snap to Its Lines, a PDF's only) a placed PDF is snapped to as a CAD import is: `snap::pdf_scene`
+gives the straight edges of its strokes and of the shapes it fills near the cursor, their ends and middles, and an edge
+shorter than 2 points (a step of a curve followed) its line alone; a glyph's fill (`Item::Fill::letter`) gives nothing, so
+text doesn't crowd the snaps.
+
+An image draws under the model, or over it with `front` (Properties' Draw in Front of Model): `render::images` runs twice, under
+the CAD drawings and after the model. `flip_x` and `flip_y` are what `mirror` makes of it about an upright or a level line (a
+slanted axis is refused: it stands square to the plan). `modify` takes its `width`, and for its size two keys that aren't
+fields: `height`, and a PDF's `scale` (1 : n, its paper's size n times), each setting the width at its aspect; `elements` shows
+a PDF's `paper` and `scale`. In the desktop its corners are grips (`image_grips.rs`): a drag resizes it about the corner
+across, keeping its aspect, and the Modify tab offers only Move, Copy, the Mirrors and Delete while images alone are
+selected. Tests: `image_tests.rs`, `tests/manage_links.rs`. Still to come: on sheets and in sections, turned, and a PDF's clip
+paths (everything on a page is drawn, clipped or not).
+
+## Grid types
+
+A grid (`Grid`, the `grid` command) is a named axis for dimensions and snaps, and it draws in a grid type (`grids.rs`,
+`Model::grid_types`, a library entry `Kind::GridType`, the `grid_type` command), as a dimension draws in a dimension type. A
+grid names its type (`type`) as a file names any type; a new grid takes the project's default type, `Grid - ISO 128`.
+`Model::type_names("grid")` and `Model::default_type("grid")` are what fills a Type Selector and enables Edit Type, and a
+grid's type is checked like a dimension's (`Model::check`).
+
+| Field | Meaning | Default |
+|---|---|---|
+| `line_pattern` | A line pattern of the project by name (`lines.rs`), its lengths mm on paper; none, a solid line | `Grid - ISO Dash Dot` for the ISO type |
+| `line_pen` | The pen the line and its bubble are drawn in | 4 (0.18 mm on paper) |
+| `color` | The line's and its name's colour | `[60, 100, 150]` |
+| `font`, `text_size` | The name's font (the system's, IBM Plex or our lettering, as a text type's) and capitals, mm on paper | Arial, 2.5 mm |
+| `bold`, `italic`, `underline`, `width_factor` | Its lettering | off, 1.0 |
+
+A pattern is in mm on paper, so its chain scales with the view's scale and reads the same on every sheet, as a detail
+line's does; the renderer turns it into pixels with `sheet::DENSITY * d.paper` and raises every segment to at least 2 px,
+so the dot of a chain stays visible in egui's kept canvas. The bubble's radius follows its name (`max(2.2 mm, 0.6 ·
+text_size + half the laid-out name)`), and its name is laid out by `text::layout` in the type's text and centred in it.
+A view's Visibility/Graphics is applied after the type, so it still overrides the dash, the colour and the weight, and
+hides the category; the type is only the default.
+
+A project starts with six types (`grids::types`), one reading of each standard rather than an exhaustive one — lengths in
+the standards are fixed in line-weight groups, and bubble sizes may be an office standard of their own:
+
+| Type | Pattern | Pen (mm on paper) | Text | Source |
+|---|---|---|---|---|
+| `Grid - ISO 128` | 12.7 / 3.2 / dot / 3.2 | 4 (0.18) | 2.5 mm | ISO 128-2 chain line; ISO 128-23; EN ISO 7519 |
+| `Grid - DIN 1356` | 20 / 4 / dot / 4 | 7 (0.25) | 2.5 mm | DIN 1356-1; DIN 15-1 (Strichpunktlinie) |
+| `Grid - ASME Y14.2` | 20 / 3 / 5 / 3 | 9 (0.30) | 3.5 mm | ASME Y14.2 centre line |
+| `Grid - Architectural` | 15 / 2 / 2 / 2 / 2 / 2 | 4 (0.18) | 2.5 mm | office practice, not a standard |
+| `Grid - Continuous` | solid | 4 (0.18) | 2.5 mm | coordination and zone grids (NCS practice) |
+| `Grid - Compact` | 6 / 1.5 / dot / 1.5 | 4 (0.18) | 2.0 mm | templates for dense plans, not a standard |
+
+The set is open: any type may be changed, duplicated or made on any pattern of the project, and put on any grid. The
+Project Browser's Families lists the project's grid types under Grids, where a right click deletes one nothing uses. A type a
+grid uses can't be deleted; `purge` leaves grid types alone, as it leaves text and dimension types. `insert` brings a grid
+type, and the line pattern it names, from another project, and format 21 holds them: a file of 20 or before opens with each
+grid in `Grid - ISO 128` (or the first type there is) and the starter set put back (`Model::typed_grids`).
 
 ## Dimensions
 
@@ -857,6 +981,19 @@ title box: the first view goes in the middle of the border. A frame not drawn ca
 sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
 entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
 shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
+
+**Starters and papers.** A title block lists the papers it is for (`sizes`, `A3`, `ANSI D`, kept once in capitals; under Size in the
+editor as Papers). A sheet that names no title block is drawn with the first of the project's, by name, that lists its paper
+(`Model::title_block_of`), else with the built-in box; `none` and a name still mean what they did, and a sheet's `elements` say which
+one by size as `title_block_by_size`, its Properties as `NAME (by paper size)`. `title_block {starter: …}` (the dialog's New from
+starter) starts one from a ready-made stamp, `title_starters.rs`: ISO 7200, ASME Y14.1 and NBR 16752, each for small papers (A4 and A3,
+ANSI A and B) and large (A2 to A0, ANSI C to E), 6 in all, named in the command's listing. They are original layouts: a ruled grid of
+cells, each a small label over a field, built from the data fields those standards ask for (project, client, title, organization,
+sheet number, scale, date, revision, created and approved by, page) and not from any CAD vendor's title blocks. Every field is
+automatic (Manage > Project Information fills them) but Checked by and Approved by, each sheet's own, and the labels come in the
+project's language (`Language::word`, the project catalogs). Their numbers are unchecked against the standards' texts. Loading one
+changes how the sheets of its papers are drawn, so `sizes: []` leaves it for the sheets that name it; two blocks that list one paper
+are told in the reply's `notes`, and the one named first wins.
 
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,

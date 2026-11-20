@@ -1,0 +1,1297 @@
+{
+ "code": "nbr",
+ "discipline": "plumbing",
+ "name": "ABNT NBR 5626, 8160 and 10844",
+ "edition": "5626:2020, 8160:1999, 10844:1989",
+ "region": "Brasil",
+ "references": [
+  "ABNT NBR 5626:2020, Sistemas prediais de água fria e água quente",
+  "ABNT NBR 8160:1999, Sistemas prediais de esgoto sanitário",
+  "ABNT NBR 10844:1989, Instalações prediais de águas pluviais",
+  "Manual Técnico Tigre, 2021_10 (design flows, weights and equivalent lengths: a maker's tables)"
+ ],
+ "note": "Brazil's building water, sewage and storm water. The tables are the standards' as printed, read from licensed copies; the fixtures' flows and weights and the fittings' equivalent lengths are Tigre's, the reference makers' tables, not the standards'. The downpipe curves were digitised from NBR 10844's Figure 3 by this project.",
+ "documents": {
+  "nbr5626": {
+   "title": "ABNT NBR 5626",
+   "edition": "2020",
+   "publisher": "ABNT"
+  },
+  "nbr8160": {
+   "title": "ABNT NBR 8160",
+   "edition": "1999",
+   "publisher": "ABNT"
+  },
+  "nbr10844": {
+   "title": "ABNT NBR 10844",
+   "edition": "1989",
+   "publisher": "ABNT"
+  },
+  "tigre": {
+   "title": "Manual Técnico Tigre",
+   "edition": "2021_10",
+   "publisher": "Tigre"
+  },
+  "nbr5648": {
+   "title": "ABNT NBR 5648",
+   "publisher": "ABNT"
+  }
+ },
+ "sources": {
+  "fixtures": {
+   "doc": "tigre",
+   "item": "Vazões de projeto e pesos relativos nos pontos de utilização; UHC and least drains from NBR 8160 Tabela 3",
+   "page": "198"
+  },
+  "cold_water.flow_method": {
+   "doc": "nbr5626",
+   "item": "6.14.1 and 6.14.2: a recognised method, justified in the design; the weights are the 1998 edition's Annex A"
+  },
+  "cold_water.flow_coefficient": {
+   "doc": "nbr5626",
+   "item": "the 1998 edition's Annex A, Q = 0.3 √ΣP"
+  },
+  "cold_water.max_speed": {
+   "doc": "nbr5626",
+   "item": "3 m/s; faster where water hammer and noise are shown not to matter"
+  },
+  "cold_water.min_use_kpa": {
+   "doc": "nbr5626",
+   "item": "10 kPa dynamic at a point of use"
+  },
+  "cold_water.roughness": "PVC's roughness, a common figure for smooth plastic pipe",
+  "cold_water.pipes": {
+   "doc": "nbr5648",
+   "item": "PVC soldável: outside diameter (DN) and wall"
+  },
+  "cold_water.fittings": {
+   "doc": "tigre",
+   "item": "Perdas de carga localizadas",
+   "page": "199"
+  },
+  "cold_water.equivalent_lengths": {
+   "doc": "tigre",
+   "item": "Perdas de carga localizadas, rigid PVC, DN 20 to 110",
+   "page": "199"
+  },
+  "reservoir": {
+   "doc": "nbr5626",
+   "item": "reservation, as read from its text"
+  },
+  "reservoir.usual_lower_percent": "Common practice for the lower reservoir's share, offered as a suggestion only",
+  "drainage.dns": {
+   "doc": "nbr8160",
+   "item": "the DNs its tables list"
+  },
+  "drainage.main_min_dn": {
+   "doc": "nbr8160",
+   "item": "the building drain's least DN"
+  },
+  "drainage.branch": {
+   "doc": "nbr8160",
+   "item": "Tabela 5"
+  },
+  "drainage.main_slopes": {
+   "doc": "nbr8160",
+   "item": "Tabela 7"
+  },
+  "drainage.main": {
+   "doc": "nbr8160",
+   "item": "Tabela 7"
+  },
+  "drainage.stack": {
+   "doc": "nbr8160",
+   "item": "Tabela 6"
+  },
+  "drainage.branch_vent_no_wc": {
+   "doc": "nbr8160",
+   "item": "Tabela 8"
+  },
+  "drainage.branch_vent_wc": {
+   "doc": "nbr8160",
+   "item": "Tabela 8"
+  },
+  "drainage.vent_stacks": {
+   "doc": "nbr8160",
+   "item": "Tabela 2"
+  },
+  "drainage.trap_to_vent": {
+   "doc": "nbr8160",
+   "item": "Tabela 1"
+  },
+  "storm.default_rain": {
+   "doc": "nbr10844",
+   "item": "5.1.4, up to 100 m² of roof in plan"
+  },
+  "storm.default_rain_max_area": {
+   "doc": "nbr10844",
+   "item": "5.1.4"
+  },
+  "storm.min_downpipe": {
+   "doc": "nbr10844",
+   "item": "5.6.3"
+  },
+  "storm.min_slope": {
+   "doc": "nbr10844",
+   "item": "5.7.1"
+  },
+  "storm.roughness": {
+   "doc": "nbr10844",
+   "item": "Tabela 2"
+  },
+  "storm.diameter_axis": {
+   "doc": "nbr10844",
+   "item": "Figure 3, its diameter axis",
+   "page": "8"
+  },
+  "storm.depth_range": {
+   "doc": "nbr10844",
+   "item": "Figure 3, its H curves",
+   "page": "8"
+  },
+  "storm.min_length": {
+   "doc": "nbr10844",
+   "item": "Figure 3, its L curves",
+   "page": "8"
+  },
+  "storm.downpipe_curves": {
+   "doc": "nbr10844",
+   "item": "Figure 3 (a) and (b), digitised by this project: H lines D = m Q + b, L curves ln Q = c0 + c1 ln D + c2 (ln D)²",
+   "page": "8"
+  }
+ },
+ "kinds": {
+  "fixtures": "practice",
+  "cold_water.equivalent_lengths": "practice",
+  "cold_water.fittings": "practice",
+  "cold_water.roughness": "practice",
+  "cold_water.flow_coefficient": "historical",
+  "reservoir.usual_lower_percent": "practice",
+  "storm.downpipe_curves": "practice"
+ },
+ "sections": {
+  "fixtures": {
+   "fixtures": [
+    {
+     "kind": "wc",
+     "name": "Water closet with flush tank",
+     "cold_flow": 0.15,
+     "hot_flow": null,
+     "weight": 0.3,
+     "uhc": 6,
+     "drain_dn": 100,
+     "unit": "L/s",
+     "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+     "drain_source": "NBR 8160, Tabela 3"
+    },
+    {
+     "kind": "lav",
+     "name": "Lavatory",
+     "cold_flow": 0.15,
+     "hot_flow": null,
+     "weight": 0.3,
+     "uhc": 1,
+     "drain_dn": 40,
+     "unit": "L/s",
+     "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+     "drain_source": "NBR 8160, Tabela 3"
+    },
+    {
+     "kind": "sink",
+     "name": "Kitchen sink",
+     "cold_flow": 0.25,
+     "hot_flow": null,
+     "weight": 0.7,
+     "uhc": 3,
+     "drain_dn": 50,
+     "unit": "L/s",
+     "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+     "drain_source": "NBR 8160, Tabela 3"
+    },
+    {
+     "kind": "shower",
+     "name": "Shower",
+     "cold_flow": 0.2,
+     "hot_flow": null,
+     "weight": 0.4,
+     "uhc": 2,
+     "drain_dn": 40,
+     "unit": "L/s",
+     "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+     "drain_source": "NBR 8160, Tabela 3"
+    },
+    {
+     "kind": "laundry",
+     "name": "Laundry tub (tanque)",
+     "cold_flow": 0.25,
+     "hot_flow": null,
+     "weight": 0.7,
+     "uhc": 3,
+     "drain_dn": 40,
+     "unit": "L/s",
+     "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+     "drain_source": "NBR 8160, Tabela 3"
+    }
+   ]
+  },
+  "cold_water": {
+   "flow_method": "weights",
+   "flow_coefficient": 0.3,
+   "max_speed": 3.0,
+   "min_use_kpa": 10.0,
+   "roughness": 0.0015,
+   "pipes": [
+    [
+     20.0,
+     1.5
+    ],
+    [
+     25.0,
+     1.7
+    ],
+    [
+     32.0,
+     2.1
+    ],
+    [
+     40.0,
+     2.4
+    ],
+    [
+     50.0,
+     3.0
+    ],
+    [
+     60.0,
+     3.3
+    ],
+    [
+     75.0,
+     4.2
+    ],
+    [
+     85.0,
+     4.7
+    ],
+    [
+     110.0,
+     6.1
+    ]
+   ],
+   "fittings": [
+    "elbow90",
+    "elbow45",
+    "tee_through",
+    "tee_side",
+    "gate",
+    "globe",
+    "check"
+   ],
+   "equivalent_lengths": [
+    [
+     20.0,
+     1.1,
+     0.4,
+     0.7,
+     2.3,
+     0.1,
+     11.1,
+     2.5
+    ],
+    [
+     25.0,
+     1.2,
+     0.5,
+     0.8,
+     2.4,
+     0.2,
+     11.4,
+     2.7
+    ],
+    [
+     32.0,
+     1.5,
+     0.7,
+     0.9,
+     3.1,
+     0.3,
+     15.0,
+     3.8
+    ],
+    [
+     40.0,
+     2.0,
+     1.0,
+     1.5,
+     4.6,
+     0.4,
+     22.0,
+     4.9
+    ],
+    [
+     50.0,
+     3.2,
+     1.3,
+     2.2,
+     7.3,
+     0.7,
+     35.8,
+     6.8
+    ],
+    [
+     60.0,
+     3.4,
+     1.5,
+     2.3,
+     7.6,
+     0.8,
+     37.9,
+     7.1
+    ],
+    [
+     75.0,
+     3.7,
+     1.7,
+     2.4,
+     7.8,
+     0.9,
+     38.0,
+     8.2
+    ],
+    [
+     85.0,
+     3.9,
+     1.8,
+     2.5,
+     8.0,
+     0.9,
+     40.0,
+     9.3
+    ],
+    [
+     110.0,
+     4.3,
+     1.9,
+     2.6,
+     8.3,
+     1.0,
+     42.3,
+     10.4
+    ]
+   ]
+  },
+  "reservoir": {
+   "min_days": 1.0,
+   "max_days": 3.0,
+   "refill_hours": 6.0,
+   "refill_hours_house": 3.0,
+   "min_pumps": 2,
+   "min_compartments": 2,
+   "usual_lower_percent": 60.0,
+   "standard": "NBR 5626:2020, reservation, as read from its text"
+  },
+  "drainage": {
+   "dns": [
+    40.0,
+    50.0,
+    75.0,
+    100.0,
+    150.0,
+    200.0,
+    250.0,
+    300.0,
+    400.0
+   ],
+   "main_min_dn": 100.0,
+   "branch": [
+    [
+     40.0,
+     3.0
+    ],
+    [
+     50.0,
+     6.0
+    ],
+    [
+     75.0,
+     20.0
+    ],
+    [
+     100.0,
+     160.0
+    ]
+   ],
+   "main_slopes": [
+    0.005,
+    0.01,
+    0.02,
+    0.04
+   ],
+   "main": [
+    [
+     100.0,
+     0.0,
+     180.0,
+     216.0,
+     250.0
+    ],
+    [
+     150.0,
+     0.0,
+     700.0,
+     840.0,
+     1000.0
+    ],
+    [
+     200.0,
+     1400.0,
+     1600.0,
+     1920.0,
+     2300.0
+    ],
+    [
+     250.0,
+     2500.0,
+     2900.0,
+     3500.0,
+     4200.0
+    ],
+    [
+     300.0,
+     3900.0,
+     4600.0,
+     5600.0,
+     6700.0
+    ],
+    [
+     400.0,
+     7000.0,
+     8300.0,
+     10000.0,
+     12000.0
+    ]
+   ],
+   "stack": [
+    [
+     40.0,
+     4.0,
+     8.0
+    ],
+    [
+     50.0,
+     10.0,
+     24.0
+    ],
+    [
+     75.0,
+     30.0,
+     70.0
+    ],
+    [
+     100.0,
+     240.0,
+     500.0
+    ],
+    [
+     150.0,
+     960.0,
+     1900.0
+    ],
+    [
+     200.0,
+     2200.0,
+     3600.0
+    ],
+    [
+     250.0,
+     3800.0,
+     5600.0
+    ],
+    [
+     300.0,
+     6000.0,
+     8400.0
+    ]
+   ],
+   "branch_vent_no_wc": [
+    [
+     12.0,
+     40.0
+    ],
+    [
+     18.0,
+     50.0
+    ],
+    [
+     36.0,
+     75.0
+    ]
+   ],
+   "branch_vent_wc": [
+    [
+     17.0,
+     50.0
+    ],
+    [
+     60.0,
+     75.0
+    ]
+   ],
+   "vent_stacks": [
+    {
+     "served": 40.0,
+     "units": 8.0,
+     "longest": [
+      [
+       40.0,
+       46.0
+      ]
+     ]
+    },
+    {
+     "served": 40.0,
+     "units": 10.0,
+     "longest": [
+      [
+       40.0,
+       30.0
+      ]
+     ]
+    },
+    {
+     "served": 50.0,
+     "units": 12.0,
+     "longest": [
+      [
+       40.0,
+       23.0
+      ],
+      [
+       50.0,
+       61.0
+      ]
+     ]
+    },
+    {
+     "served": 50.0,
+     "units": 20.0,
+     "longest": [
+      [
+       40.0,
+       15.0
+      ],
+      [
+       50.0,
+       46.0
+      ]
+     ]
+    },
+    {
+     "served": 75.0,
+     "units": 10.0,
+     "longest": [
+      [
+       40.0,
+       13.0
+      ],
+      [
+       50.0,
+       46.0
+      ],
+      [
+       75.0,
+       317.0
+      ]
+     ]
+    },
+    {
+     "served": 75.0,
+     "units": 21.0,
+     "longest": [
+      [
+       40.0,
+       10.0
+      ],
+      [
+       50.0,
+       33.0
+      ],
+      [
+       75.0,
+       247.0
+      ]
+     ]
+    },
+    {
+     "served": 75.0,
+     "units": 53.0,
+     "longest": [
+      [
+       40.0,
+       8.0
+      ],
+      [
+       50.0,
+       29.0
+      ],
+      [
+       75.0,
+       207.0
+      ]
+     ]
+    },
+    {
+     "served": 75.0,
+     "units": 102.0,
+     "longest": [
+      [
+       40.0,
+       8.0
+      ],
+      [
+       50.0,
+       26.0
+      ],
+      [
+       75.0,
+       189.0
+      ]
+     ]
+    },
+    {
+     "served": 100.0,
+     "units": 43.0,
+     "longest": [
+      [
+       50.0,
+       11.0
+      ],
+      [
+       75.0,
+       76.0
+      ],
+      [
+       100.0,
+       299.0
+      ]
+     ]
+    },
+    {
+     "served": 100.0,
+     "units": 140.0,
+     "longest": [
+      [
+       50.0,
+       8.0
+      ],
+      [
+       75.0,
+       61.0
+      ],
+      [
+       100.0,
+       229.0
+      ]
+     ]
+    },
+    {
+     "served": 100.0,
+     "units": 320.0,
+     "longest": [
+      [
+       50.0,
+       7.0
+      ],
+      [
+       75.0,
+       52.0
+      ],
+      [
+       100.0,
+       195.0
+      ]
+     ]
+    },
+    {
+     "served": 100.0,
+     "units": 530.0,
+     "longest": [
+      [
+       50.0,
+       6.0
+      ],
+      [
+       75.0,
+       46.0
+      ],
+      [
+       100.0,
+       177.0
+      ]
+     ]
+    },
+    {
+     "served": 150.0,
+     "units": 500.0,
+     "longest": [
+      [
+       75.0,
+       10.0
+      ],
+      [
+       100.0,
+       40.0
+      ],
+      [
+       150.0,
+       305.0
+      ]
+     ]
+    },
+    {
+     "served": 150.0,
+     "units": 1100.0,
+     "longest": [
+      [
+       75.0,
+       8.0
+      ],
+      [
+       100.0,
+       31.0
+      ],
+      [
+       150.0,
+       238.0
+      ]
+     ]
+    },
+    {
+     "served": 150.0,
+     "units": 2000.0,
+     "longest": [
+      [
+       75.0,
+       7.0
+      ],
+      [
+       100.0,
+       26.0
+      ],
+      [
+       150.0,
+       201.0
+      ]
+     ]
+    },
+    {
+     "served": 150.0,
+     "units": 2900.0,
+     "longest": [
+      [
+       75.0,
+       6.0
+      ],
+      [
+       100.0,
+       23.0
+      ],
+      [
+       150.0,
+       183.0
+      ]
+     ]
+    },
+    {
+     "served": 200.0,
+     "units": 1800.0,
+     "longest": [
+      [
+       100.0,
+       10.0
+      ],
+      [
+       150.0,
+       73.0
+      ],
+      [
+       200.0,
+       286.0
+      ]
+     ]
+    },
+    {
+     "served": 200.0,
+     "units": 3400.0,
+     "longest": [
+      [
+       100.0,
+       7.0
+      ],
+      [
+       150.0,
+       57.0
+      ],
+      [
+       200.0,
+       219.0
+      ]
+     ]
+    },
+    {
+     "served": 200.0,
+     "units": 5600.0,
+     "longest": [
+      [
+       100.0,
+       6.0
+      ],
+      [
+       150.0,
+       49.0
+      ],
+      [
+       200.0,
+       186.0
+      ]
+     ]
+    },
+    {
+     "served": 200.0,
+     "units": 7600.0,
+     "longest": [
+      [
+       100.0,
+       5.0
+      ],
+      [
+       150.0,
+       43.0
+      ],
+      [
+       200.0,
+       171.0
+      ]
+     ]
+    },
+    {
+     "served": 250.0,
+     "units": 4000.0,
+     "longest": [
+      [
+       150.0,
+       24.0
+      ],
+      [
+       200.0,
+       94.0
+      ],
+      [
+       250.0,
+       293.0
+      ]
+     ]
+    },
+    {
+     "served": 250.0,
+     "units": 7200.0,
+     "longest": [
+      [
+       150.0,
+       18.0
+      ],
+      [
+       200.0,
+       73.0
+      ],
+      [
+       250.0,
+       225.0
+      ]
+     ]
+    },
+    {
+     "served": 250.0,
+     "units": 11000.0,
+     "longest": [
+      [
+       150.0,
+       16.0
+      ],
+      [
+       200.0,
+       60.0
+      ],
+      [
+       250.0,
+       192.0
+      ]
+     ]
+    },
+    {
+     "served": 250.0,
+     "units": 15000.0,
+     "longest": [
+      [
+       150.0,
+       14.0
+      ],
+      [
+       200.0,
+       55.0
+      ],
+      [
+       250.0,
+       174.0
+      ]
+     ]
+    },
+    {
+     "served": 300.0,
+     "units": 7300.0,
+     "longest": [
+      [
+       150.0,
+       9.0
+      ],
+      [
+       200.0,
+       37.0
+      ],
+      [
+       250.0,
+       116.0
+      ],
+      [
+       300.0,
+       287.0
+      ]
+     ]
+    },
+    {
+     "served": 300.0,
+     "units": 13000.0,
+     "longest": [
+      [
+       150.0,
+       7.0
+      ],
+      [
+       200.0,
+       29.0
+      ],
+      [
+       250.0,
+       90.0
+      ],
+      [
+       300.0,
+       219.0
+      ]
+     ]
+    },
+    {
+     "served": 300.0,
+     "units": 20000.0,
+     "longest": [
+      [
+       150.0,
+       6.0
+      ],
+      [
+       200.0,
+       24.0
+      ],
+      [
+       250.0,
+       76.0
+      ],
+      [
+       300.0,
+       186.0
+      ]
+     ]
+    },
+    {
+     "served": 300.0,
+     "units": 26000.0,
+     "longest": [
+      [
+       150.0,
+       5.0
+      ],
+      [
+       200.0,
+       22.0
+      ],
+      [
+       250.0,
+       70.0
+      ],
+      [
+       300.0,
+       152.0
+      ]
+     ]
+    }
+   ],
+   "trap_to_vent": [
+    [
+     40.0,
+     1000.0
+    ],
+    [
+     50.0,
+     1200.0
+    ],
+    [
+     75.0,
+     1800.0
+    ],
+    [
+     100.0,
+     2400.0
+    ]
+   ]
+  },
+  "storm": {
+   "default_rain": 150.0,
+   "default_rain_max_area": 100.0,
+   "min_downpipe": 70.0,
+   "min_slope": 0.005,
+   "roughness": [
+    {
+     "material": "pvc",
+     "n": 0.011
+    }
+   ],
+   "diameter_axis": [
+    50.0,
+    150.0
+   ],
+   "depth_range": [
+    50.0,
+    100.0
+   ],
+   "min_length": 0.3,
+   "downpipe_curves": {
+    "edge": {
+     "depths": [
+      [
+       50.0,
+       0.225112,
+       -35.9298
+      ],
+      [
+       60.0,
+       0.180246,
+       -46.8196
+      ],
+      [
+       70.0,
+       0.141298,
+       -52.2541
+      ],
+      [
+       80.0,
+       0.117392,
+       -61.4213
+      ],
+      [
+       90.0,
+       0.0970961,
+       -66.4115
+      ],
+      [
+       100.0,
+       0.0831159,
+       -74.0949
+      ]
+     ],
+     "lengths": [
+      {
+       "length": 0.3,
+       "c": [
+        -5.335566,
+        2.955357,
+        -0.0699641
+       ]
+      },
+      {
+       "length": 0.6,
+       "c": [
+        -2.474349,
+        1.861605,
+        0.03953277
+       ]
+      },
+      {
+       "length": 1.0,
+       "c": [
+        -3.238297,
+        2.271285,
+        -0.006142782
+       ]
+      },
+      {
+       "length": 1.5,
+       "c": [
+        -3.909381,
+        2.662537,
+        -0.0534521
+       ]
+      },
+      {
+       "length": 2.0,
+       "c": [
+        -1.863548,
+        1.785209,
+        0.04467243
+       ]
+      },
+      {
+       "length": 3.0,
+       "c": [
+        -2.737448,
+        2.226814,
+        -0.004120258
+       ]
+      },
+      {
+       "length": 6.0,
+       "c": [
+        -1.68533,
+        1.777841,
+        0.05398324
+       ]
+      },
+      {
+       "length": 25.0,
+       "c": [
+        -2.783537,
+        2.265283,
+        0.01298375
+       ]
+      },
+      {
+       "length": null,
+       "c": [
+        -3.356874,
+        2.528462,
+        -0.01051506
+       ]
+      }
+     ]
+    },
+    "funnel": {
+     "depths": [
+      [
+       50.0,
+       0.185536,
+       -31.2141
+      ],
+      [
+       60.0,
+       0.148011,
+       -43.985
+      ],
+      [
+       70.0,
+       0.115612,
+       -45.8972
+      ],
+      [
+       80.0,
+       0.0924092,
+       -50.0707
+      ],
+      [
+       90.0,
+       0.0777569,
+       -56.8891
+      ],
+      [
+       100.0,
+       0.0672002,
+       -64.1189
+      ]
+     ],
+     "lengths": [
+      {
+       "length": 0.3,
+       "c": [
+        -4.579124,
+        2.661122,
+        -0.0352465
+       ]
+      },
+      {
+       "length": 0.6,
+       "c": [
+        -0.4543047,
+        1.02079,
+        0.1325171
+       ]
+      },
+      {
+       "length": 1.0,
+       "c": [
+        -2.228662,
+        1.905355,
+        0.03019043
+       ]
+      },
+      {
+       "length": 1.5,
+       "c": [
+        2.299307,
+        -0.005009665,
+        0.2364149
+       ]
+      },
+      {
+       "length": 2.0,
+       "c": [
+        -5.589389,
+        3.483486,
+        -0.1450473
+       ]
+      },
+      {
+       "length": 3.0,
+       "c": [
+        0.03895126,
+        0.9977121,
+        0.1351049
+       ]
+      },
+      {
+       "length": 6.0,
+       "c": [
+        -1.222848,
+        1.558281,
+        0.08180418
+       ]
+      },
+      {
+       "length": 25.0,
+       "c": [
+        4.10884,
+        -0.9274304,
+        0.3834927
+       ]
+      },
+      {
+       "length": null,
+       "c": [
+        -5.859644,
+        3.620164,
+        -0.1288296
+       ]
+      }
+     ]
+    }
+   }
+  }
+ }
+}

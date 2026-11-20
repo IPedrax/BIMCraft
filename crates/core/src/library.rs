@@ -59,6 +59,8 @@ pub enum Kind {
     DimensionType,
     /// A spot coordinate type: how a spot coordinate draws and reads.
     SpotCoordinateType,
+    /// A grid type, which says how a grid draws and letters its name.
+    GridType,
     /// A voltage the electrical settings define, with the band a device may read within.
     Voltage,
     /// A distribution system, which names the voltages it supplies.
@@ -110,6 +112,7 @@ impl Kind {
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
             Kind::SpotCoordinateType => "spot coordinate type".into(),
+            Kind::GridType => "grid type".into(),
             Kind::Voltage => "voltage".into(),
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
@@ -151,6 +154,7 @@ impl Kind {
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
             "spot-coordinate-type" => Kind::SpotCoordinateType,
+            "grid-type" => Kind::GridType,
             "voltage" => Kind::Voltage,
             "distribution-system" => Kind::DistributionSystem,
             "wire-type" => Kind::WireType,
@@ -192,6 +196,7 @@ impl fmt::Display for Kind {
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
             Kind::SpotCoordinateType => f.write_str("spot-coordinate-type"),
+            Kind::GridType => f.write_str("grid-type"),
             Kind::Voltage => f.write_str("voltage"),
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
@@ -709,10 +714,14 @@ impl Model {
                 name.split_once(": ").is_some_and(|(f, t)| self.families.get_mut(f).is_some_and(|fam| fam.types.remove(t).is_some()))
             }
             Kind::Material => self.materials.remove(name).is_some(),
-            Kind::Picture => self.images.remove(name).is_some(),
+            Kind::Picture => {
+                self.pdfs.remove(name);
+                self.images.remove(name).is_some()
+            }
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
             Kind::TitleBlock => self.title_blocks.remove(name).is_some(),
+            Kind::GridType => self.grid_types.remove(name).is_some(),
             _ => false,
         }
     }
@@ -755,6 +764,7 @@ impl Model {
                 (Some((f, old)), Some((g, new))) if f == g => self.families.get_mut(f).is_some_and(|fam| mv(&mut fam.types, old, new)),
                 _ => false,
             },
+            Kind::GridType => mv(&mut self.grid_types, from, to),
             _ => false,
         }
     }
@@ -879,6 +889,7 @@ impl Model {
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
         add(Kind::SpotCoordinateType, &mut self.spot_coordinate_types.keys());
+        add(Kind::GridType, &mut self.grid_types.keys());
         add(Kind::Voltage, &mut self.voltages.keys());
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
@@ -1438,7 +1449,7 @@ impl Model {
 
 /// Each name `g` holds of a library entry, given to `f` with what it names, which may put another in its place: a view's
 /// template, filters, phase, phase filter, design options, its linework's line styles and the CAD drawings whose layers it hides.
-fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
+pub(crate) fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
     for o in g.categories.values_mut().chain(g.elements.values_mut()).chain(g.filters.iter_mut().map(|a| &mut a.over)) {
         for name in o.patterns_mut() {
             f(&Kind::FillPattern, name);
@@ -1591,9 +1602,11 @@ impl crate::model::Element {
                 }
             }
             Element::CadImport(ci) => f(&Kind::Cad, &mut ci.cad),
+            Element::Image(im) => f(&Kind::Picture, &mut im.picture),
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
+            Element::Grid(g) => f(&Kind::GridType, &mut g.type_name),
             // Neither the built-in one nor none is an entry of the library.
             Element::Sheet(sh) if !sh.title_block.is_empty() && !sh.has_no_title_block() => f(&Kind::TitleBlock, &mut sh.title_block),
             Element::Spot(sp) => {
@@ -1706,6 +1719,9 @@ impl Model {
             }
         }
         for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
+            f(&Kind::LinePattern, p);
+        }
+        for p in self.grid_types.values_mut().filter_map(|t| t.line_pattern.as_mut()) {
             f(&Kind::LinePattern, p);
         }
         for m in self.detail_groups.values_mut().chain(self.model_groups.values_mut()).flat_map(|g| g.members.iter_mut()) {
