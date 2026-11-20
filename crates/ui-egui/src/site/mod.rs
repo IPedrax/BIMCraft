@@ -146,10 +146,7 @@ impl BimApp {
 
     /// Projected CRSs proposed for `(lon, lat)`, ordered from the most recent national/regional grid to older/global fallbacks.
     fn proposed_crs(&self, lon: f64, lat: f64) -> Vec<(u32, String, String)> {
-        places::systems_near(lon, lat)
-            .into_iter()
-            .map(|s| (s.info.code, s.info.name, t(s.why).to_string()))
-            .collect()
+        places::systems_near(lon, lat).into_iter().map(|s| (s.info.code, s.info.name, t(s.why).to_string())).collect()
     }
 
     /// The box the area says: a distance round the origin, or four typed degrees; and small enough.
@@ -242,8 +239,7 @@ impl BimApp {
                         );
                     } else {
                         ui.label(
-                            RichText::new(t("Sets Manage > Location to this area's centre using the chosen system:"))
-                                .color(pal().muted),
+                            RichText::new(t("Sets Manage > Location to this area's centre using the chosen system:")).color(pal().muted),
                         );
                         for (code, name, why) in &proposed {
                             ui.horizontal(|ui| {
@@ -316,7 +312,7 @@ impl BimApp {
             };
             let (center_lon, center_lat) = ((bbox.west + bbox.east) * 0.5, (bbox.south + bbox.north) * 0.5);
             let site_name = self.session.model.coordinates.active.clone();
-            if let Err(e) = self.session.execute(
+            if let Err(e) = self.exec(
                 "location",
                 &json!({
                     "name": site_name,
