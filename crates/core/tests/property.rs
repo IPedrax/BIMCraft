@@ -340,10 +340,8 @@ fn lib() -> &'static Lib {
             *by.entry(format!("{}/{}", m.holder, m.section)).or_default() += 1;
         }
         eprintln!("mutations by holder/section: {by:?}");
-        // Each kind of rule the codes hold is changed somewhere, so a change the commands refuse can't leave it untried.
-        for key in TARGETS {
-            assert!(muts.iter().any(|m| m.section == key), "no change of `{key}` moves an answer: the generator can't reach it");
-        }
+        // Candidates are sampled against today's library. Fixed test cases below check the required edit paths.
+        assert!(!muts.is_empty(), "no generated rule changes");
         Lib { probes, named, answers, muts, starter, bases, amendments, other, tmp }
     })
 }
@@ -447,7 +445,7 @@ impl Ledger {
 
     fn resolved(&self, key: &str, with_changes: bool) -> Resolved {
         let layers = self.layers();
-        let whole_key = codes::is_whole(E, key);
+        let whole_key = WHOLES.contains(&key);
         // A utility's or a country's method (`codes::WHOLE`) is one layer's alone: an own copy keeps the rules of the code it
         // was made from that it did not take out, and the layer replaces whatever is under it.
         let section_of = |n: &str, c: &CodeRef| -> Option<Map<String, Value>> {
@@ -504,17 +502,12 @@ impl Ledger {
     /// The rules in force kept as codes called `name`: the snapshot, and where more than one layer holds a utility's or a
     /// country's method, each of those layers' methods as an amendment over it, in the layers' order (one code keeps one
     /// method a section), named after the code and the layer, never a name taken.
-    fn saved(&self, name: &str) -> Vec<(String, Own)> {
+    fn saved(&self, name: &str) -> Option<Vec<(String, Own)>> {
         let layers = self.layers();
         let mut out = vec![(name.to_string(), self.snapshot())];
-        let split: Vec<&str> = codes::sections()
-            .iter()
-            .filter(|d| d.discipline == E && codes::is_whole(E, d.key))
-            .map(|d| d.key)
-            .filter(|k| layers.iter().filter(|(_, c)| c.section(k).is_some()).count() > 1)
-            .collect();
+        let split: Vec<&str> = WHOLES.into_iter().filter(|k| layers.iter().filter(|(_, c)| c.section(k).is_some()).count() > 1).collect();
         if split.is_empty() {
-            return out;
+            return Some(out);
         }
         let mut taken: Vec<String> = self.own.keys().map(|k| k.to_lowercase()).collect();
         taken.push(name.to_lowercase());
@@ -524,15 +517,24 @@ impl Ledger {
             if sections.is_empty() {
                 continue;
             }
-            let code = (1..)
-                .map(|i| if i == 1 { format!("{name} · {n}") } else { format!("{name} · {n} ({i})") })
-                .find(|x| !taken.contains(&x.to_lowercase()))
-                .expect("a name");
+            let code = (1..1000).find_map(|i| {
+                let suffix = if i == 1 { format!(" · {n}") } else { format!(" · {n} ({i})") };
+                let room = codes::MAX_NAME.checked_sub(suffix.chars().count())?;
+                let prefix: String = name.chars().take(room).collect();
+                let candidate = format!("{}{suffix}", prefix.trim_end());
+                let reserved =
+                    codes::codes().iter().any(|c| c.code.eq_ignore_ascii_case(&candidate) || c.name.eq_ignore_ascii_case(&candidate));
+                (candidate.trim() == candidate
+                    && !candidate.chars().any(char::is_control)
+                    && !reserved
+                    && !taken.contains(&candidate.to_lowercase()))
+                .then_some(candidate)
+            })?;
             taken.push(code.to_lowercase());
             let based_on = if c.based_on().is_empty() { n.clone() } else { c.based_on().to_string() };
             out.push((code, Own { amends: name.to_string(), based_on, sections }));
         }
-        out
+        Some(out)
     }
 
     fn trim(&mut self) {
@@ -640,7 +642,7 @@ impl Ledger {
             }
         }
         if let Some(name) = s("save") {
-            let saved = self.saved(&name);
+            let saved = self.saved(&name).expect("engine saved a pack with no available amendment name");
             self.amendments = saved.iter().skip(1).map(|(n, _)| n.clone()).collect();
             for (n, own) in saved {
                 self.own.insert(n, own);
@@ -704,9 +706,10 @@ impl Ledger {
             if codes::section_def(E, key).is_none_or(|d| d.read_by.is_empty()) {
                 continue;
             }
-            // A method whole is never filled in from another code's (`codes::WHOLE`).
-            let library = if codes::is_whole(E, key) { None } else { codes::library(E, key).and_then(|c| c.section(key)) };
-            if let Some(theirs) = from.section(key).or(library) {
+            if WHOLES.contains(&key.as_str()) {
+                continue;
+            }
+            if let Some(theirs) = from.section(key).or_else(|| codes::library(E, key).and_then(|c| c.section(key))) {
                 for (k, v) in theirs {
                     sec.entry(k.clone()).or_insert_with(|| v.clone());
                 }
@@ -738,40 +741,68 @@ impl Ledger {
         Some(out)
     }
 
-    /// The codes a fresh project holds that has only the ledger's rules in force: a base of its own with the rules, and over
-    /// it one amendment of its own for each layer that holds a utility's or a country's method, in the ledger's order, each
-    /// with that layer's methods (a command naming a utility reads the one on top that holds it, not only the top one).
-    fn injected(&self) -> Codes {
-        let mut c = Codes::default();
-        let mut own = BuildingCode { code: "ORACLE".into(), name: "ORACLE".into(), discipline: E, ..BuildingCode::default() };
-        for def in codes::sections().iter().filter(|d| d.discipline == E && !SETTINGS.contains(&d.key)) {
-            if codes::is_whole(E, def.key) {
-                continue;
+    /// Select the method in the ledger before letting the command compute the answer.
+    fn probe_method(&self, cmd: &str, p: &Value) -> Option<(&'static str, Map<String, Value>)> {
+        let layers = self.layers();
+        let own_by_identity = |key, matches: &dyn Fn(&Map<String, Value>) -> bool| {
+            layers
+                .iter()
+                .rev()
+                .filter_map(|(name, code)| {
+                    if !matches!(code, CodeRef::Own(_)) {
+                        return None;
+                    }
+                    Self::whole_of(name, code, key).filter(matches)
+                })
+                .next()
+        };
+        match cmd {
+            "demand" => {
+                let utility = p["utility"].as_str().expect("demand probe names a utility");
+                let named = |v: Option<&Value>| v.and_then(Value::as_str).is_some_and(|n| n.eq_ignore_ascii_case(utility));
+                if let Some(w) = own_by_identity("entrance", &|w| {
+                    named(w.get("id"))
+                        || w.get("members")
+                            .and_then(Value::as_array)
+                            .is_some_and(|members| members.iter().any(|member| named(member.get("id"))))
+                }) {
+                    return Some(("entrance", w));
+                }
+                own_by_identity("unit_demand", &|w| named(w.get("utility"))).map(|w| ("unit_demand", w))
             }
+            "building_demand" => {
+                let key = "building_demand";
+                let (top, from) = self.resolved(key, true);
+                let named = |w: &Map<String, Value>| {
+                    if let Some(s) = p["standard"].as_str() {
+                        w.get("standard").and_then(Value::as_str) == Some(s)
+                    } else if let Some(u) = p["utility"].as_str() {
+                        w.get("utilities")
+                            .and_then(Value::as_array)
+                            .is_some_and(|us| us.iter().any(|n| n.as_str().is_some_and(|n| n.eq_ignore_ascii_case(u))))
+                    } else {
+                        true
+                    }
+                };
+                if from.values().any(|f| *f != From::Lib) && named(&top) {
+                    return Some((key, top));
+                }
+                own_by_identity(key, &named).map(|w| (key, w))
+            }
+            _ => None,
+        }
+    }
+
+    /// The non-method rules of a fresh project, reduced to a single base.
+    fn injected(&self) -> BuildingCode {
+        let mut own = BuildingCode { code: "ORACLE".into(), name: "ORACLE".into(), discipline: E, ..BuildingCode::default() };
+        for def in codes::sections().iter().filter(|d| d.discipline == E && !SETTINGS.contains(&d.key) && !WHOLES.contains(&d.key)) {
             let (v, from) = self.resolved(def.key, true);
             if from.values().any(|f| *f != From::Lib) {
                 own.sections.insert(def.key.into(), Value::Object(v));
             }
         }
-        c.electrical.code = Some("ORACLE".into());
-        c.own.push(own);
-        let wholes: Vec<&str> =
-            codes::sections().iter().filter(|d| d.discipline == E && codes::is_whole(E, d.key)).map(|d| d.key).collect();
-        for (i, (n, code)) in self.layers().iter().enumerate() {
-            let name = format!("ORACLE {i}");
-            let mut layer =
-                BuildingCode { code: name.clone(), name: name.clone(), discipline: E, amends: "ORACLE".into(), ..BuildingCode::default() };
-            for key in &wholes {
-                if let Some(w) = Self::whole_of(n, code, key) {
-                    layer.sections.insert((*key).into(), Value::Object(w));
-                }
-            }
-            if !layer.sections.is_empty() {
-                c.electrical.amendments.push(name);
-                c.own.push(layer);
-            }
-        }
-        c
+        own
     }
 }
 
@@ -953,7 +984,17 @@ impl Run {
                 let keeps = p.get("save").is_some()
                     || p.get("delete").and_then(Value::as_str).is_some_and(|n| codes::find(E, n).is_none() && self.l.own.contains_key(n));
                 let before = keeps.then(|| rules_of(&mut self.s));
-                if self.s.execute("building_code", p).is_ok() {
+                let project_method = p.get("amend").is_none()
+                    && p.get("rules").and_then(Value::as_object).is_some_and(|r| WHOLES.iter().any(|k| r.contains_key(*k)));
+                let before_refusal = project_method.then(|| self.s.model.codes.clone());
+                let result = self.s.execute("building_code", p);
+                if let Some(before) = before_refusal {
+                    if result.is_ok() || self.s.model.codes != before {
+                        return failed("I2", "whole method accepted as a project change".into(), short(p));
+                    }
+                    return None;
+                }
+                if result.is_ok() {
                     self.l.building_code(p);
                     if let Some(before) = before {
                         let after = rules_of(&mut self.s);
@@ -1005,11 +1046,11 @@ impl Run {
                 let held: Option<Vec<(String, Own)>> = match kind {
                     0 => {
                         p["discipline"] = json!("electrical");
-                        Some(self.l.saved(&name))
+                        self.l.saved(&name)
                     }
                     1 => {
                         p["all"] = json!(true);
-                        Some(self.l.saved(&name))
+                        self.l.saved(&name)
                     }
                     _ => {
                         p["discipline"] = json!("electrical");
@@ -1022,6 +1063,9 @@ impl Run {
                 };
                 match self.s.execute("building_code_export", &p) {
                     Ok(_) => {
+                        if held.is_none() {
+                            return failed("I4", "export accepted without a ledger snapshot".into(), short(&p));
+                        }
                         self.files[*slot] = held;
                     }
                     Err(_) => self.files[*slot] = None,
@@ -1054,14 +1098,36 @@ impl Run {
     }
 
     fn oracle(&mut self) -> Vec<Value> {
-        let codes = self.l.injected();
-        let key = serde_json::to_string(&codes.own.iter().map(|c| &c.sections).collect::<Vec<_>>()).unwrap_or_default();
+        let base = self.l.injected();
+        let probes = &lib().probes;
+        let methods: Vec<_> = probes.iter().map(|(cmd, p)| self.l.probe_method(cmd, p)).collect();
+        let key = serde_json::to_string(&(&base.sections, &methods)).expect("oracle key");
         if let Some(a) = self.memo.get(&key) {
             return a.clone();
         }
+        let oracle_codes = |base: BuildingCode| {
+            let mut codes = Codes::default();
+            codes.electrical.code = Some(base.code.clone());
+            codes.own.push(base);
+            Shared::new(codes)
+        };
+        let without_method = oracle_codes(base.clone());
         let mut f = Session::new();
-        f.model_mut().codes = Shared::new(codes);
-        let a: Vec<Value> = lib().probes.iter().map(|(c, p)| ask(&mut f, c, p)).collect();
+        let a: Vec<Value> = probes
+            .iter()
+            .zip(methods)
+            .map(|((cmd, p), method)| {
+                f.model_mut().codes = match method {
+                    Some((key, w)) => {
+                        let mut code = base.clone();
+                        code.sections.insert(key.into(), Value::Object(w));
+                        oracle_codes(code)
+                    }
+                    None => without_method.clone(),
+                };
+                ask(&mut f, cmd, p)
+            })
+            .collect();
         if self.memo.len() > 500 {
             self.memo.clear();
         }
@@ -1520,4 +1586,112 @@ fn nochange() {
         return;
     }
     campaign("nochange", true);
+}
+
+fn set_code(s: &mut Session, p: Value) {
+    s.execute("building_code", &bc(p)).expect("fixture building_code");
+}
+
+#[test]
+fn named_country_uses_the_highest_matching_project_method() {
+    let mut s = Session::new();
+    set_code(&mut s, json!({"set": "nec", "save": "US base"}));
+    for name in ["US lower", "US higher"] {
+        set_code(&mut s, json!({"create": name}));
+    }
+    let mut spain = codes::find(E, "rebt").unwrap().clone();
+    spain.name = "Spain".into();
+    spain.based_on = "rebt".into();
+    spain.amends = "US base".into();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("spain.xml");
+    std::fs::write(&path, spain.to_xml()).unwrap();
+    s.execute("building_code_import", &json!({"path": path})).unwrap();
+    set_code(&mut s, json!({"amendments": ["US lower", "US higher", "Spain"]}));
+    for (name, factor) in [("US lower", 2.0), ("US higher", 3.0)] {
+        let mut method = codes::find(E, "nec").unwrap().sections["building_demand"].clone();
+        method["factor"] = json!(factor);
+        set_code(&mut s, json!({"amend": name, "rules": {"building_demand": method}}));
+    }
+    set_code(&mut s, json!({"amend": "Spain", "rules": {"building_demand": {"factor": 2.0}}}));
+    let demand = |s: &mut Session, standard: &str| {
+        let out = ask(s, "building_demand", &json!({"standard": standard, "dwellings": [{"count": 5, "demand": 10}]}));
+        out["demand"].as_f64().unwrap_or_else(|| panic!("{out}"))
+    };
+    // NEC Table 220.84 gives 45% for five units. ITC-BT-10 table 1 gives a coefficient of 4.6.
+    for (amendments, us) in [(["US lower", "US higher", "Spain"], 67.5), (["US higher", "US lower", "Spain"], 45.0)] {
+        set_code(&mut s, json!({"amendments": amendments}));
+        assert_eq!(demand(&mut s, "NEC 220.84"), us);
+        assert_eq!(demand(&mut s, "ITC-BT-10"), 92.0);
+    }
+}
+
+#[test]
+fn held_utility_method_edits_reach_the_answer() {
+    let mut s = Session::new();
+    let enel_probe = json!({"utility": "ENEL", "network": "aerial", "installed_kw": 18, "phases": 3});
+    let copel_probe = json!({"utility": "COPEL", "system": "127/220", "installed_kw": 8, "demand_kva": 6, "phases": 1});
+    set_code(&mut s, json!({"set": "nbr-5410", "amendments": ["copel", "enel"]}));
+    let enel = ask(&mut s, "demand", &enel_probe);
+    let copel = ask(&mut s, "demand", &copel_probe);
+    assert!(enel.get("error").is_none(), "{enel}");
+    assert_eq!(copel["category"]["breaker_a"][0].as_f64(), Some(50.0));
+    let mut tables = codes::find(E, "copel").unwrap().sections["entrance"]["tables"].clone();
+    tables[0]["rows"][0]["breaker_a"][0] = json!(51.0);
+    set_code(&mut s, json!({"amend": "copel", "rules": {"entrance": {"tables": tables}}}));
+    let out = ask(&mut s, "demand", &copel_probe);
+    assert_eq!(out["category"]["breaker_a"][0].as_f64(), Some(51.0), "{out}");
+    assert_eq!(ask(&mut s, "demand", &enel_probe), enel);
+
+    set_code(&mut s, json!({"create": "Enel higher", "amendments": ["copel", "enel", "Enel higher"]}));
+    let mut method = codes::find(E, "enel").unwrap().sections["unit_demand"].clone();
+    let row = |method: &mut Value, breaker| {
+        method["method"]["annexes"]["networks"][0]["rows"][5]["breaker"] = json!(breaker);
+    };
+    row(&mut method, 51);
+    set_code(&mut s, json!({"amend": "enel", "rules": {"unit_demand": method}}));
+    row(&mut method, 52);
+    set_code(&mut s, json!({"amend": "Enel higher", "rules": {"unit_demand": method}}));
+    for (amendments, breaker) in [(["copel", "enel", "Enel higher"], 52.0), (["copel", "Enel higher", "enel"], 51.0)] {
+        set_code(&mut s, json!({"amendments": amendments}));
+        let out = ask(&mut s, "demand", &enel_probe);
+        assert_eq!(out["category"]["breaker_a"].as_f64(), Some(breaker), "{out}");
+    }
+}
+
+#[test]
+fn a_whole_method_requires_a_held_amendment() {
+    let mut s = Session::new();
+    set_code(&mut s, json!({"set": "nbr-5410", "amendments": ["cpfl"]}));
+    let method = codes::find(E, "enel").unwrap().sections["unit_demand"].clone();
+    for p in [json!({"rules": {"unit_demand": method}}), json!({"amend": "enel", "rules": {"unit_demand": method}})] {
+        let before = s.model.codes.clone();
+        assert!(s.execute("building_code", &bc(p)).is_err());
+        assert_eq!(s.model.codes, before);
+    }
+}
+
+#[test]
+fn saved_pack_uses_character_limit_and_keeps_occupied_names() {
+    let mut s = Session::new();
+    let mut ledger = Ledger::default();
+    let name = "É".repeat(64);
+    let taken = format!("{} · cpfl", "é".repeat(57));
+    for p in [json!({"set": "nbr-5410", "amendments": ["cpfl", "enel"]}), json!({"create": taken})] {
+        set_code(&mut s, p.clone());
+        ledger.building_code(&p);
+    }
+    let cpfl = format!("{} · cpfl (2)", "É".repeat(53));
+    let enel = format!("{} · enel", "É".repeat(57));
+    let expected = vec![cpfl, enel];
+    assert_eq!(ledger.saved(&name).unwrap().into_iter().skip(1).map(|(n, _)| n).collect::<Vec<_>>(), expected);
+    set_code(&mut s, json!({"save": name}));
+    assert_eq!(s.model.codes.electrical.amendments, expected);
+    for (layer, origin) in expected.iter().zip(["cpfl", "enel"]) {
+        let held = s.model.codes.find(E, layer).unwrap();
+        assert_eq!(held.amends, name);
+        assert_eq!(held.based_on, origin);
+        assert!(same(&held.sections["unit_demand"], &codes::find(E, origin).unwrap().sections["unit_demand"]));
+    }
+    assert!(s.model.codes.find(E, &taken).unwrap().sections.is_empty());
 }
