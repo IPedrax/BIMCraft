@@ -2724,6 +2724,36 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"code": 5}),
         json!({"code": "klingon"}),
         json!({"language": "xx", "name": ""}),
+        json!({"data": r#"{"elements":[{"type":"way","id":1,"geometry":[{"lat":-23.55,"lon":-46.63},{"lat":-23.55,"lon":-46.629},{"lat":-23.549,"lon":-46.629},{"lat":-23.55,"lon":-46.63}],"tags":{"building":"yes","height":"9"}}]}"#, "detail": ["way/1", "way/1", "way/9"]}),
+        json!({"data": r#"{"elements":[{"type":"way","id":2,"geometry":[{"lat":80,"lon":170},{"lat":80,"lon":171},{"lat":81,"lon":171},{"lat":80,"lon":170}],"tags":{"building":"yes"}}]}"#}),
+        json!({"data": r#"<osm><node id="1" lat="-23.55" lon="-46.63"/><node id="2" lat="-23.55" lon="-46.62"/><node id="3" lat="-23.54" lon="-46.62"/><way id="1"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="1"/><tag k="building" v="yes"/></way></osm>"#, "bbox": [-24, -47, -23, -46]}),
+        json!({"data": "<osm><way id=\"1\"/></osm>", "bbox": [1e300, 0, 0, 0]}),
+        json!({"data": {"elements": 5}, "parts": "x"}),
+        json!({"data": "{\"elements\":[]}", "level_height": 1e300, "default_height": "x"}),
+        json!({"path": 5, "data": 5}),
+        json!({"data": "<!DOCTYPE osm [<!ENTITY a \"x\">]><osm/>", "replace": "x", "detail": "all"}),
+        json!({"ids": [100006], "storeys": 3, "storey_height": 2800, "shape": "gabled", "height": 2000, "orientation": "across"}),
+        json!({"ids": [100006], "doors": "yes", "walls": true}),
+        json!({"ids": [100006, 100007], "doors": false, "floors": false, "roof": false}),
+        json!({"data": r#"{"elements":[{"type":"way","id":1,"geometry":[{"lat":0.0,"lon":0.0},{"lat":0.0,"lon":0.0002},{"lat":0.0002,"lon":0.0002},{"lat":0.0002,"lon":0.0}],"tags":{"building":"yes","height":"9"}},{"type":"node","id":2,"lat":0.0,"lon":0.0001,"tags":{"entrance":"main","width":"1e999","height":"-4","door":"sliding"}},{"type":"node","id":3,"lat":0.0,"lon":0.00012,"tags":{"entrance":"exit","width":"0.1"}},{"type":"node","id":4,"lat":"x","lon":1,"tags":{"door":"hinged"}},{"type":"node","id":5,"tags":{"entrance":"yes"}}]}"#, "detail": ["way/1"]}),
+        json!({"data": r#"{"elements":[]}"#, "entrances": 5}),
+        json!({"data": "{\"elements\": [{\"type\": \"relation\", \"id\": 1, \"members\": [{\"type\": \"way\", \"ref\": 11, \"role\": \"outer\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}, {\"type\": \"way\", \"ref\": 12, \"role\": \"inner\", \"geometry\": [{\"lat\": 0.0003, \"lon\": 0.0003}, {\"lat\": 0.0003, \"lon\": 0.0006}, {\"lat\": 0.0006, \"lon\": 0.0006}, {\"lat\": 0.0006, \"lon\": 0.0003}, {\"lat\": 0.0003, \"lon\": 0.0003}]}], \"tags\": {\"type\": \"multipolygon\", \"building\": \"yes\", \"height\": \"9\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"data": "{\"elements\": [{\"type\": \"relation\", \"id\": 2, \"members\": [{\"type\": \"way\", \"ref\": 21, \"role\": \"outer\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}, {\"type\": \"way\", \"ref\": 22, \"role\": \"inner\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}], \"tags\": {\"type\": \"multipolygon\", \"building\": \"yes\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"data": "{\"elements\": [{\"type\": \"relation\", \"id\": 3, \"members\": [{\"type\": \"way\", \"ref\": 31, \"role\": \"outer\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}, {\"type\": \"way\", \"ref\": 32, \"role\": \"inner\", \"geometry\": [{\"lat\": 5e-05, \"lon\": 5e-05}, {\"lat\": 5e-05, \"lon\": 0.00035}, {\"lat\": 0.00035, \"lon\": 0.00035}, {\"lat\": 0.00035, \"lon\": 5e-05}, {\"lat\": 5e-05, \"lon\": 5e-05}]}, {\"type\": \"way\", \"ref\": 33, \"role\": \"inner\", \"geometry\": [{\"lat\": 0.0001, \"lon\": 0.0001}, {\"lat\": 0.0001, \"lon\": 0.0002}, {\"lat\": 0.0002, \"lon\": 0.0002}, {\"lat\": 0.0002, \"lon\": 0.0001}, {\"lat\": 0.0001, \"lon\": 0.0001}]}], \"tags\": {\"type\": \"multipolygon\", \"building:part\": \"roof\", \"height\": \"9\", \"min_height\": \"8\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"data": "{\"elements\": [{\"type\": \"way\", \"id\": 4, \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 1e-06}, {\"lat\": 1e-06, \"lon\": 1e-06}, {\"lat\": 1e-06, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}], \"tags\": {\"man_made\": \"column\", \"height\": \"1e300\", \"min_height\": \"-5\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"ids": [100006, 100007], "shape": "hipped", "angle": 89.9}),
+        json!({"ids": [100006], "storeys": 1e300, "storey_height": 1e-300, "angle": 1e300, "height": 1e300}),
+        json!({"ids": [100002], "walls": "yes", "floors": 5, "roof": null}),
+        json!({"ids": u64::MAX, "shape": 5, "orientation": []}),
+        json!({"id": 100006, "shape": "skillion", "walls": false}),
+        json!({"ids": [100006], "storeys": 500, "storey_height": 1}),
+        json!({"ids": [100007], "shape": "gabled", "height": 1e-9}),
+        json!({"data": r#"{"elements":[{"type":"way","id":1,"geometry":[{"lat":0.0,"lon":0.0},{"lat":0.0,"lon":0.0002},{"lat":0.0002,"lon":0.0002},{"lat":0.0002,"lon":0.0}],"tags":{"building:part":"yes","roof:shape":"gabled","roof:height":"1e999","roof:angle":"nan","roof:orientation":"x","height":"9"}}]}"#, "parts": true, "detail": ["way/1"]}),
+        json!({"radius": 1e300}),
+        json!({"bbox": [90, 180, 90, 180]}),
+        json!({"bbox": [-90, -180, 90, 180], "radius": 5}),
+        json!({"bbox": [-23.56, -46.64, -23.54, -46.62], "parts": "x", "detail": ["way/1", "way/1"], "replace": 3}),
+        json!({"radius": 300, "parts": true, "detail": ["way/1", "way/2"], "level_height": 1e300, "default_height": -1}),
         json!({"points": [[0, 0], [1000, 0]], "arc": 359.9999}),
         json!({"points": [[0, 0], [1000, 0]], "arc": -1e300, "location": 5}),
         json!({"points": [[0, 0], [1000, 0]], "attach_top": 100002, "attach_base": u64::MAX}),
@@ -3100,6 +3130,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         m.elements.values().filter(|e| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))).count()
     };
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
+    // The project placed, for import_osm, with a fake fetcher, for fetch_osm: last too, so that no id the payloads name moves.
+    crate::geo_tests::locate(&mut base, -46.6333, -23.5505);
+    base.geo = Some(crate::geo_tests::sweep_fetcher());
     // The default 3D view's silhouettes and ambient shadows on, last so that no id moves: every picture of it draws them.
     let _ = base.execute("graphic_display_options", &json!({"edges": false, "silhouette": 4, "ambient_shadows": true}));
     // A roof over a rectangle with a slope of its own on each edge, last so that no id moves, and the

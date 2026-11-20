@@ -1,0 +1,178 @@
+//! Fetching for the desktop app: OpenStreetMap buildings from Overpass and the map's tiles, behind the core's `GeoSource`. The
+//! only code besides the updater that phones home, and only the desktop's `main` attaches it: the core, the CLI and the MCP server
+//! do not depend on it (a test reads their manifests).
+//!
+//! What comes from the network is hostile. A request goes only to a host and path [`net::Allow`] names, over HTTPS, with no port or
+//! credentials; a redirect is followed by hand under the same rule; a reply is read up to a cap; a picture is decoded under size
+//! limits; what is kept on disk is checked again when it is read. The network sits behind [`net::Net`], so the tests use a table of
+//! answers or a server on this machine, never the real services.
+
+pub mod cache;
+pub mod net;
+pub mod overpass;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+pub mod tiles;
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use bimcraft_core::geo::{Bbox, Fetcher, GeoSource, Reply, Tile};
+
+use crate::cache::Cache;
+use crate::net::{Allow, Net, OVERPASS, Ureq};
+use crate::overpass::Overpass;
+use crate::tiles::OsmTiles;
+
+/// What OpenStreetMap's licence asks to be said where its data is used.
+pub const OSM_ATTRIBUTION: &str =
+    "Map data (c) OpenStreetMap contributors, available under the Open Database Licence (ODbL): https://www.openstreetmap.org/copyright";
+
+/// The fetcher: Overpass and the map's tiles, over one network and one cache.
+pub struct Geofetch {
+    overpass: Overpass,
+    tiles: OsmTiles,
+}
+
+impl Geofetch {
+    pub fn new(net: Arc<dyn Net>, cache: Arc<Cache>, endpoint: &str) -> Geofetch {
+        Geofetch { overpass: Overpass::new(net.clone(), cache.clone(), endpoint), tiles: OsmTiles::new(net, cache) }
+    }
+
+    /// The fetcher the desktop app attaches, or none where it is not wanted: `BIMCRAFT_NO_NETWORK` set, or a Flatpak, which is not
+    /// given the network. `cache_dir` is where replies and tiles are kept (none: not kept); `endpoint` is an Overpass server of the
+    /// user's own, which must be https and named (an address of this machine or network is refused).
+    pub fn desktop(cache_dir: Option<PathBuf>, endpoint: Option<&str>) -> Result<Option<Fetcher>, String> {
+        let env = |name: &str| std::env::var(name).ok();
+        Self::desktop_in(&env, Path::new("/.flatpak-info").exists(), cache_dir, endpoint)
+    }
+
+    /// [`Geofetch::desktop`], told the environment and whether it is in a Flatpak.
+    pub fn desktop_in(
+        env: &dyn Fn(&str) -> Option<String>,
+        flatpak: bool,
+        cache_dir: Option<PathBuf>,
+        endpoint: Option<&str>,
+    ) -> Result<Option<Fetcher>, String> {
+        let allow = match endpoint {
+            Some(e) => Allow::standard().with_endpoint(e)?,
+            None => Allow::standard(),
+        };
+        if flatpak || env("FLATPAK_ID").is_some_and(|v| !v.is_empty()) || env("BIMCRAFT_NO_NETWORK").is_some_and(|v| !v.is_empty()) {
+            return Ok(None);
+        }
+        let fetcher = Geofetch::new(Arc::new(Ureq::new(allow)), Arc::new(Cache::new(cache_dir)), endpoint.unwrap_or(OVERPASS));
+        Ok(Some(Arc::new(fetcher)))
+    }
+}
+
+/// The folder replies and tiles are kept in, beside the file the app's settings are kept in (`favorites::default_path()`).
+pub fn cache_dir(settings_file: &Path) -> PathBuf {
+    settings_file.with_file_name("cache")
+}
+
+impl GeoSource for Geofetch {
+    fn overpass(&self, bbox: &Bbox, query: &str) -> Result<Reply, String> {
+        self.overpass.fetch(bbox, query)
+    }
+
+    fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<Tile, String> {
+        self.tiles.tile(zoom, x, y)
+    }
+
+    fn attribution(&self, what: &str) -> String {
+        match what {
+            "osm" => OSM_ATTRIBUTION.into(),
+            "tiles" => tiles::ATTRIBUTION.into(),
+            other => format!("Data from {other}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::net::OVERPASS;
+    use crate::testing::{Fake, Scratch};
+
+    const GOOD: &str = r#"{"version":0.6,"elements":[]}"#;
+
+    fn fetcher(net: Arc<Fake>) -> Geofetch {
+        Geofetch::new(net, Arc::new(Cache::new(None)), OVERPASS)
+    }
+
+    fn block() -> Bbox {
+        Bbox::new(-23.56, -46.64, -23.54, -46.62).unwrap()
+    }
+
+    #[test]
+    fn only_the_desktop_app_can_reach_the_network_through_it() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        // Nothing but the desktop depends on it: not the core, the CLI or the MCP server, nor the interface (the desktop's main attaches it).
+        for manifest in ["crates/core/Cargo.toml", "apps/bimcraft-cli/Cargo.toml", "crates/ui-egui/Cargo.toml", "crates/update/Cargo.toml"]
+        {
+            let text = std::fs::read_to_string(root.join(manifest)).unwrap();
+            assert!(!text.contains("bimcraft-geofetch"), "{manifest} depends on bimcraft-geofetch");
+        }
+        // And it depends on none of what is not its business: the updater, the interface, the other readers.
+        let own = std::fs::read_to_string(root.join("crates/geofetch/Cargo.toml")).unwrap();
+        for dep in ["bimcraft-update", "bimcraft-ui-egui", "bimcraft-dwg", "bimcraft-rvt", "reqwest", "hyper"] {
+            assert!(!own.contains(dep), "geofetch depends on {dep}");
+        }
+    }
+
+    #[test]
+    fn the_core_asks_through_the_trait_and_overpass_answers() {
+        let net = Arc::new(Fake::new().post(OVERPASS, GOOD.as_bytes()));
+        let f: Fetcher = Arc::new(fetcher(net.clone()));
+        let r = f.overpass(&block(), "[out:json];out;").unwrap();
+        assert_eq!((r.text.as_str(), r.cached), (GOOD, false));
+        assert_eq!(net.asked().len(), 1);
+    }
+
+    #[test]
+    fn the_map_tile_hook_is_the_tile_fetchers() {
+        let url = tiles::OsmTiles::url(2, 1, 1).unwrap();
+        let data: Vec<u8> = (0..256 * 256).flat_map(|_| [10u8, 20, 30]).collect();
+        let mut body = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut body, 256, 256);
+            enc.set_color(png::ColorType::Rgb);
+            enc.set_depth(png::BitDepth::Eight);
+            let mut w = enc.write_header().unwrap();
+            w.write_image_data(&data).unwrap();
+            w.finish().unwrap();
+        }
+        let net = Arc::new(Fake::new().get(&url, &body));
+        let f: Fetcher = Arc::new(fetcher(net.clone()));
+        let tile = f.tile(2, 1, 1).unwrap();
+        assert_eq!((tile.side, &tile.rgba[..4]), (256, &[10u8, 20, 30, 255][..]));
+        assert!(f.tile(2, 4, 0).is_err(), "off the map");
+    }
+
+    #[test]
+    fn each_kind_of_data_has_its_credit() {
+        let f = fetcher(Arc::new(Fake::new()));
+        assert!(f.attribution("osm").contains("OpenStreetMap") && f.attribution("osm").contains("ODbL"));
+        assert!(f.attribution("tiles").contains("OpenStreetMap contributors"));
+        assert!(f.attribution("something").contains("something"));
+    }
+
+    #[test]
+    fn the_desktop_has_it_unless_a_flatpak_or_the_user_says_no() {
+        let none = |_: &str| None;
+        let set = |name: &'static str, value: &'static str| move |n: &str| (n == name).then(|| value.to_string());
+        let dir = Scratch::new("desktop");
+        assert!(Geofetch::desktop_in(&none, false, Some(dir.0.clone()), None).unwrap().is_some());
+        assert!(Geofetch::desktop_in(&none, true, None, None).unwrap().is_none(), "a Flatpak has no network");
+        assert!(Geofetch::desktop_in(&set("FLATPAK_ID", "org.example"), false, None, None).unwrap().is_none());
+        assert!(Geofetch::desktop_in(&set("BIMCRAFT_NO_NETWORK", "1"), false, None, None).unwrap().is_none());
+        assert!(Geofetch::desktop_in(&set("BIMCRAFT_NO_NETWORK", ""), false, None, None).unwrap().is_some(), "empty is not set");
+        // A server of the user's own, if it is one that may be used.
+        assert!(Geofetch::desktop_in(&none, false, None, Some("https://overpass.example.org/api/interpreter")).unwrap().is_some());
+        for bad in ["http://overpass.example.org/api/interpreter", "https://127.0.0.1/api/interpreter", "overpass"] {
+            assert!(Geofetch::desktop_in(&none, false, None, Some(bad)).is_err(), "{bad}");
+        }
+        assert_eq!(cache_dir(Path::new("/home/a/.config/bimcraft/favorites.json")), Path::new("/home/a/.config/bimcraft/cache"));
+    }
+}

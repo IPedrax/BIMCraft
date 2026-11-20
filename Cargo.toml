@@ -42,6 +42,12 @@ bimcraft-pyaddins = { path = "crates/pyaddins" }
 bimcraft-rvt = { path = "crates/rvt" }
 # The DWG bridge: MIT OR Apache-2.0 itself, over acadrust (MPL-2.0, unmodified); the core never depends on it.
 bimcraft-dwg = { path = "crates/dwg" }
+# Fetching OpenStreetMap buildings and the map's tiles: network code that only the desktop app attaches.
+bimcraft-geofetch = { path = "crates/geofetch" }
+# OSM XML: pure Rust, forbid(unsafe_code), no DTDs, a limit on nodes; MIT OR Apache-2.0.
+roxmltree = "0.21"
+# The map's tiles are PNGs: decoded and, in tests, encoded; the version the picture crates already pull in.
+png = "0.17"
 egui = "0.36"
 eframe = "0.36"
 egui_kittest = "0.36"

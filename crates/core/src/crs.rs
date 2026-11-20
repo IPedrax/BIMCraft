@@ -130,24 +130,66 @@ fn aliased(name: String) -> String {
     name + &extra
 }
 
-fn projs(code: u32) -> Result<(Proj, Proj), String> {
-    let d = def(code).ok_or_else(|| format!("EPSG:{code} isn't a CRS this version knows"))?;
-    let grid = Proj::from_proj_string(d.proj4).map_err(|e| format!("EPSG:{code}: {e}"))?;
-    let geo = Proj::from_proj_string(WGS84).map_err(|e| format!("WGS84: {e}"))?;
-    Ok((grid, geo))
+/// A projected CRS ready to take many points: its definitions read once, where [`to_wgs84`] and [`from_wgs84`] read them for each.
+pub struct Projector {
+    code: u32,
+    /// Millimetres per unit of its grid.
+    mm: f64,
+    grid: Proj,
+    geo: Proj,
+}
+
+impl Projector {
+    /// The projector of CRS `code`, refused as [`lookup`] refuses it.
+    pub fn new(code: u32) -> Result<Projector, String> {
+        let info = lookup(code)?;
+        let d = def(code).ok_or_else(|| format!("EPSG:{code} isn't a CRS this version knows"))?;
+        let grid = Proj::from_proj_string(d.proj4).map_err(|e| format!("EPSG:{code}: {e}"))?;
+        let geo = Proj::from_proj_string(WGS84).map_err(|e| format!("WGS84: {e}"))?;
+        Ok(Projector { code, mm: info.mm(), grid, geo })
+    }
+
+    pub fn code(&self) -> u32 {
+        self.code
+    }
+
+    /// Grid point `e`, `n` (mm) in WGS84: longitude and latitude, degrees.
+    pub fn to_wgs84(&self, e: f64, n: f64) -> Result<(f64, f64), String> {
+        let code = self.code;
+        if !(e.is_finite() && n.is_finite()) {
+            return Err(format!("EPSG:{code}: [{e}, {n}] mm is not a point"));
+        }
+        let mut p = (e / self.mm, n / self.mm, 0.0);
+        proj4rs::transform::transform(&self.grid, &self.geo, &mut p).map_err(|err| format!("EPSG:{code}: {err}"))?;
+        let (lon, lat) = (p.0.to_degrees(), p.1.to_degrees());
+        if !(lon.is_finite() && lat.is_finite() && lat.abs() <= 90.0) {
+            return Err(format!("EPSG:{code}: [{e}, {n}] mm is off its map"));
+        }
+        Ok((lon, lat))
+    }
+
+    /// WGS84 `lon`, `lat` (degrees) on its grid, mm.
+    pub fn from_wgs84(&self, lon: f64, lat: f64) -> Result<(f64, f64), String> {
+        let code = self.code;
+        if !(lat.is_finite() && lat.abs() <= 90.0) {
+            return Err(format!("the latitude must be degrees from -90 to 90, not {lat}"));
+        }
+        if !(lon.is_finite() && lon.abs() <= 180.0) {
+            return Err(format!("the longitude must be degrees from -180 to 180, not {lon}"));
+        }
+        let mut p = (lon.to_radians(), lat.to_radians(), 0.0);
+        proj4rs::transform::transform(&self.geo, &self.grid, &mut p).map_err(|err| format!("EPSG:{code}: {err}"))?;
+        let (e, n) = (p.0 * self.mm, p.1 * self.mm);
+        if !(e.is_finite() && n.is_finite()) {
+            return Err(format!("EPSG:{code}: {lon}, {lat} is off its map"));
+        }
+        Ok((e, n))
+    }
 }
 
 /// Grid point `e`, `n` (mm) of CRS `code` in WGS84: longitude and latitude, degrees.
 pub fn to_wgs84(code: u32, e: f64, n: f64) -> Result<(f64, f64), String> {
-    let info = lookup(code)?;
-    let (grid, geo) = projs(code)?;
-    let mut p = (e / info.mm(), n / info.mm(), 0.0);
-    proj4rs::transform::transform(&grid, &geo, &mut p).map_err(|err| format!("EPSG:{code}: {err}"))?;
-    let (lon, lat) = (p.0.to_degrees(), p.1.to_degrees());
-    if !(lon.is_finite() && lat.is_finite() && lat.abs() <= 90.0) {
-        return Err(format!("EPSG:{code}: [{e}, {n}] mm is off its map"));
-    }
-    Ok((lon, lat))
+    Projector::new(code)?.to_wgs84(e, n)
 }
 
 /// WGS84 `lon`, `lat` (degrees) on the grid of CRS `code`, mm.
@@ -158,13 +200,5 @@ pub fn from_wgs84(code: u32, lon: f64, lat: f64) -> Result<(f64, f64), String> {
     if !(lon.is_finite() && lon.abs() <= 180.0) {
         return Err(format!("the longitude must be degrees from -180 to 180, not {lon}"));
     }
-    let info = lookup(code)?;
-    let (grid, geo) = projs(code)?;
-    let mut p = (lon.to_radians(), lat.to_radians(), 0.0);
-    proj4rs::transform::transform(&geo, &grid, &mut p).map_err(|err| format!("EPSG:{code}: {err}"))?;
-    let (e, n) = (p.0 * info.mm(), p.1 * info.mm());
-    if !(e.is_finite() && n.is_finite()) {
-        return Err(format!("EPSG:{code}: {lon}, {lat} is off its map"));
-    }
-    Ok((e, n))
+    Projector::new(code)?.from_wgs84(lon, lat)
 }

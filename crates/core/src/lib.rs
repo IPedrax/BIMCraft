@@ -121,6 +121,11 @@ mod flip_tests;
 mod font;
 #[cfg(test)]
 mod formula_visibility_tests;
+pub mod geo;
+#[cfg(test)]
+mod geo_site_tests;
+#[cfg(test)]
+mod geo_tests;
 pub mod geom;
 #[cfg(test)]
 mod georef_tests;
@@ -157,6 +162,7 @@ pub mod library;
 pub mod lines;
 pub mod link;
 pub mod loads;
+pub mod map;
 pub mod massing;
 pub mod memory;
 pub mod mesh_in;
@@ -174,6 +180,9 @@ mod openings_past_top_tests;
 mod oracle_tests;
 #[cfg(test)]
 mod origin_tests;
+pub mod osm;
+#[cfg(test)]
+mod osm_import_tests;
 pub mod paint;
 pub mod panel_schedule;
 #[cfg(test)]
@@ -240,6 +249,9 @@ pub mod shared;
 mod shared_parameter_tests;
 pub mod shared_parameters;
 pub mod sheet;
+pub mod shell;
+#[cfg(test)]
+mod shell_tests;
 pub mod site;
 pub mod skeleton;
 pub mod sketch;

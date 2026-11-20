@@ -126,6 +126,8 @@ icon_names! {
     Ceiling,
     Shaft,
     Mass,
+    FromMap,
+    Shell,
     SlopeArrow,
     ModifySubElements,
     AddPoint,
@@ -1249,6 +1251,18 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(4.0, 4.0), (20.0, 4.0), (20.0, 20.0), (4.0, 20.0)]);
             g.line(&[(4.0, 4.0), (20.0, 20.0)]);
             g.line(&[(20.0, 4.0), (4.0, 20.0)]);
+        }
+        Icon::FromMap => {
+            // Buildings, as a map of them: three blocks of different heights.
+            g.closed(&[(3.0, 21.0), (3.0, 12.0), (9.0, 12.0), (9.0, 21.0)]);
+            g.closed(&[(9.0, 21.0), (9.0, 5.0), (15.0, 5.0), (15.0, 21.0)]);
+            g.closed(&[(15.0, 21.0), (15.0, 14.0), (21.0, 14.0), (21.0, 21.0)]);
+        }
+        Icon::Shell => {
+            // A house: walls, a floor across them and a hipped roof.
+            g.closed(&[(4.0, 12.0), (4.0, 20.0), (20.0, 20.0), (20.0, 12.0)]);
+            g.line(&[(2.0, 12.0), (12.0, 4.0), (22.0, 12.0)]);
+            g.line(&[(4.0, 16.0), (20.0, 16.0)]);
         }
         Icon::Mass => {
             // A rectangular volume with parallel receding edges.

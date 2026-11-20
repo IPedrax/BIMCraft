@@ -25,6 +25,9 @@ debug = 0
 [profile.dev.package.bimcraft-dwg]
 debug = 0
 
+[profile.dev.package.bimcraft-geofetch]
+debug = 0
+
 [profile.dev.package.bimcraft-i18n]
 debug = 0
 

@@ -330,24 +330,28 @@ fn a_file_is_hashed_as_it_is_checked_before_it_runs() {
     assert!(sha256_file(Path::new("/no/such/file")).is_err());
 }
 
-/// The manifests (path from the root, text) that break the network rule: `ureq` and the other HTTP clients belong to the two crates
-/// that reach the network by HTTPS, the updater and the assistant, and those two and Co-Work's transport are dependencies of the
-/// desktop (`apps/bimcraft`, which attaches them, and `crates/ui-egui`, which draws them) and of nothing else.
+/// The manifests (path from the root, text) that break the network rule: `ureq` and the other HTTP clients belong to the three crates
+/// that reach the network by HTTPS, the updater, the assistant and the fetcher of OpenStreetMap, elevation and imagery; the first two and
+/// Co-Work's transport are dependencies of the desktop (`apps/bimcraft`, which attaches them, and `crates/ui-egui`, which draws them) and of
+/// nothing else, and the fetcher of the desktop app alone (the window reaches it through the core's `Session.geo`).
 fn network_offenders(manifests: &[(String, String)]) -> Vec<String> {
-    let owners = ["crates/update/", "crates/assistant/"];
+    let owners = ["crates/update/", "crates/assistant/", "crates/geofetch/"];
     let desktop = ["apps/bimcraft/", "crates/ui-egui/"];
     let depends = |text: &str, dep: &str| text.lines().any(|l| l.trim_start().starts_with(dep));
     let mut bad = Vec::new();
     for (path, text) in manifests {
         for dep in ["ureq", "rustls", "reqwest", "hyper"] {
             if depends(text, dep) && !owners.iter().any(|o| path.starts_with(o)) {
-                bad.push(format!("{path} depends on {dep}: only the updater and the assistant reach the network"));
+                bad.push(format!("{path} depends on {dep}: only the updater, the assistant and the fetcher reach the network"));
             }
         }
         for dep in ["bimcraft-update", "bimcraft-assistant", "bimcraft-cowork"] {
             if depends(text, dep) && !desktop.iter().any(|d| path.starts_with(d)) {
                 bad.push(format!("{path} depends on {dep}: the core, the CLI and the MCP server never reach the network"));
             }
+        }
+        if depends(text, "bimcraft-geofetch") && !path.starts_with("apps/bimcraft/") {
+            bad.push(format!("{path} depends on bimcraft-geofetch: only the desktop app attaches the fetcher"));
         }
     }
     bad
@@ -379,6 +383,8 @@ fn the_network_rule_catches_a_manifest_that_breaks_it() {
         m("apps/bimcraft/Cargo.toml", "bimcraft-update = { workspace = true }\nbimcraft-assistant = { workspace = true }\n"),
         m("crates/ui-egui/Cargo.toml", "bimcraft-cowork = { workspace = true }\n"),
         m("crates/core/Cargo.toml", "name = \"bimcraft-core\"\n"),
+        m("crates/geofetch/Cargo.toml", "[dependencies]\nureq = { workspace = true }\nbimcraft-core = { workspace = true }\n"),
+        m("apps/bimcraft/Cargo.toml", "bimcraft-geofetch = { workspace = true }\n"),
     ];
     assert!(network_offenders(&fine).is_empty());
     for (path, text) in [
@@ -390,6 +396,9 @@ fn the_network_rule_catches_a_manifest_that_breaks_it() {
         ("apps/bimcraft-cli/Cargo.toml", "  hyper = \"1\"\n"),
         ("apps/bimcraft-cli/Cargo.toml", "bimcraft-cowork = { workspace = true }\n"),
         ("crates/core/Cargo.toml", "bimcraft-cowork = { path = \"../cowork\" }\n"),
+        ("crates/core/Cargo.toml", "bimcraft-geofetch = { workspace = true }\n"),
+        ("apps/bimcraft-cli/Cargo.toml", "bimcraft-geofetch = { workspace = true }\n"),
+        ("crates/ui-egui/Cargo.toml", "bimcraft-geofetch = { workspace = true }\n"),
     ] {
         assert_eq!(network_offenders(&[m(path, text)]).len(), 1, "{path}: {text}");
     }

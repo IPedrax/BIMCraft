@@ -784,6 +784,20 @@ filled; its tooltip says what it does. The Type Selector's list is as
 wide as the selector, a long name cut short and whole in its tooltip; wall types show their layers by share and material
 (`layer_bands`), and a curtain wall's type, which writes a `curtain` pattern (`curtain_type`), goes under its own heading.
 
+## The Massing tab's site tools
+
+`site/` adds one panel, **Context**, to the Massing tab (Revit's Massing & Site), after Model by Face. Import from OpenStreetMap opens the
+area box (a distance round the site's place, or a box of degrees; its km² against the 25 km² cap, live) for `fetch_osm` (default and level
+heights; the Overpass query it
+will ask, live, with Copy), and Build Shell (`site/shell.rs`) runs `building_shell` on the selected masses (Storey height; Outer walls,
+Floors at each storey, Roof, Doors at the entrances), a box saying what was made and the notes. The fetch runs on a thread of its own
+and comes back through the unchanged command ([geofetch](geofetch.md#the-massing-tabs-site-tools)); while it runs the window's keys and
+agents wait. Where the project is on Earth is Manage > Location's ([coordinates](coordinates.md)): with no place, the area box says so and
+Fetch is off. **Pick on Map** (`site/map.rs`), in the area box's box of degrees, opens OpenStreetMap's map (`GeoSource::tile`, two loader
+threads, only the tiles in view; the credit in the corner): drag to draw the box (Move map turns a drag back into a move; the wheel pressed
+or the right button always moves), wheel or double click to zoom about the pointer, Go to (a pair pasted from a map). The site's place is
+marked. With no fetcher or no tile, the map is its lines of latitude and longitude. The tests (`tests/site.rs`) use a fake fetcher.
+
 ## Background grids
 
 Each plan, section and elevation keeps its canvas grid in its `Graphics::background_grid`, saved with the project, copied
