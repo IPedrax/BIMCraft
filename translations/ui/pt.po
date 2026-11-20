@@ -195,7 +195,7 @@ msgstr "Um projeto BIMCraft ou um arquivo IFC."
 msgid "A BIMCraft project, an IFC or a Revit file."
 msgstr "Um projeto BIMCraft, um arquivo IFC ou do Revit."
 
-#: crates/ui-egui/src/site/mod.rs:189
+#: crates/ui-egui/src/site/mod.rs:207
 msgid "A box of degrees"
 msgstr "Uma caixa de graus"
 
@@ -243,7 +243,7 @@ msgstr "Uma cota define o valor: desbloqueie-a para alterá-lo aqui."
 msgid "A direction from the last point sticks to multiples of this angle, from east and from the line before; a dashed guide shows it"
 msgstr "Uma direção a partir do último ponto se prende a múltiplos deste ângulo, a partir do leste e da linha anterior; uma guia tracejada a mostra"
 
-#: crates/ui-egui/src/site/mod.rs:188
+#: crates/ui-egui/src/site/mod.rs:206
 msgid "A distance round the project's origin"
 msgstr "Uma distância em torno da origem do projeto"
 
@@ -2051,13 +2051,13 @@ msgstr "Procurar…"
 msgid "Build"
 msgstr "Construir"
 
-#: crates/ui-egui/src/site/mod.rs:120
+#: crates/ui-egui/src/site/mod.rs:123
 #: crates/ui-egui/src/site/shell.rs:48
 #: crates/ui-egui/src/site/shell.rs:134
 msgid "Build Shell"
 msgstr "Construir Envoltória"
 
-#: crates/ui-egui/src/site/mod.rs:118
+#: crates/ui-egui/src/site/mod.rs:121
 msgid "Build Shell: the outer walls, a floor at each storey, the roof and the doors of the selected buildings, as their OpenStreetMap tags describe them"
 msgstr "Construir Envoltória: as paredes externas, um piso em cada pavimento, a cobertura e as portas dos edifícios selecionados, como suas etiquetas do OpenStreetMap os descrevem"
 
@@ -2276,8 +2276,8 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 #: crates/ui-egui/src/shortcuts.rs:413
 #: crates/ui-egui/src/shortcuts.rs:541
 #: crates/ui-egui/src/site/map.rs:278
-#: crates/ui-egui/src/site/mod.rs:229
-#: crates/ui-egui/src/site/mod.rs:403
+#: crates/ui-egui/src/site/mod.rs:267
+#: crates/ui-egui/src/site/mod.rs:456
 #: crates/ui-egui/src/site/shell.rs:71
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:755
@@ -3534,7 +3534,7 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:510
 #: crates/ui-egui/src/shortcuts.rs:579
-#: crates/ui-egui/src/site/mod.rs:434
+#: crates/ui-egui/src/site/mod.rs:487
 #: crates/ui-egui/src/steel.rs:478
 #: crates/ui-egui/src/underlay.rs:467
 msgid "Close"
@@ -3919,7 +3919,7 @@ msgstr "Construção"
 msgid "Content"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:111
+#: crates/ui-egui/src/site/mod.rs:114
 msgid "Context"
 msgstr "Entorno"
 
@@ -4039,7 +4039,7 @@ msgstr "Cobre"
 #: crates/ui-egui/src/lib.rs:6781
 #: crates/ui-egui/src/parameters.rs:1269
 #: crates/ui-egui/src/plugins.rs:363
-#: crates/ui-egui/src/site/mod.rs:80
+#: crates/ui-egui/src/site/mod.rs:83
 msgid "Copy"
 msgstr "Copiar"
 
@@ -5412,7 +5412,7 @@ msgstr ""
 msgid "Draw the 3D view on the graphics card"
 msgstr "Desenhar a vista 3D na placa de vídeo"
 
-#: crates/ui-egui/src/site/mod.rs:190
+#: crates/ui-egui/src/site/mod.rs:208
 msgid "Draw the box on a map"
 msgstr "Desenhar a caixa num mapa"
 
@@ -6398,15 +6398,15 @@ msgstr "Pés"
 msgid "Feet and inches"
 msgstr "Pés e polegadas"
 
-#: crates/ui-egui/src/site/mod.rs:230
+#: crates/ui-egui/src/site/mod.rs:268
 msgid "Fetch"
 msgstr "Buscar"
 
-#: crates/ui-egui/src/site/mod.rs:390
+#: crates/ui-egui/src/site/mod.rs:443
 msgid "Fetching"
 msgstr "Buscando"
 
-#: crates/ui-egui/src/site/mod.rs:387
+#: crates/ui-egui/src/site/mod.rs:440
 msgid "Fetching buildings from OpenStreetMap…"
 msgstr "Buscando edifícios do OpenStreetMap…"
 
@@ -7136,7 +7136,7 @@ msgstr "Informe um id de modelo: apenas letras, dígitos, pontos e traços."
 msgid "Give an API key in the Assistant settings, or set {} in the environment."
 msgstr "Informe uma chave de API nas configurações do assistente, ou defina {} no ambiente."
 
-#: crates/ui-egui/src/site/mod.rs:219
+#: crates/ui-egui/src/site/mod.rs:257
 msgid "Give the area first: the query is made from its box."
 msgstr "Indique a área primeiro: a consulta é feita a partir da sua caixa."
 
@@ -7446,11 +7446,11 @@ msgstr "Deslocamento de altura do nível"
 msgid "Height Offset:"
 msgstr "Deslocamento de altura:"
 
-#: crates/ui-egui/src/site/mod.rs:256
+#: crates/ui-egui/src/site/mod.rs:294
 msgid "Height of a building with none: `{}` is not a length"
 msgstr "Altura de um edifício sem altura: `{}` não é um comprimento"
 
-#: crates/ui-egui/src/site/mod.rs:261
+#: crates/ui-egui/src/site/mod.rs:299
 msgid "Height of a level: `{}` is not a length"
 msgstr "Altura de um pavimento: `{}` não é um comprimento"
 
@@ -7836,13 +7836,13 @@ msgstr "Importar CAD: um desenho DWG ou DXF trazido ao projeto, desenhado sob o 
 msgid "Import DXF…"
 msgstr "Importar DXF…"
 
-#: crates/ui-egui/src/site/mod.rs:114
-#: crates/ui-egui/src/site/mod.rs:167
-#: crates/ui-egui/src/site/mod.rs:378
+#: crates/ui-egui/src/site/mod.rs:117
+#: crates/ui-egui/src/site/mod.rs:176
+#: crates/ui-egui/src/site/mod.rs:431
 msgid "Import from OpenStreetMap"
 msgstr "Importar do OpenStreetMap"
 
-#: crates/ui-egui/src/site/mod.rs:113
+#: crates/ui-egui/src/site/mod.rs:116
 msgid "Import from OpenStreetMap: the buildings round the site's place, fetched from Overpass, as masses on the ground"
 msgstr "Importar do OpenStreetMap: os edifícios em torno do local do sítio, buscados no Overpass, como massas sobre o terreno"
 
@@ -10372,6 +10372,10 @@ msgstr ""
 msgid "No scripts yet: New Script starts one, and an agent can write them (pyaddin_save)."
 msgstr ""
 
+#: crates/ui-egui/src/site/mod.rs:237
+msgid "No site location is set. Pick on Map or enter a box of degrees to see available systems."
+msgstr ""
+
 #: crates/ui-egui/src/codes.rs:1304
 msgid "No source given."
 msgstr "Nenhuma fonte informada."
@@ -11103,8 +11107,8 @@ msgstr "Beiral:"
 msgid "Overhead Lines"
 msgstr "Linhas superiores"
 
-#: crates/ui-egui/src/site/mod.rs:216
-#: crates/ui-egui/src/site/mod.rs:398
+#: crates/ui-egui/src/site/mod.rs:254
+#: crates/ui-egui/src/site/mod.rs:451
 msgid "Overpass query"
 msgstr "Consulta Overpass"
 
@@ -11754,7 +11758,7 @@ msgstr "Selecione linhas que se cruzam e depois clique onde fica a cota."
 msgid "Pick more references, or click away from them where the dimension line goes; Tab steps over the faces, axes and corners of the element under the cursor. A picked reference clicked again is taken out, Backspace takes out the last, Esc starts over. Space steps Auto, Aligned, Horizontal, Vertical."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:190
+#: crates/ui-egui/src/site/mod.rs:208
 msgid "Pick on Map…"
 msgstr "Escolher no Mapa…"
 
@@ -12577,6 +12581,10 @@ msgstr "Porte do projeto"
 msgid "Project scale:"
 msgstr "Porte do projeto:"
 
+#: crates/ui-egui/src/site/mod.rs:234
+msgid "Projected coordinate system"
+msgstr ""
+
 #: crates/ui-egui/src/camera.rs:72
 #: crates/ui-egui/src/objectstyles.rs:66
 #: crates/ui-egui/src/objectstyles.rs:73
@@ -12718,7 +12726,7 @@ msgstr ""
 msgid "Quantities"
 msgstr "Quantitativos"
 
-#: crates/ui-egui/src/site/mod.rs:424
+#: crates/ui-egui/src/site/mod.rs:477
 msgid "Query used"
 msgstr "Consulta usada"
 
@@ -14377,6 +14385,10 @@ msgstr "Definir: o plano de trabalho da vista, pelo nome ou selecionado na vista
 
 #: crates/ui-egui/src/editor/document.rs:1918
 msgid "Set: the work plane, a plane picked in the view (a point's, the level or a reference plane)"
+msgstr ""
+
+#: crates/ui-egui/src/site/mod.rs:242
+msgid "Sets Manage > Location to this area's centre using the chosen system:"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:597
@@ -16378,7 +16390,7 @@ msgstr "O projeto deixa de carregar este dicionário. O arquivo permanece onde e
 msgid "The project would then have {} warnings."
 msgstr "O projeto ficaria com {} avisos."
 
-#: crates/ui-egui/src/site/mod.rs:99
+#: crates/ui-egui/src/site/mod.rs:102
 msgid "The project's site has no place on Earth yet: give it a map system and its latitude and longitude in Manage > Location first."
 msgstr "O sítio do projeto ainda não tem lugar na Terra: dê-lhe um sistema de mapa e sua latitude e longitude em Gerenciar > Localização primeiro."
 
@@ -16717,12 +16729,12 @@ msgstr "Linhas finas (TL): toda linha com um pixel de largura"
 msgid "Thinking"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:182
+#: crates/ui-egui/src/site/mod.rs:200
 msgid "This BIMCraft has no network access (BIMCRAFT_NO_NETWORK is set, or it runs in a sandbox that has none)."
 msgstr "Este BIMCraft não tem acesso à rede (BIMCRAFT_NO_NETWORK está definido, ou roda num sandbox sem rede)."
 
-#: crates/ui-egui/src/site/mod.rs:275
-#: crates/ui-egui/src/site/mod.rs:322
+#: crates/ui-egui/src/site/mod.rs:328
+#: crates/ui-egui/src/site/mod.rs:375
 msgid "This BIMCraft has no network access."
 msgstr "Este BIMCraft não tem acesso à rede."
 
@@ -19507,7 +19519,7 @@ msgstr "{} respostas deixadas de fora"
 msgid "{} are in your Co-Work session: closing BIMCraft ends it for them, and they keep a read-only copy."
 msgstr "{} estão na sua sessão do Co-Work: fechar o BIMCraft a encerra para eles, e eles ficam com uma cópia somente leitura."
 
-#: crates/ui-egui/src/site/mod.rs:350
+#: crates/ui-egui/src/site/mod.rs:403
 msgid "{} are not over the terrain: they stand at the level"
 msgstr "{} não estão sobre o terreno: ficam no nível"
 
@@ -19531,11 +19543,11 @@ msgstr "{} barras em {} linhas: {} de aço, {} kg."
 msgid "{} buildings already have walls, floors or a roof made by face: Update to Face makes them follow the mass"
 msgstr "{} edifícios já têm paredes, pisos ou cobertura feitos por face: Atualizar para Face faz que acompanhem a massa"
 
-#: crates/ui-egui/src/site/mod.rs:346
+#: crates/ui-egui/src/site/mod.rs:399
 msgid "{} buildings made, {} updated, {} left out"
 msgstr "{} edifícios feitos, {} atualizados, {} deixados de fora"
 
-#: crates/ui-egui/src/site/mod.rs:357
+#: crates/ui-egui/src/site/mod.rs:410
 msgid "{} buildings with courtyards cut into {} pieces that leave them open"
 msgstr "{} edifícios com pátios cortados em {} partes que os deixam abertos"
 
@@ -19579,7 +19591,7 @@ msgstr "{} códigos, {}"
 msgid "{} copy"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:353
+#: crates/ui-egui/src/site/mod.rs:406
 msgid "{} courtyards filled in"
 msgstr "{} pátios preenchidos"
 
@@ -19613,11 +19625,11 @@ msgstr "{} elementos para a área de transferência; {} deixados de fora (nívei
 msgid "{} ended the session"
 msgstr "{} encerrou a sessão"
 
-#: crates/ui-egui/src/site/mod.rs:365
+#: crates/ui-egui/src/site/mod.rs:418
 msgid "{} entrances and exits placed on their buildings"
 msgstr "{} entradas e saídas colocadas em seus edifícios"
 
-#: crates/ui-egui/src/site/mod.rs:368
+#: crates/ui-egui/src/site/mod.rs:421
 msgid "{} entrances are not on any building"
 msgstr "{} entradas não estão em nenhum edifício"
 
@@ -19711,12 +19723,12 @@ msgstr "{} itens"
 msgid "{} joined the session"
 msgstr "{} entrou na sessão"
 
-#: crates/ui-egui/src/site/mod.rs:388
+#: crates/ui-egui/src/site/mod.rs:441
 msgid "{} km²"
 msgstr "{} km²"
 
 #: crates/ui-egui/src/site/map.rs:468
-#: crates/ui-egui/src/site/mod.rs:209
+#: crates/ui-egui/src/site/mod.rs:227
 msgid "{} km² (at most {})"
 msgstr "{} km² (no máximo {})"
 
@@ -19810,11 +19822,11 @@ msgstr "{} abriu outro projeto"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} foi aberto sem {} campos que esta versão não conhece; ao salvar, eles ficam de fora."
 
-#: crates/ui-egui/src/site/mod.rs:371
+#: crates/ui-egui/src/site/mod.rs:424
 msgid "{} outlines kept: their parts cover too little of them"
 msgstr "{} contornos mantidos: suas partes os cobrem pouco"
 
-#: crates/ui-egui/src/site/mod.rs:362
+#: crates/ui-egui/src/site/mod.rs:415
 msgid "{} outlines replaced by their building parts"
 msgstr "{} contornos substituídos por suas partes de edifício"
 
@@ -20058,7 +20070,7 @@ msgstr "{}: `{}` não é um comprimento"
 #: crates/ui-egui/src/parameters.rs:353
 #: crates/ui-egui/src/properties.rs:3119
 #: crates/ui-egui/src/properties.rs:3940
-#: crates/ui-egui/src/site/mod.rs:94
+#: crates/ui-egui/src/site/mod.rs:97
 #: crates/ui-egui/src/stairtype.rs:236
 msgid "{}: `{}` is not a number"
 msgstr "{}: `{}` não é um número"
