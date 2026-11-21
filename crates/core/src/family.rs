@@ -197,6 +197,8 @@ impl Category {
     fn classes(self) -> &'static [&'static str] {
         match self {
             Category::Furniture => &["IFCFURNISHINGELEMENT", "IFCSYSTEMFURNITUREELEMENT"],
+            // IFC4.3's board, which BIMCraft writes there too.
+            Category::Equipment => &["IFCDISTRIBUTIONBOARD"],
             _ => &[],
         }
     }

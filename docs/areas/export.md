@@ -66,7 +66,11 @@ ezdxf's audit, IFC4.3 and IFC2x3 with IfcOpenShell (CI validates `coverage-4x3.i
   take. A class only IFC4 has is its nearest IFC2x3 supertype: a pipe segment is an `IfcFlowSegment` whose
   `IfcPipeSegmentType` still says what it is, furniture an `IfcFurnishingElement`, a chimney a proxy; an element short of
   what its IFC2x3 class requires is a proxy too. A door's and a window's type are an `IfcDoorStyle` and an
-  `IfcWindowStyle`; a roof's and a footing's have no type object. What differs in kind the writer does where it asks
+  `IfcWindowStyle`; a roof's and a footing's have no type object. A distribution board is an
+  `IfcElectricDistributionPoint`, its predefined type its `DistributionPointFunction`, typed by an
+  `IfcDistributionElementType` (IFC2x3 has no board type), and `Pset_ElectricalDeviceCommon` names the current and the
+  voltage `NominalCurrent` and `NominalVoltage` there (`RatedCurrent` and `RatedVoltage` in IFC4 and IFC4.3; import reads
+  either). What differs in kind the writer does where it asks
   `Schema::Ifc2x3`: triangles are a faceted B-rep (no face sets), several materials an `IfcMaterialList`, a beam's,
   column's or footing's material its own (no profile sets), a styled item's styles in an
   `IfcPresentationStyleAssignment`, a see-through colour an `IfcSurfaceStyleRendering`, a swept disk with its ends, and
@@ -74,6 +78,9 @@ ezdxf's audit, IFC4.3 and IFC2x3 with IfcOpenShell (CI validates `coverage-4x3.i
   buildingSMART's guide to georeferencing has them and IfcOpenShell reads them. Checked with IfcOpenShell's schema and
   rule validation, a shape built for every product and each shape's extent the same as the IFC4 file's; the file reads
   back through `import.rs`. Not yet opened in Revit or another program that reads only IFC2x3.
+- **IFC4.3** writes IFC4's entities as they are, but for the attributes 4.3 added (a point list's tags, a virtual
+  element's type) and a distribution board: IFC4.3 deprecates `IfcElectricDistributionBoard` for `IfcDistributionBoard`
+  and its type, of the same attributes, which `Step::add` writes; import reads it as a board.
 - **Where the model lies on a map** goes out once, whatever the schema: the active site's map conversion from the file's
   origin (`ifc_origin`), as [coordinates](coordinates.md#ifc-one-map-conversion) has it: an `IfcMapConversion` in IFC4 and
   IFC4.3, the `ePSet_MapConversion` and `ePSet_ProjectedCRS` property sets on the project in IFC2x3 (`Step::map_conversion`).
