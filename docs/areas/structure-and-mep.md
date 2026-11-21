@@ -304,3 +304,27 @@ profiles keep their original plain sections. GUID references and prior migration
 section; the CLI/MCP `type` command is the entry point for profile authoring. IFC section recognition currently reads direct
 parameterized extruded Body representations; mapped or otherwise unsupported representations retain the existing import
 fallback. Columns retain steel metadata when IFC marks them load-bearing.
+
+## Check measured cable carrier fill
+
+Use `carrier_fill` with a conduit or cable tray element ID or GUID and the measured
+clear dimensions in millimetres. Supply one area in mm² per cable or conductor,
+including insulation and sheath. The command reports the count, occupied and
+available area, and whether the areas fit under the chosen maximum.
+
+- `nbr5410_2004` takes a round conduit and `inside_diameter`. It uses the same
+  count-dependent maximum as `conduit_fill`.
+- `ru_sp76_2016_max_fill` takes a rectangular cable tray type representing a
+  box and requires `enclosure`, `inside_width` and `inside_depth`. A
+  `blind_box` has a 35% limit and a `lidded_box` a 40% limit under SP
+  76.13330.2016, §6.3.2.4.
+  [Text of the standard](https://base.garant.ru/71636056/).
+
+Save the measured section on its type with
+`type {"category":"conduit","name":"PVC 25","clear_section":{"diameter":20}}`
+or `type {"category":"cabletray","name":"Lidded 100 x 50","width":100,"depth":50,"clear_section":{"width":80,"depth":40,"enclosure":"lidded_box"}}`.
+With a complete section on the type, omit the measurement parameters from
+`carrier_fill`. Supplying the full measurement set overrides the stored values
+for one check. Use `clear_section: null` to remove the saved measurements.
+Existing projects can keep using explicit measurements.
+Use `conduit` (CN) and `cable_tray` (CT) to place the elements.

@@ -41,6 +41,7 @@ use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod bars;
+mod carrier;
 mod quantities;
 mod work_plane;
 
@@ -1637,7 +1638,7 @@ other_files(
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|toposolid|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion|cornermullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material?, profile?, shape?, web?, flange?, radius? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?} creates the type, or changes it everywhere it's used. \
+         material?, profile?, shape?, web?, flange?, radius?, clear_section? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?} creates the type, or changes it everywhere it's used. \
          A room type may name a `floor` type and a `ceiling` type (null, none; a new project's Standard has neither): each of its \
          rooms then has a floor (its top `floor_offset` mm over the room's level, 0) and a ceiling (its underside \
          `ceiling_offset` mm over it, 2600) of its own, made when the room is bounded and kept along its boundary at the walls' \
@@ -1650,7 +1651,8 @@ other_files(
          is the same with `rotation`, degrees from the wall that holds it toward the other, `auto_rotation` to add half the corner's turn to it, \
          which keeps a rotation of 0 square to the corner's diagonal at any angle, and its offsets from the two walls' grid planes. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
-         made of a `material` of the library. Steel beam/structural-column types accept `profile` (IPE 80-600, HEA/HEB 100-600, \
+         made of a `material` of the library. Set `clear_section` to {diameter} for a round conduit or {width, depth, enclosure?:blind_box|lidded_box} \
+         for a rectangular cable tray (mm), or null to clear it. Steel beam/structural-column types accept `profile` (IPE 80-600, HEA/HEB 100-600, \
          e.g. IPE 300) or `shape` I/H, U, L, T, RHS/SHS or CHS plus `width`, `depth` and plates. I/U/T take `web`, `flange`, \
          `radius`; L takes `thickness`, `radius`; RHS/CHS take `thickness` (CHS width is its diameter); `turned: true` turns \
          a section half round in its plane (a T's flange below, an inverted T). `shape: rectangle` \
@@ -3584,6 +3586,12 @@ other_files(
          floor, a railing along a stair or a ramp; `room` is a room (id or GUID) whose components to list: those its volume \
          holds, as an element's `room` field shows",
         elements,
+    ),
+    other(
+        "carrier_fill",
+        "Check Measured Carrier Fill",
+        "{id:conduit or cable tray id|GUID, profile:nbr5410_2004|ru_sp76_2016_max_fill, areas:[mm²,…], inside_diameter?:mm, enclosure?:blind_box|lidded_box, inside_width?:mm, inside_depth?:mm} check maximum fill from the type's clear_section or from explicit measurements. Give one positive area including the insulation and sheath per cable or conductor. NBR takes a round conduit. SP 76 takes a rectangular box with an enclosure. The result includes count, capacity and whether it fits",
+        carrier::carrier_fill,
     ),
 ];
 
@@ -14022,7 +14030,7 @@ fn from_catalogue(s: &mut Session, p: &Value, category: &str) {
     let m = s.model_mut();
     if category == "beam" {
         let material = steel_material(&m.language, &m.materials).unwrap_or_default();
-        let t = crate::model::RunType { width, depth, round: false, material, profile: Some(profile) };
+        let t = crate::model::RunType { width, depth, round: false, material, profile: Some(profile), clear_section: None };
         m.types.runs.entry("beam".into()).or_default().insert(name.to_string(), t);
     } else {
         m.types.structural_column.insert(name.to_string(), ColumnType { width, depth, round: false, profile: Some(profile) });
@@ -18234,6 +18242,9 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
     let c = "type";
     let cat = category(&string(c, p, "category")?.ok_or_else(|| bad(c, "`category` is required: wall, floor, ceiling, door or window"))?);
     let name = string(c, p, "name")?.filter(|n| !n.trim().is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
+    if p.get("clear_section").is_some() && !matches!(cat.as_str(), "conduit" | "cabletray") {
+        return Err(bad(c, "`clear_section` is for a conduit or cable tray type"));
+    }
     let (thickness, width, height, sill) = (num(c, p, "thickness")?, num(c, p, "width")?, num(c, p, "height")?, num(c, p, "sill")?);
     // A stair type's `profile` is its risers' (straight or slanted), not a steel section.
     if !matches!(cat.as_str(), "structuralcolumn" | "beam")
@@ -18339,8 +18350,12 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             // A section from the catalogue is steel unless it says.
             let steel_by_default = matches!(section, Steel::Catalogue(..)).then(|| steel_material(&m.language, &m.materials));
             let profile = section.profile(old.as_ref().map(|t| (t.width, t.depth)), (width, depth));
+            let clear_section = match p.get("clear_section") {
+                Some(v) => serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`clear_section`: {e}")))?,
+                None => old.as_ref().and_then(|t| t.clear_section),
+            };
             let material = string(c, p, "material")?.or(old.map(|t| t.material)).or(steel_by_default.flatten()).unwrap_or_default();
-            let t = crate::model::RunType { width, depth, round, material, profile };
+            let t = crate::model::RunType { width, depth, round, material, profile, clear_section };
             types.insert(name.clone(), t.clone());
             json!(t)
         }

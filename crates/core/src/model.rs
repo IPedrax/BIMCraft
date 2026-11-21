@@ -3683,6 +3683,9 @@ pub struct RunType {
     pub material: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<Profile>,
+    /// Measured usable section, independently of the drawn outside dimensions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_section: Option<crate::carrier_fill::ClearSection>,
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
@@ -4580,8 +4583,14 @@ impl Model {
         for (n, w) in [("Footing 1200 x 1200", 1200.0), ("Footing 1500 x 1500", 1500.0)] {
             m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false, profile: None });
         }
-        let run =
-            |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into(), profile: None };
+        let run = |width, depth, round, material: &str| RunType {
+            width,
+            depth,
+            round,
+            material: language.word(material).into(),
+            profile: None,
+            clear_section: None,
+        };
         let beams = [
             ("Beam 200 x 500", run(200.0, 500.0, false, "Concrete")),
             ("Beam 150 x 400", run(150.0, 400.0, false, "Concrete")),
@@ -9049,6 +9058,9 @@ impl Model {
                         return Err(format!("{who}: a steel section is a structural column's or a beam's, not a {cat}'s"));
                     }
                     p.check(&who, t.width, t.depth, t.round)?;
+                }
+                if let Some(section) = t.clear_section {
+                    section.check(&who, cat, t)?;
                 }
                 text(&who, "material", &t.material)?;
                 if !t.material.is_empty() && !self.materials.contains_key(&t.material) {
