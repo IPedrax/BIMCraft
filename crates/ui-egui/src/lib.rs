@@ -7185,13 +7185,19 @@ impl BimApp {
         });
     }
 
-    /// Why the last command failed, in a box over the view's corner until the next one works.
+    /// Why the last command failed, in a box over the views' bottom right corner until the next one works. It is a layer of
+    /// the views' own order, so it is raised to the top of it every frame: the windows a split lays out are layers of that
+    /// order too, and one of them clicked or dragged after the note came up would otherwise hide it. Modal dialogs and menus
+    /// stand above it in orders of their own.
     fn warning(&mut self, ctx: &Context) {
         if self.status.text.is_empty() {
             return;
         }
         let (title, color) = if self.status.error { (t("Error"), pal().error) } else { (t("Note"), pal().accent_ink) };
-        let at = self.view_rect.right_bottom() - vec2(16.0, 16.0);
+        // The whole views' area in Split and Tile, not the one window drawn last; the view under the tabs otherwise.
+        let view =
+            if !self.home.shown && !self.family_doc() && self.arrange != dock::Arrange::Tabs { self.views_rect } else { self.view_rect };
+        let at = view.right_bottom() - vec2(16.0, 16.0);
         Area::new(UiId::new("warning")).order(Order::Middle).fixed_pos(at).pivot(Align2::RIGHT_BOTTOM).show(ctx, |ui| {
             Frame::popup(ui.style()).fill(pal().surface).stroke(Stroke::new(1.0, color)).show(ui, |ui| {
                 ui.set_max_width(380.0);
@@ -7206,6 +7212,7 @@ impl BimApp {
                 ui.label(&self.status.text);
             });
         });
+        ctx.move_to_top(egui::LayerId::new(Order::Middle, UiId::new("warning")));
     }
 
     // ---------- the palettes: Properties, Project Browser (`dock.rs` docks them) ----------
