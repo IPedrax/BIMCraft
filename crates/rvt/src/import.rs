@@ -270,7 +270,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     walls::wanted(&facts, &mut wants.data);
     floors::wanted(&facts, &mut wants.data);
     roofs::wanted(&facts, &mut wants.data);
-    openings::wanted(&facts, &mut wants.data);
+    openings::wanted(&facts, &mut wants);
     columns::wanted(&facts, &mut wants);
     rooms::wanted(&facts, &mut wants);
     pipes::wanted(&facts, &mut wants.data);
