@@ -3479,7 +3479,7 @@ msgstr ""
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
-#: crates/ui-egui/src/lib.rs:7296
+#: crates/ui-egui/src/lib.rs:7303
 #: crates/ui-egui/src/parameters.rs:728
 #: crates/ui-egui/src/parameters.rs:746
 #: crates/ui-egui/src/phasing.rs:278
@@ -3501,7 +3501,7 @@ msgstr ""
 msgid "Close"
 msgstr "Zamknij"
 
-#: crates/ui-egui/src/lib.rs:7270
+#: crates/ui-egui/src/lib.rs:7277
 msgid "Close Family"
 msgstr ""
 
@@ -3531,7 +3531,7 @@ msgstr ""
 
 #: crates/ui-egui/src/dock.rs:627
 #: crates/ui-egui/src/dock.rs:1042
-#: crates/ui-egui/src/lib.rs:7270
+#: crates/ui-egui/src/lib.rs:7277
 msgid "Close {}"
 msgstr ""
 
@@ -5123,7 +5123,7 @@ msgstr ""
 msgid "Disconnected"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7201
+#: crates/ui-egui/src/lib.rs:7207
 #: crates/ui-egui/src/swap.rs:62
 msgid "Dismiss"
 msgstr ""
@@ -5209,7 +5209,7 @@ msgstr ""
 msgid "Don't"
 msgstr "Nie"
 
-#: crates/ui-egui/src/lib.rs:7510
+#: crates/ui-egui/src/lib.rs:7517
 msgid "Don't Save"
 msgstr ""
 
@@ -6006,7 +6006,7 @@ msgstr ""
 msgid "Equipment Working Space"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7193
+#: crates/ui-egui/src/lib.rs:7196
 #: crates/ui-egui/src/plugins.rs:518
 msgid "Error"
 msgstr "Błąd"
@@ -6281,7 +6281,7 @@ msgstr ""
 msgid "Family Types: the family's parameters, their formulas, and its types"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7260
+#: crates/ui-egui/src/lib.rs:7267
 msgid "Family document: {}"
 msgstr ""
 
@@ -6722,7 +6722,7 @@ msgstr ""
 
 #: crates/ui-egui/src/dock.rs:653
 #: crates/ui-egui/src/dock.rs:1191
-#: crates/ui-egui/src/lib.rs:7292
+#: crates/ui-egui/src/lib.rs:7299
 msgid "Float"
 msgstr ""
 
@@ -7705,7 +7705,7 @@ msgstr ""
 msgid "If you don't save it, your changes still apply to this project."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7506
+#: crates/ui-egui/src/lib.rs:7513
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr ""
 
@@ -10242,7 +10242,7 @@ msgstr ""
 msgid "No region drawn yet"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7344
+#: crates/ui-egui/src/lib.rs:7351
 msgid "No rows yet: the {} is empty."
 msgstr ""
 
@@ -10435,7 +10435,7 @@ msgstr ""
 msgid "Not visible on this network: another session on this machine has the port"
 msgstr "Niewidoczna w tej sieci: inna sesja na tym komputerze zajmuje port"
 
-#: crates/ui-egui/src/lib.rs:7193
+#: crates/ui-egui/src/lib.rs:7196
 msgid "Note"
 msgstr ""
 
@@ -13787,7 +13787,7 @@ msgid "Save changes in {}"
 msgstr ""
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:7504
+#: crates/ui-egui/src/lib.rs:7511
 msgid "Save changes to {}?"
 msgstr ""
 
@@ -16876,7 +16876,7 @@ msgstr ""
 msgid "Toposolid"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:7386
+#: crates/ui-egui/src/lib.rs:7393
 msgid "Total"
 msgstr ""
 
