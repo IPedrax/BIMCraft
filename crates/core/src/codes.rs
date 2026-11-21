@@ -166,6 +166,28 @@ fn valid_as<T: DeserializeOwned>(v: &Value) -> Result<Value, String> {
     Ok(v.clone())
 }
 
+/// `valid_as`, and no number below zero where the method reads one: a load, a factor, a breaker, a cable is never negative
+/// (a breaker of -1 A would be answered as one). Left as printed: a table's other `columns` (shown, never read) and a
+/// curve's `exponent` (which may fall).
+fn valid_not_negative<T: DeserializeOwned>(v: &Value) -> Result<Value, String> {
+    fn negative(v: &Value, at: &str) -> Option<String> {
+        match v {
+            Value::Number(n) if n.as_f64().is_some_and(|x| x < 0.0) => Some(format!("`{at}` is {n}")),
+            Value::Array(a) => a.iter().enumerate().find_map(|(i, x)| negative(x, &format!("{at}[{i}]"))),
+            Value::Object(o) => o
+                .iter()
+                .filter(|(k, _)| !matches!(k.as_str(), "columns" | "exponent"))
+                .find_map(|(k, x)| negative(x, &if at.is_empty() { k.clone() } else { format!("{at}.{k}") })),
+            _ => None,
+        }
+    }
+    let v = valid_as::<T>(v)?;
+    match negative(&v, "") {
+        Some(what) => Err(format!("no number here is below zero: {what}")),
+        None => Ok(v),
+    }
+}
+
 /// A table by steps, as codes print a factor by a count or a load: the value of the first row whose bound `x` is up to, else
 /// `beyond`.
 #[derive(Clone, Debug, Deserialize)]
@@ -326,7 +348,7 @@ pub fn sections() -> &'static [SectionDef] {
                 ui_msg!("Building Demand"),
                 ui_msg!("How a utility or a country calculates a building's demand: the demand of one home, the factor for the number of homes, and the shared loads."),
                 &["building_demand"],
-                valid_as::<crate::building_demand::Method>,
+                valid_not_negative::<crate::building_demand::Method>,
             ),
             s(
                 Electrical,
@@ -334,7 +356,7 @@ pub fn sections() -> &'static [SectionDef] {
                 ui_msg!("Service Categories"),
                 ui_msg!("The utility's service categories by supply system and use: the load or demand of each, with its breaker and cables."),
                 &["demand"],
-                valid_as::<crate::entrance::Utility>,
+                valid_not_negative::<crate::entrance::Utility>,
             ),
             s(
                 Electrical,
