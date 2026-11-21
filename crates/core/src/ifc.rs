@@ -575,7 +575,7 @@ struct Step {
 /// The IFC schema a file is written in: IFC4 (ISO 16739-1:2018); IFC4.3 (ISO 16739-1:2024, `IFC4X3_ADD2`), which IFC4's
 /// entities are written in as they are, but for the attributes 4.3 added (a point list's tags, a virtual element's type); or
 /// IFC2x3 (ISO/PAS 16739:2005, TC1), for the programs that read nothing newer, which each entity is turned into as it is
-/// written (`v2x3`).
+/// written (`v2x3`). IFC4.3 also names a board's class anew (`Step::add`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Schema {
     #[default]
@@ -594,6 +594,15 @@ impl Schema {
             Schema::Ifc4 => "IFC4",
             Schema::Ifc4x3 => "IFC4X3_ADD2",
             Schema::Ifc2x3 => "IFC2X3",
+        }
+    }
+
+    /// What `Pset_ElectricalDeviceCommon` names a device's current and voltage: `RatedCurrent` and `RatedVoltage`, which IFC2x3
+    /// names `NominalCurrent` and `NominalVoltage`.
+    fn device_ratings(self) -> [&'static str; 2] {
+        match self {
+            Schema::Ifc2x3 => ["NominalCurrent", "NominalVoltage"],
+            Schema::Ifc4 | Schema::Ifc4x3 => ["RatedCurrent", "RatedVoltage"],
         }
     }
 
@@ -681,6 +690,10 @@ impl Step {
     /// a styled item's styles in the assignment they go in there.
     fn add(&mut self, entity: impl AsRef<str>) -> u64 {
         let entity = entity.as_ref();
+        // IFC4.3 deprecates IFC4's `IfcElectricDistributionBoard` and its type for `IfcDistributionBoard`, of the same attributes.
+        if let Some(rest) = entity.strip_prefix("IFCELECTRICDISTRIBUTIONBOARD").filter(|_| self.schema == Schema::Ifc4x3) {
+            return self.write(&format!("IFCDISTRIBUTIONBOARD{rest}"));
+        }
         if self.schema != Schema::Ifc2x3 {
             return self.write(entity);
         }
@@ -2841,7 +2854,11 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         ));
         let device = [
             w.add(format!("IFCPROPERTYSINGLEVALUE('NumberOfPoles',$,IFCINTEGER({}),$)", c.poles)),
-            w.add(format!("IFCPROPERTYSINGLEVALUE('RatedCurrent',$,IFCELECTRICCURRENTMEASURE({}),$)", real(c.rating_a))),
+            w.add(format!(
+                "IFCPROPERTYSINGLEVALUE('{}',$,IFCELECTRICCURRENTMEASURE({}),$)",
+                w.schema.device_ratings()[0],
+                real(c.rating_a)
+            )),
         ];
         w.define(breaker, "Pset_ElectricalDeviceCommon", &device, (BREAKER_PROPERTIES, BREAKER_DEFINES), id);
         let mut members: Vec<u64> = c.devices.iter().filter_map(|g| products.get(&m.elements.id(*g)?).copied()).collect();
@@ -2970,7 +2987,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         let mut device = vec![w.add(format!("IFCPROPERTYSINGLEVALUE('NumberOfPoles',$,IFCINTEGER({}),$)", c.poles))];
         if power {
             device.push(w.add(format!("IFCPROPERTYSINGLEVALUE('PowerFactor',$,IFCNORMALISEDRATIOMEASURE({}),$)", real(c.power_factor))));
-            device.push(w.add(format!("IFCPROPERTYBOUNDEDVALUE('RatedVoltage',$,$,$,$,IFCELECTRICVOLTAGEMEASURE({}))", real(c.voltage))));
+            let voltage = w.schema.device_ratings()[1];
+            device.push(w.add(format!("IFCPROPERTYBOUNDEDVALUE('{voltage}',$,$,$,$,IFCELECTRICVOLTAGEMEASURE({}))", real(c.voltage))));
         }
         w.define(ent, DEVICE_SET, &device, (DEVICE, DEVICE_DEFINES), id);
         let system = serde_json::to_value(c.system).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
@@ -4281,5 +4299,80 @@ mod tests {
         assert!((q["NetVolume"] - want).abs() < 1e-6 && (q["GrossVolume"] - want).abs() < 1e-6, "{q:?}");
         // Every corner of its underside is at -270 mm.
         assert!(text.contains("IFCCARTESIANPOINT((0.,0.,-270.))") && !text.contains("IFCCARTESIANPOINT((4000.,3000.,-300.))"));
+    }
+
+    /// A board with a circuit of two luminaires, as `schema` writes it.
+    fn board_in(schema: Schema) -> String {
+        use crate::circuit_tests::{board, lamps, make};
+        let mut s = Session::new();
+        let (b, d) = (board(&mut s), lamps(&mut s, 2));
+        make(&mut s, json!({"devices": d, "panel": b, "name": "Lighting", "rating": 10}));
+        export_as(&s.model, Origin::Internal, schema)
+    }
+
+    /// The entities of class `class` in `file`: their numbers and their attributes as written.
+    fn attributes_of(file: &str, class: &str) -> Vec<(u64, Vec<String>)> {
+        let found = file.lines().filter_map(|line| {
+            let (number, rest) = line.strip_prefix('#')?.split_once('=')?;
+            let (name, args) = v2x3::split(rest.trim_end_matches(';'))?;
+            (name == class).then(|| (number.parse().unwrap(), args.into_iter().map(str::to_string).collect()))
+        });
+        found.collect()
+    }
+
+    #[test]
+    fn a_board_is_ifc4x3_s_distribution_board_and_ifc4_s_electric_one() {
+        // IFC4.3 deprecates IfcElectricDistributionBoard for IfcDistributionBoard, of the same attributes.
+        let file = board_in(Schema::Ifc4x3);
+        let boards = attributes_of(&file, "IFCDISTRIBUTIONBOARD");
+        assert_eq!(boards.len(), 1, "one board");
+        assert_eq!((boards[0].1.len(), boards[0].1[8].as_str()), (9, ".DISTRIBUTIONBOARD."));
+        let types = attributes_of(&file, "IFCDISTRIBUTIONBOARDTYPE");
+        assert_eq!(types.len(), 1, "its type object");
+        assert_eq!(types[0].1.len(), 10, "{:?}", types[0].1);
+        assert!(!file.contains("IFCELECTRICDISTRIBUTIONBOARD"), "the class IFC4.3 has deprecated is not written");
+        // IFC4 has no other class for a board; but for the class, the two versions write a board and its type alike.
+        let file = board_in(Schema::Ifc4);
+        let (older, older_types) =
+            (attributes_of(&file, "IFCELECTRICDISTRIBUTIONBOARD"), attributes_of(&file, "IFCELECTRICDISTRIBUTIONBOARDTYPE"));
+        assert_eq!((older.len(), older_types.len()), (1, 1));
+        assert_eq!((&older[0].1[2..], &older_types[0].1[2..]), (&boards[0].1[2..], &types[0].1[2..]));
+        assert!(!file.contains("IFCDISTRIBUTIONBOARD("));
+    }
+
+    #[test]
+    fn a_board_is_ifc2x3_s_distribution_point_with_a_type_object() {
+        let file = board_in(Schema::Ifc2x3);
+        let boards = attributes_of(&file, "IFCELECTRICDISTRIBUTIONPOINT");
+        assert_eq!(boards.len(), 1, "one board");
+        let (number, board) = &boards[0];
+        assert_eq!(board.len(), 10, "{board:?}");
+        assert!(board[1].starts_with('#'), "its owner history: {board:?}");
+        assert_eq!((board[8].as_str(), board[9].as_str()), (".DISTRIBUTIONBOARD.", "$"), "its function");
+        // IFC2x3 has no board type: its type object is a distribution element type, and the board is typed by it.
+        let types = attributes_of(&file, "IFCDISTRIBUTIONELEMENTTYPE");
+        assert_eq!(types.len(), 1, "one type object");
+        assert_eq!(types[0].1.len(), 9, "{:?}", types[0].1);
+        assert!(types[0].1[1].starts_with('#') && types[0].1[2].contains("Distribution Board"), "{:?}", types[0].1);
+        let typed = attributes_of(&file, "IFCRELDEFINESBYTYPE");
+        let defines = typed.iter().find(|(_, args)| args[5] == format!("#{}", types[0].0)).expect("a type relation");
+        assert_eq!(defines.1[4], format!("(#{number})"));
+        assert!(!file.contains("IFCELECTRICDISTRIBUTIONBOARD"), "no IFC4 class in an IFC2x3 file");
+        // The breaker is still a flow controller there; the board is not.
+        let controllers = attributes_of(&file, "IFCFLOWCONTROLLER");
+        assert!(controllers.iter().all(|(_, args)| !args[2].contains("Distribution Board")), "{controllers:?}");
+    }
+
+    #[test]
+    fn the_device_set_s_current_and_voltage_have_ifc2x3_s_names_there() {
+        let old = board_in(Schema::Ifc2x3);
+        assert!(old.contains("IFCPROPERTYSINGLEVALUE('NominalCurrent',$,IFCELECTRICCURRENTMEASURE(10.),$)"), "the breaker's");
+        assert!(old.contains("IFCPROPERTYSINGLEVALUE('NominalVoltage',$,IFCELECTRICVOLTAGEMEASURE("), "a luminaire's");
+        assert!(!old.contains("'RatedCurrent'") && !old.contains("'RatedVoltage'"));
+        for schema in [Schema::Ifc4, Schema::Ifc4x3] {
+            let new = board_in(schema);
+            assert!(new.contains("'RatedCurrent'") && new.contains("'RatedVoltage'"), "{schema:?}");
+            assert!(!new.contains("'NominalCurrent'") && !new.contains("'NominalVoltage'"), "{schema:?}");
+        }
     }
 }
