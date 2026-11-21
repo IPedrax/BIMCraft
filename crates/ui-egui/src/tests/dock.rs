@@ -440,6 +440,11 @@ fn one_window_snapped_left_makes_two_equal_columns() {
     assert!((left.width() - tab.width()).abs() < 1e-3, "{left:?} {tab:?}");
     assert!((left.width() + tab.width() - views.width()).abs() < 1e-3);
     assert!(left.left() <= views.left() + 1e-3 && left.right() <= tab.left() + 1e-3, "the window on the left, the tabs right");
+    // The tabbed pane's own header holds the tabs: no tab bar floats above the split.
+    assert!(!h.state().tab_rects.is_empty(), "the tabs are the tabbed pane's header");
+    for (_, r) in h.state().tab_rects.clone() {
+        assert!(r.top() >= tab.top() - 1e-3 && r.left() >= tab.left() - 1e-3 && r.right() <= tab.right() + 1e-3, "{r:?} of {tab:?}");
+    }
 }
 
 #[test]
@@ -497,6 +502,8 @@ fn tile_views_puts_four_views_in_the_four_corners() {
     let cells = cells(&h);
     assert_eq!(cells.len(), 4);
     assert!(h.state().floating.is_empty(), "the tile gathered the windows onto the bar");
+    assert!(h.state().tab_rects.is_empty(), "no tab bar above the tile: each cell's header names its view");
+    assert_eq!(h.state().tab_bar, Rect::NOTHING);
     let (a, b, c, d) = (cells[0].1, cells[1].1, cells[2].1, cells[3].1);
     assert!(a.top() <= views.top() + 1e-3 && b.top() <= views.top() + 1e-3);
     assert!(c.bottom() >= views.bottom() - 1e-3 && d.bottom() >= views.bottom() - 1e-3);
@@ -511,7 +518,7 @@ fn tile_views_puts_four_views_in_the_four_corners() {
 }
 
 #[test]
-fn tile_views_of_three_views_leaves_the_last_cell_empty() {
+fn tile_views_of_three_views_leaves_no_empty_cell() {
     let (mut h, _one, two) = two_plans();
     let level = h.state().session.model.levels()[0].0;
     h.state_mut().open_sheet(two);
@@ -524,11 +531,44 @@ fn tile_views_of_three_views_leaves_the_last_cell_empty() {
     let cells = cells(&h);
     assert_eq!(cells.len(), 3);
     assert!(cells[0].1.top() <= views.top() + 1e-3 && cells[1].1.top() <= views.top() + 1e-3, "two in the top row");
-    assert!(cells[2].1.top() >= views.center().y - 1e-3 && cells[2].1.left() <= views.left() + 1e-3, "one in the left of the second row");
-    for (_, r) in &cells {
-        assert!((r.width() - views.width() / 2.0).abs() < 1e-3, "{r:?}");
+    // The one below takes the whole width, the room the two empty cells would have left.
+    assert!(cells[2].1.top() >= views.center().y - 1e-3 && cells[2].1.left() <= views.left() + 1e-3, "one across the second row");
+    for (i, (_, r)) in cells.iter().enumerate() {
+        let width = if i == 2 { views.width() } else { views.width() / 2.0 };
+        assert!((r.width() - width).abs() < 1e-3, "{r:?}");
         assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
     }
+}
+
+#[test]
+fn a_partial_tile_row_stretches_across_it_without_a_hole() {
+    let (mut h, _one, two) = two_plans();
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::Ceiling(level));
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.state_mut().open_sheet(Sheet::Schedule("room"));
+    h.run();
+    press(&mut h, "View");
+    from_list(&mut h, "Windows", "Tile Views");
+    assert_eq!(h.state().arrange, Arrange::Tile);
+    let views = h.state().views_rect;
+    let cells = cells(&h);
+    assert_eq!(cells.len(), 5, "five views in a 3 x 2");
+    // The top row is three equal cells; the two below share its whole width.
+    for (_, r) in &cells[0..3] {
+        assert!((r.width() - views.width() / 3.0).abs() < 1e-3, "{r:?}");
+        assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
+        assert!(r.top() <= views.top() + 1e-3, "{r:?}");
+    }
+    for (i, (_, r)) in cells[3..5].iter().enumerate() {
+        assert!((r.width() - views.width() / 2.0).abs() < 1e-3, "{r:?}");
+        assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
+        assert!(r.top() >= views.center().y - 1e-3, "{r:?}");
+        let left = if i == 0 { views.left() } else { views.center().x };
+        assert!((r.left() - left).abs() < 1e-3, "{r:?}");
+    }
+    assert!((cells[4].1.right() - views.right()).abs() < 1e-3, "the last cell reaches the right edge");
 }
 
 #[test]
