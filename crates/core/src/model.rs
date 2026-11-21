@@ -4944,8 +4944,9 @@ impl Model {
     /// reference planes that stand upright and are a reference (Strong, Weak, or one of the named sides and middles; not Not
     /// a Reference), each where it stands for the component's values ([`crate::family::Family::flexed`]), mirrored if it is,
     /// turned and moved to where it stands, as its symbols are. Its datums are its centre lines: Center (Front/Back), along
-    /// it, its `Centre`, and Center (Left/Right), across it, its `Across`; every other plane is `Plane`, by its GUID. None for
-    /// a component tilted off the plan or placed by adaptive points, or whose family doesn't work out.
+    /// it, its `Centre`, and Center (Left/Right), across it, its `Across`; every other plane is `Plane`, by its GUID. The weak
+    /// ones come last, so where planes lie over each other the nearest taken is a strong or a named one, as Revit prefers.
+    /// None for a component tilted off the plan or placed by adaptive points, or whose family doesn't work out.
     pub fn component_reference_lines(&self, c: &Component) -> Vec<(Face, Line)> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         let placed = self.component_placement(c);
@@ -4961,7 +4962,7 @@ impl Model {
         };
         // Upright: the plane's up runs plumb, so plan sees it edge on, as its line.
         let upright = |u: [f64; 3]| u[2].abs() > 0.0 && u[0].hypot(u[1]) <= 1e-9 * u[2].abs();
-        flexed
+        let mut lines: Vec<(bool, Face, Line)> = flexed
             .planes
             .iter()
             .filter(|pl| !pl.level && pl.reference != crate::family::Reference::NotAReference && upright(pl.up))
@@ -4973,9 +4974,13 @@ impl Model {
                     g => Face::Plane(g),
                 };
                 let (a, b) = (place(pl.start), place(pl.end));
-                (a.dist(b) > 1e-6 && a.is_finite() && b.is_finite()).then_some((face, (a, b)))
+                let weak = pl.reference == crate::family::Reference::Weak;
+                (a.dist(b) > 1e-6 && a.is_finite() && b.is_finite()).then_some((weak, face, (a, b)))
             })
-            .collect()
+            .collect();
+        // A stable sort: the family's own order stands within the strong ones and within the weak.
+        lines.sort_by_key(|(weak, ..)| *weak);
+        lines.into_iter().map(|(_, face, l)| (face, l)).collect()
     }
 
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and

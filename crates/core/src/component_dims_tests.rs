@@ -10,6 +10,8 @@ use crate::model::{Element, Id, Model};
 const RIGHT: &str = "5a1e0f3c-2b4d-4e6f-8a9b-0c1d2e3f4a5b";
 /// One 200 mm west of it that is not a reference.
 const LOOSE: &str = "6b2f1a4d-3c5e-4f70-9bac-1d2e3f4a5b6c";
+/// A weak reference where the strong one stands.
+const WEAK: &str = "7c3a2b5e-4d6f-4a81-9cbd-2e3f4a5b6c7d";
 
 fn run(s: &mut Session, c: &str, p: Value) -> Value {
     s.execute(c, &p).unwrap_or_else(|e| panic!("{c} {p}: {e}"))
@@ -120,4 +122,30 @@ fn a_point_finds_a_components_plane_and_a_deleted_component_leaves_the_dimension
     run(&mut s, "delete", json!({"ids": [a]}));
     assert!(s.model.elements.get(d).is_none(), "a dimension left with one reference goes");
     assert_eq!(values(&s, chain), [3000.0]);
+}
+
+#[test]
+fn where_a_weak_plane_lies_over_a_strong_one_a_point_takes_the_strong_one() {
+    let mut s = Session::new();
+    // The weak one comes first in the family.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Box", "types": {"A": {}},
+               "forms": [{"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 100}],
+               "ref_planes": [
+                   {"guid": WEAK, "start": [300, -500, 0], "end": [300, 500, 0], "up": [0, 0, 1], "reference": "weak"},
+                   {"guid": RIGHT, "name": "Right", "start": [300, -500, 0], "end": [300, 500, 0], "up": [0, 0, 1], "reference": "strong"}]}),
+    );
+    let a = id(&run(&mut s, "component", json!({"family": "Box", "type": "A", "at": [1000, 1000]})));
+    let w = run(&mut s, "wall", json!({"points": [[0, -1000], [0, 4000]]}))["ids"][0].as_u64().unwrap_or_default();
+    let d = id(&run(&mut s, "dimension", json!({"refs": [[0, 0], [1300, 1200]], "at": [600, -500]})));
+    let plane = |g: &str| crate::model::Face::Plane(serde_json::from_value(json!(g)).unwrap_or_default());
+    match s.model.elements.get(d) {
+        Some(Element::Dimension(dim)) => assert_eq!((dim.refs[1].id, dim.refs[1].face), (s.model.guid(a), plane(RIGHT))),
+        other => panic!("{other:?}"),
+    }
+    // The weak one is still there to name.
+    let e = id(&run(&mut s, "dimension", json!({"refs": [{"id": w}, {"id": a, "face": {"plane": WEAK}}], "at": [600, -800]})));
+    assert_eq!(values(&s, e), [1300.0]);
 }
