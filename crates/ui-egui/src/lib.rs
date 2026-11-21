@@ -2412,7 +2412,13 @@ impl BimApp {
             // A schedule's table keeps its rows clear of the tabs.
             let table = matches!(self.sheet, Sheet::Schedule(_) | Sheet::Table(_));
             let arranged = self.arrange != dock::Arrange::Tabs;
-            if style::compact() || table || arranged {
+            if arranged {
+                // Every part is a window of its own with a header: the snapped columns and rows beside, and the tabbed pane in
+                // the middle whose header is the tabs. They are all drawn below, over the views' area.
+                self.tabs_foot = f32::NEG_INFINITY;
+                self.views_rect = ui.available_rect_before_wrap();
+                self.arrange_views();
+            } else if style::compact() || table {
                 Panel::top("view-tabs")
                     .frame(Frame::new().inner_margin(Margin { left: g, right: g, top: g, bottom: 4 }))
                     .show_separator_line(false)
@@ -2423,16 +2429,7 @@ impl BimApp {
                 // The views' area is what the tab bar leaves; columns and cells are counted inside it.
                 self.views_rect = ui.available_rect_before_wrap();
                 self.arrange_views();
-                match self.arrange {
-                    // The tabbed pane in its column, the windows beside it drawn as windows of their own below.
-                    dock::Arrange::Split => {
-                        let pane = self.tab_pane;
-                        ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| self.view_pane(ui, front));
-                    }
-                    // Every view is a cell of the tile, drawn as a window below.
-                    dock::Arrange::Tile => {}
-                    dock::Arrange::Tabs => self.view_pane(ui, front),
-                }
+                self.view_pane(ui, front);
             } else {
                 // A drawn view fills the pane, and its tabs float over its top left corner on a card of their own: drawn after
                 // it, so they are over it for the hand too.

@@ -781,15 +781,22 @@ impl BimApp {
                 }
                 let cols = (n as f32).sqrt().ceil() as usize;
                 let rows = n.div_ceil(cols);
-                let widths = shares(r.width(), cols);
                 let heights = shares(r.height(), rows);
                 let mut y = r.top();
                 for (row, &share_h) in heights.iter().enumerate() {
                     let h = if row + 1 == rows { r.bottom() - y } else { share_h };
+                    // A row of fewer cells than the grid is wide shares the whole width between them, so a tile has no holes:
+                    // three views make two cells over one, and the one below takes the room of the two it would have left empty.
+                    let start = row * cols;
+                    let count = (n - start).min(cols);
+                    if count == 0 {
+                        break;
+                    }
+                    let widths = shares(r.width(), count);
                     let mut x = r.left();
-                    for (col, &share_w) in widths.iter().enumerate() {
-                        let Some(sheet) = sheets.get(row * cols + col) else { break };
-                        let w = if col + 1 == cols { r.right() - x } else { share_w };
+                    for (i, &share_w) in widths.iter().enumerate() {
+                        let Some(sheet) = sheets.get(start + i) else { break };
+                        let w = if i + 1 == count { r.right() - x } else { share_w };
                         self.placements.push((*sheet, Rect::from_min_size(pos2(x, y), vec2(w, h))));
                         x += w;
                     }
@@ -911,17 +918,52 @@ impl BimApp {
                     self.free_view_window(ctx, f);
                 }
             }
-            Arrange::Split | Arrange::Tile => {
-                let placed = self.placements.clone();
-                let dockable = self.arrange == Arrange::Split;
-                for (sheet, rect) in placed {
-                    self.placed_view_window(ctx, sheet, rect, dockable);
+            Arrange::Split => {
+                // The tabbed pane's header is the tabs themselves, so every part of the split wears one header.
+                let (pane, front) = (self.tab_pane, self.front);
+                self.tabs_view_window(ctx, pane, front);
+                for (sheet, rect) in self.placements.clone() {
+                    self.placed_view_window(ctx, sheet, rect, true);
+                }
+                for f in self.floating.clone().into_iter().filter(|f| f.edge.is_none()) {
+                    self.free_view_window(ctx, f);
+                }
+            }
+            Arrange::Tile => {
+                // A tile names every view in its own header: no tab bar above them to say it twice.
+                self.tab_rects.clear();
+                self.tab_bar = Rect::NOTHING;
+                for (sheet, rect) in self.placements.clone() {
+                    self.placed_view_window(ctx, sheet, rect, false);
                 }
                 for f in self.floating.clone().into_iter().filter(|f| f.edge.is_none()) {
                     self.free_view_window(ctx, f);
                 }
             }
         }
+    }
+
+    /// The split's tabbed pane: a window whose 26 pt header is the views' tabs, and whose body is the view they show.
+    fn tabs_view_window(&mut self, ctx: &Context, rect: Rect, front: Sheet) {
+        let frame = Frame::window(&ctx.global_style()).fill(pal().surface).inner_margin(0.0);
+        let name = self.view_name(front);
+        let _ = egui::Window::new(&name)
+            .id(UiId::new("view-tabs-window"))
+            .title_bar(false)
+            .resizable(false)
+            .constrain(false)
+            .fixed_rect(rect)
+            .frame(frame)
+            .show(ctx, |ui| {
+                ui.set_min_size(ui.available_size());
+                // The header, as the windows beside it wear: the tabs stand where their titles do.
+                let (head, _) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
+                let p = ui.painter();
+                p.rect_filled(head, CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, pal().bar);
+                p.line_segment([head.left_bottom(), head.right_bottom()], Stroke::new(1.0, pal().border));
+                ui.scope_builder(UiBuilder::new().max_rect(head.shrink2(vec2(2.0, 1.0))), |ui| self.view_tabs(ui));
+                self.view_pane(ui, front);
+            });
     }
 
     /// A view floating freely, its corner and size its own: it follows the pointer by its title, and resizes by its edges.
