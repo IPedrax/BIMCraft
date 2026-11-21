@@ -759,6 +759,11 @@ impl BuildingCode {
 
     /// Whether it can be a code: texts of a size, each of its sections the registry knows a section that can be.
     pub fn check_rules(&self) -> Result<(), String> {
+        self.check_rules_keeping(&|_, _| false)
+    }
+
+    /// `check_rules`, but a method (`WHOLE`) that can't be read is kept where `keep` says so (`Codes::check_keeping`).
+    pub fn check_rules_keeping(&self, keep: &dyn Fn(&str, &Value) -> bool) -> Result<(), String> {
         let long = |t: &str| t.chars().count() > 2000;
         if long(&self.name)
             || long(&self.region)
@@ -785,22 +790,32 @@ impl BuildingCode {
         }
         for (key, v) in &self.sections {
             let Some(def) = section_def(self.discipline, key) else { continue };
-            def.check(v).map_err(|e| format!("the building code `{}`, its {key}: {e}", self.code))?;
+            // Only a method that can't be read at all is kept: one that reads, with a value out of range, is refused.
+            if let Err(e) = def.check(v)
+                && !(unreadable(self.discipline, key, v) && keep(key, v))
+            {
+                return Err(format!("the building code `{}`, its {key}: {e}", self.code));
+            }
         }
         Ok(())
     }
 
     /// One of a project's own: a name that can be, and rules that can be.
     pub fn check(&self) -> Result<(), String> {
+        self.check_keeping(&|_, _| false)
+    }
+
+    /// `check`, keeping a method that can't be read where `keep` says so (`Codes::check_keeping`).
+    pub fn check_keeping(&self, keep: &dyn Fn(&str, &Value) -> bool) -> Result<(), String> {
         // The project's copy of one of BIMCraft's amendments, changed for it, keeps that one's name.
         let copy = self.based_on == self.code && !self.amends.is_empty() && find(self.discipline, &self.code).is_some();
         if copy {
-            return self.check_rules();
+            return self.check_rules_keeping(keep);
         }
         if own_name(&self.code)? != self.code {
             return Err(format!("the building code `{}` has spaces round its name", self.code));
         }
-        self.check_rules()
+        self.check_rules_keeping(keep)
     }
 
     /// As a file to hand to another project: XML, a `rule` for each of its rules.
@@ -1336,14 +1351,39 @@ impl Codes {
     }
 
     /// Whether everything chosen can be: own codes few and each one that can be, amendments few, each change a rule of a
-    /// section there is that leaves the section one that can be, the site's numbers in range, and all of it of a size.
+    /// section there is that leaves the section one that can be, the site's numbers in range, and all of it of a size. A
+    /// utility's or a country's method (`WHOLE`) that can't be read (a file edited by hand, or from an older version) is
+    /// let through: a command reading it refuses and names it, and it can be reset; everything else is refused.
     pub fn check(&self) -> Result<(), String> {
+        self.check_keeping(None)
+    }
+
+    /// `check` for an edit of `before`: a method that can't be read is let through only as `before` held it, so an edit
+    /// never makes one, and one already there does not stop other edits.
+    pub fn check_keeping(&self, before: Option<&Codes>) -> Result<(), String> {
+        // As `before` held it: the same code's same section (none: the method in force), never one moved to another code.
+        let kept = |d: Discipline, key: &str, code: Option<&str>, v: &Value| -> bool {
+            let Some(b) = before else { return true };
+            match code {
+                Some(code) => b.own.iter().any(|c| c.discipline == d && c.code == code && c.sections.get(key) == Some(v)),
+                None => v.as_object().is_some_and(|o| resolve_in(b, d, key).value == *o),
+            }
+        };
         if self.own.len() > MAX_OWN {
             return Err(format!("a project keeps {MAX_OWN} building codes of its own at most"));
         }
         let mut total = 0;
         for (i, c) in self.own.iter().enumerate() {
-            c.check()?;
+            c.check_keeping(&|key, v| kept(c.discipline, key, Some(&c.code), v))?;
+            // An amendment's method is not checked by itself (it is laid over what it amends): one that can't be read is
+            // let through only where it already was, so an edit never copies one into another code.
+            for (key, v) in c.sections.iter().filter(|(k, _)| is_whole(c.discipline, k)) {
+                // As it reads: a copy of one of BIMCraft's keeps that one's rules it left out.
+                let read = whole_section(c, key).map_or_else(|| v.clone(), Value::Object);
+                if !c.amends.is_empty() && unreadable(c.discipline, key, &read) && !kept(c.discipline, key, Some(&c.code), v) {
+                    return Err(format!("the building code `{}`, its {key}: it can't be read", c.code));
+                }
+            }
             if self.own.iter().take(i).any(|o| o.code == c.code && o.discipline == c.discipline) {
                 return Err(format!("two of the project's building codes are called `{}`", c.code));
             }
@@ -1370,8 +1410,14 @@ impl Codes {
             keys.dedup();
             for key in keys {
                 let Some(def) = section_def(d, key) else { continue };
-                let resolved = resolve_in(self, d, key);
-                def.check(&Value::Object(resolved.value)).map_err(|e| format!("{} {key}: {e}", d.key()))?;
+                let resolved = Value::Object(resolve_in(self, d, key).value);
+                // A method the project changed (`Choice::changes`) is the project's own text, not a layer's: never kept.
+                let layered = !choice.changes.contains_key(key);
+                if let Err(e) = def.check(&resolved)
+                    && !(layered && unreadable(d, key, &resolved) && kept(d, key, None, &resolved))
+                {
+                    return Err(format!("{} {key}: {e}", d.key()));
+                }
             }
         }
         if total > MAX_VALUES {
@@ -1434,6 +1480,17 @@ pub const WHOLE: [(Discipline, &str); 3] =
 /// Whether section `key` of discipline `d` is a method whole (`WHOLE`).
 pub fn is_whole(d: Discipline, key: &str) -> bool {
     WHOLE.iter().any(|(wd, k)| *wd == d && *k == key)
+}
+
+/// Whether `v`, as method `key` of discipline `d` (`WHOLE`), can't be read at all: not the shape of its kind (a field of
+/// another type, missing or misspelt; not even an object), as against one that reads with a value out of range.
+pub fn unreadable(d: Discipline, key: &str, v: &Value) -> bool {
+    match (d, key) {
+        (Discipline::Electrical, "unit_demand") => serde_json::from_value::<crate::demand::Standard>(v.clone()).is_err(),
+        (Discipline::Electrical, "entrance") => serde_json::from_value::<crate::entrance::Utility>(v.clone()).is_err(),
+        (Discipline::Electrical, "building_demand") => serde_json::from_value::<crate::building_demand::Method>(v.clone()).is_err(),
+        _ => false,
+    }
 }
 
 /// Section `key` of `c` as a method whole: what `c` holds, over what the code it was made from holds (a project's copy of

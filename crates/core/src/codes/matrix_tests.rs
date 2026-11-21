@@ -2965,4 +2965,316 @@ mod unreadable_method_contract_review {
         let mut s = reopen(&mut s, "r2-object-utilities");
         assert_eq!(building(&mut s, &p), 62.017);
     }
+    // A file whose method on top can't be read opens (the method is refused when read, and can be reset); anything else
+    // that can't be, and an edit that would make a method unreadable, are refused as before.
+    #[test]
+    fn a_legacy_file_with_a_broken_top_building_method_still_opens() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        add(&mut s, "Broken default building", key, changed(find(D, "cemig").unwrap(), key, 1));
+        select(&mut s, &["cemig", "Broken default building"]);
+        replace(&mut s, "Broken default building", key, "factor", json!("bad"));
+        let mut s = reopen(&mut s, "top-building");
+        refuses(&mut s, "building_demand", &dwellings(), "Broken default building");
+        // Other edits go on with it held; its reset makes it answer again.
+        codes(&mut s, json!({"rules": {"voltages": {"60 V": {"nominal": 60, "min": 54, "max": 66}}}}));
+        codes(&mut s, json!({"amend": "Broken default building", "reset": key}));
+        assert!(building(&mut s, &dwellings()) > 0.0);
+    }
+
+    #[test]
+    fn a_broken_entrance_on_top_opens_and_names_itself() {
+        let mut s = Session::new();
+        let fecoergs = find(D, "fecoergs").unwrap();
+        add(&mut s, "Broken top entrance", "entrance", changed(fecoergs, "entrance", 1));
+        select(&mut s, &["fecoergs", "Broken top entrance"]);
+        replace(&mut s, "Broken top entrance", "entrance", "tables", json!("bad"));
+        let mut s = reopen(&mut s, "top-entrance");
+        let mut p = supply();
+        p["utility"] = json!("FECOERGS");
+        refuses(&mut s, "demand", &p, "Broken top entrance");
+        // Naming none, the utility on top is the broken one's: said too, not the one under it.
+        refuses(&mut s, "demand", &supply(), "Broken top entrance");
+    }
+
+    #[test]
+    fn an_edit_that_breaks_a_method_is_still_refused() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        add(&mut s, "Edited building", key, changed(find(D, "cemig").unwrap(), key, 1));
+        select(&mut s, &["cemig", "Edited building"]);
+        let e =
+            s.execute("building_code", &json!({"discipline": "electrical", "amend": "Edited building", "rules": {key: {"factor": "bad"}}}));
+        assert!(e.is_err(), "{e:?}");
+    }
+
+    #[test]
+    fn a_file_with_another_section_that_cannot_be_still_does_not_open() {
+        // Only a method may be unreadable: a section of rules out of range keeps the file out.
+        let mut s = Session::new();
+        codes(&mut s, json!({"create": "Broken circuits", "set": "nbr-5410", "amendments": ["Broken circuits"]}));
+        let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "Broken circuits").unwrap();
+        own.sections.insert("circuits".into(), json!({"systems": "many"}));
+        let path = legacy_file(&mut s, "other-section");
+        assert!(Session::new().execute("open", &json!({"path": path})).is_err());
+        // In a base of the project's own too.
+        let mut s = Session::new();
+        codes(&mut s, json!({"save": "Own base"}));
+        let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "Own base").unwrap();
+        own.sections.insert("circuits".into(), json!({"systems": "many"}));
+        let path = legacy_file(&mut s, "own-base-section");
+        assert!(Session::new().execute("open", &json!({"path": path})).is_err());
+    }
+
+    // From the review of the open path.
+    // The legacy fixtures deliberately put values on disk that current edit commands refuse.
+    fn review_broken_cemig() -> Session {
+        let mut s = Session::new();
+        let key = "building_demand";
+        add(&mut s, "Broken review CEMIG", key, changed(find(D, "cemig").unwrap(), key, 1));
+        select(&mut s, &["cemig", "Broken review CEMIG"]);
+        replace(&mut s, "Broken review CEMIG", key, "factor", json!("bad"));
+        s
+    }
+
+    #[test]
+    fn open_review_unit_numbers_that_deserialize_still_fail_validation() {
+        let mut s = Session::new();
+        select(&mut s, &["enel"]);
+        codes(&mut s, json!({"amend": "enel", "rules": {"unit_demand": changed(find(D, "enel").unwrap(), "unit_demand", 1)}}));
+        let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "enel").unwrap();
+        let rows = own.sections.get_mut("unit_demand").unwrap()["method"]["annexes"]["networks"].as_array_mut().unwrap();
+        for network in rows {
+            for row in network["rows"].as_array_mut().unwrap() {
+                row["breaker"] = json!(-1);
+            }
+        }
+        let path = legacy_file(&mut s, "open-review-numbers");
+        let mut opened = Session::new();
+        if opened.execute("open", &json!({"path": path})).is_ok() {
+            let answer = opened.execute("demand", &json!({"utility": "ENEL", "network": "aerial", "installed_kw": 8, "phases": 1}));
+            panic!("a typed negative breaker must still keep the file out; demand returned {answer:?}");
+        }
+    }
+
+    #[test]
+    fn open_review_save_as_cannot_copy_a_broken_method() {
+        let mut s = review_broken_cemig();
+        let mut s = reopen(&mut s, "open-review-save-as");
+        let before = s.model.codes.clone();
+        let r = s.execute("building_code", &json!({"discipline": "electrical", "save": "Broken copy must fail"}));
+        assert!(r.is_err(), "save as moved a broken method to new layers");
+        assert_eq!(s.model.codes, before);
+    }
+
+    #[test]
+    fn open_review_native_save_edits_delete_and_reset() {
+        let mut s = review_broken_cemig();
+        let mut s = reopen(&mut s, "open-review-native-save");
+        let before = s.model.codes.clone();
+        run(&mut s, "level", json!({"name": "Review Level", "elevation": 3000}));
+        codes(&mut s, json!({"create": "Unrelated empty amendment"}));
+        let mut s = reopen(&mut s, "open-review-native-save-again");
+        assert_eq!(s.model.codes.find(D, "Broken review CEMIG"), before.find(D, "Broken review CEMIG"));
+        refuses(&mut s, "building_demand", &dwellings(), "Broken review CEMIG");
+        assert!(s.execute("building_code", &json!({"discipline": "electrical", "delete": "Broken review CEMIG"})).is_err());
+        codes(&mut s, json!({"amend": "Broken review CEMIG", "reset": "building_demand"}));
+        assert_eq!(building(&mut s, &dwellings()), 62.017);
+        codes(&mut s, json!({"delete": "Broken review CEMIG"}));
+    }
+
+    #[test]
+    fn open_review_global_value_cap_and_other_model_checks_still_apply() {
+        let mut s = review_broken_cemig();
+        replace(&mut s, "Broken review CEMIG", "building_demand", "factor", json!(vec![0; MAX_VALUES]));
+        let path = legacy_file(&mut s, "open-review-value-cap");
+        refuses(&mut Session::new(), "open", &json!({"path": path}), "400000");
+        let mut s = review_broken_cemig();
+        s.model_mut().codes.site.rain_intensity = Some(f64::MAX);
+        let path = legacy_file(&mut s, "open-review-site");
+        assert!(Session::new().execute("open", &json!({"path": path})).is_err());
+    }
+
+    #[test]
+    fn open_review_full_own_list_does_not_hide_a_broken_project_change() {
+        let mut s = Session::new();
+        select(&mut s, &["cemig"]);
+        s.model_mut().codes.own =
+            (0..MAX_OWN).map(|i| BuildingCode { code: format!("Full review entry {i}"), discipline: D, ..Default::default() }).collect();
+        let key = "building_demand";
+        let mut patch = serde_json::Map::new();
+        patch.insert("factor".into(), json!("bad"));
+        s.model_mut().codes.choice_mut(D).changes.insert(key.into(), patch);
+        // A method in the project's own changes is not a layer's: the file stays out, as before.
+        let path = legacy_file(&mut s, "open-review-full-own");
+        assert!(Session::new().execute("open", &json!({"path": path})).is_err());
+    }
+
+    #[test]
+    fn open_review_demand_without_selector_names_the_only_broken_method() {
+        let mut s = Session::new();
+        let key = "entrance";
+        add(&mut s, "Broken only entrance", key, changed(find(D, "fecoergs").unwrap(), key, 1));
+        replace(&mut s, "Broken only entrance", key, "tables", json!("bad"));
+        let mut s = reopen(&mut s, "open-review-only-entrance");
+        let mut asked = supply();
+        asked["utility"] = json!("fEcOeRgS");
+        refuses(&mut s, "demand", &asked, "Broken only entrance");
+        refuses(&mut s, "demand", &supply(), "Broken only entrance");
+    }
+
+    #[test]
+    fn open_review_every_utility_in_a_broken_building_method_is_named() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let mut raw = changed(find(D, "cemig").unwrap(), key, 1);
+        raw["utilities"] = json!(["Local first review", "Local second review"]);
+        add(&mut s, "Broken two utility review", key, raw);
+        replace(&mut s, "Broken two utility review", key, "factor", json!("bad"));
+        let mut s = reopen(&mut s, "open-review-two-utilities");
+        for utility in ["LOCAL FIRST REVIEW", "local SECOND review"] {
+            let mut p = dwellings();
+            p["utility"] = json!(utility);
+            refuses(&mut s, "building_demand", &p, "Broken two utility review");
+        }
+    }
+
+    #[test]
+    fn open_review_implicit_building_demand_never_uses_the_method_below_a_scalar() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        let lib = find(D, "cemig").unwrap();
+        add(&mut s, "Readable lower CEMIG", key, changed(lib, key, 1));
+        select(&mut s, &["Readable lower CEMIG", "cemig"]);
+        codes(&mut s, json!({"amend": "cemig", "rules": {key: changed(lib, key, 2)}}));
+        s.model_mut().codes.own.iter_mut().find(|c| c.code == "cemig").unwrap().sections.insert(key.into(), json!(false));
+        let mut s = reopen(&mut s, "open-review-scalar-above-building");
+        eprintln!(
+            "DBG layers {:?}",
+            s.model
+                .codes
+                .layers(D)
+                .iter()
+                .map(|c| (c.code.clone(), c.sections.get("building_demand").map(|v| v.is_object())))
+                .collect::<Vec<_>>()
+        );
+        let mut named = dwellings();
+        named["utility"] = json!("cEmIg");
+        refuses(&mut s, "building_demand", &named, "cemig");
+        refuses(&mut s, "building_demand", &dwellings(), "cemig");
+    }
+
+    #[test]
+    fn open_review_full_amendment_list_does_not_hide_a_broken_project_change() {
+        let mut s = Session::new();
+        let key = "building_demand";
+        select(&mut s, &[]);
+        for i in 0..MAX_AMENDMENTS {
+            let name = format!("Empty review amendment {i}");
+            s.model_mut().codes.own.push(BuildingCode {
+                code: name.clone(),
+                discipline: D,
+                amends: "nbr-5410".into(),
+                ..Default::default()
+            });
+            s.model_mut().codes.choice_mut(D).amendments.push(name);
+        }
+        s.model_mut().codes.choice_mut(D).changes.insert(key.into(), json!({"factor": "bad"}).as_object().unwrap().clone());
+        let path = legacy_file(&mut s, "open-review-full-amendments");
+        assert!(Session::new().execute("open", &json!({"path": path})).is_err());
+    }
+
+    #[test]
+    fn open_review_broken_method_does_not_change_own_name_and_list_limits() {
+        let mut s = review_broken_cemig();
+        let mut s = reopen(&mut s, "open-review-name-limits");
+        for len in [63, 64] {
+            codes(&mut s, json!({"create": "x".repeat(len)}));
+        }
+        let before = s.model.codes.clone();
+        assert!(s.execute("building_code", &json!({"discipline": "electrical", "create": "x".repeat(65)})).is_err());
+        assert_eq!(s.model.codes, before);
+        for i in s.model.codes.own.len()..MAX_OWN {
+            let name = format!("Unused review own {i}");
+            codes(&mut s, json!({"create": name}));
+        }
+        assert_eq!(s.model.codes.own.len(), MAX_OWN);
+        let before = s.model.codes.clone();
+        assert!(s.execute("building_code", &json!({"discipline": "electrical", "create": "One own code too many"})).is_err());
+        assert_eq!(s.model.codes, before);
+        let amendments: Vec<String> = (0..=MAX_AMENDMENTS).map(|i| format!("Review amendment limit {i}")).collect();
+        let mut s = review_broken_cemig();
+        let mut s = reopen(&mut s, "open-review-amendment-limits");
+        for name in &amendments {
+            codes(&mut s, json!({"create": name}));
+        }
+        codes(&mut s, json!({"amendments": &amendments[..MAX_AMENDMENTS]}));
+        let before = s.model.codes.clone();
+        assert!(s.execute("building_code", &json!({"discipline": "electrical", "amendments": amendments})).is_err());
+        assert_eq!(s.model.codes, before);
+        codes(&mut s, json!({"amendments": []}));
+    }
+
+    #[test]
+    fn open_review_broken_method_keeps_json_depth_and_number_limits() {
+        let mut s = review_broken_cemig();
+        let marker = "review-bad-method-json-marker";
+        replace(&mut s, "Broken review CEMIG", "building_demand", "factor", json!(marker));
+        let path = legacy_file(&mut s, "open-review-json-limits");
+        let original = std::fs::read_to_string(&path).unwrap();
+        let depth = format!("{}0{}", "[".repeat(150), "]".repeat(150));
+        for (value, diagnostic) in [("1e9999", "number out of range"), (&depth, "recursion limit exceeded")] {
+            let text = original.replace(&format!("\"{marker}\""), value);
+            assert_ne!(text, original);
+            std::fs::write(&path, text).unwrap();
+            refuses(&mut Session::new(), "open", &json!({"path": path}), diagnostic);
+        }
+    }
+
+    #[test]
+    fn a_base_of_its_own_with_a_broken_method_under_a_readable_one_stays_editable() {
+        // The broken method is under one that reads (not in force): the file opens, and other edits go on; it stays in its
+        // own code only, never copied into another.
+        let mut s = Session::new();
+        select(&mut s, &["cemig"]);
+        codes(&mut s, json!({"save": "Own broken base"}));
+        replace(&mut s, "Own broken base", "building_demand", "factor", json!("bad"));
+        codes(&mut s, json!({"create": "Readable over", "amendments": ["Readable over"]}));
+        codes(
+            &mut s,
+            json!({"amend": "Readable over", "rules": {"building_demand": changed(find(D, "cemig").unwrap(), "building_demand", 1)}}),
+        );
+        let mut s = reopen(&mut s, "own-base-under-readable");
+        codes(&mut s, json!({"rules": {"voltages": {"60 V": {"nominal": 60, "min": 54, "max": 66}}}}));
+        assert_eq!(building(&mut s, &dwellings()), 88.595);
+        assert!(s.execute("building_code", &json!({"discipline": "electrical", "save": "Copy of a broken base"})).is_err());
+    }
+
+    #[test]
+    fn a_broken_unit_demand_on_top_opens_and_names_itself() {
+        let mut s = Session::new();
+        let celesc = find(D, "celesc").unwrap();
+        add(&mut s, "Broken top unit", "unit_demand", changed(celesc, "unit_demand", 1));
+        select(&mut s, &["celesc", "Broken top unit"]);
+        replace(&mut s, "Broken top unit", "unit_demand", "method", json!("bad"));
+        let mut s = reopen(&mut s, "top-unit");
+        let mut p = supply();
+        p["utility"] = json!("CELESC");
+        refuses(&mut s, "demand", &p, "Broken top unit");
+    }
+
+    #[test]
+    fn a_named_standard_answers_under_another_utility_s_broken_method() {
+        // Naming one, another's broken method on top is not its own: it answers as it did.
+        let mut s = Session::new();
+        let key = "building_demand";
+        add(&mut s, "Broken HIDROPAN on top", key, changed(find(D, "hidropan").unwrap(), key, 1));
+        select(&mut s, &["Broken HIDROPAN on top"]);
+        let mut p = dwellings();
+        p["standard"] = json!("CEMIG ND-5.2");
+        let before = building(&mut s, &p);
+        replace(&mut s, "Broken HIDROPAN on top", key, "factor", json!("bad"));
+        let mut s = reopen(&mut s, "named-under-other");
+        assert_eq!(building(&mut s, &p), before);
+    }
 }

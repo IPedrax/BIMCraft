@@ -477,7 +477,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         let pins = next.pins(d);
         next.choice_mut(d).editions = pins;
     }
-    next.check().map_err(|e| bad(c, e))?;
+    next.check_keeping(Some(&unchanged)).map_err(|e| bad(c, e))?;
     if d == Discipline::Electrical {
         crate::electrical::settings_fit(&s.model, &unchanged, &next).map_err(|e| bad(c, e))?;
     }
@@ -737,7 +737,7 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
         let pins = next.pins(d);
         next.choice_mut(d).editions = pins;
     }
-    next.check().map_err(|e| bad(c, format!("{path}: {e}")))?;
+    next.check_keeping(Some(&s.model.codes)).map_err(|e| bad(c, format!("{path}: {e}")))?;
     crate::electrical::settings_fit(&s.model, &s.model.codes, &next).map_err(|e| bad(c, format!("{path}: {e}")))?;
     let first = read.first().map(|k| k.code.clone()).unwrap_or_default();
     let all: Vec<Value> = read.iter().map(|k| json!({"code": k.code, "discipline": k.discipline.key()})).collect();

@@ -7869,6 +7869,14 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("{code}'s method for `{asked}` can't be read: reset it in Manage > Building Codes, or fix it")));
         }
     }
+    // Naming neither, the method on top answers: one over it that can't be read is said, not passed over.
+    if standard_asked.is_none() && utility_asked.is_none() {
+        let any = |_: &serde_json::Map<String, Value>| true;
+        let top = places.first().map(|(at, ..)| *at);
+        if let Some((code, _)) = s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", top, &any) {
+            return Err(bad(c, format!("{code}'s method can't be read: reset it in Manage > Building Codes, or fix it")));
+        }
+    }
     let m: Held<bd::Method> = match (standard_asked, utility_asked) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
         (Some(s), None) => match project.filter(|m| m.standard == s).map(|m| (m, true)).or_else(|| on_top(held, &|m| m.standard == s)) {
@@ -8135,7 +8143,22 @@ fn demand(s: &mut Session, p: &Value) -> R {
         .chain(units.iter().map(|(u, .., at)| (*at, u.utility.clone())))
         .min_by_key(|(at, _)| *at)
         .map(|(_, id)| id);
-    let utility = string(c, p, "utility")?.or(on_top).ok_or_else(|| {
+    let given = string(c, p, "utility")?;
+    // Not given, and no method that reads holds one: a method that can't be read is said, not taken for none.
+    if given.is_none() && on_top.is_none() {
+        let any = |_: &serde_json::Map<String, Value>| true;
+        let broken = [
+            s.model.unreadable_over::<crate::entrance::Utility>(electrical, "entrance", None, &any),
+            s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", None, &any),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(_, at)| *at);
+        if let Some((code, _)) = broken {
+            return Err(bad(c, format!("{code}'s method can't be read: reset it in Manage > Building Codes, or fix it")));
+        }
+    }
+    let utility = given.or(on_top).ok_or_else(|| {
         bad(
             c,
             format!(

@@ -141,7 +141,7 @@ msgstr "Punto de datos"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:15413
+#: crates/core/src/commands.rs:15436
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -226,9 +226,9 @@ msgstr "Iluminación eléctrica"
 msgid "Electrical Power"
 msgstr "Fuerza eléctrica"
 
-#: crates/core/src/commands.rs:15158
-#: crates/core/src/commands.rs:15174
-#: crates/core/src/commands.rs:20016
+#: crates/core/src/commands.rs:15181
+#: crates/core/src/commands.rs:15197
+#: crates/core/src/commands.rs:20039
 msgid "Elevation"
 msgstr "Elevación"
 
@@ -411,7 +411,7 @@ msgstr "Ancho de la pata"
 msgid "Length"
 msgstr "Longitud"
 
-#: crates/core/src/commands.rs:9436
+#: crates/core/src/commands.rs:9459
 #: crates/core/src/model.rs:4672
 msgid "Level"
 msgstr "Nivel"
@@ -452,7 +452,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:12199
+#: crates/core/src/commands.rs:12222
 msgid "Mass"
 msgstr "Masa"
 
@@ -469,7 +469,7 @@ msgid "Membrane"
 msgstr "Lámina impermeable"
 
 #: crates/core/src/commands.rs:4422
-#: crates/core/src/commands.rs:18561
+#: crates/core/src/commands.rs:18584
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6386
@@ -574,7 +574,7 @@ msgstr ""
 msgid "Project"
 msgstr "Proyecto"
 
-#: crates/core/src/commands.rs:10184
+#: crates/core/src/commands.rs:10207
 msgid "Property Line"
 msgstr ""
 
@@ -606,7 +606,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tejas"
 
-#: crates/core/src/commands.rs:12729
+#: crates/core/src/commands.rs:12752
 msgid "Room"
 msgstr "Habitación"
 
@@ -642,8 +642,8 @@ msgstr "Recrecido"
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
-#: crates/core/src/commands.rs:15092
-#: crates/core/src/commands.rs:20015
+#: crates/core/src/commands.rs:15115
+#: crates/core/src/commands.rs:20038
 msgid "Section"
 msgstr "Sección"
 
@@ -796,7 +796,7 @@ msgstr "Baldosa 300"
 msgid "Timber"
 msgstr "Madera"
 
-#: crates/core/src/commands.rs:10226
+#: crates/core/src/commands.rs:10249
 msgid "Toposolid"
 msgstr ""
 
@@ -834,7 +834,7 @@ msgstr "Altura no delimitada"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15751
+#: crates/core/src/commands.rs:15774
 msgid "Unnamed"
 msgstr "Sin nombre"
 
