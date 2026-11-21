@@ -65,7 +65,7 @@ pub fn references(m: &Model, view: Guid, id: impl Key) -> Vec<(Reference, Line)>
     let id = m.guid(id);
     let mut refs = vec![Reference::line(id, Face::Centre)];
     if matches!(m.elements.get(id), Some(Element::DetailLine(_))) {
-        refs.extend([End::Start, End::End].map(|point| Reference { id, face: Face::Centre, point: Some(point) }));
+        refs.extend([End::Start, End::End].map(|point| Reference { id, face: Face::Centre, point: Some(point), link: None }));
     }
     refs.into_iter().filter_map(|r| Some((r, reference(m, Some(view), &r).ok()?))).collect()
 }
