@@ -1157,3 +1157,76 @@ fn an_older_files_method_change_goes_to_the_utility_it_names_or_else_to_the_one_
     }
     assert!(checked >= 4, "pairs asked ({checked})");
 }
+
+#[test]
+fn a_setting_the_project_added_and_an_amendment_takes_away_leaves_the_project_whichever_amendment() {
+    // The dialog moves the project's settings into the amendment edited, whichever it is, and sends a setting the user
+    // cleared as null there: the project's own change goes with it, under another amendment as on top.
+    let e = Discipline::Electrical;
+    for (i, key) in ["voltages", "distribution_systems", "wire_types"].into_iter().enumerate() {
+        for target in ["Lower", "Upper"] {
+            let mut s = Session::new();
+            run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Lower", "amendments": ["Lower"]}));
+            run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Upper", "amendments": ["Lower", "Upper"]}));
+            let some = s.model.resolve_code(e, key).value.values().next().cloned().unwrap();
+            run(&mut s, "building_code", json!({"discipline": "electrical", "rules": {key: {"Mine": some}}}));
+            assert!(settings(&s)[i].iter().any(|n| n == "Mine"), "{key}: the project's own");
+            assert!(s.model.codes.choice(e).changes.get(key).is_some_and(|c| c.contains_key("Mine")));
+            let before = settings(&s);
+            run(&mut s, "building_code", json!({"discipline": "electrical", "amend": target, "rules": {key: {"Mine": null}}}));
+            let at = format!("{key} in {target}");
+            assert!(!settings(&s)[i].iter().any(|n| n == "Mine"), "{at}: out of the project");
+            assert!(!s.model.codes.choice(e).changes.get(key).is_some_and(|c| c.contains_key("Mine")), "{at}: no change left");
+            assert!(s.model.resolve_code(e, key).value.get("Mine").is_none_or(Value::is_null), "{at}: not in force");
+            // The null is in the amendment edited, and the other doesn't name it.
+            let other = if target == "Lower" { "Upper" } else { "Lower" };
+            let held = |code: &str| {
+                let c = s.model.codes.own.iter().find(|c| c.code == code && c.discipline == e);
+                c.and_then(|c| c.sections.get(key)).and_then(Value::as_object).and_then(|o| o.get("Mine")).cloned()
+            };
+            assert_eq!(held(target), Some(Value::Null), "{at}: a null in {target}");
+            assert_eq!(held(other), None, "{at}: nothing in {other}");
+            // Out, into a new project: it doesn't come back.
+            let path = dir("amended away").join(format!("{key}-{target}.xml")).to_string_lossy().to_string();
+            run(&mut s, "building_code_export", json!({"path": path, "discipline": "electrical", "name": "Away"}));
+            let mut other = Session::new();
+            run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+            assert_eq!(settings(&other), settings(&s), "{at}: after export and import");
+            // Undone, the project has it again, as its own change.
+            run(&mut s, "undo", json!({}));
+            assert_eq!(settings(&s), before, "{at}: undone");
+            assert!(s.model.codes.choice(e).changes.get(key).is_some_and(|c| c.contains_key("Mine")), "{at}: undone, its own");
+        }
+    }
+}
+
+#[test]
+fn an_amendment_takes_away_a_setting_it_added_by_leaving_it_out_and_one_from_under_it_by_a_null() {
+    // A setting only the amendment itself added leaves its section; one a layer under it gives stays away as a null there,
+    // so the layer under keeps it and the amendment hides it.
+    let e = Discipline::Electrical;
+    let held = |s: &Session, code: &str, key: &str| -> Option<Value> {
+        let c = s.model.codes.own.iter().find(|c| c.code == code && c.discipline == e)?;
+        c.sections.get(key).and_then(Value::as_object).and_then(|o| o.get("Mine")).cloned()
+    };
+    for (i, key) in ["voltages", "distribution_systems", "wire_types"].into_iter().enumerate() {
+        for adder in ["Lower", "Upper"] {
+            let mut s = Session::new();
+            run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Lower", "amendments": ["Lower"]}));
+            run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Upper", "amendments": ["Lower", "Upper"]}));
+            let some = s.model.resolve_code(e, key).value.values().next().cloned().unwrap();
+            run(&mut s, "building_code", json!({"discipline": "electrical", "amend": adder, "rules": {key: {"Mine": some.clone()}}}));
+            assert!(settings(&s)[i].iter().any(|n| n == "Mine"), "{key} added in {adder}");
+            run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Upper", "rules": {key: {"Mine": null}}}));
+            let at = format!("{key} added in {adder}, taken away in Upper");
+            assert!(!settings(&s)[i].iter().any(|n| n == "Mine"), "{at}: out of the project");
+            assert!(s.model.resolve_code(e, key).value.get("Mine").is_none_or(Value::is_null), "{at}: not in force");
+            if adder == "Upper" {
+                assert_eq!(held(&s, "Upper", key), None, "{at}: left out of Upper");
+            } else {
+                assert_eq!(held(&s, "Upper", key), Some(Value::Null), "{at}: a null in Upper");
+                assert!(held(&s, "Lower", key).is_some_and(|v| !v.is_null()), "{at}: Lower keeps it");
+            }
+        }
+    }
+}
