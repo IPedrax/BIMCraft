@@ -3256,7 +3256,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             let find = |name: &str| sets.said(product, name);
             let value = |name: &str| find(name).and_then(|p| p.args.get(2));
             // A property with a bounded value says its own in the set point.
+            // IFC2x3 names it `NominalVoltage`.
             let voltage = find("RatedVoltage")
+                .or_else(|| find("NominalVoltage"))
                 .and_then(|p| if p.name == "IFCPROPERTYBOUNDEDVALUE" { real(p.args.get(5)) } else { real(p.args.get(2)) });
             // The systems BIMCraft writes: any other is no connector of its.
             let system = text(value("System")).and_then(|s| ["power-balanced", "power-unbalanced", "switch"].into_iter().find(|k| *k == s));
