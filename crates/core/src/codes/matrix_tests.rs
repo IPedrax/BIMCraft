@@ -1230,3 +1230,71 @@ mod at_the_limit {
         }
     }
 }
+
+/// A utility's entrance or building method with a number below zero (a breaker, a factor) is refused, whether given in an
+/// edit or found in a file; every one of BIMCraft's own has none.
+mod not_negative {
+    use super::*;
+
+    const D: Discipline = Discipline::Electrical;
+
+    fn with(key: &str, code: &str, edit: impl Fn(&mut Value)) -> Value {
+        let mut v = find(D, code).unwrap().section(key).map(|o| Value::Object(o.clone())).unwrap();
+        edit(&mut v);
+        v
+    }
+
+    fn amend(s: &mut Session, code: &str, key: &str, v: Value) -> Result<Value, String> {
+        s.execute("building_code", &json!({"discipline": "electrical", "amend": code, "rules": {key: v}}))
+    }
+
+    #[test]
+    fn a_negative_breaker_or_factor_is_refused_in_an_edit_and_changes_nothing() {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["fecoergs", "cemig"]}));
+        let before = s.model.codes.clone();
+        let breaker = with("entrance", "fecoergs", |v| v["tables"][0]["rows"][0]["breaker_a"][0] = json!(-1));
+        assert!(amend(&mut s, "fecoergs", "entrance", breaker).is_err());
+        let factor = with("building_demand", "cemig", |v| v["factor"] = json!(-1));
+        assert!(amend(&mut s, "cemig", "building_demand", factor).is_err());
+        assert_eq!(s.model.codes, before);
+        // Zero, and the library's own numbers, are taken.
+        let zero = with("building_demand", "cemig", |v| v["factor"] = json!(0));
+        assert!(amend(&mut s, "cemig", "building_demand", zero).is_ok());
+    }
+
+    #[test]
+    fn a_file_with_a_negative_breaker_does_not_open() {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["fecoergs"]}));
+        amend(&mut s, "fecoergs", "entrance", with("entrance", "fecoergs", |_| {})).unwrap();
+        let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "fecoergs").unwrap();
+        own.sections.get_mut("entrance").unwrap()["tables"][0]["rows"][0]["breaker_a"][0] = json!(-1);
+        let path = dir().join("negative-breaker.bimc");
+        run(&mut s, "save", json!({"path": path}));
+        assert!(Session::new().execute("open", &json!({"path": path})).is_err());
+    }
+
+    #[test]
+    fn every_library_entrance_and_building_method_has_no_negative_number() {
+        for c in of(D) {
+            for key in ["entrance", "building_demand"] {
+                let Some(v) = c.section(key) else { continue };
+                let def = section_def(D, key).unwrap();
+                assert!(def.check(&Value::Object(v.clone())).is_ok(), "{} {key}", c.code);
+            }
+        }
+    }
+
+    #[test]
+    fn a_printed_column_or_a_falling_curve_may_be_below_zero_and_the_message_says_where() {
+        // Columns are shown as printed, never read; a curve's exponent may be negative.
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["fecoergs"]}));
+        let column = with("entrance", "fecoergs", |v| v["tables"][0]["rows"][0]["columns"]["temp_min_c"] = json!(-5));
+        assert!(amend(&mut s, "fecoergs", "entrance", column).is_ok());
+        let breaker = with("entrance", "fecoergs", |v| v["tables"][0]["rows"][1]["breaker_a"][0] = json!(-1));
+        let e = amend(&mut s, "fecoergs", "entrance", breaker).unwrap_err();
+        assert!(e.contains("tables[0].rows[1].breaker_a[0]"), "{e}");
+    }
+}
