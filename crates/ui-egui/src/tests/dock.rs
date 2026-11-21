@@ -572,6 +572,34 @@ fn a_partial_tile_row_stretches_across_it_without_a_hole() {
 }
 
 #[test]
+fn the_error_note_stays_above_the_split_windows() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    // A note is up, and the window beside the tabs is clicked: it comes to the top of its own order.
+    h.state_mut().status = crate::Status { text: "note".into(), error: false };
+    h.run();
+    let (_, window) = cells(&h).into_iter().find(|(s, _)| *s == two).expect("the snapped window");
+    click_at(&mut h, window.min + vec2(80.0, 13.0));
+    assert_eq!(h.state().sheet, two);
+    // An error replaces the note: its box must come up over the view windows, in the workspace's corner.
+    h.state_mut().status = crate::Status { text: "boom".into(), error: true };
+    h.run();
+    let top = h.ctx.memory(|m| m.areas().top_layer_id(egui::Order::Middle)).expect("the note's layer");
+    assert_eq!(top.id, egui::Id::new("warning"));
+    let rect = h.ctx.memory(|m| m.area_rect(top.id)).expect("the note's box");
+    let views = h.state().views_rect;
+    assert!(
+        (rect.right() - (views.right() - 16.0)).abs() < 2.0 && (rect.bottom() - (views.bottom() - 16.0)).abs() < 2.0,
+        "{rect:?} of {views:?}"
+    );
+}
+
+#[test]
 fn dock_all_views_puts_every_view_back_on_the_bar() {
     let (mut h, _one, two) = two_plans();
     let level = h.state().session.model.levels()[0].0;
