@@ -528,6 +528,9 @@ fn snowdon_2025s_components_come_in_as_their_revit_families_and_types_most_turne
         // A symbol's solids may be turned ellipses, and its family may nest others (a railing's balusters, a fixture's parts).
         assert_eq!(count("comes in with its type's shape"), 4614, "{}", path.display());
         assert_eq!(count("comes in with its shape, read from the file where it stands"), 795, "{}", path.display());
+        // The doors and windows set in walls whose graphics draw a shape that reads, each in a door's or a window's family of its
+        // own; the rest (a schematic opening cut, which draws nothing) the project's own types, the size of their boxes.
+        assert_eq!(count("in a family of its own"), 149, "{}", path.display());
         // A family of the model for each Revit family the components are of, and one numbered on from the railings' for the shapes
         // it has no room left for, with the types they are of (numbers, not the file's names: Autodesk's strings stay out of the
         // tests).

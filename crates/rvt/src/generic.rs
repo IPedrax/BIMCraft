@@ -475,8 +475,11 @@ struct Drawn<'a> {
     shape: std::borrow::Cow<'a, Solid>,
 }
 
+/// Why an element has no shape where the file holds no graphics of it.
+pub(crate) const NO_GRAPHICS: &str = "the file holds no graphics of it";
+
 /// A reason with the offset in the file it was found at left out, so the notes of many elements read alike.
-fn short(why: &str) -> &str {
+pub(crate) fn short(why: &str) -> &str {
     why.split(" at 0x").next().unwrap_or(why)
 }
 
@@ -484,7 +487,7 @@ fn short(why: &str) -> &str {
 /// shared), or its own shape, the solids it draws where they stand and the symbols it places, each where its transform puts it.
 fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
     let d = match g.drawn.get(&r.id) {
-        None => return Err("the file holds no graphics of it".to_string()),
+        None => return Err(NO_GRAPHICS.to_string()),
         Some(Err(why)) => return Err(format!("its graphics are not read: {}", short(why))),
         Some(Ok(d)) => d,
     };
@@ -562,6 +565,17 @@ pub(crate) fn room(
         }
     }
     None
+}
+
+/// What element `r` draws where Revit draws it: its triangles and their materials, millimetres in the project's axes; or why it is
+/// not read. The same reading and checks as a component's shape ([`drawing`]), for the doors and windows set in walls.
+pub(crate) fn drawn_where_it_stands(g: &Gathered, r: &Record) -> Result<Solid, String> {
+    let d = drawing(g, r)?;
+    let mut out = Solid::default();
+    let mut marks = Vec::new();
+    crate::shapes::place(&d.shape, &d.at, &mut out.triangles, &mut marks, &mut out.materials)?;
+    out.solids = d.shape.solids;
+    Ok(out)
 }
 
 /// The box round a shape, millimetres in its family's axes.

@@ -111,7 +111,12 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   names as its host) comes in as a BIMCraft curtain wall of a pattern of neither panels nor mullions, 0 mm thick and set out by its
   exterior face, which draws nothing of its own: its panels and mullions come in as components with their shapes, so its facade is
   Revit's. A curved one, which a BIMCraft curtain wall cannot be, is left out, and a wall of a type with no layers that nothing
-  names comes in as the plane of its box. A door or a window whose nearest wall is a curtain wall (a door panel of the grid) is set
+  names comes in as the plane of its box. A door or a window set in a wall comes in with **its shape** where its
+  graphics draw one that reads (`generic::drawn_where_it_stands`, the components' reading): a family of the door or window
+  category of its Revit family's name, its types Revit's (each shape and size a type, numbered on), each with `Width` and
+  `Height` (the hole in the wall, from its box) and the shape in the opening's own axes as a mesh (`openings::OpeningFamilies`);
+  one whose graphics draw nothing (a schematic opening cut) or do not read keeps a type of the project's own, the size of its
+  box, and the note says why. The hole is the rectangle of its box: an arched one's arch is not read. A door or a window whose nearest wall is a curtain wall (a door panel of the grid) is set
   in no other wall: a BIMCraft curtain wall holds one only in a wall in its cell, so it comes in as a component of a generic family
   of its Revit family's name, with its shape (`openings::in_curtain`, `Import::in_curtain`, `generic::Scope::Only`). A curtain grid
   line (class `CurtainGridLine`) is left out, its box being no body.
