@@ -40,7 +40,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:6405
+#: crates/core/src/commands.rs:6410
 msgid "Camera"
 msgstr "Kamera"
 
@@ -141,7 +141,7 @@ msgstr "Datová zásuvka"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:15351
+#: crates/core/src/commands.rs:15356
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -226,9 +226,9 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:15096
-#: crates/core/src/commands.rs:15112
-#: crates/core/src/commands.rs:19954
+#: crates/core/src/commands.rs:15101
+#: crates/core/src/commands.rs:15117
+#: crates/core/src/commands.rs:19959
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -411,7 +411,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:9374
+#: crates/core/src/commands.rs:9379
 #: crates/core/src/model.rs:4672
 msgid "Level"
 msgstr "Podlaží"
@@ -452,7 +452,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:12137
+#: crates/core/src/commands.rs:12142
 msgid "Mass"
 msgstr "Objem"
 
@@ -469,7 +469,7 @@ msgid "Membrane"
 msgstr "Hydroizolační fólie"
 
 #: crates/core/src/commands.rs:4422
-#: crates/core/src/commands.rs:18499
+#: crates/core/src/commands.rs:18504
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:3436
 #: crates/core/src/model.rs:6382
@@ -574,7 +574,7 @@ msgstr ""
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:10122
+#: crates/core/src/commands.rs:10127
 msgid "Property Line"
 msgstr ""
 
@@ -606,7 +606,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:12667
+#: crates/core/src/commands.rs:12672
 msgid "Room"
 msgstr "Místnost"
 
@@ -642,8 +642,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:15030
-#: crates/core/src/commands.rs:19953
+#: crates/core/src/commands.rs:15035
+#: crates/core/src/commands.rs:19958
 msgid "Section"
 msgstr "Řez"
 
@@ -796,7 +796,7 @@ msgstr "Dlažba 300"
 msgid "Timber"
 msgstr "Dřevo"
 
-#: crates/core/src/commands.rs:10164
+#: crates/core/src/commands.rs:10169
 msgid "Toposolid"
 msgstr ""
 
@@ -834,7 +834,7 @@ msgstr "Neohraničená výška"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15689
+#: crates/core/src/commands.rs:15694
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
