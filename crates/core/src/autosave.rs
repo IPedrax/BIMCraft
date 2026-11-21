@@ -32,10 +32,14 @@ fn suffixed(project: &Path, suffix: &str) -> PathBuf {
 /// Flush a complete file in the destination directory, then replace the old one atomically.
 /// Never fall back to truncating the destination, including on Windows.
 pub fn atomic_write(path: &Path, text: &str) -> Result<(), String> {
+    atomic_write_bytes(path, text.as_bytes())
+}
+
+pub(crate) fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let write = || -> Result<(), Box<dyn std::error::Error>> {
         let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
         let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-        staged.write_all(text.as_bytes())?;
+        staged.write_all(bytes)?;
         staged.as_file().sync_all()?;
         staged.persist(path)?;
         // The file contents were synced before replacement. Persist the directory entry too on Unix.

@@ -56,3 +56,31 @@ to do. Where the two define a quantity differently, the difference goes here, wi
 `schedule {template: "steel_list" | "steel_summary"}` fills a schedule of category `rebar` with the fields, filters, sort and grouping of a steel list or a steel summary where the call gives none, so every other parameter of the command still applies. The rule for marks, and the commands `steel_list` and `cut_plan`, are in [quantities](quantities.md).
 
 `schedule {template: "materials_summary", level?}` makes a schedule of the six categories that have quantities (beam, column, structural column, footing, strip footing, floor), grouped by level and category, with the count, Volume, Formwork Area and Rebar Weight of each group totalled. It cannot split by a project parameter, because a schedule of several categories has none among its fields: `quantities` with `by` does. The same four fields (Rebar Ratio too) are on each of those categories' own schedules, appended after the default columns, and a multi-category schedule reads each category's own. A ratio is not a grouped column, because a total of ratios would add them: `quantities` gives it.
+
+## Fill an ODT template
+
+Use `odt_template {"template":"cover.odt","path":"project-cover.odt","fields":{"ProjectName":"Library"}}`
+from the CLI, a script, or MCP. The command copies a Writer document and replaces
+the contents of named `text:variable-set` elements. Each requested variable must
+occur once. Formula fields keep their formulas. Other document entries, including
+styles and images, are copied. The source and project stay intact.
+
+Use a regular .odt file for the source and a different .odt path for the copy.
+The command validates the fields before replacing the destination atomically.
+It accepts up to 256 fields, 256 archive entries, 32 MiB of content XML, and
+256 MiB per archive. Co-Work guest sessions and dry runs refuse the export.
+
+### Copy a linked Writer document set
+
+Use `odt_set {"templates":["forms/master.odm","forms/cover.odt","info.odt"],"path":"issue","fields":{"ProjectName":"Library"}}`
+to copy a master document and its linked documents into one directory. Supply all
+members explicitly, with unique file names, and choose a new directory whose parent
+already exists. Linked sections must refer to members of the set. A missing relative
+path can be recovered by matching its file name to a member. Section names are checked
+before publication and links in the copies point to the copied files.
+
+Fields are replaced wherever they occur. A field may be absent from individual
+documents, and an empty field map copies the set and updates its links. Existing
+destinations are refused and the source documents stay intact. The set accepts up to
+32 documents, 256 MiB of archives in each direction, and 128 MiB of content XML.
+Co-Work guest sessions and dry runs refuse the export.
