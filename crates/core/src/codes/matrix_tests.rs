@@ -234,6 +234,10 @@ fn every_utilitys_method_held_every_way_comes_through_every_operation_as_a_plain
     let mut asked = 0;
     let mut refused: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
+    // While working, every utility and method with one case in five of the rest, a different one for each (seconds); in CI,
+    // or with `BIMCRAFT_MATRIX=full`, every case (about 40 s).
+    let full = std::env::var_os("CI").is_some() || std::env::var("BIMCRAFT_MATRIX").is_ok_and(|v| v == "full");
+    let mut n = 0usize;
     for code in all.iter().copied().filter(|c| !c.amends.is_empty()) {
         for key in ["unit_demand", "building_demand", "entrance"] {
             if !code.sections.contains_key(key) {
@@ -247,6 +251,10 @@ fn every_utilitys_method_held_every_way_comes_through_every_operation_as_a_plain
                 for older in [false, true] {
                     let case = Case { code, other, key, place, older };
                     for what in WHAT {
+                        n += 1;
+                        if !full && !n.is_multiple_of(5) {
+                            continue;
+                        }
                         let mut s = match case.subject() {
                             Ok(s) => s,
                             Err(e) => {
@@ -299,7 +307,7 @@ fn every_utilitys_method_held_every_way_comes_through_every_operation_as_a_plain
     refused.sort();
     refused.dedup();
     assert!(refused.is_empty(), "refused: {refused:#?}");
-    assert!(asked >= 300, "cases asked ({asked})");
+    assert!(asked >= if full { 300 } else { 60 }, "cases asked ({asked})");
 }
 
 /// CPFL changed under Enel: the pair the cases below start from, and what `demand` answers for each.
