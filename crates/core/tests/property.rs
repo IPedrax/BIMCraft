@@ -1377,7 +1377,17 @@ fn gen_op(r: &mut Rng, l: &Ledger, nochange: bool) -> Op {
                     let m = if !mine.is_empty() && r.pct(65) { mine[r.below(mine.len())] } else { &lb.muts[r.below(lb.muts.len())] };
                     let v = if r.pct(15) { Value::Null } else { m.value.clone() };
                     let (sec, rule) = (m.section.as_str(), m.rule.as_str());
-                    json!({"amend": t, "rules": {sec: {rule: v}}})
+                    // Another code's method copied whole into this one, changed (an own code that holds none, or a utility's
+                    // copy taking another's): two layers then hold a method for one identity, which only the order decides.
+                    let whole = WHOLES.contains(&sec) && m.holder != t && r.pct(50);
+                    match codes::find(E, &m.holder).and_then(|c| c.section(sec)).filter(|_| whole) {
+                        Some(full) => {
+                            let mut full = full.clone();
+                            full.insert(rule.to_string(), m.value.clone());
+                            json!({"amend": t, "rules": {sec: full}})
+                        }
+                        None => json!({"amend": t, "rules": {sec: {rule: v}}}),
+                    }
                 };
                 if r.pct(10) {
                     p["amendments"] = json!(some_amendments(r));
