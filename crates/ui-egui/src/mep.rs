@@ -214,10 +214,10 @@ impl BimApp {
         });
         panel(ui, msg!("Symbols"), |ui| {
             let tip = msg!(
-                "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
+                "Load IEC 60617 Symbols: graphical plan symbols (IEC 60617 / AREI-RGIE) as families, named in the project's language; loading them again changes nothing"
             );
-            if big_button(ui, Icon::LoadFamily, "Load AREI Symbols", false, tip).clicked() {
-                self.run("symbol_set", serde_json::json!({"set": "arei"}));
+            if big_button(ui, Icon::LoadFamily, "Load IEC 60617 Symbols", false, tip).clicked() {
+                self.run("symbol_set", serde_json::json!({"set": "iec60617"}));
             }
         });
         panel(ui, msg!("Conduit & Wire"), |ui| {

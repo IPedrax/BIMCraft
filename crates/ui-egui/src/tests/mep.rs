@@ -674,27 +674,34 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
 fn the_electrical_tab_loads_the_arei_symbols_on_request_and_only_once() {
     let mut h = app(BOX);
     // A new project doesn't come with them.
-    assert!(!h.state().session.model.families.contains_key("Switch, single-pole"));
+    assert!(!h.state().session.model.families.contains_key("Switch (IEC 60617)"));
     press(&mut h, "Electrical");
-    press(&mut h, "Load AREI Symbols");
+    press(&mut h, "Load IEC 60617 Symbols");
     let families = |h: &Harness<BimApp>| h.state().session.model.families.clone();
     let loaded = families(&h);
-    assert!(loaded.contains_key("Switch, single-pole") && loaded.contains_key("Socket, protective contact"));
+    assert!(loaded.contains_key("Switch (IEC 60617)") && loaded.contains_key("Socket (IEC 60617)"));
     assert!(!h.state().status.error, "{}", h.state().status.text);
     // Again changes nothing, and the Device tool lists the symbols of its kinds.
-    press(&mut h, "Load AREI Symbols");
+    press(&mut h, "Load IEC 60617 Symbols");
     assert_eq!(families(&h), loaded);
     press(&mut h, "Device");
     press(&mut h, "Type Selector");
-    assert!(h.query_by_label("Switch, single-pole: Standard").is_some());
+    assert!(h.query_by_label("Switch (IEC 60617): Single-pole").is_some());
     assert!(h.query_by_label("Cooker: Standard").is_none(), "a cooker is not a device");
     // And one placed on the plan is a component of its family.
-    h.get_by_label("Switch, single-pole: Standard").scroll_to_me();
+    h.get_by_label("Switch (IEC 60617): Single-pole").scroll_to_me();
     h.run();
-    press(&mut h, "Switch, single-pole: Standard");
+    press(&mut h, "Switch (IEC 60617): Single-pole");
     click(&mut h, P2(2000.0, 2000.0));
     let placed = ids(&h, "component");
-    assert_eq!(field(&h, placed[0], "family"), json!("Switch, single-pole"));
+    assert_eq!(field(&h, placed[0], "family"), json!("Switch (IEC 60617)"));
+    // Selecting the placed symbol in Modify mode and pressing Space cycles Label Position (0 -> 1 -> 2 -> 3 -> 0).
+    h.state_mut().set_tool(Tool::Modify);
+    h.state_mut().selection = placed.iter().copied().collect();
+    key(&mut h, egui::Key::Space);
+    assert_eq!(field(&h, placed[0], "params")["Label Position"], json!(1));
+    key(&mut h, egui::Key::Space);
+    assert_eq!(field(&h, placed[0], "params")["Label Position"], json!(2));
 }
 
 /// A plan with a box of walls, a ceiling luminaire, an outlet and a switch.

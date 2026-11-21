@@ -1,0 +1,7350 @@
+{
+ "unit": "mm",
+ "mm_per_pt": 30.0,
+ "symbols": {
+  "Switch (IEC 60617)": {
+   "layer": "switch",
+   "name_nl": "Schakelaar (IEC 60617)",
+   "name_fr": "Interrupteur (IEC 60617)",
+   "parameters": [
+    {
+     "name": "Poles",
+     "kind": "integer",
+     "value": 1
+    },
+    {
+     "name": "Hook",
+     "kind": "yesno",
+     "value": true
+    },
+    {
+     "name": "Two Way",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Changeover",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Intermediate",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Locator Lamp",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Signal Lamp",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Pull Cord",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Delayed",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Dimmer",
+     "kind": "yesno",
+     "value": false
+    }
+   ],
+   "types": {
+    "Single-pole": {},
+    "Two-pole": {
+     "Poles": 2
+    },
+    "Three-pole": {
+     "Poles": 3
+    },
+    "General symbol": {
+     "Hook": false
+    },
+    "Changeover, single-pole": {
+     "Changeover": true
+    },
+    "Two Way, single-pole": {
+     "Two Way": true
+    },
+    "Two Way, two-pole": {
+     "Two Way": true,
+     "Poles": 2
+    },
+    "Intermediate": {
+     "Intermediate": true
+    },
+    "With locator lamp": {
+     "Locator Lamp": true
+    },
+    "With signal lamp": {
+     "Signal Lamp": true
+    },
+    "Pull cord": {
+     "Pull Cord": true
+    },
+    "Delayed opening": {
+     "Delayed": true
+    },
+    "Dimmer": {
+     "Dimmer": true
+    }
+   },
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 150.0,
+      "from": 270.0,
+      "to": 630.0
+     }
+    },
+    {
+     "line": [
+      [
+       75.0,
+       129.9
+      ],
+      [
+       300.0,
+       519.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       300.0,
+       519.6
+      ],
+      [
+       429.0,
+       444.6
+      ]
+     ],
+     "visible": "Hook"
+    },
+    {
+     "line": [
+      [
+       268.2,
+       464.4
+      ],
+      [
+       398.0,
+       389.4
+      ]
+     ],
+     "visible": "Poles > 1"
+    },
+    {
+     "line": [
+      [
+       237.0,
+       409.5
+      ],
+      [
+       365.7,
+       335.4
+      ]
+     ],
+     "visible": "Poles > 2"
+    },
+    {
+     "line": [
+      [
+       -75.0,
+       129.9
+      ],
+      [
+       -300.0,
+       519.6
+      ],
+      [
+       -429.0,
+       444.6
+      ]
+     ],
+     "visible": "or(Changeover, Intermediate)"
+    },
+    {
+     "line": [
+      [
+       -75.0,
+       -130.0
+      ],
+      [
+       -300.0,
+       -519.6
+      ],
+      [
+       -429.0,
+       -443.5
+      ]
+     ],
+     "visible": "or(Two Way, Intermediate)"
+    },
+    {
+     "line": [
+      [
+       -268.2,
+       -464.7
+      ],
+      [
+       -398.1,
+       -389.7
+      ]
+     ],
+     "visible": "and(Two Way, Poles > 1)"
+    },
+    {
+     "line": [
+      [
+       75.0,
+       -130.0
+      ],
+      [
+       300.0,
+       -519.6
+      ],
+      [
+       429.0,
+       -443.5
+      ]
+     ],
+     "visible": "Intermediate"
+    },
+    {
+     "line": [
+      [
+       -106.0,
+       106.0
+      ],
+      [
+       106.0,
+       -106.0
+      ]
+     ],
+     "visible": "Locator Lamp"
+    },
+    {
+     "line": [
+      [
+       -106.0,
+       -106.0
+      ],
+      [
+       106.0,
+       106.0
+      ]
+     ],
+     "visible": "Locator Lamp"
+    },
+    {
+     "arc": {
+      "centre": [
+       -375.0,
+       0.0
+      ],
+      "radius": 150.0,
+      "from": 270.0,
+      "to": 630.0
+     },
+     "visible": "Signal Lamp"
+    },
+    {
+     "line": [
+      [
+       -481.0,
+       106.0
+      ],
+      [
+       -269.0,
+       -106.0
+      ]
+     ],
+     "visible": "Signal Lamp"
+    },
+    {
+     "line": [
+      [
+       -481.0,
+       -106.0
+      ],
+      [
+       -269.0,
+       106.0
+      ]
+     ],
+     "visible": "Signal Lamp"
+    },
+    {
+     "line": [
+      [
+       -225.0,
+       0.0
+      ],
+      [
+       -150.0,
+       0.0
+      ]
+     ],
+     "visible": "Signal Lamp"
+    },
+    {
+     "line": [
+      [
+       300.0,
+       519.6
+      ],
+      [
+       300.0,
+       243.8
+      ]
+     ],
+     "visible": "Pull Cord"
+    },
+    {
+     "line": [
+      [
+       300.0,
+       139.8
+      ],
+      [
+       326.7,
+       243.8
+      ],
+      [
+       273.0,
+       243.8
+      ],
+      [
+       300.0,
+       139.8
+      ]
+     ],
+     "visible": "Pull Cord"
+    },
+    {
+     "text": {
+      "at": [
+       276.9,
+       249.6
+      ],
+      "height": 117.0,
+      "value": "t",
+      "align": "center"
+     },
+     "visible": "Delayed"
+    },
+    {
+     "line": [
+      [
+       214.5,
+       370.5
+      ],
+      [
+       436.8,
+       421.2
+      ],
+      [
+       436.8,
+       319.8
+      ],
+      [
+       214.5,
+       370.5
+      ]
+     ],
+     "visible": "Dimmer"
+    }
+   ]
+  },
+  "Push button": {
+   "layer": "switch",
+   "name_nl": "Drukknop",
+   "name_fr": "Bouton-poussoir",
+   "parameters": [
+    {
+     "name": "Locator Lamp",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Break Glass",
+     "kind": "yesno",
+     "value": false
+    }
+   ],
+   "types": {
+    "Standard": {},
+    "With locator lamp": {
+     "Locator Lamp": true
+    },
+    "Protected (break glass)": {
+     "Break Glass": true
+    }
+   },
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 222.3,
+      "from": 270.0,
+      "to": 630.0
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 58.5,
+      "from": 270.0,
+      "to": 630.0
+     }
+    },
+    {
+     "line": [
+      [
+       -55.2,
+       55.2
+      ],
+      [
+       55.2,
+       -55.2
+      ]
+     ],
+     "visible": "Locator Lamp"
+    },
+    {
+     "line": [
+      [
+       -55.2,
+       -55.2
+      ],
+      [
+       55.2,
+       55.2
+      ]
+     ],
+     "visible": "Locator Lamp"
+    },
+    {
+     "line": [
+      [
+       136.5,
+       323.7
+      ],
+      [
+       136.5,
+       226.2
+      ],
+      [
+       245.7,
+       226.2
+      ],
+      [
+       245.7,
+       -226.2
+      ],
+      [
+       136.5,
+       -226.2
+      ],
+      [
+       136.5,
+       -323.7
+      ]
+     ],
+     "visible": "Break Glass"
+    }
+   ]
+  },
+  "Time switch": {
+   "layer": "switch",
+   "name_nl": "Schakelklok, tijdschakelaar",
+   "name_fr": "Interrupteur horaire",
+   "symbols": [
+    {
+     "line": [
+      [
+       -460.2,
+       117.0
+      ],
+      [
+       460.2,
+       117.0
+      ],
+      [
+       460.2,
+       -117.0
+      ],
+      [
+       -460.2,
+       -117.0
+      ],
+      [
+       -460.2,
+       117.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -234.0,
+       0.0
+      ],
+      "radius": 78.0,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       -234.0,
+       -0.0
+      ],
+      [
+       -234.0,
+       58.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -234.0,
+       -0.0
+      ],
+      [
+       -187.2,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -46.8,
+       -31.2
+      ],
+      [
+       50.7,
+       -31.2
+      ],
+      [
+       156.0,
+       31.2
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       156.0,
+       -35.1
+      ],
+      [
+       304.2,
+       -35.1
+      ]
+     ]
+    }
+   ]
+  },
+  "Impulse switch": {
+   "layer": "switch",
+   "name_nl": "Impulsschakelaar",
+   "name_fr": "Télérupteur",
+   "symbols": [
+    {
+     "line": [
+      [
+       -460.2,
+       117.0
+      ],
+      [
+       460.2,
+       117.0
+      ],
+      [
+       460.2,
+       -117.0
+      ],
+      [
+       -460.2,
+       -117.0
+      ],
+      [
+       -460.2,
+       117.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -280.8,
+       -11.7
+      ],
+      [
+       -175.5,
+       -11.7
+      ],
+      [
+       -175.5,
+       46.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       144.3,
+       46.8
+      ],
+      [
+       144.3,
+       -11.7
+      ],
+      [
+       253.5,
+       -11.7
+      ]
+     ]
+    }
+   ]
+  },
+  "Thermostat": {
+   "layer": "switch",
+   "name_nl": "Thermostaat",
+   "name_fr": "Thermostat",
+   "symbols": [
+    {
+     "line": [
+      [
+       -475.8,
+       117.0
+      ],
+      [
+       475.8,
+       117.0
+      ],
+      [
+       475.8,
+       -117.0
+      ],
+      [
+       -475.8,
+       -117.0
+      ],
+      [
+       -475.8,
+       117.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 85.8,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       -101.4,
+       -0.0
+      ],
+      [
+       101.4,
+       -0.0
+      ]
+     ]
+    }
+   ]
+  },
+  "Motion sensor": {
+   "layer": "switch",
+   "name_nl": "Bewegingssensor",
+   "name_fr": "Détecteur de mouvement",
+   "symbols": [
+    {
+     "line": [
+      [
+       -245.7,
+       347.1
+      ],
+      [
+       245.7,
+       347.1
+      ],
+      [
+       245.7,
+       -347.1
+      ],
+      [
+       -245.7,
+       -347.1
+      ],
+      [
+       -245.7,
+       347.1
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -245.7,
+       -140.4
+      ],
+      [
+       245.7,
+       -140.4
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -70.2,
+       113.1
+      ],
+      "radius": 58.5,
+      "from": 306.87,
+      "to": 413.13
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -23.4,
+       113.1
+      ],
+      "radius": 58.5,
+      "from": 306.87,
+      "to": 413.13
+     }
+    }
+   ]
+  },
+  "Switch installed in a switchboard": {
+   "layer": "switch",
+   "name_nl": "Schakelaar geïnstalleerd in een schakel- en verdeelbord",
+   "name_fr": "Interrupteur installé dans un tableau de répartition et de manoeuvre",
+   "symbols": [
+    {
+     "line": [
+      [
+       -292.5,
+       282.8
+      ],
+      [
+       292.5,
+       282.8
+      ],
+      [
+       292.5,
+       -282.8
+      ],
+      [
+       -292.5,
+       -282.8
+      ],
+      [
+       -292.5,
+       282.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -292.5,
+       -333.5
+      ],
+      [
+       292.5,
+       -333.5
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -27.3,
+       -134.5
+      ],
+      "radius": 42.9,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       -5.9,
+       -97.4
+      ],
+      [
+       58.5,
+       14.1
+      ],
+      [
+       95.7,
+       -7.4
+      ]
+     ]
+    }
+   ]
+  },
+  "Socket (IEC 60617)": {
+   "layer": "socket",
+   "name_nl": "Contactdoos (IEC 60617)",
+   "name_fr": "Socle de prise de courant (IEC 60617)",
+   "parameters": [
+    {
+     "name": "Count",
+     "kind": "integer",
+     "value": 1
+    },
+    {
+     "name": "Protective Contact",
+     "kind": "yesno",
+     "value": true
+    },
+    {
+     "name": "Child Protection",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Two Pole Switch",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Mounting Height",
+     "kind": "length",
+     "instance": true,
+     "value": 300.0
+    },
+    {
+     "name": "Load",
+     "kind": "number",
+     "instance": true,
+     "value": 100.0
+    }
+   ],
+   "types": {
+    "Protective contact": {},
+    "General": {
+     "Protective Contact": false
+    },
+    "Child protection": {
+     "Protective Contact": false,
+     "Child Protection": true
+    },
+    "Protective contact, child protection": {
+     "Child Protection": true
+    },
+    "Double, protective contact": {
+     "Count": 2
+    },
+    "Triple, protective contact": {
+     "Count": 3
+    },
+    "With two-pole switch": {
+     "Protective Contact": false,
+     "Two Pole Switch": true
+    }
+   },
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       241.8
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -124.8,
+       0.0
+      ],
+      [
+       124.8,
+       0.0
+      ]
+     ],
+     "visible": "Protective Contact"
+    },
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       -109.2
+      ],
+      "radius": 109.2,
+      "from": 0.0,
+      "to": 180.0
+     }
+    },
+    {
+     "line": [
+      [
+       -171.6,
+       -109.2
+      ],
+      [
+       -109.2,
+       -109.2
+      ]
+     ],
+     "visible": "Child Protection"
+    },
+    {
+     "line": [
+      [
+       109.2,
+       -109.2
+      ],
+      [
+       171.6,
+       -109.2
+      ]
+     ],
+     "visible": "Child Protection"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       -136.5
+      ]
+     ],
+     "visible": "Count > 1"
+    },
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       -245.7
+      ],
+      "radius": 109.2,
+      "from": 0.0,
+      "to": 180.0
+     },
+     "visible": "Count > 1"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -136.5
+      ],
+      [
+       0.0,
+       -273.0
+      ]
+     ],
+     "visible": "Count > 2"
+    },
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       -382.2
+      ],
+      "radius": 109.2,
+      "from": 0.0,
+      "to": 180.0
+     },
+     "visible": "Count > 2"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       0.0
+      ],
+      [
+       202.8,
+       261.3
+      ],
+      [
+       276.9,
+       230.1
+      ]
+     ],
+     "visible": "Two Pole Switch"
+    },
+    {
+     "line": [
+      [
+       163.4,
+       210.6
+      ],
+      [
+       237.5,
+       179.4
+      ]
+     ],
+     "visible": "Two Pole Switch"
+    }
+   ],
+   "forms": [
+    {
+     "profile": [
+      [
+       -50.0,
+       -12.0
+      ],
+      [
+       50.0,
+       -12.0
+      ],
+      [
+       50.0,
+       0.0
+      ],
+      [
+       -50.0,
+       0.0
+      ]
+     ],
+     "from": "Mounting Height - 50",
+     "to": "Mounting Height + 50"
+    },
+    {
+     "plane": "xz",
+     "circle": {
+      "centre": [
+       0.0,
+       "Mounting Height"
+      ],
+      "radius": 25.0
+     },
+     "from": -12.0,
+     "to": -6.0,
+     "void": true
+    }
+   ],
+   "connectors": [
+    {
+     "kind": "power",
+     "system": "power-balanced",
+     "poles": 1,
+     "voltage": 127,
+     "load_va": "Load",
+     "power_factor": 0.8,
+     "classification": "receptacle"
+    }
+   ]
+  },
+  "Socket with isolating transformer": {
+   "layer": "socket",
+   "name_nl": "Contactdoos met beschermingstransformator",
+   "name_fr": "Socle de prise de courant avec transformateur de séparation des circuits",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       163.8
+      ],
+      [
+       0.0,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       -105.3
+      ],
+      "radius": 105.3,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       -253.5
+      ],
+      "radius": 105.3,
+      "from": 269.99,
+      "to": 629.99
+     }
+    }
+   ]
+  },
+  "Data socket": {
+   "layer": "socket",
+   "name_nl": "Datacontactdoos",
+   "name_fr": "Socle de prise data",
+   "symbols": [
+    {
+     "line": [
+      [
+       -280.8,
+       -0.0
+      ],
+      [
+       0.0,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       187.2,
+       175.5
+      ],
+      [
+       0.0,
+       175.5
+      ],
+      [
+       0.0,
+       -163.8
+      ],
+      [
+       187.2,
+       -163.8
+      ]
+     ]
+    }
+   ]
+  },
+  "Socket with single-pole switch, installed in a switchboard": {
+   "layer": "socket",
+   "name_nl": "Contactdoos met enkelpolige schakelaar geïnstalleerd in een schakel- en verdeelbord",
+   "name_fr": "Socle de prise de courant avec interrupteur unipolaire installé dans un tableau de répartition et de manoeuvre",
+   "symbols": [
+    {
+     "line": [
+      [
+       -300.3,
+       378.3
+      ],
+      [
+       273.0,
+       378.3
+      ],
+      [
+       273.0,
+       -245.7
+      ],
+      [
+       -300.3,
+       -245.7
+      ],
+      [
+       -300.3,
+       378.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -300.3,
+       -292.5
+      ],
+      [
+       273.0,
+       -292.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       339.3
+      ],
+      [
+       0.0,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -138.5,
+       -0.0
+      ],
+      [
+       126.7,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       -128.7
+      ],
+      "radius": 128.7,
+      "from": 0.0,
+      "to": 180.0
+     }
+    },
+    {
+     "line": [
+      [
+       -185.3,
+       -128.7
+      ],
+      [
+       -128.7,
+       -128.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       128.7,
+       -128.7
+      ],
+      [
+       187.2,
+       -128.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       117.0,
+       269.1
+      ],
+      [
+       228.1,
+       210.6
+      ]
+     ]
+    }
+   ]
+  },
+  "Light point": {
+   "layer": "light",
+   "name_nl": "Lichtpunt",
+   "name_fr": "Point lumineux",
+   "symbols": [
+    {
+     "line": [
+      [
+       -409.5,
+       -0.0
+      ],
+      [
+       409.5,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       261.3,
+       148.2
+      ],
+      [
+       557.7,
+       -148.2
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       261.3,
+       -148.2
+      ],
+      [
+       557.7,
+       148.2
+      ]
+     ]
+    }
+   ]
+  },
+  "Wall luminaire connection point": {
+   "layer": "light",
+   "name_nl": "Aansluitpunt voor wandverlichtingstoestel",
+   "name_fr": "Point d’attente d’appareil d’éclairage en applique murale",
+   "symbols": [
+    {
+     "line": [
+      [
+       -296.4,
+       140.4
+      ],
+      [
+       -15.6,
+       -140.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -296.4,
+       -140.4
+      ],
+      [
+       -15.6,
+       140.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       156.0,
+       273.0
+      ],
+      [
+       156.0,
+       -273.0
+      ]
+     ]
+    }
+   ]
+  },
+  "Fluorescent luminaire, general symbol": {
+   "layer": "light",
+   "name_nl": "Fluorescentieverlichtingstoestel, algemeen symbool",
+   "name_fr": "Appareil d’éclairage à fluorescence, symbole général",
+   "symbols": [
+    {
+     "line": [
+      [
+       -462.2,
+       -0.0
+      ],
+      [
+       462.2,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -462.2,
+       163.8
+      ],
+      [
+       -462.2,
+       -148.2
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       462.2,
+       163.8
+      ],
+      [
+       462.2,
+       -148.2
+      ]
+     ]
+    }
+   ]
+  },
+  "Floodlight, general symbol": {
+   "layer": "light",
+   "name_nl": "Projector, algemeen symbool",
+   "name_fr": "Projecteur, symbole général",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 156.0,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       -110.3,
+       110.3
+      ],
+      [
+       110.3,
+       -110.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -110.3,
+       -110.3
+      ],
+      [
+       110.3,
+       110.3
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 226.2,
+      "from": 100.0,
+      "to": 260.0
+     }
+    }
+   ]
+  },
+  "Luminaire with built-in single-pole switch": {
+   "layer": "light",
+   "name_nl": "Verlichtingstoestel met ingebouwde eenpolige schakelaar",
+   "name_fr": "Luminaire avec interrupteur unipolaire incorporé",
+   "symbols": [
+    {
+     "line": [
+      [
+       -214.5,
+       241.8
+      ],
+      [
+       214.5,
+       -241.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -214.5,
+       -241.8
+      ],
+      [
+       214.5,
+       241.8
+      ],
+      [
+       319.8,
+       171.6
+      ]
+     ]
+    }
+   ]
+  },
+  "Ballast for discharge lamp": {
+   "layer": "appliance",
+   "name_nl": "Voorschakeltoestel voor ontladingslamp",
+   "name_fr": "Appareil auxiliaire pour lampe à décharge",
+   "symbols": [
+    {
+     "line": [
+      [
+       -481.7,
+       156.0
+      ],
+      [
+       481.7,
+       156.0
+      ],
+      [
+       481.7,
+       -156.0
+      ],
+      [
+       -481.7,
+       -156.0
+      ],
+      [
+       -481.7,
+       156.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -331.5,
+       74.1
+      ],
+      [
+       331.5,
+       74.1
+      ],
+      [
+       331.5,
+       -74.1
+      ],
+      [
+       -331.5,
+       -74.1
+      ],
+      [
+       -331.5,
+       74.1
+      ]
+     ]
+    }
+   ]
+  },
+  "Bell": {
+   "layer": "appliance",
+   "name_nl": "Bel",
+   "name_fr": "Sonnerie",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       226.2
+      ],
+      [
+       29.1,
+       224.1
+      ],
+      [
+       57.0,
+       218.1
+      ],
+      [
+       83.5,
+       208.4
+      ],
+      [
+       108.3,
+       195.3
+      ],
+      [
+       131.1,
+       179.1
+      ],
+      [
+       151.7,
+       159.9
+      ],
+      [
+       169.8,
+       138.2
+      ],
+      [
+       185.2,
+       114.2
+      ],
+      [
+       197.6,
+       88.0
+      ],
+      [
+       206.8,
+       60.1
+      ],
+      [
+       212.5,
+       30.7
+      ],
+      [
+       214.5,
+       -0.0
+      ],
+      [
+       212.5,
+       -30.7
+      ],
+      [
+       206.8,
+       -60.1
+      ],
+      [
+       197.6,
+       -88.0
+      ],
+      [
+       185.2,
+       -114.2
+      ],
+      [
+       169.8,
+       -138.2
+      ],
+      [
+       151.7,
+       -159.9
+      ],
+      [
+       131.1,
+       -179.1
+      ],
+      [
+       108.3,
+       -195.3
+      ],
+      [
+       83.5,
+       -208.4
+      ],
+      [
+       57.0,
+       -218.1
+      ],
+      [
+       29.1,
+       -224.1
+      ],
+      [
+       0.0,
+       -226.2
+      ],
+      [
+       0.0,
+       226.2
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       214.5,
+       0.0
+      ],
+      [
+       564.5,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       107.2,
+       226.2
+      ],
+      [
+       107.2,
+       576.2
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       107.2,
+       -226.2
+      ],
+      [
+       107.2,
+       -576.2
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Buzzer": {
+   "layer": "appliance",
+   "name_nl": "Zoemer",
+   "name_fr": "Vibreur, trembleur",
+   "symbols": [
+    {
+     "line": [
+      [
+       195.0,
+       206.7
+      ],
+      [
+       168.5,
+       204.8
+      ],
+      [
+       143.2,
+       199.3
+      ],
+      [
+       119.1,
+       190.5
+      ],
+      [
+       96.6,
+       178.5
+      ],
+      [
+       75.8,
+       163.6
+      ],
+      [
+       57.1,
+       146.2
+      ],
+      [
+       40.6,
+       126.3
+      ],
+      [
+       26.6,
+       104.3
+      ],
+      [
+       15.3,
+       80.5
+      ],
+      [
+       7.0,
+       55.0
+      ],
+      [
+       1.8,
+       28.0
+      ],
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       1.8,
+       -28.0
+      ],
+      [
+       7.0,
+       -55.0
+      ],
+      [
+       15.3,
+       -80.5
+      ],
+      [
+       26.6,
+       -104.3
+      ],
+      [
+       40.6,
+       -126.3
+      ],
+      [
+       57.1,
+       -146.2
+      ],
+      [
+       75.8,
+       -163.6
+      ],
+      [
+       96.6,
+       -178.5
+      ],
+      [
+       119.1,
+       -190.5
+      ],
+      [
+       143.2,
+       -199.3
+      ],
+      [
+       168.5,
+       -204.8
+      ],
+      [
+       195.0,
+       -206.7
+      ],
+      [
+       195.0,
+       206.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       195.0,
+       0.0
+      ],
+      [
+       545.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       97.5,
+       206.7
+      ],
+      [
+       97.5,
+       556.7
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       97.5,
+       -206.7
+      ],
+      [
+       97.5,
+       -556.7
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Horn": {
+   "layer": "appliance",
+   "name_nl": "Hoorn",
+   "name_fr": "Trompe, corne",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       171.6
+      ],
+      [
+       296.4,
+       171.6
+      ],
+      [
+       296.4,
+       -171.6
+      ],
+      [
+       0.0,
+       -171.6
+      ],
+      [
+       0.0,
+       171.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       308.1,
+       -23.4
+      ],
+      [
+       588.9,
+       101.4
+      ],
+      [
+       588.9,
+       -54.6
+      ],
+      [
+       308.1,
+       -23.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       588.9,
+       0.0
+      ],
+      [
+       938.9,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       294.4,
+       171.6
+      ],
+      [
+       294.4,
+       521.6
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       294.4,
+       -171.6
+      ],
+      [
+       294.4,
+       -521.6
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Siren": {
+   "layer": "appliance",
+   "name_nl": "Sirene",
+   "name_fr": "Sirène",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       175.5
+      ],
+      [
+       300.3,
+       -3.9
+      ],
+      [
+       0.0,
+       -179.4
+      ],
+      [
+       0.0,
+       175.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       300.3,
+       0.0
+      ],
+      [
+       650.3,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       150.2,
+       175.5
+      ],
+      [
+       150.2,
+       525.5
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       150.2,
+       -179.4
+      ],
+      [
+       150.2,
+       -529.4
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Clock": {
+   "layer": "appliance",
+   "name_nl": "Horloge",
+   "name_fr": "Horloge",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 265.2,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       0.0,
+       218.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       -210.6,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "dot": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 31.2
+     }
+    }
+   ]
+  },
+  "Master clock": {
+   "layer": "appliance",
+   "name_nl": "Moederklok",
+   "name_fr": "Horloge mère",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 284.7,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 249.6,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 183.3,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       0.0,
+       163.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       -132.6,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "dot": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 31.2
+     }
+    }
+   ]
+  },
+  "Electric door lock": {
+   "layer": "appliance",
+   "name_nl": "Elektrisch (deur)slot",
+   "name_fr": "Gâche électrique (ouverture et fermeture de porte)",
+   "symbols": [
+    {
+     "line": [
+      [
+       -452.4,
+       175.5
+      ],
+      [
+       183.3,
+       175.5
+      ],
+      [
+       183.3,
+       -292.5
+      ],
+      [
+       -452.4,
+       -292.5
+      ],
+      [
+       -452.4,
+       175.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       183.3,
+       175.5
+      ],
+      [
+       456.3,
+       -292.5
+      ],
+      [
+       183.3,
+       -292.5
+      ],
+      [
+       183.3,
+       175.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -117.0,
+       292.5
+      ],
+      [
+       -117.0,
+       175.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -452.4,
+       -50.7
+      ],
+      [
+       -323.7,
+       -50.7
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -269.1,
+       -50.7
+      ],
+      "radius": 52.6,
+      "from": 0.0,
+      "to": 180.0
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -163.8,
+       -50.7
+      ],
+      "radius": 52.6,
+      "from": 0.0,
+      "to": 180.0
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -58.5,
+       -50.7
+      ],
+      "radius": 52.6,
+      "from": 0.0,
+      "to": 180.0
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       46.8,
+       -50.7
+      ],
+      "radius": 52.6,
+      "from": 0.0,
+      "to": 180.0
+     }
+    },
+    {
+     "line": [
+      [
+       97.5,
+       -50.7
+      ],
+      [
+       183.3,
+       -50.7
+      ]
+     ]
+    }
+   ]
+  },
+  "Fan": {
+   "layer": "appliance",
+   "name_nl": "Ventilator",
+   "name_fr": "Ventilateur",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       226.2
+      ],
+      [
+       452.4,
+       226.2
+      ],
+      [
+       452.4,
+       -226.2
+      ],
+      [
+       0.0,
+       -226.2
+      ],
+      [
+       0.0,
+       226.2
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       136.5,
+       0.0
+      ],
+      "radius": 85.8,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       315.9,
+       0.0
+      ],
+      "radius": 85.8,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       452.4,
+       0.0
+      ],
+      [
+       802.4,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       226.2,
+       226.2
+      ],
+      [
+       226.2,
+       576.2
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       226.2,
+       -226.2
+      ],
+      [
+       226.2,
+       -576.2
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Heater": {
+   "layer": "appliance",
+   "name_nl": "Verwarmingstoestel",
+   "name_fr": "Appareil de chauffage",
+   "parameters": [
+    {
+     "name": "Storage",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Fan",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ],
+   "types": {
+    "Standard": {},
+    "Storage": {
+     "Storage": true
+    },
+    "Storage with built-in fan": {
+     "Storage": true,
+     "Fan": true
+    }
+   },
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       202.8
+      ],
+      [
+       444.6,
+       202.8
+      ],
+      [
+       444.6,
+       -210.6
+      ],
+      [
+       0.0,
+       -210.6
+      ],
+      [
+       0.0,
+       202.8
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       55.6,
+       202.8
+      ],
+      [
+       55.6,
+       -210.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       111.1,
+       202.8
+      ],
+      [
+       111.1,
+       -210.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       166.7,
+       202.8
+      ],
+      [
+       166.7,
+       -210.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       222.3,
+       202.8
+      ],
+      [
+       222.3,
+       -210.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       277.9,
+       202.8
+      ],
+      [
+       277.9,
+       -210.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       333.5,
+       202.8
+      ],
+      [
+       333.5,
+       -210.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       389.0,
+       202.8
+      ],
+      [
+       389.0,
+       -210.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       210.6
+      ],
+      [
+       585.0,
+       210.6
+      ],
+      [
+       585.0,
+       -198.9
+      ],
+      [
+       0.0,
+       -198.9
+      ],
+      [
+       0.0,
+       210.6
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       89.7,
+       167.7
+      ],
+      [
+       499.2,
+       167.7
+      ],
+      [
+       499.2,
+       -152.1
+      ],
+      [
+       89.7,
+       -152.1
+      ],
+      [
+       89.7,
+       167.7
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       144.3,
+       167.7
+      ],
+      [
+       144.3,
+       -152.1
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       195.0,
+       167.7
+      ],
+      [
+       195.0,
+       -152.1
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       245.7,
+       167.7
+      ],
+      [
+       245.7,
+       -152.1
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       296.4,
+       167.7
+      ],
+      [
+       296.4,
+       -152.1
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       347.1,
+       167.7
+      ],
+      [
+       347.1,
+       -152.1
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       397.8,
+       167.7
+      ],
+      [
+       397.8,
+       -152.1
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       448.5,
+       167.7
+      ],
+      [
+       448.5,
+       -152.1
+      ]
+     ],
+     "visible": "and(Storage, not(Fan))"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       202.8
+      ],
+      [
+       612.3,
+       202.8
+      ],
+      [
+       612.3,
+       -198.9
+      ],
+      [
+       0.0,
+       -198.9
+      ],
+      [
+       0.0,
+       202.8
+      ]
+     ],
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "line": [
+      [
+       50.7,
+       85.8
+      ],
+      [
+       292.5,
+       85.8
+      ],
+      [
+       292.5,
+       -101.4
+      ],
+      [
+       50.7,
+       -101.4
+      ],
+      [
+       50.7,
+       85.8
+      ]
+     ],
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "line": [
+      [
+       101.4,
+       85.8
+      ],
+      [
+       101.4,
+       -101.4
+      ]
+     ],
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "line": [
+      [
+       148.2,
+       85.8
+      ],
+      [
+       148.2,
+       -101.4
+      ]
+     ],
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "line": [
+      [
+       195.0,
+       85.8
+      ],
+      [
+       195.0,
+       -101.4
+      ]
+     ],
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "line": [
+      [
+       241.8,
+       85.8
+      ],
+      [
+       241.8,
+       -101.4
+      ]
+     ],
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "arc": {
+      "centre": [
+       409.5,
+       7.8
+      ],
+      "radius": 39.0,
+      "from": 269.99,
+      "to": 629.99
+     },
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "arc": {
+      "centre": [
+       479.7,
+       7.8
+      ],
+      "radius": 39.0,
+      "from": 269.99,
+      "to": 629.99
+     },
+     "visible": "and(Storage, Fan)"
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       444.6,
+       0.0
+      ],
+      [
+       794.6,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       222.3,
+       202.8
+      ],
+      [
+       222.3,
+       552.8
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       222.3,
+       -210.6
+      ],
+      [
+       222.3,
+       -560.6
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ]
+  },
+  "Water heater": {
+   "layer": "appliance",
+   "name_nl": "Boiler",
+   "name_fr": "Chauffe-eau électrique",
+   "parameters": [
+    {
+     "name": "Storage",
+     "kind": "yesno",
+     "value": false
+    }
+   ],
+   "types": {
+    "Standard": {},
+    "Storage": {
+     "Storage": true
+    }
+   },
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 288.6,
+      "from": 269.99,
+      "to": 629.99
+     },
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       -226.2,
+       179.2
+      ],
+      [
+       -226.2,
+       -179.2
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       -150.8,
+       246.1
+      ],
+      [
+       -150.8,
+       -246.1
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       -75.4,
+       278.6
+      ],
+      [
+       -75.4,
+       -278.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       -0.0,
+       288.6
+      ],
+      [
+       -0.0,
+       -288.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       75.3,
+       278.6
+      ],
+      [
+       75.3,
+       -278.6
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       150.7,
+       246.1
+      ],
+      [
+       150.7,
+       -246.1
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "line": [
+      [
+       226.1,
+       179.3
+      ],
+      [
+       226.1,
+       -179.3
+      ]
+     ],
+     "visible": "not(Storage)"
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 300.3,
+      "from": 269.99,
+      "to": 629.99
+     },
+     "visible": "Storage"
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 210.6,
+      "from": 269.99,
+      "to": 629.99
+     },
+     "visible": "Storage"
+    },
+    {
+     "line": [
+      [
+       -140.4,
+       157.0
+      ],
+      [
+       -140.4,
+       -157.0
+      ]
+     ],
+     "visible": "Storage"
+    },
+    {
+     "line": [
+      [
+       -70.2,
+       198.6
+      ],
+      [
+       -70.2,
+       -198.6
+      ]
+     ],
+     "visible": "Storage"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       210.6
+      ],
+      [
+       0.0,
+       -210.6
+      ]
+     ],
+     "visible": "Storage"
+    },
+    {
+     "line": [
+      [
+       70.2,
+       198.6
+      ],
+      [
+       70.2,
+       -198.6
+      ]
+     ],
+     "visible": "Storage"
+    },
+    {
+     "line": [
+      [
+       140.4,
+       157.0
+      ],
+      [
+       140.4,
+       -157.0
+      ]
+     ],
+     "visible": "Storage"
+    }
+   ]
+  },
+  "Fixed appliance, general symbol": {
+   "layer": "consumer",
+   "name_nl": "Vast elektrisch huishoudtoestel, algemeen symbool",
+   "name_fr": "Appareil électrodomestique fixe, symbole général",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       214.5
+      ],
+      [
+       425.1,
+       214.5
+      ],
+      [
+       425.1,
+       -214.5
+      ],
+      [
+       0.0,
+       -214.5
+      ],
+      [
+       0.0,
+       214.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       425.1,
+       0.0
+      ],
+      [
+       775.1,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       212.6,
+       214.5
+      ],
+      [
+       212.6,
+       564.5
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       212.6,
+       -214.5
+      ],
+      [
+       212.6,
+       -564.5
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Cooker": {
+   "layer": "consumer",
+   "name_nl": "Elektrisch fornuis, elektrische kookplaat",
+   "name_fr": "Cuisinière électrique, taque de cuisson électrique",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       214.5
+      ],
+      [
+       432.9,
+       214.5
+      ],
+      [
+       432.9,
+       -214.5
+      ],
+      [
+       0.0,
+       -214.5
+      ],
+      [
+       0.0,
+       214.5
+      ]
+     ]
+    },
+    {
+     "dot": {
+      "centre": [
+       101.4,
+       113.1
+      ],
+      "radius": 54.6
+     }
+    },
+    {
+     "dot": {
+      "centre": [
+       308.1,
+       113.1
+      ],
+      "radius": 54.6
+     }
+    },
+    {
+     "dot": {
+      "centre": [
+       308.1,
+       -105.3
+      ],
+      "radius": 54.6
+     }
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       432.9,
+       0.0
+      ],
+      [
+       782.9,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       216.4,
+       214.5
+      ],
+      [
+       216.4,
+       564.5
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       216.4,
+       -214.5
+      ],
+      [
+       216.4,
+       -564.5
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Microwave oven": {
+   "layer": "consumer",
+   "name_nl": "Microgolven",
+   "name_fr": "Four à micro-ondes",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       214.5
+      ],
+      [
+       444.6,
+       214.5
+      ],
+      [
+       444.6,
+       -214.5
+      ],
+      [
+       0.0,
+       -214.5
+      ],
+      [
+       0.0,
+       214.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       113.1,
+       78.0
+      ],
+      [
+       126.7,
+       91.4
+      ],
+      [
+       140.4,
+       102.8
+      ],
+      [
+       154.1,
+       110.4
+      ],
+      [
+       167.7,
+       113.1
+      ],
+      [
+       181.4,
+       110.4
+      ],
+      [
+       195.0,
+       102.8
+      ],
+      [
+       208.6,
+       91.4
+      ],
+      [
+       222.3,
+       78.0
+      ],
+      [
+       235.9,
+       64.6
+      ],
+      [
+       249.6,
+       53.2
+      ],
+      [
+       263.3,
+       45.6
+      ],
+      [
+       276.9,
+       42.9
+      ],
+      [
+       290.6,
+       45.6
+      ],
+      [
+       304.2,
+       53.2
+      ],
+      [
+       317.8,
+       64.6
+      ],
+      [
+       331.5,
+       78.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       113.1,
+       -78.0
+      ],
+      [
+       126.7,
+       -64.6
+      ],
+      [
+       140.4,
+       -53.2
+      ],
+      [
+       154.1,
+       -45.6
+      ],
+      [
+       167.7,
+       -42.9
+      ],
+      [
+       181.4,
+       -45.6
+      ],
+      [
+       195.0,
+       -53.2
+      ],
+      [
+       208.6,
+       -64.6
+      ],
+      [
+       222.3,
+       -78.0
+      ],
+      [
+       235.9,
+       -91.4
+      ],
+      [
+       249.6,
+       -102.8
+      ],
+      [
+       263.3,
+       -110.4
+      ],
+      [
+       276.9,
+       -113.1
+      ],
+      [
+       290.6,
+       -110.4
+      ],
+      [
+       304.2,
+       -102.8
+      ],
+      [
+       317.8,
+       -91.4
+      ],
+      [
+       331.5,
+       -78.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       444.6,
+       0.0
+      ],
+      [
+       794.6,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       222.3,
+       214.5
+      ],
+      [
+       222.3,
+       564.5
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       222.3,
+       -214.5
+      ],
+      [
+       222.3,
+       -564.5
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Electric oven": {
+   "layer": "consumer",
+   "name_nl": "Elektrische oven",
+   "name_fr": "Four électrique",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       198.9
+      ],
+      [
+       413.4,
+       198.9
+      ],
+      [
+       413.4,
+       -198.9
+      ],
+      [
+       0.0,
+       -198.9
+      ],
+      [
+       0.0,
+       198.9
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       132.6
+      ],
+      [
+       413.4,
+       132.6
+      ]
+     ]
+    },
+    {
+     "dot": {
+      "centre": [
+       206.7,
+       -85.8
+      ],
+      "radius": 54.6
+     }
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       413.4,
+       0.0
+      ],
+      [
+       763.4,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       206.7,
+       198.9
+      ],
+      [
+       206.7,
+       548.9
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       206.7,
+       -198.9
+      ],
+      [
+       206.7,
+       -548.9
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Washing machine": {
+   "layer": "consumer",
+   "name_nl": "Wasmachine",
+   "name_fr": "Lave-linge",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 179.4,
+      "from": 270.0,
+      "to": 630.0
+     }
+    },
+    {
+     "dot": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 50.7
+     }
+    },
+    {
+     "line": [
+      [
+       "-Width / 2 - 350",
+       0.0
+      ],
+      [
+       "-Width / 2",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       "Width / 2",
+       0.0
+      ],
+      [
+       "Width / 2 + 350",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "Depth / 2"
+      ],
+      [
+       0.0,
+       "Depth / 2 + 350"
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "-Depth / 2"
+      ],
+      [
+       0.0,
+       "-Depth / 2 - 350"
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    },
+    {
+     "name": "Width",
+     "kind": "length",
+     "value": 598.0
+    },
+    {
+     "name": "Depth",
+     "kind": "length",
+     "value": 600.0
+    },
+    {
+     "name": "Height",
+     "kind": "length",
+     "value": 815.0
+    },
+    {
+     "name": "Plinth Height",
+     "kind": "length",
+     "value": 90.0
+    },
+    {
+     "name": "Plinth Depth",
+     "kind": "length",
+     "value": 80.0
+    },
+    {
+     "name": "Load",
+     "kind": "number",
+     "instance": true,
+     "value": 2000.0
+    },
+    {
+     "name": "Drum Radius",
+     "kind": "length",
+     "value": 190.0
+    },
+    {
+     "name": "Drum Depth",
+     "kind": "length",
+     "value": 25.0
+    }
+   ],
+   "default_elevation": 20.0,
+   "forms": [
+    {
+     "profile": [
+      [
+       "-Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "Depth / 2"
+      ],
+      [
+       "-Width / 2",
+       "Depth / 2"
+      ]
+     ],
+     "from": 0.0,
+     "to": "Height"
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 + Plinth Depth"
+      ],
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 + Plinth Depth"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 + 1"
+      ],
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 + 1"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "plane": "xz",
+     "circle": {
+      "centre": [
+       0.0,
+       "Height * 0.54"
+      ],
+      "radius": "Drum Radius"
+     },
+     "from": "-Depth / 2 - 1",
+     "to": "-Depth / 2 + Drum Depth",
+     "void": true
+    }
+   ],
+   "connectors": [
+    {
+     "kind": "power",
+     "system": "power-balanced",
+     "poles": 1,
+     "voltage": 127,
+     "load_va": "Load",
+     "power_factor": 0.9,
+     "classification": "equipment"
+    }
+   ]
+  },
+  "Tumble dryer": {
+   "layer": "consumer",
+   "name_nl": "Droogkast",
+   "name_fr": "Sèche-linge",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -46.8,
+       117.0
+      ],
+      "radius": 46.8,
+      "from": 270.0,
+      "to": 630.0
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       46.8,
+       117.0
+      ],
+      "radius": 46.8,
+      "from": 270.0,
+      "to": 630.0
+     }
+    },
+    {
+     "dot": {
+      "centre": [
+       0.0,
+       -70.2
+      ],
+      "radius": 46.8
+     }
+    },
+    {
+     "line": [
+      [
+       "-Width / 2 - 350",
+       0.0
+      ],
+      [
+       "-Width / 2",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       "Width / 2",
+       0.0
+      ],
+      [
+       "Width / 2 + 350",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "Depth / 2"
+      ],
+      [
+       0.0,
+       "Depth / 2 + 350"
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "-Depth / 2"
+      ],
+      [
+       0.0,
+       "-Depth / 2 - 350"
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    },
+    {
+     "name": "Width",
+     "kind": "length",
+     "value": 598.0
+    },
+    {
+     "name": "Depth",
+     "kind": "length",
+     "value": 600.0
+    },
+    {
+     "name": "Height",
+     "kind": "length",
+     "value": 815.0
+    },
+    {
+     "name": "Plinth Height",
+     "kind": "length",
+     "value": 90.0
+    },
+    {
+     "name": "Plinth Depth",
+     "kind": "length",
+     "value": 80.0
+    },
+    {
+     "name": "Load",
+     "kind": "number",
+     "instance": true,
+     "value": 2000.0
+    },
+    {
+     "name": "Drum Radius",
+     "kind": "length",
+     "value": 190.0
+    },
+    {
+     "name": "Drum Depth",
+     "kind": "length",
+     "value": 10.0
+    }
+   ],
+   "default_elevation": 20.0,
+   "forms": [
+    {
+     "profile": [
+      [
+       "-Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "Depth / 2"
+      ],
+      [
+       "-Width / 2",
+       "Depth / 2"
+      ]
+     ],
+     "from": 0.0,
+     "to": "Height"
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 + Plinth Depth"
+      ],
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 + Plinth Depth"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 + 1"
+      ],
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 + 1"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "plane": "xz",
+     "circle": {
+      "centre": [
+       0.0,
+       "Height * 0.54"
+      ],
+      "radius": "Drum Radius"
+     },
+     "from": "-Depth / 2 - 1",
+     "to": "-Depth / 2 + Drum Depth",
+     "void": true
+    }
+   ],
+   "connectors": [
+    {
+     "kind": "power",
+     "system": "power-balanced",
+     "poles": 1,
+     "voltage": 127,
+     "load_va": "Load",
+     "power_factor": 0.9,
+     "classification": "equipment"
+    }
+   ]
+  },
+  "Dishwasher": {
+   "layer": "consumer",
+   "name_nl": "Afwasmachine",
+   "name_fr": "Lave-vaisselle",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       0.0,
+       0.0
+      ],
+      "radius": 85.8,
+      "from": 270.0,
+      "to": 630.0
+     }
+    },
+    {
+     "line": [
+      [
+       "-Width / 2",
+       "Depth / 2"
+      ],
+      [
+       -57.4,
+       63.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       "Width / 2",
+       "Depth / 2"
+      ],
+      [
+       57.4,
+       63.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       "-Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       -57.4,
+       -63.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       "Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       57.4,
+       -63.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       "-Width / 2 - 350",
+       0.0
+      ],
+      [
+       "-Width / 2",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       "Width / 2",
+       0.0
+      ],
+      [
+       "Width / 2 + 350",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "Depth / 2"
+      ],
+      [
+       0.0,
+       "Depth / 2 + 350"
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "-Depth / 2"
+      ],
+      [
+       0.0,
+       "-Depth / 2 - 350"
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    },
+    {
+     "name": "Width",
+     "kind": "length",
+     "value": 598.0
+    },
+    {
+     "name": "Depth",
+     "kind": "length",
+     "value": 600.0
+    },
+    {
+     "name": "Height",
+     "kind": "length",
+     "value": 815.0
+    },
+    {
+     "name": "Plinth Height",
+     "kind": "length",
+     "value": 90.0
+    },
+    {
+     "name": "Plinth Depth",
+     "kind": "length",
+     "value": 80.0
+    },
+    {
+     "name": "Load",
+     "kind": "number",
+     "instance": true,
+     "value": 2000.0
+    }
+   ],
+   "default_elevation": 20.0,
+   "forms": [
+    {
+     "profile": [
+      [
+       "-Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "Depth / 2"
+      ],
+      [
+       "-Width / 2",
+       "Depth / 2"
+      ]
+     ],
+     "from": 0.0,
+     "to": "Height"
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 + Plinth Depth"
+      ],
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 + Plinth Depth"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 + 1"
+      ],
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 + 1"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    }
+   ],
+   "connectors": [
+    {
+     "kind": "power",
+     "system": "power-balanced",
+     "poles": 1,
+     "voltage": 127,
+     "load_va": "Load",
+     "power_factor": 0.9,
+     "classification": "equipment"
+    }
+   ]
+  },
+  "Refrigerator": {
+   "layer": "consumer",
+   "name_nl": "Koelkast",
+   "name_fr": "Frigo",
+   "symbols": [
+    {
+     "line": [
+      [
+       10.0,
+       14.0
+      ],
+      [
+       10.0,
+       110.0
+      ],
+      [
+       -10.0,
+       110.0
+      ],
+      [
+       -10.0,
+       14.0
+      ],
+      [
+       10.0,
+       14.0
+      ]
+     ],
+     "visible": "not(Freezer Compartment)"
+    },
+    {
+     "line": [
+      [
+       -10.2,
+       13.8
+      ],
+      [
+       -101.5,
+       43.5
+      ],
+      [
+       -107.7,
+       24.5
+      ],
+      [
+       -16.4,
+       -5.2
+      ],
+      [
+       -10.2,
+       13.8
+      ]
+     ],
+     "visible": "not(Freezer Compartment)"
+    },
+    {
+     "line": [
+      [
+       -16.3,
+       -5.4
+      ],
+      [
+       -72.7,
+       -83.1
+      ],
+      [
+       -56.6,
+       -94.9
+      ],
+      [
+       -0.1,
+       -17.2
+      ],
+      [
+       -16.3,
+       -5.4
+      ]
+     ],
+     "visible": "not(Freezer Compartment)"
+    },
+    {
+     "line": [
+      [
+       0.1,
+       -17.2
+      ],
+      [
+       56.6,
+       -94.9
+      ],
+      [
+       72.7,
+       -83.1
+      ],
+      [
+       16.3,
+       -5.4
+      ],
+      [
+       0.1,
+       -17.2
+      ]
+     ],
+     "visible": "not(Freezer Compartment)"
+    },
+    {
+     "line": [
+      [
+       16.4,
+       -5.2
+      ],
+      [
+       107.7,
+       24.5
+      ],
+      [
+       101.5,
+       43.5
+      ],
+      [
+       10.2,
+       13.8
+      ],
+      [
+       16.4,
+       -5.2
+      ]
+     ],
+     "visible": "not(Freezer Compartment)"
+    },
+    {
+     "line": [
+      [
+       -121.0,
+       12.0
+      ],
+      [
+       -121.0,
+       95.0
+      ],
+      [
+       -139.0,
+       95.0
+      ],
+      [
+       -139.0,
+       12.0
+      ],
+      [
+       -121.0,
+       12.0
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       -138.6,
+       12.3
+      ],
+      [
+       -217.6,
+       37.9
+      ],
+      [
+       -223.1,
+       20.8
+      ],
+      [
+       -144.2,
+       -4.9
+      ],
+      [
+       -138.6,
+       12.3
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       -144.3,
+       -4.4
+      ],
+      [
+       -193.1,
+       -71.6
+      ],
+      [
+       -178.6,
+       -82.1
+      ],
+      [
+       -129.8,
+       -15.0
+      ],
+      [
+       -144.3,
+       -4.4
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       -130.2,
+       -15.0
+      ],
+      [
+       -81.4,
+       -82.1
+      ],
+      [
+       -66.9,
+       -71.6
+      ],
+      [
+       -115.7,
+       -4.4
+      ],
+      [
+       -130.2,
+       -15.0
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       -115.8,
+       -4.9
+      ],
+      [
+       -36.9,
+       20.8
+      ],
+      [
+       -42.4,
+       37.9
+      ],
+      [
+       -121.4,
+       12.3
+      ],
+      [
+       -115.8,
+       -4.9
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       139.0,
+       12.0
+      ],
+      [
+       139.0,
+       95.0
+      ],
+      [
+       121.0,
+       95.0
+      ],
+      [
+       121.0,
+       12.0
+      ],
+      [
+       139.0,
+       12.0
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       121.4,
+       12.3
+      ],
+      [
+       42.4,
+       37.9
+      ],
+      [
+       36.9,
+       20.8
+      ],
+      [
+       115.8,
+       -4.9
+      ],
+      [
+       121.4,
+       12.3
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       115.7,
+       -4.4
+      ],
+      [
+       66.9,
+       -71.6
+      ],
+      [
+       81.4,
+       -82.1
+      ],
+      [
+       130.2,
+       -15.0
+      ],
+      [
+       115.7,
+       -4.4
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       129.8,
+       -15.0
+      ],
+      [
+       178.6,
+       -82.1
+      ],
+      [
+       193.1,
+       -71.6
+      ],
+      [
+       144.3,
+       -4.4
+      ],
+      [
+       129.8,
+       -15.0
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       144.2,
+       -4.9
+      ],
+      [
+       223.1,
+       20.8
+      ],
+      [
+       217.6,
+       37.9
+      ],
+      [
+       138.6,
+       12.3
+      ],
+      [
+       144.2,
+       -4.9
+      ]
+     ],
+     "visible": "Freezer Compartment"
+    },
+    {
+     "line": [
+      [
+       "-Width / 2 - 350",
+       0.0
+      ],
+      [
+       "-Width / 2",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       "Width / 2",
+       0.0
+      ],
+      [
+       "Width / 2 + 350",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "Depth / 2"
+      ],
+      [
+       0.0,
+       "Depth / 2 + 350"
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "-Depth / 2"
+      ],
+      [
+       0.0,
+       "-Depth / 2 - 350"
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    },
+    {
+     "name": "Width",
+     "kind": "length",
+     "value": 598.0
+    },
+    {
+     "name": "Depth",
+     "kind": "length",
+     "value": 600.0
+    },
+    {
+     "name": "Height",
+     "kind": "length",
+     "value": 815.0
+    },
+    {
+     "name": "Plinth Height",
+     "kind": "length",
+     "value": 90.0
+    },
+    {
+     "name": "Plinth Depth",
+     "kind": "length",
+     "value": 80.0
+    },
+    {
+     "name": "Load",
+     "kind": "number",
+     "instance": true,
+     "value": 150.0
+    },
+    {
+     "name": "Freezer Compartment",
+     "kind": "yesno",
+     "value": false
+    },
+    {
+     "name": "Freezer Height",
+     "kind": "length",
+     "value": 550.0
+    }
+   ],
+   "default_elevation": 20.0,
+   "types": {
+    "Single door": {},
+    "Two doors (freezer compartment)": {
+     "Height": 1750.0,
+     "Freezer Compartment": true
+    }
+   },
+   "forms": [
+    {
+     "profile": [
+      [
+       "-Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "Depth / 2"
+      ],
+      [
+       "-Width / 2",
+       "Depth / 2"
+      ]
+     ],
+     "from": 0.0,
+     "to": "Height"
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 + Plinth Depth"
+      ],
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 + Plinth Depth"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 + 1"
+      ],
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 + 1"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 + 12"
+      ],
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 + 12"
+      ]
+     ],
+     "from": "Freezer Height - 6",
+     "to": "Freezer Height + 6",
+     "void": true,
+     "visible": "Freezer Compartment"
+    }
+   ],
+   "connectors": [
+    {
+     "kind": "power",
+     "system": "power-balanced",
+     "poles": 1,
+     "voltage": 127,
+     "load_va": "Load",
+     "power_factor": 0.9,
+     "classification": "equipment"
+    }
+   ]
+  },
+  "Freezer": {
+   "layer": "consumer",
+   "name_nl": "Diepvriezer",
+   "name_fr": "Congélateur, surgélateur",
+   "symbols": [
+    {
+     "line": [
+      [
+       -177.0,
+       10.0
+      ],
+      [
+       -177.0,
+       80.0
+      ],
+      [
+       -193.0,
+       80.0
+      ],
+      [
+       -193.0,
+       10.0
+      ],
+      [
+       -177.0,
+       10.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -192.0,
+       10.7
+      ],
+      [
+       -258.6,
+       32.3
+      ],
+      [
+       -263.6,
+       17.1
+      ],
+      [
+       -197.0,
+       -4.5
+      ],
+      [
+       -192.0,
+       10.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -197.3,
+       -3.4
+      ],
+      [
+       -238.5,
+       -60.0
+      ],
+      [
+       -225.6,
+       -69.4
+      ],
+      [
+       -184.4,
+       -12.8
+      ],
+      [
+       -197.3,
+       -3.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -185.6,
+       -12.8
+      ],
+      [
+       -144.4,
+       -69.4
+      ],
+      [
+       -131.5,
+       -60.0
+      ],
+      [
+       -172.7,
+       -3.4
+      ],
+      [
+       -185.6,
+       -12.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -173.0,
+       -4.5
+      ],
+      [
+       -106.4,
+       17.1
+      ],
+      [
+       -111.4,
+       32.3
+      ],
+      [
+       -178.0,
+       10.7
+      ],
+      [
+       -173.0,
+       -4.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       8.0,
+       10.0
+      ],
+      [
+       8.0,
+       80.0
+      ],
+      [
+       -8.0,
+       80.0
+      ],
+      [
+       -8.0,
+       10.0
+      ],
+      [
+       8.0,
+       10.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -7.0,
+       10.7
+      ],
+      [
+       -73.6,
+       32.3
+      ],
+      [
+       -78.6,
+       17.1
+      ],
+      [
+       -12.0,
+       -4.5
+      ],
+      [
+       -7.0,
+       10.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -12.3,
+       -3.4
+      ],
+      [
+       -53.5,
+       -60.0
+      ],
+      [
+       -40.6,
+       -69.4
+      ],
+      [
+       0.6,
+       -12.8
+      ],
+      [
+       -12.3,
+       -3.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -0.6,
+       -12.8
+      ],
+      [
+       40.6,
+       -69.4
+      ],
+      [
+       53.5,
+       -60.0
+      ],
+      [
+       12.3,
+       -3.4
+      ],
+      [
+       -0.6,
+       -12.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       12.0,
+       -4.5
+      ],
+      [
+       78.6,
+       17.1
+      ],
+      [
+       73.6,
+       32.3
+      ],
+      [
+       7.0,
+       10.7
+      ],
+      [
+       12.0,
+       -4.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       193.0,
+       10.0
+      ],
+      [
+       193.0,
+       80.0
+      ],
+      [
+       177.0,
+       80.0
+      ],
+      [
+       177.0,
+       10.0
+      ],
+      [
+       193.0,
+       10.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       178.0,
+       10.7
+      ],
+      [
+       111.4,
+       32.3
+      ],
+      [
+       106.4,
+       17.1
+      ],
+      [
+       173.0,
+       -4.5
+      ],
+      [
+       178.0,
+       10.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       172.7,
+       -3.4
+      ],
+      [
+       131.5,
+       -60.0
+      ],
+      [
+       144.4,
+       -69.4
+      ],
+      [
+       185.6,
+       -12.8
+      ],
+      [
+       172.7,
+       -3.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       184.4,
+       -12.8
+      ],
+      [
+       225.6,
+       -69.4
+      ],
+      [
+       238.5,
+       -60.0
+      ],
+      [
+       197.3,
+       -3.4
+      ],
+      [
+       184.4,
+       -12.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       197.0,
+       -4.5
+      ],
+      [
+       263.6,
+       17.1
+      ],
+      [
+       258.6,
+       32.3
+      ],
+      [
+       192.0,
+       10.7
+      ],
+      [
+       197.0,
+       -4.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       "-Width / 2 - 350",
+       0.0
+      ],
+      [
+       "-Width / 2",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       "Width / 2",
+       0.0
+      ],
+      [
+       "Width / 2 + 350",
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "Depth / 2"
+      ],
+      [
+       0.0,
+       "Depth / 2 + 350"
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       0.0,
+       "-Depth / 2"
+      ],
+      [
+       0.0,
+       "-Depth / 2 - 350"
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    },
+    {
+     "name": "Width",
+     "kind": "length",
+     "value": 598.0
+    },
+    {
+     "name": "Depth",
+     "kind": "length",
+     "value": 600.0
+    },
+    {
+     "name": "Height",
+     "kind": "length",
+     "value": 815.0
+    },
+    {
+     "name": "Plinth Height",
+     "kind": "length",
+     "value": 90.0
+    },
+    {
+     "name": "Plinth Depth",
+     "kind": "length",
+     "value": 80.0
+    },
+    {
+     "name": "Load",
+     "kind": "number",
+     "instance": true,
+     "value": 150.0
+    },
+    {
+     "name": "Horizontal",
+     "kind": "yesno",
+     "value": false
+    }
+   ],
+   "default_elevation": 20.0,
+   "types": {
+    "Upright": {},
+    "Horizontal (chest)": {
+     "Width": 1000.0,
+     "Depth": 600.0,
+     "Height": 850.0,
+     "Horizontal": true
+    }
+   },
+   "forms": [
+    {
+     "profile": [
+      [
+       "-Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "-Depth / 2"
+      ],
+      [
+       "Width / 2",
+       "Depth / 2"
+      ],
+      [
+       "-Width / 2",
+       "Depth / 2"
+      ]
+     ],
+     "from": 0.0,
+     "to": "Height"
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 + Plinth Depth"
+      ],
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 + Plinth Depth"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 - Plinth Depth"
+      ],
+      [
+       "Width / 2 + 1",
+       "Depth / 2 + 1"
+      ],
+      [
+       "-Width / 2 - 1",
+       "Depth / 2 + 1"
+      ]
+     ],
+     "from": -1.0,
+     "to": "Plinth Height",
+     "void": true
+    },
+    {
+     "profile": [
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 - 1"
+      ],
+      [
+       "Width / 2 + 1",
+       "-Depth / 2 + 12"
+      ],
+      [
+       "-Width / 2 - 1",
+       "-Depth / 2 + 12"
+      ]
+     ],
+     "from": "Height - 55",
+     "to": "Height - 45",
+     "void": true,
+     "visible": "Horizontal"
+    }
+   ],
+   "connectors": [
+    {
+     "kind": "power",
+     "system": "power-balanced",
+     "poles": 1,
+     "voltage": 127,
+     "load_va": "Load",
+     "power_factor": 0.9,
+     "classification": "equipment"
+    }
+   ]
+  },
+  "Motor": {
+   "layer": "consumer",
+   "name_nl": "Motor",
+   "name_fr": "Moteur",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       257.4,
+       0.0
+      ],
+      "radius": 257.4,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "text": {
+      "at": [
+       257.4,
+       0.0
+      ],
+      "height": 156.0,
+      "value": "M",
+      "align": "center"
+     }
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       514.8,
+       0.0
+      ],
+      [
+       864.8,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       257.4,
+       257.4
+      ],
+      [
+       257.4,
+       607.4
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       257.4,
+       -257.4
+      ],
+      [
+       257.4,
+       -607.4
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "EV charger": {
+   "layer": "consumer",
+   "name_nl": "Laadinrichting voor elektrische wegvoertuigen",
+   "name_fr": "Borne de charge pour véhicules électriques routiers",
+   "symbols": [
+    {
+     "line": [
+      [
+       -218.4,
+       421.2
+      ],
+      [
+       218.4,
+       421.2
+      ],
+      [
+       218.4,
+       -339.3
+      ],
+      [
+       -218.4,
+       -339.3
+      ],
+      [
+       -218.4,
+       421.2
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -152.1,
+       351.0
+      ],
+      [
+       152.1,
+       351.0
+      ],
+      [
+       152.1,
+       257.4
+      ],
+      [
+       -152.1,
+       257.4
+      ],
+      [
+       -152.1,
+       351.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -280.8,
+       -331.5
+      ],
+      [
+       280.8,
+       -331.5
+      ],
+      [
+       280.8,
+       -421.2
+      ],
+      [
+       -280.8,
+       -421.2
+      ],
+      [
+       -280.8,
+       -331.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       7.8,
+       156.0
+      ],
+      [
+       7.8,
+       -261.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       319.8,
+       409.5
+      ],
+      [
+       366.6,
+       409.5
+      ],
+      [
+       366.6,
+       323.7
+      ],
+      [
+       319.8,
+       323.7
+      ],
+      [
+       319.8,
+       409.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       343.2,
+       323.7
+      ],
+      [
+       343.2,
+       -261.3
+      ],
+      [
+       288.6,
+       -261.3
+      ],
+      [
+       288.6,
+       179.4
+      ],
+      [
+       218.4,
+       179.4
+      ]
+     ]
+    },
+    {
+     "text": {
+      "at": [
+       -81.9,
+       62.4
+      ],
+      "height": 93.6,
+      "value": "V",
+      "align": "center"
+     }
+    },
+    {
+     "text": {
+      "at": [
+       81.9,
+       62.4
+      ],
+      "height": 93.6,
+      "value": "E",
+      "align": "center"
+     }
+    },
+    {
+     "text": {
+      "at": [
+       -81.9,
+       -105.3
+      ],
+      "height": 93.6,
+      "value": "E",
+      "align": "center"
+     }
+    },
+    {
+     "text": {
+      "at": [
+       81.9,
+       -105.3
+      ],
+      "height": 93.6,
+      "value": "V",
+      "align": "center"
+     }
+    }
+   ]
+  },
+  "kWh meter": {
+   "layer": "consumer",
+   "name_nl": "kWh-teller",
+   "name_fr": "Compteur kWh",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       200.9
+      ],
+      [
+       397.8,
+       200.9
+      ],
+      [
+       397.8,
+       -200.9
+      ],
+      [
+       0.0,
+       -200.9
+      ],
+      [
+       0.0,
+       200.9
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       140.4
+      ],
+      [
+       397.8,
+       140.4
+      ]
+     ]
+    },
+    {
+     "text": {
+      "at": [
+       198.9,
+       -31.2
+      ],
+      "height": 117.0,
+      "value": "kWh",
+      "align": "center"
+     }
+    },
+    {
+     "line": [
+      [
+       -350.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 1"
+    },
+    {
+     "line": [
+      [
+       397.8,
+       0.0
+      ],
+      [
+       747.8,
+       0.0
+      ]
+     ],
+     "visible": "Lead = 2"
+    },
+    {
+     "line": [
+      [
+       198.9,
+       200.9
+      ],
+      [
+       198.9,
+       550.9
+      ]
+     ],
+     "visible": "Lead = 3"
+    },
+    {
+     "line": [
+      [
+       198.9,
+       -200.9
+      ],
+      [
+       198.9,
+       -550.9
+      ]
+     ],
+     "visible": "Lead = 4"
+    }
+   ],
+   "parameters": [
+    {
+     "name": "Lead",
+     "kind": "integer",
+     "instance": true,
+     "value": 0
+    }
+   ]
+  },
+  "Transformer": {
+   "layer": "source",
+   "name_nl": "Transformator",
+   "name_fr": "Transformateur",
+   "symbols": [
+    {
+     "line": [
+      [
+       -483.6,
+       -0.0
+      ],
+      [
+       -347.1,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -132.6,
+       0.0
+      ],
+      "radius": 214.5,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       132.6,
+       0.0
+      ],
+      "radius": 214.5,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       347.1,
+       -0.0
+      ],
+      [
+       483.6,
+       -0.0
+      ]
+     ]
+    }
+   ]
+  },
+  "PV panel": {
+   "layer": "source",
+   "name_nl": "Fotovoltaïsch paneel",
+   "name_fr": "Panneau solaire",
+   "symbols": [
+    {
+     "line": [
+      [
+       -245.7,
+       245.7
+      ],
+      [
+       245.7,
+       245.7
+      ],
+      [
+       245.7,
+       -245.7
+      ],
+      [
+       -245.7,
+       -245.7
+      ],
+      [
+       -245.7,
+       245.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -245.7,
+       -0.0
+      ],
+      [
+       245.7,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       85.8,
+       202.8
+      ],
+      [
+       28.5,
+       145.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -15.6,
+       101.4
+      ],
+      [
+       12.0,
+       162.1
+      ],
+      [
+       45.1,
+       129.0
+      ],
+      [
+       -15.6,
+       101.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       23.4,
+       234.0
+      ],
+      [
+       -33.9,
+       176.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -78.0,
+       132.6
+      ],
+      [
+       -50.4,
+       193.3
+      ],
+      [
+       -17.3,
+       160.2
+      ],
+      [
+       -78.0,
+       132.6
+      ]
+     ]
+    }
+   ]
+  },
+  "PV panel, element": {
+   "layer": "source",
+   "name_nl": "Fotovoltaïsch paneel (paneel)",
+   "name_fr": "Panneau solaire (panneau)",
+   "symbols": [
+    {
+     "line": [
+      [
+       -210.6,
+       273.0
+      ],
+      [
+       210.6,
+       273.0
+      ],
+      [
+       210.6,
+       -273.0
+      ],
+      [
+       -210.6,
+       -273.0
+      ],
+      [
+       -210.6,
+       273.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -195.0,
+       273.0
+      ],
+      [
+       0.0,
+       -31.2
+      ],
+      [
+       195.0,
+       273.0
+      ]
+     ]
+    }
+   ]
+  },
+  "Rectifier / inverter AC-DC": {
+   "layer": "source",
+   "name_nl": "Gelijkrichter/Omvormer AC <-> DC",
+   "name_fr": "Redresseur/Onduleur AC <-> DC",
+   "symbols": [
+    {
+     "line": [
+      [
+       -261.3,
+       234.0
+      ],
+      [
+       261.3,
+       234.0
+      ],
+      [
+       261.3,
+       -234.0
+      ],
+      [
+       -261.3,
+       -234.0
+      ],
+      [
+       -261.3,
+       234.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -261.3,
+       -234.0
+      ],
+      [
+       261.3,
+       234.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -222.3,
+       128.7
+      ],
+      [
+       -210.4,
+       146.6
+      ],
+      [
+       -198.4,
+       161.8
+      ],
+      [
+       -186.5,
+       171.9
+      ],
+      [
+       -174.5,
+       175.5
+      ],
+      [
+       -162.6,
+       171.9
+      ],
+      [
+       -150.6,
+       161.8
+      ],
+      [
+       -138.7,
+       146.6
+      ],
+      [
+       -126.7,
+       128.7
+      ],
+      [
+       -114.8,
+       110.8
+      ],
+      [
+       -102.9,
+       95.6
+      ],
+      [
+       -90.9,
+       85.5
+      ],
+      [
+       -79.0,
+       81.9
+      ],
+      [
+       -67.0,
+       85.5
+      ],
+      [
+       -55.1,
+       95.6
+      ],
+      [
+       -43.1,
+       110.8
+      ],
+      [
+       -31.2,
+       128.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       31.2,
+       -93.6
+      ],
+      [
+       222.3,
+       -93.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       31.2,
+       -140.4
+      ],
+      [
+       93.6,
+       -140.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       124.8,
+       -140.4
+      ],
+      [
+       187.2,
+       -140.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       218.4,
+       -140.4
+      ],
+      [
+       222.3,
+       -140.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -136.5,
+       -202.8
+      ],
+      [
+       97.5,
+       -202.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -136.5,
+       -202.8
+      ],
+      [
+       -81.9,
+       -175.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -136.5,
+       -202.8
+      ],
+      [
+       -81.9,
+       -230.1
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       97.5,
+       -202.8
+      ],
+      [
+       42.9,
+       -175.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       97.5,
+       -202.8
+      ],
+      [
+       42.9,
+       -230.1
+      ]
+     ]
+    }
+   ]
+  },
+  "Inverter DC-AC": {
+   "layer": "source",
+   "name_nl": "Omvormer DC -> AC",
+   "name_fr": "Onduleur DC -> AC",
+   "symbols": [
+    {
+     "line": [
+      [
+       -261.3,
+       234.0
+      ],
+      [
+       261.3,
+       234.0
+      ],
+      [
+       261.3,
+       -234.0
+      ],
+      [
+       -261.3,
+       -234.0
+      ],
+      [
+       -261.3,
+       234.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -261.3,
+       -234.0
+      ],
+      [
+       261.3,
+       234.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -222.3,
+       152.1
+      ],
+      [
+       -31.2,
+       152.1
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -222.3,
+       105.3
+      ],
+      [
+       -159.9,
+       105.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -128.7,
+       105.3
+      ],
+      [
+       -66.3,
+       105.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -35.1,
+       105.3
+      ],
+      [
+       -31.2,
+       105.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       31.2,
+       -117.0
+      ],
+      [
+       43.1,
+       -99.1
+      ],
+      [
+       55.1,
+       -83.9
+      ],
+      [
+       67.0,
+       -73.8
+      ],
+      [
+       79.0,
+       -70.2
+      ],
+      [
+       90.9,
+       -73.8
+      ],
+      [
+       102.9,
+       -83.9
+      ],
+      [
+       114.8,
+       -99.1
+      ],
+      [
+       126.7,
+       -117.0
+      ],
+      [
+       138.7,
+       -134.9
+      ],
+      [
+       150.6,
+       -150.1
+      ],
+      [
+       162.6,
+       -160.2
+      ],
+      [
+       174.5,
+       -163.8
+      ],
+      [
+       186.5,
+       -160.2
+      ],
+      [
+       198.4,
+       -150.1
+      ],
+      [
+       210.4,
+       -134.9
+      ],
+      [
+       222.3,
+       -117.0
+      ]
+     ]
+    }
+   ]
+  },
+  "Chopper DC-DC": {
+   "layer": "source",
+   "name_nl": "Hakker DC -> DC",
+   "name_fr": "Hacheur DC -> DC",
+   "symbols": [
+    {
+     "line": [
+      [
+       -261.3,
+       234.0
+      ],
+      [
+       261.3,
+       234.0
+      ],
+      [
+       261.3,
+       -234.0
+      ],
+      [
+       -261.3,
+       -234.0
+      ],
+      [
+       -261.3,
+       234.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -261.3,
+       -234.0
+      ],
+      [
+       261.3,
+       234.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -222.3,
+       152.1
+      ],
+      [
+       -31.2,
+       152.1
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -222.3,
+       105.3
+      ],
+      [
+       -159.9,
+       105.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -128.7,
+       105.3
+      ],
+      [
+       -66.3,
+       105.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -35.1,
+       105.3
+      ],
+      [
+       -31.2,
+       105.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       31.2,
+       -93.6
+      ],
+      [
+       222.3,
+       -93.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       31.2,
+       -140.4
+      ],
+      [
+       93.6,
+       -140.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       124.8,
+       -140.4
+      ],
+      [
+       187.2,
+       -140.4
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       218.4,
+       -140.4
+      ],
+      [
+       222.3,
+       -140.4
+      ]
+     ]
+    }
+   ]
+  },
+  "Control type, local push button": {
+   "layer": "domotics",
+   "name_nl": "Lokale sturing door drukknop",
+   "name_fr": "Commande locale par bouton poussoir",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 93.6,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 46.8,
+      "from": 269.99,
+      "to": 629.99
+     }
+    }
+   ]
+  },
+  "Control type, wireless": {
+   "layer": "domotics",
+   "name_nl": "Draadloze sturing",
+   "name_fr": "Commande sans fil",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -46.8,
+       0.0
+      ],
+      "radius": 11.7,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -35.1,
+       -0.0
+      ],
+      "radius": 58.5,
+      "from": 306.87,
+      "to": 413.13
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       19.5,
+       -0.0
+      ],
+      "radius": 58.5,
+      "from": 306.87,
+      "to": 413.13
+     }
+    }
+   ]
+  },
+  "Control type, programmed": {
+   "layer": "domotics",
+   "name_nl": "Geprogrammeerde sturing",
+   "name_fr": "Commande programmée",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 93.6,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       0.0,
+       56.2
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       -56.2,
+       -0.0
+      ]
+     ]
+    }
+   ]
+  },
+  "Control type, extension by push button": {
+   "layer": "domotics",
+   "name_nl": "Uitbreiding van de sturing door drukknop",
+   "name_fr": "Extension de commande par bouton poussoir",
+   "symbols": [
+    {
+     "line": [
+      [
+       -234.0,
+       -0.0
+      ],
+      [
+       -93.6,
+       -0.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 93.6,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       0.0
+      ],
+      "radius": 46.8,
+      "from": 269.99,
+      "to": 629.99
+     }
+    }
+   ]
+  },
+  "Control type, detection": {
+   "layer": "domotics",
+   "name_nl": "Sturing door detectie",
+   "name_fr": "Commande par détection",
+   "symbols": [
+    {
+     "arc": {
+      "centre": [
+       -65.5,
+       -0.0
+      ],
+      "radius": 70.2,
+      "from": 306.87,
+      "to": 413.13
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -10.9,
+       -0.0
+      ],
+      "radius": 70.2,
+      "from": 306.87,
+      "to": 413.13
+     }
+    }
+   ]
+  },
+  "Control unit, example with switch": {
+   "layer": "domotics",
+   "name_nl": "Sturingseenheid (voorbeeld met schakelaar)",
+   "name_fr": "Unité de commande (exemple avec interrupteur)",
+   "symbols": [
+    {
+     "line": [
+      [
+       -288.6,
+       429.0
+      ],
+      [
+       288.6,
+       429.0
+      ],
+      [
+       288.6,
+       -429.0
+      ],
+      [
+       -288.6,
+       -429.0
+      ],
+      [
+       -288.6,
+       429.0
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -288.6,
+       156.0
+      ],
+      [
+       288.6,
+       156.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -257.8,
+       292.5
+      ],
+      "radius": 52.6,
+      "from": 306.87,
+      "to": 413.13
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -203.2,
+       292.5
+      ],
+      "radius": 52.7,
+      "from": 306.87,
+      "to": 413.13
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       136.5,
+       292.5
+      ],
+      "radius": 93.6,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       136.5,
+       292.5
+      ],
+      [
+       136.5,
+       348.7
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       136.5,
+       292.5
+      ],
+      [
+       80.3,
+       292.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       288.6,
+       292.5
+      ],
+      [
+       487.5,
+       292.5
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       581.1,
+       292.5
+      ],
+      "radius": 93.6,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       581.1,
+       292.5
+      ],
+      "radius": 42.9,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -74.1,
+       -234.0
+      ],
+      "radius": 93.6,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       -14.0,
+       -163.8
+      ],
+      [
+       179.4,
+       15.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       179.4,
+       15.6
+      ],
+      [
+       261.3,
+       -31.2
+      ]
+     ]
+    }
+   ]
+  },
+  "Control unit, example with transistor": {
+   "layer": "domotics",
+   "name_nl": "Sturingseenheid (voorbeeld met transistor)",
+   "name_fr": "Unité de commande (exemple avec transistor)",
+   "symbols": [
+    {
+     "line": [
+      [
+       -280.8,
+       448.5
+      ],
+      [
+       280.8,
+       448.5
+      ],
+      [
+       280.8,
+       -448.5
+      ],
+      [
+       -280.8,
+       -448.5
+      ],
+      [
+       -280.8,
+       448.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -280.8,
+       273.0
+      ],
+      [
+       280.8,
+       273.0
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       -159.9,
+       358.8
+      ],
+      "radius": 66.3,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -159.9,
+       358.8
+      ],
+      "radius": 35.1,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       -0.0,
+       358.8
+      ],
+      "radius": 66.3,
+      "from": 269.99,
+      "to": 629.99
+     }
+    },
+    {
+     "line": [
+      [
+       0.0,
+       358.8
+      ],
+      [
+       0.0,
+       398.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       358.8
+      ],
+      [
+       -39.8,
+       358.8
+      ]
+     ]
+    },
+    {
+     "arc": {
+      "centre": [
+       154.8,
+       358.8
+      ],
+      "radius": 40.9,
+      "from": 306.87,
+      "to": 413.13
+     }
+    },
+    {
+     "arc": {
+      "centre": [
+       193.8,
+       358.8
+      ],
+      "radius": 41.0,
+      "from": 306.87,
+      "to": 413.13
+     }
+    },
+    {
+     "line": [
+      [
+       -167.7,
+       -120.9
+      ],
+      [
+       62.4,
+       -120.9
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       62.4,
+       -0.0
+      ],
+      [
+       62.4,
+       -241.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -105.3,
+       42.9
+      ],
+      [
+       -11.7,
+       -93.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       163.8,
+       113.1
+      ],
+      [
+       163.8,
+       23.4
+      ],
+      [
+       62.4,
+       -46.8
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       62.4,
+       -195.0
+      ],
+      [
+       163.8,
+       -265.2
+      ],
+      [
+       163.8,
+       -362.7
+      ]
+     ]
+    }
+   ]
+  },
+  "Circuit breaker, 20 A curve C": {
+   "layer": "protection",
+   "name_nl": "Kleine vermogensschakelaar met een nominale stroomsterkte van 20A curve C",
+   "name_fr": "Petit disjoncteur d’une intensité nominale de 20A courbe C",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       261.3
+      ],
+      [
+       0.0,
+       109.2
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -101.4
+      ],
+      [
+       0.0,
+       -261.3
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       0.0,
+       -101.4
+      ],
+      [
+       -93.6,
+       62.4
+      ]
+     ]
+    },
+    {
+     "dot": {
+      "centre": [
+       -93.6,
+       62.4
+      ],
+      "radius": 27.3
+     }
+    },
+    {
+     "text": {
+      "at": [
+       85.8,
+       0.0
+      ],
+      "height": 117.0,
+      "value": "C20",
+      "align": "left"
+     }
+    }
+   ]
+  },
+  "Earth electrode": {
+   "layer": "protection",
+   "name_nl": "Aardelektrode, aarding",
+   "name_fr": "Prise de terre, mise à la terre",
+   "symbols": [
+    {
+     "line": [
+      [
+       0.0,
+       -0.0
+      ],
+      [
+       0.0,
+       -292.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -269.1,
+       -292.5
+      ],
+      [
+       269.1,
+       -292.5
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -191.1,
+       -366.6
+      ],
+      [
+       191.1,
+       -366.6
+      ]
+     ]
+    },
+    {
+     "line": [
+      [
+       -85.8,
+       -436.8
+      ],
+      [
+       85.8,
+       -436.8
+      ]
+     ]
+    }
+   ]
+  }
+ }
+}

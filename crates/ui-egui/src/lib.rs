@@ -3236,6 +3236,24 @@ impl BimApp {
         let walls = self.selected_walls();
         if !walls.is_empty() {
             self.run("flip", json!({"ids": walls}));
+            return;
+        }
+        // Selected plan symbol components with `Label Position` cycle their label: Right -> Above -> Left -> Below.
+        let labels: Vec<(Id, i64)> = {
+            let m = &self.session.model;
+            self.selection
+                .iter()
+                .filter_map(|&id| {
+                    let Element::Component(c) = m.elements.get(&id)? else { return None };
+                    let f = m.families.get(&c.family)?;
+                    let default = f.parameters.iter().find(|p| p.name == "Label Position")?.value.as_i64().unwrap_or(0);
+                    let cur = c.params.get("Label Position").and_then(|v| v.as_i64()).unwrap_or(default);
+                    Some((id, (cur.rem_euclid(4) + 1) % 4))
+                })
+                .collect()
+        };
+        for (id, next) in labels {
+            self.run("modify", json!({"id": id, "params": {"Label Position": next}}));
         }
     }
 

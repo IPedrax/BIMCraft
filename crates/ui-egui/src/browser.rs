@@ -696,7 +696,10 @@ impl BimApp {
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
         });
-        let components = m.families.iter().map(|(name, f)| {
+        let is_iec = |f: &bimcraft_core::family::Family| {
+            f.parameters.iter().any(|p| p.name == "Label Position") && f.parameters.iter().any(|p| p.name == "Circuit")
+        };
+        let family_node = |name: &String, f: &bimcraft_core::family::Family| {
             let types = f
                 .types
                 .keys()
@@ -707,8 +710,14 @@ impl BimApp {
                 })
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
-        });
-        Node::group(t("Families"), open, system.chain(components).collect())
+        };
+        let regular: Vec<Node> = m.families.iter().filter(|(_, f)| !is_iec(f)).map(|(n, f)| family_node(n, f)).collect();
+        let iec: Vec<Node> = m.families.iter().filter(|(_, f)| is_iec(f)).map(|(n, f)| family_node(n, f)).collect();
+        let mut children: Vec<Node> = system.chain(regular).collect();
+        if !iec.is_empty() {
+            children.push(Node::group("IEC 60617", false, iec));
+        }
+        Node::group(t("Families"), open, children)
     }
 }
 

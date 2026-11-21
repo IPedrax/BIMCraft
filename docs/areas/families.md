@@ -1048,17 +1048,17 @@ out or refused, so the file format is unchanged.
 ## Symbol sets
 
 A symbol set (`symbol_set.rs`) is families that are a plan symbol and nothing else, loaded on demand and never part of a new
-project: the starter fixtures (`fixtures.rs`) are in every project, and 76 more would crowd every family list. The
-`symbol_set {set, names?}` command adds a set's families to the project (the Electrical tab's Symbols > Load AREI Symbols
-button runs it); a family the project has by that name stays as it is, so loading twice changes nothing and an edited family is
-never overwritten (`loaded` and `kept` in the reply). Each family has one type, `Standard`, no forms, and the symbols of
-`crates/core/data/arei-symbols.json`, in the family `symbols` schema (mm, y up, the origin at the symbol's own origin): a
+project: the starter fixtures (`fixtures.rs`) are in every project, and 54 more would crowd every family list. The
+`symbol_set {set, names?}` command adds a set's families to the project (the Electrical tab's Symbols > Load IEC 60617 Symbols
+button runs it; `arei` is kept as an alias for `iec60617`); a family the project has by that name stays as it is, so loading twice changes nothing and an edited family is
+never overwritten (`loaded` and `kept` in the reply). Each family has no forms, an instance `Circuit` text parameter (driving a `{Circuit}` label), and the symbols of
+`crates/core/data/iec-60617-symbols.json`, in the family `symbols` schema (mm, y up, the origin at the symbol's own origin): `Switch (IEC 60617)`, `Push button` and `Socket (IEC 60617)` are parametric families whose types and `visible` parameters toggle poles, lamps and contacts, while the rest have one type `Standard`. A
 switch is in category `switch`, a socket in `outlet`, a data socket in `dataoutlet`, a light point or luminaire in `lighting`
 and everything else (appliances, consumers, sources, domotics, protection) in `generic`, so the Device and Lighting Fixture
 tools list their own kinds and the others are placed with the Component tool. They have no connectors, loads or 3D forms: they
 are plan symbols only for now, and a family without a connector raises no warning in `inspect`.
 
-The `arei` set is the graphical symbols of Table 2.23 of the AREI/RGIE (FOD Economie, Book 1), redrawn originally. The names
+The `iec60617` set is the graphical symbols of IEC 60617 (which Table 2.23 of the Belgian AREI/RGIE is based on), redrawn originally. The names
 are those printed in its Dutch and French versions (`name_nl`, `name_fr` in the data), the English ones are working names. The
 symbols are drawn at about 30 mm per drawing point, so a socket is about 25 cm wide on a plan. `names` (`en`, `nl`, `fr`) picks
 the language of the family names; as given none, a French project gets the French wording, a Dutch project the Dutch

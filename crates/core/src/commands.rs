@@ -1771,13 +1771,13 @@ other_files(
         "symbol_set",
         "Load Symbol Set",
         &[],
-        "{set: arei, names?: en|nl|fr} loads a set of families that are plan symbols and nothing else, each of one type \
-         `Standard` with no forms: `arei` is the Belgian AREI/RGIE's graphical symbols (Table 2.23: switches, sockets, light \
-         points, appliances, sources, domotics, protection), 76 families, switches in the switch category, sockets in outlet, \
-         luminaires in lighting and the rest generic. `names` is the language of their names, English, Dutch or French as the \
-         source prints them; as given none, French in a French project and English otherwise. A family the project has by \
-         that name stays as it is, so loading twice changes nothing; the reply lists `loaded` and `kept`. Place them as \
-         components",
+        "{set: iec60617, names?: en|nl|fr} loads a set of families that are plan symbols and nothing else, with no forms: \
+         `iec60617` (`arei` alias) is the IEC 60617 / AREI-RGIE graphical symbols (switches, sockets, light points, \
+         appliances, sources, domotics, protection), including parametric switch, push button and socket families and an \
+         instance `Circuit` text parameter; switches in the switch category, sockets in outlet, luminaires in lighting \
+         and the rest generic. `names` is the language of their names, English, Dutch or French; as given none, French in \
+         a French project, Dutch in a Dutch one and English otherwise. A family the project has by that name stays as it \
+         is, so loading twice changes nothing; the reply lists `loaded` and `kept`. Place them as components",
         symbol_set,
     ),
     edit(
@@ -15193,19 +15193,19 @@ fn shown(key: &Value) -> String {
 }
 
 fn symbol_set(s: &mut Session, p: &Value) -> R {
-    use crate::symbol_set::{Names, SETS};
+    use crate::symbol_set::{Names, SETS, canonical_set};
     let c = "symbol_set";
     let set = string(c, p, "set")?.ok_or_else(|| bad(c, format!("`set` is required: {}", SETS.join(", "))))?;
-    if !SETS.contains(&set.as_str()) {
+    let Some(canonical) = canonical_set(&set) else {
         return Err(bad(c, format!("no symbol set `{set}`: there is {}", SETS.join(", "))));
-    }
+    };
     let names = match string(c, p, "names")? {
         Some(code) => Names::from_code(&code).ok_or_else(|| bad(c, format!("`names` is en, nl or fr, not `{code}`")))?,
         None => Names::of(s.model.language),
     };
     let m = s.model_mut();
     let (mut loaded, mut kept) = (Vec::new(), Vec::new());
-    for (name, family) in crate::symbol_set::families(&set, names) {
+    for (name, family) in crate::symbol_set::families(canonical, names) {
         if m.families.contains_key(&name) {
             kept.push(name);
         } else {
