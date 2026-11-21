@@ -789,7 +789,7 @@ fn room_object(id: u32, number: &str, name: &str, wide: bool) -> Vec<u8> {
 
 /// The graphics classes the fixture's schema has after the ones above, in order (their tags from 26), named and laid out as
 /// Revit's own schema has them, but for fields the reader skips.
-pub const GRAPHICS: [&str; 31] = [
+pub const GRAPHICS: [&str; 37] = [
     "Identifier",
     "ElementId",
     "GInfo",
@@ -821,6 +821,12 @@ pub const GRAPHICS: [&str; 31] = [
     "GCurve",
     "GLine",
     "GPolyMesh",
+    "RuledSurf",
+    "SplineNode",
+    "GHermiteSpline",
+    "SplineSrfNode",
+    "HermiteSurf",
+    "CurtainGridLine",
 ];
 
 /// The tag of a graphics class of the fixture's schema.
@@ -914,6 +920,27 @@ fn graphics_classes() -> Vec<u8> {
         class("GCurve", Some("GNode"), &[("m_endParams", two)]),
         class("GLine", Some("GCurve"), &[("m_origin", three), ("m_dirVec", three)]),
         class("GPolyMesh", Some("GNode"), &[("m_pFacetedTopology", owned)]),
+        class(
+            "RuledSurf",
+            Some("Surface"),
+            &[("m_pProfileCurve1", owned), ("m_pProfileCurve2", owned), ("m_Point1", three), ("m_Point2", three)],
+        ),
+        class("SplineNode", None, &[("m_iParametr", Ty::plain(7)), ("m_iPoint", three), ("m_iTangent", three)]),
+        class("GHermiteSpline", Some("GCurve"), &[("m_Periodic", Ty::plain(1)), ("m_NodeArray", Ty::object(0x50, t("SplineNode")))]),
+        class("SplineSrfNode", None, &[("m_iPoint", three), ("m_iTangent", corners), ("m_iMixedDer", three)]),
+        class(
+            "HermiteSurf",
+            Some("Surface"),
+            &[
+                ("m_periodic", Ty::fixed(1, 2)),
+                ("m_constructedOK", Ty::plain(1)),
+                ("m_NodeArray", Ty::object(0x50, t("SplineSrfNode"))),
+                ("m_uParams", Ty { kind: 7, modifier: 0x50, count: None, inner: None, class: None }),
+                ("m_vParams", Ty { kind: 7, modifier: 0x50, count: None, inner: None, class: None }),
+            ],
+        ),
+        // A curtain wall's grid line, an element's class (not a graphics one) the fixture's records may be of.
+        class("CurtainGridLine", None, &[("m_flags", Ty::plain(4))]),
     ])
 }
 

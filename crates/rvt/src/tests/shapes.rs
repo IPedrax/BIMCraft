@@ -7,7 +7,7 @@ use std::f64::consts::PI;
 use crate::graphics::{self, Layouts};
 use crate::project_fixture::{Objects, Project, V, box_tree, graphics_block, instance_tree, p3, root, tree_bytes};
 use crate::schema::Schema;
-use crate::shapes::{Curve, Shape, Surface, triangles};
+use crate::shapes::{Curve, End, Node, Patch, Shape, Surface, along, chain, split, triangles};
 
 fn schema() -> Schema {
     Schema::parse(&Project::schema_bytes())
@@ -90,9 +90,9 @@ fn an_instances_graphics_name_the_symbol_it_draws_and_the_transform_it_draws_it_
     let tree = graphics::read(&bytes, 0, &l).unwrap();
     let (symbol, t) = instance(&tree, &l).unwrap();
     assert_eq!((symbol, t.axes, t.origin), (500, axes, [10.0, 20.0, 3.0]));
-    // An instance's tree holds no solid of its own: what it draws is another's.
-    let why = crate::shapes::shape(&tree, &l).unwrap_err();
-    assert!(why.contains("GInstance"), "{why}");
+    // Read as a symbol's (a family nesting another), it holds no solid of its own: it places the one it nests, read later.
+    let nests = crate::shapes::shape(&tree, &l).unwrap();
+    assert_eq!((nests.placed, nests.triangles.len()), (vec![(500, t)], 0));
     // A symbol's tree places nothing: it draws solids of its own.
     let bytes = tree_bytes(&box_tree(500, [1.0, 1.0, 1.0], None));
     let d = crate::shapes::drawing(&graphics::read(&bytes, 0, &l).unwrap(), &l).unwrap();
@@ -206,6 +206,253 @@ fn a_surface_of_revolution_turns_its_profile_about_its_axis() {
     let mut out = Vec::new();
     triangles(&s, &[vec![[0.0, 0.5], [PI, 0.5], [PI, 1.0], [0.0, 1.0]]], &mut out).unwrap();
     assert!(out.iter().flatten().all(|p| (p[0].hypot(p[1]) - p[2]).abs() < 1e-6));
+}
+
+#[test]
+fn a_surface_of_revolution_turning_an_ellipse_is_cut_every_fifteen_degrees_both_ways() {
+    // An ellipse 2 ft along x and 1 ft along z, in the plane y = 0, turned about z: a spheroid, (r / 2)² + z² = 1 in feet.
+    let profile = Curve::Ellipse { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 0.0, 1.0], rx: 2.0, ry: 1.0 };
+    let s = Surface::Revolved { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], z: [0.0, 0.0, 1.0], profile };
+    let mut out = Vec::new();
+    triangles(&s, &[vec![[0.0, 0.0], [PI / 2.0, 0.0], [PI / 2.0, PI / 2.0], [0.0, PI / 2.0]]], &mut out).unwrap();
+    // Six steps round, six up.
+    assert!(out.len() >= 72, "{}", out.len());
+    let on = |p: &[f64; 3]| ((p[0].hypot(p[1]) / 609.6).powi(2) + (p[2] / 304.8).powi(2) - 1.0).abs() < 1e-9;
+    assert!(out.iter().flatten().all(on));
+    let top = out.iter().flatten().map(|p| p[2]).fold(f64::MIN, f64::max);
+    let out_most = out.iter().flatten().map(|p| p[0].hypot(p[1])).fold(f64::MIN, f64::max);
+    assert!((top - 304.8).abs() < 1e-6 && (out_most - 609.6).abs() < 1e-6, "{top} {out_most}");
+}
+
+#[test]
+fn a_face_on_a_ruled_surface_reads_as_the_curves_it_runs_between_each_along_its_own_range() {
+    // A cube a foot across whose top is a ruled surface between two lines a foot long, across its south and north edges; the north
+    // one's parameters run from -1 to 0 with its origin at the east end, so a point a part `u` along both is `u` feet east.
+    let mut objects = box_tree(500, [1.0; 3], None);
+    let line = |at: [f64; 3], ends: [f64; 2]| {
+        ("GLine", vec![crate::project_fixture::ginfo(0), V::Seq(ends.map(V::F64).to_vec()), p3(at), p3([1.0, 0.0, 0.0])])
+    };
+    objects.insert(900, line([0.0, 0.0, 1.0], [0.0, 1.0]));
+    objects.insert(901, line([1.0, 1.0, 1.0], [-1.0, 0.0]));
+    let ruled = V::Inline("RuledSurf", vec![V::Byte(0), V::Own(900, "GLine"), V::Own(901, "GLine"), p3([0.0; 3]), p3([0.0; 3])]);
+    let Some((_, top)) = objects.get_mut(&5) else { panic!("no top face") };
+    top[2] = ruled;
+    let s = shape_of(&objects).unwrap();
+    assert_eq!(s.triangles.len(), 12);
+    let e = extents(&s.triangles);
+    assert!(e.iter().zip([0.0, 0.0, 0.0, 304.8, 304.8, 304.8]).all(|(a, b)| (a - b).abs() < 1e-6), "{e:?}");
+    let surface: f64 = s.triangles.iter().map(area).sum::<f64>() / (304.8 * 304.8);
+    assert!((surface - 6.0).abs() < 1e-6, "{surface}");
+}
+
+#[test]
+fn a_ruled_surface_between_two_arcs_is_cut_along_them_and_straight_across_and_one_to_a_point_is_a_cone() {
+    // A quarter of a cone's slice: an arc of 2 ft at the floor and one of 1 ft a foot up, each a quarter turn.
+    let arc = |z: f64, r: f64| Curve::Arc { center: [0.0, 0.0, z], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], r };
+    let square = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let s = Surface::Ruled { ends: [End::Curve(arc(0.0, 2.0), [0.0, PI / 2.0]), End::Curve(arc(1.0, 1.0), [0.0, PI / 2.0])] };
+    let mut out = Vec::new();
+    triangles(&s, std::slice::from_ref(&square), &mut out).unwrap();
+    // Six steps of fifteen degrees round, none needed up the straight lines.
+    assert!(out.len() >= 12, "{}", out.len());
+    // On the cone: 2 ft out at the floor, 1 ft a foot up.
+    let on = |p: &[f64; 3]| (p[0].hypot(p[1]) / 304.8 - (2.0 - p[2] / 304.8)).abs() < 1e-9;
+    assert!(out.iter().flatten().all(on), "{out:?}");
+    let angles: BTreeSet<i64> = out.iter().flatten().map(|p| (p[1].atan2(p[0]).to_degrees() * 1e6).round() as i64).collect();
+    assert!(angles.len() >= 7, "{angles:?}");
+    // The upper end a point: a cone, its radius 2 ft at the floor and none a foot up.
+    let s = Surface::Ruled { ends: [End::Curve(arc(0.0, 2.0), [0.0, PI / 2.0]), End::Point([0.0, 0.0, 1.0])] };
+    let mut out = Vec::new();
+    triangles(&s, &[square], &mut out).unwrap();
+    assert!(out.iter().flatten().all(|p| (p[0].hypot(p[1]) / 304.8 - 2.0 * (1.0 - p[2] / 304.8)).abs() < 1e-9), "{out:?}");
+}
+
+#[test]
+fn a_face_on_a_cone_is_cut_round_its_axis_and_straight_down_its_side() {
+    // A cone with its apex at the origin, its axis up and its half-angle 45 degrees: `v` feet down its side from the apex, `u`
+    // round from x. A quarter of it, 1 to 2 ft down its side.
+    let s = Surface::Cone { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], z: [0.0, 0.0, 1.0], half_angle: PI / 4.0 };
+    let mut out = Vec::new();
+    triangles(&s, &[vec![[0.0, 1.0], [PI / 2.0, 1.0], [PI / 2.0, 2.0], [0.0, 2.0]]], &mut out).unwrap();
+    assert!(out.len() >= 12, "{}", out.len());
+    // On it: as far out as up, and as far from the apex as `v` says, between 1 and 2 ft.
+    let ft = |p: &[f64; 3]| p.map(|k| k / 304.8);
+    assert!(out.iter().flatten().map(ft).all(|p| (p[0].hypot(p[1]) - p[2]).abs() < 1e-9), "{out:?}");
+    let slant: Vec<f64> = out.iter().flatten().map(ft).map(|p| (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt()).collect();
+    assert!(slant.iter().all(|d| (1.0 - 1e-9..=2.0 + 1e-9).contains(d)), "{slant:?}");
+    assert!(slant.iter().any(|d| (d - 2.0).abs() < 1e-9) && slant.iter().any(|d| (d - 1.0).abs() < 1e-9));
+    // Its point at u = 0, v = 2: 2 sin 45 out along x, 2 cos 45 up.
+    let want = [2.0 * (PI / 4.0).sin(), 0.0, 2.0 * (PI / 4.0).cos()];
+    assert!(out.iter().flatten().map(ft).any(|p| p.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-9)));
+}
+
+#[test]
+fn a_hermite_spline_is_the_cubic_through_its_nodes_with_their_tangents() {
+    // The parabola z = x² for x from 0 to 2 ft, as three nodes with their tangents: a cubic Hermite spline is any cubic exactly. A
+    // ruled surface between it and the same a foot north.
+    let parabola = |y: f64| {
+        let nodes = [0.0, 1.0, 2.0].map(|t: f64| Node { t, at: [t, y, t * t], tangent: [1.0, 0.0, 2.0 * t] });
+        End::Curve(Curve::Spline(nodes.to_vec().into()), [0.0, 2.0])
+    };
+    let s = Surface::Ruled { ends: [parabola(0.0), parabola(1.0)] };
+    let mut out = Vec::new();
+    triangles(&s, &[vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], &mut out).unwrap();
+    let ft = |p: &[f64; 3]| p.map(|k| k / 304.8);
+    assert!(out.iter().flatten().map(ft).all(|p| (p[2] - p[0] * p[0]).abs() < 1e-9), "{out:?}");
+    // Cut a third of a node's span at most along it: two spans, six cuts.
+    let xs: BTreeSet<i64> = out.iter().flatten().map(ft).map(|p| (p[0] * 1e6).round() as i64).collect();
+    assert!(xs.len() >= 7, "{xs:?}");
+}
+
+#[test]
+fn a_ruled_surface_between_hermite_splines_is_read_from_its_nodes_and_one_not_read_is_said() {
+    // The cube's top as a ruled surface between two splines that are straight lines a foot long: two nodes each.
+    use crate::project_fixture::ginfo;
+    let node = |t: f64, at: [f64; 3]| V::Seq(vec![V::F64(t), p3(at), p3([1.0, 0.0, 0.0])]);
+    let spline = |nodes: Vec<V>, periodic: u8| {
+        ("GHermiteSpline", vec![ginfo(0), V::Seq(vec![V::F64(0.0), V::F64(1.0)]), V::Byte(periodic), V::Counted(nodes)])
+    };
+    let top = |a: (&'static str, Vec<V>), b: (&'static str, Vec<V>)| {
+        let mut objects = box_tree(500, [1.0; 3], None);
+        objects.insert(900, a);
+        objects.insert(901, b);
+        let ruled = V::Inline(
+            "RuledSurf",
+            vec![V::Byte(0), V::Own(900, "GHermiteSpline"), V::Own(901, "GHermiteSpline"), p3([0.0; 3]), p3([0.0; 3])],
+        );
+        if let Some((_, face)) = objects.get_mut(&5) {
+            face[2] = ruled;
+        }
+        objects
+    };
+    let south = || vec![node(0.0, [0.0, 0.0, 1.0]), node(1.0, [1.0, 0.0, 1.0])];
+    let north = || vec![node(0.0, [0.0, 1.0, 1.0]), node(1.0, [1.0, 1.0, 1.0])];
+    let s = shape_of(&top(spline(south(), 0), spline(north(), 0))).unwrap();
+    // The top cut in thirds along the splines, six triangles; the sides, which are cut as they are, two each.
+    assert_eq!(s.triangles.len(), 16);
+    let surface: f64 = s.triangles.iter().map(area).sum::<f64>() / (304.8 * 304.8);
+    assert!((surface - 6.0).abs() < 1e-6, "{surface}");
+    // One that closes on itself, and one whose nodes do not go on in their parameter, are not read.
+    let why = shape_of(&top(spline(south(), 1), spline(north(), 0))).unwrap_err();
+    assert!(why.contains("periodic"), "{why}");
+    let back = vec![node(1.0, [0.0, 0.0, 1.0]), node(0.0, [1.0, 0.0, 1.0])];
+    let why = shape_of(&top(spline(back, 0), spline(north(), 0))).unwrap_err();
+    assert!(why.contains("parameter"), "{why}");
+}
+
+/// The surface z = u² v + v³ (feet), at most a cubic each way, which a bicubic Hermite surface through its nodes is exactly: its
+/// point, its derivatives along u and v and its mixed one at (u, v).
+fn cubic(u: f64, v: f64) -> Patch {
+    Patch {
+        at: [u, v, u * u * v + v * v * v],
+        du: [1.0, 0.0, 2.0 * u * v],
+        dv: [0.0, 1.0, u * u + 3.0 * v * v],
+        twist: [0.0, 0.0, 2.0 * u],
+    }
+}
+
+#[test]
+fn a_hermite_surface_is_the_bicubic_through_its_grid_of_nodes_inside_its_faces_too() {
+    // Nodes at u = 0, 1, 2 and v = 0, 0.5, 1.5 (spaced unevenly), u running fastest.
+    let (us, vs) = ([0.0, 1.0, 2.0], [0.0, 0.5, 1.5]);
+    let nodes: Vec<Patch> = vs.iter().flat_map(|v| us.iter().map(|u| cubic(*u, *v))).collect();
+    let s = Surface::Hermite { u: us.to_vec().into(), v: vs.to_vec().into(), nodes: nodes.into() };
+    let mut out = Vec::new();
+    triangles(&s, &[vec![[0.0, 0.0], [2.0, 0.0], [2.0, 1.5], [0.0, 1.5]]], &mut out).unwrap();
+    let ft = |p: &[f64; 3]| p.map(|k| k / 304.8);
+    assert!(out.iter().flatten().map(ft).all(|p| (p[2] - (p[0] * p[0] * p[1] + p[1].powi(3))).abs() < 1e-9), "{out:?}");
+    // Points inside it, not only round its edges.
+    let inner = out.iter().flatten().map(ft).filter(|p| p[0] > 0.01 && p[0] < 1.99 && p[1] > 0.01 && p[1] < 1.49).count();
+    assert!(inner > 0, "{out:?}");
+}
+
+#[test]
+fn a_face_on_a_hermite_surface_is_read_from_its_nodes_and_one_not_read_is_said() {
+    // The cube's top as a Hermite surface of four nodes, a plane z = 1 ft: one not built, one that closes on itself, and one whose
+    // nodes are not its grid are not read.
+    let flat = |u: f64, v: f64| V::Seq(vec![p3([u, v, 1.0]), V::Seq(vec![p3([1.0, 0.0, 0.0]), p3([0.0, 1.0, 0.0])]), p3([0.0; 3])]);
+    let top = |periodic: u8, built: u8, nodes: Vec<V>| {
+        let mut objects = box_tree(500, [1.0; 3], None);
+        let params = || V::Counted(vec![V::F64(0.0), V::F64(1.0)]);
+        let surface = V::Inline(
+            "HermiteSurf",
+            vec![V::Byte(0), V::Seq(vec![V::Byte(periodic), V::Byte(0)]), V::Byte(built), V::Counted(nodes), params(), params()],
+        );
+        if let Some((_, face)) = objects.get_mut(&5) {
+            face[2] = surface;
+        }
+        objects
+    };
+    let grid = || vec![flat(0.0, 0.0), flat(1.0, 0.0), flat(0.0, 1.0), flat(1.0, 1.0)];
+    let s = shape_of(&top(0, 1, grid())).unwrap();
+    let surface: f64 = s.triangles.iter().map(area).sum::<f64>() / (304.8 * 304.8);
+    assert!((surface - 6.0).abs() < 1e-6, "{surface}");
+    let e = extents(&s.triangles);
+    assert!(e.iter().zip([0.0, 0.0, 0.0, 304.8, 304.8, 304.8]).all(|(a, b)| (a - b).abs() < 1e-6), "{e:?}");
+    for (objects, says) in [(top(1, 1, grid()), "periodic"), (top(0, 0, grid()), "not built"), (top(0, 1, grid()[..3].to_vec()), "grid")] {
+        let why = shape_of(&objects).unwrap_err();
+        assert!(why.contains(says), "{why}");
+    }
+}
+
+#[test]
+fn edges_that_meet_only_at_a_pole_are_joined_there() {
+    // Half a dome on a sphere of a foot (its profile an arc whose top, v = 90 degrees, is the pole), from v = 0.3 up: two edges up
+    // its sides, which meet only at the pole, where their ends are far apart in (u, v), and one round its rim; in the order its loop
+    // walks them, the two up its sides both run the wrong way to be joined by their (u, v).
+    let profile = Curve::Arc { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 0.0, 1.0], r: 1.0 };
+    let s = Surface::Revolved { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], z: [0.0, 0.0, 1.0], profile };
+    let (rim, top) = (0.3, PI / 2.0);
+    let up = |u: f64| (0..=4).map(|k| [u, rim + (top - rim) * f64::from(k) / 4.0]).collect::<Vec<_>>();
+    let mut a = up(2.0 * PI);
+    a.reverse();
+    let b = up(PI);
+    let c: Vec<[f64; 2]> = (0..=8).map(|k| [PI + PI * f64::from(k) / 8.0, rim]).collect();
+    let outline = chain(vec![a, b, c], &s);
+    let mut out = Vec::new();
+    triangles(&s, &[outline], &mut out).unwrap();
+    // Its area, a half of the sphere's zone above the rim: pi (1 - sin 0.3) square feet, within the cut's error.
+    let surface: f64 = out.iter().map(area).sum::<f64>() / (304.8 * 304.8);
+    let want = PI * (1.0 - rim.sin());
+    assert!((surface - want).abs() < 0.03 * want, "{surface} {want}");
+}
+
+#[test]
+fn a_flat_face_takes_the_points_of_an_edge_its_curved_neighbour_puts_on_its_curve() {
+    // A quarter circle of a foot, the edge between the floor (z = 0) and a cylinder round z, known by its ends alone: on the cylinder
+    // it runs along u, so points along it there are on the circle, and the floor takes them.
+    let floor = Surface::Plane { origin: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0] };
+    let wall = Surface::Cylinder { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], z: [0.0, 0.0, 1.0], r: 1.0 };
+    let (mine, theirs) = ([[1.0, 0.0], [0.0, 1.0]], [[0.0, 0.0], [PI / 2.0, 0.0]]);
+    let points = along(&floor, &wall, &mine, &theirs).unwrap();
+    // Every half of the cylinder's step, 7.5 degrees: twelve cuts.
+    assert!(points.len() >= 13, "{}", points.len());
+    assert!(points.iter().all(|p| (p[0].hypot(p[1]) - 1.0).abs() < 1e-9), "{points:?}");
+    assert_eq!((points.first(), points.last()), (Some(&[1.0, 0.0]), Some(&[0.0, 1.0])));
+    // The cylinder cuts its side of the edge at the same points, so the two faces meet with no gap between them.
+    let own: Vec<[f64; 2]> = split(&theirs, wall.fine()).into_iter().map(|(p, _)| p).collect();
+    assert_eq!(own.len(), points.len());
+    assert!(own.iter().zip(&points).all(|(q, p)| wall.at(*q).iter().zip(floor.at(*p)).all(|(a, b)| (a - b).abs() < 1e-9)));
+    // A floor the circle does not lie on takes none of them; nor does a curved face, which cuts its own edges.
+    let higher = Surface::Plane { origin: [0.0, 0.0, 0.5], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0] };
+    assert!(along(&higher, &wall, &mine, &theirs).is_none());
+    assert!(along(&wall, &floor, &theirs, &mine).is_none());
+}
+
+#[test]
+fn a_shape_whose_solids_fill_the_box_round_all_its_graphics_reads_though_they_pass_the_tight_one() {
+    // A stair's tread: its nosing reaches past the box its graphics give round its solids (`m_tightbBox`), which leaves it out, but
+    // its solids fill the other box (`m_bBox`) exactly. Here a cube 2 by 3 by 4 ft, the tight box a foot short of its top.
+    let mut objects = box_tree(500, [2.0, 3.0, 4.0], None);
+    let cube = [0.0, 0.0, 0.0, 2.0, 3.0, 4.0];
+    let short = [0.0, 0.0, 0.0, 2.0, 3.0, 3.0];
+    objects.insert(2, root(500, vec![V::Own(3, "Geometry")], cube, short));
+    let s = shape_of(&objects).unwrap();
+    assert_eq!(s.triangles.len(), 12);
+    // Past both boxes, it is not read: the other box a foot short of its top too.
+    objects.insert(2, root(500, vec![V::Own(3, "Geometry")], short, short));
+    let why = shape_of(&objects).unwrap_err();
+    assert!(why.contains("not the box"), "{why}");
 }
 
 #[test]
@@ -390,4 +637,85 @@ fn a_mesh_reaching_outside_the_box_round_the_solids_is_none_of_them() {
     objects.insert(2, root(500, vec![V::Own(3, "Geometry"), V::Own(1000, "GPolyMesh")], [0.0, 0.0, 0.0, 2.0, 3.0, 9.0], b));
     let shape = graphics::read(&tree_bytes(&objects), 0, &l).and_then(|t| crate::shapes::shape(&t, &l)).unwrap();
     assert_eq!((shape.solids, shape.triangles.len()), (1, 12));
+}
+
+/// The shapes of the symbols whose trees are `trees`, each read and then nested ([`crate::shapes::nest`]).
+fn nested(trees: Vec<(u32, Objects)>) -> std::collections::BTreeMap<u32, Result<Shape, String>> {
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let mut shapes = trees
+        .into_iter()
+        .map(|(id, objects)| (id, graphics::read(&tree_bytes(&objects), 0, &l).and_then(|t| crate::shapes::shape(&t, &l))))
+        .collect();
+    crate::shapes::nest(&mut shapes);
+    shapes
+}
+
+/// The volume a closed mesh holds, cubic millimetres: positive where its triangles turn counter-clockwise seen from outside.
+fn volume(tris: &[[[f64; 3]; 3]]) -> f64 {
+    let det = |[a, b, c]: &[[f64; 3]; 3]| {
+        a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])
+    };
+    tris.iter().map(det).sum::<f64>() / 6.0
+}
+
+#[test]
+fn a_symbol_that_nests_another_draws_the_nested_ones_shape_placed_by_its_transform() {
+    let foot = 304.8f64.powi(3);
+    let near = |a: [f64; 6], b: [f64; 6]| a.iter().zip(b).all(|(x, y)| (x - y * 304.8).abs() < 0.02);
+    // A table (600) nesting its leg (500, a foot cube) turned a right angle at (10, 20, 3): from 9 to 10 east, 20 to 21 north.
+    let turned = [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+    let leg = [9.0, 20.0, 3.0, 10.0, 21.0, 4.0];
+    let shapes = nested(vec![(600, instance_tree(600, 500, turned, [10.0, 20.0, 3.0], leg)), (500, box_tree(500, [1.0; 3], None))]);
+    let s = shapes[&600].as_ref().unwrap();
+    assert_eq!((s.triangles.len(), s.materials.len(), s.placed.len()), (12, 12, 0));
+    assert!(near(extents(&s.triangles), leg), "{:?}", extents(&s.triangles));
+    assert!((volume(&s.triangles) - foot).abs() < 1.0);
+    // Mirrored (its x turned west), its faces still face out.
+    let mirrored = [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let shapes = nested(vec![
+        (600, instance_tree(600, 500, mirrored, [1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0, 1.0, 1.0])),
+        (500, box_tree(500, [1.0; 3], None)),
+    ]);
+    let s = shapes[&600].as_ref().unwrap();
+    assert!((volume(&s.triangles) - foot).abs() < 1.0, "{}", volume(&s.triangles));
+    // A solid of its own beside the nested one: both.
+    let mut table = box_tree(600, [1.0; 3], None);
+    table.insert(1000, instance_tree(600, 500, turned, [10.0, 20.0, 3.0], leg)[&3].clone());
+    let all = [0.0, 0.0, 0.0, 10.0, 21.0, 4.0];
+    table.insert(2, root(600, vec![V::Own(3, "Geometry"), V::Own(1000, "GInstance")], all, all));
+    let shapes = nested(vec![(600, table.clone()), (500, box_tree(500, [1.0; 3], None))]);
+    let s = shapes[&600].as_ref().unwrap();
+    assert_eq!((s.triangles.len(), s.solids), (24, 2));
+    assert!(near(extents(&s.triangles), all));
+    // The box its graphics give round their solids reaching further than both: something is not read.
+    table.insert(2, root(600, vec![V::Own(3, "Geometry"), V::Own(1000, "GInstance")], all, [0.0, 0.0, 0.0, 12.0, 21.0, 4.0]));
+    let why = nested(vec![(600, table), (500, box_tree(500, [1.0; 3], None))])[&600].clone().unwrap_err();
+    assert!(why.contains("not the box"), "{why}");
+}
+
+#[test]
+fn a_symbol_nesting_one_that_is_not_read_or_that_nests_it_again_has_no_shape() {
+    let square = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let cube = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
+    let nests = |id: u32, symbol: u32| (id, instance_tree(id, symbol, square, [0.0; 3], cube));
+    // The symbol it nests: none in the file.
+    let why = nested(vec![nests(600, 700)])[&600].clone().unwrap_err();
+    assert!(why.contains("no graphics"), "{why}");
+    // One that nests it in turn.
+    let shapes = nested(vec![nests(600, 601), nests(601, 600)]);
+    let why = shapes[&600].clone().unwrap_err();
+    assert!(why.contains("nests itself"), "{why}");
+    // Too deep a chain: each nests the next, the last a cube.
+    let mut trees: Vec<(u32, Objects)> = (0..12).map(|k| nests(600 + k, 601 + k)).collect();
+    trees.push((612, box_tree(612, [1.0; 3], None)));
+    let shapes = nested(trees);
+    assert!(shapes[&611].as_ref().is_ok_and(|s| s.triangles.len() == 12));
+    let why = shapes[&600].clone().unwrap_err();
+    assert!(why.contains("deep"), "{why}");
+    // One placing it where no model reaches: each number finite, its corners past the model's coordinates.
+    let far = [1e300, 1e300, 1e300, 1e300, 1e300, 1e300];
+    let shapes = nested(vec![(600, instance_tree(600, 500, square, [1e300; 3], far)), (500, box_tree(500, [1.0; 3], None))]);
+    let why = shapes[&600].clone().unwrap_err();
+    assert!(why.contains("usable"), "{why}");
 }

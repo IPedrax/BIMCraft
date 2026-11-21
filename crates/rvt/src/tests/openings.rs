@@ -63,6 +63,47 @@ fn a_door_and_a_window_come_in_set_in_their_wall_with_the_size_and_height_of_the
 }
 
 #[test]
+fn a_window_whose_graphics_draw_its_symbol_comes_in_with_that_shape_in_a_family_of_its_own() {
+    // Window 201 draws its symbol (a box 4 by 0.8 by 4 ft) where its record box stands; door 200 draws nothing, and keeps a type
+    // of the project's own.
+    use crate::project_fixture::{box_tree, graphics_block, instance_tree, tree_bytes};
+    let mut p = project(2024);
+    door(&mut p, 200, 5.0, &[100]);
+    let whole = [11.0, -0.4, 3.0, 15.0, 0.4, 7.0];
+    p.recs.push(Rec::new(201, WINDOWS).at(whole, &[100, 601, 201]));
+    p.graphics.extend(graphics_block(650, &tree_bytes(&box_tree(650, [4.0, 0.8, 4.0], None))));
+    p.extra_ids.push(650);
+    let square = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    p.graphics.extend(graphics_block(201, &tree_bytes(&instance_tree(201, 650, square, [11.0, -0.4, 3.0], whole))));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let ops = openings(&i);
+    let (_, _, d) = ops.iter().find(|(_, door, _)| *door).copied().unwrap_or_else(|| panic!("{:?}", i.skipped));
+    assert!(d.family.is_none());
+    let (id, _, w) = ops.iter().find(|(_, door, _)| !*door).copied().unwrap_or_else(|| panic!("{:?}", i.skipped));
+    let family = w.family.as_deref().and_then(|f| i.model.families.get(f)).unwrap_or_else(|| panic!("{w:?}"));
+    assert_eq!(family.category, bimcraft_core::family::Category::Window);
+    let ty = &family.types[&w.type_name];
+    assert_eq!((ty["Width"].as_f64(), ty["Height"].as_f64()), (Some(1219.2), Some(1219.2)), "{ty:?}");
+    let shown = ty["Shape"].as_u64().unwrap_or(0);
+    let meshes: usize = family
+        .forms
+        .iter()
+        .filter(|f| f.visible == Some(bimcraft_core::family::Expr::Formula(format!("Shape = {shown}"))))
+        .map(|f| f.mesh.len())
+        .sum();
+    assert_eq!(meshes, 12);
+    // It stands where Revit draws it: its box the record's to a millimetre.
+    let ids: std::collections::HashSet<Id> = [id].into();
+    let boxes = bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids);
+    let [(lo, hi)] = boxes.values().copied().collect::<Vec<_>>()[..] else { panic!("{boxes:?}") };
+    let want = whole.map(|v| v * 304.8);
+    let got = [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]];
+    assert!(got.iter().zip(want).all(|(g, w)| (g - w).abs() < 1.0), "{got:?} against {want:?}");
+    assert!(i.skipped.iter().any(|s| s.contains("1 window: comes in with its shape") && s.contains("201")), "{:?}", i.skipped);
+}
+
+#[test]
 fn an_opening_is_measured_from_the_start_of_a_wall_whichever_way_it_runs() {
     // The wall turned round (its exterior on the right), then standing north: the offset is from where its line starts.
     let mut p = base(2024);
@@ -94,11 +135,13 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     p.types.push(crate::project_fixture::TypeRec::new(502, WALLS));
     p.data.push(Block { id: 502, payload: crate::project_fixture::name_bytes("Storefront") });
     wall_at(&mut p, 90, 40.0, 502);
+    // A mullion of it, naming it as its host.
+    p.recs.push(Rec::new(91, -2_000_171).at([1.0, 40.0, 0.0, 1.2, 40.2, 10.0], &[90, 91]));
     // Door 200 names walls 80 and 100, both below it: the nearest below is 100. Door 250 names only wall 300, above it.
     door(&mut p, 200, 5.0, &[80, 100]);
     p.recs.push(Rec::new(250, DOORS).at([3.5, 29.6, 0.0, 6.5, 31.2, 7.0], &[300, 600, 250]));
-    // Door 95 names the curtain wall 90 (below it) and wall 100 (above it): the nearest below it is the curtain wall, which comes in
-    // as the plane its box gives, so it is the host. Door 410 names only it.
+    // Door 95 names the curtain wall 90 (below it) and wall 100 (above it): the nearest below it is the curtain wall, its host, which
+    // holds a door only in a wall set in its cell, so it is not set in wall 100 instead. Door 410 names only it.
     door(&mut p, 95, 9.0, &[90, 100]);
     p.recs.push(Rec::new(410, DOORS).at([3.5, 40.0, 0.0, 6.5, 41.2, 7.0], &[90, 600, 410]));
     let (i, from) = super::walls::import_with_origins(&p);
@@ -110,8 +153,21 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     };
     assert_eq!(host(200).as_deref(), Some("Wall 100"), "{:?}", i.skipped);
     assert_eq!(host(250).as_deref(), Some("Wall 300"));
-    assert_eq!(host(95).as_deref(), Some("Wall 90"));
-    assert_eq!(host(410).as_deref(), Some("Wall 90"), "{:?}", i.skipped);
+    assert_eq!(host(95), None, "{:?}", i.skipped);
+    assert_eq!(host(410), None);
+    // They come in as components of a family of their own (a BIMCraft door stands in a wall), drawn as Revit draws them.
+    let doors: Vec<&bimcraft_core::model::Component> = i
+        .model
+        .elements
+        .values()
+        .filter_map(|e| if let bimcraft_core::model::Element::Component(c) = e { Some(c) } else { None })
+        .filter(|c| c.family == "Doors")
+        .collect();
+    assert_eq!(doors.len(), 2, "{:?}", i.skipped);
+    let said = |what: &str| i.skipped.iter().any(|s| s.contains(what) && s.contains("95") && s.contains("410"));
+    assert!(said("its host is a curtain wall") && said("comes in as a component"), "{:?}", i.skipped);
+    assert!(said("2 doors: comes in as a box"), "{:?}", i.skipped);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
 }
 
 /// A wall at an angle: from (0, 5) ft, 15 ft long along `direction`, 10 ft tall.

@@ -2717,9 +2717,6 @@ fn check_pattern(m: &Model, n: &str, l: &CurtainLayout) -> Result<(), String> {
     if !(l.min_panel.is_finite() && (0.0..=MAX_SIZE).contains(&l.min_panel)) {
         return Err(format!("{who}: min_panel {} mm; it is from 0 to {MAX_SIZE} mm", l.min_panel));
     }
-    if envelope(m, l).is_none() {
-        return Err(format!("{who}: its pattern needs a panel or a mullion somewhere"));
-    }
     // Three whole modules each way hold every meeting of its segments with each other and the borders.
     let whole = |d: &Direction| Direction { segments: d.segments.clone(), fit: d.fit, justify: Justify::Start };
     let (cs, rs) = (whole(&l.columns), whole(&l.rows));

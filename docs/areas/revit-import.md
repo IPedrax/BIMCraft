@@ -53,7 +53,7 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   through the middle of the box across it, its top the box's top on the level at or below it, its section the box across it; a member
   whose box runs across the axes in plan (wider than a third of its length) or stands (as deep as it is long) is left out, since its
   line is not read and its box would make a beam of another width and direction. Structural foundations are isolated footings of their
-  box (a wall foundation or a mat too). Stairs' runs, landings and supports, railings, curtain panels and mullions, wall sweeps, slab
+  box (a wall foundation or a mat too). Stairs' runs, landings and supports, ramps, railings, curtain panels and mullions, wall sweeps, slab
   edges, conduits, furniture systems (of the furniture category), site pads, masses, trusses, beam systems, stiffeners and
   connections come in as boxes of a family of their category, as fittings do, each saying so (a model group, class
   `ElementGroup`, and terrain, class `Toposolid` or `SiteSurface`, are left out instead: a group's members come in on their
@@ -78,24 +78,48 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   mirrored (`Component::mirrored`) where the transform's axes are a mirror's. An element whose graphics draw solids of their own
   where it stands (a stair's run, landing or support, a wall sweep, a slab edge) or several symbols (a railing's rails, a mullion)
   comes in with **a shape of its own**: those solids and each symbol placed by its transform, checked the same way, as a type of
-  its own (elements drawn alike share one), and the note says "where it stands". A shape comes in **in its materials**: each face
+  its own (elements drawn alike share one), and the note says "where it stands". So does one that places a single symbol whose
+  box, placed, is not its record's, where all it draws is (a stair's run: its steps, and its walk line above them); a symbol placed
+  that draws no solid adds nothing. A shape comes in **in its materials**: each face
   names the material it is drawn in (a mesh its own), and the family holds a mesh for each material its type's shape uses, one that
   names none in the family's own; and each material comes in with **its look**, its shading colour and transparency, read from its
   object by the schema's fields (`data::Look`, given to the model's material of its name once the import has made them), so walls'
-  and floors' layers show their colours too. The graphics are found in the second pass and the
-  symbols drawn read after it, each partition that holds one inflated again (`Gathered::drawn`, a `shapes::Drawing` for each
-  element, and `Gathered::shapes`); the provenance rows say what was measured, and what is not read (a cone, a Hermite or ruled
-  surface, an ellipse turned, a family nested in a symbol, which come in as boxes saying why; a family whose shapes would build
-  more triangles together than a family may keeps the box for its other types, and a component whose family would pass the types a
-  family may hold is left out). Snowdon 2025's architectural model
-  brings in 5,621 components, 4,341 with their type's shape and 592 with a shape of their own, in 134 families of 1,197 types.
+  and floors' layers show their colours too. A symbol whose family **nests** others draws them in, each nested symbol's shape
+  placed by its transform (`shapes::nest`, up to `MAX_NESTING` deep; one nesting itself, or one not read, leaves it a box), and a
+  profile turned may be an ellipse. A shape that would take its family past the triangles one family may build
+  (`family::MAX_BUILT`) or past `MAX_FORMS` goes in a family of the same name numbered on (`Railings (2)`, a name no other family
+  has; `generic::room`, up to `MAX_OVERFLOW` of them), and a type keeps a box only where none has room. The graphics are found in the second pass and the
+  symbols drawn read after it, each partition that holds one inflated again, and the symbols those nest in a round for each depth
+  (`Gathered::drawn`, a `shapes::Drawing` for each element, and `Gathered::shapes`); the provenance rows say what was measured, and
+  what is not read (solids standing outside both boxes Revit gives round a symbol, which its view conditions would explain, which
+  come in as boxes saying why; solids outside the box round its solids alone are read where they fill the box round all it
+  draws, `shapes::fills_either`; a component whose family would pass the types a family may hold is left out). Faces lie on
+  planes, cylinders, cones, surfaces of revolution, ruled surfaces and bicubic Hermite surfaces, and profiles are lines, arcs,
+  ellipses and cubic Hermite splines (`shapes.rs`). An edge's points are only a sampling of it: a face that is not cut into
+  triangles as they give it (a thin rim between two arcs, whose chords cross) is cut again with its edges following the curves its
+  curved neighbours put them on (`shapes::along`), and edges that meet only in space (at a pole) are joined there
+  (`shapes::chain`). Snowdon 2025's architectural model brings in
+  5,654 components, 4,614 with their type's shape and 795 with a shape of their own (every stair run among them), in 137 families
+  (one of them the railings' numbered on) of 1,424 types.
   A box is a fair stand-in only for some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit),
   where its graphics draw no shape that reads, only where it runs along an axis, so one that turns a corner or runs across the
-  axes, whose box is a block where there is none, is left out with that; and a whole (a stair,
+  axes, whose box is a block where there is none, is left out with that, as is one whose shape reads where no family of its name has
+  room left for it (the note says which); and a whole (a stair,
   a truss, a beam system) is left out where its box holds a box of its parts' categories, which come in on their own. Conduits come
   in as boxes and not as runs: the finding that a duct's or a cable tray's data holds its line (below) was made on those two
-  categories, and no conduit was looked at. A curtain wall still comes in as the plane of its box, its panels and mullions as boxes
-  over it.
+  categories, and no conduit was looked at. A curtain wall (a wall of a type with no layers that a panel, a mullion or a grid line
+  names as its host) comes in as a BIMCraft curtain wall of a pattern of neither panels nor mullions, 0 mm thick and set out by its
+  exterior face, which draws nothing of its own: its panels and mullions come in as components with their shapes, so its facade is
+  Revit's. A curved one, which a BIMCraft curtain wall cannot be, is left out, and a wall of a type with no layers that nothing
+  names comes in as the plane of its box. A door or a window set in a wall comes in with **its shape** where its
+  graphics draw one that reads (`generic::drawn_where_it_stands`, the components' reading): a family of the door or window
+  category of its Revit family's name, its types Revit's (each shape and size a type, numbered on), each with `Width` and
+  `Height` (the hole in the wall, from its box) and the shape in the opening's own axes as a mesh (`openings::OpeningFamilies`);
+  one whose graphics draw nothing (a schematic opening cut) or do not read keeps a type of the project's own, the size of its
+  box, and the note says why. The hole is the rectangle of its box: an arched one's arch is not read. A door or a window whose nearest wall is a curtain wall (a door panel of the grid) is set
+  in no other wall: a BIMCraft curtain wall holds one only in a wall in its cell, so it comes in as a component of a generic family
+  of its Revit family's name, with its shape (`openings::in_curtain`, `Import::in_curtain`, `generic::Scope::Only`). A curtain grid
+  line (class `CurtainGridLine`) is left out, its box being no body.
 
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line
