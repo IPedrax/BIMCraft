@@ -41,6 +41,7 @@ use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod bars;
+mod catalogue;
 mod quantities;
 mod work_plane;
 
@@ -3584,6 +3585,21 @@ other_files(
          floor, a railing along a stair or a ramp; `room` is a room (id or GUID) whose components to list: those its volume \
          holds, as an element's `room` field shows",
         elements,
+    ),
+    other_files(
+        "catalogue_export",
+        "Export ODS Catalogue",
+        "{path:ODS} export conduit, cable tray, wire and cable geometry types with their library GUIDs to an editable ODS workbook",
+        catalogue::catalogue_export,
+        Files::Write,
+    ),
+    edit_files(
+        "catalogue_import",
+        "Import ODS Catalogue",
+        &[],
+        "{path:ODS} apply the first sheet of a catalogue_export workbook. Keep GUIDs for existing types and leave them blank for new types. Dimensions in millimetres. One undo step",
+        catalogue::catalogue_import,
+        Files::Read,
     ),
 ];
 
