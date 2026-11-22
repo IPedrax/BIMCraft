@@ -8,11 +8,9 @@ use super::{
     PointType, Transform, WorkPlane, plane_of,
 };
 use crate::family::{Expr, PlaneRef, Planes, REF_LEVEL};
+use crate::geom::{P2, SelectBox};
 use crate::view3d::{P3, add, dot, mul, sub};
 use std::collections::BTreeSet;
-
-/// A segment as it shows on screen, its two ends' pixels.
-type OnScreen = ((f64, f64), (f64, f64));
 
 /// What the pointer is over in a picture of an evaluation.
 #[derive(Clone, Debug, PartialEq)]
@@ -152,27 +150,10 @@ impl Evaluation {
     }
 
     /// What a selection box from pixel `a` to pixel `b` takes, as Revit's: dragged left to right (a window), what lies wholly
-    /// inside it; right to left (a crossing), what it touches. In the order of the evaluation; `screen` as for [`Evaluation::pick`].
+    /// inside it; right to left (a crossing), what it touches, by the rule every view's box goes by ([`SelectBox`]). In the
+    /// order of the evaluation; `screen` as for [`Evaluation::pick`].
     pub fn in_box(&self, screen: &dyn Fn(P3) -> Option<(f64, f64, f64)>, a: (f64, f64), b: (f64, f64)) -> Vec<String> {
-        let crossing = b.0 < a.0;
-        let (x0, x1, y0, y1) = (a.0.min(b.0), a.0.max(b.0), a.1.min(b.1), a.1.max(b.1));
-        let inside = |p: (f64, f64)| p.0 >= x0 && p.0 <= x1 && p.1 >= y0 && p.1 <= y1;
-        // Whether segment p-q crosses the box: clipped to it, something is left (Liang-Barsky).
-        let crosses = |p: (f64, f64), q: (f64, f64)| {
-            let (dx, dy) = (q.0 - p.0, q.1 - p.1);
-            let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
-            for (den, num) in [(-dx, p.0 - x0), (dx, x1 - p.0), (-dy, p.1 - y0), (dy, y1 - p.1)] {
-                if den.abs() < 1e-12 {
-                    if num < 0. {
-                        return false;
-                    }
-                } else {
-                    let t = num / den;
-                    if den < 0. { lo = lo.max(t) } else { hi = hi.min(t) }
-                }
-            }
-            lo <= hi
-        };
+        let boxed = SelectBox::dragged(P2(a.0, a.1), P2(b.0, b.1));
         let mut out = Vec::new();
         for id in &self.order {
             // Each element as the pieces it is drawn with: a point, a line's run of samples, a form's triangles' edges.
@@ -192,15 +173,10 @@ impl Evaluation {
                 }
                 None => continue,
             };
-            let on_screen: Option<Vec<OnScreen>> =
-                segments.iter().map(|(p, q)| Some((screen(*p).map(|s| (s.0, s.1))?, screen(*q).map(|s| (s.0, s.1))?))).collect();
-            let Some(on_screen) = on_screen.filter(|v| !v.is_empty()) else { continue };
-            let taken = if crossing {
-                on_screen.iter().any(|(p, q)| inside(*p) || inside(*q) || crosses(*p, *q))
-            } else {
-                on_screen.iter().all(|(p, q)| inside(*p) && inside(*q))
-            };
-            if taken {
+            let at = |p: P3| screen(p).map(|s| P2(s.0, s.1));
+            let on_screen: Option<Vec<(P2, P2)>> = segments.iter().map(|(p, q)| Some((at(*p)?, at(*q)?))).collect();
+            // Wholly behind the eye, or partly: not taken.
+            if on_screen.is_some_and(|pieces| boxed.takes(&pieces)) {
                 out.push(id.clone());
             }
         }

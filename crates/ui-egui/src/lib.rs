@@ -688,6 +688,13 @@ pub struct BimApp {
     /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
     /// which spares cutting the model each time the box moves.
     pub(crate) cut_fills_3d: bool,
+    /// Revit's Select Elements by Face, in a family document's plans and elevations (`editor/selection.rs`): on, a
+    /// face selects what it is of; off, only an edge does. The user's, kept in the settings file.
+    pub(crate) select_by_face: bool,
+    /// Revit's Drag Elements on Selection, beside it: on, a drag from the face of a form or a nested instance that isn't
+    /// selected is that element's and selects it, where a face selects; off (at first), that face is a selection box's to
+    /// begin in. The user's, kept in the settings file.
+    pub(crate) drag_on_selection: bool,
     /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
     /// never in a drawing that is printed or exported.
     show_origin: bool,
@@ -1714,6 +1721,8 @@ impl BimApp {
             guide_style: style::GuideStyle::default(),
             compressed_save: false,
             cut_fills_3d: true,
+            select_by_face: true,
+            drag_on_selection: false,
             show_origin: true,
             show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
@@ -4194,6 +4203,8 @@ impl BimApp {
             (self.sheet, self.front) = (sheet, sheet);
             if let Some(ed) = self.family_of_mut(id) {
                 ed.views.shown = view;
+                // What changed while another tab was in front goes from its selection.
+                ed.prune_selection();
             }
             return;
         }
@@ -4524,6 +4535,7 @@ impl BimApp {
         fresh.guide_style = self.guide_style;
         fresh.compressed_save = self.compressed_save;
         fresh.cut_fills_3d = self.cut_fills_3d;
+        (fresh.select_by_face, fresh.drag_on_selection) = (self.select_by_face, self.drag_on_selection);
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
@@ -7105,15 +7117,32 @@ impl BimApp {
         ui.horizontal(|ui| {
             ui.label(RichText::new(t(self.prompt())).color(pal().muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // How many elements are selected, by the selection filter, as Revit shows it.
-                // A click on it filters the selection, as Revit's does.
-                ui.label(format!(":{}", self.selection.len()));
+                // How many elements are selected, by the selection filter, as Revit shows it: on a family's tab, of the
+                // family document's own selection. A click on it filters the selection, as Revit's does.
+                let selected = self.active_family().map_or(self.selection.len(), |ed| ed.selected_count());
+                ui.label(format!(":{selected}"));
                 self.export_progress(ui);
                 let (r, funnel) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
                 icons::paint(ui.painter(), Icon::Filter, r, pal().icon);
                 funnel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Filter Selection")));
                 if funnel.on_hover_text(t("Filter Selection")).clicked() {
-                    self.open_filter();
+                    // The family document's Filter on its tab (FE-20), never the project's from there.
+                    match self.active_family_mut() {
+                        Some(ed) => ed.open_filter(),
+                        None => self.open_filter(),
+                    }
+                }
+                // Drag Elements on Selection and Select Elements by Face, left of it as Revit's status bar has them: a family
+                // document's that isn't adaptive, greyed where they change nothing ({3D}, a sketch).
+                if let Some(usable) = self.active_family().filter(|ed| ed.adaptive.is_none()).map(|ed| ed.picks_by_face()) {
+                    let on = self.drag_on_selection;
+                    if ui.add_enabled_ui(usable, |ui| editor::selection::drag_toggle(ui, on)).inner.clicked() {
+                        self.drag_on_selection = !on;
+                    }
+                    let on = self.select_by_face;
+                    if ui.add_enabled_ui(usable, |ui| editor::selection::face_toggle(ui, on)).inner.clicked() {
+                        self.select_by_face = !on;
+                    }
                 }
                 if let Some(p) = self.canvas.cursor {
                     let u = self.session.model.units;

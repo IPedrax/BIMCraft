@@ -743,8 +743,10 @@ selecting, Aligned Dimension, Align, Pick Lines and the Work Plane dialog's Pick
 app's Tab hook leaves Tab to the family document while it is open. The blank window (File > New > Family… > Window) has Sill: a
 plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
 window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
-share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is outlined, the
-selected plane's trace drawn heavier. A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
+share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is drawn by its own
+edges as the view sees them (`views::outline_edges`: each edge between a face toward the eye and one not, and each crease between
+two faces toward it, where no face of the form lies in front of it: an L's notch, a hole seen from above, a Blend's top, and an
+elevation's real silhouette; it is picked and boxed by them too, FE-20), the selected plane's trace drawn heavier. A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
 of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
@@ -758,6 +760,93 @@ lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tes
 plane hides it and one behind it is seen through its tint.
 An adaptive family's modelling view keeps its own Work Plane panel and Show. An elevation is framed on what it shows as a project's
 is (`render::section_extent`), so its levels' names past their lines' ends aren't cut at the picture's edge.
+
+FE-1: what is selected in a family that isn't adaptive is one set, the only place the selection is kept (`editor/select_box.rs`,
+`Selection`): forms, planes (a datum too, as a click takes one), reference lines, dimensions, plan symbols, connectors and nested
+instances (`family::select::Picked`, the core's). Each kind's accessor (`selected_form`, `selected_plane` and the rest) names the
+one thing selected while the set holds exactly one, of any kind, and nothing while it holds several, so Properties, the
+contextual tab, Align, Pivot, the Start and End handles and the grips act on one element as before and never on one of several;
+a click and the Project Browser make the set what they select. In a plan or an elevation, a drag of the primary button that
+starts on no element (nor a handle, a grip or a padlock), with no tool in hand, draws a box as Revit's: left to right a window,
+solid, taking what lies wholly inside it; right to left a crossing, dashed, taking what it touches too. Let go within
+`canvas::STILL` (6 px each way, sketch mode's box's too) of where it began, it is no box but the click there: a slow click or a
+shaky one, which egui calls a drag once held past its click's time, selects what a click would rather than boxing nothing and
+letting the selection go (FE-20). It is the rule the adaptive modelling view boxes by, one for both (`geom::SelectBox` in the
+core), drawn as a project's plan draws its box (`canvas::box_shapes`). Each element is boxed by what it is drawn with on screen:
+a form's or a nested instance's edges as the view draws them (`views::outline_edges`, `nested_outline_edges`: an L's inner
+corner, never its hull's chord across the empty corner), a plane's trace, a reference line, a dimension's line, a symbol's
+strokes (in the plans, which draw symbols: `Family::symbol_mark`), a connector's place; a void, which a click doesn't pick in a
+view, a form hidden for now, and what the view's Visibility Settings leave out (F8) aren't, nor does a click pick them, by a face
+or by an edge, nor a drag from one take hold of them, a box beginning there instead (`Scene::hidden`, `views::form_at_among` and
+`form_edge_at_among`): a nested instance's pieces they hide, which the view never draws (`views::nested_drawn`), and while
+Preview Visibility is on a form they hide, which is drawn halftone, and taken as a click takes it, while it is off. Ctrl adds what
+the box takes, Shift takes it away, else it is the selection; a click on an element with Ctrl or Shift adds or takes away that
+one, and a click on nothing with either keeps the selection. The middle button still pans, and a drag with a tool in hand is the
+tool's. A drag from an element's edge (one a form or a nested instance is drawn with, a plane's trace, a reference line, a
+connector) is the element's and draws no box: it selects the element if it isn't selected, alone or added with Ctrl (Shift
+leaves the selection be). The face of a form or a nested instance that isn't selected is the box's to begin in, as Revit's, so a
+box can be drawn inside one, unless Drag Elements on Selection is on (below), when a face that selects is its element's as an
+edge is; the face of one selected is its own either way, and draws no box (`Scene::held_face`). What a face does is Select
+Elements by Face's to say (below): on, a click on it selects and a crossing box drawn inside it takes what it is of; off, a
+crossing box wholly inside a face, meeting none of its edges, doesn't take the form, as Revit's doesn't, and a click selects by
+an edge alone: a form is boxed and clicked by the edges the view draws it with. A drag moves nothing but a selected plane of the
+family's own, a handle or a grip, as before. With several selected, Properties say how many (Multi-Select (N)) and show none of
+their rows, the contextual tab is Modify | Multi-Select, each is drawn selected (in the views, in {3D}, and in the Project
+Browser's lists), Temporary Hide/Isolate takes every form and plane selected, and Delete (the key, the ribbon's) takes them all
+away as one step of the document's history: a dimension, a nested instance, a form, a symbol, a connector, then a reference
+line, then a plane, each list from its end so the places of the rest hold, a datum staying and staying selected. Where one can't
+go (a plane something not selected is drawn on), none does, and the status bar says why. Escape and Modify (the ribbon's) let
+the selection go. What goes from the draft another way (undone, redone, changed while another tab was in front) goes from the set
+(`FamilyEditor::prune_selection`); the history keeps the reference lines too (`Draft`), so Undo brings back a line deleted. {3D}
+has no box: a drag there turns the view, as before.
+
+FE-20: the selection's commands, as Revit's family editor has them, over that one set (`editor/selection.rs`; what each finds
+is the core's, `family/select.rs`). None has a key of its own in the family yet; Find (Ctrl+K) lists each on a family's tab
+where it works (`BimApp::family_find_actions`, `family_find_action`), and one with nothing to work on (Filter with nothing
+selected, Select Previous with no selection before this one, any of them while a form is sketched or in an adaptive family)
+does nothing. None is a step of the document's history, and nothing reaches the project.
+
+- **Filter** (the Select panel's Filter on Modify | Multi-Select, where Revit has it; the status bar's funnel, which on a
+  family's tab counts and filters the family's selection, never the project's) lists the kinds the selection holds, each with
+  how many of it (`select::groups`): forms by what they are (Extrusions, Blends, Revolves, Sweeps, Swept Blends, the void ones
+  apart, a file's Meshes), Reference Planes, Reference Lines, Dimensions, Symbols, Connectors and Nested Instances, in that
+  order whatever the language (`Kind::rank`; sorted by name, a translation would reorder them). Each is checked to keep or
+  cleared to leave out, with Check All and Check None, and OK keeps what is checked selected (`select::kept`). The list is
+  the project's Filter's own (`filter::checklist`).
+- **Select Previous** brings back the selection as it was before it was last let go (Escape, Modify, a click on nothing) or
+  replaced by another (a click, a box, Filter, Select by ID): one set (`Selection::previous`), kept in step with the draft as
+  the selection is, so what was deleted since is skipped; an undo or a redo follows each thing of it to where the step puts it
+  (a form by the tag it keeps while the document is open; a symbol, a connector and a nested instance by its GUID, or with none
+  yet at its place while the step left it as it was: `document::followed`), and lets go only what it can't follow. What it
+  replaces becomes the previous one, so Select Previous again changes them back; Ctrl and Shift, which add to a selection and
+  take from it, make no previous one.
+- **Select by ID** (Manage > Inquiry, as the project's) selects, or adds to the selection, the parts a list names
+  (`select::find`, which reads a list as `inquiry::find` does: ids, GUIDs dashed or not, IFC GlobalIds, separated by spaces,
+  commas, semicolons or lines), and says as it is typed what it finds and what names nothing; OK waits while it finds nothing.
+  **IDs of Selection** beside it shows each selected thing's id and GUID to read or copy: the one place a family document
+  shows them (Properties and the Project Browser show neither). A part holds the id and the GUID its family's project gave it
+  (`HasPart`). One made in the document since has no id until the family is loaded into a project and opened again (a dash),
+  and is found by its GUID, which a plane and a dimension drawn there and a form sketched there are given as they are made; a
+  symbol, a connector and a nested instance made since have neither yet, and nothing names them.
+- **Select Elements by Face** (the toggle left of the status bar's funnel on the tab of a family that isn't adaptive, lit
+  while on and crossed out while off; the window's setting, `select_by_face` in `settings.json`, on to begin with since a click
+  has always taken a form by its face, where Revit begins with it off): on, a click on a form's or a nested instance's face
+  selects it, and a crossing box takes one by its faces as by its edges, so one drawn wholly inside a face takes what the face
+  is of (`views::face_in_box`, `geom::SelectBox::touches`); off, each is taken by an edge the view draws it with alone
+  (`views::form_edge_at`, `nested_edge_at`, over `outline_edges`: an L's inner corner, never its hull's chord), by a click and
+  by a box. Either way a box may begin inside the face of what isn't selected, and never inside the face of what is. It is of
+  the plans and elevations: greyed in {3D}, which takes a form by its face either way as the project's 3D view does, and while
+  a form is sketched.
+- **Drag Elements on Selection** (the toggle between Select Elements by Face and the funnel, drawn as that one is; the
+  window's setting, `drag_on_selection` in `settings.json`, off to begin with, as Revit begins with it): off, the face of a form
+  or a nested instance that isn't selected is the box's to begin in, as above; on, a drag from it is the element's, as a drag
+  from its edge is, and selects it (Ctrl adds it; `Scene::under`). Only where a face selects: with Select Elements by Face off a
+  face picks nothing, so a drag from one is still a box and this changes nothing. A form the view leaves out (`Scene::hidden`)
+  is taken by neither. It is greyed where Select Elements by Face is ({3D}, where a drag turns the view, and while a form is
+  sketched), and a tool in hand takes the drag either way.
+
+Tests: `tests/family_box_select.rs`, `tests/family_selection.rs`; the core's in `family/select.rs`, `family/views.rs` and
+`geom.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
@@ -1342,6 +1431,8 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
   isn't parallel.
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
+- `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,
+  Select by ID's parts and the names of one (FE-20).
 
 In `crates/ui-egui`, the Family Editor:
 
@@ -1359,3 +1450,6 @@ In `crates/ui-egui`, the Family Editor:
   overlay drawn through a view's projection alone).
 - `editor/origin_mark.rs`: the insertion point's mark over plans and elevations and, as a point in space, {3D}; Defines Origin ticked on a plane.
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+- `editor/select_box.rs`: the selection, one set (FE-1), and the box a plan or an elevation selects with, window or crossing.
+- `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select
+  Elements by Face and Drag Elements on Selection.

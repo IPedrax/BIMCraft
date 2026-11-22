@@ -15,14 +15,17 @@ use bimcraft_core::units::Units;
 const LIMIT: f64 = 1e7;
 
 impl FamilyEditor {
-    /// The form selected, while it is there.
+    /// The form selected, while it alone is and it is there.
     pub(crate) fn selected_form(&self) -> Option<usize> {
-        self.form.filter(|i| *i < self.forms.len())
+        match self.only_selected() {
+            Some(super::select_box::Picked::Form(i)) => Some(i),
+            _ => None,
+        }
     }
 
     /// Form `i` selected, as a click on it selects it.
     pub(crate) fn select_form_at(&mut self, i: usize) {
-        self.form = Some(i);
+        self.select_only_form(i);
     }
 
     /// Form `i` selected, as a click on it selects it.
@@ -31,13 +34,14 @@ impl FamilyEditor {
         self.select_form_at(i);
     }
 
-    /// Escape: the form selected let go. Whether there was one.
+    /// Escape: Component placing put down, else what is selected let go. Whether there was either.
     pub(crate) fn let_form_go(&mut self) -> bool {
-        // Component placing, then a nested instance or a symbol selected, go first.
-        if self.placing.take().is_some() || self.nested_sel.take().is_some() || self.symbol.take().is_some() {
+        if self.placing.take().is_some() {
             return true;
         }
-        self.selected_form().is_some() && self.form.take().is_some()
+        let any = !self.selection.is_empty();
+        self.let_everything_go();
+        any
     }
 
     /// The family as the draft has it now, built: what the document would load into the project.

@@ -18,19 +18,19 @@ use bimcraft_core::units::Units;
 const LIMIT: f64 = 1e7;
 
 impl FamilyEditor {
-    /// The nested instance selected, while it is there.
+    /// The nested instance selected, while it alone is and it is there.
     pub(crate) fn selected_nested(&self) -> Option<usize> {
-        self.nested_sel.filter(|i| *i < self.nested_instances.len())
+        match self.only_selected() {
+            Some(super::select_box::Picked::Nested(i)) => Some(i),
+            _ => None,
+        }
     }
 
-    /// Nested instance `i` selected (none: let go), what else was selected let go.
+    /// Nested instance `i` alone selected, what else was selected let go; none, the nested instances selected let go.
     pub(crate) fn select_nested(&mut self, i: Option<usize>) {
-        self.nested_sel = i;
-        if i.is_some() {
-            self.form = None;
-            self.connector = None;
-            self.views.plane = None;
-            self.views.dim = None;
+        match i {
+            Some(i) => self.select_only(super::select_box::Picked::Nested(i)),
+            None => self.selection.retain(|p| !matches!(p, super::select_box::Picked::Nested(_))),
         }
     }
 
@@ -57,7 +57,7 @@ impl FamilyEditor {
             offset: Expr::Number(round(offset)),
             ..Default::default()
         });
-        self.nested_sel = Some(self.nested_instances.len() - 1);
+        self.select_nested(Some(self.nested_instances.len() - 1));
     }
 
     /// What loading `incoming` as `name` into this family asks: whether it nests one of that name defined otherwise, and the

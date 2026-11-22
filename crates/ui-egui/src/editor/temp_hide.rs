@@ -10,6 +10,7 @@
 //! draws) and, in the preview of a door or a window, the wall it stands in. Only forms, points and lines can be selected, so
 //! only they are hidden by Hide Category; Isolate Category hides every other one the view draws, and Isolate Element the
 //! reference planes or the wall too, as Revit's hides every element but those selected.
+use super::select_box::Picked;
 use super::*;
 use crate::adaptive_view::Hidden;
 use bimcraft_core::adaptive::{Definition, Operation as Node};
@@ -79,7 +80,7 @@ impl FamilyEditor {
     pub(crate) fn temp_picked(&self) -> bool {
         match &self.adaptive {
             Some(d) => self.modeller.selection.iter().any(|id| d.nodes.iter().any(|n| &n.id == id)),
-            None => self.selected_form().is_some() || self.selected_plane().is_some(),
+            None => self.selection.items().iter().any(|p| matches!(p, Picked::Form(_) | Picked::Plane(_)) && self.holds(*p)),
         }
     }
 
@@ -107,21 +108,28 @@ impl FamilyEditor {
                     )
                 }
                 None => {
-                    let picked = self.selected_form().map(|i| self.forms[i].tag);
+                    // Every form and plane selected (FE-1), and their categories.
+                    let picked: BTreeSet<u64> = self.picked_forms().filter_map(|i| self.forms.get(i).map(|f| f.tag)).collect();
                     let host = if self.category.hosted() { vec![Kind::Host] } else { Vec::new() };
-                    let kind = if self.selected_plane().is_some() { Kind::Planes } else { Kind::Forms };
+                    let mut kinds = BTreeSet::new();
+                    if !picked.is_empty() {
+                        kinds.insert(Kind::Forms);
+                    }
+                    if self.picked_planes().next().is_some() {
+                        kinds.insert(Kind::Planes);
+                    }
                     (
-                        picked.into_iter().collect(),
+                        picked,
                         BTreeSet::new(),
-                        BTreeSet::from([kind]),
+                        kinds,
                         self.forms.iter().map(|f| f.tag).collect::<BTreeSet<_>>(),
                         BTreeSet::new(),
                         host.into_iter().chain([Kind::Forms, Kind::Planes]).collect(),
                     )
                 }
             };
-        // A plane selected in a plan or an elevation, and every plane of the family's own (the datums are Planes alone).
-        let plane: BTreeSet<bimcraft_core::ids::Guid> = self.selected_plane().into_iter().collect();
+        // The planes selected in a plan or an elevation, and every plane of the family's own (the datums are Planes alone).
+        let plane: BTreeSet<bimcraft_core::ids::Guid> = self.picked_planes().collect();
         let every_plane: BTreeSet<bimcraft_core::ids::Guid> = self.planes.iter().filter(|p| !p.level).map(|p| p.guid).collect();
         let t = &mut self.document.temp;
         match asked {
@@ -148,8 +156,7 @@ impl FamilyEditor {
             }
             Asked::Reset => {}
         }
-        self.form = None;
-        self.views.plane = None;
+        self.let_everything_go();
         self.modeller.selection.clear();
         Ok(())
     }

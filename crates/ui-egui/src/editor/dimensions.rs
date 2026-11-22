@@ -649,16 +649,16 @@ impl FamilyEditor {
         self.views.dim_kind = DimKind::Aligned;
         self.views.aligning = None;
         self.views.align_lock = None;
-        self.views.plane = None;
-        self.views.dim = None;
-        self.views.line = None;
         self.views.pivoting = None;
-        self.form = None;
+        self.let_everything_go();
     }
 
-    /// The dimension selected, while the family has it.
+    /// The dimension selected, while it alone is and the family has it.
     pub(crate) fn selected_dimension(&self) -> Option<Guid> {
-        self.views.dim.filter(|g| self.dimensions.iter().any(|d| d.guid == *g))
+        match self.only_selected() {
+            Some(super::select_box::Picked::Dimension(g)) => Some(g),
+            _ => None,
+        }
     }
 
     /// The draft's family with `change` made to its dimensions, if its constraints still solve for the type previewed: else
@@ -711,9 +711,7 @@ impl FamilyEditor {
     /// Dimension `g` taken away.
     pub(crate) fn delete_dimension(&mut self, g: Guid) {
         self.dimensions.retain(|d| d.guid != g);
-        if self.views.dim == Some(g) {
-            self.views.dim = None;
-        }
+        self.selection.forget(super::select_box::Picked::Dimension(g));
     }
 
     /// The draft's dimensions measuring to plane or form `g` lose it, as deleting it does in Revit.

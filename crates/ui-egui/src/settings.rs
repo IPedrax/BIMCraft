@@ -120,6 +120,10 @@ pub struct Settings {
     pub high_contrast: [u8; 3],
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
+    /// Select Elements by Face, in a family document's plans and elevations: a face selects what it is of.
+    pub select_by_face: bool,
+    /// Drag Elements on Selection, beside it: a drag from the face of what isn't selected is that element's, and selects it.
+    pub drag_on_selection: bool,
     /// How guides and the live drawing's aids are drawn: the refined look, or the classic one to compare it with.
     pub guide_style: GuideStyle,
     /// Save and Save As write the project zipped (`bimcraft_core::bimc`): a much smaller file, slower to save and open.
@@ -187,6 +191,8 @@ impl Settings {
             "grid_snapping": self.grid_snapping,
             "guide_style": self.guide_style.code(),
             "compressed_save": self.compressed_save,
+            "select_by_face": self.select_by_face,
+            "drag_on_selection": self.drag_on_selection,
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
             "shortcuts": self.shortcuts,
@@ -237,6 +243,8 @@ impl Settings {
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             guide_style: v["guide_style"].as_str().and_then(GuideStyle::from_code).unwrap_or(base.guide_style),
             compressed_save: v["compressed_save"].as_bool().unwrap_or(base.compressed_save),
+            select_by_face: v["select_by_face"].as_bool().unwrap_or(base.select_by_face),
+            drag_on_selection: v["drag_on_selection"].as_bool().unwrap_or(base.drag_on_selection),
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
@@ -389,6 +397,7 @@ impl BimApp {
         self.grid_snapping = kept.grid_snapping;
         self.guide_style = kept.guide_style;
         self.compressed_save = kept.compressed_save;
+        (self.select_by_face, self.drag_on_selection) = (kept.select_by_face, kept.drag_on_selection);
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
@@ -442,6 +451,8 @@ impl BimApp {
             grid_snapping: self.grid_snapping,
             guide_style: self.guide_style,
             compressed_save: self.compressed_save,
+            select_by_face: self.select_by_face,
+            drag_on_selection: self.drag_on_selection,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
             shortcuts: self.custom_shortcuts.clone(),

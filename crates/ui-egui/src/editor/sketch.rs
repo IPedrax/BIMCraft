@@ -660,8 +660,7 @@ impl FamilyEditor {
             lock: false,
             trim: None,
         }));
-        self.form = None;
-        self.views.plane = None;
+        self.let_everything_go();
         self.views.drawing = None;
         self.views.picking = None;
     }
@@ -690,8 +689,9 @@ impl FamilyEditor {
 
     /// Cancel Edit Mode: the lines dropped, and the locks added or taken off while sketching; the draft as it was.
     pub(crate) fn cancel_form_sketch(&mut self) {
-        if let Some(s) = self.sketch.take() {
-            self.form = s.index;
+        // The form it was of, selected again.
+        if let Some(i) = self.sketch.take().and_then(|s| s.index) {
+            self.select_only_form(i);
         }
         self.views.aligning = None;
     }
@@ -884,9 +884,7 @@ impl FamilyEditor {
         }
         self.views.aligning = None;
         self.sketch = None;
-        self.form = Some(at);
-        self.symbol = None;
-        self.connector = None;
+        self.select_only_form(at);
         Ok(())
     }
 
