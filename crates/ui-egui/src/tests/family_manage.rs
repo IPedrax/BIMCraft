@@ -107,10 +107,10 @@ fn find_lists_the_manage_commands_and_opens_them() {
 }
 
 /// The family's Manage tab, Object Styles and Materials opened from it with their notes, Project Units' list, and Purge
-/// Unused offering Spare, saved where `BIMCRAFT_FE19_DUMP` says (only then).
+/// Unused offering Spare, saved where `BIMCRAFT_FAMILY_MANAGE_DUMP` says (only then).
 #[test]
 fn family_manage_screenshots() {
-    let Ok(folder) = std::env::var("BIMCRAFT_FE19_DUMP") else { return };
+    let Ok(folder) = std::env::var("BIMCRAFT_FAMILY_MANAGE_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
     let save = |h: &mut Harness<BimApp>, name: &str| {
         h.run();

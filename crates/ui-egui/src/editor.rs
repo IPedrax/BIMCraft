@@ -1464,6 +1464,8 @@ impl BimApp {
             }
             Manage::Purge => {
                 let name = ed.original.clone().unwrap_or_default();
+                // Of a project's elements only a component, a door and a window name a family and hold values of its
+                // parameters; a family nesting this one holds a copy of its own, which this purge doesn't change.
                 let held = |p: &str| {
                     model.elements.values().any(|e| match e {
                         bimcraft_core::model::Element::Component(c) => c.family == name && c.params.contains_key(p),

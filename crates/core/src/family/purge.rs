@@ -60,6 +60,7 @@ impl Family {
                 out.parameters.push(p.name.clone());
             }
         }
+        // A Family Type parameter can't pick a nested family yet; once it can, a nested family one may pick is kept.
         for n in &self.nested {
             if n.name.trim().is_empty() {
                 continue;
