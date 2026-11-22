@@ -1176,8 +1176,12 @@ impl FamilyEditor {
             if response.drag_started()
                 && let Some(p) = ui.input(|i| i.pointer.press_origin())
             {
-                // A plane its pivot holds turns by its grip, never slides (F7d).
-                let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum() && q.pivot.is_none()));
+                // A plane its pivot holds turns by its grip, never slides (F7d). Selected as the frame began (`chosen`): a drag that
+                // has just selected it, above, only selects it, and the next drag moves it.
+                let own = self
+                    .selected_plane()
+                    .filter(|g| chosen == [Picked::Plane(*g)])
+                    .filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum() && q.pivot.is_none()));
                 self.views.drag = own.filter(|g| pick_plane(p) == Some(*g)).map(|_| at_view(p));
                 self.views.drag_origin = self.views.drag;
             }

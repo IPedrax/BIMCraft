@@ -246,6 +246,23 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     assert!(editor(&h).planes.iter().all(|p| !p.datum() || p.as_datum()), "the datums as they are");
 }
 
+/// A drag from a plane that isn't selected selects it and leaves it where it is; once selected, a drag moves it.
+#[test]
+fn a_drag_from_a_plane_not_selected_selects_it_and_the_next_drag_moves_it() {
+    let (mut h, _) = boxed();
+    view(&mut h, Some(Which::Plan));
+    let edge = plane(&h, "Edge").guid;
+    assert_eq!(editor(&h).selected_plane(), None);
+    let was = plane(&h, "Edge").clone();
+    let (a, b) = (editor(&h).views.screen_of([-400.0, 0.0, 0.0]).unwrap(), editor(&h).views.screen_of([-100.0, 200.0, 0.0]).unwrap());
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    assert_eq!(editor(&h).selected_plane(), Some(edge), "the drag selects Edge");
+    assert_eq!(*plane(&h, "Edge"), was, "and leaves it where it was");
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    let p = plane(&h, "Edge");
+    assert!((p.start[0] + 100.0).abs() < 15.0 && (p.end[0] + 100.0).abs() < 15.0, "selected, a drag moves it: {p:?}");
+}
+
 /// A window with a Sill plane on Ref. Level, Align-locked to it, and Head 1200 above: as the blank window has Sill (F10c).
 const SILL_WINDOW: &str = r#"family {"name": "Sill Window", "category": "window", "parameters": [{"name": "Width", "value": 900}, {"name": "Height", "value": 1200}], "types": {"T": {}}, "ref_planes": [{"guid": "f1000000-0000-4000-8000-000000000003", "name": "Head", "start": [-1500, 0, 1200], "end": [1500, 0, 1200], "up": [0, 1, 0]}, {"guid": "f1000000-0000-4000-8000-000000000004", "name": "Sill", "start": [-1500, 0, 0], "end": [1500, 0, 0], "up": [0, 1, 0]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"plane": "f1000000-0000-4000-8000-000000000004"}], "view": "front", "at": [1300, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true}], "forms": [{"plane": "xz", "profile": [[-450, 0], [450, 0], [450, 1200], [-450, 1200]], "from": -40, "to": 40}]}"#;
 
