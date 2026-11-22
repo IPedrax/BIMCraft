@@ -1019,6 +1019,52 @@ there, as its greyed button's tooltip does. Known: Rotate, Mirror and Scale don'
 yet, and a sketch tool doesn't refuse what a label holds while sketching (Finish solves it as before). Tests:
 `tests/family_modify.rs`, `tests/family_edges_not_hull.rs`, `family_transform_tests.rs`.
 
+The Clipboard panel (`editor/clipboard.rs`, `family/clipboard.rs`) in a family that isn't adaptive, on the Modify tab and the
+contextual tab: the project's panel (`crate::clipboard::panel`), Paste with its Aligned options, Cut to Clipboard and Copy to
+Clipboard (a sketch's contextual tab has no room for it at 1600 pixels without folding Dimension and Work Plane, so while
+sketching the clipboard is Ctrl+C, Ctrl+X, Ctrl+V and Find). Copy to Clipboard (Ctrl+C) puts what is selected on the
+clipboard, Cut to Clipboard (Ctrl+X) too, taking it away as Delete does (one step of the history; what Delete refuses, Cut
+refuses, nothing changed). What is held is a Ctrl+drag's copies (`Family::clip`, `Clip`), kept as a family of their own, so
+the clipboard stays what was copied whatever the document does after: what a copy is drawn on is the copy of it where that is
+copied too, else what the original is drawn on; a dimension comes along where every reference of it is copied (one selected,
+or one holding a label, a lock, EQ or an Align lock among the copies), and one tying what is copied to what isn't is dropped and
+counted (`Clip::dropped`); a datum, the plane that defines the origin and what a pivot turns refuse the copy as a Ctrl+drag
+does. Each paste copies the clipboard again (`Family::paste`), so every paste has GUIDs of its own and the clipboard pastes
+again and again; the copies are added at the end of each list (a form too, so a void pasted cuts what is listed before it) and
+selected after, and the status bar says how many constraints were dropped. Paste from Clipboard (Ctrl+V) has the copies follow
+the pointer in the plan or elevation shown, drawn as the view draws them (`paste_preview`, through `Scene::pieces`), held by
+the middle of what has a size of its own (a plane's trace runs across the view, so with forms, lines or symbols it doesn't
+count); a click puts that middle where it is, through the drag's move of the copies (`move_picked`), so its rules hold: a
+number the move would change that is a formula refuses it, as a Ctrl+drag's copy does; edge-on, an extrusion's Start and End
+move. Refused, nothing is changed, the paste goes on and the status bar says why; Escape gives it up. Every type must still
+solve and build and the family pass its checks if it did. Of the Aligned options, Aligned to Selected Levels and Aligned to
+Picked Level are greyed (a family has one level, Ref. Level, which what is copied is on already); Aligned to Same Place puts
+the copies where what was copied is (from any view, {3D} too, where Paste from Clipboard is greyed); Aligned to Current View
+and Aligned to Selected Views paste dimensions copied alone, without what they measure (`Clip::loose`, view-specific): each a
+new dimension measuring the same references in the view shown, or in each view ticked in a dialog that lists the views that
+can draw them (those where the family's checks pass with them), their labels, locks and EQ left behind (they hold in the view
+copied from) and counted. Dimensions alone don't paste by the pointer or in the same place, and model elements don't paste
+into views; each says so. While a form is sketched, the same commands copy, cut and paste the lines picked (`SketchClip`),
+never the Axis Line, into the same sketch (the same form and part): new GUIDs, the locks and dimensions among them coming
+along (to `FormSketch::dims`, an Align lock to `locks`), those to lines not copied dropped and counted, by the pointer (their
+middle where the click is) or in the same place; one change the sketch's Ctrl+Z takes back. A command that can't be used now
+is greyed with the reason as its tooltip (`clipboard_blocked`), as the Modify tools are.
+
+It goes through the project's clipboard (`clipboard.rs`, [copy and paste](copy-paste.md)) where that fits. Ctrl+C, Ctrl+X and
+Ctrl+V come as the window's Copy, Cut and Paste events, which `BimApp::clipboard_events` takes on a family tab as on a
+project's (from `family_keys`), and the ribbon's paste asks the system clipboard for its text as a project's does
+(`ask_paste`, the window's own copy once it has waited); `copy_to_clipboard` and `pasted_text` hand a family tab's to
+`family_copy` and `family_pasted`. Find (Ctrl+K) lists Copy to Clipboard, Cut to Clipboard, Paste from Clipboard and the three
+Aligned options a family can use (`clipboard::FIND`), done on the next frame as the right-click menu's are (`Request`). A copy
+puts its text on the system clipboard, as a project's does: the core's (`family::clipboard::text`), marked as a family's
+(`KIND`, apart from a project's, which a project's paste doesn't take for its own) with its family's name and the copy's GUID
+(`Source`). A paste takes the window's own copy (`BimApp::family_clip`, `Held`) where the system clipboard's text is that copy
+or isn't a family's at all; a family's copy made in another window is refused, naming its family, and so is pasting into
+another family's document: the copies name the first family's planes, parameters, formulas and nested families, which another
+may not have, and nothing maps them yet, so a paste reads the text's source alone (`family::clipboard::source`). The clipboard
+is the window's, so it outlives views, ribbon tabs and document tabs. Nothing of it is saved. Tests: `tests/family_clipboard.rs`,
+`family_clipboard_tests.rs`.
+
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
 Specify a new Work Plane: Name, the family's planes as `Planes::listed` lists them; Pick a plane, a reference plane's or a datum's
@@ -1694,6 +1740,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
   lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
   isn't parallel; `family/constraints/moving.rs`, what a drag moves together through them; `family/constraints/copying.rs`,
   the copies a Ctrl+drag makes; `family/constraints/transform.rs`, what Rotate, Mirror and Scale do.
+- `family/clipboard.rs`: what the clipboard holds, its text, and what each paste adds.
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 - `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,
@@ -1722,3 +1769,4 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/purge.rs`: Manage > Purge Unused in the family document (FE-19).
 - `editor/drag_move.rs`: the selection moved by a drag, or copied with Ctrl.
 - `editor/modify.rs`: the Modify panel's tools, in a plan, an elevation and a sketch.
+- `editor/clipboard.rs`: the family's Clipboard panel, Ctrl+C, Ctrl+X and Ctrl+V, Paste Aligned.

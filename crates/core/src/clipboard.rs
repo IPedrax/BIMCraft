@@ -327,8 +327,14 @@ struct Raw<'a> {
 
 /// Whether `text` looks like a clipboard of BIMCraft's, without reading it: what a window checks before offering Paste.
 pub fn is_clipboard(text: &str) -> bool {
+    marked(text, KIND)
+}
+
+/// Whether `text` is a JSON object that says early on it is a clipboard of `kind`: a project's ([`KIND`]) or a family's
+/// ([`crate::family::clipboard::KIND`]).
+pub(crate) fn marked(text: &str, kind: &str) -> bool {
     let t = text.trim_start();
-    t.starts_with('{') && t.get(..64).unwrap_or(t).contains(KIND)
+    t.starts_with('{') && t.get(..64).unwrap_or(t).contains(kind)
 }
 
 /// A clipboard's text read.

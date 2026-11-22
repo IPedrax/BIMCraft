@@ -163,6 +163,7 @@ impl FamilyEditor {
         if let Some(g) = self.pivot_candidate() {
             self.views.pivoting = Some(g);
             self.views.modify = None;
+            self.views.pasting = None;
         }
     }
 

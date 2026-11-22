@@ -678,6 +678,7 @@ impl FamilyEditor {
         self.views.align_lock = None;
         self.views.pivoting = None;
         self.views.modify = None;
+        self.views.pasting = None;
         self.let_everything_go();
     }
 

@@ -1132,8 +1132,10 @@ pub struct BimApp {
     pub(crate) clip_text: Option<Arc<str>>,
     /// The clipboard Paste from Clipboard or Aligned to Picked Level places, while its tool is on.
     pub(crate) pasting: Option<clipboard::Pasting>,
-    /// What the right-click menu asked of the clipboard, for the next frame.
+    /// What the right-click menu (or a family tab's Find) asked of the clipboard, for the next frame.
     pub(crate) clip_request: Option<clipboard::Request>,
+    /// What Copy to Clipboard last kept on a family tab (`editor/clipboard.rs`): the window's, so it outlives views and tabs.
+    pub(crate) family_clip: Option<editor::clipboard::Held>,
     /// A paste the ribbon asked the system clipboard's text for, and when.
     pub(crate) paste_asked: Option<(clipboard::PasteMode, f64)>,
     /// Aligned to Selected Levels' or Selected Views' list, while it's open.
@@ -1969,6 +1971,7 @@ impl BimApp {
             pasting: None,
             paste_asked: None,
             clip_request: None,
+            family_clip: None,
             paste_choose: None,
             paste_where: None,
             active_option: None,

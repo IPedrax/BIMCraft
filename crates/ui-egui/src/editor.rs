@@ -3,6 +3,7 @@
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
 mod association;
+pub(crate) mod clipboard;
 pub(crate) mod connector_marks;
 pub(crate) mod connectors;
 pub(crate) mod dimensions;

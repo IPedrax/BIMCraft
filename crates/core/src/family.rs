@@ -19,6 +19,7 @@ use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
+pub mod clipboard;
 pub mod constraints;
 pub mod forms;
 pub mod handles;

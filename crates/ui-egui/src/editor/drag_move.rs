@@ -112,7 +112,7 @@ pub(super) fn delta(from: P2, to: P2, shift: bool) -> P2 {
 }
 
 /// What a copy's refusal says, naming what isn't copied in `f`.
-fn copy_said(r: &CopyRefused, f: &Family) -> String {
+pub(super) fn copy_said(r: &CopyRefused, f: &Family) -> String {
     match r {
         CopyRefused::Datum(n) => tf("{} is a datum: it isn't copied.", &[&f.said(*n)]),
         CopyRefused::Origin(n) => tf("{} defines the origin: it isn't copied.", &[&f.said(*n)]),
@@ -339,6 +339,24 @@ impl FamilyEditor {
             }
         }
         let copies = f.copies(&c).map_err(|r| copy_said(&r, &f))?;
+        let (moved, selected, origin) = self.add_copies(copies, Some(&c));
+        if moved.is_empty() {
+            return Err(t("Nothing selected here can be copied.").to_string());
+        }
+        Ok((moved, selected, origin))
+    }
+
+    /// `copies` added to the draft: what then moves (every copy, the dimensions that hold constraints among them too), what is
+    /// selected after (the copies of what was selected), and where each came from. A form's copy goes right after the form
+    /// `of` names in its place (as a Ctrl+drag's, so a void's cuts what its original cuts); with none, and the rest, at the end.
+    pub(super) fn add_copies(
+        &mut self,
+        copies: bimcraft_core::family::constraints::Copies,
+        of: Option<&Copying>,
+    ) -> (Vec<Picked>, Vec<Picked>, Origin) {
+        let none = Copying::default();
+        let c = of.unwrap_or(&none);
+        let c_forms = &c.forms;
         let mut origin = Origin { guids: copies.guids.iter().map(|(a, b)| (*b, *a)).collect(), ..Origin::default() };
         let mut moved = Vec::new();
         // The forms again, each copy after its original.
@@ -347,12 +365,20 @@ impl FamilyEditor {
         for (i, ft) in self.forms.iter().enumerate() {
             forms.push(ft.clone());
             was.push(i);
-            if let Some(k) = c.forms.iter().position(|j| *j == i)
+            if let Some(k) = c_forms.iter().position(|j| *j == i)
                 && let Some(form) = copies.forms.get(k)
             {
                 moved.push(Picked::Form(forms.len()));
                 forms.push(ft.copied(form));
                 was.push(i);
+            }
+        }
+        // Copies of no form of the draft's (a paste): at the end, each its own.
+        if of.is_none() {
+            for form in &copies.forms {
+                moved.push(Picked::Form(forms.len()));
+                was.push(forms.len());
+                forms.push(FormText::of(form));
             }
         }
         self.forms = forms;
@@ -381,7 +407,8 @@ impl FamilyEditor {
             self.nested_instances.push(n);
         }
         let mut selected: Vec<Picked> = moved.clone();
-        origin.dimensions = (self.dimensions.len(), copies.dimensions_of.clone());
+        let of_dims = if of.is_some() { copies.dimensions_of.clone() } else { Vec::new() };
+        origin.dimensions = (self.dimensions.len(), of_dims);
         for m in copies.dimensions {
             moved.push(Picked::Dimension(m.guid));
             if copies.selected.contains(&m.guid) {
@@ -389,10 +416,7 @@ impl FamilyEditor {
             }
             self.dimensions.push(m);
         }
-        if moved.is_empty() {
-            return Err(t("Nothing selected here can be copied.").to_string());
-        }
-        Ok((moved, selected, origin))
+        (moved, selected, origin)
     }
 
     /// Plane `g` moved by `d` (the family's axes) as the plane's own drag moves it: along its normal, through the constraints where
@@ -439,7 +463,7 @@ impl FamilyEditor {
     /// `items` moved by `d` (the family's axes): planes, lines and forms through the constraints, the rest placed again;
     /// then each type solved and built. Refused, why; the caller puts the draft back.
     /// A refusal names what it is about as `names` does.
-    fn move_picked(&mut self, items: &[Picked], d: [f64; 3], broken: &[String], names: &Names) -> Result<(), String> {
+    pub(super) fn move_picked(&mut self, items: &[Picked], d: [f64; 3], broken: &[String], names: &Names) -> Result<(), String> {
         let f = self.family()?;
         let values = self.values();
         let mut moving = Moving::default();
