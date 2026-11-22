@@ -664,6 +664,15 @@ impl BimApp {
             let leaves = panels.into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))).collect();
             kids.push(Node::group(t("Panel Schedules"), true, leaves));
         }
+        // The detail drawings of reinforced beams.
+        let details = self.rebar_details();
+        if !details.is_empty() {
+            let leaves = details
+                .into_iter()
+                .map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))]))
+                .collect();
+            kids.push(Node::group(t("Reinforcement Details"), true, leaves));
+        }
         Node::group(t("Schedules/Quantities (all)"), true, kids)
     }
 
