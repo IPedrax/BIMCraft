@@ -507,8 +507,8 @@ fn a_selected_dimensions_line_moves_and_what_it_measures_stays() {
     assert_eq!(editor(&h).steps(), 1);
 }
 
-/// A and Edge selected in plan before and after a move, and A moved up in Front, saved where `BIMCRAFT_DRAG_MOVE_DUMP` says
-/// (only then).
+/// A and Edge selected in plan before, during and after a move, and A moved up in Front, saved where
+/// `BIMCRAFT_DRAG_MOVE_DUMP` says (only then).
 #[test]
 fn family_drag_move_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_DRAG_MOVE_DUMP") else { return };
@@ -527,7 +527,10 @@ fn family_drag_move_screenshots() {
     h.hover_at(over);
     h.run();
     save(&mut h, "plan");
-    drag(&mut h, [300.0, 300.0, 0.0], [-200.0, 300.0, 0.0], Modifiers::NONE);
+    // Mid-drag, the button still down: the selection follows the pointer and the status bar says so.
+    let at = press_and_move(&mut h, [300.0, 300.0, 0.0], [-200.0, 300.0, 0.0], Modifiers::NONE);
+    save(&mut h, "plan-moving");
+    release(&mut h, at);
     save(&mut h, "plan-moved");
     view(&mut h, Some(Which::Elevation(Side::Front)));
     pick(&mut h, &[Picked::Form(0)]);

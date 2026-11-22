@@ -258,7 +258,8 @@ impl FamilyEditor {
         let said = match end {
             Some((true, ..)) => tf("{} = {}", &[t("Extrusion End"), &number_text(self.end_after(true, d).unwrap_or(d))]),
             Some((false, ..)) => tf("{} = {}", &[t("Extrusion Start"), &number_text(self.end_after(false, d).unwrap_or(d))]),
-            None => tf("Moved {} mm", &[&number_text(d)]),
+            // Said to a hundredth of a millimetre: a pointer read through {3D} lands a hair off a round number.
+            None => tf("Moved {} mm", &[&number_text((d * 100.0).round() / 100.0)]),
         };
         self.views.said = Some(if self.lined_up() { format!("{said} {}", t("Aligned.")) } else { said });
         Ok(())
