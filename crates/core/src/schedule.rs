@@ -229,6 +229,10 @@ const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// The formwork a member needs (`quantities`), in m², the weight of the bars it hosts, kg, and that over its volume, kg/m³.
+const FORMWORK: Own = (msg!("Formwork Area"), Kind::Area, From::Key("formwork_m2"));
+const REBAR_WEIGHT: Own = (msg!("Rebar Weight"), Kind::Number, From::Key("rebar_kg"));
+const REBAR_RATIO: Own = (msg!("Rebar Ratio"), Kind::Number, From::Key("rebar_ratio"));
 /// Where it stands in the active location's shared coordinates: its point, at its base.
 const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
 const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
@@ -260,6 +264,10 @@ const SHARED: (&str, usize, &[Own]) = (
         PHASE_CREATED,
         PHASE_DEMOLISHED,
         DESIGN_OPTION,
+        VOLUME,
+        FORMWORK,
+        REBAR_WEIGHT,
+        REBAR_RATIO,
     ],
 );
 
@@ -323,6 +331,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
@@ -360,6 +372,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -383,6 +399,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -402,6 +422,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SHARED_EAST,
             SHARED_NORTH,
             SHARED_ELEVATION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -423,6 +447,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SECTION_AREA,
             WEIGHT_PER_METRE,
             WEIGHT,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
         ],
     ),
     (
@@ -443,7 +471,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
             (msg!("Shape"), Kind::Text, From::Key("shape_label")),
         ],
     ),
-    ("stripfooting", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "stripfooting",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            LENGTH,
+            WIDTH,
+            DEPTH,
+            SYSTEM,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            VOLUME,
+            FORMWORK,
+            REBAR_WEIGHT,
+            REBAR_RATIO,
+        ],
+    ),
     (
         "pipe",
         6,

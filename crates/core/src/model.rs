@@ -5304,6 +5304,10 @@ impl Model {
         // FORMAT 22 adds optional source geometry and dimension bindings. Older families have
         // neither and keep their native forms; serde defaults supply the absent fields.
         self.codes_from_386();
+        // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
+        if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
+            self.codes.methods_into_layers();
+        }
         if self.format < 1 {
             self.resolve();
             if self.elements.keys().next().is_some_and(|&first| first < FIRST_ID) {
@@ -10499,12 +10503,12 @@ impl Model {
                         sh.size
                     ));
                 };
-                if let Some([_, hi]) = self.title_blocks.get(&sh.title_block).and_then(|tb| tb.drawing_area)
+                if let Some((tb_name, [_, hi])) = self.title_block_of(sh).and_then(|(n, tb)| tb.drawing_area.map(|a| (n, a)))
                     && (hi.0 > width || hi.1 > height)
                 {
                     return Err(format!(
                         "{who}: title block `{}` drawing area extends outside {width} × {height} mm paper on sheet {}",
-                        sh.title_block, sh.number
+                        tb_name, sh.number
                     ));
                 }
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
