@@ -1025,7 +1025,7 @@ impl Orbit {
 
     /// The caps of section box `cut` on `model`: those made already, else asked of the worker (with the solids found for a model
     /// they are still the solids of, so a box moved only cuts its faces again); none until they come back.
-    fn caps_for(&mut self, ctx: &egui::Context, model: &Arc<Model>, cut: (P3, P3)) -> Option<Arc<Caps>> {
+    pub(crate) fn caps_for(&mut self, ctx: &egui::Context, model: &Arc<Model>, cut: (P3, P3)) -> Option<Arc<Caps>> {
         if let Some(done) = self.cap_worker.as_ref().and_then(crate::view_worker::Latest::take)
             && done.view == self.view
         {

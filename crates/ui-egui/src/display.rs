@@ -18,6 +18,15 @@ use crate::{BimApp, Sheet, Status};
 pub(crate) struct DisplayDialog {
     pub(crate) options: DisplayOptions,
     error: Option<String>,
+    /// Opened on a family document's {3D}: OK and Apply hand the options back to it rather than run a command.
+    family: Option<crate::editor::tabs::DocId>,
+}
+
+impl DisplayDialog {
+    /// The dialog on family document `doc`'s {3D}, its options `options`.
+    pub(crate) fn for_family(options: DisplayOptions, doc: crate::editor::tabs::DocId) -> DisplayDialog {
+        DisplayDialog { options, error: None, family: Some(doc) }
+    }
 }
 
 /// A silhouette's width as the list shows it.
@@ -38,7 +47,7 @@ impl BimApp {
     /// Graphic Display Options (GD) for the 3D view; in another view, says they are the 3D view's.
     pub(crate) fn open_display(&mut self) {
         if self.sheet == Sheet::View3D {
-            self.display_dialog = Some(DisplayDialog { options: self.display_now(), error: None });
+            self.display_dialog = Some(DisplayDialog { options: self.display_now(), error: None, family: None });
         } else {
             let text = t("graphic display options are for the 3D view: open it from the Project Browser");
             self.status = Status { text: text.into(), error: true };
@@ -47,7 +56,12 @@ impl BimApp {
 
     pub(crate) fn display_window(&mut self, ctx: &Context) {
         // Hidden Line and Wireframe draw their edges whatever the view says, as Revit's do.
-        let shaded = self.graphics_shown().style == VisualStyle::Shaded;
+        let family = self.display_dialog.as_ref().and_then(|d| d.family);
+        let style = match family.and_then(|doc| self.family_of(doc)) {
+            Some(ed) => ed.views.kept.graphics_of(None).style,
+            None => self.graphics_shown().style,
+        };
+        let shaded = style == VisualStyle::Shaded;
         let Some(d) = self.display_dialog.as_mut() else { return };
         let (mut ok, mut apply, mut close) = (false, false, false);
         let r = Modal::new(UiId::new("graphic-display-options"), t("Graphic Display Options")).width(420.0).show(ctx, |ui| {
@@ -96,6 +110,11 @@ impl BimApp {
     /// view has it now. A refusal is said in the dialog.
     fn apply_display(&mut self) -> bool {
         let Some(o) = self.display_dialog.as_ref().map(|d| d.options) else { return false };
+        // A family document's {3D}: its options for the session.
+        if let Some(doc) = self.display_dialog.as_ref().and_then(|d| d.family) {
+            self.family_display_done(doc, o);
+            return true;
+        }
         if o == self.display_now() {
             return true;
         }

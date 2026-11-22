@@ -15,7 +15,7 @@ const R: f32 = 5.0;
 const CROSS: f32 = 11.0;
 /// Its ink: a crimson apart from the connectors' amber, the planes' green and the selection's blue, read on a light canvas and
 /// a dark one alike over the white backing it is drawn on.
-const INK: Color32 = Color32::from_rgb(200, 30, 90);
+pub(crate) const INK: Color32 = Color32::from_rgb(200, 30, 90);
 
 impl FamilyEditor {
     /// The insertion point in the family's axes: where its planes that define the origin cross; none in an adaptive family.

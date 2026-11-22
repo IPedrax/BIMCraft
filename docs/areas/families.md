@@ -355,8 +355,10 @@ step of its history. A void hidden in a type cuts nothing in either.
 
 Temporary Hide/Isolate works in the family document's view as in the project's (`editor/temp_hide.rs`): Hide Element (HH), Hide
 Category (HC), Isolate Element (HI), Isolate Category (IC) and Reset (HR), from the keys (or what Keyboard Shortcuts made them) or
-the view control bar's Temporary Hide/Isolate menu (Apply Hide/Isolate to View greyed: a family's views keep nothing hidden for
-good yet). It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
+the view control bar's Temporary Hide/Isolate menu. Its Apply Hide/Isolate to View hides the forms and planes hidden for now,
+and Forms as a category, in the view shown for good (*View graphics*, below); what a family's view can't keep (reference planes
+or the wall as a category) stays hidden for now. In an adaptive family, whose views hide for now only, it is greyed. It acts on
+what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
 the modelling view; the selection goes. A family has no categories of elements, so the view's own stand for them, as Revit's
 family editor names them: Forms (solid and void alike: forms have no subcategory), Reference Points, Lines, Reference Planes (the
 datums and the family's planes the modelling view draws) and, in a door's or a window's preview, the wall it stands in. Only forms,
@@ -368,6 +370,55 @@ gives it, so a hidden one stays hidden as forms move in the list. A hidden form 
 document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
+
+### View graphics
+
+Each of the family document's views ({3D}, the two plans and the four elevations) keeps its own graphics
+(`editor/view_graphics.rs`, `Views::kept`), laid over the scratch project it is drawn of, so the project's drawing does what
+they say. They are the session's, as Temporary Hide/Isolate is: not saved, no step of the history, no unsaved change, gone
+when the family closes. Nothing of them is a field of the family or of the project. None of these commands has a key in the
+family yet; Find (Ctrl+K) lists each on a family's tab (`BimApp::family_find_actions`).
+
+- Visibility/Graphics (and the View tab's button): the project's dialog (`VgDialog::for_family`), with only its Model and
+  Annotation Categories tabs, listing what the family's views draw: the family's category (a door's or a window's as Doors or
+  Windows, with Walls for the wall it stands in) and Levels. OK and Apply hand the draft back to the view; no command runs.
+  In {3D} a door's or a window's parts stand as generic families of their own, so its category's override is theirs there.
+  Object Styles… from it is the family's (*Manage in the family document*), with its note.
+- Thin Lines (and the View tab's button): the window's own, shared with the project's tabs; the family's plans and
+  elevations draw every line one pixel wide.
+- Wireframe, Hidden Line and Shaded, and Graphic Display Options: {3D}'s alone, as in the project; the view control bar's
+  Visual Style menu in {3D} sets them too. In a plan or an elevation the status bar says they are {3D}'s.
+- View Range: the floor plan's, typed in the project's units as offsets from Ref. Level (Top empty, unlimited) and checked as
+  a project plan's is (`model::range_ok`). Until it is set the family's floor plan sees every form whatever its height, as
+  before, and OK on the range the dialog first shows sets none; set, a form wholly below its view depth or above its top is
+  left out (`Staged::seen`). The ceiling plan looks up from its own cut, as a project's does, and has none. While one of
+  these dialogs is open it has the keys: neither the document nor its views get them.
+- Selection Box: {3D}'s alone. With forms or nested instances selected, {3D} is cut to a box round what the staged scene
+  draws of them (a solid as its voids cut it, a nested instance whole; `Scene::boxes`), grown by 5% of its longest side and
+  at least 50 mm, and opens (`BimApp::family_selection_box`); the staged {3D}'s section box is that box, so the project's
+  drawing cuts it and fills what it cuts. On nothing it takes the box away, or says what to select; on only what isn't a form
+  or a nested instance (a reference plane) it keeps the box and says so. The box is fixed: it doesn't follow an edit of what
+  it was made round. A door's or a window's is in the frame {3D} stages it in, at its opening. It has no grips: Selection Box
+  on another selection makes another box. It is kept with the view's graphics, so the staged scene is made again when it
+  changes.
+- Hide in View: Hide Element hides the forms and reference planes selected in the view shown, by their GUIDs (the view's own
+  `Graphics::elements`, `hidden`); Hide Category hides the forms' category, Visibility/Graphics' row, which the dialog then
+  shows unticked. Hide Category on a plane alone says it has no category to hide. A hidden form or plane is neither drawn nor
+  picked there, by a click, a box, Dimension or Align (a form hidden for now, HH, alike); the selection goes. An adaptive
+  family's views hide for now only.
+- Reveal Hidden Elements (and the view control bar's button): the view draws what it hides in magenta, a form and a plane's
+  trace alike, inside the project's cyan frame, where it can be picked; Unhide Elements and Unhide Category show what is
+  selected again.
+- Override Graphics by Element: View-Specific Element Graphics, the project's override editor (`graphics::editor`), on the
+  forms selected. It opens on the first's override, and OK sets on each only what was edited there, field by field, keeping
+  the rest of its own and whether it is hidden; OK with nothing edited sets nothing.
+- A form with graphics of its own in a view (an override, or revealed) is drawn as a component of its own beside the family,
+  as the ghost of what its type hides is (`views::apart_family`, `FamilyEditor::apart_forms`), so the project's drawing gives
+  it its element's graphics; the family's voids go with it and cut it as they cut the family. A form its view hides, with its
+  category or by itself, is never drawn apart unless revealed, whatever it overrides (a door's forms drawn apart are a generic
+  family, which the door category's hide wouldn't reach). In {3D} each part already is one.
+
+Tests: `tests/family_view_graphics.rs`, `tests/family_hide_override.rs`, `tests/family_selection_box.rs`.
 
 ### Visibility Settings (F8)
 
@@ -1116,7 +1167,7 @@ an elevation, always edge-on there, goes through Go To View, as in Revit. From a
 family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
 opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
 hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing
-what it hides, a deliberate limit: Revit keeps it per view, and Apply Hide/Isolate to View stays greyed. An adaptive family's
+what it hides, a deliberate limit; Apply Hide/Isolate to View keeps it in the view shown for good (*View graphics*). An adaptive family's
 plans and elevations show its test placement and nothing more (no selection, no Reference Plane, no drag); its tools stay in
 {3D}, its modelling view. None of this is a field of the family or a step of FORMAT: what a view keeps is the session's.
 
@@ -1790,6 +1841,8 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+  `editor/view_graphics.rs`: each view's graphics for the session: Visibility/Graphics, visual style, Graphic Display
+  Options, View Range, Selection Box, Hide in View and Override Graphics.
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched. `editor/shape_handles.rs`: a selected form's profile handles; `editor/handles3d.rs`: the same and its ends in {3D}; `editor/handle_params.rs`: a handle's drag through the parameter its place is. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.

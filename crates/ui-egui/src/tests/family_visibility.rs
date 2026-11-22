@@ -10,7 +10,7 @@ use egui_kittest::kittest::NodeT;
 
 /// A door: two jambs, a head, a leaf (form 4) 760 wide and 40 thick on the wall's centre with `leaf` settings, and a
 /// symbolic swing in Opening.
-fn door(leaf: &str) -> String {
+pub(super) fn door(leaf: &str) -> String {
     let leaf = if leaf.is_empty() { String::new() } else { format!(r#", "visibility": {leaf}"#) };
     let block = |x0: i32, x1: i32, z0: i32, z1: i32| {
         format!(

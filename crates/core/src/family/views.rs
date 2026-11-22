@@ -112,6 +112,9 @@ pub struct Staged {
     pub room: (P3, P3),
     /// The family's reference lines, each from its start to its end: drawn over every view.
     lines: Vec<(P3, P3)>,
+    /// The heights the floor plan sees, mm, lowest and highest: what its View Range sets. None, every form whatever
+    /// its height, as a family's plan sees until its View Range is set.
+    pub seen: Option<(f64, f64)>,
 }
 
 /// How far the elevations stand outside what they look at.
@@ -257,7 +260,7 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
         elevations.push((side, m.insert(Element::Elevation(section)), start));
     }
     let lines = family.lines.iter().map(|l| (l.start, l.end)).collect();
-    Staged { model: m, level, elevations, planes, room, lines }
+    Staged { model: m, level, elevations, planes, room, lines, seen: None }
 }
 
 /// What one of a family's views draws, for a front end that paints it as vectors: its frame, its drawing (what picks), and
@@ -393,7 +396,7 @@ impl Staged {
         // an elevation where their plane is square to it, foreshortened where it isn't.
         let lines: Vec<(P2, P2)> = self.lines.iter().map(|(a, b)| (self.to_view(which, *a), self.to_view(which, *b))).collect();
         let (mut drawing, picture) = match which {
-            Which::Plan => (render::family_plan(m, self.level, view), None),
+            Which::Plan => (render::family_plan(m, self.level, view, self.seen), None),
             Which::Ceiling => (render::draw_ceiling(m, self.level, view), None),
             Which::Elevation(side) => {
                 let id = self.elevation(side).ok_or("the family has no such elevation")?;
@@ -929,6 +932,30 @@ mod tests {
     /// Whether a pixel near `at` (within 2) is green.
     fn green_near(s: &Shown, at: (f32, f32)) -> bool {
         (-2..=2).any(|dx| (-2..=2).any(|dy| green(pixel(s, (at.0 + dx as f32, at.1 + dy as f32)))))
+    }
+
+    /// A family's plan sees every form whatever its height until its View Range is set (`seen`); then, as a project's
+    /// plan, only what lies between its view depth and its top.
+    #[test]
+    fn a_plan_sees_every_form_until_its_view_range_is_set_and_then_what_lies_within_it() {
+        let f = boxed(0.0, 2000.0);
+        let mut st = staged(&f);
+        // The box's front edge, in the plan's millimetres.
+        let q = st.to_view(Which::Plan, [750.0, 300.0, 0.0]);
+        let dark = |s: &Shown| {
+            let (x, y) = s.view.px(q);
+            (-2..=2)
+                .any(|d| (-2..=2).any(|e| pixel(s, (x + d as f32, y + e as f32)).iter().take(3).map(|c| u32::from(*c)).sum::<u32>() < 300))
+        };
+        let all = st.draw(Which::Plan, 400, 400, 1.0, P2(0.0, 0.0)).unwrap();
+        assert!(dark(&all), "the box, drawn");
+        // A range above the box: from 2500 up to 3500.
+        st.seen = Some((2500.0, 3500.0));
+        let above = st.draw(Which::Plan, 400, 400, 1.0, P2(0.0, 0.0)).unwrap();
+        assert!(!dark(&above), "a box under the view's depth is left out");
+        // One through it sees it.
+        st.seen = Some((0.0, 3500.0));
+        assert!(dark(&st.draw(Which::Plan, 400, 400, 1.0, P2(0.0, 0.0)).unwrap()));
     }
 
     /// FE-20, Select Elements by Face: off, a form or a nested instance is taken by an edge of its outline alone; on,

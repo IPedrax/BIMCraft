@@ -11802,7 +11802,7 @@ fn camera_ok(who: &str, cam: &ViewCamera) -> Result<(), String> {
 }
 
 /// Whether `r` is a plan's own view range that makes sense on its own ([`crate::view_range::range_ok`]).
-pub(crate) fn range_ok(who: &str, r: &ViewRange) -> Result<(), String> {
+pub fn range_ok(who: &str, r: &ViewRange) -> Result<(), String> {
     crate::view_range::range_ok(who, r, false)
 }
 

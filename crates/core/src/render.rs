@@ -7286,8 +7286,9 @@ pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, Strin
 
 /// A family's floor plan (F4), as Revit's family editor draws it: the project's plan of `level` (`draw`), and over it each
 /// component's forms seen from above whatever their height (a family's plan sees all of it), and where a form crosses the
-/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component.
-pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
+/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component. Once
+/// its View Range is set, `seen` the heights it sees, lowest and highest: a form wholly below or above them is left out.
+pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f64)>) -> Drawing {
     let mut d = draw(m, level, view);
     let cut = m.level(level).map_or(crate::model::CUT_HEIGHT, |l| l.view_range.cut);
     let look = Look::of(m, level);
@@ -7299,7 +7300,7 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
             continue;
         }
         let mut pieces = m.component_pieces(c);
-        pieces.retain(|p| plan_draws(p, d.detail, cut));
+        pieces.retain(|p| plan_draws(p, d.detail, cut) && seen.is_none_or(|(lo, hi)| p.top > lo && p.bottom < hi));
         extra.owner = Some(id);
         extra.part(Part::Projection);
         component(&mut extra, m, &pieces);

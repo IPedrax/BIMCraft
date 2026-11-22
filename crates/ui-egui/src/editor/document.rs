@@ -684,9 +684,19 @@ impl BimApp {
                 });
             }
             DocTab::View => {
+                // The view shown's Visibility/Graphics, and the window's Thin Lines.
                 ribbon::panel(ui, msg!("Graphics"), |ui| {
-                    later(ui, Icon::Visibility, msg!("Visibility/Graphics"));
-                    later(ui, Icon::ThinLines, msg!("Thin Lines"));
+                    let tip = msg!("Visibility/Graphics (VV): what the view shown draws of each category, for the session");
+                    if big_button(ui, Icon::Visibility, msg!("Visibility/Graphics"), self.vg_dialog.is_some(), tip).clicked()
+                        && let Some(doc) = self.active_doc()
+                    {
+                        self.vg_dialog = Some(super::view_graphics::vg_for(doc, ed));
+                    }
+                    if big_button(ui, Icon::ThinLines, msg!("Thin Lines"), self.thin, "Thin Lines (TL): every line one pixel wide")
+                        .clicked()
+                    {
+                        self.thin = !self.thin;
+                    }
                 });
                 ribbon::panel(ui, msg!("Windows"), |ui| {
                     later(ui, Icon::CloseInactive, msg!("Close Inactive Views"));
@@ -1398,7 +1408,7 @@ impl BimApp {
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane) {
+            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
                 self.status = Status { text: e, error: true };
             } else if let Some(text) = ed.views.said.take() {
                 // What a drag did that is worth saying (a parameter's value as a handle drags it, a side lined up, a part a
@@ -1447,7 +1457,28 @@ impl BimApp {
                         }
                     });
                 }
-                ui.label(RichText::new(t("Shaded")).color(pal().muted));
+                // {3D}'s Visual Style, as the project's 3D view has it, with its Graphic Display Options.
+                if ed.views.shown.is_none() {
+                    let now = ed.views.kept.graphics_of(None).style;
+                    let tip = msg!("Visual Style: how {3D} draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe");
+                    let r = crate::footer::menu_button(ui, "Visual Style", now.name(), tip, None);
+                    egui::Popup::menu(&r).show(|ui| {
+                        for v in bimcraft_core::graphics::VisualStyle::ALL {
+                            if ui.selectable_label(now == v, t(v.name())).clicked() {
+                                let mut g = ed.views.kept.graphics_of(None);
+                                g.style = v;
+                                ed.views.kept.set_graphics(None, g);
+                            }
+                        }
+                        ui.separator();
+                        if ui.button(t("Graphic Display Options...")).clicked()
+                            && let Some(doc) = self.active_doc()
+                        {
+                            let options = ed.views.kept.display;
+                            self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, doc));
+                        }
+                    });
+                }
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.zoom_to_fit();
                 }
@@ -1469,11 +1500,19 @@ impl BimApp {
                     }
                 }
                 self.family_temp_menu(ui, &mut ed);
+                // Reveal Hidden Elements, as the project's bar has it: what the view hides in magenta, to unhide.
+                if ed.adaptive.is_none() {
+                    let on = ed.views.kept.revealing(ed.views.shown);
+                    let tip = msg!("Reveal Hidden Elements (RH): what the view hides drawn in magenta, so it can be picked and unhidden");
+                    if crate::small_button(ui, Icon::Reveal, "Reveal Hidden Elements", on, tip).clicked() {
+                        ed.toggle_reveal();
+                    }
+                }
             });
         });
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
         // While it hides anything for now, the project's cyan frame round the view, as Revit draws.
-        let hiding = ed.temporary().hides();
+        let hiding = ed.temporary().hides() || ed.views.kept.revealing(ed.views.shown);
         if hiding {
             ui.painter().rect_stroke(pane.shrink(1.5), 0.0, Stroke::new(3.0, crate::footer::FRAME), StrokeKind::Inside);
         }
@@ -1703,7 +1742,7 @@ impl BimApp {
     }
 
     /// What Find lists on a family tab, by name: what the family document does itself (Modify, Delete, Align and Aligned
-    /// Dimension in a plan or an elevation, the selection's commands, the Modify panel's tools and the clipboard's, Measure, Create Similar, Temporary Hide/Isolate, Zoom to Fit in the view shown,
+    /// Dimension in a plan or an elevation, the selection's commands, the Modify panel's tools and the clipboard's, Measure, Create Similar, the view's graphics, Temporary Hide/Isolate, Zoom to Fit in the view shown,
     /// its {3D} view) and what is the window's (Properties, Project Browser, Keyboard Shortcuts). The project's tools are left
     /// out: from a family tab they would change the project out of sight. [`family_find_action`](Self::family_find_action)
     /// does each, as its button does.
@@ -1741,6 +1780,24 @@ impl BimApp {
         if !ed.sketching() {
             out.extend(["Object Styles", "Materials", "Project Units", "Purge Unused"]);
         }
+        // The view shown's graphics, for the session: Visibility/Graphics, {3D}'s visual styles and Graphic Display Options,
+        // the floor plan's View Range, Hide in View and its undoing, Reveal Hidden Elements and Override Graphics; and the
+        // window's Thin Lines.
+        out.extend([
+            "Visibility/Graphics",
+            "Thin Lines",
+            "Wireframe",
+            "Hidden Line",
+            "Shaded",
+            "Graphic Display Options",
+            "View Range",
+            "Hide Element",
+            "Hide Category",
+            "Unhide Elements",
+            "Unhide Category",
+            "Reveal Hidden Elements",
+            "Override Graphics by Element",
+        ]);
         out.extend([
             "Temporary Hide Element",
             "Temporary Hide Category",
@@ -1750,6 +1807,10 @@ impl BimApp {
             "3D View",
         ]);
         out.push("Zoom to Fit");
+        // Selection Box, from any of its views.
+        if ed.adaptive.is_none() {
+            out.push("Section Box");
+        }
         out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
         out
     }
@@ -1816,8 +1877,22 @@ impl BimApp {
                 ed.doc_tab = super::DocTab::Manage;
                 self.open_units = true;
             }
+            "Visibility/Graphics" => self.family_vg(),
+            "Thin Lines" => self.thin = !self.thin,
+            "Wireframe" => self.family_style(bimcraft_core::graphics::VisualStyle::Wireframe),
+            "Hidden Line" => self.family_style(bimcraft_core::graphics::VisualStyle::HiddenLine),
+            "Shaded" => self.family_style(bimcraft_core::graphics::VisualStyle::Shaded),
+            "Graphic Display Options" => self.family_display(),
+            "View Range" => self.family_view_range(),
+            "Hide Element"
+            | "Hide Category"
+            | "Unhide Elements"
+            | "Unhide Category"
+            | "Reveal Hidden Elements"
+            | "Override Graphics by Element" => self.family_view_element(action),
             "Select Elements by Face" => self.select_by_face = !self.select_by_face,
             "Drag Elements on Selection" => self.drag_on_selection = !self.drag_on_selection,
+            "Section Box" => self.family_selection_box(),
             "Delete" => {
                 let Some(ed) = self.active_family_mut() else { return false };
                 // The dimension selected while sketching, else a sketch's lines picked, else what is selected, as the Delete
@@ -1891,10 +1966,11 @@ impl BimApp {
     /// Ctrl+K work while a field has the keyboard, as on a project's tab.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family() else { return };
-        if ed.modal() {
+        // A dialog of the document's, of its views', or of the window's has the keys.
+        if ed.modal() || ed.views.kept.dialog_open() || self.keys_taken(ctx) {
             return;
         }
-        if !self.keys_taken(ctx) {
+        {
             let focused = ctx.text_edit_focused();
             let events: Vec<Event> = ctx.input(|i| i.events.clone());
             let mut handled: Vec<(egui::Key, Option<egui::Key>, egui::Modifiers)> = Vec::new();
@@ -2573,18 +2649,21 @@ impl BimApp {
                 mesh
             }
         };
-        let shot = crate::orbit::Shown {
-            model: &model,
-            scene: &scene,
-            cam,
-            tints: &tints,
-            marks: &plane_marks,
-            dragged: None,
-            cut: None,
-            caps: None,
-        };
+        // Selection Box: what the box cuts, filled as the project's 3D view fills it, once the worker has cut it.
+        let look3 = bimcraft_core::graphics::Look::of_3d(&model);
+        let boxed = look3.section_box();
+        let caps = boxed
+            .filter(|_| self.cut_fills_3d && look3.style() != bimcraft_core::graphics::VisualStyle::Wireframe)
+            .and_then(|cut| ed.orbit.caps_for(ui.ctx(), &model, cut));
+        let shot =
+            crate::orbit::Shown { model: &model, scene: &scene, cam, tints: &tints, marks: &plane_marks, dragged: None, cut: boxed, caps };
         if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
+        }
+        // The box's frame, with no grips: BX on another selection makes another.
+        if let Some(b) = boxed {
+            let at = on_pane(cam, size, pane);
+            crate::section_box::draw(&p, &cam, b, false, (None, None), |q| at(q).unwrap_or(egui::pos2(f32::NAN, f32::NAN)));
         }
         // The connectors over it, at their places in the family's axes.
         let lit = (crate::style::canvas_pal().accent, crate::style::canvas_pal().hover);
