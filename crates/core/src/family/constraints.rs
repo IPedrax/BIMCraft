@@ -15,8 +15,10 @@ use crate::ids::{Guid, Id};
 use crate::model::{Lock, TOL};
 use crate::view3d::{dot, sub};
 
+mod moving;
 mod pivot;
 mod turn;
+pub use moving::{MoveRefused, Moving, Stays};
 pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
 
 /// Dimensions one family may hold, and references one dimension may measure between.
@@ -641,11 +643,22 @@ pub enum Edit {
 }
 
 /// What a solve holds where it is told, besides the constraints: a plane at an offset along its normal, or a reference at a
-/// place along a way (a sketch line both its ends).
+/// place along a way (a sketch line both its ends). A move (FE-7, `moving.rs`) holds what it takes along shifted from where
+/// it is drawn: an unknown by so much (`Shifted`), or a form, every unknown of its own, its sketch's vertices by so much in
+/// its host's axes and its ends by so much along its normal (`Form`, by place).
 #[derive(Clone, Copy, Debug)]
 enum Pin {
     Plane(Guid, f64),
     Ref(DimRef, P3, f64),
+    Shifted(Unknown, f64),
+    Form(usize, P2, f64),
+}
+
+impl Pin {
+    /// Whether it is a move's: its rows come first, before the constraints, which then hold or say what holds it.
+    fn moves(&self) -> bool {
+        matches!(self, Pin::Shifted(..) | Pin::Form(..))
+    }
 }
 
 /// The work a solve may do, shared by the solves of one check.
@@ -1777,10 +1790,24 @@ impl Family {
             .flat_map(|(_, d)| d.refs.iter().copied())
             .chain(pins.iter().filter_map(|p| match p {
                 Pin::Ref(r, ..) => Some(*r),
-                Pin::Plane(..) => None,
+                Pin::Plane(..) | Pin::Shifted(..) | Pin::Form(..) => None,
             }))
             .chain(pivot_refs);
         let mut problem = Problem::new(self, refs, values, &mut read, meter).map_err(Unsat::from)?;
+        // A form a move takes along is read whole (FE-7).
+        let moving = pins.iter().any(Pin::moves);
+        for p in pins {
+            if let Pin::Form(i, ..) = *p
+                && !problem.layouts.contains_key(&i)
+                && let Some(form) = self.forms.get(i)
+            {
+                let host = self.frame(&form.host).ok();
+                problem.layouts.insert(
+                    i,
+                    layout(form, host.as_ref(), values, &mut read, meter).map_err(|e| Unsat::from(format!("form {}: {e}", i + 1)))?,
+                );
+            }
+        }
         // What may move: what a constraint or a pin holds, in the dimensions' order.
         let mut unknowns = Vec::new();
         {
@@ -1798,6 +1825,18 @@ impl Family {
                 match p {
                     Pin::Plane(g, _) => problem.unknowns_of(&DimRef::Plane(*g), DimKind::Aligned, &mut add),
                     Pin::Ref(r, ..) => problem.unknowns_of(r, DimKind::Aligned, &mut add),
+                    Pin::Shifted(u, _) => add(*u),
+                    Pin::Form(i, ..) => {
+                        let count = problem.layouts.get(i).map_or(0, |l| l.at.len());
+                        for v in 0..count {
+                            add(Unknown::Vertex(*i, v, 0));
+                            add(Unknown::Vertex(*i, v, 1));
+                        }
+                        if self.forms.get(*i).is_some_and(|f| f.mesh.is_empty() && f.axis().is_none() && !f.kind().swept()) {
+                            add(Unknown::End(*i, Extent::Start));
+                            add(Unknown::End(*i, Extent::End));
+                        }
+                    }
                 }
             }
             // What pivots turn: a line's start, angle and length, a plane's turn (F7d).
@@ -1863,7 +1902,7 @@ impl Family {
             // Gauss-Newton on the least change: each step holds the rows linearised where it has got to, with the least
             // change from where they are drawn; a step that doesn't bring them nearer is halved back.
             let x0 = problem.x0.clone();
-            let (mut x, dropped) = solve_rows(&x0, &give, &rows, meter, &[], false)?;
+            let (mut x, dropped) = solve_rows(&x0, &give, &rows, meter, &[], moving)?;
             let size = x0.iter().fold(0.0f64, |a, v| a.max(v.abs()));
             let tol = 1e-9 * (size / 1000.0).max(1.0);
             let off = |rows: &[Row], x: &[f64]| -> f64 {
@@ -1939,8 +1978,13 @@ impl Family {
             }
             x
         } else {
-            solve_rows(&problem.x0, &give, &rows, meter, &[], false)?.0
+            solve_rows(&problem.x0, &give, &rows, meter, &[], moving)?.0
         };
+        // A move's rows came first and every other row that depended on them was left out: each must still hold where the
+        // solve came to, or what it holds holds what is moved where it is (FE-7).
+        if moving {
+            moving::held(&rows, &x)?;
+        }
         // To a millionth of a millimetre, so what the arithmetic leaves over (500.00000000000006) doesn't show; angles as
         // they come.
         let x: Vec<f64> =
@@ -2163,8 +2207,34 @@ impl Family {
                 }
             }
         }
+        let mut first: Vec<Row> = Vec::new();
         for pin in pins {
             match *pin {
+                Pin::Shifted(u, by) => {
+                    if let Some(k) = problem.unknown(u) {
+                        let at = problem.x0.get(k).copied().unwrap_or(0.0) + by;
+                        first.push(Row::hard(Lin { terms: vec![(k, 1.0)], c: -at }, None));
+                    }
+                }
+                Pin::Form(i, by, along) => {
+                    // A vertex on its host moves; one of a sweep's profile, drawn on the path, goes with the path.
+                    let on_host = |v: usize| {
+                        let k = problem.layouts.get(&i).and_then(|l| l.points.get(v)).and_then(|p| p.first()).map_or(0, |p| p.0);
+                        self.forms.get(i).is_none_or(|f| f.plane_group(k) <= 1)
+                    };
+                    for (k, u) in problem.unknowns.iter().enumerate() {
+                        let shift = match *u {
+                            Unknown::Vertex(j, v, _) if j == i && !on_host(v) => 0.0,
+                            Unknown::Vertex(j, _, 0) if j == i => by.0,
+                            Unknown::Vertex(j, _, _) if j == i => by.1,
+                            Unknown::End(j, _) if j == i => along,
+                            Unknown::Radius(j, _) | Unknown::Turn(j, _) if j == i => 0.0,
+                            _ => continue,
+                        };
+                        let at = problem.x0.get(k).copied().unwrap_or(0.0) + shift;
+                        first.push(Row::hard(Lin { terms: vec![(k, 1.0)], c: -at }, None));
+                    }
+                }
                 Pin::Plane(g, at) => {
                     let (_, mut lin) = problem.plane_pos(g).map_err(Unsat::from)?;
                     lin.c -= at;
@@ -2214,6 +2284,11 @@ impl Family {
                 let drawn = problem.x0.get(u).copied().unwrap_or(0.0);
                 rows.push(Row { lin: Lin { terms: vec![(u, 1.0)], c: -drawn }, dim: None, soft: true, pivot: None });
             }
+        }
+        // A move's rows before every other (FE-7).
+        if !first.is_empty() {
+            first.extend(rows);
+            rows = first;
         }
         Ok(rows)
     }
@@ -2468,8 +2543,8 @@ impl Family {
     /// the sketch points it moved.
     fn edits(&self, s: &Solution, values: &BTreeMap<String, Val>) -> Vec<Edit> {
         let mut out: Vec<Edit> = s.planes.iter().filter_map(|(i, v)| Some(Edit::Plane(self.planes.get(*i)?.guid, *v))).collect();
-        // Reference lines the constraints moved or turned, and those drawn on them (F7c).
-        if !s.lines.is_empty() {
+        // Reference lines the constraints moved or turned, and those drawn on them (F7c), or on a plane that moved or turned.
+        if !s.lines.is_empty() || !s.planes.is_empty() || !s.turned_planes.is_empty() {
             let moved = self.moved(s);
             for (was, now) in self.lines.iter().zip(&moved.lines) {
                 if was.start != now.start || was.end != now.end {

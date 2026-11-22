@@ -331,12 +331,15 @@ fn select_elements_by_face_decides_whether_a_face_selects_by_a_click_and_by_a_cr
     boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
     boxed(&mut h, [750.0, 450.0, 0.0], [650.0, 350.0, 0.0], Modifiers::COMMAND);
     assert_eq!(selected(&h), vec![Picked::Form(0), Picked::Form(1)], "Ctrl adds");
-    // From the face of one selected no box is drawn: its drag is its own, and changes nothing here.
+    // From the face of one selected no box is drawn: its drag is its own, and moves the selection (FE-7); Undo puts it back.
     let forms = |h: &Harness<BimApp>| editor(h).draft_family().unwrap().forms;
     let unmoved = forms(&h);
     boxed(&mut h, [750.0, 450.0, 0.0], [650.0, 350.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(0), Picked::Form(1)], "a drag from a selected form's face boxes nothing");
-    assert_eq!(forms(&h), unmoved, "nor moves anything");
+    assert_ne!(forms(&h), unmoved, "it moves them");
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(forms(&h), unmoved);
     // The command turns it off: a face selects nothing, by a click or by a crossing box; an edge still does.
     command(&mut h, "Select Elements by Face");
     assert!(!h.state().select_by_face, "Select Elements by Face");
@@ -349,9 +352,13 @@ fn select_elements_by_face_decides_whether_a_face_selects_by_a_click_and_by_a_cr
     assert!(selected(&h).is_empty(), "off, a crossing inside a face takes nothing, and lets the selection go");
     boxed(&mut h, [-400.0, 500.0, 0.0], [-600.0, 300.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(0)], "off, a crossing over its edge takes it");
-    // Off, the face of one selected is still its own: a drag from it draws no box, as on.
+    // Off, the face of one selected is still its own: a drag from it moves it and draws no box, as on; Undo puts it back.
+    let unmoved = forms(&h);
     boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(0)], "off, a drag from inside a selected form's face is its own");
+    assert_ne!(forms(&h), unmoved, "and moves it");
+    h.state_mut().family_undo();
+    h.run();
     assert_eq!(forms(&h), unmoved);
     // The status bar's toggle turns it on again.
     press(&mut h, "Select Elements by Face");
@@ -415,69 +422,92 @@ fn select_elements_by_face_is_greyed_where_it_changes_nothing_and_is_kept_with_t
     assert!(h.state().select_by_face);
 }
 
-/// Drag Elements on Selection, beside Select Elements by Face: off (at first), a drag from the face of a form not selected
-/// draws a box, as since FE-20; on, it is the form's, as a drag from its edge is: it draws no box and selects the form, and a
-/// nested instance's face the same. With Select Elements by Face off a face picks nothing, so it changes nothing: a box from a
-/// face, an edge still the element's. A form the view leaves out is taken by neither.
+/// Drag Elements on Selection, beside Select Elements by Face: off (at first), a drag from the face of a form not selected draws a box, as since
+/// FE-20; on, it selects the form and moves it, as a drag from its edge does, and a nested instance's face the same. With
+/// Select Elements by Face off a face picks nothing, so it changes nothing: a box from a face, an edge still the element's. A form the view leaves out
+/// is taken by neither.
 #[test]
-fn drag_elements_on_selection_lets_a_drag_from_a_face_not_selected_select_it() {
+fn drag_elements_on_selection_lets_a_drag_from_a_face_not_selected_select_and_move_it() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = plan();
     let before = project(&h);
     let forms = |h: &Harness<BimApp>| editor(h).draft_family().unwrap().forms;
     assert!(!h.state().drag_on_selection, "off to begin with");
     let unmoved = forms(&h);
-    // Off: a window from inside B's face, B not selected, holds none of it.
+    // Off: a window from inside B's face, B not selected, holds none of it and moves nothing.
     boxed(&mut h, [650.0, 350.0, 0.0], [750.0, 450.0, 0.0], Modifiers::NONE);
     assert!(selected(&h).is_empty(), "off, a box from a face not selected");
-    // The status bar's toggle turns it on: the same drag draws no box and selects B.
+    assert_eq!(forms(&h), unmoved, "nothing moved");
+    // The status bar's toggle turns it on: the same drag selects B and moves it, one step that Undo takes back.
+    assert!(h.state().prompt().contains("drag from nothing to box"), "{}", h.state().prompt());
+    assert!(!h.state().prompt().contains("Drag a face"), "{}", h.state().prompt());
     press(&mut h, "Drag Elements on Selection");
     assert!(h.state().drag_on_selection, "the status bar's toggle");
+    assert!(h.state().prompt().starts_with("Drag a face to move what it is of"), "{}", h.state().prompt());
     boxed(&mut h, [650.0, 350.0, 0.0], [750.0, 450.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(1)], "on, B selected by its face");
     assert!(!editor(&h).boxing());
-    // A press from the face of another, nothing held: that one is the selection; with Ctrl it is added.
+    let moved = forms(&h);
+    assert_eq!(moved[0], unmoved[0], "A stays");
+    assert_ne!(moved[1], unmoved[1], "B moves");
+    assert_eq!(editor(&h).steps(), 1);
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(forms(&h), unmoved);
+    // A press from the face of another, nothing held: that one is the selection, and it alone moves.
     boxed(&mut h, [-700.0, 400.0, 0.0], [-700.0, 100.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(0)], "A in B's place");
-    boxed(&mut h, [700.0, 400.0, 0.0], [700.0, 100.0, 0.0], Modifiers::COMMAND);
-    assert_eq!(selected(&h), vec![Picked::Form(0), Picked::Form(1)], "Ctrl adds B");
+    assert_eq!(forms(&h)[1], unmoved[1], "B stays");
+    assert_ne!(forms(&h)[0], unmoved[0], "A moves");
+    h.state_mut().family_undo();
+    h.run();
     // From nothing a box still begins.
     key(&mut h, Key::Escape);
     boxed(&mut h, [400.0, 700.0, 0.0], [1000.0, 100.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(1)], "a window from nothing round B");
-    // Select Elements by Face off: a face picks nothing, so a drag from it is a box again; an edge still selects its form.
+    assert_eq!(forms(&h), unmoved);
+    // Select Elements by Face off: a face picks nothing, so a drag from it is a box again; an edge still selects its form and
+    // moves it.
     command(&mut h, "Select Elements by Face");
     assert!(!h.state().select_by_face && h.state().drag_on_selection);
+    assert!(!h.state().prompt().contains("Drag a face"), "by face off, the prompt says nothing of faces: {}", h.state().prompt());
     key(&mut h, Key::Escape);
     boxed(&mut h, [-750.0, 350.0, 0.0], [-650.0, 450.0, 0.0], Modifiers::NONE);
     assert!(selected(&h).is_empty(), "by face off, a box from A's face");
+    assert_eq!(forms(&h), unmoved, "by face off, nothing moved");
     boxed(&mut h, [-500.0, 400.0, 0.0], [-500.0, 100.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(0)], "by face off, A by its edge");
+    assert_ne!(forms(&h)[0], unmoved[0], "and moved");
+    h.state_mut().family_undo();
+    h.run();
     command(&mut h, "Select Elements by Face");
     assert!(h.state().select_by_face);
-    // A form hidden for now (HH) is taken by neither its face nor a drag from it: a box.
+    // A form hidden for now (HH) is taken by neither its face nor a drag from it: a box, which moves nothing.
     click_family(&mut h, [-700.0, 400.0, 0.0]);
     shortcut(&mut h, "HH");
     assert!(editor(&h).temporary().hides() && selected(&h).is_empty(), "HH");
     boxed(&mut h, [-750.0, 350.0, 0.0], [-650.0, 450.0, 0.0], Modifiers::NONE);
     assert!(selected(&h).is_empty() && !editor(&h).boxing(), "a box from where A's face is drawn no more");
+    assert_eq!(forms(&h), unmoved, "A hidden stays");
     shortcut(&mut h, "HR");
-    // A nested instance by its face, on: selected; off, its face is the box's.
+    // A nested instance by its face, on: selected and moved; off, its face is the box's.
     let doc = h.state().active_doc().expect("a family document");
     h.state_mut().nest_family_file(doc, &small_file(dir.path()));
     h.run();
     place(&mut h, "Short", [0.0, -400.0, 0.0]);
     key(&mut h, Key::Escape);
     key(&mut h, Key::Escape);
+    let placed = editor(&h).nested_instances[0].at.clone();
     h.state_mut().drag_on_selection = false;
     h.run();
     boxed(&mut h, [50.0, -350.0, 0.0], [400.0, -500.0, 0.0], Modifiers::NONE);
     assert!(selected(&h).is_empty(), "off, a box from its face");
+    assert_eq!(editor(&h).nested_instances[0].at, placed);
     h.state_mut().drag_on_selection = true;
     h.run();
     boxed(&mut h, [50.0, -350.0, 0.0], [50.0, -650.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Nested(0)], "on, the instance by its face");
-    assert_eq!(forms(&h), unmoved, "no drag moved anything");
+    assert_ne!(editor(&h).nested_instances[0].at, placed, "and moved");
     assert_eq!(project(&h), before, "nothing of it reaches the project");
 }
 
