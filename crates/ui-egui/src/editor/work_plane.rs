@@ -33,6 +33,9 @@ pub(crate) enum Then {
     Sketch,
     /// Create > Extrusion, Blend, Revolve, Sweep or Swept Blend (`kind`), solid or `void`: sketch mode on it (F5, F6).
     Create { kind: bimcraft_core::family::forms::FormKind, void: bool },
+    /// A sweep's Sketch Path or Edit Profile: that part opened in its mode, on its own plane (the view's work plane
+    /// left as it is).
+    Part(super::sketch::Part, bool),
 }
 
 /// How the dialog's Specify a new Work Plane takes it.
@@ -93,6 +96,15 @@ impl FamilyEditor {
 
     /// The Work Plane dialog opened for `target`, Name on the plane it has now.
     pub(crate) fn open_work_plane_dialog(&mut self, target: Target) {
+        // A sweep's profile is drawn on the plane square to its path where it is shown: it has no work plane of its own to
+        // set, and setting the sketch's would move the path, and the plane, under it.
+        if target == Target::Sketch
+            && self.sketch.as_ref().and_then(|s| s.nested.as_ref()).is_some_and(|n| n.part != super::sketch::Part::Main)
+        {
+            self.views.status =
+                Some(t("A profile is drawn on the plane square to its path: set the sweep's work plane in Sketch Path.").to_string());
+            return;
+        }
         let Some(chosen) = self.current_plane(target) else { return };
         self.views.picking = None;
         self.views.drawing = None;
@@ -116,9 +128,13 @@ impl FamilyEditor {
 
     /// The view shown given work plane `plane`, and `then` done on it.
     fn done_on(&mut self, plane: PlaneRef, then: Then) {
+        if let Then::Part(p, pick) = then {
+            self.open_part(p, pick);
+            return;
+        }
         self.views.set_work_plane(plane);
         match then {
-            Then::View => {}
+            Then::View | Then::Part(..) => {}
             Then::Sketch => {
                 if let Some(s) = self.sketch.as_mut() {
                     s.host = plane;
@@ -267,11 +283,20 @@ impl FamilyEditor {
     /// done, Cancel does nothing.
     pub(crate) fn go_to_view_dialog(&mut self, ctx: &Context) {
         let Some(mut g) = self.views.go_to.clone() else { return };
-        let name = self.plane_label(g.plane);
+        let name = match g.then {
+            Then::Part(super::sketch::Part::Main, _) => t("The path's plane").to_string(),
+            Then::Part(..) => t("The profile's plane").to_string(),
+            _ => self.plane_label(g.plane),
+        };
         let (mut open, mut cancel) = (false, false);
         let r = Modal::new(UiId::new("family-go-to-view"), t("Go To View")).width(420.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
-                ui.label(tf("{} isn't parallel to this view. Open a view that shows it flat:", &[&name]));
+                // No view sees it flat (a sweep's profile on a path askew to them all): {3D} alone, which sketches on any.
+                if g.views == [None] {
+                    ui.label(tf("No view shows {} flat: open {3D}, which sketches on any plane.", &[&name]));
+                } else {
+                    ui.label(tf("{} isn't parallel to this view. Open a view that shows it flat:", &[&name]));
+                }
                 ui.add_space(6.0);
                 for (k, which) in g.views.iter().enumerate() {
                     let r = ui.selectable_label(g.chosen == k, super::views::view_title(*which));

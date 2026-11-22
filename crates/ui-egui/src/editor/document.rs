@@ -1841,12 +1841,13 @@ impl BimApp {
                     self.status = Status { text: e, error: true };
                 }
             }
-            // A selected extrusion's Depth, as Revit's Options Bar has it.
+            // A selected extrusion's (or Blend's) Depth on the Options Bar: a sweep has no ends to measure.
             let driven = ed.selected_form().map(|i| ed.driven_ends(i)).unwrap_or_default();
             if let Some(i) = ed.selected_form()
                 && let Some(f) = ed.forms.get_mut(i)
                 && !f.revolve
                 && !f.mesh()
+                && !f.original.kind().swept()
             {
                 ui.separator();
                 super::extrusion::depth(ui, units, f, &values, driven);
@@ -2055,6 +2056,13 @@ impl BimApp {
     pub(crate) fn family_find_action(&mut self, action: &str) -> bool {
         if !self.family_find_actions().contains(&action) {
             return false;
+        }
+        // A sweep's own mode draws nothing: the sketch's tools wait for Sketch Path or Edit Profile.
+        let waits = matches!(action, "Modify" | "Aligned Dimension" | "Align" | "Delete") || super::modify::found(action).is_some();
+        if waits && self.active_family().and_then(|ed| ed.sketch.as_ref()).is_some_and(|s| s.parent()) {
+            let text = t("Open Sketch Path or Edit Profile first: the sweep's own mode draws nothing.").to_string();
+            self.status = Status { text, error: true };
+            return true;
         }
         let temp = |category| super::temp_hide::Asked::Hide { category };
         let isolate = |category| super::temp_hide::Asked::Isolate { category };

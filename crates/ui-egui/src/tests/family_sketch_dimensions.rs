@@ -394,7 +394,12 @@ fn sweep_family() -> String {
 fn sweep_profile_dimensioned(h: &mut Harness<BimApp>) -> FamilyDimension {
     ed_mut(h).edit_form_sketch(0).unwrap();
     h.run();
-    ed_mut(h).show_part(crate::editor::sketch::Part::Profile).unwrap();
+    // Edit Profile, in the elevation Go To View opens.
+    ed_mut(h).enter_part(crate::editor::sketch::Part::Profile, false).unwrap();
+    h.run();
+    if editor(h).views.go_to.is_some() {
+        press(h, "Open View");
+    }
     h.run();
     h.run();
     assert!(editor(h).views.shown.is_some_and(|w| w != Which::Plan), "an elevation that sees the profile flat");
@@ -417,6 +422,8 @@ fn a_sweeps_profile_is_dimensioned_and_labelled_while_sketched() {
     let d = sweep_profile_dimensioned(&mut h);
     let (b, t) = (line(&h, BOTTOM), line(&h, TOP));
     assert!(((t.0.1 - b.0.1) - 200.0).abs() < 1e-6, "Large's Depth, at once: {b:?} {t:?}");
+    // The profile's Finish, then the sweep's.
+    press(&mut h, "Finish Edit Mode");
     press(&mut h, "Finish Edit Mode");
     assert!(!editor(&h).sketching(), "{}", status(&h));
     let f = editor(&h).draft_family().unwrap();

@@ -1389,9 +1389,18 @@ and Void Swept Blend, open sketch mode with every part of the form: `FormSketch:
 `End`) is on screen, the others wait in `parts` and are drawn grey on their own planes (`other_parts`). A Blend's tab is
 "Modify | Create Blend Base Boundary" with Edit Top ("… Top Boundary", drawn on the plane at its Second End) and Edit Base;
 a Sweep's "Modify | Sweep > Sketch Path" with Sketch Path, Pick Path (Pick Lines on the path), Edit Profile and a greyed
-Select Profile showing "<By Sketch>"; a Swept Blend's the same with Profile 1 and Profile 2. A profile can't be edited
-before the path chains (said in the status bar); its plane faces along the path, so a view that doesn't see it flat gives
-way to one that does (an elevation), else {3D} (`show_part`). Edit Vertices' Twist Left and Twist Right step `twist`. The
+Select Profile showing "<By Sketch>"; a Swept Blend's the same with Profile 1 and Profile 2. A Sweep and a Swept Blend are
+made a mode inside a mode (`FormSketch::nested`): Create > Sweep opens "Modify | Sweep" (or
+"Modify | Swept Blend"), which draws nothing itself (no Draw, Modify, Dimension or Work Plane panel; a click in the view adds
+nothing, and Find's Modify, Delete, dimension and Modify-panel tools say to open a part first); Sketch Path and Pick Path open "Modify | Sweep > Sketch Path", Edit Profile (Profile 1, Profile 2) "… > Edit
+Profile", each with the Draw panel and its own Finish Edit Mode (the path checked to chain, a Swept Blend's to be one line
+or one arc; a profile to close into loops) and Cancel Edit Mode (its lines as it began), both back to the sweep's own mode;
+Ctrl+Z inside one never goes back past where it began. The sweep's own Finish makes the form, one step of the history; a part
+at fault is opened in its own mode. A profile can't be edited before the path chains (said in the status bar); its plane
+faces along the path, so where the view shown doesn't see it flat Go To View is asked (`enter_part`, `work_plane::Then::Part`),
+listing only the views that do ({3D} where none does). Each profile's plane is marked where it crosses the path, a red dot
+and its two axes (`profile_planes`), in every view. The profile's source is `ProfileSource`, a sketch alone until profile
+families come. Edit Vertices' Twist Left and Twist Right step `twist`. The
 Options Bar's Depth is a Blend's Second End less its First; Properties show First End and Second End, a sweep no ends.
 Finish checks each part (`finish_f6`), putting the part at fault on screen with its lines red, then builds the form with
 every type as F5 does (`commit_form`); Edit Blend, Edit Sweep and Edit Swept Blend (and a double click) sketch it again,

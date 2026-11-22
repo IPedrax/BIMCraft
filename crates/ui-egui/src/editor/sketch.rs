@@ -145,6 +145,26 @@ pub(crate) struct FormSketch {
     pub(crate) edit_seen: Option<(Vec<SketchLine>, std::collections::BTreeSet<usize>)>,
     /// Paste following the pointer: the lines copied, their middle where the pointer is.
     pub(crate) pasting: Option<bimcraft_core::family::clipboard::SketchClip>,
+    /// A Sweep's or a Swept Blend's mode inside its mode: Sketch Path or Edit Profile, open; none, the sweep's own
+    /// (Modify | Sweep), which draws nothing.
+    pub(crate) nested: Option<Nested>,
+}
+
+/// A Sweep's or a Swept Blend's Sketch Path or Edit Profile, open: the part it draws, its lines as it began (what its
+/// own Cancel puts back), and how many steps the sketch's history held then (its Undo goes no further back).
+#[derive(Clone)]
+pub(crate) struct Nested {
+    pub(crate) part: Part,
+    before: Snap,
+    floor: usize,
+}
+
+/// Where a sweep's profile is drawn, before the profile itself: a profile sketched (<By Sketch>) or, once profile
+/// families come, one loaded. Only the sketch is made today.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ProfileSource {
+    #[default]
+    Sketch,
 }
 
 /// A step of a sketch's own history: what a change while sketching may change, together.
@@ -202,6 +222,12 @@ impl FormSketch {
         self.set_tool(Some(Shape::Line), false);
     }
 
+    /// Whether this is a Sweep's or a Swept Blend's own mode, with no Sketch Path or Edit Profile open: it draws
+    /// nothing.
+    pub(crate) fn parent(&self) -> bool {
+        self.kind.swept() && self.nested.is_none()
+    }
+
     /// What the sketch's history holds of it now.
     fn snap(&self) -> Snap {
         let mut lines = self.parts.clone();
@@ -225,6 +251,10 @@ impl FormSketch {
                 self.history.push(was);
                 if self.history.len() > STEPS {
                     self.history.remove(0);
+                    // A nested mode's floor counts from the history's start, which moved on a step.
+                    if let Some(n) = self.nested.as_mut() {
+                        n.floor = n.floor.saturating_sub(1);
+                    }
                 }
             }
             _ => {}
@@ -236,7 +266,17 @@ impl FormSketch {
     /// parameters together; false when there's none to take back.
     pub(crate) fn undo(&mut self) -> bool {
         self.track();
+        // Inside Sketch Path or Edit Profile, never back past where it began.
+        if self.nested.as_ref().is_some_and(|n| self.history.len() <= n.floor) {
+            return false;
+        }
         let Some(was) = self.history.pop() else { return false };
+        self.restore(was);
+        true
+    }
+
+    /// The sketch put back as `was` holds it: its lines (every part's), dimensions, locks and parameters together.
+    fn restore(&mut self, was: Snap) {
         let Snap { mut lines, locks, unlocked, dims, changed, params, driven } = was.clone();
         self.sketch.lines = std::mem::take(&mut lines[self.part as usize]);
         self.parts = lines;
@@ -245,7 +285,7 @@ impl FormSketch {
         self.sketch.changed();
         self.offer = None;
         self.align_from = None;
-        true
+        self.selected_dim = None;
     }
 
     /// The path (a sweep's sketch) as drawn, chained, its numbers as they are.
@@ -261,6 +301,8 @@ impl FormSketch {
     pub(crate) fn title(&self) -> &'static str {
         match (self.kind, self.part, self.void) {
             (FormKind::Extrusion | FormKind::Revolve, _, _) => self.sketch.title(),
+            (FormKind::Sweep, ..) if self.parent() => msg!("Modify | Sweep"),
+            (FormKind::SweptBlend, ..) if self.parent() => msg!("Modify | Swept Blend"),
             (FormKind::Blend, Part::Top, false) => msg!("Modify | Create Blend Top Boundary"),
             (FormKind::Blend, Part::Top, true) => msg!("Modify | Create Void Blend Top Boundary"),
             (FormKind::Blend, _, false) => msg!("Modify | Create Blend Base Boundary"),
@@ -639,6 +681,81 @@ impl FamilyEditor {
         }
     }
 
+    /// The planes a sweep's profiles are drawn on: a Sweep's, a Swept Blend's two; none while the path doesn't chain.
+    pub(crate) fn profile_planes(&self) -> Vec<Frame> {
+        let Some(s) = self.sketch.as_ref().filter(|s| s.kind.swept()) else { return Vec::new() };
+        let parts: &[Part] = if s.kind == FormKind::Sweep { &[Part::Profile] } else { &[Part::Profile, Part::End] };
+        parts.iter().filter_map(|p| self.part_frame(s, *p)).collect()
+    }
+
+    /// Sketch Path, Edit Profile, Profile 1 or Profile 2: part `p` of the sweep opened in a mode of its own, in the view
+    /// shown where it sees the part's plane flat ({3D} sees any), else Go To View is asked, listing the views that do. A
+    /// profile is refused while the path doesn't chain, saying why.
+    pub(crate) fn enter_part(&mut self, p: Part, pick: bool) -> Result<(), String> {
+        let Some(s) = self.sketch.as_ref() else { return Ok(()) };
+        if matches!(p, Part::Profile | Part::End)
+            && let Err(e) = s.path()
+        {
+            return Err(tf("Sketch the path first: {}", &[&e]));
+        }
+        let host = s.host;
+        let frame = self.part_frame(s, p);
+        if let (Some(which), Some(f)) = (self.views.shown, frame)
+            && !flat(which, &f)
+        {
+            let mut views: Vec<Option<Which>> = bimcraft_core::family::views::flat_views(f.z).into_iter().map(Some).collect();
+            if views.is_empty() {
+                views.push(None);
+            }
+            let then = super::work_plane::Then::Part(p, pick);
+            self.views.go_to = Some(super::work_plane::GoTo { plane: host, views, chosen: 0, then });
+            return Ok(());
+        }
+        self.open_part(p, pick);
+        Ok(())
+    }
+
+    /// Part `p` of the sweep put on screen in its own mode, in the view shown: drawing with Line, or Pick Lines (`pick`).
+    pub(super) fn open_part(&mut self, p: Part, pick: bool) {
+        let Some(s) = self.sketch.as_mut() else { return };
+        s.track();
+        s.set_part(p);
+        s.set_tool(Some(if pick { Shape::PickLines } else { Shape::Line }), false);
+        s.selected_dim = None;
+        s.nested = Some(Nested { part: p, before: s.snap(), floor: s.history.len() });
+        self.views.dimensioning = None;
+        self.views.aligning = None;
+    }
+
+    /// Finish Edit Mode in Sketch Path or Edit Profile: the path checked to chain (a Swept Blend's, one line or one
+    /// arc), a profile to close into loops; then back to the sweep's own mode. Refused, saying why, the lines at fault red.
+    fn finish_nested(&mut self, units: bimcraft_core::units::Units) -> Result<(), String> {
+        let Some(s) = self.sketch.as_mut() else { return Ok(()) };
+        check_part(s, s.part, units)?;
+        s.nested = None;
+        s.set_tool(None, false);
+        s.sketch.picked.clear();
+        Ok(())
+    }
+
+    /// Cancel Edit Mode: in Sketch Path or Edit Profile, its lines as it began and back to the sweep's own mode;
+    /// else the whole sketch dropped.
+    pub(crate) fn cancel_edit_mode(&mut self) {
+        if let Some(s) = self.sketch.as_mut()
+            && let Some(n) = s.nested.take()
+        {
+            // All it changed, its dimensions, locks and parameters too, as it began.
+            s.restore(n.before);
+            s.history.truncate(n.floor);
+            s.set_tool(None, false);
+            s.sketch.picked.clear();
+            self.views.aligning = None;
+            self.views.dimensioning = None;
+            return;
+        }
+        self.cancel_form_sketch();
+    }
+
     /// The lines of the parts not on screen, each as polylines on its own plane: drawn grey under the one being sketched.
     pub(crate) fn other_parts(&self) -> Vec<(Frame, Vec<Vec<P2>>)> {
         let Some(s) = self.sketch.as_ref() else { return Vec::new() };
@@ -750,7 +867,8 @@ impl FamilyEditor {
             from: from.into(),
             to: to.into(),
             material: String::new(),
-            tool: Some(Shape::Line),
+            // A sweep's own mode draws nothing: Sketch Path opens the path's.
+            tool: (!kind.swept()).then_some(Shape::Line),
             axis_tool: false,
             points: Vec::new(),
             last: None,
@@ -782,6 +900,7 @@ impl FamilyEditor {
             typed: None,
             edit_seen: None,
             pasting: None,
+            nested: None,
         }));
         self.let_everything_go();
         self.views.drawing = None;
@@ -832,6 +951,9 @@ impl FamilyEditor {
         for l in s.sketch.lines.iter_mut().chain(s.parts.iter_mut().flatten()).filter(|l| l.guid.is_nil()) {
             l.guid = Guid::new();
         }
+        if s.nested.is_some() {
+            return self.finish_nested(units);
+        }
         if s.kind != FormKind::Extrusion && s.kind != FormKind::Revolve {
             return self.finish_f6(units);
         }
@@ -865,30 +987,15 @@ impl FamilyEditor {
             _ => vec![Part::Main, Part::Profile, Part::End],
         };
         for &p in &parts {
-            let lines: Vec<SketchLine> = s.part_lines(p).to_vec();
-            let path = p == Part::Main && kind.swept();
-            if path {
-                let mut problem = s.path().err();
-                if problem.is_none() && kind == FormKind::SweptBlend && fs::lines_of(&lines).len() != 1 {
-                    problem = Some(t("A swept blend's path is one line or one arc.").to_string());
+            if let Err(e) = check_part(s, p, units) {
+                // A sweep's part at fault opened in its own mode, in a view that sees it flat (Go To View where the view shown
+                // doesn't): never left on a plane the view sees edge-on. A Blend's put on screen.
+                if kind.swept() {
+                    let _ = self.enter_part(p, false);
+                } else {
+                    s.set_part(p);
                 }
-                if let Some(e) = problem {
-                    s.set_part(Part::Main);
-                    return Err(tf("The path can't be swept along: {}", &[&e]));
-                }
-                continue;
-            }
-            if let Err(fs::Finish::Problems(problems)) = fs::finish_check(&lines, None, false) {
-                s.set_part(p);
-                s.sketch.wrong = problems.iter().flat_map(|q| q.lines()).collect();
-                let which = match p {
-                    Part::Main => t("The base"),
-                    Part::Top => t("The top"),
-                    Part::Profile if kind == FormKind::SweptBlend => t("Profile 1"),
-                    Part::Profile => t("The profile"),
-                    Part::End => t("Profile 2"),
-                };
-                return Err(format!("{which}: {}", crate::sketch::friendly(&problems, &lines, units)));
+                return Err(e);
             }
         }
         let (index, form, before) = self.sketched_form()?;
@@ -1104,6 +1211,13 @@ impl FamilyEditor {
                 painter.add(egui::Shape::line(pts, Stroke::new(1.5, GHOST)));
             }
         }
+        for f in self.profile_planes() {
+            let at = |q: P2| {
+                let (x, y) = view.px(in_view(st, which, &f, q));
+                Some(pane.min + vec2(x, y))
+            };
+            mark_profile_plane(painter, &at, view.scale);
+        }
         let pick = |p: Pos2| -> Result<Picked, String> {
             let missed = || t("Pick a reference plane, a reference line or a form's edge in the view.").to_string();
             let ((a, b), lock) = pick_view(p).ok_or_else(missed)?;
@@ -1157,6 +1271,12 @@ impl FamilyEditor {
                     poly.iter().filter_map(|q| shown(f.point(*q, 0.0))).map(|q| Pos2::new(q.0 as f32, q.1 as f32)).collect();
                 painter.add(egui::Shape::line(pts, Stroke::new(1.5, GHOST)));
             }
+        }
+        // A sweep's profile planes marked, about a few points across, as the view is scaled where they are.
+        for f in self.profile_planes() {
+            let at = |q: P2| shown(f.point(q, 0.0)).map(|p| Pos2::new(p.0 as f32, p.1 as f32));
+            let scale = at(P2(0.0, 0.0)).zip(at(P2(100.0, 0.0))).map_or(0.1, |(a, b)| f64::from(a.distance(b)) / 100.0);
+            mark_profile_plane(painter, &at, scale);
         }
         // The reference lines and planes, drawn over the picture while sketching, so they can be seen and picked.
         let family = self.family().ok();
@@ -1224,6 +1344,12 @@ impl FamilyEditor {
         let mut moved: Vec<Guid> = Vec::new();
         let mut split: Option<(Guid, Guid)> = None;
         let s = self.sketch.as_mut()?;
+        // A sweep's own mode draws nothing: its lines shown, no click taken.
+        if s.parent() {
+            (s.hover, s.found) = (None, None);
+            s.paint(painter, screen, None);
+            return None;
+        }
         // Only a line or a chained arc's endpoint follows Ortho. Shape construction points (a rectangle's opposite
         // corner, a radius, an arc's third point) must remain free.
         let square = shift && s.tool.is_some_and(|shape| shape.chains()) && s.points.len() == 1;
@@ -1554,6 +1680,32 @@ pub(crate) fn prompt(s: &FormSketch, o: &super::modify::Options) -> &'static str
     if let Some(tool) = s.edit.as_ref() {
         return super::modify::prompt(tool, o, true);
     }
+    // A sweep's own mode: what comes next.
+    if s.parent() {
+        return match s.kind {
+            FormKind::SweptBlend => {
+                msg!("Sketch Path or Pick Path for the path, Profile 1 and Profile 2 for its ends; Finish Edit Mode makes the swept blend.")
+            }
+            _ => msg!("Sketch Path or Pick Path for the path, Edit Profile for the profile; Finish Edit Mode makes the sweep."),
+        };
+    }
+    // A Blend: its base closed, Edit Top is next; on its top, the plane at its Second End, then Finish.
+    if s.kind == FormKind::Blend && s.trim.is_none() && s.tool.is_some_and(|t| t != Shape::PickLines) {
+        let closed = |p: Part| {
+            let lines = s.part_lines(p);
+            !lines.is_empty() && fs::finish_check(lines, None, false).is_ok()
+        };
+        match s.part {
+            Part::Top if closed(Part::Top) => {
+                return msg!("The top is closed: Finish Edit Mode makes the blend, or Edit Base to change its base.");
+            }
+            Part::Top => return msg!("Draw the top, on the plane at the blend's Second End; then Finish Edit Mode."),
+            Part::Main if closed(Part::Main) && !closed(Part::Top) => {
+                return msg!("The base is closed: Edit Top to sketch the top, at the blend's Second End.");
+            }
+            _ => {}
+        }
+    }
     match s.trim {
         Some(None) => return msg!("Pick the first line, on the part to keep."),
         Some(Some(_)) => return msg!("Pick the second line, on the part to keep."),
@@ -1564,7 +1716,7 @@ pub(crate) fn prompt(s: &FormSketch, o: &super::modify::Options) -> &'static str
             msg!("Click a reference plane, a reference line or a form's edge: a line of the path along it.")
         }
         Some(_) if s.kind.swept() && s.part == Part::Main => {
-            msg!("Draw the path: lines and arcs end to end, open or closed; then Edit Profile.")
+            msg!("Draw the path: lines and arcs end to end, open or closed; then Finish Edit Mode.")
         }
         None => msg!("Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."),
         Some(_) if s.axis_tool => msg!("Click two points: the axis the profile turns about."),
@@ -1649,6 +1801,54 @@ pub(crate) fn options_bar(ui: &mut Ui, ed: &mut FamilyEditor, units: bimcraft_co
     }
 }
 
+/// A sweep's profile plane marked where it crosses the path, `at` putting its points on screen and `scale` the
+/// points a millimetre there makes: a dot, and the plane's two axes a few points either way of it, so a view that sees it
+/// edge-on shows where it stands and one that sees it flat a cross.
+fn mark_profile_plane(painter: &egui::Painter, at: &dyn Fn(P2) -> Option<Pos2>, scale: f64) {
+    const RED: Color32 = Color32::from_rgb(220, 40, 40);
+    let reach = 40.0 / scale.max(1e-9);
+    let stroke = Stroke::new(1.5, RED);
+    for (a, b) in [(P2(-reach, 0.0), P2(reach, 0.0)), (P2(0.0, -reach), P2(0.0, reach))] {
+        if let (Some(p), Some(q)) = (at(a), at(b)) {
+            painter.line_segment([p, q], stroke);
+        }
+    }
+    if let Some(c) = at(P2(0.0, 0.0)) {
+        painter.circle_filled(c, 4.0, RED);
+    }
+}
+
+/// Part `p` of sketch `s` checked as Finish checks it: a sweep's path to chain (a Swept Blend's, one line or one arc),
+/// anything else to close into loops. Refused, saying why, the lines at fault red where the part is on screen.
+fn check_part(s: &mut FormSketch, p: Part, units: bimcraft_core::units::Units) -> Result<(), String> {
+    let kind = s.kind;
+    let lines: Vec<SketchLine> = s.part_lines(p).to_vec();
+    if p == Part::Main && kind.swept() {
+        let mut problem = s.path().err();
+        if problem.is_none() && kind == FormKind::SweptBlend && fs::lines_of(&lines).len() != 1 {
+            problem = Some(t("A swept blend's path is one line or one arc.").to_string());
+        }
+        return match problem {
+            Some(e) => Err(tf("The path can't be swept along: {}", &[&e])),
+            None => Ok(()),
+        };
+    }
+    if let Err(fs::Finish::Problems(problems)) = fs::finish_check(&lines, None, false) {
+        if p == s.part {
+            s.sketch.wrong = problems.iter().flat_map(|q| q.lines()).collect();
+        }
+        let which = match p {
+            Part::Main => t("The base"),
+            Part::Top => t("The top"),
+            Part::Profile if kind == FormKind::SweptBlend => t("Profile 1"),
+            Part::Profile => t("The profile"),
+            Part::End => t("Profile 2"),
+        };
+        return Err(format!("{which}: {}", crate::sketch::friendly(&problems, &lines, units)));
+    }
+    Ok(())
+}
+
 impl BimApp {
     /// The contextual tab while a form is sketched, as Revit's "Modify | Create Extrusion": Mode (Finish and Cancel Edit
     /// Mode), Draw (Boundary Line and, for a revolve, Axis Line over the gallery and Pick Lines), Modify (Delete), Work Plane
@@ -1658,11 +1858,24 @@ impl BimApp {
         let units = self.session.model.units;
         let mut finish = false;
         let mut cancel = false;
+        let (parent, nested) = ed.sketch.as_ref().map_or((false, None), |s| (s.parent(), s.nested.as_ref().map(|n| n.part)));
         ribbon::panel(ui, msg!("Mode"), |ui| {
-            let tip = msg!("Finish Edit Mode: the lines, closed into loops, become the form");
+            let (tip, cancel_tip) = match nested {
+                Some(Part::Main) => (
+                    msg!("Finish Edit Mode: the path, lines and arcs end to end, back to the sweep"),
+                    msg!("Cancel Edit Mode: the path as it was, back to the sweep"),
+                ),
+                Some(_) => (
+                    msg!("Finish Edit Mode: the profile, closed into loops, back to the sweep"),
+                    msg!("Cancel Edit Mode: the profile as it was, back to the sweep"),
+                ),
+                None => (
+                    msg!("Finish Edit Mode: the lines, closed into loops, become the form"),
+                    msg!("Cancel Edit Mode: drop the lines, keep it as it was"),
+                ),
+            };
             finish |= crate::big_button(ui, Icon::Check, "Finish Edit Mode", false, tip).clicked();
-            cancel |= crate::big_button(ui, Icon::Close, "Cancel Edit Mode", false, "Cancel Edit Mode: drop the lines, keep it as it was")
-                .clicked();
+            cancel |= crate::big_button(ui, Icon::Close, "Cancel Edit Mode", false, cancel_tip).clicked();
         });
         // F6: a Blend's Edit Top and Edit Base, a sweep's path and profiles, and Edit Vertices' twist.
         let mut part = None;
@@ -1680,10 +1893,12 @@ impl BimApp {
                         part = Some(to);
                     }
                 }),
+                // Sketch Path or Edit Profile open: its own Draw, Modify and Dimension, not the sweep's.
+                FormKind::Sweep | FormKind::SweptBlend if !parent => {}
                 FormKind::Sweep | FormKind::SweptBlend => {
                     ribbon::panel(ui, if kind == FormKind::Sweep { msg!("Sweep") } else { msg!("Swept Blend") }, |ui| {
                         let tip = msg!("Sketch Path: draw the path on the work plane, lines and arcs end to end");
-                        if crate::big_button(ui, Icon::Line, msg!("Sketch Path"), on == Part::Main, tip).clicked() {
+                        if crate::big_button(ui, Icon::Line, msg!("Sketch Path"), false, tip).clicked() {
                             part = Some(Part::Main);
                         }
                         let tip = msg!("Pick Path: pick reference planes, reference lines or forms' edges: lines of the path along them");
@@ -1709,20 +1924,24 @@ impl BimApp {
                                 ]
                             };
                             for (p, label, tip) in profiles {
-                                if crate::stacked_button(ui, Icon::Line, label, on == *p, tip).clicked() {
+                                if crate::stacked_button(ui, Icon::Line, label, false, tip).clicked() {
                                     part = Some(*p);
                                 }
                             }
                             // Revit's Select Profile: a sketched profile; profile families are not here yet (F6c).
+                            let source = ProfileSource::Sketch;
+                            let shown = match source {
+                                ProfileSource::Sketch => t("<By Sketch>"),
+                            };
                             ui.add_enabled_ui(false, |ui| {
-                                ComboBox::from_id_salt("sweep-profile").selected_text(t("<By Sketch>")).width(110.0).show_ui(ui, |_| {});
+                                ComboBox::from_id_salt("sweep-profile").selected_text(shown).width(110.0).show_ui(ui, |_| {});
                             });
                         });
                     })
                 }
                 _ => {}
             }
-            if matches!(kind, FormKind::Blend | FormKind::SweptBlend) {
+            if kind == FormKind::Blend || (kind == FormKind::SweptBlend && parent) {
                 ribbon::panel(ui, msg!("Edit Vertices"), |ui| {
                     crate::stacked(ui, |ui| {
                         let tip = msg!("Twist Left: pair the top's vertices with the base's one place on, counter-clockwise");
@@ -1739,17 +1958,23 @@ impl BimApp {
             }
         }
         if let Some(p) = part {
-            match ed.show_part(p) {
+            // A sweep's part opens a mode of its own; a Blend's base and top are put on screen.
+            let swept = ed.sketch.as_ref().is_some_and(|s| s.kind.swept());
+            match if swept { ed.enter_part(p, twist == i32::MIN) } else { ed.show_part(p) } {
                 Ok(()) => self.status = Status::default(),
                 Err(e) => self.status = Status { text: e, error: true },
             }
         }
         if let Some(s) = ed.sketch.as_mut() {
-            if twist == i32::MIN {
-                s.set_tool(Some(Shape::PickLines), false);
-            } else if twist != 0 {
+            // Pick Path's Pick Lines is the path's mode's own (`enter_part`).
+            if twist != 0 && twist != i32::MIN {
                 s.twist = (s.twist + twist).clamp(-forms::MAX_TWIST, forms::MAX_TWIST);
             }
+        }
+        // The sweep's own mode: nothing to draw, so no Draw, Modify, Dimension or Work Plane panel.
+        if parent {
+            self.sketch_mode_done(ed, finish, cancel, units);
+            return;
         }
         let Some(s) = ed.sketch.as_mut() else { return };
         ribbon::panel(ui, msg!("Draw"), |ui| {
@@ -1876,6 +2101,11 @@ impl BimApp {
                 Err(e) => self.status = Status { text: e, error: true },
             }
         }
+        self.sketch_mode_done(ed, finish, cancel, units);
+    }
+
+    /// Finish or Cancel Edit Mode clicked: of Sketch Path or Edit Profile where one is open, else of the form.
+    fn sketch_mode_done(&mut self, ed: &mut FamilyEditor, finish: bool, cancel: bool, units: bimcraft_core::units::Units) {
         if finish {
             match ed.finish_form_sketch(units) {
                 Ok(()) => self.status = Status::default(),
@@ -1883,7 +2113,7 @@ impl BimApp {
             }
         }
         if cancel {
-            ed.cancel_form_sketch();
+            ed.cancel_edit_mode();
             self.status = Status::default();
         }
     }

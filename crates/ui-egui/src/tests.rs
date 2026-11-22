@@ -8185,6 +8185,7 @@ mod family_shape_handles;
 mod family_sketch;
 mod family_sketch_dimensions;
 mod family_sketch_locks;
+mod family_sweep_modes;
 mod family_tabs;
 mod family_tabs_async;
 mod family_temporary_hide;

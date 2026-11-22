@@ -228,6 +228,7 @@ fn a_sweep_has_no_handles_in_plan_or_3d() {
     h.run();
     view(&mut h, Some(Which::Plan));
     button(&mut h, "Sweep");
+    button(&mut h, "Sketch Path");
     button(&mut h, "Line");
     for p in [[-1000.0, -800.0, 0.0], [0.0, -800.0, 0.0]] {
         let at = editor(&h).views.screen_of(p).unwrap();
@@ -235,7 +236,10 @@ fn a_sweep_has_no_handles_in_plan_or_3d() {
     }
     h.key_press(Key::Escape);
     h.run();
+    // The path's own Finish, then Edit Profile in the elevation Go To View opens.
+    button(&mut h, "Finish Edit Mode");
     button(&mut h, "Edit Profile");
+    button(&mut h, "Open View");
     h.run();
     // A rectangle round the path's start, as the elevation square to it shows it.
     button(&mut h, "Rectangle");
@@ -243,6 +247,7 @@ fn a_sweep_has_no_handles_in_plan_or_3d() {
     for at in [s0 + vec2(-30.0, 0.0), s0 + vec2(30.0, -50.0)] {
         click_at(&mut h, at);
     }
+    button(&mut h, "Finish Edit Mode");
     button(&mut h, "Finish Edit Mode");
     let f = editor(&h).draft_family().unwrap();
     assert_eq!(f.forms.len(), 2, "{} {:?}", status(&h), editor(&h).sketch.as_ref().map(|s| s.sketch.lines.len()));
