@@ -6,6 +6,7 @@ use super::*;
 use crate::engine::Session;
 use crate::family::{MAX_PROFILE, MAX_SYMBOLS};
 use crate::geom::P2;
+use crate::model::Element;
 
 const EXPECTED_FAMILIES: usize = 54;
 
@@ -240,7 +241,8 @@ fn loading_the_set_adds_no_warnings() {
     }
     let id = place(&mut s, "Dishwasher", [1000.0, 1000.0]);
     assert_eq!(s.model.families["Dishwasher"].default_elevation, 20.0);
-    assert!(s.model.families["Refrigerator"].types.contains_key("Two doors (freezer compartment)"));
+    assert!(s.model.families["Refrigerator"].types.contains_key("Two doors (freezer below)"));
+    assert!(s.model.families["Refrigerator"].types.contains_key("Two doors (freezer on top)"));
     assert!(s.model.families["Freezer"].types.contains_key("Horizontal (chest)"));
     let _ = id;
     assert_eq!(run(&mut s, "inspect", json!({}))["warnings"], before);
@@ -274,9 +276,32 @@ fn switch_types_toggle_poles_and_options_and_circuit_parameter_draws_a_label() {
         .unwrap();
     let (circuit_lines, _) = ink(&s, with_circuit);
     assert!(circuit_lines.len() > single_lines.len(), "Circuit parameter draws the label strokes");
+    run(&mut s, "modify", json!({"id": with_circuit, "params": {"Show Circuit 2": true, "Circuit 2": "C2"}}));
+    let (two_circuits_lines, _) = ink(&s, with_circuit);
+    assert!(two_circuits_lines.len() > circuit_lines.len(), "Switch supports a second circuit label for 2 light fixtures");
     let right_x: f64 = circuit_lines.iter().flatten().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
     run(&mut s, "modify", json!({"id": with_circuit, "params": {"Label Position": 2}}));
     let (left_lines, _) = ink(&s, with_circuit);
     let left_x: f64 = left_lines.iter().flatten().map(|p| p.0).fold(f64::INFINITY, f64::min);
     assert!(left_x < 5000.0 - 200.0 && right_x > 5000.0 + 200.0, "Label Position moves label from right ({right_x}) to left ({left_x})");
+
+    // Symbol Offset X/Y shifts the 2D plan symbol without moving the 3D component (`at`).
+    let dw = place(&mut s, "Dishwasher", [2000.0, 2000.0]);
+    run(&mut s, "modify", json!({"id": dw, "params": {"Symbol Offset X": 500.0, "Symbol Offset Y": -300.0}}));
+    let Element::Component(dw_comp) = &s.model.elements[&dw] else { panic!() };
+    assert_eq!(dw_comp.at, P2(2000.0, 2000.0), "3D position unchanged");
+    let marks = s.model.component_marks(dw_comp);
+    let arc_pt = match &marks[0] {
+        crate::family::Mark::Line(pts) => pts[0],
+        _ => panic!("expected Dishwasher arc line"),
+    };
+    assert!((arc_pt.0 - 2500.0).abs() < 120.0 && (arc_pt.1 - 1700.0).abs() < 120.0, "2D symbol shifted: {arc_pt:?}");
+
+    // Assigning a device to a circuit automatically populates its Circuit and Show Circuit parameters.
+    let board = run(&mut s, "component", json!({"family": "Distribution Board", "at": [0, 0]}))["id"].as_u64().unwrap();
+    run(&mut s, "panel", json!({"id": board, "distribution": "127/220 V"}));
+    run(&mut s, "circuit", json!({"panel": board, "devices": [dw], "number": 4}));
+    let Element::Component(dw_after) = &s.model.elements[&dw] else { panic!() };
+    assert_eq!(dw_after.params.get("Circuit"), Some(&json!("4")));
+    assert_eq!(dw_after.params.get("Show Circuit"), Some(&json!(true)));
 }

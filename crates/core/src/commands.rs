@@ -6272,7 +6272,8 @@ fn circuit_of_model(s: &mut Session, p: &Value) -> R {
         if let Some(w) = wires {
             x.wires = w;
         }
-        s.model_mut().elements.insert(id, Element::Circuit(x));
+        s.model_mut().elements.insert(id, Element::Circuit(x.clone()));
+        sync_circuit_labels(s.model_mut(), &x);
         return Ok(json!({"id": id, "circuit": element_json(&s.model, id)}));
     }
     // Made.
@@ -6307,8 +6308,44 @@ fn circuit_of_model(s: &mut Session, p: &Value) -> R {
         let need = t.current_a.max(10.0);
         x.rating_a = crate::nbr5410::BREAKERS.iter().copied().find(|b| *b >= need).unwrap_or(16.0);
     }
-    let id = s.model_mut().insert(Element::Circuit(x));
+    let id = s.model_mut().insert(Element::Circuit(x.clone()));
+    sync_circuit_labels(s.model_mut(), &x);
     Ok(json!({"id": id, "circuit": element_json(&s.model, id)}))
+}
+
+/// Populate `Circuit` and `Show Circuit` instance parameters on any symbol-set components assigned to `circuit`.
+fn sync_circuit_labels(m: &mut Model, circuit: &crate::electrical::Circuit) {
+    let guids: Vec<crate::ids::Guid> = circuit.devices.clone();
+    for guid in guids {
+        let Some(id) = m.elements.id(guid) else { continue };
+        let Some(Element::Component(c)) = m.elements.get(&id) else { continue };
+        let Some(f) = m.families.get(&c.family) else { continue };
+        let has_circuit = f.parameters.iter().any(|p| p.name == "Circuit" && p.instance);
+        let has_show = f.parameters.iter().any(|p| p.name == "Show Circuit" && p.instance);
+        if !has_circuit || !has_show {
+            continue;
+        }
+        let mut labels: Vec<(u32, String)> = m
+            .elements
+            .values()
+            .filter_map(|e| match e {
+                Element::Circuit(x) if x.devices.contains(&guid) => {
+                    let text = if x.name.is_empty() { x.number.to_string() } else { x.name.clone() };
+                    Some((x.number, text))
+                }
+                _ => None,
+            })
+            .collect();
+        labels.sort_by_key(|(n, _)| *n);
+        let joined = labels.into_iter().map(|(_, s)| s).collect::<Vec<_>>().join(", ");
+        if joined.is_empty() {
+            continue;
+        }
+        if let Some(Element::Component(c)) = m.elements.get_mut(&id) {
+            c.params.insert("Circuit".into(), json!(joined));
+            c.params.insert("Show Circuit".into(), json!(true));
+        }
+    }
 }
 
 fn circuit_size(_: &mut Session, p: &Value) -> R {

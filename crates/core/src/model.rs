@@ -3932,14 +3932,30 @@ impl Model {
         if !self.component_placement(c).upright {
             return Vec::new();
         }
-        let marks = f.values(&c.type_name, &c.params).and_then(|v| match detail {
-            Some(d) => f.marks_in(&v, d).map(|m| m.into_iter().map(|(k, _)| k).collect()),
-            None => f.marks(&v),
-        });
-        let Ok(marks) = marks else { return Vec::new() };
+        let (marks, ox, oy) = match f.values(&c.type_name, &c.params) {
+            Ok(v) => {
+                let ox = match v.get("Symbol Offset X") {
+                    Some(crate::family::Val::Number(n)) if n.is_finite() => *n,
+                    _ => 0.0,
+                };
+                let oy = match v.get("Symbol Offset Y") {
+                    Some(crate::family::Val::Number(n)) if n.is_finite() => *n,
+                    _ => 0.0,
+                };
+                let m = match detail {
+                    Some(d) => f.marks_in(&v, d).map(|m| m.into_iter().map(|(k, _)| k).collect()),
+                    None => f.marks(&v),
+                };
+                match m {
+                    Ok(m) => (m, ox, oy),
+                    Err(_) => return Vec::new(),
+                }
+            }
+            Err(_) => return Vec::new(),
+        };
         let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
-        marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
+        marks.iter().map(|k| k.map(|q| P2(c.at.0 + ox + q.0 * cos - flip * q.1 * sin, c.at.1 + oy + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and

@@ -89,8 +89,23 @@ pub fn families(set: &str, names: Names) -> Vec<(String, Family)> {
             if !parameters.iter().any(|p| p.get("name").and_then(Value::as_str) == Some("Show Circuit")) {
                 parameters.push(json!({"name": "Show Circuit", "kind": "yesno", "instance": true, "value": false}));
             }
+            let cat = category(layer, english);
+            if cat == Category::Switch {
+                if !parameters.iter().any(|p| p.get("name").and_then(Value::as_str) == Some("Circuit 2")) {
+                    parameters.push(json!({"name": "Circuit 2", "kind": "text", "instance": true, "value": "-"}));
+                }
+                if !parameters.iter().any(|p| p.get("name").and_then(Value::as_str) == Some("Show Circuit 2")) {
+                    parameters.push(json!({"name": "Show Circuit 2", "kind": "yesno", "instance": true, "value": false}));
+                }
+            }
             if !parameters.iter().any(|p| p.get("name").and_then(Value::as_str) == Some("Label Position")) {
                 parameters.push(json!({"name": "Label Position", "kind": "integer", "instance": true, "value": 0}));
+            }
+            if !parameters.iter().any(|p| p.get("name").and_then(Value::as_str) == Some("Symbol Offset X")) {
+                parameters.push(json!({"name": "Symbol Offset X", "kind": "length", "instance": true, "value": 0.0}));
+            }
+            if !parameters.iter().any(|p| p.get("name").and_then(Value::as_str) == Some("Symbol Offset Y")) {
+                parameters.push(json!({"name": "Symbol Offset Y", "kind": "length", "instance": true, "value": 0.0}));
             }
             let types = v.get("types").cloned().unwrap_or_else(|| json!({"Standard": {}}));
             let mut syms = v.get("symbols")?.as_array()?.clone();
@@ -106,11 +121,25 @@ pub fn families(set: &str, names: Names) -> Vec<(String, Family)> {
                 },
                 "visible": "Show Circuit"
             }));
+            if cat == Category::Switch {
+                syms.push(json!({
+                    "text": {
+                        "at": [
+                            "if(Label Position = 0, 380, if(Label Position = 2, -380, 0))",
+                            "if(Label Position = 1, 280, if(Label Position = 3, -560, -140))"
+                        ],
+                        "height": 120.0,
+                        "value": "{Circuit 2}",
+                        "align": "center"
+                    },
+                    "visible": "Show Circuit 2"
+                }));
+            }
             let forms = v.get("forms").cloned().unwrap_or_else(|| json!([]));
             let connectors = v.get("connectors").cloned().unwrap_or_else(|| json!([]));
             let default_elevation = v.get("default_elevation").and_then(Value::as_f64).unwrap_or(0.0);
             let family = json!({
-                "category": category(layer, english),
+                "category": cat,
                 "parameters": parameters,
                 "types": types,
                 "forms": forms,

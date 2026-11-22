@@ -4876,14 +4876,25 @@
      "name": "Freezer Height",
      "kind": "length",
      "value": 550.0
+    },
+    {
+     "name": "Freezer On Top",
+     "kind": "yesno",
+     "value": false
     }
    ],
    "default_elevation": 20.0,
    "types": {
     "Single door": {},
-    "Two doors (freezer compartment)": {
+    "Two doors (freezer below)": {
      "Height": 1750.0,
-     "Freezer Compartment": true
+     "Freezer Compartment": true,
+     "Freezer On Top": false
+    },
+    "Two doors (freezer on top)": {
+     "Height": 1750.0,
+     "Freezer Compartment": true,
+     "Freezer On Top": true
     }
    },
    "forms": [
@@ -4974,8 +4985,8 @@
        "-Depth / 2 + 12"
       ]
      ],
-     "from": "Freezer Height - 6",
-     "to": "Freezer Height + 6",
+     "from": "if(Freezer On Top, Height - Freezer Height, Freezer Height) - 6",
+     "to": "if(Freezer On Top, Height - Freezer Height, Freezer Height) + 6",
      "void": true,
      "visible": "Freezer Compartment"
     }
