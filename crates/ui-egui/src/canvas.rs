@@ -4114,7 +4114,14 @@ impl BimApp {
             path.push(p);
             return;
         };
+        // The last point clicked again ends the chain, or makes the polyline, as Enter does.
         if last.dist(p) <= TOL {
+            if path.len() >= 2 {
+                self.finish_detail_line(level);
+            } else {
+                path.clear();
+                self.canvas.guides_reset();
+            }
             return;
         }
         if polyline {
@@ -4377,7 +4384,8 @@ impl BimApp {
                         }
                     }
                 }
-                (Some(_), _) => {}
+                // The last point clicked again ends the chain, as Escape does: what was built stays.
+                (Some(_), _) => self.finish_wall(),
                 (None, _) => {
                     chain.push(p);
                     // A chain whose first point the snap put on a wall — one of its faces or its centre line — draws with
@@ -4389,7 +4397,8 @@ impl BimApp {
             },
             // Each click past the first a line from the one before, the chain going on from there.
             Tool::RoomSeparator(start) => match start.take() {
-                Some(a) if a.dist(p) <= TOL => *start = Some(a),
+                // The last point clicked again ends the chain: the next click is a new line's start.
+                Some(a) if a.dist(p) <= TOL => {}
                 Some(a) => {
                     self.run("room_separator", json!({"points": [point(a), point(p)], "level": level}));
                     if let Tool::RoomSeparator(start) = &mut self.tool {

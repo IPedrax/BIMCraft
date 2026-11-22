@@ -229,7 +229,7 @@ wall lends one edge pin — marking another of its faces moves the pin (`Marked:
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
 guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
 of the walls joined there, so a rotated corner gives its walls' directions and not the world's. A chain whose first point
-the snap put on a wall draws with that line's direction and extension (`Canvas::start_edge`). `Snaps::mark_on_hover` turns
+the snap put on a wall draws with that line's direction and extension (`Canvas::start_edge`). A click on a chain's last point again ends it, as Escape does (walls and room separators) or Enter does (detail lines: a polyline is made); what was built stays and the next click starts another chain (`a_click_on_a_chain_s_last_point_ends_it_as_escape_does`). `Snaps::mark_on_hover` turns
 the ring off;
 `Q` stays. The rays are drawn only near the cursor: one enters at 8 px and leaves at 12 (`Canvas::alignments`), at most
 two run at once (`find_alignments`), and each fades out 100 px past the point it locks, so a plan is never crossed by a
