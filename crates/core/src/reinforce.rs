@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::geom::P2;
-use crate::model::{Element, MAX_COORD, MAX_TEXT, Model, TOL, heading};
+use crate::model::{Column, Element, MAX_COORD, MAX_TEXT, Model, TOL, heading};
 use crate::rebar::{DIAMETERS, GRADE, MAX_BARS};
 use crate::view3d::{P3, add, mul, sub, unit};
 use crate::walls::Plane;
@@ -40,13 +40,39 @@ impl Frame {
     }
 }
 
-/// A beam's own axes and size, which its bars and its detail drawing are measured in.
+/// What a member is, which decides the pictures of its detail.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Beam,
+    Column,
+    Footing,
+    Floor,
+}
+
+/// A member's own axes and size, which its bars and its detail drawing are measured in: `length` along `frame.a`, `width` along
+/// `frame.b` and `depth` along `frame.c`, the concrete's lowest corner at `lo` in those axes.
 pub(crate) struct Located {
+    pub(crate) kind: Kind,
     pub(crate) frame: Frame,
     pub(crate) length: f64,
     pub(crate) width: f64,
     pub(crate) depth: f64,
     pub(crate) round: bool,
+    pub(crate) lo: P3,
+    /// A floor's outline and then its openings, in the plan; none for the rest.
+    pub(crate) rings: Vec<Vec<P2>>,
+}
+
+/// A column's axes: up from its foot, its width across and its depth the other way, turned by its angle.
+fn column_frame(m: &Model, col: &Column, bottom: f64) -> Frame {
+    let u = heading(col.angle);
+    Frame { o: [col.at.0, col.at.1, bottom - m.elevation(col.level)], a: [0.0, 0.0, 1.0], b: [u.0, u.1, 0.0], c: [-u.1, u.0, 0.0] }
+}
+
+/// A footing's axes: its width along its angle, its depth across, up from its underside.
+fn footing_frame(m: &Model, col: &Column, bottom: f64) -> Frame {
+    let u = heading(col.angle);
+    Frame { o: [col.at.0, col.at.1, bottom - m.elevation(col.level)], a: [u.0, u.1, 0.0], b: [-u.1, u.0, 0.0], c: [0.0, 0.0, 1.0] }
 }
 
 /// The frame of beam `host` (its centre line's start, along it, across it and up), over its level; none for what has no type.
@@ -57,7 +83,66 @@ pub(crate) fn beam_frame(m: &Model, host: &Element) -> Option<Located> {
     let up = crate::view3d::cross(along, across);
     let level = m.level_of(host).map_or(0.0, |l| m.elevation(l));
     let frame = Frame { o: [g.a[0], g.a[1], g.a[2] - level], a: along, b: across, c: up };
-    Some(Located { frame, length: g.length(), width: g.width, depth: g.depth, round: g.round })
+    let (length, width, depth) = (g.length(), g.width, g.depth);
+    Some(Located {
+        kind: Kind::Beam,
+        frame,
+        length,
+        width,
+        depth,
+        round: g.round,
+        lo: [0.0, -width / 2.0, -depth / 2.0],
+        rings: Vec::new(),
+    })
+}
+
+/// The frame of any member a detail can be of: a beam, a column, a footing or a floor. A column's `length` is its height, a footing's
+/// its width and its `depth` its thickness; a floor's frame is the plan's own, its `length` and `width` the outline's extent in x and
+/// y, with the outline and the openings in `rings`. None for what has no type or no outline.
+pub(crate) fn member_frame(m: &Model, host: &Element) -> Option<Located> {
+    match host {
+        Element::Beam(_) => beam_frame(m, host),
+        Element::Column(col) | Element::StructuralColumn(col) => {
+            let t = m.column_type(host)?;
+            let (bottom, top) = m.column_span(host);
+            let (width, depth) = if t.round { (t.width, t.width) } else { (t.width, t.depth) };
+            Some(Located {
+                kind: Kind::Column,
+                frame: column_frame(m, col, bottom),
+                length: top - bottom,
+                width,
+                depth,
+                round: t.round,
+                lo: [0.0, -width / 2.0, -depth / 2.0],
+                rings: Vec::new(),
+            })
+        }
+        Element::Footing(col) => {
+            let t = m.column_type(host)?;
+            let (bottom, top) = m.column_span(host);
+            let (length, width) = if t.round { (t.width, t.width) } else { (t.width, t.depth) };
+            Some(Located {
+                kind: Kind::Footing,
+                frame: footing_frame(m, col, bottom),
+                length,
+                width,
+                depth: top - bottom,
+                round: t.round,
+                lo: [-length / 2.0, -width / 2.0, 0.0],
+                rings: Vec::new(),
+            })
+        }
+        Element::Floor(fl) => {
+            let (Some((x0, x1)), Some((y0, y1))) = (span(fl.boundary.iter().map(|p| p.0)), span(fl.boundary.iter().map(|p| p.1))) else {
+                return None;
+            };
+            let frame = Frame { o: [0.0; 3], a: [1.0, 0.0, 0.0], b: [0.0, 1.0, 0.0], c: [0.0, 0.0, 1.0] };
+            let mut rings = vec![fl.boundary.clone()];
+            rings.extend(fl.openings.iter().cloned());
+            Some(Located { kind: Kind::Floor, frame, length: x1 - x0, width: y1 - y0, depth: 0.0, round: false, lo: [x0, y0, 0.0], rings })
+        }
+        _ => None,
+    }
 }
 
 /// How far the concrete reaches past a bar's outer face: at the top and bottom faces of a beam, a footing or a floor (the ends
@@ -526,13 +611,7 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
         Element::Column(col) | Element::StructuralColumn(col) => {
             let t = m.column_type(host).ok_or("reinforce: the column has no type")?;
             let (bottom, top) = m.column_span(host);
-            let u = heading(col.angle);
-            let f = Frame {
-                o: [col.at.0, col.at.1, bottom - m.elevation(col.level)],
-                a: [0.0, 0.0, 1.0],
-                b: [u.0, u.1, 0.0],
-                c: [-u.1, u.0, 0.0],
-            };
+            let f = column_frame(m, col, bottom);
             let bars = column(&f, top - bottom, (t.width, t.depth), t.round, &x, a)?;
             let notes = check.map(|n| n.column((t.width, t.depth), t.round, &x.cover, &f, &bars)).unwrap_or_default();
             (bars, notes)
@@ -540,13 +619,7 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
         Element::Footing(col) => {
             let t = m.column_type(host).ok_or("reinforce: the footing has no type")?;
             let (bottom, top) = m.column_span(host);
-            let u = heading(col.angle);
-            let f = Frame {
-                o: [col.at.0, col.at.1, bottom - m.elevation(col.level)],
-                a: [u.0, u.1, 0.0],
-                b: [-u.1, u.0, 0.0],
-                c: [0.0, 0.0, 1.0],
-            };
+            let f = footing_frame(m, col, bottom);
             let bars = footing(&f, top - bottom, (t.width, t.depth), t.round, &x, a)?;
             (bars, check.map(|n| n.footing(&x.cover)).unwrap_or_default())
         }

@@ -335,8 +335,8 @@ msgstr ""
 msgid "A new project from the template {}: Save asks where to put it."
 msgstr "Un nouveau projet à partir du gabarit {} : Enregistrer demande où le mettre."
 
-#: crates/ui-egui/src/rebar_detail.rs:149
-#: crates/ui-egui/src/rebar_detail.rs:156
+#: crates/ui-egui/src/rebar_detail.rs:160
+#: crates/ui-egui/src/rebar_detail.rs:167
 msgid "A new sheet"
 msgstr ""
 
@@ -942,7 +942,7 @@ msgstr "Terminal d'air (AT): un capteur, à l'endroit cliqué sur le toit; Espac
 msgid "Air Terminals"
 msgstr "Terminaux d'air"
 
-#: crates/core/src/commands.rs:2236
+#: crates/core/src/commands.rs:2239
 #: crates/ui-egui/src/editor/document.rs:633
 #: crates/ui-egui/src/editor/sketch.rs:1528
 #: crates/ui-egui/src/editor.rs:1132
@@ -985,7 +985,7 @@ msgstr ""
 msgid "Aligned"
 msgstr "Aligné"
 
-#: crates/core/src/commands.rs:1262
+#: crates/core/src/commands.rs:1265
 #: crates/ui-egui/src/editor/document.rs:493
 msgid "Aligned Dimension"
 msgstr "Cote alignée"
@@ -998,7 +998,7 @@ msgstr "Cote alignée (DI): choisir des plans de référence parallèles, des ex
 msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, or endpoints, then click where the dimension line goes"
 msgstr "Cote alignée (DI): choisir des faces de murs parallèles, des extrémités de mur, des portes, des fenêtres ou des quadrillages, ou des extrémités, puis cliquer à l'endroit de la ligne de cote"
 
-#: crates/core/src/commands.rs:1293
+#: crates/core/src/commands.rs:1296
 msgid "Aligned Dimension in 3D"
 msgstr "Cote alignée en 3D"
 
@@ -1853,7 +1853,7 @@ msgstr ""
 msgid "Bathtub"
 msgstr "Baignoire"
 
-#: crates/core/src/commands.rs:1061
+#: crates/core/src/commands.rs:1064
 #: crates/ui-egui/src/steel.rs:282
 msgid "Beam"
 msgstr "Poutre"
@@ -1861,10 +1861,6 @@ msgstr "Poutre"
 #: crates/ui-egui/src/structure.rs:89
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "Poutre (BM): cliquer sur son début et sa fin; une chaîne de clics crée une poutre par segment"
-
-#: crates/ui-egui/src/rebar_detail.rs:131
-msgid "Beams: {}"
-msgstr ""
 
 #: crates/core/src/family.rs:3285
 msgid "Bed"
@@ -2162,7 +2158,7 @@ msgstr ""
 msgid "CSV table"
 msgstr ""
 
-#: crates/core/src/commands.rs:1109
+#: crates/core/src/commands.rs:1112
 msgid "Cable Tray"
 msgstr "Chemin de câbles"
 
@@ -2170,7 +2166,7 @@ msgstr "Chemin de câbles"
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "Chemin de câbles (CT): cliquer sur son début et sa fin; une chaîne de clics crée un chemin de câbles par segment"
 
-#: crates/core/src/commands.rs:1143
+#: crates/core/src/commands.rs:1146
 msgid "Cabling"
 msgstr "Câblage"
 
@@ -2200,7 +2196,7 @@ msgstr "Valeur calculée…"
 msgid "Came in: {}"
 msgstr "Importé: {}"
 
-#: crates/core/src/commands.rs:3114
+#: crates/core/src/commands.rs:3117
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:5556
 #: crates/ui-egui/src/properties.rs:310
@@ -2508,7 +2504,7 @@ msgstr "Carrelage en céramique"
 #: crates/ui-egui/src/editor/sketch.rs:1338
 #: crates/ui-egui/src/lib.rs:6767
 #: crates/ui-egui/src/linestyles.rs:431
-#: crates/ui-egui/src/structure.rs:176
+#: crates/ui-egui/src/structure.rs:177
 msgid "Chain"
 msgstr "Chaîne"
 
@@ -2623,7 +2619,7 @@ msgstr ""
 msgid "Checking for updates…"
 msgstr "Recherche de mises à jour…"
 
-#: crates/core/src/commands.rs:4947
+#: crates/core/src/commands.rs:4950
 msgid "Checking the model"
 msgstr ""
 
@@ -3514,7 +3510,7 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:4637
 #: crates/ui-egui/src/publisher.rs:476
 #: crates/ui-egui/src/pyaddins.rs:534
-#: crates/ui-egui/src/rebar_detail.rs:176
+#: crates/ui-egui/src/rebar_detail.rs:187
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:510
@@ -3657,7 +3653,7 @@ msgstr "Couleur"
 msgid "Colour on plans"
 msgstr "Couleur sur les plans"
 
-#: crates/core/src/commands.rs:1033
+#: crates/core/src/commands.rs:1036
 #: crates/ui-egui/src/curtain.rs:325
 #: crates/ui-egui/src/steel.rs:283
 msgid "Column"
@@ -3712,7 +3708,7 @@ msgstr "Compact"
 msgid "Comparison"
 msgstr "Comparaison"
 
-#: crates/core/src/commands.rs:2162
+#: crates/core/src/commands.rs:2165
 #: crates/ui-egui/src/editor/document.rs:467
 msgid "Component"
 msgstr "Composant"
@@ -3751,7 +3747,7 @@ msgstr "Bloc de béton"
 msgid "Concrete cover by exposure class, steel ratios, bars, stirrups and skin bars, used by the reinforcement check."
 msgstr ""
 
-#: crates/core/src/commands.rs:1101
+#: crates/core/src/commands.rs:1104
 msgid "Conduit"
 msgstr "Conduit"
 
@@ -4008,7 +4004,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Cuivre"
 
-#: crates/core/src/commands.rs:2287
+#: crates/core/src/commands.rs:2290
 #: crates/ui-egui/src/codes/tree.rs:318
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
@@ -4066,7 +4062,7 @@ msgstr "Copier son ID, son GUID et son GlobalId IFC"
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr ""
 
-#: crates/core/src/commands.rs:2294
+#: crates/core/src/commands.rs:2297
 #: crates/ui-egui/src/clipboard.rs:225
 #: crates/ui-egui/src/context.rs:129
 msgid "Copy to Clipboard"
@@ -4483,11 +4479,11 @@ msgstr "Plume de coupe"
 
 #: crates/core/src/commands.rs:805
 #: crates/ui-egui/src/steel.rs:394
-#: crates/ui-egui/src/structure.rs:128
+#: crates/ui-egui/src/structure.rs:129
 msgid "Cut Plan"
 msgstr ""
 
-#: crates/ui-egui/src/structure.rs:127
+#: crates/ui-egui/src/structure.rs:128
 msgid "Cut Plan (CU): how many stock bars of the length you type to buy for the bars, and which pieces go in each"
 msgstr ""
 
@@ -4500,7 +4496,7 @@ msgstr "Plan de coupe"
 msgid "Cut an opening in the floor above the stair where the headroom is too low"
 msgstr ""
 
-#: crates/core/src/commands.rs:2304
+#: crates/core/src/commands.rs:2307
 #: crates/ui-egui/src/clipboard.rs:219
 #: crates/ui-egui/src/context.rs:128
 msgid "Cut to Clipboard"
@@ -4706,7 +4702,7 @@ msgstr ""
 msgid "Delete Checked"
 msgstr ""
 
-#: crates/core/src/commands.rs:1350
+#: crates/core/src/commands.rs:1353
 msgid "Delete Dimension Segment"
 msgstr ""
 
@@ -4830,7 +4826,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:15429
+#: crates/core/src/commands.rs:15432
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -4907,12 +4903,12 @@ msgstr ""
 
 #: crates/ui-egui/src/draw.rs:686
 #: crates/ui-egui/src/editor/document.rs:546
-#: crates/ui-egui/src/structure.rs:110
+#: crates/ui-egui/src/structure.rs:111
 msgid "Detail"
 msgstr "Détail"
 
 #: crates/ui-egui/src/structure.rs:109
-msgid "Detail (DD): the detail drawing of the selected reinforced beams: elevation, tagged bars, sections and steel list"
+msgid "Detail (DD): the detail drawing of the selected reinforced beams, columns, footings or floors: elevation or plan, tagged bars, sections and steel list"
 msgstr ""
 
 #: crates/ui-egui/src/draw.rs:711
@@ -5078,7 +5074,7 @@ msgstr "Texte de cote"
 msgid "Dimension Text Placement:"
 msgstr "Position du texte de cote:"
 
-#: crates/core/src/commands.rs:2248
+#: crates/core/src/commands.rs:2251
 msgid "Dimension Value"
 msgstr "Valeur de cote"
 
@@ -5263,7 +5259,7 @@ msgstr "Nomenclature des portes"
 msgid "Doors and Openings"
 msgstr ""
 
-#: crates/core/src/commands.rs:1251
+#: crates/core/src/commands.rs:1254
 msgid "Dormer"
 msgstr "Lucarne"
 
@@ -5315,7 +5311,7 @@ msgstr "Double-cliquer sur le nom d'un onglet fait de même; un clic sur un ongl
 msgid "Down"
 msgstr "Descendre"
 
-#: crates/core/src/commands.rs:1125
+#: crates/core/src/commands.rs:1128
 msgid "Down Conductor"
 msgstr "Conducteur de descente"
 
@@ -5405,7 +5401,7 @@ msgstr "Dessin…"
 msgid "Drawn by"
 msgstr ""
 
-#: crates/core/src/commands.rs:1090
+#: crates/core/src/commands.rs:1093
 msgid "Duct"
 msgstr "Gaine"
 
@@ -5511,7 +5507,7 @@ msgstr ""
 msgid "Earthing"
 msgstr "Mise à la terre"
 
-#: crates/core/src/commands.rs:1134
+#: crates/core/src/commands.rs:1137
 msgid "Earthing Conductor"
 msgstr "Conducteur de terre"
 
@@ -5837,7 +5833,7 @@ msgstr "Paramètres électriques"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Paramètres électriques: les tensions, systèmes de distribution et types de câbles auxquels renvoient les circuits et les tableaux; sections en mm²"
 
-#: crates/core/src/commands.rs:3596
+#: crates/core/src/commands.rs:3599
 msgid "Elements"
 msgstr "Éléments"
 
@@ -6447,7 +6443,7 @@ msgstr "Région remplie (FR): dessiner une zone remplie d'un motif, dans cette v
 msgid "Filled region"
 msgstr "Région remplie"
 
-#: crates/core/src/commands.rs:2392
+#: crates/core/src/commands.rs:2395
 msgid "Fillet Arc"
 msgstr "Arc de raccordement"
 
@@ -6952,7 +6948,7 @@ msgstr ""
 msgid "Formwork Area"
 msgstr ""
 
-#: crates/ui-egui/src/structure.rs:132
+#: crates/ui-egui/src/structure.rs:133
 msgid "Foundation"
 msgstr "Fondation"
 
@@ -7865,7 +7861,7 @@ msgstr "Inclure"
 msgid "Include Elevation"
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:144
+#: crates/ui-egui/src/rebar_detail.rs:155
 msgid "Include the steel list"
 msgstr ""
 
@@ -8055,12 +8051,12 @@ msgstr "Isoler la catégorie (IC)"
 msgid "Isolate Element (HI)"
 msgstr "Isoler l'élément (HI)"
 
-#: crates/core/src/commands.rs:1053
+#: crates/core/src/commands.rs:1056
 #: crates/ui-egui/src/steel.rs:285
 msgid "Isolated Footing"
 msgstr "Semelle isolée"
 
-#: crates/ui-egui/src/structure.rs:134
+#: crates/ui-egui/src/structure.rs:135
 msgid "Isolated Footing (FI): click where the footing goes"
 msgstr "Semelle isolée (FI): cliquer à l'endroit de la semelle"
 
@@ -8182,7 +8178,7 @@ msgstr "À l'instant"
 msgid "Justification"
 msgstr ""
 
-#: crates/ui-egui/src/structure.rs:160
+#: crates/ui-egui/src/structure.rs:161
 msgid "Justification:"
 msgstr "Justification:"
 
@@ -9039,7 +9035,7 @@ msgstr "Fait de lignes de détail choisies dans le plan, répétant le rectangle
 msgid "Made the Materials Summary."
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:224
+#: crates/ui-egui/src/rebar_detail.rs:235
 msgid "Made the Reinforcement Detail."
 msgstr ""
 
@@ -9083,7 +9079,7 @@ msgstr ""
 msgid "Maintained illuminance by room or task, and emergency lighting."
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:174
+#: crates/ui-egui/src/rebar_detail.rs:185
 msgid "Make"
 msgstr ""
 
@@ -9269,7 +9265,7 @@ msgstr "Sols de volume (MF): un sol à chaque niveau traversé par les volumes s
 msgid "Massing"
 msgstr "Volumes"
 
-#: crates/core/src/commands.rs:2212
+#: crates/core/src/commands.rs:2215
 msgid "Match Properties"
 msgstr "Reproduire les propriétés"
 
@@ -9303,11 +9299,11 @@ msgstr "Matériau:"
 #: crates/ui-egui/src/properties.rs:3601
 #: crates/ui-egui/src/stairtype.rs:359
 #: crates/ui-egui/src/steel.rs:394
-#: crates/ui-egui/src/structure.rs:118
+#: crates/ui-egui/src/structure.rs:119
 msgid "Materials"
 msgstr "Matériaux"
 
-#: crates/ui-egui/src/structure.rs:117
+#: crates/ui-egui/src/structure.rs:118
 msgid "Materials (QT): what the beams, columns, footings and floors come to in concrete, formwork and steel, by level"
 msgstr ""
 
@@ -9356,7 +9352,7 @@ msgstr "Angle maximal"
 msgid "Maximum Riser Height"
 msgstr "Hauteur maximale de contremarche"
 
-#: crates/core/src/commands.rs:3228
+#: crates/core/src/commands.rs:3231
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -9380,6 +9376,10 @@ msgstr "Moyen"
 #: crates/core/src/lines.rs:202
 msgid "Medium Lines"
 msgstr "Lignes moyennes"
+
+#: crates/ui-egui/src/rebar_detail.rs:142
+msgid "Members: {}"
+msgstr ""
 
 #: crates/core/src/import.rs:1809
 #: crates/ui-egui/src/properties.rs:961
@@ -9808,7 +9808,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr "Hauteur de montage"
 
-#: crates/core/src/commands.rs:2263
+#: crates/core/src/commands.rs:2266
 #: crates/ui-egui/src/editor/document.rs:648
 #: crates/ui-egui/src/underlay.rs:441
 msgid "Move"
@@ -10299,8 +10299,8 @@ msgstr ""
 msgid "No scripts yet: New Script starts one, and an agent can write them (pyaddin_save)."
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:148
-#: crates/ui-egui/src/rebar_detail.rs:153
+#: crates/ui-egui/src/rebar_detail.rs:159
+#: crates/ui-egui/src/rebar_detail.rs:164
 msgid "No sheet"
 msgstr ""
 
@@ -10549,8 +10549,8 @@ msgstr "Aucun élément sélectionné n'est masqué dans cette vue. Afficher les
 msgid "Nothing to classify: everything asked for has a code."
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:249
-msgid "Nothing to draw: the beam has no bars."
+#: crates/ui-egui/src/rebar_detail.rs:260
+msgid "Nothing to draw: the member has no bars."
 msgstr ""
 
 #: crates/ui-egui/src/revit.rs:80
@@ -10712,7 +10712,7 @@ msgstr "Décalage par rapport à la surface:"
 #: crates/ui-egui/src/lib.rs:6747
 #: crates/ui-egui/src/properties.rs:2071
 #: crates/ui-egui/src/sketch.rs:1563
-#: crates/ui-egui/src/structure.rs:170
+#: crates/ui-egui/src/structure.rs:171
 msgid "Offset:"
 msgstr "Décalage:"
 
@@ -11242,7 +11242,7 @@ msgstr ""
 msgid "Passphrase:"
 msgstr ""
 
-#: crates/core/src/commands.rs:2312
+#: crates/core/src/commands.rs:2315
 #: crates/ui-egui/src/clipboard.rs:56
 #: crates/ui-egui/src/clipboard.rs:206
 #: crates/ui-egui/src/context.rs:130
@@ -11787,12 +11787,12 @@ msgstr "Image…"
 msgid "Pieces"
 msgstr ""
 
-#: crates/core/src/commands.rs:2220
+#: crates/core/src/commands.rs:2223
 #: crates/ui-egui/src/context.rs:124
 msgid "Pin"
 msgstr ""
 
-#: crates/core/src/commands.rs:1079
+#: crates/core/src/commands.rs:1082
 msgid "Pipe"
 msgstr "Tuyau"
 
@@ -12057,7 +12057,7 @@ msgstr "Placer sur la face"
 msgid "Place on Work Plane"
 msgstr "Placer sur le plan de travail"
 
-#: crates/ui-egui/src/rebar_detail.rs:146
+#: crates/ui-egui/src/rebar_detail.rs:157
 msgid "Place on:"
 msgstr ""
 
@@ -12419,7 +12419,7 @@ msgstr ""
 msgid "Project Browser"
 msgstr "Navigateur de projet"
 
-#: crates/core/src/commands.rs:1963
+#: crates/core/src/commands.rs:1966
 #: crates/ui-egui/src/projectinfo.rs:111
 msgid "Project Information"
 msgstr "Informations sur le projet"
@@ -12552,7 +12552,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propriétés au-dessus du Navigateur de projet, à gauche, comme au départ"
 
 #: crates/core/src/commands.rs:706
-#: crates/core/src/commands.rs:10200
+#: crates/core/src/commands.rs:10203
 msgid "Property Line"
 msgstr ""
 
@@ -12641,7 +12641,7 @@ msgstr ""
 
 #: crates/core/src/commands.rs:822
 #: crates/ui-egui/src/steel.rs:390
-#: crates/ui-egui/src/structure.rs:114
+#: crates/ui-egui/src/structure.rs:115
 msgid "Quantities"
 msgstr ""
 
@@ -12692,7 +12692,7 @@ msgstr "Symbole de rayon"
 msgid "Radius:"
 msgstr "Rayon:"
 
-#: crates/core/src/commands.rs:1218
+#: crates/core/src/commands.rs:1221
 msgid "Railing"
 msgstr "Garde-corps"
 
@@ -12713,7 +12713,7 @@ msgstr ""
 msgid "Rainfall, slopes, roughness, the minimum downpipe and the downpipe charts."
 msgstr ""
 
-#: crates/core/src/commands.rs:1207
+#: crates/core/src/commands.rs:1210
 msgid "Ramp"
 msgstr "Rampe"
 
@@ -12754,7 +12754,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4904
+#: crates/core/src/commands.rs:4907
 msgid "Reading the file"
 msgstr ""
 
@@ -12977,7 +12977,7 @@ msgstr "Ferraillé: {} armatures, {} kg d'acier."
 msgid "Reinforcement"
 msgstr "Ferraillage"
 
-#: crates/ui-egui/src/rebar_detail.rs:128
+#: crates/ui-egui/src/rebar_detail.rs:139
 msgid "Reinforcement Detail"
 msgstr ""
 
@@ -13508,7 +13508,7 @@ msgstr ""
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/commands.rs:1229
+#: crates/core/src/commands.rs:1232
 msgid "Roof"
 msgstr "Toit"
 
@@ -13617,7 +13617,7 @@ msgstr ""
 msgid "RotZ (degrees)"
 msgstr ""
 
-#: crates/core/src/commands.rs:2330
+#: crates/core/src/commands.rs:2333
 #: crates/ui-egui/src/editor/document.rs:668
 #: crates/ui-egui/src/underlay.rs:444
 msgid "Rotate"
@@ -13920,7 +13920,7 @@ msgstr ""
 msgid "Scale"
 msgstr "Échelle"
 
-#: crates/ui-egui/src/rebar_detail.rs:135
+#: crates/ui-egui/src/rebar_detail.rs:146
 msgid "Scale 1 :"
 msgstr ""
 
@@ -13936,7 +13936,7 @@ msgstr "Échelle: le papier que cette vue représente, 1 : n du modèle: ses ann
 msgid "Scan"
 msgstr "Numérisation"
 
-#: crates/core/src/commands.rs:3008
+#: crates/core/src/commands.rs:3011
 msgid "Schedule"
 msgstr "Nomenclature"
 
@@ -14229,8 +14229,8 @@ msgstr ""
 msgid "Select the elements of the next type (or element) with no code"
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:104
-msgid "Select the reinforced beams to detail first."
+#: crates/ui-egui/src/rebar_detail.rs:115
+msgid "Select the reinforced beams, columns, footings or floors to detail first."
 msgstr ""
 
 #: crates/ui-egui/src/classification.rs:538
@@ -15076,7 +15076,7 @@ msgstr "Spline par des points: cliquer les points par où elle passe; Entrée la
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: cliquer ses points de contrôle; Entrée la termine"
 
-#: crates/core/src/commands.rs:2372
+#: crates/core/src/commands.rs:2375
 msgid "Split"
 msgstr "Fractionner"
 
@@ -15100,7 +15100,7 @@ msgstr "Fractionner entre les extrémités de la ligne."
 msgid "Split by:"
 msgstr ""
 
-#: crates/core/src/commands.rs:1413
+#: crates/core/src/commands.rs:1416
 msgid "Spot Coordinate"
 msgstr ""
 
@@ -15112,7 +15112,7 @@ msgstr ""
 msgid "Spot Coordinates"
 msgstr ""
 
-#: crates/core/src/commands.rs:1403
+#: crates/core/src/commands.rs:1406
 msgid "Spot Elevation"
 msgstr "Cote altimétrique ponctuelle"
 
@@ -15120,7 +15120,7 @@ msgstr "Cote altimétrique ponctuelle"
 msgid "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"
 msgstr "Cote altimétrique ponctuelle (EL): cliquer sur un sol, un toit ou un escalier; dans une coupe, un point"
 
-#: crates/core/src/commands.rs:1447
+#: crates/core/src/commands.rs:1450
 #: crates/ui-egui/src/lib.rs:2168
 #: crates/ui-egui/src/lib.rs:5391
 msgid "Spot Slope"
@@ -15134,7 +15134,7 @@ msgstr "Pente ponctuelle: cliquer sur un sol ou un toit dans un plan; une flèch
 msgid "Square Grid"
 msgstr "Quadrillage carré"
 
-#: crates/core/src/commands.rs:1152
+#: crates/core/src/commands.rs:1155
 msgid "Stair"
 msgstr "Escalier"
 
@@ -15240,12 +15240,12 @@ msgstr ""
 msgid "Starts below the top"
 msgstr "Commence sous le sommet"
 
-#: crates/ui-egui/src/rebar_detail.rs:134
+#: crates/ui-egui/src/rebar_detail.rs:145
 msgid "Stations"
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:139
-msgid "Stations are where the sections are cut, along the beam; blank is the middle of each zone of stirrups."
+#: crates/ui-egui/src/rebar_detail.rs:150
+msgid "Stations are where the sections are cut, along a beam or a column; blank is the middle of each zone of stirrups of a beam, and the foot, middle and head of a column. A footing and a floor take none."
 msgstr ""
 
 #: crates/ui-egui/src/parameters.rs:1090
@@ -15258,11 +15258,11 @@ msgstr "Acier"
 
 #: crates/core/src/steel.rs:543
 #: crates/ui-egui/src/steel.rs:394
-#: crates/ui-egui/src/structure.rs:124
+#: crates/ui-egui/src/structure.rs:125
 msgid "Steel List"
 msgstr ""
 
-#: crates/ui-egui/src/structure.rs:122
+#: crates/ui-egui/src/structure.rs:123
 msgid "Steel List (BL): every bar's mark, shape, count, length and weight, by level or for the project, as a list or as schedules"
 msgstr ""
 
@@ -15374,7 +15374,7 @@ msgstr ""
 msgid "Structural"
 msgstr "Structurel"
 
-#: crates/core/src/commands.rs:1043
+#: crates/core/src/commands.rs:1046
 #: crates/ui-egui/src/steel.rs:284
 msgid "Structural Column"
 msgstr "Poteau structurel"
@@ -15832,7 +15832,7 @@ msgstr "Cote temporaire {}"
 msgid "Test Placement"
 msgstr ""
 
-#: crates/core/src/commands.rs:1305
+#: crates/core/src/commands.rs:1308
 #: crates/core/src/family.rs:357
 #: crates/ui-egui/src/editor/document.rs:558
 #: crates/ui-egui/src/editor.rs:268
@@ -16629,7 +16629,7 @@ msgstr ""
 msgid "Thickness"
 msgstr "Épaisseur"
 
-#: crates/ui-egui/src/structure.rs:195
+#: crates/ui-egui/src/structure.rs:196
 msgid "Thickness:"
 msgstr "Épaisseur:"
 
@@ -16903,8 +16903,8 @@ msgstr "Niveau supérieur"
 msgid "Top Offset"
 msgstr "Décalage supérieur"
 
-#: crates/ui-egui/src/structure.rs:173
-#: crates/ui-egui/src/structure.rs:197
+#: crates/ui-egui/src/structure.rs:174
+#: crates/ui-egui/src/structure.rs:198
 msgid "Top Offset:"
 msgstr "Décalage supérieur:"
 
@@ -16950,7 +16950,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:718
-#: crates/core/src/commands.rs:10242
+#: crates/core/src/commands.rs:10245
 msgid "Toposolid"
 msgstr ""
 
@@ -17054,7 +17054,7 @@ msgstr "Ajuster/Prolonger un seul élément"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Ajuster/Prolonger un seul élément: choisir la ligne limite, puis la ligne à modifier, sur la partie à conserver"
 
-#: crates/core/src/commands.rs:2346
+#: crates/core/src/commands.rs:2349
 #: crates/ui-egui/src/editor/sketch.rs:1523
 #: crates/ui-egui/src/sketch.rs:1218
 #: crates/ui-egui/src/sketch.rs:1705
@@ -17425,15 +17425,15 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:15767
+#: crates/core/src/commands.rs:15770
 msgid "Unnamed"
 msgstr "Sans nom"
 
-#: crates/core/src/commands.rs:4921
+#: crates/core/src/commands.rs:4924
 msgid "Unpacking the project"
 msgstr ""
 
-#: crates/core/src/commands.rs:2229
+#: crates/core/src/commands.rs:2232
 #: crates/ui-egui/src/context.rs:125
 msgid "Unpin"
 msgstr ""
@@ -17924,16 +17924,16 @@ msgstr "Axe du mur"
 msgid "Wall Component:"
 msgstr ""
 
-#: crates/core/src/commands.rs:1071
+#: crates/core/src/commands.rs:1074
 #: crates/ui-egui/src/steel.rs:286
 msgid "Wall Footing"
 msgstr "Semelle de mur"
 
-#: crates/ui-egui/src/structure.rs:138
+#: crates/ui-egui/src/structure.rs:139
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "Semelle de mur (FW): cliquer sur son début et sa fin, ou une chaîne de clics, sous un mur"
 
-#: crates/core/src/commands.rs:2278
+#: crates/core/src/commands.rs:2281
 msgid "Wall Length"
 msgstr ""
 
@@ -18201,7 +18201,7 @@ msgstr "Nomenclature des fenêtres"
 msgid "Windows"
 msgstr "Fenêtres"
 
-#: crates/core/src/commands.rs:1117
+#: crates/core/src/commands.rs:1120
 msgid "Wire"
 msgstr "Câble"
 
@@ -18731,7 +18731,7 @@ msgstr ""
 msgid "code or title"
 msgstr ""
 
-#: crates/ui-egui/src/structure.rs:300
+#: crates/ui-egui/src/structure.rs:301
 msgid "column: {}"
 msgstr "colonne: {}"
 
@@ -19848,8 +19848,8 @@ msgstr "La fenêtre de {} n'a pas de réseau pour l'assistant"
 msgid "{}, up to date"
 msgstr ""
 
-#: crates/ui-egui/src/rebar_detail.rs:134
-#: crates/ui-egui/src/rebar_detail.rs:135
+#: crates/ui-egui/src/rebar_detail.rs:145
+#: crates/ui-egui/src/rebar_detail.rs:146
 #: crates/ui-egui/src/reinforce.rs:491
 #: crates/ui-egui/src/steel.rs:435
 msgid "{}:"
@@ -19907,8 +19907,8 @@ msgstr "{}: Début"
 msgid "{}: Type"
 msgstr "{}: Type"
 
-#: crates/ui-egui/src/structure.rs:205
-#: crates/ui-egui/src/structure.rs:227
+#: crates/ui-egui/src/structure.rs:206
+#: crates/ui-egui/src/structure.rs:228
 msgid "{}: `{}` is not a height"
 msgstr "{}: `{}` n'est pas une hauteur"
 
@@ -19965,7 +19965,7 @@ msgid "{}: valid"
 msgstr ""
 
 #: crates/ui-egui/src/favorites.rs:192
-#: crates/ui-egui/src/structure.rs:221
+#: crates/ui-egui/src/structure.rs:222
 msgid "{}: {}"
 msgstr "{}: {}"
 
@@ -20981,4 +20981,19 @@ msgstr "Dessus"
 #~ msgstr ""
 #: crates/ui-egui/src/steel.rs:288
 #~ msgid "Steel List and Cut Plan"
+#~ msgstr ""
+#: crates/ui-egui/src/rebar_detail.rs:131
+#~ msgid "Beams: {}"
+#~ msgstr ""
+#: crates/ui-egui/src/structure.rs:109
+#~ msgid "Detail (DD): the detail drawing of the selected reinforced beams: elevation, tagged bars, sections and steel list"
+#~ msgstr ""
+#: crates/ui-egui/src/rebar_detail.rs:249
+#~ msgid "Nothing to draw: the beam has no bars."
+#~ msgstr ""
+#: crates/ui-egui/src/rebar_detail.rs:104
+#~ msgid "Select the reinforced beams to detail first."
+#~ msgstr ""
+#: crates/ui-egui/src/rebar_detail.rs:139
+#~ msgid "Stations are where the sections are cut, along the beam; blank is the middle of each zone of stirrups."
 #~ msgstr ""

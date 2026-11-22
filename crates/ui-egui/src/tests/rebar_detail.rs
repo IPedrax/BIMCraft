@@ -97,3 +97,35 @@ fn the_structure_tab_has_a_detail_button() {
     press(&mut h, "Detail");
     assert!(h.state().detail_dialog.is_some());
 }
+
+#[test]
+fn dd_makes_the_detail_of_a_column_a_footing_and_a_floor_in_both_profiles() {
+    let column = json!({"bars": {"diameter": 16, "x": 3, "y": 3}, "stirrup": {"diameter": 5, "spacing": 150}});
+    let footing = json!({"mesh": {"x": {"diameter": 10, "spacing": 150}, "y": {"diameter": 10, "spacing": 150}}});
+    let floor = json!({"bottom": {"x": {"diameter": 8, "spacing": 150}, "y": {"diameter": 8, "spacing": 200}}});
+    let members = [
+        (r#"structural_column {"at": [2000, 2000], "type": "Concrete 300 x 300", "height": 3000}"#, "structuralcolumn", column),
+        (r#"footing {"at": [3000, 3000], "type": "Footing 1200 x 1200"}"#, "footing", footing),
+        (r#"floor {"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]]}"#, "floor", floor),
+    ];
+    let windows: [fn(&str) -> Harness<'static, BimApp>; 2] = [app, bimcraft];
+    for window in windows {
+        for (script, category, spec) in &members {
+            let mut h = window(&format!("{BOX}\n{script}"));
+            let host = ids(&h, category)[0];
+            let mut spec = spec.clone();
+            spec["hosts"] = json!([host]);
+            spec["cover"] = json!(30);
+            h.state_mut().session.execute("reinforce", &spec).unwrap();
+            h.state_mut().selection = vec![host];
+            h.run();
+            shortcut(&mut h, "DD");
+            assert!(h.state().detail_dialog.is_some(), "DD opens the dialog for a {category}");
+            press(&mut h, "Make");
+            let made = ids(&h, "rebardetail");
+            assert_eq!(made.len(), 1, "{category}");
+            assert_eq!(h.state().sheet, Sheet::Table(made[0]));
+            h.run();
+        }
+    }
+}

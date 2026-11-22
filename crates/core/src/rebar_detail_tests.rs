@@ -1,5 +1,6 @@
-//! Rebar details: the sets of a beam's bars, their tags, and the drawing, through the commands every front end drives. The hand case
-//! is `reinforce_tests`' beam, 200 x 500 and 6 m long, whose stirrups and closer ends are worked out there.
+//! Rebar details: the sets of a member's bars, their tags, and the drawing, through the commands every front end drives. The hand case
+//! is `reinforce_tests`' beam, 200 x 500 and 6 m long, whose stirrups and closer ends are worked out there; a column, a footing and a
+//! floor are `reinforce_tests`' too.
 
 use serde_json::{Value, json};
 
@@ -140,7 +141,7 @@ fn a_detail_of_a_beam_with_no_bars_is_refused_saying_to_reinforce_it() {
 }
 
 #[test]
-fn only_a_beam_has_a_detail_and_a_bad_ask_changes_nothing() {
+fn only_a_reinforced_member_has_a_detail_and_a_bad_ask_changes_nothing() {
     let mut s = Session::new();
     let host = armed(&mut s);
     let wall = run(&mut s, "wall", json!({"points": [[0, 3000], [4000, 3000]]}))["ids"][0].as_u64().unwrap();
@@ -281,15 +282,163 @@ fn a_detail_is_in_the_elements_json_and_in_the_views() {
     assert!(s.model.views().contains(&id));
 }
 
+/// A structural column 300 x 300 and 3 m tall with eight bars, stirrups every 150 and ties: 21 stirrups from 27.5 to 2972.5.
+fn column(s: &mut Session, kind: &str) -> u64 {
+    let host = run(s, "structural_column", json!({"at": [1000, 2000], "type": kind, "height": 3000}))["id"].as_u64().unwrap();
+    let bars = if kind.contains("Round") { json!({"count": 8, "diameter": 16}) } else { json!({"diameter": 16, "x": 3, "y": 3}) };
+    let mut p = json!({"host": host, "cover": 25, "bars": bars, "stirrup": {"diameter": 5, "spacing": 150}});
+    if !kind.contains("Round") {
+        p["ties"] = json!({"diameter": 6.3});
+    }
+    run(s, "reinforce", p);
+    host
+}
+
+/// A footing 1200 x 1200 and 400 thick with a mesh of 10 every 150 each way, ends turned up 100: nine bars a way.
+fn footing(s: &mut Session) -> u64 {
+    let host = run(s, "footing", json!({"at": [3000, 3000], "type": "Footing 1200 x 1200"}))["id"].as_u64().unwrap();
+    let mesh = json!({"x": {"diameter": 10, "spacing": 150}, "y": {"diameter": 10, "spacing": 150}, "hook": 100});
+    run(s, "reinforce", json!({"host": host, "cover": 50, "mesh": mesh}));
+    host
+}
+
+/// A floor 4 m by 3 m with a bottom mesh of 8 every 150 along x and every 200 along y: 21 bars each way.
+fn floor(s: &mut Session) -> u64 {
+    let host = run(s, "floor", json!({"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]]}))["id"].as_u64().unwrap();
+    let bottom = json!({"x": {"diameter": 8, "spacing": 150}, "y": {"diameter": 8, "spacing": 200}});
+    run(s, "reinforce", json!({"host": host, "cover": 20, "bottom": bottom}));
+    host
+}
+
+/// The boxes of the closed four-cornered lines of `l`, in the order they are drawn: width and height, px.
+fn outlines(l: &Layout) -> Vec<(f32, f32)> {
+    l.ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Line { pts, closed: true, .. } if pts.len() == 4 => {
+                let (xs, ys): (Vec<f32>, Vec<f32>) = pts.iter().copied().unzip();
+                let span = |v: &[f32]| v.iter().copied().fold(f32::MIN, f32::max) - v.iter().copied().fold(f32::MAX, f32::min);
+                Some((span(&xs), span(&ys)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_column_detail_stands_up_and_has_sections_at_foot_middle_and_head() {
+    let mut s = Session::new();
+    let host = column(&mut s, "Concrete 300 x 300");
+    let v = view(&mut s, json!({"host": host}));
+    assert!(v["name"].as_str().unwrap().starts_with("Column"), "{v}");
+    // The stirrups run from 27.5 to 2972.5 up the column: the foot, the middle and the head of them.
+    let at: Vec<f64> = v["stations"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
+    assert!(at.len() == 3 && (at[0] - 27.5).abs() < 0.2 && (at[1] - 1500.0).abs() < 0.2 && (at[2] - 2972.5).abs() < 0.2, "{at:?}");
+    let l = laid(&s, v["id"].as_u64().unwrap());
+    // Its outline is the first thing drawn: 3000 tall and 300 wide, so ten times taller than wide.
+    let (w, h) = outlines(&l)[0];
+    assert!((h / w - 10.0).abs() < 0.01, "{w} x {h}");
+    // Three sections at twice the scale, each cut through the eight bars.
+    let said = words(&l);
+    for label in ["A-A   1 : 25", "B-B   1 : 25", "C-C   1 : 25"] {
+        assert!(said.iter().any(|x| x == label), "{label} in {said:?}");
+    }
+    assert!(l.ops.iter().filter(|op| matches!(op, Op::Dot { .. })).count() >= 24);
+    // Its length is dimensioned, and it goes with the column.
+    assert!(said.iter().any(|x| x == "3000"), "{said:?}");
+    run(&mut s, "delete", json!({"ids": [host]}));
+    assert!(!s.model.elements.values().any(|e| matches!(e, Element::RebarDetail(_))));
+}
+
+#[test]
+fn a_round_column_has_round_sections() {
+    let mut s = Session::new();
+    let host = column(&mut s, "Concrete Round 400");
+    let id = view(&mut s, json!({"host": host}))["id"].as_u64().unwrap();
+    let l = laid(&s, id);
+    let circles = l.ops.iter().filter(|op| matches!(op, Op::Line { pts, closed: true, .. } if pts.len() == 48)).count();
+    assert_eq!(circles, 3);
+    assert!(words(&l).iter().any(|x| x == "ø400"), "{:?}", words(&l));
+}
+
+#[test]
+fn a_footing_detail_has_a_plan_a_section_under_it_and_a_list() {
+    let mut s = Session::new();
+    let host = footing(&mut s);
+    let v = view(&mut s, json!({"host": host}));
+    assert!(v["name"].as_str().unwrap().starts_with("Footing"), "{v}");
+    // Two layers of nine bars, a set each, which spread across the plan: 1090 between the outer bars' centres in eight gaps.
+    let sets = sets_of(&v);
+    assert_eq!(sets.iter().map(|x| x["count"].as_u64().unwrap()).collect::<Vec<_>>(), [9, 9], "{sets:?}");
+    for x in &sets {
+        assert!(x["tag"].as_str().unwrap().ends_with(" c/136 C=1300"), "{x}");
+    }
+    // A footing has no stations: its one section is along its first axis.
+    assert!(v["stations"].as_array().unwrap().is_empty());
+    let l = laid(&s, v["id"].as_u64().unwrap());
+    // The plan's outline is square and the section's is 1200 wide and 400 thick.
+    let boxes = outlines(&l);
+    assert!((boxes[0].0 / boxes[0].1 - 1.0).abs() < 0.01 && (boxes[1].0 / boxes[1].1 - 3.0).abs() < 0.01, "{boxes:?}");
+    assert!(words(&l).iter().any(|x| x == "A-A   1 : 50"), "{:?}", words(&l));
+    // The list under it totals the steel list of the footing.
+    let kg = run(&mut s, "steel_list", json!({}))["totals"]["weight_kg"].as_f64().unwrap();
+    assert!(words(&l).contains(&format!("{kg:.2}")), "{kg} in {:?}", words(&l));
+}
+
+#[test]
+fn a_floors_meshes_are_sets_each_tagged_with_its_spacing_and_it_has_no_section() {
+    let mut s = Session::new();
+    let host = floor(&mut s);
+    let v = view(&mut s, json!({"host": host}));
+    assert!(v["name"].as_str().unwrap().starts_with("Floor"), "{v}");
+    // 2952 across the 3 m in 20 gaps, 3952 along the 4 m in 20 gaps: 21 bars each.
+    let tags: Vec<String> = sets_of(&v).iter().map(|x| x["tag"].as_str().unwrap().to_string()).collect();
+    assert!(tags.iter().any(|t| t.ends_with("21 ø8 c/148 C=3960")), "{tags:?}");
+    assert!(tags.iter().any(|t| t.ends_with("21 ø8 c/198 C=2960")), "{tags:?}");
+    assert!(v["stations"].as_array().unwrap().is_empty());
+    let l = laid(&s, v["id"].as_u64().unwrap());
+    assert!(!words(&l).iter().any(|x| x.contains("A-A")), "{:?}", words(&l));
+    // The tags are in the drawing too, and a mesh is its first bar, its last and a thin line, not 21 bars.
+    for t in &tags {
+        assert!(words(&l).contains(t), "{t} in {:?}", words(&l));
+    }
+    let heavy = l.ops.iter().filter(|op| matches!(op, Op::Line { pen, .. } if *pen == crate::pen::Pen::HEAVY)).count();
+    assert!(heavy < 30, "{heavy}");
+}
+
+#[test]
+fn a_footing_or_a_floor_takes_no_stations_and_a_column_with_no_bars_is_refused() {
+    let mut s = Session::new();
+    let (foot, slab) = (footing(&mut s), floor(&mut s));
+    let bare =
+        run(&mut s, "structural_column", json!({"at": [9000, 0], "type": "Concrete 300 x 300", "height": 3000}))["id"].as_u64().unwrap();
+    let before = s.model.clone();
+    for (p, word) in [
+        (json!({"host": foot, "stations": [100]}), "no stations"),
+        (json!({"host": slab, "stations": [100]}), "no stations"),
+        (json!({"host": bare}), "reinforce"),
+    ] {
+        let e = s.execute("rebar_detail", &p).unwrap_err();
+        assert!(e.contains(word), "{p}: {e}");
+    }
+    assert_eq!(*s.model, *before);
+}
+
 /// What the sweep throws at `rebar_detail`: a beam with bars is in the base, made here.
 pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
     let host = armed(base);
+    let (col, foot, slab) = (column(base, "Concrete 300 x 300"), footing(base), floor(base));
     let many: Vec<u64> = (0..1_001).collect();
     let p = |v: Value| ("rebar_detail", v);
     vec![
         p(json!({})),
         p(json!({"host": host})),
         p(json!({"host": host, "stations": [3000]})),
+        p(json!({"host": col})),
+        p(json!({"host": col, "stations": [100, 1500, 99999]})),
+        p(json!({"host": foot, "stations": [100]})),
+        p(json!({"hosts": [foot, slab, col], "scale": 25, "list": false})),
+        p(json!({"host": slab})),
         p(json!({"host": host, "stations": [f64::NAN]})),
         p(json!({"host": host, "stations": [-1]})),
         p(json!({"host": host, "stations": [1e300]})),
