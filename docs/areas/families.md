@@ -228,7 +228,8 @@ wall with its solids hidden, its parts generic copies at the opening's frame, as
 card's or the processor's, as the project's is, and the card keeps the project's mesh parked beside it (`Gpu::hold_for`), so
 neither is uploaded again when the other view shows. It is moved as the project's 3D view is: a primary drag orbits about the
 point under the pointer, the middle button pans, Shift and the middle button orbit, the wheel zooms toward the point under the
-cursor, the 3D mouse moves it, the triad (left of the ViewCube) and Revit's ViewCube turn it, and Zoom to Fit fits it; while
+cursor, the 3D mouse moves it, the triad (left of the ViewCube) and the ViewCube turn it (a click on a face, an edge or a
+corner of the cube: [adaptive families](adaptive-families.md)), and Zoom to Fit fits it; while
 nothing has moved it, it fits itself again as its pane is resized. It shows what is selected as the project's 3D view does (T11):
 a form, a void or a nested instance selected is tinted halfway in the selection's colour with its edges whole, through the
 project's own tints, so what stands in front of it still hides it; a void, never seen, is drawn see-through while selected

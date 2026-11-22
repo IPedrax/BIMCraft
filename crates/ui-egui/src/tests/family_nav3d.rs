@@ -176,3 +176,107 @@ mod gpu {
         assert!(camera(&h).scale > before.scale * 1.2, "the wheel zooms on the card too");
     }
 }
+
+/// The ViewCube drawn alone as `cam` turns it, with the pointer at `hover`: the colours at `at`. (The family's {3D} keeps its
+/// pictures in a renderer that draws none, so the cube is drawn on a harness of its own.)
+fn cube_ink(cam: Camera, hover: Option<Pos2>, at: &[Pos2]) -> Vec<[u8; 4]> {
+    let rect = egui::Rect::from_min_size(Pos2::ZERO, vec2(240.0, 140.0));
+    let mut h = Harness::builder().with_size([240.0, 140.0]).build_ui(move |ui| Orbit::draw_cube(ui.painter(), &cam, rect, hover));
+    h.run();
+    let image = h.render().unwrap();
+    at.iter().map(|p| image.get_pixel(p.x.round() as u32, p.y.round() as u32).0).collect()
+}
+
+/// The cube with the pointer on a face, on an edge and on a corner, from the default view and from the front, four times
+/// its size: saved where `BIMCRAFT_VIEWCUBE_DUMP` says (only then).
+#[test]
+fn viewcube_zones_screenshots() {
+    let Ok(dir) = std::env::var("BIMCRAFT_VIEWCUBE_DUMP") else { return };
+    std::fs::create_dir_all(&dir).unwrap();
+    let (h, _) = opened();
+    let home = Camera { azimuth: bimcraft_core::view3d::AZIMUTH, elevation: bimcraft_core::view3d::ELEVATION, ..camera(&h) };
+    let front = Camera { azimuth: -90.0, elevation: 0.0, ..home };
+    let rect = egui::Rect::from_min_size(Pos2::ZERO, vec2(120.0, 110.0));
+    for (view, cam) in [("home", home), ("front", front)] {
+        for (name, zone) in [("none", None), ("face", Some([0, -1, 0])), ("edge", Some([1, -1, 0])), ("corner", Some([1, -1, 1]))] {
+            let hover = zone.and_then(|z| Orbit::cube_zone_at(&cam, rect, z).first().copied());
+            let mut h = Harness::builder().with_size([120.0, 110.0]).with_pixels_per_point(4.0).build_ui(move |ui| {
+                ui.painter().rect_filled(ui.max_rect().expand(8.0), 0.0, egui::Color32::WHITE);
+                Orbit::draw_cube(ui.painter(), &cam, rect, hover);
+            });
+            h.run();
+            h.render().unwrap().save(std::path::Path::new(&dir).join(format!("viewcube-{view}-{name}.png"))).unwrap();
+        }
+    }
+}
+
+#[test]
+fn the_viewcube_s_edges_and_corners_look_from_between_its_faces() {
+    let (mut h, _) = opened();
+    let pane = h.state().view_rect;
+    let home = Orbit::home_rect(pane).center();
+    // From the default view the top, the front and the right show: the edges between them, and the corner of the three.
+    for (zone, azimuth, elevation) in
+        [([1, -1, 0], -45.0, 0.0), ([0, -1, 1], -90.0, 45.0), ([1, 0, 1], 0.0, 45.0), ([1, -1, 1], -45.0, 35.264_389_682_754_654)]
+    {
+        click_at(&mut h, home);
+        let cam = camera(&h);
+        let shown = Orbit::cube_zone_at(&cam, pane, zone);
+        // An edge shows on the two faces it joins, a corner on three: a click on any of its parts is the same zone's.
+        assert_eq!(shown.len(), zone.iter().filter(|c| **c != 0).count(), "{zone:?}");
+        for at in shown {
+            click_at(&mut h, home);
+            assert_eq!(Orbit::cube_zone(&camera(&h), pane, at), Some(zone));
+            click_at(&mut h, at);
+            let now = camera(&h);
+            assert!((now.azimuth - azimuth).abs() < 1e-9 && (now.elevation - elevation).abs() < 1e-9, "{zone:?}: {now:?}");
+            assert_eq!(h.state().active_family().unwrap().selected_form(), None, "the cube's clicks select nothing");
+        }
+    }
+    // A face's middle is still the face's.
+    click_at(&mut h, home);
+    let front = Orbit::cube_zone_at(&camera(&h), pane, [0, -1, 0]);
+    assert_eq!(front.len(), 1);
+    click_at(&mut h, front[0]);
+    let now = camera(&h);
+    assert_eq!((now.azimuth, now.elevation), (-90.0, 0.0), "seen from the front");
+    // Seen from the front only that face shows, and its rim is the edges and the corners round it: its right strip is the
+    // edge it shares with the right, its top right square the corner over it.
+    for (zone, azimuth, elevation) in [([1, -1, 0], -45.0, 0.0), ([1, -1, 1], -45.0, 35.264_389_682_754_654), ([0, -1, -1], -90.0, -45.0)] {
+        click_at(&mut h, home);
+        click_at(&mut h, front[0]);
+        let shown = Orbit::cube_zone_at(&camera(&h), pane, zone);
+        assert_eq!(shown.len(), 1, "{zone:?}: on the front alone");
+        click_at(&mut h, shown[0]);
+        let now = camera(&h);
+        assert!((now.azimuth - azimuth).abs() < 1e-9 && (now.elevation - elevation).abs() < 1e-9, "{zone:?}: {now:?}");
+    }
+}
+
+#[test]
+fn the_viewcube_lights_the_zone_under_the_pointer_on_every_face_that_shows_it() {
+    let (h, _) = opened();
+    let cam = Camera { azimuth: bimcraft_core::view3d::AZIMUTH, elevation: bimcraft_core::view3d::ELEVATION, ..camera(&h) };
+    let rect = egui::Rect::from_min_size(Pos2::ZERO, vec2(240.0, 140.0));
+    let edge = Orbit::cube_zone_at(&cam, rect, [1, -1, 0]);
+    let corner = Orbit::cube_zone_at(&cam, rect, [1, -1, 1]);
+    // The front's middle, under its name.
+    let face = Orbit::cube_zone_at(&cam, rect, [0, -1, 0])[0] + vec2(0.0, 9.0);
+    assert_eq!((edge.len(), corner.len(), Orbit::cube_zone(&cam, rect, face)), (2, 3, Some([0, -1, 0])));
+    let probes: Vec<Pos2> = edge.iter().chain(&corner).copied().chain([face]).collect();
+    // The pointer off the cube: nothing lit.
+    let plain = cube_ink(cam, None, &probes);
+    // Over the edge's strip on one face, its strip on the face beside lights too; the corner and the face's middle don't.
+    let lit = cube_ink(cam, Some(edge[0]), &probes);
+    assert_ne!(lit[0], plain[0], "the strip under the pointer");
+    assert_ne!(lit[1], plain[1], "and the same edge's strip on the face beside");
+    assert_eq!(lit[0], lit[1], "lit alike");
+    assert_eq!(lit[2..], plain[2..], "the corner and the face stay as they were");
+    // Over the corner, its three squares; over the face's middle, that alone.
+    let lit = cube_ink(cam, Some(corner[1]), &probes);
+    assert!(lit[2..5].iter().zip(&plain[2..5]).all(|(a, b)| a != b), "the corner's three squares");
+    assert_eq!((&lit[..2], lit[5]), (&plain[..2], plain[5]));
+    let lit = cube_ink(cam, Some(face), &probes);
+    assert_ne!(lit[5], plain[5], "the face's middle");
+    assert_eq!(lit[..5], plain[..5]);
+}
