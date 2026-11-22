@@ -2180,12 +2180,12 @@ msgstr "Vypočítaná hodnota…"
 msgid "Callout"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5570
-msgid "Callout (DV): click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
-msgstr ""
-
 #: crates/ui-egui/src/lib.rs:5471
 msgid "Callout `{}` made: open it from the Project Browser, or double-click its mark"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5570
+msgid "Callout: click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
 msgstr ""
 
 #: crates/ui-egui/src/browser.rs:664
@@ -20919,4 +20919,7 @@ msgstr "Horní"
 #~ msgstr ""
 #: crates/ui-egui/src/draw.rs:703
 #~ msgid "Callout (DV): click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, with its boundary and mark on this view"
+#~ msgstr ""
+#: crates/ui-egui/src/lib.rs:5570
+#~ msgid "Callout (DV): click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
 #~ msgstr ""

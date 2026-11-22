@@ -1537,7 +1537,7 @@ other_files(
     edit(
         "detail_view",
         ui_msg!("Callout"),
-        &["DV"],
+        &[],
         "{parent: a plan's, section's or elevation's name or id, region: [[x, y], [x, y]], scale?: 1–50, name?, number?} a \
          callout: a fragment of its parent drawn larger, at 1 : `scale` (5 by default), cropped to `region` (in the \
          parent's coordinates: its south-west and north-east corners in a plan, its distance along the line and its heights in \

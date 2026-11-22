@@ -5519,12 +5519,12 @@ impl BimApp {
             if big_button(ui, Icon::Template, "View Templates", self.templates_dialog.is_some(), tip).clicked() {
                 self.open_templates();
             }
-            if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
+            if small_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;
             }
             let dark = style::dark();
             let tip = msg!("Choose a theme, including a dark interface with a light canvas");
-            let r = big_button(ui, Icon::Theme, "Dark Mode", dark, tip);
+            let r = small_button(ui, Icon::Theme, "Dark Mode", dark, tip);
             let at = r.rect.right_top() + vec2(-8.0, 9.0);
             ui.painter().add(egui::Shape::convex_polygon(
                 vec![at + vec2(-3.0, -2.0), at + vec2(3.0, -2.0), at + vec2(0.0, 2.0)],
@@ -5567,7 +5567,7 @@ impl BimApp {
                 }
             });
             let tip = msg!(
-                "Callout (DV): click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
+                "Callout: click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
             );
             let can_callout = match self.sheet {
                 Sheet::Plan(id) | Sheet::Section(id) => !matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))),
