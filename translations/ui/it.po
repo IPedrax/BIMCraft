@@ -2215,8 +2215,8 @@ msgstr "Camera: clicca dove sta il punto di vista, poi ciò che guarda: una vist
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:140
 #: crates/ui-egui/src/classification.rs:736
-#: crates/ui-egui/src/clipboard.rs:473
-#: crates/ui-egui/src/clipboard.rs:536
+#: crates/ui-egui/src/clipboard.rs:480
+#: crates/ui-egui/src/clipboard.rs:543
 #: crates/ui-egui/src/clouds.rs:95
 #: crates/ui-egui/src/codes.rs:1687
 #: crates/ui-egui/src/coordinates.rs:1274
@@ -2792,7 +2792,7 @@ msgstr "Clicca una forma, un'istanza annidata, un piano di riferimento, una line
 msgid "Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."
 msgstr "Clicca la linea di un piano in questa sezione o prospetto: gli elementi incollati vanno su quel piano. Esc annulla."
 
-#: crates/ui-egui/src/clipboard.rs:361
+#: crates/ui-egui/src/clipboard.rs:368
 msgid "Click a level the pasted elements go onto. Esc cancels."
 msgstr "Clicca il piano su cui vanno gli elementi incollati. Esc annulla."
 
@@ -3014,8 +3014,8 @@ msgstr "Clicca sulla superficie superiore: un punto lì, all'offset della Barra 
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr "Clicca sul piano di lavoro per un punto di riferimento, su una linea per un punto ospitato su di essa."
 
-#: crates/ui-egui/src/clipboard.rs:349
-#: crates/ui-egui/src/clipboard.rs:485
+#: crates/ui-egui/src/clipboard.rs:356
+#: crates/ui-egui/src/clipboard.rs:492
 #: crates/ui-egui/src/lib.rs:6910
 msgid "Click on the work plane where the pasted elements go. Esc cancels."
 msgstr "Clicca sul piano di lavoro dove vanno gli elementi incollati. Esc annulla."
@@ -3428,7 +3428,7 @@ msgstr "Clicca dove va il punto medio di un lato. Esc annulla."
 msgid "Click where the note goes: its top left corner."
 msgstr "Clicca dove va la nota: il suo angolo in alto a sinistra."
 
-#: crates/ui-egui/src/clipboard.rs:351
+#: crates/ui-egui/src/clipboard.rs:358
 #: crates/ui-egui/src/lib.rs:6965
 msgid "Click where the pasted elements go. Esc cancels."
 msgstr "Clicca dove vanno gli elementi incollati. Esc annulla."
@@ -3501,7 +3501,7 @@ msgstr "In senso orario"
 #: crates/ui-egui/src/favorites.rs:209
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
-#: crates/ui-egui/src/lib.rs:7262
+#: crates/ui-egui/src/lib.rs:7265
 #: crates/ui-egui/src/parameters.rs:728
 #: crates/ui-egui/src/parameters.rs:746
 #: crates/ui-egui/src/phasing.rs:278
@@ -3524,7 +3524,7 @@ msgstr "In senso orario"
 msgid "Close"
 msgstr "Chiudi"
 
-#: crates/ui-egui/src/lib.rs:7236
+#: crates/ui-egui/src/lib.rs:7239
 msgid "Close Family"
 msgstr "Chiudi famiglia"
 
@@ -3554,7 +3554,7 @@ msgstr "Chiudi tutte le viste tranne questa"
 
 #: crates/ui-egui/src/dock.rs:606
 #: crates/ui-egui/src/dock.rs:741
-#: crates/ui-egui/src/lib.rs:7236
+#: crates/ui-egui/src/lib.rs:7239
 msgid "Close {}"
 msgstr "Chiudi {}"
 
@@ -3992,7 +3992,7 @@ msgstr "Copiati {} ID."
 msgid "Copied {} IFC GlobalIds."
 msgstr "Copiati {} IFC GlobalId."
 
-#: crates/ui-egui/src/clipboard.rs:308
+#: crates/ui-egui/src/clipboard.rs:315
 msgid "Copied {} elements to the clipboard."
 msgstr "Copiati {} elementi negli appunti."
 
@@ -4017,6 +4017,7 @@ msgstr "Rame"
 #: crates/ui-egui/src/lib.rs:6583
 #: crates/ui-egui/src/lib.rs:6750
 #: crates/ui-egui/src/lib.rs:6787
+#: crates/ui-egui/src/lib.rs:7170
 #: crates/ui-egui/src/parameters.rs:1269
 #: crates/ui-egui/src/plugins.rs:363
 msgid "Copy"
@@ -4061,6 +4062,10 @@ msgstr "Copia rapporto"
 #: crates/ui-egui/src/inquiry.rs:176
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Copia ID, GUID e IFC GlobalId"
+
+#: crates/ui-egui/src/lib.rs:7170
+msgid "Copy the message to the clipboard"
+msgstr ""
 
 #: crates/ui-egui/src/codes/tree.rs:318
 msgid "Copy the table to paste it into a spreadsheet"
@@ -4514,7 +4519,7 @@ msgstr "Taglia negli appunti (Ctrl+X): la selezione, tolta per incollarla altrov
 msgid "Cut with Voids When Loaded"
 msgstr "Taglia con vuoti quando caricato"
 
-#: crates/ui-egui/src/clipboard.rs:309
+#: crates/ui-egui/src/clipboard.rs:316
 msgid "Cut {} elements to the clipboard."
 msgstr "Tagliati {} elementi negli appunti."
 
@@ -5229,7 +5234,7 @@ msgstr "Dominio"
 msgid "Don't"
 msgstr "No"
 
-#: crates/ui-egui/src/lib.rs:7480
+#: crates/ui-egui/src/lib.rs:7483
 msgid "Don't Save"
 msgstr "Non salvare"
 
@@ -6301,7 +6306,7 @@ msgstr "Tipi di famiglia"
 msgid "Family Types: the family's parameters, their formulas, and its types"
 msgstr "Tipi di famiglia: i parametri della famiglia, le loro formule e i suoi tipi"
 
-#: crates/ui-egui/src/lib.rs:7226
+#: crates/ui-egui/src/lib.rs:7229
 msgid "Family document: {}"
 msgstr "Documento famiglia: {}"
 
@@ -6742,7 +6747,7 @@ msgstr "Mano invertita"
 
 #: crates/ui-egui/src/dock.rs:632
 #: crates/ui-egui/src/dock.rs:884
-#: crates/ui-egui/src/lib.rs:7258
+#: crates/ui-egui/src/lib.rs:7261
 msgid "Float"
 msgstr "Sgancia"
 
@@ -7726,7 +7731,7 @@ msgstr "Dati identificativi"
 msgid "If you don't save it, your changes still apply to this project."
 msgstr "Se non la salvi, le tue modifiche valgono comunque per questo progetto."
 
-#: crates/ui-egui/src/lib.rs:7476
+#: crates/ui-egui/src/lib.rs:7479
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "Altrimenti le modifiche dall'ultimo salvataggio andranno perse."
 
@@ -10287,7 +10292,7 @@ msgstr "Nessun progetto recente"
 msgid "No region drawn yet"
 msgstr "Nessuna area ancora disegnata"
 
-#: crates/ui-egui/src/lib.rs:7313
+#: crates/ui-egui/src/lib.rs:7316
 msgid "No rows yet: the {} is empty."
 msgstr "Nessuna riga: {} è vuoto."
 
@@ -10386,7 +10391,7 @@ msgstr "Nessuna delle normative scelte ha ancora questa sezione."
 msgid "None of these can be printed yet."
 msgstr "Nessuno di questi si può ancora stampare."
 
-#: crates/ui-egui/src/clipboard.rs:519
+#: crates/ui-egui/src/clipboard.rs:526
 msgid "None of this project's views is like the one they were copied from."
 msgstr "Nessuna vista di questo progetto è come quella da cui sono stati copiati."
 
@@ -10590,7 +10595,7 @@ msgstr "Valori per la posizione del progetto, presi dalle mappe della normativa.
 #: crates/ui-egui/src/adaptive_editor.rs:760
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:141
-#: crates/ui-egui/src/clipboard.rs:537
+#: crates/ui-egui/src/clipboard.rs:544
 #: crates/ui-egui/src/clouds.rs:96
 #: crates/ui-egui/src/codes.rs:1688
 #: crates/ui-egui/src/coordinates.rs:1275
@@ -11262,15 +11267,15 @@ msgstr "Incolla (Ctrl+V): gli elementi copiati seguono il cursore; clicca dove v
 msgid "Paste from Clipboard"
 msgstr "Incolla dagli appunti"
 
-#: crates/ui-egui/src/clipboard.rs:458
+#: crates/ui-egui/src/clipboard.rs:465
 msgid "Paste in 3D"
 msgstr "Incolla in 3D"
 
-#: crates/ui-egui/src/clipboard.rs:517
+#: crates/ui-egui/src/clipboard.rs:524
 msgid "Paste into these views:"
 msgstr "Incolla in queste viste:"
 
-#: crates/ui-egui/src/clipboard.rs:517
+#: crates/ui-egui/src/clipboard.rs:524
 msgid "Paste onto these levels:"
 msgstr "Incolla su questi piani:"
 
@@ -11278,11 +11283,11 @@ msgstr "Incolla su questi piani:"
 msgid "Paste rows here"
 msgstr "Incolla qui le righe"
 
-#: crates/ui-egui/src/clipboard.rs:418
+#: crates/ui-egui/src/clipboard.rs:425
 msgid "Pasted {} elements."
 msgstr "Incollati {} elementi."
 
-#: crates/ui-egui/src/clipboard.rs:420
+#: crates/ui-egui/src/clipboard.rs:427
 msgid "Pasted {} elements; {} left out: {}"
 msgstr "Incollati {} elementi; {} esclusi: {}"
 
@@ -12248,7 +12253,7 @@ msgstr "Posizione"
 msgid "Position (mm)"
 msgstr "Posizione (mm)"
 
-#: crates/ui-egui/src/clipboard.rs:467
+#: crates/ui-egui/src/clipboard.rs:474
 msgid "Position on Work Plane"
 msgstr "Posiziona sul piano di lavoro"
 
@@ -13771,7 +13776,7 @@ msgstr "SCALA COME INDICATO"
 msgid "Sage"
 msgstr "Salvia"
 
-#: crates/ui-egui/src/clipboard.rs:463
+#: crates/ui-egui/src/clipboard.rs:470
 msgid "Same Place"
 msgstr "Stessa posizione"
 
@@ -13863,7 +13868,7 @@ msgid "Save changes in {}"
 msgstr "Salva le modifiche in {}"
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:7474
+#: crates/ui-egui/src/lib.rs:7477
 msgid "Save changes to {}?"
 msgstr "Salvare le modifiche a {}?"
 
@@ -16615,7 +16620,7 @@ msgstr "Questi motivi in un file PAT, tranne quelli pieni"
 msgid "These rooms have floors or ceilings connected to them. Delete those too, or keep them as ordinary floors and ceilings?"
 msgstr "Queste zone hanno solai o controsoffitti collegati. Eliminare anche quelli, o conservarli come solai e controsoffitti normali?"
 
-#: crates/ui-egui/src/clipboard.rs:468
+#: crates/ui-egui/src/clipboard.rs:475
 msgid "They follow the cursor over the view's work plane; click where they go"
 msgstr "Seguono il cursore sul piano di lavoro della vista; clicca dove vanno"
 
@@ -16954,7 +16959,7 @@ msgstr "Topologia: {} ({} triangoli)"
 msgid "Toposolid"
 msgstr "Terreno"
 
-#: crates/ui-egui/src/lib.rs:7355
+#: crates/ui-egui/src/lib.rs:7358
 msgid "Total"
 msgstr "Totale"
 
@@ -18083,7 +18088,7 @@ msgstr "Dove una linea dall'ultimo punto è tangente a un cerchio o a un arco"
 msgid "Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed"
 msgstr "Dove si inseriscono note, quote, etichette, quote altimetriche, simboli di sezione o di prospetto, gruppi di dettaglio o dettagli ripetuti"
 
-#: crates/ui-egui/src/clipboard.rs:460
+#: crates/ui-egui/src/clipboard.rs:467
 msgid "Where do the pasted elements go?"
 msgstr "Dove vanno gli elementi incollati?"
 
@@ -18103,7 +18108,7 @@ msgstr "Dove si trova il punto di rilievo sul globo, in gradi WGS84: est e nord 
 msgid "Where they were, on their levels"
 msgstr "Dov'erano, sui loro piani"
 
-#: crates/ui-egui/src/clipboard.rs:464
+#: crates/ui-egui/src/clipboard.rs:471
 msgid "Where they were, on their levels: Aligned to Same Place"
 msgstr "Dov'erano, sui loro piani: Allineati nella stessa posizione"
 
@@ -18686,7 +18691,7 @@ msgstr "controsoffitto: `{}` non è un'altezza"
 msgid "circle"
 msgstr "cerchio"
 
-#: crates/ui-egui/src/clipboard.rs:496
+#: crates/ui-egui/src/clipboard.rs:503
 #: crates/ui-egui/src/section.rs:593
 msgid "click a level line"
 msgstr "clicca la linea di un piano"
@@ -19110,7 +19115,7 @@ msgstr "seleziona prima il solaio da inclinare"
 msgid "select the walls or columns to attach first"
 msgstr "prima seleziona i muri o i pilastri da collegare"
 
-#: crates/ui-egui/src/clipboard.rs:289
+#: crates/ui-egui/src/clipboard.rs:296
 msgid "select what to copy first"
 msgstr "prima seleziona cosa copiare"
 
@@ -19171,7 +19176,7 @@ msgstr "sporgenza standard"
 msgid "start"
 msgstr "inizio"
 
-#: crates/ui-egui/src/clipboard.rs:333
+#: crates/ui-egui/src/clipboard.rs:340
 msgid "the clipboard holds nothing to paste: copy elements first (Ctrl+C)"
 msgstr "gli appunti non contengono niente da incollare: prima copia degli elementi (Ctrl+C)"
 
@@ -19496,7 +19501,7 @@ msgstr "{} modificabili"
 msgid "{} elements"
 msgstr "{} elementi"
 
-#: crates/ui-egui/src/clipboard.rs:311
+#: crates/ui-egui/src/clipboard.rs:318
 msgid "{} elements to the clipboard; {} left out (levels, views and sheets aren't copied)."
 msgstr "{} elementi negli appunti; {} esclusi (piani, viste e layout non si copiano)."
 
