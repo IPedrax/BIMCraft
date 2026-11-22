@@ -9,8 +9,11 @@
 //! are not satisfied", whose Remove Constraints does it again without them. Each is one step of the history; a refusal
 //! leaves everything as it was and says why. Only what the view shows is taken (a form Temporary Hide hides stays).
 //!
+//! In {3D}, Move, Copy, Rotate and Mirror - Draw Axis work on the view's work plane ([`FamilyEditor::modify_3d`]).
+//!
 //! Each tool says in the status bar what to click next, and where it can't be used (nothing selected, a form for Scale, a
-//! sketch's tool outside a sketch, {3D}) its button is greyed with the reason in its tooltip, and Find says it.
+//! sketch's tool outside a sketch, one that picks from the view in {3D}) its button is greyed with the reason in its
+//! tooltip, and Find says it.
 use super::drag_move::{Kept, Names, Origin};
 use super::select_box::{How, Picked};
 use super::*;
@@ -121,6 +124,12 @@ impl Tool {
         matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { .. } | Tool::Scale { .. })
     }
 
+    /// Whether it works in {3D}: one whose clicks are points, which land on the view's work plane. One that picks
+    /// something of the view (an axis, what to offset) doesn't, until {3D} picks references.
+    fn in_3d(&self) -> bool {
+        matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { draw: true, .. })
+    }
+
     /// Whether it is a sketch's alone.
     fn sketch_only(&self) -> bool {
         matches!(self, Tool::TrimTo { .. } | Tool::Split)
@@ -226,8 +235,26 @@ impl Space {
         Space { origin: st.from_view(which, P2(0.0, 0.0)), across: st.vector(which, P2(1.0, 0.0)), up: st.vector(which, P2(0.0, 1.0)) }
     }
 
+    /// {3D}'s way in: its work plane, whose two axes are the tools' as a plan's are.
+    pub(crate) fn on_plane(f: &bimcraft_core::family::Frame) -> Space {
+        Space { origin: f.origin, across: f.x, up: f.y }
+    }
+
     fn point(&self, q: P2) -> [f64; 3] {
         std::array::from_fn(|k| self.origin[k] + self.across[k] * q.0 + self.up[k] * q.1)
+    }
+
+    /// Where a point of the family's stands on the plane, and how far off it, along what the plane faces.
+    fn coords(&self, p: [f64; 3]) -> (P2, f64) {
+        let d: [f64; 3] = std::array::from_fn(|k| p[k] - self.origin[k]);
+        let dot = |a: [f64; 3]| d[0] * a[0] + d[1] * a[1] + d[2] * a[2];
+        (P2(dot(self.across), dot(self.up)), dot(self.toward()))
+    }
+
+    /// The point of the family's at `q` on the plane and `off` it.
+    fn lifted(&self, q: P2, off: f64) -> [f64; 3] {
+        let (p, n) = (self.point(q), self.toward());
+        std::array::from_fn(|k| p[k] + n[k] * off)
     }
 
     pub(crate) fn vector(&self, v: P2) -> [f64; 3] {
@@ -252,6 +279,44 @@ impl Space {
         let normal = [d[1] * n[2] - d[2] * n[1], d[2] * n[0] - d[0] * n[2], d[0] * n[1] - d[1] * n[0]];
         Transform::Mirror { point: self.point(a), normal }
     }
+}
+
+/// The faces of a box by its corners `at` (numbered by three bits: across, up and off the plane), as marks the 3D picture draws with its
+/// depth: no fill, each face's outline in `ink`, hidden where a solid stands in front of it.
+fn box_marks(at: &[[f64; 3]; 8], ink: egui::Color32) -> Vec<bimcraft_core::view3d::PlaneMark> {
+    const FACES: [[usize; 3]; 6] = [[0, 1, 2], [4, 5, 6], [0, 1, 4], [2, 3, 6], [0, 2, 4], [1, 3, 5]];
+    let face = |[a, b, c]: [usize; 3]| {
+        let (o, u, v) =
+            (at[a], std::array::from_fn::<f64, 3, _>(|k| at[b][k] - at[a][k]), std::array::from_fn::<f64, 3, _>(|k| at[c][k] - at[a][k]));
+        let (lu, lv) = (u.iter().map(|x| x * x).sum::<f64>().sqrt(), v.iter().map(|x| x * x).sum::<f64>().sqrt());
+        (lu > 1e-6 && lv > 1e-6).then(|| bimcraft_core::view3d::PlaneMark {
+            origin: o,
+            axes: (u.map(|x| x / lu), v.map(|x| x / lv)),
+            lo: (0.0, 0.0),
+            hi: (lu, lv),
+            step: 0.0,
+            fill: [0; 4],
+            grid: [0; 4],
+            edge: ink.to_array(),
+            edge_width: 1.5,
+        })
+    };
+    FACES.into_iter().filter_map(face).collect()
+}
+
+/// The box of `points` (the family's) in `space`'s plane: its eight corners, each where it stands on the plane and how far
+/// off it; none of no points.
+fn boxed(space: &Space, points: &[[f64; 3]]) -> Option<[(P2, f64); 8]> {
+    let at: Vec<(P2, f64)> = points.iter().map(|p| space.coords(*p)).collect();
+    let (first, _) = at.split_first()?;
+    let (mut lo, mut hi) = ([first.0.0, first.0.1, first.1], [first.0.0, first.0.1, first.1]);
+    for (q, h) in &at {
+        for (k, v) in [q.0, q.1, *h].into_iter().enumerate() {
+            (lo[k], hi[k]) = (lo[k].min(v), hi[k].max(v));
+        }
+    }
+    let pick = |bit: usize, k: usize| if bit == 0 { lo[k] } else { hi[k] };
+    Some(std::array::from_fn(|i| (P2(pick(i & 1, 0), pick((i >> 1) & 1, 1)), pick((i >> 2) & 1, 2))))
 }
 
 /// The turn from `from` to `to` about `centre`, degrees counter-clockwise, snapped to the Snaps' angle as the project's Rotate.
@@ -528,7 +593,13 @@ impl FamilyEditor {
             return Some(tf("{} works on a sketch's lines: edit a form's sketch (double-click the form) first.", &[t(tool.label())]));
         }
         if !self.editing_2d() {
-            return Some(tf("{} works in a plan or an elevation.", &[t(tool.label())]));
+            // {3D}: a tool whose clicks are points works on the view's work plane.
+            if !tool.in_3d() {
+                return Some(tf("{} picks from the view, which {3D} can't do yet: use it in a plan or an elevation.", &[t(tool.label())]));
+            }
+            if let Err(e) = self.work_frame_3d() {
+                return Some(e);
+            }
         }
         if !tool.on_selection() {
             return None;
@@ -581,6 +652,182 @@ impl FamilyEditor {
         let selection = self.selection.items().to_vec();
         self.views.modify = Some(Modifying { tool, which: self.views.shown, typed: None, selection });
         Ok(())
+    }
+
+    /// {3D}'s work plane: where a Modify tool's clicks land there.
+    fn work_frame_3d(&self) -> Result<bimcraft_core::family::Frame, String> {
+        self.plane_set().frame(&self.views.work_plane())
+    }
+
+    /// A Modify tool in hand in {3D}: its clicks land on the view's work plane, whose frame is the tool's space as
+    /// a plan's is, so the edit is the one a plan makes; a drag still turns the view. `click`, where one landed. It takes
+    /// of the selection what a plan would, but a form hidden for now. Over the picture go the tool's marks and its
+    /// rubber band on the plane, and where the click would put them the planes and lines taken; the box of each form taken
+    /// is left for the picture to draw with its depth (`ghost_3d`). A tool taken in another view starts again, or is put
+    /// down where {3D} can't work with it. What went wrong, if anything.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn modify_3d(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        painter: &egui::Painter,
+        cam: &bimcraft_core::view3d::Camera,
+        size: [u32; 2],
+        pane: egui::Rect,
+        click: Option<Pos2>,
+    ) -> Option<String> {
+        self.views.ghost_3d.clear();
+        let m = self.views.modify.as_ref()?;
+        // Its points were another view's: here it starts again, where it can work at all.
+        if m.which.is_some() {
+            let tool = m.tool.fresh();
+            if let Some(why) = self.modify_blocked(&tool) {
+                self.views.modify = None;
+                return Some(why);
+            }
+            if let Some(m) = self.views.modify.as_mut() {
+                (m.which, m.tool) = (None, tool);
+            }
+        }
+        // Nor do they hold once the selection changed otherwise: the tool starts again on what is selected.
+        if let Some(m) = self.views.modify.as_mut()
+            && m.selection.as_slice() != self.selection.items()
+        {
+            (m.selection, m.tool) = (self.selection.items().to_vec(), m.tool.fresh());
+        }
+        let frame = match self.work_frame_3d() {
+            Ok(f) => f,
+            Err(e) => {
+                self.views.modify = None;
+                return Some(e);
+            }
+        };
+        let space = Space::on_plane(&frame);
+        let (sx, sy) = (pane.width() / size[0].max(1) as f32, pane.height() / size[1].max(1) as f32);
+        let project = |p: [f64; 3]| {
+            let (x, y, _) = cam.project(p);
+            (x.is_finite() && y.is_finite()).then(|| pane.min + egui::vec2(x as f32 * sx, y as f32 * sy))
+        };
+        // How squarely the view looks at the plane: within two degrees of edge on, a click would land far off along it.
+        let facing = {
+            let (a, e) = (cam.azimuth.to_radians(), cam.elevation.to_radians());
+            let back = [e.cos() * a.cos(), e.cos() * a.sin(), e.sin()];
+            (back[0] * frame.z[0] + back[1] * frame.z[1] + back[2] * frame.z[2]).abs()
+        };
+        let edge_on = cam.lens.is_none() && facing < 2.0_f64.to_radians().sin();
+        // The point of the plane under a point of the screen, or why there is none.
+        let at = |p: Pos2| -> Result<P2, &'static str> {
+            if edge_on {
+                return Err(msg!("The work plane is seen edge on from here: turn the view, or set another work plane."));
+            }
+            let px = (f64::from((p.x - pane.min.x) / sx), f64::from((p.y - pane.min.y) / sy));
+            let Some(q) = cam.on(px, frame.origin, frame.z) else {
+                // In perspective, over the plane's horizon: the plane isn't there.
+                return Err(match cam.lens {
+                    Some(_) => msg!("The work plane doesn't reach there: click where the plane shows."),
+                    None => msg!("The work plane is seen edge on from here: turn the view, or set another work plane."),
+                });
+            };
+            if !q.iter().all(|v| v.is_finite() && v.abs() <= bimcraft_core::model::MAX_COORD) {
+                return Err(msg!("That point of the work plane is too far off: click nearer the family, or turn the view."));
+            }
+            Ok(space.coords(q).0)
+        };
+        // What of the selection the tool takes: what a plan would, but a form Temporary Hide/Isolate hides, which stays where
+        // it is.
+        let shown: Vec<Picked> =
+            self.selection.items().iter().copied().filter(|p| !matches!(p, Picked::Form(i) if self.temp_hidden_form(*i))).collect();
+        // What the tool takes, as the plane has it: each form's box, and each plane's and line's two ends.
+        let (boxes, segments) = self.taken_3d(&space, &shown);
+        // Rotate's centre where it is the selection's own: the middle of what it takes.
+        if let Some(m) = self.views.modify.as_mut()
+            && let Tool::Rotate { centre: centre @ None, .. } = &mut m.tool
+        {
+            let pts: Vec<P2> = boxes.iter().flatten().chain(segments.iter().flatten()).map(|(q, _)| *q).collect();
+            if !pts.is_empty() {
+                let lo = pts.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, p| P2(a.0.min(p.0), a.1.min(p.1)));
+                let hi = pts.iter().fold(P2(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, p| P2(a.0.max(p.0), a.1.max(p.1)));
+                *centre = Some(P2((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0));
+            }
+        }
+        let shift = ui.input(|i| i.modifiers.shift);
+        let mut said = None;
+        // An angle typed on the Options Bar, as in a plan.
+        if self.views.modify.as_ref().is_some_and(|m| m.typed.is_some()) {
+            said = self.modify_typed(space, &shown);
+        }
+        if let Some(p) = click {
+            match at(p) {
+                Ok(q) => {
+                    // The view a drag would be read through isn't read by a move of two clicks.
+                    let free = bimcraft_core::render::View { scale: 1.0, cx: 0.0, cy: 0.0, width: 1, height: 1, angle: 0.0 };
+                    said = self.modify_click(q, (Which::Plan, free, 0), space, &shown, None, None, shift);
+                }
+                Err(why) => said = Some(t(why).to_string()),
+            }
+        }
+        // What the tool selected itself (the copies) is what it goes on with.
+        let now: Vec<Picked> = self.selection.items().to_vec();
+        if let Some(m) = self.views.modify.as_mut() {
+            m.selection = now;
+        }
+        // The marks, the rubber band and what is taken where the click would put it.
+        let Some(m) = self.views.modify.as_ref() else { return said };
+        let (tool, o, snaps) = (m.tool, self.views.modify_options.clone(), self.snaps);
+        let hover = response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| at(p).ok());
+        // Drawn only while every point of it is on screen: one behind the eye would draw a line across the view.
+        let seen = |q: P2| project(space.point(q)).filter(|p| pane.expand(2000.0).contains(*p));
+        let points: Vec<P2> = match tool {
+            Tool::Move { from, .. } => from.into_iter().collect(),
+            Tool::Rotate { centre, start, .. } => centre.into_iter().chain(start).collect(),
+            Tool::Mirror { start, .. } => start.into_iter().collect(),
+            Tool::Scale { origin, first } => origin.into_iter().chain(first).collect(),
+            _ => Vec::new(),
+        };
+        if points.iter().chain(hover.iter()).all(|q| seen(*q).is_some()) {
+            let off = Pos2::new(-1.0e6, -1.0e6);
+            let screen = |q: P2| seen(q).unwrap_or(off);
+            let back = |p: Pos2| at(p).unwrap_or(P2(f64::NAN, f64::NAN));
+            paint_tool(painter, &tool, &o, hover, &[], &screen, &back, None, shift, &snaps);
+        }
+        if let Some(map) = hover.and_then(|h| preview_map(&tool, &o, h, shift, &snaps, None)) {
+            let accent = crate::style::canvas_pal().accent.gamma_multiply(0.8);
+            // The forms' boxes are the picture's to draw, behind what stands in front of them.
+            let moved = |(q, h): &(P2, f64)| space.lifted(map(*q), *h);
+            self.views.ghost_3d = boxes.iter().flat_map(|corners| box_marks(&corners.each_ref().map(moved), accent)).collect();
+            for ends in &segments {
+                if let [Some(a), Some(b)] = ends.each_ref().map(|end| project(moved(end)).filter(|p| pane.expand(2000.0).contains(*p))) {
+                    painter.extend(egui::Shape::dashed_line(&[a, b], egui::Stroke::new(1.5, accent), 8.0, 4.0));
+                }
+            }
+        }
+        said
+    }
+
+    /// What a Modify tool takes in {3D}, as `space`'s plane has it: the box of each form of `shown`, and the two ends of
+    /// each reference plane and reference line of it. A nested instance, a symbol and a connector have none.
+    #[allow(clippy::type_complexity)]
+    fn taken_3d(&self, space: &Space, shown: &[Picked]) -> (Vec<[(P2, f64); 8]>, Vec<[(P2, f64); 2]>) {
+        let Ok(f) = self.family() else { return (Vec::new(), Vec::new()) };
+        let values = self.values();
+        let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+        let mut boxes = Vec::new();
+        let mut segments = Vec::new();
+        for p in shown {
+            let ends = match p {
+                Picked::Form(i) => {
+                    boxes.extend(boxed(space, &bimcraft_core::family::views::form_corners(&f, &values, *i)));
+                    None
+                }
+                Picked::Plane(g) => flexed.planes.iter().find(|x| x.guid == *g).map(|x| (x.start, x.end)),
+                Picked::Line(g) => flexed.lines.iter().find(|x| x.guid == *g).map(|x| (x.start, x.end)),
+                _ => None,
+            };
+            if let Some((a, b)) = ends {
+                segments.push([space.coords(a), space.coords(b)]);
+            }
+        }
+        (boxes, segments)
     }
 
     /// The Modify tool in hand, in or out of sketch mode.

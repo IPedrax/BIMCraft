@@ -1013,11 +1013,23 @@ keep, the project's `draw::meet` and `trim_to`) and Split Element (the line clic
 copy is a new line with a GUID of its own, never the Axis Line. A line a sketch tool moves keeps its GUID, and its formulas go as
 a moved line's do (the sketch dimensions' `driven`); a lock or an Align lock from it to what didn't move with it, added while
 sketching or the form's, is released, the status bar saying how many. Outside a sketch Trim/Extend and Split Element are greyed,
-saying they work on a sketch's lines; in {3D} the tools say they work in a plan or an elevation; with nothing selected, what to
-select. None has a key yet: Find (Ctrl+K) lists each on a family tab (`modify::FIND`), and one that can't be used now says why
+saying they work on a sketch's lines; in {3D} those that pick from the view say they work in a plan or an elevation (below);
+with nothing selected, what to select. None has a key yet: Find (Ctrl+K) lists each on a family tab (`modify::FIND`), and one that can't be used now says why
 there, as its greyed button's tooltip does. Known: Rotate, Mirror and Scale don't take symbols, connectors or nested instances
 yet, and a sketch tool doesn't refuse what a label holds while sketching (Finish solves it as before). Tests:
 `tests/family_modify.rs`, `tests/family_edges_not_hull.rs`, `family_transform_tests.rs`.
+
+In {3D} the tools whose clicks are points work on the view's work plane (Ref. Level until Work Plane > Set picks another, an
+upright one to move up and down): Move, Copy, Rotate about what the plane faces, and Mirror - Draw Axis (`Tool::in_3d`). The
+plane's frame is the tools' space as a plan's is (`Space::on_plane`), so `modify_3d`, called once from `family_3d`, puts a click
+on the plane with `Camera::on` and hands it to the plans' `modify_click`: the edit, the typed distances and angles, the refusals
+and the one step are the same. A click with a tool in hand selects nothing; a drag still turns the view. While a tool is in
+hand the work plane is shown, and over the picture go the tool's marks, its rubber band and the box of each form taken where
+the click would put it (`boxed`, from `family::views::form_corners`). The tool takes what {3D} draws of the selection, so a form
+hidden in the view stays, and planes and lines selected in a plan before. A tool taken in another view starts again in {3D},
+its points let go, or is put down there, saying why, where {3D} can't work with it. Mirror - Pick Axis, Offset, Scale and
+Align, which pick something of the view or lean on its depth, are greyed in {3D} with that reason. Tests:
+`tests/family_modify_3d.rs`.
 
 The Clipboard panel (`editor/clipboard.rs`, `family/clipboard.rs`) in a family that isn't adaptive, on the Modify tab and the
 contextual tab: the project's panel (`crate::clipboard::panel`), Paste with its Aligned options, Cut to Clipboard and Copy to

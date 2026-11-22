@@ -217,6 +217,10 @@ impl FamilyEditor {
         let extents = bimcraft_core::family::views::extents(&f, &values);
         let mut marks: Vec<PlaneMark> =
             self.shown_work_plane_3d().and_then(|shown| super::views::work_plane_mark(&shown, extents)).into_iter().collect();
+        // Where a Modify tool in hand would put the forms it takes.
+        if self.views.shown.is_none() && self.views.modify.is_some() {
+            marks.extend(self.views.ghost_3d.iter().copied());
+        }
         let datums: Vec<(Lit, Rgb)> = self.lit_3d().into_iter().filter(|(l, _)| !matches!(l, Lit::Part(_))).collect();
         if !datums.is_empty() {
             let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
