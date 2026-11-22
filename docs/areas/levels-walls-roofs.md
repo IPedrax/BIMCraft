@@ -26,7 +26,8 @@ paper, where the layer is `PATTERN_ROOM` px wide), its surface pattern a model p
 their faces meet in mitred caps at any angle, and a wall ending on another stops at its face (`walls::cap`); plans, 3D,
 sections and IFC all draw that outline (`walls::outline`, `walls::prisms`). A wall's `join` (on unless turned off, written in
 a file only when it is off) says it joins at its ends, Revit's Allow Join: a wall refusing to join neither mitres against a
-neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it out of both; `relocate` passes it by), and a
+neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it out of both; `relocate` passes it by), though
+the centre lines that close rooms, separators and floor outlines still meet a plain neighbour's, and a
 footing under such a wall stops at its face as if it were a wall too. The desktop's right-click menu offers Disallow Join and
 Allow Join for the walls and runs selected (`context::Action`, a `modify {join}` command).
 
