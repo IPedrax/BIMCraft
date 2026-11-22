@@ -1,4 +1,4 @@
-//! FE-20: the selection commands of a family document that isn't adaptive, as Revit's family editor has them, over the one
+//! FE-20: the selection commands of a family document that isn't adaptive, over the one
 //! selection set (FE-1, `select_box.rs`). The core says what each finds (`family::select`); this is their dialogs and
 //! buttons, which look as the project's do.
 //!
@@ -332,7 +332,7 @@ impl FamilyEditor {
     }
 }
 
-/// The Select panel's Filter while several are selected, on Modify | Multi-Select where Revit has it; with one selected
+/// The Select panel's Filter while several are selected, on Modify | Multi-Select; with one selected
 /// the status bar's funnel opens it.
 pub(super) fn filter_button(ui: &mut Ui, ed: &mut FamilyEditor) {
     if !ed.can_filter() || ed.selection.len() < 2 {
@@ -366,7 +366,7 @@ pub(super) fn inquiry_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     });
 }
 
-/// The status bar's Select Elements by Face, as Revit's status bar has it left of the funnel: lit while it is `on`,
+/// The status bar's Select Elements by Face, left of the funnel: lit while it is `on`,
 /// crossed out while it is off.
 pub(crate) fn face_toggle(ui: &mut Ui, on: bool) -> egui::Response {
     let tip = msg!(
@@ -376,8 +376,7 @@ pub(crate) fn face_toggle(ui: &mut Ui, on: bool) -> egui::Response {
         .on_disabled_hover_text(t(msg!("Select Elements by Face is of a family's plans and elevations.")))
 }
 
-/// The status bar's Drag Elements on Selection, between Select Elements by Face and the funnel as Revit's status bar has
-/// it, drawn as that one is.
+/// The status bar's Drag Elements on Selection, between Select Elements by Face and the funnel, drawn as that one is.
 pub(crate) fn drag_toggle(ui: &mut Ui, on: bool) -> egui::Response {
     let tip = msg!(
         "Drag Elements on Selection: on, a drag from the face of a form or a nested instance that isn't selected is that element's and selects it; off, a selection box begins there. With Select Elements by Face off a face picks nothing, so it changes nothing"

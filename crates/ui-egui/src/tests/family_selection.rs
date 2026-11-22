@@ -1,4 +1,4 @@
-//! FE-20: the selection's commands in a family document, as Revit's family editor has them, over the one selection set
+//! FE-20: the selection's commands in a family document, over the one selection set
 //! (FE-1). Filter keeps the kinds checked; Select Previous brings back the selection before it was let go or replaced,
 //! without what was deleted since; Select by ID selects what a list of ids and GUIDs names and says what names nothing, and
 //! IDs of Selection shows them; Select Elements by Face says whether a face selects what it is of, and Drag Elements on
@@ -308,7 +308,7 @@ fn the_selections_commands_are_not_an_adaptive_familys() {
     assert_eq!(h.query_all_by_label("Filter").count(), 0);
 }
 
-/// Revit's Select Elements by Face: on, a face selects what it is of, by a click and by a crossing box drawn inside it;
+/// Select Elements by Face: on, a face selects what it is of, by a click and by a crossing box drawn inside it;
 /// off, only an edge of its outline does. A box is drawn from inside the face of what isn't selected, either way.
 #[test]
 fn select_elements_by_face_decides_whether_a_face_selects_by_a_click_and_by_a_crossing_box() {

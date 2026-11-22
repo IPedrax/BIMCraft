@@ -762,10 +762,11 @@ selecting, Aligned Dimension, Align, Pick Lines and the Work Plane dialog's Pick
 app's Tab hook leaves Tab to the family document while it is open. The blank window (File > New > Family… > Window) has Sill: a
 plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
 window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
-share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is drawn by its own
-edges as the view sees them (`views::outline_edges`: each edge between a face toward the eye and one not, and each crease between
-two faces toward it, where no face of the form lies in front of it: an L's notch, a hole seen from above, a Blend's top, and an
-elevation's real silhouette; it is picked and boxed by them too, FE-20), the selected plane's trace drawn heavier. A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
+share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is outlined, the
+selected plane's trace drawn heavier. The outline is the form's own edges as the view sees them (`views::outline_edges`: each
+edge between a face toward the eye and one not, and each crease between two faces toward it, where no face of the form lies in
+front of it: an L's notch, a hole seen from above, a Blend's top, and an elevation's real silhouette; it is picked and boxed by
+them too, FE-20). A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
 of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
@@ -786,7 +787,7 @@ instances (`family::select::Picked`, the core's). Each kind's accessor (`selecte
 one thing selected while the set holds exactly one, of any kind, and nothing while it holds several, so Properties, the
 contextual tab, Align, Pivot, the Start and End handles and the grips act on one element as before and never on one of several;
 a click and the Project Browser make the set what they select. In a plan or an elevation, a drag of the primary button that
-starts on no element (nor a handle, a grip or a padlock), with no tool in hand, draws a box as Revit's: left to right a window,
+starts on no element (nor a handle, a grip or a padlock), with no tool in hand, draws a box: left to right a window,
 solid, taking what lies wholly inside it; right to left a crossing, dashed, taking what it touches too. Let go within
 `canvas::STILL` (6 px each way, sketch mode's box's too) of where it began, it is no box but the click there: a slow click or a
 shaky one, which egui calls a drag once held past its click's time, selects what a click would rather than boxing nothing and
@@ -803,11 +804,11 @@ the box takes, Shift takes it away, else it is the selection; a click on an elem
 one, and a click on nothing with either keeps the selection. The middle button still pans, and a drag with a tool in hand is the
 tool's. A drag from an element's edge (one a form or a nested instance is drawn with, a plane's trace, a reference line, a
 connector) is the element's and draws no box: it selects the element if it isn't selected, alone or added with Ctrl (Shift
-leaves the selection be). The face of a form or a nested instance that isn't selected is the box's to begin in, as Revit's, so a
+leaves the selection be). The face of a form or a nested instance that isn't selected is the box's to begin in, so a
 box can be drawn inside one, unless Drag Elements on Selection is on (below), when a face that selects is its element's as an
 edge is; the face of one selected is its own either way, and draws no box (`Scene::held_face`). What a face does is Select
 Elements by Face's to say (below): on, a click on it selects and a crossing box drawn inside it takes what it is of; off, a
-crossing box wholly inside a face, meeting none of its edges, doesn't take the form, as Revit's doesn't, and a click selects by
+crossing box wholly inside a face, meeting none of its edges, doesn't take the form, and a click selects by
 an edge alone: a form is boxed and clicked by the edges the view draws it with. A drag moves nothing but a selected plane of the
 family's own, a handle or a grip, as before. With several selected, Properties say how many (Multi-Select (N)) and show none of
 their rows, the contextual tab is Modify | Multi-Select, each is drawn selected (in the views, in {3D}, and in the Project
@@ -819,13 +820,13 @@ the selection go. What goes from the draft another way (undone, redone, changed 
 (`FamilyEditor::prune_selection`); the history keeps the reference lines too (`Draft`), so Undo brings back a line deleted. {3D}
 has no box: a drag there turns the view, as before.
 
-FE-20: the selection's commands, as Revit's family editor has them, over that one set (`editor/selection.rs`; what each finds
+FE-20: the selection's commands, over that one set (`editor/selection.rs`; what each finds
 is the core's, `family/select.rs`). None has a key of its own in the family yet; Find (Ctrl+K) lists each on a family's tab
 where it works (`BimApp::family_find_actions`, `family_find_action`), and one with nothing to work on (Filter with nothing
 selected, Select Previous with no selection before this one, any of them while a form is sketched or in an adaptive family)
 does nothing. None is a step of the document's history, and nothing reaches the project.
 
-- **Filter** (the Select panel's Filter on Modify | Multi-Select, where Revit has it; the status bar's funnel, which on a
+- **Filter** (the Select panel's Filter on Modify | Multi-Select; the status bar's funnel, which on a
   family's tab counts and filters the family's selection, never the project's) lists the kinds the selection holds, each with
   how many of it (`select::groups`): forms by what they are (Extrusions, Blends, Revolves, Sweeps, Swept Blends, the void ones
   apart, a file's Meshes), Reference Planes, Reference Lines, Dimensions, Symbols, Connectors and Nested Instances, in that
@@ -849,7 +850,7 @@ does nothing. None is a step of the document's history, and nothing reaches the 
   symbol, a connector and a nested instance made since have neither yet, and nothing names them.
 - **Select Elements by Face** (the toggle left of the status bar's funnel on the tab of a family that isn't adaptive, lit
   while on and crossed out while off; the window's setting, `select_by_face` in `settings.json`, on to begin with since a click
-  has always taken a form by its face, where Revit begins with it off): on, a click on a form's or a nested instance's face
+  has always taken a form by its face): on, a click on a form's or a nested instance's face
   selects it, and a crossing box takes one by its faces as by its edges, so one drawn wholly inside a face takes what the face
   is of (`views::face_in_box`, `geom::SelectBox::touches`); off, each is taken by an edge the view draws it with alone
   (`views::form_edge_at`, `nested_edge_at`, over `outline_edges`: an L's inner corner, never its hull's chord), by a click and
@@ -857,7 +858,7 @@ does nothing. None is a step of the document's history, and nothing reaches the 
   the plans and elevations: greyed in {3D}, which takes a form by its face either way as the project's 3D view does, and while
   a form is sketched.
 - **Drag Elements on Selection** (the toggle between Select Elements by Face and the funnel, drawn as that one is; the
-  window's setting, `drag_on_selection` in `settings.json`, off to begin with, as Revit begins with it): off, the face of a form
+  window's setting, `drag_on_selection` in `settings.json`, off to begin with): off, the face of a form
   or a nested instance that isn't selected is the box's to begin in, as above; on, a drag from it is the element's, as a drag
   from its edge is, and selects it (Ctrl adds it; `Scene::under`). Only where a face selects: with Select Elements by Face off a
   face picks nothing, so a drag from one is still a box and this changes nothing. A form the view leaves out (`Scene::hidden`)

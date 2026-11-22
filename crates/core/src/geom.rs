@@ -550,7 +550,7 @@ impl Region {
     }
 }
 
-/// A selection box dragged from one point to another (a screen's pixels or a plan's millimetres alike), as Revit's: dragged
+/// A selection box dragged from one point to another (a screen's pixels or a plan's millimetres alike): dragged
 /// left to right it is a window, which takes what lies wholly inside it; right to left a crossing, which takes what lies inside
 /// it or crosses its edges too. The one rule every view that boxes elements goes by (an adaptive family's modelling view, a
 /// family's plans and elevations), each handing it what it draws an element with.
@@ -605,7 +605,7 @@ impl SelectBox {
 
     /// Whether some of triangle `t` lies in it, its edges counting: a corner of the triangle in it, an edge of the triangle
     /// across it, or the whole of it inside the triangle. What a crossing takes a face by, where a face selects what it is
-    /// of (Revit's Select Elements by Face). A triangle not finite is never touched.
+    /// of (Select Elements by Face). A triangle not finite is never touched.
     pub fn touches(&self, t: &[P2; 3]) -> bool {
         if t.iter().any(|p| !p.is_finite()) {
             return false;
@@ -838,7 +838,7 @@ mod tests {
         }
     }
 
-    /// Revit's selection box: dragged left to right a window, which takes what lies wholly inside it; right to left a
+    /// A selection box: dragged left to right a window, which takes what lies wholly inside it; right to left a
     /// crossing, which takes what it touches too. Its edges count as inside; what draws nothing, or isn't finite, is never
     /// taken.
     #[test]

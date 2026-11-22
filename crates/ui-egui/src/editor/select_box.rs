@@ -1,5 +1,5 @@
 //! FE-1: what is selected in the document of a family that isn't adaptive, kept as one set, and the selection box its plans
-//! and elevations draw, as Revit's family editor has them.
+//! and elevations draw.
 //!
 //! The set (`Selection`) is the only place the selection is kept: forms, reference planes (a datum too, as a click takes
 //! one), reference lines, dimensions, plan symbols, connectors and nested instances, each once, in the order picked. The
@@ -29,7 +29,7 @@
 //! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place.
 //! Select Elements by Face (FE-20, `selection.rs`) says what a face does: on, a click on a form's or a nested instance's
 //! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
-//! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, as Revit's doesn't, and a
+//! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, and a
 //! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
 //! (`Scene::under`), unless Drag Elements on Selection is on and a face selects: then that face is its element's as an edge
 //! is (`selection.rs`); a drag from an element's edge, a plane, a line or a connector, or from the face of one selected (with
@@ -44,10 +44,10 @@ use bimcraft_core::render::{Drawing, View};
 use egui::{Modifiers, Painter, Pos2, Response};
 
 /// One thing selected in a family document that isn't adaptive: the core's, with what any front end needs of a selection
-/// (`family::select`: Filter's kinds, Select by ID, Select All Instances).
+/// (`family::select`: Filter's kinds, Select by ID).
 pub(crate) use bimcraft_core::family::select::Picked;
 
-/// What a click or a box does with what it takes, by the keys held, as Revit's: Ctrl adds it, Shift takes it away, else it
+/// What a click or a box does with what it takes, by the keys held: Ctrl adds it, Shift takes it away, else it
 /// is the selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum How {
@@ -560,10 +560,10 @@ impl Scene<'_> {
     }
 
     /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
-    /// nested instance by an edge the view draws it with. The face of a form or a nested instance is the box's to begin in, as
-    /// Revit's (FE-20), but for one of `selected`, with Select Elements by Face on or off: dragging what is selected is its
+    /// nested instance by an edge the view draws it with. The face of a form or a nested instance is the box's to begin in
+    /// (FE-20), but for one of `selected`, with Select Elements by Face on or off: dragging what is selected is its
     /// own. With Drag Elements on Selection on, a face that selects (`by_face`) is its form's or its nested instance's
-    /// selected or not, so a drag from it selects that and moves it; off, or with faces selecting nothing, it is as above.
+    /// selected or not, so a drag from it selects that; off, or with faces selecting nothing, it is as above.
     pub(super) fn under(&self, p: Pos2, selected: &[Picked]) -> bool {
         let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
         let reach = self.reach();
