@@ -52,6 +52,8 @@ const STEPS: usize = 100;
 #[derive(Clone, PartialEq)]
 pub(super) struct Draft {
     name: String,
+    solidcraft: Option<Arc<bimcraft_core::family::solidcraft::Source>>,
+    dimension_parameters: BTreeMap<String, String>,
     category: Category,
     operation: Option<Operation>,
     params: Vec<ParamText>,
@@ -76,6 +78,8 @@ impl Draft {
     fn of(ed: &FamilyEditor) -> Draft {
         Draft {
             name: ed.name.clone(),
+            solidcraft: ed.solidcraft.clone(),
+            dimension_parameters: ed.dimension_parameters.clone(),
             category: ed.category,
             operation: ed.operation,
             params: ed.params.clone(),
@@ -95,6 +99,8 @@ impl Draft {
 
     fn restore(self, ed: &mut FamilyEditor) {
         ed.name = self.name;
+        ed.solidcraft = self.solidcraft;
+        ed.dimension_parameters = self.dimension_parameters;
         ed.category = self.category;
         ed.operation = self.operation;
         ed.params = self.params;

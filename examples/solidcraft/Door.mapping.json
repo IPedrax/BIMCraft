@@ -1,0 +1,38 @@
+{
+  "category": "door",
+  "parameters": {
+    "Width": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "Height": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "LowerPanelHeight": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "HandleHeight": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "FrameWidth": {
+      "scope": "type",
+      "group": "dimensions"
+    },
+    "FrameDepth": {
+      "scope": "type",
+      "group": "dimensions"
+    },
+    "StileWidth": {
+      "scope": "type",
+      "group": "dimensions"
+    }
+  },
+  "dimensions": {
+    "Width": "Width",
+    "Height": "Height",
+    "Depth": "FrameDepth"
+  }
+}

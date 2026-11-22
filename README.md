@@ -993,3 +993,7 @@ the ArtCraft team, as its logo follows CADCraft's style.
   <img alt="" src="assets/app-icon/bimcraft-64.png" width="28"><br>
   <sub>Made by IPedrax, in pure Rust.</sub>
 </p>
+
+### Optional SolidCraft source families (review)
+
+An explicitly configured vanilla SolidCraft 0.44.1 CLI can evaluate embedded source geometry from native family inputs. See the [setup, original examples and limitations](docs/solidcraft-bridge.md). The companion mapping publisher is a Python CLI; this proposal does not add a native import dialog or bundle SolidCraft.

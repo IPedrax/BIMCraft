@@ -16582,6 +16582,12 @@ fn patch_parameter(
         Some(Value::String(to)) if !to.trim().is_empty() => Some(to.trim().to_string()),
         Some(v) => return Err(bad(c, format!("`parameter`: `rename` is the parameter's new name, not {v}"))),
     };
+    if rename.as_ref().is_some_and(|to| *to != name) && f.solidcraft.as_ref().is_some_and(|s| s.inputs.contains_key(&name)) {
+        return Err(bad(
+            c,
+            format!("SolidCraft input `{name}` cannot be renamed here. Rename it in SolidCraft and republish with reviewed bindings."),
+        ));
+    }
     // One of Revit's groups, or a heading of the family's own: one line of text.
     if let Some(g) = fields.get("group").filter(|g| !g.is_null())
         && !g.as_str().and_then(crate::family::Under::read).is_some_and(|u| u.check("").is_ok())
@@ -16734,6 +16740,12 @@ fn delete_parameter(
     let Some(at) = f.parameters.iter().position(|q| q.name == name) else {
         return Err(bad(c, format!("family \"{family}\" has no parameter `{name}` to delete")));
     };
+    if f.solidcraft.as_ref().is_some_and(|s| s.inputs.contains_key(name)) {
+        return Err(bad(
+            c,
+            format!("SolidCraft input `{name}` cannot be deleted here. Change it in SolidCraft and republish with reviewed bindings."),
+        ));
+    }
     f.parameters.remove(at);
     f.types.values_mut().for_each(|t| {
         t.remove(name);
@@ -17016,6 +17028,8 @@ fn family(s: &mut Session, p: &Value) -> R {
             "operation",
             "connectors",
             "adaptive",
+            "solidcraft",
+            "dimension_parameters",
             "planes",
             "lines",
             "dimensions",
@@ -17125,6 +17139,8 @@ fn family(s: &mut Session, p: &Value) -> R {
     // Read it, which changes nothing and costs no undo step: what it is, each of its types' values
     // worked out, and what's worth knowing. `dry_run` reads it the same way and says it changed nothing.
     let keys = [
+        "solidcraft",
+        "dimension_parameters",
         "category",
         "kind",
         "ifc",
@@ -17218,6 +17234,12 @@ fn family(s: &mut Session, p: &Value) -> R {
     let mut f = if overwrite.is_some() { Default::default() } else { was.clone().unwrap_or_default() };
     let field = |key: &str, e: serde_json::Error| bad(c, format!("`{key}`: {e}"));
     let mut patches = Patches::default();
+    if let Some(v) = p.get("dimension_parameters") {
+        f.dimension_parameters = serde_json::from_value(v.clone()).map_err(|e| field("dimension_parameters", e))?;
+    }
+    if let Some(v) = p.get("solidcraft") {
+        f.solidcraft = serde_json::from_value(v.clone()).map_err(|e| field("solidcraft", e))?;
+    }
     if let Some(v) = p.get("category").filter(|v| !v.is_null()) {
         f.category = serde_json::from_value(v.clone()).map_err(|e| field("category", e))?;
     }

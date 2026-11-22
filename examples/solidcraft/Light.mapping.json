@@ -1,0 +1,35 @@
+{
+  "category": "lighting",
+  "parameters": {
+    "FixtureWidth": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "CageHeight": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "Drop": {
+      "scope": "instance",
+      "group": "dimensions"
+    },
+    "CandleCount": {
+      "scope": "instance",
+      "group": "graphics",
+      "kind": "integer"
+    },
+    "BarWidth": {
+      "scope": "type",
+      "group": "dimensions"
+    },
+    "CandleHeight": {
+      "scope": "type",
+      "group": "dimensions"
+    }
+  },
+  "dimensions": {
+    "Width": "FixtureWidth",
+    "Height": "Drop",
+    "Depth": "FixtureWidth"
+  }
+}

@@ -1,0 +1,30 @@
+   Compiling bimcraft-i18n v0.12.0 (<checkout>/crates/i18n)
+   Compiling serde_json v1.0.154
+   Compiling bimcraft-core v0.12.0 (<checkout>/crates/core)
+error[E0425]: cannot find value `MAX_SOURCE_BASE64` in this scope
+   --> crates/core/src/family/solidcraft.rs:118:52
+    |
+118 |         let source = Source { document: "A".repeat(MAX_SOURCE_BASE64 + 1), inputs: BTreeMap::new() };
+    |                                                    ^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `evaluator_path` in this scope
+   --> crates/core/src/family/solidcraft.rs:115:17
+    |
+115 |         assert!(evaluator_path(None).unwrap_err().contains("BIMCRAFT_SOLIDCRAFT_CLI"));
+    |                 ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `evaluator_path` in this scope
+   --> crates/core/src/family/solidcraft.rs:116:17
+    |
+116 |         assert!(evaluator_path(Some("".into())).is_err());
+    |                 ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `evaluator_path` in this scope
+   --> crates/core/src/family/solidcraft.rs:117:20
+    |
+117 | ...   assert_eq!(evaluator_path(Some("/opt/sc/solidcraft-cli".into())).unwrap(), std::path::PathBuf::from("/opt/sc/solidcraft-cli"));
+    |                  ^^^^^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `bimcraft-core` (lib test) due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...

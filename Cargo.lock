@@ -524,6 +524,7 @@ dependencies = [
 name = "bimcraft-core"
 version = "0.12.0"
 dependencies = [
+ "base64 0.23.1",
  "bimcraft-i18n",
  "cap",
  "crs-definitions",
