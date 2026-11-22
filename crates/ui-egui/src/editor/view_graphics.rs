@@ -423,7 +423,7 @@ impl FamilyEditor {
         }
         if category {
             if forms.is_empty() {
-                return Err(msg!("reference planes have no category to hide in a family's view: Hide Element (EH) hides each"));
+                return Err(msg!("reference planes have no category to hide in a family's view: Hide Element hides each"));
             }
             let cat = self.forms_category();
             self.views.kept.hide_category(which, cat, true);
@@ -441,13 +441,13 @@ impl FamilyEditor {
         if category {
             let cat = self.forms_category();
             if forms.is_empty() || !self.views.kept.hidden_category(which, cat) {
-                return Err(msg!("select a form the view hides with its category first: Reveal Hidden Elements (RH) shows them"));
+                return Err(msg!("select a form the view hides with its category first: Reveal Hidden Elements shows them"));
             }
             self.views.kept.hide_category(which, cat, false);
         } else {
             let hidden: Vec<Guid> = forms.into_iter().chain(planes).filter(|g| self.views.kept.hidden_by_element(which, *g)).collect();
             if hidden.is_empty() {
-                return Err(msg!("select what the view hides first: Reveal Hidden Elements (RH) shows it"));
+                return Err(msg!("select what the view hides first: Reveal Hidden Elements shows it"));
             }
             self.views.kept.unhide(which, &hidden);
         }
