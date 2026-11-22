@@ -331,15 +331,20 @@ pub(super) fn depth(ui: &mut Ui, units: Units, f: &mut FormText, values: &BTreeM
     let shown = from.zip(to).map(|(a, b)| units.length(b - a)).unwrap_or_else(|| "?".into());
     // An end a dimension sets takes no typing here.
     let free = f.to.trim().parse::<f64>().is_ok_and(f64::is_finite) && driven.iter().all(Option::is_none);
+    // Its own width, whatever the Options Bar held before: the bar's card is as wide as it was last, and a field laid out in
+    // what is left of it would come out too narrow for its value and stay so.
+    let size = vec2(90.0, ui.spacing().interact_size.y);
     match from {
         Some(start) if free => {
-            if let Some(d) = typed(ui, UiId::new("family-options-depth"), l.id, shown, 90.0, |s| units.parse(s)) {
+            let typed =
+                ui.allocate_ui(size, |ui| typed(ui, UiId::new("family-options-depth"), l.id, shown, 90.0, |s| units.parse(s))).inner;
+            if let Some(d) = typed {
                 f.to = number_text(start + d);
             }
         }
         _ => {
             let mut shown = shown;
-            ui.add_enabled(false, TextEdit::singleline(&mut shown).desired_width(90.0)).labelled_by(l.id);
+            ui.add_enabled_ui(false, |ui| ui.add_sized(size, TextEdit::singleline(&mut shown)).labelled_by(l.id));
         }
     }
 }

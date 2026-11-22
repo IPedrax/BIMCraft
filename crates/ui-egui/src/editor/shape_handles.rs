@@ -193,10 +193,11 @@ impl FamilyEditor {
         done
     }
 
-    /// The Start or End drag and the edge drag given up, each form put back as it was before it began (so no step of the
+    /// The Start or End drag, the edge drag and the selection's move given up, each form put back as it was before it began (so no step of the
     /// history): Escape, Undo and Redo, and the view it began in shown no longer. Whether there was one.
     pub(crate) fn cancel_drags(&mut self) -> bool {
-        let mut any = false;
+        // The selection being moved too (FE-7).
+        let mut any = self.cancel_move();
         if let Some(d) = self.views.edge_drag.take() {
             if let Some(i) = self.forms.iter().position(|f| f.tag == d.before.tag) {
                 self.forms[i] = d.before;

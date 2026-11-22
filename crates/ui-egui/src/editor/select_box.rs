@@ -33,7 +33,8 @@
 //! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
 //! (`Scene::under`), unless Drag Elements on Selection is on and a face selects: then that face is its element's as an edge
 //! is (`selection.rs`); a drag from an element's edge, a plane, a line or a connector, or from the face of one selected (with
-//! Select Elements by Face on or off), is the element's and draws none. {3D} has no box: a drag there turns the view.
+//! Select Elements by Face on or off), is the element's and draws none: it moves the selection (FE-7, `drag_move.rs`), the
+//! element selected first if it isn't. {3D} has no box: a drag there turns the view.
 use super::*;
 use bimcraft_core::family::constraints::DimMark;
 use bimcraft_core::family::views::{self as fv, Staged, Which};

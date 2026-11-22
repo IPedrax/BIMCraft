@@ -184,6 +184,11 @@ impl FamilyEditor {
         Draft::of(self)
     }
 
+    /// The draft made `d` again, as Undo makes a step: what a refused drag puts back.
+    pub(super) fn put_back(&mut self, d: Draft) {
+        d.restore(self);
+    }
+
     /// The draft `d` was saved or loaded into the project: changes are counted from it.
     pub(super) fn saved_as(&mut self, d: Draft) {
         self.document.clean = Some(d);
@@ -1556,6 +1561,17 @@ impl BimApp {
             (Some(_), false) if ed.views.pivoting.is_some() => {
                 msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
             }
+            (Some(_), false) if ed.moving() => msg!("Moving the selection: let go to put it there; Esc gives the move up."),
+            (Some(_), false) if ed.views.over_selected => msg!(
+                "Drag to move what is selected (what a lock, a label or a formula holds stays, and the move is refused); click to select, Ctrl to add, Shift to take away."
+            ),
+            // Drag Elements on Selection on, where a face selects: a face is its element's to drag, said first so it shows.
+            (Some(_), false) if ed.selecting.drag_faces && ed.selecting.by_face && ed.selected_form().is_some() => msg!(
+                "Drag a face to move what it is of, a selected form's arrows to move its sides and ends, from nothing to box; click to select, Ctrl to add, Shift to take away."
+            ),
+            (Some(_), false) if ed.selecting.drag_faces && ed.selecting.by_face => msg!(
+                "Drag a face to move what it is of, from nothing to box; click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away."
+            ),
             (Some(_), false) if ed.selected_form().is_some() => msg!(
                 "Drag a selected form's arrows to move its sides and ends; click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box."
             ),

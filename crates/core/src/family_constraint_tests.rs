@@ -373,3 +373,72 @@ fn hostile_dimensions_never_panic() {
     fam["dimensions"] = json!(dims);
     run(&mut s, "family", fam);
 }
+
+#[test]
+fn a_move_shifts_what_it_takes_and_is_refused_where_a_constraint_holds_it() {
+    use crate::family::constraints::{MoveRefused, Moving, Stays};
+    let s = boxed();
+    let f = &s.model.families["Box"];
+    let v = f.values("Small", &BTreeMap::new()).unwrap();
+    let post = f.forms.iter().position(|x| x.guid == g(POST)).unwrap();
+    // The post across the plan: each of its sketch's points moved by as much, its ends staying.
+    let moving = Moving { forms: vec![post], ..Moving::default() };
+    let edits = f.move_by(&v, &moving, [100.0, 50.0, 0.0]).unwrap();
+    let points: Vec<[f64; 2]> = edits
+        .iter()
+        .filter_map(|e| match e {
+            Edit::Point(i, _, _, p) if *i == post => Some(*p),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(points.len(), 8, "{edits:?}");
+    assert!(points.iter().all(|p| (p[0].abs() - 50.0).abs() < 1e-9 || (p[0] - 150.0).abs() < 1e-9), "{points:?}");
+    assert!(points.iter().any(|p| p == &[150.0, 100.0]) && points.iter().any(|p| p == &[50.0, 0.0]), "{points:?}");
+    assert!(!edits.iter().any(|e| matches!(e, Edit::End(..))), "{edits:?}");
+    // Up: its end is locked to Top, which Height holds: refused, naming what holds it.
+    let e = f.move_by(&v, &moving, [0.0, 0.0, 100.0]).unwrap_err();
+    assert!(matches!(&e, MoveRefused::Unsat(u) if u.message.starts_with(NOT_SATISFIED) && !u.dims.is_empty()), "{e:?}");
+    // Right, which Width and EQ hold, refused; Left and Right together across x keep Width, but EQ about the centre holds them.
+    let planes = |ps: &[&str]| Moving { planes: ps.iter().map(|p| g(p)).collect(), ..Moving::default() };
+    assert!(f.move_by(&v, &planes(&[RIGHT]), [100.0, 0.0, 0.0]).is_err());
+    assert!(f.move_by(&v, &planes(&[LEFT, RIGHT]), [100.0, 0.0, 0.0]).is_err());
+    // Along themselves they slide freely: nothing to solve but where they are.
+    assert!(f.move_by(&v, &planes(&[LEFT, RIGHT]), [0.0, 100.0, 0.0]).is_ok());
+    // A datum stays.
+    let datum = Moving { planes: vec![CENTER_LEFT_RIGHT], ..Moving::default() };
+    assert!(matches!(f.move_by(&v, &datum, [10.0, 0.0, 0.0]), Err(MoveRefused::Stays(Stays::Datum(_)))));
+}
+
+#[test]
+fn a_reference_line_drawn_on_a_plane_a_drag_or_a_move_moves_goes_with_it() {
+    use crate::family::constraints::Moving;
+    let mut s = Session::new();
+    const WALL: &str = "33333333-3333-4333-8333-000000000001";
+    const ON: &str = "33333333-3333-4333-8333-000000000002";
+    run(
+        &mut s,
+        "family",
+        json!({"name": "W", "parameters": [{"name": "Gap", "kind": "length", "value": 1800}], "types": {"T": {}},
+               "ref_planes": [{"guid": WALL, "name": "Wall", "start": [-2000, 1800, 0], "end": [2000, 1800, 0], "up": [0, 0, 1]}],
+               "ref_lines": [{"guid": ON, "host": {"plane": WALL}, "start": [-300, 1800, 500], "end": [300, 1800, 500]}],
+               "dimensions": [{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK}, {"plane": WALL}], "at": [0, 900, 0], "label": "Gap"}]}),
+    );
+    let f = &s.model.families["W"];
+    let v = f.values("T", &BTreeMap::new()).unwrap();
+    let line_y = |edits: &[Edit]| {
+        edits.iter().find_map(|e| match e {
+            Edit::LineEnds(g_, a, b) if *g_ == g(ON) => Some((a[1], b[1])),
+            _ => None,
+        })
+    };
+    // Dragged (F4): Gap takes the new length, and the line goes with Wall.
+    let n = f.planes.iter().find(|p| p.guid == g(WALL)).unwrap().frame().z;
+    let to = 2000.0 * n[1];
+    let edits = f.drag_plane(&v, g(WALL), to).unwrap();
+    assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
+    // Moved with its label taken off (FE-7): the same.
+    let mut free = f.clone();
+    free.dimensions.clear();
+    let edits = free.move_by(&v, &Moving { planes: vec![g(WALL)], ..Moving::default() }, [0.0, 200.0, 0.0]).unwrap();
+    assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
+}

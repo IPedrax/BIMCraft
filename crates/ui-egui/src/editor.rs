@@ -7,6 +7,7 @@ pub(crate) mod connector_marks;
 pub(crate) mod connectors;
 pub(crate) mod dimensions;
 pub(crate) mod document;
+mod drag_move;
 pub(crate) mod exists;
 mod extrusion;
 pub(crate) mod lit3d;

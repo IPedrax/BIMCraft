@@ -246,21 +246,23 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     assert!(editor(&h).planes.iter().all(|p| !p.datum() || p.as_datum()), "the datums as they are");
 }
 
-/// A drag from a plane that isn't selected selects it and leaves it where it is; once selected, a drag moves it.
+/// A drag from a plane that isn't selected selects it and moves it, as a drag from any element moves what it selects (FE-7);
+/// selected, a drag moves it again.
 #[test]
-fn a_drag_from_a_plane_not_selected_selects_it_and_the_next_drag_moves_it() {
+fn a_drag_from_a_plane_not_selected_selects_it_and_moves_it() {
     let (mut h, _) = boxed();
     view(&mut h, Some(Which::Plan));
     let edge = plane(&h, "Edge").guid;
     assert_eq!(editor(&h).selected_plane(), None);
-    let was = plane(&h, "Edge").clone();
     let (a, b) = (editor(&h).views.screen_of([-400.0, 0.0, 0.0]).unwrap(), editor(&h).views.screen_of([-100.0, 200.0, 0.0]).unwrap());
     drag_screen(&mut h, a, b, PointerButton::Primary);
     assert_eq!(editor(&h).selected_plane(), Some(edge), "the drag selects Edge");
-    assert_eq!(*plane(&h, "Edge"), was, "and leaves it where it was");
+    let p = plane(&h, "Edge").clone();
+    assert!((p.start[0] + 100.0).abs() < 15.0 && (p.end[0] + 100.0).abs() < 15.0, "and moves it: {p:?}");
+    let (a, b) = (editor(&h).views.screen_of([-100.0, 0.0, 0.0]).unwrap(), editor(&h).views.screen_of([-300.0, 0.0, 0.0]).unwrap());
     drag_screen(&mut h, a, b, PointerButton::Primary);
     let p = plane(&h, "Edge");
-    assert!((p.start[0] + 100.0).abs() < 15.0 && (p.end[0] + 100.0).abs() < 15.0, "selected, a drag moves it: {p:?}");
+    assert!((p.start[0] + 300.0).abs() < 15.0 && (p.end[0] + 300.0).abs() < 15.0, "selected, a drag moves it again: {p:?}");
 }
 
 /// A window with a Sill plane on Ref. Level, Align-locked to it, and Head 1200 above: as the blank window has Sill (F10c).
