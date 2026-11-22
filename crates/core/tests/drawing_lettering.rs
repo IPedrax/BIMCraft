@@ -11,12 +11,24 @@ mod tests {
     }
 
     fn picture(session: &mut Session) -> (Vec<u8>, Value) {
+        picture_of(session, "Level 1", 640, 480)
+    }
+
+    fn picture_of(session: &mut Session, view: &str, width: u32, height: u32) -> (Vec<u8>, Value) {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("plan.png");
-        let reply = session.execute("render", &json!({"view": "Level 1", "width": 640, "height": 480, "path": path})).unwrap();
+        let path = dir.path().join("view.png");
+        let reply = session.execute("render", &json!({"view": view, "width": width, "height": height, "path": path})).unwrap();
         let image = tiny_skia::Pixmap::load_png(path).unwrap();
-        assert_eq!((image.width(), image.height()), (640, 480));
+        assert_eq!((image.width(), image.height()), (width, height));
         (image.data().to_vec(), reply)
+    }
+
+    /// Eighteen by ten metres of walls with a room in them, named `name`.
+    fn room(name: &str) -> Session {
+        let mut session = Session::new();
+        session.execute("wall", &json!({"points": [[0, 0], [18000, 0], [18000, 10000], [0, 10000]], "closed": true})).unwrap();
+        session.execute("room", &json!({"point": [9000, 5000], "name": name})).unwrap();
+        session
     }
 
     #[test]
@@ -95,5 +107,79 @@ mod tests {
             session.execute("modify", &json!({"id": note["id"], "text": "??"})).unwrap();
             assert!(picture(&mut session).0 != greek, "{font} must preserve its non-Latin fallback");
         }
+    }
+
+    #[test]
+    fn ukrainian_room_names_are_lettered_on_the_plan_without_a_question_mark() {
+        let (drawn, reply) = picture(&mut room("Кухня-вітальня"));
+        assert!(reply.get("notes").is_none(), "Ukrainian letters need no diagnostic: {reply}");
+        // The letters are drawn, not the question mark the missing glyphs used to become, and they are not blank.
+        let (question, question_reply) = picture(&mut room("Кухня-в?тальня"));
+        assert!(question_reply.get("notes").is_none(), "{question_reply}");
+        assert!(drawn != question, "і must be drawn, not replaced by a question mark");
+        let (blank, _) = picture(&mut room("Кухня-в тальня"));
+        assert!(drawn != blank, "і must be inked, not left as a space");
+    }
+
+    #[test]
+    fn ukrainian_letters_are_lettered_in_a_section_without_a_question_mark() {
+        let section = |level: &str| {
+            let mut session = Session::new();
+            session.execute("level", &json!({"name": level, "elevation": 1500})).unwrap();
+            session.execute("wall", &json!({"points": [[0, 0], [8000, 0]]})).unwrap();
+            // A section looks to the left of its line's direction: at y = -1000 it looks north at the wall on y = 0.
+            session.execute("section", &json!({"start": [-1000, -1000], "end": [9000, -1000], "name": "Розріз"})).unwrap();
+            session
+        };
+        // A section names its levels in the drawing lettering, so a Ukrainian name is a lettering path too.
+        let (drawn, reply) = picture_of(&mut section("Рівень Ї"), "Розріз", 640, 480);
+        assert!(reply.get("notes").is_none(), "Ukrainian letters need no diagnostic: {reply}");
+        let (question, _) = picture_of(&mut section("Рівень ?"), "Розріз", 640, 480);
+        assert!(drawn != question, "Ї must be drawn, not replaced by a question mark");
+    }
+
+    #[test]
+    fn a_sheet_and_its_pdf_letter_ukrainian_names_without_a_question_mark() {
+        let mut session = room("Кухня-вітальня");
+        session.execute("sheet", &json!({"number": "S-02", "name": "Кухня-вітальня", "size": "A3"})).unwrap();
+        session.execute("place", &json!({"sheet": "S-02", "view": "Level 1", "scale": 100, "at": [210, 165]})).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("ukrainian-sheet.png");
+        let reply = session.execute("render", &json!({"view": "S-02", "path": png})).unwrap();
+        assert!(reply.get("notes").is_none(), "the sheet's view of the room needs no diagnostic: {reply}");
+        assert!(tiny_skia::Pixmap::load_png(&png).unwrap().data().iter().any(|b| *b != 0), "the sheet is not blank");
+        let pdf = dir.path().join("ukrainian-sheet.pdf");
+        let reply = session.execute("render", &json!({"view": "S-02", "path": pdf})).unwrap();
+        assert!(reply.get("notes").is_none(), "{reply}");
+        assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-"), "the sheet writes a PDF");
+    }
+
+    #[test]
+    fn ukrainian_lettering_survives_native_save_and_reopen_pixel_for_pixel() {
+        let mut session = room("Кухня-вітальня");
+        let (before, reply) = picture(&mut session);
+        assert!(reply.get("notes").is_none(), "{reply}");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ukrainian.bimcraft");
+        session.execute("save", &json!({"path": path})).unwrap();
+        let mut reopened = Session::new();
+        reopened.execute("open", &json!({"path": path})).unwrap();
+        let (after, reply) = picture(&mut reopened);
+        assert!(after == before, "reopened Ukrainian lettering changed");
+        assert!(reply.get("notes").is_none(), "{reply}");
+    }
+
+    #[test]
+    fn a_ukrainian_grid_head_is_lettered_in_our_own_lettering() {
+        let axis = |name: &str| {
+            let mut session = Session::new();
+            session.execute("grid_type", &json!({"name": "Lettering", "font": "BIMCraft Lettering"})).unwrap();
+            session.execute("grid", &json!({"start": [0, 0], "end": [0, 5000], "type": "Lettering", "name": name})).unwrap();
+            session
+        };
+        let (drawn, reply) = picture(&mut axis("Ґ"));
+        assert!(reply.get("notes").is_none(), "{reply}");
+        let (question, _) = picture(&mut axis("?"));
+        assert!(drawn != question, "Ґ must be drawn, not replaced by a question mark");
     }
 }

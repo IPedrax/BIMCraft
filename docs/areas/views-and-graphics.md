@@ -212,10 +212,12 @@ at most `MAX_LINEWORK` (2,000) edges, ends within `MAX_COORD`, and a line style 
 lines along all its edges in one pass (`render::linework`: the cost is the prims plus the edges, not a pass over every prim for
 each edge). A line style a view's linework uses can't be deleted, and an element's entries go with it.
 
-Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals, including leaning prime and double-prime
-marks and the ellipsis. Unsupported characters retain the question-mark fallback; `Drawing::notes` and the `render`
-reply's `notes` name their Unicode code points once per drawing, up to the drawing's 32 diagnostic entries. Text notes
-use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a note.
+Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals: Latin with its accents, Russian and
+Ukrainian Cyrillic (Ґ, Є, І, Ї), digits, leaning prime and double-prime marks and the ellipsis. A character it has no
+glyph for retains the question-mark fallback; `Drawing::notes` and the `render` reply's `notes` name the character and
+the label it stands in (up to 40 characters), once per drawing each, up to the drawing's 32 diagnostic entries. Text
+notes use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a
+note.
 
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a

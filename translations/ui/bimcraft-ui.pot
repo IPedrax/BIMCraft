@@ -4526,8 +4526,8 @@ msgstr ""
 msgid "Cylinder"
 msgstr ""
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4907
+#: crates/core/src/render.rs:5252
 msgid "DN"
 msgstr ""
 
@@ -9941,7 +9941,7 @@ msgstr ""
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr ""
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3632
 msgid "NOT ENCLOSED"
 msgstr ""
 
@@ -12645,7 +12645,7 @@ msgstr ""
 msgid "Quantities"
 msgstr ""
 
-#: crates/core/src/render.rs:3627
+#: crates/core/src/render.rs:3632
 msgid "REDUNDANT"
 msgstr ""
 
@@ -17259,8 +17259,8 @@ msgstr ""
 msgid "Type:"
 msgstr ""
 
-#: crates/core/src/render.rs:4902
-#: crates/core/src/render.rs:5247
+#: crates/core/src/render.rs:4907
+#: crates/core/src/render.rs:5252
 msgid "UP"
 msgstr ""
 
