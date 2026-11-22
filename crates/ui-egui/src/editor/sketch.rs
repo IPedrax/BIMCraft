@@ -724,6 +724,7 @@ impl FamilyEditor {
         s.selected_dim = None;
         s.nested = Some(Nested { part: p, before: s.snap(), floor: s.history.len() });
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         self.views.aligning = None;
     }
 
@@ -751,6 +752,7 @@ impl FamilyEditor {
             s.sketch.picked.clear();
             self.views.aligning = None;
             self.views.dimensioning = None;
+            self.views.witnessing = None;
             return;
         }
         self.cancel_form_sketch();
@@ -922,6 +924,7 @@ impl FamilyEditor {
             s.selected_dim = None;
         }
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         if let Some(frame) = self.sketch_frame()
             && self.views.shown.is_some_and(|w| !flat(w, &frame))
         {
@@ -940,6 +943,7 @@ impl FamilyEditor {
         }
         self.views.aligning = None;
         self.views.dimensioning = None;
+        self.views.witnessing = None;
     }
 
     /// Finish Edit Mode: the lines checked as the core checks a sketch, and the form they make built with the family; then
@@ -1163,6 +1167,7 @@ impl FamilyEditor {
         }
         self.views.aligning = None;
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         self.sketch = None;
         self.select_only_form(at);
         Ok(())
@@ -2084,6 +2089,7 @@ impl BimApp {
         if modify {
             ed.views.aligning = None;
             ed.views.dimensioning = None;
+            ed.views.witnessing = None;
         }
         if let Some(g) = delete_dim {
             ed.delete_dimension(g);
@@ -2091,6 +2097,7 @@ impl BimApp {
         if trim {
             ed.views.aligning = None;
             ed.views.dimensioning = None;
+            ed.views.witnessing = None;
             if let Some(s) = ed.sketch.as_mut() {
                 s.trim_tool();
             }

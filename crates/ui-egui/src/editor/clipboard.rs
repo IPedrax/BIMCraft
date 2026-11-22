@@ -298,6 +298,7 @@ impl FamilyEditor {
         self.views.measuring = None;
         self.views.picking = None;
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         self.views.aligning = None;
         self.views.align_lock = None;
         self.views.pivoting = None;

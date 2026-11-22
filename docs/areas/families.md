@@ -170,6 +170,9 @@ sketch forms (below). Each of the six has an icon of its own (`icons.rs`: a bloc
 round top, a ring on its axis, a tube, a horn, a solid in dots), and a selected form's Properties are headed by its tool's
 (`FormText::icon`); Model Text, Connector and Show have theirs too, and Reference Plane and Set the project's own tools'.
 Undo and Redo are the document's own (`Draft`), and never undo the project.
+Find/Replace, beside Text on Annotate's Detail panel (`editor/find_replace.rs`), works on the family's text: Find and Replace
+with, Match case, Match whole word only; Find All selects the texts it is found in, Replace All replaces it in every one, the dialog's visit one step of the history. What a text names in braces (`{Width}`, a parameter) is
+neither found nor changed. It has no key in a family yet (the project's FR is Filled Region); Find lists it.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
@@ -664,6 +667,13 @@ labels, locks and EQ taken off, and what was being done done) or Cancel. An extr
 Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
 are F7c's (below).
+Edit Witness Lines (the Options Bar's button on an aligned dimension selected in a plan or an elevation, and Find; no key in a
+family yet, as the project's EW is Wire) adds and takes off a dimension's references: a click on one the Dimension tool takes adds it, in
+order along the dimension, or takes it off where the dimension has it; a click on nothing or Esc ends it; each click is a step
+(`dimensions::witnessed`, then the solve). It refuses the last two references, one not parallel to the others, and a labelled
+dimension (a label measures one segment). A lock is never lost without a word: taking off a reference a locked segment needs
+is refused unless the two segments it parts are both locked (they become one, locked at their sum), adding one inside a
+locked segment drops that lock and says so, and EQ left with one segment ends and says so. No new field: it edits `refs`.
 
 F7b, part of FORMAT 18: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
@@ -1914,6 +1924,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
   `editor/view_graphics.rs`: each view's graphics for the session: Visibility/Graphics, visual style, Graphic Display
   Options, View Range, Selection Box, Hide in View and Override Graphics.
+- `editor/find_replace.rs`: Find/Replace on the family's text.
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched. `editor/shape_handles.rs`: a selected form's profile handles; `editor/handles3d.rs`: the same and its ends in {3D}; `editor/handle_params.rs`: a handle's drag through the parameter its place is. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.

@@ -11,6 +11,7 @@ pub(crate) mod document;
 mod drag_move;
 pub(crate) mod exists;
 mod extrusion;
+mod find_replace;
 pub(crate) mod handle_params;
 pub(crate) mod handles3d;
 pub(crate) mod lit3d;
@@ -594,6 +595,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
     /// Manage > Purge Unused, open (FE-19).
     purging: Option<purge::Purging>,
+    /// Annotate > Find/Replace, open.
+    find_replace: Option<find_replace::FindReplace>,
     pub(crate) nested_instances: Vec<bimcraft_core::family::NestedInstance>,
     /// Create > Component, on: the nested family and type a click places.
     pub(crate) placing: Option<(String, String)>,
@@ -747,6 +750,7 @@ impl FamilyEditor {
             last_component: None,
             nested: f.nested.clone(),
             purging: None,
+            find_replace: None,
             nested_instances: f.nested_instances.clone(),
             placing: None,
             into_host: false,
