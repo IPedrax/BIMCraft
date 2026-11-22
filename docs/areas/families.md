@@ -484,7 +484,11 @@ line is drawn on is refused, naming them. A new plane or line may carry a GUID o
 same command; a host given as an id is resolved to that plane's GUID (`Family::resolve_hosts`). A plane or line whose GUID
 the sync gives anew (a family loaded twice) takes what is drawn on it along (`Family::rehost`). The Family Editor keeps the
 planes, lines and hosts as they are; its Plane list picks a datum, and its plans and elevations draw, select and move
-planes (*The family's views*, below). A connector has no place yet: when it gets `at` and
+planes (*The family's views*, below). Create > Datum > Reference Line (FE-11) draws a line in a plan or an elevation of a family of
+any category that isn't adaptive (an adaptive family draws its own in {3D}): two clicks, each where the view looks through it
+onto the view's work plane (`family::views::new_line`), the line hosted there and selected; refused, saying why, where the
+view sees its work plane edge on. It has no key yet; Find lists it where its button is enabled
+(`tests/family_reference_line.rs`). A connector has no place yet: when it gets `at` and
 `direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own

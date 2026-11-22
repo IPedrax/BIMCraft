@@ -439,6 +439,36 @@ pub fn new_plane(st: &Staged, which: Which, a: P2, b: P2) -> Option<(P3, P3, P3)
     Some((st.from_view(which, a), st.from_view(which, b), up))
 }
 
+/// Why [`new_line`] draws nothing: the view sees the work plane edge on, so a click there is no point of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EdgeOn;
+
+/// A reference line drawn by clicks `a` and `b` in view `which` (FE-11): its ends where the view looks through them onto the
+/// work plane `on` (its frame); none for clicks closer than a millimetre; [`EdgeOn`] where the view sees the work plane edge on.
+pub fn new_line(st: &Staged, which: Which, on: &super::Frame, a: P2, b: P2) -> Result<Option<(P3, P3)>, EdgeOn> {
+    let looking = match which {
+        Which::Plan => [0.0, 0.0, -1.0],
+        Which::Ceiling => [0.0, 0.0, 1.0],
+        Which::Elevation(side) => {
+            let l = side.looking();
+            [l.0, l.1, 0.0]
+        }
+    };
+    let across: f64 = (0..3).map(|k| looking[k] * on.z[k]).sum();
+    if across.abs() < 1e-6 {
+        return Err(EdgeOn);
+    }
+    if a.dist(b) < 1.0 {
+        return Ok(None);
+    }
+    let onto = |q: P2| -> P3 {
+        let p = st.from_view(which, q);
+        let t: f64 = (0..3).map(|k| (on.origin[k] - p[k]) * on.z[k]).sum::<f64>() / across;
+        std::array::from_fn(|k| p[k] + looking[k] * t)
+    };
+    Ok(Some((onto(a), onto(b))))
+}
+
 /// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan (mm). The same slicing a section's cut is
 /// ([`view3d::slice`]), on the mesh turned so its height is the section's depth.
 pub fn plan_cut(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {

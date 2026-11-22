@@ -41,6 +41,8 @@ pub(crate) struct Views {
     pub(crate) detail: bimcraft_core::graphics::Detail,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
+    /// What `drawing` draws: a reference line on the view's work plane (FE-11), else a reference plane.
+    pub(crate) drawing_line: bool,
     /// The plane being dragged: where the pointer was, in the view's millimetres.
     pub(super) drag: Option<P2>,
     /// The press origin, retained while Shift constrains a drag across frames.
@@ -275,8 +277,19 @@ impl FamilyEditor {
 
     /// Reference Plane (RP): the tool, in a plan or an elevation of a family that isn't adaptive; the selection goes.
     pub(crate) fn reference_plane_tool(&mut self) {
+        self.datum_tool(false);
+    }
+
+    /// Reference Line (FE-11): the tool, where Reference Plane's is; its line lies on the view's work plane.
+    pub(crate) fn reference_line_tool(&mut self) {
+        self.datum_tool(true);
+    }
+
+    /// Reference Plane's tool, or Reference Line's (`line`), on; the selection goes.
+    fn datum_tool(&mut self, line: bool) {
         if self.editing_2d() {
             self.views.drawing = Some(None);
+            self.views.drawing_line = line;
             self.views.picking = None;
             self.let_everything_go();
         }
@@ -939,6 +952,7 @@ impl FamilyEditor {
         let mut place_at: Option<(PlaneRef, (f64, f64), f64)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
         let mut new_plane = None;
+        let mut new_line = None;
         let mut picked_work_plane = None;
         let mut new_dim = None;
         let mut align = None;
@@ -974,7 +988,23 @@ impl FamilyEditor {
                     None => self.views.drawing = Some(Some(q)),
                     Some(a) => {
                         let q = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(a, q).0 } else { q };
-                        new_plane = fv::new_plane(&c.staged, which, a, q);
+                        if self.views.drawing_line {
+                            // Reference Line (FE-11): on the view's work plane, where the view looks onto it.
+                            let host = self.views.work_plane();
+                            let edge_on =
+                                || t("The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set).").to_string();
+                            match self
+                                .plane_set()
+                                .frame(&host)
+                                .map_err(|e| e.to_string())
+                                .and_then(|f| fv::new_line(&c.staged, which, &f, a, q).map_err(|_| edge_on()))
+                            {
+                                Ok(line) => new_line = line.map(|(start, end)| (start, end, host)),
+                                Err(e) => self.views.status = Some(e),
+                            }
+                        } else {
+                            new_plane = fv::new_plane(&c.staged, which, a, q);
+                        }
                         self.views.drawing = Some(None);
                     }
                 }
@@ -1269,6 +1299,11 @@ impl FamilyEditor {
                 turned: None,
             });
             self.select_only(Picked::Plane(guid));
+        }
+        if let Some((start, end, host)) = new_line {
+            let guid = Guid::new();
+            self.lines.push(RefLine { guid, start, end, host, ..Default::default() });
+            self.select_only(Picked::Line(guid));
         }
         problem.or_else(|| self.views.status.take())
     }
