@@ -250,3 +250,22 @@ fn creates_connectors_panel_places_connectors_the_browser_lists_and_properties_t
     browser_menu(&mut h, &row, "Delete");
     assert!(editor(&h).draft_family().unwrap().connectors.is_empty());
 }
+
+/// Undo takes a connector placed since away again and Redo puts it back, as for every other part of the family: each step of
+/// the document's history holds the connectors.
+#[test]
+fn undo_and_redo_take_a_placed_connector_away_and_put_it_back() {
+    let mut h = document(Category::Plumbing);
+    press(&mut h, "Connector");
+    press(&mut h, "Pipe Connector");
+    assert_eq!(editor(&h).draft_family().unwrap().connectors.len(), 1, "placed");
+    assert_eq!(editor(&h).selected_connector(), Some(0));
+    // Undo takes it away, and from the selection; Redo puts it back.
+    h.state_mut().family_undo();
+    h.run();
+    assert!(editor(&h).draft_family().unwrap().connectors.is_empty(), "undone: gone");
+    assert_eq!(editor(&h).selected_connector(), None, "and no longer selected");
+    h.state_mut().family_redo();
+    h.run();
+    assert_eq!(editor(&h).draft_family().unwrap().connectors.len(), 1, "redone: back");
+}
