@@ -44,6 +44,8 @@ pub(crate) struct Views {
     pub(crate) plane: Option<Guid>,
     /// The plane being dragged: where the pointer was, in the view's millimetres.
     pub(super) drag: Option<P2>,
+    /// The press origin, retained while Shift constrains a drag across frames.
+    drag_origin: Option<P2>,
     /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
     /// millimetres, and the normal it moves along.
     end_drag: Option<(bool, P2, [f64; 3])>,
@@ -883,6 +885,8 @@ impl FamilyEditor {
         if let Some(Some(first)) = self.views.drawing
             && let Some(hover) = response.hover_pos()
         {
+            let hover =
+                if ui.input(|i| i.modifiers.shift) { screen(bimcraft_core::snap::orthogonal_step(first, at_view(hover)).0) } else { hover };
             painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
         }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
@@ -979,6 +983,7 @@ impl FamilyEditor {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
                     Some(a) => {
+                        let q = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(a, q).0 } else { q };
                         new_plane = fv::new_plane(&c.staged, which, a, q);
                         self.views.drawing = Some(None);
                     }
@@ -1110,14 +1115,21 @@ impl FamilyEditor {
                 // A plane its pivot holds turns by its grip, never slides (F7d).
                 let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum() && q.pivot.is_none()));
                 self.views.drag = own.filter(|g| pick_plane(p) == Some(*g)).map(|_| at_view(p));
+                self.views.drag_origin = self.views.drag;
             }
             if let (Some(from), Some(to), Some(g)) = (self.views.drag, now, self.selected_plane()) {
+                let to = if ui.input(|i| i.modifiers.shift) {
+                    self.views.drag_origin.map_or(to, |origin| bimcraft_core::snap::orthogonal_step(origin, to).0)
+                } else {
+                    to
+                };
                 moved = Some((g, c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1))));
                 self.views.drag = Some(to);
             }
         }
         if response.drag_stopped() {
             self.views.drag = None;
+            self.views.drag_origin = None;
             self.views.end_drag = None;
             self.views.grip = None;
         }

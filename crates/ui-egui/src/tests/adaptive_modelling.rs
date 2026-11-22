@@ -622,3 +622,199 @@ fn pick_takes_a_points_plane_even_with_a_reference_plane_in_front_of_it_as_in_re
         bimcraft_core::adaptive::WorkPlane::Plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK))
     );
 }
+
+#[test]
+fn family_ortho_shift_constrains_move_on_horizontal_and_vertical_3d_work_planes() {
+    use bimcraft_core::family::{CENTER_FRONT_BACK, PlaneRef, REF_LEVEL};
+    for (plane, target) in [(REF_LEVEL, [650.0, 200.0, 0.0]), (CENTER_FRONT_BACK, [650.0, 0.0, 200.0])] {
+        let mut h = modelling();
+        tool(&mut h, "Line");
+        click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+        click_model(&mut h, [1000.0, 0.0, 0.0], Modifiers::NONE);
+        h.key_press(Key::Enter);
+        h.run();
+        tool(&mut h, "Modify");
+        let d = definition(&h);
+        let node = d.nodes.iter().find(|n| matches!(n.operation, Operation::Line { .. })).unwrap();
+        let a = match &node.operation {
+            Operation::Line { a, .. } => a.clone(),
+            other => panic!("{other:?}"),
+        };
+        let ed = h.state_mut().active_family_mut().unwrap();
+        ed.modeller.selection = vec![node.id.clone()];
+        ed.modeller.work_plane = bimcraft_core::adaptive::WorkPlane::Plane(PlaneRef::Plane(plane));
+        h.run();
+        tool(&mut h, "Move");
+        click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+        h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+        h.run();
+        click_model(&mut h, target, Modifiers::SHIFT);
+        let d = definition(&h);
+        let moved = d.evaluate(&Default::default(), &d.preview).origin(&a).unwrap();
+        assert!((0..3).all(|i| (moved[i] - [650.0, 0.0, 0.0][i]).abs() < 20.0), "{plane:?}: constrained move: {moved:?}");
+    }
+}
+
+#[test]
+fn family_ortho_shift_draws_past_an_existing_off_axis_point_without_moving_it() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+    click_model(&mut h, [650.0, 200.0, 0.0], Modifiers::NONE);
+    let before = definition(&h);
+    let off_axis = before.nodes.last().unwrap().id.clone();
+    tool(&mut h, "Line");
+    click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.run();
+    click_model(&mut h, [650.0, 200.0, 0.0], Modifiers::SHIFT);
+    h.key_press(Key::Enter);
+    h.run();
+    let d = definition(&h);
+    let line = d.nodes.iter().find(|n| matches!(n.operation, Operation::Line { .. })).unwrap();
+    let (a, b) = match &line.operation {
+        Operation::Line { a, b } => (a, b),
+        other => panic!("{other:?}"),
+    };
+    let r = d.evaluate(&Default::default(), &d.preview);
+    let p = r.origin(b).unwrap();
+    assert!((p[1] - r.origin(a).unwrap()[1]).abs() < 1e-6, "Shift must keep the new line horizontal: {p:?}");
+    assert_ne!(b, &off_axis, "an off-axis point must not replace the constrained endpoint");
+    let original = r.origin(&off_axis).unwrap();
+    assert!((original[1] - 200.0).abs() < 20.0, "the existing point stays where it was: {original:?}");
+}
+
+#[test]
+fn family_ortho_shift_line_from_a_raised_point_snaps_to_an_axis_point_on_the_plane() {
+    let mut h = modelling();
+    let d = h.state_mut().active_family_mut().unwrap().adaptive.as_mut().unwrap();
+    let raised = d.add_point([0.0, 0.0, 500.0]);
+    let target = d.add_point([650.0, 0.0, 0.0]);
+    h.run();
+    tool(&mut h, "Line");
+    click_model(&mut h, [0.0, 0.0, 500.0], Modifiers::NONE);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    click_model(&mut h, [650.0, 0.0, 0.0], Modifiers::SHIFT);
+    h.key_press(Key::Enter);
+    h.run();
+    let d = definition(&h);
+    let line = d.nodes.iter().find(|n| matches!(n.operation, Operation::Line { .. })).unwrap();
+    assert!(
+        matches!(&line.operation, Operation::Line { a, b } if a == &raised && b == &target),
+        "the on-plane axis point must be reused: {:?}",
+        line.operation
+    );
+}
+
+#[test]
+fn family_ortho_point_drag_uses_rotated_plane_axes_and_reads_shift_each_frame() {
+    use bimcraft_core::adaptive::{Frame, Plane, Transform, WorkPlane};
+    let mut h = modelling();
+    let d = h.state_mut().active_family_mut().unwrap().adaptive.as_mut().unwrap();
+    let anchor = d.add_point([-2000.0, -2000.0, 0.0]);
+    let q = std::f64::consts::FRAC_1_SQRT_2;
+    d.nodes.last_mut().unwrap().operation = Operation::Point {
+        host: Host::World {
+            frame: Frame { origin: [-2000.0, -2000.0, 0.0], x: [q, q, 0.0], y: [-q, q, 0.0], z: [0.0, 0.0, 1.0] },
+            plane: None,
+        },
+        transform: Transform::default(),
+    };
+    let point = d.add_point([0.0, 0.0, 300.0]);
+    h.state_mut().active_family_mut().unwrap().modeller.work_plane = WorkPlane::Point { point: anchor, plane: Plane::Xy };
+    h.state_mut().active_family_mut().unwrap().modeller.selection = vec![point.clone()];
+    h.run();
+    tool(&mut h, "Modify");
+    let ed = h.state().active_family().unwrap();
+    let start = ed.modeller.screen([0.0, 0.0, 300.0]);
+    let before = ed.modeller.camera.unwrap();
+    h.hover_at(start);
+    h.run();
+    h.event(Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for (local, shift, expected) in [
+        ([400.0, 100.0], false, [400.0, 100.0]),
+        ([600.0, 150.0], true, [600.0, 0.0]),
+        ([100.0, 700.0], true, [0.0, 700.0]),
+        ([200.0, 650.0], false, [200.0, 650.0]),
+    ] {
+        let world = [(local[0] - local[1]) * q, (local[0] + local[1]) * q, 300.0];
+        let pos = h.state().active_family().unwrap().modeller.screen(world);
+        h.event(Event::ModifiersChanged(if shift { Modifiers::SHIFT } else { Modifiers::NONE }));
+        h.hover_at(pos);
+        h.run();
+        let d = definition(&h);
+        let p = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
+        let local = [(p[0] + p[1]) * q, (-p[0] + p[1]) * q];
+        assert!(
+            (local[0] - expected[0]).abs() < 2.0 && (local[1] - expected[1]).abs() < 2.0 && (p[2] - 300.0).abs() < 1e-6,
+            "drag: {local:?}, expected {expected:?}, world {p:?}"
+        );
+    }
+    let pos = h.state().active_family().unwrap().modeller.screen([0.0, 0.0, 300.0]);
+    h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    let after = h.state().active_family().unwrap().modeller.camera.unwrap();
+    assert_eq!(
+        (before.azimuth, before.elevation, before.target, before.scale),
+        (after.azimuth, after.elevation, after.target, after.scale)
+    );
+}
+
+#[test]
+fn family_ortho_shift_drag_moves_a_point_without_orbiting() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+    let point = definition(&h).nodes.last().unwrap().id.clone();
+    let d = definition(&h);
+    let initial = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
+    tool(&mut h, "Modify");
+    let ed = h.state().active_family().unwrap();
+    let camera = ed.modeller.camera.unwrap();
+    let a = ed.modeller.screen([0.0, 0.0, 0.0]);
+    let b = ed.modeller.screen([650.0, 200.0, 0.0]);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::SHIFT });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::SHIFT });
+    h.run();
+    let d = definition(&h);
+    let p = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
+    assert!((p[0] - 650.0).abs() < 20.0 && (p[1] - initial[1]).abs() < 1e-6, "Shift primary drag should move horizontally: {p:?}");
+    let after = h.state().active_family().unwrap().modeller.camera.unwrap();
+    assert_eq!(
+        (camera.azimuth, camera.elevation, camera.target, camera.scale),
+        (after.azimuth, after.elevation, after.target, after.scale)
+    );
+}
+
+#[test]
+fn family_ortho_shift_drag_on_empty_space_keeps_existing_navigation() {
+    let mut h = modelling();
+    tool(&mut h, "Modify");
+    let m = &h.state().active_family().unwrap().modeller;
+    let before = m.camera.map(|c| (c.azimuth, c.elevation));
+    let start = m.rect.center() + vec2(200.0, 100.0);
+    let end = start + vec2(80.0, 40.0);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.hover_at(start);
+    h.run();
+    h.event(Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::SHIFT });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.hover_at(start + (end - start) * t);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: end, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::SHIFT });
+    h.run();
+    let after = h.state().active_family().unwrap().modeller.camera.map(|c| (c.azimuth, c.elevation));
+    assert_ne!(after, before, "Shift-drag away from a point keeps the existing orbit gesture");
+    assert!(definition(&h).nodes.is_empty());
+}

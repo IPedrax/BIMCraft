@@ -803,7 +803,15 @@ spline or ellipse), Modify (pick, Delete, a picked line's end dragged; Trim/Exte
 to where they meet, each keeping the part clicked, `draw::corner`, F10a) and Work Plane (Set, the Work Plane dialog for the sketch: the plane taken, its lines go with it in the plane's own
 axes; Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
 markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
-and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
+and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Holding Shift constrains
+a line or a chained arc's endpoint horizontally or vertically in the work plane's own axes, including in {3D}; releasing it
+restores free drawing. Other shapes' construction points and an arc's third point stay free.
+The core's `snap::orthogonal_step` also constrains reference-plane drawing and dragging in plans/elevations, and adaptive
+Line, Move/Copy and point dragging. Dragging keeps the press origin across frames and uses the work plane's axes, in the
+parallel plane through that origin; a constrained snap never substitutes an off-axis point. New Line points and their preview
+lie on the work plane even when the chain starts above it; Move/Copy preserves the original normal offset. Shift + middle-button
+orbit remains navigation.
+Chain, on the Options Bar
 for Line and the chained arcs, is kept for the session: off, each starts afresh. A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
 those that do and {3D}: the Work Plane dialog's one Go To View (`FamilyEditor::on_work_plane`, `work_plane::Then`), the sketch
 beginning in the view opened; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
