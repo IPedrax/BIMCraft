@@ -2123,6 +2123,9 @@ mod tests {
                 height: Expr::Number(60.0),
                 value: "C{Circuit}".into(),
                 align: LabelAlign::Center,
+                text_type: None,
+                valign: bimcraft_core::family::VAlign::Middle,
+                wrap: None,
             }),
             visible: Some(Expr::Formula("Show".into())),
             ..Symbol::default()
