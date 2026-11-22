@@ -574,6 +574,7 @@ impl FamilyEditor {
             return Ok(());
         }
         self.views.drawing = None;
+        self.views.measuring = None;
         self.views.picking = None;
         self.views.pivoting = None;
         self.placing = None;

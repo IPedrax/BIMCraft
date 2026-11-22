@@ -1065,6 +1065,19 @@ may not have, and nothing maps them yet, so a paste reads the text's source alon
 is the window's, so it outlives views, ribbon tabs and document tabs. Nothing of it is saved. Tests: `tests/family_clipboard.rs`,
 `family_clipboard_tests.rs`.
 
+**Measure** (`editor/measure.rs`; the Measure panel's button, in a plan or an elevation, not sketching) lays a ruler by two
+clicks, snapped as the Modify tools' points are, Shift keeping it square, and reads it over the view and in the status bar: its
+length, its angle from the view's across, and its parts across and up, in the project's units (`snap::ruler`, as the project's
+Measure reads). It changes nothing; the ruler stays on show until the next first click, Escape (which lets a first click go,
+then the tool) or another tool. Greyed in {3D} and while a form is sketched, saying where it works.
+
+**Create Similar** starts the tool that makes the one thing selected, as it is: Create's Extrusion, Blend, Revolve, Sweep or
+Swept Blend, solid or void as the form is; Reference Plane for a plane, a datum too; Reference Line for a reference line;
+Aligned, Angular, Radial or Diameter Dimension as the dimension is; another symbol of the symbol's part; a connector of the
+connector's kind; Component with the nested instance's family and type. With nothing or several selected it does nothing; a
+form of a file's triangles says so. Neither has a key yet: Find lists Measure (in a plan or an elevation) and Create Similar
+on a family tab. Neither is a step of the history. Tests: `tests/family_measure.rs`.
+
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
 Specify a new Work Plane: Name, the family's planes as `Planes::listed` lists them; Pick a plane, a reference plane's or a datum's
@@ -1769,4 +1782,5 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/purge.rs`: Manage > Purge Unused in the family document (FE-19).
 - `editor/drag_move.rs`: the selection moved by a drag, or copied with Ctrl.
 - `editor/modify.rs`: the Modify panel's tools, in a plan, an elevation and a sketch.
+- `editor/measure.rs`: Measure and Create Similar.
 - `editor/clipboard.rs`: the family's Clipboard panel, Ctrl+C, Ctrl+X and Ctrl+V, Paste Aligned.

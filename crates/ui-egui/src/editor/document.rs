@@ -172,6 +172,7 @@ impl FamilyEditor {
         self.modeller.tool = Draw::Modify;
         self.modeller.picking_plane = false;
         self.views.drawing = None;
+        self.views.measuring = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.aligning = None;
@@ -844,7 +845,20 @@ impl BimApp {
                     }
                 }
                 ribbon::panel(ui, msg!("Measure"), |ui| {
-                    later(ui, Icon::Measure, msg!("Measure"));
+                    // Measure, in a plan or an elevation of a family that isn't adaptive.
+                    let tip = msg!("Measure: click two points; the ruler reads its length, its angle and its parts");
+                    if ed.editing_2d() && ed.sketch.is_none() {
+                        if big_button(ui, Icon::Measure, msg!("Measure"), ed.measuring(), tip).clicked() {
+                            ed.measure_tool();
+                        }
+                    } else if adaptive {
+                        later(ui, Icon::Measure, msg!("Measure"));
+                    } else {
+                        // Greyed in {3D} and while a form is sketched, saying where it works, as the Modify tools do.
+                        ui.add_enabled_ui(false, |ui| big_button(ui, Icon::Measure, msg!("Measure"), false, tip))
+                            .inner
+                            .on_disabled_hover_text(t("Measure works in a plan or an elevation, not while a form is sketched."));
+                    }
                 });
                 if tab == DocTab::Context {
                     if let Some(i) = ed.selected_nested() {
@@ -1625,6 +1639,10 @@ impl BimApp {
             (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
             (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
             (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
+            (Some(_), false) if ed.views.measuring.as_ref().is_some_and(|m| m.first.is_some()) => {
+                msg!("Measure: click the second point; Esc lets the first go.")
+            }
+            (Some(_), false) if ed.measuring() => msg!("Measure: click the first point (Shift keeps the second square)."),
             (Some(_), false) if ed.views.pivoting.is_some() => {
                 msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
             }
@@ -1678,7 +1696,7 @@ impl BimApp {
     }
 
     /// What Find lists on a family tab, by name: what the family document does itself (Modify, Delete, Align and Aligned
-    /// Dimension in a plan or an elevation, the selection's commands, the Modify panel's tools and the clipboard's, Temporary Hide/Isolate, Zoom to Fit in the view shown,
+    /// Dimension in a plan or an elevation, the selection's commands, the Modify panel's tools and the clipboard's, Measure, Create Similar, Temporary Hide/Isolate, Zoom to Fit in the view shown,
     /// its {3D} view) and what is the window's (Properties, Project Browser, Keyboard Shortcuts). The project's tools are left
     /// out: from a family tab they would change the project out of sight. [`family_find_action`](Self::family_find_action)
     /// does each, as its button does.
@@ -1704,6 +1722,13 @@ impl BimApp {
         if ed.adaptive.is_none() {
             out.extend(super::modify::FIND.iter().map(|(name, _)| *name));
             out.extend(super::clipboard::FIND.iter().map(|(name, _)| *name));
+        }
+        // Measure in a plan or an elevation, and Create Similar, outside a sketch of a family that isn't adaptive.
+        if ed.adaptive.is_none() && !ed.sketching() {
+            if ed.editing_2d() {
+                out.push("Measure");
+            }
+            out.push("Create Similar");
         }
         // Manage's (FE-19), outside a sketch.
         if !ed.sketching() {
@@ -1753,6 +1778,14 @@ impl BimApp {
                 match ed.modify_tool_on(tool) {
                     Ok(()) => self.status = Status::default(),
                     Err(text) => self.status = Status { text, error: true },
+                }
+            }
+            "Measure" | "Create Similar" => {
+                let Some(ed) = self.active_family_mut() else { return false };
+                if action == "Measure" {
+                    ed.measure_tool();
+                } else if let Err(text) = ed.create_similar() {
+                    self.status = Status { text, error: true };
                 }
             }
             "Filter Selection" | "Select Previous" | "Select by ID" => {
@@ -1912,6 +1945,7 @@ impl BimApp {
                 || ed.stop_picking()
                 || ed.views.pivoting.take().is_some()
                 || ed.modify_escape()
+                || ed.measure_escape()
             {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
