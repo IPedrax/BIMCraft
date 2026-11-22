@@ -7873,6 +7873,7 @@ mod family_category_dialog;
 mod family_dimensions;
 mod family_document;
 mod family_exit;
+mod family_manage;
 mod family_nav3d;
 mod family_open;
 mod family_origin;

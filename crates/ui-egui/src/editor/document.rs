@@ -202,6 +202,7 @@ impl FamilyEditor {
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
     fn modal(&self) -> bool {
         self.dialog.is_some()
+            || self.purging()
             || self.associating.is_some()
             || self.views.unsatisfied.is_some()
             || self.views.creating.is_some()
@@ -642,10 +643,36 @@ impl BimApp {
                 });
             }
             DocTab::Manage => {
+                // FE-19: the project's dialogs, saying they change the project now; Purge Unused on the draft.
                 ribbon::panel(ui, msg!("Settings"), |ui| {
-                    later(ui, Icon::ObjectStyles, msg!("Object Styles"));
-                    later(ui, Icon::Materials, "Materials");
-                    later(ui, Icon::Units, msg!("Project Units"));
+                    use super::Manage;
+                    let tip = msg!("Object Styles: the project's pens for each category, the family's first; it changes the project now");
+                    if big_button(ui, Icon::ObjectStyles, msg!("Object Styles"), self.object_styles_dialog.is_some(), tip).clicked() {
+                        ed.ask.manage = Some(Manage::ObjectStyles);
+                    }
+                    let tip = msg!(
+                        "Materials: the project's materials, which the family's forms and parameters name; it changes the project now"
+                    );
+                    if big_button(ui, Icon::Materials, "Materials", self.materials_dialog.is_some(), tip).clicked() {
+                        ed.ask.manage = Some(Manage::Materials);
+                    }
+                    let now = self.session.model.units;
+                    let tip = tf("Project Units: how lengths show and read, the project's; now {}", &[&t(now.label()).to_lowercase()]);
+                    let r = big_button(ui, Icon::Units, msg!("Project Units"), false, &tip);
+                    let asked = self.open_units;
+                    let opened = ribbon::choices(ui, &r, asked, |ui| {
+                        ui.label(RichText::new(t(super::PROJECT_NOTE_UNITS)).small().color(pal().muted));
+                        for u in bimcraft_core::units::Units::ALL {
+                            if ui.selectable_label(u == now, t(u.label())).clicked() {
+                                self.run("units", json!({"length": u.name()}));
+                            }
+                        }
+                    });
+                    self.open_units &= !opened;
+                    let tip = msg!("Purge Unused: take out of the family the parameters and nested families nothing in it uses");
+                    if big_button(ui, Icon::Delete, "Purge Unused", ed.purging(), tip).clicked() {
+                        ed.ask.manage = Some(Manage::Purge);
+                    }
                 });
                 // Select by ID and IDs of Selection (FE-20), as the project's Manage tab has them.
                 super::selection::inquiry_panel(ui, ed);
@@ -1536,6 +1563,10 @@ impl BimApp {
         if ed.adaptive.is_none() && ed.picks_by_face() {
             out.extend([msg!("Select Elements by Face"), msg!("Drag Elements on Selection")]);
         }
+        // Manage's (FE-19), outside a sketch.
+        if !ed.sketching() {
+            out.extend(["Object Styles", "Materials", "Project Units", "Purge Unused"]);
+        }
         out.extend([
             "Temporary Hide Element",
             "Temporary Hide Category",
@@ -1576,6 +1607,19 @@ impl BimApp {
                     "Select Previous" => ed.select_previous(),
                     _ => ed.open_select_by_id(),
                 }
+            }
+            "Object Styles" | "Materials" | "Purge Unused" => {
+                let Some(ed) = self.active_family_mut() else { return false };
+                ed.ask.manage = Some(match action {
+                    "Object Styles" => super::Manage::ObjectStyles,
+                    "Materials" => super::Manage::Materials,
+                    _ => super::Manage::Purge,
+                });
+            }
+            "Project Units" => {
+                let Some(ed) = self.active_family_mut() else { return false };
+                ed.doc_tab = super::DocTab::Manage;
+                self.open_units = true;
             }
             "Select Elements by Face" => self.select_by_face = !self.select_by_face,
             "Drag Elements on Selection" => self.drag_on_selection = !self.drag_on_selection,
@@ -1737,6 +1781,8 @@ impl BimApp {
         ed.go_to_view_dialog(ctx);
         // F8: Family Element Visibility Settings.
         ed.visibility_dialog(ctx);
+        // FE-19: Manage > Purge Unused, on the draft.
+        ed.purge_dialog(ctx);
         // FE-20: Filter, Select by ID and IDs of Selection.
         if let Some(said) = ed.selection_dialogs(ctx) {
             self.status = said;
