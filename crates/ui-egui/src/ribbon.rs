@@ -272,21 +272,27 @@ pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
     }
     // A panel folded on the way may not have been needed: the ones before it, asked after, can make more room than was left
     // over (a whole tool's worth). Each fold that room still holds is given back, the first made first; a kept panel's
-    // before any other's, and none other while a kept one stays folded, so it still gives way last.
+    // before any other's, and none other while a kept one stays folded, so it still gives way last. A fold the room can't
+    // hold whole is given back in part when it holds the panel's first tools, measured: its first so many shown, the rest
+    // handed over, wider than its folded button by no more than what is spare.
     let mut spare = -over;
     for kept in [true, false] {
         let mut stays = false;
-        fits.retain(|(name, fit)| {
+        fits.retain_mut(|(name, fit)| {
             let Some(p) = seen.iter().find(|p| &p.name == name && p.kept == kept).filter(|_| *fit == Fit::Fold) else {
                 return true;
             };
             let made = p.natural - FOLDED;
-            if made > spare {
-                stays = true;
-                return true;
+            if made <= spare {
+                spare -= made;
+                return false;
             }
-            spare -= made;
-            false
+            stays = true;
+            if let Some(k) = (1..p.tools).rev().find(|&k| p.widths.get(k).is_some_and(|w| w - FOLDED <= spare)) {
+                spare -= p.widths[k] - FOLDED;
+                *fit = Fit::Show(k);
+            }
+            true
         });
         if kept && stays {
             break;
@@ -548,6 +554,16 @@ mod tests {
         assert_eq!(fit(&[(300.0, 10), (82.0, 1)], 355.0), [("p0".into(), Fit::Show(8))]);
         // 95 over: the fold and three tools (100 made) do it, where the first alone would hand four over; the fold stays.
         assert_eq!(fit(&[(300.0, 10), (82.0, 1)], 305.0), [("p1".into(), Fit::Fold), ("p0".into(), Fit::Show(7))]);
+    }
+
+    #[test]
+    fn a_fold_the_room_cant_hold_whole_is_given_back_in_part() {
+        // 380 wide in 330, 50 over: the last panel (two tools, 114 wide, 83 showing its first) can't make it alone and folds
+        // (42 made); the first then hands a tool over (about 30 made), some 22 more than was left: room for the last panel's
+        // first tool (11 wider than its fold), not for both.
+        let mut seen = panels(&[(266.0, 9), (114.0, 2)]);
+        seen[1].widths = vec![83.0, 83.0];
+        assert_eq!(fits(&seen, 380.0, 330.0), [("p1".into(), Fit::Show(1)), ("p0".into(), Fit::Show(8))]);
     }
 
     #[test]

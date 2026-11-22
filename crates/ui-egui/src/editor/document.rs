@@ -275,6 +275,9 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if let Some(title) = ed.sketch_title() {
             return Some(title);
         }
+        if ed.editing_2d() && ed.views.drawing.is_some() && ed.views.drawing_line {
+            return Some(msg!("Modify | Place Reference Line"));
+        }
         if ed.editing_2d() && ed.views.drawing.is_some() {
             return Some(msg!("Modify | Place Reference Plane"));
         }
@@ -508,10 +511,20 @@ impl BimApp {
                 ribbon::yielding(ui, msg!("Datum"), |ui| {
                     // Drawn in a plan or an elevation of a family that isn't adaptive, as Revit's (F4).
                     let tip = msg!("Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation");
-                    let on = ed.views.drawing.is_some();
+                    let on = ed.views.drawing.is_some() && !ed.views.drawing_line;
                     if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Plane"), on, tip)).inner.clicked()
                     {
                         ed.reference_plane_tool();
+                    }
+                    // FE-11: in a family of any category; an adaptive family draws its own in {3D}.
+                    let tip = msg!("Reference Line: a line on the view's work plane, drawn by two clicks in a plan or an elevation");
+                    let on = ed.views.drawing.is_some() && ed.views.drawing_line;
+                    if ui
+                        .add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::ReferenceLine, msg!("Reference Line"), on, tip))
+                        .inner
+                        .clicked()
+                    {
+                        ed.reference_line_tool();
                     }
                     later(ui, Icon::Level, "Level");
                 });
@@ -918,7 +931,7 @@ impl BimApp {
         // A reference line selected (F7d): its pivot.
         if let Some(g) = ed.selected_line() {
             let i = ed.lines.iter().position(|l| l.guid == g).unwrap_or_default();
-            selector(ui, Icon::Line, &tf("Reference Line {}", &[&(i + 1).to_string()]));
+            selector(ui, Icon::ReferenceLine, &tf("Reference Line {}", &[&(i + 1).to_string()]));
             ui.add_space(6.0);
             if let Some(e) = ed.pivot_properties(ui, g, self.session.model.units) {
                 self.status = Status { text: e, error: true };
@@ -1022,7 +1035,7 @@ impl BimApp {
                     Some(PointType::ShapeHandle) => (t("Shape Handle Point").to_string(), Icon::MakeAdaptive),
                     Some(PointType::Reference) => (t("Reference Point").to_string(), Icon::PointElement),
                     None if d.nodes.iter().any(|n| &n.id == id && n.is_form()) => (t("Form").to_string(), Icon::CreateForm),
-                    None => (t("Reference Line").to_string(), Icon::Line),
+                    None => (t("Reference Line").to_string(), Icon::ReferenceLine),
                 },
                 many => (tf("Multi-Select ({})", &[&many.len().to_string()]), Icon::Modify),
             };
@@ -1456,6 +1469,9 @@ impl BimApp {
             (Some(_), false) if ed.views.picking.is_some() => {
                 msg!("Click a reference plane or a datum for the work plane. Esc goes back to the dialog.")
             }
+            (Some(_), false) if ed.views.drawing.is_some() && ed.views.drawing_line => {
+                msg!("Click two points: a reference line between them, on the view's work plane.")
+            }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
             (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind == bimcraft_core::family::DimKind::Angular => {
                 msg!("Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes.")
@@ -1510,7 +1526,7 @@ impl BimApp {
         let Some(ed) = self.active_family() else { return Vec::new() };
         let mut out = vec!["Modify", "Delete"];
         if ed.editing_2d() && ed.sketch.is_none() {
-            out.extend(["Aligned Dimension", "Align"]);
+            out.extend(["Aligned Dimension", "Align", msg!("Reference Line")]);
         }
         // The selection's commands (FE-20), in a family that isn't adaptive, outside a sketch; the status bar's two toggles
         // where they change something.
@@ -1574,12 +1590,12 @@ impl BimApp {
                     self.status = Status { text, error: true };
                 }
             }
-            "Aligned Dimension" | "Align" => {
+            "Aligned Dimension" | "Align" | "Reference Line" => {
                 let Some(ed) = self.active_family_mut() else { return false };
-                if action == "Align" {
-                    ed.align_tool();
-                } else {
-                    ed.dimension_tool();
+                match action {
+                    "Align" => ed.align_tool(),
+                    "Reference Line" => ed.reference_line_tool(),
+                    _ => ed.dimension_tool(),
                 }
             }
             "Temporary Hide Element" => self.family_temp(temp(false)),
