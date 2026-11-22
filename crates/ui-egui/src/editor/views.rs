@@ -347,14 +347,17 @@ impl FamilyEditor {
     fn staged(&self, base: &Model, which: Which) -> Result<Staged, String> {
         let f = self.family()?;
         let values = self.values();
-        let shown = temp_hide::without(&f, |i| self.temp_hidden_form(i)).unwrap_or_else(|| f.clone());
+        // The form being sketched again is left out: its sketch stands for it (FE-12).
+        let editing = self.sketch.as_ref().and_then(|s| s.index);
+        let hidden = |i: usize| self.temp_hidden_form(i) || editing == Some(i);
+        let shown = temp_hide::without(&f, hidden).unwrap_or_else(|| f.clone());
         let mut model = self.scratch(base, &shown)?;
         let mut ghost_id = None;
         // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too.
         let cut = model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut);
         let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
         if !self.document.preview_visibility
-            && let Some(g) = ghosts(&f, &values, |i| self.temp_hidden_form(i), &by_view)
+            && let Some(g) = ghosts(&f, &values, hidden, &by_view)
         {
             let mut s = Session::new();
             s.model = Arc::new(model);
@@ -420,6 +423,8 @@ impl FamilyEditor {
             )
                 .hash(&mut h);
             (base.materials.len(), base.images.len()).hash(&mut h);
+            // The form being sketched again, which the view leaves out.
+            self.sketch.as_ref().and_then(|s| s.index).hash(&mut h);
             h.finish()
         };
         if self.views.cache.as_ref().is_some_and(|c| c.key == key) {
@@ -610,21 +615,42 @@ impl FamilyEditor {
                 let (x, y) = view.px(super::sketch::in_view(&cache.staged, which, f, q));
                 Some(pane.min + vec2(x, y))
             };
-            let lines = drawn_lines(&cache.drawing, pane.min);
+            let mut lines = drawn_lines(&cache.drawing, pane.min);
+            // The sketch's dimensions (FE-12): those made while sketching and the draft's that measure the form, and the one
+            // being placed. Align's padlocks keep off them too.
+            self.prune_selected_dim();
+            let mm_screen = dims::screen_of(view, pane.min);
+            let plane_here = |p: egui::Pos2| plane_at(&cache.drawing, &cache.staged, p);
+            let sketch_dims = self.sketch_dims(&cache.staged, which, &mm_screen, response.hover_pos(), &at_view, &plane_here);
+            if let Some(sd) = sketch_dims.as_ref() {
+                lines.extend(sd.lines(&mm_screen));
+            }
             let locks = self.sketch_padlocks(&on_screen, &lines);
             let free = self.sketch.as_ref().is_some_and(|s| s.tool.is_none());
-            // A shape of the Draw panel picked puts Align down.
+            // A shape of the Draw panel picked puts Align and the dimension tools down, and lets a dimension go.
             if !free {
                 self.views.aligning = None;
+                self.views.dimensioning = None;
+                if let Some(s) = self.sketch.as_mut() {
+                    s.selected_dim = None;
+                }
             }
             let aligning = self.views.aligning.is_some();
             let mut aligned = None;
+            let mut dims_took = false;
             if response.clicked()
                 && let Some(p) = response.interact_pointer_pos()
             {
                 let near = locks.iter().find(|(at, _)| dims::lock_rect(*at).contains(p)).map(|(_, w)| *w);
                 match near {
-                    Some(what) if aligning || free => self.sketch_padlock(what),
+                    Some(what) if (aligning || free) && self.views.dimensioning.is_none() => self.sketch_padlock(what),
+                    _ if !aligning && let Some(sd) = sketch_dims.as_ref() => {
+                        let (took, e) = self.sketch_dims_click(sd, &cache.staged, which, p, at_view(p), &mm_screen, &plane_here);
+                        dims_took = took;
+                        if e.is_some() {
+                            aligned = Some(e);
+                        }
+                    }
                     _ if aligning => {
                         // What the view shows there besides the sketch: a plane, a reference line, another form's line.
                         let own = self.sketch.as_ref().map(|s| s.guid).unwrap_or_default();
@@ -643,6 +669,15 @@ impl FamilyEditor {
                 }
             }
             let problem = self.sketch_in_view(ui, &response, &painter, &cache.staged, which, &view, pane, &pick);
+            // A click the dimensions took picks no line of the sketch.
+            if (dims_took || self.views.dimensioning.is_some())
+                && let Some(s) = self.sketch.as_mut()
+            {
+                s.sketch.picked.clear();
+            }
+            if let Some(sd) = sketch_dims.as_ref() {
+                self.paint_sketch_dims(&painter, sd, &cache.staged, which, &mm_screen, base.units);
+            }
             // The reference Align picked, and the padlocks, over the lines.
             if let Some((_, (a, b), _)) = self.sketch.as_ref().and_then(|s| s.align_from.as_ref())
                 && let (Some(a), Some(b)) = (on_screen(*a), on_screen(*b))
@@ -672,38 +707,15 @@ impl FamilyEditor {
         let angular = kind == bimcraft_core::family::DimKind::Angular;
         let circles = radial && self.views.dimensioning.is_some();
         let crossing = angular && self.views.dimensioning.is_some();
+        // Radial and Diameter Dimension pick a circle or an arc by its edge, Angular Dimension lines, the others references.
+        let tool_kind = if circles || crossing { kind } else { bimcraft_core::family::DimKind::Aligned };
         let reference_at = |p: egui::Pos2| -> Option<DimRef> {
             let f = family.as_ref()?;
-            if circles {
-                // Radial and Diameter Dimension pick a circle or an arc by its edge.
-                return dims::circle_at(f, &values, &c.staged, which, p, &on_screen).map(|c| c.r);
-            }
-            if crossing {
-                // Angular Dimension picks lines.
-                return dims::line_at(f, &values, &c.staged, which, pick_plane(p), p, &on_screen);
-            }
-            dims::reference_at(f, &values, &c.staged, which, pick_plane(p), p, &on_screen)
+            dims::pick_reference(f, &values, &c.staged, which, tool_kind, pick_plane(p), p, &on_screen)
         };
         // Its dimensions, the one being placed with them, over the picture: the selected one, and those that can't hold, picked.
         let placing = match (&self.views.dimensioning, response.hover_pos(), family.as_ref()) {
-            (Some(refs), Some(h), Some(f)) if radial && refs.len() == 1 => {
-                Some(dims::new_dimension(f, &values, &c.staged, which, refs, at_view(h), kind))
-            }
-            (Some(refs), Some(h), Some(f)) if !refs.is_empty() && angular => {
-                let mut refs = refs.clone();
-                if let Some(r) = reference_at(h).filter(|r| !refs.contains(r) && dims::crosses_last(f, &values, which, &refs, r)) {
-                    refs.push(r);
-                }
-                (refs.len() >= 2).then(|| dims::new_dimension(f, &values, &c.staged, which, &refs, at_view(h), kind))
-            }
-            (Some(refs), Some(h), Some(f)) if !refs.is_empty() && !radial => {
-                let mut refs = refs.clone();
-                if let Some(r) = reference_at(h).filter(|r| !refs.contains(r) && dims::parallel(f, &values, &refs, r)) {
-                    refs.push(r);
-                }
-                (refs.len() >= 2 && dims::has_way(f, &values, &refs))
-                    .then(|| dims::new_dimension(f, &values, &c.staged, which, &refs, at_view(h), kind))
-            }
+            (Some(refs), Some(h), Some(f)) => dims::placing(f, &values, &c.staged, which, kind, refs, reference_at(h), at_view(h)),
             _ => None,
         };
         let marks = match (drawn.as_ref(), family.as_ref()) {
@@ -1100,50 +1112,13 @@ impl FamilyEditor {
             } else if align_lock.is_some_and(|at| dims::lock_rect(at).contains(p)) {
                 // Align's padlock, waiting: it locks what was aligned, whatever tool is on.
                 on_dims = Some((Clicked::AlignLock, Vec::new()));
-            } else if let Some(refs) = self.views.dimensioning.as_mut().filter(|_| radial) {
-                // Radial or Diameter Dimension: a circle, then a click where it goes.
-                match (refs.first(), reference_at(p), family.as_ref()) {
-                    (None, Some(r), _) => refs.push(r),
-                    (Some(_), _, Some(f)) => {
-                        new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
-                        refs.clear();
-                    }
-                    _ => problem = Some(t("Pick a circle or an arc, then click where the dimension goes.").to_string()),
-                }
-            } else if let Some(refs) = self.views.dimensioning.as_mut().filter(|_| angular) {
-                // Angular Dimension: lines one after another, each crossing the one before; a click on nothing places it.
-                match (reference_at(p), family.as_ref()) {
-                    (Some(r), Some(f)) => {
-                        if !dims::crosses_last(f, &values, which, refs, &r) {
-                            problem = Some(t("Pick a line that crosses the one before.").to_string());
-                        } else if !refs.contains(&r) {
-                            refs.push(r);
-                        }
-                    }
-                    (None, Some(f)) if refs.len() >= 2 => {
-                        new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
-                        refs.clear();
-                    }
-                    _ => problem = Some(t("Pick lines that cross, then click where the dimension goes.").to_string()),
-                }
             } else if let Some(refs) = self.views.dimensioning.as_mut() {
-                // Aligned Dimension: references one after another, parallel to the first; a click on nothing places it.
-                match (reference_at(p), family.as_ref()) {
-                    (Some(r), Some(f)) => {
-                        if !dims::parallel(f, &values, refs, &r) {
-                            problem = Some(t("Pick a reference parallel to the first.").to_string());
-                        } else if !refs.contains(&r) {
-                            refs.push(r);
-                        }
-                    }
-                    (None, Some(f)) if refs.len() >= 2 && dims::has_way(f, &values, refs) => {
-                        new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
-                        refs.clear();
-                    }
-                    (None, Some(_)) if refs.len() >= 2 => {
-                        problem = Some(t("Pick a plane or a line too: points alone face no way to measure along.").to_string())
-                    }
-                    _ => problem = Some(t("Pick two references or more, then click where the dimension goes.").to_string()),
+                // A dimension tool: references picked one after another, then a click where it goes (`dims::dimension_click`).
+                let under = reference_at(p);
+                match family.as_ref().map(|f| dims::dimension_click(f, &values, &c.staged, which, kind, refs, under, q)) {
+                    Some(Ok(made)) => new_dim = made,
+                    Some(Err(e)) => problem = Some(e),
+                    None => problem = Some(t("Pick two references or more, then click where the dimension goes.").to_string()),
                 }
             } else if let Some(first) = self.views.aligning {
                 // Align: the reference to align to, then what moves onto it.

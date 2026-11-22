@@ -628,10 +628,38 @@ lines, a click unlocking one. They are written at Finish (a refusal by the const
 Cancel. An Align padlock, on a finished form and while sketching, sits beside the line it locks, a few pixels off it to the side away from the
 form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
 Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
-(`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
-a dimension can name them before the family is loaded; a form the document takes in without them (a blank family's starter box,
+(`sketch::kept` against the lines shown). Every line gets a GUID of its own as it is drawn (and any still without one at
+Finish), a new form its GUID at once, so a lock or a dimension can name them before the family is loaded; a form the document takes in without them (a blank family's starter box,
 a profile typed as numbers) is given them as it comes in (`FormText::of`), since `sketch_faces` and `end_faces` leave out a form
 or a line without one, and Align, Aligned Dimension and Pick Lines' Lock would find nothing on its outline.
+
+FE-12 (`editor/sketch_dims.rs`): while a form is sketched, the contextual tab's Dimension panel (Aligned Dimension, DI and DD,
+Angular, AN, Radial and Diameter) works in a plan or an elevation that sees the sketch's plane flat, as outside sketch mode:
+it picks the sketch's own lines and circles as they are, reference planes, reference lines and other forms' lines, then a
+click places the dimension (`dimensions::pick_reference`, `placing`, `dimension_click`, which both modes share). It is greyed,
+saying why, in {3D} and in a view that sees the plane edge-on; a sweep's path, a Blend's base and top and a sweep's
+profiles (in an elevation that sees the profile's plane flat, picking the profile's own lines alone) are measured. What is made, changed or taken off while sketching is
+held with the sketch, as Align's locks are (`FormSketch::dims`, `changed`, `unlocked`, and `params`, the parameters Create
+Parameter… made for a label), and drawn with it with the draft's own dimensions that measure the form's lines (its Align
+locks are the padlocks above). A click selects one ("Modify" first: the Draw panel's shape takes the click otherwise): its
+padlocks lock and unlock, its EQ toggles, the Options Bar gives its Label, and Value for one of one segment with no label,
+taken on Enter; Delete takes it away. The family Finish would make (`sketch_family`: the draft, the form made of the lines as
+they are, `sketched_form`, and those dimensions, `sketch_dimensions`) is solved for the type previewed at each label, lock,
+EQ or value (`sketch_try`), and the sketch's lines go where the solve puts them at once; a value is a lock at it for that one
+solve, refused where only a plane or a reference line would move. Finish writes a line the dimensions moved as it was drawn
+(its formulas kept, `FormSketch::driven`) while the constraints still put it where it shows, as labelling it after Finish
+would; one they no longer do is written where it is. The sketch's Ctrl+Z takes back every part's lines with the dimensions,
+locks and parameters made or changed while sketching, one step together. A draft dimension that lost a line deleted while
+sketching isn't changed until the line is back (Ctrl+Z) or the dimension deleted. A revolve's axis drawn again keeps its
+GUID, so what measures to it still does. What the constraints can't hold for the type previewed is refused then, with T19's
+words, nothing changed; Align's padlock and a lock another type can't hold are found at Finish, which refuses them for each
+type, naming it, with sketch mode open and the draft as it was. Finish writes the form, its dimensions and their parameters as
+one step of the history (Undo takes them back together); Cancel drops them all, leaving no step and no Unsaved mark. A line of
+the form gone from the sketch (deleted, or taken back by Ctrl+Z) is taken from the dimensions that measure to it, made while
+sketching or the draft's (`forget_reference`, one left with too few references gone), as `forget_lines_gone` takes it at
+Finish. The status bar asks what the dimension tool asks outside sketch mode, and with a dimension selected what can be done
+to it. The view leaves out the form being sketched again (`staged`), its sketch standing for it. A dimension's text is set on the paper, so a
+plane's trace through it doesn't cross it out. Out of scope: a drag of a line's end is checked at Finish, not driven.
 
 Align onto a reference that isn't parallel (`constraints/turn.rs`) turns what can turn, where Revit's help says nothing either
 way: a reference plane of the family's own or a reference line turns about where it crosses the reference, or, where it doesn't
@@ -957,7 +985,8 @@ began, so the view refitting what it frames doesn't move the drag under the hand
 step, nothing unsaved); Escape, Undo, Redo and another view or tab shown give it up, the form put back as it was (the Start and
 End drag too); the form is followed by what it is known by while the document is open, never by its place. A click on an arrow
 keeps the selection. Refused, the form left as it was and the status
-bar saying why: an edge a dimension's label, lock, Align lock or EQ measures to (`Family::edge_held`), greyed; a drag that leaves
+bar saying why: an edge a dimension's label, lock, Align lock or EQ measures to (`Family::edge_held`), greyed, as one whose numbers a drag
+would move are formulas is (`shape_handles::greyed`: by what ties it alone, never by where a drag would take the profile); a drag that leaves
 no profile (a line turned back or of no length, or what `finish_check` refuses: lines crossing, overlapping, a loop open); one
 the constraints would undo (where a family is constrained, the type previewed must flex the edge to where the drag put it, the
 handles sitting where that type shows the outline, F10); and one a type can't build, as Finish checks. No snapping: the
@@ -1001,8 +1030,15 @@ triangles, as for any form not flat on a level plane. IFC writes the triangles a
 
 Constraints (F7) reach a Blend's base and top and a sweep's path: they are `Form::plane_lines`, the sketch then the top,
 whose vertices join within one group only (a base corner and a top corner over each other stay two); a Blend's First and
-Second End are measured as an extrusion's Start and End. A sweep's profile lines lie in a plane of their own and aren't
-measured yet: a dimension naming one is refused, saying so (F6d). `edit_work_plane`'s `keep` maps a Blend's top too (and
+Second End are measured as an extrusion's Start and End. A sweep's profile lines (a Swept Blend's two profiles') are
+`plane_lines` too, groups 2 and 3 (FE-12): each is read in its profile's plane as the path is drawn for the type
+(`forms::profile_frames`, `Layout::profiles`, `Seen::profile`), which moves with no unknown, so a profile's lines are
+measured among themselves alone (`check_dimensions` refuses one with what lies off its plane: the plane follows the path, as
+nothing else does). Labels, locks and EQ on them flex the profile in its own axes; no FORMAT change, `{"form", "line"}`
+naming a profile line as it names any other. Older builds: a project file's such dimension is left out and listed in
+`left_out`, as one measuring to nothing; a family file holding one isn't filtered there (`read_family_file`), and Load into
+Project refuses it (their sweep-profile check, which no `invalid_dimensions` passes), so such a family can't be loaded from
+an older build until the shared FORMAT 19 to 20 step marks it. `edit_work_plane`'s `keep` maps a Blend's top too (and
 swaps base and top on a plane facing the other way) and refuses a sweep on a plane facing the other way or mirrored.
 
 In the family document (`editor/sketch.rs`), Create > Blend, Sweep and Swept Blend, and Void Forms' Void Blend, Void Sweep
@@ -1019,7 +1055,7 @@ every type as F5 does (`commit_form`); Edit Blend, Edit Sweep and Edit Swept Ble
 each part keeping its lines' formulas where they don't move.
 
 Left out, each a task: Edit Vertices' connecting chosen vertex pairs by hand (F6b); profile families (BIMCraft has no
-Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions and locks on a sweep's profile (F6d);
+Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions between a sweep's profile and what lies off its plane (F6d);
 paths across planes and Pick Path of 3D edges (F6e).
 
 ## Family options
@@ -1484,7 +1520,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
-- `editor/sketch.rs`: sketch mode. `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.
+- `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
 - `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.

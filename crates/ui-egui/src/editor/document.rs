@@ -273,6 +273,73 @@ impl FamilyEditor {
     }
 }
 
+/// The Dimension panel: Aligned Dimension, Angular, Radial and Diameter (F7), on the Create tab and, while a form is
+/// sketched, on its contextual tab (FE-12), greyed in {3D} and where a sketch's plane isn't seen flat, saying why.
+pub(super) fn dimension_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
+    let why = if ed.sketching() { ed.sketch_undimensionable() } else { None };
+    let usable = ed.editing_2d() && why.is_none();
+    let why = t(why.unwrap_or(msg!("Dimensions are drawn in a plan or an elevation, not in {3D}.")));
+    ribbon::panel(ui, msg!("Dimension"), |ui| {
+        let tip =
+            msg!("Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes");
+        let on = ed.views.dimensioning.is_some();
+        let aligned = ed.views.dim_kind == bimcraft_core::family::DimKind::Aligned;
+        if ui
+            .add_enabled_ui(usable, |ui| big_button(ui, Icon::Dimension, msg!("Aligned Dimension"), on && aligned, tip))
+            .inner
+            .on_disabled_hover_text(why)
+            .clicked()
+        {
+            ed.dimension_tool();
+        }
+        // The angles between lines that cross (F7c); a circle or an arc of a sketch, its radius or its diameter
+        // (F7b).
+        for (kind, icon, label, tip) in [
+            (
+                bimcraft_core::family::DimKind::Angular,
+                Icon::Angular,
+                msg!("Angular"),
+                msg!(
+                    "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
+                ),
+            ),
+            (
+                bimcraft_core::family::DimKind::Radial,
+                Icon::Radial,
+                msg!("Radial"),
+                msg!("Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
+            ),
+            (
+                bimcraft_core::family::DimKind::Diameter,
+                Icon::Diameter,
+                msg!("Diameter"),
+                msg!("Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
+            ),
+        ] {
+            let lit = on && ed.views.dim_kind == kind;
+            let r = ui.add_enabled_ui(usable, |ui| crate::small_button(ui, icon, label, lit, tip)).inner;
+            if r.on_disabled_hover_text(why).clicked() {
+                ed.radial_tool(kind);
+            }
+        }
+    });
+}
+
+/// What the status bar asks for while a dimension tool of `kind` is on, in sketch mode or not.
+fn dimension_prompt(kind: bimcraft_core::family::DimKind) -> &'static str {
+    match kind {
+        bimcraft_core::family::DimKind::Angular => {
+            msg!("Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes.")
+        }
+        bimcraft_core::family::DimKind::Radial | bimcraft_core::family::DimKind::Diameter => {
+            msg!("Click a circle or an arc, then click where the dimension goes.")
+        }
+        bimcraft_core::family::DimKind::Aligned => {
+            msg!("Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes.")
+        }
+    }
+}
+
 /// The contextual tab for what the family document has in hand: the tool, else what is selected, as Revit names them.
 fn context(ed: &FamilyEditor) -> Option<&'static str> {
     let m = &ed.modeller;
@@ -541,52 +608,7 @@ impl BimApp {
                 });
                 // Drawn in a plan or an elevation of a family that isn't adaptive (F7).
                 if !adaptive {
-                    ribbon::panel(ui, msg!("Dimension"), |ui| {
-                        let tip = msg!(
-                            "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
-                        );
-                        let on = ed.views.dimensioning.is_some();
-                        let aligned = ed.views.dim_kind == bimcraft_core::family::DimKind::Aligned;
-                        if ui
-                            .add_enabled_ui(ed.editing_2d() && !ed.sketching(), |ui| {
-                                big_button(ui, Icon::Dimension, msg!("Aligned Dimension"), on && aligned, tip)
-                            })
-                            .inner
-                            .clicked()
-                        {
-                            ed.dimension_tool();
-                        }
-                        // The angles between lines that cross (F7c); a circle or an arc of a sketch, its radius or its diameter
-                        // (F7b).
-                        for (kind, icon, label, tip) in [
-                            (
-                                bimcraft_core::family::DimKind::Angular,
-                                Icon::Angular,
-                                msg!("Angular"),
-                                msg!(
-                                    "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
-                                ),
-                            ),
-                            (
-                                bimcraft_core::family::DimKind::Radial,
-                                Icon::Radial,
-                                msg!("Radial"),
-                                msg!("Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
-                            ),
-                            (
-                                bimcraft_core::family::DimKind::Diameter,
-                                Icon::Diameter,
-                                msg!("Diameter"),
-                                msg!("Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
-                            ),
-                        ] {
-                            let lit = on && ed.views.dim_kind == kind;
-                            let usable = ed.editing_2d() && !ed.sketching();
-                            if ui.add_enabled_ui(usable, |ui| crate::small_button(ui, icon, label, lit, tip)).inner.clicked() {
-                                ed.radial_tool(kind);
-                            }
-                        }
-                    });
+                    dimension_panel(ui, ed);
                 }
                 // In {3D} too, where Show draws it over the preview.
                 if !adaptive {
@@ -1415,6 +1437,13 @@ impl BimApp {
         if ed.sketching() {
             ui.horizontal(|ui| {
                 ui.set_min_height(24.0);
+                // A dimension selected while sketching (FE-12): its Label and Value.
+                if let Some(g) = ed.sketch.as_ref().and_then(|s| s.selected_dim) {
+                    if let Some(e) = super::sketch_dims::dimension_bar(ui, ed, g, units) {
+                        self.status = Status { text: e, error: true };
+                    }
+                    return;
+                }
                 ui.label(t(name));
                 ui.separator();
                 super::sketch::options_bar(ui, ed, units);
@@ -1496,6 +1525,16 @@ impl BimApp {
                     Some(_) => msg!("Click the line of the sketch that moves onto it; its padlock locks them."),
                 });
             }
+            // A dimension tool while sketching (FE-12): its prompt, as outside sketch mode.
+            if ed.views.dimensioning.is_some() {
+                return Some(dimension_prompt(ed.views.dim_kind));
+            }
+            // A dimension selected while sketching: what can be done to it.
+            if s.selected_dim.is_some() {
+                return Some(msg!(
+                    "Click a padlock to lock or unlock its length, EQ to make a string's lengths equal; the Options Bar gives its Label and Value; Delete takes it away."
+                ));
+            }
             return Some(super::sketch::prompt(s));
         }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
@@ -1510,15 +1549,7 @@ impl BimApp {
                 msg!("Click two points: a reference line between them, on the view's work plane.")
             }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
-            (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind == bimcraft_core::family::DimKind::Angular => {
-                msg!("Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes.")
-            }
-            (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind != bimcraft_core::family::DimKind::Aligned => {
-                msg!("Click a circle or an arc, then click where the dimension goes.")
-            }
-            (Some(_), false) if ed.views.dimensioning.is_some() => {
-                msg!("Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes.")
-            }
+            (Some(_), false) if ed.views.dimensioning.is_some() => dimension_prompt(ed.views.dim_kind),
             (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
             (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
             (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
@@ -1567,6 +1598,9 @@ impl BimApp {
         let mut out = vec!["Modify", "Delete"];
         if ed.editing_2d() && ed.sketch.is_none() {
             out.extend(["Aligned Dimension", "Align", msg!("Reference Line")]);
+        } else if ed.editing_2d() {
+            // While a form is sketched, the dimensions where the view sees the sketch's plane flat (FE-12).
+            out.push("Aligned Dimension");
         }
         // The selection's commands (FE-20), in a family that isn't adaptive, outside a sketch; the status bar's two toggles
         // where they change something.
@@ -1638,8 +1672,11 @@ impl BimApp {
             "Drag Elements on Selection" => self.drag_on_selection = !self.drag_on_selection,
             "Delete" => {
                 let Some(ed) = self.active_family_mut() else { return false };
-                // A sketch's lines picked, else what is selected, as the Delete key does.
-                if let Some(s) = ed.sketch.as_mut() {
+                // The dimension selected while sketching, else a sketch's lines picked, else what is selected, as the Delete
+                // key does.
+                if let Some(g) = ed.sketch.as_ref().and_then(|s| s.selected_dim) {
+                    ed.delete_dimension(g);
+                } else if let Some(s) = ed.sketch.as_mut() {
                     s.delete_picked();
                 } else if ed.deletable()
                     && let Err(text) = ed.delete_selected()
@@ -1725,15 +1762,28 @@ impl BimApp {
         // the sketch's own last change. The document's history waits for Finish.
         if let Some(s) = ed.sketch.as_mut() {
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-                // Align's reference let go, then Align itself; else the sketch's own Escape.
-                if ed.views.aligning.is_some() && s.align_from.is_none() && s.offer.is_none() {
+                // A dimension tool's references let go, then the tool; the dimension selected; Align's reference, then Align
+                // itself; else the sketch's own Escape.
+                if let Some(refs) = ed.views.dimensioning.as_mut() {
+                    if refs.is_empty() {
+                        ed.views.dimensioning = None;
+                    } else {
+                        refs.clear();
+                    }
+                } else if s.selected_dim.is_some() {
+                    s.selected_dim = None;
+                } else if ed.views.aligning.is_some() && s.align_from.is_none() && s.offer.is_none() {
                     ed.views.aligning = None;
                 } else {
                     s.escape();
                 }
             }
             if ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
-                s.delete_picked();
+                // The dimension selected, else the lines picked.
+                match s.selected_dim {
+                    Some(g) => ed.delete_dimension(g),
+                    None => s.delete_picked(),
+                }
             }
             return;
         }

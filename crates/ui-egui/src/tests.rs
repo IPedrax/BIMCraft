@@ -7884,6 +7884,7 @@ mod family_reference_line;
 mod family_selection;
 mod family_shape_handles;
 mod family_sketch;
+mod family_sketch_dimensions;
 mod family_sketch_locks;
 mod family_tabs;
 mod family_tabs_async;

@@ -685,21 +685,27 @@ struct Layout {
     radius: Vec<f64>,
     turn: Vec<f64>,
     points: Vec<Vec<(usize, Spot)>>,
+    /// The planes its profiles are drawn on, as its path is drawn for the type (FE-12): a Sweep's one, a Swept Blend's two.
+    profiles: Vec<Frame>,
 }
 
 /// The sketch of `form` read for `values` ([`Layout`]).
 fn layout<'a>(
     form: &'a Form,
+    host: Option<&Frame>,
     values: &BTreeMap<String, Val>,
     read: &mut HashMap<&'a str, Result<Node, String>>,
     meter: &mut Meter,
 ) -> Result<Layout, String> {
     let count = form.plane_lines().count();
-    if count > 2 * sketch::MAX_SKETCH {
-        return Err(format!("its sketch has {count} lines, more than {}", 2 * sketch::MAX_SKETCH));
+    if count > 4 * sketch::MAX_SKETCH {
+        return Err(format!("its sketch has {count} lines, more than {}", 4 * sketch::MAX_SKETCH));
     }
     meter.spend(16 * count as u64 + 1)?;
     let mut out = Layout::default();
+    if let Some(host) = host {
+        out.profiles = super::forms::profile_frames(form, host, &mut |e| number(e, values, read));
+    }
     // A Blend's base and top (F6) are two groups: a vertex of one never joins one of the other.
     let mut grid: HashMap<(usize, i64, i64), Vec<usize>> = HashMap::new();
     let cell = |p: P2| ((p.0 / TOL).floor() as i64, (p.1 / TOL).floor() as i64);
@@ -803,12 +809,15 @@ fn line_root(f: &Family, g: Guid) -> Option<Guid> {
     None
 }
 
-/// A line of a sketch a solve reads: its form's place, its own, the form's host plane and its axes, its end vertices.
+/// A line of a sketch a solve reads: its form's place, its own, the form's host plane and the axes it is drawn in (its
+/// host's, or a profile's plane: `profile`), its end vertices.
 struct Seen {
     form: usize,
     line: usize,
     host: PlaneRef,
     frame: Frame,
+    /// On a sweep's profile plane (FE-12), which stays where the path is drawn for the type: it moves with no unknown.
+    profile: bool,
     ends: (usize, usize),
     shape: Shape,
 }
@@ -854,7 +863,8 @@ impl<'f> Problem<'f> {
                 && !layouts.contains_key(&i)
             {
                 let form: &'f Form = &family.forms[i];
-                layouts.insert(i, layout(form, values, read, meter).map_err(|e| format!("form {}: {e}", i + 1))?);
+                let host = family.frame(&form.host).ok();
+                layouts.insert(i, layout(form, host.as_ref(), values, read, meter).map_err(|e| format!("form {}: {e}", i + 1))?);
             }
         }
         Ok(Problem { layouts, ..Problem::bare(family) })
@@ -984,7 +994,16 @@ impl<'f> Problem<'f> {
         let (Some(ends), Some(shape)) = (lay.ends.get(k).copied(), lay.shape.get(k).copied()) else {
             return Err(format!("form {}: its sketch isn't read", i + 1));
         };
-        Ok(Seen { form: i, line: k, host, frame, ends, shape })
+        let group = form.plane_group(k);
+        if group >= 2 {
+            let frame = lay
+                .profiles
+                .get(group - 2)
+                .copied()
+                .ok_or_else(|| format!("form {}: line {}: its profile has no plane, its path not chaining", i + 1, k + 1))?;
+            return Ok(Seen { form: i, line: k, host, frame, profile: true, ends, shape });
+        }
+        Ok(Seen { form: i, line: k, host, frame, profile: false, ends, shape })
     }
 
     /// Where vertex `v` of form `i`'s sketch is in its host's axes, as drawn for the type.
@@ -1029,12 +1048,23 @@ impl<'f> Problem<'f> {
 
     /// A point of sketch `s` at `p` (its host's axes) in the family's axes, moving with the unknowns.
     fn sketch_point(&self, s: &Seen, p: &(Ad, Ad)) -> Result<V3, String> {
+        if s.profile {
+            let f = s.frame;
+            return Ok(AdFrame { origin: v3(f.origin), x: v3(f.x), y: v3(f.y), z: v3(f.z) }.point(&p.0, &p.1, &Ad::k(0.0)));
+        }
         Ok(self.host_ad(&s.host, DEPTH)?.point(&p.0, &p.1, &Ad::k(0.0)))
     }
 
     /// Vertex `v` of the sketch `s` is a line of, along `m`: its host's offset as much as `m` runs along the host's normal,
     /// and its place on the host; on a reference line's face, through the face's axes as the line turns (F7c).
     fn vertex_along(&self, s: &Seen, v: usize, m: P3) -> Result<Lin, String> {
+        // On a profile's plane: its axes as drawn.
+        if s.profile {
+            return Ok(Lin::number(dot(m, s.frame.origin))
+                .plus(self.coord(s.form, v, 0).scaled(dot(m, s.frame.x)))
+                .plus(self.coord(s.form, v, 1).scaled(dot(m, s.frame.y)))
+                .tidy());
+        }
         let PlaneRef::Plane(h) = s.host else {
             return Ok(vdotk(&self.sketch_point(s, &self.vertex_ad(s.form, v))?, m).lin(&self.at));
         };
@@ -1225,6 +1255,7 @@ impl<'f> Problem<'f> {
                     }
                 }
                 if r.is_point()
+                    && !s.profile
                     && let PlaneRef::Plane(h) = s.host
                 {
                     own(h).into_iter().for_each(|i| add(Unknown::Plane(i)));
@@ -1483,6 +1514,19 @@ impl Family {
                     return Err(format!("{who}: it measures to {r} twice"));
                 }
                 self.reference_ok(r, d.kind).map_err(|e| format!("{who}: {e}"))?;
+            }
+            // FE-12: a profile's lines are measured among themselves, its plane following the path as nothing else does.
+            let on = |r: &DimRef| match *r {
+                DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => self
+                    .forms
+                    .iter()
+                    .find(|f| f.guid == g)
+                    .and_then(|f| f.plane_lines().position(|x| x.guid == l).map(|k| (g, f.plane_group(k)))),
+                _ => None,
+            };
+            let groups: Vec<Option<(Guid, usize)>> = d.refs.iter().map(on).collect();
+            if groups.iter().any(|x| x.is_some_and(|(_, k)| k >= 2)) && groups.iter().any(|x| *x != groups[0]) {
+                return Err(format!("{who}: a profile's lines are measured among themselves, not with what lies off its plane"));
             }
             if d.kind.is_aligned() && d.refs.iter().all(DimRef::is_point) {
                 return Err(format!("{who}: it measures between points alone: give it a plane or a line to measure along"));
@@ -2933,11 +2977,12 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
         if !form.mesh.is_empty() || form.guid.is_nil() {
             continue;
         }
-        let Ok(frame) = flexed.frame(&form.host) else { continue };
-        let flat = parallel(frame.z, eye);
+        let Ok(host) = flexed.frame(&form.host) else { continue };
+        let profiles = super::forms::profile_frames(form, &host, &mut |e| number(e, values, &mut read));
+        let host_flat = parallel(host.z, eye);
         // A side face seen edge on is an extrusion's alone: a blend's sides lean, a sweep's follow its path.
-        let edge = dot(frame.z, eye).abs() <= PARALLEL && form.kind() == super::forms::FormKind::Extrusion;
-        if !flat && !edge {
+        let edge = dot(host.z, eye).abs() <= PARALLEL && form.kind() == super::forms::FormKind::Extrusion;
+        if !host_flat && !edge && !profiles.iter().any(|p| parallel(p.z, eye)) {
             continue;
         }
         let ends = if edge {
@@ -2948,7 +2993,19 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
         } else {
             (0.0, 0.0)
         };
-        for l in form.plane_lines().filter(|l| !l.guid.is_nil()) {
+        for (k, l) in form.plane_lines().enumerate().filter(|(_, l)| !l.guid.is_nil()) {
+            // A profile's line on its own plane (FE-12), seen flat or not at all.
+            let group = form.plane_group(k);
+            let (frame, flat, edge) = match group {
+                0 | 1 => (host, host_flat, edge),
+                _ => match profiles.get(group - 2) {
+                    Some(p) => (*p, parallel(p.z, eye), false),
+                    None => continue,
+                },
+            };
+            if !flat && !edge {
+                continue;
+            }
             let FormCurve::Line { start, end, turn } = &l.curve else { continue };
             let mut num = |e| number(e, values, &mut read);
             let (Ok(ax), Ok(ay), Ok(bx), Ok(by)) = (num(&start[0]), num(&start[1]), num(&end[0]), num(&end[1])) else { continue };
@@ -3003,12 +3060,16 @@ pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &view
         if !form.mesh.is_empty() || form.guid.is_nil() {
             continue;
         }
-        let Ok(frame) = flexed.frame(&form.host) else { continue };
-        if !parallel(frame.z, eye) {
-            continue;
-        }
-        let at = |p: P2| st.to_view(which, frame.point(p, 0.0));
-        for l in form.plane_lines().filter(|l| !l.guid.is_nil()) {
+        let Ok(host) = flexed.frame(&form.host) else { continue };
+        let profiles = super::forms::profile_frames(form, &host, &mut |e| number(e, values, &mut read));
+        for (k, l) in form.plane_lines().enumerate().filter(|(_, l)| !l.guid.is_nil()) {
+            // On its host, or a profile's line on its own plane (FE-12): seen flat.
+            let group = form.plane_group(k);
+            let Some(frame) = (if group < 2 { Some(host) } else { profiles.get(group - 2).copied() }) else { continue };
+            if !parallel(frame.z, eye) {
+                continue;
+            }
+            let at = |p: P2| st.to_view(which, frame.point(p, 0.0));
             let r = DimRef::Sketch(form.guid, l.guid);
             let mut num = |e| number(e, values, &mut read);
             match &l.curve {
