@@ -2771,30 +2771,40 @@ impl BimApp {
             // A snap override typed was for that point.
             self.snap_once = None;
         }
-        if self.drawing.selected && pressed(Modifiers::NONE, Key::Backspace) {
+        // Backspace, read once, goes to the first of these that wants it; with none, it deletes the selection as Delete
+        // does, since a Mac's keyboard has no Delete key (its "delete" is Backspace).
+        let mut backspace = pressed(Modifiers::NONE, Key::Backspace);
+        if backspace && self.drawing.selected {
             // A whole-selected field is cleared by Backspace, not clipped a digit at a time: the number goes and the field
             // catches up with the pointer again.
             self.typed_length.clear();
             self.drawing.selected = false;
-        } else if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
+            backspace = false;
+        } else if backspace && !self.typed_length.is_empty() {
             self.typed_length.pop();
+            backspace = false;
         }
         // Backspace in a wall or detail line chain takes its last point back, and the segment built to it, so the model and
         // the chain stay one drawing.
-        if self.typed_length.is_empty() && self.drawing.other.is_empty() && self.chain_active() && pressed(Modifiers::NONE, Key::Backspace)
-        {
+        if backspace && self.typed_length.is_empty() && self.drawing.other.is_empty() && self.chain_active() {
             self.undo_chain_point();
+            backspace = false;
         }
         // Backspace while a dimension is being picked takes its last reference out.
-        if pressed(Modifiers::NONE, Key::Backspace)
+        if backspace
             && self.typed_length.is_empty()
             && self.dim_edit.is_none()
             && self.dimension_refs_edit.is_none()
             && let Tool::Dimension(_, refs) = &mut self.tool
         {
             refs.pop();
+            backspace = false;
         }
-        if pressed(Modifiers::NONE, Key::Delete) {
+        // A dimension being picked or edited keeps Backspace, as it always has, whatever it did.
+        if matches!(self.tool, Tool::Dimension(..)) || self.dim_edit.is_some() || self.dimension_refs_edit.is_some() {
+            backspace = false;
+        }
+        if pressed(Modifiers::NONE, Key::Delete) || backspace {
             // While a field is whole-selected, Delete empties that field rather than deleting the selection.
             if self.drawing.selected {
                 self.typed_length.clear();
