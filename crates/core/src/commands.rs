@@ -75,20 +75,20 @@ const fn other_files(id: &'static str, label: &'static str, params: &'static str
 pub static ALL: &[Command] = &[
     other(
         "adaptive_capture",
-        "Capture Adaptive Context",
+        ui_msg!("Capture Adaptive Context"),
         "{sources:[{id,host:{type:frame,point}|{type:face|edge|vertex,...}}]} ordered project references captured as full world frames, with persistent source identities; a snapshot, not a live constraint",
         adaptive_capture,
     ),
     edit(
         "adaptive_place",
-        "Place Adaptive Instances",
+        ui_msg!("Place Adaptive Instances"),
         &[],
         "{family,type?,placements:[{adaptive:{frames,context?,bindings?},at?:[x,y],level?,angle?,offset?,params?}]} batch placement, up to 1000 instances, in one undo step. The frames are the project's (as adaptive_capture gives them): each instance builds on them wherever it stands, holding them in its own axes; `at` defaults to the first frame's point",
         adaptive_place,
     ),
     edit(
         "adaptive_move",
-        "Move Adaptive Point",
+        ui_msg!("Move Adaptive Point"),
         &[],
         "{id, number, to: [x,y,z]} adaptive point `number` of adaptive component `id` moved to project point `to`, its axes kept: \
          what dragging its grip does",
@@ -96,13 +96,13 @@ pub static ALL: &[Command] = &[
     ),
     other(
         "adaptive_evaluate",
-        "Evaluate Adaptive Placement",
+        ui_msg!("Evaluate Adaptive Placement"),
         "{id} evaluate an adaptive component, returning exact local placement, ordered dependencies, valid geometry and diagnostics for replay",
         adaptive_evaluate,
     ),
     other(
         "new",
-        "New",
+        ui_msg!("New"),
         "{name?, language?: en|pt|es|sv|cs|fr|de|nl|it|pl|vi} an empty project with Level 1 (0) and Level 2 (3000), named in its \
          language (Nível 1, Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish; Niveau 1, Niveau 2 in \
          Dutch; Tầng 1, Tầng 2 in Vietnamese)",
@@ -110,7 +110,7 @@ pub static ALL: &[Command] = &[
     ),
 other_files(
         "open",
-        "Open",
+        ui_msg!("Open"),
         "{path, as_template?} a .bimc project (and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
          machine has free allows (8 times a project's size, 14 times an IFC's; without the apps' meter, under 256 and 512 MiB) (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why). A .bimt \
@@ -121,7 +121,7 @@ other_files(
     ),
     other_files(
         "ifc_survey",
-        "IFC Survey",
+        ui_msg!("IFC Survey"),
         "{path} what an .ifc file holds, counted: never a product's name, an id or a value, so a file that must not leave the machine can \
          be described by running this and pasting the reply. `schema`, `encoding` (whether the text is UTF-8), `units`, `storeys` (each \
          one's `elevation`, its `placement_z` and the `lowest_product_z` of what it contains, in the file's length unit), `classes` (each \
@@ -132,10 +132,10 @@ other_files(
         ifc_survey,
         Files::Read,
     ),
-    other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
+    other("highrise", ui_msg!("Synthetic Highrise"), "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other(
         "tower",
-        "Reference Tower",
+        ui_msg!("Reference Tower"),
         "{storeys?: 100, plate?: reference|small, annotation?: false, sheets?: false} replace the project with the original reference tower \
          of 1–100 storeys, about 10,000 elements and 195 rooms a storey: the baseline the core is measured on \
          (docs/spatial-core-plan.md); the `small` plate, 36 × 36 m, is the one compared with Revit (tools/revit-crosscheck). \
@@ -155,14 +155,14 @@ other_files(
     ),
     other_files(
         "recover",
-        "Recover Autosave",
+        ui_msg!("Recover Autosave"),
         "{path, project?} open and validate a recovery snapshot; Save targets `project`, or asks for Save As without it",
         recover,
         Files::Read,
     ),
     edit_files(
         "insert",
-        "Insert from File",
+        ui_msg!("Insert from File"),
         &[],
         "{path, ids?: [id, …], same_parameters?: [name, …]} elements of another project (.bimc, .bimcraft or .ifc) brought into this one: those `ids` names \
          (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is \
@@ -177,7 +177,7 @@ other_files(
     ),
     edit_files(
         "link",
-        "Link Model",
+        ui_msg!("Link Model"),
         &["LK"],
         "{path, name?, at?: [x, y], angle?: degrees, by?: manual|base|shared, location?} another project (.bimc, .bimcraft or .ifc) \
          shown in this one as a reference that \
@@ -195,7 +195,7 @@ other_files(
     .menu("Manage > Link Model"),
     other_files(
         "reload",
-        "Reload Links",
+        ui_msg!("Reload Links"),
         "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` \
          (the names) and `failed` ({name, error})",
         reload,
@@ -203,7 +203,7 @@ other_files(
     ),
     other_files(
         "save",
-        "Save",
+        ui_msg!("Save"),
         "{path?, ifc_origin?, compress?} .bimc saves the project (Save As with a path); .bimt saves it as a template, which `open` starts \
          a new project from, and the project keeps its own file (the reply says `template: true`): compact JSON, \
          or with `compress: true` the same JSON in a zip of one entry, `project.json`, deflated on every core (several times \
@@ -218,7 +218,7 @@ other_files(
     ),
     other_files(
         "export",
-        "Export",
+        ui_msg!("Export"),
         "{format, view?, views?, print_set?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?, \
          ifc_origin?, selected?, pdf?} \
          writes views, sheets, schedules or the project out as `format` (an id or an extension from `export_formats`: pdf, svg, \
@@ -240,7 +240,7 @@ other_files(
     ),
     other_files(
         "publish",
-        "Publish",
+        ui_msg!("Publish"),
         "{name, folder?} writes publishing set `name` (`publish_set`) out: each of its folders' print sets as its format, \
          under the set's own folder (beside the project's file unless absolute) or under `folder` when given. Returns what \
          `export` returns: `written` (each file's path, format and what it is of), `failed` (what wasn't written and why; \
@@ -250,7 +250,7 @@ other_files(
     ),
     other(
         "export_formats",
-        "Export Formats",
+        ui_msg!("Export Formats"),
         "{} the formats `export` writes: each one's `id`, `label`, `extension`, `family`, `status` (stable, experimental or \
          planned: listed, not written yet), what it `takes` (drawing, table, model), whether it `combines` sources in one \
          file and lays drawings on pages (`paged`); and the `tokens` a file name template may hold",
@@ -258,14 +258,14 @@ other_files(
     ),
     other(
         "undo",
-        "Undo",
+        ui_msg!("Undo"),
         "{count?} takes back the last `count` steps (1 by default). In a Co-Work session, the caller's own last `count` edits, wherever \
          they are in the history; refused, saying who, when someone changed the same elements or the project's settings after them",
         undo,
     ),
     other(
         "redo",
-        "Redo",
+        ui_msg!("Redo"),
         "{count?} does again the last `count` steps undone (1 by default). In a Co-Work session, the caller's own last `count` undos",
         redo,
     ),
@@ -302,7 +302,7 @@ other_files(
     .menu("Architecture > Reference Plane"),
     edit(
         "edit_work_plane",
-        "Edit Work Plane",
+        ui_msg!("Edit Work Plane"),
         &[],
         "{ids, host: {level: name|id} | {plane: name|id|GUID} | {face: {element: id|GUID, face}}} puts components on a level \
          (at their plan point, on it), a reference plane of the project or a face of a wall, a floor, a ceiling or a roof \
@@ -316,7 +316,7 @@ other_files(
     ),
     edit_files(
         "point_cloud",
-        "Point Cloud",
+        ui_msg!("Point Cloud"),
         &[],
         "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
          PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
@@ -330,7 +330,7 @@ other_files(
     ),
     edit_files(
         "import_mesh",
-        "Import Mesh",
+        ui_msg!("Import Mesh"),
         &[],
         "{path, level?, at?: [x, y], units?, up?} brings in the 3D objects of an OBJ (with the MTL library it names) or a glTF \
          2.0 (`.gltf` with its buffers, or `.glb`): each object of the file (an OBJ's `o` or `g`, a glTF's node with a mesh) a \
@@ -345,7 +345,7 @@ other_files(
     ),
     edit_files(
         "import_cad",
-        "Import CAD",
+        ui_msg!("Import CAD"),
         &[],
         "{path | cad, name?, level?, view?, at?: [x, y], position?, acquire?, units?, scale?, angle?, layers?, colors?, link?} brings in a \
          DXF drawing (`path`: an ASCII DXF of any version, or a DWG, which the desktop and the command line read as DXF) or places one the project holds again (`cad`, \
@@ -366,7 +366,7 @@ other_files(
     ),
     edit(
         "cad_layers",
-        "CAD Layers",
+        ui_msg!("CAD Layers"),
         &[],
         "{id, hide?: [layer, …], show?: [layer, …], view?} a CAD import's layers, each with its colour and linetype and whether \
          it's shown; `hide` and `show` change which it shows in every view, or with `view` in that view only (its \
@@ -375,7 +375,7 @@ other_files(
     ),
     edit_files(
         "reload_cad",
-        "Reload CAD",
+        ui_msg!("Reload CAD"),
         &[],
         "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project \
          does too). Returns whether it changed",
@@ -384,7 +384,7 @@ other_files(
     ),
     other(
         "cad_query",
-        "Query",
+        ui_msg!("Query"),
         "{id, at: [x, y], reach?} what of a CAD import lies nearest `at`, within `reach` mm (100 unless given): its kind, layer, \
          colour, linetype and weight, as Revit's Query, and its `z`, mm, when it has an elevation: one number, or one for \
          each of its points (a 3D polyline)",
@@ -418,7 +418,7 @@ other_files(
     .menu("Architecture > Door"),
     edit(
         "window",
-        "Window",
+        ui_msg!("Window"),
         &["WN"],
         "{at: [x,y] | wall: id, offset?, sill?, type?, family?, level?, mark?, flip_facing?} like door; `sill` defaults to the \
          type's (a family's `Sill Height`) and must be under the wall's top, while its head may rise past the top, as Revit \
@@ -459,7 +459,7 @@ other_files(
     .menu("Architecture > Ceiling"),
     other(
         "sketch",
-        "Sketch",
+        ui_msg!("Sketch"),
         "{lines: [[[x,y],[x,y]],…] | wall: id|guid, face: \"centre\" | \"exterior-finish\" | \"interior-finish\" | \
          \"exterior-core\" | \"interior-core\", offset?: mm} solves a sketch without making anything, as Finish Edit Mode \
          does: lines in any order, either way round, joined end to end (within 1 mm) into closed loops; a loop inside no \
@@ -476,7 +476,7 @@ other_files(
     ),
     edit(
         "shaft",
-        "Shaft Opening",
+        ui_msg!("Shaft Opening"),
         &[],
         "{boundary: [[x,y],…] | sketch: [[[x,y],[x,y]],…], level?, top_level?, height?, base_offset?} a hole through the \
          floors, ceilings and roofs it passes through, from `base_offset` above the level up to the next level, or `height` \
@@ -486,7 +486,7 @@ other_files(
     .menu("Architecture > Shaft"),
     edit(
         "edit_boundary",
-        "Edit Boundary",
+        ui_msg!("Edit Boundary"),
         &[],
         "{id, sketch?: [[[x,y],[x,y]],…]} redraws a floor's, a ceiling's, a roof's footprint's or a shaft's outline and its \
          holes (a floor's or a ceiling's openings, a roof's courtyards; a shaft has none) as a sketch, all at once (see \
@@ -499,7 +499,7 @@ other_files(
     ),
     edit(
         "room_finish",
-        "Room Finish",
+        ui_msg!("Room Finish"),
         &[],
         "{id, part?: floor|ceiling, action: disconnect|regenerate} a room's own floor or ceiling, the one its type makes for it \
          (`type {category: room, floor, ceiling}`) and keeps along its boundary at the walls' faces. `id` is the room (then \
@@ -512,7 +512,7 @@ other_files(
     ),
     edit(
         "edit_shape",
-        "Modify Sub Elements",
+        ui_msg!("Modify Sub Elements"),
         &[],
         "{id, points?: [{at: [x,y], z, id?}, …], lines?: [{a: [x,y], b: [x,y], id?}, …], absolute?} gives a floor's top, or a \
          flat roof's by footprint (its underside following), its shape anew, all at once: points `z` mm above (negative, below) where its top would be without them (with `absolute`, \
@@ -526,7 +526,7 @@ other_files(
     ),
     edit(
         "add_point",
-        "Add Point",
+        ui_msg!("Add Point"),
         &[],
         "{id, at: [x,y], z?, absolute?, offset?} a point on a floor's or flat roof's top: `offset` mm over the top as it is \
          there now (Revit's Along Surface), or `z` mm above where it would be without its shape (with `absolute`, at that \
@@ -536,7 +536,7 @@ other_files(
     ),
     edit(
         "add_split_line",
-        "Add Split Line",
+        ui_msg!("Add Split Line"),
         &[],
         "{id, a: [x,y], b: [x,y]} a line a floor's or flat roof's top folds along; an end that is no point of its shape and no corner of its \
          outline or an opening becomes a point, at the height the top has there now",
@@ -544,14 +544,14 @@ other_files(
     ),
     edit(
         "reset_shape",
-        "Reset Shape",
+        ui_msg!("Reset Shape"),
         &[],
         "{id} takes a floor's or roof's points and split lines all off: it's flat at its offset again",
         reset_shape,
     ),
     edit(
         "falls",
-        "Falls",
+        ui_msg!("Falls"),
         &[],
         "{id, drains: [[x,y], …], fall: 1.5, ridges?: [[[x,y], [x,y]], …]} gives a floor's or flat roof's top falls to its \
          drains, at no less than `fall` %: `ridges` (each from the outline, an opening or another ridge to another) split it \
@@ -565,7 +565,7 @@ other_files(
     ),
     edit(
         "mass",
-        "Mass",
+        ui_msg!("Mass"),
         &["MS"],
         "{boundary: [[x,y],…], level?, top_level?, height?, base_offset?, top?: [[x,y],…], lean?: [dx,dy], name?} a mass, Revit's \
          conceptual volume: the footprint extruded from `base_offset` above the level up to the next level, or `height` mm, or up \
@@ -675,7 +675,7 @@ other_files(
     ),
     edit(
         "show_mass",
-        "Show Mass",
+        ui_msg!("Show Mass"),
         &["MH"],
         "{view?, show?} hides the masses in a view if it shows them, shows them if it hides them (or as `show`, a yes or no, \
          says): the `mass` category of `graphics {hide|show}`, in one step. The reply has `shown` and `hidden`, the categories \
@@ -729,7 +729,7 @@ other_files(
     ),
     other(
         "contours",
-        "Contours",
+        ui_msg!("Contours"),
         "{id} a toposolid's contour lines: at each multiple of its `interval` between its top's lowest and highest, the \
          segments where its top crosses that height (mm, in the project's z). Returns `levels`, each with its `z` and its \
          `lines` [[x,y],[x,y]]",
@@ -737,7 +737,7 @@ other_files(
     ),
     edit(
         "room_separator",
-        "Room Separator",
+        ui_msg!("Room Separator"),
         &[],
         "{points: [[x,y],…], level?, closed?} room separation lines along `points`, one per segment (`closed` joins the last \
          to the first): they bound rooms as walls do, to split an open space (a living room and its corridor) into rooms, \
@@ -746,7 +746,7 @@ other_files(
     ),
     edit(
         "rebar",
-        "Rebar",
+        ui_msg!("Rebar"),
         &[],
         "{points: [[x,y,z],…], diameter, host?, grade?, layer?, closed?, count?, step?, level?} a reinforcing bar bent along `points` \
          (mm; z over the level), `diameter` mm thick (3 to 100), of steel `grade` (CA-50 unless told). `host` is the beam, \
@@ -758,7 +758,7 @@ other_files(
     ),
     edit(
         "reinforce",
-        "Reinforce",
+        ui_msg!("Reinforce"),
         &[],
         "{host | hosts: [id, …], preset?, cover?, grade?, grade_stirrup?, clearance?, …} bars by rules for a beam, a column, a footing or a floor: the engineer \
          says how many, how thick and how far apart (no standard's number sets them) and it lays them inside the cover and checks \
@@ -840,7 +840,7 @@ other_files(
     },
     edit(
         "reinforcement_preset",
-        "Reinforcement Presets",
+        ui_msg!("Reinforcement Presets"),
         &[],
         "{name?, kind?: beam|column|footing|floor, params?, rename?, delete?: true} a named set of the parameters `reinforce` takes for \
          one kind of host (`params`: its `cover`, `grade`, `grade_stirrup`, `clearance` and what its kind takes, and not `host`), kept in \
@@ -850,7 +850,7 @@ other_files(
     ),
     edit(
         "demand_factors",
-        "Demand Factors",
+        ui_msg!("Demand Factors"),
         &[],
         "{class?, factor?, delete?: true} the project's demand factors by classification: the share (above 0 up to 1) of the load of the \
          circuits of a `class` (lighting, receptacle…, as their devices' connectors name it) that counts in a board's demand load and \
@@ -859,7 +859,7 @@ other_files(
     ),
     edit(
         "panel_schedule",
-        "Panel Schedule",
+        ui_msg!("Panel Schedule"),
         &[],
         concat!(
             "{panel: id, name?, template?: branch|list, show_spare?, show_space?, phase_columns?, scale?, notes?} makes the panel schedule \
@@ -880,7 +880,7 @@ other_files(
     ),
     edit(
         "print_set",
-        "View/Sheet Set",
+        ui_msg!("View/Sheet Set"),
         &[],
         "{name?, views?: [id, GUID, view name or sheet number, …], add?: [...], remove?: [...], rename?, delete?: true} a print set, as Revit's View/Sheet \
          Set: a named list of views and sheets (plans, sections, elevations, 3D views, schedules and sheets, any mix) printed or \
@@ -890,7 +890,7 @@ other_files(
     ),
     edit(
         "publish_set",
-        "Publisher",
+        ui_msg!("Publisher"),
         &[],
         "{name?, folder?, folders?: [{name, entries: [{print_set, format, name?, combine?, options?}]}], overwrite?: true, timings?, rename?, \
          duplicate?, delete?: true} a publishing set, the Publisher's preset: folders that hold print sets (`print_set`), each \
@@ -907,7 +907,7 @@ other_files(
     ),
     edit(
         "voltage",
-        "Voltage Definitions",
+        ui_msg!("Voltage Definitions"),
         &[],
         "{name?, nominal?, min?, max?, rename?, delete?: true} a voltage of the project's electrical settings, in volts: `nominal`, and the \
          band a device may read within, `min` to `max` (10 per cent either way unless given). Without `name`, lists them. A voltage a \
@@ -916,7 +916,7 @@ other_files(
     ),
     edit(
         "distribution_system",
-        "Distribution Systems",
+        ui_msg!("Distribution Systems"),
         &[],
         "{name?, phases?: 1|2|3, wires?, l_l?, l_n?, l_g?, ground?, rename?, delete?: true} a distribution system of the project's \
          electrical settings. `wires` counts the line conductors and the neutral, not the protective one (3 phases: 3 or 4). `l_l`, `l_n` \
@@ -927,7 +927,7 @@ other_files(
     ),
     edit(
         "wire_type",
-        "Wire Types",
+        ui_msg!("Wire Types"),
         &[],
         "{name?, material?: copper|aluminium, temperature?, insulation?, note?, sizes?: [{section, ampacity, label?}], rename?, delete?: true} \
          a wire type of the project's electrical settings: a conductor's `material`, working `temperature` (°C) and `insulation`, and \
@@ -938,7 +938,7 @@ other_files(
     ),
     edit(
         "panel",
-        "Panel",
+        ui_msg!("Panel"),
         &[],
         "{id?, distribution?, mains?, slots?, supply_from?} the electrical data of a distribution board, an equipment component: \
          `distribution` one of the project's distribution systems (`distribution_system` lists them), `mains` the main breaker in \
@@ -949,7 +949,7 @@ other_files(
     ),
     edit(
         "coordinates",
-        "Coordinates",
+        ui_msg!("Coordinates"),
         &[],
         "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link or CAD id, reset?: true} the project's \
          coordinates. `reset` puts the active location back on the internal origin (shared coordinates the file's own) and both \
@@ -967,7 +967,7 @@ other_files(
     ),
     edit(
         "location",
-        "Location",
+        ui_msg!("Location"),
         &[],
         "{name?, east?, north?, elevation?, latitude?, longitude?, angle?, scale?, crs?, rename?, activate?: true, delete?: true, \
          shift?: [de, dn, dz]} a named site of the project (Revit's), one position of the building in the shared coordinates: \
@@ -982,7 +982,7 @@ other_files(
     ),
     edit(
         "specify_coordinates",
-        "Specify Coordinates at a Point",
+        ui_msg!("Specify Coordinates at a Point"),
         &["CP"],
         "{at: [x,y,z] | [x,y], on?, level?, east, north, elevation, angle?} sets the active site so that internal point `at` \
          has the shared coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when \
@@ -993,7 +993,7 @@ other_files(
     ),
     edit(
         "rotate_project_north",
-        "Rotate Project North",
+        ui_msg!("Rotate Project North"),
         &["TN"],
         "{angle?: degrees, true_north?: true, about?: [x, y]} turns the whole model `angle` degrees counter-clockwise about \
          `about` (default the Project Base Point), as Revit's Rotate Project North: every element that has a place in plan, \
@@ -1004,7 +1004,7 @@ other_files(
     ),
     other(
         "convert_coordinates",
-        "Convert Coordinates",
+        ui_msg!("Convert Coordinates"),
         "{points: [[x,y,z], …], from: internal|base|shared|wgs84, to: internal|base|shared|wgs84, location?} each point from one \
          frame to another, mm: `internal`, the file's own, where geometry is; `base`, from the Project Base Point; `shared`, the \
          map coordinates of the active site (or of the site `location` names); `wgs84`, [longitude, latitude, elevation mm], \
@@ -1302,7 +1302,7 @@ other_files(
     ),
     edit(
         "text_type",
-        "Text Types",
+        ui_msg!("Text Types"),
         &[],
         "{name?, font?, size?, bold?, italic?, underline?, width_factor?, color?, border?, border_offset?, border_pen?, \
          like?, rename?, delete?: true} a text type of the project's: its `font`, any the system has, or one BIMCraft carries \
@@ -1319,7 +1319,7 @@ other_files(
     ),
     edit(
         "dimension_constraint",
-        "Dimension Constraints",
+        ui_msg!("Dimension Constraints"),
         &[],
         "{id, equal?: bool, locked?: [segment, …]} an aligned or linear dimension's constraints, as Revit's EQ and padlocks: \
          `equal` keeps its segments equal (what it measures to between its first and last moves to keep them so, its ends \
@@ -1341,7 +1341,7 @@ other_files(
     ),
     edit(
         "dimension_text",
-        "Dimension Text",
+        ui_msg!("Dimension Text"),
         &[],
         "{id, segment?, prefix?, suffix?, above?, below?, replace?} a dimension's text, as Revit's Dimension Text: what goes \
          before and after its numbers, over and under them, or in place of them. With `segment` (its numbers counted from 0, \
@@ -1351,7 +1351,7 @@ other_files(
     ),
     edit(
         "dimension_type",
-        "Dimension Types",
+        ui_msg!("Dimension Types"),
         &[],
         "{name?, like?, rename?, delete?: true, …values} a dimension type of the project's, as Revit's type parameters, \
          lengths mm on paper. Graphics: `string` continuous|baseline|ordinate (Dimension String Type; baseline lines \
@@ -1370,7 +1370,7 @@ other_files(
     ),
     edit(
         "grid_type",
-        "Grid Types",
+        ui_msg!("Grid Types"),
         &[],
         "{name?, like?, rename?, delete?: true, …values} a grid type of the project's, as Revit's type parameters: Graphics: \
          `line_pattern` (a line pattern of the project's, mm on paper; null, a solid line), `line_pen` (0 to 16; 4), `color` \
@@ -1407,7 +1407,7 @@ other_files(
     ),
     edit(
         "spot_coordinate_type",
-        "Spot Coordinate Types",
+        ui_msg!("Spot Coordinate Types"),
         &[],
         "{name?, like?, rename?, delete?: true, …values} a spot coordinate type of the project's, as Revit's type \
          parameters, lengths mm on paper. Constraints: `rotate_with_component` (its text turns with the component it reads). \
@@ -1436,7 +1436,7 @@ other_files(
     ),
     edit(
         "tag",
-        "Tag by Category",
+        ui_msg!("Tag by Category"),
         &["TG"],
         "{ids?: [id,…], label?, level?, category?, offset?: [dx, dy], leader?} tags elements with a field of theirs: a door's or \
          window's mark, a room's name, else the type, or `label`, any field its category's schedule has (`Height`, `Area`, a \
@@ -1447,7 +1447,7 @@ other_files(
     ),
     edit(
         "section",
-        "Section",
+        ui_msg!("Section"),
         &["CR"],
         "{start: [x,y], end: [x,y], depth?, name?} a section view along the line, looking to its left (drawn west to east, it \
          looks north): it cuts the model at the line and sees `depth` mm past it, or everything",
@@ -1455,7 +1455,7 @@ other_files(
     ),
     edit(
         "elevation",
-        "Elevation",
+        ui_msg!("Elevation"),
         &[],
         "{on?: id, reference?: [[x,y],[x,y]], facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an \
          elevation view. With `on` (a wall, a line, a floor's, roof's or ceiling's edge, a grid or any element with a straight \
@@ -1470,7 +1470,7 @@ other_files(
     ),
     edit(
         "sheet",
-        "Sheet",
+        ui_msg!("Sheet"),
         &[],
         "{number?, name?, size?: ISO A0–A4|ISO B1–B4|ARCH A–E|ARCH E1–E3|ANSI A–E|SUPER B|width x height in mm, title_block?, \
          fields?: {KEY: text}} a sheet of paper (A3 by default), with a title block: the built-in one, or the project's \
@@ -1484,7 +1484,7 @@ other_files(
     ),
     edit_files(
         "title_block",
-        "Title Blocks",
+        ui_msg!("Title Blocks"),
         &[],
         "{name?, like?, starter?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, sizes?, \
          lines?, fills?, texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
@@ -1511,7 +1511,7 @@ other_files(
     ),
     edit(
         "title_values",
-        "Title Block Values",
+        ui_msg!("Title Block Values"),
         &[],
         "{values?: {KEY: text or null}} the project's values of its title blocks' project fields (and of an automatic field, \
          DATE say, to give every sheet that instead): a key's null clears it. A key of the project's information (CLIENT, \
@@ -1521,7 +1521,7 @@ other_files(
     ),
     edit(
         "place",
-        "Place View",
+        ui_msg!("Place View"),
         &[],
         "{sheet: number or id, view: a level's, section's, elevation's, schedule's or 3D view's name or id, at?: [x, y], \
          scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`; an \
@@ -1536,7 +1536,7 @@ other_files(
     ),
     edit(
         "crop",
-        "Crop View",
+        ui_msg!("Crop View"),
         &[],
         "{view, region?: [[x, y], [x, y]] | null} crops a level's plan to the region's south-west and north-east corners \
          (plan mm), or a section or an elevation to its bottom left and top right (along its line from its start, and up: \
@@ -1546,7 +1546,7 @@ other_files(
     ),
     edit(
         "duplicate_view",
-        "Duplicate View",
+        ui_msg!("Duplicate View"),
         &["DP"],
         "{view, mode?: duplicate|detailing|dependent, name?} a new plan view of a plan's level (a level's own plan, or a plan \
          view; sections, elevations, schedules, sheets and the 3D view aren't duplicated yet): `duplicate` (the default) has \
@@ -1559,7 +1559,7 @@ other_files(
     ),
     edit(
         "underlay",
-        "Underlay",
+        ui_msg!("Underlay"),
         &[],
         "{view, source?: view | null, on?, color?: \"#rrggbb\" | [r, g, b], fills?, hide_annotation?, front?, offset?: [x, y], \
          move?: [dx, dy], angle?, rotate?: degrees, about?: [x, y], reset?} another view drawn under plan, section or elevation \
@@ -1579,7 +1579,7 @@ other_files(
     ),
     edit(
         "scale",
-        "View Scale",
+        ui_msg!("View Scale"),
         &[],
         "{view, scale?: 1 | … | 100000} a plan's, section's or elevation's scale, 1 : `scale`: the paper the view stands for, \
          1 mm of paper being `scale` mm of the model. Its annotation (lettering, grid bubbles, tags, dimension ticks…) and its \
@@ -1591,7 +1591,7 @@ other_files(
     ),
     edit(
         "detail",
-        "Detail Level",
+        ui_msg!("Detail Level"),
         &[],
         "{view, detail?: coarse | medium | fine} how much a plan, a section or an elevation draws of what it cuts: coarse, one \
          poché and openings as their gaps; medium, compound layers with the lines between them and an opening's leaf, swing and \
@@ -1603,7 +1603,7 @@ other_files(
     ),
     edit(
         "stair_storeys",
-        "Separate Storeys",
+        ui_msg!("Separate Storeys"),
         &[],
         "{id} makes multistorey stair `id` a stair for each storey it climbs, each on its own level up to the next, so any one \
          of them can be changed apart from the others. The first stays stair `id`; the answer lists the others. The stairs are \
@@ -1612,7 +1612,7 @@ other_files(
     ),
     edit(
         "stair_display",
-        "Stair Display",
+        ui_msg!("Stair Display"),
         &[],
         "{view, below?, same?, above?, by_type?: true} how stairs show in a plan view, in place of what each stair's type says: \
          `below`, `same` and `above` for the level under a stair, its own level and the level it climbs to, each \
@@ -1623,7 +1623,7 @@ other_files(
     ),
     edit(
         "visual_style",
-        "Visual Style",
+        ui_msg!("Visual Style"),
         &[],
         "{view?: \"{3D}\" | a 3D view's name or id, style?: shaded | hidden_line | wireframe} how a 3D view draws its surfaces: \
          shaded (lit, in their materials' colours and textures, the default); hidden_line (paper-white with their edges, what \
@@ -1633,7 +1633,7 @@ other_files(
     ),
     edit(
         "type",
-        "Edit Type",
+        ui_msg!("Edit Type"),
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|toposolid|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion|cornermullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
@@ -1667,7 +1667,7 @@ other_files(
     ),
     edit_files(
         "material",
-        "Materials",
+        ui_msg!("Materials"),
         &[],
         "{name, color?: \"#rrggbb\" | [r, g, b], transparency?: 0-100, cut?, surface?, texture?: {kind?, size?: [w, h], angle?, offset?: [x, y], path?, \
          image?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
@@ -1688,7 +1688,7 @@ other_files(
     .menu("Manage > Materials"),
     edit_files(
         "favorite",
-        "Favorites",
+        ui_msg!("Favorites"),
         &[],
         "{action?: list|save|load|delete, kind?: material|family, name?, as?, replace?, path?} the user's favorites, kept in a file \
          of their own (`path`; by default in their configuration folder) for every project to use: `save` the project's \
@@ -1701,7 +1701,7 @@ other_files(
     .menu("Manage > Favorites"),
     edit_files(
         "shared_parameters",
-        "Shared Parameters",
+        ui_msg!("Shared Parameters"),
         &[],
         "{path, action?: list|create|add_group|add|load|export, group?, name?, guid?, kind?: length|number|integer|angle|area|\
          volume|yesno|material|text|url|familytype, of?: category, description?, visible?, modifiable?, family?, instance?, \
@@ -1731,7 +1731,7 @@ other_files(
     .menu("Manage > Shared Parameters"),
     edit(
         "paint",
-        "Paint",
+        ui_msg!("Paint"),
         &["PT"],
         "{id | ids, face?, material} paints a face of the elements with a material of the library, as Revit's Paint does: its \
          colour and texture show in the 3D view over what their types are made of. `face`: a wall's `exterior` or `interior`, a \
@@ -1741,7 +1741,7 @@ other_files(
     ),
     edit(
         "parameter",
-        "Project Parameters",
+        ui_msg!("Project Parameters"),
         &[],
         "{name, kind?: text|number|integer|length|area|volume|angle|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|\
          column|component|stair|ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, \
@@ -1765,14 +1765,14 @@ other_files(
     .menu("Manage > Project Parameters"),
     other(
         "parameter_list",
-        "Parameter List",
+        ui_msg!("Parameter List"),
         "{} every project parameter with its id, GUID, whether it is shared (from a dictionary), its settings and what uses it \
          (values, schedules, view filters, tags, calculated fields); the dictionaries in use and the category mapping kept",
         crate::parameters::list,
     ),
     edit(
         "parameter_batch",
-        "Parameter Batch",
+        ui_msg!("Parameter Batch"),
         &[],
         "{ops: [{op?: set, …`parameter`'s params} | {op: delete, name} | {op: duplicate, name, as?} | {op: rename, names: [..], \
          prefix?, suffix?, find?, replace?}], dry_run?: true} several changes to project parameters, all or none and one undo step. \
@@ -1782,7 +1782,7 @@ other_files(
     ),
     edit_files(
         "parameter_import",
-        "Import Parameters",
+        ui_msg!("Import Parameters"),
         &[],
         "{path, dry_run?: true, map?: {their category: ours | null}, categories?: [..], resolve?: {name: same|separate|skip}, \
          scopes?: {name: instance|type}, names?: [..], replace_categories?: true, skip_conflicts?: true} parameter definitions from a .xlsx \
@@ -1799,7 +1799,7 @@ other_files(
     ),
     other_files(
         "parameter_export",
-        "Export Parameters",
+        ui_msg!("Export Parameters"),
         "{path, names?: [..], definitions?: [..], name?, version?} the project's parameters, those named, or the `definitions` given, to a .xlsx or .csv table or a .bimparams \
          dictionary (with its `name` and `version`). Definitions only, not values. Revit's shared parameter .txt is read, not written",
         crate::parameters::export,
@@ -1807,7 +1807,7 @@ other_files(
     ),
     other_files(
         "dictionary",
-        "Parameter Dictionary",
+        ui_msg!("Parameter Dictionary"),
         "{path, name?, version?, add?: [{name, kind?, description?, group?, categories?, guid?, read_only?, scope?: instance|type}], \
          names?: [project parameters], merge?: [paths], remove?: [names or GUIDs], skip_conflicts?: true} makes or changes the \
          dictionary file at `path` (.bimparams); the project isn't changed. A definition with a GUID the file has replaces it; a new one \
@@ -1819,7 +1819,7 @@ other_files(
     ),
     edit_files(
         "dictionary_mount",
-        "Load Parameter Dictionary",
+        ui_msg!("Load Parameter Dictionary"),
         &[],
         "{path} or {name, remove: true}: a dictionary's file loaded in the project, which remembers it and saves it as part of the \
          project; several can be. Nothing comes into the project until `parameter_import`. A dictionary moved is found by its GUID, and \
@@ -1830,7 +1830,7 @@ other_files(
     ),
     edit(
         "parameter_merge",
-        "Merge Parameters",
+        ui_msg!("Merge Parameters"),
         &[],
         "{from, into, overwrite?: true} parameter `from`'s values, and the schedules, filters, tags and formulas that name it, moved to \
          `into`, of the same kind; `from` goes, and files holding its GUID mean `into` from then on. Elements holding both with different \
@@ -1839,7 +1839,7 @@ other_files(
     ),
     edit(
         "parameter_purge",
-        "Purge Parameters",
+        ui_msg!("Purge Parameters"),
         &[],
         "{dry_run?: true} takes out the project parameters nothing uses (no value, schedule, view filter, tag or calculated field); \
          answers the names",
@@ -1847,7 +1847,7 @@ other_files(
     ),
     edit(
         "family_parameter_transfer",
-        "Transfer Family Parameters",
+        ui_msg!("Transfer Family Parameters"),
         &[],
         "{from, to: [families], names: [..], prefix?, suffix?, find?, replace?} a family's parameters copied to other families, with the \
          parameters their formulas read, optionally renamed. A name a family has already is skipped and listed",
@@ -1855,7 +1855,7 @@ other_files(
     ),
     edit(
         "family_parameter_add",
-        "Add Family Parameters",
+        ui_msg!("Add Family Parameters"),
         &[],
         "{families: [..], parameters: [{name, kind?: length|number|angle|yesno|material|text, instance?: true, value?, formula?, group?, \
          definition?: GUID}]} new parameters added to each family, all or none. A type parameter's `value` is every type's until a type \
@@ -1865,7 +1865,7 @@ other_files(
     ),
     edit(
         "type_parameter",
-        "Type Parameter Values",
+        ui_msg!("Type Parameter Values"),
         &[],
         "{category, type, values?: {parameter: value | null}, copy_to?: type} or {family, type, ...}: a type's values of the project's \
          type parameters (scope `type`), which every element of the type reads; null takes one away. `copy_to` gives another type of \
@@ -1874,7 +1874,7 @@ other_files(
     ),
     other(
         "classification_systems",
-        "Classification Systems",
+        ui_msg!("Classification Systems"),
         "{system?: uniclass|omniclass|uniformat|masterformat|nbr15965|coclass|cci|nlsfb|cobie} the classification systems BIMCraft \
          knows: their tables, which parameters each fills, whether those are each element's or each type's and why, how a code is \
          written; COBie's fields. No table is shipped: the user loads the edition they hold with `classification_table`. Also \
@@ -1883,7 +1883,7 @@ other_files(
     ),
     edit_files(
         "classification_table",
-        "Load Classification Table",
+        ui_msg!("Load Classification Table"),
         &[],
         "{path, system, table?, name?, edition?, prefix?, dry_run?} a classification table read into the project from its .csv or \
          .xlsx (columns by heading: Code or Number, Title or Description, Parent optional; or the first two), kept in the project. \
@@ -1895,7 +1895,7 @@ other_files(
     ),
     edit(
         "classification_parameters",
-        "Load Classification Parameters",
+        ui_msg!("Load Classification Parameters"),
         &[],
         "{system, tables?: [keys], scopes?: {key: instance|type}, categories?: {key: [categories]}, cobie?: {Type: table, Space: \
          table}, sheets?: [Type, Component, Space], dry_run?} a system's parameters made in the project, with the same GUIDs in every \
@@ -1906,7 +1906,7 @@ other_files(
     ),
     edit(
         "classify",
-        "Classify",
+        ui_msg!("Classify"),
         &[],
         "{assign: [{target, table? | parameter?, code | null}], dry_run?} codes written from the tables: `target` is an element's id \
          or GUID, or a type's GUID; a type parameter's code goes on the element's type. The code must be in the table its parameter \
@@ -1916,7 +1916,7 @@ other_files(
     ),
     other(
         "classification_brief",
-        "Classification Brief",
+        ui_msg!("Classification Brief"),
         "{tables?: [names], rows?: unclassified|all, elements?: [ids], candidates?: 60, files?: true} what an AI agent is handed to \
          classify the project: one row per type (per element for a table of each element's) with its category, family, type, \
          materials, levels, hosts, sizes and count, and for each table and category the codes most like them; its instructions and \
@@ -1925,14 +1925,14 @@ other_files(
     ),
     other(
         "classification_answer",
-        "Read Classification Answer",
+        ui_msg!("Read Classification Answer"),
         "{answer} an agent's answer (`{rows: [{key, table, code, confidence, reason}]}`, as JSON or the text holding it) checked \
          against the project: what can be applied, with what each holds now, and what can't and why. Nothing is written",
         crate::classification::answer_command,
     ),
     other(
         "classification_check",
-        "Check Classification",
+        ui_msg!("Check Classification"),
         "{table?} for each parameter a table fills: how many of its elements or types are classified, which aren't, and which hold \
          a code the table doesn't (after a new edition)",
         crate::classification::check_command,
@@ -1952,7 +1952,7 @@ other_files(
     .menu("Manage > Project Information"),
     edit_files(
         "family",
-        "Load Family",
+        ui_msg!("Load Family"),
         &[],
         "{name?, category?: furniture|casework|plumbing|lighting|generic|door|window, parameters?: [{name, kind?: length|number|\
          integer|angle|area|volume|yesno|material|text|url|familytype, instance?, value?, formula?, group?: constraints|\
@@ -2125,7 +2125,7 @@ other_files(
     .menu("Manage > Family Editor"),
     edit(
         "symbol_set",
-        "Load Symbol Set",
+        ui_msg!("Load Symbol Set"),
         &[],
         "{set: arei, names?: en|nl|fr} loads a set of families that are plan symbols and nothing else, each of one type \
          `Standard` with no forms: `arei` is the Belgian AREI/RGIE's graphical symbols (Table 2.23: switches, sockets, light \
@@ -2162,7 +2162,7 @@ other_files(
     .menu("Architecture > Component"),
     edit(
         "flip",
-        "Flip",
+        ui_msg!("Flip"),
         &[],
         "{ids: [wall | stair | door | window, …], hand?, facing?, cycle?} turns walls round about their location lines, as Revit's \
          flip arrows do: their exterior sides go to the other side, their doors and windows stay where they are. A stair climbs the \
@@ -2175,7 +2175,7 @@ other_files(
     ),
     edit(
         "modify",
-        "Modify",
+        ui_msg!("Modify"),
         &[],
         "{id | ids: [id,…], …fields} change fields as `elements` shows them, of one element or several; `level` and `top_level` may be names. \
          `join: false` on a wall or a run turns off its joins: its ends stay square and it neither stretches with its neighbours nor pulls \
@@ -2314,7 +2314,7 @@ other_files(
     ),
     edit(
         "mirror",
-        "Mirror",
+        ui_msg!("Mirror"),
         &["MM", "DM"],
         "{ids: [id,…], axis: [[x, y], [x, y]], copy?} mirrors elements across the line through two points; mirrored doors \
          and windows face the other way",
@@ -2330,7 +2330,7 @@ other_files(
     ),
     edit(
         "offset",
-        "Offset",
+        ui_msg!("Offset"),
         &["OF"],
         "{id, distance, toward: [x, y], copy?} a detail line drawn again `distance` mm beside itself on the side `toward` is, \
          arcs round the same centres, an ellipse or a spline as a spline through points within 0.05 mm of the true offset \
@@ -2339,7 +2339,7 @@ other_files(
     ),
     edit(
         "trim_extend",
-        "Trim/Extend Single Element",
+        ui_msg!("Trim/Extend Single Element"),
         &[],
         "{boundary, ids: [id, …], keep: [[x, y], …]} trims or extends each detail line of `ids` (lines and arcs) to where it \
          meets `boundary` (a detail line, a wall's location line or a grid), keeping the part of each its `keep` point is on: \
@@ -2358,7 +2358,7 @@ other_files(
     ),
     edit(
         "join_polyline",
-        "Join into Polyline",
+        ui_msg!("Join into Polyline"),
         &["PJ"],
         "{ids: [id, …]} joins detail lines of one view, lines, arcs and polylines that meet end to end, into one polyline in \
          the first's line style (closed when they come round); the first keeps its id, the rest are deleted, and a dimension \
@@ -2376,7 +2376,7 @@ other_files(
     ),
     edit(
         "vertex",
-        "Add/Delete Vertex",
+        ui_msg!("Add/Delete Vertex"),
         &[],
         "{id, at: [x, y], delete?} a detail line (a polyline, or a spline of either kind) with a vertex more where it passes \
          nearest `at` (a spline by its control points gains a control point and keeps its shape exactly), or with `delete` \
@@ -2386,7 +2386,7 @@ other_files(
     ),
     edit(
         "convert_spline",
-        "Convert Spline",
+        ui_msg!("Convert Spline"),
         &[],
         "{id} a detail line that is a spline through points becomes the same curve by its control points, exactly; one by \
          its control points becomes a spline through points within 0.05 mm of it",
@@ -2394,7 +2394,7 @@ other_files(
     ),
     edit(
         "explode",
-        "Explode Polyline",
+        ui_msg!("Explode Polyline"),
         &["EX"],
         "{id} takes a detail line that is a polyline apart into a line or an arc for each segment, in its view and style; \
          the first keeps its id. Revit has no shortcut for it: EX is ours, PX being the Plumbing Fixture's on the desktop",
@@ -2402,7 +2402,7 @@ other_files(
     ),
     edit(
         "delete",
-        "Delete",
+        ui_msg!("Delete"),
         &["DE"],
         "{ids: [id,…], keep_finishes?} deleting a wall deletes its doors and windows, deleting those their tags; a view takes its notes and \
          spot elevations, and what a spot elevation reads takes it; dimensions lose what's deleted. A room takes the floor and \
@@ -2411,7 +2411,7 @@ other_files(
     ),
     edit(
         "line_pattern",
-        "Line Patterns",
+        ui_msg!("Line Patterns"),
         &[],
         "{name?, segments?: [{dash: mm} | {space: mm} | \"dot\" | {dot_length: mm} | {offset: {length, count, distance}} | {wave: {length, frequency, amplitude}} | {zigzag: {length, frequency, amplitude}} | {text: {length, size, text}}, …], rename?, delete?: true} a line pattern of the project's: \
          1–32 freely ordered graphic segments, each 0.05–100 mm long on paper, so it reads the \
@@ -2424,7 +2424,7 @@ other_files(
     ),
     edit(
         "line_style",
-        "Line Styles",
+        ui_msg!("Line Styles"),
         &[],
         "{name?, pen?, color?: \"#rrggbb\" | [r, g, b], pattern?: name | \"Solid\", rename?, delete?: true} a line style of \
          the project's, as Revit's: the pen (0, a hairline, to 16) its lines draw in, their colour (black unless told) and \
@@ -2436,7 +2436,7 @@ other_files(
     .menu("Manage > Line Styles"),
     edit(
         "fill_pattern",
-        "Fill Patterns",
+        ui_msg!("Fill Patterns"),
         &[],
         "{name?, target?: drafting|model, lines?: [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …], \
          drawn?: scale | null, rename?, delete?: true} a fill pattern of the project's, as Revit's (and a PAT file's): families of parallel lines, each at \
@@ -2453,7 +2453,7 @@ other_files(
     .menu("Manage > Fill Patterns"),
     edit(
         "make_fill_pattern",
-        "Make Fill Pattern",
+        ui_msg!("Make Fill Pattern"),
         &[],
         "{ids, from: [x, y], to: [x, y], name, target?: model|drafting} a fill pattern made of the detail lines `ids` (all of \
          one view), as pyRevit's Make Pattern makes one: the rectangle between corners `from` and `to` (in the view's terms) \
@@ -2466,7 +2466,7 @@ other_files(
     ),
     edit(
         "linework",
-        "Linework",
+        ui_msg!("Linework"),
         &["LW"],
         "{view?, id, at: [x, y], style? | invisible?: true, remove?: true} Revit's Linework: the edge of element `id` that a \
          plan (`view`, a level's or a plan view; the lowest level's by default) draws nearest `at` (within 200 mm), drawn in \
@@ -2478,7 +2478,7 @@ other_files(
     ),
     edit_files(
         "import_fill_patterns",
-        "Import Fill Patterns",
+        ui_msg!("Import Fill Patterns"),
         &[],
         "{path | text, replace?: false} the fill patterns of a PAT file (AutoCAD's and Revit's), from the file at `path` or \
          as `text`: each `*Name` and its families of lines, in mm unless the file says `;%UNITS=INCH`, drafting unless a \
@@ -2491,7 +2491,7 @@ other_files(
     ),
     other_files(
         "export_crosscheck",
-        "Export Cross-Check",
+        ui_msg!("Export Cross-Check"),
         "{path?} the project's levels, walls (by their centre lines), floors, shafts, doors, windows and rooms as plain \
          numbers in mm, which tools/revit-crosscheck builds again in another BIM tool to hold its numbers against ours \
          (compare_crosscheck): written to `path`, or returned as `description` without it",
@@ -2500,7 +2500,7 @@ other_files(
     ),
     other_files(
         "compare_crosscheck",
-        "Compare Cross-Check",
+        ui_msg!("Compare Cross-Check"),
         "{path? | text?} another tool's numbers of the project export_crosscheck described, a table `kind,id,quantity,value` \
          (rooms' enclosed, area_m2, perimeter_m; walls' length_m, openings; floors' area_m2, volume_m3), from the file at \
          `path` or `text`, held against the project's own: how many were `compared`, those that `differ` (ours and \
@@ -2510,7 +2510,7 @@ other_files(
     ),
     other_files(
         "export_fill_patterns",
-        "Export Fill Patterns",
+        ui_msg!("Export Fill Patterns"),
         "{path?, names?: [name, …]} the project's fill patterns (those `names` says, else all but the solid ones, which a PAT \
          file can't hold) as a PAT file in mm, written to `path`, or returned as `text` without it",
         export_fill_patterns,
@@ -2518,7 +2518,7 @@ other_files(
     ),
     edit(
         "filled_region_type",
-        "Filled Region Types",
+        ui_msg!("Filled Region Types"),
         &[],
         "{name?, foreground?: pattern | null, foreground_color?, background?: pattern | null, background_color?, masking?, \
          rename?, delete?: true} a filled region type of the project's: its foreground pattern over its background one, each \
@@ -2530,7 +2530,7 @@ other_files(
     ),
     edit(
         "filled_region",
-        "Filled Region",
+        ui_msg!("Filled Region"),
         &["FR"],
         "{sketch: [[[x,y],[x,y]],…], view?, type?, line_style?: name | null} a filled region in a view (a plan, a section, an \
          elevation or a sheet, in its own terms; the lowest plan by default): the loops its sketch closes into (see \
@@ -2542,7 +2542,7 @@ other_files(
     ),
     edit(
         "create_group",
-        "Create Group",
+        ui_msg!("Create Group"),
         &["GP"],
         "{ids, name?, origin?: [x,y], level?, only?: model|detail} a group made of elements `ids`, as Revit's Create Group: all model elements make a \
          model group (walls with their doors and windows, floors, ceilings, roofs, rooms, columns, beams, pipes and the other runs, \
@@ -2558,7 +2558,7 @@ other_files(
     ),
     edit(
         "detail_group",
-        "Place Detail Group",
+        ui_msg!("Place Detail Group"),
         &[],
         "{type, at: [x,y], angle?, mirrored?, view?} a detail group of type `type` placed in a view (the lowest plan by \
          default): its members made there with their origin at `at`, turned `angle` degrees counter-clockwise, mirrored across \
@@ -2567,7 +2567,7 @@ other_files(
     ),
     edit(
         "model_group",
-        "Place Model Group",
+        ui_msg!("Place Model Group"),
         &["MG"],
         "{type, at: [x,y], angle?, mirrored?, level? | levels?: [level, …], flexible?} a model group of type `type` placed \
          with its origin at `at`, turned and mirrored as `detail_group`, on `level` (the lowest by default), or one on each of \
@@ -2578,7 +2578,7 @@ other_files(
     ),
     edit(
         "repeating_detail",
-        "Repeating Detail",
+        ui_msg!("Repeating Detail"),
         &[],
         "{type, start: [x,y], end: [x,y], spacing, mirrored?, view?} detail group `type` repeated along the line from \
          `start` to `end`, every `spacing` mm from `start` (at most 2000 of them), each turned along the line, as Revit's \
@@ -2588,14 +2588,14 @@ other_files(
     ),
     edit(
         "ungroup",
-        "Ungroup",
+        ui_msg!("Ungroup"),
         &["UG"],
         "{id | ids} each group's members as plain elements again, where they are; the group goes, its type stays. Returns {ids}",
         crate::groups::commands::ungroup,
     ),
     edit(
         "group_type",
-        "Groups",
+        ui_msg!("Groups"),
         &[],
         "{name?, kind?: model|detail, rename?, delete?: true} a group type (detail unless `kind` or the name says model): \
          `rename` renames it, its groups following; `delete` takes it away while none of it is placed. Without `name`, it lists \
@@ -2604,7 +2604,7 @@ other_files(
     ),
     edit(
         "exclude_member",
-        "Exclude",
+        ui_msg!("Exclude"),
         // EX is Explode Polyline's.
         &["EM"],
         "{ids} members of groups taken out of their groups here, as Revit's Exclude: each element goes (a wall with its doors \
@@ -2613,7 +2613,7 @@ other_files(
     ),
     edit(
         "restore_excluded",
-        "Restore All Excluded",
+        ui_msg!("Restore All Excluded"),
         &["RA"],
         "{id | ids} every excluded member of groups `ids` put back as their type has it. Returns {restored, ids}",
         crate::groups::commands::restore_excluded,
@@ -2634,20 +2634,20 @@ other_files(
     },
     other(
         "add_to_group",
-        "Add to Group",
+        ui_msg!("Add to Group"),
         "{ids} in Edit Group: elements of the group's kind (and view) that join it at Finish. Returns {adding}",
         crate::groups::commands::add_to_group,
     ),
     other(
         "remove_from_group",
-        "Remove from Group",
+        ui_msg!("Remove from Group"),
         "{ids} in Edit Group: members that leave it at Finish, staying as plain elements; the same members of every other group \
          of its type go. Returns {removing}",
         crate::groups::commands::remove_from_group,
     ),
     edit(
         "finish_group",
-        "Finish Group",
+        ui_msg!("Finish Group"),
         &[],
         "{} ends Edit Group: the group's type becomes what the group now is (what was removed out, what was added in), and every \
          other group of the type is placed again. Returns {finished, members, removed, updated}",
@@ -2655,13 +2655,13 @@ other_files(
     ),
     other(
         "cancel_group",
-        "Cancel Group",
+        ui_msg!("Cancel Group"),
         "{} ends Edit Group with the project as it was when it began; the steps meanwhile are forgotten",
         crate::groups::commands::cancel_group,
     ),
     other(
         "resolve_group",
-        "Resolve Group Conflict",
+        ui_msg!("Resolve Group Conflict"),
         "{fix: ungroup|new_type, command, params} runs `command` with `params` doing `fix` with every group it would change from \
          inside (an error starting `group conflict` refuses it otherwise), as Revit asks: `ungroup` makes those groups plain \
          elements first, keeping the change; `new_type` makes each a group type of its own as it now stands (Create New Type). \
@@ -2670,7 +2670,7 @@ other_files(
     ),
     edit(
         "detail_line",
-        "Detail Line",
+        ui_msg!("Detail Line"),
         &["DL"],
         "{view?, style?, and a curve: `points` [[x, y], …] (with `arcs`, each segment's turn in degrees counter-clockwise, \
          and `closed`), `start` and `end` (with `arc` degrees or a `through` point), `centre` and `radius` (a circle), \
@@ -2691,7 +2691,7 @@ other_files(
     ),
     edit(
         "delete_type",
-        "Delete Type",
+        ui_msg!("Delete Type"),
         &[],
         "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type?} deletes a type of a category \
          (`category` and `type`), a family (`family`) or one of a family's types (`family` and `type`), as Revit's Delete on one \
@@ -2701,7 +2701,7 @@ other_files(
     ),
     edit(
         "rename_type",
-        "Rename Type",
+        ui_msg!("Rename Type"),
         &[],
         "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type, name} renames a type of a category \
          (`category` and `type`) or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: \
@@ -2711,7 +2711,7 @@ other_files(
     ),
     edit(
         "purge",
-        "Purge Unused",
+        ui_msg!("Purge Unused"),
         &["PU"],
         "{kinds?: [type|family|material|picture|filter|template|titleblock, …], dry_run?} takes out what nothing uses, again for what that \
          leaves unused: types and families unless `kinds` says; a category keeps a type and a family a type; with `dry_run` it \
@@ -2721,7 +2721,7 @@ other_files(
     .menu("Manage > Purge Unused"),
     edit(
         "line_weights",
-        "Line Weights",
+        ui_msg!("Line Weights"),
         &[],
         "{model?: [{scale, widths}, …], annotation?: [16 widths], reset?: true} the project's line weights, as Revit's \
          Manage > Line Weights: what each pen draws on paper, mm. `model` gives, whole, the model's pens 1 to 16 at each of \
@@ -2736,7 +2736,7 @@ other_files(
     .menu("Manage > Line Weights"),
     edit(
         "object_styles",
-        "Object Styles",
+        ui_msg!("Object Styles"),
         &[],
         "{categories?: {category: {projection?: pen, cut?: pen}, …}, reset?: true} the project's object styles, as Revit's \
          Manage > Object Styles: the pen (0, a hairline, to 16) each model category draws its lines in where it is seen \
@@ -2751,7 +2751,7 @@ other_files(
     .menu("Manage > Object Styles"),
     edit(
         "units",
-        "Project Units",
+        ui_msg!("Project Units"),
         &["UN"],
         "{length?: mm|cm|m|in|ft|ft-in, decimals?: 0..5|null} how drawings, schedules and the desktop show lengths, and read typed ones: \
          millimetres, centimetres, metres, fractional inches, decimal feet, or feet and fractional inches (to 1/16\"); areas \
@@ -2766,7 +2766,7 @@ other_files(
     .menu("Manage > Project Units"),
     edit(
         "room_area",
-        "Area and Volume Computations",
+        ui_msg!("Area and Volume Computations"),
         &[],
         "{at?: centre|finish} where the project measures its rooms' areas, perimeters and IFC spaces, as Revit's Area and \
          Volume Computations: at the walls' centre lines (`centre`, as a project starts) or at their finish faces \
@@ -2777,7 +2777,7 @@ other_files(
     .menu("Manage > Room Area Computation"),
     edit(
         "georeference",
-        "Project Location",
+        ui_msg!("Project Location"),
         &[],
         "{crs?, eastings?, northings?, height?, rotation?, scale?, description?, geodetic_datum?, vertical_datum?, map_projection?, \
          map_zone?, clear?: true} where the project lies on a map, as IFC's map conversion to a projected coordinate reference \
@@ -2799,7 +2799,7 @@ other_files(
     ),
     edit(
         "language",
-        "Project Language",
+        ui_msg!("Project Language"),
         &[],
         "{code?: en|pt|es|sv|cs|fr|de|nl|it|pl|vi} the language the project's drawings speak (a stair's UP, a title block's SCALE, a \
          schedule's headings) and new names come in (levels, sections, elevations, sheets, rooms, schedules): English, Brazilian \
@@ -2809,7 +2809,7 @@ other_files(
     .menu("Manage > Project Language"),
     edit(
         "standard",
-        "Technical Standards",
+        ui_msg!("Technical Standards"),
         &[],
         "{set?: nbr|iso|ansi|eu|jis, adapt_all?: bool, adapt_line_weights?: bool, adapt_object_styles?: bool, adapt_units?: bool} configures the project's technical standard (NBR, ISO, ANSI, EU, JIS) \
          and adapts line weights (pens), sheet layouts, object styles, and dimensioning conventions. \
@@ -2821,7 +2821,7 @@ other_files(
     .menu("Manage > Technical Standards"),
     edit(
         "building_code",
-        "Building Codes",
+        ui_msg!("Building Codes"),
         &[],
         "{discipline?: architectural|structural|electrical|mechanical|plumbing, set?, amendments?: [code, …], keep_rules?: bool, \
          rules?: {section: {rule: value, …}, …}, stairs?: {…}, reset?: true|section, save?: name, delete?: name, amend?: code, \
@@ -2854,7 +2854,7 @@ other_files(
     .menu("Manage > Building Codes"),
     other_files(
         "building_code_export",
-        "Export Building Code",
+        ui_msg!("Export Building Code"),
         "{path, discipline?, all?: bool, code?, name?} writes building codes as an XML file, to hand to another project or office: \
          the discipline's rules in force (base, amendments and the project's changes, each rule with its source), or the one \
          `code` names, or with `all` the five disciplines' in one file; `name` is what the file calls it (a code BIMCraft has \
@@ -2865,7 +2865,7 @@ other_files(
     ),
     edit_files(
         "building_code_import",
-        "Import Building Code",
+        ui_msg!("Import Building Code"),
         &[],
         "{path, name?, set?: bool} reads building codes from an XML file `building_code_export` wrote (one, or a file of all \
          five; or #386's stairs-only file, or one written by hand: <building-code name=\"…\"><stairs><rule name=\"riser_max\" \
@@ -2878,7 +2878,7 @@ other_files(
     ),
     other(
         "code_rules",
-        "Building Code Rules",
+        ui_msg!("Building Code Rules"),
         "{discipline?, section?} the rules in force for a discipline (architectural where none is named), by section: each \
          `rule`, its `value`, where it comes `from` (the base, an amendment, the library where none of the project's codes has the \
          section, or the project), its `source` (the document, item and page) and its `kind` (requirement, recommendation, \
@@ -2888,7 +2888,7 @@ other_files(
     ),
     edit(
         "site_climate",
-        "Site and Climate",
+        ui_msg!("Site and Climate"),
         &[],
         "{rain_intensity?, rain_return_period?, thunderstorms?: AQ1|AQ2|AQ3, wind_speed?, ground_snow?, seismic_zone?, \
          frost_depth?, climate_zone?, altitude?, cooling_design?, heating_design?, sources?: {key: text}} the numbers a code's \
@@ -2900,7 +2900,7 @@ other_files(
     ),
     other(
         "code_check",
-        "Check Building Codes",
+        ui_msg!("Check Building Codes"),
         "{ids?: [id, …]} where elements are outside the project's building codes: for each element (those in `ids`, else all) \
          that is outside a rule, its `id`, `category` and `findings`, each the `rule` broken, the element's `value`, the rule's \
          `limit` and a `message` saying what to change; `count` is how many in all. Stairs today. It reads and never changes \
@@ -2909,7 +2909,7 @@ other_files(
     ),
     edit(
         "stair_sketch",
-        "Convert Stair to Sketch",
+        ui_msg!("Convert Stair to Sketch"),
         &[],
         "{id} makes stair `id`, made by its runs, landings and winders, a stair drawn by hand: a `sketch` of its risers, each a \
          line where it is, the landings and winders the outlines of the treads after them. It looks as it did; from then on any \
@@ -2920,7 +2920,7 @@ other_files(
     ),
     edit(
         "stair_opening",
-        "Stair Opening",
+        ui_msg!("Stair Opening"),
         &[],
         "{id, headroom?} cuts the floors over stair `id` open where they leave less than the headroom over its steps (the \
          building code's, or `headroom` mm): a shaft through each such floor alone, round the steps short of it. The reply \
@@ -2931,7 +2931,7 @@ other_files(
     ),
     edit(
         "stair_solve",
-        "Solve Stair",
+        ui_msg!("Solve Stair"),
         &[],
         "{id, lock?: [risers | tread | width | landings, …], apply?: n} the stairs nearest stair `id` that are inside the project's \
          building code, the one that changes least first: each a count of `risers` and their height `riser`, a `tread`, a `width` \
@@ -2942,7 +2942,7 @@ other_files(
     ),
     other(
         "stair_check",
-        "Check Stairs",
+        ui_msg!("Check Stairs"),
         "{ids?: [id, …]} where stairs are outside the project's building code (`building_code`): for each stair (those in `ids`, \
          else all) its `risers`, `riser` and `going` (mm), `step` (two risers and a going) and `findings`, each the `rule` broken, \
          the stair's `value`, the rule's `limit` and a `message` saying what to change; `count` is how many findings there are in \
@@ -2951,7 +2951,7 @@ other_files(
     ),
     other(
         "timber_framing",
-        "Timber Wall Framing",
+        ui_msg!("Timber Wall Framing"),
         "{wall, layer, window, spacing, thickness, depth, header_height} read the framing members and clear bays of a straight isolated wall. \
          Select its structural layer and one rectangular window by id or GUID. Supply lengths in mm. Dimensions are measured from the interior layer face. \
          Each xz rectangle [left,right,bottom,top] spans the layer depth. Keys are local to the returned wall and layer GUIDs.",
@@ -2959,14 +2959,14 @@ other_files(
     ),
     other(
         "inspect",
-        "Inspect",
+        ui_msg!("Inspect"),
         "{brief?} levels, element counts, types, warnings and undo history; with `brief` the library is its size only \
          (`library`), not its types, materials, families, parameters and images, which is most of the answer",
         inspect,
     ),
     other_files(
         "render",
-        "Render",
+        ui_msg!("Render"),
         "{family?, type?, mode?: 3d|plan|elevation, wall_thickness?, view?: a level's, section's or elevation's name or id, a sheet's \
          number, or {3D}, ceiling?, width?, height?, path?, \
          azimuth?, elevation?, eye_elevation?} a family on its own with `family` — its `type` (the first by default) standing in a \
@@ -3018,7 +3018,7 @@ other_files(
     ),
     edit(
         "graphics",
-        "Visibility/Graphics",
+        ui_msg!("Visibility/Graphics"),
         &[],
         "{view?: a level's, section's or elevation's name or id, or {3D} (the lowest level's plan unless given), hide?: [category, \
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
@@ -3055,7 +3055,7 @@ other_files(
     ),
     edit(
         "section_box",
-        "Section Box",
+        ui_msg!("Section Box"),
         &[],
         "{view?: a 3D view's name or id ({3D} unless given), on?: true | false (true unless given), min?: [x, y, z], max?: \
          [x, y, z]} the box a 3D view is cut to, as Revit's Section Box: six planes square to the axes, keeping what lies \
@@ -3067,7 +3067,7 @@ other_files(
     ),
     edit(
         "perspective",
-        "Perspective",
+        ui_msg!("Perspective"),
         &[],
         "{view?: a 3D view's name or id ({3D} unless given), on?: true | false (true unless given), lens?: mm} a 3D view seen \
          in perspective, as through a camera, or with `on: false` parallel (axonometric) again, as the ViewCube's Toggle to \
@@ -3078,7 +3078,7 @@ other_files(
     ),
     edit(
         "graphic_display_options",
-        "Graphic Display Options",
+        ui_msg!("Graphic Display Options"),
         &["GD"],
         "{view?: a 3D view's name or id ({3D} unless given), edges?: true | false, silhouette?: px, ambient_shadows?: true | \
          false} how a 3D view draws its edges and shadows, as Revit's Graphic Display Options: `edges`, the lines where its \
@@ -3104,7 +3104,7 @@ other_files(
     ),
     edit(
         "work_plane",
-        "Work Plane",
+        ui_msg!("Work Plane"),
         &[],
         "{view?: a 3D view's name or id ({3D} unless given), level?: a level's name or id, points?: [[x, y, z], [x, y, z], \
          [x, y, z]], surface?: {point: [x, y, z], normal: [x, y, z]}, offset?: mm} what a 3D view sketches on, as Revit's \
@@ -3123,7 +3123,7 @@ other_files(
     ),
     edit(
         "filter",
-        "View Filter",
+        ui_msg!("View Filter"),
         &[],
         "{name, categories?: [category, …], rules?: [{field, op, value}, …], delete?: true} a view filter, as Revit's parameter \
          filters are: the elements of its categories (any a schedule can be of: walls, doors, rooms, components…) that hold \
@@ -3136,7 +3136,7 @@ other_files(
     ),
     edit(
         "template",
-        "View Template",
+        ui_msg!("View Template"),
         &[],
         "{name, from?: a level's, section's, elevation's or 3D view's name or id, like?: another template's name, \
          kind?: plan | section | 3d | null, rename?, controls?: [categories, filters, range, \
@@ -3157,7 +3157,7 @@ other_files(
     ),
     edit(
         "phase",
-        "Phasing",
+        ui_msg!("Phasing"),
         &[],
         "{name?, before?, after?, rename?, delete?, into?, now?, overrides?} the project's phases, in order, as Revit's \
          Phasing does: a project starts with Existing and New Construction. `name` alone adds a phase at the end (or `before` \
@@ -3176,7 +3176,7 @@ other_files(
     .menu("Manage > Phasing"),
     edit(
         "phase_filter",
-        "Phase Filter",
+        ui_msg!("Phase Filter"),
         &[],
         "{name, new?, existing?, demolished?, temporary?, delete?} a phase filter: how a view shows each status of what's in \
          its phase, each `by-category` (as its category and the view's overrides say), `overridden` (as the project's \
@@ -3188,7 +3188,7 @@ other_files(
     .menu("Manage > Phasing"),
     edit(
         "option",
-        "Design Options",
+        ui_msg!("Design Options"),
         &[],
         "{set?, options?, primary?, option?, rename?, delete?, accept?, now?} sets of design options, as Revit's Design \
          Options has them: `set` with `options` ([names]; no colons) makes a set or changes its options (one with elements in \
@@ -3215,7 +3215,7 @@ other_files(
     },
     edit(
         "circuit",
-        "Circuit",
+        ui_msg!("Circuit"),
         &[],
         concat!(
             "Two commands in one id. (1) A circuit of the model: {devices: [ids], panel: id, name?, number?, rating?, poles?, voltage?, \
@@ -3246,7 +3246,7 @@ other_files(
     ),
     other(
         "conduit_fill",
-        "Conduit Fill",
+        ui_msg!("Conduit Fill"),
         "{section, phases?: FN|FF|3F|3FN, circuits?, reduced_neutral?, family?, size?} the fill of a conduit as NBR 5410 asks, for the \
          conductors of a circuit (its phases, neutral and protective conductor, of `section` mm²) times `circuits` in the same conduit \
          (1): their cross-sections by outside diameter over the conduit's inside, at most 53 % for one cable, 31 % for two, 40 % for \
@@ -3260,7 +3260,7 @@ other_files(
     ),
     other(
         "drain_size",
-        "Size a Sanitary Drain",
+        ui_msg!("Size a Sanitary Drain"),
         "{units?, fixtures?: {wc?, lav?, sink?, shower?, laundry?}, role?: branch|main|stack, slope?, floors?, min_dn?} the DN of a \
          sanitary drain as NBR 8160 asks, by the fixture units (UHC) it carries: `units`, or `fixtures` counted (Tabela 3: a water \
          closet 6 UHC and DN 100, a lavatory 1 and 40, a sink 3 and 50, a shower 2 and 40, a laundry tub 3 and 40; the drain is never \
@@ -3275,7 +3275,7 @@ other_files(
     ),
     other(
         "vent_size",
-        "Size a Sanitary Vent",
+        ui_msg!("Size a Sanitary Vent"),
         "{units, wc?, stack_dn?, length?, trap_dn?} the DN of a sanitary vent as NBR 8160 asks, by the units (UHC) of what it vents: a \
          branch vent (ramal de ventilação, Tabela 8; `wc` says a water closet is in the group), or, with `stack_dn` (the DN of the \
          stack or drain served) and `length` (mm, from its foot to its open end), a vent stack or header (Tabela 2). `trap_dn` adds the \
@@ -3284,7 +3284,7 @@ other_files(
     ),
     other(
         "hydrant_size",
-        "Size Hydrants",
+        ui_msg!("Size Hydrants"),
         "{column?: 1-5, area?, type?: 1|2|3|4-40|4-65|5, hydrants?, inside?, nominal?, material?: steel|steel-wet|copper|pvc|pex, length?, rise?} \
          hydrants and hose reels as IT 22/2025 of the CBPMESP asks. With `column` (of Tabela 3, by the occupation) and `area` (m², \
          built) it replies the system type and the fire reserve (m³). With `type` (Tabela 2; 4 comes as 4-40 or 4-65 by its nozzle) \
@@ -3300,7 +3300,7 @@ other_files(
     ),
     other(
         "network",
-        "Pipe Network",
+        ui_msg!("Pipe Network"),
         "{system?, level?, tolerance?} the pipe network, worked out from the model and never stored: where pipes' ends and the \
          pipe connectors of fixtures, fittings and valves meet. Points within `tolerance` mm (1 by default, 50 at most) are one node; a \
          pipe's end or a connector on another pipe's length is a node too, splitting that pipe into two edges (the element stays \
@@ -3318,7 +3318,7 @@ other_files(
     ),
     other(
         "load_points",
-        "Residential Load Points",
+        ui_msg!("Residential Load Points"),
         "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
          and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are the \
          project's electrical code's `load_points` section (Manage > Building Codes, NBR 5410 in BIMCraft's codes; every row naming \
@@ -3342,7 +3342,7 @@ other_files(
     ),
     other(
         "dr_check",
-        "Check Residual-Current Protection",
+        ui_msg!("Check Residual-Current Protection"),
         "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other, standard?} \
          which circuits NBR 5410:2004 asks additional protection by a high-sensitivity residual-current device (DR, 30 mA at most) \
          for. The rules are the project's electrical code's `rcd` section (NBR 5410 in BIMCraft's codes, every rule naming its \
@@ -3362,7 +3362,7 @@ other_files(
     ),
     other(
         "bath_volumes",
-        "Check Bathroom Volumes",
+        ui_msg!("Check Bathroom Volumes"),
         "{fixture: {outline?: [[x, y], …], shower?: [x, y], floor?, rim?}, things: [{name?, kind, at: [x, y, z], ip?, class?, supply?, voltage?, rcd?, serving?}], public?, standard?} \
          which of the volumes around a bathtub or a shower each thing stands in, and whether it may stand there, as NBR 5410:2004 \
          item 9.1 asks. The numbers are the project's electrical code's `bath_volumes` section (NBR 5410 in BIMCraft's codes, every \
@@ -3386,7 +3386,7 @@ other_files(
     ),
     other(
         "dps_check",
-        "Check Surge Protection",
+        ui_msg!("Check Surge Protection"),
         "{region: AQ1|AQ2|AQ3, overhead?, accepted_risk?, risk_to_people?, purpose?: line|direct|both, earthing?: TT|TN-S|TN-C|IT, \
          uo?, before_dr?, system?: 120/208|127/220|220/380|230/400|277/480|400/690, neutral?, phases?: 1|3, existing?, signal_lines?: [telephone|data|video|tv|antenna|interconnection]} surge protection (DPS) of \
          a power line as NBR 5410:2004 asks. It is required where the line is `overhead` (wholly or partly, or the installation has an \
@@ -3408,7 +3408,7 @@ other_files(
     ),
     other(
         "demand",
-        "Demand and Service Category",
+        ui_msg!("Demand and Service Category"),
         "{utility?: CPFL|ENEL|CELESC, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
          lighting_outlets?: {use, kw, pf?}, heaters?, boilers?, appliances?, stoves?: [{w, count?}], air_conditioners?: [{btu | va and w, \
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
@@ -3451,7 +3451,7 @@ other_files(
     ),
     other(
         "building_demand",
-        "Building Demand",
+        ui_msg!("Building Demand"),
         "{utility? | standard?, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
          premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
          `standard` (each the `building_demand` section of a utility's amendment or a country's code; the project's own, as it \
@@ -3477,7 +3477,7 @@ other_files(
     ),
     other(
         "water_size",
-        "Size Cold Water Pipes",
+        ui_msg!("Size Cold Water Pipes"),
         "{fixtures?: {wc, lav, sink, shower, laundry: count}, flow?, method?: weights|sum, dn?, length?, fittings?: {elbow90, elbow45, \
          tee_through, tee_side, gate, globe, check: count}, pressure?, rise?} a cold water pipe of PVC soldável as NBR 5626 asks. The \
          flow is `flow` (L/s), or the design flow of the `fixtures` by the `method` the project chooses: weights (the empirical \
@@ -3492,7 +3492,7 @@ other_files(
     ),
     other(
         "reservoir_size",
-        "Size Water Reservation",
+        ui_msg!("Size Water Reservation"),
         "{daily_l? | people?, per_person_l?, days?, fire_l?, house?, lower_percent?, compartments?, fill_flow?, pumps?, towers?, \
          smallest_l?, peak_l?} the reservation of a building as NBR 5626:2020 asks. The day's consumption is `daily_l` (litres), or \
          `people` times `per_person_l`: the standard gives no litres per person, so it is the project's own assumption and the reply \
@@ -3509,7 +3509,7 @@ other_files(
     ),
     other(
         "storm_size",
-        "Size a Storm Drain",
+        ui_msg!("Size a Storm Drain"),
         "{kind: downpipe|horizontal, area?, rainfall?, flow?, outlet?: edge|funnel, gutter?, length?, slope?, inside?} a storm drain as \
          NBR 10844 asks. The flow is `flow` (L/min), or the rain on `area` (m², as the standard counts a roof) at `rainfall` (mm/h; \
          150 by default, which the standard allows for up to 100 m² only: above that `rainfall` is required): Q = I·A/60. A `downpipe` (condutor vertical) takes the inner diameter of the \
@@ -3523,7 +3523,7 @@ other_files(
     ),
     other(
         "library",
-        "Library",
+        ui_msg!("Library"),
         "{kind?, name?} the project's library with its ids and GUIDs, as elements have them: each type (`kind` \
          `type:wall`, `type:door`, `type:beam`…), material, picture, family, parameter, view filter and template \
          (`view-filter`, `view-template`), phase, phase filter, design option set and design option (`option-set`, \
@@ -3535,7 +3535,7 @@ other_files(
     ),
     other(
         "select_by_id",
-        "Select by ID",
+        ui_msg!("Select by ID"),
         "{text} the elements a list names, each by its id, its GUID (dashes and braces or not) or its IFC GlobalId, \
          separated by spaces, commas, semicolons or lines: `ids` found, each once in the order named, `missing` (what named \
          none), and `plan` and `extent` ([[x, y], [x, y]] mm), the level's plan that shows them and where; it selects nothing \
@@ -3545,7 +3545,7 @@ other_files(
     .menu("Manage > Select by ID"),
     other(
         "ids_of",
-        "IDs of Selection",
+        ui_msg!("IDs of Selection"),
         "{ids: [id or GUID, …]} what names each element: its `id`, its `guid`, its `ifc` GlobalId, its `category` and its \
          `name` (or type, number, mark)",
         ids_of,
@@ -3553,7 +3553,7 @@ other_files(
     .menu("Manage > IDs of Selection"),
     other(
         "select_instances",
-        "Select All Instances",
+        ui_msg!("Select All Instances"),
         "{ids?: [id or GUID, ...], category?, family?, type?, within?: [id or GUID, ...]} \
          instances of the selected elements' types, or of a browser type (`category` and `type`, or `family` and `type`). \
          Returns `ids` in model order. With `within`, only those candidates are considered (empty means none); \
@@ -3562,7 +3562,7 @@ other_files(
     ),
     other(
         "filter_selection",
-        "Filter",
+        ui_msg!("Filter"),
         "{ids: [id or GUID, …], by?, keep?: [value, …]} Revit's Filter on a selection: `groups` [{value, count, ids}, …], \
          the values `by` takes among the elements (by default `Category`, whose values are categories' keys: wall, door, \
          detail_line…; else a parameter as `fields` lists them, values as schedules show them, `\"\"` for none), and \
