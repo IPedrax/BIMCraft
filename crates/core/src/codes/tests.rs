@@ -26,11 +26,16 @@ fn broken(s: &mut Session, id: u64) -> Vec<String> {
 fn every_code_reads_names_its_sources_and_keeps_its_own_rules() {
     let all: Vec<&BuildingCode> = of(Discipline::Architectural).collect();
     let names: Vec<&str> = all.iter().map(|c| c.code.as_str()).collect();
-    assert_eq!(names, ["generic", "nbr-9050", "nbr-9077", "ibc", "din", "jis"]);
+    assert_eq!(names, ["generic", "nbr-9050", "nbr-9077", "ibc", "din", "jis", "it-dm-1975", "it-fvg"]);
     for c in all {
-        c.stairs().check().unwrap_or_else(|e| panic!("{}: {e}", c.code));
         assert!(!c.name.is_empty() && !c.note.is_empty(), "{}", c.code);
         assert!(c.code == GENERIC || !c.references.is_empty(), "{} names no source", c.code);
+        // An amendment holds only what it changes: its stairs are its base's.
+        if !c.amends.is_empty() {
+            assert!(of(Discipline::Architectural).any(|b| b.code == c.amends), "{} amends no code", c.code);
+            continue;
+        }
+        c.stairs().check().unwrap_or_else(|e| panic!("{}: {e}", c.code));
         let r = &c.stairs();
         // What a new stair starts with is inside the code it starts under.
         assert!((r.riser_min..=r.riser_max).contains(&r.riser), "{}", c.code);
@@ -44,7 +49,7 @@ fn a_project_has_no_code_until_one_is_chosen_and_then_its_rules() {
     let mut s = Session::new();
     let r = run(&mut s, "building_code", json!({}));
     assert_eq!(r["code"], "generic");
-    assert_eq!(r["all"].as_array().map(Vec::len), Some(6));
+    assert_eq!(r["all"].as_array().map(Vec::len), Some(8));
     assert_eq!(r["stairs"]["riser"], 180.0, "a stair as it always was");
     assert_eq!(r["stairs"]["going"], 280.0);
 
@@ -292,7 +297,7 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     );
     assert_eq!(r["changed"], json!([]), "they are the code's own rules now");
     assert_eq!(r["stairs"]["width_min"], 1100.0);
-    assert_eq!(r["all"].as_array().map(Vec::len), Some(7));
+    assert_eq!(r["all"].as_array().map(Vec::len), Some(9));
     assert_eq!(s.model.stair_rules, None);
 
     // Another code and back; a file keeps it.
