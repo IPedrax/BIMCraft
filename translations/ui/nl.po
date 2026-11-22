@@ -1034,7 +1034,7 @@ msgstr ""
 msgid "Aligned to Selected Views"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:263
+#: crates/ui-egui/src/editor/handles3d.rs:264
 msgid "Aligned."
 msgstr ""
 
@@ -9982,7 +9982,7 @@ msgstr ""
 msgid "Move: click the point to move from."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:261
+#: crates/ui-egui/src/editor/handles3d.rs:262
 msgid "Moved {} mm"
 msgstr ""
 
@@ -16889,7 +16889,7 @@ msgstr ""
 msgid "This end is locked: unlock it to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:315
+#: crates/ui-egui/src/editor/handles3d.rs:316
 #: crates/ui-egui/src/editor/sketch.rs:1442
 #: crates/ui-egui/src/editor/sketch.rs:1460
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
