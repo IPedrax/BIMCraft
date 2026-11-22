@@ -409,6 +409,21 @@ door's or a window's now has too: a generic copy of the family, its wall's thick
 frame. {3D} ghosts the forms its Detail Level leaves out in the ghost material. Model lines and model text in families, and
 symbolic lines drawn in elevations, are not here.
 
+## Manage in the family document
+
+FE-19. A family has no object styles, materials or units of its own: it names the project's. So the family document's Manage
+tab opens the project's own Object Styles, Materials and Project Units, each saying in itself that it changes the project's now,
+not on Load into Project (`editor::PROJECT_NOTE_*`): their changes are the project's commands and steps, which the family's Undo
+leaves and the project's Undo takes back. Object Styles lists the family's category and its subcategories first
+(`ObjectStylesDialog::for_family`); a family's subcategories are among the project's rows, since a family may name only those
+(`Family::check`). Purge Unused works on the draft, one step of the family's history: `Family::unused` (`family/purge.rs`) offers,
+unticked, a parameter or a nested family only where it is shown unused. Its name appears nowhere else in the family as a file
+holds it (formulas, forms, labels, dimensions, type values, visibility formulas, connectors, nested instances' parameters, the
+nested definitions), it is no reporting or shared parameter, no component or door or window of the project holds a value of it,
+and the family checks as it did without it. What that can't show isn't offered; what a purge frees is offered the next time, as
+the project's purge repeats (`family_purge_tests.rs`, `tests/family_manage.rs`). None of them has a key in the family yet; Find
+(Ctrl+K) lists them on a family's tab (`BimApp::family_find_actions`).
+
 ## Shared parameters file
 
 A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text
@@ -1437,6 +1452,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 - `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,
   Select by ID's parts and the names of one (FE-20).
+- `family/purge.rs`: what Purge Unused offers in a family, and taking it out (FE-19).
 
 In `crates/ui-egui`, the Family Editor:
 
@@ -1457,3 +1473,4 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/select_box.rs`: the selection, one set (FE-1), and the box a plan or an elevation selects with, window or crossing.
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select
   Elements by Face and Drag Elements on Selection.
+- `editor/purge.rs`: Manage > Purge Unused in the family document (FE-19).

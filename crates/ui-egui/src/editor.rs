@@ -14,6 +14,7 @@ mod nested;
 pub(crate) mod options;
 mod origin_mark;
 mod pivot;
+mod purge;
 pub(crate) mod select_box;
 pub(crate) mod selection;
 pub(crate) mod sketch;
@@ -543,6 +544,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) snaps: bimcraft_core::snap::Snaps,
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
+    /// Manage > Purge Unused, open (FE-19).
+    purging: Option<purge::Purging>,
     pub(crate) nested_instances: Vec<bimcraft_core::family::NestedInstance>,
     /// Create > Component, on: the nested family and type a click places.
     pub(crate) placing: Option<(String, String)>,
@@ -565,6 +568,14 @@ pub(crate) enum DocTab {
     /// "Modify | Reference Points" and the like, for the selection or the tool in hand.
     Context,
 }
+
+/// What the project's dialogs say when a family document opens them (FE-19): they change the project, now.
+pub(crate) const PROJECT_NOTE_STYLES: &str =
+    msg!("This changes the project's object styles now, not on Load into Project; the project's Undo takes it back.");
+pub(crate) const PROJECT_NOTE_MATERIALS: &str =
+    msg!("This changes the project's materials now, not on Load into Project; the project's Undo takes it back.");
+pub(crate) const PROJECT_NOTE_UNITS: &str =
+    msg!("This changes the project's units now, not on Load into Project; the project's Undo takes it back.");
 
 /// A family document's dialogs: Family Types (its parameters and types) and Family Category and Parameters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -598,6 +609,16 @@ pub(crate) struct Asked {
     /// The document's own Undo and Redo, done when the frame ends.
     pub(crate) undo: bool,
     pub(crate) redo: bool,
+    /// Manage's Object Styles, Materials or Purge Unused (FE-19), opened when the frame ends.
+    pub(crate) manage: Option<Manage>,
+}
+
+/// What the family document's Manage tab opens (FE-19): the project's Object Styles and Materials, or Purge Unused on the draft.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Manage {
+    ObjectStyles,
+    Materials,
+    Purge,
 }
 
 impl FamilyEditor {
@@ -654,6 +675,7 @@ impl FamilyEditor {
             sketch: None,
             snaps: Default::default(),
             nested: f.nested.clone(),
+            purging: None,
             nested_instances: f.nested_instances.clone(),
             placing: None,
             into_host: false,
@@ -1425,6 +1447,37 @@ impl BimApp {
         self.family_asked(ctx, ed, ask);
     }
 
+    /// Manage's `m` from family document `ed` (FE-19): the project's Object Styles at the family's category, the project's
+    /// Materials, each saying it changes the project now; or Purge Unused on the draft, leaving out what a placed component of
+    /// the project's holds a value of.
+    fn family_manage(&mut self, ed: &mut FamilyEditor, m: Manage) {
+        let model = Arc::clone(&self.session.model);
+        match m {
+            Manage::ObjectStyles => {
+                self.object_styles_dialog =
+                    Some(crate::objectstyles::ObjectStylesDialog::for_family(&model, ed.category.graphics_category()));
+            }
+            Manage::Materials => {
+                let mut d = crate::properties::MaterialsDialog::new(&model);
+                d.from_family = true;
+                self.materials_dialog = Some(d);
+            }
+            Manage::Purge => {
+                let name = ed.original.clone().unwrap_or_default();
+                let held = |p: &str| {
+                    model.elements.values().any(|e| match e {
+                        bimcraft_core::model::Element::Component(c) => c.family == name && c.params.contains_key(p),
+                        bimcraft_core::model::Element::Door(o) | bimcraft_core::model::Element::Window(o) => {
+                            o.family.as_deref() == Some(name.as_str()) && o.params.contains_key(p)
+                        }
+                        _ => false,
+                    })
+                };
+                ed.open_purge(&held, &|m| model.materials.contains_key(m));
+            }
+        }
+    }
+
     /// Does what the family document's ribbon asked for: capturing the selection's frames, loading a file, making the family the
     /// project's (Load into Project, placing the test frames), saving it to a file or the Favorites (from a session of its own,
     /// which never touches the project), then closing it on Close Family, or on Load into Project and Close when the family
@@ -1440,6 +1493,9 @@ impl BimApp {
             self.put_family(ed);
             return;
         };
+        if let Some(m) = ask.manage {
+            self.family_manage(&mut ed, m);
+        }
         let base = Arc::clone(&self.session.model);
         let Asked {
             capture: capture_context,
