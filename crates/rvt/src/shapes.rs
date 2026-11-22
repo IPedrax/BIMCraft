@@ -10,14 +10,14 @@
 //! - `Plane`: `origin + u·xVec + v·yVec`;
 //! - `CylSurf`: `center + r·cos(u)·xVec + r·sin(u)·yVec + v·zVec`;
 //! - `SurfRev`: its profile curve (`m_pProfileCurve`) at `v`, in the surface's own axes, turned by `u` about its z, and then
-//!   `center + X·xVec + Y·yVec + Z·zVec`; the profile is a `GArc` (`center + r·cos(t)·xVec + r·sin(t)·yVec`) or a `GLine`
-//!   (`origin + t·dirVec`).
+//!   `center + X·xVec + Y·yVec + Z·zVec`; the profile is a `GArc` (`center + r·cos(t)·xVec + r·sin(t)·yVec`), a `GEllipse`
+//!   (`center + xLen·cos(t)·xVec + yLen·sin(t)·yVec`) or a `GLine` (`origin + t·dirVec`).
 //!
 //! The shape is read only where all of it reads, and it checks: every face of every solid on a surface above, every loop closed,
 //! and both faces of every edge putting each of its points in the same place ([`MEET`]). A face is cut into triangles in its
 //! surface's parameters, curved ones every fifteen degrees, by the core's constrained triangulation. The graphics of a type
 //! may hold more than its solids (lines drawn in plan, the conditions on the views it shows in): only the solids are read, and
-//! a type whose graphics hold a nested family or a mesh, which are not read, has no shape here.
+//! a family nested in the type's (a `GInstance`) is drawn in by its own type's shape, placed by its transform ([`nest`]).
 
 use bimcraft_core::geom::P2;
 use bimcraft_core::triangulation;
@@ -69,8 +69,24 @@ fn dist(a: P3, b: P3) -> f64 {
 /// A curve a surface of revolution turns.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Curve {
-    Arc { center: P3, x: P3, y: P3, r: f64 },
-    Line { origin: P3, dir: P3 },
+    Arc {
+        center: P3,
+        x: P3,
+        y: P3,
+        r: f64,
+    },
+    Line {
+        origin: P3,
+        dir: P3,
+    },
+    /// Half its length along `x` is `rx`, along `y` `ry`.
+    Ellipse {
+        center: P3,
+        x: P3,
+        y: P3,
+        rx: f64,
+        ry: f64,
+    },
 }
 
 impl Curve {
@@ -78,6 +94,7 @@ impl Curve {
         match *self {
             Curve::Arc { center, x, y, r } => add(center, add(scale(r * t.cos(), x), scale(r * t.sin(), y))),
             Curve::Line { origin, dir } => add(origin, scale(t, dir)),
+            Curve::Ellipse { center, x, y, rx, ry } => add(center, add(scale(rx * t.cos(), x), scale(ry * t.sin(), y))),
         }
     }
 }
@@ -108,7 +125,7 @@ impl Surface {
         match self {
             Surface::Plane { .. } => [None, None],
             Surface::Cylinder { .. } => [Some(STEP), None],
-            Surface::Revolved { profile: Curve::Arc { .. }, .. } => [Some(STEP), Some(STEP)],
+            Surface::Revolved { profile: Curve::Arc { .. } | Curve::Ellipse { .. }, .. } => [Some(STEP), Some(STEP)],
             Surface::Revolved { profile: Curve::Line { .. }, .. } => [Some(STEP), None],
         }
     }
@@ -162,6 +179,13 @@ impl<'a> Reader<'a, '_, '_> {
                 r: self.real(o, "m_radius")?,
             },
             "GLine" => Curve::Line { origin: self.point(o, "m_origin")?, dir: self.point(o, "m_dirVec")? },
+            "GEllipse" => Curve::Ellipse {
+                center: self.point(o, "m_center")?,
+                x: self.point(o, "m_xVec")?,
+                y: self.point(o, "m_yVec")?,
+                rx: self.real(o, "m_xLen")?,
+                ry: self.real(o, "m_yLen")?,
+            },
             other => return Err(format!("a surface of revolution turns a {other}, which is not read")),
         })
     }
@@ -417,6 +441,115 @@ pub(crate) struct Shape {
     /// The material each triangle is drawn in, as its face or mesh names it (an element id); none where it names none (it is
     /// drawn as its category says). One for each triangle.
     pub materials: Vec<Option<u32>>,
+    /// The symbols it nests (a family nested in its family: `GInstance`), each with the transform it is placed by, read but not
+    /// yet drawn in: [`nest`] draws them in and empties this.
+    pub placed: Vec<(u32, crate::placement::Transform)>,
+    /// The box its graphics give round their solids (`m_tightbBox`), feet in the family's axes.
+    pub tight: [f64; 6],
+}
+
+/// How far a transform's axes may be from a turn (unit length, square to each other), as a placement's.
+const SQUARE: f64 = 1e-6;
+
+/// Draws `shape` placed by `t` (its origin feet, the shape millimetres) into `tris`, `marks` and `materials` (one for each
+/// triangle): mirrored, its triangles turn the other way round, so they still face out. Refused where `t` is no turn or the
+/// triangles would pass [`MAX_TRIANGLES`].
+pub(crate) fn place(
+    shape: &Shape,
+    t: &crate::placement::Transform,
+    tris: &mut Vec<[P3; 3]>,
+    marks: &mut Vec<P3>,
+    materials: &mut Vec<Option<u32>>,
+) -> Step<()> {
+    let [x, y, z] = t.axes;
+    let dot = |a: P3, b: P3| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let turn = t.axes.iter().chain(std::iter::once(&t.origin)).flatten().all(|v| v.is_finite())
+        && [(x, x, 1.0), (y, y, 1.0), (z, z, 1.0), (x, y, 0.0), (y, z, 0.0), (z, x, 0.0)]
+            .iter()
+            .all(|(a, b, want)| (dot(*a, *b) - want).abs() <= SQUARE);
+    if !turn {
+        return Err("a symbol is placed by no turn".to_string());
+    }
+    if tris.len() + shape.triangles.len() > MAX_TRIANGLES {
+        return Err(format!("it draws more than {MAX_TRIANGLES} triangles"));
+    }
+    let mirrored = dot(cross(x, y), z) < 0.0;
+    let at = |p: P3| -> P3 { std::array::from_fn(|k| t.origin[k] * MM + p[0] * x[k] + p[1] * y[k] + p[2] * z[k]) };
+    materials.resize(tris.len(), None);
+    tris.extend(shape.triangles.iter().map(|[a, b, c]| if mirrored { [at(*a), at(*c), at(*b)] } else { [at(*a), at(*b), at(*c)] }));
+    materials.extend(shape.materials.iter().take(shape.triangles.len()));
+    materials.resize(tris.len(), None);
+    marks.extend(shape.marks.iter().map(|p| at(*p)));
+    Ok(())
+}
+
+/// Why a symbol has no shape when its graphics draw nothing solid: one placed beside what an element draws adds nothing to it.
+pub(crate) const NO_SOLID: &str = "its graphics hold no solid";
+
+/// The most symbols deep one symbol's nested families may go.
+pub(crate) const MAX_NESTING: usize = 8;
+
+/// Draws in the symbols each shape of `shapes` (keyed by its symbol) nests, each placed by its transform, so a shape is all its
+/// family draws; checked as a shape is, against the box its graphics give round their solids. A shape whose nested symbol is not
+/// read (none in the file, not read itself, nesting it in turn, or nested more than [`MAX_NESTING`] deep) is none, saying why.
+pub(crate) fn nest(shapes: &mut std::collections::BTreeMap<u32, Step<Shape>>) {
+    let nesting: Vec<u32> = shapes.iter().filter(|(_, s)| s.as_ref().is_ok_and(|s| !s.placed.is_empty())).map(|(k, _)| *k).collect();
+    let mut done = std::collections::BTreeMap::new();
+    for id in nesting {
+        // The outcome is kept in `done`.
+        let _ = drawn_in(shapes, &mut done, id, &mut Vec::new());
+    }
+    shapes.extend(done);
+}
+
+/// Shape `id` of `shapes` with the symbols it nests drawn in, kept in `done`, through the symbols `path` (those nesting it).
+fn drawn_in(
+    shapes: &std::collections::BTreeMap<u32, Step<Shape>>,
+    done: &mut std::collections::BTreeMap<u32, Step<Shape>>,
+    id: u32,
+    path: &mut Vec<u32>,
+) -> Step<()> {
+    if let Some(held) = done.get(&id) {
+        return held.as_ref().map(|_| ()).map_err(Clone::clone);
+    }
+    let shape = match shapes.get(&id) {
+        None => return Err("the file holds no graphics of it".to_string()),
+        Some(Err(why)) => return Err(why.clone()),
+        Some(Ok(s)) if s.placed.is_empty() => return Ok(()),
+        Some(Ok(s)) => s,
+    };
+    if path.contains(&id) {
+        return Err("it nests itself".to_string());
+    }
+    if path.len() >= MAX_NESTING {
+        return Err(format!("its families nest more than {MAX_NESTING} deep"));
+    }
+    path.push(id);
+    let mut out = Shape { placed: Vec::new(), ..shape.clone() };
+    let made = (|| -> Step<()> {
+        for (symbol, t) in &shape.placed {
+            let nested = |why: String| {
+                if why.starts_with("a symbol it nests") { why } else { format!("a symbol it nests is not read: {why}") }
+            };
+            drawn_in(shapes, done, *symbol, path).map_err(nested)?;
+            let inner =
+                done.get(symbol).or_else(|| shapes.get(symbol)).and_then(|s| s.as_ref().ok()).ok_or("a symbol it nests is not read")?;
+            place(inner, t, &mut out.triangles, &mut out.marks, &mut out.materials)?;
+            out.solids += inner.solids;
+            out.faces += inner.faces;
+        }
+        if out.triangles.is_empty() {
+            return Err(NO_SOLID.to_string());
+        }
+        usable(&out.triangles)?;
+        if !fills(&out.triangles, &out.marks, &out.tight) {
+            return Err("its solids read are not the box its graphics give round them".to_string());
+        }
+        Ok(())
+    })();
+    path.pop();
+    done.insert(id, made.clone().map(|()| out));
+    made
 }
 
 /// The material an object names in field `field` (an `ElementId`): none where it names none (unset, or one of Revit's own below
@@ -559,12 +692,12 @@ fn marks(r: &Reader) -> Step<Vec<P3>> {
     for o in nodes.iter().filter_map(|i| r.tree.get(*i)) {
         match r.name(o) {
             "GPoint" => out.push(r.point(o, "m_coord")?),
-            "GLine" | "GArc" => {
+            "GLine" | "GArc" | "GEllipse" => {
                 let curve = r.curve(o)?;
                 let [t0, t1] = r.get(o, "m_endParams")?.pair().ok_or("a curve's ends are no pair")?;
                 out.push(curve.at(t0));
                 out.push(curve.at(t1));
-                if matches!(curve, Curve::Arc { .. }) {
+                if matches!(curve, Curve::Arc { .. } | Curve::Ellipse { .. }) {
                     let n = ((t1 - t0).abs() / STEP).ceil().min(64.0) as usize;
                     out.extend((1..n).map(|k| curve.at(t0 + (t1 - t0) * k as f64 / n as f64)));
                 }
@@ -625,14 +758,20 @@ fn usable(triangles: &[[P3; 3]]) -> Step<()> {
 pub(crate) fn shape(tree: &Tree, layouts: &Layouts) -> Step<Shape> {
     let r = Reader { tree, layouts, walked: std::cell::Cell::new(0) };
     let (whole, tight) = boxes(tree, layouts)?;
-    if let Some(o) = tree.objects.values().find(|o| r.name(o) == "GInstance" || unread(r.name(o))) {
+    if let Some(o) = tree.objects.values().find(|o| unread(r.name(o))) {
         return Err(format!("its graphics hold a {}, which is not read", r.name(o)));
     }
-    let mut out = Shape { whole, marks: marks(&r)?, ..Shape::default() };
+    let placed = crate::graphics::placed(tree, layouts)?;
+    let mut out = Shape { whole, tight, marks: marks(&r)?, ..Shape::default() };
     (out.solids, out.faces) = solids(&r, &mut out.triangles, &mut out.materials)?;
     out.solids += meshes(&r, &tight, &mut out.triangles, &mut out.materials)?;
+    // A family nesting others is checked once they are drawn in ([`nest`]).
+    if !placed.is_empty() {
+        out.placed = placed;
+        return Ok(out);
+    }
     if out.triangles.is_empty() {
-        return Err("its graphics hold no solid".to_string());
+        return Err(NO_SOLID.to_string());
     }
     usable(&out.triangles)?;
     if !fills(&out.triangles, &out.marks, &tight) {
@@ -663,7 +802,7 @@ pub(crate) fn drawing(tree: &Tree, layouts: &Layouts) -> Step<Drawing> {
         return Err(format!("its graphics hold a {}, which is not read", r.name(o)));
     }
     let placed = crate::graphics::placed(tree, layouts)?;
-    let mut body = Shape { whole, marks: marks(&r)?, ..Shape::default() };
+    let mut body = Shape { whole, tight, marks: marks(&r)?, ..Shape::default() };
     (body.solids, body.faces) = solids(&r, &mut body.triangles, &mut body.materials)?;
     body.solids += meshes(&r, &tight, &mut body.triangles, &mut body.materials)?;
     usable(&body.triangles)?;

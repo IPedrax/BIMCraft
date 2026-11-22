@@ -90,9 +90,9 @@ fn an_instances_graphics_name_the_symbol_it_draws_and_the_transform_it_draws_it_
     let tree = graphics::read(&bytes, 0, &l).unwrap();
     let (symbol, t) = instance(&tree, &l).unwrap();
     assert_eq!((symbol, t.axes, t.origin), (500, axes, [10.0, 20.0, 3.0]));
-    // An instance's tree holds no solid of its own: what it draws is another's.
-    let why = crate::shapes::shape(&tree, &l).unwrap_err();
-    assert!(why.contains("GInstance"), "{why}");
+    // Read as a symbol's (a family nesting another), it holds no solid of its own: it places the one it nests, read later.
+    let nests = crate::shapes::shape(&tree, &l).unwrap();
+    assert_eq!((nests.placed, nests.triangles.len()), (vec![(500, t)], 0));
     // A symbol's tree places nothing: it draws solids of its own.
     let bytes = tree_bytes(&box_tree(500, [1.0, 1.0, 1.0], None));
     let d = crate::shapes::drawing(&graphics::read(&bytes, 0, &l).unwrap(), &l).unwrap();
@@ -206,6 +206,22 @@ fn a_surface_of_revolution_turns_its_profile_about_its_axis() {
     let mut out = Vec::new();
     triangles(&s, &[vec![[0.0, 0.5], [PI, 0.5], [PI, 1.0], [0.0, 1.0]]], &mut out).unwrap();
     assert!(out.iter().flatten().all(|p| (p[0].hypot(p[1]) - p[2]).abs() < 1e-6));
+}
+
+#[test]
+fn a_surface_of_revolution_turning_an_ellipse_is_cut_every_fifteen_degrees_both_ways() {
+    // An ellipse 2 ft along x and 1 ft along z, in the plane y = 0, turned about z: a spheroid, (r / 2)² + z² = 1 in feet.
+    let profile = Curve::Ellipse { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 0.0, 1.0], rx: 2.0, ry: 1.0 };
+    let s = Surface::Revolved { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], z: [0.0, 0.0, 1.0], profile };
+    let mut out = Vec::new();
+    triangles(&s, &[vec![[0.0, 0.0], [PI / 2.0, 0.0], [PI / 2.0, PI / 2.0], [0.0, PI / 2.0]]], &mut out).unwrap();
+    // Six steps round, six up.
+    assert!(out.len() >= 72, "{}", out.len());
+    let on = |p: &[f64; 3]| ((p[0].hypot(p[1]) / 609.6).powi(2) + (p[2] / 304.8).powi(2) - 1.0).abs() < 1e-9;
+    assert!(out.iter().flatten().all(on));
+    let top = out.iter().flatten().map(|p| p[2]).fold(f64::MIN, f64::max);
+    let out_most = out.iter().flatten().map(|p| p[0].hypot(p[1])).fold(f64::MIN, f64::max);
+    assert!((top - 304.8).abs() < 1e-6 && (out_most - 609.6).abs() < 1e-6, "{top} {out_most}");
 }
 
 #[test]
@@ -390,4 +406,85 @@ fn a_mesh_reaching_outside_the_box_round_the_solids_is_none_of_them() {
     objects.insert(2, root(500, vec![V::Own(3, "Geometry"), V::Own(1000, "GPolyMesh")], [0.0, 0.0, 0.0, 2.0, 3.0, 9.0], b));
     let shape = graphics::read(&tree_bytes(&objects), 0, &l).and_then(|t| crate::shapes::shape(&t, &l)).unwrap();
     assert_eq!((shape.solids, shape.triangles.len()), (1, 12));
+}
+
+/// The shapes of the symbols whose trees are `trees`, each read and then nested ([`crate::shapes::nest`]).
+fn nested(trees: Vec<(u32, Objects)>) -> std::collections::BTreeMap<u32, Result<Shape, String>> {
+    let s = schema();
+    let l = Layouts::of(&s).unwrap();
+    let mut shapes = trees
+        .into_iter()
+        .map(|(id, objects)| (id, graphics::read(&tree_bytes(&objects), 0, &l).and_then(|t| crate::shapes::shape(&t, &l))))
+        .collect();
+    crate::shapes::nest(&mut shapes);
+    shapes
+}
+
+/// The volume a closed mesh holds, cubic millimetres: positive where its triangles turn counter-clockwise seen from outside.
+fn volume(tris: &[[[f64; 3]; 3]]) -> f64 {
+    let det = |[a, b, c]: &[[f64; 3]; 3]| {
+        a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])
+    };
+    tris.iter().map(det).sum::<f64>() / 6.0
+}
+
+#[test]
+fn a_symbol_that_nests_another_draws_the_nested_ones_shape_placed_by_its_transform() {
+    let foot = 304.8f64.powi(3);
+    let near = |a: [f64; 6], b: [f64; 6]| a.iter().zip(b).all(|(x, y)| (x - y * 304.8).abs() < 0.02);
+    // A table (600) nesting its leg (500, a foot cube) turned a right angle at (10, 20, 3): from 9 to 10 east, 20 to 21 north.
+    let turned = [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+    let leg = [9.0, 20.0, 3.0, 10.0, 21.0, 4.0];
+    let shapes = nested(vec![(600, instance_tree(600, 500, turned, [10.0, 20.0, 3.0], leg)), (500, box_tree(500, [1.0; 3], None))]);
+    let s = shapes[&600].as_ref().unwrap();
+    assert_eq!((s.triangles.len(), s.materials.len(), s.placed.len()), (12, 12, 0));
+    assert!(near(extents(&s.triangles), leg), "{:?}", extents(&s.triangles));
+    assert!((volume(&s.triangles) - foot).abs() < 1.0);
+    // Mirrored (its x turned west), its faces still face out.
+    let mirrored = [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let shapes = nested(vec![
+        (600, instance_tree(600, 500, mirrored, [1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0, 1.0, 1.0])),
+        (500, box_tree(500, [1.0; 3], None)),
+    ]);
+    let s = shapes[&600].as_ref().unwrap();
+    assert!((volume(&s.triangles) - foot).abs() < 1.0, "{}", volume(&s.triangles));
+    // A solid of its own beside the nested one: both.
+    let mut table = box_tree(600, [1.0; 3], None);
+    table.insert(1000, instance_tree(600, 500, turned, [10.0, 20.0, 3.0], leg)[&3].clone());
+    let all = [0.0, 0.0, 0.0, 10.0, 21.0, 4.0];
+    table.insert(2, root(600, vec![V::Own(3, "Geometry"), V::Own(1000, "GInstance")], all, all));
+    let shapes = nested(vec![(600, table.clone()), (500, box_tree(500, [1.0; 3], None))]);
+    let s = shapes[&600].as_ref().unwrap();
+    assert_eq!((s.triangles.len(), s.solids), (24, 2));
+    assert!(near(extents(&s.triangles), all));
+    // The box its graphics give round their solids reaching further than both: something is not read.
+    table.insert(2, root(600, vec![V::Own(3, "Geometry"), V::Own(1000, "GInstance")], all, [0.0, 0.0, 0.0, 12.0, 21.0, 4.0]));
+    let why = nested(vec![(600, table), (500, box_tree(500, [1.0; 3], None))])[&600].clone().unwrap_err();
+    assert!(why.contains("not the box"), "{why}");
+}
+
+#[test]
+fn a_symbol_nesting_one_that_is_not_read_or_that_nests_it_again_has_no_shape() {
+    let square = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let cube = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
+    let nests = |id: u32, symbol: u32| (id, instance_tree(id, symbol, square, [0.0; 3], cube));
+    // The symbol it nests: none in the file.
+    let why = nested(vec![nests(600, 700)])[&600].clone().unwrap_err();
+    assert!(why.contains("no graphics"), "{why}");
+    // One that nests it in turn.
+    let shapes = nested(vec![nests(600, 601), nests(601, 600)]);
+    let why = shapes[&600].clone().unwrap_err();
+    assert!(why.contains("nests itself"), "{why}");
+    // Too deep a chain: each nests the next, the last a cube.
+    let mut trees: Vec<(u32, Objects)> = (0..12).map(|k| nests(600 + k, 601 + k)).collect();
+    trees.push((612, box_tree(612, [1.0; 3], None)));
+    let shapes = nested(trees);
+    assert!(shapes[&611].as_ref().is_ok_and(|s| s.triangles.len() == 12));
+    let why = shapes[&600].clone().unwrap_err();
+    assert!(why.contains("deep"), "{why}");
+    // One placing it where no model reaches: each number finite, its corners past the model's coordinates.
+    let far = [1e300, 1e300, 1e300, 1e300, 1e300, 1e300];
+    let shapes = nested(vec![(600, instance_tree(600, 500, square, [1e300; 3], far)), (500, box_tree(500, [1.0; 3], None))]);
+    let why = shapes[&600].clone().unwrap_err();
+    assert!(why.contains("usable"), "{why}");
 }
