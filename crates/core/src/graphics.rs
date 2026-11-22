@@ -1087,6 +1087,7 @@ pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
         Element::PlanView(v) => Some(&v.graphics),
         Element::Section(v) | Element::Elevation(v) => Some(&v.graphics),
         Element::View3D(v) => Some(&v.graphics),
+        Element::DetailView(v) => Some(&v.graphics),
         _ => None,
     }
 }
@@ -1094,6 +1095,10 @@ pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
 /// The scale, 1 : n, view `id` is held at: its own, or its template's where that controls it, else its project units'
 /// default.
 pub fn scale_of(m: &Model, id: impl Key) -> f64 {
+    // A detail view stands at the scale it was made at, whatever a template of its parent's says.
+    if let Some(Element::DetailView(v)) = m.elements.get(id) {
+        return v.scale;
+    }
     graphics_of(m, id).map_or_else(|| m.units.default_scale(), |g| g.resolved(m).scale_n(m.units))
 }
 
@@ -1104,6 +1109,7 @@ pub fn graphics_mut(e: &mut Element) -> Option<&mut Graphics> {
         Element::PlanView(v) => Some(&mut v.graphics),
         Element::Section(v) | Element::Elevation(v) => Some(&mut v.graphics),
         Element::View3D(v) => Some(&mut v.graphics),
+        Element::DetailView(v) => Some(&mut v.graphics),
         _ => None,
     }
 }

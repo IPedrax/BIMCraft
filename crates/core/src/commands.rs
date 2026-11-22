@@ -23,9 +23,9 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::memory;
 use crate::model::{
-    CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind,
-    Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
+    CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DetailView, DimKind, Dimension,
+    Dimension3D, Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer,
+    LeaderKind, Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
     PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, Railing, RailingType,
     Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft,
     Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
@@ -1533,6 +1533,18 @@ other_files(
          `modify {follow_scale: true}`, which gives it the view's scale again, whatever `scale` comes with it. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` \
          and `elevation` degrees) comes to be as it's first placed",
         place,
+    ),
+    edit(
+        "detail_view",
+        ui_msg!("Callout"),
+        &["DV"],
+        "{parent: a plan's, section's or elevation's name or id, region: [[x, y], [x, y]], scale?: 1–50, name?, number?} a \
+         callout: a fragment of its parent drawn larger, at 1 : `scale` (5 by default), cropped to `region` (in the \
+         parent's coordinates: its south-west and north-east corners in a plan, its distance along the line and its heights in \
+         a section or an elevation), with a callout on the parent that opens it. Its annotation (lines, regions, text, \
+         dimensions) is in the parent's coordinates, so it follows the model and stays put when `modify` moves the region. \
+         `number` is its mark on the callout (`У-03`; made in order when not given), and its name follows it",
+        detail_view,
     ),
     edit(
         "crop",
@@ -4548,6 +4560,16 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             // `+ 0.0`: no `-0`.
             extra.insert("looking".into(), json!([l.0 + 0.0, l.1 + 0.0]));
         }
+        Element::DetailView(v) => {
+            extra.insert("kind".into(), json!("detail"));
+            extra.insert("parent".into(), json!(v.parent));
+            extra.insert("parent_id".into(), json!(m.elements.id(v.parent)));
+            extra.insert("parent_name".into(), json!(m.elements.id(v.parent).and_then(|p| m.view_name(p))));
+            extra.insert("number".into(), json!(v.number));
+            extra.insert("region".into(), json!(v.region));
+            extra.insert("scale".into(), json!(v.scale));
+            extra.insert("mark".into(), json!(v.mark));
+        }
         Element::Tag(t) => {
             extra.insert("text".into(), json!(m.tag_text_with(t, rooms)));
             extra.insert("level".into(), json!(m.level_of(e)));
@@ -5693,6 +5715,38 @@ fn render_view(s: &mut Session, p: &Value) -> R {
     if let Some((id, name, kind)) = cut {
         let (png, notes) = render::section_png_noted(m, id, render::section_fit(m, id, w3, h3)).map_err(|e| bad(c, e))?;
         return png_reply(c, p, png, with_notes(json!({"width": w3, "height": h3, "view": name, "kind": kind}), &notes));
+    }
+    // A detail view, by name or id: a fragment of a plan, a section or an elevation.
+    let detail = m.elements.iter().find_map(|(id, e)| match e {
+        Element::DetailView(v) if view.and_then(Value::as_str) == Some(v.name.as_str()) || view.and_then(Value::as_u64) == Some(*id) => {
+            Some((*id, v.name.clone()))
+        }
+        _ => None,
+    });
+    if let Some((id, name)) = detail {
+        let fitted = render::detail_fit(m, id, w, h);
+        let kind = if m.plan_level(id).is_some() { "detail plan" } else { "detail section" };
+        return match string(c, p, "path")? {
+            Some(path) if ext(Path::new(&path)) == "svg" && m.plan_level(id).is_some() => {
+                let d = render::detail(m, id, fitted);
+                let path = PathBuf::from(path);
+                write_plan(&d, &path)?;
+                Ok(with_notes(json!({"path": path, "width": w, "height": h, "view": name, "kind": kind}), &d.notes))
+            }
+            _ if m.plan_level(id).is_some() => {
+                let d = render::detail(m, id, fitted);
+                png_reply(
+                    c,
+                    p,
+                    render::png(&d).map_err(|e| bad(c, e))?,
+                    with_notes(json!({"width": w, "height": h, "view": name, "kind": kind}), &d.notes),
+                )
+            }
+            _ => {
+                let (png, notes) = render::section_png_noted(m, id, fitted).map_err(|e| bad(c, e))?;
+                png_reply(c, p, png, with_notes(json!({"width": w, "height": h, "view": name, "kind": kind}), &notes))
+            }
+        };
     }
     // A sheet, by number, name or id, unless a level is called that.
     let level = match view {
@@ -12981,7 +13035,15 @@ fn dimension(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let (level, view) = if !absent(p.get("view")) {
         let id = view_param(c, m, p, false)?;
-        if m.section(id).is_some() { (m.guid(id), Some(m.guid(id))) } else { plan_param(c, m, &json!({"level":id}), "level")? }
+        if m.section_geometry(id).is_some() {
+            (m.guid(id), Some(m.guid(id)))
+        } else if matches!(m.elements.get(id), Some(Element::DetailView(_))) {
+            // A detail of a plan is a plan of its own: its annotation is in the detail.
+            let level = m.plan_level(id).map(|l| m.guid(l)).ok_or_else(|| bad(c, "a detail of a plan needs its parent plan"))?;
+            (level, Some(m.guid(id)))
+        } else {
+            plan_param(c, m, &json!({"level":id}), "level")?
+        }
     } else {
         plan_param(c, m, p, "level")?
     };
@@ -13039,7 +13101,7 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
         return Err(bad(c, format!("`refs` has more than {MAX_POINTS} references")));
     }
     let mut refs: Vec<Reference> = Vec::new();
-    if view.is_some_and(|v| m.section(v).is_some()) {
+    if view.is_some_and(|v| m.section_geometry(v).is_some()) {
         return given
             .iter()
             .map(|v| {
@@ -13379,7 +13441,7 @@ fn dimension_constraint(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
     };
     let mut d = d.clone();
-    if d.view.is_some_and(|v| s.model.section(v).is_some()) {
+    if d.view.is_some_and(|v| s.model.section_geometry(v).is_some()) {
         return Err(bad(c, "section/elevation dimension constraints are not supported yet"));
     }
     let before_equal = d.equal;
@@ -15199,6 +15261,96 @@ fn elevation(s: &mut Session, p: &Value) -> R {
     }
 }
 
+fn detail_view(s: &mut Session, p: &Value) -> R {
+    let c = "detail_view";
+    only(c, p, &["parent", "view", "region", "scale", "name", "number"])?;
+    let m = &s.model;
+    // `parent` names the view it is a fragment of; `view` is taken too, as other commands name a view.
+    let parent = match p.get("parent") {
+        v if absent(v) => view_param(c, m, p, false)?,
+        Some(v) => {
+            let mut q = Map::new();
+            q.insert("view".into(), v.clone());
+            view_param(c, m, &Value::Object(q), false)?
+        }
+        None => view_param(c, m, p, false)?,
+    };
+    match m.elements.get(parent) {
+        Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => {}
+        Some(Element::DetailView(_)) => {
+            return Err(bad(c, "a detail of a detail isn't supported: its parent is a plan, a section or an elevation"));
+        }
+        _ => return Err(bad(c, format!("{} isn't a plan, a section or an elevation; only those have details", view_title(m, parent)))),
+    }
+    let region = match points(c, p, "region")?.as_slice() {
+        [a, b] if a.0 < b.0 - TOL && a.1 < b.1 - TOL => [micron(*a), micron(*b)],
+        _ => return Err(bad(c, "`region` is two corners, [[x, y], [x, y]], its south-west or bottom-left one first")),
+    };
+    // A detail is a fragment: no more than a quarter of what its parent shows.
+    let parent_box = if m.plan_level(parent).is_some() {
+        let pts = render::plan_extent(m, parent);
+        pts.first().map(|&first| points_bounds(pts.iter().copied(), first))
+    } else {
+        let work = render::SectionWork::new(m);
+        render::section_extent(m, &work, parent, 1.0, 1.0)
+    };
+    if let Some([lo, hi]) = parent_box {
+        let area = |[a, b]: [P2; 2]| (b.0 - a.0).max(0.0) * (b.1 - a.1).max(0.0);
+        let (small, whole) = (area(region), area([lo, hi]));
+        if whole > 0.0 && small > whole / 4.0 {
+            return Err(bad(
+                c,
+                format!("`region` is {:.0}% of what its parent shows; a detail is no more than a quarter of it", small / whole * 100.0),
+            ));
+        }
+    }
+    let scale = match p.get("scale") {
+        v if absent(v) => 5.0,
+        Some(v) => match v.as_f64() {
+            Some(n) if (1.0..=50.0).contains(&n) => n,
+            _ => return Err(bad(c, format!("`scale` is 1 to 50, the n of 1 : n, not {v}"))),
+        },
+        None => 5.0,
+    };
+    let number = match string(c, p, "number")? {
+        Some(n) => n.trim().to_string(),
+        None => {
+            let taken: BTreeSet<&str> = m
+                .elements
+                .values()
+                .filter_map(|e| match e {
+                    Element::DetailView(v) => Some(v.number.as_str()),
+                    _ => None,
+                })
+                .collect();
+            (1..).map(|n| format!("D-{n:02}")).find(|n| !taken.contains(n.as_str())).unwrap_or_default()
+        }
+    };
+    let name = match (string(c, p, "name")?, number.trim().is_empty()) {
+        (Some(n), true) => n,
+        (Some(n), false) => format!("{number} {n}"),
+        (None, false) => number.clone(),
+        (None, true) => m.language.word(msg!("Detail")).to_string(),
+    };
+    let parent_guid = m.guid(parent);
+    let id = s.model_mut().insert(Element::DetailView(DetailView {
+        name: name.clone(),
+        parent: parent_guid,
+        region,
+        scale,
+        number,
+        mark: None,
+        graphics: Graphics::default(),
+    }));
+    Ok(json!({"id": id, "name": name, "scale": scale, "parent": parent}))
+}
+
+/// The box round `pts`, whose first point is `first`.
+fn points_bounds(pts: impl Iterator<Item = P2>, first: P2) -> [P2; 2] {
+    let (lo, hi) = pts.fold((first, first), |(lo, hi), p| (P2(lo.0.min(p.0), lo.1.min(p.1)), P2(hi.0.max(p.0), hi.1.max(p.1))));
+    [lo, hi]
+}
+
 fn crop(s: &mut Session, p: &Value) -> R {
     let c = "crop";
     let m = &s.model;
@@ -15293,8 +15445,8 @@ fn view_line(m: &mut Model, view: Id, v: Section, shift: f64) {
 fn scaled_view(c: &str, m: &Model, p: &Value) -> Result<Id, String> {
     let view = view_param(c, m, p, false)?;
     match m.elements.get(view) {
-        Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(view),
-        _ => Err(bad(c, format!("{} isn't a plan, a section or an elevation; only those have one", view_title(m, view)))),
+        Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_) | Element::DetailView(_)) => Ok(view),
+        _ => Err(bad(c, format!("{} isn't a plan, a section, an elevation or a detail; only those have one", view_title(m, view)))),
     }
 }
 
@@ -15555,8 +15707,18 @@ fn view_scale(s: &mut Session, p: &Value) -> R {
     let c = "scale";
     let view = scaled_view(c, &s.model, p)?;
     if let Some(scale) = scale_param(c, p)? {
-        own_to_set(c, &s.model, view, Group::Scale, "scale")?;
-        change_graphics(s, view, |g| g.scale = Some(scale));
+        if matches!(s.model.elements.get(view), Some(Element::DetailView(_))) {
+            // A detail's scale is its own: 1 : 1 to 1 : 50, as `detail_view` makes it.
+            if !(1.0..=50.0).contains(&scale) {
+                return Err(bad(c, format!("a detail's scale is 1 to 50, not 1 : {scale}")));
+            }
+            if let Some(Element::DetailView(v)) = s.model_mut().elements.get_mut(view) {
+                v.scale = scale;
+            }
+        } else {
+            own_to_set(c, &s.model, view, Group::Scale, "scale")?;
+            change_graphics(s, view, |g| g.scale = Some(scale));
+        }
         // Its viewports on sheets follow, when one has their scale to take: a view that already has this
         // scale leaves the model as it was, and is no undo step.
         if sheet::follows_scale(&s.model, view, scale) {
@@ -16044,8 +16206,15 @@ fn place(s: &mut Session, p: &Value) -> R {
         Some(at) => at,
         None => sheet::automatic_center(&s.model, sheet, view, scale).map_err(|why| bad(c, why))?,
     };
-    // Off the paper, by hand or for want of room on it, it goes there all the same, and the reply says so.
-    let warning = sheet::off_paper(&s.model, sheet, view, scale, at);
+    // Off the paper, by hand or for want of room on it, it goes there all the same, and the reply says so. A detail placed
+    // at another scale than its own is drawn so, but its callout says the detail's scale: say that too.
+    let own_detail = match s.model.elements.get(view) {
+        Some(Element::DetailView(v)) if (v.scale - scale).abs() > 1e-9 => {
+            Some(format!("the detail is 1 : {}, and its viewport is placed at 1 : {scale}", v.scale))
+        }
+        _ => None,
+    };
+    let warning = own_detail.or_else(|| sheet::off_paper(&s.model, sheet, view, scale, at));
     let (sheet, view) = (s.model.guid(sheet), s.model.guid(view));
     // Told another, it keeps that one: only a viewport at its view's scale follows the view.
     let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale, follow_scale: own }));
@@ -19114,6 +19283,16 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Schedule(_) | Element::PanelSchedule(_) | Element::PlanView(_) => {
             return Err(bad(c, format!("{category} {id} has no place in plan; move its viewport on its sheet")));
         }
+        // A callout moves with its fragment: its boundary, its mark and the region its view shows, together.
+        Element::DetailView(v) => {
+            let o = f(P2(0.0, 0.0));
+            let moved = (f(P2(1.0, 0.0)) - o).dist(P2(1.0, 0.0)) < 1e-9 && (f(P2(0.0, 1.0)) - o).dist(P2(0.0, 1.0)) < 1e-9;
+            if mo.mirror || !moved {
+                return Err(bad(c, format!("callout {id} moves with its fragment; it can't be turned or mirrored")));
+            }
+            v.region = [v.region[0] + o, v.region[1] + o];
+            v.mark = v.mark.map(|m| m + o);
+        }
         Element::ProjectInfo(_) => {
             return Err(bad(c, format!("{id} is the project's information, which has no place in plan; a project has one")));
         }
@@ -20300,7 +20479,7 @@ fn dimension_value(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("dimension {id} isn't an aligned or a linear one: only their lengths are typed")));
     }
     let mut d = d.clone();
-    if d.view.is_some_and(|v| s.model.section(v).is_some()) {
+    if d.view.is_some_and(|v| s.model.section_geometry(v).is_some()) {
         return Err(bad(c, "section/elevation dimensions measure only; use Move or Properties to edit their references"));
     }
     let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value`, the length in mm, is required"))?;
@@ -21564,6 +21743,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Rebar(rb)) => rb.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::Component(cp)) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
                 Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
+                // A detail goes with its parent, as its callout does with it.
+                Some(Element::DetailView(v)) => gone.contains(&v.parent),
                 Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                 Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
                 Some(Element::Dimension3D(d)) => gone.contains(&d.view),
@@ -21637,7 +21818,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
     // well as graphics overrides, without mutably visiting every model element.
     let views: BTreeSet<Id> = lookup
         .levels()
-        .chain(["planview", "section", "elevation", "view3d"].into_iter().flat_map(|cat| lookup.rare(cat)))
+        .chain(["planview", "section", "elevation", "detail", "view3d"].into_iter().flat_map(|cat| lookup.rare(cat)))
         .filter(|id| !gone.contains(&m.guid(*id)))
         .filter(|id| {
             let e = m.elements.get(*id);
@@ -21729,6 +21910,8 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::PanelSchedule(v) => gone.contains(&v.panel),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
+                        // A detail goes with its parent.
+                        Element::DetailView(v) => gone.contains(&v.parent),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                         Element::Dimension(d) => d.view.is_some_and(|v| gone.contains(&v)),
                         Element::Dimension3D(d) => gone.contains(&d.view),

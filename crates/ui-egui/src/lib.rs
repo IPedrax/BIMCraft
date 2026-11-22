@@ -284,6 +284,8 @@ pub enum Tool {
     Tag,
     /// A section: its start, once clicked.
     Section(Option<P2>),
+    /// A detail view's fragment: its first corner, once clicked, on a plan, a section or an elevation.
+    DetailView(Option<P2>),
     /// An elevation, looking at the side of the building clicked beside.
     Elevation,
     /// A camera: the point its eye stands at, once clicked; then its target. The eye and target heights
@@ -2167,6 +2169,7 @@ impl BimApp {
             Tool::Measure(_) => Some("Measure"),
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
+            Tool::DetailView(_) => Some(msg!("Callout")),
             Tool::Elevation => Some("Elevation"),
             Tool::Camera(_) => Some("Camera"),
             Tool::Column => Some(msg!("Place Column")),
@@ -2222,7 +2225,7 @@ impl BimApp {
             Sheet::View3D => {
                 self.active_3d().and_then(|id| self.session.model.view_name(id).map(String::from)).unwrap_or_else(|| "{3D}".into())
             }
-            Sheet::Section(id) => self.session.model.section(id).map_or_else(|| "Section".into(), |v| v.name.clone()),
+            Sheet::Section(id) => self.session.model.view_name(id).map_or_else(|| "Section".into(), String::from),
             Sheet::Paper(id) => self.session.model.sheet(id).map_or_else(|| "Sheet".into(), |s| format!("{} - {}", s.number, s.name)),
             Sheet::Schedule(cat) => match schedule::standard(&self.session.model, cat) {
                 (Some(_), sc) => sc.name,
@@ -2240,10 +2243,12 @@ impl BimApp {
     /// The view as the title bar names it: `Floor Plan: Level 1`.
     fn view_title(&self, sheet: Sheet) -> String {
         let kind = match sheet {
+            Sheet::Plan(id) if matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))) => msg!("Callout"),
             Sheet::Plan(_) => "Floor Plan",
             Sheet::Ceiling(_) => "Ceiling Plan",
             Sheet::View3D => "3D View",
             Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::Elevation(_))) => "Elevation",
+            Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))) => msg!("Callout"),
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
             Sheet::Table(id) if matches!(self.session.model.elements.get(id), Some(Element::PanelSchedule(_))) => "Panel Schedule",
@@ -2558,7 +2563,7 @@ impl BimApp {
         let exists = |s: &Sheet| match s {
             Sheet::Family(id, _) => docs.contains(id),
             Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key).is_some(),
-            Sheet::Section(id) => m.section(*id).is_some(),
+            Sheet::Section(id) => m.section_geometry(*id).is_some(),
             Sheet::Paper(id) => m.sheet(*id).is_some(),
             Sheet::View3D | Sheet::Schedule(_) => true,
             Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_) | Element::PanelSchedule(_))),
@@ -3298,6 +3303,7 @@ impl BimApp {
                 }
                 Some("component") => Tool::Component,
                 Some("section") => Tool::Section(None),
+                Some("detail_view") => Tool::DetailView(None),
                 Some("measure") => Tool::Measure(None),
                 Some("paint") => Tool::Paint,
                 Some("match_properties") => {
@@ -4052,6 +4058,7 @@ impl BimApp {
             Tool::Angular(refs) if !refs.is_empty() => Tool::Angular(Vec::new()),
             Tool::Round(k, picked) if !picked.is_empty() => Tool::Round(k, Vec::new()),
             Tool::Section(Some(_)) => Tool::Section(None),
+            Tool::DetailView(Some(_)) => Tool::DetailView(None),
             Tool::Measure(Some(_)) => Tool::Measure(None),
             // The ruler begun or laid goes first, then the tool, in a plan and in the 3D view alike.
             Tool::Measure(None) if !std::mem::take(&mut self.orbit.chain).is_empty() => {
@@ -5442,6 +5449,34 @@ impl BimApp {
         });
     }
 
+    /// A Callout of the fragment from `a` to `b` on `parent`: its view, and the boundary and mark on the parent.
+    pub(crate) fn make_callout(&mut self, parent: Id, a: P2, b: P2) -> bool {
+        let Some(scale) = self.drawing.detail_scale.trim().parse::<f64>().ok().filter(|n| (1.0..=50.0).contains(n)) else {
+            self.status =
+                Status { text: tf("callout: `{}` is not a scale from 1 to 50", &[self.drawing.detail_scale.trim()]), error: true };
+            return false;
+        };
+        let (lo, hi) = (P2(a.0.min(b.0), a.1.min(b.1)), P2(a.0.max(b.0), a.1.max(b.1)));
+        let mut p = json!({"parent": parent, "region": [[lo.0, lo.1], [hi.0, hi.1]], "scale": scale});
+        if !self.drawing.detail_name.trim().is_empty() {
+            p["name"] = json!(self.drawing.detail_name.trim());
+        }
+        if !self.drawing.detail_number.trim().is_empty() {
+            p["number"] = json!(self.drawing.detail_number.trim());
+        }
+        match self.run("detail_view", p) {
+            Some(made) => {
+                let name = made["name"].as_str().unwrap_or_default().to_string();
+                self.status = Status {
+                    text: tf("Callout `{}` made: open it from the Project Browser, or double-click its mark", &[&name]),
+                    error: false,
+                };
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Duplicate View (DP): a new plan view of the plan on screen (`mode` as the command says), opened as the kind of plan it
     /// was made from.
     pub(crate) fn duplicate_plan(&mut self, mode: &'static str) {
@@ -5531,6 +5566,22 @@ impl BimApp {
                     }
                 }
             });
+            let tip = msg!(
+                "Callout (DV): click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
+            );
+            let can_callout = match self.sheet {
+                Sheet::Plan(id) | Sheet::Section(id) => !matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))),
+                _ => false,
+            };
+            if ui
+                .add_enabled_ui(can_callout, |ui| {
+                    big_button(ui, Icon::DetailView, "Callout", matches!(self.tool, Tool::DetailView(_)), tip)
+                })
+                .inner
+                .clicked()
+            {
+                self.set_tool(Tool::DetailView(None));
+            }
             let tip = msg!("Section (CR): click its start, then its end; it looks to the left of the line");
             if big_button(ui, Icon::Section, "Section", matches!(self.tool, Tool::Section(_)), tip).clicked() {
                 self.set_tool(Tool::Section(None));
@@ -6575,6 +6626,14 @@ impl BimApp {
                     ui.add(TextEdit::singleline(&mut self.tag_label).desired_width(160.0).hint_text(t("a field, such as Type or Height")))
                         .labelled_by(l.id);
                 }
+                Tool::DetailView(_) => {
+                    let l = ui.label(t("Scale 1:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.drawing.detail_scale).desired_width(48.0)).labelled_by(l.id);
+                    let l = ui.label(t("Name:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.drawing.detail_name).desired_width(180.0)).labelled_by(l.id);
+                    let l = ui.label(t("Number:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.drawing.detail_number).desired_width(70.0)).labelled_by(l.id);
+                }
                 Tool::DetailLine(_) => self.line_style_options(ui),
                 // Between endpoints: as the cursor lies, aligned, horizontal or vertical (Space steps them).
                 Tool::Dimension(mode, _) => {
@@ -7073,6 +7132,8 @@ impl BimApp {
             Tool::GableEdge => msg!("Click an edge of a roof's footprint: it stands upright, a gable end; click it again to slope it."),
             Tool::Floor => msg!("Click inside the walls to floor them: the slab runs under their outline, its top at the level."),
             Tool::Ceiling => msg!("Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says."),
+            Tool::DetailView(None) => msg!("Click one corner of the fragment to call out."),
+            Tool::DetailView(Some(_)) => msg!("Click the fragment's opposite corner; the callout is made at the Options Bar's scale."),
             Tool::Shaft(None) => msg!("Click a corner of the shaft opening."),
             Tool::Shaft(Some(_)) => {
                 msg!("Click the opposite corner: the shaft cuts the floors, ceilings and roofs up to its top. Esc cancels.")

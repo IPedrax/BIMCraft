@@ -636,6 +636,36 @@ impl BimApp {
                 kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| leaf(*id, name)).collect()));
             }
         }
+        // Detail views, each under the view they are a fragment of, as Revit's callouts are.
+        let mut by_parent: std::collections::BTreeMap<Id, Vec<(Id, String)>> = std::collections::BTreeMap::new();
+        for id in m.rare("detail") {
+            let Some(Element::DetailView(v)) = m.elements.get(id) else { continue };
+            if let Some(parent) = m.elements.id(v.parent) {
+                by_parent.entry(parent).or_default().push((id, v.name.clone()));
+            }
+        }
+        if !by_parent.is_empty() {
+            let mut parents: Vec<(String, Vec<Node>)> = by_parent
+                .into_iter()
+                .map(|(parent, mut details)| {
+                    details.sort_by(|a, b| a.1.cmp(&b.1));
+                    let leaves = details
+                        .into_iter()
+                        .map(|(id, name)| {
+                            let sheet = if m.plan_level(id).is_some() { Sheet::Plan(id) } else { Sheet::Section(id) };
+                            self.view_leaf(&name, sheet).with_menu(vec![("Delete", Act::Delete(vec![id]))])
+                        })
+                        .collect();
+                    (m.view_name(parent).unwrap_or_default().to_string(), leaves)
+                })
+                .collect();
+            parents.sort_by(|a, b| a.0.cmp(&b.0));
+            kids.push(Node::group(
+                t("Callouts"),
+                true,
+                parents.into_iter().map(|(parent, leaves)| Node::group(&parent, true, leaves)).collect(),
+            ));
+        }
         Node::group(t("Views (all)"), true, kids)
     }
 

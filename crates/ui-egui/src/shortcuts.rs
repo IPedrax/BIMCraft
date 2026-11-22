@@ -285,6 +285,7 @@ impl BimApp {
             "Spot Coordinate" => self.set_tool(Tool::SpotCoordinate(None)),
             "Tag by Category" => self.set_tool(Tool::Tag),
             "Section" => self.set_tool(Tool::Section(None)),
+            "Callout" => self.set_tool(Tool::DetailView(None)),
             "Elevation" => self.set_tool(Tool::Elevation),
             "Measure" => self.set_tool(Tool::Measure(None)),
             "Align" => self.set_tool(Tool::Align(None)),

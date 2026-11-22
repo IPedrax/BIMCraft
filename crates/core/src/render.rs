@@ -2018,6 +2018,7 @@ pub fn crop_region(m: &Model, id: impl Key) -> Option<[P2; 2]> {
         Element::Level(l) => l.crop,
         Element::PlanView(v) => v.crop,
         Element::Section(v) | Element::Elevation(v) => v.crop.map(|[bottom, top]| [P2(0.0, bottom), P2(v.start.dist(v.end), top)]),
+        Element::DetailView(v) => Some(v.region),
         _ => None,
     }
 }
@@ -2062,12 +2063,12 @@ fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn F
 /// Where level `level` ends in section or elevation `view`, along its line from its start: its near
 /// end and its far one, as far as the view shows. None where it doesn't show it.
 pub fn level_ends(m: &Model, level: impl Key, view: impl Key) -> Option<(f64, f64)> {
-    let v = m.section(view)?;
+    let v = m.section_geometry(view)?;
     let look = Look::of(m, view);
     let w = SectionWork::new(m);
-    let (first, last) = span(m, &w, v, &look, &|| false)?;
+    let (first, last) = span(m, &w, &v, &look, &|| false)?;
     let level = m.elements.id(level)?;
-    let (_, a, b) = level_spans(m, &w, v, &look, &|| false)?.into_iter().find(|(id, ..)| *id == level)?;
+    let (_, a, b) = level_spans(m, &w, &v, &look, &|| false)?.into_iter().find(|(id, ..)| *id == level)?;
     let (a, b) = (a.max(first), b.min(last));
     (a < b).then_some((a, b))
 }
@@ -2078,10 +2079,10 @@ fn section_level_ends(
     id: Id,
     cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Option<std::collections::BTreeMap<Id, (f64, f64)>> {
-    let Some(v) = m.section(id) else { return Some(Default::default()) };
+    let Some(v) = m.section_geometry(id) else { return Some(Default::default()) };
     let look = Look::of(m, id);
-    let (first, last) = span(m, work, v, &look, cancelled)?;
-    let spans = level_spans(m, work, v, &look, cancelled)?;
+    let (first, last) = span(m, work, &v, &look, cancelled)?;
+    let spans = level_spans(m, work, &v, &look, cancelled)?;
     Some(
         spans
             .into_iter()
@@ -2152,7 +2153,7 @@ pub fn section_fit_cancellable(
         let fresh = SectionWork::new_cancellable(m, cancelled)?;
         return section_fit_cancellable(m, &fresh, id, width, height, cancelled);
     }
-    if m.section(id).is_none() {
+    if m.section_geometry(id).is_none() {
         return Some(fit(&[], width, height, m.units.default_scale()));
     }
     let [lo, hi] = section_bare(m, work, id, cancelled)?;
@@ -2171,9 +2172,9 @@ pub(crate) fn section_extent(m: &Model, w: &SectionWork, id: impl Key, scale: f6
 /// Section or elevation `id` along its line, past its lowest and highest heights: all it shows but the names of its levels.
 /// Cropped, from its start to its end; else as far as anything it shows reaches.
 fn section_bare(m: &Model, w: &SectionWork, id: impl Key, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<[P2; 2]> {
-    let v = m.section(id)?;
+    let v = m.section_geometry(id)?;
     let look = Look::of(m, id);
-    let ((lo, hi), (first, last)) = (shown_heights(m, w, v, &look, cancelled)?, span(m, w, v, &look, cancelled)?);
+    let ((lo, hi), (first, last)) = (shown_heights(m, w, &v, &look, cancelled)?, span(m, w, &v, &look, cancelled)?);
     Some([P2(first, lo - GRID_PAST), P2(last, hi + GRID_PAST)])
 }
 
@@ -2185,7 +2186,7 @@ fn level_names(m: &Model) -> f32 {
 
 /// The camera, and what it keeps, that show what section or elevation `id` sees through `view`.
 pub fn section_camera(m: &Model, id: impl Key, view: View) -> Option<(Camera, Clip)> {
-    let v = m.section(id)?;
+    let v = m.section_geometry(id)?;
     let (u, back) = ((v.end - v.start).unit(), v.looking() * -1.0);
     let at = v.start + u * view.cx;
     let cam = Camera {
@@ -2420,11 +2421,11 @@ fn section_base_cancellable(
     }
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, id), m.line_weights().at(n));
-    let Some(v) = m.section(id) else { return Some(d) };
+    let Some(v) = m.section_geometry(id) else { return Some(d) };
     let look = Look::of(m, id);
     d.pattern_styles = look.pattern_styles();
     let u = (v.end - v.start).unit();
-    let (first, last) = span(m, work, v, &look, cancelled)?;
+    let (first, last) = span(m, work, &v, &look, cancelled)?;
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
     // leaves no seam.
     let mut cuts: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
@@ -2548,7 +2549,7 @@ fn section_base_cancellable(
     // the line crosses its boundaries; a thin line up each boundary between two, as high as the wall
     // stands there, around its openings.
     let lookup = m.lookup();
-    for (wall, w) in section_walls(m, &lookup, v, first, last) {
+    for (wall, w) in section_walls(m, &lookup, &v, first, last) {
         if cancelled() {
             return None;
         }
@@ -2704,14 +2705,14 @@ fn section_base_cancellable(
     }
     d.owner = None;
     d.part(Part::Projection);
-    let (lo, hi) = shown_heights(m, work, v, &look, cancelled)?;
+    let (lo, hi) = shown_heights(m, work, &v, &look, cancelled)?;
     if v.crop.is_some() {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
     }
     d.model_under_regions(m.elements.id(id));
     // Each level over as much of its extent as the view sees, named past its end.
-    for (level, from, to) in level_spans(m, work, v, &look, cancelled)? {
+    for (level, from, to) in level_spans(m, work, &v, &look, cancelled)? {
         if cancelled() {
             return None;
         }
@@ -2989,8 +2990,15 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
     if cancelled() {
         return None;
     }
-    let Some(v) = m.section(id) else { return Some(d) };
+    let Some(v) = m.section_geometry(id) else { return Some(d) };
     let (lookup, look, view) = (m.lookup(), Look::of(m, id), d.view);
+    // A detail of a section keeps its annotation in its parent's coordinates: its own view starts where its region does,
+    // so what is drawn in it moves back by that much.
+    let shift = match m.elements.get(id) {
+        Some(Element::DetailView(dv)) => dv.region[0].0,
+        _ => 0.0,
+    };
+    d.view.cx += shift;
     // What is drawn in it, from what points at it: its regions, notes, details and spot elevations.
     let own: Vec<(Id, &Element)> =
         lookup.referrers(&m.guid(id)).filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))).collect();
@@ -3016,14 +3024,22 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
             Element::Dimension(dm) if dm.view.is_some_and(|v| m.same(v, id)) => dimension(&mut d, m, dm),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::RepeatingDetail(r) if m.same(r.view, id) => detail_members(&mut d, m, &r.members(m)),
+            // Its callouts' boundaries and marks, in the section or elevation they are fragments of.
+            Element::DetailView(dv) if m.same(dv.parent, id) => {
+                detail_boundary(&mut d, dv);
+                detail_mark(&mut d, dv);
+            }
             // A spot slope reads a plan's floor or roof; a section has none to show.
             Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
-                spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
+                let at = d.view.px(P2(sp.at.0, z));
+                spot_mark(&mut d, at, Some(z), m.units);
             }
             _ => {}
         }
     }
+    // The model's own marks are in the detail's coordinates, not its parent's.
+    d.view.cx -= shift;
     // Site's three points, where the view's graphics show them: along the line from its start, and up.
     let graphics = crate::graphics::graphics_of(m, id).map_or_else(Default::default, |g| g.resolved(m).into_owned());
     let u = (v.end - v.start).unit();
@@ -3114,6 +3130,44 @@ fn detail_of(m: &Model, id: impl Key) -> Detail {
 /// Plan `level` as `draw` draws it, its annotation `k` times the size it is laid out at: a sheet's, at paper size.
 pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
     draw_plan(m, level, view, false, k, f64::from(k) * sheet::DENSITY / view.scale, false)
+}
+
+/// What detail view `id` shows of its parent: its region.
+pub(crate) fn detail_extent(m: &Model, id: impl Key) -> Option<[P2; 2]> {
+    match m.elements.get(id)? {
+        Element::DetailView(v) => Some(v.region),
+        _ => None,
+    }
+}
+
+/// Detail view `id` fitted into `width` x `height` px: a fragment of a plan, cropped to its region, or of a section or an
+/// elevation, from its region along the parent line and its heights.
+pub fn detail_fit(m: &Model, id: impl Key, width: u32, height: u32) -> View {
+    if m.plan_level(id).is_some() {
+        let pts: Vec<P2> = detail_extent(m, id).map(|[lo, hi]| vec![lo, hi]).unwrap_or_else(|| plan_extent(m, id));
+        fit(&pts, width, height, scale_of(m, id))
+    } else {
+        section_fit(m, id, width, height)
+    }
+}
+
+/// Detail view `id` through `view`: a fragment of a plan at the view's crop, annotated in the parent's coordinates, or the
+/// section or elevation it is a fragment of.
+pub fn detail(m: &Model, id: impl Key, view: View) -> Drawing {
+    if m.plan_level(id).is_some() {
+        draw_plan(m, id, view, false, annotation(m, id, view), scale_of(m, id), true)
+    } else {
+        section(m, id, view)
+    }
+}
+
+/// Detail view `id` as a sheet draws it, its annotation `k` times the size it is laid out at.
+pub fn detail_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
+    if m.plan_level(id).is_some() {
+        draw_plan(m, id, view, false, k, f64::from(k) * sheet::DENSITY / view.scale, false)
+    } else {
+        section_at(m, id, view, k)
+    }
 }
 
 /// The points of the scans a plan sees, from its cut plane down to its view depth, as Revit draws a point cloud in plan: from
@@ -3809,6 +3863,13 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
             Element::Elevation(v) if inside(crate::elevation::mark(v)) => elevation_mark(&mut d, v),
+            // A callout's boundary and mark, in the plan they are fragments of.
+            Element::DetailView(v) if m.same(v.parent, key) => {
+                detail_boundary(&mut d, v);
+                if inside(v.middle()) {
+                    detail_mark(&mut d, v);
+                }
+            }
             // A camera stands on its level's plan: a symbol at its eye, and a line to what it looks at.
             Element::View3D(v) if !up && v.camera.is_some_and(|c| m.camera_level(c.eye[2]) == m.elements.id(level)) => {
                 camera_mark(&mut d, v)
@@ -5934,6 +5995,77 @@ fn section_mark(d: &mut Drawing, v: &Section) {
     let from = d.prims.len();
     d.stroke(vec![b, (b.0 + lx * 9.0, b.1 + ly * 9.0)], Pen::MEDIUM, INK, None, false);
     d.grow(from, b);
+}
+
+/// The rectangle of the fragment a callout shows, on the view it is a fragment of: what it takes, and what moves with its
+/// mark. Drawn in the parent's own line, at its annotation's size.
+fn detail_boundary(d: &mut Drawing, v: &crate::model::DetailView) {
+    let [a, b] = v.region;
+    let corners = [a, P2(b.0, a.1), b, P2(a.0, b.1)];
+    let pts: Vec<(f32, f32)> = corners.iter().map(|p| d.view.px(*p)).collect();
+    d.stroke(pts, Pen::MEDIUM, INK, None, true);
+}
+
+/// A detail view's callout in its parent: a circle 8 mm across on the paper, holding its number, and a line to the middle
+/// of the fragment it shows. It grows with the view's annotation, as a section's mark does.
+fn detail_mark(d: &mut Drawing, v: &crate::model::DetailView) {
+    // Its circle stands where its mark is, or just outside the fragment's north-east corner before it is moved: 4 mm on
+    // the paper, as big as the view's annotation.
+    let k = d.k;
+    let r = (4.0 * sheet::DENSITY) as f32 * k;
+    let (at, target) = match v.mark {
+        Some(mark) => {
+            let target = detail_boundary_point(v.region, mark);
+            (d.view.px(mark), d.view.px(target))
+        }
+        None => {
+            let corner = d.view.px(v.region[1]);
+            ((corner.0 + 0.9 * r, corner.1 - 0.9 * r), corner)
+        }
+    };
+    // The leader, from the circle's rim to the fragment's boundary: it stops there, never running on to its middle.
+    let (dx, dy) = (target.0 - at.0, target.1 - at.1);
+    let len = dx.hypot(dy).max(1e-6);
+    d.stroke(vec![(at.0 + dx / len * r, at.1 + dy / len * r), target], Pen::MEDIUM, INK, None, false);
+    let ring: Vec<(f32, f32)> = (0..40)
+        .map(|i| {
+            let t = f64::from(i) * PI / 20.0;
+            (at.0 + r * t.cos() as f32, at.1 + r * t.sin() as f32)
+        })
+        .collect();
+    d.push(Prim::Fill { rings: vec![ring.clone()], color: PAPER });
+    d.stroke(ring, Pen::BUBBLE, INK, None, true);
+    // Its name, shrunk to fit the circle when it is long.
+    let text = v.label();
+    let per_pixel = font::width(text, 1.0).max(1e-6);
+    let height = (10.0 * k).min(1.6 * r / per_pixel).max(4.0 * k);
+    d.text(text, at, height, INK);
+}
+
+/// Where the ray from the middle of `region` through `from` meets its boundary, mm. A mark outside the fragment draws
+/// its leader to the near side; one inside, to the side beyond it.
+pub fn detail_boundary_point([lo, hi]: [P2; 2], from: P2) -> P2 {
+    let c = (lo + hi) * 0.5;
+    let mut d = from - c;
+    if d.length() <= TOL {
+        d = P2(1.0, 0.0);
+    }
+    let mut near: Option<f64> = None;
+    for x in [lo.0, hi.0] {
+        let t = (x - c.0) / d.0;
+        let y = c.1 + d.1 * t;
+        if d.0.abs() > 1e-12 && t > 0.0 && (lo.1 - TOL..=hi.1 + TOL).contains(&y) {
+            near = near.map_or(Some(t), |n| Some(n.min(t)));
+        }
+    }
+    for y in [lo.1, hi.1] {
+        let t = (y - c.1) / d.1;
+        let x = c.0 + d.0 * t;
+        if d.1.abs() > 1e-12 && t > 0.0 && (lo.0 - TOL..=hi.0 + TOL).contains(&x) {
+            near = near.map_or(Some(t), |n| Some(n.min(t)));
+        }
+    }
+    near.map_or(c, |t| c + d * t)
 }
 
 /// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
