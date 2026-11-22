@@ -1157,3 +1157,92 @@ fn an_older_files_method_change_goes_to_the_utility_it_names_or_else_to_the_one_
     }
     assert!(checked >= 4, "pairs asked ({checked})");
 }
+
+#[test]
+fn an_amendment_takes_away_a_setting_a_layer_under_it_also_gives_even_when_it_gives_it_too() {
+    // Both amendments give `Mine`, each its own: taken away in the upper one, it stays away, as when only the lower one
+    // gives it; the lower one keeps its own.
+    let e = Discipline::Electrical;
+    let held = |s: &Session, code: &str, key: &str| -> Option<Value> {
+        let c = s.model.codes.own.iter().find(|c| c.code == code && c.discipline == e)?;
+        c.sections.get(key).and_then(Value::as_object).and_then(|o| o.get("Mine")).cloned()
+    };
+    for (i, key) in ["voltages", "distribution_systems", "wire_types"].into_iter().enumerate() {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Lower", "amendments": ["Lower"]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Upper", "amendments": ["Lower", "Upper"]}));
+        let mut values = s.model.resolve_code(e, key).value.into_values();
+        let low = values.next().unwrap();
+        // Another entry's rules where the section has one, so each layer's own can be told apart.
+        let up = values.next().unwrap_or_else(|| low.clone());
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Lower", "rules": {key: {"Mine": low.clone()}}}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Upper", "rules": {key: {"Mine": up.clone()}}}));
+        assert_eq!(s.model.resolve_code(e, key).value.get("Mine"), Some(&up), "{key}: the upper one's in force");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Upper", "rules": {key: {"Mine": null}}}));
+        assert!(!settings(&s)[i].iter().any(|n| n == "Mine"), "{key}: out of the project");
+        assert!(s.model.resolve_code(e, key).value.get("Mine").is_none_or(Value::is_null), "{key}: not in force");
+        assert_eq!(held(&s, "Upper", key), Some(Value::Null), "{key}: a null in Upper");
+        assert_eq!(held(&s, "Lower", key), Some(low.clone()), "{key}: Lower keeps its own");
+        // Out, into a new project: it doesn't come back.
+        let path = dir("both away").join(format!("{key}.xml")).to_string_lossy().to_string();
+        run(&mut s, "building_code_export", json!({"path": path, "discipline": "electrical", "name": "Away"}));
+        let mut other = Session::new();
+        run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+        assert_eq!(settings(&other), settings(&s), "{key}: after export and import");
+        // Undone, the upper one's is in force again.
+        run(&mut s, "undo", json!({}));
+        assert_eq!(s.model.resolve_code(e, key).value.get("Mine"), Some(&up), "{key}: undone");
+        assert_eq!(held(&s, "Upper", key), Some(up.clone()), "{key}: undone, Upper's own");
+    }
+}
+
+#[test]
+fn a_setting_only_the_amendment_gives_leaves_it_even_over_a_null_under_it() {
+    // Only the upper amendment gives `Mine` (the lower one names none, or takes it away as a null): taken away in the
+    // upper one, it leaves its section rather than stay there as a null.
+    let e = Discipline::Electrical;
+    for key in ["voltages", "distribution_systems", "wire_types"] {
+        for lower_null in [false, true] {
+            let mut s = Session::new();
+            run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Lower", "amendments": ["Lower"]}));
+            run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Upper", "amendments": ["Lower", "Upper"]}));
+            let some = s.model.resolve_code(e, key).value.values().next().cloned().unwrap();
+            if lower_null {
+                // The project's own, taken away in the lower amendment: a null there.
+                run(&mut s, "building_code", json!({"discipline": "electrical", "rules": {key: {"Mine": some.clone()}}}));
+                run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Lower", "rules": {key: {"Mine": null}}}));
+                let lower = s.model.codes.own.iter().find(|c| c.code == "Lower" && c.discipline == e).unwrap();
+                let held = lower.sections.get(key).and_then(Value::as_object).and_then(|o| o.get("Mine"));
+                assert_eq!(held, Some(&Value::Null), "{key}: a null in Lower");
+            }
+            run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Upper", "rules": {key: {"Mine": some.clone()}}}));
+            run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Upper", "rules": {key: {"Mine": null}}}));
+            let upper = s.model.codes.own.iter().find(|c| c.code == "Upper" && c.discipline == e).unwrap();
+            let held = upper.sections.get(key).and_then(Value::as_object).and_then(|o| o.get("Mine"));
+            assert_eq!(held, None, "{key}, a null under it {lower_null}: left out of Upper");
+            assert!(s.model.resolve_code(e, key).value.get("Mine").is_none_or(Value::is_null), "{key}: not in force");
+        }
+    }
+}
+
+#[test]
+fn a_setting_taken_away_in_a_lower_amendment_stays_away_under_an_upper_one_that_takes_it_away_too() {
+    // The project's own base gives it, the upper amendment takes it away, then the lower one does: with the upper one out,
+    // the lower one's null still hides the base's.
+    let e = Discipline::Electrical;
+    for key in ["voltages", "distribution_systems", "wire_types"] {
+        let mut s = Session::new();
+        let some = s.model.resolve_code(e, key).value.values().find(|v| !v.is_null()).cloned().unwrap();
+        let name = "On the base";
+        run(&mut s, "building_code", json!({"discipline": "electrical", "rules": {key: {name: some}}, "save": "Own base"}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Lower", "amendments": ["Lower"]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Upper", "amendments": ["Lower", "Upper"]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Upper", "rules": {key: {name: null}}}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Lower", "rules": {key: {name: null}}}));
+        let lower = s.model.codes.own.iter().find(|c| c.code == "Lower" && c.discipline == e).unwrap();
+        let held = lower.sections.get(key).and_then(Value::as_object).and_then(|o| o.get(name)).cloned();
+        assert_eq!(held, Some(Value::Null), "{key}: a null in Lower");
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["Lower"]}));
+        assert!(s.model.resolve_code(e, key).value.get(name).is_none_or(Value::is_null), "{key}: Upper out, still away");
+    }
+}
