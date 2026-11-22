@@ -10,6 +10,8 @@ pub(crate) mod document;
 mod drag_move;
 pub(crate) mod exists;
 mod extrusion;
+pub(crate) mod handle_params;
+pub(crate) mod handles3d;
 pub(crate) mod lit3d;
 mod nested;
 pub(crate) mod options;

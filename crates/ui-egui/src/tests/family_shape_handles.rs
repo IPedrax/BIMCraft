@@ -120,15 +120,15 @@ fn release(h: &mut Harness<BimApp>, at: egui::Pos2) {
 }
 
 #[test]
-fn an_l_shapes_handles_sit_at_its_edges_middles_and_its_locked_and_labelled_edges_are_greyed() {
+fn an_l_shapes_handles_sit_at_its_edges_middles_but_its_locked_edge() {
     let mut h = in_plan();
     assert!(shown(&h).is_empty(), "nothing selected, no handles");
     select(&mut h, 0);
-    assert_eq!(shown(&h).len(), 6, "{:?}", shown(&h));
-    let mids = [[500.0, 0.0], [1000.0, 250.0], [750.0, 500.0], [500.0, 750.0], [250.0, 1000.0], [0.0, 500.0]];
+    // The west side is locked to West: no handle (FE-25); the east side's place is Len's, which its drag changes.
+    assert_eq!(shown(&h).len(), 5, "{:?}", shown(&h));
+    let mids = [[500.0, 0.0], [1000.0, 250.0], [750.0, 500.0], [500.0, 750.0], [250.0, 1000.0]];
     let free: Vec<bool> = mids.iter().map(|m| handle_at(&h, [m[0], m[1], 0.0]).1).collect();
-    // The east side's place is Len's, the west side is locked to West: greyed.
-    assert_eq!(free, [true, false, true, true, true, false]);
+    assert_eq!(free, [true; 5]);
     // A tool in hand (Aligned Dimension, as Find runs it): no handles.
     assert!(h.state_mut().family_find_action("Aligned Dimension"));
     h.run();
@@ -168,18 +168,18 @@ fn a_drag_offsets_the_edge_its_neighbours_follow_and_it_is_one_step_undone_and_r
 }
 
 #[test]
-fn a_locked_or_labelled_edge_and_a_drag_leaving_no_profile_are_refused_and_the_form_stays() {
+fn a_labelled_edge_drags_its_label_and_a_drag_leaving_no_profile_is_refused_and_the_form_stays() {
     let mut h = in_plan();
     select(&mut h, 0);
     let before = ends(&h, 0);
-    drag_handle(&mut h, [0.0, 500.0, 0.0], [-200.0, 0.0, 0.0]);
-    assert!(status(&h).contains("locked"), "{}", status(&h));
-    assert_eq!(ends(&h, 0), before);
-    assert!(untouched(&h));
+    // The east side's distance from West is Len's: out 200, Len is 1200 for the type, the side where the hand let it go.
     drag_handle(&mut h, [1000.0, 250.0, 0.0], [200.0, 0.0, 0.0]);
-    assert!(status(&h).contains("Len"), "{}", status(&h));
+    let len = editor(&h).draft_family().unwrap().types["T"].get("Len").and_then(|v| v.as_f64());
+    assert!(len.is_some_and(|x| (x - 1200.0).abs() < 15.0), "{len:?} {}", status(&h));
+    h.state_mut().family_undo();
+    h.run();
     assert_eq!(ends(&h, 0), before);
-    assert!(untouched(&h));
+    assert!(!editor(&h).draft_family().unwrap().types["T"].contains_key("Len"));
     // The notch's wall (x 500) right past the east side, through places it could take (700, 900) on the way: the floor would
     // turn back on itself where it is let go.
     drag_handle(&mut h, [500.0, 750.0, 0.0], [800.0, 0.0, 0.0]);
@@ -212,16 +212,16 @@ fn an_elevation_shows_the_sides_it_sees_edge_on_and_they_drag_the_same_edge() {
     let mut h = in_plan();
     view(&mut h, Some(Which::Elevation(Side::Front)));
     select(&mut h, 0);
-    // Front looks north: the sides facing east and west are seen edge-on, at mid-depth (150): the west (locked) and the east
-    // (Len's); the notch's wall is behind the L's foot.
-    assert_eq!(shown(&h).len(), 2, "{:?}", shown(&h));
-    assert!(!handle_at(&h, [0.0, 0.0, 150.0]).1 && !handle_at(&h, [1000.0, 0.0, 150.0]).1);
+    // Front looks north: the sides facing east and west are seen edge-on, at mid-depth (150): the west (locked, no handle) and
+    // the east (Len's); the notch's wall is behind the L's foot.
+    assert_eq!(shown(&h).len(), 1, "{:?}", shown(&h));
+    assert!(handle_at(&h, [1000.0, 0.0, 150.0]).1, "Len's, dragged through it; the locked west side shows none");
     // The Start and End handles show as well.
     assert_eq!(editor(&h).views.ends_shown.len(), 2);
     // Back looks south, across the notch: its wall too, which drags the same edge as in plan.
     view(&mut h, Some(Which::Elevation(Side::Back)));
     select(&mut h, 0);
-    assert_eq!(shown(&h).len(), 3, "{:?}", shown(&h));
+    assert_eq!(shown(&h).len(), 2, "{:?}", shown(&h));
     drag_handle(&mut h, [500.0, 1000.0, 150.0], [-200.0, 0.0, 0.0]);
     let e = ends(&h, 0);
     assert!((e[3][0] - 300.0).abs() < 15.0 && e[3][0] == e[3][2] && e[2][2] == e[3][0], "{e:?} {}", status(&h));
@@ -250,7 +250,7 @@ fn a_blends_base_has_handles_in_plan_its_top_staying_and_its_ends_in_an_elevatio
 }
 
 #[test]
-fn an_end_a_lock_holds_is_greyed_and_refuses_a_drag() {
+fn an_end_a_lock_holds_has_no_handle() {
     let script = format!(
         r#"family {{"name": "Slab", "category": "generic", "types": {{"T": {{}}}}, "ref_planes": [{{"guid": "{WEST}", "name": "Top", "start": [-2000, 0, 300], "end": [2000, 0, 300], "up": [0, 1, 0]}}], "forms": [{{"guid": "{L}", "profile": [[0, 0], [400, 0], [400, 400], [0, 400]], "from": 0, "to": 300}}], "dimensions": [{{"refs": [{{"plane": "{WEST}"}}, {{"form": "{L}", "end": "end"}}], "view": "front", "at": [600, 0, 300], "locked": [{{"segment": 0, "length": 0}}], "alignment": true}}]}}"#
     );
@@ -258,10 +258,7 @@ fn an_end_a_lock_holds_is_greyed_and_refuses_a_drag() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     select(&mut h, 0);
     let ends_shown = editor(&h).views.ends_shown.clone();
-    assert_eq!(ends_shown.iter().map(|e| e.1).collect::<Vec<_>>(), [true, false], "Start free, End locked to Top");
-    drag_screen(&mut h, ends_shown[1].0, ends_shown[1].0 - vec2(0.0, 40.0), PointerButton::Primary);
-    assert!(status(&h).contains("locked"), "{}", status(&h));
-    assert_eq!(editor(&h).draft_family().unwrap().forms[0].to, Expr::Number(300.0));
+    assert_eq!(ends_shown.iter().map(|e| e.1).collect::<Vec<_>>(), [true], "Start free; End locked to Top, no handle (FE-25)");
 }
 
 /// The L selected in plan with its handles, the same after its notch's floor is dragged up, and Front with its side and end

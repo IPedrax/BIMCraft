@@ -44,6 +44,12 @@ impl FamilyEditor {
         any
     }
 
+    /// Instance parameter `name` set to `v` by the instance previewed, as Replay Instance sets them.
+    #[cfg(test)]
+    pub(crate) fn set_preview_param(&mut self, name: &str, v: serde_json::Value) {
+        self.preview_params.insert(name.to_string(), v);
+    }
+
     /// The family as the draft has it now, built: what the document would load into the project.
     #[cfg(test)]
     pub(crate) fn draft_family(&self) -> Result<Family, String> {
