@@ -18,6 +18,35 @@ use bimcraft_core::ids::Guid;
 use bimcraft_core::model::Element;
 use bimcraft_core::render::{Drawing, Rgb, View};
 
+/// A paste's strokes on screen: all of them, and those of what has a size of its own, whose middle the pointer holds.
+pub(crate) type PasteGhost = (Vec<[egui::Pos2; 2]>, Vec<[egui::Pos2; 2]>);
+
+/// A key for what `parts` (each written as JSON, or as Rust writes it) were: what a cache is kept by.
+pub(super) fn key_of(json: &[&dyn erased::Json], debug: &[&dyn std::fmt::Debug]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for j in json {
+        j.json().hash(&mut h);
+    }
+    for d in debug {
+        format!("{d:?}").hash(&mut h);
+    }
+    h.finish()
+}
+
+pub(super) mod erased {
+    /// What can be written as JSON, behind a reference of one type.
+    pub(crate) trait Json {
+        fn json(&self) -> String;
+    }
+
+    impl<T: serde::Serialize> Json for T {
+        fn json(&self) -> String {
+            serde_json::to_string(self).unwrap_or_default()
+        }
+    }
+}
+
 /// What the family document's views keep for the session.
 #[derive(Default)]
 pub(crate) struct Views {
@@ -82,6 +111,15 @@ pub(crate) struct Views {
     /// Where a Modify tool in hand in {3D} would put the forms it takes: their boxes, for the picture to draw with
     /// its depth in the next frame.
     pub(crate) ghost_3d: Vec<bimcraft_core::view3d::PlaneMark>,
+    /// What a Modify tool in hand in {3D} takes, as its work plane has it (`modify::taken_3d`), and what it was worked out
+    /// for: worked out again only when the draft, the selection or the plane change, not as the pointer moves.
+    pub(crate) taken_3d: Option<(u64, super::modify::Taken3d)>,
+    /// A paste following the pointer: the copies' strokes in the view and those that hold it, and what they were drawn for
+    /// (the draft, the clipboard, the view): drawn again only when one of those changes, not as the pointer moves.
+    pub(crate) paste_ghost: Option<(u64, PasteGhost)>,
+    /// How many times a cache above was worked out: what a test reads to see it kept as the pointer moves.
+    #[cfg(test)]
+    pub(crate) cache_builds: u32,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
@@ -1104,31 +1142,52 @@ impl FamilyEditor {
         // Paste following the pointer: the copies where they were copied, as the view draws them, their middle held by
         // the pointer; that middle is what a click puts where it is.
         if self.views.pasting.is_some() && editable {
-            let preview = self.paste_preview();
-            let mut ghost: Vec<[egui::Pos2; 2]> = Vec::new();
-            let mut held: Vec<[egui::Pos2; 2]> = Vec::new();
-            if let Some((trial, items)) = preview.as_ref() {
-                let flexed = trial.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| trial.clone());
-                let s = super::select_box::Scene {
-                    family: &flexed,
-                    values: &values,
-                    staged: &c.staged,
-                    drawing: &c.drawing,
-                    which,
-                    view,
-                    min: pane.min,
-                    dims: &marks,
-                    dimensions: &self.dimensions,
-                    connectors: &connector_marks,
-                    detail: self.views.detail,
-                    hidden: &hidden,
-                    by_face: false,
-                    drag_faces: false,
-                };
-                ghost = items.iter().flat_map(|p| s.pieces(*p)).collect();
-                // Held by the middle of what has a size of its own: a plane's trace runs across the view.
-                held = items.iter().filter(|p| !matches!(p, Picked::Plane(_))).flat_map(|p| s.pieces(*p)).collect();
-            }
+            // Worked out once for the draft, the clipboard and the view; the pointer only moves it.
+            let key = self.views.pasting.as_ref().map(|p| {
+                let view_now = (which, view.scale, view.cx, view.cy, view.width, view.height, view.angle, pane.min, self.views.detail);
+                key_of(&[&family, &p.clip], &[&values, &view_now, &hidden])
+            });
+            let kept = self.views.paste_ghost.take().filter(|(k, _)| Some(*k) == key);
+            let (ghost, held) = match kept {
+                Some((_, g)) => {
+                    let out = g.clone();
+                    self.views.paste_ghost = Some((key.unwrap_or_default(), g));
+                    out
+                }
+                None => {
+                    let mut ghost: Vec<[egui::Pos2; 2]> = Vec::new();
+                    let mut held: Vec<[egui::Pos2; 2]> = Vec::new();
+                    let preview = self.paste_preview();
+                    if let Some((trial, items)) = preview.as_ref() {
+                        let flexed = trial.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| trial.clone());
+                        let s = super::select_box::Scene {
+                            family: &flexed,
+                            values: &values,
+                            staged: &c.staged,
+                            drawing: &c.drawing,
+                            which,
+                            view,
+                            min: pane.min,
+                            dims: &marks,
+                            dimensions: &self.dimensions,
+                            connectors: &connector_marks,
+                            detail: self.views.detail,
+                            hidden: &hidden,
+                            by_face: false,
+                            drag_faces: false,
+                        };
+                        ghost = items.iter().flat_map(|p| s.pieces(*p)).collect();
+                        // Held by the middle of what has a size of its own: a plane's trace runs across the view.
+                        held = items.iter().filter(|p| !matches!(p, Picked::Plane(_))).flat_map(|p| s.pieces(*p)).collect();
+                    }
+                    #[cfg(test)]
+                    {
+                        self.views.cache_builds += 1;
+                    }
+                    self.views.paste_ghost = key.map(|k| (k, (ghost.clone(), held.clone())));
+                    (ghost, held)
+                }
+            };
             let by = if held.is_empty() { &ghost } else { &held };
             let anchor = (!by.is_empty()).then(|| {
                 let r = egui::Rect::from_points(&by.iter().flatten().copied().collect::<Vec<_>>());

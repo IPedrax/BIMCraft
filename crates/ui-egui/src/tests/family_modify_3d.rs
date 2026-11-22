@@ -366,3 +366,23 @@ fn a_plans_shape_handles_give_way_to_a_modify_tool_too() {
     key(&mut h, Key::Escape);
     assert!(editor(&h).handles_shown());
 }
+
+#[test]
+fn what_a_tool_takes_in_3d_is_worked_out_once_as_the_pointer_moves() {
+    let mut h = in_3d();
+    pick(&mut h, &[Picked::Form(0)]);
+    command(&mut h, "Move");
+    click3(&mut h, [0.0, 0.0, 0.0]);
+    let built = editor(&h).views.cache_builds;
+    assert!(built >= 1);
+    for p in [[-400.0, 500.0, 0.0], [200.0, 300.0, 0.0], [600.0, -200.0, 0.0]] {
+        let at = h.state().family_screen3(p).expect("{3D} drawn");
+        h.hover_at(at);
+        h.run();
+    }
+    assert_eq!(editor(&h).views.cache_builds, built, "the pointer only moves the boxes");
+    // Another selection: worked out again.
+    pick(&mut h, &[Picked::Form(1)]);
+    h.run();
+    assert!(editor(&h).views.cache_builds > built);
+}

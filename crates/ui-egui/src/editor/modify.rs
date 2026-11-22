@@ -281,6 +281,10 @@ impl Space {
     }
 }
 
+/// What a Modify tool takes in {3D}, as its work plane has it: each form's box (its eight corners, each where it stands on
+/// the plane and how far off it), and each plane's and line's two ends.
+pub(crate) type Taken3d = (Vec<[(P2, f64); 8]>, Vec<[(P2, f64); 2]>);
+
 /// The faces of a box by its corners `at` (numbered by three bits: across, up and off the plane), as marks the 3D picture draws with its
 /// depth: no fill, each face's outline in `ink`, hidden where a solid stands in front of it.
 fn box_marks(at: &[[f64; 3]; 8], ink: egui::Color32) -> Vec<bimcraft_core::view3d::PlaneMark> {
@@ -737,8 +741,28 @@ impl FamilyEditor {
         // it is.
         let shown: Vec<Picked> =
             self.selection.items().iter().copied().filter(|p| !matches!(p, Picked::Form(i) if self.temp_hidden_form(*i))).collect();
-        // What the tool takes, as the plane has it: each form's box, and each plane's and line's two ends.
-        let (boxes, segments) = self.taken_3d(&space, &shown);
+        // What the tool takes, as the plane has it: each form's box, and each plane's and line's two ends. Worked out once
+        // for the draft, the selection and the plane, not as the pointer moves.
+        let key = self.family().ok().map(|f| {
+            let plane = (space.origin, space.across, space.up);
+            super::views::key_of(&[&f], &[&self.values(), &shown, &plane])
+        });
+        let (boxes, segments) = match self.views.taken_3d.take().filter(|(k, _)| Some(*k) == key) {
+            Some((k, taken)) => {
+                let out = taken.clone();
+                self.views.taken_3d = Some((k, taken));
+                out
+            }
+            None => {
+                let taken = self.taken_3d(&space, &shown);
+                #[cfg(test)]
+                {
+                    self.views.cache_builds += 1;
+                }
+                self.views.taken_3d = key.map(|k| (k, taken.clone()));
+                taken
+            }
+        };
         // Rotate's centre where it is the selection's own: the middle of what it takes.
         if let Some(m) = self.views.modify.as_mut()
             && let Tool::Rotate { centre: centre @ None, .. } = &mut m.tool
@@ -806,8 +830,7 @@ impl FamilyEditor {
 
     /// What a Modify tool takes in {3D}, as `space`'s plane has it: the box of each form of `shown`, and the two ends of
     /// each reference plane and reference line of it. A nested instance, a symbol and a connector have none.
-    #[allow(clippy::type_complexity)]
-    fn taken_3d(&self, space: &Space, shown: &[Picked]) -> (Vec<[(P2, f64); 8]>, Vec<[(P2, f64); 2]>) {
+    fn taken_3d(&self, space: &Space, shown: &[Picked]) -> Taken3d {
         let Ok(f) = self.family() else { return (Vec::new(), Vec::new()) };
         let values = self.values();
         let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
@@ -1279,6 +1302,8 @@ pub(crate) fn picked_centre(s: &super::sketch::FormSketch) -> Option<P2> {
 pub(crate) struct SketchDone {
     pub(crate) said: Option<String>,
     pub(crate) moved: Vec<Guid>,
+    /// A line split: its GUID, kept by the half from its start, and the new half's, which has its end.
+    pub(crate) split: Option<(Guid, Guid)>,
 }
 
 /// The lines picked mapped by `f` (copies of them, with `copy`, picked in their place): what moved.
@@ -1337,7 +1362,7 @@ pub(crate) fn sketch_click(
     pick: &dyn Fn() -> Result<super::sketch::Picked, String>,
     shift: bool,
 ) -> SketchDone {
-    let said = |text: &str| SketchDone { said: Some(t(text).to_string()), moved: Vec::new() };
+    let said = |text: &str| SketchDone { said: Some(t(text).to_string()), moved: Vec::new(), split: None };
     let set = |s: &mut super::sketch::FormSketch, tool: Tool| s.edit = Some(tool);
     let needs = tool.on_selection() && s.sketch.picked.is_empty();
     if needs {
@@ -1404,7 +1429,7 @@ pub(crate) fn sketch_click(
         Tool::Scale { origin, first } => {
             let c = origin.unwrap_or(p);
             let Some(k) = factor_of(o, c, first, p).filter(|k| k.is_finite() && *k > 0.0 && (1e-3..=1e3).contains(k)) else {
-                return SketchDone { said: Some(tf("Scale: `{}` isn't a factor above 0.", &[&o.factor])), moved: Vec::new() };
+                return SketchDone { said: Some(tf("Scale: `{}` isn't a factor above 0.", &[&o.factor])), moved: Vec::new(), split: None };
             };
             s.edit = None;
             return each_picked(s, &|curve| scaled(curve, c, k), false);
@@ -1412,7 +1437,11 @@ pub(crate) fn sketch_click(
         Tool::Offset => {
             let Some(i) = s.sketch.line_at(p, reach) else { return said(msg!("Pick a line of the sketch to offset.")) };
             let Some(d) = o.units.parse(&o.offset).filter(|d| d.is_finite() && *d > 0.0) else {
-                return SketchDone { said: Some(tf("Offset: `{}` isn't a distance above 0.", &[&o.offset])), moved: Vec::new() };
+                return SketchDone {
+                    said: Some(tf("Offset: `{}` isn't a distance above 0.", &[&o.offset])),
+                    moved: Vec::new(),
+                    split: None,
+                };
             };
             let Some(l) = s.sketch.lines.get(i).cloned() else { return SketchDone::default() };
             if axis_line(&l) {
@@ -1449,7 +1478,7 @@ pub(crate) fn sketch_click(
             if !many {
                 set(s, Tool::TrimTo { boundary: None, many });
             }
-            return SketchDone { said: None, moved: vec![l.guid] };
+            return SketchDone { said: None, moved: vec![l.guid], split: None };
         }
         Tool::Split => {
             let Some(i) = s.sketch.line_at(p, reach) else { return said(msg!("Click a line of the sketch where it is split.")) };
@@ -1459,11 +1488,14 @@ pub(crate) fn sketch_click(
             }
             let Some((a, b)) = l.curve.split_at(p) else { return said(msg!("Split between the line's ends.")) };
             s.sketch.lines[i].curve = a;
+            let mut split = None;
             if let Some(b) = b {
-                s.sketch.lines.push(SketchLine { id: 0, guid: Guid::new(), curve: b, ..l.clone() });
+                let guid = Guid::new();
+                s.sketch.lines.push(SketchLine { id: 0, guid, curve: b, ..l.clone() });
+                split = Some((l.guid, guid));
             }
             s.sketch.changed();
-            return SketchDone { said: None, moved: vec![l.guid] };
+            return SketchDone { said: None, moved: vec![l.guid], split };
         }
     }
     SketchDone::default()
@@ -1489,10 +1521,10 @@ pub(crate) fn sketch_typed(s: &mut super::sketch::FormSketch, angle: f64, copy: 
         _ => None,
     };
     let Some(c) = centre else {
-        return SketchDone { said: Some(t("Pick lines of the sketch first.").to_string()), moved: Vec::new() };
+        return SketchDone { said: Some(t("Pick lines of the sketch first.").to_string()), moved: Vec::new(), split: None };
     };
     if !angle.is_finite() {
-        return SketchDone { said: Some(t("Rotate: that isn't an angle in degrees.").to_string()), moved: Vec::new() };
+        return SketchDone { said: Some(t("Rotate: that isn't an angle in degrees.").to_string()), moved: Vec::new(), split: None };
     }
     s.edit = None;
     rotate_picked(s, c, angle, copy)
@@ -1573,6 +1605,30 @@ pub(crate) fn paint_sketch_tool(
 }
 
 impl FamilyEditor {
+    /// A line of the sketch split (`old`, kept by the half from its start; `new`, the half with its end): what measured to its
+    /// end measures to the new half's, so a dimension or a lock there stays on the same point. The sketch's own dimensions
+    /// and locks change at once; the draft's are held as changed while sketching (written at Finish, dropped by Cancel).
+    pub(crate) fn rebind_split(&mut self, old: Guid, new: Guid) {
+        use bimcraft_core::family::{DimRef, Spot};
+        let Some(s) = self.sketch.as_mut() else { return };
+        let own = s.guid;
+        let at_end = |r: &DimRef| matches!(r, DimRef::Point(f, l, Spot::End) if *f == own && *l == old);
+        let rebind = |d: &mut bimcraft_core::family::FamilyDimension| {
+            for r in &mut d.refs {
+                if at_end(r) {
+                    *r = DimRef::Point(own, new, Spot::End);
+                }
+            }
+        };
+        s.dims.iter_mut().chain(s.locks.iter_mut()).for_each(rebind);
+        for d in self.dimensions.iter().filter(|d| d.refs.iter().any(at_end)) {
+            let mut c = s.changed.iter().find(|c| c.guid == d.guid).cloned().unwrap_or_else(|| d.clone());
+            rebind(&mut c);
+            s.changed.retain(|x| x.guid != d.guid);
+            s.changed.push(c);
+        }
+    }
+
     /// The locks a sketch tool broke let go, since they no longer hold: a lock or an Align lock added while
     /// sketching, or one the form had, between a line `moved` and what didn't move with it. What to say, if any were.
     pub(crate) fn release_sketch_locks(&mut self, moved: &[Guid]) -> Option<String> {

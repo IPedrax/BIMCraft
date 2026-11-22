@@ -1221,6 +1221,7 @@ impl FamilyEditor {
         let shift = ui.input(|i| i.modifiers.shift);
         let options = self.views.modify_options.clone();
         let mut moved: Vec<Guid> = Vec::new();
+        let mut split: Option<(Guid, Guid)> = None;
         let s = self.sketch.as_mut()?;
         // Only a line or a chained arc's endpoint follows Ortho. Shape construction points (a rectangle's opposite
         // corner, a radius, an arc's third point) must remain free.
@@ -1278,6 +1279,7 @@ impl FamilyEditor {
                     let done = super::modify::sketch_click(s, tool, target, reach, &options, &snaps, &|| pick(pos), shift);
                     problem = done.said;
                     moved = done.moved;
+                    split = done.split;
                 }
                 Some(p) => {
                     let shift = ui.input(|i| i.modifiers.shift);
@@ -1326,6 +1328,10 @@ impl FamilyEditor {
         }
         if let Some(p) = paste_at {
             self.views.said = self.sketch_paste_click(p);
+        }
+        // A line split: what measured to its end measures to the new half's.
+        if let Some((old, new)) = split {
+            self.rebind_split(old, new);
         }
         // Locks to what didn't move with the lines let go, saying so.
         if !moved.is_empty()
