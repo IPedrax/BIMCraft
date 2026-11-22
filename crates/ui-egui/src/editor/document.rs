@@ -285,7 +285,7 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if ed.placing.is_some() {
             return Some(msg!("Modify | Place Component"));
         }
-        // Several selected (FE-1), as Revit names a selection of more than one.
+        // Several selected (FE-1): the tab named for a selection of more than one.
         if ed.selection.len() > 1 {
             return Some(msg!("Modify | Multi-Select"));
         }
@@ -855,7 +855,7 @@ impl BimApp {
             if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify && ed.views.drawing.is_none(), tip).clicked() {
                 ed.modify_tool();
             }
-            // Filter, while several are selected (FE-20): on Modify | Multi-Select, where Revit has it.
+            // Filter, while several are selected (FE-20): on Modify | Multi-Select.
             super::selection::filter_button(ui, ed);
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -949,7 +949,7 @@ impl BimApp {
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
-        // Several selected (FE-1): how many, as Revit's Properties say, and none of their rows.
+        // Several selected (FE-1): how many, and none of their rows.
         if ed.adaptive.is_none() && ed.selection.len() > 1 {
             selector(ui, Icon::Modify, &tf("Multi-Select ({})", &[&ed.selection.len().to_string()]));
             self.put_family(ed);

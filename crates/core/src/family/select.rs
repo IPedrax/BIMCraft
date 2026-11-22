@@ -1,4 +1,4 @@
-//! What a family document selects, and the selection commands Revit's family editor has on it (FE-1, FE-20), for any front
+//! What a family document selects, and the selection commands a family document has on it (FE-1, FE-20), for any front
 //! end: what one thing selected is ([`Picked`]); Filter's kinds, each with what of the selection is of it ([`groups`],
 //! [`kept`]); and Select by ID, the parts a list of ids and GUIDs names ([`find`]) and what names a part ([`names`], IDs of
 //! Selection).
@@ -30,7 +30,7 @@ pub enum Picked {
     Nested(usize),
 }
 
-/// What Filter counts a selection by, as Revit's counts a project's by category: a form by what it is, solid or void, and
+/// What Filter counts a selection by, as the project's Filter counts by category: a form by what it is, solid or void, and
 /// the other things a family document selects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
@@ -73,7 +73,7 @@ impl Kind {
         }
     }
 
-    /// What Filter's list calls it, in English: several of it, as Revit's list names categories.
+    /// What Filter's list calls it, in English: several of it, as a list of categories names them.
     pub fn name(self) -> &'static str {
         match self {
             Kind::Form(FormKind::Extrusion) => ui_msg!("Extrusions"),

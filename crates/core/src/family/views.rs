@@ -570,7 +570,7 @@ fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64) ->
 }
 
 /// The solid form of `family` an edge of which, as view `which` draws it (sized by `values`), passes within `reach` of
-/// point `at`, its place in `forms`: the one whose edge is nearest. What a click takes while Revit's Select Elements by Face
+/// point `at`, its place in `forms`: the one whose edge is nearest. What a click takes while Select Elements by Face
 /// is off: a form by an edge the view draws it with ([`outline_edges`]: an L's inner corner, never the hull's chord across
 /// it), never by its face, which [`form_at`] takes it by. A void, never seen, is not.
 pub fn form_edge_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2, reach: f64) -> Option<usize> {
@@ -610,7 +610,7 @@ pub fn nested_edge_at(family: &Family, values: &BTreeMap<String, Val>, st: &Stag
 }
 
 /// Whether selection box `boxed`, in view `which`'s millimetres, takes `part` of `family` (sized by `values`) by its faces,
-/// as Revit's box does while Select Elements by Face is on: a crossing where a face of it lies in the box, round it or
+/// as a box does while Select Elements by Face is on: a crossing where a face of it lies in the box, round it or
 /// across it, so one drawn wholly inside a face takes what the face is of; a window where every face lies in it. A void, never
 /// seen, and what builds nothing are never taken, nor a nested instance's pieces its Visibility Settings leave out of the view.
 pub fn face_in_box(
@@ -906,7 +906,7 @@ mod tests {
         (-2..=2).any(|dx| (-2..=2).any(|dy| green(pixel(s, (at.0 + dx as f32, at.1 + dy as f32)))))
     }
 
-    /// FE-20, Revit's Select Elements by Face: off, a form or a nested instance is taken by an edge of its outline alone; on,
+    /// FE-20, Select Elements by Face: off, a form or a nested instance is taken by an edge of its outline alone; on,
     /// a crossing box drawn wholly inside its face takes it too. A void, never seen, is taken by neither.
     #[test]
     fn a_form_is_taken_by_an_edge_of_its_outline_and_by_a_crossing_box_inside_its_face() {

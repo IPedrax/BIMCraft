@@ -688,10 +688,10 @@ pub struct BimApp {
     /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
     /// which spares cutting the model each time the box moves.
     pub(crate) cut_fills_3d: bool,
-    /// Revit's Select Elements by Face, in a family document's plans and elevations (`editor/selection.rs`): on, a
+    /// Select Elements by Face, in a family document's plans and elevations (`editor/selection.rs`): on, a
     /// face selects what it is of; off, only an edge does. The user's, kept in the settings file.
     pub(crate) select_by_face: bool,
-    /// Revit's Drag Elements on Selection, beside it: on, a drag from the face of a form or a nested instance that isn't
+    /// Drag Elements on Selection, beside it: on, a drag from the face of a form or a nested instance that isn't
     /// selected is that element's and selects it, where a face selects; off (at first), that face is a selection box's to
     /// begin in. The user's, kept in the settings file.
     pub(crate) drag_on_selection: bool,
@@ -7117,8 +7117,8 @@ impl BimApp {
         ui.horizontal(|ui| {
             ui.label(RichText::new(t(self.prompt())).color(pal().muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // How many elements are selected, by the selection filter, as Revit shows it: on a family's tab, of the
-                // family document's own selection. A click on it filters the selection, as Revit's does.
+                // How many elements are selected, by the selection filter: on a family's tab, of the
+                // family document's own selection. A click on it filters the selection.
                 let selected = self.active_family().map_or(self.selection.len(), |ed| ed.selected_count());
                 ui.label(format!(":{selected}"));
                 self.export_progress(ui);
@@ -7132,7 +7132,7 @@ impl BimApp {
                         None => self.open_filter(),
                     }
                 }
-                // Drag Elements on Selection and Select Elements by Face, left of it as Revit's status bar has them: a family
+                // Drag Elements on Selection and Select Elements by Face, left of it: a family
                 // document's that isn't adaptive, greyed where they change nothing ({3D}, a sketch).
                 if let Some(usable) = self.active_family().filter(|ed| ed.adaptive.is_none()).map(|ed| ed.picks_by_face()) {
                     let on = self.drag_on_selection;

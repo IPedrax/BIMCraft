@@ -1,4 +1,4 @@
-//! FE-1: box selection in a family's plans and elevations, as Revit's family editor has it. A drag from nothing, with no tool
+//! FE-1: box selection in a family's plans and elevations. A drag from nothing, with no tool
 //! in hand, draws a box: left to right a window, taking what lies wholly inside it; right to left a crossing, taking what it
 //! touches too. Ctrl adds, Shift takes away, else it is the selection; so does a click with Ctrl or Shift. Several selected,
 //! Properties say how many, Delete takes them all away in one step (Undo puts them all back), Escape and Modify let them go.
@@ -86,7 +86,7 @@ pub(super) fn click_with_mods(h: &mut Harness<BimApp>, p: [f64; 3], mods: Modifi
 }
 
 #[test]
-fn a_box_left_to_right_takes_what_lies_wholly_inside_it_and_right_to_left_what_it_touches_as_in_revit() {
+fn a_box_left_to_right_takes_what_lies_wholly_inside_it_and_right_to_left_what_it_touches() {
     let mut h = plan();
     let project = h.state().session.model.to_json().unwrap();
     // Left to right round B: B alone, the planes running past it left out.
@@ -249,7 +249,7 @@ fn a_drag_from_an_element_with_a_tool_in_hand_or_by_the_middle_button_draws_no_b
     click_family(&mut h, [700.0, 400.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Form(1)]);
     // From A's edge, leftwards over Edge: no box, while it is dragged or once it is let go; the drag is A's, and selects it.
-    // (Since FE-20 the face of a form that isn't selected is the box's to begin in, as Revit's, so that a
+    // (Since FE-20 the face of a form that isn't selected is the box's to begin in, so that a
     // crossing box can be drawn inside a face: Select Elements by Face, `family_selection`. A drag from an element's edge, or
     // from one selected, is still the element's.)
     let (a, b) = (editor(&h).views.screen_of([-500.0, 400.0, 0.0]).unwrap(), editor(&h).views.screen_of([-1400.0, 300.0, 0.0]).unwrap());
@@ -290,7 +290,7 @@ fn an_elevation_boxes_as_a_plan_does() {
     assert_eq!(selected(&h), vec![Picked::Form(1)], "a window round B");
     boxed(&mut h, [-400.0, 0.0, 400.0], [-1400.0, 0.0, 300.0], Modifiers::NONE);
     assert_eq!(selected(&h), set(vec![Picked::Form(0), Picked::Plane(g(EDGE))]), "a crossing over A and Edge");
-    // A view opened keeps the selection, as Revit's does.
+    // A view opened keeps the selection.
     view(&mut h, Some(Which::Plan));
     assert_eq!(selected(&h), set(vec![Picked::Form(0), Picked::Plane(g(EDGE))]));
 }
