@@ -1012,15 +1012,3 @@ msgstr ""
 msgid "Yes"
 msgstr ""
 
-#: crates/core/src/loads.rs:83
-msgid "bath"
-msgstr ""
-
-#: crates/core/src/loads.rs:83
-msgid "bwc"
-msgstr ""
-
-#: crates/core/src/loads.rs:83
-msgid "wc"
-msgstr ""
-

@@ -1013,14 +1013,11 @@ msgid "Yes"
 msgstr "Có"
 
 #: crates/core/src/loads.rs:83
-msgid "bath"
-msgstr ""
-
+#~ msgid "bath"
+#~ msgstr ""
 #: crates/core/src/loads.rs:83
-msgid "bwc"
-msgstr ""
-
+#~ msgid "bwc"
+#~ msgstr ""
 #: crates/core/src/loads.rs:83
-msgid "wc"
-msgstr ""
-
+#~ msgid "wc"
+#~ msgstr ""
