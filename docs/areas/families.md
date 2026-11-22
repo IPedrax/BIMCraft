@@ -885,7 +885,8 @@ does nothing. None is a step of the document's history, and nothing reaches the 
   selects it, and a crossing box takes one by its faces as by its edges, so one drawn wholly inside a face takes what the face
   is of (`views::face_in_box`, `geom::SelectBox::touches`); off, each is taken by an edge the view draws it with alone
   (`views::form_edge_at`, `nested_edge_at`, over `outline_edges`: an L's inner corner, never its hull's chord), by a click and
-  by a box. Either way a box may begin inside the face of what isn't selected, and never inside the face of what is. It is of
+  by a box. Pick Lines takes a form's edge by the same edges (FV-2). Either way a box may begin inside the face of what isn't
+  selected, and never inside the face of what is. It is of
   the plans and elevations: greyed in {3D}, which takes a form by its face either way as the project's 3D view does, and while
   a form is sketched.
 - **Drag Elements on Selection** (the toggle between Select Elements by Face and the funnel, drawn as that one is; the
