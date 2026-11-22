@@ -227,7 +227,7 @@ msgstr ""
 msgid "A dictionary is a file of parameter definitions to share between projects: keep it on a shared drive or in a Git repository."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5319
+#: crates/ui-egui/src/canvas.rs:5328
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -2497,7 +2497,7 @@ msgstr ""
 msgid "Centre Stringer Width (Optional)"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6726
+#: crates/ui-egui/src/canvas.rs:6735
 msgid "Centreline"
 msgstr ""
 
@@ -3424,7 +3424,7 @@ msgstr "Cliquer à l'endroit où la ligne d'emplacement doit passer"
 msgid "Click where the middle of a side goes. Esc cancels."
 msgstr "Cliquer à l'endroit du milieu d'un côté. Échap annule."
 
-#: crates/ui-egui/src/canvas.rs:4244
+#: crates/ui-egui/src/canvas.rs:4251
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
@@ -5086,12 +5086,12 @@ msgstr "Valeur de cote"
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Lignes de cote, lignes d'attache, terminaisons, position du texte et symboles de repère de niveau."
 
-#: crates/ui-egui/src/canvas.rs:5085
+#: crates/ui-egui/src/canvas.rs:5094
 msgid "Dimension text"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5094
-#: crates/ui-egui/src/canvas.rs:5156
+#: crates/ui-egui/src/canvas.rs:5103
+#: crates/ui-egui/src/canvas.rs:5165
 msgid "Dimension {}"
 msgstr "Cote {}"
 
@@ -5845,7 +5845,7 @@ msgstr "Éléments"
 msgid "Elev"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5876
+#: crates/ui-egui/src/canvas.rs:5885
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 #: crates/ui-egui/src/coordinates.rs:1192
@@ -6010,7 +6010,7 @@ msgstr "Entités"
 msgid "Envelope and Energy"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5250
+#: crates/ui-egui/src/canvas.rs:5259
 msgid "Equal"
 msgstr "Égal"
 
@@ -6172,7 +6172,7 @@ msgstr ""
 msgid "Extents"
 msgstr "Étendue"
 
-#: crates/ui-egui/src/canvas.rs:6724
+#: crates/ui-egui/src/canvas.rs:6733
 #: crates/ui-egui/src/sketch.rs:86
 msgid "Exterior Face"
 msgstr ""
@@ -7907,7 +7907,7 @@ msgstr "Insérer avant"
 msgid "Insert Layer"
 msgstr "Insérer une couche"
 
-#: crates/ui-egui/src/canvas.rs:5791
+#: crates/ui-egui/src/canvas.rs:5800
 #: crates/ui-egui/src/stairgrips.rs:152
 msgid "Inside the rules"
 msgstr ""
@@ -7997,7 +7997,7 @@ msgstr ""
 msgid "Interface scale"
 msgstr "Échelle de l'interface"
 
-#: crates/ui-egui/src/canvas.rs:6725
+#: crates/ui-egui/src/canvas.rs:6734
 #: crates/ui-egui/src/sketch.rs:85
 msgid "Interior Face"
 msgstr ""
@@ -8974,7 +8974,7 @@ msgstr ""
 msgid "Lock Tread Depth: keep every tread the same depth. Turn it off to let each flight stretch or squeeze its treads, within the rules, so it ends exactly where you click."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5427
+#: crates/ui-egui/src/canvas.rs:5436
 msgid "Lock alignment"
 msgstr "Verrouiller l'alignement"
 
@@ -8982,11 +8982,11 @@ msgstr "Verrouiller l'alignement"
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr "Verrouiller verrouille une ligne sélectionnée sans Décalage, dans un plan ou une élévation"
 
-#: crates/ui-egui/src/canvas.rs:5049
+#: crates/ui-egui/src/canvas.rs:5058
 msgid "Lock segment {}"
 msgstr "Verrouiller le segment {}"
 
-#: crates/ui-egui/src/canvas.rs:5062
+#: crates/ui-egui/src/canvas.rs:5071
 msgid "Lock segment {} at its length, so what it measures to moves together"
 msgstr ""
 
@@ -8998,7 +8998,7 @@ msgstr "Verrouiller: chaque ligne sélectionnée est verrouillée sur ce dont el
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
 msgstr "Verrouiller: les cotes que ce paramètre étiquette gardent sa valeur quand des plans sont déplacés"
 
-#: crates/ui-egui/src/canvas.rs:5406
+#: crates/ui-egui/src/canvas.rs:5415
 msgid "Locked segment {}"
 msgstr "Segment {} verrouillé"
 
@@ -9111,7 +9111,7 @@ msgstr ""
 msgid "Make Checked Type"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5501
+#: crates/ui-egui/src/canvas.rs:5510
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -11014,13 +11014,13 @@ msgstr ""
 msgid "Outline Offset: a number in {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5792
+#: crates/ui-egui/src/canvas.rs:5801
 #: crates/ui-egui/src/properties.rs:2365
 #: crates/ui-egui/src/stairgrips.rs:153
 msgid "Outside 1 rule"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5793
+#: crates/ui-egui/src/canvas.rs:5802
 #: crates/ui-egui/src/properties.rs:2365
 #: crates/ui-egui/src/stairgrips.rs:154
 msgid "Outside {} rules"
@@ -12448,8 +12448,8 @@ msgstr ""
 msgid "Project Name"
 msgstr "Nom du projet"
 
-#: crates/ui-egui/src/canvas.rs:5973
-#: crates/ui-egui/src/canvas.rs:5985
+#: crates/ui-egui/src/canvas.rs:5982
+#: crates/ui-egui/src/canvas.rs:5994
 #: crates/ui-egui/src/graphics.rs:589
 msgid "Project North"
 msgstr ""
@@ -14122,7 +14122,7 @@ msgstr "Espacement du segment {}"
 msgid "Segment {} Text"
 msgstr "Texte du segment {}"
 
-#: crates/ui-egui/src/canvas.rs:5060
+#: crates/ui-egui/src/canvas.rs:5069
 msgid "Segment {} is locked at its length: what it measures to moves together. Click to unlock it"
 msgstr ""
 
@@ -14846,15 +14846,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Lignes lissées (anticrénelage)"
 
-#: crates/ui-egui/src/canvas.rs:6576
+#: crates/ui-egui/src/canvas.rs:6585
 msgid "Snap reference cleared"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6575
+#: crates/ui-egui/src/canvas.rs:6584
 msgid "Snap reference marked"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6577
+#: crates/ui-egui/src/canvas.rs:6586
 msgid "Snap reference moved"
 msgstr ""
 
@@ -15292,7 +15292,7 @@ msgstr ""
 msgid "Step in"
 msgstr "Décalage vers l'intérieur"
 
-#: crates/ui-egui/src/canvas.rs:5774
+#: crates/ui-egui/src/canvas.rs:5783
 msgid "Step {} of {} - {}"
 msgstr ""
 
@@ -15671,7 +15671,7 @@ msgstr ""
 msgid "Tab with {}"
 msgstr "Onglet avec {}"
 
-#: crates/ui-egui/src/canvas.rs:5803
+#: crates/ui-egui/src/canvas.rs:5812
 msgid "Tab: {} risers of {}, treads {}"
 msgstr ""
 
@@ -15824,7 +15824,7 @@ msgstr "Isoler temporairement la catégorie"
 msgid "Temporary Isolate Element"
 msgstr "Isoler temporairement l'élément"
 
-#: crates/ui-egui/src/canvas.rs:4979
+#: crates/ui-egui/src/canvas.rs:4988
 msgid "Temporary dimension {}"
 msgstr "Cote temporaire {}"
 
@@ -17075,8 +17075,8 @@ msgstr "Ajuster/Prolonger au coin (TR): choisir deux murs ou deux lignes, sur le
 msgid "Trip"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5974
-#: crates/ui-egui/src/canvas.rs:5986
+#: crates/ui-egui/src/canvas.rs:5983
+#: crates/ui-egui/src/canvas.rs:5995
 #: crates/ui-egui/src/graphics.rs:590
 msgid "True North"
 msgstr ""
@@ -17109,7 +17109,7 @@ msgstr "Désactiver le remplacement d'accrochage"
 msgid "Turn the underlay about a point picked in the view"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4943
+#: crates/ui-egui/src/canvas.rs:4952
 msgid "Turn the wall about its {}: {}"
 msgstr "Faire pivoter le mur depuis son extrémité ({}): {}"
 
@@ -17421,7 +17421,7 @@ msgstr "Format des unités"
 msgid "Unlock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5388
+#: crates/ui-egui/src/canvas.rs:5397
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
@@ -18492,13 +18492,13 @@ msgstr "`{}` n'est pas une hauteur"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:4501
-#: crates/ui-egui/src/canvas.rs:5101
-#: crates/ui-egui/src/canvas.rs:5160
-#: crates/ui-egui/src/canvas.rs:5531
-#: crates/ui-egui/src/canvas.rs:5546
-#: crates/ui-egui/src/canvas.rs:5659
-#: crates/ui-egui/src/canvas.rs:5679
+#: crates/ui-egui/src/canvas.rs:4510
+#: crates/ui-egui/src/canvas.rs:5110
+#: crates/ui-egui/src/canvas.rs:5169
+#: crates/ui-egui/src/canvas.rs:5540
+#: crates/ui-egui/src/canvas.rs:5555
+#: crates/ui-egui/src/canvas.rs:5668
+#: crates/ui-egui/src/canvas.rs:5688
 #: crates/ui-egui/src/curtain.rs:133
 #: crates/ui-egui/src/curtain.rs:139
 #: crates/ui-egui/src/draw.rs:291
@@ -18553,8 +18553,8 @@ msgstr "`{}` n'est pas une taille, un angle ou un décalage"
 msgid "`{}` is not a spacing"
 msgstr "`{}` n'est pas un espacement"
 
-#: crates/ui-egui/src/canvas.rs:4505
-#: crates/ui-egui/src/canvas.rs:4970
+#: crates/ui-egui/src/canvas.rs:4514
+#: crates/ui-egui/src/canvas.rs:4979
 #: crates/ui-egui/src/properties.rs:1333
 msgid "`{}` is not an angle"
 msgstr "`{}` n'est pas un angle"
@@ -18919,7 +18919,7 @@ msgstr "ligne"
 msgid "location"
 msgstr "emplacement"
 
-#: crates/ui-egui/src/canvas.rs:4231
+#: crates/ui-egui/src/canvas.rs:4238
 msgid "mass: {}"
 msgstr "volume: {}"
 
@@ -18980,11 +18980,11 @@ msgid "not loaded"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:3397
-#: crates/ui-egui/src/canvas.rs:4333
+#: crates/ui-egui/src/canvas.rs:4340
 msgid "offset: `{}` is not a distance"
 msgstr "décalage: `{}` n'est pas une distance"
 
-#: crates/ui-egui/src/canvas.rs:4329
+#: crates/ui-egui/src/canvas.rs:4336
 msgid "offset: it offsets straight walls"
 msgstr "décalage: il décale les murs droits"
 
@@ -19203,7 +19203,7 @@ msgstr "le modèle n'a aucun niveau"
 msgid "the next free name"
 msgstr "le prochain nom libre"
 
-#: crates/ui-egui/src/canvas.rs:5658
+#: crates/ui-egui/src/canvas.rs:5667
 msgid "the opening has to stay on its wall"
 msgstr "l'ouverture doit rester sur son mur"
 
@@ -19290,7 +19290,7 @@ msgstr "tension"
 msgid "voltages"
 msgstr "tensions"
 
-#: crates/ui-egui/src/canvas.rs:4643
+#: crates/ui-egui/src/canvas.rs:4652
 msgid "wall: {}"
 msgstr "mur: {}"
 
@@ -19664,12 +19664,12 @@ msgstr ""
 msgid "{} of {} pages ({} × {})"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5777
+#: crates/ui-egui/src/canvas.rs:5786
 #: crates/ui-egui/src/stairgrips.rs:140
 msgid "{} of {} risers"
 msgstr "{} sur {} contremarches"
 
-#: crates/ui-egui/src/canvas.rs:6729
+#: crates/ui-egui/src/canvas.rs:6738
 #: crates/ui-egui/src/orbit.rs:2429
 msgid "{} of {} {}"
 msgstr "{} de {} {}"
@@ -19784,7 +19784,7 @@ msgstr "{} a arrêté l'assistant"
 msgid "{} triangles, from a file"
 msgstr "{} triangles, depuis un fichier"
 
-#: crates/ui-egui/src/canvas.rs:5779
+#: crates/ui-egui/src/canvas.rs:5788
 msgid "{} up"
 msgstr "{} de montée"
 
