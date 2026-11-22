@@ -1619,8 +1619,8 @@ impl BimApp {
             }
             return Some(super::sketch::prompt(s, &ed.views.modify_options));
         }
-        // A Modify tool in hand: what to click next.
-        if let (Some(_), None, Some(m)) = (ed.views.shown, ed.adaptive.as_ref(), ed.views.modify.as_ref()) {
+        // A Modify tool in hand, in a plan, an elevation or {3D}: its own prompt.
+        if let (None, Some(m)) = (ed.adaptive.as_ref(), ed.views.modify.as_ref()) {
             return Some(super::modify::prompt(&m.tool, &ed.views.modify_options, false));
         }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
@@ -2454,9 +2454,16 @@ impl BimApp {
         };
         // What the pointer is over and what a click picks, in the picture on screen: the connectors' symbols first.
         let marks = ed.connector_marks();
+        // A Modify tool in hand: a click is a point of its, on the work plane, and selects nothing.
+        let mut tool_click = None;
         if ed.sketching() {
             ed.views.hover3d = None;
             ed.connector_hover = None;
+        } else if ed.views.modify.is_some() {
+            ed.views.hover3d = None;
+            ed.connector_hover = None;
+            let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
+            tool_click = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p) && !cube.hovered());
         } else {
             let still = !response.dragged() && ui.input(|i| !i.pointer.any_down());
             let at = input.hover.filter(|_| still && !cube.hovered());
@@ -2560,6 +2567,12 @@ impl BimApp {
         ed.views.handles3d_shown = shown.into_iter().map(|(at, _, h)| (at, h)).collect();
         // A form being sketched on its plane, over the picture (F5), with its padlocks.
         if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
+            self.status = Status { text: e, error: true };
+        }
+        // A Modify tool in hand, on the work plane.
+        if !ed.sketching()
+            && let Some(e) = ed.modify_3d(ui, &response, &p, &cam, size, pane, tool_click)
+        {
             self.status = Status { text: e, error: true };
         }
         crate::orbit::Orbit::draw_cube(&p, &cam, pane, input.hover.or_else(|| cube.hover_pos()));

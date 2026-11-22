@@ -657,6 +657,19 @@ pub fn nested_outline_edges(family: &Family, values: &BTreeMap<String, Val>, st:
     seen_edges(&nested_drawn(family, values, st, which, i), st, which)
 }
 
+/// The corners of form `i`'s solid (sized by `values`), in the family's axes: what a view boxes it by in a frame of its own,
+/// as {3D}'s work plane's. None when there is no such form, or it doesn't build.
+pub fn form_corners(family: &Family, values: &BTreeMap<String, Val>, i: usize) -> Vec<P3> {
+    if i >= family.forms.len() {
+        return Vec::new();
+    }
+    let mut read = HashMap::new();
+    match family.solid(i, values, &mut read) {
+        Ok(Some(piece)) => piece.tris.iter().flatten().copied().collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// The solid form of `family` (sized by `values`) shown at pixel `px` of a picture taken through `cam`, the family at the
 /// origin as {3D} shows it: the one nearest the eye there.
 pub fn form_at_3d(family: &Family, values: &BTreeMap<String, Val>, cam: &view3d::Camera, px: (f64, f64)) -> Option<usize> {

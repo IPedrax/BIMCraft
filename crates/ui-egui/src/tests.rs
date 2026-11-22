@@ -7884,6 +7884,8 @@ mod family_handles_3d;
 mod family_manage;
 mod family_measure;
 mod family_modify;
+mod family_modify_3d;
+mod family_modify_3d_more;
 mod family_nav3d;
 mod family_open;
 mod family_origin;

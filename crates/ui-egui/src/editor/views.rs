@@ -79,6 +79,9 @@ pub(crate) struct Views {
     pub(super) moving: Option<super::drag_move::MoveDrag>,
     /// A Modify tool in hand (`modify.rs`): Move, Copy, Rotate, Mirror, Scale or Offset, with what has been clicked.
     pub(crate) modify: Option<super::modify::Modifying>,
+    /// Where a Modify tool in hand in {3D} would put the forms it takes: their boxes, for the picture to draw with
+    /// its depth in the next frame.
+    pub(crate) ghost_3d: Vec<bimcraft_core::view3d::PlaneMark>,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
@@ -1893,9 +1896,11 @@ impl FamilyEditor {
         }
     }
 
-    /// The work plane {3D} shows, while Work Plane > Show is on in a family that isn't adaptive: its frame.
+    /// The work plane {3D} shows, while Work Plane > Show is on in a family that isn't adaptive, or a Modify tool is in hand
+    /// there, whose clicks land on it: its frame.
     pub(crate) fn shown_work_plane_3d(&self) -> Option<bimcraft_core::family::Frame> {
-        if self.adaptive.is_some() || !self.views.show_work_plane {
+        let tooling = self.views.shown.is_none() && self.views.modify.is_some() && !self.sketching();
+        if self.adaptive.is_some() || !(self.views.show_work_plane || tooling) {
             return None;
         }
         self.plane_set().frame(&self.views.work_plane()).ok()

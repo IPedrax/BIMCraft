@@ -118,9 +118,11 @@ pub(crate) fn held_said(h: &Held, end: bool) -> String {
 }
 
 impl FamilyEditor {
-    /// Whether a view's handles show: no tool in hand, nothing being sketched or placed.
+    /// Whether a view's handles show: no tool in hand (a Modify tool's clicks are its own), nothing being sketched
+    /// or placed.
     pub(crate) fn handles_shown(&self) -> bool {
         self.sketch.is_none()
+            && self.views.modify.is_none()
             && self.adaptive.is_none()
             && self.placing.is_none()
             && self.views.drawing.is_none()
