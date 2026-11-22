@@ -232,6 +232,20 @@ impl FormText {
         if self.void { format!("{what} ({})", t("void")) } else { what.to_string() }
     }
 
+    /// The icon of what it is, the one its tool has in Create > Forms; a mesh's, which no tool there makes, is Create Form's.
+    fn icon(&self) -> crate::icons::Icon {
+        use crate::icons::Icon;
+        use bimcraft_core::family::forms::FormKind;
+        match (self.mesh(), self.original.kind(), self.revolve) {
+            (true, ..) => Icon::CreateForm,
+            (_, FormKind::Blend, _) => Icon::Blend,
+            (_, FormKind::Sweep, _) => Icon::Sweep,
+            (_, FormKind::SweptBlend, _) => Icon::SweptBlend,
+            (_, _, true) => Icon::Revolve,
+            _ => Icon::Extrusion,
+        }
+    }
+
     fn form(&self) -> Result<Form, String> {
         let mut f = self.original.clone();
         f.material = self.material.trim().to_string();
@@ -1263,6 +1277,12 @@ impl FamilyEditor {
     /// Symbol `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
     pub(crate) fn select_symbol(&mut self, i: usize) {
         self.select_only(select_box::Picked::Symbol(i));
+    }
+
+    /// The icon heading each form's Properties, in the family's order: its tool's, as Create > Forms has it.
+    #[cfg(test)]
+    pub(crate) fn form_icons(&self) -> Vec<crate::icons::Icon> {
+        self.forms.iter().map(FormText::icon).collect()
     }
 
     /// Form `i` alone selected, as the Project Browser selects it: whatever else was selected let go.

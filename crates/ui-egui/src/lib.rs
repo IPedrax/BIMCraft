@@ -1276,6 +1276,9 @@ pub struct BimApp {
     collapsed: BTreeSet<&'static str>,
     /// The names of Properties' groups a project's parameters make, kept for `collapsed`.
     collapse_keys: Vec<&'static str>,
+    /// The groups the element's own fields headed in Properties this frame, which a component's instance parameters of the
+    /// parameter group of the name join rather than heading again.
+    headed: Vec<&'static str>,
     /// Where views show, last frame.
     view_rect: Rect,
     /// Where the last view drawn showed, whether it was the active view or not.
@@ -2208,6 +2211,7 @@ impl BimApp {
             rotate_after: false,
             collapsed: BTreeSet::new(),
             collapse_keys: Vec::new(),
+            headed: Vec::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
             browser_tab: browser::Tab::All,
@@ -5264,6 +5268,7 @@ impl BimApp {
                 // In the panel's list and the palette only: the ribbon has no width to spare for it, and the Wall tool's Type
                 // Selector offers the same types.
                 if *label == CURTAIN_TOOL && !ribbon::listing() {
+                    ribbon::list_only();
                     continue;
                 }
                 // Wall and Curtain Wall are one tool, told apart by the type it draws.

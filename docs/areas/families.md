@@ -166,7 +166,10 @@ Blend, Revolve, Sweep, Swept Blend, Void Forms), symbols on Annotate's Detail pa
 each made selected so Properties show its rows, and Manage's Adaptive Component makes the family adaptive (Make Family Adaptive,
 or Four-Point Panel for a ready-made one); Family Types and Family Category and Parameters open dialogs
 (Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Blend, Revolve, Sweep, Swept Blend and Void Forms
-sketch forms (F5 and F6, below). Undo and Redo are the document's own (`Draft`), and never undo the project.
+sketch forms (below). Each of the six has an icon of its own (`icons.rs`: a block rising, a square base under a
+round top, a ring on its axis, a tube, a horn, a solid in dots), and a selected form's Properties are headed by its tool's
+(`FormText::icon`); Model Text, Connector and Show have theirs too, and Reference Plane and Set the project's own tools'.
+Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
@@ -290,7 +293,10 @@ yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `fam
 reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
 parameter names the category of the families whose types it picks (`of`) and holds no value until T24 (a nested family's type chosen by it).
 `group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
-areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
+areas, volumes and angles, Materials and Finishes for materials, else Other). A component's Properties list its instance
+parameters under these headings, each heading once: one the element's own fields head already (Other, where it is and its
+rotation) takes them in its own grid (`parameters` in `properties.rs`, through `component_rows`), and `component_parameters`
+heads only the rest (`tests/properties_groups.rs`). `shared` is a shared parameter's GUID, the
 same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
 families' parameters of one shared GUID are one name and one kind, and one name shared is one GUID
 (`Model::check_shared_parameters`); without it, it is the family's own. Schedules list every family parameter by name either

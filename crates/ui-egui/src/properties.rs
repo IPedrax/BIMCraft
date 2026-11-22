@@ -2533,6 +2533,7 @@ impl BimApp {
     /// The elements' parameters, group by group: what they share shows, what varies is blank.
     /// An edit changes all of them, in one step.
     fn parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id], rows: &[Row]) {
+        self.headed.clear();
         let Some(&id) = ids.first() else { return };
         let all = self.elements_json(model, ids);
         let Some(first) = all.first().map(Arc::clone) else { return };
@@ -2578,6 +2579,12 @@ impl BimApp {
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
         // A floor or a ceiling that follows a room: its level and offset are the room's, shown and not typed.
         let followed = self.follows_a_room(ids);
+        // The selected components' family, and their instance parameters' values: those of the parameter group a row's group
+        // is listed in that group, so the palette shows each group once.
+        let component = self.one_family(model, ids);
+        let materials: Vec<String> = model.materials.keys().cloned().collect();
+        let mut component_change = None;
+        self.headed = groups.clone();
         for group in groups {
             let open = !self.collapsed.contains(group);
             if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
@@ -2812,8 +2819,16 @@ impl BimApp {
                     }
                     ui.end_row();
                 }
+                if let Some((f, values)) = component.as_ref() {
+                    let params: Vec<_> =
+                        f.parameters.iter().filter(|p| p.instance && matches!(p.group(), Under::Group(x) if x.label() == group)).collect();
+                    if let Some(c) = self.component_rows(ui, id, values, &params, units, &materials) {
+                        component_change = Some(c);
+                    }
+                }
             });
         }
+        self.apply_component_change(ids, component_change);
         if ids.len() == 1 && v["enclosed"] == json!(false) {
             ui.label(RichText::new(t("Not enclosed: the walls around it don't close.")).color(pal().error));
         }
@@ -3278,22 +3293,16 @@ impl BimApp {
     /// parameters name them, lengths and numbers under Dimensions, materials under Materials and
     /// Finishes, yes or no under Other; what a formula works out, shown. An edit changes them all.
     fn component_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
-        let families: BTreeSet<&str> = ids.iter().filter_map(|id| model.elements.get(id)?.family().map(|(f, _)| f)).collect();
-        let families: Vec<&str> = families.into_iter().collect();
-        let (Some(&id), [name]) = (ids.first(), families.as_slice()) else { return };
-        let Some(f) = model.families.get(*name).filter(|_| ids.iter().all(|i| model.elements.get(i).is_some_and(|e| e.family().is_some())))
-        else {
-            return;
-        };
-        let values: Vec<Value> = self.elements_json(model, ids).iter().map(|j| j["values"].clone()).collect();
-        let shared = |k: &str| {
-            let v = values.first().map_or(&Value::Null, |v| &v[k]);
-            if values.iter().all(|x| &x[k] == v) { v.clone() } else { Value::Null }
-        };
+        let headed = std::mem::take(&mut self.headed);
+        let (Some(&id), Some((f, values))) = (ids.first(), self.one_family(model, ids)) else { return };
         let (units, materials): (Units, Vec<String>) = (model.units, model.materials.keys().cloned().collect());
         let mut change: Option<(String, Result<Value, String>)> = None;
-        // Revit's groups, then the family's own headings.
+        // The parameter groups, then the family's own headings; a parameter group the element's own fields headed already holds its
+        // parameters (`parameters`).
         for g in Under::listed(f.parameters.iter().filter(|p| p.instance).map(|p| p.group())) {
+            if matches!(&g, Under::Group(x) if headed.contains(&x.label())) {
+                continue;
+            }
             let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && p.group() == g).collect();
             if params.is_empty() {
                 continue;
@@ -3312,48 +3321,84 @@ impl BimApp {
             }
             Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
                 Grid::new(("component", id, group)).num_columns(2).min_col_width(124.0).show(ui, |ui| {
-                    for p in params {
-                        let val = shared(&p.name);
-                        let name = ui.label(&p.name);
-                        let kind = if p.kind == Holds::Length { Length } else { Number };
-                        match p.kind {
-                            // What a formula works out, or a reporting parameter reads: shown, not typed.
-                            _ if p.formula.is_some() || p.reporting => {
-                                ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
-                            }
-                            Holds::FamilyType => {
-                                ui.label(RichText::new(val.as_str().unwrap_or_default()).color(pal().muted));
-                            }
-                            Holds::Text | Holds::Url => {
-                                if let Some(typed) = self.field(ui, id, &p.name, val.as_str().unwrap_or_default().to_string(), name.id, "")
-                                {
-                                    change = Some((p.name.clone(), Ok(json!(typed))));
-                                }
-                            }
-                            Holds::YesNo => {
-                                let mut on = val.as_f64().is_some_and(|x| x != 0.0);
-                                let r = ui.checkbox(&mut on, "");
-                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, &p.name));
-                                if r.labelled_by(name.id).changed() {
-                                    change = Some((p.name.clone(), Ok(json!(on))));
-                                }
-                            }
-                            Holds::Material => {
-                                if let Some(m) = combo(ui, (id, &p.name), name.id, val.as_str().unwrap_or_default(), &materials) {
-                                    change = Some((p.name.clone(), Ok(json!(m))));
-                                }
-                            }
-                            Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
-                                if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, units), name.id, "") {
-                                    change = Some((p.name.clone(), parse(kind, &typed, units)));
-                                }
-                            }
-                        }
-                        ui.end_row();
+                    if let Some(c) = self.component_rows(ui, id, &values, &params, units, &materials) {
+                        change = Some(c);
                     }
                 });
             });
         }
+        self.apply_component_change(ids, change);
+    }
+
+    /// The selected components' family, while they're all components of one, and each one's instance values.
+    fn one_family<'m>(&self, model: &'m Model, ids: &[Id]) -> Option<(&'m bimcraft_core::family::Family, Vec<Value>)> {
+        let families: BTreeSet<&str> = ids.iter().filter_map(|id| model.elements.get(id)?.family().map(|(f, _)| f)).collect();
+        let families: Vec<&str> = families.into_iter().collect();
+        let [name] = families.as_slice() else { return None };
+        let f = model.families.get(*name).filter(|_| ids.iter().all(|i| model.elements.get(i).is_some_and(|e| e.family().is_some())))?;
+        Some((f, self.elements_json(model, ids).iter().map(|j| j["values"].clone()).collect()))
+    }
+
+    /// Instance parameters `params` of a family, a row each in the grid being drawn, for the components whose `values` are
+    /// given (`id` the first): as its parameters name them; what a formula works out, shown. What was edited, if anything.
+    #[allow(clippy::too_many_arguments)]
+    fn component_rows(
+        &mut self,
+        ui: &mut Ui,
+        id: Id,
+        values: &[Value],
+        params: &[&bimcraft_core::family::Parameter],
+        units: Units,
+        materials: &[String],
+    ) -> Option<(String, Result<Value, String>)> {
+        let shared = |k: &str| {
+            let v = values.first().map_or(&Value::Null, |v| &v[k]);
+            if values.iter().all(|x| &x[k] == v) { v.clone() } else { Value::Null }
+        };
+        let mut change = None;
+        for p in params {
+            let val = shared(&p.name);
+            let name = ui.label(&p.name);
+            let kind = if p.kind == Holds::Length { Length } else { Number };
+            match p.kind {
+                // What a formula works out, or a reporting parameter reads: shown, not typed.
+                _ if p.formula.is_some() || p.reporting => {
+                    ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
+                }
+                Holds::FamilyType => {
+                    ui.label(RichText::new(val.as_str().unwrap_or_default()).color(pal().muted));
+                }
+                Holds::Text | Holds::Url => {
+                    if let Some(typed) = self.field(ui, id, &p.name, val.as_str().unwrap_or_default().to_string(), name.id, "") {
+                        change = Some((p.name.clone(), Ok(json!(typed))));
+                    }
+                }
+                Holds::YesNo => {
+                    let mut on = val.as_f64().is_some_and(|x| x != 0.0);
+                    let r = ui.checkbox(&mut on, "");
+                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, &p.name));
+                    if r.labelled_by(name.id).changed() {
+                        change = Some((p.name.clone(), Ok(json!(on))));
+                    }
+                }
+                Holds::Material => {
+                    if let Some(m) = combo(ui, (id, &p.name), name.id, val.as_str().unwrap_or_default(), materials) {
+                        change = Some((p.name.clone(), Ok(json!(m))));
+                    }
+                }
+                Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
+                    if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, units), name.id, "") {
+                        change = Some((p.name.clone(), parse(kind, &typed, units)));
+                    }
+                }
+            }
+            ui.end_row();
+        }
+        change
+    }
+
+    /// A component's instance parameter edited, for every selected component; or what was wrong with what was typed.
+    fn apply_component_change(&mut self, ids: &[Id], change: Option<(String, Result<Value, String>)>) {
         match change {
             Some((key, Ok(val))) => {
                 self.run("modify", json!({"ids": ids, "params": {key: val}}));

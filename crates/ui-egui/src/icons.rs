@@ -237,6 +237,15 @@ icon_names! {
     PointElement,
     MakeAdaptive,
     CreateForm,
+    Extrusion,
+    Blend,
+    Revolve,
+    Sweep,
+    SweptBlend,
+    VoidForms,
+    ModelText,
+    Connector,
+    ShowWorkPlane,
     FamilyTypes,
     LoadIntoProject,
     LoadIntoProjectClose,
@@ -1627,6 +1636,96 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 16.0), (12.0, 4.0)]);
             g.line(&[(9.0, 7.0), (12.0, 4.0), (15.0, 7.0)]);
         }
+        Icon::Extrusion => {
+            // A profile lifted off its plane into a solid: a block, and the arrow it rises by.
+            g.closed(&[(12.0, 9.0), (19.0, 12.5), (12.0, 16.0), (5.0, 12.5)]);
+            g.line(&[(5.0, 12.5), (5.0, 17.5), (12.0, 21.0), (19.0, 17.5), (19.0, 12.5)]);
+            g.line(&[(12.0, 16.0), (12.0, 21.0)]);
+            g.line(&[(12.0, 12.5), (12.0, 3.0)]);
+            g.line(&[(9.5, 5.5), (12.0, 3.0), (14.5, 5.5)]);
+        }
+        Icon::Blend => {
+            // A square base and a round top, one profile turning into the other between them.
+            g.ellipse((12.0, 6.0), (4.5, 0.0), (0.0, 2.2), true);
+            g.line(&[(7.5, 6.0), (3.0, 15.5), (12.0, 20.5), (21.0, 15.5), (16.5, 6.0)]);
+            if !compact {
+                g.line(&[(12.0, 20.5), (12.0, 8.2)]);
+            }
+        }
+        Icon::Revolve => {
+            // A profile turned about an axis: a ring, and the axis through its hole.
+            g.ellipse((12.0, 13.5), (9.5, 0.0), (0.0, 6.0), true);
+            g.cubic([(7.5, 12.6), (9.5, 15.4), (14.5, 15.4), (16.5, 12.6)]);
+            if !compact {
+                g.cubic([(8.7, 13.6), (10.5, 11.6), (13.5, 11.6), (15.3, 13.6)]);
+            }
+            g.line(&[(12.0, 2.5), (12.0, 10.5)]);
+        }
+        Icon::Sweep => {
+            // A round profile swept along a path that bends twice: a tube of one width, open at its far end.
+            g.cubic([(4.0, 13.5), (11.0, 13.5), (10.0, 4.0), (18.5, 4.0)]);
+            g.cubic([(4.0, 20.0), (14.5, 20.0), (13.5, 10.5), (18.5, 10.5)]);
+            g.ellipse((18.5, 7.25), (0.0, 3.25), (1.6, 0.0), true);
+            g.ellipse((4.0, 16.75), (0.0, 3.25), (1.6, 0.0), false);
+        }
+        Icon::SweptBlend => {
+            // A wide profile at one end of a bent path and a narrow one at the other, blended along it: a horn.
+            g.ellipse((18.0, 8.5), (0.0, 5.5), (2.3, 0.0), true);
+            g.cubic([(18.0, 3.0), (10.0, 3.0), (8.0, 12.0), (3.5, 15.5)]);
+            g.cubic([(18.0, 14.0), (13.0, 14.0), (10.0, 18.5), (3.5, 18.5)]);
+            g.ellipse((3.5, 17.0), (0.0, 1.5), (0.9, 0.0), false);
+        }
+        Icon::VoidForms => {
+            // A solid drawn in dots: a void, there only to take its volume out of the solids it meets. A dot at each corner,
+            // two along each sloping edge and one along each upright one, which is shorter; one along each when compact.
+            let (top, low, centre) = ((12.0, 3.0), (12.0, 21.0), (12.0, 13.0));
+            let (left_top, left_low, right_top, right_low) = ((3.0, 8.0), (3.0, 16.0), (21.0, 8.0), (21.0, 16.0));
+            let edges = [
+                (top, right_top),
+                (right_top, right_low),
+                (right_low, low),
+                (low, left_low),
+                (left_low, left_top),
+                (left_top, top),
+                (centre, left_top),
+                (centre, right_top),
+                (centre, low),
+            ];
+            for corner in [top, right_top, right_low, low, left_low, left_top, centre] {
+                g.dot(corner);
+            }
+            for (a, b) in edges {
+                let upright = (a.0 - b.0).abs() < 0.5;
+                g.dotted(a, b, if compact || upright { 1 } else { 2 });
+            }
+        }
+        Icon::ModelText => {
+            // A block letter with depth: its face, and the top and the sides that show behind it.
+            g.closed(&[(3.0, 6.5), (15.0, 6.5), (15.0, 10.5), (11.0, 10.5), (11.0, 20.5), (7.0, 20.5), (7.0, 10.5), (3.0, 10.5)]);
+            g.line(&[(3.0, 6.5), (7.5, 3.5), (19.5, 3.5), (15.0, 6.5)]);
+            g.line(&[(19.5, 3.5), (19.5, 7.5), (15.0, 10.5)]);
+            g.line(&[(11.0, 20.5), (15.5, 17.5), (15.5, 10.2)]);
+        }
+        Icon::Connector => {
+            // A round port with its point at the middle, and the way out of it: where a family joins a system.
+            g.circle((8.5, 12.0), 5.5);
+            g.circle((8.5, 12.0), 1.8);
+            g.line(&[(16.0, 12.0), (21.5, 12.0)]);
+            g.line(&[(19.0, 9.5), (21.5, 12.0), (19.0, 14.5)]);
+        }
+        Icon::ShowWorkPlane => {
+            // The work plane as Work Plane's icon has it, without its arrow: drawn, with the grid on it.
+            g.closed(&[(2.0, 17.0), (8.0, 7.0), (22.0, 7.0), (16.0, 17.0)]);
+            if compact {
+                g.line(&[(5.0, 12.0), (19.0, 12.0)]);
+                g.line(&[(15.0, 7.0), (9.0, 17.0)]);
+            } else {
+                g.line(&[(6.0, 10.33), (20.0, 10.33)]);
+                g.line(&[(4.0, 13.67), (18.0, 13.67)]);
+                g.line(&[(12.67, 7.0), (6.67, 17.0)]);
+                g.line(&[(17.33, 7.0), (11.33, 17.0)]);
+            }
+        }
         Icon::FamilyTypes => {
             // A sheet of a family's types: a table of their values.
             g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
@@ -2043,6 +2142,25 @@ impl Glyph {
         self.0.push(Outline { points: points.iter().map(|&(x, y)| pos2(x, y)).collect(), closed: true });
     }
 
+    /// A dot: a ring so small that the pen fills it.
+    fn dot(&mut self, center: (f32, f32)) {
+        let points = (0..8)
+            .map(|i| {
+                let angle = TAU * i as f32 / 8.0;
+                pos2(center.0 + 0.2 * angle.cos(), center.1 + 0.2 * angle.sin())
+            })
+            .collect();
+        self.0.push(Outline { points, closed: true });
+    }
+
+    /// `between` dots spaced evenly along the segment from `a` to `b`, none at its ends.
+    fn dotted(&mut self, a: (f32, f32), b: (f32, f32), between: usize) {
+        for i in 1..=between {
+            let t = i as f32 / (between + 1) as f32;
+            self.dot((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+        }
+    }
+
     // Curves share a 2.8 degree maximum angular step, so small arcs do not turn
     // into visible polygons when inspected enlarged or on a high-DPI display.
     fn arc(&mut self, center: (f32, f32), radius: f32, from: f32, to: f32) {
@@ -2155,9 +2273,62 @@ mod tests {
 
     #[test]
     fn small_sizes_reduce_detail_without_changing_the_symbols() {
-        for icon in [Icon::Dormer, Icon::DataOutlet, Icon::Equipment, Icon::Rack, Icon::TagAll] {
+        for icon in [Icon::Dormer, Icon::DataOutlet, Icon::Equipment, Icon::Rack, Icon::TagAll, Icon::Blend, Icon::Revolve, Icon::VoidForms]
+        {
             assert!(outlines(icon, true).len() < outlines(icon, false).len(), "{icon:?}");
         }
+    }
+
+    #[test]
+    fn the_family_editors_forms_each_have_their_own_drawing() {
+        // Create > Forms had one icon for all six, Create Form's: each is its own now, and none is Create Form's or the
+        // box a component is.
+        let forms = [
+            Icon::Extrusion,
+            Icon::Blend,
+            Icon::Revolve,
+            Icon::Sweep,
+            Icon::SweptBlend,
+            Icon::VoidForms,
+            Icon::CreateForm,
+            Icon::Component,
+        ];
+        let drawn = |icon: Icon, compact: bool| -> Vec<(Vec<[i32; 2]>, bool)> {
+            let grid = |p: &Pos2| [(p.x * 100.0).round() as i32, (p.y * 100.0).round() as i32];
+            outlines(icon, compact).iter().map(|o| (o.points.iter().map(grid).collect(), o.closed)).collect()
+        };
+        for compact in [false, true] {
+            for (i, a) in forms.iter().enumerate() {
+                for b in forms.iter().skip(i + 1) {
+                    assert_ne!(drawn(*a, compact), drawn(*b, compact), "{a:?} and {b:?}, compact={compact}");
+                }
+            }
+        }
+        // The others the Create tab borrowed: Model Text isn't Text, Connector isn't Pipe, Show isn't the eye.
+        for (own, borrowed) in [(Icon::ModelText, Icon::Text), (Icon::Connector, Icon::Pipe), (Icon::ShowWorkPlane, Icon::Visibility)] {
+            assert_ne!(drawn(own, false), drawn(borrowed, false), "{own:?}");
+        }
+    }
+
+    #[test]
+    fn void_forms_is_dots_at_its_corners_and_along_its_edges() {
+        // Seven corners, two dots along each of six sloping edges and one along each of three upright ones.
+        let dots = outlines(Icon::VoidForms, false);
+        assert_eq!(dots.len(), 22);
+        assert_eq!(outlines(Icon::VoidForms, true).len(), 16, "one along each edge when compact");
+        // Each is a ring smaller than the pen, which fills it; and no two stand closer than two pens.
+        let centres: Vec<Pos2> = dots.iter().map(|o| Rect::from_points(&o.points).center()).collect();
+        for (i, o) in dots.iter().enumerate() {
+            let size = Rect::from_points(&o.points).size();
+            assert!(o.closed && size.x < STROKE_WIDTH && size.y < STROKE_WIDTH, "{size:?}");
+            for other in centres.iter().skip(i + 1) {
+                assert!(centres[i].distance(*other) > 2.0 * STROKE_WIDTH, "{:?} and {other:?}", centres[i]);
+            }
+        }
+        let mut g = Glyph::default();
+        g.dotted((0.0, 5.0), (9.0, 5.0), 2);
+        let at: Vec<f32> = g.0.iter().map(|o| Rect::from_points(&o.points).center().x).collect();
+        assert!((at[0] - 3.0).abs() < 1e-4 && (at[1] - 6.0).abs() < 1e-4, "{at:?}");
     }
 
     #[test]

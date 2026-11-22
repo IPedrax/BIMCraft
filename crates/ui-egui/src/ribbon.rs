@@ -1,5 +1,7 @@
-//! The ribbon's panels: each panel's tools over its name, and the name a button that lists them all. A tab too wide for the window makes room from the right: a panel hands its last tools over to its list,
-//! and when one tool isn't room enough it folds to one button that lists them; what still doesn't fit scrolls sideways.
+//! The ribbon's panels: each panel's tools over its name. A tab too wide for the window makes room from the right: a panel
+//! hands its last tools over to its list, its name then a button that lists them all, and when one tool isn't room enough
+//! it folds to one button that lists them; what still doesn't fit scrolls sideways. A panel with every tool in sight has no
+//! list: its name is its name and no more.
 
 use std::cell::{Cell, RefCell};
 
@@ -94,6 +96,8 @@ thread_local! {
     static LAID: Cell<(f32, f32, f32)> = const { Cell::new((0.0, 0.0, 0.0)) };
     /// A tool's choices were asked for (a shortcut's) while it has no button, being handed over or folded: its panel opens its list.
     static OPEN_LIST: Cell<bool> = const { Cell::new(false) };
+    /// Whether the panel being drawn has a tool its list alone shows ([`list_only`]).
+    static LIST_ONLY: Cell<bool> = const { Cell::new(false) };
     /// Whether the panel drawn next is kept whole while others make room ([`kept`]).
     static KEEP: Cell<bool> = const { Cell::new(false) };
     /// Whether the panel drawn next makes room before the others ([`yielding`]).
@@ -106,6 +110,12 @@ thread_local! {
 /// Whether the tools drawn now go in a panel's list.
 pub(crate) fn listing() -> bool {
     LISTING.with(Cell::get)
+}
+
+/// Said by a tool of the panel being drawn that only its list shows (the ribbon has no room for it): the panel's name stays
+/// the button that lists it, though every tool on the ribbon is in sight.
+pub(crate) fn list_only() {
+    LIST_ONLY.with(|c| c.set(true));
 }
 
 /// Whether the rows drawn now are the Tools palette's (not a panel's list, which is narrower and in a popup).
@@ -394,10 +404,11 @@ pub(crate) fn yielding(ui: &mut Ui, title: &str, add: impl FnMut(&mut Ui)) {
     YIELD.with(|k| k.set(false));
 }
 
-/// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does. Taken out of the window, it is
-/// drawn in Edit Tools alone, dimmed, under an empty box that brings it back.
+/// A ribbon panel: its tools over its name, which lists them while some are handed over; or, folded, one button that does.
+/// Taken out of the window, it is drawn in Edit Tools alone, dimmed, under an empty box that brings it back.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     let (kept, yields) = (KEEP.with(Cell::take), YIELD.with(Cell::take));
+    LIST_ONLY.with(Cell::take);
     // A panel the project's scale leaves out: not drawn, on the ribbon or in the Tools palette.
     if scale_hides(title) {
         return;
@@ -482,28 +493,38 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
                         add(ui);
                     })
                 });
-                r
-            } else {
-                let row = ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = GAP;
-                    row_at.0 = ui.min_rect().left();
-                    add(ui);
-                });
-                let font = FontId::proportional(11.5);
-                let text = ui.painter().layout_no_wrap(name.to_string(), font.clone(), pal().muted).size().x;
-                row_at.1 = text + 24.0;
-                let (r, title_row) = ui.allocate_exact_size(vec2(row.response.rect.width().max(text + 24.0), 16.0), Sense::click());
-                if title_row.hovered() {
-                    ui.painter().rect_filled(Rect::from_center_size(r.center(), vec2(text + 22.0, 16.0)), 4.0, pal().hover_fill);
-                }
-                ui.painter().text(r.center() - vec2(5.0, 0.0), Align2::CENTER_CENTER, name, font, pal().muted);
-                caret(ui, pos2(r.center().x + text / 2.0 + 3.0, r.center().y), pal().muted);
-                let label = format!("{name} ▾");
-                title_row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
-                open_if_asked(ui, &title_row);
-                list(&title_row.clone().on_hover_text(name), &mut add);
-                title_row
+                LIST_ONLY.with(Cell::take);
+                return;
             }
+            let row = ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = GAP;
+                row_at.0 = ui.min_rect().left();
+                add(ui);
+            });
+            let font = FontId::proportional(11.5);
+            let text = ui.painter().layout_no_wrap(name.to_string(), font.clone(), pal().muted).size().x;
+            row_at.1 = text + 24.0;
+            // As wide either way, so that the tab's fit doesn't shift when a panel's name gains or loses its caret.
+            let size = vec2(row.response.rect.width().max(text + 24.0), 16.0);
+            // Tools handed over to its list, or one only its list shows: the name is the button that lists them all. With
+            // every tool in sight a list would only say again what stands over it, so the name is painted, and is no button.
+            let list_only = LIST_ONLY.with(Cell::take);
+            if TOOLS.with(Cell::get).0 <= shows && !list_only {
+                let (r, _) = ui.allocate_exact_size(size, Sense::hover());
+                ui.painter().text(r.center(), Align2::CENTER_CENTER, name, font, pal().muted);
+                OPEN_LIST.with(Cell::take);
+                return;
+            }
+            let (r, title_row) = ui.allocate_exact_size(size, Sense::click());
+            if title_row.hovered() {
+                ui.painter().rect_filled(Rect::from_center_size(r.center(), vec2(text + 22.0, 16.0)), 4.0, pal().hover_fill);
+            }
+            ui.painter().text(r.center() - vec2(5.0, 0.0), Align2::CENTER_CENTER, name, font, pal().muted);
+            caret(ui, pos2(r.center().x + text / 2.0 + 3.0, r.center().y), pal().muted);
+            let label = format!("{name} ▾");
+            title_row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+            open_if_asked(ui, &title_row);
+            list(&title_row.on_hover_text(name), &mut add);
         });
         shown.response.rect.width()
     };

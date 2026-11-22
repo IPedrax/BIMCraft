@@ -1842,12 +1842,12 @@ impl BimApp {
             let tip =
                 msg!("Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it");
             let on = ed.views.dialog.is_some() || ed.views.picking.is_some();
-            if crate::big_button(ui, Icon::PickFaces, msg!("Set"), on, tip).clicked() {
+            if crate::big_button(ui, Icon::WorkPlane, msg!("Set"), on, tip).clicked() {
                 ed.open_work_plane_dialog(super::work_plane::Target::Sketch);
             }
             crate::stacked(ui, |ui| {
                 let tip = msg!("Show: the view's work plane, tinted");
-                if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
+                if crate::stacked_button(ui, Icon::ShowWorkPlane, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
                     ed.views.show_work_plane = !ed.views.show_work_plane;
                 }
             });

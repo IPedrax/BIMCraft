@@ -550,29 +550,29 @@ impl BimApp {
                 // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend too (F6).
                 use bimcraft_core::family::forms::FormKind;
                 let tip = msg!("Extrusion: sketch a profile on the work plane, extruded along its normal");
-                if big_button(ui, Icon::CreateForm, msg!("Extrusion"), false, tip).clicked() {
+                if big_button(ui, Icon::Extrusion, msg!("Extrusion"), false, tip).clicked() {
                     ed.create_form(FormKind::Extrusion, false);
                 }
                 let tip = msg!("Blend: sketch a base and a top on the work plane, joined between their two ends");
-                if big_button(ui, Icon::CreateForm, msg!("Blend"), false, tip).clicked() {
+                if big_button(ui, Icon::Blend, msg!("Blend"), false, tip).clicked() {
                     ed.create_form(FormKind::Blend, false);
                 }
                 let tip = msg!("Revolve: sketch a profile and an axis line on the work plane, turned about the axis");
-                if big_button(ui, Icon::CreateForm, msg!("Revolve"), false, tip).clicked() {
+                if big_button(ui, Icon::Revolve, msg!("Revolve"), false, tip).clicked() {
                     ed.create_form(FormKind::Revolve, false);
                 }
                 let tip = msg!("Sweep: sketch or pick a path on the work plane, then a profile square to it, swept along it");
-                if big_button(ui, Icon::CreateForm, msg!("Sweep"), false, tip).clicked() {
+                if big_button(ui, Icon::Sweep, msg!("Sweep"), false, tip).clicked() {
                     ed.create_form(FormKind::Sweep, false);
                 }
                 let tip = msg!("Swept Blend: a path of one line or arc, and a profile at each end, blended along it");
-                if big_button(ui, Icon::CreateForm, msg!("Swept Blend"), false, tip).clicked() {
+                if big_button(ui, Icon::SweptBlend, msg!("Swept Blend"), false, tip).clicked() {
                     ed.create_form(FormKind::SweptBlend, false);
                 }
                 let tip = msg!(
                     "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketched as a solid one is, which cuts the solids before it"
                 );
-                let r = big_button(ui, Icon::CreateForm, msg!("Void Forms"), false, tip);
+                let r = big_button(ui, Icon::VoidForms, msg!("Void Forms"), false, tip);
                 ribbon::choices(ui, &r, false, |ui| {
                     for (label, kind) in [
                         (msg!("Void Extrusion"), FormKind::Extrusion),
@@ -602,13 +602,16 @@ impl BimApp {
                     {
                         ed.component_tool();
                     }
-                    later(ui, Icon::Text, msg!("Model Text"));
+                    later(ui, Icon::ModelText, msg!("Model Text"));
                 });
                 ribbon::yielding(ui, msg!("Datum"), |ui| {
                     // Drawn in a plan or an elevation of a family that isn't adaptive, as Revit's (F4).
                     let tip = msg!("Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation");
                     let on = ed.views.drawing.is_some() && !ed.views.drawing_line;
-                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Plane"), on, tip)).inner.clicked()
+                    if ui
+                        .add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::RefPlane, msg!("Reference Plane"), on, tip))
+                        .inner
+                        .clicked()
                     {
                         ed.reference_plane_tool();
                     }
@@ -1082,7 +1085,7 @@ impl BimApp {
         }
         // A reference plane selected in a plan or an elevation: its name, and its pivot (F7d).
         if let Some(g) = ed.selected_plane() {
-            selector(ui, Icon::Line, t("Reference Plane"));
+            selector(ui, Icon::RefPlane, t("Reference Plane"));
             ui.add_space(6.0);
             if let Some(p) = ed.planes.iter_mut().find(|p| p.guid == g) {
                 let datum = p.datum();
@@ -1133,7 +1136,7 @@ impl BimApp {
         }
         // A form selected: its own Properties, as Revit's show only what is selected.
         if let Some(i) = ed.selected_form() {
-            selector(ui, Icon::CreateForm, &ed.forms[i].describe());
+            selector(ui, ed.forms[i].icon(), &ed.forms[i].describe());
             ui.add_space(6.0);
             self.form_properties(ui, &mut ed, i);
             self.put_family(ed);
@@ -2345,7 +2348,7 @@ fn on_pane(cam: bimcraft_core::view3d::Camera, size: [u32; 2], pane: Rect) -> im
 fn connectors_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Connectors"), |ui| {
         let tip = msg!("Connector: a pipe, power, switch, data or earthing connector, where the family joins a system");
-        let r = big_button(ui, Icon::Pipe, msg!("Connector"), false, tip);
+        let r = big_button(ui, Icon::Connector, msg!("Connector"), false, tip);
         ribbon::choices(ui, &r, false, |ui| {
             for (kind, label, tip) in super::connectors::KINDS {
                 if ui.button(t(label)).on_hover_text(t(tip)).clicked() {
@@ -2405,12 +2408,12 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
 fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Work Plane"), |ui| {
         let tip = msg!("Set: the work plane, a plane picked in the view (a point's, the level or a reference plane)");
-        if big_button(ui, Icon::PickFaces, msg!("Set"), ed.modeller.picking_plane, tip).clicked() {
+        if big_button(ui, Icon::WorkPlane, msg!("Set"), ed.modeller.picking_plane, tip).clicked() {
             ed.modeller.picking_plane = true;
         }
         crate::stacked(ui, |ui| {
             let tip = msg!("Show: the work plane drawn, tinted, with a grid on it");
-            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.modeller.show_work_plane, tip).clicked() {
+            if crate::stacked_button(ui, Icon::ShowWorkPlane, msg!("Show"), ed.modeller.show_work_plane, tip).clicked() {
                 ed.modeller.show_work_plane = !ed.modeller.show_work_plane;
             }
             ui.add_enabled_ui(false, |ui| crate::stacked_button(ui, Icon::View3D, msg!("Viewer"), false, msg!("Not in BIMCraft yet")));
@@ -2424,12 +2427,12 @@ fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Work Plane"), |ui| {
         let tip = msg!("Set: the view's work plane, by name or picked in the view (the Work Plane dialog)");
         let on = ed.views.dialog.is_some() || ed.views.picking.is_some();
-        if big_button(ui, Icon::PickFaces, msg!("Set"), on, tip).clicked() {
+        if big_button(ui, Icon::WorkPlane, msg!("Set"), on, tip).clicked() {
             ed.open_work_plane_dialog(super::work_plane::Target::View);
         }
         crate::stacked(ui, |ui| {
             let tip = msg!("Show: the view's work plane, tinted");
-            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
+            if crate::stacked_button(ui, Icon::ShowWorkPlane, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
                 ed.views.show_work_plane = !ed.views.show_work_plane;
             }
         });

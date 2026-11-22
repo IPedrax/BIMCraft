@@ -152,10 +152,16 @@ fn topmost(h: &mut Harness<BimApp>, name: &str) {
     h.run();
 }
 
-/// A tool from its panel's list (the panel's name, `Build ▾`), which has it whether the panel is folded to fit the window or not:
+/// A tool of a ribbon panel, wherever the window's width has put it: on the ribbon, when the panel shows every tool and so
+/// has no list (the topmost widget of that name, the ribbon's own); else from the panel's list (the panel's name, `Build ▾`),
 /// the first row of that name under the list's button, not the ribbon's own nor one further down the window.
 fn from_list(h: &mut Harness<BimApp>, panel: &str, tool: &str) {
     let name = format!("{panel} ▾");
+    if h.query_by_label(&name).is_none() {
+        let button = h.get_all_by_label(tool).map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).map(|r| r.center());
+        click_at(h, button.unwrap());
+        return;
+    }
     press(h, &name);
     let under = h.get_by_label(&name).rect().bottom();
     let row = h
@@ -6245,6 +6251,9 @@ fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
 #[test]
 fn a_panels_name_lists_its_tools() {
     let mut h = app(BOX);
+    // Narrow enough that Build hands tools over: a panel with every tool in sight has no list.
+    h.set_size(vec2(900.0, 800.0));
+    h.run();
     press(&mut h, "Build ▾");
     let lowest =
         |h: &Harness<BimApp>, name: &str| h.get_all_by_label(name).map(|n| n.rect().center()).max_by(|a, b| a.y.total_cmp(&b.y)).unwrap();
@@ -7036,6 +7045,7 @@ mod minimap;
 mod notes;
 mod objectstyles;
 mod origin;
+mod panel_lists;
 mod parameters;
 mod patterns;
 mod perspective;
@@ -7047,6 +7057,7 @@ mod printsets;
 mod profile;
 mod project_templates;
 mod projectinfo;
+mod properties_groups;
 mod publisher;
 mod purge;
 mod pyaddins;
@@ -8152,6 +8163,7 @@ mod family_handle_review;
 mod family_handle_snap;
 mod family_handles_3d;
 mod family_hide_override;
+mod family_icons;
 mod family_manage;
 mod family_measure;
 mod family_modify;
