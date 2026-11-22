@@ -21,6 +21,7 @@ use crate::view3d::{P3, add, cross, mul};
 mod bounds;
 pub mod constraints;
 pub mod forms;
+pub mod handles;
 pub mod nested;
 mod options;
 mod origin;

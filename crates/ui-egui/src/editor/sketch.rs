@@ -12,7 +12,7 @@ use bimcraft_core::draw::{self as shapes, Options, Shape};
 use bimcraft_core::family::forms::{self as forms, FormKind, Swept};
 use bimcraft_core::family::sketch::{self as fs, FormLine};
 use bimcraft_core::family::views::{Staged, Which};
-use bimcraft_core::family::{DimKind, DimRef, DimView, FamilyDimension, Frame, Val};
+use bimcraft_core::family::{DimKind, DimRef, DimView, Extent, FamilyDimension, Frame, Val};
 use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Guid;
 use bimcraft_core::sketch::SketchLine;
@@ -488,7 +488,7 @@ pub(crate) fn in_view(st: &Staged, which: Which, f: &Frame, h: P2) -> P2 {
 }
 
 /// A typed number or formula's worth for `values`, for the core's evaluation: unread, said.
-fn reader(values: &BTreeMap<String, Val>) -> impl FnMut(&Expr) -> Result<f64, String> + '_ {
+pub(super) fn reader(values: &BTreeMap<String, Val>) -> impl FnMut(&Expr) -> Result<f64, String> + '_ {
     move |e: &Expr| crate::adaptive_editor::worth(e, values).ok_or_else(|| tf("{} can't be worked out", &[&expr_text(e)]))
 }
 
@@ -1241,9 +1241,12 @@ impl FamilyEditor {
     }
 
     /// The handles of a selected extrusion's Start and End in view `which`, where the view sees its plane edge-on: where each
-    /// shows (the view's millimetres), whether it is End, whether it is free to drag (a number, not tied), and the normal it
-    /// moves along.
-    pub(crate) fn end_handles(&self, st: &Staged, which: Which) -> Vec<(P2, bool, bool, [f64; 3])> {
+    /// shows (the view's millimetres), whether it is End, why it can't be dragged if it can't (a parameter or a formula's, or
+    /// a dimension's label, lock or EQ holds it), and the normal it moves along. None while a tool is in hand.
+    pub(crate) fn end_handles(&self, st: &Staged, which: Which) -> Vec<(P2, bool, Option<String>, [f64; 3])> {
+        if !self.handles_shown() {
+            return Vec::new();
+        }
         let Some(i) = self.selected_form() else { return Vec::new() };
         let Some(ft) = self.forms.get(i) else { return Vec::new() };
         let Ok(f) = ft.form() else { return Vec::new() };
@@ -1258,20 +1261,38 @@ impl FamilyEditor {
         let Ok(loops) = f.loops(&mut reader(&values)) else { return Vec::new() };
         let Some(first) = loops.first() else { return Vec::new() };
         let c = bimcraft_core::geom::centroid(&first.outer);
-        let free = |s: &str| s.trim().parse::<f64>().is_ok_and(f64::is_finite);
+        let family = self.family().ok();
         let mut out = Vec::new();
-        for (text, end) in [(&ft.from, false), (&ft.to, true)] {
+        for (text, end, extent) in [(&ft.from, false, Extent::Start), (&ft.to, true, Extent::End)] {
             if let Some(d) = crate::adaptive_editor::worth(&text_expr(text), &values) {
-                out.push((st.to_view(which, frame.point(c, d)), end, free(text), frame.z));
+                out.push((st.to_view(which, frame.point(c, d)), end, self.end_blocked(family.as_ref(), f.guid, text, extent), frame.z));
             }
         }
         out
     }
 
+    /// Why form `form`'s end `extent` (typed `text`) can't be dragged, if it can't: a dimension's label, lock or EQ holds it, or
+    /// it is a parameter's or a formula's.
+    fn end_blocked(&self, family: Option<&Family>, form: Guid, text: &str, extent: Extent) -> Option<String> {
+        if let Some(held) = family.filter(|_| !form.is_nil()).and_then(|f| f.end_held(form, extent)) {
+            return Some(super::shape_handles::held_said(&held, true));
+        }
+        let free = text.trim().parse::<f64>().is_ok_and(f64::is_finite);
+        (!free).then(|| t("This end is tied to a parameter or worked out by a formula: change it in Family Types.").to_string())
+    }
+
     /// A selected extrusion's Start or End (`end`) dragged `d` mm along its plane's normal. Refused while it is tied to a
-    /// parameter or worked out by a formula.
+    /// parameter or worked out by a formula, or a dimension's label, lock or EQ holds it.
     pub(crate) fn drag_end(&mut self, end: bool, d: f64) -> Result<(), String> {
         let i = self.selected_form().ok_or_else(String::new)?;
+        let guid = self.forms[i].original.guid;
+        let extent = if end { Extent::End } else { Extent::Start };
+        let family = self.family().ok();
+        let ft = &self.forms[i];
+        let text = if end { &ft.to } else { &ft.from };
+        if let Some(why) = self.end_blocked(family.as_ref(), guid, text, extent) {
+            return Err(why);
+        }
         let ft = &mut self.forms[i];
         let text = if end { &mut ft.to } else { &mut ft.from };
         let Some(x) = text.trim().parse::<f64>().ok().filter(|x| x.is_finite()) else {

@@ -939,7 +939,29 @@ the draft (and so its Unsaved mark) as it was. A selected form's contextual tab 
 out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
-parameter or a formula is greyed and a drag on it is refused, saying why. Where a form's dimensions and locks put its outline,
+parameter or a formula, or held by a dimension's label, lock or EQ (`Family::end_held`), is greyed and a drag on it is refused,
+saying why.
+
+FE-5 (`family/handles.rs`, `editor/shape_handles.rs`): with one extrusion selected, solid or void, a plan or an elevation that
+sees its plane flat shows a handle at the middle of each edge of its profile, outlines and holes alike, pointing out of the solid
+(`handles::edge_handles`, which side by the profile's rings as built); one that sees the plane edge-on shows one at mid-depth on
+each straight side it sees edge-on, unless another part of the profile hides it (`in_sight`), beside the Start and End handles.
+A Blend shows its base's handles where its base is seen flat, none on its leaning sides; a revolve, a sweep and a swept blend
+none. Dragged, a handle offsets its edge along its normal (`offset_edge`): each straight line at its ends slides along its own
+line to meet it, one in line with it has its shared end moved with it, and an arc there still runs through its middle as
+drawn and through its ends where they now are (a D's arc grows with its flat side); an arc's handle changes its radius about its
+centre, its ends going out along their radii and the lines at them following them; a whole circle's, its radius. Only the numbers
+that move are written, as numbers; one that is a formula refuses the drag, and the rest keep their formulas. The form is made
+again from what it was at each step of the drag (live, one step of the history), the pointer read through the view as the drag
+began, so the view refitting what it frames doesn't move the drag under the hand. A drag back where it began leaves the form as typed (no
+step, nothing unsaved); Escape, Undo, Redo and another view or tab shown give it up, the form put back as it was (the Start and
+End drag too); the form is followed by what it is known by while the document is open, never by its place. A click on an arrow
+keeps the selection. Refused, the form left as it was and the status
+bar saying why: an edge a dimension's label, lock, Align lock or EQ measures to (`Family::edge_held`), greyed; a drag that leaves
+no profile (a line turned back or of no length, or what `finish_check` refuses: lines crossing, overlapping, a loop open); one
+the constraints would undo (where a family is constrained, the type previewed must flex the edge to where the drag put it, the
+handles sitting where that type shows the outline, F10); and one a type can't build, as Finish checks. No snapping: the
+family's views have none for drags. Where a form's dimensions and locks put its outline,
 Start or End otherwise for the type previewed than it is drawn, its Properties say so under a note naming the type (F10,
 `held_forms`), its ends a dimension sets greyed as they come to: the drawn numbers stay, and its Edit tool or the dimensions
 change them.
@@ -1444,7 +1466,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/origin.rs`: its origin, the insertion point it stands by, and its instances kept where they stand when it moves (O1).
 - `family/options.rs`: Family Category and Parameters' options.
 - `family/views.rs`: a family's plans and elevations.
-- `family/sketch.rs`: forms' sketches.
+- `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
   lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
@@ -1462,7 +1484,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
-- `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
+- `editor/sketch.rs`: sketch mode. `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
 - `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.
