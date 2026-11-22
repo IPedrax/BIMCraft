@@ -1094,6 +1094,10 @@ pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
 /// The scale, 1 : n, view `id` is held at: its own, or its template's where that controls it, else its project units'
 /// default.
 pub fn scale_of(m: &Model, id: impl Key) -> f64 {
+    // A rebar detail has a scale of its own, and no graphics.
+    if let Some(Element::RebarDetail(rd)) = m.elements.get(id) {
+        return rd.scale;
+    }
     graphics_of(m, id).map_or_else(|| m.units.default_scale(), |g| g.resolved(m).scale_n(m.units))
 }
 

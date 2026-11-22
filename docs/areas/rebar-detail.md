@@ -1,0 +1,54 @@
+# Rebar details
+
+The drawing a detailer issues for a reinforced member. Code: `crates/core/src/rebar_detail.rs` (the element, its check, the sets of
+bars, the tag text, the shapes) and `crates/core/src/sheet/detail.rs` (the layout and the drawing); the command is in
+`crates/core/src/commands/rebar_detail.rs`, tests in `rebar_detail_tests.rs`. A beam has a detail so far; a column, a footing and a
+floor follow.
+
+## What is stored, and what is not
+
+`Element::RebarDetail` (category `rebardetail`) is a view of its own, as a panel schedule is: `name`, `host` (a GUID), `scale` (1 : n,
+default 50), `stations` (where its sections are cut, mm along the beam; none means the default) and `list` (whether its steel list is
+in). It took no FORMAT step of its own: it shares 21's. Everything it shows is worked out from the beam and its bars each time it is
+drawn, so reinforcing the beam again changes it with no command. Deleting the beam deletes it and any viewport of it. Nothing may be
+annotated in it; a note goes on the sheet.
+
+## Sets
+
+A *set* is bars that are copies of one another moved by one step, to 0.5 mm: the stirrups of a zone, a row of bottom bars. Bars are
+grouped by layer, grade, diameter and `steel::Shape::key`, put in order by their first point, and cut into maximal runs of equal step.
+Where two runs of different step meet, the bar between them goes to the run with the closer spacing. That is why `reinforce`'s ends
+rule reads 7, 31 and 7 stirrups on a 6 m beam and not 7, 32 and 6: its closer end zones keep their bars and the wider middle starts one
+spacing in. A bar of another shape or diameter is never in a set, and a bar drawn by hand is a set of one. The counts of a beam's sets
+add up to its bars. A set's mark is the host's (`N2`), so the zones of one stirrup share it.
+
+## The tag
+
+`{mark} {count} ø{diameter} c/{spacing} C={length}`: no count for a set of one, and `c/` only where the set's bars spread along the
+beam in the picture (the stirrups, not three bottom bars lying behind one another). Lengths are in the project's unit and decimals
+(`Model::length`), so a project in centimetres reads `c/10 C=118`; the diameter is always millimetres. A tag in a section never has
+the spacing.
+
+## The drawing
+
+One drawing per beam, laid out as a display list in pixels (`sheet::detail::layout`) that `draw` puts on a sheet. Its picture is the
+member's and its bars' own, not `render::section_in`: a section of the model hides a bar beyond its cut under the concrete, and a
+detail doesn't. From the top: the elevation (the concrete's outline, every set's bars as a heavy line, bars lying on one another once,
+a zone of three or more stirrups as its first and its last with a thin line between), a column of tags to its right (one tag a row,
+ordered by where its anchor is, so none overlaps), section marks A, B, C, the beam's length and each zone dimensioned; under that the
+sections, each at **twice the scale** of the elevation and lettered with its own, with the stirrup of the zone it is in, each bar it
+cuts as a dot, and the width dimensioned; under those the steel list (`steel::rows` for the beam) with each bar's shape sketched.
+Default stations are the middle of each zone of stirrups, or of the beam where it has none.
+
+Stated shortcuts, each one function to change: tags stack in a column (no smarter placer), a bar's dot is never under 0.4 mm on the
+paper, a spatial bar's sketch is its projection and says so, there are no support ticks, and a drawing stops at 50,000 lines and says
+it did. The look (line weights, the order of tags, the zone drawn as a first and a last) is general detailing practice, not
+Eberick's.
+
+## The command
+
+`rebar_detail {host | hosts, stations?, scale?, list?, sheet?, replace?}`: makes a detail for each beam (up to 1,000), or changes the
+one it has and keeps its name and its place; `sheet` places it through `place`; `replace` takes the values back to the defaults. A
+beam with no bars is refused, saying to reinforce it. The reply lists each view's `sets` (mark, layer, diameter, count, spacing,
+length, tag, the ids of the bars), so an agent can read what the drawing says. `render {"view": <its name>}` draws it. It has no
+shortcut yet: DD goes with the desktop's dialog.

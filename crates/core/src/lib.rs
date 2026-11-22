@@ -203,6 +203,9 @@ mod raised_wall_room_tests;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;
+pub mod rebar_detail;
+#[cfg(test)]
+mod rebar_detail_tests;
 #[cfg(test)]
 mod rebar_tests;
 pub mod reinforce;

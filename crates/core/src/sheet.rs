@@ -15,6 +15,7 @@ use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
 
+pub(crate) mod detail;
 mod panel;
 
 /// Paper px per mm in a sheet's drawing: plan lettering 10 px tall comes out 2 mm on paper.
@@ -69,6 +70,11 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
         Element::PanelSchedule(ps) => {
             let (width, height) = panel::size(m, ps)?;
             return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
+        }
+        // A rebar detail draws its own picture, at the scale it is placed at.
+        Element::RebarDetail(rd) => {
+            let (width, height) = detail::size(m, rd, k)?;
+            return Some(View { angle: 0.0, scale: k, cx: 0.0, cy: 0.0, width, height });
         }
         Element::View3D(v) => {
             let cam = view3d::camera_in(m, v.azimuth, v.elevation, k, ROOM * DENSITY, &Look::of(m, view));
@@ -572,6 +578,11 @@ fn view_into(
         Some(Element::PanelSchedule(ps)) => {
             panel::draw(d, m, ps, (ox, oy));
             return Some(false);
+        }
+        // Its name and its scale go under it, as any scaled view's do.
+        Some(Element::RebarDetail(rd)) => {
+            detail::draw(d, m, rd, view.scale, (ox, oy));
+            return Some(true);
         }
         Some(Element::View3D(v)) => {
             let look = Look::of(m, id);

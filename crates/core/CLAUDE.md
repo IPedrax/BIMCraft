@@ -65,6 +65,7 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
 | Concrete, formwork and steel of a member, bar marks, the steel list, the cut plan | [quantities](../../docs/areas/quantities.md) |
+| A reinforced beam's detail drawing: sets of bars, tags, sections | [rebar detail](../../docs/areas/rebar-detail.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
 | Coordinates: base and survey points, locations, shared coordinates | [coordinates](../../docs/areas/coordinates.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |

@@ -112,6 +112,7 @@ pub(crate) fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         | Element::Viewport(_)
         | Element::Schedule(_)
         | Element::PanelSchedule(_)
+        | Element::RebarDetail(_)
         | Element::ProjectInfo(_)
         | Element::View3D(_)
         | Element::PlanView(_) => Vec::new(),
