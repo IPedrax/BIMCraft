@@ -8610,7 +8610,7 @@ fn load_points(s: &mut Session, p: &Value) -> R {
                 match rooms.region_at(r, RoomArea::Finish) {
                     Some(g) => {
                         let area = g.area() / 1.0e6;
-                        input.push((r.name.clone(), loads::kind_of(&r.name), area, g.perimeter() / 1000.0, count(&outlets, *id), false));
+                        input.push((r.name.clone(), set.kind_of(&r.name), area, g.perimeter() / 1000.0, count(&outlets, *id), false));
                         lit.push(count(&lights, *id));
                     }
                     None => skipped.push(json!({"id": id, "name": r.name, "why": "not enclosed by walls"})),
@@ -8644,7 +8644,7 @@ fn load_points(s: &mut Session, p: &Value) -> R {
                     ),
                     None => None,
                 };
-                let kind = Kind::parse(given).unwrap_or_else(|| loads::kind_of(&name));
+                let kind = Kind::parse(given).unwrap_or_else(|| set.kind_of(&name));
                 input.push((name, kind, area, perimeter / 1000.0, points, !given.is_empty()));
             }
         }

@@ -318,7 +318,7 @@ pub fn sections() -> &'static [SectionDef] {
                 ui_msg!("Dwelling Lighting and Outlets"),
                 ui_msg!("The minimum lighting and outlets for each room of a home, and the power of each point."),
                 &["load_points"],
-                valid_as::<crate::loads::RuleSet>,
+                crate::loads::valid,
             ),
             s(
                 Electrical,

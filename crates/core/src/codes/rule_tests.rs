@@ -26,9 +26,11 @@ const READERS: [&str; 19] = [
 ];
 
 /// What a reader may keep: caps on what it takes, tolerances, and physics.
-const ALLOWED: [&str; 15] = [
+const ALLOWED: [&str; 16] = [
     "MAX_OWN",
     "MAX_NAME",
+    // How many names of rooms a row may hold in each list.
+    "MAX_NAMES",
     "MAX_XML",
     "MAX_VALUES",
     "MAX_AMENDMENTS",
