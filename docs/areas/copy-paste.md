@@ -87,7 +87,8 @@ Done:
   hand there, its box over the work plane. Tests: `crates/ui-egui/src/tests/clipboard.rs`.
 - A family's tab: the same panel (`clipboard::panel`, which both draw) and the same Copy, Cut and Paste events and ribbon
   paste, handed to the family's clipboard, whose text is marked as a family's (`family::clipboard::KIND`), so a project's
-  paste doesn't take it for its own ([families](families.md)). Tests: `crates/ui-egui/src/tests/family_clipboard.rs`.
+  paste doesn't take it for its own and pastes the project's last copy, as for any other text ([families](families.md)). A
+  paste the ribbon asked for on one tab and answered on another is given up (`paste_asked` keeps the tab). Tests: `crates/ui-egui/src/tests/family_clipboard.rs`.
 
 Still to do:
 

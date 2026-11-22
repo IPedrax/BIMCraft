@@ -212,6 +212,16 @@ impl FamilyEditor {
             let clip = SketchClip::of(s.guid, s.part as usize, &lines, &constraints, &reporting(&f));
             let n = clip.lines.len();
             if cut {
+                // What was copied is taken away: the Axis Line, never copied, stays.
+                let axis: Vec<usize> = s
+                    .sketch
+                    .lines
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, l)| l.style.as_deref() == Some(super::sketch::AXIS))
+                    .map(|(i, _)| i)
+                    .collect();
+                s.sketch.picked.retain(|i| !axis.contains(i));
                 s.delete_picked();
             }
             let said = tf("{} line(s) on the clipboard.", &[&n.to_string()]);
@@ -381,6 +391,10 @@ impl FamilyEditor {
     pub(super) fn paste_click(&mut self, q: P2, which: Which, space: super::modify::Space) -> Result<String, String> {
         let Some(p) = self.views.pasting.clone() else { return Ok(String::new()) };
         let Some((_, anchor)) = p.anchor.filter(|(w, _)| *w == which) else {
+            // The copies can't be made (what one is drawn on is gone): why; else they aren't drawn in this view.
+            if let Err(e) = self.family()?.paste(&p.clip) {
+                return Err(paste_said(&e));
+            }
             return Err(t("Nothing on the clipboard is drawn in this view: paste it in a view that shows it, or Aligned to Same Place.")
                 .to_string());
         };
@@ -497,6 +511,12 @@ impl BimApp {
     /// the window's own copy where the text is it or isn't a family's at all; refused, naming the family, where it is a copy
     /// made in another window.
     pub(crate) fn family_pasted(&mut self, text: Option<String>, mode: PasteMode) {
+        // A project's copy, made since: the clipboard's last copy isn't the family's, so the family's older one isn't pasted.
+        if text.as_deref().is_some_and(bimcraft_core::clipboard::is_clipboard) {
+            let why = t("The clipboard holds a project's elements: paste them on the project's tab, or copy in the family again.");
+            self.status = Status { text: why.to_string(), error: true };
+            return;
+        }
         if let Some(text) = text.filter(|t| core_clip::is_family_clipboard(t)) {
             let mine = self.family_clip.as_ref().map(Held::copy);
             match core_clip::source(&text) {

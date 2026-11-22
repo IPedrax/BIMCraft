@@ -361,6 +361,7 @@ impl FamilyEditor {
             self.views.picking = None;
             self.views.modify = None;
             self.views.pasting = None;
+            self.views.measuring = None;
             self.let_everything_go();
         }
     }
@@ -1054,9 +1055,9 @@ impl FamilyEditor {
             fv::form_at(f, &values, &c.staged, which, q)
                 .map(|_| Err(t("Offset takes reference planes and reference lines: edit a form's sketch to offset its lines.").to_string()))
         };
-        // The planes' and lines' traces a Modify tool's points snap to.
+        // The planes' and lines' traces a Modify tool's points and Measure's snap to.
         let traces: Vec<(P2, P2)> = match family.as_ref() {
-            Some(f) if self.views.modify.is_some() => {
+            Some(f) if self.views.modify.is_some() || self.views.measuring.is_some() => {
                 let planes = f
                     .planes
                     .iter()

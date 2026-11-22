@@ -107,3 +107,24 @@ fn family_measure_screenshots() {
         h.render().unwrap().save(std::path::Path::new(&folder).join(name)).unwrap();
     }
 }
+
+#[test]
+fn measure_snaps_to_a_planes_trace_and_another_tool_puts_it_down() {
+    let mut h = plan();
+    command(&mut h, "Measure");
+    // A few millimetres off Edge (x 1000): the ruler's end is on it.
+    click_family(&mut h, [0.0, 200.0, 0.0]);
+    click_family(&mut h, [1004.0, 200.0, 0.0]);
+    let r = editor(&h).measured().expect("a ruler laid");
+    assert!((r.dx - 1000.0).abs() < 1e-6, "{r:?}");
+    // Reference Plane picked: Measure is put down, so the next clicks draw the plane.
+    h.state_mut().active_family_mut().unwrap().reference_plane_tool();
+    h.run();
+    assert!(!editor(&h).measuring());
+    assert_eq!(editor(&h).views.drawing, Some(None));
+    // In {3D}, Create Similar on a plane says where it works.
+    super::family_views::view(&mut h, None);
+    pick(&mut h, &[Picked::Plane(g(EDGE))]);
+    command(&mut h, "Create Similar");
+    assert!(status(&h).contains("plan or an elevation") && h.state().status.error, "{}", status(&h));
+}

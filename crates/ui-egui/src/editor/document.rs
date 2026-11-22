@@ -1895,7 +1895,8 @@ impl BimApp {
         }
         // Ctrl+C, Ctrl+X and Ctrl+V in a family that isn't adaptive: the window's Copy, Cut and Paste, taken as on a
         // project's tab (`BimApp::clipboard_events`), for the family's clipboard.
-        if self.active_family().is_some_and(|ed| ed.adaptive.is_none()) {
+        // Not while a dialog of the window's has the keys, as on a project's tab.
+        if !self.keys_taken(ctx) && self.active_family().is_some_and(|ed| ed.adaptive.is_none()) {
             self.clipboard_events(ctx);
         }
         let Some(ed) = self.active_family_mut() else { return };

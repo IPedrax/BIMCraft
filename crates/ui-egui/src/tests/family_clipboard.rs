@@ -502,3 +502,50 @@ fn a_copy_puts_its_text_on_the_system_clipboard_and_ctrl_v_pastes_this_windows_c
     assert!(status(&h).contains("Elsewhere") && h.state().status.error, "{}", status(&h));
     assert_eq!(family(&h).forms.len(), 3);
 }
+
+#[test]
+fn cut_in_a_revolves_sketch_leaves_the_axis_line_it_doesnt_copy() {
+    let mut h = plan();
+    ed(&mut h).create_form(bimcraft_core::family::forms::FormKind::Revolve, false);
+    h.run();
+    {
+        let s = ed(&mut h).sketch.as_mut().expect("a sketch");
+        let mut axis = bimcraft_core::sketch::SketchLine::new(P2(0.0, -500.0), P2(0.0, 500.0));
+        axis.style = Some(crate::editor::sketch::AXIS.to_string());
+        s.sketch.lines = vec![bimcraft_core::sketch::SketchLine::new(P2(100.0, 0.0), P2(300.0, 0.0)), axis];
+        s.sketch.picked = [0, 1].into();
+    }
+    h.run();
+    ctrl_x(&mut h);
+    let s = &ed(&mut h).sketch.as_ref().unwrap().sketch;
+    assert_eq!(s.lines.len(), 1, "{}", status(&h));
+    assert_eq!(s.lines[0].style.as_deref(), Some(crate::editor::sketch::AXIS), "the Axis Line stays");
+}
+
+#[test]
+fn a_projects_copy_made_since_isnt_taken_for_the_familys() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    ctrl_c(&mut h);
+    // A project's clipboard text, as a project tab's Copy writes it (marked as the project's kind).
+    let text = format!(r#"{{"bimcraft":"{}","version":1}}"#, bimcraft_core::clipboard::KIND);
+    h.event(Event::Paste(text));
+    h.run();
+    assert!(!editor(&h).pasting());
+    assert!(status(&h).contains("project's elements") && h.state().status.error, "{}", status(&h));
+}
+
+#[test]
+fn a_paste_asked_on_another_tab_is_given_up() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    ctrl_c(&mut h);
+    // Asked on the project's tab (no document), the answer coming while the family's is shown: neither pastes.
+    let text = h.state().copied.clone().unwrap();
+    h.state_mut().paste_asked = Some((PasteMode::SamePlace, 0.0, None));
+    h.event(Event::Paste(text));
+    h.run();
+    assert!(h.state().paste_asked.is_none());
+    assert_eq!(family(&h).forms.len(), 2, "{}", status(&h));
+    assert!(!editor(&h).pasting());
+}

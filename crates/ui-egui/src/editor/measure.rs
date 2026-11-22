@@ -85,6 +85,11 @@ impl FamilyEditor {
             return Ok(());
         }
         let Some(p) = self.only_selected().filter(|p| self.holds(*p)) else { return Ok(()) };
+        // Their tools draw in a plan or an elevation.
+        if matches!(p, Picked::Plane(_) | Picked::Line(_) | Picked::Dimension(_)) && !self.editing_2d() {
+            let why = msg!("Create Similar makes a reference plane, a reference line or a dimension in a plan or an elevation.");
+            return Err(t(why).to_string());
+        }
         match p {
             Picked::Form(i) => {
                 let f = self.forms.get(i).ok_or_else(|| t("the form is gone").to_string())?.form()?;

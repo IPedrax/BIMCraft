@@ -487,6 +487,7 @@ impl FormSketch {
         self.fillet = None;
         self.trim = None;
         self.edit = None;
+        self.pasting = None;
     }
 
     /// Trim/Extend to Corner (TR) on: the next two lines picked meet at a corner.
@@ -722,6 +723,7 @@ impl FamilyEditor {
         // A Modify tool of the views put down: the sketch has its own.
         self.views.modify = None;
         self.views.pasting = None;
+        self.views.measuring = None;
         let (from, to) = match kind {
             FormKind::Revolve => ("0", "360"),
             FormKind::Sweep | FormKind::SweptBlend => ("0", "0"),
