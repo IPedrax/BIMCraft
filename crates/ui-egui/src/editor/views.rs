@@ -60,6 +60,8 @@ pub(crate) struct Views {
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
     /// bar says (FE-7).
     pub(crate) over_selected: bool,
+    /// Whether Ctrl was held over the view last frame: over something selected, a drag copies it (FE-4).
+    pub(crate) ctrl: bool,
     /// Where the selected form's profile handles were last shown on screen (FE-5).
     pub(crate) shapes_shown: Vec<(egui::Pos2, super::shape_handles::ShapeHandle)>,
     /// Where the selected form's Start and End handles were last shown on screen, and whether each can be dragged.
@@ -1219,6 +1221,9 @@ impl FamilyEditor {
         };
         self.views.over_selected =
             !self.selection.is_empty() && response.hover_pos().and_then(press_hit).is_some_and(|h| self.selection.contains(h));
+        // Ctrl held: a drag of the selection copies it (FE-4), and the status bar says so.
+        let ctrl = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
+        self.views.ctrl = ctrl;
         let pressed =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().and_then(press_hit);
         // What of the selection (and the element pressed) the view shows: a move takes that alone, leaving a
@@ -1276,8 +1281,10 @@ impl FamilyEditor {
             }
             let lone_plane =
                 self.selected_plane().is_some_and(|g| self.planes.iter().any(|q| q.guid == g && !q.datum() && q.pivot.is_none()));
-            if self.selection.contains(hit) && !lone_plane {
-                self.views.moving = Some(self.move_drag((at_view(p), view, which, pass), &in_view));
+            // With Ctrl, a lone plane is copied too (FE-4): a copy goes as the selection's move does.
+            if self.selection.contains(hit) && (!lone_plane || ctrl) {
+                let lone = self.selected_plane().filter(|_| lone_plane);
+                self.views.moving = Some(self.move_drag((at_view(p), view, which, pass), &in_view, ctrl, lone));
             }
         }
         let mut move_by: Option<[f64; 3]> = None;
@@ -1338,12 +1345,19 @@ impl FamilyEditor {
             problem = Some(e);
         }
         if let Some(d) = move_by
-            && let Err(e) = self.drag_move_to(d)
+            && let Err(e) = self.drag_move_to(d, ctrl)
         {
             problem = Some(e);
         }
         // The edge or the selection let go: they stay as the drag left them, a step of the history once the button is up.
         if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+            // Ctrl as the button comes up decides between a copy and a move (FE-4).
+            let m = crate::canvas::click_modifiers(ui);
+            if self.moving()
+                && let Err(e) = self.settle_drag(m.ctrl || m.command)
+            {
+                problem = Some(e);
+            }
             self.views.edge_drag = None;
             self.views.moving = None;
         }

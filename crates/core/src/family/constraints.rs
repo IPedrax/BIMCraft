@@ -15,10 +15,12 @@ use crate::ids::{Guid, Id};
 use crate::model::{Lock, TOL};
 use crate::view3d::{dot, sub};
 
+mod copying;
 mod moving;
 mod pivot;
 mod turn;
-pub use moving::{MoveRefused, Moving, Stays};
+pub use copying::{Copies, CopyRefused, Copying};
+pub use moving::{MoveRefused, Moving, Named, Stays};
 pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
 
 /// Dimensions one family may hold, and references one dimension may measure between.
@@ -323,6 +325,51 @@ pub struct Unsat {
 impl std::fmt::Display for Unsat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.message)
+    }
+}
+
+impl Unsat {
+    /// The same refusal with its dimensions taken to other places (`to`, place to place, as a copy's are to what it copies):
+    /// its list, and its words where they name one of them (`dimension 3`, `dimensions 2, 4`).
+    pub fn renumbered(&self, to: &dyn Fn(usize) -> usize) -> Unsat {
+        let mut message = String::new();
+        let mut rest = self.message.as_str();
+        while let Some(at) = rest.find("dimension") {
+            let (before, from) = rest.split_at(at);
+            message.push_str(before);
+            let word = if from.starts_with("dimensions ") { "dimensions " } else { "dimension " };
+            if !from.starts_with(word) {
+                message.push_str("dimension");
+                rest = &from["dimension".len()..];
+                continue;
+            }
+            message.push_str(word);
+            rest = &from[word.len()..];
+            // The numbers that follow, `, `-separated.
+            loop {
+                let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+                if digits == 0 {
+                    break;
+                }
+                let n: usize = rest[..digits].parse().unwrap_or(0);
+                let k = n.wrapping_sub(1);
+                if n > 0 && self.dims.contains(&k) {
+                    message.push_str(&(to(k) + 1).to_string());
+                } else {
+                    message.push_str(&rest[..digits]);
+                }
+                rest = &rest[digits..];
+                match rest.strip_prefix(", ") {
+                    Some(after) if after.starts_with(|c: char| c.is_ascii_digit()) => {
+                        message.push_str(", ");
+                        rest = after;
+                    }
+                    _ => break,
+                }
+            }
+        }
+        message.push_str(rest);
+        Unsat { message, dims: self.dims.iter().map(|k| to(*k)).collect(), over: self.over }
     }
 }
 
@@ -2452,6 +2499,19 @@ impl Family {
                 }
             })
             .collect())
+    }
+
+    /// Each reporting parameter more than one dimension is labelled with, and those dimensions (by place): a file from
+    /// before FE-4's review may hold one, and still opens; it reads the last ([`Family::reported`]). Setting such a label
+    /// anew is refused (`family`'s `dimension` and `dimensions`, the family document's Label).
+    pub fn reported_twice(&self) -> Vec<(String, Vec<usize>)> {
+        let mut by: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        for (i, d) in self.dimensions.iter().enumerate() {
+            if let Some(l) = d.label.as_deref().filter(|l| self.reporting(l)) {
+                by.entry(l).or_default().push(i);
+            }
+        }
+        by.into_iter().filter(|(_, v)| v.len() > 1).map(|(l, v)| (l.to_string(), v)).collect()
     }
 
     /// The values its reporting parameters measured by dimensions come to, for `values`: each labelled dimension's length.
