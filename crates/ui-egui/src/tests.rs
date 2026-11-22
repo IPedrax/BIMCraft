@@ -7881,6 +7881,7 @@ mod family_handle_review;
 mod family_handle_snap;
 mod family_handles_3d;
 mod family_manage;
+mod family_modify;
 mod family_nav3d;
 mod family_open;
 mod family_origin;

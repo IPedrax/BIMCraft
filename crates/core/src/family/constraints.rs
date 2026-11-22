@@ -18,10 +18,12 @@ use crate::view3d::{dot, sub};
 mod copying;
 mod moving;
 mod pivot;
+mod transform;
 mod turn;
 pub use copying::{Copies, CopyRefused, Copying};
 pub use moving::{MoveRefused, Moving, Named, Stays};
 pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
+pub use transform::{MAX_FACTOR, Transform, TransformRefused, Transformed, Transforming};
 
 /// Dimensions one family may hold, and references one dimension may measure between.
 pub const MAX_DIMENSIONS: usize = 1000;

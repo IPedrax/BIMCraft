@@ -30,7 +30,7 @@ use bimcraft_core::ids::Guid;
 
 /// What a move may change of the draft, as it was when the drag began: what Escape and a refusal put back.
 #[derive(Clone)]
-struct Kept {
+pub(super) struct Kept {
     forms: Vec<FormText>,
     planes: Vec<RefPlane>,
     lines: Vec<RefLine>,
@@ -44,7 +44,7 @@ struct Kept {
 }
 
 impl Kept {
-    fn of(ed: &FamilyEditor) -> Kept {
+    pub(super) fn of(ed: &FamilyEditor) -> Kept {
         Kept {
             forms: ed.forms.clone(),
             planes: ed.planes.clone(),
@@ -58,7 +58,7 @@ impl Kept {
         }
     }
 
-    fn put_back(&self, ed: &mut FamilyEditor) {
+    pub(super) fn put_back(&self, ed: &mut FamilyEditor) {
         ed.forms.clone_from(&self.forms);
         ed.planes.clone_from(&self.planes);
         ed.lines.clone_from(&self.lines);
@@ -123,7 +123,7 @@ fn copy_said(r: &CopyRefused, f: &Family) -> String {
 /// Where what a copy put in the draft came from: a refusal names the original, in the lists as they were before the
 /// copies, never a copy, which isn't there once it is refused. As it is (`default`), each thing is itself.
 #[derive(Default)]
-struct Origin {
+pub(super) struct Origin {
     /// Each form's place before the copies (a copy's, its original's); none, as it is.
     forms: Option<Vec<usize>>,
     /// The copies added at the end of a list: how long it was, and the original of each.
@@ -144,7 +144,7 @@ impl Origin {
         self.forms.as_ref().and_then(|f| f.get(i).copied()).unwrap_or(i)
     }
 
-    fn named(&self, n: Named) -> Named {
+    pub(super) fn named(&self, n: Named) -> Named {
         match n {
             Named::Plane(g) => Named::Plane(self.guids.get(&g).copied().unwrap_or(g)),
             Named::Line(g) => Named::Line(self.guids.get(&g).copied().unwrap_or(g)),
@@ -157,19 +157,19 @@ impl Origin {
     }
 
     /// `u` naming the originals of the dimensions it names.
-    fn unsat(&self, u: &Unsat) -> String {
+    pub(super) fn unsat(&self, u: &Unsat) -> String {
         u.renumbered(&|k| self.dimension(k)).message
     }
 }
 
 /// How a refusal names what it is about: the family as the drag found it (before any copy) and where each copy came from.
-struct Names<'a> {
-    family: &'a Family,
-    origin: &'a Origin,
+pub(super) struct Names<'a> {
+    pub(super) family: &'a Family,
+    pub(super) origin: &'a Origin,
 }
 
 impl Names<'_> {
-    fn said(&self, n: Named) -> String {
+    pub(super) fn said(&self, n: Named) -> String {
         self.family.said(self.origin.named(n))
     }
 }
@@ -223,16 +223,7 @@ impl FamilyEditor {
         lone: Option<Guid>,
     ) -> MoveDrag {
         // The types that don't solve or build as it is: a move isn't refused for them.
-        let broken = self
-            .family()
-            .map(|f| {
-                f.types
-                    .keys()
-                    .filter(|name| f.values(name, &BTreeMap::new()).map_or(true, |v| f.solve(&v).is_err() || f.pieces(&v).is_err()))
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
+        let broken = self.broken_types();
         let items = self.selection.items().iter().copied().filter(|p| self.holds(*p) && shown.contains(p)).collect();
         let selected = self.selection.items().to_vec();
         MoveDrag {
@@ -333,7 +324,7 @@ impl FamilyEditor {
     /// Copies of `items` made where they are (`Family::copies`) and added to the draft: what then moves (every copy,
     /// the dimensions that hold constraints among them too), what is selected after (the copies of `items`), and where each
     /// came from. A form's copy goes right after it, so a void's cuts what its original cuts; the rest go at the end.
-    fn copy_picked(&mut self, items: &[Picked]) -> Result<(Vec<Picked>, Vec<Picked>, Origin), String> {
+    pub(super) fn copy_picked(&mut self, items: &[Picked]) -> Result<(Vec<Picked>, Vec<Picked>, Origin), String> {
         let f = self.family()?;
         let mut c = Copying::default();
         for p in items {
@@ -542,7 +533,25 @@ impl FamilyEditor {
                 Picked::Form(_) | Picked::Plane(_) | Picked::Line(_) => {}
             }
         }
-        // Each type solved and built with it, as Finish builds a form.
+        self.builds(broken, names)
+    }
+
+    /// The types that don't solve or build as the draft is: an edit isn't refused for them.
+    pub(super) fn broken_types(&self) -> Vec<String> {
+        self.family()
+            .map(|f| {
+                f.types
+                    .keys()
+                    .filter(|name| f.values(name, &BTreeMap::new()).map_or(true, |v| f.solve(&v).is_err() || f.pieces(&v).is_err()))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Each type but `broken` solved and built as the draft is now, as Finish builds a form; else why not, naming what it is
+    /// about as `names` does.
+    pub(super) fn builds(&self, broken: &[String], names: &Names) -> Result<(), String> {
         let f = self.family()?;
         for name in f.types.keys().filter(|n| !broken.contains(n)) {
             let values = f.values(name, &BTreeMap::new())?;
