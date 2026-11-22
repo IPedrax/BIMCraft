@@ -148,7 +148,7 @@ fn sort(e: &Element) -> Result<Sort, &'static str> {
     Ok(match e {
         Element::Level(_) => return Err("a level is added in a section or an elevation, not pasted"),
         Element::Sheet(_) | Element::Viewport(_) => return Err("a sheet and its views are duplicated in the Project Browser"),
-        Element::Schedule(_) | Element::PanelSchedule(_) | Element::PlanView(_) => {
+        Element::Schedule(_) | Element::PanelSchedule(_) | Element::RebarDetail(_) | Element::PlanView(_) => {
             return Err("a view is duplicated in the Project Browser");
         }
         Element::View3D(v) if v.camera.is_none() => return Err("a 3D view is duplicated in the Project Browser"),

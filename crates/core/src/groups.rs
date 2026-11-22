@@ -123,7 +123,8 @@ pub fn kind_of(e: &Element) -> Result<Kind, String> {
         | E::Schedule(_)
         | E::View3D(_)
         | E::PlanView(_)
-        | E::PanelSchedule(_) => Err("a view, a sheet or what places a view is no group's".into()),
+        | E::PanelSchedule(_)
+        | E::RebarDetail(_) => Err("a view, a sheet or what places a view is no group's".into()),
         E::Link(_) | E::PointCloud(_) | E::CadImport(_) => {
             Err("a link, a scan or a CAD drawing is placed on its own, not in a group".into())
         }
