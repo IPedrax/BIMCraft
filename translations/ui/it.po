@@ -13929,7 +13929,7 @@ msgstr "Cerca script…"
 
 #: crates/ui-egui/src/browser.rs:325
 msgid "Search the Project Browser"
-msgstr "Cerca nel navigatore di progetto"
+msgstr "Cerca nel Browser di progetto"
 
 #: crates/ui-egui/src/parameters.rs:811
 #: crates/ui-egui/src/parameters.rs:1291
