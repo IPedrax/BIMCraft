@@ -527,7 +527,16 @@ fn unsupplied(m: &Model, before: &crate::codes::Codes, codes: &crate::codes::Cod
 /// the project has (a system naming none would never reach the project's settings, and a voltage taken away under a system
 /// leaves it naming nothing), and none an element names is set to null (a board's system, a circuit's voltage or wire type),
 /// as the dialog's commands refuse to take those away.
-pub(crate) fn settings_fit(m: &Model, before: &crate::codes::Codes, codes: &crate::codes::Codes) -> Result<(), String> {
+///
+/// `asked` is what the command took away by name, `(section, name)`: one an element names that was in force is refused
+/// when what is in force for it changes, however the codes now hold it (left out by an amendment that alone gave it, or
+/// another layer's rules coming through), so the element keeps the setting it was given.
+pub(crate) fn settings_fit(
+    m: &Model,
+    before: &crate::codes::Codes,
+    codes: &crate::codes::Codes,
+    asked: &[(String, String)],
+) -> Result<(), String> {
     use crate::codes::Discipline::Electrical;
     let mut named: [std::collections::BTreeSet<&str>; 3] = Default::default();
     for e in m.elements.values() {
@@ -544,9 +553,15 @@ pub(crate) fn settings_fit(m: &Model, before: &crate::codes::Codes, codes: &crat
     }
     for (key, named) in SECTIONS.iter().zip(&named) {
         let was = crate::codes::resolve_in(before, Electrical, key).value;
-        for (k, v) in crate::codes::resolve_in(codes, Electrical, key).value {
-            if v.is_null() && named.contains(k.as_str()) && was.get(&k).is_none_or(|w| !w.is_null()) {
-                return Err(format!("`{}` of {key} is one an element of the project names: change that first", shown(&k)));
+        let now = crate::codes::resolve_in(codes, Electrical, key).value;
+        for (k, v) in &now {
+            if v.is_null() && named.contains(k.as_str()) && was.get(k).is_none_or(|w| !w.is_null()) {
+                return Err(format!("`{}` of {key} is one an element of the project names: change that first", shown(k)));
+            }
+        }
+        for (_, k) in asked.iter().filter(|(s, _)| s == key) {
+            if now.get(k) != was.get(k) && named.contains(k.as_str()) && was.get(k).is_some_and(|w| !w.is_null()) {
+                return Err(format!("`{}` of {key} is one an element of the project names: change that first", shown(k)));
             }
         }
     }
