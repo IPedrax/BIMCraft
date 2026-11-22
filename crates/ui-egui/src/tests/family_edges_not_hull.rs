@@ -1,5 +1,5 @@
-//! FV-2: what Pick Lines takes of a form in a plan is an edge the view draws it with, as a click and a box select it by
-//! (FE-20): an L-shaped form's inner edges, never the chord its hull draws across the empty corner.
+//! What Pick Lines takes of a form in a plan is an edge the view draws it with, as a click and a box select it by
+//!: an L-shaped form's inner edges, never the chord its hull draws across the empty corner.
 use super::family_drag_move::status;
 use super::family_selection::ELL;
 use super::family_views::{click_family, editor, open, view};

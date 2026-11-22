@@ -117,7 +117,7 @@ impl FamilyEditor {
         match self.views.shown {
             Some(which) => {
                 self.views.frames.remove(&which);
-                // To the room the family takes up now: an edit never fits the view by itself (FE-26).
+                // To the room the family takes up now: an edit never fits the view by itself.
                 self.refit();
             }
             None => {

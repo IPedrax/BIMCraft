@@ -1,4 +1,4 @@
-//! FE-5: shape handles on a selected form's profile. In plan, an L-shaped extrusion shows a handle at the middle of each edge,
+//! Shape handles on a selected form's profile. In plan, an L-shaped extrusion shows a handle at the middle of each edge,
 //! pointing out of it; a drag offsets the edge, its neighbours following, as one step of the history; an arc's handle changes
 //! its radius. A locked edge, an edge a labelled dimension sets and a drag that would leave no profile are refused, the form
 //! left as it was. A void shows them too, and an elevation shows the sides it sees edge-on, beside the Start and End handles.
@@ -124,7 +124,7 @@ fn an_l_shapes_handles_sit_at_its_edges_middles_but_its_locked_edge() {
     let mut h = in_plan();
     assert!(shown(&h).is_empty(), "nothing selected, no handles");
     select(&mut h, 0);
-    // The west side is locked to West: no handle (FE-25); the east side's place is Len's, which its drag changes.
+    // The west side is locked to West: no handle; the east side's place is Len's, which its drag changes.
     assert_eq!(shown(&h).len(), 5, "{:?}", shown(&h));
     let mids = [[500.0, 0.0], [1000.0, 250.0], [750.0, 500.0], [500.0, 750.0], [250.0, 1000.0]];
     let free: Vec<bool> = mids.iter().map(|m| handle_at(&h, [m[0], m[1], 0.0]).1).collect();
@@ -258,7 +258,7 @@ fn an_end_a_lock_holds_has_no_handle() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     select(&mut h, 0);
     let ends_shown = editor(&h).views.ends_shown.clone();
-    assert_eq!(ends_shown.iter().map(|e| e.1).collect::<Vec<_>>(), [true], "Start free; End locked to Top, no handle (FE-25)");
+    assert_eq!(ends_shown.iter().map(|e| e.1).collect::<Vec<_>>(), [true], "Start free; End locked to Top, no handle");
 }
 
 /// The L selected in plan with its handles, the same after its notch's floor is dragged up, and Front with its side and end
@@ -427,7 +427,7 @@ fn a_thin_slots_handle_is_not_greyed_and_takes_a_widening_drag() {
 /// A handle is greyed by what ties it (a formula, a parameter), never by where a probe's millimetre would take it: a concave
 /// arc of a hole under 2 mm across (`r` − 1 within `TOL` of nothing) isn't greyed, though a drag into the hole is refused, and a
 /// drag that enlarges it is taken. (A family's sketch keeps its chords a millimetre apart, so this arc is read here as lines,
-/// not drawn.) An edge whose numbers are formulas drags too, the formula kept with the move added (FE-26).
+/// not drawn.) An edge whose numbers are formulas drags too, the formula kept with the move added.
 #[test]
 fn a_handle_is_never_greyed_by_where_a_probe_would_take_it() {
     use bimcraft_core::family::handles as hs;

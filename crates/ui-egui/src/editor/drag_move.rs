@@ -1,7 +1,7 @@
-//! FE-7: dragging the selection in a family's plan or elevation moves it. A press on an element (its edge, a
+//! Dragging the selection in a family's plan or elevation moves it. A press on an element (its edge, a
 //! form's face, a plane's trace, a line, a dimension, a connector, a selected symbol's strokes) and a drag past the few points a
 //! click allows move the whole selection by the drag, in the view's plane; one not selected is selected first (alone, or added
-//! with Ctrl). A lone plane of the family's own keeps F4's drag, through its constraints (`views.rs`).
+//! with Ctrl). A lone plane of the family's own keeps its own drag, square to itself, through its constraints (`views.rs`).
 //!
 //! What moves and how: planes, reference lines and forms through the constraints (`family::constraints::Moving`, `move_by`):
 //! a form's sketch in its host plane where the view sees it flat; where it sees it edge-on, the part of the drag along the
@@ -12,11 +12,11 @@
 //! origin, what a pivot turns, and what would leave the plane it is drawn on stay, refusing the move. After it every type
 //! must still solve and build (as Finish checks), or it is refused. A refusal leaves everything as it was and says why.
 //!
-//! The drag is the shape handles' (FE-5): made again from the draft as it was at each step (live, one step of the history
+//! The drag is the shape handles': made again from the draft as it was at each step (live, one step of the history
 //! once the button is up), the pointer read through the view as it was when the drag began; a drag back where it began
 //! leaves nothing to save; Escape, Undo, Redo and another view or tab shown give it up, everything put back.
 //!
-//! FE-4: with Ctrl held, the drag copies the selection instead (`Family::copies`), the copies moved by the same rules and
+//! With Ctrl held, the drag copies the selection instead (`Family::copies`), the copies moved by the same rules and
 //! selected in place of what they copy; Ctrl as the button comes up decides between a copy and a move.
 use super::select_box::{How, Picked};
 use super::sketch::reader;
@@ -38,7 +38,7 @@ struct Kept {
     symbols: Vec<SymbolText>,
     connectors: Vec<connectors::ConnectorText>,
     nested_instances: Vec<NestedInstance>,
-    /// The parameters and the types' values, which a lone plane's drag through a label changes (F4).
+    /// The parameters and the types' values, which a lone plane's drag through a label changes.
     params: Vec<ParamText>,
     types: Vec<(String, BTreeMap<String, String>)>,
 }
@@ -88,9 +88,9 @@ pub(crate) struct MoveDrag {
     last: [f64; 3],
     /// What was selected as it began: what a copy's preview, a refusal and Escape put back.
     selected: Vec<Picked>,
-    /// Whether it copies (Ctrl held, FE-4) rather than moves: Ctrl as the button comes up decides.
+    /// Whether it copies (Ctrl held) rather than moves: Ctrl as the button comes up decides.
     copy: bool,
-    /// A lone plane of the family's own, pressed with Ctrl (FE-4): moved, it goes as F4's drag takes it, square to itself
+    /// A lone plane of the family's own, pressed with Ctrl: moved, it goes as its own drag takes it, square to itself
     /// through its constraints.
     lone: Option<Guid>,
 }
@@ -104,14 +104,14 @@ impl MoveDrag {
 }
 
 /// The drag's way in the view, from where the button went down (the view's millimetres): what the selection moves by.
-/// With Shift held it is square to the view's axes (FE-2's Ortho, `bimcraft_core::snap::orthogonal_step`), from where the
+/// With Shift held it is square to the view's axes (`bimcraft_core::snap::orthogonal_step`, as Shift keeps a drawn line square), from where the
 /// drag began; nothing else reads the pointer for a move.
 pub(super) fn delta(from: P2, to: P2, shift: bool) -> P2 {
     let to = if shift { bimcraft_core::snap::orthogonal_step(from, to).0 } else { to };
     P2(to.0 - from.0, to.1 - from.1)
 }
 
-/// What a copy's refusal says (FE-4), naming what isn't copied in `f`.
+/// What a copy's refusal says, naming what isn't copied in `f`.
 fn copy_said(r: &CopyRefused, f: &Family) -> String {
     match r {
         CopyRefused::Datum(n) => tf("{} is a datum: it isn't copied.", &[&f.said(*n)]),
@@ -120,7 +120,7 @@ fn copy_said(r: &CopyRefused, f: &Family) -> String {
     }
 }
 
-/// Where what a copy put in the draft came from (FE-4): a refusal names the original, in the lists as they were before the
+/// Where what a copy put in the draft came from: a refusal names the original, in the lists as they were before the
 /// copies, never a copy, which isn't there once it is refused. As it is (`default`), each thing is itself.
 #[derive(Default)]
 struct Origin {
@@ -202,10 +202,19 @@ fn shifted(e: &mut Expr, by: f64) -> bool {
 }
 
 impl FamilyEditor {
+    /// Whether the selection holds a connector with no place of its own (an electrical device's may have none): a move leaves
+    /// it where it is, which the status bar says as the move begins.
+    pub(super) fn unplaced_connector_selected(&self) -> bool {
+        self.selection.items().iter().any(|p| match *p {
+            Picked::Connector(i) => self.connectors.get(i).is_some_and(|c| c.connector().at.is_none()),
+            _ => false,
+        })
+    }
+
     /// A move of the selection begun at `from` (the view's millimetres, `view` as it was then) in view `which`, drawn in pass
     /// `seen`.
     /// `shown`: what of the selection the view shows, which alone moves.
-    /// `copy`: Ctrl held as it begins, a copy (FE-4).
+    /// `copy`: Ctrl held as it begins, a copy.
     pub(super) fn move_drag(
         &self,
         (from, view, which, seen): (P2, bimcraft_core::render::View, Which, u64),
@@ -247,14 +256,14 @@ impl FamilyEditor {
         self.views.moving.is_some()
     }
 
-    /// Whether the selection being dragged is copied (Ctrl held, FE-4), not moved.
+    /// Whether the selection being dragged is copied (Ctrl held), not moved.
     pub(crate) fn copying(&self) -> bool {
         self.views.moving.as_ref().is_some_and(|d| d.copy)
     }
 
     /// The selection being dragged, the pointer `d` (the family's mm) from where the button went down: the draft made again
     /// from what it was with the selection moved that far, or with copies of it put there and selected in its place where
-    /// `copy` (Ctrl held, FE-4), where everything it holds takes it; else left as it was, saying why.
+    /// `copy` (Ctrl held), where everything it holds takes it; else left as it was, saying why.
     pub(crate) fn drag_move_to(&mut self, d: [f64; 3], copy: bool) -> Result<(), String> {
         let Some(drag) = self.views.moving.as_mut() else { return Ok(()) };
         if !d.iter().all(|v| v.is_finite()) || (drag.copy == copy && d.iter().zip(drag.last).all(|(a, b)| (a - b).abs() < 1e-9)) {
@@ -276,10 +285,10 @@ impl FamilyEditor {
                 self.move_picked(&moved, d, &drag.broken, &Names { family: &as_it_was, origin: &origin })
             })
         } else if let Some(g) = drag.lone {
-            // A lone plane pressed with Ctrl and let go without it: F4's drag, as without Ctrl.
+            // A lone plane pressed with Ctrl and let go without it: the plane's own drag, as without Ctrl.
             match self.plane_dragged(g, d) {
                 Err(Ok((e, at))) => {
-                    // What holds it asks, as F4's drag does, and the drag ends.
+                    // What holds it asks, as the plane's own drag does, and the drag ends.
                     drag.put_back(self);
                     self.views.moving = None;
                     self.unsatisfied(e, super::dimensions::Retry::Drag(g, at));
@@ -309,7 +318,7 @@ impl FamilyEditor {
         done
     }
 
-    /// The drag let go with Ctrl held or not (`copy`): made again that way if it was the other (FE-4: Ctrl as the button
+    /// The drag let go with Ctrl held or not (`copy`): made again that way if it was the other (Ctrl as the button
     /// comes up decides).
     pub(crate) fn settle_drag(&mut self, copy: bool) -> Result<(), String> {
         match self.views.moving.as_ref() {
@@ -321,7 +330,7 @@ impl FamilyEditor {
         }
     }
 
-    /// Copies of `items` made where they are (FE-4, `Family::copies`) and added to the draft: what then moves (every copy,
+    /// Copies of `items` made where they are (`Family::copies`) and added to the draft: what then moves (every copy,
     /// the dimensions that hold constraints among them too), what is selected after (the copies of `items`), and where each
     /// came from. A form's copy goes right after it, so a void's cuts what its original cuts; the rest go at the end.
     fn copy_picked(&mut self, items: &[Picked]) -> Result<(Vec<Picked>, Vec<Picked>, Origin), String> {
@@ -395,9 +404,9 @@ impl FamilyEditor {
         Ok((moved, selected, origin))
     }
 
-    /// Plane `g` moved by `d` (the family's axes) as F4's drag moves it: along its normal, through the constraints where
+    /// Plane `g` moved by `d` (the family's axes) as the plane's own drag moves it: along its normal, through the constraints where
     /// a dimension measures to it (a label it changes taking the new length), else by itself, the reference lines on it
-    /// with it. Refused by the constraints, why and where it was going (for F4's dialog); else what went wrong.
+    /// with it. Refused by the constraints, why and where it was going (for Constraints Not Satisfied's dialog); else what went wrong.
     #[allow(clippy::type_complexity)]
     fn plane_dragged(&mut self, g: Guid, d: [f64; 3]) -> Result<(), Result<(Unsat, f64), String>> {
         let f = self.family().map_err(Err)?;

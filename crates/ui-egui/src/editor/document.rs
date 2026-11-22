@@ -226,7 +226,7 @@ impl FamilyEditor {
     /// last one, once nothing is going on any more (no button held, no field being typed in, no dialog open), so a drag, a
     /// word typed or a dialog's whole visit is one step. Cancel in a dialog puts back what it began from, leaving no step.
     pub(super) fn history(&mut self, ctx: &Context, ask: &Asked) {
-        // Undo and Redo give up a handle being dragged, the form put back as it was before it (FE-5).
+        // Undo and Redo give up a handle being dragged, the form put back as it was before it.
         if ask.undo || ask.redo {
             self.cancel_drags();
         }
@@ -278,8 +278,8 @@ impl FamilyEditor {
     }
 }
 
-/// The Dimension panel: Aligned Dimension, Angular, Radial and Diameter (F7), on the Create tab and, while a form is
-/// sketched, on its contextual tab (FE-12), greyed in {3D} and where a sketch's plane isn't seen flat, saying why.
+/// The Dimension panel: Aligned Dimension, Angular, Radial and Diameter, on the Create tab and, while a form is
+/// sketched, on its contextual tab, greyed in {3D} and where a sketch's plane isn't seen flat, saying why.
 pub(super) fn dimension_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     let why = if ed.sketching() { ed.sketch_undimensionable() } else { None };
     let usable = ed.editing_2d() && why.is_none();
@@ -297,8 +297,8 @@ pub(super) fn dimension_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
         {
             ed.dimension_tool();
         }
-        // The angles between lines that cross (F7c); a circle or an arc of a sketch, its radius or its diameter
-        // (F7b).
+        // The angles between lines that cross; a circle or an arc of a sketch, its radius or its diameter
+        //.
         for (kind, icon, label, tip) in [
             (
                 bimcraft_core::family::DimKind::Angular,
@@ -1333,6 +1333,10 @@ impl BimApp {
             let base = Arc::clone(&self.session.model);
             if let Some(e) = ed.view_2d(ui, &base, which, pane) {
                 self.status = Status { text: e, error: true };
+            } else if let Some(text) = ed.views.said.take() {
+                // What a drag did that is worth saying (a parameter's value as a handle drags it, a side lined up, a part a
+                // move leaves where it is): a note, not an error.
+                self.status = Status { text, error: false };
             }
         } else if let Some(d) = ed.adaptive.as_mut() {
             ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| {
@@ -1442,7 +1446,7 @@ impl BimApp {
         if ed.sketching() {
             ui.horizontal(|ui| {
                 ui.set_min_height(24.0);
-                // A dimension selected while sketching (FE-12): its Label and Value.
+                // A dimension selected while sketching: its Label and Value.
                 if let Some(g) = ed.sketch.as_ref().and_then(|s| s.selected_dim) {
                     if let Some(e) = super::sketch_dims::dimension_bar(ui, ed, g, units) {
                         self.status = Status { text: e, error: true };
@@ -1530,7 +1534,7 @@ impl BimApp {
                     Some(_) => msg!("Click the line of the sketch that moves onto it; its padlock locks them."),
                 });
             }
-            // A dimension tool while sketching (FE-12): its prompt, as outside sketch mode.
+            // A dimension tool while sketching: its prompt, as outside sketch mode.
             if ed.views.dimensioning.is_some() {
                 return Some(dimension_prompt(ed.views.dim_kind));
             }
@@ -1621,7 +1625,7 @@ impl BimApp {
         if ed.editing_2d() && ed.sketch.is_none() {
             out.extend(["Aligned Dimension", "Align", msg!("Reference Line")]);
         } else if ed.editing_2d() {
-            // While a form is sketched, the dimensions where the view sees the sketch's plane flat (FE-12).
+            // While a form is sketched, the dimensions where the view sees the sketch's plane flat.
             out.push("Aligned Dimension");
         }
         // The selection's commands (FE-20), in a family that isn't adaptive, outside a sketch; the status bar's two toggles
@@ -2281,7 +2285,7 @@ impl BimApp {
             }
             None => cam,
         };
-        // A selected form's handles (FE-25), where the view shows them as the hand found it: a press on one holds it, and the
+        // A selected form's handles, where the view shows them as the hand found it: a press on one holds it, and the
         // drag is the handle's, not the view's.
         ed.keep_3d(ui.ctx().cumulative_pass_nr());
         let before = on_pane(cam, [w, h], pane);
@@ -2357,7 +2361,7 @@ impl BimApp {
         {
             self.status = Status { text: e, error: true };
         }
-        // The parameter a handle drags, at its value now (FE-25).
+        // The parameter a handle drags, at its value now.
         if let Some(text) = ed.views.said.take() {
             self.status = Status { text, error: false };
         }

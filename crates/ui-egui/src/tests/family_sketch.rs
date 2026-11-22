@@ -316,7 +316,7 @@ fn an_extrusions_end_drags_by_its_handle_unless_it_is_tied() {
         e => panic!("{e:?}"),
     };
     assert!((now - (to + 200.0)).abs() < 15.0, "{to} to {now}");
-    // The box's End is `Height`: its drag changes Height for the type (FE-25), the End still `Height`.
+    // The box's End is `Height`: its drag changes Height for the type, the End still `Height`.
     view(&mut h, Some(Which::Elevation(Side::Front)));
     editor_mut(&mut h).select_form(0);
     h.run();

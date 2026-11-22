@@ -1,4 +1,4 @@
-//! FE-5: shape handles on a form's profile. A selected extrusion (solid or void) shows a handle at the middle of
+//! Shape handles on a form's profile. A selected extrusion (solid or void) shows a handle at the middle of
 //! each edge of its profile, its outlines' and its holes' alike, pointing out of the solid; dragged, it offsets that edge along
 //! its normal. The lines that share its ends follow: each straight one along its own line, extended or trimmed to meet the
 //! moved edge (one running on in line with it has its shared end moved with the edge); an arc there still runs through its

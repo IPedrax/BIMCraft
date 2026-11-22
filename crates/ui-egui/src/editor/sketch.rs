@@ -112,11 +112,11 @@ pub(crate) struct FormSketch {
     pub(crate) align_from: Option<(DimRef, (P2, P2), Option<usize>)>,
     /// Align's padlock, offered until the next click: the lock it adds.
     pub(crate) offer: Option<FamilyDimension>,
-    /// Locks added while sketching, and those the form had that were taken off (or dimensions deleted, FE-12): written at
+    /// Locks added while sketching, and those the form had that were taken off (or dimensions deleted): written at
     /// Finish, dropped by Cancel.
     pub(crate) locks: Vec<FamilyDimension>,
     pub(crate) unlocked: Vec<Guid>,
-    /// FE-12: dimensions made while sketching, the draft's own as their labels, locks and EQ were changed while sketching,
+    /// Dimensions made while sketching, the draft's own as their labels, locks and EQ were changed while sketching,
     /// and the parameters Create Parameter… made for their labels: written at Finish, dropped by Cancel.
     pub(crate) dims: Vec<FamilyDimension>,
     pub(crate) changed: Vec<FamilyDimension>,
@@ -137,7 +137,7 @@ pub(crate) struct FormSketch {
     pub(crate) trim: Option<Option<(usize, P2)>>,
 }
 
-/// A step of a sketch's own history: what a change while sketching may change, together (FE-12).
+/// A step of a sketch's own history: what a change while sketching may change, together.
 #[derive(Clone, PartialEq)]
 struct Snap {
     lines: [Vec<SketchLine>; 4],
@@ -279,7 +279,7 @@ impl FormSketch {
         self.sketch.lines.iter().find(|l| is_axis(l)).map(|l| [l.start(), l.end()])
     }
 
-    /// Line `l` as drawn: where it was before the sketch's dimensions moved it, while it is still where they put it (FE-12),
+    /// Line `l` as drawn: where it was before the sketch's dimensions moved it, while it is still where they put it,
     /// unless `kept` says it is to be taken where it is.
     pub(crate) fn undriven(&self, l: &SketchLine, kept: &[Guid]) -> SketchLine {
         let driven = self.driven.iter().find(|(g, _, to)| *g == l.guid && !l.guid.is_nil() && super::sketch_dims::same(&l.curve, to));
@@ -313,7 +313,7 @@ impl FormSketch {
     fn add(&mut self, curves: Vec<Curve>) {
         if self.axis_tool {
             if let Some(c) = curves.into_iter().find(|c| c.kind() == "line") {
-                // The axis drawn again is the same line (its id and GUID), so what measures to it still does (FE-12).
+                // The axis drawn again is the same line (its id and GUID), so what measures to it still does.
                 let was = self.sketch.lines.iter().find(|l| is_axis(l)).map(|l| (l.id, l.guid)).filter(|(_, g)| !g.is_nil());
                 let (id, guid) = was.unwrap_or((0, Guid::new()));
                 self.sketch.lines.retain(|l| !is_axis(l));
@@ -326,7 +326,7 @@ impl FormSketch {
             for piece in bimcraft_core::curves::explode(&c) {
                 let end = piece.end();
                 let way = piece.tangent(piece.domain().1);
-                // A GUID of its own as it is drawn (FE-12), so a dimension can name it while sketching.
+                // A GUID of its own as it is drawn, so a dimension can name it while sketching.
                 self.sketch.add(SketchLine { guid: Guid::new(), ..SketchLine::from(piece) });
                 self.last = Some((end, way));
             }
@@ -979,12 +979,12 @@ impl FamilyEditor {
     }
 
     /// Form `form` (made by Finish from `before`, the one at `index`, or a new one) put in the draft with the dimensions made,
-    /// changed and taken off while sketching (Align's locks among them, FE-12) and the parameters made for their labels: built
+    /// changed and taken off while sketching (Align's locks among them) and the parameters made for their labels: built
     /// with each type first, a fault of it or a constraint a type can't hold refusing it, the draft as it was.
     fn commit_form(&mut self, index: Option<usize>, form: Form, before: &Form) -> Result<(), String> {
         let Some(s) = self.sketch.as_ref() else { return Ok(()) };
         let made_params = s.params.clone();
-        // Its dimensions: those added while sketching, less those taken off, and none to a line that is gone (F7b).
+        // Its dimensions: those added while sketching, less those taken off, and none to a line that is gone.
         let mut gone = Family { dimensions: self.sketch_dimensions(), forms: vec![form.clone()], ..Family::default() };
         gone.forget_lines_gone(std::slice::from_ref(before));
         let dims = gone.dimensions;
@@ -1392,7 +1392,7 @@ impl FamilyEditor {
 
     /// The handles of a selected extrusion's Start and End in view `which`, where the view sees its plane edge-on: where each
     /// shows (the view's millimetres), whether it is End, why it can't be dragged if it can't (a parameter it is tied to can't be
-    /// set), the normal it moves along, and the parameters a drag goes through (FE-25). A lock or EQ holding it: none. None
+    /// set), the normal it moves along, and the parameters a drag goes through. A lock or EQ holding it: none. None
     /// while a tool is in hand.
     pub(crate) fn end_handles(&self, st: &Staged, which: Which) -> Vec<EndHandle> {
         if !self.handles_shown() {
@@ -1416,11 +1416,12 @@ impl FamilyEditor {
         let Some(first) = loops.first() else { return Vec::new() };
         let c = bimcraft_core::geom::centroid(&first.outer);
         let Ok(family) = self.family() else { return Vec::new() };
+        let key = self.drive_key(&family);
         let mut out = Vec::new();
         for (text, end) in [(&ft.from, false), (&ft.to, true)] {
             if let Some(d) = crate::adaptive_editor::worth(&text_expr(text), &values) {
-                // Tied to a parameter, its drag goes through it; a lock or EQ holding it, no handle (FE-25).
-                let (blocked, param) = match self.drive(&family, i, super::handle_params::Target::End(end)) {
+                // Tied to a parameter, its drag goes through it; a lock or EQ holding it, no handle.
+                let (blocked, param) = match self.drive(key, &family, i, super::handle_params::Target::End(end)) {
                     super::handle_params::Drive::Free => (None, None),
                     super::handle_params::Drive::Param(names) => (None, Some(names)),
                     super::handle_params::Drive::Refused(why) => (Some(why), None),
@@ -1465,7 +1466,7 @@ impl FamilyEditor {
 }
 
 /// A Start or End handle: where it shows (the view's mm), whether it is End, why it can't be dragged, the normal it moves
-/// along, and the parameters its drag goes through where its number is theirs (FE-25).
+/// along, and the parameters its drag goes through where its number is theirs.
 pub(crate) type EndHandle = (P2, bool, Option<String>, [f64; 3], Option<Vec<String>>);
 
 /// What the status bar asks for while a form is sketched.
@@ -1726,7 +1727,7 @@ impl BimApp {
                 }
             }
         });
-        // FE-12: the Dimension tools, in a plan or an elevation that sees the sketch's plane flat.
+        // The Dimension tools, in a plan or an elevation that sees the sketch's plane flat.
         super::document::dimension_panel(ui, ed);
         ribbon::panel(ui, msg!("Work Plane"), |ui| {
             let tip =

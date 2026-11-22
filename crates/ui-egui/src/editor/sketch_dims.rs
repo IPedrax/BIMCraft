@@ -1,6 +1,6 @@
-//! FE-12: the Dimension tool while a form is sketched. In a plan or an elevation that sees the
+//! The Dimension tool while a form is sketched. In a plan or an elevation that sees the
 //! sketch's plane flat, Aligned (DI, DD), Angular (AN), Radial and Diameter dimensions pick the sketch's own lines and circles
-//! (unfinished: each line has its GUID as it is drawn, F7b), reference planes, reference lines and other forms' lines, as
+//! (unfinished: each line has its GUID as it is drawn), reference planes, reference lines and other forms' lines, as
 //! they do outside sketch mode (`dimensions.rs`). What is made, changed or taken off while sketching is held with the sketch
 //! (`FormSketch::dims`, `changed`, `unlocked`, as Align's `locks`) and drawn with it, with the draft's own dimensions that
 //! measure the form's lines; a label, a lock, EQ or a value typed in drives the sketch's lines at once through the solve
@@ -131,12 +131,12 @@ impl FamilyEditor {
         self.types.get(self.picked).and_then(|(name, _)| f.values(name, &self.preview_params).ok()).unwrap_or_default()
     }
 
-    /// The parameters made while sketching, for a label (FE-12): none outside sketch mode.
+    /// The parameters made while sketching, for a label: none outside sketch mode.
     pub(crate) fn sketch_params(&self) -> Vec<(String, Holds)> {
         self.sketch.as_ref().map(|s| s.params.iter().map(|p| (p.name.trim().to_string(), p.kind)).collect()).unwrap_or_default()
     }
 
-    /// Where a parameter made for a label goes: the sketch's while a form is sketched (FE-12), else the draft's.
+    /// Where a parameter made for a label goes: the sketch's while a form is sketched, else the draft's.
     pub(super) fn params_held(&mut self) -> &mut Vec<ParamText> {
         match self.sketch.as_mut() {
             Some(s) => &mut s.params,

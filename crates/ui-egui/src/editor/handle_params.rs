@@ -1,9 +1,9 @@
-//! FE-25: a shape handle tied to a parameter drags it. A side or an end whose place a labelled dimension sets, or an end whose
+//! A shape handle tied to a parameter drags it. A side or an end whose place a labelled dimension sets, or an end whose
 //! number is a formula of parameters (an End associated with `Height`), is dragged by changing that parameter for the type
 //! previewed (an instance parameter's own value, its default in the family): the value that puts the side or end where the
 //! hand is, found on the flexed family (the dimension's length after the drag, the End's new number) and written as a
 //! dimension's drag through its label writes it (`Edit::Parameter`), one step of the history. A side whose numbers are
-//! formulas and that no label sets has no parameter dragged: it moves alone, its formulas kept with the move added (FE-26,
+//! formulas and that no label sets has no parameter dragged: it moves alone, its formulas kept with the move added (
 //! `handles::shifted`; the starter box's `Width / 2` side dragged 40 out is `(Width / 2) + 40`).
 //!
 //! Which parameter is found by moving each (`drive`): of those the side's or end's formulas name (or the label on it), the ones
@@ -83,23 +83,11 @@ pub(crate) struct ParamDrag {
     pending: Option<f64>,
 }
 
-/// The parameters named in `formulas`, as `f` lists them, the longest names matched first where one holds another.
+/// The parameters `formulas` read, as `f` lists them: each formula parsed (`family::names`), so a name is matched whole, never
+/// inside another name or a function's (`a` isn't read by `abs(b)`). A formula that doesn't parse names none.
 fn named(f: &Family, formulas: &[&str]) -> Vec<String> {
-    let mut names: Vec<&str> = f.parameters.iter().map(|p| p.name.as_str()).filter(|n| !n.is_empty()).collect();
-    names.sort_by_key(|n| std::cmp::Reverse(n.len()));
-    let mut out: Vec<String> = Vec::new();
-    for text in formulas {
-        let mut rest = text.to_string();
-        for n in &names {
-            if rest.contains(n) {
-                rest = rest.replace(n, " ");
-                if !out.iter().any(|o| o == n) {
-                    out.push(n.to_string());
-                }
-            }
-        }
-    }
-    out
+    let read: Vec<String> = formulas.iter().filter_map(|text| bimcraft_core::family::names(text).ok()).flatten().collect();
+    f.parameters.iter().filter(|p| !p.name.is_empty() && read.contains(&p.name)).map(|p| p.name.clone()).collect()
 }
 
 fn formulas<'a>(exprs: impl IntoIterator<Item = &'a Expr>) -> Vec<&'a str> {
@@ -196,9 +184,19 @@ impl FamilyEditor {
         None
     }
 
-    /// How a drag of form `i`'s handle on `target` works, in the family `drawn` (as typed): worked out once for the draft as
-    /// it is, and kept while something is being dragged.
-    pub(crate) fn drive(&self, drawn: &Family, i: usize, target: Target) -> Drive {
+    /// What the drives worked out for `drawn` (as typed) are kept by: the draft, the instance previewed and the type shown.
+    /// Worked out once by each caller for all its handles, as it reads the whole family.
+    pub(crate) fn drive_key(&self, drawn: &Family) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (serde_json::to_string(drawn).unwrap_or_default(), serde_json::to_string(&self.preview_params).unwrap_or_default()).hash(&mut h);
+        self.picked.hash(&mut h);
+        h.finish()
+    }
+
+    /// How a drag of form `i`'s handle on `target` works, in the family `drawn` (as typed, `key` its [`drive_key`](Self::drive_key)):
+    /// worked out once for the draft as it is, and kept while something is being dragged.
+    pub(crate) fn drive(&self, key: u64, drawn: &Family, i: usize, target: Target) -> Drive {
         let side = (
             i,
             match target {
@@ -207,14 +205,6 @@ impl FamilyEditor {
                 Target::End(false) => -2,
             },
         );
-        let key = {
-            use std::hash::{Hash, Hasher};
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            (serde_json::to_string(drawn).unwrap_or_default(), serde_json::to_string(&self.preview_params).unwrap_or_default())
-                .hash(&mut h);
-            self.picked.hash(&mut h);
-            h.finish()
-        };
         let busy = self.views.param_drag.is_some()
             || self.views.edge_drag.is_some()
             || self.views.end_drag.is_some()
@@ -241,7 +231,7 @@ impl FamilyEditor {
         let (held, exprs): (Option<Held>, Vec<&Expr>) = match target {
             Target::Edge(k, _) => {
                 let Some(line) = form.sketch.get(k) else { return Drive::Hidden };
-                // No label, lock or EQ on it: the side moves alone, a formula of its own kept with the move added (FE-26).
+                // No label, lock or EQ on it: the side moves alone, a formula of its own kept with the move added.
                 let held = if form.guid.is_nil() { None } else { drawn.edge_held(form.guid, line.guid) };
                 if held.is_none() {
                     return Drive::Free;
@@ -566,5 +556,26 @@ impl FamilyEditor {
             self.put_back(p.kept);
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A parameter is named by a formula as a whole name: `a` isn't read by `abs(b)` nor by `ab`, and a name that holds
+    /// another (`Width` and `Width2`) is told apart.
+    #[test]
+    fn a_formula_names_its_parameters_whole() {
+        let f: Family = serde_json::from_value(serde_json::json!({
+            "types": {"T": {}},
+            "parameters": [{"name": "a", "value": 1}, {"name": "b", "value": 2}, {"name": "ab", "value": 3},
+                {"name": "Width", "value": 4}, {"name": "Width2", "value": 5}]
+        }))
+        .unwrap();
+        assert_eq!(named(&f, &["abs(b)"]), ["b"]);
+        assert_eq!(named(&f, &["ab + 1"]), ["ab"]);
+        assert_eq!(named(&f, &["Width2 / 2", "a * 2"]), ["a", "Width2"]);
+        assert!(named(&f, &["(("]).is_empty(), "a formula that doesn't parse names none");
     }
 }
