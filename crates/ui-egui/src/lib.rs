@@ -7167,9 +7167,12 @@ impl BimApp {
                         if icon_button(ui, Icon::Close, "Dismiss").clicked() {
                             self.status = Status::default();
                         }
+                        if ui.button(t("Copy")).on_hover_text(t("Copy the message to the clipboard")).clicked() {
+                            ui.ctx().copy_text(self.status.text.clone());
+                        }
                     });
                 });
-                ui.label(&self.status.text);
+                ui.add(egui::Label::new(&self.status.text).selectable(true));
             });
         });
     }
