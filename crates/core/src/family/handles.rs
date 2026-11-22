@@ -7,11 +7,17 @@
 //!
 //! This is the geometry alone, in the host plane's own axes ([`edge_handles`], [`offset_lines`], [`offset_edge`]), and what
 //! constraint holds an edge or an end ([`Family::edge_held`], [`Family::end_held`]); the family document draws the handles and
-//! refuses what the constraints won't take. Only the numbers a drag moves are written, as numbers: one that is a formula
-//! refuses the drag ([`Refused::Tied`]), and every other keeps what it was, its formula too.
+//! refuses what the constraints won't take. Only the numbers a drag moves are written: a number as a number, a formula as
+//! itself with the move added ([`shifted`]: `Width / 2` dragged 40 out is `(Width / 2) + 40`), so that side alone goes
+//! and its parameter still moves it; every other keeps what it was, its formula too.
+//!
+//! What a dragged side or end lines up with is here too ([`Family::handle_targets`], [`snapped`]): the reference planes
+//! and the other forms' sides and ends that face its way, each with where it is along it.
+
+use std::collections::BTreeMap;
 
 use super::sketch::{FormCurve, FormLine, chorded};
-use super::{DimRef, Expr, Extent, Family, FamilyDimension};
+use super::{DimRef, Expr, Extent, Family, FamilyDimension, Val, constraints};
 use crate::geom::P2;
 use crate::ids::Guid;
 use crate::model::TOL;
@@ -33,8 +39,6 @@ pub struct EdgeHandle {
 /// Why an edge can't be moved so.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refused {
-    /// A number it would move is a formula, or tied to a parameter.
-    Tied,
     /// The profile it would leave isn't one: lines crossing or overlapping, one of no length or turned back on itself, a loop
     /// no longer closed, an arc of no radius.
     Invalid,
@@ -225,19 +229,71 @@ fn turn_through(a: P2, m: P2, b: P2) -> Option<f64> {
     turn.is_finite().then(|| turn.to_degrees())
 }
 
-/// Number `e`, `old` now, made `new`: unchanged within [`MOVED`] (a formula kept), else written as a number, refused where it
-/// is a formula.
+/// The formula `inner` and the number `k` of one written `(inner) + k` or `(inner) - k`, as [`shifted`] writes it: the
+/// first bracket closing where the last one does, then a sign and a plain number.
+fn shift_of(s: &str) -> Option<(&str, f64)> {
+    let s = s.trim();
+    let (head, tail) = s.split_at(s.rfind(')')? + 1);
+    let tail = tail.trim();
+    let (sign, k) = match (tail.strip_prefix('+'), tail.strip_prefix('-')) {
+        (Some(k), _) => (1.0, k),
+        (_, Some(k)) => (-1.0, k),
+        _ => return None,
+    };
+    let k = k.trim();
+    if k.is_empty() || !k.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return None;
+    }
+    let k: f64 = k.parse().ok()?;
+    if !head.starts_with('(') {
+        return None;
+    }
+    let mut depth = 0_i32;
+    for (i, c) in head.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 && i + 1 != head.len() {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+    let inner = head.get(1..head.len() - 1)?;
+    (depth == 0 && k.is_finite()).then_some((inner, sign * k))
+}
+
+/// Formula `s` with `d` added to what it works out: `(s) + d`, or `(s) - d` for less. A shift written so before is
+/// added to, not wrapped again (`(s) + 100` moved 20 more is `(s) + 120`), and one that comes back to nothing leaves `s`
+/// as it was typed.
+pub fn shifted(s: &str, d: f64) -> Expr {
+    let (inner, was) = shift_of(s).unwrap_or((s.trim(), 0.0));
+    let k = ((was + d) * 1e6).round() / 1e6;
+    if k.abs() <= MOVED {
+        Expr::Formula(inner.to_string())
+    } else if k < 0.0 {
+        Expr::Formula(format!("({inner}) - {}", -k))
+    } else {
+        Expr::Formula(format!("({inner}) + {k}"))
+    }
+}
+
+/// Number `e`, `old` now, made `new`: unchanged within [`MOVED`] (a formula kept), else written as a number, a formula as
+/// itself with the move added ([`shifted`]).
 fn put(e: &mut Expr, old: f64, new: f64) -> Result<(), Refused> {
     if (new - old).abs() <= MOVED {
         return Ok(());
     }
-    match e {
-        Expr::Number(_) => {
-            *e = Expr::Number((new * 1e6).round() / 1e6);
-            Ok(())
-        }
-        Expr::Formula(_) => Err(Refused::Tied),
+    if !new.is_finite() {
+        return Err(Refused::Invalid);
     }
+    *e = match e {
+        Expr::Number(_) => Expr::Number((new * 1e6).round() / 1e6),
+        Expr::Formula(s) => shifted(s, new - old),
+    };
+    Ok(())
 }
 
 /// Line `j`'s start (or end, `end`) moved from `old` to `new`.
@@ -332,8 +388,8 @@ fn moves(segs: &[Option<Seg>], k: usize, out: P2, d: f64) -> Result<Moves, Refus
 
 /// `lines` (a form's sketch, its numbers read by `num`) with line `k` moved `d` mm out of the solid (`out`, its handle's way):
 /// a straight edge offset along its normal, the lines at its ends following; an arc's or a circle's radius changed. Only the
-/// numbers that move are written; one that is a formula refuses it ([`Refused::Tied`]). The profile left isn't checked: that
-/// is [`offset_edge`]'s.
+/// numbers that move are written; one that is a formula keeps it, with the move added ([`shifted`]). The profile left isn't
+/// checked: that is [`offset_edge`]'s.
 pub fn offset_lines(
     lines: &[FormLine],
     k: usize,
@@ -388,6 +444,57 @@ pub fn offset_edge(
         new.iter().filter(|l| !l.axis).map(|l| l.curve(&mut |e| num(e))).collect::<Result<_, _>>().map_err(|_| Refused::Invalid)?;
     super::sketch::finish_check(&drawn, None, false).map_err(|_| Refused::Invalid)?;
     Ok(new)
+}
+
+impl Family {
+    /// What a side or an end of form `own`, dragged by its handle along `way` (a unit vector in the family's axes), can line
+    /// up with, for `values`: each reference plane (the datums too) and each other form's straight side, Start and End that
+    /// faces that way (`shown`: what the view shows), with where it is along `way`. The form's own sides are none of them.
+    pub fn handle_targets(
+        &self,
+        values: &BTreeMap<String, Val>,
+        way: [f64; 3],
+        own: Guid,
+        shown: &dyn Fn(&DimRef) -> bool,
+    ) -> Vec<(DimRef, f64)> {
+        let Ok(flexed) = self.flexed(values) else { return Vec::new() };
+        let mut refs: Vec<DimRef> = Vec::new();
+        let datums = super::planes::datums();
+        for p in datums.iter().chain(&flexed.planes).filter(|p| !p.guid.is_nil()) {
+            if !refs.contains(&DimRef::Plane(p.guid)) {
+                refs.push(DimRef::Plane(p.guid));
+            }
+        }
+        for form in flexed.forms.iter().filter(|x| !x.guid.is_nil() && x.guid != own) {
+            refs.extend(form.sketch.iter().filter(|l| !l.axis && !l.guid.is_nil()).map(|l| DimRef::Sketch(form.guid, l.guid)));
+            refs.extend([Extent::Start, Extent::End].map(|e| DimRef::Form(form.guid, e)));
+        }
+        refs.into_iter()
+            .filter(|r| shown(r))
+            .filter_map(|r| {
+                let n = constraints::direction(&flexed, &r, values).ok()??;
+                let facing = n[0] * way[0] + n[1] * way[1] + n[2] * way[2];
+                if facing.abs() < 1.0 - 1e-9 {
+                    return None;
+                }
+                let at = constraints::place(&flexed, &r, values, way).ok()?;
+                at.is_finite().then_some((r, at))
+            })
+            .collect()
+    }
+}
+
+/// Of `targets` ([`Family::handle_targets`]), the one nearest `at` along the way and within `reach` mm of it: what a side
+/// or an end dragged there lines up with, the first listed of two at one place (a plane before a form's side).
+pub fn snapped(targets: &[(DimRef, f64)], at: f64, reach: f64) -> Option<(DimRef, f64)> {
+    let mut best: Option<(DimRef, f64)> = None;
+    for (r, t) in targets {
+        let d = (t - at).abs();
+        if d <= reach && best.is_none_or(|(_, b)| d < (b - at).abs() - 1e-9) {
+            best = Some((*r, *t));
+        }
+    }
+    best
 }
 
 /// Whether sketches `a` and `b`, read by `num`, have the same lines in the same places, within `tol` mm (a radius too, an
@@ -467,7 +574,10 @@ mod tests {
         |e: &Expr| match e {
             Expr::Number(x) => Ok(*x),
             Expr::Formula(f) if f == "W" => Ok(1000.0),
-            Expr::Formula(f) => Err(format!("{f}?")),
+            Expr::Formula(f) => match shift_of(f) {
+                Some(("W", k)) => Ok(1000.0 + k),
+                _ => Err(format!("{f}?")),
+            },
         }
     }
 
@@ -640,16 +750,111 @@ mod tests {
     }
 
     #[test]
-    fn a_formula_a_drag_would_move_refuses_it_and_one_it_leaves_stays() {
-        // The right side at x = W: moving the top keeps W where it was; moving the right side is refused.
-        let corners = [[n(0.0), n(0.0)], [Expr::Formula("W".into()), n(0.0)], [Expr::Formula("W".into()), n(300.0)], [n(0.0), n(300.0)]];
+    fn a_formula_a_drag_moves_keeps_itself_with_the_move_added_and_one_it_leaves_stays() {
+        // The right side at x = W: moving the top keeps W where it was; moving the right side adds the move to it, and to
+        // the ends of the lines that follow, so that side alone goes and W still moves it.
+        let w = || Expr::Formula("W".into());
+        let corners = [[n(0.0), n(0.0)], [w(), n(0.0)], [w(), n(300.0)], [n(0.0), n(300.0)]];
         let lines = super::super::sketch::profile_lines(&corners);
         let moved = offset_edge(&lines, 2, P2(0.0, 1.0), 100.0, &mut num()).unwrap();
         match &moved[2].curve {
-            FormCurve::Line { start, .. } => assert_eq!(start, &[Expr::Formula("W".into()), n(400.0)]),
+            FormCurve::Line { start, .. } => assert_eq!(start, &[w(), n(400.0)]),
             _ => panic!(),
         }
-        assert_eq!(offset_edge(&lines, 1, P2(1.0, 0.0), 100.0, &mut num()), Err(Refused::Tied));
+        let out = |s: &str| Expr::Formula(s.into());
+        let moved = offset_edge(&lines, 1, P2(1.0, 0.0), 100.0, &mut num()).unwrap();
+        let xs = |lines: &[FormLine]| -> Vec<Expr> {
+            lines
+                .iter()
+                .flat_map(|l| match &l.curve {
+                    FormCurve::Line { start, end, .. } => [start[0].clone(), end[0].clone()],
+                    _ => panic!(),
+                })
+                .collect()
+        };
+        // The bottom's end, the right side's two ends, the top's start; the left side's x stays 0.
+        let by = |s: &str| vec![n(0.0), out(s), out(s), out(s), out(s), n(0.0), n(0.0), n(0.0)];
+        assert_eq!(xs(&moved), by("(W) + 100"));
+        // Dragged again, the move adds to the one before; back by as much, the formula as it was typed.
+        let again = offset_edge(&moved, 1, P2(1.0, 0.0), -30.0, &mut num()).unwrap();
+        assert_eq!(xs(&again), by("(W) + 70"));
+        let inward = offset_edge(&again, 1, P2(1.0, 0.0), -120.0, &mut num()).unwrap();
+        assert_eq!(xs(&inward), by("(W) - 50"));
+        let back = offset_edge(&inward, 1, P2(1.0, 0.0), 50.0, &mut num()).unwrap();
+        assert_eq!(xs(&back), xs(&lines));
+    }
+
+    #[test]
+    fn a_shift_is_folded_only_into_one_written_as_a_shift() {
+        let f = |e: Expr| match e {
+            Expr::Formula(s) => s,
+            Expr::Number(_) => panic!(),
+        };
+        assert_eq!(f(shifted("Width / 2", 40.0)), "(Width / 2) + 40");
+        assert_eq!(f(shifted("(Width / 2) + 40", 2.5)), "(Width / 2) + 42.5");
+        assert_eq!(f(shifted("(Width / 2) + 40", -40.0)), "Width / 2");
+        // Not a shift of ours: brackets that close before the end, or no number after them.
+        assert_eq!(f(shifted("(a) * (b) + 4", 1.0)), "((a) * (b) + 4) + 1");
+        assert_eq!(f(shifted("(a) + b", 1.0)), "((a) + b) + 1");
+    }
+
+    /// A slab at ±500 by ±300, a block beside it from x = 1200 to 1500, and a plane across x at 800.
+    fn beside() -> (Family, BTreeMap<String, Val>, [Guid; 3]) {
+        use serde_json::json;
+        let g = |k: u8| -> Guid { serde_json::from_value(json!(format!("44444444-4444-4444-8444-0000000000{k:02}"))).unwrap() };
+        let ring = |x: [f64; 2], first: u8| {
+            json!([
+                {"guid": g(first), "start": [x[0], -300], "end": [x[1], -300]},
+                {"guid": g(first + 1), "start": [x[1], -300], "end": [x[1], 300]},
+                {"guid": g(first + 2), "start": [x[1], 300], "end": [x[0], 300]},
+                {"guid": g(first + 3), "start": [x[0], 300], "end": [x[0], -300]}
+            ])
+        };
+        let f: Family = serde_json::from_value(json!({
+            "types": {"T": {}},
+            "planes": [{"guid": g(1), "name": "Right", "start": [800, -1000, 0], "end": [800, 1000, 0], "up": [0, 0, 1]}],
+            "forms": [
+                {"guid": g(2), "sketch": ring([-500.0, 500.0], 10), "from": 0, "to": 200},
+                {"guid": g(3), "sketch": ring([1200.0, 1500.0], 20), "from": 0, "to": 450}
+            ]
+        }))
+        .unwrap();
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        (f, values, [g(1), g(2), g(3)])
+    }
+
+    #[test]
+    fn a_side_dragged_lines_up_with_the_planes_and_the_sides_that_face_its_way() {
+        let (f, values, [plane, slab, block]) = beside();
+        let line =
+            |k: u8| -> Guid { serde_json::from_value(serde_json::json!(format!("44444444-4444-4444-8444-0000000000{k:02}"))).unwrap() };
+        let mut across = f.handle_targets(&values, [1.0, 0.0, 0.0], slab, &|_| true);
+        across.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let want = vec![
+            (DimRef::Plane(super::super::CENTER_LEFT_RIGHT), 0.0),
+            (DimRef::Plane(plane), 800.0),
+            (DimRef::Sketch(block, line(23)), 1200.0),
+            (DimRef::Sketch(block, line(21)), 1500.0),
+        ];
+        assert_eq!(across.len(), want.len(), "{across:?}");
+        for ((r, at), (wr, wat)) in across.iter().zip(&want) {
+            assert_eq!(r, wr);
+            assert!((at - wat).abs() < 1e-6, "{r:?} at {at}");
+        }
+        // Up: Ref. Level and the block's Start and End; none of the slab's own.
+        let mut up = f.handle_targets(&values, [0.0, 0.0, 1.0], slab, &|_| true);
+        up.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let ats: Vec<f64> = up.iter().map(|t| t.1).collect();
+        assert_eq!(ats, [0.0, 0.0, 450.0], "{up:?}");
+        assert!(up.contains(&(DimRef::Form(block, Extent::End), 450.0)));
+        assert!(up.iter().all(|(r, _)| !r.names(slab)));
+        // What the view hides is no target.
+        let shown = f.handle_targets(&values, [1.0, 0.0, 0.0], slab, &|r| *r != DimRef::Plane(plane));
+        assert!(!shown.iter().any(|(r, _)| *r == DimRef::Plane(plane)));
+        // The nearest within reach is taken, a plane before a side at the same place; none past it.
+        assert_eq!(snapped(&across, 790.0, 20.0), Some((DimRef::Plane(plane), 800.0)));
+        assert_eq!(snapped(&across, 700.0, 20.0), None);
+        assert_eq!(snapped(&across, 1195.0, 20.0).map(|t| t.1), Some(1200.0));
     }
 
     #[test]

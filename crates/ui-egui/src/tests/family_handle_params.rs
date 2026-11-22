@@ -1,15 +1,16 @@
-//! FE-25: wherever a shape handle shows, it drags. The starter box's sides are `Width / 2` and `Depth / 2` either way of the
-//! centre and its End is `Height`: a drag of a side or the End, as a mouse makes it, changes that parameter for the type
-//! previewed, the side or end landing where the hand lets go, in plan, an elevation and {3D}; the other type keeps its value.
-//! One whose parameter is worked out by a formula is greyed, never lit, and refuses saying why. A drag is one step Undo takes
-//! back, and Escape mid-drag puts the value back.
+//! FE-25: wherever a shape handle shows, it drags. The starter box's End is `Height`: a drag of it, as a mouse makes it,
+//! changes that parameter for the type previewed, the end landing where the hand lets go, in an elevation and {3D}; the other
+//! type keeps its value. One whose parameter is worked out by a formula is greyed, never lit, and refuses saying why. A drag
+//! is one step Undo takes back, and Escape mid-drag puts the value back. Its sides, `Width / 2` and `Depth / 2` either way
+//! of the centre, move alone (FE-26, `family_handle_snap.rs`); a side a dimension's label sets drags its parameter
+//! (`family_shape_handles.rs`).
 use super::family_views::{editor, open, view};
 use super::*;
 use bimcraft_core::family::views::{Side, Which};
 
 /// The starter box of a new generic family, with a second type, Wide, and a parameter Twice (Width's double, a formula) that
-/// a second box's east side reads.
-const STARTER: &str = r#"family {"name": "Starter", "category": "generic", "parameters": [{"name": "Width", "value": 1000}, {"name": "Depth", "value": 600}, {"name": "Height", "value": 750}, {"name": "Twice", "formula": "Width * 2"}], "types": {"1000 x 600": {}, "Wide": {"Width": 1400}}, "forms": [{"profile": [["-Width / 2", "-Depth / 2"], ["Width / 2", "-Depth / 2"], ["Width / 2", "Depth / 2"], ["-Width / 2", "Depth / 2"]], "from": 0, "to": "Height"}, {"profile": [[3000, 0], ["3000 + Twice / 4", 0], ["3000 + Twice / 4", 400], [3000, 400]], "from": 0, "to": 300}]}"#;
+/// a second box's east side and End read.
+pub(super) const STARTER: &str = r#"family {"name": "Starter", "category": "generic", "parameters": [{"name": "Width", "value": 1000}, {"name": "Depth", "value": 600}, {"name": "Height", "value": 750}, {"name": "Twice", "formula": "Width * 2"}], "types": {"1000 x 600": {}, "Wide": {"Width": 1400}}, "forms": [{"profile": [["-Width / 2", "-Depth / 2"], ["Width / 2", "-Depth / 2"], ["Width / 2", "Depth / 2"], ["-Width / 2", "Depth / 2"]], "from": 0, "to": "Height"}, {"profile": [[3000, 0], ["3000 + Twice / 4", 0], ["3000 + Twice / 4", 400], [3000, 400]], "from": 0, "to": "Twice / 8"}]}"#;
 
 fn opened(which: Option<Which>) -> Harness<'static, BimApp> {
     opened_on(STARTER, "Starter", which)
@@ -92,47 +93,24 @@ pub(super) fn drag(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3], hold: boo
 }
 
 #[test]
-fn the_starter_boxs_side_drags_width_in_plan_for_the_type_previewed_alone() {
-    let mut h = opened(Some(Which::Plan));
-    // Every handle of the starter box drags (its sides are Width's and Depth's).
-    assert_eq!(editor(&h).views.shapes_shown.len(), 4);
-    assert!(editor(&h).views.shapes_shown.iter().all(|s| s.1.blocked.is_none()), "{:?}", editor(&h).views.shapes_shown);
-    let steps = editor(&h).steps();
-    // The east side (x 500) out 100: it lands under the hand, at 600, so Width (centred) is 1200.
-    drag(&mut h, [500.0, 0.0, 0.0], [100.0, 0.0, 0.0], false);
-    let w = value(&h, "1000 x 600", "Width").expect("the type's Width set");
-    assert!((w - 1200.0).abs() < 10.0, "{w} {:?}", status(&h));
-    assert_eq!(value(&h, "Wide", "Width"), Some(1400.0), "the other type keeps its own");
-    assert_eq!(editor(&h).steps(), steps + 1, "one step");
-    // The north side (y 300) in 50: Depth 500.
-    drag(&mut h, [0.0, 300.0, 0.0], [0.0, -50.0, 0.0], false);
-    let d = value(&h, "1000 x 600", "Depth").expect("the type's Depth set");
-    assert!((d - 500.0).abs() < 10.0, "{d} {:?}", status(&h));
-    // Undo takes back the Depth's drag alone, then the Width's.
-    h.state_mut().family_undo();
-    h.run();
-    assert_eq!(value(&h, "1000 x 600", "Depth"), None);
-    assert!(value(&h, "1000 x 600", "Width").is_some_and(|x| (x - 1200.0).abs() < 10.0));
-    h.state_mut().family_undo();
-    h.run();
-    assert_eq!(value(&h, "1000 x 600", "Width"), None);
-}
-
-#[test]
-fn the_starter_boxs_side_and_top_drag_width_and_height_in_3d() {
+fn the_starter_boxs_top_drags_height_in_3d_for_the_type_previewed_alone() {
     let mut h = opened(None);
     // The faces toward the camera: south, east and the top.
     assert_eq!(editor(&h).views.handles3d_shown.len(), 3, "{:?}", editor(&h).views.handles3d_shown);
+    assert!(editor(&h).views.handles3d_shown.iter().all(|s| s.1.blocked.is_none()), "every handle drags");
     let camera = editor(&h).orbit.camera.map(|c| (c.azimuth, c.elevation));
-    drag(&mut h, [500.0, 0.0, 375.0], [100.0, 0.0, 0.0], false);
-    let w = value(&h, "1000 x 600", "Width").expect("the type's Width set");
-    assert!((w - 1200.0).abs() < 15.0, "{w} {:?}", status(&h));
-    assert_eq!(value(&h, "Wide", "Width"), Some(1400.0));
+    let steps = editor(&h).steps();
     // The top (End, Height) up 200.
     drag(&mut h, [0.0, 0.0, 750.0], [0.0, 0.0, 200.0], false);
     let ht = value(&h, "1000 x 600", "Height").expect("the type's Height set");
     assert!((ht - 950.0).abs() < 15.0, "{ht} {:?}", status(&h));
+    assert_eq!(value(&h, "Wide", "Height"), None, "the other type keeps its own");
+    assert_eq!(editor(&h).steps(), steps + 1, "one step");
     assert_eq!(editor(&h).orbit.camera.map(|c| (c.azimuth, c.elevation)), camera, "the view didn't turn");
+    // Undo takes it back.
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(value(&h, "1000 x 600", "Height"), None);
 }
 
 #[test]
@@ -145,30 +123,29 @@ fn an_end_tied_to_height_drags_it_in_an_elevation() {
 }
 
 #[test]
-fn a_side_a_formula_drives_is_greyed_never_lit_and_refuses_saying_why() {
-    for which in [Some(Which::Plan), None] {
+fn an_end_a_formula_drives_is_greyed_never_lit_and_refuses_saying_why() {
+    for which in [Some(Which::Elevation(Side::Front)), None] {
         let mut h = opened(which);
         h.state_mut().active_family_mut().unwrap().select_form(1);
         h.run();
         h.run();
         let before = editor(&h).draft_family().unwrap();
         let steps = editor(&h).steps();
-        // The east side, at 3000 + Twice / 4 = 3500.
-        let (at, free) = handle(&h, [3500.0, 200.0, if which.is_none() { 150.0 } else { 0.0 }]);
+        // The End, at Twice / 8 = 250: Twice is worked out by a formula.
+        let (at, free) = handle(&h, [3250.0, 200.0, 250.0]);
         assert!(!free, "greyed");
         h.hover_at(at);
         h.run();
         assert_eq!(editor(&h).views.lit_handle, None, "never lit");
-        // A free one is lit under the pointer.
-        // The south side, free, faces the camera in both.
-        let (west, ok) = handle(&h, [3250.0, 0.0, if which.is_none() { 150.0 } else { 0.0 }]);
+        // A free one is lit under the pointer: the east side (3000 + Twice / 4 = 3500), which moves alone.
+        let (west, ok) = handle(&h, [3500.0, 200.0, 125.0]);
         assert!(ok);
         h.hover_at(west);
         h.run();
         assert_eq!(editor(&h).views.lit_handle, Some(west), "a free one lit");
         let camera = editor(&h).orbit.camera.map(|c| (c.azimuth, c.elevation));
-        press_move(&mut h, at, at + vec2(40.0, 0.0));
-        release(&mut h, at + vec2(40.0, 0.0));
+        press_move(&mut h, at, at + vec2(0.0, -40.0));
+        release(&mut h, at + vec2(0.0, -40.0));
         assert_eq!(editor(&h).orbit.camera.map(|c| (c.azimuth, c.elevation)), camera, "the view didn't turn");
         assert_eq!(editor(&h).steps(), steps, "no step");
         let (text, error) = status(&h);
@@ -179,22 +156,22 @@ fn a_side_a_formula_drives_is_greyed_never_lit_and_refuses_saying_why() {
 
 #[test]
 fn escape_mid_drag_puts_the_parameter_back() {
-    for which in [Some(Which::Plan), None] {
+    for which in [Some(Which::Elevation(Side::Front)), None] {
         let mut h = opened(which);
         let steps = editor(&h).steps();
-        let z = if which.is_none() { 375.0 } else { 0.0 };
-        let at = drag(&mut h, [500.0, 0.0, z], [100.0, 0.0, 0.0], true);
-        // Written as it goes in plan; {3D} writes once the button is up.
-        assert_eq!(value(&h, "1000 x 600", "Width").is_some(), which.is_some(), "live in plan alone");
+        let y = if which.is_none() { 0.0 } else { -300.0 };
+        let at = drag(&mut h, [0.0, y, 750.0], [0.0, 0.0, 100.0], true);
+        // Written as it goes in an elevation; {3D} writes once the button is up.
+        assert_eq!(value(&h, "1000 x 600", "Height").is_some(), which.is_some(), "live in an elevation alone");
         key(&mut h, Key::Escape);
-        assert_eq!(value(&h, "1000 x 600", "Width"), None);
+        assert_eq!(value(&h, "1000 x 600", "Height"), None);
         release(&mut h, at);
-        assert_eq!(value(&h, "1000 x 600", "Width"), None);
+        assert_eq!(value(&h, "1000 x 600", "Height"), None);
         assert_eq!(editor(&h).steps(), steps);
     }
 }
 
-/// The starter box after its east side was dragged in {3D}, Family Types open on the new Width, in the three looks, saved where
+/// The starter box after its top was dragged in {3D}, Family Types open on the new Height, in the three looks, saved where
 /// `BIMCRAFT_HANDLE_PARAMS_DUMP` says (only then).
 #[test]
 fn family_handle_params_screenshots() {
@@ -214,7 +191,7 @@ fn family_handle_params_screenshots() {
         h.run();
         h.run();
         // Mid-drag: the arrow where the hand has it, the value the status bar says; then let go.
-        let at = drag(&mut h, [500.0, 0.0, 375.0], [200.0, 0.0, 0.0], true);
+        let at = drag(&mut h, [0.0, 0.0, 750.0], [0.0, 0.0, 200.0], true);
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe25-param-3d-mid-{look}.png"))).unwrap();
         release(&mut h, at);
         h.run();

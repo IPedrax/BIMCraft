@@ -2,15 +2,21 @@
 //! base), a plan or an elevation that sees its plane flat shows a handle at the middle of each edge of its profile, pointing out
 //! of the solid; an elevation that sees an extrusion's plane edge-on shows one at mid-depth on each side it sees edge-on. A drag
 //! offsets that edge along its normal, the lines at its ends following (`family::handles`), or changes an arc's radius: live,
-//! one step of the document's history. An edge a lock, a labelled dimension or EQ holds, or whose numbers are formulas, is
-//! greyed and refuses a drag, saying why; so does a drag that would leave no profile, or that the constraints would undo,
-//! and the form is left as it was.
+//! one step of the document's history. That side alone moves (FE-26): one whose numbers are formulas keeps them, the move
+//! added. A drag that would leave no profile, or that the constraints would undo, is refused saying why, and the form is left
+//! as it was.
+//!
+//! FE-26: a side or an end dragged to within [`SNAP`] points of a reference plane, or of another form's side or end that
+//! faces its way, lines up with it (`Family::handle_targets`); let go there in a plan or an elevation, Align's padlock is
+//! offered open beside it, and a click on it locks the two (a drag through a parameter offers none: its label holds it).
+use super::handle_params::Target;
 use super::sketch::{edge_on, flat, looking, reader};
 use super::*;
 use bimcraft_core::family::forms::FormKind;
 use bimcraft_core::family::handles::{self as hs, Held, Refused};
 use bimcraft_core::family::sketch::FormLine;
 use bimcraft_core::family::views::{Staged, Which};
+use bimcraft_core::family::{DimRef, Extent};
 use bimcraft_core::geom::P2;
 
 /// A handle on an edge of the selected form's profile, as a view shows it.
@@ -53,6 +59,39 @@ impl EdgeDrag {
     pub(super) fn way(&self) -> [f64; 3] {
         self.way
     }
+
+    /// The line of the sketch it drags.
+    pub(super) fn line(&self) -> usize {
+        self.line
+    }
+}
+
+/// How near, in points, a dragged side or end comes to what it can line up with before it is taken onto it.
+pub(crate) const SNAP: f32 = 8.0;
+
+/// What the side or end being dragged by its handle can line up with (FE-26): itself as a reference, where it stood along
+/// its way as the drag began, how near (mm) takes it, the references that face its way with where each is, how far the hand
+/// has taken it (an End's drag in a plan or an elevation comes a step at a time) and how far it has been put, what it is
+/// lined up with now, and whether a padlock may be offered (a drag through a parameter offers none).
+#[derive(Clone, Debug)]
+pub(crate) struct HandleSnap {
+    own: DimRef,
+    way: [f64; 3],
+    from: f64,
+    reach: f64,
+    targets: Vec<(DimRef, f64)>,
+    raw: f64,
+    done: f64,
+    /// What it is lined up with now, and where that is along its way.
+    on: Option<(DimRef, f64)>,
+    free: bool,
+}
+
+impl HandleSnap {
+    /// Whether it is lined up with something now.
+    pub(super) fn on(&self) -> bool {
+        self.on.is_some()
+    }
 }
 
 fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -62,7 +101,6 @@ fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
 /// What a refused drag says.
 fn said(r: Refused) -> String {
     match r {
-        Refused::Tied => t("This edge is tied to a parameter or worked out by a formula: change it in Family Types.").to_string(),
         Refused::Invalid => t("The profile can't take this: its lines would cross, overlap or no longer close.").to_string(),
     }
 }
@@ -77,17 +115,6 @@ pub(crate) fn held_said(h: &Held, end: bool) -> String {
         (Held::Equal, false) => t("An equality (EQ) holds this edge: take it off to drag it.").to_string(),
         (Held::Equal, true) => t("An equality (EQ) holds this end: take it off to drag it.").to_string(),
     }
-}
-
-/// Why line `k`'s handle (out of the solid `out`) is greyed, if it is: a number a drag of it would move is a formula or tied
-/// to a parameter, either way. Where a drag would take the profile (lines crossing, an arc below nothing) is each drag's own
-/// question, refused then (`offset_edge`), never a reason to grey the handle.
-pub(crate) fn greyed(lines: &[FormLine], k: usize, out: P2, num: &mut dyn FnMut(&Expr) -> Result<f64, String>) -> Option<String> {
-    let probes = [1.0, -1.0].map(|d| hs::offset_lines(lines, k, out, d, num));
-    if probes.iter().any(Result::is_ok) {
-        return None;
-    }
-    probes.into_iter().find(|p| *p == Err(Refused::Tied)).and_then(Result::err).map(said)
 }
 
 impl FamilyEditor {
@@ -184,11 +211,17 @@ impl FamilyEditor {
     /// what it was with the edge that far out along its normal, where the profile and every type take it; else left as it
     /// was, saying why.
     pub(crate) fn drag_edge_to(&mut self, moved: [f64; 3]) -> Result<(), String> {
-        let Some(drag) = self.views.edge_drag.as_mut() else { return Ok(()) };
-        let d = dot3(moved, drag.way);
+        let Some(way) = self.views.edge_drag.as_ref().map(|d| d.way) else { return Ok(()) };
+        // Up to something that faces its way, it lines up with it (FE-26); refused there, it lines up with nothing.
+        let d = self.snap_to(dot3(moved, way));
         if self.views.param_drag.is_some() {
-            return self.param_to(d);
+            let done = self.param_to(d);
+            if done.is_err() {
+                self.snap_refused();
+            }
+            return done;
         }
+        let Some(drag) = self.views.edge_drag.as_mut() else { return Ok(()) };
         if !d.is_finite() || (d - drag.last).abs() < 1e-9 {
             return Ok(());
         }
@@ -207,6 +240,7 @@ impl FamilyEditor {
         let done = self.offset_edge(&drag, i, d);
         if done.is_err() {
             self.forms[i] = drag.before.clone();
+            self.snap_refused();
         }
         done
     }
@@ -214,6 +248,7 @@ impl FamilyEditor {
     /// The Start or End drag, the edge drag and the selection's move given up, each form put back as it was before it began (so no step of the
     /// history): Escape, Undo and Redo, and the view it began in shown no longer. Whether there was one.
     pub(crate) fn cancel_drags(&mut self) -> bool {
+        self.views.handle_snap = None;
         // The selection being moved too (FE-7).
         let mut any = self.cancel_move();
         // An End or a Start held in {3D} (FE-25); a side held there is the edge drag below.
@@ -233,6 +268,81 @@ impl FamilyEditor {
         // A parameter dragged by a handle: the draft as the drag began (FE-25).
         any |= self.cancel_param();
         any
+    }
+
+    /// A drag of the selected form's `target` along `way` (the family's axes) begun: what it can line up with (FE-26), within
+    /// `reach` mm; `free` where no parameter is dragged, so a padlock may be offered. None for a form or a line with no GUID
+    /// yet, which nothing can refer to.
+    pub(crate) fn begin_snap(&mut self, target: Target, way: [f64; 3], reach: f64, free: bool) {
+        self.views.handle_snap = self.snap_for(target, way, reach, free);
+    }
+
+    fn snap_for(&self, target: Target, way: [f64; 3], reach: f64, free: bool) -> Option<HandleSnap> {
+        let i = self.selected_form()?;
+        let f = self.family().ok()?;
+        let form = f.forms.get(i).filter(|x| !x.guid.is_nil())?;
+        let own = match target {
+            Target::Edge(k, _) => DimRef::Sketch(form.guid, form.sketch.get(k).map(|l| l.guid).filter(|g| !g.is_nil())?),
+            Target::End(end) => DimRef::Form(form.guid, if end { Extent::End } else { Extent::Start }),
+        };
+        let values = self.values();
+        let flexed = f.flexed(&values).ok()?;
+        let from = bimcraft_core::family::constraints::place(&flexed, &own, &values, way).ok().filter(|x| x.is_finite())?;
+        // What the view hides is nothing to line up with.
+        let hidden: Vec<bimcraft_core::ids::Guid> =
+            f.forms.iter().enumerate().filter(|(j, _)| self.temp_hidden_form(*j)).map(|(_, x)| x.guid).collect();
+        let shown = |r: &DimRef| match *r {
+            DimRef::Plane(g) => !self.temp_hidden_plane(g),
+            DimRef::Form(g, _) | DimRef::Sketch(g, _) => !hidden.contains(&g),
+            _ => true,
+        };
+        let targets = f.handle_targets(&values, way, form.guid, &shown);
+        let snap = HandleSnap { own, way, from, reach, targets, raw: 0.0, done: 0.0, on: None, free };
+        (reach.is_finite() && reach > 0.0).then_some(snap)
+    }
+
+    /// The side or end dragged `d` mm along its way: as far as takes it onto what it lines up with there, else `d`.
+    pub(crate) fn snap_to(&mut self, d: f64) -> f64 {
+        let Some(s) = self.views.handle_snap.as_mut() else { return d };
+        s.on = hs::snapped(&s.targets, s.from + d, s.reach);
+        s.on.map_or(d, |(_, at)| at - s.from)
+    }
+
+    /// The drag refused where it would have lined up: lined up with nothing, so no padlock is offered and nothing says so.
+    pub(crate) fn snap_refused(&mut self) {
+        if let Some(s) = self.views.handle_snap.as_mut() {
+            s.on = None;
+        }
+    }
+
+    /// What a padlock would lock, the reference first: what the side or end is lined up with, where no parameter is dragged
+    /// and the form, as the type previewed builds it, stands there now.
+    pub(crate) fn snap_lock(&self) -> Option<(DimRef, DimRef)> {
+        let s = self.views.handle_snap.as_ref().filter(|s| s.free)?;
+        let (on, at) = s.on?;
+        let f = self.family().ok()?;
+        let values = self.values();
+        let flexed = f.flexed(&values).ok()?;
+        let now = bimcraft_core::family::constraints::place(&flexed, &s.own, &values, s.way).ok()?;
+        ((now - at).abs() <= 1e-3).then_some((on, s.own))
+    }
+
+    /// The side or end dragged a step `d` further (an End's drag in a plan or an elevation comes a step at a time): the step
+    /// that puts it where the whole drag, lined up, has it.
+    pub(crate) fn snap_step(&mut self, d: f64) -> f64 {
+        let Some(s) = self.views.handle_snap.as_mut() else { return d };
+        s.raw += d;
+        let (raw, done) = (s.raw, s.done);
+        let to = self.snap_to(raw);
+        if let Some(s) = self.views.handle_snap.as_mut() {
+            s.done = to;
+        }
+        to - done
+    }
+
+    /// Whether the side or end being dragged is lined up with something now.
+    pub(crate) fn lined_up(&self) -> bool {
+        self.views.handle_snap.as_ref().is_some_and(HandleSnap::on)
     }
 
     fn offset_edge(&mut self, drag: &EdgeDrag, i: usize, d: f64) -> Result<(), String> {

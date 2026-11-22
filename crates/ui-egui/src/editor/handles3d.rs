@@ -215,6 +215,15 @@ impl FamilyEditor {
                 None => Err(String::new()),
             },
         };
+        // What it can line up with along its arrow (FE-26), as near as the plans take it.
+        let scale = f64::from(per_mm.length());
+        if drag.live && scale > 1e-9 {
+            let target = match &h.grab {
+                Grab::Edge(sh) => Target::Edge(sh.line, sh.out),
+                Grab::End(end) => Target::End(*end),
+            };
+            self.begin_snap(target, h.way, f64::from(super::shape_handles::SNAP) / scale, h.param.is_none());
+        }
         self.views.drag3d = Some(drag);
         result
     }
@@ -224,25 +233,34 @@ impl FamilyEditor {
     /// isn't made again under the hand. A parameter's value refused says why.
     pub(crate) fn drag_3d_to(&mut self, now: egui::Pos2) -> Result<(), String> {
         let param = self.dragging_param();
-        let Some(drag) = self.views.drag3d.as_mut().filter(|d| d.live) else { return Ok(()) };
-        let n = drag.per_mm.length_sq();
+        let Some((press, per_mm, last)) = self.views.drag3d.as_ref().filter(|d| d.live).map(|d| (d.press, d.per_mm, d.last)) else {
+            return Ok(());
+        };
+        let n = per_mm.length_sq();
         if n <= 1e-12 {
             return Ok(());
         }
-        let d = f64::from((now - drag.press).dot(drag.per_mm) / n);
-        if !d.is_finite() || (d - drag.last).abs() < 1e-9 {
+        // Up to something that faces its way, it lines up with it (FE-26).
+        let d = self.snap_to(f64::from((now - press).dot(per_mm) / n));
+        if !d.is_finite() || (d - last).abs() < 1e-9 {
             return Ok(());
         }
+        let Some(drag) = self.views.drag3d.as_mut() else { return Ok(()) };
         drag.last = d;
         let end = drag.end.clone();
         if param {
-            return self.param_to(d);
+            let done = self.param_to(d);
+            if done.is_err() {
+                self.snap_refused();
+            }
+            return done;
         }
-        self.views.said = Some(match end {
+        let said = match end {
             Some((true, ..)) => tf("{} = {}", &[t("Extrusion End"), &number_text(self.end_after(true, d).unwrap_or(d))]),
             Some((false, ..)) => tf("{} = {}", &[t("Extrusion Start"), &number_text(self.end_after(false, d).unwrap_or(d))]),
             None => tf("Moved {} mm", &[&number_text(d)]),
-        });
+        };
+        self.views.said = Some(if self.lined_up() { format!("{said} {}", t("Aligned.")) } else { said });
         Ok(())
     }
 
@@ -264,6 +282,8 @@ impl FamilyEditor {
     /// the history; refused, as it was, saying why.
     pub(crate) fn let_go_3d(&mut self) -> Result<(), String> {
         let Some(d) = self.views.drag3d.take() else { return Ok(()) };
+        // Where it was let go is where it lined up: nothing more to take it to.
+        self.views.handle_snap = None;
         if !d.live {
             self.views.edge_drag = None;
             return Ok(());
@@ -303,6 +323,7 @@ impl FamilyEditor {
 
     /// The handle held in {3D} given up: nothing was written. Whether there was one.
     pub(super) fn cancel_3d(&mut self) -> bool {
+        self.views.handle_snap = None;
         self.views.drag3d.take().is_some()
     }
 
