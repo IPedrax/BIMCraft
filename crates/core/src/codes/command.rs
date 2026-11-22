@@ -547,7 +547,10 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
         }
         None => {}
     }
+    let mut ordinary = BTreeSet::new();
     for (key, rules) in patches {
+        // A section asked with no rule changes nothing, and is not checked.
+        let asked_none = rules.is_empty();
         let resolved = resolve_in(next, d, &key);
         // A utility's or a country's method is the amendment's own whole, whatever another's over it holds.
         let known = if super::is_whole(d, &key) {
@@ -631,6 +634,29 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
             && let (Some(def), Some(whole)) = (def, super::whole_section(&next.own[i], &key))
         {
             def.check(&Value::Object(whole)).map_err(|e| format!("{} {key} of {target}: {e}", d.key()))?;
+        } else if def.is_some() && !settings && !asked_none && !super::is_whole(d, &key) {
+            ordinary.insert(key.clone());
+        }
+    }
+    // An ordinary section changed is checked, once all its patches are in, as this layer and the ones under it make it,
+    // not only as it is in force, where a layer over it may hide what it holds until that layer goes. The layers in the
+    // order they stand (an amendment over another stands over it, whatever order the project chose them in).
+    if !ordinary.is_empty() {
+        let standing: Vec<String> = next.layers(d).iter().skip(1).map(|c| c.code.clone()).collect();
+        let mut upto = next.clone();
+        if let Some(at) = standing.iter().position(|a| a == target) {
+            let under = &standing[..=at];
+            upto.choice_mut(d).amendments = under.to_vec();
+            // Each stands where it stood, though what it was made over may now be left out of the list.
+            let base = upto.base(d).code.clone();
+            for c in upto.own.iter_mut().filter(|c| c.discipline == d && under.contains(&c.code)) {
+                c.amends = base.clone();
+            }
+        }
+        for key in &ordinary {
+            let Some(def) = section_def(d, key) else { continue };
+            let made = super::layered(&upto, d, key).value;
+            def.check(&Value::Object(made)).map_err(|e| format!("{} {key} of {target}: {e}", d.key()))?;
         }
     }
     Ok(())
