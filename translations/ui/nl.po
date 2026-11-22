@@ -1641,8 +1641,8 @@ msgid "BIMCraft couldn't start"
 msgstr "BIMCraft kon niet starten"
 
 #: crates/ui-egui/src/editor.rs:1339
-#: crates/ui-egui/src/editor.rs:1529
-#: crates/ui-egui/src/editor.rs:1553
+#: crates/ui-egui/src/editor.rs:1531
+#: crates/ui-egui/src/editor.rs:1555
 #: crates/ui-egui/src/sketch.rs:1308
 msgid "BIMCraft family"
 msgstr "BIMCraft-familie"
@@ -5339,11 +5339,11 @@ msgstr "Tekenen"
 msgid "Drag Elements on Selection"
 msgstr ""
 
-#: crates/ui-egui/src/editor/selection.rs:386
+#: crates/ui-egui/src/editor/selection.rs:385
 msgid "Drag Elements on Selection is of a family's plans and elevations."
 msgstr ""
 
-#: crates/ui-egui/src/editor/selection.rs:383
+#: crates/ui-egui/src/editor/selection.rs:382
 msgid "Drag Elements on Selection: on, a drag from the face of a form or a nested instance that isn't selected is that element's and selects it; off, a selection box begins there. With Select Elements by Face off a face picks nothing, so it changes nothing"
 msgstr ""
 
@@ -13940,7 +13940,7 @@ msgstr ""
 msgid "Saved the template {}; New lists it."
 msgstr "Sjabloon {} opgeslagen; Nieuw toont het."
 
-#: crates/ui-egui/src/editor.rs:1568
+#: crates/ui-egui/src/editor.rs:1570
 #: crates/ui-egui/src/properties.rs:3775
 msgid "Saved {} to your Favorites"
 msgstr "{} in je Favorieten opgeslagen"
@@ -14731,7 +14731,7 @@ msgid "Silhouettes"
 msgstr "Silhouetten"
 
 #: crates/core/src/schedule.rs:304
-#: crates/ui-egui/src/editor.rs:1619
+#: crates/ui-egui/src/editor.rs:1621
 msgid "Sill"
 msgstr "Borstwering"
 
