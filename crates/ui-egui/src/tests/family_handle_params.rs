@@ -1,8 +1,8 @@
-//! FE-25: wherever a shape handle shows, it drags. The starter box's End is `Height`: a drag of it, as a mouse makes it,
+//! Wherever a shape handle shows, it drags. The starter box's End is `Height`: a drag of it, as a mouse makes it,
 //! changes that parameter for the type previewed, the end landing where the hand lets go, in an elevation and {3D}; the other
 //! type keeps its value. One whose parameter is worked out by a formula is greyed, never lit, and refuses saying why. A drag
 //! is one step Undo takes back, and Escape mid-drag puts the value back. Its sides, `Width / 2` and `Depth / 2` either way
-//! of the centre, move alone (FE-26, `family_handle_snap.rs`); a side a dimension's label sets drags its parameter
+//! of the centre, move alone (`family_handle_snap.rs`); a side a dimension's label sets drags its parameter
 //! (`family_shape_handles.rs`).
 use super::family_views::{editor, open, view};
 use super::*;

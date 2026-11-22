@@ -1,4 +1,4 @@
-//! FE-25: a selected form's shape handles, dragged as a mouse drags them (the button down on the arrow, several frames of
+//! A selected form's shape handles, dragged as a mouse drags them (the button down on the arrow, several frames of
 //! moves with it held, then up) on a form just sketched in a new family: each side in plan, Extrusion End in an elevation, and
 //! in {3D} with the default camera its sides and its End and Start, a blend's base. A greyed handle refuses saying why, the view
 //! not turning (`family_handle_params.rs`); Escape mid-drag puts the form back; a drag is one step Undo takes back. A sweep has no handles.

@@ -1,12 +1,12 @@
-//! FE-5: shape handles on a selected form's profile. With one extrusion selected (solid or void) or a Blend (its
+//! Shape handles on a selected form's profile. With one extrusion selected (solid or void) or a Blend (its
 //! base), a plan or an elevation that sees its plane flat shows a handle at the middle of each edge of its profile, pointing out
 //! of the solid; an elevation that sees an extrusion's plane edge-on shows one at mid-depth on each side it sees edge-on. A drag
 //! offsets that edge along its normal, the lines at its ends following (`family::handles`), or changes an arc's radius: live,
-//! one step of the document's history. That side alone moves (FE-26): one whose numbers are formulas keeps them, the move
+//! one step of the document's history. That side alone moves: one whose numbers are formulas keeps them, the move
 //! added. A drag that would leave no profile, or that the constraints would undo, is refused saying why, and the form is left
 //! as it was.
 //!
-//! FE-26: a side or an end dragged to within [`SNAP`] points of a reference plane, or of another form's side or end that
+//! A side or an end dragged to within [`SNAP`] points of a reference plane, or of another form's side or end that
 //! faces its way, lines up with it (`Family::handle_targets`); let go there in a plan or an elevation, Align's padlock is
 //! offered open beside it, and a click on it locks the two (a drag through a parameter offers none: its label holds it).
 use super::handle_params::Target;
@@ -31,7 +31,7 @@ pub(crate) struct ShapeHandle {
     pub(crate) out: P2,
     /// Why it can't be dragged, if it can't: it is drawn greyed.
     pub(crate) blocked: Option<String>,
-    /// The parameters its drag goes through, where its place is theirs (FE-25): the first that moves it.
+    /// The parameters its drag goes through, where its place is theirs: the first that moves it.
     pub(crate) param: Option<Vec<String>>,
 }
 
@@ -69,7 +69,7 @@ impl EdgeDrag {
 /// How near, in points, a dragged side or end comes to what it can line up with before it is taken onto it.
 pub(crate) const SNAP: f32 = 8.0;
 
-/// What the side or end being dragged by its handle can line up with (FE-26): itself as a reference, where it stood along
+/// What the side or end being dragged by its handle can line up with: itself as a reference, where it stood along
 /// its way as the drag began, how near (mm) takes it, the references that face its way with where each is, how far the hand
 /// has taken it (an End's drag in a plan or an elevation comes a step at a time) and how far it has been put, what it is
 /// lined up with now, and whether a padlock may be offered (a drag through a parameter offers none).
@@ -159,6 +159,7 @@ impl FamilyEditor {
         let (Ok(from), Ok(to)) = (num(&flexed.from), num(&flexed.to)) else { return Vec::new() };
         let look = looking(which);
         let mut out: Vec<ShapeHandle> = Vec::new();
+        let key = self.drive_key(drawn);
         for h in hs::edge_handles(&flexed.sketch, &mut num) {
             let way: [f64; 3] = std::array::from_fn(|k| frame.x[k] * h.out.0 + frame.y[k] * h.out.1);
             let at = if sees_flat {
@@ -176,8 +177,8 @@ impl FamilyEditor {
             if out.iter().any(|o| (o.at.0 - at.0).hypot(o.at.1 - at.1) < 1e-6) {
                 continue;
             }
-            // Tied to a parameter, its drag goes through it; a lock or EQ holding it, no handle (FE-25).
-            let (blocked, param) = match self.drive(drawn, i, super::handle_params::Target::Edge(h.line, h.out)) {
+            // Tied to a parameter, its drag goes through it; a lock or EQ holding it, no handle.
+            let (blocked, param) = match self.drive(key, drawn, i, super::handle_params::Target::Edge(h.line, h.out)) {
                 super::handle_params::Drive::Free => (None, None),
                 super::handle_params::Drive::Param(names) => (None, Some(names)),
                 super::handle_params::Drive::Refused(why) => (Some(why), None),
@@ -212,7 +213,7 @@ impl FamilyEditor {
     /// was, saying why.
     pub(crate) fn drag_edge_to(&mut self, moved: [f64; 3]) -> Result<(), String> {
         let Some(way) = self.views.edge_drag.as_ref().map(|d| d.way) else { return Ok(()) };
-        // Up to something that faces its way, it lines up with it (FE-26); refused there, it lines up with nothing.
+        // Up to something that faces its way, it lines up with it; refused there, it lines up with nothing.
         let d = self.snap_to(dot3(moved, way));
         if self.views.param_drag.is_some() {
             let done = self.param_to(d);
@@ -249,9 +250,9 @@ impl FamilyEditor {
     /// history): Escape, Undo and Redo, and the view it began in shown no longer. Whether there was one.
     pub(crate) fn cancel_drags(&mut self) -> bool {
         self.views.handle_snap = None;
-        // The selection being moved too (FE-7).
+        // The selection being moved too.
         let mut any = self.cancel_move();
-        // An End or a Start held in {3D} (FE-25); a side held there is the edge drag below.
+        // An End or a Start held in {3D}; a side held there is the edge drag below.
         any |= self.cancel_3d();
         if let Some(d) = self.views.edge_drag.take() {
             if let Some(i) = self.forms.iter().position(|f| f.tag == d.before.tag) {
@@ -265,12 +266,12 @@ impl FamilyEditor {
             }
             any = true;
         }
-        // A parameter dragged by a handle: the draft as the drag began (FE-25).
+        // A parameter dragged by a handle: the draft as the drag began.
         any |= self.cancel_param();
         any
     }
 
-    /// A drag of the selected form's `target` along `way` (the family's axes) begun: what it can line up with (FE-26), within
+    /// A drag of the selected form's `target` along `way` (the family's axes) begun: what it can line up with, within
     /// `reach` mm; `free` where no parameter is dragged, so a padlock may be offered. None for a form or a line with no GUID
     /// yet, which nothing can refer to.
     pub(crate) fn begin_snap(&mut self, target: Target, way: [f64; 3], reach: f64, free: bool) {

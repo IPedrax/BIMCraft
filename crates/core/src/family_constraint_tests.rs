@@ -431,12 +431,12 @@ fn a_reference_line_drawn_on_a_plane_a_drag_or_a_move_moves_goes_with_it() {
             _ => None,
         })
     };
-    // Dragged (F4): Gap takes the new length, and the line goes with Wall.
+    // Dragged: Gap takes the new length, and the line goes with Wall.
     let n = f.planes.iter().find(|p| p.guid == g(WALL)).unwrap().frame().z;
     let to = 2000.0 * n[1];
     let edits = f.drag_plane(&v, g(WALL), to).unwrap();
     assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
-    // Moved with its label taken off (FE-7): the same.
+    // Moved with its label taken off: the same.
     let mut free = f.clone();
     free.dimensions.clear();
     let edits = free.move_by(&v, &Moving { planes: vec![g(WALL)], ..Moving::default() }, [0.0, 200.0, 0.0]).unwrap();

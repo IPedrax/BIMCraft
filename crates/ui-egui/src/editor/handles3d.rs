@@ -1,4 +1,4 @@
-//! FE-25: a selected form's shape handles in {3D}, as in a plan or an elevation (FE-5, F5). With one extrusion selected, an
+//! A selected form's shape handles in {3D}, as in a plan or an elevation. With one extrusion selected, an
 //! arrow at the middle of each edge of its profile at mid-depth, pointing out of the solid, and one on its End and its Start
 //! at the profile's middle, pointing out along the plane's normal; with a Blend, its base's edges at its base and its First and
 //! Second End. A drag moves that side (`drag_edge_to`, the plans' own) or that end along the arrow, the pointer read along the
@@ -102,7 +102,8 @@ impl FamilyEditor {
         let (Ok(from), Ok(to)) = (num(&flexed.from), num(&flexed.to)) else { return Vec::new() };
         let mut out = Vec::new();
         // Tied to a parameter, a drag goes through it; a lock or EQ holding it, no handle.
-        let drive = |target| match self.drive(&drawn, i, target) {
+        let key = self.drive_key(&drawn);
+        let drive = |target| match self.drive(key, &drawn, i, target) {
             Drive::Free => Some((None, None)),
             Drive::Param(names) => Some((None, Some(names))),
             Drive::Refused(why) => Some((Some(why), None)),
@@ -215,7 +216,7 @@ impl FamilyEditor {
                 None => Err(String::new()),
             },
         };
-        // What it can line up with along its arrow (FE-26), as near as the plans take it.
+        // What it can line up with along its arrow, as near as the plans take it.
         let scale = f64::from(per_mm.length());
         if drag.live && scale > 1e-9 {
             let target = match &h.grab {
@@ -240,7 +241,7 @@ impl FamilyEditor {
         if n <= 1e-12 {
             return Ok(());
         }
-        // Up to something that faces its way, it lines up with it (FE-26).
+        // Up to something that faces its way, it lines up with it.
         let d = self.snap_to(f64::from((now - press).dot(per_mm) / n));
         if !d.is_finite() || (d - last).abs() < 1e-9 {
             return Ok(());

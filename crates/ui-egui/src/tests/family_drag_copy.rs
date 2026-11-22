@@ -1,4 +1,4 @@
-//! FE-4: Ctrl and a drag on a selected element in a family's plan or elevation copy the selection to where it is let go:
+//! Ctrl and a drag on a selected element in a family's plan or elevation copy the selection to where it is let go:
 //! the copies (new GUIDs, formulas as they were) follow the pointer and are selected after, the originals stay,
 //! one step of the history. What holds a constraint among the copies is copied with them; a lock to what isn't copied is
 //! dropped. Ctrl as the button comes up decides between a copy and a move. A datum, and copies the family's checks refuse,
@@ -231,7 +231,7 @@ fn ctrl_as_the_button_comes_up_decides_between_a_copy_and_a_move() {
 fn a_ctrl_press_on_a_form_not_selected_adds_it_and_copies_both() {
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0)]);
-    // On B's edge: its face, not selected, is the box's to begin in (FE-20).
+    // On B's edge: its face, not selected, is the box's to begin in.
     copy_drag(&mut h, [-600.0, 300.0, 0.0], [0.0, 900.0, 0.0]);
     let f = family(&h);
     assert_eq!(f.forms.len(), 4, "{}", status(&h));
@@ -409,7 +409,7 @@ fn a_refusal_names_the_symbol_copied_not_its_copy() {
 
 #[test]
 fn a_lone_plane_pressed_with_ctrl_and_let_go_without_moves_as_its_own_drag_does() {
-    // DIM labelled Len (1000): Edge's own drag (F4) takes Len with it, where FE-7's move would be held by the label.
+    // DIM labelled Len (1000): Edge's own drag takes Len with it, where a move of the selection would be held by the label.
     let script = family_with("")
         .replace(r#""at": [500, -1200, 0]}"#, r#""at": [500, -1200, 0], "label": "Len"}"#)
         .replace(r#""name": "Len", "value": 100"#, r#""name": "Len", "value": 1000"#);
@@ -467,7 +467,7 @@ fn a_second_dimension_reporting_one_parameter_is_refused_its_label() {
     assert!(ed(&mut h).set_label(g(DIM), Some("Span".into())).is_ok());
 }
 
-/// With Select Elements by Face off, Ctrl and a drag from the face of a form selected copy it, as with the toggle on (FE-20).
+/// With Select Elements by Face off, Ctrl and a drag from the face of a form selected copy it, as with the toggle on.
 #[test]
 fn with_select_elements_by_face_off_ctrl_and_a_drag_from_a_selected_forms_face_copy_it() {
     let mut h = plan();

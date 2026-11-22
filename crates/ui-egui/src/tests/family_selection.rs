@@ -331,7 +331,7 @@ fn select_elements_by_face_decides_whether_a_face_selects_by_a_click_and_by_a_cr
     boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
     boxed(&mut h, [750.0, 450.0, 0.0], [650.0, 350.0, 0.0], Modifiers::COMMAND);
     assert_eq!(selected(&h), vec![Picked::Form(0), Picked::Form(1)], "Ctrl adds");
-    // From the face of one selected no box is drawn: its drag is its own, and moves the selection (FE-7); Undo puts it back.
+    // From the face of one selected no box is drawn: its drag is its own, and moves the selection; Undo puts it back.
     let forms = |h: &Harness<BimApp>| editor(h).draft_family().unwrap().forms;
     let unmoved = forms(&h);
     boxed(&mut h, [750.0, 450.0, 0.0], [650.0, 350.0, 0.0], Modifiers::NONE);
@@ -422,8 +422,8 @@ fn select_elements_by_face_is_greyed_where_it_changes_nothing_and_is_kept_with_t
     assert!(h.state().select_by_face);
 }
 
-/// Drag Elements on Selection, beside Select Elements by Face: off (at first), a drag from the face of a form not selected draws a box, as since
-/// FE-20; on, it selects the form and moves it, as a drag from its edge does, and a nested instance's face the same. With
+/// Drag Elements on Selection, beside Select Elements by Face: off (at first), a drag from the face of a form not selected draws a box, a face being
+/// the box's to begin in; on, it selects the form and moves it, as a drag from its edge does, and a nested instance's face the same. With
 /// Select Elements by Face off a face picks nothing, so it changes nothing: a box from a face, an edge still the element's. A form the view leaves out
 /// is taken by neither.
 #[test]

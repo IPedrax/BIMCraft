@@ -621,7 +621,7 @@ pub(super) fn drawn_as(flexed: &Family, values: &BTreeMap<String, Val>, st: &Sta
 impl FamilyEditor {
     /// Aligned Dimension (DI): the tool, in a plan or an elevation of a family that isn't adaptive; the selection goes.
     pub(crate) fn dimension_tool(&mut self) {
-        // While a form is sketched (FE-12), where the view sees its plane flat.
+        // While a form is sketched, where the view sees its plane flat.
         if self.sketch.is_some() {
             self.sketch_dimension_tool(DimKind::Aligned);
             return;
@@ -688,7 +688,7 @@ impl FamilyEditor {
     /// The draft's family with `change` made to its dimensions, if its constraints still solve for the type previewed: else
     /// why not, nothing changed.
     fn try_dimensions(&mut self, change: impl FnOnce(&mut Vec<FamilyDimension>)) -> Result<(), Unsat> {
-        // While a form is sketched, the sketch's dimensions, its lines driven by them (FE-12).
+        // While a form is sketched, the sketch's dimensions, its lines driven by them.
         if self.sketch.is_some() {
             return self.sketch_try(change);
         }
@@ -765,7 +765,7 @@ impl FamilyEditor {
     /// Edits a drag or Align worked out, made to the draft: planes moved along their normals, extrusion ends given numbers, a
     /// label's parameter given its new value in the type previewed (an instance parameter's, its default).
     pub(crate) fn apply_edits(&mut self, edits: Vec<Edit>) {
-        // What the solve read the numbers as: a point's coordinate it left where it was keeps what places it (FE-26).
+        // What the solve read the numbers as: a point's coordinate it left where it was keeps what places it.
         let values = self.values();
         for e in edits {
             match e {
@@ -789,7 +789,7 @@ impl FamilyEditor {
                     }
                 }
                 // Only the coordinate that moved is written: a face aligned to a plane holds the face there, and its corners
-                // still slide along it, each keeping the formula that places it across (FE-26).
+                // still slide along it, each keeping the formula that places it across.
                 Edit::Point(i, k, spot, p) => self.shift_sketch_point(i, k, spot, p, &values),
                 Edit::Line(g, by) => {
                     // The line and the lines drawn on it, as far down as they go.
@@ -1080,7 +1080,7 @@ impl FamilyEditor {
         let p: Parameter =
             serde_json::from_value(json!({"name": name, "kind": kind, "instance": c.instance, "reporting": c.reporting, "value": length}))
                 .map_err(|e| e.to_string())?;
-        // While a form is sketched, held with the sketch until Finish (FE-12).
+        // While a form is sketched, held with the sketch until Finish.
         self.params_held().push(ParamText::of(&p));
         match self.set_label(c.dim, Some(name.to_string())) {
             Ok(()) => Ok(()),

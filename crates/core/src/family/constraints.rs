@@ -690,7 +690,7 @@ pub enum Edit {
 }
 
 /// What a solve holds where it is told, besides the constraints: a plane at an offset along its normal, or a reference at a
-/// place along a way (a sketch line both its ends). A move (FE-7, `moving.rs`) holds what it takes along shifted from where
+/// place along a way (a sketch line both its ends). A move (`moving.rs`) holds what it takes along shifted from where
 /// it is drawn: an unknown by so much (`Shifted`), or a form, every unknown of its own, its sketch's vertices by so much in
 /// its host's axes and its ends by so much along its normal (`Form`, by place).
 #[derive(Clone, Copy, Debug)]
@@ -745,7 +745,7 @@ struct Layout {
     radius: Vec<f64>,
     turn: Vec<f64>,
     points: Vec<Vec<(usize, Spot)>>,
-    /// The planes its profiles are drawn on, as its path is drawn for the type (FE-12): a Sweep's one, a Swept Blend's two.
+    /// The planes its profiles are drawn on, as its path is drawn for the type: a Sweep's one, a Swept Blend's two.
     profiles: Vec<Frame>,
 }
 
@@ -876,7 +876,7 @@ struct Seen {
     line: usize,
     host: PlaneRef,
     frame: Frame,
-    /// On a sweep's profile plane (FE-12), which stays where the path is drawn for the type: it moves with no unknown.
+    /// On a sweep's profile plane, which stays where the path is drawn for the type: it moves with no unknown.
     profile: bool,
     ends: (usize, usize),
     shape: Shape,
@@ -1575,7 +1575,7 @@ impl Family {
                 }
                 self.reference_ok(r, d.kind).map_err(|e| format!("{who}: {e}"))?;
             }
-            // FE-12: a profile's lines are measured among themselves, its plane following the path as nothing else does.
+            // A profile's lines are measured among themselves, its plane following the path as nothing else does.
             let on = |r: &DimRef| match *r {
                 DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => self
                     .forms
@@ -1841,7 +1841,7 @@ impl Family {
             }))
             .chain(pivot_refs);
         let mut problem = Problem::new(self, refs, values, &mut read, meter).map_err(Unsat::from)?;
-        // A form a move takes along is read whole (FE-7).
+        // A form a move takes along is read whole.
         let moving = pins.iter().any(Pin::moves);
         for p in pins {
             if let Pin::Form(i, ..) = *p
@@ -2028,7 +2028,7 @@ impl Family {
             solve_rows(&problem.x0, &give, &rows, meter, &[], moving)?.0
         };
         // A move's rows came first and every other row that depended on them was left out: each must still hold where the
-        // solve came to, or what it holds holds what is moved where it is (FE-7).
+        // solve came to, or what it holds holds what is moved where it is.
         if moving {
             moving::held(&rows, &x)?;
         }
@@ -2332,7 +2332,7 @@ impl Family {
                 rows.push(Row { lin: Lin { terms: vec![(u, 1.0)], c: -drawn }, dim: None, soft: true, pivot: None });
             }
         }
-        // A move's rows before every other (FE-7).
+        // A move's rows before every other.
         if !first.is_empty() {
             first.extend(rows);
             rows = first;
@@ -2502,7 +2502,7 @@ impl Family {
     }
 
     /// Each reporting parameter more than one dimension is labelled with, and those dimensions (by place): a file from
-    /// before FE-4's review may hold one, and still opens; it reads the last ([`Family::reported`]). Setting such a label
+    /// from before this rule may hold one, and still opens; it reads the last ([`Family::reported`]). Setting such a label
     /// anew is refused (`family`'s `dimension` and `dimensions`, the family document's Label).
     pub fn reported_twice(&self) -> Vec<(String, Vec<usize>)> {
         let mut by: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
@@ -2603,7 +2603,7 @@ impl Family {
     /// the sketch points it moved.
     fn edits(&self, s: &Solution, values: &BTreeMap<String, Val>) -> Vec<Edit> {
         let mut out: Vec<Edit> = s.planes.iter().filter_map(|(i, v)| Some(Edit::Plane(self.planes.get(*i)?.guid, *v))).collect();
-        // Reference lines the constraints moved or turned, and those drawn on them (F7c), or on a plane that moved or turned.
+        // Reference lines the constraints moved or turned, and those drawn on them, or on a plane that moved or turned.
         if !s.lines.is_empty() || !s.planes.is_empty() || !s.turned_planes.is_empty() {
             let moved = self.moved(s);
             for (was, now) in self.lines.iter().zip(&moved.lines) {
@@ -3129,7 +3129,7 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
             (0.0, 0.0)
         };
         for (k, l) in form.plane_lines().enumerate().filter(|(_, l)| !l.guid.is_nil()) {
-            // A profile's line on its own plane (FE-12), seen flat or not at all.
+            // A profile's line on its own plane, seen flat or not at all.
             let group = form.plane_group(k);
             let (frame, flat, edge) = match group {
                 0 | 1 => (host, host_flat, edge),
@@ -3198,7 +3198,7 @@ pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &view
         let Ok(host) = flexed.frame(&form.host) else { continue };
         let profiles = super::forms::profile_frames(form, &host, &mut |e| number(e, values, &mut read));
         for (k, l) in form.plane_lines().enumerate().filter(|(_, l)| !l.guid.is_nil()) {
-            // On its host, or a profile's line on its own plane (FE-12): seen flat.
+            // On its host, or a profile's line on its own plane: seen flat.
             let group = form.plane_group(k);
             let Some(frame) = (if group < 2 { Some(host) } else { profiles.get(group - 2).copied() }) else { continue };
             if !parallel(frame.z, eye) {

@@ -249,7 +249,7 @@ fn a_drag_from_an_element_with_a_tool_in_hand_or_by_the_middle_button_draws_no_b
     click_family(&mut h, [700.0, 400.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Form(1)]);
     // From A's edge, leftwards over Edge: no box, while it is dragged or once it is let go; the drag is A's, which it selects
-    // and moves (FE-7).
+    // and moves.
     // (Since FE-20 the face of a form that isn't selected is the box's to begin in, so that a
     // crossing box can be drawn inside a face: Select Elements by Face, `family_selection`. A drag from an element's edge, or
     // from one selected, is still the element's.)

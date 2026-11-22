@@ -1,4 +1,4 @@
-//! FE-12: the Dimension tool while a form is sketched. Aligned, Angular and Radial dimensions on the sketch's own lines and
+//! The Dimension tool while a form is sketched. Aligned, Angular and Radial dimensions on the sketch's own lines and
 //! circles and to a reference plane, held with the sketch and written at Finish (one step, undone with the form); a label and
 //! a value typed drive the sketch's lines; a padlock locks; a lock the constraints refuse keeps sketch mode open; Cancel drops
 //! them; a line deleted takes its dimensions with it; the draft's dimensions of the form show and are edited while it is.

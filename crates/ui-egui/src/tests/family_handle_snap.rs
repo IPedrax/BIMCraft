@@ -1,4 +1,4 @@
-//! FE-26: a shape handle moves its side alone, the view stays as it was while it is dragged, and a side or an end dragged up
+//! A shape handle moves its side alone, the view stays as it was while it is dragged, and a side or an end dragged up
 //! to a reference plane or another form's side lines up with it; let go there in a plan or an elevation, Align's padlock is
 //! offered, and a click on it locks the two.
 use super::family_handle_params::{STARTER, drag, handle, opened_on, press_move, release, screen, status};

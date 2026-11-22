@@ -1,9 +1,9 @@
-//! FE-25 review of #56: a handle that shows works, for every form a family can make. Its parameter is found by moving it (a
+//! A handle that shows works, for every form a family can make. Its parameter is found by moving it (a
 //! name that isn't the family's, or one that moves nothing, greys it), the drag searches for the value (a nonlinear formula,
 //! an `if()`, one flat where it starts, a whole number), the size before the position (`Offset + Width / 2` drags Width), a
 //! label before EQ; a form turned inside out is refused whatever the kind; {3D} writes once the button is up, shows no
 //! handle on a face turned away or on a hidden form; the button's last frame counts; Undo and Redo mid-drag give it up. An
-//! End's formula is what drags a parameter here: a side's formula, with no label on it, moves that side alone (FE-26).
+//! End's formula is what drags a parameter here: a side's formula, with no label on it, moves that side alone.
 use super::family_handle_params::{drag, handle, opened_on, press_move, release, screen, status, value};
 use super::family_views::{editor, open, view};
 use super::*;

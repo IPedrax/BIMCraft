@@ -89,7 +89,7 @@ impl Form {
     }
 
     /// The lines of its sketches a constraint may measure: its sketch (a Blend's base, a sweep's path) and a Blend's top, on
-    /// its host plane, and a sweep's profile and a swept blend's second profile, each on its profile plane (FE-12): what
+    /// its host plane, and a sweep's profile and a swept blend's second profile, each on its profile plane: what
     /// [`Form::all_lines`] has, in its order.
     pub fn plane_lines(&self) -> impl Iterator<Item = &FormLine> {
         self.all_lines()

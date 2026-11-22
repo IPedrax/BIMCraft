@@ -1,4 +1,4 @@
-//! FE-4: what is selected in a family's plan or elevation copied by a Ctrl+drag. Each copy is a new
+//! What is selected in a family's plan or elevation copied by a Ctrl+drag. Each copy is a new
 //! element: a form with a new GUID and a new GUID for every line of its sketch, top and profiles (its formulas as they are),
 //! a reference plane or line, a symbol, a connector and a nested instance (the same type) each with a new GUID, ids left
 //! to be given. What a copy is drawn on is the copy of it where that is copied too, else what the original is drawn on. A
@@ -32,7 +32,7 @@ pub enum CopyRefused {
     Datum(Named),
     /// A plane that defines the origin, which one plane does in its direction.
     Origin(Named),
-    /// A plane or a reference line that turns about a pivot (F7d), or a form or a line drawn on one: a pivot holds it to a
+    /// A plane or a reference line that turns about a pivot, or a form or a line drawn on one: a pivot holds it to a
     /// point, which its copy would share.
     Pivot(Named),
 }

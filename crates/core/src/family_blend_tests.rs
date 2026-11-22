@@ -308,7 +308,7 @@ fn constraints_reach_a_blends_top_and_ends_and_a_sweeps_path() {
         assert!(base_xs.iter().all(|x| (x - 300.0).abs() < 1e-6), "{t}: {base_xs:?}");
         assert!(v > 0.0);
     }
-    // A sweep's path line locked to a plane follows it; its profile's lines are measured among themselves (FE-12), and one
+    // A sweep's path line locked to a plane follows it; its profile's lines are measured among themselves, and one
     // locked to a plane off the profile is refused.
     let mut s = Session::new();
     let fam = |dims: Value| {

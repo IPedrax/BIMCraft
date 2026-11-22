@@ -1,4 +1,4 @@
-//! FE-7: what is selected in a family's plan or elevation moved together by a drag. The planes, reference
+//! What is selected in a family's plan or elevation moved together by a drag. The planes, reference
 //! lines and forms moved are held where the move puts them (each unknown of theirs at where it is drawn plus the shift: a
 //! plane along its normal, a line's start in the axes of what it is drawn on, a form's sketch in its host's axes and its
 //! ends along its normal), those rows first; then every constraint of the family. What the constraints tie to what is moved

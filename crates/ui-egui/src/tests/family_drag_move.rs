@@ -1,4 +1,4 @@
-//! FE-7: a drag on a selected element in a family's plan or elevation moves the whole selection: forms
+//! A drag on a selected element in a family's plan or elevation moves the whole selection: forms
 //! (their sketch where the view sees their plane flat, their Start and End where it sees it edge-on), planes, symbols and a
 //! dimension's line, live and as one step of the history. A press on an element not selected selects it first (with Ctrl,
 //! adds it). What a lock or a label holds, and a number that is a formula, refuse the whole move, nothing changed; so does a
@@ -169,7 +169,7 @@ fn a_selected_form_dragged_in_plan_moves_as_one_step() {
 
 #[test]
 fn shift_keeps_a_move_square_to_the_view() {
-    // FE-2's Ortho: with Shift held the selection moves along the view's axis the drag mostly follows, from where it began.
+    // Shift: with it held the selection moves along the view's axis the drag mostly follows, from where it began.
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0)]);
     let before = points(&h, 0);
@@ -289,7 +289,7 @@ fn an_extrusion_seen_edge_on_moves_its_start_and_end() {
 fn a_press_on_a_form_not_selected_selects_it_and_moves_it_and_ctrl_adds_it() {
     let mut h = plan();
     let (a0, b0) = (points(&h, 0), points(&h, 1));
-    // Each pressed on an edge: the face of a form not selected is the box's to begin in (FE-20).
+    // Each pressed on an edge: the face of a form not selected is the box's to begin in.
     drag(&mut h, [-600.0, 300.0, 0.0], [0.0, 300.0, 0.0], Modifiers::NONE);
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
     let d = shift(&b0, &points(&h, 1));
@@ -574,7 +574,7 @@ fn a_reference_line_drawn_on_a_moved_plane_goes_with_it_and_the_family_stays_sou
     assert!((l.start[1] - wall_y(&h)).abs() < 1e-6 && (l.end[1] - wall_y(&h)).abs() < 1e-6, "{l:?}");
     assert_eq!((l.start[0], l.end[0], l.start[2]), (-300.0, 300.0, 500.0), "it moves with the plane alone");
     assert!(family(&h).check(&|_| true).is_ok(), "{:?}", family(&h).check(&|_| true));
-    // Wall alone, by its own drag (F4): the line goes with it too.
+    // Wall alone, by its own drag: the line goes with it too.
     pick(&mut h, &[Picked::Plane(g(WALL))]);
     let was = wall_y(&h);
     drag(&mut h, [1500.0, was, 0.0], [0.0, 300.0, 0.0], Modifiers::NONE);
@@ -614,7 +614,7 @@ fn shift_on_an_element_not_selected_neither_moves_it_nor_boxes() {
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0)]);
     let (a, b) = (points(&h, 0), points(&h, 1));
-    // On B's edge: its face, not selected, is the box's to begin in (FE-20), and Shift's box would take away what it takes.
+    // On B's edge: its face, not selected, is the box's to begin in, and Shift's box would take away what it takes.
     let at = press_and_move(&mut h, [-600.0, 300.0, 0.0], [300.0, 300.0, 0.0], Modifiers::SHIFT);
     assert!(!editor(&h).boxing(), "no box");
     release(&mut h, at);
@@ -638,7 +638,7 @@ fn the_options_bars_depth_is_wide_enough_for_its_value_after_a_multi_select() {
 }
 
 /// With Select Elements by Face off a face selects nothing, but a press on the face of what is selected is still on it: a
-/// drag from there moves the selection, as it does with the toggle on (FE-20). The face of one not selected is the box's.
+/// drag from there moves the selection, as it does with the toggle on. The face of one not selected is the box's.
 #[test]
 fn with_select_elements_by_face_off_a_drag_from_a_selected_forms_face_moves_it() {
     let mut h = plan();
@@ -695,4 +695,76 @@ fn with_drag_elements_on_selection_a_drag_from_a_face_not_selected_selects_and_m
     release(&mut h, at);
     assert_eq!((points(&h, 0), points(&h, 1)), (a, b));
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
+}
+
+/// A selected connector with no place of its own (an electrical device's may have none) stays where it is while the rest of
+/// the selection moves, and the status bar says why, a note rather than a refusal.
+#[test]
+fn a_connector_with_no_place_stays_and_the_status_bar_says_so() {
+    let script = family_with("").replace(
+        r#""forms": ["#,
+        r#""connectors": [{"kind": "power", "system": "power-balanced", "voltage": 230, "load_va": 10}], "forms": ["#,
+    );
+    let mut h = plan_of(&script);
+    assert_eq!(family(&h).connectors.len(), 1);
+    pick(&mut h, &[Picked::Form(0), Picked::Connector(0)]);
+    let before = points(&h, 0);
+    drag(&mut h, [300.0, 300.0, 0.0], [200.0, 0.0, 0.0], Modifiers::NONE);
+    let d = shift(&before, &points(&h, 0));
+    assert!(near(d[0], 200.0) && near(d[1], 0.0), "the form moves: {d:?} {}", status(&h));
+    assert!(family(&h).connectors[0].at.is_none(), "the connector has no place to move");
+    let s = h.state().status.clone();
+    assert!(s.text.contains("no place of its own") && !s.error, "{s:?}");
+    assert_eq!(editor(&h).steps(), 1);
+}
+
+/// [`plan`]'s family with box B far west, at x -6000: the room the plan is fitted to reaches out to it.
+fn far_b() -> Harness<'static, BimApp> {
+    let near = square(-1000, 100, -600, 500, None);
+    let script = family_with("").replace(&near, &square(-6000, 100, -5600, 500, None));
+    assert_ne!(script, family_with(""));
+    plan_of(&script)
+}
+
+/// Each view keeps its own frame: the plan, its family shrunk (far box B deleted), keeps the frame it was fitted to, and so
+/// it does after the Front elevation was shown and the plan shown again; Zoom to Fit fits it to the smaller family.
+#[test]
+fn each_view_keeps_its_frame_while_another_is_shown() {
+    let mut h = far_b();
+    let at = |h: &Harness<BimApp>| editor(h).views.screen_of([300.0, 300.0, 0.0]).unwrap();
+    let before = at(&h);
+    pick(&mut h, &[Picked::Form(1)]);
+    assert!(h.state_mut().family_find_action("Delete"));
+    h.run();
+    h.run();
+    assert_eq!(family(&h).forms.len(), 1, "{}", status(&h));
+    assert_eq!(at(&h), before, "the plan keeps its frame as the family shrinks");
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    view(&mut h, Some(Which::Plan));
+    assert_eq!(at(&h), before, "and keeps it after another view was shown");
+    ed(&mut h).zoom_to_fit();
+    h.run();
+    h.run();
+    assert_ne!(at(&h), before, "Zoom to Fit fits it to the family as it is now");
+}
+
+/// A family grown past the frame while nothing is dragged (here far box B brought back by Undo, as a file reloaded or a form
+/// sketched far off in a family that began empty would) is fitted again, so what it takes up is in sight.
+#[test]
+fn a_family_grown_past_the_frame_is_fitted_again() {
+    let mut h = far_b();
+    pick(&mut h, &[Picked::Form(1)]);
+    assert!(h.state_mut().family_find_action("Delete"));
+    h.run();
+    ed(&mut h).zoom_to_fit();
+    h.run();
+    h.run();
+    let pane = editor(&h).views.pane.unwrap();
+    let b = |h: &Harness<BimApp>| editor(h).views.screen_of([-5800.0, 300.0, 0.0]).unwrap();
+    assert!(!pane.contains(b(&h)), "fitted to A alone, far B's place is out of sight: {:?}", b(&h));
+    h.state_mut().family_undo();
+    h.run();
+    h.run();
+    assert_eq!(family(&h).forms.len(), 2);
+    assert!(pane.contains(b(&h)), "B back, the view takes it in: {:?} in {pane:?}", b(&h));
 }

@@ -33,7 +33,7 @@
 //! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
 //! (`Scene::under`), unless Drag Elements on Selection is on and a face selects: then that face is its element's as an edge
 //! is (`selection.rs`); a drag from an element's edge, a plane, a line or a connector, or from the face of one selected (with
-//! Select Elements by Face on or off), is the element's and draws none: it moves the selection (FE-7, `drag_move.rs`), the
+//! Select Elements by Face on or off), is the element's and draws none: it moves the selection (`drag_move.rs`), the
 //! element selected first if it isn't. {3D} has no box: a drag there turns the view.
 use super::*;
 use bimcraft_core::family::constraints::DimMark;
@@ -636,8 +636,8 @@ impl Scene<'_> {
 }
 
 /// Whether `at` is still where a box began at `from`: within the few pixels each way (`canvas::STILL`) the project's
-/// canvas lets a drag go and still be a click.
-fn still(from: Pos2, at: Pos2) -> bool {
+/// canvas lets a drag go and still be a click. A move of the selection and a plane's drag wait for the hand to leave it too.
+pub(super) fn still(from: Pos2, at: Pos2) -> bool {
     (from.x - at.x).abs().max((from.y - at.y).abs()) < crate::canvas::STILL
 }
 
