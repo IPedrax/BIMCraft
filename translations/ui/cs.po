@@ -20,8 +20,8 @@ msgstr "(výchozí)"
 #: crates/ui-egui/src/editor/document.rs:2129
 #: crates/ui-egui/src/editor/extrusion.rs:245
 #: crates/ui-egui/src/editor/extrusion.rs:248
-#: crates/ui-egui/src/editor/sketch.rs:1941
-#: crates/ui-egui/src/editor/sketch.rs:1944
+#: crates/ui-egui/src/editor/sketch.rs:1947
+#: crates/ui-egui/src/editor/sketch.rs:1950
 #: crates/ui-egui/src/editor/types_dialog.rs:315
 #: crates/ui-egui/src/editor/types_dialog.rs:603
 #: crates/ui-egui/src/editor.rs:1025
@@ -101,7 +101,7 @@ msgstr "3D pohled"
 msgid "3D View: {3D}"
 msgstr "3D pohled: {3D}"
 
-#: crates/ui-egui/src/editor/views.rs:198
+#: crates/ui-egui/src/editor/views.rs:236
 msgid "3D View: {}"
 msgstr ""
 
@@ -135,7 +135,7 @@ msgstr "; a dalších {}"
 msgid "<By Category>"
 msgstr "<Podle kategorie>"
 
-#: crates/ui-egui/src/editor/sketch.rs:1711
+#: crates/ui-egui/src/editor/sketch.rs:1717
 msgid "<By Sketch>"
 msgstr "<Podle skici>"
 
@@ -218,7 +218,7 @@ msgstr ""
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "Materiál vodiče, izolace a provozní teplota a proudová zatížitelnost jednotlivých průřezů v mm²."
 
-#: crates/ui-egui/src/editor/views.rs:1607
+#: crates/ui-egui/src/editor/views.rs:1666
 msgid "A connector with no place of its own stays where it is: give it one in Properties to move it."
 msgstr ""
 
@@ -226,7 +226,7 @@ msgstr ""
 msgid "A copy is drawn on a reference plane or a reference line the family no longer has: it can't be pasted."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1051
+#: crates/ui-egui/src/editor/views.rs:1089
 msgid "A datum stays where it is: offset a reference plane of the family's own."
 msgstr ""
 
@@ -286,7 +286,7 @@ msgstr ""
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1463
+#: crates/ui-egui/src/editor/views.rs:1522
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -370,7 +370,7 @@ msgstr "Nový výkres s rozpiskou"
 msgid "A new type, a copy of the type shown"
 msgstr "Nový typ, kopie zobrazeného typu"
 
-#: crates/ui-egui/src/editor/modify.rs:551
+#: crates/ui-egui/src/editor/modify.rs:555
 msgid "A number of {} it would change is worked out by a formula: change it in Family Types."
 msgstr ""
 
@@ -963,7 +963,7 @@ msgstr "Jímače"
 
 #: crates/core/src/commands.rs:2215
 #: crates/ui-egui/src/editor/document.rs:766
-#: crates/ui-egui/src/editor/sketch.rs:1816
+#: crates/ui-egui/src/editor/sketch.rs:1822
 #: crates/ui-egui/src/editor.rs:1164
 #: crates/ui-egui/src/lib.rs:456
 #: crates/ui-egui/src/sketch.rs:1215
@@ -975,7 +975,7 @@ msgstr "Zarovnat"
 msgid "Align (AL): pick a reference line, then what to line up with it"
 msgstr "Zarovnat (AL): vyberte referenční čáru a potom prvek k zarovnání"
 
-#: crates/ui-egui/src/editor/sketch.rs:1815
+#: crates/ui-egui/src/editor/sketch.rs:1821
 msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
 msgstr "Zarovnat (AL): vyberte referenci, potom čáru skici, která se k ní přesune; její zámek je spojí"
 
@@ -991,7 +991,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "Zarovnání čar probíhá podle toho, co ukazuje půdorys: ve 3D pohledu přetáhněte konec čáry nebo ji nakreslete znovu."
 
-#: crates/ui-egui/src/editor/views.rs:1465
+#: crates/ui-egui/src/editor/views.rs:1524
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -1065,7 +1065,7 @@ msgstr ""
 msgid "Aligned."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1708
+#: crates/ui-egui/src/editor/views.rs:1767
 msgid "Aligned: let go, then click the padlock to lock it there."
 msgstr ""
 
@@ -1200,7 +1200,7 @@ msgstr "Proudová zatížitelnost"
 msgid "Amplitude"
 msgstr "Amplituda"
 
-#: crates/ui-egui/src/editor/modify.rs:584
+#: crates/ui-egui/src/editor/modify.rs:588
 msgid "An adaptive family is modified in {3D}."
 msgstr ""
 
@@ -1289,7 +1289,7 @@ msgstr ""
 msgid "Angle to true north"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:495
+#: crates/ui-egui/src/editor/modify.rs:499
 #: crates/ui-egui/src/lib.rs:6777
 #: crates/ui-egui/src/lib.rs:6796
 msgid "Angle:"
@@ -1681,11 +1681,11 @@ msgstr "Automaticky ukládat na pozadí"
 msgid "Available fields:"
 msgstr "Dostupná pole:"
 
-#: crates/ui-egui/src/editor/sketch.rs:1757
+#: crates/ui-egui/src/editor/sketch.rs:1763
 msgid "Axis Line"
 msgstr "Čára osy"
 
-#: crates/ui-egui/src/editor/sketch.rs:1756
+#: crates/ui-egui/src/editor/sketch.rs:1762
 msgid "Axis Line: the line the profile turns about, drawn by two clicks or picked"
 msgstr "Čára osy: čára, kolem které se profil otáčí, nakreslená dvěma kliknutími nebo vybraná"
 
@@ -1950,8 +1950,8 @@ msgid "Black and white"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:550
-#: crates/ui-egui/src/editor/sketch.rs:1666
-#: crates/ui-egui/src/editor/sketch.rs:1914
+#: crates/ui-egui/src/editor/sketch.rs:1672
+#: crates/ui-egui/src/editor/sketch.rs:1920
 #: crates/ui-egui/src/editor.rs:223
 msgid "Blend"
 msgstr ""
@@ -2051,7 +2051,7 @@ msgstr ""
 msgid "Boundary"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1751
+#: crates/ui-egui/src/editor/sketch.rs:1757
 #: crates/ui-egui/src/sketch.rs:1489
 msgid "Boundary Line"
 msgstr "Čára hranice"
@@ -2068,7 +2068,7 @@ msgstr "Čára hranice: načrtněte půdorysnou stopu střechy na podlaží vý�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Čára hranice: načrtněte obrys šachtového otvoru"
 
-#: crates/ui-egui/src/editor/sketch.rs:1750
+#: crates/ui-egui/src/editor/sketch.rs:1756
 msgid "Boundary Line: the lines of the profile"
 msgstr "Čára hranice: čáry profilu"
 
@@ -2263,8 +2263,8 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:140
 #: crates/ui-egui/src/classification.rs:736
-#: crates/ui-egui/src/clipboard.rs:536
-#: crates/ui-egui/src/clipboard.rs:599
+#: crates/ui-egui/src/clipboard.rs:542
+#: crates/ui-egui/src/clipboard.rs:605
 #: crates/ui-egui/src/clouds.rs:95
 #: crates/ui-egui/src/codes.rs:1687
 #: crates/ui-egui/src/coordinates.rs:1274
@@ -2327,11 +2327,11 @@ msgstr "Zrušit"
 msgid "Cancel Edit Group"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1657
+#: crates/ui-egui/src/editor/sketch.rs:1663
 msgid "Cancel Edit Mode"
 msgstr "Zrušit režim úprav"
 
-#: crates/ui-egui/src/editor/sketch.rs:1657
+#: crates/ui-egui/src/editor/sketch.rs:1663
 msgid "Cancel Edit Mode: drop the lines, keep it as it was"
 msgstr "Zrušit režim úprav: zahodit čáry, zachovat původní stav"
 
@@ -2464,7 +2464,7 @@ msgstr "Stropní svítidlo"
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
-#: crates/ui-egui/src/editor/views.rs:200
+#: crates/ui-egui/src/editor/views.rs:238
 msgid "Ceiling Plan: {}"
 msgstr "Půdorys podhledu: {}"
 
@@ -2558,7 +2558,7 @@ msgstr ""
 msgid "Ceramic tile"
 msgstr "Keramická dlažba"
 
-#: crates/ui-egui/src/editor/sketch.rs:1610
+#: crates/ui-egui/src/editor/sketch.rs:1616
 #: crates/ui-egui/src/lib.rs:6770
 #: crates/ui-egui/src/linestyles.rs:431
 #: crates/ui-egui/src/structure.rs:171
@@ -2845,15 +2845,15 @@ msgstr ""
 msgid "Click a level line in this section or elevation: the pasted elements go onto it. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:424
+#: crates/ui-egui/src/clipboard.rs:430
 msgid "Click a level the pasted elements go onto. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1455
+#: crates/ui-egui/src/editor/modify.rs:1484
 msgid "Click a line of the sketch where it is split."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1562
+#: crates/ui-egui/src/editor/sketch.rs:1568
 msgid "Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."
 msgstr "Kliknutím na čáru ji vyberete, se Shift přidáte další; táhněte konec vybrané čáry; klávesa Delete vybrané čáry odstraní."
 
@@ -2913,15 +2913,15 @@ msgstr "Klikněte na referenční čáru: použije se pracovní rovina, ve kter�
 msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
 msgstr "Klikněte na referenční rovinu nebo základní prvek pro pracovní rovinu. Klávesa Esc vrátí do dialogu."
 
-#: crates/ui-egui/src/editor/sketch.rs:1565
+#: crates/ui-egui/src/editor/sketch.rs:1571
 msgid "Click a reference plane, a reference line or a form's edge: a line along it, locked to it."
 msgstr "Klikněte na referenční rovinu, referenční čáru nebo hranu tvaru: čára podél ní, k ní zamčená."
 
-#: crates/ui-egui/src/editor/sketch.rs:1567
+#: crates/ui-egui/src/editor/sketch.rs:1573
 msgid "Click a reference plane, a reference line or a form's edge: a line along it."
 msgstr "Klikněte na referenční rovinu, referenční čáru nebo hranu tvaru: vytvoří se čára podél ní."
 
-#: crates/ui-egui/src/editor/sketch.rs:1557
+#: crates/ui-egui/src/editor/sketch.rs:1563
 msgid "Click a reference plane, a reference line or a form's edge: a line of the path along it."
 msgstr "Klikněte na referenční rovinu, referenční čáru nebo hranu tvaru: vytvoří se podél ní čára cesty."
 
@@ -2986,13 +2986,13 @@ msgstr "Klikněte na prvek pro jeho označení popiskou s typem, u dveří a oke
 msgid "Click an element to take it down in the view's phase; click it again to take it back."
 msgstr "Klikněte na prvek pro jeho demolici ve fázi pohledu; dalším kliknutím demolici zrušíte."
 
-#: crates/ui-egui/src/editor/modify.rs:1061
-#: crates/ui-egui/src/editor/modify.rs:1367
+#: crates/ui-egui/src/editor/modify.rs:1084
+#: crates/ui-egui/src/editor/modify.rs:1392
 msgid "Click away from the centre of rotation."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1083
-#: crates/ui-egui/src/editor/modify.rs:1400
+#: crates/ui-egui/src/editor/modify.rs:1106
+#: crates/ui-egui/src/editor/modify.rs:1425
 msgid "Click away from the origin."
 msgstr ""
 
@@ -3085,8 +3085,8 @@ msgstr "Klikněte na horní líc: bod v daném místě, s odsazením z panelu Mo
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:412
-#: crates/ui-egui/src/clipboard.rs:548
+#: crates/ui-egui/src/clipboard.rs:418
+#: crates/ui-egui/src/clipboard.rs:554
 #: crates/ui-egui/src/lib.rs:6913
 msgid "Click on the work plane where the pasted elements go. Esc cancels."
 msgstr ""
@@ -3111,8 +3111,8 @@ msgstr ""
 msgid "Click the arc's centre."
 msgstr "Klikněte na střed oblouku."
 
-#: crates/ui-egui/src/editor/modify.rs:1075
-#: crates/ui-egui/src/editor/modify.rs:1393
+#: crates/ui-egui/src/editor/modify.rs:1098
+#: crates/ui-egui/src/editor/modify.rs:1418
 msgid "Click the axis' second point away from its first."
 msgstr ""
 
@@ -3244,7 +3244,7 @@ msgstr ""
 msgid "Click the point the spot coordinate reads; it snaps."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1569
+#: crates/ui-egui/src/editor/sketch.rs:1575
 msgid "Click the points of the shape; Finish Edit Mode when the lines close into loops."
 msgstr "Klikněte na body tvaru; po uzavření čar do smyček zvolte Dokončit režim úprav."
 
@@ -3376,7 +3376,7 @@ msgstr "Kliknutím vyberete prvek, tažením oknem vyberete více prvků. Shift 
 msgid "Click to size the arc. Esc cancels."
 msgstr "Kliknutím určíte velikost oblouku. Klávesa Esc operaci zruší."
 
-#: crates/ui-egui/src/editor/sketch.rs:1568
+#: crates/ui-egui/src/editor/sketch.rs:1574
 msgid "Click two lines that meet: they are rounded by an arc of the Options Bar's radius."
 msgstr "Klikněte na dvě čáry, které se stýkají: zaoblí se obloukem s poloměrem z panelu Možnosti."
 
@@ -3388,7 +3388,7 @@ msgstr ""
 msgid "Click two points: a reference plane through them."
 msgstr "Klikněte na dva body: vytvoří se jimi procházející referenční rovina."
 
-#: crates/ui-egui/src/editor/sketch.rs:1563
+#: crates/ui-egui/src/editor/sketch.rs:1569
 msgid "Click two points: the axis the profile turns about."
 msgstr "Klikněte na dva body: osa, kolem které se profil otáčí."
 
@@ -3508,7 +3508,7 @@ msgstr "Klikněte do místa středu strany. Klávesa Esc operaci zruší."
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:414
+#: crates/ui-egui/src/clipboard.rs:420
 #: crates/ui-egui/src/lib.rs:6968
 msgid "Click where the pasted elements go. Esc cancels."
 msgstr ""
@@ -3947,7 +3947,7 @@ msgstr "Konektor: konektor potrubí, napájení, vypínače, dat nebo uzemnění
 msgid "Connectors"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:489
+#: crates/ui-egui/src/editor/modify.rs:493
 #: crates/ui-egui/src/lib.rs:6567
 #: crates/ui-egui/src/lib.rs:6570
 msgid "Constrain"
@@ -3964,7 +3964,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/nested.rs:277
 #: crates/ui-egui/src/editor/pivot.rs:287
 #: crates/ui-egui/src/editor/pivot.rs:307
-#: crates/ui-egui/src/editor/sketch.rs:1926
+#: crates/ui-egui/src/editor/sketch.rs:1932
 #: crates/ui-egui/src/editor.rs:1125
 #: crates/ui-egui/src/properties.rs:143
 msgid "Constraints"
@@ -4084,7 +4084,7 @@ msgstr "Zkopírováno {} ID."
 msgid "Copied {} IFC GlobalIds."
 msgstr "Zkopírováno {} globálních ID IFC."
 
-#: crates/ui-egui/src/clipboard.rs:366
+#: crates/ui-egui/src/clipboard.rs:367
 msgid "Copied {} elements to the clipboard."
 msgstr ""
 
@@ -4106,9 +4106,9 @@ msgstr "Měď"
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:812
-#: crates/ui-egui/src/editor/modify.rs:503
-#: crates/ui-egui/src/editor/modify.rs:506
-#: crates/ui-egui/src/editor/modify.rs:517
+#: crates/ui-egui/src/editor/modify.rs:507
+#: crates/ui-egui/src/editor/modify.rs:510
+#: crates/ui-egui/src/editor/modify.rs:521
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:6586
 #: crates/ui-egui/src/lib.rs:6753
@@ -4180,19 +4180,19 @@ msgid "Copy to Clipboard (Ctrl+C): what is selected, or the lines picked in a sk
 msgstr ""
 
 #: crates/ui-egui/src/adaptive_view.rs:244
-#: crates/ui-egui/src/editor/modify.rs:446
+#: crates/ui-egui/src/editor/modify.rs:450
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:453
+#: crates/ui-egui/src/editor/modify.rs:457
 msgid "Copy: click the point to copy to (Shift or Constrain keeps it square)."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:451
+#: crates/ui-egui/src/editor/modify.rs:455
 msgid "Copy: click where each copy goes (Multiple is on: one more copy each click). Esc stops."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1627
+#: crates/ui-egui/src/editor/modify.rs:1683
 msgid "Copy: copies of what is selected, from a point clicked to another"
 msgstr ""
 
@@ -4638,7 +4638,7 @@ msgstr ""
 msgid "Cut with Voids When Loaded"
 msgstr "Při načtení oříznout vybráními"
 
-#: crates/ui-egui/src/clipboard.rs:367
+#: crates/ui-egui/src/clipboard.rs:368
 msgid "Cut {} elements to the clipboard."
 msgstr ""
 
@@ -4795,7 +4795,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:1331
 #: crates/ui-egui/src/editor/document.rs:1350
 #: crates/ui-egui/src/editor/nested.rs:398
-#: crates/ui-egui/src/editor/sketch.rs:1819
+#: crates/ui-egui/src/editor/sketch.rs:1825
 #: crates/ui-egui/src/electrical.rs:277
 #: crates/ui-egui/src/fillpatterns.rs:398
 #: crates/ui-egui/src/fillpatterns.rs:581
@@ -4817,7 +4817,7 @@ msgstr "Odstranit"
 msgid "Delete (DE) the selection"
 msgstr "Odstranit (DE) výběr"
 
-#: crates/ui-egui/src/editor/sketch.rs:1817
+#: crates/ui-egui/src/editor/sketch.rs:1823
 msgid "Delete (DE): the lines picked"
 msgstr "Odstranit (DE): vybrané čáry"
 
@@ -4964,7 +4964,7 @@ msgstr ""
 
 #: crates/core/src/family.rs:3233
 #: crates/ui-egui/src/editor/extrusion.rs:334
-#: crates/ui-egui/src/editor/sketch.rs:1587
+#: crates/ui-egui/src/editor/sketch.rs:1593
 #: crates/ui-egui/src/properties.rs:612
 #: crates/ui-egui/src/properties.rs:613
 #: crates/ui-egui/src/properties.rs:635
@@ -5523,7 +5523,7 @@ msgstr ""
 
 #: crates/ui-egui/src/draw.rs:329
 #: crates/ui-egui/src/editor/document.rs:2235
-#: crates/ui-egui/src/editor/sketch.rs:1748
+#: crates/ui-egui/src/editor/sketch.rs:1754
 #: crates/ui-egui/src/lib.rs:6088
 #: crates/ui-egui/src/underlay.rs:429
 msgid "Draw"
@@ -5557,7 +5557,7 @@ msgstr ""
 msgid "Draw the 3D view on the graphics card"
 msgstr "Vykreslovat 3D pohled na grafické kartě"
 
-#: crates/ui-egui/src/editor/sketch.rs:1560
+#: crates/ui-egui/src/editor/sketch.rs:1566
 msgid "Draw the path: lines and arcs end to end, open or closed; then Edit Profile."
 msgstr "Nakreslete cestu: čáry a oblouky navazující na sebe, otevřenou nebo uzavřenou; potom Upravit profil."
 
@@ -5747,20 +5747,20 @@ msgstr "Upravit"
 msgid "Edit Background Grids"
 msgstr "Upravit mřížky na pozadí"
 
-#: crates/ui-egui/src/editor/sketch.rs:1668
+#: crates/ui-egui/src/editor/sketch.rs:1674
 msgid "Edit Base"
 msgstr "Upravit základnu"
 
-#: crates/ui-egui/src/editor/sketch.rs:1668
+#: crates/ui-egui/src/editor/sketch.rs:1674
 msgid "Edit Base: sketch the blend's base, at its First End"
 msgstr "Upravit základnu: načrtněte základnu přechodu na jeho prvním konci"
 
 #: crates/ui-egui/src/editor/extrusion.rs:363
-#: crates/ui-egui/src/editor/sketch.rs:1892
+#: crates/ui-egui/src/editor/sketch.rs:1898
 msgid "Edit Blend"
 msgstr "Upravit přechod"
 
-#: crates/ui-egui/src/editor/sketch.rs:1892
+#: crates/ui-egui/src/editor/sketch.rs:1898
 msgid "Edit Blend: sketch its base and its top again"
 msgstr "Upravit přechod: znovu načrtněte jeho základnu a horní část"
 
@@ -5779,11 +5779,11 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:1255
 #: crates/ui-egui/src/editor/extrusion.rs:366
-#: crates/ui-egui/src/editor/sketch.rs:1895
+#: crates/ui-egui/src/editor/sketch.rs:1901
 msgid "Edit Extrusion"
 msgstr "Upravit vysunutí"
 
-#: crates/ui-egui/src/editor/sketch.rs:1895
+#: crates/ui-egui/src/editor/sketch.rs:1901
 msgid "Edit Extrusion: sketch its profile again"
 msgstr "Upravit vysunutí: znovu načrtněte jeho profil"
 
@@ -5836,7 +5836,7 @@ msgstr "Upravit parametr"
 msgid "Edit Pattern"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1691
+#: crates/ui-egui/src/editor/sketch.rs:1697
 #: crates/ui-egui/src/sketch.rs:162
 #: crates/ui-egui/src/sketch.rs:1292
 msgid "Edit Profile"
@@ -5846,34 +5846,34 @@ msgstr "Upravit profil"
 msgid "Edit Profile: change the extrusion roof's open profile on its upright plane"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1692
+#: crates/ui-egui/src/editor/sketch.rs:1698
 msgid "Edit Profile: sketch the profile on its plane, square to the path at its first line's middle"
 msgstr "Upravit profil: načrtněte profil v jeho rovině, kolmé k cestě uprostřed její první čáry"
 
 #: crates/ui-egui/src/editor/extrusion.rs:362
-#: crates/ui-egui/src/editor/sketch.rs:1891
+#: crates/ui-egui/src/editor/sketch.rs:1897
 msgid "Edit Revolve"
 msgstr "Upravit rotaci"
 
-#: crates/ui-egui/src/editor/sketch.rs:1891
+#: crates/ui-egui/src/editor/sketch.rs:1897
 msgid "Edit Revolve: sketch its profile and its axis again"
 msgstr "Upravit rotaci: znovu načrtněte její profil a osu"
 
 #: crates/ui-egui/src/editor/extrusion.rs:364
-#: crates/ui-egui/src/editor/sketch.rs:1893
+#: crates/ui-egui/src/editor/sketch.rs:1899
 msgid "Edit Sweep"
 msgstr "Upravit tažení"
 
-#: crates/ui-egui/src/editor/sketch.rs:1893
+#: crates/ui-egui/src/editor/sketch.rs:1899
 msgid "Edit Sweep: sketch its path and its profile again"
 msgstr "Upravit tažení: znovu načrtněte jeho cestu a profil"
 
 #: crates/ui-egui/src/editor/extrusion.rs:365
-#: crates/ui-egui/src/editor/sketch.rs:1894
+#: crates/ui-egui/src/editor/sketch.rs:1900
 msgid "Edit Swept Blend"
 msgstr "Upravit tažení s přechodem"
 
-#: crates/ui-egui/src/editor/sketch.rs:1894
+#: crates/ui-egui/src/editor/sketch.rs:1900
 msgid "Edit Swept Blend: sketch its path and its profiles again"
 msgstr "Upravit tažení s přechodem: znovu načrtněte jeho cestu a profily"
 
@@ -5886,11 +5886,11 @@ msgstr ""
 msgid "Edit Tools"
 msgstr "Upravit nástroje"
 
-#: crates/ui-egui/src/editor/sketch.rs:1670
+#: crates/ui-egui/src/editor/sketch.rs:1676
 msgid "Edit Top"
 msgstr "Upravit horní část"
 
-#: crates/ui-egui/src/editor/sketch.rs:1670
+#: crates/ui-egui/src/editor/sketch.rs:1676
 msgid "Edit Top: sketch the blend's top, at its Second End"
 msgstr "Upravit horní část: načrtněte horní část přechodu na jeho druhém konci"
 
@@ -5902,7 +5902,7 @@ msgstr "Upravit typ"
 msgid "Edit Underlay Settings"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1719
+#: crates/ui-egui/src/editor/sketch.rs:1725
 msgid "Edit Vertices"
 msgstr "Upravit vrcholy"
 
@@ -6066,7 +6066,7 @@ msgstr "Výška:"
 msgid "Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:201
+#: crates/ui-egui/src/editor/views.rs:239
 #: crates/ui-egui/src/lib.rs:4307
 msgid "Elevation: {}"
 msgstr "Nárys: {}"
@@ -6113,7 +6113,7 @@ msgid "End Along"
 msgstr ""
 
 #: crates/ui-egui/src/editor/extrusion.rs:196
-#: crates/ui-egui/src/editor/sketch.rs:1928
+#: crates/ui-egui/src/editor/sketch.rs:1934
 msgid "End Angle"
 msgstr "Koncový úhel"
 
@@ -6355,21 +6355,21 @@ msgid "Exterior Face"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:546
-#: crates/ui-egui/src/editor/sketch.rs:1912
+#: crates/ui-egui/src/editor/sketch.rs:1918
 #: crates/ui-egui/src/editor.rs:229
 msgid "Extrusion"
 msgstr "Vysunutí"
 
 #: crates/ui-egui/src/editor/extrusion.rs:198
 #: crates/ui-egui/src/editor/handles3d.rs:260
-#: crates/ui-egui/src/editor/sketch.rs:1930
+#: crates/ui-egui/src/editor/sketch.rs:1936
 #: crates/ui-egui/src/properties.rs:446
 msgid "Extrusion End"
 msgstr "Konec vysunutí"
 
 #: crates/ui-egui/src/editor/extrusion.rs:198
 #: crates/ui-egui/src/editor/handles3d.rs:261
-#: crates/ui-egui/src/editor/sketch.rs:1930
+#: crates/ui-egui/src/editor/sketch.rs:1936
 #: crates/ui-egui/src/properties.rs:445
 msgid "Extrusion Start"
 msgstr "Začátek vysunutí"
@@ -6766,7 +6766,7 @@ msgstr ""
 msgid "Finish Edit Group"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1656
+#: crates/ui-egui/src/editor/sketch.rs:1662
 msgid "Finish Edit Mode"
 msgstr "Dokončit režim úprav"
 
@@ -6774,7 +6774,7 @@ msgstr "Dokončit režim úprav"
 msgid "Finish Edit Mode: apply the open profile to the extrusion roof"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1655
+#: crates/ui-egui/src/editor/sketch.rs:1661
 msgid "Finish Edit Mode: the lines, closed into loops, become the form"
 msgstr "Dokončit režim úprav: čáry uzavřené do smyček vytvoří tvar"
 
@@ -6837,7 +6837,7 @@ msgid "Fire resistance by element, compartments and separation."
 msgstr ""
 
 #: crates/ui-egui/src/editor/extrusion.rs:197
-#: crates/ui-egui/src/editor/sketch.rs:1929
+#: crates/ui-egui/src/editor/sketch.rs:1935
 msgid "First End"
 msgstr "První konec"
 
@@ -6967,7 +6967,7 @@ msgstr "Půdorys"
 msgid "Floor Plan Display"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:199
+#: crates/ui-egui/src/editor/views.rs:237
 #: crates/ui-egui/src/lib.rs:4302
 #: crates/ui-egui/src/lib.rs:4303
 msgid "Floor Plan: {}"
@@ -7325,7 +7325,7 @@ msgstr "Grafická přepsání"
 msgid "Graphic segments in mm on paper, repeating along the centerline."
 msgstr "Grafické segmenty v mm na papíře, opakující se podél osy."
 
-#: crates/ui-egui/src/editor/modify.rs:509
+#: crates/ui-egui/src/editor/modify.rs:513
 msgid "Graphical"
 msgstr ""
 
@@ -7920,7 +7920,7 @@ msgstr "ISO 7200: 180 mm"
 #: crates/ui-egui/src/editor/document.rs:1072
 #: crates/ui-egui/src/editor/document.rs:2309
 #: crates/ui-egui/src/editor/extrusion.rs:259
-#: crates/ui-egui/src/editor/sketch.rs:1952
+#: crates/ui-egui/src/editor/sketch.rs:1958
 #: crates/ui-egui/src/projectinfo.rs:114
 #: crates/ui-egui/src/properties.rs:159
 msgid "Identity Data"
@@ -8269,7 +8269,7 @@ msgstr "Základová patka"
 msgid "Isolated Footing (FI): click where the footing goes"
 msgstr "Základová patka (FI): klikněte v místě umístění patky"
 
-#: crates/ui-egui/src/editor/modify.rs:1422
+#: crates/ui-egui/src/editor/modify.rs:1451
 msgid "It can't be offset by so much: an arc or a circle would close up."
 msgstr ""
 
@@ -9168,7 +9168,7 @@ msgstr ""
 msgid "Locations"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1638
+#: crates/ui-egui/src/editor/sketch.rs:1644
 #: crates/ui-egui/src/editor/types_dialog.rs:261
 #: crates/ui-egui/src/editor/types_dialog.rs:361
 msgid "Lock"
@@ -9187,7 +9187,7 @@ msgstr ""
 msgid "Lock alignment"
 msgstr "Zamknout zarovnání"
 
-#: crates/ui-egui/src/editor/sketch.rs:1636
+#: crates/ui-egui/src/editor/sketch.rs:1642
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr "Zamknout zamyká čáru vybranou bez Odsazení, v půdorysu nebo pohledu"
 
@@ -9199,7 +9199,7 @@ msgstr "Zamknout segment {}"
 msgid "Lock segment {} at its length, so what it measures to moves together"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1634
+#: crates/ui-egui/src/editor/sketch.rs:1640
 msgid "Lock: each line picked is locked to what it was picked from, as Align's padlock locks it"
 msgstr "Zamknout: každá vybraná čára se zamkne k prvku, ze kterého byla vybrána, jako ji zamyká zámek nástroje Zarovnat"
 
@@ -9482,7 +9482,7 @@ msgstr "Shoda vlastností: použit typ '{}' na {} prvek (prvky)"
 #: crates/ui-egui/src/adaptive_editor.rs:494
 #: crates/ui-egui/src/adaptive_editor.rs:555
 #: crates/ui-egui/src/editor/extrusion.rs:234
-#: crates/ui-egui/src/editor/sketch.rs:1940
+#: crates/ui-egui/src/editor/sketch.rs:1946
 #: crates/ui-egui/src/parameters.rs:49
 #: crates/ui-egui/src/properties.rs:3464
 #: crates/ui-egui/src/properties.rs:3623
@@ -9516,7 +9516,7 @@ msgstr ""
 #: crates/core/src/family.rs:360
 #: crates/ui-egui/src/adaptive_editor.rs:552
 #: crates/ui-egui/src/editor/extrusion.rs:233
-#: crates/ui-egui/src/editor/sketch.rs:1939
+#: crates/ui-egui/src/editor/sketch.rs:1945
 #: crates/ui-egui/src/properties.rs:3401
 msgid "Materials and Finishes"
 msgstr "Materiály a povrchové úpravy"
@@ -9720,7 +9720,7 @@ msgstr ""
 msgid "Minimum offcut"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1189
+#: crates/ui-egui/src/editor/modify.rs:1212
 msgid "Mirror"
 msgstr ""
 
@@ -9730,15 +9730,15 @@ msgstr ""
 msgid "Mirror - Draw Axis"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:465
+#: crates/ui-egui/src/editor/modify.rs:469
 msgid "Mirror - Draw Axis: click the axis' first point."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:466
+#: crates/ui-egui/src/editor/modify.rs:470
 msgid "Mirror - Draw Axis: click the axis' second point."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1635
+#: crates/ui-egui/src/editor/modify.rs:1691
 msgid "Mirror - Draw Axis: what is selected, mirrored across a line drawn by two clicks; Copy keeps the original"
 msgstr ""
 
@@ -9748,15 +9748,15 @@ msgstr ""
 msgid "Mirror - Pick Axis"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:460
+#: crates/ui-egui/src/editor/modify.rs:464
 msgid "Mirror - Pick Axis: click a line of the sketch, a reference plane or a reference line as the axis."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:463
+#: crates/ui-egui/src/editor/modify.rs:467
 msgid "Mirror - Pick Axis: click a reference plane, a reference line or a form's edge as the axis."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1632
+#: crates/ui-egui/src/editor/modify.rs:1688
 msgid "Mirror - Pick Axis: what is selected, mirrored across a line or a plane clicked; Copy keeps the original"
 msgstr ""
 
@@ -9786,8 +9786,8 @@ msgid "Mitre"
 msgstr ""
 
 #: crates/ui-egui/src/editor/nested.rs:368
-#: crates/ui-egui/src/editor/sketch.rs:1654
-#: crates/ui-egui/src/editor/sketch.rs:1889
+#: crates/ui-egui/src/editor/sketch.rs:1660
+#: crates/ui-egui/src/editor/sketch.rs:1895
 msgid "Mode"
 msgstr "Režim"
 
@@ -9843,8 +9843,8 @@ msgstr "Modely"
 
 #: crates/ui-egui/src/editor/document.rs:760
 #: crates/ui-egui/src/editor/document.rs:952
-#: crates/ui-egui/src/editor/sketch.rs:1797
-#: crates/ui-egui/src/editor/sketch.rs:1804
+#: crates/ui-egui/src/editor/sketch.rs:1803
+#: crates/ui-egui/src/editor/sketch.rs:1810
 #: crates/ui-egui/src/lib.rs:2126
 #: crates/ui-egui/src/lib.rs:2201
 #: crates/ui-egui/src/lib.rs:2219
@@ -9854,7 +9854,7 @@ msgstr "Modely"
 msgid "Modify"
 msgstr "Upravit"
 
-#: crates/ui-egui/src/editor/sketch.rs:1800
+#: crates/ui-egui/src/editor/sketch.rs:1806
 msgid "Modify (MD): pick lines of the sketch, and drag their ends"
 msgstr "Upravit (MD): vyberte čáry skici a táhněte jejich konce"
 
@@ -10136,15 +10136,15 @@ msgid "Move up"
 msgstr ""
 
 #: crates/ui-egui/src/adaptive_view.rs:243
-#: crates/ui-egui/src/editor/modify.rs:445
+#: crates/ui-egui/src/editor/modify.rs:449
 msgid "Move: click the point to move from."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:448
+#: crates/ui-egui/src/editor/modify.rs:452
 msgid "Move: click the point to move to (Shift or Constrain keeps it square). Esc picks another start."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1626
+#: crates/ui-egui/src/editor/modify.rs:1682
 msgid "Move: what is selected, from a point clicked to another"
 msgstr ""
 
@@ -10181,7 +10181,7 @@ msgstr "Vícenásobný výběr"
 msgid "Multi-Select ({})"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:491
+#: crates/ui-egui/src/editor/modify.rs:495
 #: crates/ui-egui/src/lib.rs:6571
 msgid "Multiple"
 msgstr "Vícenásobný"
@@ -10322,7 +10322,7 @@ msgstr ""
 msgid "Nested Instances"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:574
+#: crates/ui-egui/src/editor/modify.rs:578
 msgid "Nested instance {} is placed on what would be {}: move it off first."
 msgstr ""
 
@@ -10686,7 +10686,7 @@ msgstr ""
 msgid "None of these can be printed yet."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:582
+#: crates/ui-egui/src/clipboard.rs:588
 msgid "None of this project's views is like the one they were copied from."
 msgstr ""
 
@@ -10871,8 +10871,8 @@ msgstr ""
 msgid "Nothing selected is hidden in this view. Reveal Hidden Elements (RH) draws what is, to select it."
 msgstr "Žádný z vybraných prvků není v tomto pohledu skrytý. Funkce Zobrazit skryté prvky (RH) vykreslí skryté prvky, abyste je mohli vybrat."
 
-#: crates/ui-egui/src/editor/modify.rs:984
-#: crates/ui-egui/src/editor/modify.rs:1041
+#: crates/ui-egui/src/editor/modify.rs:1007
+#: crates/ui-egui/src/editor/modify.rs:1064
 msgid "Nothing selected is shown in this view."
 msgstr ""
 
@@ -10914,14 +10914,14 @@ msgstr "Počet pólů"
 msgid "Numbers for the project's location, taken from the code's maps. Write where each number comes from. Storm drain sizing uses the rainfall."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:510
+#: crates/ui-egui/src/editor/modify.rs:514
 msgid "Numerical"
 msgstr ""
 
 #: crates/ui-egui/src/adaptive_editor.rs:760
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:141
-#: crates/ui-egui/src/clipboard.rs:600
+#: crates/ui-egui/src/clipboard.rs:606
 #: crates/ui-egui/src/clouds.rs:96
 #: crates/ui-egui/src/codes.rs:1688
 #: crates/ui-egui/src/coordinates.rs:1275
@@ -11024,7 +11024,7 @@ msgstr "Vypnuto: žádný agent se k tomuto oknu nedostane"
 
 #: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/nested.rs:301
-#: crates/ui-egui/src/editor/sketch.rs:1625
+#: crates/ui-egui/src/editor/sketch.rs:1631
 #: crates/ui-egui/src/linestyles/creator.rs:89
 #: crates/ui-egui/src/properties.rs:632
 #: crates/ui-egui/src/sketch.rs:1235
@@ -11046,12 +11046,12 @@ msgstr "Odsazení od hostitele"
 msgid "Offset from Surface:"
 msgstr "Odsazení od povrchu:"
 
-#: crates/ui-egui/src/editor/views.rs:1056
+#: crates/ui-egui/src/editor/views.rs:1094
 msgid "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines."
 msgstr ""
 
 #: crates/ui-egui/src/draw.rs:376
-#: crates/ui-egui/src/editor/modify.rs:515
+#: crates/ui-egui/src/editor/modify.rs:519
 #: crates/ui-egui/src/lib.rs:6497
 #: crates/ui-egui/src/lib.rs:6750
 #: crates/ui-egui/src/properties.rs:2073
@@ -11060,8 +11060,8 @@ msgstr ""
 msgid "Offset:"
 msgstr "Odsazení:"
 
-#: crates/ui-egui/src/editor/modify.rs:1095
-#: crates/ui-egui/src/editor/modify.rs:1415
+#: crates/ui-egui/src/editor/modify.rs:1118
+#: crates/ui-egui/src/editor/modify.rs:1441
 msgid "Offset: `{}` isn't a distance above 0."
 msgstr ""
 
@@ -11071,15 +11071,15 @@ msgstr ""
 msgid "Offset: a number in {}"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:472
+#: crates/ui-egui/src/editor/modify.rs:476
 msgid "Offset: click a line of the sketch; the line goes the Options Bar's distance toward the side clicked."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:475
+#: crates/ui-egui/src/editor/modify.rs:479
 msgid "Offset: click a reference plane or a reference line; it goes the Options Bar's distance toward the side clicked."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1638
+#: crates/ui-egui/src/editor/modify.rs:1694
 msgid "Offset: the line or plane clicked, moved or copied the Options Bar's distance toward the side clicked"
 msgstr ""
 
@@ -11636,15 +11636,15 @@ msgstr ""
 msgid "Paste from Clipboard follows the pointer in a plan or an elevation; in {3D}, use Aligned to Same Place."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:521
+#: crates/ui-egui/src/clipboard.rs:527
 msgid "Paste in 3D"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:580
+#: crates/ui-egui/src/clipboard.rs:586
 msgid "Paste into these views:"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:580
+#: crates/ui-egui/src/clipboard.rs:586
 msgid "Paste onto these levels:"
 msgstr ""
 
@@ -11660,11 +11660,11 @@ msgstr ""
 msgid "Paste: click where the copies go; Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:481
+#: crates/ui-egui/src/clipboard.rs:487
 msgid "Pasted {} elements."
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:483
+#: crates/ui-egui/src/clipboard.rs:489
 msgid "Pasted {} elements; {} left out: {}"
 msgstr ""
 
@@ -11851,11 +11851,11 @@ msgstr "Vybrat čáry"
 msgid "Pick Lines: click a line, a wall or a grid to draw along it (beside it, with Offset)"
 msgstr "Vybrat čáry: klikněte na čáru, stěnu nebo osnovu pro kreslení podél ní (vedle ní s odsazením)"
 
-#: crates/ui-egui/src/editor/sketch.rs:1683
+#: crates/ui-egui/src/editor/sketch.rs:1689
 msgid "Pick Path"
 msgstr "Vybrat cestu"
 
-#: crates/ui-egui/src/editor/sketch.rs:1682
+#: crates/ui-egui/src/editor/sketch.rs:1688
 msgid "Pick Path: pick reference planes, reference lines or forms' edges: lines of the path along them"
 msgstr "Vybrat cestu: vyberte referenční roviny, referenční čáry nebo hrany tvarů: podél nich vzniknou čáry cesty"
 
@@ -11912,12 +11912,12 @@ msgstr "Vyberte zvýrazněnou hranu modelu nebo čáru náčrtu jako referenci z
 msgid "Pick a line and use the work plane it was sketched in"
 msgstr "Vybrat čáru a použít pracovní rovinu, ve které byla načrtnuta"
 
-#: crates/ui-egui/src/editor/modify.rs:477
-#: crates/ui-egui/src/editor/modify.rs:1436
+#: crates/ui-egui/src/editor/modify.rs:481
+#: crates/ui-egui/src/editor/modify.rs:1465
 msgid "Pick a line of the sketch as the trim/extend boundary."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1413
+#: crates/ui-egui/src/editor/modify.rs:1438
 msgid "Pick a line of the sketch to offset."
 msgstr ""
 
@@ -11986,11 +11986,11 @@ msgstr "Vyberte referenční hranu nebo osu; čára pod kurzorem je zvýrazněna
 msgid "Pick a reference parallel to the first."
 msgstr "Vyberte referenci rovnoběžnou s první."
 
-#: crates/ui-egui/src/editor/modify.rs:1092
+#: crates/ui-egui/src/editor/modify.rs:1115
 msgid "Pick a reference plane or a reference line to offset."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1069
+#: crates/ui-egui/src/editor/modify.rs:1092
 msgid "Pick a reference plane, a reference line or a form's edge as the axis."
 msgstr ""
 
@@ -11999,11 +11999,11 @@ msgstr ""
 msgid "Pick a reference plane, a reference line or a form's edge in the view."
 msgstr "Vyberte v pohledu referenční rovinu, referenční čáru nebo hranu tvaru."
 
-#: crates/ui-egui/src/editor/sketch.rs:1377
+#: crates/ui-egui/src/editor/sketch.rs:1383
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Vyberte referenční rovinu, referenční čáru nebo čáru a potom čáru skici."
 
-#: crates/ui-egui/src/editor/views.rs:1466
+#: crates/ui-egui/src/editor/views.rs:1525
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Vyberte referenční rovinu, konec vysunutí nebo čáru tvaru."
 
@@ -12039,12 +12039,12 @@ msgstr "Vyberte čáru náčrtu k oříznutí nebo prodloužení na části, kte
 msgid "Pick a slot"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1382
-#: crates/ui-egui/src/editor/modify.rs:1385
+#: crates/ui-egui/src/editor/modify.rs:1407
+#: crates/ui-egui/src/editor/modify.rs:1410
 msgid "Pick a straight line of the sketch, a reference plane or a reference line as the axis."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1382
+#: crates/ui-egui/src/editor/sketch.rs:1388
 msgid "Pick a straight line of the sketch: it moves onto the reference."
 msgstr "Vyberte přímou čáru skici: přesune se k referenci."
 
@@ -12060,11 +12060,11 @@ msgstr "Vyberte stěnu nebo osnovu, podle které se má zrcadlit."
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "Vyberte stěnu, osnovu nebo jinou čáru; poté čáru, která se s ní protíná."
 
-#: crates/ui-egui/src/editor/modify.rs:1440
+#: crates/ui-egui/src/editor/modify.rs:1469
 msgid "Pick another line of the sketch, on the part to keep."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:479
+#: crates/ui-egui/src/editor/modify.rs:483
 msgid "Pick each line to trim or extend to it, on the part to keep. Esc picks another boundary."
 msgstr ""
 
@@ -12080,14 +12080,14 @@ msgstr ""
 msgid "Pick levels, perpendicular grids or detail lines in this view."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:588
+#: crates/ui-egui/src/editor/modify.rs:592
 msgid "Pick lines of the sketch first, then {}."
 msgstr ""
 
 #: crates/ui-egui/src/editor/clipboard.rs:141
-#: crates/ui-egui/src/editor/modify.rs:1345
-#: crates/ui-egui/src/editor/modify.rs:1365
-#: crates/ui-egui/src/editor/modify.rs:1492
+#: crates/ui-egui/src/editor/modify.rs:1370
+#: crates/ui-egui/src/editor/modify.rs:1390
+#: crates/ui-egui/src/editor/modify.rs:1524
 msgid "Pick lines of the sketch first."
 msgstr ""
 
@@ -12119,7 +12119,7 @@ msgstr "Vyberte zvýrazněnou hranu prvku pro posun a otočení k referenci."
 msgid "Pick the first line to round."
 msgstr "Vyberte první čáru k zaoblení."
 
-#: crates/ui-egui/src/editor/sketch.rs:1551
+#: crates/ui-egui/src/editor/sketch.rs:1557
 msgid "Pick the first line, on the part to keep."
 msgstr "Vyberte první čáru na části, kterou chcete zachovat."
 
@@ -12135,7 +12135,7 @@ msgstr "Vyberte první stěnu nebo čáru na části, kterou chcete zachovat."
 msgid "Pick the highlighted sketch line to move and turn onto the reference; joined ends follow."
 msgstr "Vyberte zvýrazněnou čáru náčrtu pro posun a otočení k referenci; připojené konce ji následují."
 
-#: crates/ui-egui/src/editor/modify.rs:478
+#: crates/ui-egui/src/editor/modify.rs:482
 msgid "Pick the line to trim or extend to it, on the part to keep."
 msgstr ""
 
@@ -12151,7 +12151,7 @@ msgstr "Znovu vyberte čáry a rohy dlaždice: vzor si ponechá svůj název"
 msgid "Pick the next reference or endpoint."
 msgstr "Vyberte další referenci nebo koncový bod."
 
-#: crates/ui-egui/src/editor/sketch.rs:1552
+#: crates/ui-egui/src/editor/sketch.rs:1558
 msgid "Pick the second line, on the part to keep."
 msgstr "Vyberte druhou čáru na části, kterou chcete zachovat."
 
@@ -12180,7 +12180,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "Vybrat tři body: po OK klikněte na tři body modelu, každý se přichytí k rohu poblíž ukazatele"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1355
-#: crates/ui-egui/src/editor/views.rs:1445
+#: crates/ui-egui/src/editor/views.rs:1504
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Vyberte dvě nebo více referencí a potom klikněte na místo kóty."
 
@@ -12284,7 +12284,7 @@ msgstr "Umístit kabeláž"
 msgid "Place Ceiling"
 msgstr "Umístit podhled"
 
-#: crates/ui-egui/src/editor/modify.rs:500
+#: crates/ui-egui/src/editor/modify.rs:504
 #: crates/ui-egui/src/lib.rs:6785
 #: crates/ui-egui/src/lib.rs:6811
 msgid "Place Centre"
@@ -12668,7 +12668,7 @@ msgstr "Poloha"
 msgid "Position (mm)"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:530
+#: crates/ui-egui/src/clipboard.rs:536
 msgid "Position on Work Plane"
 msgstr ""
 
@@ -12786,21 +12786,21 @@ msgstr "Profil"
 
 #: crates/ui-egui/src/editor/extrusion.rs:207
 #: crates/ui-egui/src/editor/sketch.rs:886
-#: crates/ui-egui/src/editor/sketch.rs:1698
+#: crates/ui-egui/src/editor/sketch.rs:1704
 msgid "Profile 1"
 msgstr "Profil 1"
 
-#: crates/ui-egui/src/editor/sketch.rs:1699
+#: crates/ui-egui/src/editor/sketch.rs:1705
 msgid "Profile 1: sketch the profile at the path's start, square to it"
 msgstr "Profil 1: načrtněte profil na začátku cesty, kolmo k ní"
 
 #: crates/ui-egui/src/editor/extrusion.rs:208
 #: crates/ui-egui/src/editor/sketch.rs:888
-#: crates/ui-egui/src/editor/sketch.rs:1701
+#: crates/ui-egui/src/editor/sketch.rs:1707
 msgid "Profile 2"
 msgstr "Profil 2"
 
-#: crates/ui-egui/src/editor/sketch.rs:1701
+#: crates/ui-egui/src/editor/sketch.rs:1707
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Profil 2: načrtněte profil na konci cesty, kolmo k ní"
 
@@ -13109,7 +13109,7 @@ msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc,
 msgstr "Radiální kóta: vyberte kruhový sloup, zakřivenou stěnu, kružnici nebo oblouk a potom klikněte do místa poloměru"
 
 #: crates/ui-egui/src/draw.rs:368
-#: crates/ui-egui/src/editor/sketch.rs:1621
+#: crates/ui-egui/src/editor/sketch.rs:1627
 #: crates/ui-egui/src/editor.rs:1139
 msgid "Radius"
 msgstr "Poloměr"
@@ -13296,8 +13296,8 @@ msgid "Ref Plane"
 msgstr "Ref. rovina"
 
 #: crates/ui-egui/src/adaptive_editor.rs:274
-#: crates/ui-egui/src/editor/views.rs:199
-#: crates/ui-egui/src/editor/views.rs:200
+#: crates/ui-egui/src/editor/views.rs:237
+#: crates/ui-egui/src/editor/views.rs:238
 msgid "Ref. Level"
 msgstr ""
 
@@ -13868,7 +13868,7 @@ msgid "Revoke file access"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:554
-#: crates/ui-egui/src/editor/sketch.rs:1913
+#: crates/ui-egui/src/editor/sketch.rs:1919
 #: crates/ui-egui/src/editor.rs:228
 msgid "Revolve"
 msgstr "Rotace"
@@ -14103,19 +14103,19 @@ msgstr ""
 msgid "Rotate with Component"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1149
+#: crates/ui-egui/src/editor/modify.rs:1172
 msgid "Rotate: `{}` isn't an angle in degrees."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:456
+#: crates/ui-egui/src/editor/modify.rs:460
 msgid "Rotate: click a point on the ray to turn from (Place Centre moves the centre), or type an Angle and press Enter."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:458
+#: crates/ui-egui/src/editor/modify.rs:462
 msgid "Rotate: click a point on the ray to turn to. Esc picks the first ray again."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:454
+#: crates/ui-egui/src/editor/modify.rs:458
 msgid "Rotate: click the centre of rotation."
 msgstr ""
 
@@ -14123,16 +14123,16 @@ msgstr ""
 msgid "Rotate: click where the angle starts, about the centre shown."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1066
-#: crates/ui-egui/src/editor/modify.rs:1146
+#: crates/ui-egui/src/editor/modify.rs:1089
+#: crates/ui-egui/src/editor/modify.rs:1169
 msgid "Rotate: nothing selected is shown in this view to turn."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1495
+#: crates/ui-egui/src/editor/modify.rs:1527
 msgid "Rotate: that isn't an angle in degrees."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1629
+#: crates/ui-egui/src/editor/modify.rs:1685
 msgid "Rotate: what is selected, about its centre or one placed, by the angle between two clicks or one typed"
 msgstr ""
 
@@ -14237,7 +14237,7 @@ msgstr "MĚŘÍTKO DLE VÝKRESŮ"
 msgid "Sage"
 msgstr "Šalvěj"
 
-#: crates/ui-egui/src/clipboard.rs:526
+#: crates/ui-egui/src/clipboard.rs:532
 msgid "Same Place"
 msgstr ""
 
@@ -14381,7 +14381,7 @@ msgstr ""
 #: crates/ui-egui/src/coordinates.rs:626
 #: crates/ui-egui/src/editor/modify.rs:71
 #: crates/ui-egui/src/editor/modify.rs:92
-#: crates/ui-egui/src/editor/modify.rs:1190
+#: crates/ui-egui/src/editor/modify.rs:1213
 #: crates/ui-egui/src/export/mod.rs:815
 #: crates/ui-egui/src/footer.rs:291
 msgid "Scale"
@@ -14391,32 +14391,32 @@ msgstr "Měřítko"
 msgid "Scale Value 1:"
 msgstr "Hodnota měřítka 1:"
 
-#: crates/ui-egui/src/editor/modify.rs:626
+#: crates/ui-egui/src/editor/modify.rs:630
 msgid "Scale takes reference planes and reference lines: a form is sized by its dimensions and parameters."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:511
+#: crates/ui-egui/src/editor/modify.rs:515
 msgid "Scale:"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1131
-#: crates/ui-egui/src/editor/modify.rs:1407
+#: crates/ui-egui/src/editor/modify.rs:1154
+#: crates/ui-egui/src/editor/modify.rs:1432
 msgid "Scale: `{}` isn't a factor above 0."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:467
+#: crates/ui-egui/src/editor/modify.rs:471
 msgid "Scale: click the origin it scales about."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:468
+#: crates/ui-egui/src/editor/modify.rs:472
 msgid "Scale: click the origin; it scales by the Options Bar's factor."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:469
+#: crates/ui-egui/src/editor/modify.rs:473
 msgid "Scale: click the point to measure from."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:470
+#: crates/ui-egui/src/editor/modify.rs:474
 msgid "Scale: click where that point goes; the scale is how far it is from the origin over how far it was."
 msgstr ""
 
@@ -14424,7 +14424,7 @@ msgstr ""
 msgid "Scale: the paper this view stands for, 1 : n of the model: its annotation and its line weights are that paper's"
 msgstr "Měřítko: velikost papíru odpovídající tomuto pohledu, 1 : n modelu: jeho popisy a tloušťky čar odpovídají tomuto papíru"
 
-#: crates/ui-egui/src/editor/modify.rs:1637
+#: crates/ui-egui/src/editor/modify.rs:1693
 msgid "Scale: the reference planes and lines selected, or a sketch's lines, about an origin"
 msgstr ""
 
@@ -14536,7 +14536,7 @@ msgid "Seat Height"
 msgstr "Výška sedáku"
 
 #: crates/ui-egui/src/editor/extrusion.rs:197
-#: crates/ui-egui/src/editor/sketch.rs:1929
+#: crates/ui-egui/src/editor/sketch.rs:1935
 msgid "Second End"
 msgstr "Druhý konec"
 
@@ -14760,7 +14760,7 @@ msgstr ""
 msgid "Select what to copy first."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:609
+#: crates/ui-egui/src/editor/modify.rs:613
 msgid "Select what {} takes first."
 msgstr ""
 
@@ -14805,7 +14805,7 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:122
 #: crates/ui-egui/src/editor/document.rs:2276
 #: crates/ui-egui/src/editor/document.rs:2295
-#: crates/ui-egui/src/editor/sketch.rs:1839
+#: crates/ui-egui/src/editor/sketch.rs:1845
 #: crates/ui-egui/src/workplane.rs:196
 msgid "Set"
 msgstr "Nastavit"
@@ -14834,7 +14834,7 @@ msgstr ""
 msgid "Set it too"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1837
+#: crates/ui-egui/src/editor/sketch.rs:1843
 msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
 msgstr "Nastavit: rovina, na které se skica kreslí, podle názvu nebo vybraná v pohledu (dialog Pracovní rovina); její čáry se přesunou s ní"
 
@@ -15026,7 +15026,7 @@ msgstr ""
 #: crates/ui-egui/src/assistant.rs:273
 #: crates/ui-egui/src/editor/document.rs:2281
 #: crates/ui-egui/src/editor/document.rs:2300
-#: crates/ui-egui/src/editor/sketch.rs:1844
+#: crates/ui-egui/src/editor/sketch.rs:1850
 #: crates/ui-egui/src/editor/work_plane.rs:203
 #: crates/ui-egui/src/printsets.rs:196
 #: crates/ui-egui/src/workplane.rs:278
@@ -15163,7 +15163,7 @@ msgid "Show: open the plan they are in, zoomed to them"
 msgstr "Zobrazit: otevřít půdorys, ve kterém se nacházejí, se zvětšením na ně"
 
 #: crates/ui-egui/src/editor/document.rs:2299
-#: crates/ui-egui/src/editor/sketch.rs:1843
+#: crates/ui-egui/src/editor/sketch.rs:1849
 msgid "Show: the view's work plane, tinted"
 msgstr "Zobrazit: pracovní rovina pohledu, barevně zvýrazněná"
 
@@ -15187,7 +15187,7 @@ msgstr "Sprcha"
 msgid "Side"
 msgstr "Strana"
 
-#: crates/ui-egui/src/editor/sketch.rs:1617
+#: crates/ui-egui/src/editor/sketch.rs:1623
 #: crates/ui-egui/src/reinforce.rs:186
 msgid "Sides"
 msgstr "Strany"
@@ -15267,11 +15267,11 @@ msgstr "Náčrt podhledu"
 msgid "Sketch Ceiling: sketch the ceiling's outline, and any openings in it"
 msgstr "Náčrt podhledu: načrtněte obrys podhledu a případné otvory v něm"
 
-#: crates/ui-egui/src/editor/sketch.rs:1679
+#: crates/ui-egui/src/editor/sketch.rs:1685
 msgid "Sketch Path"
 msgstr "Načrtnout cestu"
 
-#: crates/ui-egui/src/editor/sketch.rs:1678
+#: crates/ui-egui/src/editor/sketch.rs:1684
 msgid "Sketch Path: draw the path on the work plane, lines and arcs end to end"
 msgstr "Načrtnout cestu: nakreslete cestu na pracovní rovině, čáry a oblouky navazující na sebe"
 
@@ -15475,7 +15475,7 @@ msgstr "Plná výplň"
 
 #: crates/ui-egui/src/adaptive_editor.rs:569
 #: crates/ui-egui/src/editor/extrusion.rs:260
-#: crates/ui-egui/src/editor/sketch.rs:1953
+#: crates/ui-egui/src/editor/sketch.rs:1959
 msgid "Solid/Void"
 msgstr ""
 
@@ -15623,16 +15623,16 @@ msgstr "Rozdělit prvek"
 msgid "Split Element (SL): click a wall or a line where to split it"
 msgstr "Rozdělit prvek (SL): klikněte na stěnu nebo čáru v místě rozdělení"
 
-#: crates/ui-egui/src/editor/modify.rs:480
+#: crates/ui-egui/src/editor/modify.rs:484
 msgid "Split Element: click a line of the sketch where it is split in two."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1645
+#: crates/ui-egui/src/editor/modify.rs:1701
 msgid "Split Element: click a line of the sketch where to split it"
 msgstr ""
 
 #: crates/ui-egui/src/draw.rs:1016
-#: crates/ui-egui/src/editor/modify.rs:1460
+#: crates/ui-egui/src/editor/modify.rs:1489
 msgid "Split between the line's ends."
 msgstr "Rozdělit mezi koncovými body čáry."
 
@@ -15734,7 +15734,7 @@ msgid "Start Along"
 msgstr ""
 
 #: crates/ui-egui/src/editor/extrusion.rs:196
-#: crates/ui-egui/src/editor/sketch.rs:1928
+#: crates/ui-egui/src/editor/sketch.rs:1934
 msgid "Start Angle"
 msgstr "Počáteční úhel"
 
@@ -16031,8 +16031,8 @@ msgid "Swap"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:558
-#: crates/ui-egui/src/editor/sketch.rs:1677
-#: crates/ui-egui/src/editor/sketch.rs:1915
+#: crates/ui-egui/src/editor/sketch.rs:1683
+#: crates/ui-egui/src/editor/sketch.rs:1921
 #: crates/ui-egui/src/editor.rs:224
 msgid "Sweep"
 msgstr ""
@@ -16046,8 +16046,8 @@ msgid "Sweeps"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:562
-#: crates/ui-egui/src/editor/sketch.rs:1677
-#: crates/ui-egui/src/editor/sketch.rs:1916
+#: crates/ui-egui/src/editor/sketch.rs:1683
+#: crates/ui-egui/src/editor/sketch.rs:1922
 #: crates/ui-egui/src/editor.rs:225
 msgid "Swept Blend"
 msgstr ""
@@ -16487,7 +16487,7 @@ msgstr "Je uložen největší možný počet předvoleb: nejprve jednu odstraň
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "To není IP adresa: 0.0.0.0 naslouchá na všech adresách tohoto počítače"
 
-#: crates/ui-egui/src/editor/views.rs:1456
+#: crates/ui-egui/src/editor/views.rs:1515
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -16495,7 +16495,7 @@ msgstr ""
 msgid "That is too big to be a shortcuts file."
 msgstr "Soubor je příliš velký na to, aby byl souborem klávesových zkratek."
 
-#: crates/ui-egui/src/editor/modify.rs:732
+#: crates/ui-egui/src/editor/modify.rs:736
 msgid "That point of the work plane is too far off: click nearer the family, or turn the view."
 msgstr ""
 
@@ -16507,16 +16507,16 @@ msgstr "Tento prvek je kolmý k pracovní rovině: nemá na ní žádnou čáru,
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "3D pohled je vykreslován procesorem: {}"
 
-#: crates/ui-egui/src/editor/modify.rs:1458
+#: crates/ui-egui/src/editor/modify.rs:1487
 msgid "The Axis Line is one line: it isn't split."
 msgstr ""
 
 #: crates/ui-egui/src/editor/clipboard.rs:210
-#: crates/ui-egui/src/editor/modify.rs:1311
+#: crates/ui-egui/src/editor/modify.rs:1336
 msgid "The Axis Line isn't copied: pick lines of the profile."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1419
+#: crates/ui-egui/src/editor/modify.rs:1448
 msgid "The Axis Line isn't offset: draw it again where it goes."
 msgstr ""
 
@@ -16605,6 +16605,10 @@ msgstr "Střed zakřivené stěny, sloupu nebo komponenty"
 
 #: crates/core/src/codes.rs:407
 msgid "The clear space in front of panels and switchboards."
+msgstr ""
+
+#: crates/ui-egui/src/clipboard.rs:394
+msgid "The clipboard holds a family's copy: paste it in a family tab."
 msgstr ""
 
 #: crates/ui-egui/src/editor/clipboard.rs:516
@@ -16770,7 +16774,7 @@ msgid "The lines are shown in red."
 msgstr "Čáry jsou zobrazeny červeně."
 
 #: crates/ui-egui/src/draw.rs:1092
-#: crates/ui-egui/src/editor/modify.rs:1446
+#: crates/ui-egui/src/editor/modify.rs:1475
 msgid "The lines don't meet: they're parallel, or an arc's circle misses the other."
 msgstr "Čáry se neprotínají: jsou rovnoběžné nebo kružnice oblouku míjí druhou čáru."
 
@@ -17103,15 +17107,15 @@ msgstr "Rovinu náčrtu vidíte z boku: otočte pohled, abyste na ní mohli vyb�
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "Pohled směřuje podél kóty: otočte jej, abyste mohli umístit její čáru."
 
-#: crates/ui-egui/src/editor/modify.rs:1098
+#: crates/ui-egui/src/editor/modify.rs:1121
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1412
+#: crates/ui-egui/src/editor/views.rs:1471
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1287
+#: crates/ui-egui/src/editor/sketch.rs:1289
 msgid "The view sees the work plane edge-on: sketch in a view that sees it flat, or in {3D}."
 msgstr "Pohled vidí pracovní rovinu z hrany: načrtněte v pohledu, který ji vidí naplocho, nebo v {3D}."
 
@@ -17144,7 +17148,7 @@ msgstr ""
 msgid "The window steps aside: click a linked model or a drawing"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:727
+#: crates/ui-egui/src/editor/modify.rs:731
 msgid "The work plane doesn't reach there: click where the plane shows."
 msgstr ""
 
@@ -17152,8 +17156,8 @@ msgstr ""
 msgid "The work plane is on the level already"
 msgstr "Pracovní rovina už leží na podlaží"
 
-#: crates/ui-egui/src/editor/modify.rs:721
-#: crates/ui-egui/src/editor/modify.rs:728
+#: crates/ui-egui/src/editor/modify.rs:725
+#: crates/ui-egui/src/editor/modify.rs:732
 msgid "The work plane is seen edge on from here: turn the view, or set another work plane."
 msgstr ""
 
@@ -17229,7 +17233,7 @@ msgstr "Tyto vzory do souboru PAT, kromě plných"
 msgid "These rooms have floors or ceilings connected to them. Delete those too, or keep them as ordinary floors and ceilings?"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:531
+#: crates/ui-egui/src/clipboard.rs:537
 msgid "They follow the cursor over the view's work plane; click where they go"
 msgstr ""
 
@@ -17319,8 +17323,8 @@ msgid "This end is locked: unlock it to drag it."
 msgstr ""
 
 #: crates/ui-egui/src/editor/handles3d.rs:317
-#: crates/ui-egui/src/editor/sketch.rs:1516
-#: crates/ui-egui/src/editor/sketch.rs:1534
+#: crates/ui-egui/src/editor/sketch.rs:1522
+#: crates/ui-egui/src/editor/sketch.rs:1540
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "Tento konec je svázán s parametrem nebo vypočten vzorcem: změňte jej v okně Typy rodiny."
 
@@ -17692,7 +17696,7 @@ msgstr ""
 msgid "Trim/Extend Multiple Elements"
 msgstr "Oříznout/prodloužit více prvků"
 
-#: crates/ui-egui/src/editor/modify.rs:1643
+#: crates/ui-egui/src/editor/modify.rs:1699
 msgid "Trim/Extend Multiple Elements: pick the boundary line, then each line to trim or extend, on the part to keep"
 msgstr ""
 
@@ -17708,7 +17712,7 @@ msgstr "Oříznout/prodloužit více prvků: vyberte hraniční čáru a poté p
 msgid "Trim/Extend Single Element"
 msgstr "Oříznout/prodloužit jeden prvek"
 
-#: crates/ui-egui/src/editor/modify.rs:1640
+#: crates/ui-egui/src/editor/modify.rs:1696
 msgid "Trim/Extend Single Element: pick the boundary line, then the line to trim or extend, on the part to keep"
 msgstr ""
 
@@ -17719,14 +17723,14 @@ msgstr "Oříznout/prodloužit jeden prvek: vyberte hraniční čáru a poté č
 
 #: crates/core/src/commands.rs:2325
 #: crates/ui-egui/src/editor/document.rs:783
-#: crates/ui-egui/src/editor/sketch.rs:1810
+#: crates/ui-egui/src/editor/sketch.rs:1816
 #: crates/ui-egui/src/sketch.rs:1218
 #: crates/ui-egui/src/sketch.rs:1705
 msgid "Trim/Extend to Corner"
 msgstr "Oříznout/prodloužit k rohu"
 
 #: crates/ui-egui/src/editor/document.rs:782
-#: crates/ui-egui/src/editor/sketch.rs:1809
+#: crates/ui-egui/src/editor/sketch.rs:1815
 msgid "Trim/Extend to Corner (TR): pick two lines, on the parts to keep"
 msgstr "Oříznout/prodloužit k rohu (TR): vyberte dvě čáry na částech, které chcete zachovat"
 
@@ -17790,23 +17794,23 @@ msgstr ""
 msgid "Turn {}"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1722
+#: crates/ui-egui/src/editor/sketch.rs:1728
 msgid "Twist Left"
 msgstr "Zkroutit doleva"
 
-#: crates/ui-egui/src/editor/sketch.rs:1721
+#: crates/ui-egui/src/editor/sketch.rs:1727
 msgid "Twist Left: pair the top's vertices with the base's one place on, counter-clockwise"
 msgstr "Zkroutit doleva: spáruje vrcholy horní části s vrcholy základny posunutými o jedno místo dál, proti směru hodinových ručiček"
 
-#: crates/ui-egui/src/editor/sketch.rs:1726
+#: crates/ui-egui/src/editor/sketch.rs:1732
 msgid "Twist Right"
 msgstr "Zkroutit doprava"
 
-#: crates/ui-egui/src/editor/sketch.rs:1725
+#: crates/ui-egui/src/editor/sketch.rs:1731
 msgid "Twist Right: pair the top's vertices with the base's one place back, clockwise"
 msgstr "Zkroutit doprava: spáruje vrcholy horní části s vrcholy základny posunutými o jedno místo zpět, ve směru hodinových ručiček"
 
-#: crates/ui-egui/src/editor/sketch.rs:1729
+#: crates/ui-egui/src/editor/sketch.rs:1735
 msgid "Twist: {}"
 msgstr "Zkroucení: {}"
 
@@ -18465,12 +18469,12 @@ msgstr "Telefonní zásuvky"
 
 #: crates/ui-egui/src/adaptive_editor.rs:900
 #: crates/ui-egui/src/editor/extrusion.rs:261
-#: crates/ui-egui/src/editor/sketch.rs:1954
+#: crates/ui-egui/src/editor/sketch.rs:1960
 msgid "Void"
 msgstr "Vybrání"
 
 #: crates/ui-egui/src/editor/document.rs:572
-#: crates/ui-egui/src/editor/sketch.rs:1919
+#: crates/ui-egui/src/editor/sketch.rs:1925
 msgid "Void Blend"
 msgstr "Vybrání přechodem"
 
@@ -18479,7 +18483,7 @@ msgid "Void Blends"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:571
-#: crates/ui-egui/src/editor/sketch.rs:1917
+#: crates/ui-egui/src/editor/sketch.rs:1923
 msgid "Void Extrusion"
 msgstr "Vybrání vysunutím"
 
@@ -18500,7 +18504,7 @@ msgid "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketc
 msgstr "Tvary vybrání: vybrání vysunutím, přechodem, rotací, tažením nebo tažením s přechodem, načrtnuté stejně jako plné těleso, které ořízne tělesa vytvořená před ním"
 
 #: crates/ui-egui/src/editor/document.rs:573
-#: crates/ui-egui/src/editor/sketch.rs:1918
+#: crates/ui-egui/src/editor/sketch.rs:1924
 msgid "Void Revolve"
 msgstr "Vybrání rotací"
 
@@ -18509,7 +18513,7 @@ msgid "Void Revolves"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:574
-#: crates/ui-egui/src/editor/sketch.rs:1920
+#: crates/ui-egui/src/editor/sketch.rs:1926
 msgid "Void Sweep"
 msgstr "Vybrání tažením"
 
@@ -18518,7 +18522,7 @@ msgid "Void Sweeps"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:575
-#: crates/ui-egui/src/editor/sketch.rs:1921
+#: crates/ui-egui/src/editor/sketch.rs:1927
 msgid "Void Swept Blend"
 msgstr "Vybrání tažením s přechodem"
 
@@ -18777,7 +18781,7 @@ msgstr "Kde se čára z posledního bodu dotýká kružnice nebo oblouku"
 msgid "Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:523
+#: crates/ui-egui/src/clipboard.rs:529
 msgid "Where do the pasted elements go?"
 msgstr ""
 
@@ -18797,7 +18801,7 @@ msgstr ""
 msgid "Where they were, on their levels"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:527
+#: crates/ui-egui/src/clipboard.rs:533
 msgid "Where they were, on their levels: Aligned to Same Place"
 msgstr ""
 
@@ -18973,7 +18977,7 @@ msgstr "Přesah vynášecí čáry:"
 #: crates/ui-egui/src/editor/extrusion.rs:221
 #: crates/ui-egui/src/editor/extrusion.rs:321
 #: crates/ui-egui/src/editor/nested.rs:295
-#: crates/ui-egui/src/editor/sketch.rs:1835
+#: crates/ui-egui/src/editor/sketch.rs:1841
 #: crates/ui-egui/src/editor/work_plane.rs:190
 #: crates/ui-egui/src/lib.rs:6240
 #: crates/ui-egui/src/workplane.rs:267
@@ -19260,7 +19264,7 @@ msgstr ""
 msgid "`{}` isn't an angle"
 msgstr "`{}` není úhel"
 
-#: crates/ui-egui/src/editor/views.rs:373
+#: crates/ui-egui/src/editor/views.rs:411
 msgid "a datum stays: it can't be deleted"
 msgstr "základní prvek zůstává: nelze jej odstranit"
 
@@ -19378,7 +19382,7 @@ msgstr "podhled: `{}` není platná výška"
 msgid "circle"
 msgstr "kružnice"
 
-#: crates/ui-egui/src/clipboard.rs:559
+#: crates/ui-egui/src/clipboard.rs:565
 #: crates/ui-egui/src/section.rs:593
 msgid "click a level line"
 msgstr ""
@@ -19637,7 +19641,7 @@ msgstr ""
 msgid "min."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:543
+#: crates/ui-egui/src/editor/modify.rs:547
 msgid "mirrored"
 msgstr ""
 
@@ -19778,7 +19782,7 @@ msgstr "střecha: sklon `{}` a přesah `{}` musí být čísla"
 msgid "rotate: `{}` is not an angle in degrees"
 msgstr "otočit: `{}` není úhel ve stupních"
 
-#: crates/ui-egui/src/editor/modify.rs:542
+#: crates/ui-egui/src/editor/modify.rs:546
 msgid "rotated"
 msgstr ""
 
@@ -19786,7 +19790,7 @@ msgstr ""
 msgid "save changes here"
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:544
+#: crates/ui-egui/src/editor/modify.rs:548
 msgid "scaled"
 msgstr ""
 
@@ -19826,7 +19830,7 @@ msgstr "nejprve vyberte podlahu pro vytvoření sklonu"
 msgid "select the walls or columns to attach first"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:347
+#: crates/ui-egui/src/clipboard.rs:348
 msgid "select what to copy first"
 msgstr ""
 
@@ -19891,7 +19895,7 @@ msgstr "začátek"
 msgid "symbol {}"
 msgstr ""
 
-#: crates/ui-egui/src/clipboard.rs:396
+#: crates/ui-egui/src/clipboard.rs:402
 msgid "the clipboard holds nothing to paste: copy elements first (Ctrl+C)"
 msgstr ""
 
@@ -19936,7 +19940,7 @@ msgstr "další volný název"
 msgid "the opening has to stay on its wall"
 msgstr "otvor musí zůstat na své stěně"
 
-#: crates/ui-egui/src/editor/views.rs:377
+#: crates/ui-egui/src/editor/views.rs:415
 msgid "the plane can't go while {} is drawn on it"
 msgstr "rovinu nelze odstranit, dokud je na ní nakresleno {}"
 
@@ -20231,7 +20235,7 @@ msgid "{} defines the origin: it isn't copied."
 msgstr ""
 
 #: crates/ui-egui/src/editor/drag_move.rs:182
-#: crates/ui-egui/src/editor/modify.rs:549
+#: crates/ui-egui/src/editor/modify.rs:553
 msgid "{} defines the origin: it stays where it is."
 msgstr ""
 
@@ -20253,7 +20257,7 @@ msgstr ""
 msgid "{} elements"
 msgstr "{} prvků"
 
-#: crates/ui-egui/src/clipboard.rs:369
+#: crates/ui-egui/src/clipboard.rs:370
 msgid "{} elements to the clipboard; {} left out (levels, views and sheets aren't copied)."
 msgstr ""
 
@@ -20318,11 +20322,11 @@ msgid "{} is a datum: it isn't copied."
 msgstr ""
 
 #: crates/ui-egui/src/editor/drag_move.rs:181
-#: crates/ui-egui/src/editor/modify.rs:548
+#: crates/ui-egui/src/editor/modify.rs:552
 msgid "{} is a datum: it stays where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:563
+#: crates/ui-egui/src/editor/modify.rs:567
 msgid "{} is a file's triangles: it has no sketch to change."
 msgstr ""
 
@@ -20334,11 +20338,11 @@ msgstr ""
 msgid "{} is a reporting parameter: it reads a dimension and never drives one."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:571
+#: crates/ui-egui/src/editor/modify.rs:575
 msgid "{} is a sweep: its profile would face the wrong way, so it isn't mirrored or turned over."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:555
+#: crates/ui-egui/src/editor/modify.rs:559
 msgid "{} is drawn on {}, a datum, which stays: it would leave it. Do it in a view that sees {} flat."
 msgstr ""
 
@@ -20388,7 +20392,7 @@ msgstr ""
 msgid "{} isn't parallel to this view. Open a view that shows it flat:"
 msgstr "Prvek {} není rovnoběžný s tímto pohledem. Otevřete pohled, který jej zobrazuje bez zkreslení:"
 
-#: crates/ui-egui/src/editor/modify.rs:567
+#: crates/ui-egui/src/editor/modify.rs:571
 msgid "{} isn't scaled: Scale takes reference planes and reference lines; a form is sized by its dimensions and parameters."
 msgstr ""
 
@@ -20424,7 +20428,7 @@ msgstr ""
 msgid "{} links placed by base points or shared coordinates are pinned by origin where they stand."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:1597
+#: crates/ui-egui/src/editor/modify.rs:1653
 msgid "{} lock(s) to what didn't move with the lines were released."
 msgstr ""
 
@@ -20535,7 +20539,7 @@ msgstr "Importováno {} vzorů."
 msgid "{} patterns imported; left out: {}"
 msgstr "Importováno {} vzorů; vynecháno: {}"
 
-#: crates/ui-egui/src/editor/modify.rs:598
+#: crates/ui-egui/src/editor/modify.rs:602
 msgid "{} picks from the view, which {3D} can't do yet: use it in a plan or an elevation."
 msgstr ""
 
@@ -20597,16 +20601,16 @@ msgstr ""
 msgid "{} stopped the assistant"
 msgstr "{} zastavil(a) asistenta"
 
-#: crates/ui-egui/src/editor/modify.rs:933
+#: crates/ui-egui/src/editor/modify.rs:956
 msgid "{} takes forms, reference planes and reference lines, and none selected is shown in this view."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:620
+#: crates/ui-egui/src/editor/modify.rs:624
 msgid "{} takes forms, reference planes and reference lines: a dimension goes with what it measures."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:614
-#: crates/ui-egui/src/editor/modify.rs:925
+#: crates/ui-egui/src/editor/modify.rs:618
+#: crates/ui-egui/src/editor/modify.rs:948
 msgid "{} takes forms, reference planes, reference lines and dimensions: take symbols, connectors and nested instances out of the selection, or move them."
 msgstr ""
 
@@ -20619,7 +20623,7 @@ msgid "{} turns about a pivot, or is drawn on what does: it isn't copied."
 msgstr ""
 
 #: crates/ui-egui/src/editor/drag_move.rs:183
-#: crates/ui-egui/src/editor/modify.rs:550
+#: crates/ui-egui/src/editor/modify.rs:554
 msgid "{} turns about its pivot: turn it by its rotate grip."
 msgstr ""
 
@@ -20651,7 +20655,7 @@ msgstr ""
 msgid "{} was stopped."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:593
+#: crates/ui-egui/src/editor/modify.rs:597
 msgid "{} works on a sketch's lines: edit a form's sketch (double-click the form) first."
 msgstr ""
 
@@ -20659,7 +20663,7 @@ msgstr ""
 msgid "{} would leave the plane it is drawn on: move that plane with it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/modify.rs:559
+#: crates/ui-egui/src/editor/modify.rs:563
 msgid "{} would leave the plane it is drawn on: select that plane too, or do it in a view that sees the plane flat."
 msgstr ""
 
