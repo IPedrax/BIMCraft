@@ -1,6 +1,6 @@
 # Pick New Host evidence
 
-BIMCraft Rust, refreshed against `046b3575db132777da22655d6a44aa75b32b349c` (November 18 development main, package 0.12.0).
+BIMCraft Rust, refreshed against `81ebe7f2a937786387c81775daed18d793a48120` (November 21 development main, package 0.12.0).
 All public cases are synthetic. Agent: Codex desktop, `gpt-6-astra`, high reasoning effort, verified from this chat's local
 turn configuration. No native Revit session or manual user acceptance is claimed.
 
@@ -15,6 +15,31 @@ sill locate the insertion point; the physical opening centre and bottom follow i
 sill can be valid. Rehosting preserves physical height and does not settle the origin again. Group contexts, curved/curtain hosts, panel replacement
 walls and pinned openings are refused. Activation outside plans and cross-host dragging are outside this slice.
 
+## November 21 merge refresh
+
+Merged development main `81ebe7f2` without rewriting the published branch. Only generated translation catalogs conflicted;
+they were regenerated from upstream translations. No rehost semantics changed. All eleven focused core regressions pass.
+The existing proposed wiki patch still applies to the freshly fetched wiki at `19f7fb6e`.
+
+Formatting, catalog validation and all-target workspace Clippy (`-D warnings`) pass. The audited headless workspace subset
+has **3,658 passed, 0 failed, 15 ignored** across 54 target summaries, including the hostile-input sweep. The wasm sample
+plugin was rebuilt. Exact commands, exclusions, build settings and IFC measurements are in the
+[dated results](refresh-2026-11-21.json). A sandboxed mock-server test initially failed because loopback sockets were denied;
+the same subset passed with loopback permitted, without changing the test or implementation.
+
+Local desktop launches, egui harnesses and updater subprocess tests were deliberately omitted to avoid creating windows on
+the contributor's desktop. The November 18 UI pictures and connected replay below are historical evidence, not acceptance
+of this refreshed base. Full native/UI execution belongs to hosted CI on the pushed SHA; a coordinated native acceptance
+session is still needed. This refresh does not install the app or change the accepted baseline.
+
+Fresh standalone MCP replay passes identity/value preservation, invalid-fit/read-only refusal, Undo/Redo, native-file
+reopen and old-host deletion. IfcOpenShell 0.9.0.post1 reports zero schema/EXPRESS findings, correct opening/host relations
+and the same independently expected wall volumes listed below. These November 21 software renders were inspected:
+
+| Before rehosting | After rehosting | After in 3D |
+|---|---|---|
+| ![Before plan](before-plan-2026-11-21.png) | ![After plan](after-plan-2026-11-21.png) | ![After 3D](after-3d-2026-11-21.png) |
+
 ## Test-first evidence
 
 Before the command existed, `cargo test --locked -p bimcraft-core rehost_tests -- --nocapture` failed with
@@ -26,15 +51,15 @@ existing wall-top notch policy, thicker-wall family evaluation, tags/dimension r
 read-only refusal, history, groups and curtain hosts. The geometry test compares incremental scene pixels with a fresh scene.
 The UI suite exercises actual contextual activation/clicks, hover/Escape/refusal, view/selection/model changes and a TCP
 control-port command interleaved with a pending user pick. The hostile-input sweep includes real opening/target payloads.
-The refresh adds door/window cases for all four hand/facing combinations, moved XYZ origins, actually mirrored and rotated
+The November 18 refresh added door/window cases for all four hand/facing combinations, moved XYZ origins, actually mirrored and rotated
 target walls, independent vertex/hole calculations, Undo/Redo and native reopen. A UI case checks origin-aware preview and
 click placement, including Space leaving the live opening unchanged during the pending pick.
 
 This base includes #437 origins, #443 flips, #455 same-host dragging, #473 clipboard, #490 vertical tools and #495 roofs.
-Their existing paths remain intact. Pending #504's slanted/profiled wall schema is not adopted; a control verifies that
+Their existing paths remain intact. The slanted/profiled wall schema proposed in #504 is absent; a control verifies that
 its proposed fields still fail strict modification on this base. Its eventual integration requires a new eligibility audit.
 
-## Automated UI captures
+## November 18 automated UI captures
 
 These are egui_kittest captures of the feature build before placement, during preview and after placement, not screenshots
 of the upstream baseline or manual acceptance. Both profiles and all three appearances were rendered and visually inspected.
@@ -88,7 +113,7 @@ The source regains both cuts and the target loses the same opening area at its o
 
 ![Rehosted door and window; source wall restored](after-3d.png)
 
-## Completed checks
+## November 18 completed checks
 
 On macOS arm64 with Rust 1.99.1:
 

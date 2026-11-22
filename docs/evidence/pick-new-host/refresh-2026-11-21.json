@@ -1,0 +1,66 @@
+{
+  "project": "BIMCraft Rust",
+  "date": "2026-11-21",
+  "base": "81ebe7f2a937786387c81775daed18d793a48120",
+  "target_summaries": 54,
+  "passed": 3658,
+  "failed": 0,
+  "ignored": 15,
+  "rustc": "1.99.1",
+  "host": "aarch64-apple-darwin",
+  "focused_core_passed": 11,
+  "command": "cargo test --locked --config ci/fast-build.toml --workspace --exclude bimcraft --exclude bimcraft-ui-egui --exclude bimcraft-update",
+  "excluded_packages": [
+    "bimcraft",
+    "bimcraft-ui-egui",
+    "bimcraft-update"
+  ],
+  "full_workspace": false,
+  "hostile_sweep_passed": true,
+  "plugin_fixture_built": true,
+  "environment": {
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_TARGET_DIR": "/private/tmp/opening-rehost-target"
+  },
+  "log": "headless-workspace-unsandboxed.log",
+  "standalone_mcp": "passed identity/values, refusal, Undo/Redo, native-file reopen, old-host deletion, read-only and exports",
+  "ifcopenshell_version": "0.9.0.post1",
+  "ifc": {
+    "before": {
+      "express_findings": 0,
+      "volumes": {
+        "source": {
+          "volume_m3": 2.861999999999999,
+          "expected_m3": 2.862
+        },
+        "target": {
+          "volume_m3": 7.200000000000026,
+          "expected_m3": 7.2
+        }
+      },
+      "opening_host_relations": true
+    },
+    "after": {
+      "express_findings": 0,
+      "volumes": {
+        "source": {
+          "volume_m3": 3.5999999999999996,
+          "expected_m3": 3.6
+        },
+        "target": {
+          "volume_m3": 5.724000000000027,
+          "expected_m3": 5.724
+        }
+      },
+      "opening_host_relations": true
+    }
+  },
+  "local_native_ui_executed": false,
+  "agent": {
+    "app": "Codex desktop",
+    "model": "gpt-6-astra",
+    "effort": "high",
+    "source": "verified current turn configuration"
+  }
+}

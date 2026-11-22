@@ -535,6 +535,28 @@ const SHORTCUTS: [(&str, &str); 70] = [
 /// ends the wait at once.
 pub(crate) const CTRL_WAIT: f64 = 0.5;
 
+/// How far an arrow key nudges the selection on screen, in pixels, before [`nudge_step`] rounds it to a length.
+const NUDGE_PX: f64 = 10.0;
+
+/// The length an arrow key nudges by in a view of `scale` pixels a millimetre: [`NUDGE_PX`] pixels' worth, rounded down to 1, 2
+/// or 5 times a power of ten, so a step reads as a round number at any zoom; a millimetre at the least.
+pub(crate) fn nudge_step(scale: f64) -> f64 {
+    let raw = NUDGE_PX / scale;
+    if !raw.is_finite() || raw <= 1.0 {
+        return 1.0;
+    }
+    let power = 10f64.powf(raw.log10().floor());
+    let lead = raw / power;
+    power
+        * if lead >= 5.0 {
+            5.0
+        } else if lead >= 2.0 {
+            2.0
+        } else {
+            1.0
+        }
+}
+
 /// The letters and digits typed this frame with Ctrl held (Cmd on a Mac) and no other modifier, taken out of the frame's
 /// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters.
 pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
@@ -2521,7 +2543,7 @@ impl BimApp {
             ];
             for field in fields {
                 if let Some(mm) = from.parse(field) {
-                    *field = to.length(mm);
+                    *field = to.field(mm);
                 }
             }
             self.units = to;
@@ -2788,10 +2810,16 @@ impl BimApp {
                 self.delete();
             }
         }
+        // The arrow keys nudge the selection, as Revit's do.
+        self.nudge_keys(ctx);
         // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke turns a wall,
         // a door or a window, so holding Shift or Space cannot fill the Undo history.
         let plain_space =
             |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
+        // Space on a component or a column taken up again, dragged or alone in the selection: a quarter turn, as Revit's.
+        if ctx.input(|i| i.events.iter().any(plain_space)) && self.space_turn() {
+            pressed(Modifiers::NONE, Key::Space);
+        }
         if matches!(self.tool, Tool::Door | Tool::Window | Tool::Modify)
             && ctx.input(|i| i.events.iter().any(plain_space))
             && self.opening_space()
@@ -2862,6 +2890,50 @@ impl BimApp {
                 self.typed_length.push(ch);
             }
         }
+    }
+
+    /// The arrow keys move what Modify has selected a step across the view, as Revit's nudge does: right, left, up or down on
+    /// screen in a plan however it is turned, along its line or up in a section or an elevation. A step is [`NUDGE_PX`] pixels
+    /// at the view's zoom ([`nudge_step`]), and Shift makes it ten. Each press is one Move, so Undo takes them back one by one,
+    /// and Move's rules hold: doors and windows slide along their walls, joined walls stretch, pinned elements stay.
+    fn nudge_keys(&mut self, ctx: &Context) {
+        if !matches!(self.tool, Tool::Modify) || self.selection.is_empty() || self.sketch.is_some() {
+            return;
+        }
+        let key = match self.sheet {
+            Sheet::Plan(k) | Sheet::Ceiling(k) | Sheet::Section(k) => k,
+            _ => return,
+        };
+        let Some(view) = self.canvas.view(key) else { return };
+        // Steps right and up on screen. Shift's first: a plain arrow's pattern matches one pressed with Shift too.
+        let mut steps = P2(0.0, 0.0);
+        for (k, dir) in [
+            (Key::ArrowRight, P2(1.0, 0.0)),
+            (Key::ArrowLeft, P2(-1.0, 0.0)),
+            (Key::ArrowUp, P2(0.0, 1.0)),
+            (Key::ArrowDown, P2(0.0, -1.0)),
+        ] {
+            for (m, n) in [(Modifiers::SHIFT, 10.0), (Modifiers::NONE, 1.0)] {
+                let count = ctx.input_mut(|i| i.count_and_consume_key(m, k));
+                steps = steps + dir * (n * count as f64);
+            }
+        }
+        if steps.length() == 0.0 {
+            return;
+        }
+        // Screen right and up as the model's directions: a plan oriented to true north is turned on screen.
+        let o = view.mm((0.0, 0.0));
+        let (right, up) = ((view.mm((1.0, 0.0)) - o).unit(), (view.mm((0.0, -1.0)) - o).unit());
+        let by = (right * steps.0 + up * steps.1) * nudge_step(view.scale);
+        if !by.is_finite() {
+            return;
+        }
+        let by = [(by.0 * 1e3).round() / 1e3 + 0.0, (by.1 * 1e3).round() / 1e3 + 0.0];
+        let ids = self.selection.clone();
+        match self.sheet {
+            Sheet::Section(view) => self.run("move", json!({"view": view, "ids": ids, "by": by})),
+            _ => self.run("move", json!({"ids": ids, "by": by})),
+        };
     }
 
     /// A letter typed with Ctrl held: with the one before it, a shortcut; if the two aren't one, the first does its own job
@@ -2998,9 +3070,13 @@ impl BimApp {
                 self.open_reinforce();
                 return true;
             }
-            // The steel list and the cut plan: commands with these aliases, and one dialog.
-            "BL" | "CU" => {
-                self.open_steel(self.typed == "CU");
+            // The materials, the steel list and the cut plan: commands with these aliases, and one dialog.
+            "BL" | "CU" | "QT" => {
+                self.open_steel(match self.typed.as_str() {
+                    "CU" => steel::Page::Plan,
+                    "QT" => steel::Page::Materials,
+                    _ => steel::Page::List,
+                });
                 return true;
             }
             "VV" | "VG" => {
@@ -3536,7 +3612,7 @@ impl BimApp {
         }
         if tool == Tool::Level {
             let top = self.session.model.levels().last().map_or(0.0, |(_, l)| l.elevation);
-            self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
+            self.new_level = (self.session.model.field(top + 3000.0), String::new());
         }
         let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
         let placing_grid = matches!(tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. });
@@ -3767,6 +3843,33 @@ impl BimApp {
                     || m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any())
             })
             .collect()
+    }
+
+    /// Space in Modify on a selection with nothing to flip: a quarter turn counter-clockwise, as Revit's Space gives a component
+    /// taken up again. While the selection is dragged it turns as it goes, about the one element's own point (a component's or
+    /// a column's), else about the point it was taken by, and the drag goes on with it turned. Not dragged, one component or
+    /// column selected turns about its own point. Whether it turned: else Space is left to the flips.
+    fn space_turn(&mut self) -> bool {
+        if self.tool != Tool::Modify
+            || self.selection.is_empty()
+            || self.sketch.is_some()
+            || !matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_))
+            || !self.flippable().is_empty()
+        {
+            return false;
+        }
+        let m = &self.session.model;
+        let own = match self.selection.as_slice() {
+            &[id] => match m.elements.get(id) {
+                Some(Element::Component(c)) if c.adaptive.is_none() => Some(c.at),
+                Some(Element::Column(c)) => Some(c.at),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(about) = own.or_else(|| self.canvas.moving_from()) else { return false };
+        let ids = self.selection.clone();
+        self.run("rotate", json!({"ids": ids, "about": [about.0, about.1], "angle": 90.0})).is_some()
     }
 
     /// The selected walls, stairs and openings turned over, in one Undo step: Revit's flip arrows, or Space. Stairs selected climb
@@ -5689,10 +5792,21 @@ impl BimApp {
                 let tip = tf("Project Units (UN): how lengths show and read; now {}", &[&t(now.label()).to_lowercase()]);
                 let r = stacked_button(ui, Icon::Units, msg!("Project Units"), false, &tip);
                 let asked = self.open_units;
+                let places = self.session.model.decimals_shown();
                 let opened = ribbon::choices(ui, &r, asked, |ui| {
                     for u in Units::ALL {
                         if ui.selectable_label(u == now, t(u.label())).clicked() {
                             self.run("units", json!({"length": u.name()}));
+                        }
+                    }
+                    // The places lengths show, each as it writes a metre; inches and feet-inches show sixteenths.
+                    if let Some(range) = now.decimals() {
+                        ui.separator();
+                        ui.weak(t("Decimal places"));
+                        for d in range {
+                            if ui.selectable_label(Some(d) == places, now.with_unit_to(1000.0, Some(d))).clicked() {
+                                self.run("units", json!({"decimals": d}));
+                            }
                         }
                     }
                 });
@@ -6409,11 +6523,11 @@ impl BimApp {
                     let kind = self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default();
                     let rules = bimcraft_core::codes::limits_of(m, &kind).rules;
                     let l = ui.label(t("Riser:"));
-                    ui.add(TextEdit::singleline(&mut self.stair_riser).desired_width(56.0).hint_text(m.units.length(rules.riser)))
+                    ui.add(TextEdit::singleline(&mut self.stair_riser).desired_width(56.0).hint_text(m.length(rules.riser)))
                         .labelled_by(l.id)
                         .on_hover_text(t("The most a riser may be: the stair takes as many risers as it needs to stay under it. Leave it empty to follow the rules."));
                     let l = ui.label(t("Tread:"));
-                    ui.add(TextEdit::singleline(&mut self.stair_tread).desired_width(56.0).hint_text(m.units.length(rules.going)))
+                    ui.add(TextEdit::singleline(&mut self.stair_tread).desired_width(56.0).hint_text(m.length(rules.going)))
                         .labelled_by(l.id)
                         .on_hover_text(t("How deep each tread is. Leave it empty to follow the rules."));
                     let l = ui.label(t("Winders:"));
@@ -7216,9 +7330,9 @@ impl BimApp {
                     ui.label(RichText::new(tf("No rows yet: the {} is empty.", &[&name.to_lowercase()])).color(pal().muted));
                 }
                 Ok(table) => {
-                    let units = self.session.model.units;
+                    let (units, decimals) = (self.session.model.units, self.session.model.decimals);
                     let said = |c: &schedule::Column, v: &Value| {
-                        let text = schedule::shown(units, c.kind, v);
+                        let text = schedule::shown_to(units, decimals, c.kind, v);
                         if v.is_boolean() { t(&text).to_string() } else { text }
                     };
                     // A row is highlighted while what it lists is selected; a click on it picks that.

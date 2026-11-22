@@ -41,6 +41,8 @@ pub struct Rooms<'a> {
     regions: RefCell<HashMap<Id, Option<Rc<Region>>>>,
     /// The bars of the model by what they are marked among, found once and only when a bar is asked about.
     takeoff: OnceCell<crate::steel::Bars>,
+    /// What a member's quantities look at of the others (the columns a beam meets), found once and only when a member is asked about.
+    quantities: OnceCell<crate::quantities::Index>,
 }
 
 impl<'a> Rooms<'a> {
@@ -52,12 +54,18 @@ impl<'a> Rooms<'a> {
             placed: RefCell::new(HashMap::new()),
             regions: RefCell::new(HashMap::new()),
             takeoff: OnceCell::new(),
+            quantities: OnceCell::new(),
         }
     }
 
     /// The bars of the model by what they are marked among ([`crate::steel::Bars`]): found by one look at every element, the first time.
     pub fn takeoff(&self) -> &crate::steel::Bars {
         self.takeoff.get_or_init(|| crate::steel::Bars::new(self.m))
+    }
+
+    /// What a member's quantities look at of the others ([`crate::quantities::Index`]): found by one look at every element, the first time.
+    pub fn quantities(&self) -> &crate::quantities::Index {
+        self.quantities.get_or_init(|| crate::quantities::Index::new(self.m))
     }
 
     fn plan(&self, level: Guid, at: RoomArea) -> Arc<Plan> {

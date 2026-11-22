@@ -425,10 +425,21 @@ pub fn styles(t: &TextType, text: &str, override_format: bool, runs: &[Run]) -> 
     if override_format { formats(runs, len).iter().map(|f| f.over(base)).collect() } else { vec![base; len] }
 }
 
+/// A font glyph's resolved face and ID. `cap_to_em` multiplies a capital height to give the font's em size.
+/// The drawn advance is [`Placed::advance`], not the font's hmtx: synthetic bold adds its stroke width.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Glyph {
+    pub face: Face,
+    pub id: u16,
+    pub cap_to_em: f32,
+}
+
 /// A letter drawn: in units of the font's capital height, x right and y up from its left end on the baseline. Its
 /// `fill`'s rings fill by the non-zero rule; its `strokes` are lines `stroke` wide.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Shape {
+    /// None for single-stroke lettering (including missing-character replacements) and tabs.
+    pub glyph: Option<Glyph>,
     pub fill: Vec<Vec<(f32, f32)>>,
     pub strokes: Vec<Vec<(f32, f32)>>,
     pub stroke: f32,
@@ -500,7 +511,13 @@ fn drawn(face: &Face, c: char) -> Option<Shape> {
     // A bold the family hasn't: its outline drawn round in a heavy line.
     let strokes = if face.heavy { fill.iter().map(|r| r.iter().chain(r.first()).copied().collect()).collect() } else { Vec::new() };
     let stroke = if face.heavy { 0.07 } else { 0.0 };
-    Some(Shape { fill, strokes, stroke, advance: advance + stroke })
+    Some(Shape {
+        glyph: Some(Glyph { face: face.clone(), id: glyph.0, cap_to_em: em / cap }),
+        fill,
+        strokes,
+        stroke,
+        advance: advance + stroke,
+    })
 }
 
 /// `c` in our lettering, its capital 1 high.
@@ -508,7 +525,7 @@ fn lettered(bold: bool, c: char) -> Shape {
     let s: String = c.to_string();
     let strokes = crate::font::strokes(&s, 0.0, 0.0, 12.0).into_iter().map(|l| l.into_iter().map(|(x, y)| (x / 12.0, -y / 12.0)).collect());
     let n = c.to_uppercase().count() as f32;
-    Shape { fill: Vec::new(), strokes: strokes.collect(), stroke: if bold { 0.16 } else { 0.1 }, advance: n * 11.0 / 12.0 }
+    Shape { glyph: None, fill: Vec::new(), strokes: strokes.collect(), stroke: if bold { 0.16 } else { 0.1 }, advance: n * 11.0 / 12.0 }
 }
 
 /// A glyph's outline, its curves cut into short lines.
@@ -559,6 +576,11 @@ impl ttf_parser::OutlineBuilder for Outline {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Placed {
     pub index: usize,
+    /// UTF-8 byte range in the original text, separate from the character index used by the editor.
+    pub text_range: std::ops::Range<usize>,
+    pub shape: Arc<Shape>,
+    /// The requested face's slant, also applied to lettering and fallback outlines.
+    pub slant: bool,
     pub ch: char,
     pub x: f64,
     pub advance: f64,
@@ -594,19 +616,24 @@ pub fn layout(t: &TextType, text: &str, styles: &[Style]) -> Layout {
     let (font, size, wf) = (t.font.clone(), t.size, t.width_factor);
     let mut lines = Vec::new();
     let mut index = 0;
+    let mut byte_start = 0;
     for (i, line) in text.split('\n').enumerate() {
         let top = i as f64 * LINE_PITCH * size;
         let mut x = 0.0;
         let mut chars = Vec::new();
-        for ch in line.chars() {
+        for (byte, ch) in line.char_indices() {
             let style = styles.get(index).copied().unwrap_or_default();
-            let advance = f64::from(shape(&resolve(&font, style.bold, style.italic), ch).advance) * size * wf;
-            chars.push(Placed { index, ch, x, advance, style });
+            let face = resolve(&font, style.bold, style.italic);
+            let shape = shape(&face, ch);
+            let advance = f64::from(shape.advance) * size * wf;
+            let text_range = byte_start + byte..byte_start + byte + ch.len_utf8();
+            chars.push(Placed { index, text_range, shape, slant: face.slant, ch, x, advance, style });
             x += advance;
             index += 1;
         }
         lines.push(Line { start: index - chars.len(), end: index, top, baseline: top + size, width: x, chars });
         index += 1;
+        byte_start += line.len() + 1;
     }
     let width = lines.iter().map(|l| l.width).fold(0.0, f64::max);
     let height = lines.last().map_or(size, |l| l.baseline + 0.3 * size);
@@ -668,9 +695,8 @@ impl Layout {
         let (size, wf) = (self.size as f32, self.width_factor as f32);
         for l in &self.lines {
             for c in &l.chars {
-                let face = resolve(&self.font, c.style.bold, c.style.italic);
-                let s = shape(&face, c.ch);
-                let slant = if face.slant { SLANT } else { 0.0 };
+                let s = &c.shape;
+                let slant = if c.slant { SLANT } else { 0.0 };
                 let (x0, base) = (c.x as f32, l.baseline as f32);
                 let at = |&(gx, gy): &(f32, f32)| (x0 + (gx * wf + slant * gy) * size, base - gy * size);
                 if !s.fill.is_empty() {

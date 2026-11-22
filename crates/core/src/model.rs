@@ -4209,6 +4209,10 @@ pub struct Model {
     /// How lengths and areas are shown and typed; the model itself is in millimetres.
     #[serde(default)]
     pub units: Units,
+    /// How many places after the point lengths show in those units (`Units::decimals` says which are allowed); none, the
+    /// fewest, which drawings have always shown. Inches and feet-inches show sixteenths and leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decimals: Option<u8>,
     /// What its drawings say, and the names commands give.
     #[serde(default)]
     pub language: Language,
@@ -4384,15 +4388,42 @@ impl Model {
         self.standard.unwrap_or(crate::standards::TechnicalStandard::Iso)
     }
 
+    /// A length as the project shows it: in its units, to its decimals (`Units::length_to`).
+    pub fn length(&self, mm: f64) -> String {
+        self.units.length_to(mm, self.decimals)
+    }
+
+    /// [`Model::length`] with its unit, as the desktop labels one (`Units::with_unit_to`).
+    pub fn with_unit(&self, mm: f64) -> String {
+        self.units.with_unit_to(mm, self.decimals)
+    }
+
+    /// A length as a field to edit is filled, in the project's units and decimals (`Units::field_to`).
+    pub fn field(&self, mm: f64) -> String {
+        self.units.field_to(mm, self.decimals)
+    }
+
+    /// The places after the point its lengths show: what `decimals` asks, else the fewest its units allow; none for inches and
+    /// feet-inches, which show sixteenths.
+    pub fn decimals_shown(&self) -> Option<u8> {
+        let range = self.units.decimals()?;
+        Some(self.decimals.map_or(*range.start(), |d| d.clamp(*range.start(), *range.end())))
+    }
+
     /// Adapt the project to `std`: sets the technical standard and optionally updates line weights,
     /// object styles, and units to standard defaults.
     pub fn apply_standard(&mut self, std: crate::standards::TechnicalStandard, line_weights: bool, object_styles: bool, units: bool) {
         self.standard = Some(std);
         if units {
+            let was = self.units;
             if std == crate::standards::TechnicalStandard::Ansi && !self.units.imperial() {
                 self.units = Units::FeetInches;
             } else if std != crate::standards::TechnicalStandard::Ansi && self.units.imperial() {
                 self.units = std.default_units();
+            }
+            // The places of one unit are not another's.
+            if self.units != was {
+                self.decimals = None;
             }
         }
         if line_weights {
@@ -4429,6 +4460,7 @@ impl Model {
             name: name.into(),
             uid: fresh_uid(),
             units: Units::default(),
+            decimals: None,
             language,
             room_area: RoomArea::default(),
             next_id: FIRST_ID,
@@ -5268,6 +5300,10 @@ impl Model {
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
         self.codes_from_386();
+        // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
+        if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
+            self.codes.methods_into_layers();
+        }
         if self.format < 1 {
             self.resolve();
             if self.elements.keys().next().is_some_and(|&first| first < FIRST_ID) {
@@ -8081,7 +8117,7 @@ impl Model {
     pub fn dimension_labels(&self, d: &Dimension) -> Vec<String> {
         let t = self.dimension_type(d);
         let values = self.dimension_values(d);
-        let length = |x: f64| t.length(self.units, x);
+        let length = |x: f64| t.length(self.units, self.decimals, x);
         let shown: Vec<String> = match d.kind {
             DimKind::Aligned | DimKind::Linear => {
                 let sums = values.iter().scan(0.0, |sum, v| {
@@ -8658,6 +8694,24 @@ impl Model {
     pub fn check(&self) -> Result<(), String> {
         if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
             return Err(format!("`pinned` names an element that is gone ({g})"));
+        }
+        if let Some(d) = self.decimals {
+            match self.units.decimals() {
+                Some(r) if r.contains(&d) => {}
+                Some(r) => {
+                    return Err(format!(
+                        "`decimals` is {} to {} in {}, not {d}: run `units` with `decimals` null",
+                        r.start(),
+                        r.end(),
+                        self.units.name()
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "inches and feet-inches show sixteenths and take no `decimals` (it is {d}): run `units` with `decimals` null"
+                    ));
+                }
+            }
         }
         self.classification.check()?;
         if let Some(lw) = &self.line_weights {
@@ -10445,12 +10499,12 @@ impl Model {
                         sh.size
                     ));
                 };
-                if let Some([_, hi]) = self.title_blocks.get(&sh.title_block).and_then(|tb| tb.drawing_area)
+                if let Some((tb_name, [_, hi])) = self.title_block_of(sh).and_then(|(n, tb)| tb.drawing_area.map(|a| (n, a)))
                     && (hi.0 > width || hi.1 > height)
                 {
                     return Err(format!(
                         "{who}: title block `{}` drawing area extends outside {width} × {height} mm paper on sheet {}",
-                        sh.title_block, sh.number
+                        tb_name, sh.number
                     ));
                 }
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
@@ -10589,6 +10643,7 @@ impl Model {
             name,
             uid,
             units,
+            decimals,
             language,
             room_area,
             next_id: _,
@@ -10648,6 +10703,7 @@ impl Model {
             && *name == o.name
             && *uid == o.uid
             && *units == o.units
+            && *decimals == o.decimals
             && *language == o.language
             && *room_area == o.room_area
             && *types == o.types

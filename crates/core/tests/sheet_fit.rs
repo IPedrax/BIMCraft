@@ -22,7 +22,7 @@ mod tests {
         let mut s = building(60000.0, 40000.0);
         let placed = s.execute("place", &json!({"sheet": "A101", "view": "{3D}"})).unwrap();
         let vp = viewport(&mut s);
-        assert_eq!(vp["scale"], 500.0, "a 1 : 100 picture would be 734 x 405 mm on A3");
+        assert_eq!(vp["scale"], 250.0, "a 1 : 100 picture would be 734 x 405 mm on A3");
         assert_eq!(placed["scale"], vp["scale"], "the command reports the scale it chose");
 
         let id = placed["id"].as_u64().unwrap();
@@ -65,7 +65,7 @@ mod tests {
     fn fitting_uses_the_current_standard_sheet_margins() {
         // Seen horizontally, this model needs 379 mm at 1 : 200: ISO/JIS leave
         // 380 mm after clearance; NBR leaves 378 and ANSI leaves 378.25 mm.
-        for (standard, expected) in [("iso", 200.0), ("eu", 200.0), ("jis", 200.0), ("nbr", 500.0), ("ansi", 500.0)] {
+        for (standard, expected) in [("iso", 200.0), ("eu", 200.0), ("jis", 200.0), ("nbr", 250.0), ("ansi", 250.0)] {
             let mut s = building(60000.0, 40000.0);
             s.execute("standard", &json!({"set": standard})).unwrap();
             // ANSI adapts project units too; isolate its paper margins here.
@@ -127,7 +127,7 @@ mod tests {
         let mut s = building(60000.0, 40000.0);
         s.execute("place", &json!({"sheet": "A101", "view": "{3D}", "at": [90, 120]})).unwrap();
         let vp = viewport(&mut s);
-        assert_eq!(vp["scale"], 500.0);
+        assert_eq!(vp["scale"], 250.0);
         assert_eq!(vp["at"], json!([90.0, 120.0]));
     }
 

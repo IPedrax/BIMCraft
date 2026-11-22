@@ -832,13 +832,54 @@ fn moving_one_end_of_a_run_stretches_it_and_leaves_the_other_end_put() {
     run(&mut s, "move", json!({"ids": [beam], "by": [0, -500], "end": "end"}));
     assert_eq!(run_ends(&mut s, beam), (json!([1000.0, 500.0]), json!([4000.0, -500.0])), "only the end went");
     assert_eq!(s.model.check(), Ok(()), "the run is still sound");
-    // `end` refuses two elements, and an element that is neither a wall nor a run.
+    // `end` refuses two elements, and an element that is neither a wall, a run nor a grid.
     let other = run(&mut s, "beam", json!({"points": [[0, 2000], [4000, 2000]], "offset": 2800}))["ids"][0].as_u64().unwrap();
     let e = s.execute("move", &json!({"ids": [beam, other], "by": [10, 0], "end": "start"})).unwrap_err();
     assert!(e.contains("one wall or one run"), "{e}");
-    let grid = run(&mut s, "grid", json!({"start": [0, -1000], "end": [0, 7000]}))["id"].as_u64().unwrap();
-    let e = s.execute("move", &json!({"ids": [grid], "by": [10, 0], "end": "start"})).unwrap_err();
+    let plane = run(&mut s, "reference_plane", json!({"start": [0, 5000], "end": [4000, 5000]}))["id"].as_u64().unwrap();
+    let e = s.execute("move", &json!({"ids": [plane], "by": [10, 0], "end": "start"})).unwrap_err();
     assert!(e.contains("one wall or one run"), "{e}");
+}
+
+#[test]
+fn moving_one_end_of_a_grid_lengthens_or_turns_it_and_leaves_the_other_end_put() {
+    let mut s = Session::new();
+    let grid = run(&mut s, "grid", json!({"start": [1000, -1000], "end": [1000, 7000]}))["id"].as_u64().unwrap();
+    // The end pulled 2 m north: 10 m long; the start pulled 500 east and 500 north: a grid that leans a little.
+    run(&mut s, "move", json!({"ids": [grid], "by": [0, 2000], "end": "end"}));
+    assert_eq!(run_ends(&mut s, grid), (json!([1000.0, -1000.0]), json!([1000.0, 9000.0])), "only the end went");
+    run(&mut s, "move", json!({"ids": [grid], "by": [500, 500], "end": "start"}));
+    assert_eq!(run_ends(&mut s, grid), (json!([1500.0, -500.0]), json!([1000.0, 9000.0])), "only the start went");
+    assert_eq!(s.model.check(), Ok(()), "the grid is still sound");
+    // Each is one undo step.
+    run(&mut s, "undo", json!({}));
+    assert_eq!(run_ends(&mut s, grid), (json!([1000.0, -1000.0]), json!([1000.0, 9000.0])));
+    // Without `end` both ends go together, as they did.
+    run(&mut s, "move", json!({"ids": [grid], "by": [0, 100]}));
+    assert_eq!(run_ends(&mut s, grid), (json!([1000.0, -900.0]), json!([1000.0, 9100.0])));
+}
+
+#[test]
+fn an_end_of_a_grid_taken_to_the_other_end_or_out_of_range_is_refused_and_the_model_is_left_as_it_was() {
+    let mut s = Session::new();
+    let grid = run(&mut s, "grid", json!({"start": [1000, -1000], "end": [1000, 7000]}))["id"].as_u64().unwrap();
+    let before = s.model.clone();
+    for (by, end, says) in [
+        // The end onto the start: a grid of no length.
+        (json!([0, -8000]), "end", "too short"),
+        // Past the model's limits, and not a number at all.
+        (json!([1e9, 0]), "end", "not a usable number"),
+        (json!([1e300, 0]), "start", "must be a point"),
+        (json!(["east", 0]), "start", "must be a point"),
+    ] {
+        let e = s.execute("move", &json!({"ids": [grid], "by": by, "end": end})).unwrap_err();
+        assert!(e.contains(says), "{by}: {e}");
+        assert_eq!(s.model.elements, before.elements, "{by}: the grid is as it was");
+    }
+    // Neither end is `middle`.
+    let e = s.execute("move", &json!({"ids": [grid], "by": [10, 0], "end": "middle"})).unwrap_err();
+    assert!(e.contains("`start` or `end`"), "{e}");
+    assert_eq!(s.model.elements, before.elements);
 }
 
 #[test]
@@ -3320,6 +3361,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::clipboard_tests::sweep_payloads(&mut base));
     // A beam armed after everything else, so that no id the payloads name moves, and the steel list's and cut plan's payloads.
     targeted.extend(crate::steel_tests::sweep_payloads(&mut base));
+    // A structural column and floor to be counted, and the quantities command's and template's payloads.
+    targeted.extend(crate::quantities_tests::sweep_payloads(&mut base));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();

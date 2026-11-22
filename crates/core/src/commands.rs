@@ -41,6 +41,7 @@ use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod bars;
+mod quantities;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -822,6 +823,28 @@ other_files(
         menu: None,
         files: Files::Conditional,
     },
+    Command {
+        id: "quantities",
+        label: ui_msg!("Quantities"),
+        // The desktop's Materials page answers QT (`BimApp::shortcut`), as a listed shortcut must.
+        aliases: &["QT"],
+        params: "{level?, ids?, by?, categories?, path?} what the project's beams, columns, structural columns, footings, strip footings and floors \
+                 come to in concrete (`volume_m3`), formwork (`formwork_m2`) and steel (`rebar_kg`, the bars that name the member as their host, \
+                 and `rebar_ratio`, kg per m³ of its concrete): by level, in elevation order, and by category. `level` is a level's name or id \
+                 and `ids` are members (none: the whole project); `categories` names some of beam, column, structuralcolumn, footing, stripfooting \
+                 and floor. `by` is a project parameter's name: each level and category is split by its value (up to 1,000 values), so \
+                 cast-in-place, precast and the rest are told apart. Bars that name no host are a line of their own on their level, so the steel \
+                 is the steel list's. The rules are BIMCraft's own and are written in the notes: a beam is counted between its concrete columns' faces \
+                 and loses the thickness of a structural floor on each side that floor covers; a column stops at the floor over it; a floor's forms \
+                 are its soffit net of what carries it and its free edges. A steel section is weighed under Weight and is not here. `path` writes \
+                 the rows as a .csv or an .xlsx workbook. Reads the project; changes nothing. Returns rows (level, category, value with `by`, \
+                 count, volume_m3, formwork_m2, rebar_kg, rebar_ratio, formwork_ratio), levels (the same per level, with its id), total and \
+                 notes. `schedule` with `template` \"materials_summary\" makes the same, without `by`, as a schedule in the project",
+        run: quantities::quantities,
+        undoable: false,
+        menu: None,
+        files: Files::Conditional,
+    },
     edit(
         "reinforcement_preset",
         "Reinforcement Presets",
@@ -1470,8 +1493,8 @@ other_files(
         "title_block",
         "Title Blocks",
         &[],
-        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, lines?, fills?, \
-         texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
+        "{name?, like?, starter?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, sizes?, \
+         lines?, fills?, texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
          drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
          project's title blocks, its title fields' values and the automatic fields. drawing_area [[left,bottom],[right,top]] is in sheet mm for automatic placement; template_border:true omits the standard frame and keeps fold marks. Other lengths are mm on paper from the title \
          block's bottom left corner: `width` and `height` its box; `font` what letters its texts (Arial unless told; any the system has); `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
@@ -1483,7 +1506,12 @@ other_files(
          command line read as DXF) drawn at full size on paper, in `units` (auto: the file's own, else mm): its lines, arcs, \
          circles and polylines as lines, its solid hatches as fills, its texts as texts, moved to its extents' corner, which \
          become its box; each key its texts name becomes a sheet field, or keeps the field it was. A new one starts as the \
-         built-in title box drawn as one (`like` another), and what's given goes over it",
+         built-in title box drawn as one (`like` another, or a `starter`: a ready-made one with the project's information in it, which the \
+         listing names: ISO 7200, ASME Y14.1 and NBR 16752 each for small papers and large ones, original layouts with their labels in the \
+         project's language), and what's given goes over it. `sizes` [\"A3\", \"ANSI D\", …] are the papers it is for: a sheet that names no \
+         title block is drawn with the first of the project's, by name, that lists its paper, else the built-in one; a sheet's `elements` \
+         say it as `title_block_by_size`. A starter lists its papers, so loading one changes how the sheets of those papers are drawn \
+         (`sizes: []` leaves it for sheets that name it)",
         title_block,
         // The DXF or DWG `path` names, when it names one.
         Files::Conditional,
@@ -2224,7 +2252,8 @@ other_files(
          its annotations in drawing coordinates, straight-wall openings in their host (refusing motion off the host), and \
          unhosted non-adaptive components in world coordinates. Other model kinds and `end` are refused in this mode. \
          Without `view`, moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall, one run or one grid \
+         moves (a grid's other end stays, and it keeps some length). One \
          section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
          looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
          an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
@@ -2731,9 +2760,14 @@ other_files(
         "units",
         "Project Units",
         &["UN"],
-        "{length?: mm|cm|m|in|ft|ft-in} how drawings, schedules and the desktop show lengths, and read typed ones: \
+        "{length?: mm|cm|m|in|ft|ft-in, decimals?: 0..5|null} how drawings, schedules and the desktop show lengths, and read typed ones: \
          millimetres, centimetres, metres, fractional inches, decimal feet, or feet and fractional inches (to 1/16\"); areas \
-         in m², or ft² with inches and feet. The model, and every command, keep millimetres",
+         in m², or ft² with inches and feet. The model, and every command, keep millimetres. `decimals` is how many places \
+         after the point lengths show, in what the project's units allow: metres and feet 2 to 5, centimetres 1 to 4, \
+         millimetres 0 to 3 (so 3 mm in metres can show as 0.003, not 0.00); null, or the fewest, is what drawings have always \
+         shown (metres 2, centimetres 1, millimetres 0, feet 2). Inches and feet-inches show sixteenths and take none. It is kept \
+         with the project, and starts again at its fewest when `length` changes and no `decimals` comes with it. Typed lengths \
+         are read exactly whatever it is. Says `length` and `decimals` (the places shown, null for inches and feet-inches)",
         units,
     )
     .menu("Manage > Project Units"),
@@ -2982,7 +3016,10 @@ other_files(
          the project's bars, grouped, named in the project's language (`name` says otherwise): `host` (an element's id) and `level` (a name \
          or id) keep one host's or one level's bars, and put the host's id or the level's name in the default name; `show` is \
          `count`, `weight` or `both` (both) and takes the weight or the count column out; `fields`, `filters`, `sort` and `grouped` \
-         given with it replace the template's",
+         given with it replace the template's. `template` \"materials_summary\" (`level` a level's name or id) makes a \
+         schedule of beams, columns, structural columns, footings, strip footings and floors, by level and category, with their count, \
+         volume, formwork area and rebar weight, each totalled, as `quantities` works them out; it cannot split by a project parameter, \
+         which `quantities` with `by` does",
         schedule,
         Files::Write,
     ),
@@ -4494,7 +4531,11 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("paper".into(), json!(paper(&sh.size)));
             // What its title block's fields say, filled in; and which of them are its own to give.
             extra.insert("title_values".into(), json!(sheet::title_values(m, id)));
-            if let Some(tb) = m.title_blocks.get(&sh.title_block) {
+            if let Some((name, tb)) = m.title_block_of(sh) {
+                // Named by none, drawn with the one that lists its paper.
+                if sh.title_block.is_empty() {
+                    extra.insert("title_block_by_size".into(), json!(name));
+                }
                 let own: Vec<&str> =
                     tb.fields.iter().filter(|f| f.scope == crate::titleblock::Scope::Sheet).map(|f| f.key.as_str()).collect();
                 extra.insert("sheet_fields".into(), json!(own));
@@ -4668,6 +4709,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         | Element::PlanView(_)
         | Element::ProjectInfo(_) => {}
     }
+    // What a member comes to in concrete and in formwork, where it has them (`quantities`).
+    extra.extend(crate::quantities::fields(m, rooms, id, e).into_iter().map(|(k, v)| (k.to_string(), v)));
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
         o.extend(extra);
@@ -5710,7 +5753,10 @@ fn with_notes(mut reply: Value, notes: &[String]) -> Value {
 fn schedule(s: &mut Session, p: &Value) -> R {
     let c = "schedule";
     // A steel template is this same call, a schedule of bars, with its fields, filters and sort filled in where the call gives none.
-    let template = choice(c, p, "template", &["steel_list", "steel_summary"], "")?;
+    let template = choice(c, p, "template", &["steel_list", "steel_summary", "materials_summary"], "")?;
+    if template == "materials_summary" {
+        return quantities::materials_summary(s, p);
+    }
     if !template.is_empty() {
         let m = &s.model;
         if string(c, p, "category")?.is_some_and(|k| category(&k) != "rebar") {
@@ -15792,6 +15838,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         &[
             "name",
             "like",
+            "starter",
             "rename",
             "delete",
             "path",
@@ -15801,15 +15848,37 @@ fn title_block(s: &mut Session, p: &Value) -> R {
             "font",
             "drawing_area",
             "template_border",
+            "sizes",
             "lines",
             "fills",
             "texts",
             "fields",
         ],
     )?;
-    let Some(name) = name_param(c, p, "name")? else {
-        let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
-        return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
+    // A starter, by name: a ready-made title block, its labels in the project's language, to start from.
+    let starter = match string(c, p, "starter")? {
+        None => None,
+        Some(n) => {
+            let made = crate::title_starters::make(&n, s.model.language).ok_or_else(|| {
+                bad(c, format!("there's no starter `{n}`; the starters are {}", crate::title_starters::names().join(", ")))
+            })?;
+            Some((n.trim().to_string(), made))
+        }
+    };
+    let name = match (name_param(c, p, "name")?, &starter) {
+        (Some(name), _) => name,
+        (None, Some((n, _))) => {
+            crate::title_starters::names().into_iter().find(|s| s.eq_ignore_ascii_case(n)).map_or_else(|| n.clone(), str::to_string)
+        }
+        (None, None) => {
+            let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
+            return Ok(json!({
+                "title_blocks": s.model.title_blocks,
+                "values": s.model.title_values,
+                "auto": auto,
+                "starters": crate::title_starters::names(),
+            }));
+        }
     };
     if flag(c, p, "delete")? {
         let m = &s.model;
@@ -15826,12 +15895,23 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"deleted": name}));
     }
     let m = &s.model;
-    let mut t = match (m.title_blocks.get(&name), name_param(c, p, "like")?) {
-        (Some(t), _) => t.clone(),
-        (None, Some(like)) => {
+    let like = name_param(c, p, "like")?;
+    if starter.is_some() && like.is_some() {
+        return Err(bad(c, "`starter` and `like` both say what to start from; give one"));
+    }
+    let mut t = match (m.title_blocks.get(&name), like, starter) {
+        (Some(_), _, Some(_)) => {
+            return Err(bad(
+                c,
+                format!("there's already a title block `{name}`; give the starter another `name`, or change that one without `starter`"),
+            ));
+        }
+        (Some(t), ..) => t.clone(),
+        (None, Some(like), _) => {
             m.title_blocks.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no title block `{like}` to start from")))?
         }
-        (None, None) => TitleBlock::default(),
+        (None, None, Some((_, made))) => made,
+        (None, None, None) => TitleBlock::default(),
     };
     let mut notes = Vec::new();
     let mut left_out = BTreeMap::new();
@@ -15851,7 +15931,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         }
         // The fields it had keep their labels, whose and defaults where the drawing still names them.
         let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
-        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, ..read };
+        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, sizes: t.sizes.clone(), ..read };
         left_out = out;
     } else if p.get("units").is_some() {
         return Err(bad(c, "`units` is the unit of the DXF `path` names"));
@@ -15859,7 +15939,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     // What's given goes over it, read as a file reads one: a key it hasn't is an error.
     let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
     if let Some(o) = v.as_object_mut() {
-        for key in ["width", "height", "font", "drawing_area", "template_border", "lines", "fills", "texts", "fields"] {
+        for key in ["width", "height", "font", "drawing_area", "template_border", "sizes", "lines", "fills", "texts", "fields"] {
             match p.get(key) {
                 None => {}
                 Some(Value::Null) => {
@@ -15875,6 +15955,15 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     for f in &mut t.fields {
         f.key = f.key.trim().to_ascii_uppercase();
     }
+    // Each paper once, as the sheets name it.
+    let mut papers: Vec<String> = Vec::new();
+    for z in &t.sizes {
+        let z = crate::model::paper_name(z);
+        if !papers.contains(&z) {
+            papers.push(z);
+        }
+    }
+    t.sizes = papers;
     let m = s.model_mut();
     let name = match name_param(c, p, "rename")? {
         Some(to) if to != name => {
@@ -15891,6 +15980,16 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     let undefined = t.undefined();
     if m.title_blocks.get(&name) != Some(&t) {
         m.title_blocks.insert(name.clone(), t.clone());
+    }
+    // A paper another title block lists too: of the two, the one named first is drawn on sheets that name none.
+    for z in &t.sizes {
+        if let Some((other, _)) =
+            m.title_blocks.iter().find(|(n, o)| **n != name && o.sizes.iter().any(|x| crate::model::paper_name(x) == *z))
+        {
+            notes.push(format!(
+                "paper {z} is also listed by title block `{other}`; of the two, the one named first is drawn on sheets that name none"
+            ));
+        }
     }
     let mut out = json!({"name": name, "title_block": t});
     if !undefined.is_empty() {
@@ -19473,9 +19572,12 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 walls.insert(id, w);
             }
             Element::Door(o) | Element::Window(o) if moving_guids.contains(&o.host) => {}
-            // Moving one end of a run: the other end stays where it was, as a wall's does.
+            // Moving one end of a run or a grid: the other end stays where it was, as a wall's does.
             mut e => {
                 if let (Some(at_start), Some(me), Some(old)) = (end, e.run_mut(), m.run_of(id)) {
+                    if at_start { me.end = old.end } else { me.start = old.start }
+                }
+                if let (Some(at_start), Element::Grid(me), Some(Element::Grid(old))) = (end, &mut e, m.elements.get(id)) {
                     if at_start { me.end = old.end } else { me.start = old.start }
                 }
                 if let (Some(before), Some(after)) = (m.run_of(id).cloned(), e.run().cloned()) {
@@ -20664,8 +20766,12 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
             }
         }
     };
-    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
+    let is_grid = |one: &Id| matches!(s.model.elements.get(*one), Some(Element::Grid(_)));
+    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some() || is_grid(one)) {
+        return Err(bad(
+            c,
+            "`end` moves an end of one wall or one run, or of one grid, or a part of one section or elevation; give `ids` one of those",
+        ));
     }
     // A group goes with its members.
     let taken = if end.is_none() { crate::groups::with_members(&s.model, &ids) } else { ids.clone() };
@@ -22004,13 +22110,45 @@ fn stair_check(s: &mut Session, p: &Value) -> R {
 
 fn units(s: &mut Session, p: &Value) -> R {
     let c = "units";
-    if let Some(name) = string(c, p, "length")? {
-        let u = Units::from_name(&name).ok_or_else(|| bad(c, format!("`length` is mm, cm, m, in, ft or ft-in, not `{name}`")))?;
-        if u != s.model.units {
-            s.model_mut().units = u;
+    only(c, p, &["length", "decimals"])?;
+    let units = match string(c, p, "length")? {
+        Some(name) => Units::from_name(&name).ok_or_else(|| bad(c, format!("`length` is mm, cm, m, in, ft or ft-in, not `{name}`")))?,
+        None => s.model.units,
+    };
+    let decimals = match p.get("decimals") {
+        // The places of one unit are not another's: new units start at their fewest.
+        None => s.model.decimals.filter(|_| units == s.model.units),
+        Some(Value::Null) => None,
+        Some(v) => {
+            let range = units.decimals().ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "inches and feet-inches show sixteenths of an inch and take no `decimals`: use mm, cm, m or ft, or null, not {v}"
+                    ),
+                )
+            })?;
+            let d = v.as_u64().and_then(|d| u8::try_from(d).ok()).filter(|d| range.contains(d)).ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "`decimals` is {} to {} in {} (null for the {} drawings show), not {v}",
+                        range.start(),
+                        range.end(),
+                        units.name(),
+                        range.start()
+                    ),
+                )
+            })?;
+            // The fewest are what none shows.
+            Some(d).filter(|d| d != range.start())
         }
+    };
+    if units != s.model.units || decimals != s.model.decimals {
+        let m = s.model_mut();
+        (m.units, m.decimals) = (units, decimals);
     }
-    Ok(json!({"length": s.model.units.name()}))
+    Ok(json!({"length": s.model.units.name(), "decimals": s.model.decimals_shown()}))
 }
 
 fn room_area(s: &mut Session, p: &Value) -> R {

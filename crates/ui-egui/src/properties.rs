@@ -194,6 +194,10 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Structural", "structural", "Structural", Flag),
             ("Graphics", "pattern_angle", msg!("Pattern Angle (°)"), Number),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
         "ceiling" => &[
             ("Constraints", "level", "Level", Level),
@@ -345,6 +349,10 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
         // A bar's mark among its host's, the host's mark and its shape, worked out and not stored: read only.
         "rebar" => &[
@@ -360,6 +368,25 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", "Unconnected Height", Height),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
+        ],
+        // A beam and a strip footing are runs with their quantities too, which a pipe has none of.
+        "beam" | "stripfooting" => &[
+            ("Constraints", "level", msg!("Reference Level"), Level),
+            ("Constraints", "offset", msg!("Start Level Offset"), Length),
+            ("Constraints", "end_offset", msg!("End Level Offset"), Limit(msg!("Same as start"))),
+            ("Constraints", "justify", msg!("Z Justification"), Justification),
+            ("Dimensions", "length", "Length", LengthShown),
+            ("Identity Data", "system", "System", Text),
+            ("Other", "start", "Start", Point),
+            ("Other", "end", "End", Point),
+            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
         run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &[
             ("Constraints", "level", msg!("Reference Level"), Level),
@@ -698,10 +725,12 @@ fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
 }
 
 /// A project parameter's value of `kind` as a field shows it: lengths and areas in `units`. Not for yes or no, a checkbox.
-pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
+pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, m: &Model) -> String {
+    let units = m.units;
     match kind {
         ParameterKind::Area => area_shown(v, units),
-        ParameterKind::Length => shown(Length, v, units),
+        // Read whole by the dialog's OK: what the units round away is said in mm, so a value left alone keeps itself.
+        ParameterKind::Length => v.as_f64().map_or_else(String::new, |x| m.field(x)),
         ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => shown(Number, v, units),
         ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, units),
     }
@@ -1109,9 +1138,9 @@ impl RoomRows {
         let t = m.types.room.get(name).cloned().unwrap_or_default();
         RoomRows {
             floor: t.floor.unwrap_or_default(),
-            floor_offset: m.units.length(t.floor_offset),
+            floor_offset: m.field(t.floor_offset),
             ceiling: t.ceiling.unwrap_or_default(),
-            ceiling_offset: m.units.length(t.ceiling_offset),
+            ceiling_offset: m.field(t.ceiling_offset),
             fill: t.colour.is_some(),
             colour: t.colour.unwrap_or(SWATCHES[0].1),
         }
@@ -1256,7 +1285,7 @@ impl TypeDialog {
                 if *k == "rotation" {
                     return (*g, *k, *l, format!("{}°", value.as_f64().unwrap_or(0.0)));
                 }
-                (*g, *k, *l, shown(Length, &value, m.units))
+                (*g, *k, *l, value.as_f64().map_or_else(String::new, |x| m.field(x)))
             })
             .collect()
     }
@@ -1264,9 +1293,9 @@ impl TypeDialog {
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
     fn layers(m: &Model, category: &str, name: &str) -> Vec<LayerRow> {
         let Some((.., thickness, layers)) = m.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return Vec::new() };
-        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length(l.thickness), l.variable);
+        let typed = |l: &Layer| (l.function, l.material.clone(), m.field(l.thickness), l.variable);
         match layers {
-            [] => vec![(Function::Structure, String::new(), m.units.length(thickness), false)],
+            [] => vec![(Function::Structure, String::new(), m.field(thickness), false)],
             layers => layers.iter().map(typed).collect(),
         }
     }
@@ -2040,7 +2069,7 @@ impl BimApp {
             ui.checkbox(&mut core, t("Extend into wall (to core)"));
             ui.end_row();
             let name = ui.label(t("Offset:"));
-            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.units.length(p.offset), name.id, m.units.name());
+            typed = self.field(ui, 3 + i as Id, "sketch-pick-offset", m.length(p.offset), name.id, m.units.name());
             ui.end_row();
         });
         let face_changed = core != p.face.is_core();
@@ -3223,18 +3252,23 @@ impl BimApp {
         let (built_in, none) = (t("Built-in"), t("None"));
         let mut chosen = sheet.title_block.clone();
         let mut change: Option<Value> = None;
-        let tb = model.title_blocks.get(&sheet.title_block);
+        let tb = model.title_block_of(sheet).map(|(_, t)| t);
+        // Named by none, a sheet takes the title block that lists its paper, else the built-in one.
+        let automatic = match model.title_block_of(sheet) {
+            Some((n, _)) if sheet.title_block.is_empty() => tf("{} (by paper size)", &[n]),
+            _ => built_in.to_string(),
+        };
         let values = bimcraft_core::sheet::title_values(model, id);
         grid(ui, ("sheet-title-block", id), |ui| {
             let label = ui.label(t("Title Block"));
             let shown = match chosen.as_str() {
-                "" => built_in.to_string(),
+                "" => automatic.clone(),
                 bimcraft_core::titleblock::NONE => none.to_string(),
                 _ => chosen.clone(),
             };
             let r =
                 ComboBox::from_id_salt(("sheet-title-block-pick", id)).selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
-                    ui.selectable_value(&mut chosen, String::new(), built_in);
+                    ui.selectable_value(&mut chosen, String::new(), automatic.clone());
                     // No border, title box or folding marks, for one drawn on the sheet itself.
                     ui.selectable_value(&mut chosen, bimcraft_core::titleblock::NONE.to_string(), none);
                     for n in model.title_blocks.keys() {
@@ -3262,7 +3296,7 @@ impl BimApp {
             self.run("modify", p);
         }
         ui.horizontal(|ui| {
-            let name = tb.is_some().then(|| sheet.title_block.clone());
+            let name = model.title_block_of(sheet).map(|(n, _)| n.to_string());
             if ui.button(t("Edit Title Blocks…")).clicked() {
                 self.open_title_blocks(name.as_deref());
             }
@@ -3439,7 +3473,7 @@ impl BimApp {
                                     edit_pattern = true;
                                 }
                             });
-                            tb.shown(t("Thickness"), &model.units.length(*thickness));
+                            tb.shown(t("Thickness"), &model.length(*thickness));
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
@@ -3869,7 +3903,7 @@ impl FamilyDialog {
             .map(|f| {
                 let values = f.values(&name, &Default::default()).unwrap_or_default();
                 let typed = |p: &bimcraft_core::family::Parameter| match values.get(&p.name) {
-                    Some(Val::Number(x)) if p.kind == Holds::Length => m.units.length(*x),
+                    Some(Val::Number(x)) if p.kind == Holds::Length => m.field(*x),
                     Some(Val::Number(x)) if p.kind == Holds::YesNo => (if *x != 0.0 { "1" } else { "0" }).to_string(),
                     Some(Val::Number(x)) => format!("{}", (x * 1e6).round() / 1e6),
                     Some(Val::Text(t)) => t.clone(),

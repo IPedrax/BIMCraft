@@ -96,6 +96,13 @@ fn signed_volume(faces: &[Vec<P3>]) -> f64 {
     v / 6.0
 }
 
+/// Whether `faces` close a body: a closed surface's vector areas sum to nothing, and then its volume, and so which way it is
+/// wound, doesn't depend on the point it is measured from.
+fn is_closed(faces: &[Vec<P3>]) -> bool {
+    let (sum, area) = faces.iter().map(|f| newell(f)).fold(([0.0; 3], 0.0), |(s, a), n| (add(s, n), a + dot(n, n).sqrt()));
+    dot(sum, sum).sqrt() <= 1e-6 * area
+}
+
 /// `faces` turned inside out where they face in.
 fn turned_out(faces: &mut [Vec<P3>]) {
     if signed_volume(faces) < 0.0 {
@@ -740,6 +747,23 @@ impl Reader<'_> {
         }
         turned_out(&mut faces);
         out.extend(faces);
+    }
+
+    /// A product's body as `body` reads it, but each item's closed mesh turned out where a file wound its faces inside out, so
+    /// that what faces up is a roof's top and not its underside.
+    // shortcut: one item's loose pieces are turned out or not together by their total volume; split them by piece if a file
+    // winds two slabs of one mesh the opposite ways.
+    pub(super) fn body_out(&self, product: &Entity) -> Vec<Vec<P3>> {
+        let f = self.frame(product);
+        let mut out = Vec::new();
+        for (_, items) in self.body_items(product) {
+            let mut faces: Vec<Vec<P3>> = items.into_iter().map(|face| face.into_iter().map(|p| f.at(p)).collect()).collect();
+            if is_closed(&faces) {
+                turned_out(&mut faces);
+            }
+            out.extend(faces);
+        }
+        out
     }
 
     /// An advanced face (`IfcAdvancedFace`) tessellated on its surface, turned the way its sense says.

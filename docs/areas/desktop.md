@@ -136,7 +136,11 @@ and moving the pointer across the wall centre swaps its facing; a window's face 
 A click takes the pending hinge or face and the next one starts as placed. With doors or windows selected, Space turns every one it
 can: a swing door steps through the four Opens pictures in Inspector order, a window turns its face, and a sliding or fixed door
 is left alone. Walls in the selection turn as Space always did, and each press is one `flip` and one Undo step. A door's or a window's
-flip capabilities are `Model::opening_flips`, from its operation; the flip arrows on the plan do the same. A selected door or window shows two temporary dimensions from its middle
+flip capabilities are `Model::opening_flips`, from its operation; the flip arrows on the plan do the same. With nothing in the
+selection to flip, Space gives what is taken up again a quarter turn, as Revit's does (`BimApp::space_turn`, issue 470): while the
+selection is dragged it turns as it goes, about the one component's or column's own point or else the point it was taken by
+(`Canvas::moving_from`), and the drag goes on with it turned; not dragged, one component or column selected turns where it stands.
+Each press is one `rotate`. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.
@@ -245,6 +249,8 @@ drawn again after the plan's own pass, so neither can be buried by a wall. A sel
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
 a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
+A selected grid's ends are grips by the same code: a drag lengthens, shortens or leans the grid, and runs `move` with `end` (`start` or
+`end`) on release, so the other end stays and `Model::check` refuses a grid with no length.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
@@ -263,6 +269,11 @@ mouse don't have (`Orbit::navigate`, issue 459). A primary drag alone never move
 selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
 them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
+In Modify the arrow keys nudge the selection, as Revit's do (`BimApp::nudge_keys`, issue 529): right, left, up or down on screen in a
+plan or a ceiling plan however it is turned, along its line or up in a section or an elevation (`move` with its `view`). A step is
+`NUDGE_PX` pixels at the view's zoom rounded down to 1, 2 or 5 times a power of ten, at least a millimetre (`nudge_step`); Shift
+makes it ten. Each press is one `move` and one Undo step, under Move's rules. A field with the keyboard, a dialog or another tool
+keeps the arrows.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
 model (`spacemouse.rs`): the cap pans, pulling it toward you zooms in, twisting it turns the view about the vertical and tilting
 it raises or lowers the eye, about the middle of the picture, while the window has focus. Like the hand it moves only the active
@@ -816,6 +827,23 @@ grid snapping is on, else to the nearest 10 mm, grid snapping off or not.
 Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids, by:[along,up]}`; all other mutations retain existing commands. A vertical dimension's `level` anchor is its view GUID, also stored in `view`. Format 21 prevents older readers from resolving it as a plan dimension or dropping it. Format 20 needs no data conversion.
 
 Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
+
+## Lengths in fields
+
+A dialog that fills a field from the model and reads every field back when OK or Apply is pressed (Type Properties, a room type's
+offsets, a stair type's rules, Edit Pattern, a view range, Reinforce, a project parameter's value, a family's type parameters)
+fills a length with `Units::field`, never `Units::length`. `length` is what drawings show, rounded (3 mm in metres is `0.00`), so
+a field left alone would be read back as 0. In mm, cm and m, `field` is `length` while that reads back as the value, else the
+value in mm with its unit (`3 mm`), which `Units::parse` reads. Inches and feet round to a sixteenth of an inch and a hundredth
+of a foot by design, so `field` is `length` there. A field that commits only when its text changes (the Properties palette)
+keeps `length`.
+
+A project also keeps how many places lengths show (`Model::decimals`, the `units` command's `decimals`; Manage > Project Units
+lists them under the units): metres and feet 2 to 5, centimetres 1 to 4, millimetres 0 to 3, none for inches and feet-inches,
+which show sixteenths. None, and the fewest, are what drawings always showed. A change of units starts again at the fewest.
+Code that has a `Model` shows a length with `Model::length`, `Model::with_unit` and `Model::field`, which pass the places on;
+`Units::length` is for code that has only the units (so it shows the fewest places), and dimension types and schedules take
+the places as `DimensionType::length` and `schedule::shown_to` do. Typed lengths are read exactly whatever places are shown.
 
 ## Benchmarking the window
 
