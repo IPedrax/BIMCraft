@@ -2179,7 +2179,7 @@ msgstr "Valor calculado…"
 #: crates/ui-egui/src/lib.rs:2251
 #: crates/ui-egui/src/lib.rs:5578
 msgid "Callout"
-msgstr ""
+msgstr "Llamada"
 
 #: crates/ui-egui/src/lib.rs:5570
 msgid "Callout (DV): click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
