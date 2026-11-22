@@ -27,6 +27,8 @@
 //! element is boxed by what it is drawn with on screen: a form's or a nested instance's edges as the view draws them (an L's
 //! inner corner, never the hull's chord across it, `views::outline_edges`), a plane's trace, a
 //! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place.
+//! An annotation family's symbols are paper marks (`family::annotation::marks_indexed`), its fills included, so the scene
+//! boxes and hits those by the same paper geometry the plan draws.
 //! Select Elements by Face (FE-20, `selection.rs`) says what a face does: on, a click on a form's or a nested instance's
 //! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
 //! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, and a
