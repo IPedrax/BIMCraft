@@ -1285,6 +1285,28 @@ fn a_setting_only_the_amendment_gives_leaves_it_even_over_a_null_under_it() {
             assert_eq!(held, None, "{key}, a null under it {lower_null}: left out of Upper");
             assert!(s.model.resolve_code(e, key).value.get("Mine").is_none_or(Value::is_null), "{key}: not in force");
         }
+fn a_setting_only_an_amendment_gives_and_an_element_names_is_not_taken_away_by_it() {
+    // Taken away where only the amendment gives it, the setting would leave the amendment's section rather than stay there
+    // as a null: it is refused all the same while a board names it, with nothing changed.
+    let e = Discipline::Electrical;
+    for lower in [false, true] {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Site", "amendments": ["Site"]}));
+        if lower {
+            run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Over", "amendments": ["Site", "Over"]}));
+        }
+        let some = s.model.resolve_code(e, "distribution_systems").value.values().find(|v| !v.is_null()).cloned().unwrap();
+        let rules = json!({"distribution_systems": {"Exclusive": some}});
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Site", "rules": rules}));
+        let b = run(&mut s, "component", json!({"family": "Distribution Board", "type": "12 circuits", "at": [0, 0]}))["id"].clone();
+        run(&mut s, "panel", json!({"id": b, "distribution": "Exclusive"}));
+        let codes = s.model.codes.clone();
+        let p = json!({"discipline": "electrical", "amend": "Site", "rules": {"distribution_systems": {"Exclusive": null}}});
+        let r = s.execute("building_code", &p);
+        assert!(r.as_ref().is_err_and(|e| e.contains("Exclusive")), "under another {lower}: taken");
+        assert_eq!(s.model.codes, codes, "under another {lower}: refused, nothing changed");
+        assert!(s.model.distribution_systems.contains_key("Exclusive"));
+        assert!(s.model.resolve_code(e, "distribution_systems").value.get("Exclusive").is_some_and(|v| !v.is_null()));
     }
 }
 
@@ -1307,5 +1329,30 @@ fn a_setting_taken_away_in_a_lower_amendment_stays_away_under_an_upper_one_that_
         assert_eq!(held, Some(Value::Null), "{key}: a null in Lower");
         run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["Lower"]}));
         assert!(s.model.resolve_code(e, key).value.get(name).is_none_or(Value::is_null), "{key}: Upper out, still away");
+fn taking_away_a_setting_an_element_names_never_hands_it_another_layer_s_rules() {
+    // Both amendments give `Shared`, each its own; the project may give its own too. Taking it away in either amendment
+    // while a board names it would bring another layer's rules in force for the board: refused, with nothing changed.
+    let e = Discipline::Electrical;
+    let key = "distribution_systems";
+    for (target, project) in [("Upper", false), ("Lower", true)] {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Lower", "amendments": ["Lower"]}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Upper", "amendments": ["Lower", "Upper"]}));
+        let low = s.model.resolve_code(e, key).value.into_values().find(|v| !v.is_null()).unwrap();
+        // The same system earthed another way, so each layer's own can be told apart.
+        let mut up = low.clone();
+        up["ground"] = json!(if low["ground"] == json!("TT") { "TN-S" } else { "TT" });
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Lower", "rules": {key: {"Shared": low}}}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Upper", "rules": {key: {"Shared": up.clone()}}}));
+        if project {
+            run(&mut s, "building_code", json!({"discipline": "electrical", "rules": {key: {"Shared": low.clone()}}}));
+        }
+        let b = run(&mut s, "component", json!({"family": "Distribution Board", "type": "12 circuits", "at": [0, 0]}))["id"].clone();
+        run(&mut s, "panel", json!({"id": b, "distribution": "Shared"}));
+        let (codes, system) = (s.model.codes.clone(), s.model.distribution_systems.get("Shared").cloned());
+        let p = json!({"discipline": "electrical", "amend": target, "rules": {key: {"Shared": null}}});
+        assert!(s.execute("building_code", &p).is_err(), "{target}, the project's own {project}: taken");
+        assert_eq!(s.model.codes, codes, "{target}: refused, nothing changed");
+        assert_eq!(s.model.distribution_systems.get("Shared").cloned(), system, "{target}: the board's system as it was");
     }
 }

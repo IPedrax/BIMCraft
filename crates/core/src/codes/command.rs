@@ -357,6 +357,12 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("`{gone}` amends `{over}`, which is neither the base nor another amendment chosen")));
         }
     }
+    // The settings taken away by name, for `settings_fit`.
+    let asked: Vec<(String, String)> = patches
+        .iter()
+        .filter(|(key, _)| d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key.as_str()))
+        .flat_map(|(key, rules)| rules.iter().filter(|(_, v)| v.is_null()).map(|(k, _)| (key.clone(), k.clone())))
+        .collect();
     // The rules changed in an amendment are its own: one of BIMCraft's becomes the project's copy of it.
     if let Some(target) = &amend {
         let held: Vec<String> = next.layers(d).iter().skip(1).map(|k| k.code.clone()).collect();
@@ -478,7 +484,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
     }
     next.check().map_err(|e| bad(c, e))?;
     if d == Discipline::Electrical {
-        crate::electrical::settings_fit(&s.model, &unchanged, &next).map_err(|e| bad(c, e))?;
+        crate::electrical::settings_fit(&s.model, &unchanged, &next, &asked).map_err(|e| bad(c, e))?;
     }
     if next != unchanged {
         let m = s.model_mut();
@@ -746,7 +752,7 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
         next.choice_mut(d).editions = pins;
     }
     next.check().map_err(|e| bad(c, format!("{path}: {e}")))?;
-    crate::electrical::settings_fit(&s.model, &s.model.codes, &next).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    crate::electrical::settings_fit(&s.model, &s.model.codes, &next, &[]).map_err(|e| bad(c, format!("{path}: {e}")))?;
     let first = read.first().map(|k| k.code.clone()).unwrap_or_default();
     let all: Vec<Value> = read.iter().map(|k| json!({"code": k.code, "discipline": k.discipline.key()})).collect();
     let m = s.model_mut();
