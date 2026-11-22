@@ -940,51 +940,53 @@ text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered pas
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
 
-## Callout: детальные виды и выноски
+## Callout: detail views and callouts
 
-Callout (`detail_view`, `model::DetailView`, категория `detail`) — это фрагмент плана, разреза или фасада, показываемый
-крупнее. В интерфейсе он называется **Callout**, как в Revit; на ленте это **View > Create > Callout**, а в браузере —
-группа **Callouts** с подгруппой родительского вида. В модели он хранит родителя (`parent`), прямоугольник фрагмента (`region`) и собственный масштаб (`scale`, 1…50,
-по умолчанию 5); старые проекты открываются без миграции, потому что это новый вид, а не изменение прежних. `region`
-задаётся в координатах родителя: юго-западный и северо-восточный углы для плана, расстояние вдоль линии от её начала и высоты
-для разреза или фасада. `elements` отдаёт `kind: "detail"`, `parent`, `parent_id`, `region`, `scale` и `number`.
+A Callout (`detail_view`, `model::DetailView`, category `detail`) is a fragment of a plan, section or elevation shown
+larger. In the interface it is called **Callout**, as in Revit; on the ribbon it is **View > Create > Callout**, and in the
+browser it is the **Callouts** group with a subgroup for each parent view. The model keeps its parent (`parent`), the
+fragment rectangle (`region`) and its own scale (`scale`, 1…50, 5 by default); old projects open without migration,
+because it is a new view, not a change to the existing ones. `region` is in the parent's coordinates: the south-west and
+north-east corners of a plan, or its distance along the line from its start and its heights for a section or an elevation.
+`elements` gives `kind: "detail"`, `parent`, `parent_id`, `region`, `scale` and `number`.
 
-Рендер идёт тем же конвейером, что и у родителя (`render::detail`, `render::detail_at`). Деталь плана рисуется
-`draw_plan` с ключом самой детали: `Model::plan_level` ведёт к уровню родителя, `crop_of` отдаёт `region`, а
-`graphics_of` и `scale_of` — настройки детали. Поэтому всё, что видно в детали, обрезано по фрагменту, а её аннотация
-(`text`, `detail_line`, `filled_region`, `dimension`, `repeating_detail`) хранится в координатах родителя и следует за
-моделью. Деталь разреза или фасада собирается `Model::section_geometry`: линия родителя обрезается по `region` по
-горизонтали, а `crop` — по высоте; `section_finish` сдвигает аннотацию на начало региона, чтобы она оставалась в
-координатах родителя. `drawing_plane` для такой детали берёт линию родителя.
+Rendering uses the same pipeline as the parent (`render::detail`, `render::detail_at`). A detail of a plan is drawn by
+`draw_plan` with the detail itself as the key: `Model::plan_level` follows the parent's level, `crop_of` gives `region`,
+and `graphics_of` and `scale_of` give the detail's settings. So everything the detail shows is cropped to the fragment,
+and its annotation (`text`, `detail_line`, `filled_region`, `dimension`, `repeating_detail`) is kept in the parent's
+coordinates and follows the model. A detail of a section or an elevation is built by `Model::section_geometry`: the parent
+line is cut by `region` horizontally and by `crop` in height; `section_finish` shifts annotation by the start of the
+region, so it stays in the parent's coordinates. `drawing_plane` uses the parent's line for such a detail.
 
-На родителе Callout показывает **контур фрагмента** — прямоугольник `region` — и марку (`render::detail_boundary`,
-`render::detail_mark`): круг диаметром 8 мм на бумаге с номером (`number`, например `У-03`) и лидер, который идёт от
-марки и **останавливается на контуре**, не доходя до его середины. Положение марки хранится в `DetailView::mark`
-(в координатах родителя); если его нет, марка стоит у северо-восточного угла. Марку можно перетащить, и лидер следует за
-ней до границы.
+On the parent, a Callout shows the **fragment boundary** — the `region` rectangle — and its mark (`render::detail_boundary`,
+`render::detail_mark`): an 8 mm circle on the paper with its number (`number`, such as `D-03`) and a leader that leaves the
+mark and **stops on the boundary**, never running on to its middle. The mark's position is kept in `DetailView::mark` (in
+the parent's coordinates); without one it stands at the north-east corner. The mark can be dragged, and the leader follows
+it to the boundary.
 
-Контур редактируется на **обоих** видах: и на родителе, и на самом виде Callout. Выбранный Callout показывает четыре
-ручки сторон; перетаскивание ручки меняет `region`, а значит одновременно контур на родителе и область, которую
-показывает Callout. Перетаскивание самого контура или марки двигает `region`/`mark`; аннотация внутри Callout остаётся
-в координатах родителя. Выноска и контур — производные от вида, а не элементы модели, поэтому не попадают в
-спецификации. Номер можно задать вручную, иначе он выдаётся по порядку (`D-01`, `D-02`, …). `modify {region}` двигает
-фрагмент; обрезка и выноска следуют. Удаление Callout убирает выноску и контур; удаление родителя убирает Callout и всё,
-что в нём нарисовано.
+The boundary is editable on **both** views: on the parent and on the Callout's own view. A selected Callout shows four edge
+grips; dragging a grip changes `region`, and so both the boundary on the parent and the area the Callout shows. Dragging
+the boundary or the mark moves `region`/`mark`; annotation inside the Callout stays in the parent's coordinates. The mark
+and boundary belong to the view, not to the model, so they never reach a schedule. A number may be given by hand, else it
+is taken in order (`D-01`, `D-02`, …). `modify {region}` moves the fragment; the crop and the mark follow. Deleting a
+Callout removes its mark and boundary; deleting its parent removes the Callout and everything drawn in it.
 
-Марка показывает имя вида (`View Name`) без автоматического префикса номера: `D-01 Corner` читается как `Corner`, а
-переименованный вид сразу показывает новое имя. Номер остаётся отдельным полем `number` в Properties.
+The mark shows the view's name (`View Name`) without the automatic number prefix: `D-01 Corner` reads as `Corner`, and a
+renamed view shows its new name at once. The number stays a separate `number` field in Properties.
 
-Масштаб Callout меняется как у остальных видов: нижняя панель **Scale** и **Properties → Graphics → View Scale** —
-выпадающий список, плюс поле `Scale Value 1:`. Он хранится в `DetailView::scale` (1 : n), а `graphics::scale_of`
-отдаёт его всем, кто читает масштаб вида; viewports на листах следуют за ним, как у плана, разреза или фасада.
+A Callout's scale is changed as any other view's: the **Scale** bar at the foot of the view and **Properties → Graphics →
+View Scale** — a drop-down, with the `Scale Value 1:` field beside it. It is kept in `DetailView::scale` (1 : n), and
+`graphics::scale_of` gives it to everything that reads a view's scale; sheet viewports follow it as they do for a plan,
+section or elevation.
 
-При ручном создании инструмент **Callout** просит два противоположных угла фрагмента на плане, разрезе или фасаде. Масштаб
-`1 : n`, имя и номер задаются в Options Bar; после второго клика вид создаётся, а на родителе появляются контур и выноска.
+The manual **Callout** tool asks for two opposite corners of the fragment on a plan, section or elevation. The scale
+`1 : n`, name and number are set in the Options Bar; after the second click the view is made, and the boundary and mark
+appear on the parent.
 
-На листе деталь занимает `region / scale` бумажных миллиметров (`sheet::framing_in` через `render::detail_extent`), ставится
-`place` как обычный вид, подписывается именем и масштабом и печатается в PNG/PDF; `render {view}` печатает и саму деталь
-(`detail plan` или `detail section`). Браузер проекта показывает Callout в группе «Callouts»; Callout плана открывается
-как план, деталь разреза — как разрез.
+On a sheet a detail takes `region / scale` paper millimetres (`sheet::framing_in` through `render::detail_extent`), is
+placed by `place` as any view, is titled with its name and scale and prints to PNG/PDF; `render {view}` draws the detail
+itself (`detail plan` or `detail section`). The Project Browser lists Callouts in the **Callouts** group; a detail of a
+plan opens as a plan, and a detail of a section as a section.
 
 ## Elevations that look at a reference
 
