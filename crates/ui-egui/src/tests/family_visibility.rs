@@ -81,12 +81,14 @@ fn darkest_grey(cs: &[egui::Color32]) -> u32 {
 fn a_form_hidden_in_a_view_by_its_settings_is_halftone_there_and_gone_with_preview_visibility() {
     let (mut h, pictures) = open(&door(r#"{"plan": false}"#), "Test Door");
     view(&mut h, Some(Which::Plan));
-    // The leaf's face, away from the jambs and the swing: halftone, not ink.
-    let face = [0.0, -20.0, 0.0];
+    // The leaf's face, away from the jambs and the swing, and off Center (Left/Right), whose dashed trace runs along x 0: halftone,
+    // not ink.
+    let face = [150.0, -20.0, 0.0];
     let jamb = [-425.0, -100.0, 0.0];
     let ink = darkest_grey(&around(&h, &pictures, jamb, 2));
     let leaf = darkest_grey(&around(&h, &pictures, face, 2));
-    assert!(ink < 200, "the jamb, in ink: {ink}");
+    // Ink, however thin the pen the plan's fit draws it with, and the leaf plainly lighter.
+    assert!(ink < 300, "the jamb, in ink: {ink}");
     assert!(leaf > ink + 100 && leaf < 700, "the leaf, hidden in plan, halftone: {leaf} against {ink}");
     toggle(&mut h);
     assert!(darkest_grey(&around(&h, &pictures, face, 2)) > 740, "Preview Visibility: gone, as the project's plan draws it");

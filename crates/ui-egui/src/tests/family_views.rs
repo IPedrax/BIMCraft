@@ -443,11 +443,13 @@ fn a_form_the_type_hides_is_halftone_until_preview_visibility_and_a_form_hidden_
     let first = [750.0, 500.0, 0.0];
     let ink = darkest(&around(&h, &pictures, first, 2));
     let ghost = darkest(&around(&h, &pictures, second, 2));
-    assert!(ink < 200, "the first form, in ink: {ink}");
+    // Ink, however thin the pen the view's fit draws it with (the room kept for the Options Bar and the view-control bar draws it
+    // a little smaller), and the hidden one plainly lighter.
+    assert!(ink < 300, "the first form, in ink: {ink}");
     assert!(ghost > ink + 100 && ghost < 700, "the hidden one, halftone: {ghost} against {ink}");
     toggle(&mut h);
     assert!(darkest(&around(&h, &pictures, second, 2)) > 740, "Preview Visibility: as placed, without it");
-    assert!(darkest(&around(&h, &pictures, first, 2)) < 200);
+    assert!(darkest(&around(&h, &pictures, first, 2)) < 300);
     // Hidden for now, the first is gone with Preview Visibility on and off; the ghost hidden for now too.
     select_form(&mut h, 1);
     assert_eq!(editor(&h).selected_form(), Some(0));
@@ -463,7 +465,7 @@ fn a_form_the_type_hides_is_halftone_until_preview_visibility_and_a_form_hidden_
     toggle(&mut h);
     assert!(darkest(&around(&h, &pictures, second, 2)) > 740, "and with Preview Visibility on");
     shortcut(&mut h, "HR");
-    assert!(darkest(&around(&h, &pictures, first, 2)) < 200, "reset");
+    assert!(darkest(&around(&h, &pictures, first, 2)) < 300, "reset");
 }
 
 #[test]

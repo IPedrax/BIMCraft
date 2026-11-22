@@ -1404,14 +1404,39 @@ impl BimApp {
         ed.snaps = self.snaps_now();
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         let pane = ui.available_rect_before_wrap();
-        self.view_rect = pane;
         self.pane = pane;
+        // A plan, an elevation and {3D} are drawn below the tabs that float over the view's top (as they were last drawn),
+        // so a plane's name along an elevation's top and the top of what {3D} fits show; above, the canvas.
+        // On a whole pixel, as the pane's own top is, so a point on screen stands for the same millimetres as before.
+        // And between the Options Bar's row, kept whether or not a card is on it so the view never moves as one comes and
+        // goes, and the view-control bar along its foot, so neither a plane's name nor {3D}'s box runs under them.
+        let row = if ed.adaptive.is_none() { f32::from(crate::style::gap()) + crate::OPTIONS_CARD } else { 0.0 };
+        // An adaptive family's canvas fills the pane, as before.
+        let bottom = if ed.adaptive.is_none() {
+            (pane.bottom() - self.family_bar_cover - f32::from(crate::style::gap()))
+                .floor()
+                .max(pane.top() + 64.0)
+                .min(pane.bottom())
+                .max(pane.top())
+        } else {
+            pane.bottom()
+        };
+        let drawn = Rect::from_min_max(
+            pos2(pane.left(), (self.tabs_foot + row).ceil().clamp(pane.top(), (bottom - 64.0).max(pane.top()))),
+            pos2(pane.right(), bottom),
+        );
+        self.view_rect = drawn;
+        if ed.adaptive.is_none() {
+            let paper = crate::canvas::color(bimcraft_core::render::PAPER);
+            ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, paper);
+            ui.painter().rect_filled(pane.with_min_y(drawn.bottom()), 0.0, paper);
+        }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
+            if let Some(e) = ed.view_2d(ui, &base, which, drawn, self.thin) {
                 self.status = Status { text: e, error: true };
             } else if let Some(text) = ed.views.said.take() {
                 // What a drag did that is worth saying (a parameter's value as a handle drags it, a side lined up, a part a
@@ -1428,7 +1453,7 @@ impl BimApp {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            self.family_3d(ui, &mut ed, pane);
+            self.family_3d(ui, &mut ed, drawn);
         }
         // Zoom In Region's drag, over the view (`zoom.rs`).
         ed.zoom_region_drag(ui, pane);
@@ -1445,7 +1470,7 @@ impl BimApp {
         self.tabs_foot = foot.response.rect.bottom();
         // The view control bar, at the view's bottom left.
         let mut bar = ui.new_child(UiBuilder::new().id_salt("family-view-bar").max_rect(pane).layout(Layout::bottom_up(Align::Min)));
-        crate::style::card([true, true, true, true]).inner_margin(Margin::symmetric(6, 2)).show(&mut bar, |ui| {
+        let bar_card = crate::style::card([true, true, true, true]).inner_margin(Margin::symmetric(6, 2)).show(&mut bar, |ui| {
             ui.horizontal(|ui| {
                 // F8: the document's Detail Level, which each of its views draws its forms and symbols at.
                 if ed.adaptive.is_none() {
@@ -1513,6 +1538,13 @@ impl BimApp {
                 }
             });
         });
+        self.family_bar_top = bar_card.response.rect.top();
+        // Grown or shrunk (wrapped onto another row), the view fits again now, not at the next input.
+        let cover = pane.bottom() - self.family_bar_top;
+        if (cover - self.family_bar_cover).abs() > 0.5 {
+            ui.ctx().request_repaint();
+        }
+        self.family_bar_cover = cover;
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
         // While it hides anything for now, the project's cyan frame round the view, as Revit draws.
         let hiding = ed.temporary().hides() || ed.views.kept.revealing(ed.views.shown);
@@ -2506,6 +2538,10 @@ impl BimApp {
     /// over it), and on nothing lets the selection go, as in Revit and the project's 3D view; the pointer over one lights it
     /// first (T11). A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
     fn family_3d(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, pane: Rect) {
+        #[cfg(test)]
+        {
+            ed.views.drawn = Some(pane);
+        }
         let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
         self.canvas.track(ui, &response);
         // The triad stands left of the ViewCube, which is in the top right corner; both are laid over the view, so a click on

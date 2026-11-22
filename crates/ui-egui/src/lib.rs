@@ -718,6 +718,11 @@ pub struct BimApp {
     /// How far down the view the tabs reach where they float over it (else the view's top): what floats over the view
     /// (the Options Bar) and what docks along it start below.
     tabs_foot: f32,
+    /// The top of a family view's view-control bar, as it was last drawn.
+    family_bar_top: f32,
+    /// How far up from the family view's foot its view-control bar reaches, as it was last drawn: one row of it at first,
+    /// more where it wraps. The view is drawn above it.
+    family_bar_cover: f32,
     tab_rects: Vec<(Sheet, Rect)>,
     work: Rect,
     pointer: Pos2,
@@ -1804,6 +1809,11 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 
 /// How tall a card floating over a view is (its tabs, its view control bar), points.
 const FLOATING_CARD: f32 = 30.0;
+/// How far up from a family view's foot its view-control bar reaches on one row: its card (35) and the gap under it (7).
+const FAMILY_BAR: f32 = 42.0;
+/// How tall the Options Bar's card is on one row: its row of fields (24), its margins (3 and 3) and its border (1 and 1). A
+/// family view keeps that row, and the gap above it, clear of its drawing.
+const OPTIONS_CARD: f32 = 32.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
 const TABS: [(Tab, &str, Icon); 14] = [
@@ -1895,6 +1905,8 @@ impl BimApp {
             drop_headers: Vec::new(),
             tab_bar: Rect::NOTHING,
             tabs_foot: f32::NEG_INFINITY,
+            family_bar_top: f32::INFINITY,
+            family_bar_cover: FAMILY_BAR,
             tab_rects: Vec::new(),
             work: Rect::ZERO,
             pointer: Pos2::ZERO,
@@ -6671,7 +6683,8 @@ impl BimApp {
             }
             let g = f32::from(style::gap());
             let view = self.view_rect;
-            let top = view.top().max(self.tabs_foot - g + 4.0);
+            // On its own row under the tabs, which the view is drawn below.
+            let top = self.work.top().max(self.tabs_foot - g + 4.0);
             let frame = style::card([false; 4]).inner_margin(Margin::symmetric(10, 3));
             let shown = Area::new(UiId::new("family-options-bar"))
                 .order(Order::Middle)
@@ -6693,9 +6706,16 @@ impl BimApp {
         let shown = Area::new(UiId::new("options-bar")).order(Order::Middle).fixed_pos(pos2(view.left() + g, top + g)).show(ctx, |ui| {
             // Kept short of the view's zoom buttons on the right, as far as its fields wrap (a drop-down doesn't).
             ui.set_max_width((view.width() - 2.0 * g - 60.0).max(200.0));
-            frame.show(ui, |ui| self.options(ui));
+            // The card only round something: a tool with no name and no options shows none.
+            let mut card = frame.begin(ui);
+            self.options(&mut card.content_ui);
+            let something = card.content_ui.min_rect().width() >= 1.0;
+            if something {
+                card.end(ui);
+            }
+            something
         });
-        self.options_rect = shown.response.rect;
+        self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
     }
 
     /// Where a view's navigation bar starts: at its top right, or under the Options Bar when that reaches over it.
@@ -7588,10 +7608,11 @@ impl BimApp {
             return;
         }
         let (title, color) = if self.status.error { (t("Error"), pal().error) } else { (t("Note"), pal().accent_ink) };
-        // The whole views' area in Split and Tile, not the one window drawn last; the view under the tabs otherwise.
+        // The whole views' area in Split and Tile, not the one window drawn last; the view under the tabs otherwise. Above the
+        // view-control bar where it floats over the view's foot; a family view is drawn above its own.
         let view =
             if !self.home.shown && !self.family_doc() && self.arrange != dock::Arrange::Tabs { self.views_rect } else { self.view_rect };
-        let at = view.right_bottom() - vec2(16.0, 16.0);
+        let at = view.right_bottom() - vec2(16.0, 16.0 + self.bar_cover(ctx));
         let copied = egui::Id::new("warning copied");
         let mut was: Option<String> = ctx.data_mut(|d| d.get_temp::<String>(copied));
         Area::new(UiId::new("warning")).order(Order::Middle).fixed_pos(at).pivot(Align2::RIGHT_BOTTOM).show(ctx, |ui| {
