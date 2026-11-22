@@ -739,6 +739,118 @@ pub fn part_at_3d(family: &Family, values: &BTreeMap<String, Val>, cam: &view3d:
     best.map(|(_, part)| part)
 }
 
+/// A reference {3D} picks: a reference plane (a datum too), by the line it was drawn as; a reference line; or an edge of
+/// form `usize` as drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reference3d {
+    Plane(Guid),
+    Line(Guid),
+    Edge(usize),
+}
+
+/// A reference {3D} picked: which, its two ends in the family's axes, and the point of it nearest the pointer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Picked3d {
+    pub reference: Reference3d,
+    pub ends: (P3, P3),
+    pub at: P3,
+}
+
+/// What {3D} picks references among, for a family sized by `values`: each reference and its two ends, and the
+/// solids that hide what is behind them (the forms the view shows, and the nested instances). Made once for a draft; the
+/// camera picks among it ([`References3d::within`]).
+#[derive(Clone, Debug, Default)]
+pub struct References3d {
+    candidates: Vec<(Reference3d, (P3, P3))>,
+    solids: Vec<[P3; 3]>,
+}
+
+impl References3d {
+    /// What `family` offers {3D}'s picks: a plane or a reference line `shown` says yes to by its GUID, the
+    /// edges of a form `form_shown` says yes to by its place. A void hides nothing and offers no edge.
+    pub fn new(
+        family: &Family,
+        values: &BTreeMap<String, Val>,
+        shown: &dyn Fn(Guid) -> bool,
+        form_shown: &dyn Fn(usize) -> bool,
+    ) -> References3d {
+        let Ok(flexed) = family.flexed(values) else { return References3d::default() };
+        let mut read = HashMap::new();
+        let mut out = References3d::default();
+        for i in 0..flexed.forms.len() {
+            if flexed.forms[i].void || !form_shown(i) {
+                continue;
+            }
+            if let Some(piece) = flexed.solid(i, values, &mut read).ok().flatten() {
+                out.candidates.extend(super::sketch::creases(&piece.tris).into_iter().map(|e| (Reference3d::Edge(i), e)));
+                out.solids.extend(piece.tris);
+            }
+        }
+        for i in 0..family.nested_instances.len() {
+            out.solids.extend(family.instance_pieces(i, values).into_iter().flat_map(|p| p.tris));
+        }
+        out.candidates.extend(
+            super::planes::with_the_datums(&flexed.planes)
+                .into_iter()
+                .filter(|p| shown(p.guid))
+                .map(|p| (Reference3d::Plane(p.guid), (p.start, p.end))),
+        );
+        out.candidates.extend(flexed.lines.iter().filter(|l| shown(l.guid)).map(|l| (Reference3d::Line(l.guid), (l.start, l.end))));
+        out
+    }
+
+    /// The references seen within `reach` pixels of pixel `px` of a picture taken through `cam`, nearest first: what of each
+    /// is in front of the eye, and only where no solid stands in front of it there.
+    pub fn within(&self, cam: &view3d::Camera, px: (f64, f64), reach: f64) -> Vec<Picked3d> {
+        let surface = |at: (f64, f64)| self.solids.iter().filter_map(|t| depth_at(t.map(|p| cam.project(p)), at)).reduce(f64::max);
+        let at = P2(px.0, px.1);
+        let mut found: Vec<(f64, Picked3d)> = Vec::new();
+        for (r, (a, b)) in &self.candidates {
+            // What of it is in front of the eye, on screen.
+            let Some([ca, cb]) = cam.in_front(*a, *b) else { continue };
+            let [Some(pa), Some(pb)] = [ca, cb].map(|p| {
+                let (x, y, z) = cam.project(p);
+                (x.is_finite() && y.is_finite() && z.is_finite()).then_some((P2(x, y), z))
+            }) else {
+                continue;
+            };
+            // The point of it on screen nearest the pixel, and how near the eye it is there.
+            let d = pb.0 - pa.0;
+            let len2 = d.dot(d);
+            let k = if len2 > 1e-12 { ((at - pa.0).dot(d) / len2).clamp(0.0, 1.0) } else { 0.0 };
+            let on = pa.0 + d * k;
+            let dist = on.dist(at);
+            if dist > reach {
+                continue;
+            }
+            let z = pa.1 + (pb.1 - pa.1) * k;
+            if surface((on.0, on.1)).is_some_and(|s| s > z + 1.0 + z.abs() * 1e-6) {
+                continue;
+            }
+            let point: P3 = std::array::from_fn(|i| ca[i] + (cb[i] - ca[i]) * k);
+            found.push((dist, Picked3d { reference: *r, ends: (*a, *b), at: point }));
+        }
+        found.sort_by(|x, y| x.0.total_cmp(&y.0));
+        found.into_iter().map(|(_, p)| p).collect()
+    }
+}
+
+/// The reference of `family` (sized by `values`) seen nearest pixel `px` of a picture taken through `cam`, within `reach`
+/// pixels: what Mirror - Pick Axis, Offset and Align pick in {3D}. One a solid stands in front of there doesn't
+/// show, so it isn't picked; nor is what the view hides: a plane or a reference line `shown` says no to by its
+/// GUID, a form `form_shown` says no to by its place.
+pub fn reference_at_3d(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    cam: &view3d::Camera,
+    px: (f64, f64),
+    reach: f64,
+    shown: &dyn Fn(Guid) -> bool,
+    form_shown: &dyn Fn(usize) -> bool,
+) -> Option<Picked3d> {
+    References3d::new(family, values, shown, form_shown).within(cam, px, reach).into_iter().next()
+}
+
 /// How near the eye triangle `q` (its corners projected: pixel and nearness) is at pixel `p`, where it covers it.
 fn depth_at(q: [(f64, f64, f64); 3], p: (f64, f64)) -> Option<f64> {
     if q.iter().any(|(x, y, z)| !(x.is_finite() && y.is_finite() && z.is_finite())) {

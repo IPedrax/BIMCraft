@@ -1087,9 +1087,25 @@ hand the work plane is shown, and over the picture go the tool's marks, its rubb
 the click would put it (`boxed`, from `family::views::form_corners`), worked out once for the draft, the selection and the
 plane and only moved as the pointer moves (`Views::taken_3d`). The tool takes what {3D} draws of the selection, so a form
 hidden in the view stays, and planes and lines selected in a plan before. A tool taken in another view starts again in {3D},
-its points let go, or is put down there, saying why, where {3D} can't work with it. Mirror - Pick Axis, Offset, Scale and
-Align, which pick something of the view or lean on its depth, are greyed in {3D} with that reason. Tests:
-`tests/family_modify_3d.rs`.
+its points let go, or is put down there, saying why, where {3D} can't work with it. Scale, which leans on the view's depth,
+is greyed in {3D}, saying so. Tests: `tests/family_modify_3d.rs`.
+
+{3D} picks references too, though a tool's points there land on the work plane as clicked (no snap yet). Mirror - Pick
+Axis, Offset and Align pick in the picture (`family::views::References3d`, made once for a draft and picked among for each
+camera): a reference plane (a datum too) by the line it was drawn as, a reference line or a form's edge as drawn, near the
+pointer, never one a form or a nested instance stands in front of there, and of a line partly behind the eye what shows.
+The planes and lines, datums included, are drawn over the picture while a tool picks; the first near the pointer the tool
+takes is lit and picked, and where it takes none the nearest says why. Mirror's axis is a plane's trace across the work
+plane, kept to the line it was drawn as, or a line or an edge seen square on to it; a plane parallel to the work plane and a
+line along what it faces are refused, saying why, and a line lying on it, however short, is an axis. Offset takes a
+reference plane or a reference line, its trace on the plane, toward the side clicked, read where the click's ray meets the
+plane through its drawn line and the way it moves (so a plane drawn upright off the work plane is clicked beside itself); a
+datum or a form's edge says why not. Align (and the ribbon's) takes of each pick what a plan or an elevation would see edge
+on through it (`constraints::align_ref_3d`): a plane itself where it stands square to the work plane (one level with it is
+refused), a reference line its face square to the plane, a form's edge the side or end through it square to the plane, so
+the move is the plan's (`align_through`: a side moved stretches the lines joined to it). Its padlock is offered where the
+second pick was while a plan or an elevation sees the work plane flat (none on an oblique one), and locks the two with that
+view's dimension, after Remove Constraints too. Tests: `tests/family_modify_3d_refs.rs`, `family_sketch_tests.rs`.
 
 The Clipboard panel (`editor/clipboard.rs`, `family/clipboard.rs`) in a family that isn't adaptive, on the Modify tab and the
 contextual tab: the project's panel (`crate::clipboard::panel`), Paste with its Aligned options, Cut to Clipboard and Copy to

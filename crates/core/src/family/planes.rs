@@ -268,6 +268,13 @@ pub fn datums() -> Vec<RefPlane> {
     ]
 }
 
+/// `planes` with the datums any of them leaves out, as every family holds them: a draft's planes may hold none.
+pub(crate) fn with_the_datums(planes: &[RefPlane]) -> Vec<RefPlane> {
+    let mut out: Vec<RefPlane> = datums().into_iter().filter(|d| !planes.iter().any(|p| p.guid == d.guid)).collect();
+    out.extend(planes.iter().cloned());
+    out
+}
+
 /// A family's planes as a file or a command gives them, its datums put first as they are (what the file says of them is not
 /// its to say), and which plane defines the origin in each direction settled ([`Family::settle_planes`]).
 pub(super) fn with_datums<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<RefPlane>, D::Error> {

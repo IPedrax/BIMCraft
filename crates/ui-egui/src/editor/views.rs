@@ -122,6 +122,8 @@ pub(crate) struct Views {
     /// How many times a cache above was worked out: what a test reads to see it kept as the pointer moves.
     #[cfg(test)]
     pub(crate) cache_builds: u32,
+    /// What {3D} picks references among, and what it was made for.
+    pub(crate) refs_3d: Option<(u64, super::modify::Refs3d)>,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
@@ -147,6 +149,11 @@ pub(crate) struct Views {
     pub(crate) aligning: Option<Option<DimRef>>,
     /// The padlock Align leaves until the next click: the two references, where it shows (the view's mm), in which view.
     pub(crate) align_lock: Option<(DimRef, DimRef, P2, Which)>,
+    /// Align's padlock in {3D}: the two references aligned, where the second was picked (the family's axes) and the
+    /// view whose lock it makes, until the next click.
+    pub(crate) align_lock_3d: Option<(DimRef, DimRef, [f64; 3], bimcraft_core::family::constraints::DimView)>,
+    /// Where Align's second pick in {3D} was, for a padlock offered after Remove Constraints.
+    pub(crate) align_point_3d: Option<[f64; 3]>,
     /// Where each Align padlock was last shown on screen, by its dimension's place (the one Align offers, past the last).
     pub(crate) locks_shown: Vec<(usize, egui::Pos2)>,
     /// Where Align's offered padlock was last shown on screen.
@@ -298,6 +305,8 @@ impl Views {
             self.dim_kind = Default::default();
             self.aligning = None;
             self.align_lock = None;
+            self.align_lock_3d = None;
+            self.align_point_3d = None;
         }
     }
 }

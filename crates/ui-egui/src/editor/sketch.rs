@@ -26,7 +26,7 @@ use crate::sketch::{Drag, Of, Sketch};
 pub(crate) const AXIS: &str = "\u{0}axis";
 
 /// The green the family's views draw reference planes and lines in (the core's `render::REFERENCE_PLANE`).
-const REFERENCE: Color32 = Color32::from_rgb(70, 140, 90);
+pub(super) const REFERENCE: Color32 = Color32::from_rgb(70, 140, 90);
 
 /// Revit's green, a revolve's Axis Line.
 const AXIS_COLOUR: Color32 = Color32::from_rgb(20, 150, 60);

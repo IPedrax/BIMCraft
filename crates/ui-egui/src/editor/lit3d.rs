@@ -30,7 +30,7 @@ const VOID: &str = "(selected void)";
 pub(crate) struct FamilyScene {
     pub(crate) model: Arc<Model>,
     pub(crate) part: BTreeMap<Id, Part>,
-    key: u64,
+    pub(crate) key: u64,
 }
 
 impl FamilyScene {

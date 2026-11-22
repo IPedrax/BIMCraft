@@ -651,6 +651,12 @@ impl FamilyEditor {
     /// Align (AL): the tool, as Aligned Dimension's. While a form is sketched, its lines are aligned (F7b): Modify's picks
     /// stay, the Draw panel's shape goes.
     pub(crate) fn align_tool(&mut self) {
+        // {3D}: on what the picture shows, as seen on the work plane.
+        if self.aligns_in_3d() {
+            self.drop_tools();
+            self.views.aligning = Some(None);
+            return;
+        }
         if self.editing_2d() {
             if let Some(s) = self.sketch.as_mut() {
                 s.tool = None;
@@ -934,12 +940,24 @@ impl FamilyEditor {
     pub(super) fn lock_alignment(&mut self) {
         let Some((reference, target, at, which)) = self.views.align_lock.take() else { return };
         let Some(st) = self.views.staged_for(which) else { return };
+        let at = st.from_view(which, at);
+        self.lock_aligned(reference, target, at, DimView::of(which));
+    }
+
+    /// Align's padlock clicked in {3D}: the lock is the view's that sees the work plane flat.
+    pub(super) fn lock_alignment_3d(&mut self) {
+        let Some((reference, target, at, view)) = self.views.align_lock_3d.take() else { return };
+        self.lock_aligned(reference, target, at, view);
+    }
+
+    /// The two references aligned locked together by a dimension of view `view` through `at` (the family's axes).
+    fn lock_aligned(&mut self, reference: DimRef, target: DimRef, at: [f64; 3], view: DimView) {
         let lock = FamilyDimension {
             id: 0,
             guid: Guid::new(),
-            view: DimView::of(which),
+            view,
             refs: vec![reference, target],
-            at: st.from_view(which, at),
+            at,
             label: None,
             locked: vec![Lock { segment: 0, length: 0.0 }],
             equal: false,

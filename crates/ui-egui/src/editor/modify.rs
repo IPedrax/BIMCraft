@@ -20,7 +20,7 @@ use super::*;
 use bimcraft_core::curves::Curve;
 use bimcraft_core::family::Unsat;
 use bimcraft_core::family::constraints::{Named, Stays, Transform, TransformRefused, Transforming};
-use bimcraft_core::family::views::Which;
+use bimcraft_core::family::views::{Picked3d, Which};
 use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Guid;
 use bimcraft_core::sketch::SketchLine;
@@ -124,10 +124,10 @@ impl Tool {
         matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { .. } | Tool::Scale { .. })
     }
 
-    /// Whether it works in {3D}: one whose clicks are points, which land on the view's work plane. One that picks
-    /// something of the view (an axis, what to offset) doesn't, until {3D} picks references.
+    /// Whether it works in {3D}: one whose clicks are points, which land on the view's work plane, and one that picks
+    /// a reference in the picture. Scale, which leans on the view's depth, doesn't.
     fn in_3d(&self) -> bool {
-        matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { draw: true, .. })
+        matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { .. } | Tool::Offset)
     }
 
     /// Whether it is a sketch's alone.
@@ -322,6 +322,45 @@ fn boxed(space: &Space, points: &[[f64; 3]]) -> Option<[(P2, f64); 8]> {
     let pick = |bit: usize, k: usize| if bit == 0 { lo[k] } else { hi[k] };
     Some(std::array::from_fn(|i| (P2(pick(i & 1, 0), pick((i >> 1) & 1, 1)), pick((i >> 2) & 1, 2))))
 }
+
+/// What {3D} picks references among, kept for a draft.
+pub(crate) type Refs3d = std::sync::Arc<bimcraft_core::family::views::References3d>;
+
+/// What Offset takes: the plane or the line, and its line on the work plane.
+type OffsetTaken = (Picked, (P2, P2));
+
+/// A reference a {3D} tool took, with what it made of it, or why it took none.
+type Pick3d<T> = Result<(Picked3d, T), String>;
+
+/// Of `picks` (nearest first), the first `take` takes, with what it makes of it; else why the nearest is refused; none where
+/// there are none.
+fn first_taken<T>(picks: Vec<Picked3d>, take: impl Fn(&Picked3d) -> Result<T, String>) -> Option<Pick3d<T>> {
+    let mut why = None;
+    for k in picks {
+        match take(&k) {
+            Ok(v) => return Some(Ok((k, v))),
+            Err(e) => {
+                why.get_or_insert(e);
+            }
+        }
+    }
+    why.map(Err)
+}
+
+/// Reference `k` lit in {3D}, as a click would take it: what of it is in front of the eye.
+fn lit_reference(painter: &egui::Painter, cam: &bimcraft_core::view3d::Camera, k: &Picked3d, project: &dyn Fn([f64; 3]) -> Option<Pos2>) {
+    if let Some([a, b]) = cam.in_front(k.ends.0, k.ends.1)
+        && let (Some(a), Some(b)) = (project(a), project(b))
+    {
+        painter.line_segment([a, b], egui::Stroke::new(3.0, crate::style::canvas_pal().hover));
+    }
+}
+
+/// Where Align's padlock stands in {3D} from the point the second reference was picked at, in pixels.
+pub(crate) const PADLOCK_3D: (f32, f32) = (16.0, -16.0);
+
+/// How far from a reference, in pixels, a pick in {3D} takes it.
+const PICK_REACH: f32 = 6.0;
 
 /// The turn from `from` to `to` about `centre`, degrees counter-clockwise, snapped to the Snaps' angle as the project's Rotate.
 fn turn(centre: P2, from: P2, to: P2, snaps: &bimcraft_core::snap::Snaps) -> f64 {
@@ -599,7 +638,7 @@ impl FamilyEditor {
         if !self.editing_2d() {
             // {3D}: a tool whose clicks are points works on the view's work plane.
             if !tool.in_3d() {
-                return Some(tf("{} picks from the view, which {3D} can't do yet: use it in a plan or an elevation.", &[t(tool.label())]));
+                return Some(tf("{} works in a plan or an elevation, not in {3D}.", &[t(tool.label())]));
             }
             if let Err(e) = self.work_frame_3d() {
                 return Some(e);
@@ -737,10 +776,21 @@ impl FamilyEditor {
             }
             Ok(space.coords(q).0)
         };
-        // What of the selection the tool takes: what a plan would, but a form Temporary Hide/Isolate hides, which stays where
-        // it is.
-        let shown: Vec<Picked> =
-            self.selection.items().iter().copied().filter(|p| !matches!(p, Picked::Form(i) if self.temp_hidden_form(*i))).collect();
+        // The point on the plane, as clicked: {3D} doesn't snap a tool's points yet. Offset's is the side clicked.
+        let offsetting = matches!(self.views.modify.as_ref().map(|m| m.tool), Some(Tool::Offset));
+        // What of the selection the tool takes: what a plan would, but a form the view hides (Hide Elements, Temporary
+        // Hide/Isolate), which stays where it is.
+        let out_of_view = self.forms_out_of_view();
+        let shown: Vec<Picked> = self
+            .selection
+            .items()
+            .iter()
+            .copied()
+            .filter(|p| match p {
+                Picked::Form(i) => self.form_guid(*i).is_none_or(|g| !out_of_view.contains(&g)),
+                _ => true,
+            })
+            .collect();
         // What the tool takes, as the plane has it: each form's box, and each plane's and line's two ends. Worked out once
         // for the draft, the selection and the plane, not as the pointer moves.
         let key = self.family().ok().map(|f| {
@@ -780,14 +830,82 @@ impl FamilyEditor {
         if self.views.modify.as_ref().is_some_and(|m| m.typed.is_some()) {
             said = self.modify_typed(space, &shown);
         }
+        // Mirror - Pick Axis and Offset: the references under the pointer, the first the tool takes as a line on the
+        // plane, or why the nearest is none.
+        let picking_axis = matches!(self.views.modify.as_ref().map(|m| m.tool), Some(Tool::Mirror { draw: false, .. }));
+        let pixel = |p: Pos2| (f64::from((p.x - pane.min.x) / sx), f64::from((p.y - pane.min.y) / sy));
+        let reach_px = f64::from(PICK_REACH / sx.max(1e-6));
+        let refs = self.references_3d();
+        let axis_at = |ed: &Self, p: Pos2| -> Option<Pick3d<(P2, P2)>> {
+            if !picking_axis {
+                return None;
+            }
+            first_taken(refs.within(cam, pixel(p), reach_px), |k| ed.axis_3d(&frame, k.reference, k.ends))
+        };
+        // Offset: what it takes, its line on the plane, and the side clicked. The side is read where the click's ray meets the
+        // plane through the reference's drawn line and the way Offset moves it (a plane's normal; for a reference line, square
+        // to it along the work plane), so a reference drawn up off the work plane is clicked beside itself.
+        let offset_at = |ed: &Self, p: Pos2| -> Option<Pick3d<(OffsetTaken, P2)>> {
+            use bimcraft_core::family::views::Reference3d;
+            if !offsetting {
+                return None;
+            }
+            let cross = |a: [f64; 3], b: [f64; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+            first_taken(refs.within(cam, pixel(p), reach_px), |k| {
+                let along: [f64; 3] = std::array::from_fn(|i| k.ends.1[i] - k.ends.0[i]);
+                let (picked, moves) = match k.reference {
+                    Reference3d::Plane(g) if bimcraft_core::family::datums().iter().any(|d| d.guid == g) => {
+                        return Err(t("A datum stays where it is: offset a reference plane of the family's own.").to_string());
+                    }
+                    Reference3d::Plane(g) => {
+                        let f = ed.family().map_err(|e| e.to_string())?;
+                        let flexed = f.flexed(&ed.values()).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+                        (Picked::Plane(g), flexed.planes.iter().find(|q| q.guid == g).map(|q| q.frame().z))
+                    }
+                    Reference3d::Line(g) => (Picked::Line(g), Some(cross(along, frame.z))),
+                    Reference3d::Edge(_) => {
+                        let why = "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines.";
+                        return Err(t(why).to_string());
+                    }
+                };
+                let line = ed.axis_3d(&frame, k.reference, k.ends)?;
+                let side = moves
+                    .map(|m| cross(along, m))
+                    .filter(|n| n.iter().map(|x| x * x).sum::<f64>() > 1e-12)
+                    .and_then(|n| cam.on(pixel(p), k.ends.0, n))
+                    .map(|hit| space.coords(hit).0)
+                    .or_else(|| at(p).ok())
+                    .unwrap_or(line.0);
+                Ok(((picked, line), side))
+            })
+        };
+        // The view a drag would be read through isn't read by a move of two clicks.
+        let free = bimcraft_core::render::View { scale: 1.0, cx: 0.0, cy: 0.0, width: 1, height: 1, angle: 0.0 };
         if let Some(p) = click {
-            match at(p) {
-                Ok(q) => {
-                    // The view a drag would be read through isn't read by a move of two clicks.
-                    let free = bimcraft_core::render::View { scale: 1.0, cx: 0.0, cy: 0.0, width: 1, height: 1, angle: 0.0 };
-                    said = self.modify_click(q, (Which::Plan, free, 0), space, &shown, None, None, shift);
+            if picking_axis {
+                match axis_at(self, p) {
+                    Some(Err(why)) => said = Some(why),
+                    Some(Ok((_, axis))) => {
+                        let q = at(p).unwrap_or(axis.0);
+                        said = self.modify_click(q, (Which::Plan, free, 0), space, &shown, Some(axis), None, shift);
+                    }
+                    None => said = self.modify_click(P2(0.0, 0.0), (Which::Plan, free, 0), space, &shown, None, None, shift),
                 }
-                Err(why) => said = Some(t(why).to_string()),
+            } else if offsetting {
+                match offset_at(self, p) {
+                    Some(Err(why)) => said = Some(why),
+                    Some(Ok((_, (hit, side)))) => {
+                        said = self.modify_click(side, (Which::Plan, free, 0), space, &shown, None, Some(Ok(hit)), shift);
+                    }
+                    None => said = self.modify_click(P2(0.0, 0.0), (Which::Plan, free, 0), space, &shown, None, None, shift),
+                }
+            } else {
+                match at(p) {
+                    Ok(q) => {
+                        said = self.modify_click(q, (Which::Plan, free, 0), space, &shown, None, None, shift);
+                    }
+                    Err(why) => said = Some(t(why).to_string()),
+                }
             }
         }
         // What the tool selected itself (the copies) is what it goes on with.
@@ -799,6 +917,10 @@ impl FamilyEditor {
         let Some(m) = self.views.modify.as_ref() else { return said };
         let (tool, o, snaps) = (m.tool, self.views.modify_options.clone(), self.snaps);
         let hover = response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| at(p).ok());
+        let under = response.hover_pos().filter(|p| pane.contains(*p));
+        let axis_pick = under.and_then(|p| axis_at(self, p)).and_then(Result::ok);
+        let offset_pick = under.and_then(|p| offset_at(self, p)).and_then(Result::ok);
+        let axis = axis_pick.map(|(_, a)| a);
         // Drawn only while every point of it is on screen: one behind the eye would draw a line across the view.
         let seen = |q: P2| project(space.point(q)).filter(|p| pane.expand(2000.0).contains(*p));
         let points: Vec<P2> = match tool {
@@ -812,9 +934,23 @@ impl FamilyEditor {
             let off = Pos2::new(-1.0e6, -1.0e6);
             let screen = |q: P2| seen(q).unwrap_or(off);
             let back = |p: Pos2| at(p).unwrap_or(P2(f64::NAN, f64::NAN));
-            paint_tool(painter, &tool, &o, hover, &[], &screen, &back, None, shift, &snaps);
+            paint_tool(painter, &tool, &o, hover, &[], &screen, &back, axis, shift, &snaps);
         }
-        if let Some(map) = hover.and_then(|h| preview_map(&tool, &o, h, shift, &snaps, None)) {
+        if picking_axis || offsetting {
+            self.paint_references_3d(painter, &project);
+        }
+        // The reference a click would take, lit; one the tool would refuse isn't.
+        if let Some(k) = axis_pick.map(|(k, _)| k).or(offset_pick.map(|(k, _)| k)) {
+            lit_reference(painter, cam, &k, &project);
+        }
+        // Offset: where the plane or the line under the pointer would go.
+        if let Some((_, ((_, line), side))) = offset_pick
+            && let Some((a, b)) = offset_line(line, side, &o)
+            && let (Some(a), Some(b)) = (seen(a), seen(b))
+        {
+            painter.extend(egui::Shape::dashed_line(&[a, b], egui::Stroke::new(1.5, crate::style::canvas_pal().accent), 8.0, 4.0));
+        }
+        if let Some(map) = hover.and_then(|h| preview_map(&tool, &o, h, shift, &snaps, axis)) {
             let accent = crate::style::canvas_pal().accent.gamma_multiply(0.8);
             // The forms' boxes are the picture's to draw, behind what stands in front of them.
             let moved = |(q, h): &(P2, f64)| space.lifted(map(*q), *h);
@@ -826,6 +962,208 @@ impl FamilyEditor {
             }
         }
         said
+    }
+
+    /// Whether Align works in {3D} now: it is shown, in a family that isn't adaptive, no form sketched.
+    pub(crate) fn aligns_in_3d(&self) -> bool {
+        self.views.shown.is_none() && self.adaptive.is_none() && self.sketch.is_none()
+    }
+
+    /// Align in {3D}: the reference clicked in the picture to align to, then what moves onto it, each taken as a plan
+    /// or an elevation takes what it sees edge on (`constraints::align_ref_3d`), so the move is a plan's (`align_through`).
+    /// The padlock is offered where the second click was, while the work plane is one a plan or an elevation sees flat, whose
+    /// lock it makes. `click`, where one landed. What went wrong, if anything.
+    pub(super) fn align_3d(
+        &mut self,
+        response: &egui::Response,
+        painter: &egui::Painter,
+        cam: &bimcraft_core::view3d::Camera,
+        size: [u32; 2],
+        pane: egui::Rect,
+        click: Option<Pos2>,
+    ) -> Option<String> {
+        use bimcraft_core::family::constraints::{DimView, align_ref_3d};
+        if self.views.aligning.is_none() || !self.aligns_in_3d() {
+            self.views.align_lock_3d = None;
+            return None;
+        }
+        let frame = match self.work_frame_3d() {
+            Ok(f) => f,
+            Err(e) => {
+                self.views.aligning = None;
+                return Some(e);
+            }
+        };
+        // The view that sees the work plane flat, whose lock the padlock makes.
+        let flat = |v: [f64; 3]| (frame.z[0] * v[0] + frame.z[1] * v[1] + frame.z[2] * v[2]).abs() > 1.0 - 1e-9;
+        let lock_view = if flat([0.0, 0.0, 1.0]) {
+            Some((Which::Plan, DimView::Plan))
+        } else if flat([0.0, 1.0, 0.0]) {
+            Some((Which::Elevation(bimcraft_core::family::views::Side::Front), DimView::Front))
+        } else if flat([1.0, 0.0, 0.0]) {
+            Some((Which::Elevation(bimcraft_core::family::views::Side::Left), DimView::Left))
+        } else {
+            None
+        };
+        let (sx, sy) = (pane.width() / size[0].max(1) as f32, pane.height() / size[1].max(1) as f32);
+        let pixel = |p: Pos2| (f64::from((p.x - pane.min.x) / sx), f64::from((p.y - pane.min.y) / sy));
+        let reach_px = f64::from(PICK_REACH / sx.max(1e-6));
+        let project = |p: [f64; 3]| {
+            let (x, y, _) = cam.project(p);
+            (x.is_finite() && y.is_finite()).then(|| pane.min + egui::vec2(x as f32 * sx, y as f32 * sy))
+        };
+        // An align a plan's padlock would lock, made here after Remove Constraints: offered here, where it was picked.
+        if let Some(at) = self.views.align_point_3d
+            && let Some((a, b, _, _)) = self.views.align_lock.take()
+        {
+            self.views.align_lock_3d = lock_view.map(|(_, view)| (a, b, at, view));
+            self.views.align_point_3d = None;
+        }
+        let refs = self.references_3d();
+        let values = self.values();
+        let family = self.family().ok();
+        // The first reference under `p` Align takes, and what of it; else why the nearest is none.
+        let take = |p: Pos2| {
+            let f = family.as_ref()?;
+            first_taken(refs.within(cam, pixel(p), reach_px), |k| align_ref_3d(f, &values, &frame, k.reference, k.ends))
+        };
+        let accent = crate::style::canvas_pal().accent;
+        let lock_at = self.views.align_lock_3d.and_then(|(.., at, _)| project(at)).map(|c| c + egui::vec2(PADLOCK_3D.0, PADLOCK_3D.1));
+        if let Some(at) = lock_at {
+            super::dimensions::padlock(painter, at, false, accent);
+        }
+        self.paint_references_3d(painter, &project);
+        // The reference a click would take, lit; one Align would refuse isn't.
+        if let Some(Ok((k, _))) = response.hover_pos().filter(|p| pane.contains(*p)).and_then(take) {
+            lit_reference(painter, cam, &k, &project);
+        }
+        let p = click?;
+        // The padlock clicked locks; any other click lets it go.
+        if lock_at.is_some_and(|at| super::dimensions::lock_rect(at).contains(p)) {
+            self.lock_alignment_3d();
+            return self.views.status.take();
+        }
+        self.views.align_lock_3d = None;
+        let (k, r) = match take(p) {
+            Some(Ok(taken)) => taken,
+            Some(Err(why)) => return Some(tf("Align can't take that: {}.", &[&why])),
+            None => return Some(t("Pick a reference plane, a reference line or a form's edge.").to_string()),
+        };
+        match self.views.aligning {
+            Some(Some(a)) if a == r => Some(t("That is the reference: pick what moves onto it.").to_string()),
+            Some(Some(a)) => {
+                self.views.aligning = Some(None);
+                // The padlock where the second reference was picked.
+                let at = k.at;
+                let (which, _) = lock_view.unwrap_or((Which::Plan, DimView::Plan));
+                self.align_through(a, r, P2(0.0, 0.0), which);
+                if let Some((a, b, _, _)) = self.views.align_lock.take() {
+                    self.views.align_lock_3d = lock_view.map(|(_, view)| (a, b, at, view));
+                }
+                // Kept for an align Remove Constraints makes after all; none was asked otherwise.
+                self.views.align_point_3d = self.views.align_pending.is_some().then_some(at);
+                self.views.status.take()
+            }
+            _ => {
+                self.views.aligning = Some(Some(r));
+                None
+            }
+        }
+    }
+
+    /// The reference planes and lines {3D} doesn't draw, over the picture while a tool picks one, as a sketch's are,
+    /// so they can be seen and picked: a plane dashed along the line it was drawn as, a line whole; not what the view hides.
+    fn paint_references_3d(&self, painter: &egui::Painter, project: &dyn Fn([f64; 3]) -> Option<Pos2>) {
+        let Ok(f) = self.family() else { return };
+        let values = self.values();
+        let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+        let stroke = egui::Stroke::new(1.5, super::sketch::REFERENCE);
+        for p in flexed.planes.iter().filter(|p| !self.temp_hidden_plane(p.guid)) {
+            if let (Some(a), Some(b)) = (project(p.start), project(p.end)) {
+                painter.extend(egui::Shape::dashed_line(&[a, b], stroke, 8.0, 4.0));
+            }
+        }
+        for l in flexed.lines.iter().filter(|l| !self.temp_hidden_plane(l.guid)) {
+            if let (Some(a), Some(b)) = (project(l.start), project(l.end)) {
+                painter.line_segment([a, b], stroke);
+            }
+        }
+    }
+
+    /// What {3D} leaves out of `f` for now or for good, as a Modify tool sees it: the planes and reference lines by GUID,
+    /// and for each form whether it is out.
+    fn hidden_3d(&self, f: &bimcraft_core::family::Family) -> (Vec<Guid>, Vec<bool>) {
+        let hidden =
+            (f.planes.iter().map(|p| p.guid)).chain(f.lines.iter().map(|l| l.guid)).filter(|g| self.temp_hidden_plane(*g)).collect();
+        (hidden, (0..f.forms.len()).map(|i| self.temp_hidden_form(i)).collect())
+    }
+
+    /// What the draft {3D} shows is, for a cache: the staged scene's key (the family, its values, what Temporary
+    /// Hide/Isolate and the view hide) with what `more` adds; none while there is no scene, so nothing is kept.
+    fn key_3d(&self, more: &dyn Fn(&mut std::collections::hash_map::DefaultHasher)) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+        // A draft the scene couldn't be staged for keeps the last scene's key: nothing is kept then.
+        if self.problem.is_some() {
+            return None;
+        }
+        let scene = self.scene3d.as_ref()?.key;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        scene.hash(&mut h);
+        more(&mut h);
+        Some(h.finish())
+    }
+
+    /// What {3D} picks references among: `References3d`, kept while the draft {3D} shows is the same.
+    fn references_3d(&mut self) -> Refs3d {
+        let Ok(f) = self.family() else { return Default::default() };
+        let (hidden, forms_hidden) = self.hidden_3d(&f);
+        let key = self.key_3d(&|h| {
+            use std::hash::Hash;
+            (&hidden, &forms_hidden).hash(h);
+        });
+        if let (Some(key), Some((k, refs))) = (key, &self.views.refs_3d)
+            && key == *k
+        {
+            return refs.clone();
+        }
+        let shown = |g: Guid| !hidden.contains(&g);
+        let form_shown = |i: usize| !forms_hidden.get(i).copied().unwrap_or(false);
+        let refs = std::sync::Arc::new(bimcraft_core::family::views::References3d::new(&f, &self.values(), &shown, &form_shown));
+        self.views.refs_3d = key.map(|k| (k, refs.clone()));
+        refs
+    }
+
+    /// Mirror - Pick Axis' axis or Offset's line in {3D}: reference `r` (its ends `e`) as a line on the work plane `frame`, in its
+    /// axes. A plane's is its trace across the work plane, kept to about the line it was drawn as; a line's or an edge's, it
+    /// seen square on to the plane. Why there is none: a plane parallel to the work plane, a line along what it faces.
+    fn axis_3d(
+        &self,
+        frame: &bimcraft_core::family::Frame,
+        r: bimcraft_core::family::views::Reference3d,
+        e: ([f64; 3], [f64; 3]),
+    ) -> Result<(P2, P2), String> {
+        use bimcraft_core::family::sketch::{on_plane, trace_across};
+        use bimcraft_core::family::views::Reference3d;
+        let Reference3d::Plane(g) = r else {
+            return on_plane(frame, e).map_err(|_| {
+                t("That runs square to the work plane, so it is no line on it: pick another, or set another work plane.").to_string()
+            });
+        };
+        let f = self.family().map_err(|e| e.to_string())?;
+        let values = self.values();
+        let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+        let parallel =
+            || t("That plane is parallel to the work plane and crosses it nowhere: pick another, or set another work plane.").to_string();
+        let plane = flexed.planes.iter().find(|p| p.guid == g).ok_or_else(parallel)?;
+        let (a, b) = trace_across(frame, &plane.frame()).ok_or_else(parallel)?;
+        // Kept to the feet on it of the line the plane was drawn as, or 1 m either way of one where that line is square to it.
+        let d = (b - a).unit();
+        let foot = |p: [f64; 3]| {
+            let (q, _) = frame.local(p);
+            a + d * (q - a).dot(d)
+        };
+        let (s, e) = (foot(plane.start), foot(plane.end));
+        Ok(if s.dist(e) > 1.0 { (s, e) } else { (s - d * 1000.0, s + d * 1000.0) })
     }
 
     /// What a Modify tool takes in {3D}, as `space`'s plane has it: the box of each form of `shown`, and the two ends of
