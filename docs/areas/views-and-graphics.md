@@ -802,7 +802,11 @@ A component is measured as Revit measures a family instance, by its family's ref
 Reference), each where it stands for the component's values (`Family::flexed`), mirrored, turned and moved with it as its symbols are. Its datums
 are its centre lines, `Centre` along it (Center (Front/Back)) and `Across` (Center (Left/Right)), as a column's; any other plane is
 `Face::Plane(GUID)`. Where planes lie over each other, a point and the Dimension tool take a strong or named one before a weak one, as
-Revit prefers the strong reference. A component tilted off the plan or placed by adaptive points has none. A linked model's element is
+Revit prefers the strong reference. A component tilted off the plan or placed by adaptive points has none. The reference names the plane
+by its GUID, so a family loaded again (`family {path | definition, overwrite}`) keeps the project's dimensions to every plane it gives
+again with its GUID, wherever that plane now stands and in whatever order; a plane given with no GUID takes the one of the plane at its
+place before (`library::keep_parts`), so a publisher writes them. A load that takes away a plane a project dimension measures to, or makes
+it Not a Reference or tilts it, is refused whole, naming the dimension; `invalid_dimensions` deletes only the family's own. A linked model's element is
 measured as Revit measures into a link: the reference keeps the link (`Reference::link`, the project's element) and the element's
 GUID in the linked file, which never change, so it survives the link moved, reloaded or linked twice (`link::origin_of` finds them
 for an element the views bring in, whose id there, from `LINKED` up, is given anew each time). It is measured in the link's model
