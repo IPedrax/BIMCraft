@@ -162,6 +162,7 @@ impl FamilyEditor {
     pub(crate) fn pivot_tool(&mut self) {
         if let Some(g) = self.pivot_candidate() {
             self.views.pivoting = Some(g);
+            self.views.modify = None;
         }
     }
 

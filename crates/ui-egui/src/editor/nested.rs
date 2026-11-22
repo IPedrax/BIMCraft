@@ -39,6 +39,9 @@ impl FamilyEditor {
     pub(crate) fn component_tool(&mut self) {
         let first = self.nested.first().and_then(|n| n.family.types.keys().next().map(|t| (n.name.clone(), t.clone())));
         self.placing = first;
+        if self.placing.is_some() {
+            self.views.modify = None;
+        }
         if self.placing.is_some() && self.views.shown.is_none() {
             self.views.show(Some(bimcraft_core::family::views::Which::Plan));
         }

@@ -73,7 +73,7 @@ impl PasteMode {
 
 /// A row of a panel's small buttons; in its list (a folded panel's, or its name's), the buttons go one under another as rows
 /// do: a row side by side there would ask the list for room it grows to give, frame on frame.
-fn row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+pub(crate) fn row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     if crate::ribbon::listing() {
         add(ui);
     } else {

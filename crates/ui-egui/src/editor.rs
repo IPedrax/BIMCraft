@@ -13,6 +13,7 @@ mod extrusion;
 pub(crate) mod handle_params;
 pub(crate) mod handles3d;
 pub(crate) mod lit3d;
+pub(crate) mod modify;
 mod nested;
 pub(crate) mod options;
 mod origin_mark;
