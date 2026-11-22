@@ -58,8 +58,8 @@ pub(crate) struct Views {
     pub(super) end_drag: Option<EndDrag>,
     /// A profile edge being dragged by its handle, in a plan, an elevation or {3D}.
     pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
-    /// What a drag did that is worth saying, not an error, in a plan, an elevation or {3D}: the parameter a handle drags at its
-    /// value now, a side lined up, a part a move leaves where it is.
+    /// What a drag or a paste did that is worth saying, not an error, in a plan, an elevation or {3D}: the parameter a handle
+    /// drags at its value now, a side lined up, a part a move leaves where it is, the constraints a paste dropped.
     pub(crate) said: Option<String>,
     /// A handle being dragged in {3D} (`handles3d.rs`): how the pointer is read along it, and an end's number before.
     pub(super) drag3d: Option<super::handles3d::Drag3d>,
@@ -131,6 +131,10 @@ pub(crate) struct Views {
     /// a click takes: Tab steps through them, as Revit's Tab does.
     pub(crate) under: Vec<Guid>,
     pub(crate) cycle: usize,
+    /// Paste following the pointer (`clipboard.rs`).
+    pub(crate) pasting: Option<super::clipboard::Pasting>,
+    /// Paste Aligned to Selected Views' dialog, open.
+    pub(crate) paste_views: Option<super::clipboard::PasteViews>,
 }
 
 /// A selected extrusion's Start or End (`end`) being dragged by its handle: where the pointer was (the view's
@@ -351,6 +355,7 @@ impl FamilyEditor {
             self.views.drawing_line = line;
             self.views.picking = None;
             self.views.modify = None;
+            self.views.pasting = None;
             self.let_everything_go();
         }
     }
@@ -1090,6 +1095,50 @@ impl FamilyEditor {
                 painter.extend(egui::Shape::dashed_line(&[screen(a), screen(b)], stroke, 8.0, 4.0));
             }
         }
+        // Paste following the pointer: the copies where they were copied, as the view draws them, their middle held by
+        // the pointer; that middle is what a click puts where it is.
+        if self.views.pasting.is_some() && editable {
+            let preview = self.paste_preview();
+            let mut ghost: Vec<[egui::Pos2; 2]> = Vec::new();
+            let mut held: Vec<[egui::Pos2; 2]> = Vec::new();
+            if let Some((trial, items)) = preview.as_ref() {
+                let flexed = trial.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| trial.clone());
+                let s = super::select_box::Scene {
+                    family: &flexed,
+                    values: &values,
+                    staged: &c.staged,
+                    drawing: &c.drawing,
+                    which,
+                    view,
+                    min: pane.min,
+                    dims: &marks,
+                    dimensions: &self.dimensions,
+                    connectors: &connector_marks,
+                    detail: self.views.detail,
+                    hidden: &hidden,
+                    by_face: false,
+                    drag_faces: false,
+                };
+                ghost = items.iter().flat_map(|p| s.pieces(*p)).collect();
+                // Held by the middle of what has a size of its own: a plane's trace runs across the view.
+                held = items.iter().filter(|p| !matches!(p, Picked::Plane(_))).flat_map(|p| s.pieces(*p)).collect();
+            }
+            let by = if held.is_empty() { &ghost } else { &held };
+            let anchor = (!by.is_empty()).then(|| {
+                let r = egui::Rect::from_points(&by.iter().flatten().copied().collect::<Vec<_>>());
+                at_view(r.center())
+            });
+            if let Some(p) = self.views.pasting.as_mut() {
+                p.anchor = anchor.map(|a| (which, a));
+            }
+            if let (Some(a), Some(h)) = (anchor, response.hover_pos()) {
+                let d = at_view(h) - a;
+                let stroke = Stroke::new(1.5, crate::style::canvas_pal().accent.gamma_multiply(0.8));
+                for [p, q] in &ghost {
+                    painter.line_segment([screen(at_view(*p) + d), screen(at_view(*q) + d)], stroke);
+                }
+            }
+        }
         let chosen = self.selected_line().or_else(|| self.selected_plane());
         let turning = match self.views.grip {
             Some((super::pivot::Grip::Rotate(g), _)) => Some(g),
@@ -1270,13 +1319,15 @@ impl FamilyEditor {
         let mut align = None;
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut modify_at: Option<super::modify::Click> = None;
+        let mut paste_at: Option<P2> = None;
         let mut clicked_any = false;
         // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
         let edit = (editable
             && response.double_clicked()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
-            && self.views.modify.is_none())
+            && self.views.modify.is_none()
+            && self.views.pasting.is_none())
         .then(|| response.interact_pointer_pos())
         .flatten()
         .and_then(|p| scene.as_ref().and_then(|s| s.form_hit(at_view(p))));
@@ -1289,7 +1340,10 @@ impl FamilyEditor {
         {
             let q = at_view(p);
             clicked_any = true;
-            if self.views.picking.is_some() {
+            if self.views.pasting.is_some() {
+                // Paste following the pointer: the copies put where the click is, once the view is drawn.
+                paste_at = Some(q);
+            } else if self.views.picking.is_some() {
                 // Pick a line: the reference line within the reach a plane's trace has.
                 let line = c.staged.line_at(which, q, 6.0 / view.scale.max(1e-9));
                 picked_work_plane = Some((pick_plane(p), line));
@@ -1422,7 +1476,8 @@ impl FamilyEditor {
             && self.views.edge_drag.is_none()
             && self.views.grip.is_none()
             && self.views.moving.is_none()
-            && self.views.modify.is_none();
+            && self.views.modify.is_none()
+            && self.views.pasting.is_none();
         let press_hit = |p: egui::Pos2| -> Option<Picked> {
             if !tools_free || on_handle(p) || grips.iter().any(|(_, at)| at.distance(p) <= super::pivot::REACH) {
                 return None;
@@ -1470,7 +1525,8 @@ impl FamilyEditor {
             && self.views.edge_drag.is_none()
             && self.views.grip.is_none()
             && self.views.moving.is_none()
-            && self.views.modify.is_none();
+            && self.views.modify.is_none()
+            && self.views.pasting.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
                 free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
@@ -1687,6 +1743,14 @@ impl FamilyEditor {
         }
         if let Some(hit) = select {
             self.click_select(hit, crate::canvas::click_modifiers(ui));
+        }
+        // A paste's click.
+        if let Some(q) = paste_at {
+            match self.paste_click(q, which, space) {
+                Ok(said) if !said.is_empty() => self.views.said = Some(said),
+                Ok(_) => {}
+                Err(e) => problem = Some(e),
+            }
         }
         // A Modify tool's click, and Rotate's Angle typed.
         if let Some((q, axis, offset)) = modify_at

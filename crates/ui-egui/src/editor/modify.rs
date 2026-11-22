@@ -230,7 +230,7 @@ impl Space {
         std::array::from_fn(|k| self.origin[k] + self.across[k] * q.0 + self.up[k] * q.1)
     }
 
-    fn vector(&self, v: P2) -> [f64; 3] {
+    pub(crate) fn vector(&self, v: P2) -> [f64; 3] {
         std::array::from_fn(|k| self.across[k] * v.0 + self.up[k] * v.1)
     }
 
@@ -565,7 +565,9 @@ impl FamilyEditor {
         }
         self.views.aligning = None;
         self.views.dimensioning = None;
+        self.views.pasting = None;
         if let Some(s) = self.sketch.as_mut() {
+            s.pasting = None;
             s.set_tool(None, false);
             s.edit = Some(tool);
             s.edit_seen = None;

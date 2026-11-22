@@ -177,6 +177,7 @@ impl FamilyEditor {
         self.views.aligning = None;
         self.views.pivoting = None;
         self.views.modify = None;
+        self.views.pasting = None;
         self.let_everything_go();
     }
 
@@ -215,6 +216,7 @@ impl FamilyEditor {
             || self.views.dialog.is_some()
             || self.views.go_to.is_some()
             || self.selecting()
+            || self.views.paste_views.is_some()
     }
 
     /// How many steps the document's history can undo: what a test reads to see that a refused edit left none.
@@ -738,9 +740,21 @@ impl BimApp {
                     draw_panel(ui, ed);
                     work_plane_panel(ui, ed);
                 }
-                ribbon::panel(ui, msg!("Clipboard"), |ui| {
-                    later(ui, Icon::Copy, msg!("Paste"));
+                // The project's Clipboard panel, for the family's clipboard: done on the next frame, where the window's context
+                // reaches the system clipboard. An adaptive family's Paste stays greyed.
+                let doc = self.active_doc();
+                let mut asked: Option<crate::clipboard::Command> = None;
+                ribbon::panel(ui, msg!("Clipboard"), |ui| match doc.filter(|_| !adaptive) {
+                    Some(doc) => {
+                        let held = self.family_clip.as_ref();
+                        let tip = super::clipboard::COPY_TIP;
+                        asked = crate::clipboard::panel(ui, ed.pasting(), tip, |c| ed.clipboard_blocked(c, held, doc));
+                    }
+                    None => later(ui, Icon::Copy, msg!("Paste")),
                 });
+                if let Some(c) = asked {
+                    self.family_clipboard_asked(c);
+                }
                 let mut modify: Option<super::modify::Tool> = None;
                 ribbon::panel(ui, msg!("Modify"), |ui| {
                     let some = !ed.modeller.selection.is_empty();
@@ -1567,6 +1581,10 @@ impl BimApp {
         if ed.zoom_region_armed() {
             return Some(msg!("Zoom In Region: drag a rectangle over the view to fit it. Esc cancels."));
         }
+        // A paste following the pointer.
+        if ed.pasting() {
+            return Some(msg!("Paste: click where the copies go; Esc cancels."));
+        }
         if let Some(s) = ed.sketch.as_ref() {
             // Align on the sketch's lines (F7b).
             if ed.views.aligning.is_some() {
@@ -1660,7 +1678,7 @@ impl BimApp {
     }
 
     /// What Find lists on a family tab, by name: what the family document does itself (Modify, Delete, Align and Aligned
-    /// Dimension in a plan or an elevation, the selection's commands, the Modify panel's tools, Temporary Hide/Isolate, Zoom to Fit in the view shown,
+    /// Dimension in a plan or an elevation, the selection's commands, the Modify panel's tools and the clipboard's, Temporary Hide/Isolate, Zoom to Fit in the view shown,
     /// its {3D} view) and what is the window's (Properties, Project Browser, Keyboard Shortcuts). The project's tools are left
     /// out: from a family tab they would change the project out of sight. [`family_find_action`](Self::family_find_action)
     /// does each, as its button does.
@@ -1685,6 +1703,7 @@ impl BimApp {
         // button's tooltip does.
         if ed.adaptive.is_none() {
             out.extend(super::modify::FIND.iter().map(|(name, _)| *name));
+            out.extend(super::clipboard::FIND.iter().map(|(name, _)| *name));
         }
         // Manage's (FE-19), outside a sketch.
         if !ed.sketching() {
@@ -1721,6 +1740,11 @@ impl BimApp {
                         ed.views.dimensioning = None;
                     }
                     None => ed.modify_tool(),
+                }
+            }
+            _ if super::clipboard::found(action).is_some() => {
+                if let Some(c) = super::clipboard::found(action) {
+                    self.family_clipboard_asked(c);
                 }
             }
             _ if super::modify::found(action).is_some() => {
@@ -1836,6 +1860,11 @@ impl BimApp {
         if !egui::Popup::is_any_open(ctx) {
             self.family_typed(ctx);
         }
+        // Ctrl+C, Ctrl+X and Ctrl+V in a family that isn't adaptive: the window's Copy, Cut and Paste, taken as on a
+        // project's tab (`BimApp::clipboard_events`), for the family's clipboard.
+        if self.active_family().is_some_and(|ed| ed.adaptive.is_none()) {
+            self.clipboard_events(ctx);
+        }
         let Some(ed) = self.active_family_mut() else { return };
         // Zoom In Region armed: Escape gives it up, and nothing else.
         if ed.zoom_region_armed() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
@@ -1845,7 +1874,10 @@ impl BimApp {
         // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
         // the sketch's own last change. The document's history waits for Finish.
         if let Some(s) = ed.sketch.as_mut() {
-            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if s.pasting.is_some() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                // A paste following the pointer given up first.
+                s.pasting = None;
+            } else if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                 // A dimension tool's references let go, then the tool; the dimension selected; Align's reference, then Align
                 // itself; else the sketch's own Escape.
                 if let Some(refs) = ed.views.dimensioning.as_mut() {
@@ -1875,7 +1907,12 @@ impl BimApp {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             // The plane being drawn first, then the tool, then the selection.
             // A handle being dragged first: the form put back as it was.
-            if ed.cancel_drags() || ed.stop_picking() || ed.views.pivoting.take().is_some() || ed.modify_escape() {
+            if ed.views.pasting.take().is_some()
+                || ed.cancel_drags()
+                || ed.stop_picking()
+                || ed.views.pivoting.take().is_some()
+                || ed.modify_escape()
+            {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
                     ed.views.dimensioning = None;
@@ -1927,6 +1964,10 @@ impl BimApp {
             self.status = Status { text: e, error: true };
         }
         ed.go_to_view_dialog(ctx);
+        // Paste Aligned to Selected Views.
+        if let Some(done) = ed.paste_views_dialog(ctx) {
+            self.clipboard_said(done.map(Some));
+        }
         // F8: Family Element Visibility Settings.
         ed.visibility_dialog(ctx);
         // FE-19: Manage > Purge Unused, on the draft.

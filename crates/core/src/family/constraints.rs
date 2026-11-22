@@ -305,7 +305,7 @@ impl FamilyDimension {
     }
 
     /// Whether it holds a constraint: a label (not a reporting one's, which `labels` says), a lock, equality, or Align's lock.
-    fn constrains(&self, reporting: &dyn Fn(&str) -> bool) -> bool {
+    pub(crate) fn constrains(&self, reporting: &dyn Fn(&str) -> bool) -> bool {
         self.label.as_deref().is_some_and(|l| !reporting(l)) || !self.locked.is_empty() || self.equal || self.alignment
     }
 
@@ -1542,7 +1542,7 @@ fn parallel(a: P3, b: P3) -> bool {
 
 impl Family {
     /// Whether parameter `name` is a reporting one.
-    fn reporting(&self, name: &str) -> bool {
+    pub(crate) fn reporting(&self, name: &str) -> bool {
         self.parameters.iter().any(|p| p.name == name && p.reporting)
     }
 

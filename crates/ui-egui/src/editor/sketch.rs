@@ -143,6 +143,8 @@ pub(crate) struct FormSketch {
     /// The lines and those picked as the Modify tool last left them: changed otherwise (Ctrl+Z, Delete, a pick), what it
     /// clicked is let go, so a boundary or a start that moved or went isn't used.
     pub(crate) edit_seen: Option<(Vec<SketchLine>, std::collections::BTreeSet<usize>)>,
+    /// Paste following the pointer: the lines copied, their middle where the pointer is.
+    pub(crate) pasting: Option<bimcraft_core::family::clipboard::SketchClip>,
 }
 
 /// A step of a sketch's own history: what a change while sketching may change, together.
@@ -719,6 +721,7 @@ impl FamilyEditor {
         let revolve = kind == FormKind::Revolve;
         // A Modify tool of the views put down: the sketch has its own.
         self.views.modify = None;
+        self.views.pasting = None;
         let (from, to) = match kind {
             FormKind::Revolve => ("0", "360"),
             FormKind::Sweep | FormKind::SweptBlend => ("0", "0"),
@@ -775,6 +778,7 @@ impl FamilyEditor {
             edit: None,
             typed: None,
             edit_seen: None,
+            pasting: None,
         }));
         self.let_everything_go();
         self.views.drawing = None;
@@ -1224,7 +1228,8 @@ impl FamilyEditor {
         // The pointer snapped, as a project's view snaps it, while a shape is drawn or a line's end dragged.
         let snapping = matches!(s.tool, Some(shape) if !matches!(shape, Shape::Fillet | Shape::PickLines))
             || s.sketch.drag.is_some()
-            || super::modify::snaps_points(s.edit);
+            || super::modify::snaps_points(s.edit)
+            || s.pasting.is_some();
         let snap = |s: &FormSketch, raw: P2| -> bimcraft_core::snap::Found {
             let own: Vec<Curve> = s.sketch.lines.iter().map(|l| l.curve.clone()).collect();
             let (traces, segments) = s.targets.as_ref().map(|(_, t)| (t.traces.as_slice(), t.segments.as_slice())).unwrap_or_default();
@@ -1241,6 +1246,8 @@ impl FamilyEditor {
             s.edit = s.edit.map(|t| t.fresh());
         }
         let mut problem = None;
+        // Paste following the pointer: where the click puts the lines' middle.
+        let mut paste_at: Option<P2> = None;
         // A picked line's end, dragged with Modify: the lines joined there follow it.
         if s.tool.is_none()
             && s.edit.is_none()
@@ -1260,6 +1267,7 @@ impl FamilyEditor {
             && let Some(pos) = response.interact_pointer_pos()
         {
             match at(pos).map(|raw| if snapping { snap(s, raw).at } else { raw }) {
+                Some(p) if s.pasting.is_some() => paste_at = Some(p),
                 Some(p) if s.edit.is_some() => {
                     // A Modify tool: on the lines picked, or the line clicked.
                     let tool = s.edit?;
@@ -1290,6 +1298,16 @@ impl FamilyEditor {
         s.track();
         s.paint(painter, screen, hovered);
         super::modify::paint_sketch_tool(s, painter, screen, &options, shift, &snaps);
+        // The lines a paste would put where the pointer is.
+        if let (Some(clip), Some(h)) = (s.pasting.as_ref(), s.hover)
+            && let Some(c) = clip.centre()
+        {
+            let ghost = Stroke::new(1.5, crate::style::canvas_pal().accent.gamma_multiply(0.8));
+            for l in &clip.lines {
+                let pts: Vec<Pos2> = l.curve.points().into_iter().filter_map(|q| screen(q + (h - c))).collect();
+                painter.add(egui::Shape::line(pts, ghost));
+            }
+        }
         if let Some(f) = s.found
             && let Some(at) = screen(f.at)
         {
@@ -1303,6 +1321,9 @@ impl FamilyEditor {
                 crate::canvas::GuideLook::of(painter, false),
                 t(f.kind.name()).to_string(),
             );
+        }
+        if let Some(p) = paste_at {
+            self.views.said = self.sketch_paste_click(p);
         }
         // Locks to what didn't move with the lines let go, saying so.
         if !moved.is_empty()
@@ -1621,8 +1642,9 @@ pub(crate) fn options_bar(ui: &mut Ui, ed: &mut FamilyEditor, units: bimcraft_co
 
 impl BimApp {
     /// The contextual tab while a form is sketched, as Revit's "Modify | Create Extrusion": Mode (Finish and Cancel Edit
-    /// Mode), Draw (Boundary Line and, for a revolve, Axis Line over the gallery and Pick Lines), Modify (Delete) and Work
-    /// Plane (Show).
+    /// Mode), Draw (Boundary Line and, for a revolve, Axis Line over the gallery and Pick Lines), Modify (Delete), Work Plane
+    /// (Show). A sketch's Copy, Cut and Paste are Ctrl+C, Ctrl+X, Ctrl+V and Find's: a Clipboard panel would fold
+    /// Dimension and Work Plane at 1600 pixels.
     pub(crate) fn form_sketch_panels(&mut self, ui: &mut Ui, ed: &mut FamilyEditor) {
         let units = self.session.model.units;
         let mut finish = false;
