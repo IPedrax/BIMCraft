@@ -23,6 +23,8 @@ pub struct Papers {
     drawn: Option<(Arc<Model>, Id, Arc<Drawing>)>,
     pictures: Vec<TextureHandle>,
     drag: Option<P2>,
+    /// The rebar detail on screen between frames: drawn once a change, as a sheet is.
+    pub(crate) detail: Option<(Arc<Model>, Id, Arc<Drawing>)>,
 }
 
 impl BimApp {
@@ -121,7 +123,7 @@ impl BimApp {
                 Some(Element::Level(_) | Element::PlanView(_)) => model.elements.id(v.view).map(Sheet::Plan),
                 Some(Element::Section(_) | Element::Elevation(_)) => model.elements.id(v.view).map(Sheet::Section),
                 Some(Element::View3D(_)) => Some(Sheet::View3D),
-                Some(Element::PanelSchedule(_)) => model.elements.id(v.view).map(Sheet::Table),
+                Some(Element::PanelSchedule(_) | Element::RebarDetail(_)) => model.elements.id(v.view).map(Sheet::Table),
                 Some(Element::Schedule(sc)) => match bimcraft_core::schedule::builtin(Some(&sc.name), None) {
                     Some((cat, _)) => SCHEDULES.iter().find(|(c, _)| *c == cat).map(|(c, _)| Sheet::Schedule(c)),
                     None => model.elements.id(v.view).map(Sheet::Table),

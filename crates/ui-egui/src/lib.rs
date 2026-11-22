@@ -81,6 +81,7 @@ mod projectinfo;
 mod properties;
 mod purge;
 mod pyaddins;
+mod rebar_detail;
 pub mod recent;
 mod reinforce;
 mod renames;
@@ -1105,6 +1106,7 @@ pub struct BimApp {
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     steel_dialog: Option<steel::SteelDialog>,
+    detail_dialog: Option<rebar_detail::DetailDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
     /// The slot picked in the panel schedule on screen.
     panel_slot: Option<u32>,
@@ -1972,6 +1974,7 @@ impl BimApp {
             project_info_dialog: None,
             reinforce_dialog: None,
             steel_dialog: None,
+            detail_dialog: None,
             reinforce_kept: BTreeMap::new(),
             panel_slot: None,
             line_weights_dialog: None,
@@ -2278,6 +2281,7 @@ impl BimApp {
             Sheet::Table(id) => match self.session.model.elements.get(id) {
                 Some(Element::Schedule(sc)) => sc.name.clone(),
                 Some(Element::PanelSchedule(ps)) => ps.name.clone(),
+                Some(Element::RebarDetail(rd)) => rd.name.clone(),
                 _ => "Schedule".into(),
             },
             Sheet::Family(..) => self.family_tab_name(sheet),
@@ -2294,6 +2298,7 @@ impl BimApp {
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
             Sheet::Table(id) if matches!(self.session.model.elements.get(id), Some(Element::PanelSchedule(_))) => "Panel Schedule",
+            Sheet::Table(id) if matches!(self.session.model.elements.get(id), Some(Element::RebarDetail(_))) => "Reinforcement Detail",
             Sheet::Schedule(_) | Sheet::Table(_) => "Schedule",
             Sheet::Family(id, view) => {
                 return self.family_of(id).map(|ed| format!("{} - {}", ed.title(), editor::views::view_title(view))).unwrap_or_default();
@@ -2608,7 +2613,9 @@ impl BimApp {
             Sheet::Section(id) => m.section(*id).is_some(),
             Sheet::Paper(id) => m.sheet(*id).is_some(),
             Sheet::View3D | Sheet::Schedule(_) => true,
-            Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_) | Element::PanelSchedule(_))),
+            Sheet::Table(id) => {
+                matches!(m.elements.get(id), Some(Element::Schedule(_) | Element::PanelSchedule(_) | Element::RebarDetail(_)))
+            }
         };
         self.views.retain(exists);
         self.floating.retain(|f| exists(&f.sheet));
@@ -2658,6 +2665,7 @@ impl BimApp {
             || self.project_info_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.steel_dialog.is_some()
+            || self.detail_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.coordinates_dialog.as_ref().is_some_and(|d| !d.picking())
             || self.object_styles_dialog.is_some()
@@ -7069,6 +7077,9 @@ impl BimApp {
         if let Some(id) = self.showing_panel_schedule() {
             return self.panel_schedule_view(ui, id);
         }
+        if let Some(id) = self.showing_rebar_detail() {
+            return self.rebar_detail_view(ui, id);
+        }
         let Some((id, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();
@@ -7177,6 +7188,7 @@ impl BimApp {
         self.project_info_window(ctx);
         self.reinforce_window(ctx);
         self.steel_window(ctx);
+        self.rebar_detail_window(ctx);
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);

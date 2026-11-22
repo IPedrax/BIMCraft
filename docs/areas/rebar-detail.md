@@ -50,5 +50,14 @@ Eberick's.
 `rebar_detail {host | hosts, stations?, scale?, list?, sheet?, replace?}`: makes a detail for each beam (up to 1,000), or changes the
 one it has and keeps its name and its place; `sheet` places it through `place`; `replace` takes the values back to the defaults. A
 beam with no bars is refused, saying to reinforce it. The reply lists each view's `sets` (mark, layer, diameter, count, spacing,
-length, tag, the ids of the bars), so an agent can read what the drawing says. `render {"view": <its name>}` draws it. It has no
-shortcut yet: DD goes with the desktop's dialog.
+length, tag, the ids of the bars), so an agent can read what the drawing says. `render {"view": <its name>}` draws it. Its shortcut is DD.
+
+## The desktop
+
+`crates/ui-egui/src/rebar_detail.rs`. The Structure tab's Detail (DD) opens the Reinforcement Detail dialog for the beams selected (all
+of the selection must be beams: it says what to select otherwise): Stations in the project's unit, the scale as a 1 : n, whether the
+steel list is in, and where it goes (no sheet, a sheet, or a new one). Make runs `rebar_detail` (with a `sheet` command before it for a
+new one, numbered A101, A102 and so on, in one undo step) and opens what it made: the sheet, or the detail's own tab. A refusal (a
+beam with no bars, a station that is not a length) is the command's words, said inside the dialog. The tab is a `Sheet::Table`, as a
+panel schedule's is: the drawing from `sheet::draw_view` at the detail's scale on a sheet of paper the size it takes, which pans and
+zooms, nothing in it picked or moved. The Project Browser lists the details under Reinforcement Details, with a right-click Delete.

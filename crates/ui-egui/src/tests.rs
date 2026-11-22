@@ -6932,6 +6932,7 @@ mod publisher;
 mod purge;
 mod pyaddins;
 mod qol;
+mod rebar_detail;
 mod reinforce;
 mod revit;
 mod ribbon_fit;

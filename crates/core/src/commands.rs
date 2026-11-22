@@ -849,11 +849,10 @@ other_files(
          It is not checked against any host until it arms one",
         reinforcement_preset,
     ),
-    // No alias yet: DD is the desktop's, and a listed shortcut must work there.
     edit(
         "rebar_detail",
         "Reinforcement Detail",
-        &[],
+        &["DD"],
         "{host | hosts, stations?, scale?, list?, sheet?, replace?} the detail drawing of reinforced beams (`hosts` up to 1,000): one view \
          for each, named in the project's language, which goes on a sheet and prints with it. It draws the beam's elevation with every set \
          of bars (bars that are copies one step apart: the stirrups of a zone, a row of bottom bars) tagged `N2 7 ø5 c/10 C=118` (mark, \

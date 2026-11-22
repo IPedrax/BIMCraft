@@ -465,6 +465,7 @@ const DIALOG_COMMANDS: &[&str] = &[
     "duplicate_view",
     "filters_placeholder",
     "reinforce",
+    "rebar_detail",
     "material",
     "favorite",
     "parameter",
@@ -2773,6 +2774,10 @@ impl BimApp {
             }
             "reinforce" => {
                 self.open_reinforce();
+                true
+            }
+            "rebar_detail" => {
+                self.open_rebar_detail();
                 true
             }
             "title_block" => {
