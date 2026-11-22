@@ -2043,7 +2043,7 @@ other_files(
          again without it) takes it out of the dimensions measuring to it (a dimension left with one reference goes: \
          `deleted_dimensions`). A dimension measuring to what the family hasn't is refused, unless \
          `invalid_dimensions` is `delete` (a reload's Delete Dimension(s)); a file opened leaves it out. `solve` reads, for a \
-         type, where its planes, forms' ends and sketches' lines go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
+         type, where its planes, forms' ends and sketches' lines go (a sweep's profiles in `profiles`, each in its own plane's axes) and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
@@ -17176,19 +17176,34 @@ fn family(s: &mut Session, p: &Value) -> R {
             .forms
             .iter()
             .map(|x| {
-                let sketch: Vec<Value> = x
-                    .plane_lines()
-                    .filter_map(|l| {
-                        let drawn = l.curve(&mut |e| crate::family::worth(e, &values)).ok()?;
-                        Some(match drawn.curve {
-                            crate::curves::Curve::Circle { centre, radius } => {
-                                json!({"guid": l.guid, "id": l.id, "centre": [centre.0, centre.1], "radius": radius})
-                            }
-                            c => json!({"guid": l.guid, "id": l.id, "start": [c.start().0, c.start().1], "end": [c.end().0, c.end().1]}),
+                let listed = |lines: &[crate::family::sketch::FormLine]| -> Vec<Value> {
+                    lines
+                        .iter()
+                        .filter_map(|l| {
+                            let drawn = l.curve(&mut |e| crate::family::worth(e, &values)).ok()?;
+                            Some(match drawn.curve {
+                                crate::curves::Curve::Circle { centre, radius } => {
+                                    json!({"guid": l.guid, "id": l.id, "centre": [centre.0, centre.1], "radius": radius})
+                                }
+                                c => {
+                                    json!({"guid": l.guid, "id": l.id, "start": [c.start().0, c.start().1], "end": [c.end().0, c.end().1]})
+                                }
+                            })
                         })
-                    })
-                    .collect();
-                json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to, "sketch": sketch})
+                        .collect()
+                };
+                // Its sketch and a Blend's top in the host's axes; a sweep's profiles apart, each in its own plane's axes.
+                let mut sketch = listed(&x.sketch);
+                sketch.extend(listed(&x.top));
+                let mut out = json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to, "sketch": sketch});
+                if let Some(sw) = &x.sweep {
+                    let mut profiles = vec![listed(&sw.profile)];
+                    if !sw.end.is_empty() {
+                        profiles.push(listed(&sw.end));
+                    }
+                    out["profiles"] = json!(profiles);
+                }
+                out
             })
             .collect();
         // Each reference line where the type has it: turned and moved by its constraints (F7c).
@@ -17400,18 +17415,6 @@ fn family(s: &mut Session, p: &Value) -> R {
     // A dimension that measures to what the family hasn't: refused, unless the caller says to delete it (T14's Delete
     // Dimension(s)); a reload can't leave one behind unasked.
     let dangling = f.dangling_dimensions();
-    // A sweep's profile lies square to its path, in a plane of its own: not measured yet (F6d), and said so.
-    let profile_lines: Vec<crate::ids::Guid> =
-        f.forms.iter().flat_map(|x| x.sweep.iter().flat_map(|s| s.profile.iter().chain(&s.end)).map(|l| l.guid)).collect();
-    for i in &dangling {
-        let on_profile = f.dimensions[*i].refs.iter().any(|r| match *r {
-            crate::family::DimRef::Sketch(_, l) | crate::family::DimRef::Point(_, l, _) => profile_lines.contains(&l),
-            _ => false,
-        });
-        if on_profile {
-            return Err(bad(c, format!("dimension {}: a sweep's profile line isn't measured or locked yet: dimension its path", i + 1)));
-        }
-    }
     if !dangling.is_empty() {
         match string(c, &p, "invalid_dimensions")?.as_deref() {
             Some("delete") => {

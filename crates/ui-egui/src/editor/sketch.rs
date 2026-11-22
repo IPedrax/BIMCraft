@@ -112,14 +112,45 @@ pub(crate) struct FormSketch {
     pub(crate) align_from: Option<(DimRef, (P2, P2), Option<usize>)>,
     /// Align's padlock, offered until the next click: the lock it adds.
     pub(crate) offer: Option<FamilyDimension>,
-    /// Locks added while sketching, and those the form had that were taken off: written at Finish, dropped by Cancel.
+    /// Locks added while sketching, and those the form had that were taken off (or dimensions deleted, FE-12): written at
+    /// Finish, dropped by Cancel.
     pub(crate) locks: Vec<FamilyDimension>,
     pub(crate) unlocked: Vec<Guid>,
+    /// FE-12: dimensions made while sketching, the draft's own as their labels, locks and EQ were changed while sketching,
+    /// and the parameters Create Parameter… made for their labels: written at Finish, dropped by Cancel.
+    pub(crate) dims: Vec<FamilyDimension>,
+    pub(crate) changed: Vec<FamilyDimension>,
+    pub(super) params: Vec<ParamText>,
+    /// The dimension selected while sketching (its padlocks, its EQ and the Options Bar's Label and Value).
+    pub(crate) selected_dim: Option<Guid>,
+    /// Lines the sketch's dimensions moved (`drive_sketch`): each line's GUID, where it was drawn before, and where they put
+    /// it. One still where they put it is the line as drawn to Finish (its formulas kept, as outside sketch mode a label
+    /// leaves the lines as drawn and the solve flexes them); one moved since is the line where it is.
+    pub(crate) driven: Vec<(Guid, Curve, Curve)>,
+    /// The sketch's own history (Ctrl+Z): the lines of every part with its dimensions, locks, parameters and the lines they
+    /// moved, as the last frame saw them, and the steps before.
+    seen: Option<Snap>,
+    history: Vec<Snap>,
     /// Pick Lines' Lock, on the Options Bar (F10a): a line picked from a reference is locked to it, as Align's padlock locks.
     pub(crate) lock: bool,
     /// Trim/Extend to Corner (TR), on: the first line picked, where it was clicked (the part kept).
     pub(crate) trim: Option<Option<(usize, P2)>>,
 }
+
+/// A step of a sketch's own history: what a change while sketching may change, together (FE-12).
+#[derive(Clone, PartialEq)]
+struct Snap {
+    lines: [Vec<SketchLine>; 4],
+    locks: Vec<FamilyDimension>,
+    unlocked: Vec<Guid>,
+    dims: Vec<FamilyDimension>,
+    changed: Vec<FamilyDimension>,
+    params: Vec<ParamText>,
+    driven: Vec<(Guid, Curve, Curve)>,
+}
+
+/// The most steps a sketch's history keeps.
+const STEPS: usize = 100;
 
 /// What Pick Lines picks: the line, and the reference it lies on, if the view found one, as a lock waiting for the sketch's
 /// line (its `refs` the reference alone): what Lock adds.
@@ -159,6 +190,52 @@ impl FormSketch {
         self.offer = None;
         self.targets = None;
         self.set_tool(Some(Shape::Line), false);
+    }
+
+    /// What the sketch's history holds of it now.
+    fn snap(&self) -> Snap {
+        let mut lines = self.parts.clone();
+        lines[self.part as usize] = self.sketch.lines.clone();
+        Snap {
+            lines,
+            locks: self.locks.clone(),
+            unlocked: self.unlocked.clone(),
+            dims: self.dims.clone(),
+            changed: self.changed.clone(),
+            params: self.params.clone(),
+            driven: self.driven.clone(),
+        }
+    }
+
+    /// Notes the sketch if it is not as the last frame saw it: the change is a step Ctrl+Z takes back.
+    pub(crate) fn track(&mut self) {
+        let now = self.snap();
+        match self.seen.take() {
+            Some(was) if was != now => {
+                self.history.push(was);
+                if self.history.len() > STEPS {
+                    self.history.remove(0);
+                }
+            }
+            _ => {}
+        }
+        self.seen = Some(now);
+    }
+
+    /// Ctrl+Z: the sketch as it was before its last change, its lines (every part's) and its dimensions, locks and
+    /// parameters together; false when there's none to take back.
+    pub(crate) fn undo(&mut self) -> bool {
+        self.track();
+        let Some(was) = self.history.pop() else { return false };
+        let Snap { mut lines, locks, unlocked, dims, changed, params, driven } = was.clone();
+        self.sketch.lines = std::mem::take(&mut lines[self.part as usize]);
+        self.parts = lines;
+        (self.locks, self.unlocked, self.dims, self.changed, self.params, self.driven) = (locks, unlocked, dims, changed, params, driven);
+        self.seen = Some(was);
+        self.sketch.changed();
+        self.offer = None;
+        self.align_from = None;
+        true
     }
 
     /// The path (a sweep's sketch) as drawn, chained, its numbers as they are.
@@ -202,6 +279,16 @@ impl FormSketch {
         self.sketch.lines.iter().find(|l| is_axis(l)).map(|l| [l.start(), l.end()])
     }
 
+    /// Line `l` as drawn: where it was before the sketch's dimensions moved it, while it is still where they put it (FE-12),
+    /// unless `kept` says it is to be taken where it is.
+    pub(crate) fn undriven(&self, l: &SketchLine, kept: &[Guid]) -> SketchLine {
+        let driven = self.driven.iter().find(|(g, _, to)| *g == l.guid && !l.guid.is_nil() && super::sketch_dims::same(&l.curve, to));
+        match driven.filter(|_| !kept.contains(&l.guid)) {
+            Some((_, before, _)) => SketchLine { curve: before.clone(), ..l.clone() },
+            None => l.clone(),
+        }
+    }
+
     /// The Options Bar's settings, as the Draw panel's shapes take them.
     pub(crate) fn options(&self) -> Options {
         let number = |s: &str| s.trim().parse::<f64>().ok().filter(|x| x.is_finite());
@@ -226,8 +313,11 @@ impl FormSketch {
     fn add(&mut self, curves: Vec<Curve>) {
         if self.axis_tool {
             if let Some(c) = curves.into_iter().find(|c| c.kind() == "line") {
+                // The axis drawn again is the same line (its id and GUID), so what measures to it still does (FE-12).
+                let was = self.sketch.lines.iter().find(|l| is_axis(l)).map(|l| (l.id, l.guid)).filter(|(_, g)| !g.is_nil());
+                let (id, guid) = was.unwrap_or((0, Guid::new()));
                 self.sketch.lines.retain(|l| !is_axis(l));
-                self.sketch.lines.push(SketchLine { style: Some(AXIS.into()), ..SketchLine::from(c) });
+                self.sketch.lines.push(SketchLine { style: Some(AXIS.into()), id, guid, ..SketchLine::from(c) });
                 self.sketch.changed();
             }
             return;
@@ -236,7 +326,8 @@ impl FormSketch {
             for piece in bimcraft_core::curves::explode(&c) {
                 let end = piece.end();
                 let way = piece.tangent(piece.domain().1);
-                self.sketch.add(SketchLine::from(piece));
+                // A GUID of its own as it is drawn (FE-12), so a dimension can name it while sketching.
+                self.sketch.add(SketchLine { guid: Guid::new(), ..SketchLine::from(piece) });
                 self.last = Some((end, way));
             }
         }
@@ -318,7 +409,7 @@ impl FormSketch {
                                 let (ka, kb) = (a.clone(), b.clone());
                                 self.sketch.lines[first] = SketchLine { curve: la, ..ka };
                                 self.sketch.lines[i] = SketchLine { curve: lb, ..kb };
-                                self.sketch.add(SketchLine::from(arc));
+                                self.sketch.add(SketchLine { guid: Guid::new(), ..SketchLine::from(arc) });
                                 None
                             }
                             None => Some(t("These lines can't be rounded: pick two straight lines that meet.").to_string()),
@@ -657,6 +748,13 @@ impl FamilyEditor {
             offer: None,
             locks: Vec::new(),
             unlocked: Vec::new(),
+            dims: Vec::new(),
+            changed: Vec::new(),
+            params: Vec::new(),
+            selected_dim: None,
+            driven: Vec::new(),
+            seen: None,
+            history: Vec::new(),
             lock: false,
             trim: None,
         }));
@@ -677,7 +775,9 @@ impl FamilyEditor {
         }
         if let Some(s) = self.sketch.as_mut() {
             s.set_part(p);
+            s.selected_dim = None;
         }
+        self.views.dimensioning = None;
         if let Some(frame) = self.sketch_frame()
             && self.views.shown.is_some_and(|w| !flat(w, &frame))
         {
@@ -687,20 +787,21 @@ impl FamilyEditor {
         Ok(())
     }
 
-    /// Cancel Edit Mode: the lines dropped, and the locks added or taken off while sketching; the draft as it was.
+    /// Cancel Edit Mode: the lines dropped, and the dimensions, locks and parameters made, changed or taken off while
+    /// sketching; the draft as it was.
     pub(crate) fn cancel_form_sketch(&mut self) {
         // The form it was of, selected again.
         if let Some(i) = self.sketch.take().and_then(|s| s.index) {
             self.select_only_form(i);
         }
         self.views.aligning = None;
+        self.views.dimensioning = None;
     }
 
     /// Finish Edit Mode: the lines checked as the core checks a sketch, and the form they make built with the family; then
     /// put in the draft (a new one last, an edited one where it was, keeping its id and GUID) and selected. Refused, saying
     /// what to fix (the lines it is about shown in red, the part they are in put on screen), the draft left as it was.
     pub(crate) fn finish_form_sketch(&mut self, units: bimcraft_core::units::Units) -> Result<(), String> {
-        let values = self.values();
         let Some(s) = self.sketch.as_mut() else { return Ok(()) };
         // Every line a GUID of its own (F7b), so a lock or a dimension can name it: one drawn new gets a new one.
         for l in s.sketch.lines.iter_mut().chain(s.parts.iter_mut().flatten()).filter(|l| l.guid.is_nil()) {
@@ -711,7 +812,6 @@ impl FamilyEditor {
         }
         let boundary = s.boundary();
         let axis = s.axis();
-        let axis_guid = s.sketch.lines.iter().find(|l| is_axis(l)).map(|l| l.guid);
         if let Err(why) = fs::finish_check(&boundary, axis, s.revolve) {
             let text = match why {
                 fs::Finish::Problems(problems) => {
@@ -725,39 +825,13 @@ impl FamilyEditor {
             };
             return Err(text);
         }
-        let (index, revolve, void, host) = (s.index, s.revolve, s.void, s.host);
-        let (from, to, material) = (s.from.clone(), s.to.clone(), s.material.clone());
-        let (guid, shown) = (s.guid, s.shown[0].clone());
-        // What the form had, its lines kept where they didn't move.
-        let before = match index.and_then(|i| self.forms.get(i)) {
-            Some(ft) => ft.form()?,
-            None => Form::default(),
-        };
-        let mut lines = fs::lines_of(&boundary);
-        if revolve && let Some([a, b]) = axis {
-            let n = |x: f64| Expr::Number(x);
-            let was = before.axis_line();
-            lines.push(FormLine {
-                id: was.map_or(0, |l| l.id),
-                guid: was.map(|l| l.guid).or(axis_guid).unwrap_or_default(),
-                axis: true,
-                ..FormLine::line([n(a.0), n(a.1)], [n(b.0), n(b.1)])
-            });
-        }
-        let lines = fs::kept(&before.sketch, &shown, lines, &mut reader(&values));
-        let mut form =
-            Form { host, from: text_expr(&from), to: text_expr(&to), void, material: material.trim().to_string(), ..before.clone() };
-        form.sketch = lines;
-        if form.guid.is_nil() {
-            form.guid = guid;
-        }
+        let (index, form, before) = self.sketched_form()?;
         self.commit_form(index, form, &before)
     }
 
     /// Finish Edit Mode for a Blend, a Sweep or a Swept Blend (F6): each part checked (a Blend's base and top, a sweep's path
     /// as one chain and its profiles closed), then the form made of them all.
     fn finish_f6(&mut self, units: bimcraft_core::units::Units) -> Result<(), String> {
-        let values = self.values();
         let Some(s) = self.sketch.as_mut() else { return Ok(()) };
         let kind = s.kind;
         let parts: Vec<Part> = match kind {
@@ -792,56 +866,126 @@ impl FamilyEditor {
                 return Err(format!("{which}: {}", crate::sketch::friendly(&problems, &lines, units)));
             }
         }
-        let (index, void, host, twist) = (s.index, s.void, s.host, s.twist);
-        let (from, to, material) = (s.from.clone(), s.to.clone(), s.material.clone());
-        let guid = s.guid;
-        let shown = s.shown.clone();
-        let drawn: Vec<Vec<FormLine>> =
-            [Part::Main, Part::Top, Part::Profile, Part::End].iter().map(|p| fs::lines_of(s.part_lines(*p))).collect();
-        let before = match index.and_then(|i| self.forms.get(i)) {
-            Some(ft) => ft.form()?,
-            None => Form::default(),
-        };
-        let none = Swept::default();
-        let was = before.sweep.as_ref().unwrap_or(&none);
-        let mut num = reader(&values);
-        let mut keep = |old: &[FormLine], k: usize| fs::kept(old, &shown[k], drawn[k].clone(), &mut num);
-        let sketch = keep(&before.sketch, 0);
-        let top = if kind == FormKind::Blend { keep(&before.top, 1) } else { Vec::new() };
-        let sweep = kind.swept().then(|| Swept {
-            profile: keep(&was.profile, 2),
-            end: if kind == FormKind::SweptBlend { keep(&was.end, 3) } else { Vec::new() },
-        });
-        let (from, to) = if kind == FormKind::Blend { (text_expr(&from), text_expr(&to)) } else { (Expr::Number(0.0), Expr::Number(0.0)) };
-        let mut form = Form {
-            host,
-            from,
-            to,
-            void,
-            material: material.trim().to_string(),
-            sketch,
-            top,
-            sweep,
-            twist: if matches!(kind, FormKind::Blend | FormKind::SweptBlend) { twist } else { 0 },
-            ..before.clone()
-        };
-        if form.guid.is_nil() {
-            form.guid = guid;
-        }
+        let (index, form, before) = self.sketched_form()?;
         self.commit_form(index, form, &before)
     }
 
-    /// Form `form` (made by Finish from `before`, the one at `index`, or a new one) put in the draft with the locks added and
-    /// taken off while sketching: built with each type first, a fault of it or a constraint a type can't hold refusing it,
-    /// the draft as it was.
+    /// The form the sketch makes as it is now, unchecked (what Finish puts in the draft once the lines pass its checks): its
+    /// place (none, a new one), the form, and the form it was (a default one for a new form). A line kept from the form
+    /// keeps its id, its GUID and, where it came back to where it was shown, its formulas.
+    pub(crate) fn sketched_form(&self) -> Result<(Option<usize>, Form, Form), String> {
+        // A line the dimensions moved is written as it was drawn (its formulas kept) where the constraints, solved with it so,
+        // put it where it is; one they no longer do (a label taken off, a value typed) is written where it is.
+        let mut kept: Vec<Guid> = Vec::new();
+        let Some(s) = self.sketch.as_ref() else { return self.sketched_form_with(&kept) };
+        for _ in 0..4 {
+            let (index, form, before) = self.sketched_form_with(&kept)?;
+            let mut stale: Vec<Guid> = Vec::new();
+            if s.driven.iter().any(|(g, ..)| !kept.contains(g)) {
+                let f = self.family_with_form(index, form.clone())?;
+                let values = self.sketch_values(&f);
+                let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+                let mut num = reader(&values);
+                let now = flexed.forms.iter().find(|x| x.guid == form.guid);
+                for (g, _, to) in s.driven.iter().filter(|(g, ..)| !kept.contains(g)) {
+                    let here = now.and_then(|x| x.plane_lines().find(|l| l.guid == *g)).and_then(|l| l.curve(&mut num).ok());
+                    let current = s
+                        .sketch
+                        .lines
+                        .iter()
+                        .chain(s.parts.iter().flatten())
+                        .any(|l| l.guid == *g && super::sketch_dims::same(&l.curve, to));
+                    if current && !here.is_some_and(|h| super::sketch_dims::same(&h.curve, to)) {
+                        stale.push(*g);
+                    }
+                }
+            }
+            if stale.is_empty() {
+                return Ok((index, form, before));
+            }
+            kept.extend(stale);
+        }
+        let all: Vec<Guid> = s.driven.iter().map(|(g, ..)| *g).collect();
+        self.sketched_form_with(&all)
+    }
+
+    /// [`FamilyEditor::sketched_form`], the lines `kept` taken where they are, the others the dimensions moved as drawn.
+    fn sketched_form_with(&self, kept: &[Guid]) -> Result<(Option<usize>, Form, Form), String> {
+        let values = self.values();
+        let s = self.sketch.as_ref().ok_or_else(|| t("Nothing is being sketched.").to_string())?;
+        let before = match s.index.and_then(|i| self.forms.get(i)) {
+            Some(ft) => ft.form()?,
+            None => Form::default(),
+        };
+        let mut num = reader(&values);
+        let material = s.material.trim().to_string();
+        let mut form = if matches!(s.kind, FormKind::Extrusion | FormKind::Revolve) {
+            let boundary: Vec<SketchLine> = s.boundary().iter().map(|l| s.undriven(l, kept)).collect();
+            let mut lines = fs::lines_of(&boundary);
+            let axis = s.sketch.lines.iter().find(|l| is_axis(l)).map(|l| s.undriven(l, kept)).map(|l| [l.start(), l.end()]);
+            if s.revolve
+                && let Some([a, b]) = axis
+            {
+                let n = |x: f64| Expr::Number(x);
+                // The sketch's axis line's GUID, which its dimensions name; the form's where it has none.
+                let was = before.axis_line();
+                let axis_guid = s.sketch.lines.iter().find(|l| is_axis(l)).map(|l| l.guid).filter(|g| !g.is_nil());
+                let guid = axis_guid.or(was.map(|l| l.guid)).unwrap_or_default();
+                lines.push(FormLine {
+                    id: was.filter(|l| l.guid == guid).map_or(0, |l| l.id),
+                    guid,
+                    axis: true,
+                    ..FormLine::line([n(a.0), n(a.1)], [n(b.0), n(b.1)])
+                });
+            }
+            let lines = fs::kept(&before.sketch, &s.shown[0], lines, &mut num);
+            let mut form = Form { host: s.host, from: text_expr(&s.from), to: text_expr(&s.to), void: s.void, material, ..before.clone() };
+            form.sketch = lines;
+            form
+        } else {
+            let kind = s.kind;
+            let drawn: Vec<Vec<FormLine>> = [Part::Main, Part::Top, Part::Profile, Part::End]
+                .iter()
+                .map(|p| fs::lines_of(&s.part_lines(*p).iter().map(|l| s.undriven(l, kept)).collect::<Vec<_>>()))
+                .collect();
+            let none = Swept::default();
+            let was = before.sweep.as_ref().unwrap_or(&none);
+            let mut keep = |old: &[FormLine], k: usize| fs::kept(old, &s.shown[k], drawn[k].clone(), &mut num);
+            let sketch = keep(&before.sketch, 0);
+            let top = if kind == FormKind::Blend { keep(&before.top, 1) } else { Vec::new() };
+            let sweep = kind.swept().then(|| Swept {
+                profile: keep(&was.profile, 2),
+                end: if kind == FormKind::SweptBlend { keep(&was.end, 3) } else { Vec::new() },
+            });
+            let (from, to) =
+                if kind == FormKind::Blend { (text_expr(&s.from), text_expr(&s.to)) } else { (Expr::Number(0.0), Expr::Number(0.0)) };
+            Form {
+                host: s.host,
+                from,
+                to,
+                void: s.void,
+                material,
+                sketch,
+                top,
+                sweep,
+                twist: if matches!(kind, FormKind::Blend | FormKind::SweptBlend) { s.twist } else { 0 },
+                ..before.clone()
+            }
+        };
+        if form.guid.is_nil() {
+            form.guid = s.guid;
+        }
+        Ok((s.index, form, before))
+    }
+
+    /// Form `form` (made by Finish from `before`, the one at `index`, or a new one) put in the draft with the dimensions made,
+    /// changed and taken off while sketching (Align's locks among them, FE-12) and the parameters made for their labels: built
+    /// with each type first, a fault of it or a constraint a type can't hold refusing it, the draft as it was.
     fn commit_form(&mut self, index: Option<usize>, form: Form, before: &Form) -> Result<(), String> {
         let Some(s) = self.sketch.as_ref() else { return Ok(()) };
-        let (added, unlocked) = (s.locks.clone(), s.unlocked.clone());
-        // Its locks: those added while sketching, less those taken off, and none to a line that is gone (F7b).
-        let mut dims = self.dimensions.clone();
-        dims.retain(|d| !unlocked.contains(&d.guid));
-        dims.extend(added);
-        let mut gone = Family { dimensions: dims, forms: vec![form.clone()], ..Family::default() };
+        let made_params = s.params.clone();
+        // Its dimensions: those added while sketching, less those taken off, and none to a line that is gone (F7b).
+        let mut gone = Family { dimensions: self.sketch_dimensions(), forms: vec![form.clone()], ..Family::default() };
         gone.forget_lines_gone(std::slice::from_ref(before));
         let dims = gone.dimensions;
         let made = FormText { tag: index.and_then(|i| self.forms.get(i)).map_or(0, |f| f.tag), ..FormText::of(&form) };
@@ -860,6 +1004,8 @@ impl FamilyEditor {
         };
         let kept = std::mem::replace(&mut self.forms, forms);
         let kept_dims = std::mem::replace(&mut self.dimensions, dims);
+        let kept_params = self.params.len();
+        self.params.extend(made_params);
         // Each type built with it: what is wrong with this form refuses it (another form's fault is the draft's, as before);
         // so do constraints a type can't hold with it.
         let built = self.family().and_then(|f| {
@@ -880,9 +1026,11 @@ impl FamilyEditor {
         if let Err(e) = built {
             self.forms = kept;
             self.dimensions = kept_dims;
+            self.params.truncate(kept_params);
             return Err(e);
         }
         self.views.aligning = None;
+        self.views.dimensioning = None;
         self.sketch = None;
         self.select_only_form(at);
         Ok(())
@@ -892,8 +1040,9 @@ impl FamilyEditor {
     pub(crate) fn undo_sketch(&mut self) {
         if let Some(s) = self.sketch.as_mut() {
             s.points.clear();
-            s.sketch.undo();
+            s.undo();
         }
+        self.prune_selected_dim();
     }
 
     /// A form's sketch in a plan or an elevation: the lines over the picture, and the clicks and drags that draw them.
@@ -1095,6 +1244,7 @@ impl FamilyEditor {
             }
         }
         s.sketch.track();
+        s.track();
         s.paint(painter, screen, hovered);
         if let Some(f) = s.found
             && let Some(at) = screen(f.at)
@@ -1533,13 +1683,16 @@ impl BimApp {
             });
         });
         let aligning = ed.views.aligning.is_some();
-        let (mut align, mut trim) = (false, false);
+        let (mut align, mut trim, mut modify) = (false, false, false);
+        let mut delete_dim = None;
         let Some(s) = ed.sketch.as_mut() else { return };
         ribbon::panel(ui, msg!("Modify"), |ui| {
             let tip = msg!("Modify (MD): pick lines of the sketch, and drag their ends");
             let trimming = s.trim.is_some();
-            if crate::small_button(ui, Icon::Modify, "Modify", s.tool.is_none() && !aligning && !trimming, tip).clicked() {
+            let dimensioning = ed.views.dimensioning.is_some();
+            if crate::small_button(ui, Icon::Modify, "Modify", s.tool.is_none() && !aligning && !trimming && !dimensioning, tip).clicked() {
                 s.set_tool(None, false);
+                modify = true;
             }
             // Trim/Extend to Corner (TR): two lines trimmed or extended to where they meet, each keeping the part clicked.
             let tip = msg!("Trim/Extend to Corner (TR): pick two lines, on the parts to keep");
@@ -1550,14 +1703,16 @@ impl BimApp {
             let tip = msg!("Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them");
             align = crate::small_button(ui, Icon::Align, "Align", aligning, tip).clicked();
             let tip = msg!("Delete (DE): the lines picked");
-            if ui
-                .add_enabled_ui(!s.sketch.picked.is_empty(), |ui| crate::small_button(ui, Icon::Delete, "Delete", false, tip))
-                .inner
-                .clicked()
-            {
-                s.delete_picked();
+            let can = !s.sketch.picked.is_empty() || s.selected_dim.is_some();
+            if ui.add_enabled_ui(can, |ui| crate::small_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked() {
+                match s.selected_dim {
+                    Some(g) => delete_dim = Some(g),
+                    None => s.delete_picked(),
+                }
             }
         });
+        // FE-12: the Dimension tools, in a plan or an elevation that sees the sketch's plane flat.
+        super::document::dimension_panel(ui, ed);
         ribbon::panel(ui, msg!("Work Plane"), |ui| {
             let tip =
                 msg!("Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it");
@@ -1575,8 +1730,16 @@ impl BimApp {
         if align {
             ed.align_tool();
         }
+        if modify {
+            ed.views.aligning = None;
+            ed.views.dimensioning = None;
+        }
+        if let Some(g) = delete_dim {
+            ed.delete_dimension(g);
+        }
         if trim {
             ed.views.aligning = None;
+            ed.views.dimensioning = None;
             if let Some(s) = ed.sketch.as_mut() {
                 s.trim_tool();
             }

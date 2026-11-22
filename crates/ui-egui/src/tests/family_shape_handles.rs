@@ -129,8 +129,9 @@ fn an_l_shapes_handles_sit_at_its_edges_middles_and_its_locked_and_labelled_edge
     let free: Vec<bool> = mids.iter().map(|m| handle_at(&h, [m[0], m[1], 0.0]).1).collect();
     // The east side's place is Len's, the west side is locked to West: greyed.
     assert_eq!(free, [true, false, true, true, true, false]);
-    // A tool in hand: no handles.
-    shortcut(&mut h, "DI");
+    // A tool in hand (Aligned Dimension, as Find runs it): no handles.
+    assert!(h.state_mut().family_find_action("Aligned Dimension"));
+    h.run();
     assert!(editor(&h).views.dimensioning.is_some());
     assert!(shown(&h).is_empty(), "a tool in hand");
 }
@@ -397,4 +398,69 @@ fn escape_undo_and_another_view_mid_drag_give_the_drag_up() {
     assert_eq!(f.forms.len(), 3);
     assert_eq!(f.forms[1], void, "the void back, untouched");
     assert_eq!(f.forms[2], slot, "the slot as it was");
+}
+
+/// A slot 1.5 mm wide, its sides' handles not greyed: a drag that widens it is taken, one that takes a side past the other
+/// refused, the form as it was (the geometry is each drag's own question).
+#[test]
+fn a_thin_slots_handle_is_not_greyed_and_takes_a_widening_drag() {
+    let script = r#"family {"name": "Plate", "category": "generic", "types": {"T": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [400, 0]}, {"start": [400, 0], "end": [400, 400]}, {"start": [400, 400], "end": [0, 400]}, {"start": [0, 400], "end": [0, 0]}, {"start": [200, 100], "end": [200, 300]}, {"start": [200, 300], "end": [201.5, 300]}, {"start": [201.5, 300], "end": [201.5, 100]}, {"start": [201.5, 100], "end": [200, 100]}], "from": 0, "to": 50}]}"#;
+    let (mut h, _) = open(script, "Plate");
+    view(&mut h, Some(Which::Plan));
+    select(&mut h, 0);
+    let side = |h: &Harness<BimApp>| editor(h).views.shapes_shown.iter().find(|(_, s)| s.line == 6).cloned().expect("the slot's east side");
+    let (at, east) = side(&h);
+    assert!(east.blocked.is_none(), "not greyed: {:?}", east.blocked);
+    // Out of the solid is into the slot (west): a drag east, 50 mm, widens it.
+    let c = editor(&h).views.screen_of([201.5, 200.0, 0.0]).unwrap();
+    let e = editor(&h).views.screen_of([201.5 - east.way[0] * 50.0, 200.0 - east.way[1] * 50.0, 0.0]).unwrap();
+    drag_screen(&mut h, at, at + (e - c), PointerButton::Primary);
+    let x = ends(&h, 0)[6][0];
+    assert!((x - 251.5).abs() < 5.0, "the slot widened: its east side at {x}, {}", status(&h));
+    // One that takes the side past the west one is refused, the form as it was.
+    let before = ends(&h, 0);
+    let (at, east) = side(&h);
+    let c = editor(&h).views.screen_of([x, 200.0, 0.0]).unwrap();
+    let e = editor(&h).views.screen_of([x + east.way[0] * 100.0, 200.0 + east.way[1] * 100.0, 0.0]).unwrap();
+    drag_screen(&mut h, at, at + (e - c), PointerButton::Primary);
+    assert_eq!(ends(&h, 0), before, "{}", status(&h));
+    assert!(!status(&h).is_empty(), "said why");
+}
+
+/// A handle is greyed by what ties it (a formula, a parameter), never by where a probe's millimetre would take it: a concave
+/// arc of a hole under 2 mm across (`r` − 1 within `TOL` of nothing) isn't greyed, though a drag into the hole is refused, and a
+/// drag that enlarges it is taken. (A family's sketch keeps its chords a millimetre apart, so this arc is read here as lines,
+/// not drawn.) An edge whose numbers are formulas is greyed.
+#[test]
+fn a_handle_is_greyed_by_what_ties_it_alone() {
+    use bimcraft_core::family::handles as hs;
+    use bimcraft_core::family::sketch::FormLine;
+    let n = |x: f64| Expr::Number(x);
+    let line = |a: [f64; 2], b: [f64; 2], turn: Option<f64>| FormLine {
+        curve: FormCurve::Line { start: [n(a[0]), n(a[1])], end: [n(b[0]), n(b[1])], turn: turn.map(n) },
+        ..FormLine::line([n(0.0), n(0.0)], [n(1.0), n(0.0)])
+    };
+    // A D-shaped hole: its flat side, then its arc of radius 0.9 round to it.
+    let lines = vec![line([200.0, 199.1], [200.0, 200.9], None), line([200.0, 200.9], [200.0, 199.1], Some(180.0))];
+    let mut num = |e: &Expr| match e {
+        Expr::Number(x) => Ok(*x),
+        Expr::Formula(f) => Err(f.clone()),
+    };
+    // Out of the solid round a hole is toward the arc's centre: a millimetre that way takes it below nothing.
+    let out = [bimcraft_core::geom::P2(1.0, 0.0), bimcraft_core::geom::P2(-1.0, 0.0)]
+        .into_iter()
+        .find(|o| hs::offset_lines(&lines, 1, *o, 1.0, &mut num).is_err())
+        .expect("a way the arc shrinks");
+    assert!(hs::offset_lines(&lines, 1, out, -5.0, &mut num).is_ok(), "an enlarging drag is taken");
+    assert_eq!(crate::editor::shape_handles::greyed(&lines, 1, out, &mut num), None, "not greyed");
+    // Tied to a formula: greyed, saying so.
+    let mut tied = lines.clone();
+    if let FormCurve::Line { start, .. } = &mut tied[1].curve {
+        start[1] = Expr::Formula("W".into());
+    }
+    let mut num = |e: &Expr| match e {
+        Expr::Number(x) => Ok(*x),
+        Expr::Formula(_) => Ok(200.9),
+    };
+    assert!(crate::editor::shape_handles::greyed(&tied, 1, out, &mut num).is_some_and(|w| w.contains("formula")));
 }

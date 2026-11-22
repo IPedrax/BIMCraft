@@ -263,6 +263,7 @@ const TOP_W: &str = "00000000-0000-4000-8000-0000000000c2";
 const PATH: &str = "00000000-0000-4000-8000-0000000000d1";
 const SWEEP: &str = "00000000-0000-4000-8000-0000000000d2";
 const PROFILE: &str = "00000000-0000-4000-8000-0000000000d3";
+const PROFILE_TOP: &str = "00000000-0000-4000-8000-0000000000d4";
 
 fn plane(guid: &str, x: f64) -> Value {
     json!({"guid": guid, "start": [x, -1000, 0], "end": [x, 1000, 0], "up": [0, 0, 1]})
@@ -307,14 +308,16 @@ fn constraints_reach_a_blends_top_and_ends_and_a_sweeps_path() {
         assert!(base_xs.iter().all(|x| (x - 300.0).abs() < 1e-6), "{t}: {base_xs:?}");
         assert!(v > 0.0);
     }
-    // A sweep's path line locked to a plane follows it; a dimension to its profile's line is refused (F6d).
+    // A sweep's path line locked to a plane follows it; its profile's lines are measured among themselves (FE-12), and one
+    // locked to a plane off the profile is refused.
     let mut s = Session::new();
     let fam = |dims: Value| {
-        json!({"name": "P", "parameters": [{"name": "W", "value": 1000}], "types": {"Small": {"W": 600}, "Big": {"W": 1400}},
+        json!({"name": "P", "parameters": [{"name": "W", "value": 1000}, {"name": "D", "value": 100}],
+               "types": {"Small": {"W": 600, "D": 80}, "Big": {"W": 1400, "D": 200}},
                "ref_planes": [plane(LEFT, -500.0), plane(RIGHT, 500.0)],
                "forms": [{"guid": SWEEP, "sketch": [{"guid": PATH, "start": [-500, -400], "end": [-500, 400]}],
                           "sweep": {"profile": [{"guid": PROFILE, "start": [-50, 0], "end": [50, 0]}, {"start": [50, 0], "end": [50, 100]},
-                                                {"start": [50, 100], "end": [-50, 100]}, {"start": [-50, 100], "end": [-50, 0]}]}}],
+                                                {"guid": PROFILE_TOP, "start": [50, 100], "end": [-50, 100]}, {"start": [-50, 100], "end": [-50, 0]}]}}],
                "dimensions": dims})
     };
     run(
@@ -330,7 +333,30 @@ fn constraints_reach_a_blends_top_and_ends_and_a_sweeps_path() {
         assert!((mid + w / 2.0).abs() < 1e-6, "{t}: the path at {mid}");
     }
     let e = err(&mut Session::new(), "family", fam(json!([lock(json!({"plane": LEFT}), json!({"form": SWEEP, "line": PROFILE}))])));
-    assert!(e.contains("profile line"), "{e}");
+    assert!(e.contains("a profile's lines are measured among themselves"), "{e}");
+    // The profile's depth labelled D, in an elevation that sees the profile's plane flat: the swept solid is D tall.
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        fam(
+            json!([{"view": "front", "refs": [{"form": SWEEP, "line": PROFILE}, {"form": SWEEP, "line": PROFILE_TOP}], "at": [0, 0, 50], "label": "D"}]),
+        ),
+    );
+    for (t, d) in [("Small", 80.0), ("Big", 200.0)] {
+        let (tris, _) = solid_of(&s.model.families["P"], t);
+        let top = tris.iter().flatten().map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max);
+        let bottom = tris.iter().flatten().map(|p| p[2]).fold(f64::INFINITY, f64::min);
+        assert!((top - bottom - d).abs() < 1e-6, "{t}: the profile from {bottom} to {top}");
+    }
+    // `solve` lists the sketch (the path) in the host's axes as before, and each profile apart, in its own plane's axes.
+    let r = run(&mut s, "family", json!({"name": "P", "solve": "Big"}));
+    let form = &r["forms"][0];
+    assert_eq!(form["sketch"].as_array().map(Vec::len), Some(1), "{form}");
+    let profile = form["profiles"][0].as_array().expect("its profile");
+    let ys: Vec<f64> = profile.iter().map(|l| l["start"][1].as_f64().unwrap()).collect();
+    let span = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max) - ys.iter().copied().fold(f64::INFINITY, f64::min);
+    assert!((span - 200.0).abs() < 1e-6, "D, 200: {ys:?}");
 }
 
 /// The first piece of `f` as type `t` builds it, flexed by its constraints, and its volume.

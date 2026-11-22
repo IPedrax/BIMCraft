@@ -70,6 +70,17 @@ pub(crate) fn held_said(h: &Held, end: bool) -> String {
     }
 }
 
+/// Why line `k`'s handle (out of the solid `out`) is greyed, if it is: a number a drag of it would move is a formula or tied
+/// to a parameter, either way. Where a drag would take the profile (lines crossing, an arc below nothing) is each drag's own
+/// question, refused then (`offset_edge`), never a reason to grey the handle.
+pub(crate) fn greyed(lines: &[FormLine], k: usize, out: P2, num: &mut dyn FnMut(&Expr) -> Result<f64, String>) -> Option<String> {
+    let probes = [1.0, -1.0].map(|d| hs::offset_lines(lines, k, out, d, num));
+    if probes.iter().any(Result::is_ok) {
+        return None;
+    }
+    probes.into_iter().find(|p| *p == Err(Refused::Tied)).and_then(Result::err).map(said)
+}
+
 impl FamilyEditor {
     /// Whether a view's handles show: no tool in hand, nothing being sketched or placed.
     pub(crate) fn handles_shown(&self) -> bool {
@@ -127,7 +138,7 @@ impl FamilyEditor {
             }
             let blocked = match form.sketch.get(h.line).map(|l| drawn.edge_held(form.guid, l.guid)) {
                 Some(Some(held)) => Some(held_said(&held, false)),
-                Some(None) => hs::offset_lines(&form.sketch, h.line, h.out, 1.0, &mut num).err().map(said),
+                Some(None) => greyed(&form.sketch, h.line, h.out, &mut num),
                 None => Some(said(Refused::Invalid)),
             };
             out.push(ShapeHandle { at, way, line: h.line, out: h.out, blocked });

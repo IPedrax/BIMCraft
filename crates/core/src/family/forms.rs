@@ -88,16 +88,16 @@ impl Form {
         self.sketch.iter_mut().chain(self.top.iter_mut()).chain(sweep)
     }
 
-    /// The lines of its sketch on its host plane a constraint may measure: its sketch (a Blend's base, a sweep's path) and a
-    /// Blend's top. Its profiles are in a plane of their own, and aren't measured (F6d).
+    /// The lines of its sketches a constraint may measure: its sketch (a Blend's base, a sweep's path) and a Blend's top, on
+    /// its host plane, and a sweep's profile and a swept blend's second profile, each on its profile plane (FE-12): what
+    /// [`Form::all_lines`] has, in its order.
     pub fn plane_lines(&self) -> impl Iterator<Item = &FormLine> {
-        self.sketch.iter().chain(&self.top)
+        self.all_lines()
     }
 
     /// Line `k` of [`Form::plane_lines`], to change.
     pub fn plane_line_mut(&mut self, k: usize) -> Option<&mut FormLine> {
-        let n = self.sketch.len();
-        if k < n { self.sketch.get_mut(k) } else { self.top.get_mut(k - n) }
+        self.all_lines_mut().nth(k)
     }
 
     /// Line `k` of [`Form::plane_lines`].
@@ -105,9 +105,21 @@ impl Form {
         self.plane_lines().nth(k)
     }
 
-    /// Which group line `k` of [`Form::plane_lines`] is in: 0 its sketch, 1 its top. Vertices join within a group alone.
+    /// Which group line `k` of [`Form::plane_lines`] is in: 0 its sketch, 1 its top, 2 its (first) profile, 3 a swept
+    /// blend's second profile. Vertices join within a group alone; 2 and 3 are on their profile planes
+    /// ([`profile_frames`]), the others on its host.
     pub fn plane_group(&self, k: usize) -> usize {
-        usize::from(k >= self.sketch.len())
+        let (n, top) = (self.sketch.len(), self.top.len());
+        let profile = self.sweep.as_ref().map_or(0, |s| s.profile.len());
+        if k < n {
+            0
+        } else if k < n + top {
+            1
+        } else if k < n + top + profile {
+            2
+        } else {
+            3
+        }
     }
 }
 
