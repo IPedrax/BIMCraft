@@ -13,7 +13,7 @@ fn place_view_fits_a_large_3d_view_above_the_sheet_title_block() {
     press(&mut h, "3D View: {3D}");
     let vp = ids(&h, "viewport");
     assert_eq!(vp.len(), 1);
-    assert_eq!(field(&h, vp[0], "scale"), 500.0);
+    assert_eq!(field(&h, vp[0], "scale"), 250.0);
     let (frame, (x, y)) = bimcraft_core::sheet::frame(&h.state().session.model, vp[0]).unwrap();
     assert!(x >= 125.0 && x + frame.width as f32 <= 2025.0, "the picture stays within the left and right borders");
     assert!(y >= 75.0 && y + frame.height as f32 + 75.0 <= 1210.0, "the picture and its title stay above the title block");

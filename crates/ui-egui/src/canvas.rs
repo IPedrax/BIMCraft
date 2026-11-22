@@ -497,6 +497,14 @@ impl Canvas {
         self.cursor.is_some()
     }
 
+    /// The model point the selection was taken by, while it is being dragged to move it.
+    pub(crate) fn moving_from(&self) -> Option<P2> {
+        match self.drag {
+            Some(Drag::Move(from)) => Some(from),
+            _ => None,
+        }
+    }
+
     /// Where the primary button went down, if it came up this frame within [`QUICK`] of that: a
     /// click, whatever the hand did between, and no drag it began is to be finished.
     pub(crate) fn quick_press(&self) -> Option<Pos2> {
