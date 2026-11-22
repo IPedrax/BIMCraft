@@ -136,7 +136,7 @@ fn family_ortho_shift_constrains_a_reference_plane_drag_from_its_origin() {
 
 #[test]
 fn family_ortho_screenshots() {
-    let Ok(folder) = std::env::var("BIMCRAFT_FE2_DUMP") else { return };
+    let Ok(folder) = std::env::var("BIMCRAFT_FAMILY_ORTHO_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
     for profile in [crate::style::Profile::Rev, crate::style::Profile::BimCraft] {
         for (name, theme, light_canvas) in [

@@ -123,10 +123,10 @@ fn undo_takes_a_drawn_reference_line_away_and_redo_puts_it_back() {
 }
 
 /// The Datum panel in a wide window and, folded, in a narrow one with its list open, and a line just drawn in plan,
-/// selected, saved where `BIMCRAFT_FE11_DUMP` says (only then).
+/// selected, saved where `BIMCRAFT_REFERENCE_LINE_DUMP` says (only then).
 #[test]
 fn family_reference_line_screenshots() {
-    let Ok(folder) = std::env::var("BIMCRAFT_FE11_DUMP") else { return };
+    let Ok(folder) = std::env::var("BIMCRAFT_REFERENCE_LINE_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
     let save = |h: &mut Harness<BimApp>, name: &str| {
         h.run();
