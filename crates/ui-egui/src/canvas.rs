@@ -41,6 +41,9 @@ const SCALE: (f64, f64) = (1e-6, 50.0);
 /// click is over in a tenth of a second or so, and a drag that means to move something takes longer.
 // ponytail: one number for every hand; make it a setting if it needs tuning.
 const QUICK: f64 = 0.2;
+/// How far a box may be dragged, px each way, and still be the click where it began, however long the press: a slow click
+/// or a shaky one, which egui calls a drag once it is held past its click's time. Sketch mode's box and a family's (FE-20).
+pub(crate) const STILL: f32 = 6.0;
 
 /// A level's view: px per mm and the model point at the canvas centre.
 #[derive(Clone, Copy, Debug)]

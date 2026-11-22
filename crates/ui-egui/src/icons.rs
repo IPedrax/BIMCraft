@@ -230,6 +230,7 @@ icon_names! {
     FamilyTypes,
     LoadIntoProject,
     LoadIntoProjectClose,
+    DragOnSelection,
     Cowork,
     Script,
     Player,
@@ -627,6 +628,16 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 6.0), (4.0, 6.0)]);
             g.line(&[(12.0, 11.0), (12.0, 17.0)]);
             g.line(&[(9.0, 14.0), (15.0, 14.0)]);
+        }
+        Icon::DragOnSelection => {
+            // An element, and Move's cross over its corner: what is pressed on is its own to drag.
+            g.closed(&[(3.0, 3.0), (13.0, 3.0), (13.0, 13.0), (3.0, 13.0)]);
+            g.line(&[(16.0, 10.0), (16.0, 22.0)]);
+            g.line(&[(10.0, 16.0), (22.0, 16.0)]);
+            g.line(&[(14.0, 12.0), (16.0, 10.0), (18.0, 12.0)]);
+            g.line(&[(14.0, 20.0), (16.0, 22.0), (18.0, 20.0)]);
+            g.line(&[(12.0, 14.0), (10.0, 16.0), (12.0, 18.0)]);
+            g.line(&[(20.0, 14.0), (22.0, 16.0), (20.0, 18.0)]);
         }
         Icon::RepeatingDetail => {
             // A brick course: the same block again and again along a line.

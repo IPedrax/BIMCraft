@@ -14,6 +14,8 @@ mod nested;
 pub(crate) mod options;
 mod origin_mark;
 mod pivot;
+pub(crate) mod select_box;
+pub(crate) mod selection;
 pub(crate) mod sketch;
 pub(crate) mod tabs;
 mod temp_hide;
@@ -504,10 +506,11 @@ pub(crate) struct FamilyEditor {
     operation: Option<Operation>,
     /// Its options (Family Category and Parameters, Properties' Other group), as the document edits them (`options.rs`).
     options: options::OptionsText,
-    /// The plan symbol selected (from the Project Browser's Symbols, or made by the Detail panel), whose Properties show.
-    pub(crate) symbol: Option<usize>,
-    /// The connector selected: Properties show its rows.
-    pub(crate) connector: Option<usize>,
+    /// What is selected (FE-1, `select_box.rs`): forms, planes, lines, dimensions, symbols, connectors and nested instances,
+    /// one set; Properties show one alone's rows.
+    pub(crate) selection: select_box::Selection,
+    /// The selection's commands (FE-20, `selection.rs`): Filter's, Select by ID's and IDs of Selection's dialogs.
+    pub(crate) selecting: selection::Selecting,
     /// The connector under the pointer in a view, lit as a click would select it.
     pub(crate) connector_hover: Option<usize>,
     /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
@@ -532,8 +535,6 @@ pub(crate) struct FamilyEditor {
     pub(crate) dialog: Option<DocDialog>,
     /// The instance it was opened from (Edit Family on it), whose placement Replay Instance takes.
     source: Option<bimcraft_core::model::Id>,
-    /// The form selected (a family that isn't adaptive), whose Properties show as Revit's for an Extrusion (`extrusion.rs`).
-    form: Option<usize>,
     /// Its plans and elevations (`views.rs`): which one shows, and what each keeps for the session.
     pub(crate) views: views::Views,
     /// A form being sketched (F5, `editor/sketch.rs`): no part of the draft until Finish.
@@ -543,8 +544,6 @@ pub(crate) struct FamilyEditor {
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
     pub(crate) nested_instances: Vec<bimcraft_core::family::NestedInstance>,
-    /// The nested instance selected.
-    nested_sel: Option<usize>,
     /// Create > Component, on: the nested family and type a click places.
     pub(crate) placing: Option<(String, String)>,
     /// Opened by Edit Family on a family nested in the document under it: its loads go into that one, not the project.
@@ -636,8 +635,8 @@ impl FamilyEditor {
             ifc: f.ifc.clone(),
             operation: f.operation,
             options: options::OptionsText::of(f),
-            symbol: None,
-            connector: None,
+            selection: Default::default(),
+            selecting: Default::default(),
             connector_hover: None,
             types_dialog: Default::default(),
             picked: 0,
@@ -651,13 +650,11 @@ impl FamilyEditor {
             ask: Asked::default(),
             dialog: None,
             source: None,
-            form: None,
             views: Default::default(),
             sketch: None,
             snaps: Default::default(),
             nested: f.nested.clone(),
             nested_instances: f.nested_instances.clone(),
-            nested_sel: None,
             placing: None,
             into_host: false,
             open_nested: None,
@@ -1181,27 +1178,27 @@ fn symbol_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize) {
 }
 
 impl FamilyEditor {
-    /// The symbol selected, while it is there.
+    /// The symbol selected, while it alone is and it is there.
     pub(crate) fn selected_symbol(&self) -> Option<usize> {
-        self.symbol.filter(|i| *i < self.symbols.len())
+        match self.only_selected() {
+            Some(select_box::Picked::Symbol(i)) => Some(i),
+            _ => None,
+        }
     }
 
     /// Symbol `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
     pub(crate) fn select_symbol(&mut self, i: usize) {
-        self.let_everything_go();
-        self.symbol = Some(i);
+        self.select_only(select_box::Picked::Symbol(i));
     }
 
     /// Form `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
     pub(crate) fn select_only_form(&mut self, i: usize) {
-        self.let_everything_go();
-        self.form = Some(i);
+        self.select_only(select_box::Picked::Form(i));
     }
 
     /// Nothing selected: Properties show the family's own.
     pub(crate) fn let_everything_go(&mut self) {
-        (self.form, self.symbol, self.connector, self.nested_sel) = (None, None, None, None);
-        (self.views.plane, self.views.line, self.views.dim) = (None, None, None);
+        self.selection.clear();
     }
 
     /// A symbol of `part` added, as the Detail panel draws one, and selected so Properties show its rows.
@@ -1229,15 +1226,7 @@ impl FamilyEditor {
             return;
         }
         self.forms.swap(i, j);
-        self.form = self.form.map(|f| {
-            if f == i {
-                j
-            } else if f == j {
-                i
-            } else {
-                f
-            }
-        });
+        self.selection.forms_swapped(i, j);
     }
 
     /// Form `i` taken away, with the dimensions and locks measuring to it, as the ribbon's Delete does.
@@ -1249,22 +1238,14 @@ impl FamilyEditor {
         if !gone.is_nil() {
             self.forget_reference(gone);
         }
-        self.form = self.form.and_then(|f| match f.cmp(&i) {
-            std::cmp::Ordering::Equal => None,
-            std::cmp::Ordering::Greater => Some(f - 1),
-            std::cmp::Ordering::Less => Some(f),
-        });
+        self.selection.taken_out(select_box::Picked::Form(i));
     }
 
     /// Symbol `i` taken away.
     pub(crate) fn remove_symbol(&mut self, i: usize) {
         if i < self.symbols.len() {
             self.symbols.remove(i);
-            self.symbol = self.symbol.and_then(|s| match s.cmp(&i) {
-                std::cmp::Ordering::Equal => None,
-                std::cmp::Ordering::Greater => Some(s - 1),
-                std::cmp::Ordering::Less => Some(s),
-            });
+            self.selection.taken_out(select_box::Picked::Symbol(i));
         }
     }
 }
