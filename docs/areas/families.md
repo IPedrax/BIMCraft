@@ -127,7 +127,7 @@ shading or a rendering. Only the nearest see-through surface is blended, so a gl
 accumulate; plans and sections ignore it. Paint (`paint.rs`) is `{face: material}` in an element's `params` under `Paint`, a reserved
 name: a triangle's face is read from its winding, so every solid emits triangles turned out (`Solid::tris`, `prism`), and
 `Image::face` says which face a pixel is on. Favorites (`favorites.rs`) are a file of the user's own (`default_path`:
-`BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials; they change
+`BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials, and title blocks and their logos' pictures; they change
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
 (`editor.rs`, `editor/document.rs`) opens every family in a document of its own, with a family ribbon,
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools

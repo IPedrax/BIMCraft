@@ -273,6 +273,39 @@ impl Picture {
         self.levels.first().map_or((0, 0), |l| (l.w, l.h))
     }
 
+    /// Its pixels scaled to `w` by `h` px as straight RGBA, all opaque (a picture is kept over white): taken from the smallest
+    /// level at least that wide, each pixel the blend of the four nearest.
+    pub fn rgba(&self, w: u32, h: u32) -> Vec<u8> {
+        let (w, h) = (w.max(1) as usize, h.max(1) as usize);
+        let Some(level) = self.levels.iter().rev().find(|l| l.w >= w).or_else(|| self.levels.first()) else {
+            return vec![255; w * h * 4];
+        };
+        let (lw, lh) = (level.w.max(1), level.h.max(1));
+        let pixel = |x: i64, y: i64| -> [f64; 3] {
+            let (x, y) = (x.clamp(0, lw as i64 - 1) as usize, y.clamp(0, lh as i64 - 1) as usize);
+            match level.rgb.get((y * lw + x) * 3..(y * lw + x) * 3 + 3) {
+                Some(&[r, g, b]) => [f64::from(r), f64::from(g), f64::from(b)],
+                _ => [255.0; 3],
+            }
+        };
+        let mut out = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            let v = (y as f64 + 0.5) * lh as f64 / h as f64 - 0.5;
+            let (row, ty) = (v.floor() as i64, v - v.floor());
+            for x in 0..w {
+                let u = (x as f64 + 0.5) * lw as f64 / w as f64 - 0.5;
+                let (col, tx) = (u.floor() as i64, u - u.floor());
+                let (a, b, c, d) = (pixel(col, row), pixel(col + 1, row), pixel(col, row + 1), pixel(col + 1, row + 1));
+                for ((a, b), (c, d)) in a.into_iter().zip(b).zip(c.into_iter().zip(d)) {
+                    let (top, bottom) = (a * (1.0 - tx) + b * tx, c * (1.0 - tx) + d * tx);
+                    out.push((top * (1.0 - ty) + bottom * ty).round().clamp(0.0, 255.0) as u8);
+                }
+                out.push(255);
+            }
+        }
+        out
+    }
+
     /// An id for it among a project's pictures: the same for the same bytes, so the same picture comes in once.
     pub fn id(&self) -> String {
         let hash = self.png.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3));
