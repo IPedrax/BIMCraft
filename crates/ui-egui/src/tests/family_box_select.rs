@@ -376,3 +376,41 @@ fn near_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
     (a + ab * t).distance(p)
 }
+
+/// Looking at the result: with `BIMCRAFT_FAMILY_BOX_DUMP` naming a folder, the family's plan while a window and a crossing
+/// box are dragged, and what each took once let go, light and dark.
+#[test]
+fn box_selection_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FAMILY_BOX_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark) in [("light", false), ("dark", true)] {
+        let mut h = app(BOXES);
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().edit_family("Boxes");
+        h.run();
+        view(&mut h, Some(Which::Plan));
+        let save = |h: &mut Harness<BimApp>, what: &str| {
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("box-{what}-{name}.png"))).unwrap();
+        };
+        for (what, a, b) in
+            [("window", [400.0, 700.0, 0.0], [1000.0, 100.0, 0.0]), ("crossing", [-400.0, 500.0, 0.0], [-1400.0, 300.0, 0.0])]
+        {
+            let (a, b) = (editor(&h).views.screen_of(a).unwrap(), editor(&h).views.screen_of(b).unwrap());
+            h.hover_at(a);
+            h.run();
+            h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+            h.run();
+            for t in [0.25, 0.5, 0.75, 1.0] {
+                h.hover_at(a + (b - a) * t);
+                h.run();
+            }
+            save(&mut h, &format!("{what}-dragged"));
+            h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+            h.run();
+            h.hover_at(egui::pos2(1500.0, 950.0));
+            h.run();
+            save(&mut h, &format!("{what}-taken"));
+        }
+    }
+}
