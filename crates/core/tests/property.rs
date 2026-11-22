@@ -543,7 +543,16 @@ impl Ledger {
             let settings = SETTINGS.contains(&key.as_str());
             let mut section = self.own[t].sections.get(key).cloned().unwrap_or_default();
             for (k, v) in rules.as_object().into_iter().flatten() {
-                let under = from.get(k).is_some_and(|f| *f != From::Layer(t.into()) && *f != From::Project);
+                // A layer under it names it, whether or not this one gives it too.
+                let under = v.is_null() && settings && {
+                    let mut below = self.clone();
+                    if let Some(at) = below.amendments.iter().position(|a| a == t) {
+                        below.amendments.truncate(at);
+                    } else if let Some(o) = below.own.get_mut(t).and_then(|o| o.sections.get_mut(key)) {
+                        o.remove(k);
+                    }
+                    below.resolved(key, false).0.get(k).is_some_and(|x| !x.is_null())
+                };
                 if v.is_null() && settings && (under || starter_has(key, k) || from.get(k) == Some(&From::Project)) {
                     section.insert(k.clone(), Value::Null);
                     if let Some(ch) = self.changes.get_mut(key.as_str()) {

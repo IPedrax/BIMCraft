@@ -559,7 +559,6 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
         // The electrical settings are entries by name: a new one is added, and one a code under it names is taken away as null.
         let settings = d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key.as_str());
         let reference = def.is_some_and(|def| def.read_by.is_empty()) || settings;
-        let mine = Layer::Amendment(next.own[i].code.clone());
         let mut section = next.own[i].sections.get(&key).and_then(Value::as_object).cloned().unwrap_or_default();
         let mut set = Vec::new();
         for (k, v) in rules {
@@ -571,8 +570,18 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
                 return Err("a rule's name is 128 characters at most".into());
             }
             // A setting taken away that a code under it names, or that a new project has, is null here, so it stays away;
-            // the project's own change of it goes with it.
-            let under = resolved.from.get(&k).is_some_and(|l| *l != mine && *l != Layer::Project);
+            // the project's own change of it goes with it. A code under it names it whether or not this one gives it too:
+            // the layers under this amendment alone, without it and those over it.
+            let under = settings && v.is_null() && {
+                let mut below = next.clone();
+                let target = &below.own[i].code;
+                if let Some(at) = below.choice(d).amendments.iter().position(|a| a == target) {
+                    below.choice_mut(d).amendments.truncate(at);
+                } else if let Some(o) = below.own[i].sections.get_mut(&key).and_then(Value::as_object_mut) {
+                    o.remove(&k);
+                }
+                layered(&below, d, &key).value.get(&k).is_some_and(|v| !v.is_null())
+            };
             if v.is_null()
                 && settings
                 && (under || crate::electrical::starter_has(&key, &k) || resolved.from.get(&k) == Some(&Layer::Project))
