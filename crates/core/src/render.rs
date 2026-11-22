@@ -7140,6 +7140,19 @@ mod tests {
     }
 
     #[test]
+    fn a_ceiling_at_the_top_of_the_view_range_hides_a_beam_lying_on_it() {
+        // The view range's top is held: a ceiling there is seen, and a beam whose bottom is there too, over it, is hidden.
+        let mut s = house();
+        let top = s.model.plan_range(100000u64).top - s.model.elevation(s.model.guid(100000u64));
+        s.script(&format!(r#"beam {{"points": [[1000, 1500], [7000, 1500]], "offset": {top}, "justify": "bottom"}}"#)).unwrap();
+        let beam = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Beam(_))).map(|(id, _)| *id);
+        assert!(ceiling_plan(&s.model, 100000, 800, 600).owners.contains(&beam), "seen, at the top, {top} mm");
+        s.script(&format!(r#"ceiling {{"point": [4000, 1500], "offset": {top}}}"#)).unwrap();
+        let d = ceiling_plan(&s.model, 100000, 800, 600);
+        assert!(!d.owners.contains(&beam), "hidden by the ceiling at the top, {top} mm");
+    }
+
+    #[test]
     fn plans_draw_stairs_that_turn_ramps_and_railings() {
         let mut s = house();
         // A stair (11) turning right at a landing and its railings (12, 13); a ramp (14) turning back
