@@ -208,7 +208,7 @@ then its angle, both degrees counter-clockwise from east (`line_angle_field`), a
 typed angle stands as typed until the pointer is swept, then mirrors into the quadrant the pointer is in (60, -60, 120
 and -120 for 60), so a line is flipped without retyping it; while a length or angle is in hand, `Ctrl+A` selects that
 field for overwrite, its whole number replaced by the next digit or emptied by Backspace or Delete; Enter or a click places
-the point they show; an alignment
+the point they show. Backspace goes, in this order, to a whole-selected field, a digit typed, a chain's last point and a dimension's last reference; with none of them it deletes the selection as Delete does, since a Mac's keyboard has no Delete key (`backspace_deletes_the_selection_as_delete_does_for_a_mac_keyboard`); an alignment
 guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
 borrowed one is anchored at the point being drawn from and runs parallel or square to a straight run near it
 (`AlignmentAxis::Inferred`, `AlignmentGuideService::inferred`), so a line drawn beside a slanted wall comes out
