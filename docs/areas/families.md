@@ -1047,19 +1047,20 @@ A Blend shows its base's handles where its base is seen flat, none on its leanin
 none. Dragged, a handle offsets its edge along its normal (`offset_edge`): each straight line at its ends slides along its own
 line to meet it, one in line with it has its shared end moved with it, and an arc there still runs through its middle as
 drawn and through its ends where they now are (a D's arc grows with its flat side); an arc's handle changes its radius about its
-centre, its ends going out along their radii and the lines at them following them; a whole circle's, its radius. Only the numbers
-that move are written, as numbers; one that is a formula refuses the drag, and the rest keep their formulas. The form is made
-again from what it was at each step of the drag (live, one step of the history), the pointer read through the view as the drag
-began, so the view refitting what it frames doesn't move the drag under the hand. A drag back where it began leaves the form as typed (no
+centre, its ends going out along their radii and the lines at them following them; a whole circle's, its radius. That side
+alone moves (FE-26): only the numbers that move are written, a number as a number and a formula as itself with the move added
+(`handles::shifted`: the starter box's `Width / 2` side dragged 40 out is `(Width / 2) + 40`, folded into on the next drag and
+back to `Width / 2` when it comes back to nothing), so its parameter still moves it; the rest keep their formulas. The form is
+made again from what it was at each step of the drag (live, one step of the history), the pointer read through the view as the
+drag began. A drag back where it began leaves the form as typed (no
 step, nothing unsaved); Escape, Undo, Redo and another view or tab shown give it up, the form put back as it was (the Start and
 End drag too); the form is followed by what it is known by while the document is open, never by its place. A click on an arrow
 keeps the selection. Refused, the form left as it was and the status
-bar saying why (an edge a dimension's label measures to, or whose numbers a drag would move are formulas, `shape_handles::greyed`,
-drags its parameter instead, and one a lock, an Align lock or EQ holds has no handle: FE-25, below): a drag that leaves
+bar saying why (an edge a dimension's label measures to drags its parameter instead, and one a lock, an Align lock or EQ holds
+has no handle: FE-25, below): a drag that leaves
 no profile (a line turned back or of no length, or what `finish_check` refuses: lines crossing, overlapping, a loop open); one
 the constraints would undo (where a family is constrained, the type previewed must flex the edge to where the drag put it, the
-handles sitting where that type shows the outline, F10); and one a type can't build, as Finish checks. No snapping: the
-family's views have none for drags. Where a form's dimensions and locks put its outline,
+handles sitting where that type shows the outline, F10); and one a type can't build, as Finish checks. Where a form's dimensions and locks put its outline,
 Start or End otherwise for the type previewed than it is drawn, its Properties say so under a note naming the type (F10,
 `held_forms`), its ends a dimension sets greyed as they come to: the drawn numbers stay, and its Edit tool or the dimensions
 change them.
@@ -1081,11 +1082,28 @@ blends have no handles in any view: their shapes are their profiles' and paths',
 Edit Sweep). In every view the drag reads the pointer where the button comes up too, so a hand quicker than the frames still lands
 where it let go.
 
+FE-26 (`family/handles.rs`, `editor/shape_handles.rs`), what a drag lines up with and what stays where it is:
+
+- **Lining up.** A side or an end dragged by its handle to within `shape_handles::SNAP` (8) points of something that faces its
+  way lines up with it, mid-drag too: a reference plane (the datums too), or another form's straight side, Start or End
+  (`Family::handle_targets`, the nearest within reach by `handles::snapped`, a plane before a side at the same place). The
+  form's own sides are none of them, and nothing the view hides (Temporary Hide/Isolate) is either. A dashed line
+  runs through the held handle while it is lined up, and the status bar says so. Let go there in a plan or an elevation, Align's
+  padlock is offered, open, where the hand left it; a click on it locks the two, as Align's does, and the next click elsewhere
+  lets it go. A drag through a parameter lines up but offers no padlock (its label holds it), and {3D} lines up with none.
+- **An aligned face holds the face, not its corners.** Align and a lock write only the coordinate of a corner that moves
+  (`apply_edits` through `shift_sketch_point`, as a move does): a face aligned to a plane keeps the formula that places each of its
+  corners along it, so the side next to it dragged afterwards takes the corner along the aligned face and the solid keeps its
+  square corners.
+- **The view stays where it is.** A family view is fitted to the room the family takes up when it is first shown and when Zoom to
+  Fit asks; an edit, a drag or a copy past the room keeps the frame it had (the fit's key is the view and its size, `editor/views.rs`,
+  over the core's `Staged::fitted` and `draw_lines_at`), so a drag never zooms the view under the hand.
+
 Wherever a handle shows, it drags (FE-25, `editor/handle_params.rs`). A side or an end whose place is a parameter's, through a
 labelled dimension (`Family::edge_held`, `end_held`, which name a label before a lock or EQ on the same side, whichever dimension
-is listed first) or because its numbers are formulas naming parameters (the starter box's `Width / 2` and `Depth / 2` either way
-of its centre, an End associated with `Height`), is dragged by changing that parameter. Which is found by moving each (`drive`,
-worked out once for the draft as it is): of the parameters the side's formulas (and its neighbours') name, or the label on it,
+is listed first), or an end whose number is a formula naming parameters (an End associated with `Height`), is dragged by changing
+that parameter. A side whose numbers are formulas and that no label sets moves alone (FE-26, above). Which is found by moving each (`drive`,
+worked out once for the draft as it is): of the parameters the End's formula names, or the label on it,
 those that move it over a widening range from their value (so one flat where it starts still counts), a label's first, then a
 size (one that leaves the far side of the form that way where it is, or moves it the other way) before a position (one that moves
 both sides one way: `Offset + Width / 2` with the box centred on Offset drags Width), then as the family lists them. A name that

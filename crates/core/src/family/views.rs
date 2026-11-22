@@ -370,13 +370,25 @@ impl Staged {
     /// which, fitted, its annotation and pens are their size on paper, so the names read as a sheet's would, and grow
     /// and shrink as it is zoomed, as a project's views' do.
     pub fn draw_lines(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Lines, String> {
-        let fitted = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
+        let fitted = self.fitted(which, width, height);
+        self.draw_lines_at(which, fitted, zoom, pan)
+    }
+
+    /// View `which` fitted in a `width` by `height` picture: the frame zoom and pan start from, which a front end may keep
+    /// while what the family takes up changes (an edit then leaves the view where it was).
+    pub fn fitted(&self, which: Which, width: u32, height: u32) -> View {
+        self.frame(which, width, height, 1.0, P2(0.0, 0.0))
+    }
+
+    /// View `which` drawn as [`draw_lines`](Self::draw_lines) draws it, from frame `fitted` ([`fitted`](Self::fitted)), `zoom`
+    /// times as close, moved `pan` mm.
+    pub fn draw_lines_at(&mut self, which: Which, fitted: View, zoom: f64, pan: P2) -> Result<Lines, String> {
         let n = (crate::sheet::DENSITY / fitted.scale).clamp(1.0, 1e5);
         if let Some(g) = self.view_id(which).and_then(|id| self.model.elements.get_mut(id)).and_then(crate::graphics::graphics_mut) {
             g.scale = Some(n);
         }
         let m = &self.model;
-        let view = self.frame(which, width, height, zoom, pan);
+        let view = View { scale: fitted.scale * zoom.clamp(0.05, 50.0), cx: fitted.cx + pan.0, cy: fitted.cy + pan.1, ..fitted };
         // The reference lines, as the view sees them: seen from above in plan (and from below in the ceiling plan), across
         // an elevation where their plane is square to it, foreshortened where it isn't.
         let lines: Vec<(P2, P2)> = self.lines.iter().map(|(a, b)| (self.to_view(which, *a), self.to_view(which, *b))).collect();

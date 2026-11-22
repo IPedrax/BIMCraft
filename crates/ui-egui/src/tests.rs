@@ -7878,6 +7878,7 @@ mod family_edges_not_hull;
 mod family_exit;
 mod family_handle_params;
 mod family_handle_review;
+mod family_handle_snap;
 mod family_handles_3d;
 mod family_manage;
 mod family_nav3d;

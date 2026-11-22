@@ -549,7 +549,14 @@ impl FamilyEditor {
 
     /// Point `spot` of line `k` (of its sketch and top) of form `i` put at `p` (its host's axes): only the coordinates that
     /// change written, as numbers; the rest keep what they are, a formula too.
-    fn shift_sketch_point(&mut self, i: usize, k: usize, spot: bimcraft_core::family::Spot, p: [f64; 2], values: &BTreeMap<String, Val>) {
+    pub(super) fn shift_sketch_point(
+        &mut self,
+        i: usize,
+        k: usize,
+        spot: bimcraft_core::family::Spot,
+        p: [f64; 2],
+        values: &BTreeMap<String, Val>,
+    ) {
         use bimcraft_core::family::Spot;
         let Some(ft) = self.forms.get(i) else { return };
         let Ok(mut f) = ft.form() else { return };

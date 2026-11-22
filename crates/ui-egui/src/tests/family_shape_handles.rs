@@ -427,9 +427,9 @@ fn a_thin_slots_handle_is_not_greyed_and_takes_a_widening_drag() {
 /// A handle is greyed by what ties it (a formula, a parameter), never by where a probe's millimetre would take it: a concave
 /// arc of a hole under 2 mm across (`r` − 1 within `TOL` of nothing) isn't greyed, though a drag into the hole is refused, and a
 /// drag that enlarges it is taken. (A family's sketch keeps its chords a millimetre apart, so this arc is read here as lines,
-/// not drawn.) An edge whose numbers are formulas is greyed.
+/// not drawn.) An edge whose numbers are formulas drags too, the formula kept with the move added (FE-26).
 #[test]
-fn a_handle_is_greyed_by_what_ties_it_alone() {
+fn a_handle_is_never_greyed_by_where_a_probe_would_take_it() {
     use bimcraft_core::family::handles as hs;
     use bimcraft_core::family::sketch::FormLine;
     let n = |x: f64| Expr::Number(x);
@@ -449,8 +449,7 @@ fn a_handle_is_greyed_by_what_ties_it_alone() {
         .find(|o| hs::offset_lines(&lines, 1, *o, 1.0, &mut num).is_err())
         .expect("a way the arc shrinks");
     assert!(hs::offset_lines(&lines, 1, out, -5.0, &mut num).is_ok(), "an enlarging drag is taken");
-    assert_eq!(crate::editor::shape_handles::greyed(&lines, 1, out, &mut num), None, "not greyed");
-    // Tied to a formula: greyed, saying so.
+    // Tied to a formula: taken too, the formula kept with the move added.
     let mut tied = lines.clone();
     if let FormCurve::Line { start, .. } = &mut tied[1].curve {
         start[1] = Expr::Formula("W".into());
@@ -459,5 +458,10 @@ fn a_handle_is_greyed_by_what_ties_it_alone() {
         Expr::Number(x) => Ok(*x),
         Expr::Formula(_) => Ok(200.9),
     };
-    assert!(crate::editor::shape_handles::greyed(&tied, 1, out, &mut num).is_some_and(|w| w.contains("formula")));
+    // The arc's radius 0.9 out to 5.9 about its centre (200, 200): its start from y 200.9 to 205.9, W kept with the 5 added.
+    let moved = hs::offset_lines(&tied, 1, out, -5.0, &mut num).expect("taken");
+    match &moved[1].curve {
+        FormCurve::Line { start, .. } => assert_eq!(start, &[n(200.0), Expr::Formula("(W) + 5".into())]),
+        other => panic!("{other:?}"),
+    }
 }
