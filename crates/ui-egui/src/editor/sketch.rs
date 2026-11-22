@@ -1391,13 +1391,17 @@ impl FamilyEditor {
     }
 
     /// The handles of a selected extrusion's Start and End in view `which`, where the view sees its plane edge-on: where each
-    /// shows (the view's millimetres), whether it is End, why it can't be dragged if it can't (a parameter or a formula's, or
-    /// a dimension's label, lock or EQ holds it), and the normal it moves along. None while a tool is in hand.
-    pub(crate) fn end_handles(&self, st: &Staged, which: Which) -> Vec<(P2, bool, Option<String>, [f64; 3])> {
+    /// shows (the view's millimetres), whether it is End, why it can't be dragged if it can't (a parameter it is tied to can't be
+    /// set), the normal it moves along, and the parameters a drag goes through (FE-25). A lock or EQ holding it: none. None
+    /// while a tool is in hand.
+    pub(crate) fn end_handles(&self, st: &Staged, which: Which) -> Vec<EndHandle> {
         if !self.handles_shown() {
             return Vec::new();
         }
         let Some(i) = self.selected_form() else { return Vec::new() };
+        if self.temp_hidden_form(i) {
+            return Vec::new();
+        }
         let Some(ft) = self.forms.get(i) else { return Vec::new() };
         let Ok(f) = ft.form() else { return Vec::new() };
         if !matches!(f.kind(), FormKind::Extrusion | FormKind::Blend) || !f.mesh.is_empty() {
@@ -1411,11 +1415,18 @@ impl FamilyEditor {
         let Ok(loops) = f.loops(&mut reader(&values)) else { return Vec::new() };
         let Some(first) = loops.first() else { return Vec::new() };
         let c = bimcraft_core::geom::centroid(&first.outer);
-        let family = self.family().ok();
+        let Ok(family) = self.family() else { return Vec::new() };
         let mut out = Vec::new();
-        for (text, end, extent) in [(&ft.from, false, Extent::Start), (&ft.to, true, Extent::End)] {
+        for (text, end) in [(&ft.from, false), (&ft.to, true)] {
             if let Some(d) = crate::adaptive_editor::worth(&text_expr(text), &values) {
-                out.push((st.to_view(which, frame.point(c, d)), end, self.end_blocked(family.as_ref(), f.guid, text, extent), frame.z));
+                // Tied to a parameter, its drag goes through it; a lock or EQ holding it, no handle (FE-25).
+                let (blocked, param) = match self.drive(&family, i, super::handle_params::Target::End(end)) {
+                    super::handle_params::Drive::Free => (None, None),
+                    super::handle_params::Drive::Param(names) => (None, Some(names)),
+                    super::handle_params::Drive::Refused(why) => (Some(why), None),
+                    super::handle_params::Drive::Hidden => continue,
+                };
+                out.push((st.to_view(which, frame.point(c, d)), end, blocked, frame.z, param));
             }
         }
         out
@@ -1423,7 +1434,7 @@ impl FamilyEditor {
 
     /// Why form `form`'s end `extent` (typed `text`) can't be dragged, if it can't: a dimension's label, lock or EQ holds it, or
     /// it is a parameter's or a formula's.
-    fn end_blocked(&self, family: Option<&Family>, form: Guid, text: &str, extent: Extent) -> Option<String> {
+    pub(super) fn end_blocked(&self, family: Option<&Family>, form: Guid, text: &str, extent: Extent) -> Option<String> {
         if let Some(held) = family.filter(|_| !form.is_nil()).and_then(|f| f.end_held(form, extent)) {
             return Some(super::shape_handles::held_said(&held, true));
         }
@@ -1452,6 +1463,10 @@ impl FamilyEditor {
         Ok(())
     }
 }
+
+/// A Start or End handle: where it shows (the view's mm), whether it is End, why it can't be dragged, the normal it moves
+/// along, and the parameters its drag goes through where its number is theirs (FE-25).
+pub(crate) type EndHandle = (P2, bool, Option<String>, [f64; 3], Option<Vec<String>>);
 
 /// What the status bar asks for while a form is sketched.
 pub(crate) fn prompt(s: &FormSketch) -> &'static str {

@@ -423,23 +423,30 @@ impl Family {
     /// label, a lock or EQ, the first found. None when it is free to move.
     pub fn edge_held(&self, form: Guid, line: Guid) -> Option<Held> {
         let reporting = |l: &str| self.parameters.iter().any(|p| p.name == l && p.reporting);
-        self.dimensions.iter().find_map(|d| {
+        labelled_first(self.dimensions.iter().filter_map(|d| {
             let r = d.refs.iter().position(|r| match *r {
                 DimRef::Sketch(f, l) | DimRef::Point(f, l, _) => f == form && l == line,
                 _ => false,
             })?;
             d.holds(r, &reporting)
-        })
+        }))
     }
 
     /// What holds form `form`'s Start or End (`end`) where it is, as [`Family::edge_held`] says for a line.
     pub fn end_held(&self, form: Guid, end: Extent) -> Option<Held> {
         let reporting = |l: &str| self.parameters.iter().any(|p| p.name == l && p.reporting);
-        self.dimensions.iter().find_map(|d| {
+        labelled_first(self.dimensions.iter().filter_map(|d| {
             let r = d.refs.iter().position(|r| *r == DimRef::Form(form, end))?;
             d.holds(r, &reporting)
-        })
+        }))
     }
+}
+
+/// Of what holds a side or an end, a label first, whichever dimension is listed first: its drag goes through the label (a
+/// lock or EQ listed before it hides nothing).
+fn labelled_first(held: impl Iterator<Item = Held>) -> Option<Held> {
+    let all: Vec<Held> = held.collect();
+    all.iter().find(|h| matches!(h, Held::Label(_))).cloned().or_else(|| all.into_iter().next())
 }
 
 #[cfg(test)]
