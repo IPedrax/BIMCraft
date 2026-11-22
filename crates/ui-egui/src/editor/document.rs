@@ -456,7 +456,8 @@ impl BimApp {
     /// The title the window and its title bar give a family document: the family and its view.
     pub(crate) fn family_title(&self) -> Option<String> {
         let ed = self.active_family()?;
-        Some(format!("{} · {}", ed.title(), super::views::view_title(ed.views.shown)))
+        let view = if ed.category.is_annotation() { t("Generic Annotation").to_string() } else { super::views::view_title(ed.views.shown) };
+        Some(format!("{} · {}", ed.title(), view))
     }
 
     /// The family document's ribbon: its tabs, then the active tab's panels, folding to fit as the project's do.
@@ -541,6 +542,10 @@ impl BimApp {
             // A family that isn't adaptive is made of forms drawn in sketches, which BIMCraft doesn't have yet: its forms are
             // added and edited in Properties.
             DocTab::Create => ribbon::panel(ui, msg!("Forms"), |ui| {
+                if ed.category.is_annotation() {
+                    ui.label(t("An annotation family is two-dimensional: draw it with Symbolic Line, Text and Filled Region."));
+                    return;
+                }
                 // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend too (F6).
                 use bimcraft_core::family::forms::FormKind;
                 let tip = msg!("Extrusion: sketch a profile on the work plane, extruded along its normal");
@@ -635,25 +640,46 @@ impl BimApp {
                 // What the family's plans draw besides its forms (a door's swing): Revit's Symbolic Line and Text, and a dot. Each
                 // is made selected, its numbers typed in Properties.
                 if !adaptive {
-                    use super::Part;
+                    use super::views::SymbolKind;
                     ribbon::panel(ui, msg!("Detail"), |ui| {
-                        let tip = msg!("Symbolic Line: a line or an arc the family's plans draw, not part of its forms (a door's swing)");
-                        let r = big_button(ui, Icon::Line, msg!("Symbolic Line"), false, tip);
-                        ribbon::choices(ui, &r, false, |ui| {
-                            for (part, label) in [(Part::Line, msg!("Line")), (Part::Arc, msg!("Arc"))] {
-                                if ui.button(t(label)).clicked() {
-                                    ed.add_symbol(part);
-                                    ui.close();
-                                }
-                            }
-                        });
-                        let tip = msg!("Text: a label the family's plans draw");
-                        if big_button(ui, Icon::Text, "Text", false, tip).clicked() {
-                            ed.add_symbol(Part::Text);
+                        let drawing = ed.views.symbol.as_ref().map(|d| d.kind);
+                        let tip = msg!("Line: click its points in the plan; Enter or a double-click closes it");
+                        if big_button(ui, Icon::Line, msg!("Line"), drawing == Some(SymbolKind::Line), tip).clicked() {
+                            ed.start_symbol_draw(SymbolKind::Line, "");
                         }
-                        let tip = msg!("Dot: a filled circle the family's plans draw");
-                        if big_button(ui, Icon::PointElement, msg!("Dot"), false, tip).clicked() {
-                            ed.add_symbol(Part::Dot);
+                        let tip = msg!("Arc: click its start and its end, then a point the arc passes through");
+                        if big_button(ui, Icon::Arc, msg!("Arc"), drawing == Some(SymbolKind::Arc), tip).clicked() {
+                            ed.start_symbol_draw(SymbolKind::Arc, "");
+                        }
+                        let tip = msg!("Text: click where plain text goes, then type it in Properties");
+                        if big_button(ui, Icon::Text, "Text", drawing == Some(SymbolKind::Text), tip).clicked() {
+                            ed.start_symbol_draw(SymbolKind::Text, "");
+                        }
+                        let tip = msg!("Label: click where a label reading a parameter goes");
+                        if big_button(ui, Icon::Tag, msg!("Label"), drawing == Some(SymbolKind::Label), tip).clicked() {
+                            ed.start_symbol_draw(SymbolKind::Label, "");
+                        }
+                        let tip = msg!("Dot: click where a filled circle goes");
+                        if big_button(ui, Icon::PointElement, msg!("Dot"), drawing == Some(SymbolKind::Dot), tip).clicked() {
+                            ed.start_symbol_draw(SymbolKind::Dot, "");
+                        }
+                        let drawing_fill = ed
+                            .views
+                            .symbol
+                            .as_ref()
+                            .is_some_and(|d| d.kind == SymbolKind::Fill && !d.fill_type.eq_ignore_ascii_case("Masking"));
+                        let tip = msg!("Filled Region: click its ring's corners, then its first corner again or Enter");
+                        if big_button(ui, Icon::FilledRegion, msg!("Filled Region"), drawing_fill, tip).clicked() {
+                            ed.start_symbol_draw(SymbolKind::Fill, "");
+                        }
+                        let drawing_mask = ed
+                            .views
+                            .symbol
+                            .as_ref()
+                            .is_some_and(|d| d.kind == SymbolKind::Fill && d.fill_type.eq_ignore_ascii_case("Masking"));
+                        let tip = msg!("Masking Region: a filled region that hides the model under it");
+                        if big_button(ui, Icon::MaskingRegion, msg!("Masking Region"), drawing_mask, tip).clicked() {
+                            ed.start_symbol_draw(SymbolKind::Fill, "Masking");
                         }
                     });
                 }
@@ -713,6 +739,10 @@ impl BimApp {
                         }
                     });
                     self.open_units &= !opened;
+                    let tip = msg!("Snaps: what this family's plans stick to while its symbols are drawn");
+                    if big_button(ui, Icon::Snaps, msg!("Snaps"), ed.snaps_open, tip).clicked() {
+                        ed.snaps_open = !ed.snaps_open;
+                    }
                     let tip = msg!("Purge Unused: take out of the family the parameters and nested families nothing in it uses");
                     if big_button(ui, Icon::Delete, "Purge Unused", ed.purging(), tip).clicked() {
                         ed.ask.manage = Some(Manage::Purge);
@@ -829,8 +859,6 @@ impl BimApp {
                         {
                             ed.modeller.tool = Draw::Rotate { centre, start: None };
                         }
-                        later_small(ui, Icon::Trim, msg!("Trim/Extend"));
-                        later_small(ui, Icon::Split, msg!("Split Element"));
                     }
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
                     if ui.add_enabled_ui(some || ed.deletable(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
@@ -1268,12 +1296,18 @@ impl BimApp {
                     use bimcraft_core::family::views::{Side, Which};
                     let elevations: Vec<(Option<Which>, &str)> = Side::ALL.iter().map(|s| (Some(Which::Elevation(*s)), s.name())).collect();
                     type Entries<'a> = Vec<(Option<Which>, &'a str)>;
-                    let groups: [(&str, Entries); 4] = [
-                        (msg!("Floor Plans"), vec![(Some(Which::Plan), "Ref. Level")]),
-                        (msg!("Ceiling Plans"), vec![(Some(Which::Ceiling), "Ref. Level")]),
-                        (msg!("3D Views"), vec![(None, VIEW)]),
-                        (msg!("Elevations"), elevations),
-                    ];
+                    // An annotation family is drawn in its plan alone: no ceiling plan, no 3D view, no elevations.
+                    let annotation = self.active_family().is_some_and(|ed| ed.category.is_annotation());
+                    let groups: Vec<(&str, Entries)> = if annotation {
+                        vec![(msg!("Generic Annotation"), vec![(Some(Which::Plan), "Ref. Level")])]
+                    } else {
+                        vec![
+                            (msg!("Floor Plans"), vec![(Some(Which::Plan), "Ref. Level")]),
+                            (msg!("Ceiling Plans"), vec![(Some(Which::Ceiling), "Ref. Level")]),
+                            (msg!("3D Views"), vec![(None, VIEW)]),
+                            (msg!("Elevations"), elevations),
+                        ]
+                    };
                     let shown = self.active_family().and_then(|ed| ed.views.shown);
                     for (group, views) in groups {
                         egui::CollapsingHeader::new(t(group)).id_salt(("family-views", group)).default_open(true).show(ui, |ui| {
@@ -1382,7 +1416,11 @@ impl BimApp {
     /// button, and its view control bar at the bottom.
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.take_family() else { return };
-        ed.snaps = self.snaps_now();
+        // Its own Snaps dialog wins once it changed anything; until then the window's settings seed it.
+        if !ed.snaps_edited {
+            ed.snaps = self.snaps_now();
+        }
+        ed.snaps_dialog(ui.ctx());
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;

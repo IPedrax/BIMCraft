@@ -13,6 +13,7 @@ use bimcraft_core::units::Units;
 pub(crate) const ROOM_POINT_START: [f64; 3] = [0.0, 0.0, 300.0];
 
 /// The labels of the options' rows, in Revit's order.
+pub(crate) const SCALE_WITH_VIEW: &str = msg!("Scale with View");
 pub(crate) const WORK_PLANE_BASED: &str = msg!("Work Plane-Based");
 pub(crate) const ALWAYS_VERTICAL: &str = msg!("Always Vertical");
 pub(crate) const CUT_WITH_VOIDS: &str = msg!("Cut with Voids When Loaded");
@@ -29,6 +30,8 @@ pub(crate) const DEFAULT_ELEVATION: &str = msg!("Default Elevation");
 /// default elevation, mm.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct OptionsText {
+    /// An annotation family's: its millimetres are paper millimetres and grow with the view.
+    pub(crate) scale_with_view: bool,
     pub(crate) work_plane_based: bool,
     pub(crate) always_vertical: bool,
     pub(crate) cut_with_voids_when_loaded: bool,
@@ -46,6 +49,7 @@ impl OptionsText {
     pub(crate) fn of(f: &Family) -> OptionsText {
         let (omniclass_number, omniclass_title) = f.omniclass.as_ref().map(|o| (o.number.clone(), o.title.clone())).unwrap_or_default();
         OptionsText {
+            scale_with_view: f.scale_with_view,
             work_plane_based: f.work_plane_based,
             always_vertical: f.always_vertical,
             cut_with_voids_when_loaded: f.cut_with_voids_when_loaded,
@@ -61,6 +65,7 @@ impl OptionsText {
     /// Family `f` given these options. An OmniClass number and title both blank are none; either typed, they are one, which
     /// the family's check then reads.
     pub(crate) fn apply(&self, f: &mut Family) {
+        f.scale_with_view = self.scale_with_view;
         f.work_plane_based = self.work_plane_based;
         f.always_vertical = self.always_vertical;
         f.cut_with_voids_when_loaded = self.cut_with_voids_when_loaded;
@@ -83,6 +88,11 @@ impl FamilyEditor {
 /// The options' rows, in a two-column grid already begun: a label, then its value `w` wide, each row ended. `salt` keeps the
 /// dialog's fields apart from the palette's; `category` decides what Work Plane-Based allows and what By Category means.
 pub(crate) fn rows(ui: &mut Ui, o: &mut OptionsText, category: Category, units: Units, salt: &str, w: f32) {
+    // An annotation family's own: a paper millimetre at 1:100 is 100 millimetres in the model.
+    if category.is_annotation() {
+        tick(ui, SCALE_WITH_VIEW, &mut o.scale_with_view, true)
+            .on_hover_text(t("On: 1 × 1 at 1:100 becomes 100 × 100 in the model. Off: it stays 1 × 1 in the model."));
+    }
     let hosted = category.hosted();
     // A door's or a window's family can't be one, though one a file made so can still be turned off.
     let allowed = !hosted || o.work_plane_based;
