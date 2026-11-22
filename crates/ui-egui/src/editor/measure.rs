@@ -35,6 +35,7 @@ impl FamilyEditor {
         if self.editing_2d() && self.sketch.is_none() {
             self.drop_tools();
             self.views.measuring = Some(Measuring::default());
+            self.last_tool = Some("Measure");
         }
     }
 
@@ -117,6 +118,7 @@ impl FamilyEditor {
                 let (family, type_name) = (n.family.clone(), n.type_name.clone());
                 self.component_tool();
                 self.placing = Some((family, type_name));
+                self.last_component = self.placing.clone();
             }
         }
         Ok(())

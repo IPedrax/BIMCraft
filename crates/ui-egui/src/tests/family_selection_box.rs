@@ -1,10 +1,11 @@
 //! Selection Box in the family's {3D}, as the project's, run as Find runs it: with forms or nested instances selected, {3D} is
 //! cut to a box round them, its cut faces filled; with nothing selected it takes the box away. The view's own for the session,
-//! as its other graphics are: not saved, no step of the history, no unsaved change.
+//! as its other graphics are: not saved, no step of the history, no unsaved change; the inactive {3D} tile draws it too.
 use super::family_selection::command;
 use super::preview_visibility::{Pictures, differ, preview};
 use super::*;
 use crate::editor::select_box::Picked;
+use bimcraft_core::family::views::Which;
 
 /// Preview Visibility's Cabinet, its two forms side by side (x 0 to 1000 and 2000 to 3000), on a screen tall enough for the
 /// browser's Forms list.
@@ -47,6 +48,36 @@ fn selection_box_cuts_3d_to_a_box_round_the_form_selected_and_on_nothing_takes_i
     command(&mut h, "Section Box");
     assert!(boxed(&h).is_none());
     assert_eq!(differ(&preview(&h, &pictures), &shown), Vec::<usize>::new());
+}
+
+/// The last picture of the inactive {3D} tile.
+fn tile(h: &Harness<BimApp>, pictures: &Pictures) -> egui::ColorImage {
+    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-tile-3d");
+    let kept = pictures.0.lock().unwrap();
+    kept.iter().rev().find(|(id, _)| named(id)).map(|(_, p)| p.clone()).expect("the tile was drawn")
+}
+
+#[test]
+fn the_inactive_3d_tile_draws_the_box_too() {
+    let (mut h, pictures) = cabinet();
+    let doc = h.state().active_doc().unwrap();
+    // The first form selected in {3D}, and the tile drawn with that selection, before Selection Box: the same selection on both sides.
+    press(&mut h, "1. Extrusion");
+    super::family_views::view(&mut h, Some(Which::Plan));
+    command(&mut h, "Tile Windows");
+    h.run();
+    let whole = tile(&h, &pictures);
+    h.state_mut().open_sheet(Sheet::Family(doc, None));
+    h.run();
+    assert!(!h.state().active_family().unwrap().selected_3d().is_empty(), "still selected");
+    command(&mut h, "Section Box");
+    assert!(boxed(&h).is_some());
+    super::family_views::view(&mut h, Some(Which::Plan));
+    h.run();
+    let cut = tile(&h, &pictures);
+    let ground = whole.pixels[0];
+    let gone = differ(&whole, &cut);
+    assert!(gone.iter().filter(|&&i| cut.pixels[i] == ground).count() > 200, "Selection Box took the second form out of the tile");
 }
 
 #[test]

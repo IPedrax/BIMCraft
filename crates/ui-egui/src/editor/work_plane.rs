@@ -248,6 +248,7 @@ impl FamilyEditor {
                 By::Name => self.take_plane(base, d.target, d.chosen).err(),
                 By::Plane | By::Line if pickable => {
                     self.views.picking = Some(Picking { target: d.target, line: d.by == By::Line });
+                    self.last_tool = None;
                     None
                 }
                 By::Plane | By::Line => Some(t(off_view()).to_string()),

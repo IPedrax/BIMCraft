@@ -658,6 +658,7 @@ impl FamilyEditor {
     /// plane, unless a plan or an elevation shows it edge-on or askew; then Go To View is asked (the Work Plane dialog's,
     /// `editor/work_plane.rs`), offering the views that show it flat and {3D}, and the sketch begins in the one opened.
     pub(crate) fn create_form(&mut self, kind: FormKind, void: bool) {
+        self.last_tool = None;
         if self.adaptive.is_some() {
             return;
         }

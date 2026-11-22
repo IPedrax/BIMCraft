@@ -42,7 +42,8 @@ impl FamilyEditor {
         if self.placing.is_some() {
             self.views.modify = None;
             self.views.pasting = None;
-            self.views.measuring = None;
+            self.last_tool = Some("Component");
+            self.last_component = self.placing.clone();
         }
         if self.placing.is_some() && self.views.shown.is_none() {
             self.views.show(Some(bimcraft_core::family::views::Which::Plan));
@@ -53,6 +54,7 @@ impl FamilyEditor {
     /// is done, and the instance's Properties show (Component again places another).
     pub(crate) fn place_nested(&mut self, host: PlaneRef, at: (f64, f64), offset: f64) {
         let Some((family, type_name)) = self.placing.take() else { return };
+        self.last_component = Some((family.clone(), type_name.clone()));
         let round = |x: f64| (x * 1000.0).round() / 1000.0;
         self.nested_instances.push(NestedInstance {
             family,
@@ -462,7 +464,8 @@ pub(super) fn placing_options(ui: &mut Ui, ed: &mut FamilyEditor) {
             let on = f == family && ty == type_name;
             let shown = format!("{f} : {ty}");
             if ui.selectable_label(on, shown).clicked() {
-                ed.placing = Some((f, ty));
+                ed.placing = Some((f.clone(), ty.clone()));
+                ed.last_component = Some((f, ty));
             }
         }
     });

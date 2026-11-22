@@ -1856,6 +1856,20 @@ so a name never lies over a form's lines in a narrow plan. A project's plan with
 the same way. Tests: `tests/canvas_overlaps.rs` (with screenshots, `BIMCRAFT_CANVAS_OVERLAPS_DUMP`),
 `no_plane_name_runs_into_an_elevation_mark` and `no_plane_name_lies_over_a_forms_lines_in_a_narrow_plan` in `family/views.rs`.
 
+## Window commands
+
+The View tab's Windows panel works on a family's tabs, never on its draft. Close Inactive Views keeps the view in front and one
+tab of every other open family (the view it shows, else its last tab), floating ones included, and closes no document, so
+nothing asks to save (`BimApp::close_inactive_family_views`). Tile Windows shows this family's open views together, the
+document's own layout for the session (`Views::tiled`; Tab Windows goes back to one at a time): the view in front takes its
+input as ever, the others are pictures (`tile_view_2d`, `family_tile_3d`) each with its own cache, drawn again only when the
+draft's revision (`document::State::revision`, a step done, undone or redone) or the tile's size changes and never while a
+button is held or a field typed in, and a click on one brings its tab to the front. An adaptive family's modelling view keeps
+the whole canvas. Repeat Last Command picks the last tool the document picked up again, as it began (Reference Plane and
+Line, the dimension tools, Align, Measure, the Modify tools by their names in Find, Component with the type last placed); it
+never does an edit again, works outside a sketch and a dialog, and says why where the tool can't be used now. None has a key
+in a family yet; Find lists each on a family's tab. Tests: `tests/family_windows.rs`.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.

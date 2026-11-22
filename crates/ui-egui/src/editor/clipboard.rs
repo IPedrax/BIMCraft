@@ -270,6 +270,7 @@ impl FamilyEditor {
                 PasteMode::Manual | PasteMode::Where3D => {
                     self.put_view_tools_down();
                     self.views.pasting = Some(Pasting { clip: (**clip).clone(), anchor: None });
+                    self.last_tool = None;
                     Ok(None)
                 }
                 PasteMode::SamePlace => self.paste_elements(clip, None).map(Some),

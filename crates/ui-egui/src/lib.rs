@@ -4277,12 +4277,18 @@ impl BimApp {
         // A family document's view: its tab after the document's others (after the project's and the documents' before it),
         // and the document showing it. The project's tool, selection and views are left as they are.
         if let Sheet::Family(id, view) = sheet {
+            let prior = match self.sheet {
+                Sheet::Family(current, old) if current == id => Some(old),
+                _ => None,
+            };
             if !self.views.contains(&sheet) {
                 let at = self.views.iter().position(|s| matches!(s, Sheet::Family(d, _) if *d > id)).unwrap_or(self.views.len());
                 self.views.insert(at, sheet);
             }
             (self.sheet, self.front) = (sheet, sheet);
             if let Some(ed) = self.family_of_mut(id) {
+                let old = prior.unwrap_or(ed.views.shown);
+                ed.views.activate_tile(old, view);
                 ed.views.shown = view;
                 // What changed while another tab was in front goes from its selection.
                 ed.prune_selection();

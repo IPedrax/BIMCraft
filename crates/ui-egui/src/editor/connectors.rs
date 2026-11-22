@@ -182,6 +182,7 @@ impl FamilyEditor {
 
     /// A connector of `kind` placed, as Create > Connectors places one, and selected so Properties show its rows.
     pub(crate) fn add_connector(&mut self, kind: ConnectorKind) {
+        self.last_tool = None;
         self.connectors.push(ConnectorText::blank(kind, self.category));
         self.select_connector(self.connectors.len() - 1);
     }

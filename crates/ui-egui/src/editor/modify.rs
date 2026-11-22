@@ -81,6 +81,17 @@ pub(crate) fn found(name: &str) -> Option<Tool> {
 }
 
 impl Tool {
+    /// Whether it is the same tool as `other`, whatever has been clicked: Move as Move, Copy as Copy, one Mirror or one
+    /// Trim/Extend as the same one.
+    fn same_kind(&self, other: &Tool) -> bool {
+        match (self, other) {
+            (Tool::Move { copy: a, .. }, Tool::Move { copy: b, .. }) => a == b,
+            (Tool::Mirror { draw: a, .. }, Tool::Mirror { draw: b, .. }) => a == b,
+            (Tool::TrimTo { many: a, .. }, Tool::TrimTo { many: b, .. }) => a == b,
+            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
+        }
+    }
+
     /// Its name on the ribbon.
     pub(crate) fn label(&self) -> &'static str {
         match self {
@@ -694,6 +705,8 @@ impl FamilyEditor {
         self.placing = None;
         let selection = self.selection.items().to_vec();
         self.views.modify = Some(Modifying { tool, which: self.views.shown, typed: None, selection });
+        // The tool Repeat Last Command picks up again, by its name in Find.
+        self.last_tool = FIND.iter().find(|(_, t)| t.same_kind(&tool)).map(|(n, _)| *n);
         Ok(())
     }
 

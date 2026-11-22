@@ -568,7 +568,7 @@ pub(crate) struct FamilyEditor {
     pub(crate) zoom: zoom::Zoom,
     pub(crate) scene3d: Option<lit3d::FamilyScene>,
     /// Why the family can't be tried or made: shown under the preview.
-    problem: Option<String>,
+    pub(crate) problem: Option<String>,
     /// The document's own state: its history, its preview's size, an association being made.
     document: document::State,
     /// The family document's ribbon tab, and the one it goes back to when the contextual tab goes.
@@ -586,6 +586,10 @@ pub(crate) struct FamilyEditor {
     pub(crate) sketch: Option<Box<sketch::FormSketch>>,
     /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
     pub(crate) snaps: bimcraft_core::snap::Snaps,
+    /// The last repeatable tool picked in this document, session state outside its draft and undo history.
+    pub(crate) last_tool: Option<&'static str>,
+    /// The Component choice most recently armed or placed, including Options Bar and Create Similar.
+    pub(crate) last_component: Option<(String, String)>,
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
     /// Manage > Purge Unused, open (FE-19).
@@ -739,6 +743,8 @@ impl FamilyEditor {
             views: Default::default(),
             sketch: None,
             snaps: Default::default(),
+            last_tool: None,
+            last_component: None,
             nested: f.nested.clone(),
             purging: None,
             nested_instances: f.nested_instances.clone(),
@@ -1297,6 +1303,7 @@ impl FamilyEditor {
 
     /// A symbol of `part` added, as the Detail panel draws one, and selected so Properties show its rows.
     pub(crate) fn add_symbol(&mut self, part: Part) {
+        self.last_tool = None;
         self.symbols.push(SymbolText::blank(part));
         self.select_symbol(self.symbols.len() - 1);
     }
