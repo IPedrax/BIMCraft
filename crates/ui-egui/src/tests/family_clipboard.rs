@@ -549,3 +549,35 @@ fn a_paste_asked_on_another_tab_is_given_up() {
     assert_eq!(family(&h).forms.len(), 2, "{}", status(&h));
     assert!(!editor(&h).pasting());
 }
+
+#[test]
+fn ctrl_v_in_3d_pastes_where_the_copies_were() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Plane(g(EDGE))]);
+    ctrl_c(&mut h);
+    view(&mut h, None);
+    ctrl_v(&mut h);
+    let f = family(&h);
+    assert_eq!(f.planes.iter().filter(|p| p.start[0] == 1000.0).count(), 2, "{}", status(&h));
+    assert!(!editor(&h).pasting());
+}
+
+#[test]
+fn a_paste_following_the_pointer_draws_its_copies_once_as_the_pointer_moves() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    ctrl_c(&mut h);
+    ctrl_v(&mut h);
+    hover3(&mut h, [1300.0, 1100.0, 0.0]);
+    let built = editor(&h).views.cache_builds;
+    assert!(built >= 1);
+    for x in [900.0, 1100.0, 1500.0, 1700.0] {
+        hover3(&mut h, [x, 1100.0, 0.0]);
+    }
+    assert_eq!(editor(&h).views.cache_builds, built, "the pointer only moves what was drawn");
+    // The draft changed (a paste made): drawn again for it.
+    click3(&mut h, [1300.0, 1100.0, 0.0]);
+    ctrl_v(&mut h);
+    hover3(&mut h, [1300.0, -900.0, 0.0]);
+    assert!(editor(&h).views.cache_builds > built);
+}

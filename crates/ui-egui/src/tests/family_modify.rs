@@ -706,3 +706,28 @@ fn family_modify_screenshots() {
     command(&mut h, "Rotate");
     save(&mut h, "dimension-alone-refused");
 }
+
+#[test]
+fn a_split_line_keeps_what_measured_to_its_end_on_its_end() {
+    use bimcraft_core::family::{DimRef, Spot};
+    // A plain dimension from box A's south line's end (500, 100) to Edge (x 1000).
+    let dim = format!(
+        r#", {{"refs": [{{"form": "{A}", "line": "{A_LINE}0", "point": "end"}}, {{"plane": "{EDGE}"}}], "view": "plan", "at": [750, 0, 0]}}"#
+    );
+    let mut h = plan_of(&family_with(&dim));
+    ed(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    command(&mut h, "Split Element");
+    click(&mut h, [300.0, 100.0]);
+    let s = ed(&mut h).sketch.as_ref().unwrap();
+    assert_eq!(s.sketch.lines.len(), 5, "{}", status(&h));
+    let far =
+        s.sketch.lines.iter().find(|l| same([l.curve.end().0, l.curve.end().1], [500.0, 100.0]) && l.guid != g(&format!("{A_LINE}0")));
+    let far = far.expect("the new half, from the split to the line's end").guid;
+    press(&mut h, "Finish Edit Mode");
+    assert!(ed(&mut h).sketch.is_none(), "{}", status(&h));
+    let f = family(&h);
+    let d = f.dimensions.iter().find(|d| matches!(d.refs[0], DimRef::Point(..))).expect("the dimension");
+    assert_eq!(d.refs[0], DimRef::Point(g(A), far, Spot::End), "it measures to the same point, now the new half's end");
+    assert_eq!(d.refs[1], DimRef::Plane(g(EDGE)));
+}

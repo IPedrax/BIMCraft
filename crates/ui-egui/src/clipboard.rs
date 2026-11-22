@@ -325,9 +325,10 @@ impl BimApp {
     /// What Ctrl+V does in the view on screen: by hand where the elements can follow the cursor; in a 3D view, as asked (the
     /// same place, or by hand on the work plane); else where they were.
     fn ctrl_v_mode(&self) -> PasteMode {
-        // A family tab's: following the pointer, where its view lets it (`editor::clipboard`).
-        if self.active_family().is_some() {
-            return PasteMode::Manual;
+        // A family tab's: following the pointer in a plan, an elevation or a sketch; in its {3D}, where they were
+        // (`editor::clipboard`).
+        if let Some(ed) = self.active_family() {
+            return if ed.editing_2d() || ed.sketching() { PasteMode::Manual } else { PasteMode::SamePlace };
         }
         match self.clipboard_frame() {
             Some(Frame::ThreeD) => PasteMode::Where3D,
@@ -386,6 +387,11 @@ impl BimApp {
         // On a family tab, the family's clipboard.
         if self.active_family().is_some() {
             self.family_pasted(text, mode);
+            return;
+        }
+        // A family's copy, made since: the clipboard's last copy isn't the project's, so its older one isn't pasted.
+        if text.as_deref().is_some_and(bimcraft_core::family::clipboard::is_family_clipboard) {
+            self.status = Status { text: t("The clipboard holds a family's copy: paste it in a family tab.").into(), error: true };
             return;
         }
         let text: Option<Arc<str>> = match text {

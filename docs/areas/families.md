@@ -1009,7 +1009,8 @@ so. In sketch mode the same tools act on the lines picked (`FormSketch::edit`), 
 Rotate (about the middle of the lines picked), Mirror (a line of the sketch, a reference or a form's edge, or one drawn), Scale
 and Offset (a line clicked, toward the side clicked, Copy), Scale taking a circle's radius and an ellipse's radii with it
 (`modify::scaled`), with Trim/Extend Single Element and Trim/Extend Multiple Elements (the boundary, then each line on the part to
-keep, the project's `draw::meet` and `trim_to`) and Split Element (the line clicked cut there) beside Trim/Extend to Corner; a
+keep, the project's `draw::meet` and `trim_to`) and Split Element (the line clicked cut there, the half from its start keeping
+its GUID; a dimension or a lock to its end measures to the new half's end, `rebind_split`) beside Trim/Extend to Corner; a
 copy is a new line with a GUID of its own, never the Axis Line. A line a sketch tool moves keeps its GUID, and its formulas go as
 a moved line's do (the sketch dimensions' `driven`); a lock or an Align lock from it to what didn't move with it, added while
 sketching or the form's, is released, the status bar saying how many. Outside a sketch Trim/Extend and Split Element are greyed,
@@ -1025,7 +1026,8 @@ plane's frame is the tools' space as a plan's is (`Space::on_plane`), so `modify
 on the plane with `Camera::on` and hands it to the plans' `modify_click`: the edit, the typed distances and angles, the refusals
 and the one step are the same. A click with a tool in hand selects nothing; a drag still turns the view. While a tool is in
 hand the work plane is shown, and over the picture go the tool's marks, its rubber band and the box of each form taken where
-the click would put it (`boxed`, from `family::views::form_corners`). The tool takes what {3D} draws of the selection, so a form
+the click would put it (`boxed`, from `family::views::form_corners`), worked out once for the draft, the selection and the
+plane and only moved as the pointer moves (`Views::taken_3d`). The tool takes what {3D} draws of the selection, so a form
 hidden in the view stays, and planes and lines selected in a plan before. A tool taken in another view starts again in {3D},
 its points let go, or is put down there, saying why, where {3D} can't work with it. Mirror - Pick Axis, Offset, Scale and
 Align, which pick something of the view or lean on its depth, are greyed in {3D} with that reason. Tests:
@@ -1046,12 +1048,13 @@ again and again; the copies are added at the end of each list (a form too, so a 
 selected after, and the status bar says how many constraints were dropped. Paste from Clipboard (Ctrl+V) has the copies follow
 the pointer in the plan or elevation shown, drawn as the view draws them (`paste_preview`, through `Scene::pieces`), held by
 the middle of what has a size of its own (a plane's trace runs across the view, so with forms, lines or symbols it doesn't
-count); a click puts that middle where it is, through the drag's move of the copies (`move_picked`), so its rules hold: a
+count), drawn once for the draft, the clipboard and the view and only moved as the pointer moves (`Views::paste_ghost`); a click puts that middle where it is, through the drag's move of the copies (`move_picked`), so its rules hold: a
 number the move would change that is a formula refuses it, as a Ctrl+drag's copy does; edge-on, an extrusion's Start and End
 move. Refused, nothing is changed, the paste goes on and the status bar says why; Escape gives it up. Every type must still
 solve and build and the family pass its checks if it did. Of the Aligned options, Aligned to Selected Levels and Aligned to
 Picked Level are greyed (a family has one level, Ref. Level, which what is copied is on already); Aligned to Same Place puts
-the copies where what was copied is (from any view, {3D} too, where Paste from Clipboard is greyed); Aligned to Current View
+the copies where what was copied is (from any view, {3D} too, where Paste from Clipboard is greyed and Ctrl+V pastes Aligned
+to Same Place); Aligned to Current View
 and Aligned to Selected Views paste dimensions copied alone, without what they measure (`Clip::loose`, view-specific): each a
 new dimension measuring the same references in the view shown, or in each view ticked in a dialog that lists the views that
 can draw them (those where the family's checks pass with them), their labels, locks and EQ left behind (they hold in the view

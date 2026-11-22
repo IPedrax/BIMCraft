@@ -536,7 +536,7 @@ impl BimApp {
             }
         }
         // A family's {3D} has no Where3D question: Aligned to Same Place does it there.
-        let mode = if mode == PasteMode::Where3D { PasteMode::Manual } else { mode };
+        let mode = if mode == PasteMode::Where3D { PasteMode::SamePlace } else { mode };
         self.family_clipboard(Command::Paste(mode));
     }
 
