@@ -284,6 +284,7 @@ impl FamilyEditor {
     /// The views' tools put down for a paste: drawing, picking, dimensioning, Align, Pivot, a Modify tool, Component.
     fn put_view_tools_down(&mut self) {
         self.views.drawing = None;
+        self.views.measuring = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.aligning = None;

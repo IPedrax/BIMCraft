@@ -669,8 +669,9 @@ impl FamilyEditor {
     }
 
     /// Every tool of the views put down and the selection let go.
-    fn drop_tools(&mut self) {
+    pub(super) fn drop_tools(&mut self) {
         self.views.drawing = None;
+        self.views.measuring = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.dim_kind = DimKind::Aligned;
