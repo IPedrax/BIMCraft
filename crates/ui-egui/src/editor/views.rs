@@ -48,8 +48,15 @@ pub(crate) struct Views {
     /// The press origin, retained while Shift constrains a drag across frames.
     drag_origin: Option<P2>,
     /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
-    /// millimetres, and the normal it moves along.
-    end_drag: Option<(bool, P2, [f64; 3])>,
+    /// millimetres, the normal it moves along, and the view as it was when the drag began, which the pointer is read through
+    /// while it goes on (a drag that changes what the view frames would otherwise change its scale under the hand).
+    pub(super) end_drag: Option<EndDrag>,
+    /// A profile edge being dragged by its handle (FE-5).
+    pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
+    /// Where the selected form's profile handles were last shown on screen (FE-5).
+    pub(crate) shapes_shown: Vec<(egui::Pos2, super::shape_handles::ShapeHandle)>,
+    /// Where the selected form's Start and End handles were last shown on screen, and whether each can be dragged.
+    pub(crate) ends_shown: Vec<(egui::Pos2, bool)>,
     /// The picture shown, and what it was drawn of.
     pub(super) cache: Option<Cached>,
     /// Aligned Dimension (DI): on, with the references picked so far; Radial or Diameter Dimension too (`dim_kind`), its
@@ -90,6 +97,21 @@ pub(crate) struct Views {
     /// a click takes: Tab steps through them, as Revit's Tab does.
     pub(crate) under: Vec<Guid>,
     pub(crate) cycle: usize,
+}
+
+/// A selected extrusion's Start or End (`end`) being dragged by its handle (F5): where the pointer was (the view's
+/// millimetres), the normal it moves along, the view as the drag began (the pointer is read through it), what the end was
+/// typed before and the form's tag (what Escape puts back), and the view it is dragged in with the last pass it was drawn in.
+#[derive(Clone)]
+pub(crate) struct EndDrag {
+    pub(super) end: bool,
+    last: P2,
+    n: [f64; 3],
+    view: View,
+    pub(super) before: String,
+    pub(super) tag: u64,
+    which: Which,
+    seen: u64,
 }
 
 /// The planes the view draws under pixel `(x, y)` of `drawing` (within reach), each once, nearest first.
@@ -162,6 +184,9 @@ pub(crate) const WORK_PLANE_MARGIN: f64 = 300.0;
 pub(crate) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
 /// How far a dimension's tick reaches from its point, in points: what a padlock keeps clear of.
 const TICK: f32 = 7.0;
+
+/// How near a shape handle, in points, a press takes it.
+const HANDLE: f32 = 10.0;
 
 /// The plane a click would take where several lie on one another (F10c): lit, lighter than one selected.
 const PRESELECT: Color32 = Color32::from_rgb(110, 170, 240);
@@ -437,6 +462,20 @@ impl FamilyEditor {
     /// on, the plane being drawn; and the clicks and drags in it.
     pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect) -> Option<String> {
         let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+        // A handle's drag begun in another view, or in this one before something else was shown, is given up (FE-5).
+        let pass = ui.ctx().cumulative_pass_nr();
+        let stale = |w: Which, seen: u64| w != which || seen + 1 < pass;
+        if self.views.edge_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+            || self.views.end_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+        {
+            self.cancel_drags();
+        }
+        if let Some(d) = self.views.edge_drag.as_mut() {
+            d.seen = pass;
+        }
+        if let Some(d) = self.views.end_drag.as_mut() {
+            d.seen = pass;
+        }
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
@@ -893,36 +932,78 @@ impl FamilyEditor {
             painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
         }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
-        // a parameter or a formula, greyed.
+        // a parameter, a formula or a dimension, greyed. Its profile's edges' handles too (FE-5), drawn alike.
         let handles = if editable { self.end_handles(&c.staged, which) } else { Vec::new() };
-        for (at, end, free, n) in &handles {
-            let centre = screen(*at);
-            let towards = c.staged.to_view(which, [n[0], n[1], n[2]]) - c.staged.to_view(which, [0.0; 3]);
-            let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized() * if *end { 1.0 } else { -1.0 };
+        let shapes = match (drawn.as_ref(), family.as_ref()) {
+            (Some(d), Some(f)) if editable => self.shape_handles(d, f, &c.staged, which),
+            _ => Vec::new(),
+        };
+        let arrow = |at: P2, way: [f64; 3], free: bool| {
+            let centre = screen(at);
+            let towards = c.staged.to_view(which, way) - c.staged.to_view(which, [0.0; 3]);
+            let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized();
             let side = egui::vec2(-way.y, way.x);
             let tip = [centre + way * 9.0, centre + side * 6.0, centre - side * 6.0];
-            let colour = if *free { PICKED } else { pal().muted };
+            let colour = if free { PICKED } else { pal().muted };
             painter.add(egui::Shape::convex_polygon(tip.to_vec(), colour, Stroke::new(1.0, Color32::WHITE)));
+        };
+        for (at, end, blocked, n) in &handles {
+            let k = if *end { 1.0 } else { -1.0 };
+            arrow(*at, [n[0] * k, n[1] * k, n[2] * k], blocked.is_none());
         }
+        for h in &shapes {
+            arrow(h.at, h.way, h.blocked.is_none());
+        }
+        self.views.ends_shown = handles.iter().map(|h| (screen(h.0), h.2.is_none())).collect();
+        self.views.shapes_shown = shapes.iter().map(|h| (screen(h.at), h.clone())).collect();
+        let on_handle = |p: egui::Pos2| {
+            handles.iter().any(|h| screen(h.0).distance(p) <= HANDLE) || shapes.iter().any(|h| screen(h.at).distance(p) <= HANDLE)
+        };
         let mut problem = None;
         let mut end_moved: Option<(bool, f64)> = None;
+        let mut edge_moved: Option<[f64; 3]> = None;
         if response.drag_started_by(PointerButton::Primary)
             && let Some(p) = ui.input(|i| i.pointer.press_origin())
-            && let Some((_, end, free, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= 10.0)
         {
-            if *free {
-                self.views.end_drag = Some((*end, at_view(p), *n));
-            } else {
-                problem = Some(t("This end is tied to a parameter or worked out by a formula: change it in Family Types.").to_string());
+            if let Some((_, end, blocked, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= HANDLE) {
+                match blocked {
+                    None => {
+                        if let Some(ft) = self.selected_form().and_then(|i| self.forms.get(i)) {
+                            let before = if *end { ft.to.clone() } else { ft.from.clone() };
+                            let (last, n, tag, end) = (at_view(p), *n, ft.tag, *end);
+                            self.views.end_drag = Some(EndDrag { end, last, n, view, before, tag, which, seen: pass });
+                        }
+                    }
+                    Some(why) => problem = Some(why.clone()),
+                }
+            } else if let Some(h) = shapes
+                .iter()
+                .filter(|h| screen(h.at).distance(p) <= HANDLE)
+                .min_by(|a, b| screen(a.at).distance(p).total_cmp(&screen(b.at).distance(p)))
+                && let Some(f) = family.as_ref()
+            {
+                match self.edge_drag(h, (at_view(p), view, which, pass), f) {
+                    Ok(d) => self.views.edge_drag = Some(d),
+                    Err(e) => problem = Some(e),
+                }
             }
         }
-        if let Some((end, from, n)) = self.views.end_drag
-            && let Some(to) = response.interact_pointer_pos().map(at_view)
+        let held_at = |v: View, p: egui::Pos2| v.mm((p.x - pane.min.x, p.y - pane.min.y));
+        if let Some(EndDrag { end, last: from, n, view: then, .. }) = self.views.end_drag.clone()
+            && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
             && response.dragged_by(PointerButton::Primary)
         {
             let d = c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1));
             end_moved = Some((end, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
-            self.views.end_drag = Some((end, to, n));
+            if let Some(e) = self.views.end_drag.as_mut() {
+                e.last = to;
+            }
+        }
+        if let Some((from, then)) = self.views.edge_drag.as_ref().map(|d| (d.from, d.view))
+            && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
+            && response.dragged_by(PointerButton::Primary)
+        {
+            edge_moved = Some(c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1)));
         }
         // What a click selects (FE-1): an element, or (inner none) nothing.
         let mut select: Option<Option<Picked>> = None;
@@ -1088,6 +1169,8 @@ impl FamilyEditor {
                         .to_string());
                     }
                 }
+            } else if on_handle(p) {
+                // A click on a handle, with no drag: the selection stays.
             } else if let Some(hit) = dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
                 let lengths = match &hit {
                     Clicked::Lock(g, _) => marks
@@ -1132,11 +1215,12 @@ impl FamilyEditor {
             && self.views.aligning.is_none()
             && self.placing.is_none()
             && self.views.end_drag.is_none()
+            && self.views.edge_drag.is_none()
             && self.views.grip.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
                 free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
-                    && handles.iter().all(|h| screen(h.0).distance(*p) > 10.0)
+                    && !on_handle(*p)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
             });
@@ -1150,7 +1234,7 @@ impl FamilyEditor {
         // Ctrl; Shift leaves the selection as it is.
         if let Some(p) = response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten()
             && free
-            && handles.iter().all(|h| screen(h.0).distance(p) > 10.0)
+            && !on_handle(p)
             && grips.iter().all(|(_, at)| at.distance(p) > super::pivot::REACH)
             && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen).is_none()
             && let Some(s) = scene.as_ref()
@@ -1168,6 +1252,7 @@ impl FamilyEditor {
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.end_drag.is_none()
+            && self.views.edge_drag.is_none()
             && self.views.grip.is_none()
             && response.dragged_by(PointerButton::Primary)
         {
@@ -1207,6 +1292,15 @@ impl FamilyEditor {
             && let Err(e) = self.drag_end(end, d)
         {
             problem = Some(e);
+        }
+        if let Some(moved) = edge_moved
+            && let Err(e) = self.drag_edge_to(moved)
+        {
+            problem = Some(e);
+        }
+        // The edge let go: the form stays as the drag left it, a step of the history once the button is up.
+        if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+            self.views.edge_drag = None;
         }
         if let Some(i) = edit
             && let Err(e) = self.edit_form_sketch(i)

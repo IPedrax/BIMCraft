@@ -7882,6 +7882,7 @@ mod family_pivots;
 mod family_properties;
 mod family_reference_line;
 mod family_selection;
+mod family_shape_handles;
 mod family_sketch;
 mod family_sketch_locks;
 mod family_tabs;
