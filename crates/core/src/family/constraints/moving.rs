@@ -18,22 +18,29 @@ pub struct Moving {
     pub forms: Vec<usize>,
 }
 
-/// Why a move is refused before the constraints are asked, naming what stays (a plane by its name, else `reference plane 2`;
-/// `reference line 1`; `form 3`).
+/// What a refusal names: a plane or a reference line by GUID, a form by place; [`Family::said`] says it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Named {
+    Plane(Guid),
+    Line(Guid),
+    Form(usize),
+}
+
+/// Why a move is refused before the constraints are asked, naming what stays.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stays {
     /// A datum: Ref. Level and the two Center planes stay where they are.
-    Datum(String),
+    Datum(Named),
     /// A plane that defines the origin.
-    Origin(String),
+    Origin(Named),
     /// What a pivot turns, or a form on a plane a pivot turns.
-    Pivot(String),
+    Pivot(Named),
     /// A form's number the move would change is a formula.
-    Formula(String),
+    Formula(Named),
     /// It would leave what it is drawn on: a revolve's, a sweep's or a reference line's way off its plane.
-    Hosted(String),
+    Hosted(Named),
     /// A form of a file's triangles, which has no sketch to move.
-    Mesh(String),
+    Mesh(Named),
 }
 
 /// Why a move is refused: what stays, or the constraints.
@@ -95,7 +102,7 @@ impl Moving {
 }
 
 /// A plane's name as a refusal says it.
-fn plane_said(f: &Family, g: Guid) -> String {
+pub(super) fn plane_said(f: &Family, g: Guid) -> String {
     let named = f.planes.iter().position(|p| p.guid == g).map(|i| (i, f.planes[i].name.clone()));
     match named {
         Some((_, n)) if !n.is_empty() => n,
@@ -144,6 +151,17 @@ pub(super) fn held(rows: &[Row], x: &[f64]) -> Result<(), Unsat> {
 }
 
 impl Family {
+    /// What `n` is called in a refusal: a plane by its name, else `reference plane 2`; `reference line 1`; `form 3`.
+    pub fn said(&self, n: Named) -> String {
+        match n {
+            Named::Plane(g) => plane_said(self, g),
+            Named::Line(g) => {
+                self.lines.iter().position(|l| l.guid == g).map_or_else(|| g.to_string(), |i| format!("reference line {}", i + 1))
+            }
+            Named::Form(i) => format!("form {}", i + 1),
+        }
+    }
+
     /// What `moving` takes along moved by `d` (the family's axes, mm) for `values`: the edits that do it, what the
     /// constraints tie to it following; or why not. Worked out from where the type has them, as a drag of a plane is.
     pub fn move_by(&self, values: &BTreeMap<String, Val>, moving: &Moving, d: P3) -> Result<Vec<Edit>, MoveRefused> {
@@ -154,7 +172,7 @@ impl Family {
         let stays = |s: Stays| Err(MoveRefused::Stays(s));
         let mut pins: Vec<Pin> = Vec::new();
         for g in &moving.planes {
-            let said = plane_said(&flexed, *g);
+            let said = Named::Plane(*g);
             let Some(i) = flexed.planes.iter().position(|p| p.guid == *g && !p.datum()) else { return stays(Stays::Datum(said)) };
             let p = &flexed.planes[i];
             if p.defines_origin {
@@ -170,7 +188,7 @@ impl Family {
         for g in &moving.lines {
             let Some(i) = flexed.lines.iter().position(|l| l.guid == *g) else { continue };
             let l = &flexed.lines[i];
-            let said = format!("reference line {}", i + 1);
+            let said = Named::Line(*g);
             if l.pivot.is_some() || turning(&l.host) {
                 return stays(Stays::Pivot(said));
             }
@@ -185,7 +203,7 @@ impl Family {
         }
         for &i in &moving.forms {
             let (Some(form), Some(drawn)) = (flexed.forms.get(i), self.forms.get(i)) else { continue };
-            let said = format!("form {}", i + 1);
+            let said = Named::Form(i);
             if !form.mesh.is_empty() {
                 return stays(Stays::Mesh(said));
             }

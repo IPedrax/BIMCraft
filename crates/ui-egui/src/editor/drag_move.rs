@@ -15,13 +15,16 @@
 //! The drag is the shape handles' (FE-5): made again from the draft as it was at each step (live, one step of the history
 //! once the button is up), the pointer read through the view as it was when the drag began; a drag back where it began
 //! leaves nothing to save; Escape, Undo, Redo and another view or tab shown give it up, everything put back.
-use super::select_box::Picked;
+//!
+//! FE-4: with Ctrl held, the drag copies the selection instead (`Family::copies`), the copies moved by the same rules and
+//! selected in place of what they copy; Ctrl as the button comes up decides between a copy and a move.
+use super::select_box::{How, Picked};
 use super::sketch::reader;
 use super::*;
-use bimcraft_core::family::constraints::{Edit, MoveRefused, Moving, Stays};
+use bimcraft_core::family::constraints::{CopyRefused, Copying, Edit, MoveRefused, Moving, Named, Stays};
 use bimcraft_core::family::sketch::FormCurve;
 use bimcraft_core::family::views::Which;
-use bimcraft_core::family::{FamilyDimension, NestedInstance, Val};
+use bimcraft_core::family::{DimRef, Family, FamilyDimension, NestedInstance, Unsat, Val};
 use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Guid;
 
@@ -35,6 +38,9 @@ struct Kept {
     symbols: Vec<SymbolText>,
     connectors: Vec<connectors::ConnectorText>,
     nested_instances: Vec<NestedInstance>,
+    /// The parameters and the types' values, which a lone plane's drag through a label changes (F4).
+    params: Vec<ParamText>,
+    types: Vec<(String, BTreeMap<String, String>)>,
 }
 
 impl Kept {
@@ -47,6 +53,8 @@ impl Kept {
             symbols: ed.symbols.clone(),
             connectors: ed.connectors.clone(),
             nested_instances: ed.nested_instances.clone(),
+            params: ed.params.clone(),
+            types: ed.types.clone(),
         }
     }
 
@@ -58,6 +66,8 @@ impl Kept {
         ed.symbols.clone_from(&self.symbols);
         ed.connectors.clone_from(&self.connectors);
         ed.nested_instances.clone_from(&self.nested_instances);
+        ed.params.clone_from(&self.params);
+        ed.types.clone_from(&self.types);
     }
 }
 
@@ -76,6 +86,21 @@ pub(crate) struct MoveDrag {
     /// Whether the family passed its checks (`Family::check`) as it was: then a move that fails them is refused.
     sound: bool,
     last: [f64; 3],
+    /// What was selected as it began: what a copy's preview, a refusal and Escape put back.
+    selected: Vec<Picked>,
+    /// Whether it copies (Ctrl held, FE-4) rather than moves: Ctrl as the button comes up decides.
+    copy: bool,
+    /// A lone plane of the family's own, pressed with Ctrl (FE-4): moved, it goes as F4's drag takes it, square to itself
+    /// through its constraints.
+    lone: Option<Guid>,
+}
+
+impl MoveDrag {
+    /// The draft and the selection put back as they were as it began.
+    fn put_back(&self, ed: &mut FamilyEditor) {
+        self.before.put_back(ed);
+        ed.selection.apply(&self.selected, How::Replace);
+    }
 }
 
 /// The drag's way in the view, from where the button went down (the view's millimetres): what the selection moves by.
@@ -86,15 +111,79 @@ pub(super) fn delta(from: P2, to: P2, shift: bool) -> P2 {
     P2(to.0 - from.0, to.1 - from.1)
 }
 
-/// What a refusal before the constraints says.
-fn stays_said(s: &Stays) -> String {
+/// What a copy's refusal says (FE-4), naming what isn't copied in `f`.
+fn copy_said(r: &CopyRefused, f: &Family) -> String {
+    match r {
+        CopyRefused::Datum(n) => tf("{} is a datum: it isn't copied.", &[&f.said(*n)]),
+        CopyRefused::Origin(n) => tf("{} defines the origin: it isn't copied.", &[&f.said(*n)]),
+        CopyRefused::Pivot(n) => tf("{} turns about a pivot, or is drawn on what does: it isn't copied.", &[&f.said(*n)]),
+    }
+}
+
+/// Where what a copy put in the draft came from (FE-4): a refusal names the original, in the lists as they were before the
+/// copies, never a copy, which isn't there once it is refused. As it is (`default`), each thing is itself.
+#[derive(Default)]
+struct Origin {
+    /// Each form's place before the copies (a copy's, its original's); none, as it is.
+    forms: Option<Vec<usize>>,
+    /// The copies added at the end of a list: how long it was, and the original of each.
+    symbols: (usize, Vec<usize>),
+    connectors: (usize, Vec<usize>),
+    nested: (usize, Vec<usize>),
+    dimensions: (usize, Vec<usize>),
+    /// A copied plane's or line's GUID, and its original's.
+    guids: BTreeMap<Guid, Guid>,
+}
+
+impl Origin {
+    fn back((before, of): &(usize, Vec<usize>), i: usize) -> usize {
+        i.checked_sub(*before).and_then(|k| of.get(k).copied()).unwrap_or(i)
+    }
+
+    fn form(&self, i: usize) -> usize {
+        self.forms.as_ref().and_then(|f| f.get(i).copied()).unwrap_or(i)
+    }
+
+    fn named(&self, n: Named) -> Named {
+        match n {
+            Named::Plane(g) => Named::Plane(self.guids.get(&g).copied().unwrap_or(g)),
+            Named::Line(g) => Named::Line(self.guids.get(&g).copied().unwrap_or(g)),
+            Named::Form(i) => Named::Form(self.form(i)),
+        }
+    }
+
+    fn dimension(&self, k: usize) -> usize {
+        Origin::back(&self.dimensions, k)
+    }
+
+    /// `u` naming the originals of the dimensions it names.
+    fn unsat(&self, u: &Unsat) -> String {
+        u.renumbered(&|k| self.dimension(k)).message
+    }
+}
+
+/// How a refusal names what it is about: the family as the drag found it (before any copy) and where each copy came from.
+struct Names<'a> {
+    family: &'a Family,
+    origin: &'a Origin,
+}
+
+impl Names<'_> {
+    fn said(&self, n: Named) -> String {
+        self.family.said(self.origin.named(n))
+    }
+}
+
+/// What a refusal before the constraints says, naming it as `names` does.
+fn stays_said(s: &Stays, names: &Names) -> String {
+    let said = |n: &Named| names.said(*n);
     match s {
-        Stays::Datum(n) => tf("{} is a datum: it stays where it is.", &[n]),
-        Stays::Origin(n) => tf("{} defines the origin: it stays where it is.", &[n]),
-        Stays::Pivot(n) => tf("{} turns about its pivot: turn it by its rotate grip.", &[n]),
-        Stays::Formula(n) => tf("A number of {} the move would change is worked out by a formula: change it in Family Types.", &[n]),
-        Stays::Hosted(n) => tf("{} would leave the plane it is drawn on: move that plane with it.", &[n]),
-        Stays::Mesh(n) => tf("{} is a file's triangles: it has no sketch to move.", &[n]),
+        Stays::Datum(n) => tf("{} is a datum: it stays where it is.", &[&said(n)]),
+        Stays::Origin(n) => tf("{} defines the origin: it stays where it is.", &[&said(n)]),
+        Stays::Pivot(n) => tf("{} turns about its pivot: turn it by its rotate grip.", &[&said(n)]),
+        Stays::Formula(n) => tf("A number of {} the move would change is worked out by a formula: change it in Family Types.", &[&said(n)]),
+        Stays::Hosted(n) => tf("{} would leave the plane it is drawn on: move that plane with it.", &[&said(n)]),
+        Stays::Mesh(n) => tf("{} is a file's triangles: it has no sketch to move.", &[&said(n)]),
     }
 }
 
@@ -116,7 +205,14 @@ impl FamilyEditor {
     /// A move of the selection begun at `from` (the view's millimetres, `view` as it was then) in view `which`, drawn in pass
     /// `seen`.
     /// `shown`: what of the selection the view shows, which alone moves.
-    pub(super) fn move_drag(&self, (from, view, which, seen): (P2, bimcraft_core::render::View, Which, u64), shown: &[Picked]) -> MoveDrag {
+    /// `copy`: Ctrl held as it begins, a copy (FE-4).
+    pub(super) fn move_drag(
+        &self,
+        (from, view, which, seen): (P2, bimcraft_core::render::View, Which, u64),
+        shown: &[Picked],
+        copy: bool,
+        lone: Option<Guid>,
+    ) -> MoveDrag {
         // The types that don't solve or build as it is: a move isn't refused for them.
         let broken = self
             .family()
@@ -129,7 +225,21 @@ impl FamilyEditor {
             })
             .unwrap_or_default();
         let items = self.selection.items().iter().copied().filter(|p| self.holds(*p) && shown.contains(p)).collect();
-        MoveDrag { which, seen, from, view, items, before: Kept::of(self), broken, sound: self.sound(), last: [0.0; 3] }
+        let selected = self.selection.items().to_vec();
+        MoveDrag {
+            which,
+            seen,
+            from,
+            view,
+            items,
+            before: Kept::of(self),
+            broken,
+            sound: self.sound(),
+            last: [0.0; 3],
+            selected,
+            copy,
+            lone,
+        }
     }
 
     /// Whether the selection is being dragged.
@@ -137,22 +247,51 @@ impl FamilyEditor {
         self.views.moving.is_some()
     }
 
+    /// Whether the selection being dragged is copied (Ctrl held, FE-4), not moved.
+    pub(crate) fn copying(&self) -> bool {
+        self.views.moving.as_ref().is_some_and(|d| d.copy)
+    }
+
     /// The selection being dragged, the pointer `d` (the family's mm) from where the button went down: the draft made again
-    /// from what it was with the selection moved that far, where everything it holds takes it; else left as it was, saying
-    /// why.
-    pub(crate) fn drag_move_to(&mut self, d: [f64; 3]) -> Result<(), String> {
+    /// from what it was with the selection moved that far, or with copies of it put there and selected in its place where
+    /// `copy` (Ctrl held, FE-4), where everything it holds takes it; else left as it was, saying why.
+    pub(crate) fn drag_move_to(&mut self, d: [f64; 3], copy: bool) -> Result<(), String> {
         let Some(drag) = self.views.moving.as_mut() else { return Ok(()) };
-        if !d.iter().all(|v| v.is_finite()) || d.iter().zip(drag.last).all(|(a, b)| (a - b).abs() < 1e-9) {
+        if !d.iter().all(|v| v.is_finite()) || (drag.copy == copy && d.iter().zip(drag.last).all(|(a, b)| (a - b).abs() < 1e-9)) {
             return Ok(());
         }
-        drag.last = d;
+        (drag.last, drag.copy) = (d, copy);
         let drag = drag.clone();
-        drag.before.put_back(self);
-        // Back where it began: the draft exactly as it was, so the drag leaves nothing to save.
+        drag.put_back(self);
+        // Back where it began: the draft exactly as it was, so the drag leaves nothing to save (a copy there makes none).
         if d.iter().all(|v| v.abs() < 1e-9) {
             return Ok(());
         }
-        let done = self.move_picked(&drag.items, d, &drag.broken).and_then(|()| {
+        let mut chosen = None;
+        let as_it_was = self.family()?;
+        let done = if copy {
+            self.copy_picked(&drag.items).and_then(|(moved, selected, origin)| {
+                chosen = Some(selected);
+                // A refusal names what is copied, not its copy, which isn't there once it is refused.
+                self.move_picked(&moved, d, &drag.broken, &Names { family: &as_it_was, origin: &origin })
+            })
+        } else if let Some(g) = drag.lone {
+            // A lone plane pressed with Ctrl and let go without it: F4's drag, as without Ctrl.
+            match self.plane_dragged(g, d) {
+                Err(Ok((e, at))) => {
+                    // What holds it asks, as F4's drag does, and the drag ends.
+                    drag.put_back(self);
+                    self.views.moving = None;
+                    self.unsatisfied(e, super::dimensions::Retry::Drag(g, at));
+                    return Ok(());
+                }
+                Err(Err(e)) => Err(e),
+                Ok(()) => Ok(()),
+            }
+        } else {
+            self.move_picked(&drag.items, d, &drag.broken, &Names { family: &as_it_was, origin: &Origin::default() })
+        };
+        let done = done.and_then(|()| {
             // What it leaves must pass the family's checks, a reference line still on its plane among them, if it did before.
             if drag.sound
                 && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
@@ -161,10 +300,124 @@ impl FamilyEditor {
             }
             Ok(())
         });
-        if done.is_err() {
-            drag.before.put_back(self);
+        match (&done, chosen) {
+            (Err(_), _) => drag.put_back(self),
+            // The copies selected in place of what they copy.
+            (Ok(()), Some(copies)) => self.selection.apply(&copies, How::Replace),
+            (Ok(()), None) => {}
         }
         done
+    }
+
+    /// The drag let go with Ctrl held or not (`copy`): made again that way if it was the other (FE-4: Ctrl as the button
+    /// comes up decides).
+    pub(crate) fn settle_drag(&mut self, copy: bool) -> Result<(), String> {
+        match self.views.moving.as_ref() {
+            Some(d) if d.copy != copy => {
+                let last = d.last;
+                self.drag_move_to(last, copy)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Copies of `items` made where they are (FE-4, `Family::copies`) and added to the draft: what then moves (every copy,
+    /// the dimensions that hold constraints among them too), what is selected after (the copies of `items`), and where each
+    /// came from. A form's copy goes right after it, so a void's cuts what its original cuts; the rest go at the end.
+    fn copy_picked(&mut self, items: &[Picked]) -> Result<(Vec<Picked>, Vec<Picked>, Origin), String> {
+        let f = self.family()?;
+        let mut c = Copying::default();
+        for p in items {
+            match *p {
+                Picked::Plane(g) => c.planes.push(g),
+                Picked::Line(g) => c.lines.push(g),
+                Picked::Form(i) => c.forms.push(i),
+                Picked::Symbol(i) => c.symbols.push(i),
+                Picked::Connector(i) => c.connectors.push(i),
+                Picked::Nested(i) => c.nested.push(i),
+                Picked::Dimension(g) => c.dimensions.push(g),
+            }
+        }
+        let copies = f.copies(&c).map_err(|r| copy_said(&r, &f))?;
+        let mut origin = Origin { guids: copies.guids.iter().map(|(a, b)| (*b, *a)).collect(), ..Origin::default() };
+        let mut moved = Vec::new();
+        // The forms again, each copy after its original.
+        let mut forms = Vec::with_capacity(self.forms.len() + copies.forms.len());
+        let mut was = Vec::with_capacity(forms.capacity());
+        for (i, ft) in self.forms.iter().enumerate() {
+            forms.push(ft.clone());
+            was.push(i);
+            if let Some(k) = c.forms.iter().position(|j| *j == i)
+                && let Some(form) = copies.forms.get(k)
+            {
+                moved.push(Picked::Form(forms.len()));
+                forms.push(ft.copied(form));
+                was.push(i);
+            }
+        }
+        self.forms = forms;
+        origin.forms = Some(was);
+        for p in copies.planes {
+            moved.push(Picked::Plane(p.guid));
+            self.planes.push(p);
+        }
+        for l in copies.lines {
+            moved.push(Picked::Line(l.guid));
+            self.lines.push(l);
+        }
+        origin.symbols = (self.symbols.len(), c.symbols.clone());
+        for y in &copies.symbols {
+            moved.push(Picked::Symbol(self.symbols.len()));
+            self.symbols.push(SymbolText::of(y));
+        }
+        origin.connectors = (self.connectors.len(), c.connectors.clone());
+        for k in &copies.connectors {
+            moved.push(Picked::Connector(self.connectors.len()));
+            self.connectors.push(connectors::ConnectorText::of(k));
+        }
+        origin.nested = (self.nested_instances.len(), c.nested.clone());
+        for n in copies.nested {
+            moved.push(Picked::Nested(self.nested_instances.len()));
+            self.nested_instances.push(n);
+        }
+        let mut selected: Vec<Picked> = moved.clone();
+        origin.dimensions = (self.dimensions.len(), copies.dimensions_of.clone());
+        for m in copies.dimensions {
+            moved.push(Picked::Dimension(m.guid));
+            if copies.selected.contains(&m.guid) {
+                selected.push(Picked::Dimension(m.guid));
+            }
+            self.dimensions.push(m);
+        }
+        if moved.is_empty() {
+            return Err(t("Nothing selected here can be copied.").to_string());
+        }
+        Ok((moved, selected, origin))
+    }
+
+    /// Plane `g` moved by `d` (the family's axes) as F4's drag moves it: along its normal, through the constraints where
+    /// a dimension measures to it (a label it changes taking the new length), else by itself, the reference lines on it
+    /// with it. Refused by the constraints, why and where it was going (for F4's dialog); else what went wrong.
+    #[allow(clippy::type_complexity)]
+    fn plane_dragged(&mut self, g: Guid, d: [f64; 3]) -> Result<(), Result<(Unsat, f64), String>> {
+        let f = self.family().map_err(Err)?;
+        let Some(p) = f.planes.iter().find(|p| p.guid == g) else { return Ok(()) };
+        let n = p.frame().z;
+        let dot = |a: [f64; 3]| a[0] * n[0] + a[1] * n[1] + a[2] * n[2];
+        let along = dot(d);
+        let held = f.constrained() && f.dimensions.iter().any(|m| m.refs.contains(&DimRef::Plane(g)));
+        if held {
+            let at = dot(p.start) + along;
+            let edits = f.drag_plane(&self.values(), g, at).map_err(|e| Ok((e, at)))?;
+            self.apply_edits(edits);
+        } else if let Some(p) = self.planes.iter_mut().find(|p| p.guid == g) {
+            for (i, k) in n.iter().enumerate() {
+                p.start[i] += k * along;
+                p.end[i] += k * along;
+            }
+            carry_lines(&mut self.lines, g, std::array::from_fn(|i| n[i] * along));
+        }
+        Ok(())
     }
 
     /// Whether the draft passes the family's checks (`Family::check`, its materials aside): what a drag must leave it doing.
@@ -176,7 +429,7 @@ impl FamilyEditor {
     pub(super) fn cancel_move(&mut self) -> bool {
         match self.views.moving.take() {
             Some(d) => {
-                d.before.put_back(self);
+                d.put_back(self);
                 true
             }
             None => false,
@@ -185,7 +438,8 @@ impl FamilyEditor {
 
     /// `items` moved by `d` (the family's axes): planes, lines and forms through the constraints, the rest placed again;
     /// then each type solved and built. Refused, why; the caller puts the draft back.
-    fn move_picked(&mut self, items: &[Picked], d: [f64; 3], broken: &[String]) -> Result<(), String> {
+    /// A refusal names what it is about as `names` does.
+    fn move_picked(&mut self, items: &[Picked], d: [f64; 3], broken: &[String], names: &Names) -> Result<(), String> {
         let f = self.family()?;
         let values = self.values();
         let mut moving = Moving::default();
@@ -199,8 +453,8 @@ impl FamilyEditor {
         }
         if !moving.is_empty() {
             let edits = f.move_by(&values, &moving, d).map_err(|e| match e {
-                MoveRefused::Stays(s) => stays_said(&s),
-                MoveRefused::Unsat(u) => u.message,
+                MoveRefused::Stays(s) => stays_said(&s, names),
+                MoveRefused::Unsat(u) => names.origin.unsat(&u),
             })?;
             let (points, rest): (Vec<Edit>, Vec<Edit>) = edits.into_iter().partition(|e| matches!(e, Edit::Point(..)));
             self.apply_edits(rest);
@@ -234,7 +488,8 @@ impl FamilyEditor {
                     let dot = |a: [f64; 3]| own[0] * a[0] + own[1] * a[1] + own[2] * a[2];
                     let [x, y] = &mut n.at;
                     if !(shifted(x, dot(fr.x)) && shifted(y, dot(fr.y)) && shifted(&mut n.offset, dot(fr.z))) {
-                        return Err(refused(tf("nested instance {}", &[&(i + 1).to_string()])));
+                        let was = Origin::back(&names.origin.nested, i);
+                        return Err(refused(tf("nested instance {}", &[&(was + 1).to_string()])));
                     }
                 }
                 Picked::Symbol(i) => {
@@ -252,7 +507,8 @@ impl FamilyEditor {
                         ok &= by(&mut c.centre);
                     }
                     if !ok {
-                        return Err(refused(tf("symbol {}", &[&(i + 1).to_string()])));
+                        let was = Origin::back(&names.origin.symbols, i);
+                        return Err(refused(tf("symbol {}", &[&(was + 1).to_string()])));
                     }
                     self.symbols[i] = SymbolText::of(&y);
                 }
@@ -261,7 +517,8 @@ impl FamilyEditor {
                     let mut c = c.connector();
                     if let Some(at) = c.at.as_mut() {
                         if !at.iter_mut().zip(d).all(|(e, by)| shifted(e, by)) {
-                            return Err(refused(tf("connector {}", &[&(i + 1).to_string()])));
+                            let was = Origin::back(&names.origin.connectors, i);
+                            return Err(refused(tf("connector {}", &[&(was + 1).to_string()])));
                         }
                         self.connectors[i] = connectors::ConnectorText::of(&c);
                     }
@@ -281,7 +538,7 @@ impl FamilyEditor {
         for name in f.types.keys().filter(|n| !broken.contains(n)) {
             let values = f.values(name, &BTreeMap::new())?;
             if let Err(e) = f.solve(&values) {
-                return Err(format!("{name}: {e}"));
+                return Err(format!("{name}: {}", names.origin.unsat(&e)));
             }
             if let Err(e) = f.pieces(&values) {
                 return Err(format!("{name}: {e}"));

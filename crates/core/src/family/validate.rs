@@ -30,6 +30,15 @@ pub(crate) fn problems(f: &Family, has_material: &dyn Fn(&str) -> bool) -> (Vec<
             .filter(|p| p.reporting && !f.dimensions.iter().any(|d| d.label.as_deref() == Some(p.name.as_str())))
             .map(|p| format!("parameter `{}` reports no dimension: it holds its value", p.name)),
     );
+    // One reported by more than one dimension (a file from before that was refused) reads the last.
+    warnings.extend(f.reported_twice().into_iter().map(|(name, dims)| {
+        let all: Vec<String> = dims.iter().map(|k| (k + 1).to_string()).collect();
+        format!(
+            "parameter `{name}` is reported by dimensions {}: it reads dimension {}, the last; a reporting parameter is one dimension's",
+            all.join(", "),
+            dims.last().map_or(0, |k| k + 1)
+        )
+    }));
     (errors, warnings)
 }
 

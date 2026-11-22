@@ -702,7 +702,16 @@ impl FamilyEditor {
 
     /// The selected dimension's label set (`None`: taken off). Refused as over-constrained where it adds nothing to what holds
     /// the planes already.
+    /// A reporting parameter is one dimension's: one another dimension reports already is refused.
     pub(crate) fn set_label(&mut self, g: Guid, label: Option<String>) -> Result<(), String> {
+        if let Some(l) = label.as_deref()
+            && self.params.iter().any(|p| p.name == l && p.original.reporting)
+        {
+            let sketched = self.sketch.as_ref().map(|s| s.dims.as_slice()).unwrap_or_default();
+            if let Some(k) = self.dimensions.iter().chain(sketched).position(|d| d.guid != g && d.label.as_deref() == Some(l)) {
+                return Err(tf("Dimension {} reports `{}` already: a reporting parameter is one dimension's.", &[&(k + 1).to_string(), l]));
+            }
+        }
         self.try_dimensions(|dims| {
             if let Some(d) = dims.iter_mut().find(|d| d.guid == g) {
                 d.label = label;

@@ -146,6 +146,11 @@ struct FormText {
 static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
+    /// A copy of it (FE-4): `f`, the copy's form (new GUIDs), with what is typed as it is, and a tag of its own.
+    pub(crate) fn copied(&self, f: &Form) -> FormText {
+        FormText { original: f.clone(), host: f.host, tag: TAGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1, ..self.clone() }
+    }
+
     /// Form `f` as typed again, keeping the tag `tag` it is known by while the document is open.
     pub(crate) fn again(f: &Form, tag: u64) -> FormText {
         FormText { tag, ..FormText::of(f) }

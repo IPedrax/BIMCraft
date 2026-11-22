@@ -17344,6 +17344,9 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
     }
     // Its dimensions: the whole list replaced, one patched by its id or GUID (one given neither is added), some taken away.
+    // A reporting parameter is one dimension's: a label that makes it two is refused, while one a file brings stays (it
+    // warns, `reported_twice`).
+    let twice_before = f.reported_twice();
     if let Some(v) = p.get("dimensions").filter(|v| !v.is_null()) {
         let mut dims: Vec<crate::family::FamilyDimension> = serde_json::from_value(v.clone()).map_err(|e| field("dimensions", e))?;
         crate::library::keep_parts(&mut f.dimensions, &mut dims);
@@ -17356,6 +17359,18 @@ fn family(s: &mut Session, p: &Value) -> R {
             f.dimensions.push(d);
         } else {
             patches.dimensions_patched.push(patch_part(c, &name, &mut f.dimensions, v, "dimension")?);
+        }
+    }
+    if !loading {
+        for (label, dims) in f.reported_twice() {
+            let was = twice_before.iter().find(|(l, _)| *l == label).map_or(1, |(_, d)| d.len());
+            if dims.len() > was {
+                let (first, last) = (dims.first().map_or(0, |k| k + 1), dims.last().map_or(0, |k| k + 1));
+                return Err(bad(
+                    c,
+                    format!("dimension {last}: dimension {first} reports `{label}` already; a reporting parameter is one dimension's"),
+                ));
+            }
         }
     }
     match p.get("delete_dimension") {

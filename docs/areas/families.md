@@ -832,7 +832,8 @@ the box takes, Shift takes it away, else it is the selection; a click on an elem
 one, and a click on nothing with either keeps the selection. The middle button still pans, and a drag with a tool in hand is the
 tool's. A drag from an element's edge (one a form or a nested instance is drawn with, a plane's trace, a reference line, a
 connector) is the element's and draws no box: it selects the element if it isn't selected, alone or added with Ctrl (Shift
-leaves the selection be), and moves the selection (FE-7, below). The face of a form or a nested instance that isn't
+leaves the selection be), and moves the selection (FE-7, below), or with Ctrl copies it (FE-4).
+The face of a form or a nested instance that isn't
 selected is the box's to begin in, so a
 box can be drawn inside one, unless Drag Elements on Selection is on (below), when a face that selects is its element's as an
 edge is; the face of one selected is its own either way, and draws no box (`Scene::held_face`). What a face does is Select
@@ -925,8 +926,43 @@ step, the pointer read through the view as the drag began; a drag back where it 
 another view or tab shown give it up, everything put back. Handles, grips and padlocks keep their drags, and a drag from nothing
 its box. Over something selected the status bar says a drag moves it. Shift on an element not selected neither moves
 it nor draws a box, as before; on one selected it moves the selection. Known, as Align and a plane's drag have it: an arc a
-constraint turns while what it follows moves is given its turn as a number, its formula lost. Shift (Ortho, FE-2) isn't wired yet: the delta is worked
-out in one place (`drag_move::delta`) for it. Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
+constraint turns while what it follows moves is given its turn as a number, its formula lost. Shift (Ortho, FE-2) keeps the move
+square to the view's axes, from where the drag began: the delta is worked out in one place (`drag_move::delta`). Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
+
+FE-4 (`editor/drag_move.rs`, `family/constraints/copying.rs`): Ctrl held as such a drag is let go copies the selection there
+instead: the copies follow the pointer, selected in place of the originals while Ctrl is held (the
+originals selected and moving while it isn't, so the preview says which), and once the button is up they are added as one step
+of the history and stay the selection; the originals stay where they were. Ctrl may be pressed or let go during the drag: Ctrl as
+the button comes up decides (`settle_drag`). Ctrl on an element not selected adds it first, as FE-7 has it, and a Ctrl-click
+without a drag still adds or takes away (FE-1); with Ctrl, a lone plane of the family's own is copied by the same drag, not F4's
+(let go of Ctrl mid-drag, it moves as F4's drag moves it, through `drag_plane` where a dimension measures to it, a label taking
+the new length, and F4's Constraints Not Satisfied asking where they hold it). `Family::copies` (`Copying`, `Copies`) makes the copies
+where the originals are: a form with a new GUID and a new one for every line of its sketch, top and profiles (its formulas and
+what is typed for it as they are, `FormText::copied`), a reference plane or line (a plane's name and a named reference, Left
+through Top, being one plane's, the copy has neither), a symbol, a connector and a nested instance (the same type, a new GUID),
+ids left to be given; what a copy is drawn on is the copy of it where that is copied too. A form's copy goes into the list right
+after it, so the voids after it cut it as they cut the original; the rest go at the end. A dimension is copied where every
+reference of it is, naming the copies: one selected (its copy selected too), or one that holds a constraint among what is copied
+(a label, which keeps its parameter, so the copy is driven as the original is, but for a reporting parameter's, which holds
+nothing and is one dimension's: a selected dimension's copy measures without it, and a label that would make two dimensions
+report one parameter is refused where it is set, by `family`'s `dimension` and `dimensions` and by the Options Bar's Label,
+while a file that holds two still opens and warns which it reads, the last, `Family::reported_twice`; a lock; EQ; an Align lock), while one that
+reaches past the copies isn't, so a lock to what isn't copied is dropped. Parameters aren't copied. A datum or a
+plane that defines the origin refuses the copy ("Center (Left/Right) is a datum: it isn't copied."), and so do what a pivot
+turns and what is drawn on it (F7d: its copy would turn about the same point). A selection of which nothing can be copied (a
+dimension alone, measuring what isn't selected) refuses it ("Nothing selected here can be copied."), the selection kept. The copies are then put
+where they go by FE-7's move of them (`move_picked`), so its rules hold: edge-on, an extrusion's or a blend's Start and End
+move, a revolve, a sweep and a reference line refuse; a number that would change and is a formula refuses (a copy across a box
+whose x is `W`'s; north it keeps `-W` and moves its y), the refusal naming the original, not its copy: what is refused is said
+from where each copy came from (`drag_move::Origin`: forms, planes, lines, symbols, connectors, nested instances and dimensions,
+the core's `Named` and `Unsat::renumbered`), never by rewriting a translated message. A build's or a check's own words (free
+text) are said as they are; a copy, placed rigidly, rarely meets one its original doesn't. Every type
+must still solve and build and the family pass `Family::check` (one copy past `MAX_SYMBOLS` is refused). Refused, the draft and
+the selection are as they were, with no step and no Unsaved mark. Escape, Undo, Redo and another view give it up as they give a
+move up; let go where it began, it makes no copies and leaves no step, saying nothing (rather than stacking copies on the originals). Only what the
+view shows is copied. Over something selected with Ctrl held, the status bar says a drag copies it, and while copying, that
+letting Ctrl go first moves instead. The drag goes through `drag_move::delta` too, so Shift (Ortho) keeps a copy square as it keeps a move. Tests:
+`tests/family_drag_copy.rs`, `family_constraint_tests.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
@@ -1538,7 +1574,8 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
   lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
-  isn't parallel; `family/constraints/moving.rs`, what a drag moves together through them (FE-7).
+  isn't parallel; `family/constraints/moving.rs`, what a drag moves together through them (FE-7); `family/constraints/copying.rs`,
+  the copies a Ctrl+drag makes (FE-4).
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 - `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,
@@ -1565,4 +1602,4 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select
   Elements by Face and Drag Elements on Selection.
 - `editor/purge.rs`: Manage > Purge Unused in the family document (FE-19).
-- `editor/drag_move.rs`: the selection moved by a drag (FE-7).
+- `editor/drag_move.rs`: the selection moved by a drag (FE-7), or copied with Ctrl (FE-4).
