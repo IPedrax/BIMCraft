@@ -130,6 +130,7 @@ pub fn kind_of(e: &Element) -> Result<Kind, String> {
         }
         E::Toposolid(_) => Err("a toposolid is the site's ground, placed on its own, not in a group".into()),
         E::Circuit(_) => Err("a circuit has no place: group its devices".into()),
+        E::Annotation(_) => Err("an annotation symbol is placed on a sheet or a view; group its lines as a detail group if needed".into()),
         E::ProjectInfo(_) => Err("the project's information is no group's".into()),
     }
 }

@@ -434,6 +434,38 @@ impl Scene<'_> {
                 if !matches!(self.which, Which::Plan | Which::Ceiling) {
                     return Vec::new();
                 }
+                // An annotation family draws paper marks, its fills included; the plan marks serve the other families.
+                if self.family.is_annotation()
+                    && let Ok(marks) = bimcraft_core::family::annotation::marks_indexed(self.family, self.values)
+                    && let Some((_, mark)) = marks.into_iter().find(|(j, _)| *j == i)
+                {
+                    use bimcraft_core::family::annotation::PaperMark;
+                    return match mark {
+                        PaperMark::Line { pts, .. } => open(&pts),
+                        PaperMark::Fill { rings, .. } => rings
+                            .iter()
+                            .flat_map(|ring| {
+                                let mut pts = ring.clone();
+                                if let Some(first) = pts.first().copied() {
+                                    pts.push(first);
+                                }
+                                open(&pts)
+                            })
+                            .collect(),
+                        PaperMark::Dot { centre, radius } => {
+                            let ring: Vec<P2> = (0..=12)
+                                .map(|k| {
+                                    let (s, c) = (std::f64::consts::TAU * f64::from(k) / 12.0).sin_cos();
+                                    P2(centre.0 + radius * c, centre.1 + radius * s)
+                                })
+                                .collect();
+                            open(&ring)
+                        }
+                        PaperMark::Label { at, height, text, align, .. } => {
+                            bimcraft_core::family::lettering(&text, at, height, align).iter().flat_map(|stroke| open(stroke)).collect()
+                        }
+                    };
+                }
                 use bimcraft_core::family::Mark;
                 match self.family.symbol_mark(i, self.values, Some(self.detail)) {
                     Ok(Some(Mark::Line(pts))) => open(&pts),

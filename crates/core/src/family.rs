@@ -18,6 +18,7 @@ use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
+pub mod annotation;
 mod bounds;
 pub mod clipboard;
 pub mod constraints;
@@ -90,6 +91,19 @@ pub enum Category {
     Rack,
     Door,
     Window,
+    /// A two-dimensional annotation family: lines, fills, text and labels in millimetres, placed on a sheet or a flat
+    /// view and never built into the model.
+    Annotation,
+}
+
+/// Whether a family's millimetres are its paper's or the model's: what `scale_with_view` chooses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Space {
+    /// A component's: millimetres in the model.
+    Model,
+    /// An annotation family's: the `scale_with_view` option says which.
+    Annotation,
 }
 
 impl Category {
@@ -155,6 +169,8 @@ impl Category {
             Category::InspectionBox => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("InspectionBox")),
             Category::Lighting => ("IFCLIGHTFIXTURE", OPEN, None),
             Category::Generic | Category::Door | Category::Window => ("IFCBUILDINGELEMENTPROXY", OPEN, None),
+            // Annotation is no product and never reaches IFC; the empty class says so where a caller asks.
+            Category::Annotation => ("", "", None),
         }
     }
 
@@ -242,8 +258,14 @@ impl Category {
         match self {
             Category::Door => "door",
             Category::Window => "window",
+            Category::Annotation => "annotation",
             other => crate::graphics::component_category(other).unwrap_or(crate::graphics::COMPONENT),
         }
+    }
+
+    /// Whether it is a two-dimensional annotation family rather than a component.
+    pub fn is_annotation(self) -> bool {
+        self == Category::Annotation
     }
 }
 
@@ -629,6 +651,26 @@ impl Align {
     }
 }
 
+/// Where a label's point sits in its lettering: above it, in its middle, or below it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VAlign {
+    Top,
+    #[default]
+    Middle,
+    Bottom,
+}
+
+/// A filled area of an annotation symbol: closed rings (holes are rings inside rings), filled as the project's filled
+/// region type `type` says; none, `Solid Black` (a mask with `Masking`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fill {
+    pub rings: Vec<Vec<[Expr; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "type")]
+    pub type_name: Option<String>,
+}
+
 /// A label a symbol letters: capitals `height` mm tall, `at` the middle of the line of text vertically, where `{Parameter Name}` in `value` reads
 /// that parameter of the family, started, centred or ended (`align`) at `at`; it is drawn upright and unmirrored whatever the component does.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -639,6 +681,21 @@ pub struct Label {
     pub value: String,
     #[serde(default, skip_serializing_if = "Align::is_left")]
     pub align: Align,
+    /// The project's text type its lettering is drawn in; none, the family's own stroke lettering as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_type: Option<String>,
+    /// Where `at` sits in its lettering; the middle of the line unless it says.
+    #[serde(default, skip_serializing_if = "VAlign::is_middle")]
+    pub valign: VAlign,
+    /// A width, in the family's units, past which its text wraps; none, it never does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrap: Option<Expr>,
+}
+
+impl VAlign {
+    fn is_middle(&self) -> bool {
+        *self == VAlign::Middle
+    }
 }
 
 /// A mark a family's plan draws in its own axes, sized by its parameters: the polyline of a `line` or an `arc`, a solid
@@ -684,6 +741,12 @@ pub struct Symbol {
     pub text: Option<Label>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dot: Option<Circle>,
+    /// A filled area of an annotation family (a mask, a solid block or a hatch); none for a line, an arc, a text or a dot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<Fill>,
+    /// The project's line style its line or arc is drawn in; none, `Thin Lines`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<Expr>,
     /// The subcategory of its family's category it is drawn in, by its English name (`Opening`: a door's swing, a window's
@@ -1058,6 +1121,10 @@ pub struct Family {
     pub adaptive: Option<crate::adaptive::Definition>,
     #[serde(default)]
     pub category: Category,
+    /// An annotation family's Scale with View: its millimetres are its paper's and grow with the view (on, the default), or
+    /// the model's and stay as they are. Components never read it.
+    #[serde(default = "options::yes", skip_serializing_if = "options::is_yes")]
+    pub scale_with_view: bool,
     /// Which fixture or fitting of its category it is (`wc`, `bend`…), one of [`Category::kinds`]: IFC writes its
     /// components' predefined type from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1135,6 +1202,7 @@ impl Default for Family {
         Family {
             adaptive: None,
             category: Category::default(),
+            scale_with_view: true,
             kind: None,
             ifc: None,
             parameters: Vec::new(),
@@ -1809,6 +1877,16 @@ fn renamed_in_label(value: &str, from: &str, to: &str) -> String {
 }
 
 impl Family {
+    /// Whether it is a two-dimensional annotation family, drawn on sheets and flat views.
+    pub fn is_annotation(&self) -> bool {
+        self.category.is_annotation()
+    }
+
+    /// Whether its millimetres are its paper's or the model's.
+    pub fn space(&self) -> Space {
+        if self.is_annotation() { Space::Annotation } else { Space::Model }
+    }
+
     /// Each material it names, given to `f`, which may put another in its place: its material parameters' values, its
     /// types' values of them, and its forms' materials (a form made of a material parameter names that, which is no
     /// material's name).
@@ -2161,6 +2239,25 @@ impl Family {
         if self.types.is_empty() {
             return Err("it needs a type: add one to `types`".into());
         }
+        if self.is_annotation() {
+            if !self.forms.is_empty() {
+                return Err("an annotation family is two-dimensional: it has no forms or connectors".into());
+            }
+            for (what, present) in [
+                ("connectors", !self.connectors.is_empty()),
+                ("adaptive", self.adaptive.is_some()),
+                ("operation", self.operation.is_some()),
+                ("work_plane_based", self.work_plane_based),
+                ("default_elevation", self.default_elevation != 0.0),
+                ("cut_with_voids_when_loaded", self.cut_with_voids_when_loaded),
+            ] {
+                if present {
+                    return Err(format!("an annotation family is two-dimensional: it has no `{what}`"));
+                }
+            }
+        } else if self.symbols.iter().any(|s| s.fill.is_some()) {
+            return Err("a `fill` is an annotation family's: a component draws its plan with lines, arcs, text and dots".into());
+        }
         if let Some(kind) = &self.kind {
             let kinds = self.category.kinds();
             if !kinds.iter().any(|(k, _)| k == kind) {
@@ -2331,6 +2428,9 @@ impl Family {
             if let Some(v) = y.visibility {
                 v.check_symbol().map_err(|e| format!("symbol {}: {e}", i + 1))?;
             }
+        }
+        if self.is_annotation() {
+            annotation::check(self)?;
         }
         self.check_options()?;
         self.check_connectors()?;
@@ -2634,9 +2734,16 @@ impl Family {
         let ways = usize::from(!sym.line.is_empty())
             + usize::from(sym.arc.is_some())
             + usize::from(sym.text.is_some())
-            + usize::from(sym.dot.is_some());
+            + usize::from(sym.dot.is_some())
+            + usize::from(sym.fill.is_some());
         if ways != 1 || sym.line.len() > MAX_PROFILE {
-            return Err(said(format!("it takes a `line` of up to {MAX_PROFILE} points, an `arc`, a `text` or a `dot`, one of them")));
+            return Err(said(format!(
+                "it takes a `line` of up to {MAX_PROFILE} points, an `arc`, a `text`, a `dot` or a `fill`, one of them"
+            )));
+        }
+        // A fill is an annotation family's alone; its drawing is `annotation::marks`, not this.
+        if sym.fill.is_some() {
+            return Ok(None);
         }
         if let Some(v) = &sym.visible
             && number(v, values, read).map_err(said)? == 0.0
@@ -2662,7 +2769,12 @@ impl Family {
             if height <= 0.0 {
                 return Err(said(format!("its text has height {height}; it needs a height above zero")));
             }
-            let text = said_text(&l.value, values, &self.parameters).map_err(said)?;
+            let text = if self.is_annotation() {
+                said_text_or_placeholder(&l.value, values, &self.parameters)
+            } else {
+                said_text(&l.value, values, &self.parameters)
+            }
+            .map_err(said)?;
             return Ok(Some((Mark::Label { at, height, text, align: l.align }, sub)));
         }
         let mut pts = Vec::new();
@@ -2948,6 +3060,11 @@ impl Family {
 
 /// `e` as a number: itself, or its formula worked out over `values`; `read`, the formulas as read already.
 /// The names between braces in a label's `value`: `{Circuit}` reads the parameter `Circuit`.
+/// The parameters a label's value names in `{...}`, in the order it reads them; why it isn't a label's value, if it isn't.
+pub fn label_parameters(value: &str) -> Result<Vec<&str>, String> {
+    fields(value)
+}
+
 fn fields(value: &str) -> Result<Vec<&str>, String> {
     let (mut out, mut rest) = (Vec::new(), value);
     while let Some(open) = rest.find('{') {
@@ -2963,6 +3080,22 @@ fn fields(value: &str) -> Result<Vec<&str>, String> {
 /// A label's `value` with each `{Parameter}` replaced by that parameter's value: a number as plainly as it reads (3, 2.5), an
 /// area in m² and a volume in m³, words (a material's name, text) as they are.
 fn said_text(value: &str, values: &BTreeMap<String, Val>, parameters: &[Parameter]) -> Result<String, String> {
+    said_text_in(value, values, parameters, true, false)
+}
+
+/// [`said_text`], a name the family hasn't left in braces: an editor draws a label while it is being typed, and the family's
+/// check is what refuses it on load.
+pub(super) fn said_text_or_placeholder(value: &str, values: &BTreeMap<String, Val>, parameters: &[Parameter]) -> Result<String, String> {
+    said_text_in(value, values, parameters, false, true)
+}
+
+fn said_text_in(
+    value: &str,
+    values: &BTreeMap<String, Val>,
+    parameters: &[Parameter],
+    filled: bool,
+    placeholder: bool,
+) -> Result<String, String> {
     let mut out = String::new();
     let mut rest = value;
     for name in fields(value)? {
@@ -2982,6 +3115,7 @@ fn said_text(value: &str, values: &BTreeMap<String, Val>, parameters: &[Paramete
                 out.push_str(plain.trim_end_matches('0').trim_end_matches('.'));
             }
             Some(Val::Text(t)) => out.push_str(t),
+            None if placeholder => out.push_str(&format!("{{{name}}}")),
             None => return Err(format!("its text reads `{{{name}}}`, which isn't one of the family's parameters")),
         }
         if out.chars().count() > MAX_TEXT {
@@ -2989,7 +3123,7 @@ fn said_text(value: &str, values: &BTreeMap<String, Val>, parameters: &[Paramete
         }
     }
     out.push_str(rest);
-    if out.trim().is_empty() {
+    if filled && out.trim().is_empty() {
         return Err("its text is empty; give it a `value` with something to letter".into());
     }
     if out.chars().count() > MAX_TEXT {
