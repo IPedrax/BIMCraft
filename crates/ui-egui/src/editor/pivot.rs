@@ -164,6 +164,7 @@ impl FamilyEditor {
             self.views.pivoting = Some(g);
             self.views.modify = None;
             self.views.pasting = None;
+            self.views.measuring = None;
         }
     }
 

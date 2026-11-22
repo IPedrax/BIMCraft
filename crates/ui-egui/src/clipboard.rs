@@ -281,6 +281,15 @@ impl BimApp {
             ours
         });
         let now = ctx.input(|i| i.time);
+        // A paste asked on another tab (a project's, or another family document's) is given up, and the text it brings with
+        // it: it was meant for that tab's clipboard.
+        let events = match self.paste_asked {
+            Some((_, _, doc)) if doc != self.active_doc() => {
+                self.paste_asked = None;
+                events.into_iter().filter(|e| !matches!(e, Event::Paste(_))).collect()
+            }
+            _ => events,
+        };
         match self.clip_request.take() {
             Some(Request::Cut) => self.copy_to_clipboard(ctx, true),
             Some(Request::Copy) => self.copy_to_clipboard(ctx, false),
@@ -296,14 +305,14 @@ impl BimApp {
                 Event::Copy => self.copy_to_clipboard(ctx, false),
                 Event::Cut => self.copy_to_clipboard(ctx, true),
                 Event::Paste(text) => {
-                    let mode = self.paste_asked.take().map_or_else(|| self.ctrl_v_mode(), |(m, _)| m);
+                    let mode = self.paste_asked.take().map_or_else(|| self.ctrl_v_mode(), |(m, ..)| m);
                     self.pasted_text(Some(text), mode);
                 }
                 _ => {}
             }
         }
         // The system clipboard said nothing (empty, or no window system): the window's own copy.
-        if let Some((mode, at)) = self.paste_asked
+        if let Some((mode, at, _)) = self.paste_asked
             && now - at >= PASTE_WAIT
         {
             self.paste_asked = None;
@@ -367,7 +376,7 @@ impl BimApp {
     /// The ribbon's paste: the system clipboard is asked for its text, which comes as a paste on a later frame
     /// ([`BimApp::clipboard_events`]).
     pub(crate) fn ask_paste(&mut self, ctx: &Context, mode: PasteMode) {
-        self.paste_asked = Some((mode, ctx.input(|i| i.time)));
+        self.paste_asked = Some((mode, ctx.input(|i| i.time), self.active_doc()));
         ctx.send_viewport_cmd(ViewportCommand::RequestPaste);
         ctx.request_repaint();
     }

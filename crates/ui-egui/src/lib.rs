@@ -1136,8 +1136,9 @@ pub struct BimApp {
     pub(crate) clip_request: Option<clipboard::Request>,
     /// What Copy to Clipboard last kept on a family tab (`editor/clipboard.rs`): the window's, so it outlives views and tabs.
     pub(crate) family_clip: Option<editor::clipboard::Held>,
-    /// A paste the ribbon asked the system clipboard's text for, and when.
-    pub(crate) paste_asked: Option<(clipboard::PasteMode, f64)>,
+    /// A paste the ribbon asked the system clipboard's text for, when, and on which tab (a family document's, or none: the
+    /// project's).
+    pub(crate) paste_asked: Option<(clipboard::PasteMode, f64, Option<editor::tabs::DocId>)>,
     /// Aligned to Selected Levels' or Selected Views' list, while it's open.
     pub(crate) paste_choose: Option<clipboard::Choose>,
     /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.

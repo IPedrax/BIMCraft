@@ -42,6 +42,7 @@ impl FamilyEditor {
         if self.placing.is_some() {
             self.views.modify = None;
             self.views.pasting = None;
+            self.views.measuring = None;
         }
         if self.placing.is_some() && self.views.shown.is_none() {
             self.views.show(Some(bimcraft_core::family::views::Which::Plan));

@@ -1065,13 +1065,14 @@ is greyed with the reason as its tooltip (`clipboard_blocked`), as the Modify to
 It goes through the project's clipboard (`clipboard.rs`, [copy and paste](copy-paste.md)) where that fits. Ctrl+C, Ctrl+X and
 Ctrl+V come as the window's Copy, Cut and Paste events, which `BimApp::clipboard_events` takes on a family tab as on a
 project's (from `family_keys`), and the ribbon's paste asks the system clipboard for its text as a project's does
-(`ask_paste`, the window's own copy once it has waited); `copy_to_clipboard` and `pasted_text` hand a family tab's to
+(`ask_paste`, the window's own copy once it has waited; a paste asked on one tab and answered on another is given up); `copy_to_clipboard` and `pasted_text` hand a family tab's to
 `family_copy` and `family_pasted`. Find (Ctrl+K) lists Copy to Clipboard, Cut to Clipboard, Paste from Clipboard and the three
 Aligned options a family can use (`clipboard::FIND`), done on the next frame as the right-click menu's are (`Request`). A copy
 puts its text on the system clipboard, as a project's does: the core's (`family::clipboard::text`), marked as a family's
 (`KIND`, apart from a project's, which a project's paste doesn't take for its own) with its family's name and the copy's GUID
 (`Source`). A paste takes the window's own copy (`BimApp::family_clip`, `Held`) where the system clipboard's text is that copy
-or isn't a family's at all; a family's copy made in another window is refused, naming its family, and so is pasting into
+or isn't BIMCraft's at all; a project's copy made since is refused, saying to paste it on the project's tab (the family's
+older copy isn't the clipboard's last), and a family's copy made in another window is refused, naming its family, and so is pasting into
 another family's document: the copies name the first family's planes, parameters, formulas and nested families, which another
 may not have, and nothing maps them yet, so a paste reads the text's source alone (`family::clipboard::source`). The clipboard
 is the window's, so it outlives views, ribbon tabs and document tabs. Nothing of it is saved. Tests: `tests/family_clipboard.rs`,
@@ -1087,7 +1088,8 @@ then the tool) or another tool. Greyed in {3D} and while a form is sketched, say
 Swept Blend, solid or void as the form is; Reference Plane for a plane, a datum too; Reference Line for a reference line;
 Aligned, Angular, Radial or Diameter Dimension as the dimension is; another symbol of the symbol's part; a connector of the
 connector's kind; Component with the nested instance's family and type. With nothing or several selected it does nothing; a
-form of a file's triangles says so. Neither has a key yet: Find lists Measure (in a plan or an elevation) and Create Similar
+form of a file's triangles says so, and so does a plane, a line or a dimension in {3D}, whose tools draw in a plan or an
+elevation. Neither has a key yet: Find lists Measure (in a plan or an elevation) and Create Similar
 on a family tab. Neither is a step of the history. Tests: `tests/family_measure.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
