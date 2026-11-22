@@ -1,0 +1,11 @@
+   Compiling bimcraft-core v0.12.0 (/private/tmp/parameter-precision-publish/crates/core)
+   Compiling bimcraft-plugin v0.12.0 (/private/tmp/parameter-precision-publish/crates/plugin)
+   Compiling bimcraft-pyaddins v0.12.0 (/private/tmp/parameter-precision-publish/crates/pyaddins)
+   Compiling bimcraft-dwg v0.12.0 (/private/tmp/parameter-precision-publish/crates/dwg)
+   Compiling bimcraft-cowork v0.12.0 (/private/tmp/parameter-precision-publish/crates/cowork)
+   Compiling bimcraft-assistant v0.12.0 (/private/tmp/parameter-precision-publish/crates/assistant)
+   Compiling bimcraft-rvt v0.12.0 (/private/tmp/parameter-precision-publish/crates/rvt)
+   Compiling bimcraft-ui-egui v0.12.0 (/private/tmp/parameter-precision-publish/crates/ui-egui)
+   Compiling bimcraft-cli v0.12.0 (/private/tmp/parameter-precision-publish/apps/bimcraft-cli)
+   Compiling bimcraft v0.12.0 (/private/tmp/parameter-precision-publish/apps/bimcraft)
+    Finished `dev` profile [unoptimized] target(s) in 2m 38s

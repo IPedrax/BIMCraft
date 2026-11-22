@@ -1,0 +1,3 @@
+   Compiling bimcraft-plugin-sdk v0.12.0 (/private/tmp/parameter-precision-publish/crates/plugin-sdk)
+   Compiling sample-plugin v0.1.0 (/private/tmp/parameter-precision-publish/crates/plugin/tests/sample-plugin)
+    Finished `release` profile [optimized] target(s) in 0.81s

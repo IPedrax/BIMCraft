@@ -1,0 +1,76 @@
+[
+  {
+    "stage": "focused-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--workspace",
+      "precision_",
+      "--",
+      "--skip",
+      "precision_screenshots"
+    ],
+    "exit_code": 0,
+    "seconds": 634.76
+  },
+  {
+    "stage": "clippy",
+    "command": [
+      "cargo",
+      "clippy",
+      "--locked",
+      "--workspace",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit_code": 0,
+    "seconds": 41.99
+  },
+  {
+    "stage": "wasm",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--manifest-path",
+      "crates/plugin/tests/sample-plugin/Cargo.toml",
+      "--target",
+      "wasm32-unknown-unknown",
+      "--release"
+    ],
+    "exit_code": 0,
+    "seconds": 0.84
+  },
+  {
+    "stage": "workspace-headless",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--workspace",
+      "--exclude",
+      "bimcraft",
+      "--exclude",
+      "bimcraft-ui-egui"
+    ],
+    "exit_code": 0,
+    "seconds": 1311.97
+  },
+  {
+    "stage": "build",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "bimcraft",
+      "-p",
+      "bimcraft-cli"
+    ],
+    "exit_code": 0,
+    "seconds": 158.91
+  }
+]
