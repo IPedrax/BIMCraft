@@ -3223,7 +3223,7 @@ other_files(
     ),
     other(
         "framing",
-        "Framing Members",
+        ui_msg!("Framing Members"),
         "{id} a framed wall's, floor's or roof's members and cut list, read and never built: {host, type, layer (the structure \
          layer's GUID), material, origin [x, y] (a wall's start; a floor's outline's first corner; a roof's first slope's), \
          x_axis (along the wall; the way the floor's joists run; up the roof's first slope), depth_axis (to its left), \
