@@ -1,26 +1,27 @@
-# Аннотационные семейства
+# Annotation families
 
-Семейство категории `annotation` — двумерное: линии, дуги, точки, заливки, текст и метки в
-собственных миллиметрах. В проект оно ставится элементом `Annotation` на лист или на плоский
-вид: план уровня, план потолка, разрез, фасад. В 3D, IFC и GLB его нет; schedules его не видят.
+A family of category `annotation` is two-dimensional: lines, arcs, dots, fills, text and labels in its
+own millimetres. In a project it is placed as an `Annotation` element on a sheet or on a flat view: a
+level plan, a ceiling plan, a section or an elevation. It is absent from {3D}, IFC and GLB, and
+schedules do not see it.
 
 ## `scale_with_view`
 
-Галочка `scale_with_view` — поле семьи, по умолчанию включена. Она задаёт смысл единицы семьи:
+The `scale_with_view` flag is a family field, on by default. It sets what a family unit means:
 
-| `scale_with_view` | Единица семьи | Квадрат 1×1 на плане 1:100 | На бумаге 1:100 | На листе |
+| `scale_with_view` | Family unit | A 1×1 square in a 1:100 plan | On 1:100 paper | On a sheet |
 |---|---|---|---|---|
-| `true` | 1 мм на бумаге | 100×100 мм модели | 1×1 мм | 1×1 мм |
-| `false` | 1 мм модели | 1×1 мм модели | 0.01×0.01 мм | 1×1 мм |
+| `true` | 1 mm on paper | 100×100 mm in the model | 1×1 mm | 1×1 mm |
+| `false` | 1 mm in the model | 1×1 mm in the model | 0.01×0.01 mm | 1×1 mm |
 
-На листе масштаба модели нет, поэтому обе настройки дают 1 единицу семьи = 1 бумажный мм.
-Смена масштаба вида перерисовывает экземпляры: при `true` размер на бумаге не меняется, при
-`false` не меняется размер в модели.
+A sheet has no model scale, so both settings give one family unit = one paper millimetre. Changing a
+view's scale redraws its instances: with `true` their paper size stays the same, with `false` their
+model size does.
 
-## Команды
+## Commands
 
 ```text
-family {"name":"Таблица","category":"annotation",
+family {"name":"Table","category":"annotation",
         "parameters":[{"name":"Width","kind":"length","value":120},
                       {"name":"Height","kind":"length","value":48},
                       {"name":"C1","kind":"text","instance":true,"value":""}],
@@ -29,82 +30,81 @@ family {"name":"Таблица","category":"annotation",
                    {"line":[[0,0],[0,"Height"]]},
                    {"text":{"at":[2,"Height / 2"],"height":2.5,"value":"{C1}"}}]}
 
-annotation {"family":"Таблица","type":"Standard","sheet":"A101","at":[20,220],
-            "params":{"C1":"1  Саморез 8×220"}}
+annotation {"family":"Table","type":"Standard","sheet":"A101","at":[20,220],
+            "params":{"C1":"1  Screw 8×220"}}
 
-annotation {"family":"Таблица","type":"Standard","view":"Level 1","at":[0,0]}
+annotation {"family":"Table","type":"Standard","view":"Level 1","at":[0,0]}
 ```
 
-`annotation` принимает ровно одно из `sheet` и `view`. `at` — в координатах вида: бумажные мм
-на листе, план-мм в плане, вдоль линии и вверх в разрезе или фасаде. `modify` меняет `at`,
-`angle`, `mirrored`, `type` и `params`; `move`, `rotate`, `mirror`, `delete` и copy/paste
-работают как у `text` в том же виде.
+`annotation` takes exactly one of `sheet` and `view`. `at` is in the view's own terms: paper
+millimetres on a sheet, plan millimetres in a plan, along the line and up in a section or an
+elevation. `modify` changes `at`, `angle`, `mirrored`, `type` and `params`; `move`, `rotate`,
+`mirror`, `delete` and copy/paste work as they do for `text` in the same view.
 
-## Символы
+## Symbols
 
-- `line`, `arc` — стиль линий проекта в `style` (по умолчанию `Thin Lines`); окружность —
-  `arc` от 0 до 360°.
-- `fill` — замкнутые кольца `rings` (кольцо внутри кольца — дырка), тип заливки проекта в
-  `type` (`Masking`, `Solid Black`, штриховка). Маска скрывает модель под собой, но не другие
-  аннотации.
-- `text` — метка `{Параметр}`; `text_type` — тип текста проекта, `valign` (`top`, `middle`,
-  `bottom`), `wrap` — ширина переноса в единицах семьи. Без `text_type` — прежний штриховой
-  шрифт BIMCraft.
-- `dot` — заливка-точка.
+- `line`, `arc` — the project's line style in `style` (`Thin Lines` by default); a circle is an `arc`
+  from 0 to 360°.
+- `fill` — closed `rings` (a ring inside a ring is a hole), the project's fill type in `type`
+  (`Masking`, `Solid Black`, a hatch). A mask hides the model under it, not other annotations.
+- `text` — a `{Parameter}` label; `text_type` is the project's text type, `valign` (`top`, `middle`,
+  `bottom`), `wrap` is the wrap width in family units. Without `text_type` the family's stroke
+  lettering is used, as before.
+- `dot` — a filled dot.
 
-## Редактор
+## Family editor
 
-`File > New > Family > Generic Annotation` открывает бумажный план: вкладки 3D, потолка и
-фасадов у аннотации нет. Кадр плана — `Width × Height` (по умолчанию 100 × 50 мм), поэтому
-линия через холст остаётся линией в бумажных миллиметрах, а не в метрах модели. Галочка
-**Scale with View** — в Family Category and Parameters. Формы, коннекторы и адаптивные
-инструменты у аннотации недоступны: это двумерное семейство.
+`File > New > Family > Generic Annotation` opens a paper plan: an annotation family has no {3D},
+ceiling or elevation tabs. The plan's frame is `Width × Height` (100 × 50 mm by default), so a line
+across the canvas stays a line in paper millimetres, not in model metres. **Scale with View** is in
+Family Category and Parameters. Forms, connectors and adaptive tools are unavailable for an
+annotation family: it is two-dimensional.
 
-Категория везде называется **Generic Annotation**: в New Family, в Project Browser и в
-заголовке документа семьи.
+The category is called **Generic Annotation** everywhere: New Family, the Project Browser and the
+family document's title.
 
-В Annotate:
+In Annotate:
 
-- **Line** — кликайте точки в плане; Enter или двойной клик заканчивает линию.
-- **Arc** — клик ставит начало, второй клик — конец, третий — точку, через которую проходит
-  дуга; центр и радиус вычисляются. Начало, середина и конец дуги — узловые точки: их можно
-  перетаскивать, и дуга перестраивается через оставшиеся две.
-- **Text** — клик ставит обычный текст; содержимое, высота и тип правятся в Properties.
-- **Label** — клик ставит метку; по умолчанию она читает первый параметр семьи (`{Width}`),
-  другой выбирается в её Properties.
-- **Dot** — клик ставит точку; она рисуется кругом (радиус по умолчанию 1 мм).
-- **Filled Region** — кликайте контур; первый угол ещё раз или Enter замыкает заливку.
-- **Masking Region** — то же, тип `Masking`: скрывает модель под собой.
-- Граница заливки в проекте невидима (как в Revit), а в редакторе семьи показана штриховой
-  линией-подсказкой; эта линия никогда не попадает в семейство, на лист или в проект.
+- **Line** — click its points in the plan; Enter or a double-click ends it.
+- **Arc** — the first click sets the start, the second the end, the third a point the arc passes
+  through; the centre and radius are computed. The start, middle and end are grips: drag one and the
+  arc is rebuilt through the other two.
+- **Text** — a click places plain text; its content, height and type are edited in Properties.
+- **Label** — a click places a label reading the family's first parameter (`{Width}`) until
+  Properties name another.
+- **Dot** — a click places a dot; it is drawn as a disc (1 mm radius by default).
+- **Filled Region** — click the contour's corners; the first corner again or Enter closes the fill.
+- **Masking Region** — the same with the `Masking` type: it hides the model under it.
+- A filled region's boundary is invisible in a project (as in Revit); the family editor shows it as
+  a dashed hint. That line never reaches the family, a sheet or the project.
 
-При рисовании работают те же snaps, что в проекте: концы, середины и пересечения линий
-символов и форм, опорные плоскости и линии, направляющие от предыдущей точки, Shift и маркер
-привязки. В редакторе семьи есть **Manage > Snaps**: объектные привязки, углы, Alignment
-Guides, допуск и наведение настраиваются отдельно для этой семьи и не перебиваются
-настройками проекта после первого изменения.
+Drawing uses the same snaps as the project: endpoints, midpoints and intersections of symbol and form
+lines, reference planes and lines, guides from the previous point, Shift and the snap marker. The
+family editor has its own **Manage > Snaps**: object snaps, angles, alignment guides, tolerance and
+snapping are configured for this family and are not overridden by the project's settings after the
+first change.
 
-**Guides from grids** — это только структурные оси проекта, а не координатная сетка. Свободную
-точку snap-движок иначе округляет до 10 мм; в семье это слишком грубо, поэтому в её Snaps есть
-отдельный **Snap to coordinates** с полем **Step** в миллиметрах. По умолчанию шаг — **1 мм**, а
-сам переключатель выключен: без найденной привязки точка идёт точно за курсором. Включите его,
-чтобы свободные точки округлялись до выбранного шага.
+**Guides from grids** is about structural grids only, not a coordinate grid. The snap engine
+otherwise rounds a free point to 10 mm, which is far too coarse in a family, so its Snaps has a
+separate **Snap to coordinates** with a **Step** in millimetres. The step is **1 mm** by default and
+the switch is off: with nothing to snap to, a point follows the cursor exactly. Turn it on to round
+free points to the chosen step.
 
-Символы в плане выбираются кликом и перетаскиваются. У выбранного символа видны узловые
-точки: линии — все её точки, у региона — углы каждого контура (и у Filled, и у Masking), у дуги —
-начало, середина и конец. Потяните точку, чтобы изменить только её, или символ целиком, чтобы
-сдвинуть все узлы. Свойства выбранного символа показываются в Properties. Метка с несуществующим
-`{Параметр}` больше не убирает вид: она рисуется как `{Параметр}`, а в Properties под полем Text
-появляется красное сообщение со списком существующих параметров.
+Symbols in the plan are selected by clicking and moved by dragging. The selected symbol shows its
+grips: every point of a line, every corner of each ring of a region (both Filled and Masking), and
+the start, middle and end of an arc. Drag a grip to change only it, or the symbol as a whole to move
+all its grips. The selected symbol's Properties are shown in Properties. A label naming a parameter
+the family does not have no longer blanks the view: it draws `{Parameter}` as a placeholder, and
+Properties shows a red message listing the parameters that exist, under the Text field.
 
-Когда символ выбран, в контекстной вкладке **Modify | Symbols** работают **Move** и **Copy**
-(два клика — откуда и куда), **Rotate** (центр выбранного символа и угол между двумя кликами),
-**Mirror - Pick Axis** и **Mirror - Draw Axis** (ось двумя кликами) и **Measure**: два клика
-показывают расстояние между ними. `Esc` отменяет инструмент. **Offset**, **Trim/Extend** и
-**Split Element** пока остаются заглушками.
+**Move, Copy, Rotate, Mirror, Measure and Create Similar** in this branch are PR #598's tools; there
+are no copies of them here. Annotation symbols take part in its selection (click, box, highlight),
+and Move/Copy carry the rings of a Filled or Masking Region too. Rotate, Mirror and Scale of symbols
+behave as #598 defines them; there are no annotation-specific variants of those tools.
 
-## Ограничения
+## Limitations
 
-- Число строк и ячеек таблицы фиксировано шаблоном; массивов и повторителей нет.
-- Штамп `title_block` остаётся своим механизмом; аннотационное семейство его не заменяет.
-- Поля листа в метках (`SHEET_NUMBER` и т.п.) — следующий этап.
+- The number of rows and cells of a table is fixed by the template; there are no arrays or
+  repeaters.
+- `title_block` remains its own mechanism; an annotation family does not replace it.
+- Sheet fields in labels (`SHEET_NUMBER` and the like) are a later stage.
