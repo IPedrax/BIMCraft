@@ -448,7 +448,7 @@ pub(crate) fn joined_perpendicular_in(m: &Model, id: Id, at_end: bool, index: Op
 /// The other walls joined to wall `id` at its start (or `at_end`, its end), each once, and whether it ends there on the
 /// side of one of them (a tee).
 pub(crate) fn joined(m: &Model, id: Id, at_end: bool) -> (Vec<Id>, bool) {
-    let (arms, through) = arms(m, id, at_end, None, &|_| true);
+    let (arms, through) = arms(m, id, at_end, None, &|_| true, true, None);
     let mut others: Vec<Id> = arms.iter().map(|a| a.id).filter(|o| *o != id).collect();
     others.sort_unstable();
     others.dedup();

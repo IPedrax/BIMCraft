@@ -7039,6 +7039,8 @@ impl Model {
             pattern_angle: 0.0,
             sketch: Vec::new(),
             shape: t.shape.clone(),
+            framing: None,
+            framing_angle: None,
             params: BTreeMap::new(),
         }
     }

@@ -1188,15 +1188,15 @@ fn framed(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
     let mut meter = crate::csg::Meter::default();
     for s in body {
         match s {
-            Solid::Prism { owner, color, tex, ring, bottom, top, curve, .. } => {
+            Solid::Prism { owner, color, tex, ring, bottom, top, curve, part, .. } => {
                 for (ring, vis) in sides(&ring) {
                     if ring.len() >= 3 && geom::area(&ring).abs() > 1e-6 {
-                        out.push(Solid::Prism { owner, color, tex, ring, bottom, top, curve, vis });
+                        out.push(Solid::Prism { owner, color, tex, ring, bottom, top, curve, part, vis });
                     }
                 }
             }
             // Cut by a family's voids: the band's part of it, as a mesh's layers are found ([`layered_with`]).
-            Solid::Mesh { owner, color, tex, tris, caps, round, cut, .. } => {
+            Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, .. } => {
                 let (lo3, hi3) = tri_box(&tris);
                 let s = [lo3, hi3, [lo3[0], hi3[1], 0.0], [hi3[0], lo3[1], 0.0]].map(|p| axis.project(P2(p[0], p[1])).0);
                 let (s0, s1) =
@@ -1204,19 +1204,19 @@ fn framed(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
                 let ring = vec![axis.at(s0, lo), axis.at(s1, lo), axis.at(s1, hi), axis.at(s0, hi)];
                 let mut slab = Vec::new();
                 let (bottom, top) = (Plane::flat(lo3[2] - 1.0), Plane::flat(hi3[2] + 1.0));
-                Solid::Prism { owner, color, tex, ring, bottom, top, curve: None, vis: 0 }.tris(&mut slab);
+                Solid::Prism { owner, color, tex, ring, bottom, top, curve: None, part: 0, vis: 0 }.tris(&mut slab);
                 let slab: Vec<[P3; 3]> = slab.into_iter().map(|t| t.p).collect();
                 let parts = crate::csg::subtract(&tris, &slab, &mut meter).and_then(|outside| {
                     let inside = if outside.is_empty() { tris.clone() } else { crate::csg::subtract(&tris, &outside, &mut meter)? };
                     Ok((inside, outside))
                 });
                 let Ok((inside, outside)) = parts else {
-                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis: 0 });
+                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis: 0 });
                     continue;
                 };
                 for (tris, vis) in [(outside, 0), (inside, FRAMED)] {
                     if !tris.is_empty() {
-                        out.push(Solid::Mesh { owner, color, tex, tris, caps: 0, round: false, cut, vis });
+                        out.push(Solid::Mesh { owner, color, tex, tris, caps: 0, round: false, shared, cut, vis });
                     }
                 }
             }
@@ -1227,7 +1227,7 @@ fn framed(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
     let tex = skin(m, &f.material);
     out.extend(f.members.iter().map(|member| {
         let p = f.prism(member);
-        Solid::Prism { owner: id, color, tex, ring: p.ring, bottom: p.bottom, top: p.top, curve: None, vis: MEMBER }
+        Solid::Prism { owner: id, color, tex, ring: p.ring, bottom: p.bottom, top: p.top, curve: None, part: 0, vis: MEMBER }
     }));
     out
 }
@@ -1252,12 +1252,12 @@ fn framed_floor(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
                 for (z0, z1, vis) in [(bottom, lo, 0), (lo, hi, FRAMED | FLOOR), (hi, bottom + rise, 0)] {
                     if z1 - z0 > 1e-6 {
                         let (bottom, top) = (Plane::flat(z0), Plane::flat(z1));
-                        out.push(Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, vis });
+                        out.push(Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, part: 0, vis });
                     }
                 }
             }
             // Cut by the voids of what is on its faces: the layer's part of it, as a framed wall's is found ([`framed`]).
-            Solid::Mesh { owner, color, tex, tris, caps, round, cut, .. } => {
+            Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, .. } => {
                 let (lo3, hi3) = tri_box(&tris);
                 let ring = vec![
                     P2(lo3[0] - 1.0, lo3[1] - 1.0),
@@ -1266,7 +1266,7 @@ fn framed_floor(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
                     P2(lo3[0] - 1.0, hi3[1] + 1.0),
                 ];
                 let mut band = Vec::new();
-                Solid::Prism { owner, color, tex, ring, bottom: Plane::flat(lo), top: Plane::flat(hi), curve: None, vis: 0 }
+                Solid::Prism { owner, color, tex, ring, bottom: Plane::flat(lo), top: Plane::flat(hi), curve: None, part: 0, vis: 0 }
                     .tris(&mut band);
                 let band: Vec<[P3; 3]> = band.into_iter().map(|t| t.p).collect();
                 let parts = crate::csg::subtract(&tris, &band, &mut meter).and_then(|outside| {
@@ -1274,12 +1274,12 @@ fn framed_floor(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
                     Ok((inside, outside))
                 });
                 let Ok((inside, outside)) = parts else {
-                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis: 0 });
+                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis: 0 });
                     continue;
                 };
                 for (tris, vis) in [(outside, 0), (inside, FRAMED | FLOOR)] {
                     if !tris.is_empty() {
-                        out.push(Solid::Mesh { owner, color, tex, tris, caps: 0, round: false, cut, vis });
+                        out.push(Solid::Mesh { owner, color, tex, tris, caps: 0, round: false, shared, cut, vis });
                     }
                 }
             }
@@ -1290,7 +1290,7 @@ fn framed_floor(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
     let tex = skin(m, &f.material);
     out.extend(f.members.iter().map(|member| {
         let p = f.prism(member);
-        Solid::Prism { owner: id, color, tex, ring: p.ring, bottom: p.bottom, top: p.top, curve: None, vis: MEMBER | FLOOR }
+        Solid::Prism { owner: id, color, tex, ring: p.ring, bottom: p.bottom, top: p.top, curve: None, part: 0, vis: MEMBER | FLOOR }
     }));
     out
 }
@@ -1322,18 +1322,18 @@ fn framed_roof(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
                 let ring: Vec<P2> = face.iter().map(|p| P2(p[0], p[1])).collect();
                 for (bottom, top, vis) in bands(under, rise) {
                     if top.z - bottom.z > 1e-6 {
-                        out.push(Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, vis });
+                        out.push(Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, part: 0, vis });
                     }
                 }
             }
             // Cut by the voids of what is on its faces: the layer's part of it, in the slope its middle lies over, as a framed
             // floor's is found ([`framed_floor`]).
-            Solid::Mesh { owner, color, tex, tris, caps, round, cut, .. } => {
+            Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, .. } => {
                 let (lo3, hi3) = tri_box(&tris);
                 let mid = P2((lo3[0] + hi3[0]) / 2.0, (lo3[1] + hi3[1]) / 2.0);
                 let piece = m.roof_prisms(r).into_iter().find(|(ring, ..)| geom::contains(ring, mid));
                 let Some((_, under, top)) = piece else {
-                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis: 0 });
+                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis: 0 });
                     continue;
                 };
                 let [_, (bottom, up, _), _] = bands(under, top.at(mid) - under.at(mid));
@@ -1344,19 +1344,19 @@ fn framed_roof(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
                     P2(lo3[0] - 1.0, hi3[1] + 1.0),
                 ];
                 let mut band = Vec::new();
-                Solid::Prism { owner, color, tex, ring, bottom, top: up, curve: None, vis: 0 }.tris(&mut band);
+                Solid::Prism { owner, color, tex, ring, bottom, top: up, curve: None, part: 0, vis: 0 }.tris(&mut band);
                 let band: Vec<[P3; 3]> = band.into_iter().map(|t| t.p).collect();
                 let parts = crate::csg::subtract(&tris, &band, &mut meter).and_then(|outside| {
                     let inside = if outside.is_empty() { tris.clone() } else { crate::csg::subtract(&tris, &outside, &mut meter)? };
                     Ok((inside, outside))
                 });
                 let Ok((inside, outside)) = parts else {
-                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis: 0 });
+                    out.push(Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis: 0 });
                     continue;
                 };
                 for (tris, vis) in [(outside, 0), (inside, FRAMED | PIECE)] {
                     if !tris.is_empty() {
-                        out.push(Solid::Mesh { owner, color, tex, tris, caps: 0, round: false, cut, vis });
+                        out.push(Solid::Mesh { owner, color, tex, tris, caps: 0, round: false, shared, cut, vis });
                     }
                 }
             }
@@ -1367,7 +1367,7 @@ fn framed_roof(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
     let tex = skin(m, &f.material);
     out.extend(f.members.iter().map(|member| {
         let p = f.prism(member);
-        Solid::Prism { owner: id, color, tex, ring: p.ring, bottom: p.bottom, top: p.top, curve: None, vis: MEMBER | PIECE }
+        Solid::Prism { owner: id, color, tex, ring: p.ring, bottom: p.bottom, top: p.top, curve: None, part: 0, vis: MEMBER | PIECE }
     }));
     out
 }
@@ -1858,7 +1858,7 @@ fn solids_in_with(
                                 .fold(0u32, |m, (i, _)| m | (1 << i));
                             (P2(f64::from(inside), 0.0), -1.0)
                         });
-                        Solid::Prism { owner: id, color, tex, ring, bottom, top, curve, part: kind.tag() }
+                        Solid::Prism { owner: id, color, tex, ring, bottom, top, curve, part: kind.tag(), vis: 0 }
                     }));
                 }
                 // Its headroom, the room clear over its treads and landings: hidden unless a view shows it.
@@ -1872,6 +1872,7 @@ fn solids_in_with(
                     top,
                     curve: None,
                     part: stairs::PartKind::Headroom.tag(),
+                    vis: 0,
                 }));
             }
             Element::Stair(st) => {
@@ -2203,7 +2204,7 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
         }
         // A framed floor's piece, level, cut at its structure layer ([`framed_floor`]): each layer the part of it between the
         // heights that layer lies at.
-        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None, vis }
+        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None, part, vis }
             if bottom.g == P2(0.0, 0.0)
                 && top.g == P2(0.0, 0.0)
                 && let Some(Element::Floor(f)) = m.elements.get(owner)
@@ -2218,14 +2219,14 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                     (hi - lo > 1e-6).then(|| {
                         let (bottom, top) = (Plane::flat(lo), Plane::flat(hi));
                         let (color, tex) = (colour(l, color), over(skin(m, &l.material), tex));
-                        (Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, vis }, Some(k))
+                        (Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, part, vis }, Some(k))
                     })
                 })
                 .collect()
         }
         // A framed roof's piece, cut at its structure layer parallel to its slope ([`framed_roof`]): each layer the part of it
         // between the planes that layer lies between, found from the slab piece of the roof it lies over.
-        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None, vis }
+        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None, part, vis }
             if let Some(Element::Roof(r)) = m.elements.get(owner)
                 && r.framing.is_some()
                 && let Some((under, rise)) = crate::framing::roof::under_at(m, r, geom::centroid(&ring), bottom.g) =>
@@ -2241,7 +2242,7 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                     (hi - lo > 1e-6).then(|| {
                         let (bottom, top) = (Plane { z: under.z + lo, g: under.g }, Plane { z: under.z + hi, g: under.g });
                         let (color, tex) = (colour(l, color), over(skin(m, &l.material), tex));
-                        (Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, vis }, Some(k))
+                        (Solid::Prism { owner, color, tex, ring: ring.clone(), bottom, top, curve: None, part, vis }, Some(k))
                     })
                 })
                 .collect()
