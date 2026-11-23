@@ -853,16 +853,19 @@ other_files(
         "rebar_detail",
         "Reinforcement Detail",
         &["DD"],
-        "{host | hosts, stations?, scale?, list?, sheet?, replace?} the detail drawing of reinforced beams (`hosts` up to 1,000): one view \
-         for each, named in the project's language, which goes on a sheet and prints with it. It draws the beam's elevation with every set \
-         of bars (bars that are copies one step apart: the stirrups of a zone, a row of bottom bars) tagged `N2 7 ø5 c/10 C=118` (mark, \
-         count, diameter in mm, spacing where the bars spread along the beam, cut length, in the project's unit), its length and each zone \
-         of stirrups dimensioned, a section at each of `stations` (mm along the beam, up to 6; none: the middle of each zone of stirrups) \
-         at twice the scale, and, unless `list` is false, the beam's steel list with each bar's shape sketched. It is drawn from the beam and \
-         its bars as they are, so reinforcing the beam again changes it. `scale` is its 1 : n (50). `sheet` (a number or id) places it \
-         there. A beam that has a detail keeps it, its name and its place, and takes the values given; `replace` first sets them back to \
-         the defaults. A beam with no bars is refused: `reinforce` it first. Returns views (id, name, host, scale, stations, list, sets: \
-         mark, layer, diameter, grade, count, spacing, length, tag, ids) and, with `sheet`, viewports",
+        "{host | hosts, stations?, scale?, list?, sheet?, replace?} the detail drawing of reinforced beams, columns, footings and floors \
+         (`hosts` up to 1,000): one view for each, named in the project's language, which goes on a sheet and prints with it. It draws a \
+         beam's elevation, or a column's standing up, with every set of bars (bars that are copies one step apart: the stirrups of a zone, \
+         a row of bottom bars) tagged `N2 7 ø5 c/10 C=118` (mark, count, diameter in mm, spacing where the bars spread across the \
+         picture, cut length, in the project's unit), its length and each zone of stirrups dimensioned, a section at each of `stations` \
+         (mm along the member, up to 6; none: a beam's the middle of each zone of stirrups, a column's the foot, middle and head of its \
+         stirrups) at twice the scale; a footing or a floor is drawn in plan, each set tagged with its spacing, a footing with its \
+         section along its first axis under it, and they take no stations. Unless `list` is false, the steel list of the member comes \
+         under it with each bar's shape sketched. It is drawn from the member and its bars as they are, so reinforcing it again changes \
+         it. `scale` is its 1 : n (50). `sheet` (a number or id) places it there. A member that has a detail keeps it, its name and its \
+         place, and takes the values given; `replace` first sets them back to the defaults. A member with no bars is refused: \
+         `reinforce` it first. Returns views (id, name, host, scale, stations, list, sets: mark, layer, diameter, grade, count, spacing, \
+         length, tag, ids) and, with `sheet`, viewports",
         rebar_detail::rebar_detail,
     ),
     edit(

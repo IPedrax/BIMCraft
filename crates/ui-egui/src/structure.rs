@@ -105,8 +105,9 @@ impl BimApp {
             if big_button(ui, Icon::Rebar, "Reinforce", self.reinforce_dialog.is_some(), tip).clicked() {
                 self.open_reinforce();
             }
-            let tip =
-                msg!("Detail (DD): the detail drawing of the selected reinforced beams: elevation, tagged bars, sections and steel list");
+            let tip = msg!(
+                "Detail (DD): the detail drawing of the selected reinforced beams, columns, footings or floors: elevation or plan, tagged bars, sections and steel list"
+            );
             if big_button(ui, Icon::Schedule, "Detail", self.detail_dialog.is_some(), tip).clicked() {
                 self.open_rebar_detail();
             }

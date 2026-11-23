@@ -664,7 +664,7 @@ impl BimApp {
             let leaves = panels.into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))).collect();
             kids.push(Node::group(t("Panel Schedules"), true, leaves));
         }
-        // The detail drawings of reinforced beams.
+        // The detail drawings of reinforced members.
         let details = self.rebar_details();
         if !details.is_empty() {
             let leaves = details
