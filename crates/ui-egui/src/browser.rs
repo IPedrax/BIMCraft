@@ -104,8 +104,6 @@ enum Act {
     Do(&'static str, serde_json::Value),
     /// A system family's type: the Type Selector's now, for what is placed next.
     Pick(&'static str, String),
-    /// A type's Type Properties.
-    EditType(&'static str, String),
     /// A link: it is the selection, for Properties.
     Select(Id),
     /// A Ctrl-click (toggles it) or a Shift-click (picks the run to it from the last picked; with Ctrl, adds the run).
@@ -116,7 +114,7 @@ enum Act {
     Publisher,
     /// Expand All, or Collapse All.
     Fold(bool),
-    /// A curtain panel's or a mullion's type: Type Properties on it.
+    /// A type's Type Properties: a curtain panel's, a mullion's or a framing type's.
     EditType(&'static str, String),
     /// A type's Select All Instances submenu, followed by its chosen scope.
     Instances(serde_json::Value),
@@ -439,9 +437,6 @@ impl BimApp {
             }
             Some(Act::Pick(category, name)) => {
                 self.types.insert(category, name);
-            }
-            Some(Act::EditType(category, name)) => {
-                self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
             }
             Some(Act::Select(id)) => self.selection = vec![id],
             Some(Act::EditType(category, name)) => {
