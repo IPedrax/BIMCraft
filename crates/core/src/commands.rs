@@ -23,9 +23,9 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::memory;
 use crate::model::{
-    Annotation, CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DetailView, DimKind,
-    Dimension, Dimension3D, Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing,
-    Layer, LeaderKind, Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
+    CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DetailView, DimKind, Dimension,
+    Dimension3D, Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer,
+    LeaderKind, Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient,
     PARAMETER_CATEGORIES, ParameterKind, Pattern, PatternLayer, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, Railing,
     RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section,
     SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
@@ -1466,19 +1466,6 @@ other_files(
          says; they stay when the type changes, and `modify` with a new `text` alone keeps them on what didn't change. Font \
          and size are the type's",
         text_note,
-    ),
-    edit(
-        "annotation",
-        ui_msg!("Annotation Symbol"),
-        &[],
-        "{family, type?, sheet? | view?, at: [x, y], angle?, mirrored?, params?: {parameter: value}} an annotation \
-         family's type placed in a sheet or a flat view: a level's plan, a plan view, a ceiling plan, a section, an \
-         elevation or a detail view. `family` must be of category `annotation`; `type` is its first unless told. `at` is \
-         in the view's own terms: paper mm on a sheet, plan mm in a plan, along the section's line and up in a section or \
-         an elevation. Its `scale_with_view` option decides whether its millimetres are the paper's and grow with the view \
-         (1 × 1 at 1:100 is 100 × 100 in the model) or the model's and stay as they are. `params` sets its instance \
-         parameters. Returns {id, family, type, view, sheet, at, size, scale_with_view}",
-        annotation,
     ),
     edit(
         "text_type",
@@ -4686,26 +4673,6 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
     }
     match e {
-        // An annotation's view, by the sheet's number or the view's name: how `elements` says where it is.
-        Element::Annotation(a) => {
-            if let Some(sh) = m.sheet(a.view) {
-                extra.insert("sheet".into(), json!(sh.number));
-            } else if let Some(name) = m.view_name(a.view) {
-                extra.insert("view_name".into(), json!(name));
-            }
-            if let Some(f) = m.families.get(&a.family) {
-                extra.insert("scale_with_view".into(), json!(f.scale_with_view));
-                if let Ok(values) = f.values(&a.type_name, &a.params)
-                    && let Ok(Some([lo, hi])) = crate::family::annotation::bounds(f, &values)
-                {
-                    let size = P2(hi.0 - lo.0, hi.1 - lo.1);
-                    extra.insert("size".into(), json!([size.0, size.1]));
-                    let sheet = m.sheet(a.view).is_some();
-                    let k = if sheet || !f.scale_with_view { 1.0 } else { graphics::scale_of(m, a.view) };
-                    extra.insert("size_model".into(), json!([size.0 * k, size.1 * k]));
-                }
-            }
-        }
         Element::Image(im) => {
             if let Some(p) = m.images.get(&im.picture) {
                 let (w, h) = p.size();
@@ -6130,13 +6097,9 @@ fn family_preview(s: &mut Session, p: &Value) -> R {
         let types: Vec<&str> = family.types.keys().map(String::as_str).collect();
         return Err(bad(c, format!("family `{name}` has no type `{ty}` (there are: {})", types.join(", "))));
     }
-    let mut mode = string(c, p, "mode")?.unwrap_or_else(|| "3d".into());
+    let mode = string(c, p, "mode")?.unwrap_or_else(|| "3d".into());
     if !matches!(mode.as_str(), "3d" | "plan" | "elevation") {
         return Err(bad(c, format!("`mode` is 3d, plan or elevation, not `{mode}`")));
-    }
-    // An annotation family is a drawing: its preview is the plan, at its own millimetres.
-    if family.is_annotation() {
-        mode = "plan".into();
     }
     let wall = num(c, p, "wall_thickness")?.unwrap_or(crate::family::DEFAULT_WALL);
     if !(0.0..MAX_COORD).contains(&wall) {
@@ -6156,12 +6119,7 @@ fn family_preview(s: &mut Session, p: &Value) -> R {
         let m = scratch.model_mut();
         m.materials = s.model.materials.clone();
         m.images = s.model.images.clone();
-        // The preview stands the family at its own size: an annotation's paper scaling is a view's, not a preview's.
-        let mut shown = family.clone();
-        if shown.is_annotation() {
-            shown.scale_with_view = false;
-        }
-        m.families.insert(name.clone(), shown);
+        m.families.insert(name.clone(), family.clone());
     }
     let made = |r: R, what: &str| r.map_err(|e| bad(c, format!("{what}: {e}")));
     if family.category.hosted() {
@@ -6183,18 +6141,6 @@ fn family_preview(s: &mut Session, p: &Value) -> R {
         )?;
         let kind = if family.category == crate::family::Category::Door { "door" } else { "window" };
         made(scratch.execute(kind, &json!({"at": [0.0, 0.0], "family": name, "type": ty})), "the opening")?;
-    } else if family.is_annotation() {
-        // Its symbols on a sheet of paper, where a millimetre of the family is a millimetre of the sheet.
-        made(
-            scratch
-                .execute("sheet", &json!({"number": "PREVIEW", "name": "Annotation Preview", "size": "100 x 100", "title_block": "none"})),
-            "a sheet",
-        )?;
-        let [lo, _hi] = crate::family::annotation::bounds(&family, &values).ok().flatten().unwrap_or([P2(0.0, 0.0), P2(100.0, 50.0)]);
-        made(
-            scratch.execute("annotation", &json!({"family": name, "type": ty, "sheet": "PREVIEW", "at": [30.0 - lo.0, 40.0 - lo.1]})),
-            "the annotation",
-        )?;
     } else {
         // A floor over its own footprint, so it stands on something and the picture has a ground.
         let mut box_ = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
@@ -6226,9 +6172,6 @@ fn family_preview(s: &mut Session, p: &Value) -> R {
             "plan" => {
                 for key in ["view", "azimuth", "elevation"] {
                     o.remove(key);
-                }
-                if family.is_annotation() {
-                    o.insert("view".into(), json!("PREVIEW"));
                 }
             }
             // Front-on: as seen from the north (+y), level with the model.
@@ -14328,82 +14271,6 @@ fn text_note(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id}))
 }
 
-fn annotation(s: &mut Session, p: &Value) -> R {
-    let c = "annotation";
-    only(c, p, &["family", "type", "sheet", "view", "at", "angle", "mirrored", "params"])?;
-    let m = &s.model;
-    let family = string(c, p, "family")?.ok_or_else(|| bad(c, "`family` is required; `inspect` lists the families"))?;
-    let f = m.families.get(&family).ok_or_else(|| {
-        let names: Vec<&str> = m.families.keys().map(String::as_str).collect();
-        bad(c, format!("family `{family}` doesn't exist (there are: {})", names.join(", ")))
-    })?;
-    if !f.is_annotation() {
-        return Err(bad(
-            c,
-            format!(
-                "family `{family}` is a component's, not an annotation family: place it with `component`, or make its category `annotation`"
-            ),
-        ));
-    }
-    let type_name = match string(c, p, "type")? {
-        Some(t) => t,
-        None => f.types.keys().next().cloned().ok_or_else(|| bad(c, format!("family `{family}` has no type")))?,
-    };
-    let sheet = match p.get("sheet").filter(|v| !v.is_null()) {
-        None => None,
-        Some(Value::String(n)) => Some(m.sheet_numbered(n).ok_or_else(|| bad(c, format!("no sheet numbered `{n}`")))?),
-        Some(v) => Some(v.as_u64().filter(|id| m.sheet(*id).is_some()).ok_or_else(|| bad(c, format!("`sheet`: {v} is not a sheet")))?),
-    };
-    let view = match p.get("view").filter(|v| !v.is_null()) {
-        None => None,
-        Some(_) if sheet.is_some() => return Err(bad(c, "`sheet` or `view`, not both: where the symbol goes")),
-        Some(_) => Some(view_param(c, m, p, false)?),
-    };
-    let (view, sheet_number) = match (sheet, view) {
-        (Some(sh), None) => (sh, Some(m.sheet(sh).map_or_else(String::new, |s| s.number.clone()))),
-        (None, Some(v)) => {
-            if !matches!(m.elements.get(v), Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_))) {
-                return Err(bad(c, "`view` is a sheet, a plan, a ceiling plan, a section, an elevation or a detail view"));
-            }
-            (v, None)
-        }
-        (None, None) => return Err(bad(c, "`sheet` or `view` is required: where the symbol goes")),
-        (Some(_), Some(_)) => return Err(bad(c, "`sheet` or `view`, not both: where the symbol goes")),
-    };
-    let view_guid = m.guid(view);
-    let at = point_req(c, p, "at")?;
-    let params: BTreeMap<String, Value> = match p.get("params") {
-        None | Some(Value::Null) => BTreeMap::new(),
-        Some(Value::Object(o)) => o.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-        Some(v) => return Err(bad(c, format!("`params` is {{parameter: value}}, not {v}"))),
-    };
-    if let Some(k) = params.keys().find(|k| !f.parameters.iter().any(|p| p.name == **k)) {
-        let names: Vec<&str> = f.parameters.iter().map(|p| p.name.as_str()).collect();
-        return Err(bad(c, format!("`params`: `{k}` isn't a parameter of `{family}` (there are: {})", names.join(", "))));
-    }
-    let values = f.values(&type_name, &params).map_err(|e| bad(c, e))?;
-    crate::family::annotation::marks(f, &values).map_err(|e| bad(c, e))?;
-    let size = crate::family::annotation::bounds(f, &values)
-        .map_err(|e| bad(c, e))?
-        .map_or(json!([0.0, 0.0]), |[lo, hi]| json!([hi.0 - lo.0, hi.1 - lo.1]));
-    let scale = f.scale_with_view;
-    let id = s.model_mut().insert(Element::Annotation(Annotation {
-        view: view_guid,
-        family: family.clone(),
-        type_name: type_name.clone(),
-        at,
-        angle: num(c, p, "angle")?.unwrap_or(0.0),
-        mirrored: flag(c, p, "mirrored")?,
-        params,
-    }));
-    let mut out = json!({"id": id, "family": family, "type": type_name, "view": view_guid, "at": at, "size": size,
-        "scale_with_view": scale});
-    if let Some(n) = sheet_number {
-        out["sheet"] = json!(n);
-    }
-    Ok(out)
-}
-
 /// A note's `text`: up to [`crate::text::MAX_NOTE`] characters.
 fn note_text(c: &str, p: &Value) -> Result<Option<String>, String> {
     match p.get("text") {
@@ -18544,8 +18411,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             .families
             .iter()
             .map(|(n, f)| {
-                json!({"name": n, "category": f.category, "space": f.space(), "scale_with_view": f.scale_with_view,
-                    "types": f.types.len(), "forms": f.forms.len(), "symbols": f.symbols.len()})
+                json!({"name": n, "category": f.category, "types": f.types.len(), "forms": f.forms.len(), "symbols": f.symbols.len()})
             })
             .collect();
         return Ok(json!({"families": families}));
@@ -19023,8 +18889,7 @@ fn family_reply(name: &str, f: &crate::family::Family, warnings: &[String]) -> V
         .filter_map(|t| f.values_in(t, &BTreeMap::new(), crate::family::DEFAULT_WALL).ok().map(|v| (t.clone(), v)))
         .map(|(t, v)| (t, Value::Object(v.iter().map(|(k, v)| (k.clone(), val(v))).collect())))
         .collect::<Map<String, Value>>();
-    json!({"name": name, "family": f, "space": f.space(), "options": f.options_json(), "values": Value::Object(values),
-        "warnings": warnings})
+    json!({"name": name, "family": f, "options": f.options_json(), "values": Value::Object(values), "warnings": warnings})
 }
 
 /// A parameter's value worked out, as JSON: a number, or a material's name.
@@ -20708,12 +20573,6 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             // A mirrored note still reads the right way round.
             (n.at, n.angle) = (at, if mo.mirror { n.angle } else { angle });
             n.leader = n.leader.map(f);
-        }
-        Element::Annotation(a) => {
-            let (at, angle) = turned(f, a.at, a.angle);
-            // A mirrored annotation keeps its lettering readable, as a note does.
-            (a.at, a.angle) = (at, if mo.mirror { a.angle } else { angle });
-            a.mirrored ^= mo.mirror;
         }
         Element::Spot(sp) => {
             sp.at = f(sp.at);
@@ -23169,7 +23028,6 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Dimension3D(d)) => gone.contains(&d.view),
                 Some(Element::Viewport(v)) => gone.contains(&v.sheet) || gone.contains(&v.view),
                 Some(Element::Text(n)) => gone.contains(&n.view),
-                Some(Element::Annotation(a)) => gone.contains(&a.view),
                 Some(Element::DetailLine(l)) => gone.contains(&l.view),
                 Some(Element::FilledRegion(r)) => gone.contains(&r.view),
                 Some(Element::DetailGroup(g)) => gone.contains(&g.view),
@@ -23342,7 +23200,6 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::Viewport(v) => gone.contains(&v.sheet) || gone.contains(&v.view),
                         // Notes and spot elevations go with their view, spots with what they read.
                         Element::Text(n) => gone.contains(&n.view),
-                        Element::Annotation(a) => gone.contains(&a.view),
                         Element::DetailLine(l) => gone.contains(&l.view),
                         Element::FilledRegion(r) => gone.contains(&r.view),
                         Element::DetailGroup(g) => gone.contains(&g.view),

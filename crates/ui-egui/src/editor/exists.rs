@@ -342,10 +342,7 @@ impl BimApp {
             ed.document.refused = Some(std::mem::take(&mut self.status).text);
             return;
         }
-        // The document and the project's family are one name: the one the load put it under.
-        ed.name = loading.name.clone();
         ed.original = Some(loading.name.clone());
-        self.reveal_family(&loading.name);
         ed.document.refused = None;
         ed.saved_as(ed.draft());
         if let Some(d) = &ed.adaptive {
@@ -370,12 +367,9 @@ impl BimApp {
             Some(p) => self.run("family", p).is_some(),
         };
         self.family_decided = Some(std::mem::take(&mut loading.decided));
-        if made {
-            self.reveal_family(&loading.name);
-            if let Some(f) = self.session.model.families.get(&loading.name) {
-                let first = f.types.keys().next().cloned().unwrap_or_default();
-                self.component = Some((loading.name, first));
-            }
+        if made && let Some(f) = self.session.model.families.get(&loading.name) {
+            let first = f.types.keys().next().cloned().unwrap_or_default();
+            self.component = Some((loading.name, first));
         }
     }
 

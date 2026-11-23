@@ -239,14 +239,6 @@ pub fn words(find: &str) -> Vec<String> {
 
 impl BimApp {
     /// The Project Browser's palette: the minimap of the view, its tabs and its search over the tree, which scrolls under them.
-    /// A family just loaded: the Project Browser shows Families, opened down to it, scrolled to it and highlighted.
-    pub(crate) fn reveal_family(&mut self, name: &str) {
-        self.browser_tab = Tab::Families;
-        self.browser_reveal = Some(name.to_string());
-        self.browser_scroll = true;
-        self.browser_fold = Some(true);
-    }
-
     pub(crate) fn browser_palette(&mut self, ui: &mut Ui) {
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 4 }).show(ui, |ui| {
             self.minimap(ui);
@@ -343,10 +335,6 @@ impl BimApp {
             ui.label(egui::RichText::new(t("Legends are coming in a later version.")).color(pal().muted));
             return;
         }
-        // A family just loaded stays opened down to it, whatever was folded before.
-        if self.browser_reveal.is_some() {
-            self.browser_fold = Some(true);
-        }
         let tree = self.browser_tree();
         let words = words(&self.browser_find);
         let shown: Vec<&Node> = tree.iter().filter(|n| n.shows(&words)).collect();
@@ -358,11 +346,6 @@ impl BimApp {
         let mut act = None;
         for node in &shown {
             self.browser_node(ui, node, &words, "", &mut act);
-        }
-        // Scrolled once; a click anywhere hands the browser back to the user and the highlight goes.
-        self.browser_scroll = false;
-        if act.is_some() {
-            self.browser_reveal = None;
         }
         self.browser_fold = None;
         // A plain click on a view picks it alone, and opens it.
@@ -507,9 +490,8 @@ impl BimApp {
             return;
         }
         let path = format!("{path}/{}", node.label);
-        let reveal = self.browser_reveal.as_deref() == Some(node.label.as_str());
         let mut header = CollapsingHeader::new(text).id_salt(("browser", &path)).default_open(node.open);
-        if reveal || !words.is_empty() {
+        if !words.is_empty() {
             header = header.open(Some(true));
         } else if let Some(open) = self.browser_fold {
             header = header.open(Some(open));
@@ -519,13 +501,6 @@ impl BimApp {
                 self.browser_node(ui, kid, &left, &path, act);
             }
         });
-        if reveal {
-            if self.browser_scroll {
-                shown.header_response.scroll_to_me(Some(egui::Align::Center));
-            }
-            ui.painter().rect_filled(shown.header_response.rect, 4.0, pal().accent.gamma_multiply(0.12));
-            ui.painter().rect_stroke(shown.header_response.rect, 4.0, Stroke::new(1.5, pal().accent), egui::StrokeKind::Inside);
-        }
         let mut picks = Vec::new();
         node.picks(words, &mut picks);
         shown.header_response.context_menu(|ui| menu(ui, act, picks));
@@ -801,29 +776,24 @@ impl BimApp {
                 (!names.is_empty())
                     .then(|| Node::group(&crate::lang::category(category, true), false, vec![Node::group(family, false, leaves)]))
             });
-        let family_node = |name: &str, f: &bimcraft_core::family::Family| {
+        let components = m.families.iter().map(|(name, f)| {
             let types = f
                 .types
                 .keys()
                 .map(|ty| {
-                    let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.to_string(), ty.clone()));
-                    Node::leaf(ty, Act::Place(name.to_string(), ty.clone()), on)
+                    let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.clone(), ty.clone()));
+                    Node::leaf(ty, Act::Place(name.clone(), ty.clone()), on)
                         .with_menu(type_menu(serde_json::json!({"family": name, "type": ty})))
                 })
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
-        };
-        let mut annotations: Vec<Node> =
-            m.families.iter().filter(|(_, f)| f.is_annotation()).map(|(name, f)| family_node(name, f)).collect();
-        let mut components: Vec<Node> =
-            m.families.iter().filter(|(_, f)| !f.is_annotation()).map(|(name, f)| family_node(name, f)).collect();
+        });
         // Alphabetical by the name shown, case aside (the families' map order would put capitals first).
         let mut categories: Vec<Node> = system.chain(curtain).collect();
         categories.sort_by_key(|n| n.label.to_lowercase());
-        annotations.sort_by_key(|n| n.label.to_lowercase());
+        let mut components: Vec<Node> = components.collect();
         components.sort_by_key(|n| n.label.to_lowercase());
-        let annotations = (!annotations.is_empty()).then(|| Node::group(t("Generic Annotation"), true, annotations));
-        Node::group(t("Families"), open, categories.into_iter().chain(annotations).chain(components).collect())
+        Node::group(t("Families"), open, categories.into_iter().chain(components).collect())
     }
 }
 
