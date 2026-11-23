@@ -781,6 +781,11 @@ impl BuildingCode {
 
     /// Whether it can be a code: texts of a size, each of its sections the registry knows a section that can be.
     pub fn check_rules(&self) -> Result<(), String> {
+        self.check_rules_keeping(&|_, _| false)
+    }
+
+    /// `check_rules`, but a method (`WHOLE`) that can't be read is kept where `keep` says so (`Codes::check_keeping`).
+    pub fn check_rules_keeping(&self, keep: &dyn Fn(&str, &Value) -> bool) -> Result<(), String> {
         let long = |t: &str| t.chars().count() > 2000;
         if long(&self.name)
             || long(&self.region)
@@ -807,22 +812,32 @@ impl BuildingCode {
         }
         for (key, v) in &self.sections {
             let Some(def) = section_def(self.discipline, key) else { continue };
-            def.check(v).map_err(|e| format!("the building code `{}`, its {key}: {e}", self.code))?;
+            // Only a method that can't be read at all is kept: one that reads, with a value out of range, is refused.
+            if let Err(e) = def.check(v)
+                && !(unreadable(self.discipline, key, v) && keep(key, v))
+            {
+                return Err(format!("the building code `{}`, its {key}: {e}", self.code));
+            }
         }
         Ok(())
     }
 
     /// One of a project's own: a name that can be, and rules that can be.
     pub fn check(&self) -> Result<(), String> {
+        self.check_keeping(&|_, _| false)
+    }
+
+    /// `check`, keeping a method that can't be read where `keep` says so (`Codes::check_keeping`).
+    pub fn check_keeping(&self, keep: &dyn Fn(&str, &Value) -> bool) -> Result<(), String> {
         // The project's copy of one of BIMCraft's amendments, changed for it, keeps that one's name.
         let copy = self.based_on == self.code && !self.amends.is_empty() && find(self.discipline, &self.code).is_some();
         if copy {
-            return self.check_rules();
+            return self.check_rules_keeping(keep);
         }
         if own_name(&self.code)? != self.code {
             return Err(format!("the building code `{}` has spaces round its name", self.code));
         }
-        self.check_rules()
+        self.check_rules_keeping(keep)
     }
 
     /// As a file to hand to another project: XML, a `rule` for each of its rules.
@@ -1147,6 +1162,11 @@ impl Codes {
     pub fn methods_into_layers(&mut self) {
         for (d, key) in WHOLE {
             let Some(changed) = self.choice(d).changes.get(key).cloned() else { continue };
+            // An empty change changes nothing.
+            if changed.is_empty() {
+                self.choice_mut(d).changes.remove(key);
+                continue;
+            }
             let field = match key {
                 "unit_demand" => "utility",
                 "entrance" => "id",
@@ -1163,7 +1183,10 @@ impl Codes {
                 .filter(|c| !c.amends.is_empty())
                 .find(|c| whole_section(c, key).is_some_and(|w| wanted.is_none() || named(&w) == wanted))
                 .map(|c| c.code.clone());
-            let Some(target) = target else { continue };
+            let Some(target) = target else {
+                self.method_into_own_amendment(d, key, field, changed);
+                continue;
+            };
             let Some(mut whole) = self.find(d, &target).and_then(|c| whole_section(c, key)) else { continue };
             // A code holds 10 000 sources and kinds at most (`BuildingCode::check`): one at the brim keeps the change where it is.
             let room = self.find(d, &target).is_some_and(|c| c.sources.len().max(c.kinds.len()) + changed.len() <= 10_000);
@@ -1191,6 +1214,62 @@ impl Codes {
             own.sections.insert(key.to_string(), Value::Object(whole));
             self.choice_mut(d).changes.remove(key);
         }
+    }
+
+    /// An older file's change of method `key` that no amendment holds (the base's method, or a utility none of the
+    /// project's amendments is): an amendment of the project's own over the base, on top of the others, holding the method
+    /// changed (the library's of the utility or standard it names, else the one in force, with the change over it), so it
+    /// answers as the rules in force showed it and saves, exports and resets as any amendment does.
+    fn method_into_own_amendment(&mut self, d: Discipline, key: &str, field: &str, changed: Map<String, Value>) {
+        // No room for one more of the project's codes or one more amendment: the change stays where it is, as before.
+        if self.own.len() >= MAX_OWN || self.choice(d).amendments.len() >= MAX_AMENDMENTS || changed.len() > 10_000 {
+            return;
+        }
+        let wanted = changed.get(field).and_then(Value::as_str).map(str::to_string);
+        // The library's method of the identity the change names, where it has one; else what is in force without the change.
+        let library = wanted.as_deref().and_then(|w| {
+            of(d).find(|c| {
+                whole_section(c, key).is_some_and(|m| m.get(field).and_then(Value::as_str).is_some_and(|n| n.eq_ignore_ascii_case(w)))
+            })
+        });
+        let mut whole = match library {
+            Some(c) => whole_section(c, key).unwrap_or_default(),
+            None => layered(self, d, key).value,
+        };
+        let base = self.base(d).code.clone();
+        // A name of its own, never one the project or BIMCraft has.
+        let stem = wanted.clone().unwrap_or_else(|| self.base(d).name.clone());
+        let taken = |n: &str| self.own.iter().any(|c| c.code.eq_ignore_ascii_case(n)) || own_name(n).is_err();
+        // The stem is shortened, never the mark, so a long stem still makes names of their own.
+        let Some(name) = (1..100)
+            .map(|i| if i == 1 { " (project)".to_string() } else { format!(" (project {i})") })
+            .map(|mark| {
+                let stem: String = stem.chars().take(MAX_NAME.saturating_sub(mark.chars().count())).collect();
+                format!("{}{mark}", stem.trim_end()).trim().to_string()
+            })
+            .find(|n| !taken(n))
+        else {
+            return;
+        };
+        let mut code = BuildingCode {
+            discipline: d,
+            code: name.clone(),
+            name: name.clone(),
+            amends: base,
+            based_on: library.map(|c| c.code.clone()).unwrap_or_default(),
+            note: "A change of a method from an older file, kept as the project made it.".into(),
+            ..BuildingCode::default()
+        };
+        for (rule, v) in changed {
+            code.sources.insert(format!("{key}.{rule}"), Source::Text(format!("{name}: changed in this project")));
+            code.kinds.insert(format!("{key}.{rule}"), Kind::Assumption);
+            whole.insert(rule, v);
+        }
+        code.sections.insert(key.to_string(), Value::Object(whole));
+        self.own.push(code);
+        let choice = self.choice_mut(d);
+        choice.amendments.push(name);
+        choice.changes.remove(key);
     }
 
     pub fn choice(&self, d: Discipline) -> &Choice {
@@ -1294,14 +1373,39 @@ impl Codes {
     }
 
     /// Whether everything chosen can be: own codes few and each one that can be, amendments few, each change a rule of a
-    /// section there is that leaves the section one that can be, the site's numbers in range, and all of it of a size.
+    /// section there is that leaves the section one that can be, the site's numbers in range, and all of it of a size. A
+    /// utility's or a country's method (`WHOLE`) that can't be read (a file edited by hand, or from an older version) is
+    /// let through: a command reading it refuses and names it, and it can be reset; everything else is refused.
     pub fn check(&self) -> Result<(), String> {
+        self.check_keeping(None)
+    }
+
+    /// `check` for an edit of `before`: a method that can't be read is let through only as `before` held it, so an edit
+    /// never makes one, and one already there does not stop other edits.
+    pub fn check_keeping(&self, before: Option<&Codes>) -> Result<(), String> {
+        // As `before` held it: the same code's same section (none: the method in force), never one moved to another code.
+        let kept = |d: Discipline, key: &str, code: Option<&str>, v: &Value| -> bool {
+            let Some(b) = before else { return true };
+            match code {
+                Some(code) => b.own.iter().any(|c| c.discipline == d && c.code == code && c.sections.get(key) == Some(v)),
+                None => v.as_object().is_some_and(|o| resolve_in(b, d, key).value == *o),
+            }
+        };
         if self.own.len() > MAX_OWN {
             return Err(format!("a project keeps {MAX_OWN} building codes of its own at most"));
         }
         let mut total = 0;
         for (i, c) in self.own.iter().enumerate() {
-            c.check()?;
+            c.check_keeping(&|key, v| kept(c.discipline, key, Some(&c.code), v))?;
+            // An amendment's method is not checked by itself (it is laid over what it amends): one that can't be read is
+            // let through only where it already was, so an edit never copies one into another code.
+            for (key, v) in c.sections.iter().filter(|(k, _)| is_whole(c.discipline, k)) {
+                // As it reads: a copy of one of BIMCraft's keeps that one's rules it left out.
+                let read = whole_section(c, key).map_or_else(|| v.clone(), Value::Object);
+                if !c.amends.is_empty() && unreadable(c.discipline, key, &read) && !kept(c.discipline, key, Some(&c.code), v) {
+                    return Err(format!("the building code `{}`, its {key}: it can't be read", c.code));
+                }
+            }
             if self.own.iter().take(i).any(|o| o.code == c.code && o.discipline == c.discipline) {
                 return Err(format!("two of the project's building codes are called `{}`", c.code));
             }
@@ -1328,8 +1432,14 @@ impl Codes {
             keys.dedup();
             for key in keys {
                 let Some(def) = section_def(d, key) else { continue };
-                let resolved = resolve_in(self, d, key);
-                def.check(&Value::Object(resolved.value)).map_err(|e| format!("{} {key}: {e}", d.key()))?;
+                let resolved = Value::Object(resolve_in(self, d, key).value);
+                // A method the project changed (`Choice::changes`) is the project's own text, not a layer's: never kept.
+                let layered = !choice.changes.contains_key(key);
+                if let Err(e) = def.check(&resolved)
+                    && !(layered && unreadable(d, key, &resolved) && kept(d, key, None, &resolved))
+                {
+                    return Err(format!("{} {key}: {e}", d.key()));
+                }
             }
         }
         if total > MAX_VALUES {
@@ -1392,6 +1502,17 @@ pub const WHOLE: [(Discipline, &str); 3] =
 /// Whether section `key` of discipline `d` is a method whole (`WHOLE`).
 pub fn is_whole(d: Discipline, key: &str) -> bool {
     WHOLE.iter().any(|(wd, k)| *wd == d && *k == key)
+}
+
+/// Whether `v`, as method `key` of discipline `d` (`WHOLE`), can't be read at all: not the shape of its kind (a field of
+/// another type, missing or misspelt; not even an object), as against one that reads with a value out of range.
+pub fn unreadable(d: Discipline, key: &str, v: &Value) -> bool {
+    match (d, key) {
+        (Discipline::Electrical, "unit_demand") => serde_json::from_value::<crate::demand::Standard>(v.clone()).is_err(),
+        (Discipline::Electrical, "entrance") => serde_json::from_value::<crate::entrance::Utility>(v.clone()).is_err(),
+        (Discipline::Electrical, "building_demand") => serde_json::from_value::<crate::building_demand::Method>(v.clone()).is_err(),
+        _ => false,
+    }
 }
 
 /// Section `key` of `c` as a method whole: what `c` holds, over what the code it was made from holds (a project's copy of
@@ -1568,17 +1689,70 @@ impl Model {
     /// its rule `about` and whether it is the project's (an amendment changed in it, or its own code): what a command
     /// naming a utility reads, so a utility held under another answers by its own rules.
     pub fn held_wholes<T: DeserializeOwned>(&self, d: Discipline, key: &str, about: &str) -> Vec<(T, Option<String>, bool)> {
+        self.held_wholes_at(d, key, about).into_iter().map(|(t, source, own, _)| (t, source, own)).collect()
+    }
+
+    /// `held_wholes`, each with its layer's place counted from the top (0 the last), so methods of different keys held
+    /// for one utility can be told apart by the layer, the one on top answering.
+    pub fn held_wholes_at<T: DeserializeOwned>(&self, d: Discipline, key: &str, about: &str) -> Vec<(T, Option<String>, bool, usize)> {
         self.codes
             .layers(d)
             .iter()
             .rev()
-            .filter_map(|c| {
+            .enumerate()
+            .filter_map(|(at, c)| {
                 let rules = whole_section(c, key)?;
                 let t = serde_json::from_value(Value::Object(rules)).ok()?;
                 let own = find(d, &c.code).is_none_or(|lib| !std::ptr::eq(lib, *c));
-                Some((t, c.source(key, about).or_else(|| find(d, &c.based_on).and_then(|o| o.source(key, about))), own))
+                Some((t, c.source(key, about).or_else(|| find(d, &c.based_on).and_then(|o| o.source(key, about))), own, at))
             })
             .collect()
+    }
+
+    /// The highest layer above the place `answering` (from the top, as `held_wholes_at` counts; none: anywhere) whose
+    /// method `key` can't be read (a file edited by hand, or from an older version) and whose identity `names` accepts: its
+    /// code and place, so a command refuses rather than let a version under it answer. `names` reads the identity's fields
+    /// (`id`, `utility`, `standard`, `utilities`, `members`) as the command's own selector reads them; a field the layer's
+    /// text holds in its own shape is its own, else the library code it is a copy of says it (its text may have lost it).
+    pub fn unreadable_over<T: DeserializeOwned>(
+        &self,
+        d: Discipline,
+        key: &str,
+        answering: Option<usize>,
+        names: &dyn Fn(&Map<String, Value>) -> bool,
+    ) -> Option<(String, usize)> {
+        const FIELDS: [&str; 5] = ["id", "utility", "standard", "utilities", "members"];
+        let shaped = |k: &str, v: &Value| if matches!(k, "utilities" | "members") { v.is_array() } else { v.is_string() };
+        self.codes.layers(d).into_iter().rev().enumerate().take_while(|(at, _)| answering.is_none_or(|a| *at < a)).find_map(|(at, c)| {
+            // A section that is no method at all (not even an object) can't be read either.
+            let raw = c.sections.get(key)?;
+            if raw.is_object() && whole_section(c, key).is_some_and(|w| serde_json::from_value::<T>(Value::Object(w)).is_ok()) {
+                return None;
+            }
+            let origin = [c.based_on.as_str(), c.code.as_str()].into_iter().find_map(|n| find(d, n)).filter(|o| !std::ptr::eq(*o, c));
+            let mut view = Map::new();
+            for k in FIELDS {
+                let own = raw.get(k).filter(|v| shaped(k, v));
+                if let Some(v) = own.or_else(|| origin.and_then(|o| o.section(key)).and_then(|o| o.get(k)).filter(|v| shaped(k, v))) {
+                    view.insert(k.to_string(), v.clone());
+                }
+            }
+            names(&view).then(|| (c.code.clone(), at))
+        })
+    }
+
+    /// Whether an identity field of a method's text (`unreadable_over`) is `asked`, as a command compares it: `exact`, or
+    /// whatever the case. A list (`utilities` of names, `members` by their ids) holds it.
+    pub fn names_field(view: &Map<String, Value>, field: &str, asked: &str, exact: bool) -> bool {
+        let is = |n: &str| if exact { n == asked } else { n.eq_ignore_ascii_case(asked) };
+        match view.get(field) {
+            Some(Value::String(n)) => is(n),
+            // `utilities` lists names; `members` lists members by their ids (a name alone, in a text that lost its shape).
+            Some(Value::Array(a)) => {
+                a.iter().any(|v| v.as_str().or_else(|| v.get("id").and_then(Value::as_str).filter(|_| field == "members")).is_some_and(is))
+            }
+            _ => false,
+        }
     }
 
     /// The rules the project's stairs and railings are held to.

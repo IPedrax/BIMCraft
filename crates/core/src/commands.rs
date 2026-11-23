@@ -7965,18 +7965,50 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     let project = s.model.section_as::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand").filter(|(_, own)| *own);
     let project = project.map(|(m, _)| m);
     // Each of the project's amendments' own method, wherever it stands: named, a utility under another answers by its own.
-    let held: Vec<bd::Method> = s
-        .model
-        .held_wholes::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard")
-        .into_iter()
-        .filter(|(_, _, own)| *own)
-        .map(|(m, _, _)| m)
-        .collect();
-    let m: Held<bd::Method> = match (string(c, p, "standard")?, string(c, p, "utility")?) {
+    // The one on top answers, the project's or BIMCraft's: a copy under BIMCraft's own is passed over.
+    let held_at = s.model.held_wholes_at::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard");
+    let places: Vec<(usize, String, Vec<String>)> =
+        held_at.iter().map(|(m, .., at)| (*at, m.standard.clone(), m.utilities.clone())).collect();
+    let held: Vec<(bd::Method, bool)> = held_at.into_iter().map(|(m, _, own, _)| (m, own)).collect();
+    fn on_top(mut held: Vec<(bd::Method, bool)>, named: &dyn Fn(&bd::Method) -> bool) -> Option<(bd::Method, bool)> {
+        let i = held.iter().position(|(m, _)| named(m))?;
+        Some(held.swap_remove(i))
+    }
+    let (standard_asked, utility_asked) = (string(c, p, "standard")?, string(c, p, "utility")?);
+    if standard_asked.is_some() && utility_asked.is_some() {
+        return Err(bad(c, "give `standard` or `utility`, not both"));
+    }
+    // A layer whose method for the standard or utility asked can't be read, over the one that would answer: refused. Each
+    // is named as the method is chosen below: a standard by its name as written, a utility in the list whatever the case.
+    let asked = standard_asked.as_deref().map(|n| ("standard", n, true)).or(utility_asked.as_deref().map(|n| ("utilities", n, false)));
+    if let Some((field, asked, exact)) = asked {
+        let answering = places
+            .iter()
+            .find(|(_, standard, utilities)| match exact {
+                true => standard == asked,
+                false => utilities.iter().any(|u| u.eq_ignore_ascii_case(asked)),
+            })
+            .map(|(at, ..)| *at);
+        let names = |v: &serde_json::Map<String, Value>| crate::model::Model::names_field(v, field, asked, exact);
+        if let Some((code, _)) =
+            s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", answering, &names)
+        {
+            return Err(bad(c, format!("{code}'s method for `{asked}` can't be read: reset it in Manage > Building Codes, or fix it")));
+        }
+    }
+    // Naming neither, the method on top answers: one over it that can't be read is said, not passed over.
+    if standard_asked.is_none() && utility_asked.is_none() {
+        let any = |_: &serde_json::Map<String, Value>| true;
+        let top = places.first().map(|(at, ..)| *at);
+        if let Some((code, _)) = s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", top, &any) {
+            return Err(bad(c, format!("{code}'s method can't be read: reset it in Manage > Building Codes, or fix it")));
+        }
+    }
+    let m: Held<bd::Method> = match (standard_asked, utility_asked) {
         (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
-        (Some(s), None) => match project.filter(|m| m.standard == s).or_else(|| held.into_iter().find(|m| m.standard == s)) {
-            Some(m) => Held::Project(Box::new(m)),
-            None => Held::Library(
+        (Some(s), None) => match project.filter(|m| m.standard == s).map(|m| (m, true)).or_else(|| on_top(held, &|m| m.standard == s)) {
+            Some((m, true)) => Held::Project(Box::new(m)),
+            _ => Held::Library(
                 bd::methods()
                     .iter()
                     .find(|m| m.standard == s)
@@ -7985,9 +8017,13 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
         },
         (None, Some(u)) => {
             let named = |m: &bd::Method| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u));
-            match project.filter(|m| named(m)).or_else(|| held.into_iter().find(|m| named(m))) {
-                Some(m) => Held::Project(Box::new(m)),
-                None => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
+            match project.filter(|m| named(m)).map(|m| (m, true)).or_else(|| on_top(held, &named)) {
+                Some((m, true)) => Held::Project(Box::new(m)),
+                // BIMCraft's on top: its method of that standard.
+                Some((m, false)) if bd::methods().iter().any(|x| x.standard == m.standard) => Held::Library(
+                    bd::methods().iter().find(|x| x.standard == m.standard).ok_or_else(|| bad(c, format!("no method `{}`", m.standard)))?,
+                ),
+                _ => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
                     || bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())),
                 )?),
             }
@@ -8223,38 +8259,87 @@ fn demand(s: &mut Session, p: &Value) -> R {
             "entrance",
         ],
     )?;
-    // Not given: the utility whose code the project is held to (its unit demand's, else its entrance categories').
-    let own_utility = |r: Option<(String, bool)>| r.filter(|(_, own)| *own).map(|(u, _)| u);
+    // The utilities' methods the project's layers hold, each with its layer's place from the top.
     let electrical = crate::codes::Discipline::Electrical;
-    let utility = string(c, p, "utility")?
-        .or_else(|| own_utility(s.model.section_as::<d::Standard>(electrical, "unit_demand").map(|(x, own)| (x.utility, own))))
-        .or_else(|| own_utility(s.model.section_as::<crate::entrance::Utility>(electrical, "entrance").map(|(x, own)| (x.id, own))))
-        .ok_or_else(|| {
-            bad(
-                c,
-                format!(
-                    "`utility` is required: {}, {}; or hold the project to a utility's code in Manage > Building Codes",
-                    d::names().join(", "),
-                    crate::entrance::names().join(", ")
-                ),
-            )
-        })?;
-    // The project's utility, as its amendment holds it and the project changed it; else BIMCraft's.
-    // Each amendment's own entrance, wherever it stands: one utility's never answers for another's.
-    for (u, _, own) in s.model.held_wholes::<crate::entrance::Utility>(crate::codes::Discipline::Electrical, "entrance", "rule") {
-        let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
-        if own && (u.id.eq_ignore_ascii_case(&utility) || member.is_some()) {
-            return demand_table(p, &utility, &u, member);
+    let entrances = s.model.held_wholes_at::<crate::entrance::Utility>(electrical, "entrance", "rule");
+    let units = s.model.held_wholes_at::<d::Standard>(electrical, "unit_demand", "method");
+    // Not given: the utility of the method on top (its entrance's or its unit demand's; the entrance in one layer).
+    let on_top = entrances
+        .iter()
+        .map(|(u, .., at)| (*at, u.id.clone()))
+        .chain(units.iter().map(|(u, .., at)| (*at, u.utility.clone())))
+        .min_by_key(|(at, _)| *at)
+        .map(|(_, id)| id);
+    let given = string(c, p, "utility")?;
+    // Not given, and no method that reads holds one: a method that can't be read is said, not taken for none.
+    if given.is_none() && on_top.is_none() {
+        let any = |_: &serde_json::Map<String, Value>| true;
+        let broken = [
+            s.model.unreadable_over::<crate::entrance::Utility>(electrical, "entrance", None, &any),
+            s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", None, &any),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(_, at)| *at);
+        if let Some((code, _)) = broken {
+            return Err(bad(c, format!("{code}'s method can't be read: reset it in Manage > Building Codes, or fix it")));
         }
     }
-    // The utility's own unit demand, as its amendment holds it, wherever it stands among the project's amendments: never
-    // the rules of another utility layered with it.
-    let project = s
-        .model
-        .held_wholes::<d::Standard>(crate::codes::Discipline::Electrical, "unit_demand", "method")
+    let utility = given.or(on_top).ok_or_else(|| {
+        bad(
+            c,
+            format!(
+                "`utility` is required: {}, {}; or hold the project to a utility's code in Manage > Building Codes",
+                d::names().join(", "),
+                crate::entrance::names().join(", ")
+            ),
+        )
+    })?;
+    // The utility's method, of the layers that hold one for it (its service entrance or its unit demand, the project's or
+    // BIMCraft's), the one on top: never another utility's layered with it, never a version under another of its own.
+    // A member of a group of utilities answers by its group's methods too (its unit demand is the group's).
+    let groups: Vec<String> = entrances
+        .iter()
+        .filter(|(u, ..)| u.members.iter().any(|m| m.id.eq_ignore_ascii_case(&utility)))
+        .map(|(u, ..)| u.id.clone())
+        .chain(crate::entrance::find(&utility).filter(|(_, m)| m.is_some()).map(|(u, _)| u.id.clone()))
+        .collect();
+    let entrance = entrances
         .into_iter()
-        .find(|(u, _, own)| *own && u.utility.eq_ignore_ascii_case(&utility))
-        .map(|(u, source, _)| (u, source.unwrap_or_else(|| "changed in this project".into())));
+        .find(|(u, ..)| u.id.eq_ignore_ascii_case(&utility) || u.members.iter().any(|m| m.id.eq_ignore_ascii_case(&utility)));
+    let unit = units
+        .into_iter()
+        .find(|(u, ..)| u.utility.eq_ignore_ascii_case(&utility) || groups.iter().any(|g| u.utility.eq_ignore_ascii_case(g)));
+    // A layer whose method for this utility can't be read, over the one that would answer: refused, never passed over.
+    let answering = entrance.as_ref().map(|e| e.3).into_iter().chain(unit.as_ref().map(|u| u.3)).min();
+    // Each named as the method is chosen above: an entrance by its id or a member's, a unit demand by its utility or
+    // its group's; of the two, the one higher up is named.
+    use crate::model::Model as M;
+    let by_entrance =
+        |v: &serde_json::Map<String, Value>| M::names_field(v, "id", &utility, false) || M::names_field(v, "members", &utility, false);
+    let by_unit =
+        |v: &serde_json::Map<String, Value>| std::iter::once(&utility).chain(&groups).any(|n| M::names_field(v, "utility", n, false));
+    let unreadable = [
+        s.model.unreadable_over::<crate::entrance::Utility>(electrical, "entrance", answering, &by_entrance),
+        s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", answering, &by_unit),
+    ]
+    .into_iter()
+    .flatten()
+    .min_by_key(|(_, at)| *at);
+    if let Some((code, _)) = unreadable {
+        return Err(bad(c, format!("{code}'s method for `{utility}` can't be read: reset it in Manage > Building Codes, or fix it")));
+    }
+    if let Some((u, _, _, at)) = &entrance
+        && unit.as_ref().is_none_or(|(.., under)| at <= under)
+    {
+        let member = u.members.iter().find(|m| m.id.eq_ignore_ascii_case(&utility));
+        return demand_table(p, &utility, u, member);
+    }
+    let project = unit.and_then(|(u, source, own, _)| match own {
+        true => Some((u, source.unwrap_or_else(|| "changed in this project".into()))),
+        // BIMCraft's on top: its own, with its own source.
+        false => d::find(&utility).cloned(),
+    });
     if project.is_none()
         && let Some((u, member)) = crate::entrance::find(&utility)
     {

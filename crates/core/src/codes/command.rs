@@ -77,11 +77,12 @@ pub fn in_force(codes: &Codes, d: Discipline, name: &str) -> BuildingCode {
 pub fn in_force_layered(codes: &Codes, d: Discipline, name: &str) -> Result<Vec<BuildingCode>, String> {
     let base = in_force(codes, d, name);
     let layers = codes.layers(d);
-    let split: Vec<&str> = super::WHOLE
-        .iter()
-        .filter(|(wd, k)| *wd == d && layers.iter().filter(|c| c.sections.contains_key(*k)).count() > 1)
-        .map(|(_, k)| *k)
-        .collect();
+    // Every method held, once more than one layer holds any: which answers depends on the layers' order across keys too (a
+    // utility's entrance in one layer, its unit demand in another), so each layer's methods keep their place.
+    let whole: Vec<&str> = super::WHOLE.iter().filter(|(wd, _)| *wd == d).map(|(_, k)| *k).collect();
+    let holders = layers.iter().filter(|c| whole.iter().any(|k| c.sections.contains_key(*k))).count();
+    let split: Vec<&str> =
+        if holders > 1 { whole.into_iter().filter(|k| layers.iter().any(|c| c.sections.contains_key(*k))).collect() } else { Vec::new() };
     if split.is_empty() {
         return Ok(vec![base]);
     }
@@ -482,7 +483,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         let pins = next.pins(d);
         next.choice_mut(d).editions = pins;
     }
-    next.check().map_err(|e| bad(c, e))?;
+    next.check_keeping(Some(&unchanged)).map_err(|e| bad(c, e))?;
     if d == Discipline::Electrical {
         crate::electrical::settings_fit(&s.model, &unchanged, &next, &asked).map_err(|e| bad(c, e))?;
     }
@@ -777,7 +778,7 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
         let pins = next.pins(d);
         next.choice_mut(d).editions = pins;
     }
-    next.check().map_err(|e| bad(c, format!("{path}: {e}")))?;
+    next.check_keeping(Some(&s.model.codes)).map_err(|e| bad(c, format!("{path}: {e}")))?;
     crate::electrical::settings_fit(&s.model, &s.model.codes, &next, &[]).map_err(|e| bad(c, format!("{path}: {e}")))?;
     let first = read.first().map(|k| k.code.clone()).unwrap_or_default();
     let all: Vec<Value> = read.iter().map(|k| json!({"code": k.code, "discipline": k.discipline.key()})).collect();
