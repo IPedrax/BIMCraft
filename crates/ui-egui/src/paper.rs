@@ -76,8 +76,7 @@ impl BimApp {
         if response.drag_started_by(PointerButton::Primary)
             && modify
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
-            && let Some(vp) =
-                pick(o).filter(|v| matches!(model.elements.get(v), Some(Element::Viewport(_) | Element::Text(_) | Element::Annotation(_))))
+            && let Some(vp) = pick(o).filter(|v| matches!(model.elements.get(v), Some(Element::Viewport(_) | Element::Text(_))))
         {
             papers.drag = Some(view.mm((o.x - rect.min.x, o.y - rect.min.y)));
             self.grab(vp);
@@ -175,22 +174,6 @@ impl BimApp {
                 _ if self.tool == Tool::Text => {
                     let p = view.mm((q.x - rect.min.x, q.y - rect.min.y));
                     self.write_note(id, P2((p.0 * 2.0).round() / 2.0, (p.1 * 2.0).round() / 2.0));
-                }
-                // An annotation symbol on the paper: its millimetres are the paper's.
-                _ if self.tool == Tool::Component && self.placing_annotation().is_some() => {
-                    if let Some((family, ty)) = self.placing_annotation() {
-                        let p = view.mm((q.x - rect.min.x, q.y - rect.min.y));
-                        if let Some(made) = self.run(
-                            "annotation",
-                            serde_json::json!({"family": family, "type": ty, "sheet": id,
-                                "at": [p.0, p.1], "angle": self.component_angle}),
-                        ) {
-                            if let Some(id) = made["id"].as_u64() {
-                                self.selection = vec![id];
-                            }
-                            self.set_tool(Tool::Modify);
-                        }
-                    }
                 }
                 _ => {
                     self.status = Status {

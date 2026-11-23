@@ -1558,12 +1558,7 @@ impl BimApp {
             Tool::Column => self.place_column(plane.level, at, plane.offset),
             Tool::Stand(category) => self.place_stand_lifted(plane.level, at, category, plane.offset),
             Tool::Component | Tool::Fixture(_) => {
-                if self.placing_annotation().is_some() {
-                    self.status = Status {
-                        text: t("Annotation symbols go on a sheet or a flat view: open one from the Project Browser.").into(),
-                        error: true,
-                    };
-                } else if let Some((family, ty)) = self.placing() {
+                if let Some((family, ty)) = self.placing() {
                     let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
                                    "angle": self.component_angle});
                     self.place_component(p, plane.z);

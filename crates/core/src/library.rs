@@ -1582,7 +1582,6 @@ impl crate::model::Element {
                     f(&Kind::DistributionSystem, d);
                 }
             }
-            Element::Annotation(a) => family_and_type(&mut a.family, &mut a.type_name, f),
             Element::PointCloud(pc) => f(&Kind::Cloud, &mut pc.cloud),
             Element::Tag(t) => {
                 if let Some(label) = &mut t.label {
