@@ -84,8 +84,7 @@ impl Family {
 
     /// Its options, every one of them, defaults too: what the `family` command replies and takes back as `options`.
     pub fn options_json(&self) -> Value {
-        json!({
-            "scale_with_view": self.scale_with_view,
+        let mut options = json!({
             "work_plane_based": self.work_plane_based,
             "always_vertical": self.always_vertical,
             "default_elevation": self.default_elevation,
@@ -94,7 +93,12 @@ impl Family {
             "room_calculation_point": self.room_calculation_point,
             "cut_in_views": self.cut_in_views,
             "omniclass": self.omniclass,
-        })
+        });
+        // An annotation family's alone: a component's millimetres are the model's, and `merge_options` refuses it there.
+        if self.is_annotation() {
+            options["scale_with_view"] = json!(self.scale_with_view);
+        }
+        options
     }
 
     /// Its options, each of `given` merged over what it holds: a `null` takes an option back to its default (none, for a
