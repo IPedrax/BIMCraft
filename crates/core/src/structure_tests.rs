@@ -243,7 +243,7 @@ fn made(s: &mut Session, id: &str, p: Value) -> u64 {
 
 /// What a drawing draws of element `id`.
 fn of(d: &Drawing, id: u64) -> Vec<&Prim> {
-    d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect()
+    d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).flat_map(|(p, _)| p.paint()).collect()
 }
 
 /// The box the closed lines and fills of `id` take in the drawing, in model mm: from the south west corner to the north east.
@@ -253,7 +253,7 @@ fn extent(d: &Drawing, id: u64) -> (P2, P2) {
         .flat_map(|p| match p {
             Prim::Line { pts, .. } => pts.clone(),
             Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
-            Prim::Image { .. } => Vec::new(),
+            Prim::Image { .. } | Prim::Text { .. } => Vec::new(),
         })
         .map(|q| d.view.mm(q))
         .collect();

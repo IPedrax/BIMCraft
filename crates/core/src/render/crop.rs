@@ -121,6 +121,15 @@ impl Drawing {
         };
         for (i, p) in self.prims.iter().enumerate() {
             match p {
+                Prim::Text { frame, layout, fallback } => {
+                    let mut raw = Drawing::new(self.view);
+                    raw.prims = fallback.clone();
+                    let (clipped, _) = raw.cropped(lo, hi);
+                    if !clipped.prims.is_empty() {
+                        let frame = super::NoteFrame { at: shift(frame.at), ..*frame };
+                        keep(&mut d, i, Prim::Text { frame, layout: layout.clone(), fallback: clipped.prims });
+                    }
+                }
                 Prim::Line { pts, width, color, dash, closed } => {
                     let inside = pts.iter().all(|q| q.0 >= lo.0 && q.0 <= hi.0 && q.1 >= lo.1 && q.1 <= hi.1);
                     if inside {

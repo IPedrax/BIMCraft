@@ -199,7 +199,7 @@ fn dxf(paged: &Paged, options: &Options, ctx: &Ctx) -> Result<String, String> {
             }
         }
     }
-    for (i, p) in d.prims.iter().enumerate() {
+    for (i, p) in d.paint_prims() {
         if i.is_multiple_of(ASK_EVERY) && (ctx.cancelled)() {
             return Err("cancelled".to_string());
         }
@@ -224,10 +224,11 @@ fn dxf(paged: &Paged, options: &Options, ctx: &Ctx) -> Result<String, String> {
     let pts: Vec<(f64, f64)> = d
         .prims
         .iter()
+        .flat_map(Prim::paint)
         .flat_map(|p| match p {
             Prim::Line { pts, .. } => pts.clone(),
             Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
-            Prim::Image { .. } => Vec::new(),
+            Prim::Image { .. } | Prim::Text { .. } => Vec::new(),
         })
         .map(place)
         .collect();
@@ -514,7 +515,7 @@ fn entities(
     w.pair(2, "ENTITIES");
     let mut n = 0;
     let finite = |q: &(f64, f64)| q.0.is_finite() && q.1.is_finite();
-    for (i, p) in d.prims.iter().enumerate() {
+    for (i, p) in d.paint_prims() {
         if i.is_multiple_of(ASK_EVERY) && (ctx.cancelled)() {
             return Err("cancelled".to_string());
         }
@@ -537,7 +538,7 @@ fn entities(
                     n += 1;
                 }
             }
-            Prim::Fill { .. } | Prim::Image { .. } => {}
+            Prim::Fill { .. } | Prim::Image { .. } | Prim::Text { .. } => {}
         }
     }
     // The imported drawings, on their own layers, already in the model's mm.

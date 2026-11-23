@@ -246,9 +246,10 @@ slanting it. A character a face hasn't is lettered from Plex Sans, then Plex Mon
 lets its `runs` (character ranges, a line break one character) count, each setting any of the three either way, so a part
 stays bold, or not, whatever type the note gets. `modify` with new `text` alone keeps the runs on what didn't change
 (`text::remap`: the common start and end keep theirs, what came in takes the format before it). `text::layout` lays a note out
-in mm on paper (lines `LINE_PITCH` sizes apart, each character's place and width), which `render::note` draws (each letter a
-`Prim::Fill` of rings filled by the non-zero rule, our lettering and Plex Mono's bold as lines, underlines as lines; `Part::Text`)
-and which the desktop's editor reads for its caret, its selection and a click's place (`Layout::caret`, `boxes`, `index_at`;
+in mm on paper (lines `LINE_PITCH` sizes apart, each character's place and width), which notes and title blocks carry in
+`Prim::Text` with placement and exact fallback paint (letters as non-zero `Prim::Fill` rings, our lettering, Plex Mono's bold
+and underlines as lines; `Part::Text`). Existing painters draw that fallback. The desktop's editor reads the layout
+for its caret, its selection and a click's place (`Layout::caret`, `boxes`, `index_at`;
 `Drawing::note_frame` turns layout mm into the drawing's pixels and back). The canvas fills a letter, holes and all, from
 `text::triangles` (strips between every corner's and crossing's height), kept by its points for the frames that draw it again.
 A file of format 7 has notes with a `size`: reading it gives each a type of that size (`Model::typed_notes`), and `Model::check`
