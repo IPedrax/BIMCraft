@@ -498,6 +498,7 @@ const IMMEDIATE_COMMANDS: &[&str] = &[
     "floor_by_face",
     "roof_by_face",
     "update_by_face",
+    "unframe",
     "join_polyline",
     "explode",
     "stair_storeys",
