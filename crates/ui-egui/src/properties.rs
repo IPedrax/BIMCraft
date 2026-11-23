@@ -71,6 +71,10 @@ enum Kind {
     LengthIf,
     /// An area in m², read only: shown in m² or ft².
     AreaShown,
+    /// A volume in m³, read only: shown in m³ or ft³.
+    VolumeShown,
+    /// An angle in degrees, typed as a number, shown with °.
+    Angle,
     /// A length in m, read only.
     MetresShown,
     /// A dimension's values: lengths, or an angle's degrees.
@@ -156,7 +160,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
             ("Other", "end", msg!("End"), Point),
-            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
         ],
         "door" => &[
             ("Constraints", "level", "Level", LevelName),
@@ -183,7 +187,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "perimeter_m", "Perimeter", MetresShown),
             ("Dimensions", "unbounded_height", msg!("Unbounded Height"), LengthShown),
-            ("Dimensions", "volume_m3", "Volume (m³)", Shown),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
             ("Identity Data", "number", "Number", Text),
             ("Identity Data", "name", "Name", Text),
             ("Other", "point", msg!("Location"), Point),
@@ -193,15 +197,15 @@ fn rows(category: &str) -> &'static [Row] {
         "floor" => &[
             ("Constraints", "level", "Level", Level),
             ("Constraints", "offset", msg!("Height Offset From Level"), Length),
-            ("Dimensions", "slope", msg!("Slope (°)"), Number),
+            ("Dimensions", "slope", "Slope", Angle),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "plan_area_m2", msg!("Plan Area"), AreaShown),
             ("Dimensions", "openings_area_m2", msg!("Openings Area"), AreaShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Structural", "structural", "Structural", Flag),
-            ("Graphics", "pattern_angle", msg!("Pattern Angle (°)"), Number),
-            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
-            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Graphics", "pattern_angle", "Pattern Angle", Angle),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
+            ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
             ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
             ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
@@ -211,7 +215,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "openings_area_m2", msg!("Openings Area"), AreaShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
-            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
         ],
         "shaft" => &[
             ("Constraints", "level", "Base Constraint", Level),
@@ -227,7 +231,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", "Unconnected Height", Height),
             ("Dimensions", "top", msg!("Top Outline"), Outline),
             ("Dimensions", "area_m2", "Area", AreaShown),
-            ("Dimensions", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
             ("Dimensions", "gross_floor_area_m2", "Gross Floor Area", AreaShown),
             ("Identity Data", "name", "Name", Text),
         ],
@@ -258,7 +262,7 @@ fn rows(category: &str) -> &'static [Row] {
         "text" => &[
             ("Text", "text", "Text", Text),
             ("Text", "override_format", msg!("Override Formatting"), Flag),
-            ("Other", "angle", msg!("Rotation (°)"), Number),
+            ("Other", "angle", "Rotation", Angle),
             ("Other", "at", "Location", Point),
         ],
         "spot" => &[
@@ -286,12 +290,12 @@ fn rows(category: &str) -> &'static [Row] {
         ],
         "region" => &[
             ("Graphics", "line_style", "Line Style", RegionLines),
-            ("Graphics", "pattern_angle", "Pattern Angle (°)", Number),
+            ("Graphics", "pattern_angle", "Pattern Angle", Angle),
             ("Dimensions", "area_m2", "Area", AreaShown),
         ],
         "detailgroup" => &[
             ("Identity Data", "type", "Group", Shown),
-            ("Other", "angle", "Rotation (°)", Number),
+            ("Other", "angle", "Rotation", Angle),
             ("Other", "mirrored", msg!("Mirrored"), Flag),
             ("Other", "at", "Origin", Point),
             ("Other", "excluded", msg!("Excluded Members"), Shown),
@@ -300,7 +304,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", msg!("Reference Level"), Level),
             ("Constraints", "flexible", msg!("Flexible"), Flag),
             ("Identity Data", "type", "Group", Shown),
-            ("Other", "angle", "Rotation (°)", Number),
+            ("Other", "angle", "Rotation", Angle),
             ("Other", "mirrored", msg!("Mirrored"), Flag),
             ("Other", "at", "Origin", Point),
             ("Other", "excluded", msg!("Excluded Members"), Shown),
@@ -315,8 +319,8 @@ fn rows(category: &str) -> &'static [Row] {
         "schedule" => &[("Identity Data", "name", "View Name", Text), ("Other", "of", "Category", Shown)],
         "view3d" => &[
             ("Identity Data", "name", "View Name", Text),
-            (msg!("Camera"), "azimuth", msg!("Azimuth (°)"), Number),
-            ("Camera", "elevation", msg!("Elevation (°)"), Number),
+            (msg!("Camera"), "azimuth", "Azimuth", Angle),
+            ("Camera", "elevation", "Elevation", Angle),
         ],
         "tag" => &[
             ("Graphics", "leader", msg!("Leader Line"), Flag),
@@ -344,7 +348,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "work_plane", "Work Plane", Shown),
             ("Constraints", "offset_from_host", msg!("Offset from Host"), Length),
             ("Other", "at", "Location", Point),
-            ("Other", "angle", "Rotation (°)", Number),
+            ("Other", "angle", "Rotation", Angle),
         ],
         "column" | "structuralcolumn" => &[
             ("Constraints", "level", msg!("Base Level"), Level),
@@ -356,9 +360,9 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "attach_top", "Top is Attached", Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Other", "at", "Location", Point),
-            ("Other", "angle", "Rotation (°)", Number),
-            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
-            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Other", "angle", "Rotation", Angle),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
+            ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
             ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
             ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
@@ -375,9 +379,9 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "top_level", "Top Level", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
             ("Other", "at", "Location", Point),
-            ("Other", "angle", "Rotation (°)", Number),
-            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
-            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Other", "angle", "Rotation", Angle),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
+            ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
             ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
             ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
@@ -391,8 +395,8 @@ fn rows(category: &str) -> &'static [Row] {
             ("Identity Data", "system", "System", Text),
             ("Other", "start", "Start", Point),
             ("Other", "end", "End", Point),
-            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
-            ("Quantities", "formwork_m2", msg!("Formwork Area"), AreaShown),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
+            ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
             ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
             ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
         ],
@@ -452,13 +456,13 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "offset", "Base Offset", Length),
             ("Constraints", "extrusion.from", msg!("Extrusion Start"), LengthIf),
             ("Constraints", "extrusion.to", msg!("Extrusion End"), LengthIf),
-            ("Dimensions", "slope", "Slope (°)", Number),
+            ("Dimensions", "slope", "Slope", Angle),
             ("Dimensions", "ridge", msg!("Max Ridge Height"), LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "plan_area_m2", msg!("Plan Area"), AreaShown),
             ("Dimensions", "openings_area_m2", msg!("Openings Area"), AreaShown),
             ("Other", "gable", msg!("Gable Ends"), Flag),
-            ("Quantities", "volume_m3", msg!("Volume (m³)"), Shown),
+            ("Dimensions", "volume_m3", "Volume", VolumeShown),
         ],
         "section" | "elevation" => &[
             ("Identity Data", "name", "View Name", Text),
@@ -773,12 +777,18 @@ fn shown(kind: Kind, v: &Value, units: Units) -> String {
             }
             _ => String::new(),
         },
-        Length | LengthIf | Height | Limit(_) | Point | LengthShown | Values => each(&|x| units.length(x)),
-        MetresShown => each(&|x| units.length(x * 1000.0)),
+        Length | LengthIf | Height | Limit(_) | LengthShown | Point => each(&|x| units.with_unit(x)),
+        MetresShown => each(&|x| units.with_unit(x * 1000.0)),
         AreaShown => each(&|x| {
             let (area, unit) = units.area(x * 1e6);
             format!("{area:.2} {unit}")
         }),
+        VolumeShown => each(&|x| {
+            let (volume, unit) = units.volume(x * 1e9);
+            format!("{volume:.3} {unit}")
+        }),
+        Angle => each(&|x| format!("{x}°")),
+        Values => each(&|x| units.length(x)),
         _ => text(v),
     }
 }
@@ -788,6 +798,7 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
     let length = |typed: &str| units.parse(typed).ok_or_else(|| tf("`{}` is not a length", &[typed.trim()]));
     match kind {
         Number => number(s).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not a number", &[s])),
+        Angle => number(s.trim().trim_end_matches('°').trim()).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not an angle", &[s])),
         Length | LengthIf | Height => length(s).map(|x| json!(x)),
         Limit(_) if s.trim().is_empty() => Ok(Value::Null),
         Limit(_) => length(s).map(|x| json!(x)),
@@ -2391,7 +2402,7 @@ impl BimApp {
                         Values if v["kind"] == "angular" => {
                             ui.label(RichText::new(format!("{}°", text(val))).color(pal().muted));
                         }
-                        LengthShown | AreaShown | MetresShown | Values => {
+                        LengthShown | AreaShown | VolumeShown | MetresShown | Values => {
                             ui.label(RichText::new(shown(kind, val, units)).color(pal().muted));
                         }
                         LevelName => {
@@ -2515,7 +2526,7 @@ impl BimApp {
                                 select = Some(other);
                             }
                         }
-                        Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
+                        Text | Number | Angle | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
                             // Blank across a selection may be values that differ, not nothing.
                             let hint = match kind {
                                 Limit(hint) if ids.len() == 1 => t(hint),
