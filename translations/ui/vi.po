@@ -105,7 +105,7 @@ msgstr ""
 msgid "3D"
 msgstr "3D"
 
-#: crates/ui-egui/src/browser.rs:576
+#: crates/ui-egui/src/browser.rs:580
 #: crates/ui-egui/src/lib.rs:5404
 #: crates/ui-egui/src/properties.rs:2180
 msgid "3D View"
@@ -119,7 +119,7 @@ msgstr "Khung nhìn 3D: {3D}"
 msgid "3D View: {}"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:630
+#: crates/ui-egui/src/browser.rs:634
 #: crates/ui-egui/src/editor/document.rs:1331
 #: crates/ui-egui/src/properties.rs:1765
 msgid "3D Views"
@@ -2641,7 +2641,7 @@ msgstr "Mặt bằng trần"
 msgid "Ceiling Plan: {}"
 msgstr "Mặt bằng trần: {}"
 
-#: crates/ui-egui/src/browser.rs:629
+#: crates/ui-egui/src/browser.rs:633
 #: crates/ui-egui/src/editor/document.rs:1330
 #: crates/ui-egui/src/properties.rs:1758
 msgid "Ceiling Plans"
@@ -2995,7 +2995,7 @@ msgstr "Xóa ghi đè"
 msgid "Clear Recent Files"
 msgstr "Xóa tệp gần đây"
 
-#: crates/ui-egui/src/browser.rs:323
+#: crates/ui-egui/src/browser.rs:329
 msgid "Clear the Search"
 msgstr "Xóa tìm kiếm"
 
@@ -3930,7 +3930,7 @@ msgstr ""
 msgid "Collaborate"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:480
+#: crates/ui-egui/src/browser.rs:482
 msgid "Collapse All"
 msgstr ""
 
@@ -3991,7 +3991,7 @@ msgstr "Gộp với giai đoạn trước"
 msgid "Combine: what was made, taken down and shown in this phase goes to the neighbouring one, and this one goes"
 msgstr "Gộp: những gì được tạo, phá dỡ và hiển thị trong giai đoạn này chuyển sang giai đoạn kề bên, và giai đoạn này bị xóa"
 
-#: crates/ui-egui/src/browser.rs:298
+#: crates/ui-egui/src/browser.rs:304
 #: crates/ui-egui/src/settings.rs:884
 msgid "Coming in a later version"
 msgstr "Sẽ có trong phiên bản sau"
@@ -4469,7 +4469,7 @@ msgstr "Mặt lõi: phía ngoài"
 msgid "Core Face: Interior"
 msgstr "Mặt lõi: phía trong"
 
-#: crates/ui-egui/src/browser.rs:755
+#: crates/ui-egui/src/browser.rs:759
 #: crates/ui-egui/src/curtain.rs:382
 #: crates/ui-egui/src/curtain.rs:569
 msgid "Corner Mullion"
@@ -4680,11 +4680,11 @@ msgstr "Tạo tham số…"
 msgid "Create Print Set"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:461
+#: crates/ui-egui/src/browser.rs:463
 msgid "Create Print Set of {}…"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:463
+#: crates/ui-egui/src/browser.rs:465
 msgid "Create Print Set…"
 msgstr ""
 
@@ -5913,7 +5913,7 @@ msgstr ""
 msgid "Dummy Script"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:613
+#: crates/ui-egui/src/browser.rs:617
 #: crates/ui-egui/src/publisher.rs:617
 #: crates/ui-egui/src/titleblocks.rs:667
 msgid "Duplicate"
@@ -5937,11 +5937,11 @@ msgstr "Nhân bản khung nhìn (DP): một mặt bằng mới của tầng này
 msgid "Duplicate View: open a plan first"
 msgstr "Nhân bản khung nhìn: hãy mở một mặt bằng trước"
 
-#: crates/ui-egui/src/browser.rs:615
+#: crates/ui-egui/src/browser.rs:619
 msgid "Duplicate as Dependent"
 msgstr "Nhân bản dạng phụ thuộc"
 
-#: crates/ui-egui/src/browser.rs:614
+#: crates/ui-egui/src/browser.rs:618
 msgid "Duplicate with Detailing"
 msgstr "Nhân bản kèm chi tiết"
 
@@ -6395,7 +6395,7 @@ msgstr "Mặt đứng: {}"
 msgid "Elevations"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:649
+#: crates/ui-egui/src/browser.rs:653
 msgid "Elevations (Building Elevation)"
 msgstr "Mặt đứng (mặt đứng công trình)"
 
@@ -6605,7 +6605,7 @@ msgstr ""
 msgid "Exit"
 msgstr "Thoát"
 
-#: crates/ui-egui/src/browser.rs:476
+#: crates/ui-egui/src/browser.rs:478
 msgid "Expand All"
 msgstr ""
 
@@ -6765,7 +6765,7 @@ msgstr ""
 msgid "Falls"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:794
+#: crates/ui-egui/src/browser.rs:798
 #: crates/ui-egui/src/editor/nested.rs:386
 #: crates/ui-egui/src/parameters.rs:698
 #: crates/ui-egui/src/start.rs:338
@@ -7358,7 +7358,7 @@ msgstr ""
 msgid "Floor Plan: {}"
 msgstr "Mặt bằng tầng: {}"
 
-#: crates/ui-egui/src/browser.rs:628
+#: crates/ui-egui/src/browser.rs:632
 #: crates/ui-egui/src/editor/document.rs:1329
 #: crates/ui-egui/src/properties.rs:1754
 #: crates/ui-egui/src/properties.rs:1755
@@ -7645,7 +7645,7 @@ msgstr "Van cổng"
 msgid "Generic"
 msgstr "Chung"
 
-#: crates/ui-egui/src/browser.rs:793
+#: crates/ui-egui/src/browser.rs:797
 #: crates/ui-egui/src/editor/document.rs:459
 #: crates/ui-egui/src/editor/document.rs:1326
 #: crates/ui-egui/src/editor/tabs.rs:339
@@ -7653,7 +7653,7 @@ msgstr "Chung"
 msgid "Generic Annotation"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:755
+#: crates/ui-egui/src/browser.rs:759
 msgid "Generic Panel"
 msgstr ""
 
@@ -9163,7 +9163,7 @@ msgstr "Chiều rộng chân"
 msgid "Legends"
 msgstr "Bảng chú thích"
 
-#: crates/ui-egui/src/browser.rs:342
+#: crates/ui-egui/src/browser.rs:348
 msgid "Legends are coming in a later version."
 msgstr "Bảng chú thích sẽ có trong phiên bản sau."
 
@@ -9473,7 +9473,7 @@ msgstr "Khung nhìn 3D liên kết: khung nhìn 3D bên cạnh mặt bằng này
 msgid "Linked File"
 msgstr "Tệp liên kết"
 
-#: crates/ui-egui/src/browser.rs:720
+#: crates/ui-egui/src/browser.rs:724
 msgid "Linked Models"
 msgstr "Mô hình liên kết"
 
@@ -9481,7 +9481,7 @@ msgstr "Mô hình liên kết"
 msgid "List"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:269
+#: crates/ui-egui/src/browser.rs:275
 msgid "List {}"
 msgstr "Danh sách {}"
 
@@ -11271,7 +11271,7 @@ msgstr "Không"
 msgid "None of the chosen codes has this section yet."
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:418
+#: crates/ui-egui/src/browser.rs:420
 msgid "None of these can be printed yet."
 msgstr ""
 
@@ -11420,7 +11420,7 @@ msgstr ""
 msgid "Nothing has that ID or GUID: {}"
 msgstr "Không có gì có ID hoặc GUID đó: {}"
 
-#: crates/ui-egui/src/browser.rs:353
+#: crates/ui-egui/src/browser.rs:355
 msgid "Nothing here yet."
 msgstr "Chưa có gì ở đây."
 
@@ -11445,7 +11445,7 @@ msgstr ""
 msgid "Nothing is unused."
 msgstr "Không có gì chưa dùng."
 
-#: crates/ui-egui/src/browser.rs:353
+#: crates/ui-egui/src/browser.rs:355
 #: crates/ui-egui/src/editor/document.rs:2281
 #: crates/ui-egui/src/editor/types_dialog.rs:293
 msgid "Nothing matches the search."
@@ -12137,7 +12137,7 @@ msgstr ""
 msgid "Panel Schedule: {}"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:690
+#: crates/ui-egui/src/browser.rs:694
 msgid "Panel Schedules"
 msgstr ""
 
@@ -13435,7 +13435,7 @@ msgstr "Chính ({})"
 msgid "Print"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:536
+#: crates/ui-egui/src/browser.rs:540
 msgid "Print Set {}"
 msgstr ""
 
@@ -13697,7 +13697,7 @@ msgstr ""
 msgid "Publisher"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:471
+#: crates/ui-egui/src/browser.rs:473
 #: crates/ui-egui/src/lib.rs:4962
 msgid "Publisher…"
 msgstr ""
@@ -13971,7 +13971,7 @@ msgstr "Hình chữ nhật"
 msgid "Rectangle: four lines between two opposite corners"
 msgstr "Hình chữ nhật: bốn đường giữa hai góc đối diện"
 
-#: crates/ui-egui/src/browser.rs:755
+#: crates/ui-egui/src/browser.rs:759
 msgid "Rectangular Mullion"
 msgstr ""
 
@@ -14146,7 +14146,7 @@ msgstr "Cốt thép"
 msgid "Reinforcement Detail"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:699
+#: crates/ui-egui/src/browser.rs:703
 msgid "Reinforcement Details"
 msgstr ""
 
@@ -14162,11 +14162,11 @@ msgstr ""
 msgid "Relationship"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:713
+#: crates/ui-egui/src/browser.rs:717
 msgid "Reload"
 msgstr "Nạp lại"
 
-#: crates/ui-egui/src/browser.rs:720
+#: crates/ui-egui/src/browser.rs:724
 msgid "Reload All"
 msgstr "Nạp lại tất cả"
 
@@ -15289,7 +15289,7 @@ msgstr "Các trường trong bảng (theo thứ tự):"
 msgid "Schedules"
 msgstr "Bảng thống kê"
 
-#: crates/ui-egui/src/browser.rs:701
+#: crates/ui-egui/src/browser.rs:705
 msgid "Schedules/Quantities (all)"
 msgstr "Bảng thống kê/Khối lượng (tất cả)"
 
@@ -15338,7 +15338,7 @@ msgstr "Tìm tham số"
 msgid "Search scripts…"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:333
+#: crates/ui-egui/src/browser.rs:339
 msgid "Search the Project Browser"
 msgstr "Tìm trong trình duyệt dự án"
 
@@ -15347,7 +15347,7 @@ msgstr "Tìm trong trình duyệt dự án"
 msgid "Search:"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:326
+#: crates/ui-egui/src/browser.rs:332
 #: crates/ui-egui/src/editor/document.rs:2212
 #: crates/ui-egui/src/editor/types_dialog.rs:204
 #: crates/ui-egui/src/printsets.rs:169
@@ -15400,7 +15400,7 @@ msgstr ""
 msgid "Sections"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:649
+#: crates/ui-egui/src/browser.rs:653
 msgid "Sections (Building Section)"
 msgstr "Mặt cắt (mặt cắt công trình)"
 
@@ -15478,7 +15478,7 @@ msgid "Select All"
 msgstr ""
 
 #: crates/core/src/commands.rs:3604
-#: crates/ui-egui/src/browser.rs:740
+#: crates/ui-egui/src/browser.rs:744
 #: crates/ui-egui/src/context.rs:26
 #: crates/ui-egui/src/context.rs:107
 msgid "Select All Instances"
@@ -15822,7 +15822,7 @@ msgstr ""
 msgid "Sheets"
 msgstr "Bản vẽ"
 
-#: crates/ui-egui/src/browser.rs:552
+#: crates/ui-egui/src/browser.rs:556
 msgid "Sheets (all)"
 msgstr "Bản vẽ (tất cả)"
 
@@ -15932,8 +15932,8 @@ msgstr ""
 msgid "Show another view under this one"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:621
-#: crates/ui-egui/src/browser.rs:656
+#: crates/ui-egui/src/browser.rs:625
+#: crates/ui-egui/src/browser.rs:660
 msgid "Show as Underlay"
 msgstr ""
 
@@ -19430,7 +19430,7 @@ msgstr ""
 msgid "Views"
 msgstr "Khung nhìn"
 
-#: crates/ui-egui/src/browser.rs:664
+#: crates/ui-egui/src/browser.rs:668
 #: crates/ui-egui/src/editor/document.rs:1319
 msgid "Views (all)"
 msgstr "Khung nhìn (tất cả)"
@@ -21200,7 +21200,7 @@ msgstr ""
 msgid "{} (not found)"
 msgstr "{} (không tìm thấy)"
 
-#: crates/ui-egui/src/browser.rs:712
+#: crates/ui-egui/src/browser.rs:716
 msgid "{} (not loaded)"
 msgstr "{} (chưa nạp)"
 

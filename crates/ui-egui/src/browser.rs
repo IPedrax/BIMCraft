@@ -136,6 +136,11 @@ struct Node {
     menu: Vec<(&'static str, Act)>,
 }
 
+/// Whether `node` or any of its descendants is labelled `label`: the path a family reveal opens.
+fn holds(node: &Node, label: &str) -> bool {
+    node.label == label || node.kids.iter().any(|k| holds(k, label))
+}
+
 impl Node {
     fn group(label: &str, open: bool, kids: Vec<Node>) -> Node {
         Node { label: label.to_string(), act: Act::Group, on: false, open, kids, menu: Vec::new() }
@@ -243,7 +248,8 @@ impl BimApp {
         self.browser_tab = Tab::Families;
         self.browser_reveal = Some(name.to_string());
         self.browser_scroll = true;
-        self.browser_fold = Some(true);
+        // The path to it opens; its types stay as they were.
+        self.browser_fold = None;
     }
 
     pub(crate) fn browser_palette(&mut self, ui: &mut Ui) {
@@ -341,10 +347,6 @@ impl BimApp {
         if self.browser_tab == Tab::Legends {
             ui.label(egui::RichText::new(t("Legends are coming in a later version.")).color(pal().muted));
             return;
-        }
-        // A family just loaded stays opened down to it, whatever was folded before.
-        if self.browser_reveal.is_some() {
-            self.browser_fold = Some(true);
         }
         let tree = self.browser_tree();
         let words = words(&self.browser_find);
@@ -507,8 +509,10 @@ impl BimApp {
         }
         let path = format!("{path}/{}", node.label);
         let reveal = self.browser_reveal.as_deref() == Some(node.label.as_str());
+        // A family reveal opens the groups above it, not the family's own types.
+        let on_path = self.browser_reveal.as_deref().is_some_and(|label| node.label != label && holds(node, label));
         let mut header = CollapsingHeader::new(text).id_salt(("browser", &path)).default_open(node.open);
-        if reveal || !words.is_empty() {
+        if on_path || !words.is_empty() {
             header = header.open(Some(true));
         } else if let Some(open) = self.browser_fold {
             header = header.open(Some(open));

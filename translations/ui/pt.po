@@ -105,7 +105,7 @@ msgstr "3. Classifique: à mão ou com o seu agente de IA."
 msgid "3D"
 msgstr "3D"
 
-#: crates/ui-egui/src/browser.rs:576
+#: crates/ui-egui/src/browser.rs:580
 #: crates/ui-egui/src/lib.rs:5404
 #: crates/ui-egui/src/properties.rs:2180
 msgid "3D View"
@@ -119,7 +119,7 @@ msgstr "Vista 3D: {3D}"
 msgid "3D View: {}"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:630
+#: crates/ui-egui/src/browser.rs:634
 #: crates/ui-egui/src/editor/document.rs:1331
 #: crates/ui-egui/src/properties.rs:1765
 msgid "3D Views"
@@ -2641,7 +2641,7 @@ msgstr "Planta de forro"
 msgid "Ceiling Plan: {}"
 msgstr "Planta de forro: {}"
 
-#: crates/ui-egui/src/browser.rs:629
+#: crates/ui-egui/src/browser.rs:633
 #: crates/ui-egui/src/editor/document.rs:1330
 #: crates/ui-egui/src/properties.rs:1758
 msgid "Ceiling Plans"
@@ -2995,7 +2995,7 @@ msgstr "Limpar substituições"
 msgid "Clear Recent Files"
 msgstr "Limpar arquivos recentes"
 
-#: crates/ui-egui/src/browser.rs:323
+#: crates/ui-egui/src/browser.rs:329
 msgid "Clear the Search"
 msgstr "Limpar a pesquisa"
 
@@ -3930,7 +3930,7 @@ msgstr "Água Fria"
 msgid "Collaborate"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:480
+#: crates/ui-egui/src/browser.rs:482
 msgid "Collapse All"
 msgstr ""
 
@@ -3991,7 +3991,7 @@ msgstr "Combinar com a anterior"
 msgid "Combine: what was made, taken down and shown in this phase goes to the neighbouring one, and this one goes"
 msgstr "Combinar: o que foi feito, demolido e mostrado nesta fase passa para a vizinha, e esta sai"
 
-#: crates/ui-egui/src/browser.rs:298
+#: crates/ui-egui/src/browser.rs:304
 #: crates/ui-egui/src/settings.rs:884
 msgid "Coming in a later version"
 msgstr "Em uma versão futura"
@@ -4469,7 +4469,7 @@ msgstr "Face do núcleo: externa"
 msgid "Core Face: Interior"
 msgstr "Face do núcleo: interna"
 
-#: crates/ui-egui/src/browser.rs:755
+#: crates/ui-egui/src/browser.rs:759
 #: crates/ui-egui/src/curtain.rs:382
 #: crates/ui-egui/src/curtain.rs:569
 msgid "Corner Mullion"
@@ -4680,11 +4680,11 @@ msgstr "Criar parâmetro…"
 msgid "Create Print Set"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:461
+#: crates/ui-egui/src/browser.rs:463
 msgid "Create Print Set of {}…"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:463
+#: crates/ui-egui/src/browser.rs:465
 msgid "Create Print Set…"
 msgstr ""
 
@@ -5913,7 +5913,7 @@ msgstr ""
 msgid "Dummy Script"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:613
+#: crates/ui-egui/src/browser.rs:617
 #: crates/ui-egui/src/publisher.rs:617
 #: crates/ui-egui/src/titleblocks.rs:667
 msgid "Duplicate"
@@ -5937,11 +5937,11 @@ msgstr "Duplicar vista (DP): uma nova planta deste nível com anotações própr
 msgid "Duplicate View: open a plan first"
 msgstr "Duplicar vista: abra uma planta primeiro"
 
-#: crates/ui-egui/src/browser.rs:615
+#: crates/ui-egui/src/browser.rs:619
 msgid "Duplicate as Dependent"
 msgstr "Duplicar como dependente"
 
-#: crates/ui-egui/src/browser.rs:614
+#: crates/ui-egui/src/browser.rs:618
 msgid "Duplicate with Detailing"
 msgstr "Duplicar com detalhamento"
 
@@ -6395,7 +6395,7 @@ msgstr "Elevação: {}"
 msgid "Elevations"
 msgstr "Elevações"
 
-#: crates/ui-egui/src/browser.rs:649
+#: crates/ui-egui/src/browser.rs:653
 msgid "Elevations (Building Elevation)"
 msgstr "Elevações (elevação da construção)"
 
@@ -6605,7 +6605,7 @@ msgstr ""
 msgid "Exit"
 msgstr "Sair"
 
-#: crates/ui-egui/src/browser.rs:476
+#: crates/ui-egui/src/browser.rs:478
 msgid "Expand All"
 msgstr ""
 
@@ -6765,7 +6765,7 @@ msgstr ""
 msgid "Falls"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:794
+#: crates/ui-egui/src/browser.rs:798
 #: crates/ui-egui/src/editor/nested.rs:386
 #: crates/ui-egui/src/parameters.rs:698
 #: crates/ui-egui/src/start.rs:338
@@ -7358,7 +7358,7 @@ msgstr ""
 msgid "Floor Plan: {}"
 msgstr "Planta de piso: {}"
 
-#: crates/ui-egui/src/browser.rs:628
+#: crates/ui-egui/src/browser.rs:632
 #: crates/ui-egui/src/editor/document.rs:1329
 #: crates/ui-egui/src/properties.rs:1754
 #: crates/ui-egui/src/properties.rs:1755
@@ -7645,7 +7645,7 @@ msgstr "Registro de gaveta"
 msgid "Generic"
 msgstr "Genérico"
 
-#: crates/ui-egui/src/browser.rs:793
+#: crates/ui-egui/src/browser.rs:797
 #: crates/ui-egui/src/editor/document.rs:459
 #: crates/ui-egui/src/editor/document.rs:1326
 #: crates/ui-egui/src/editor/tabs.rs:339
@@ -7653,7 +7653,7 @@ msgstr "Genérico"
 msgid "Generic Annotation"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:755
+#: crates/ui-egui/src/browser.rs:759
 msgid "Generic Panel"
 msgstr ""
 
@@ -9163,7 +9163,7 @@ msgstr "Largura da perna"
 msgid "Legends"
 msgstr "Legendas"
 
-#: crates/ui-egui/src/browser.rs:342
+#: crates/ui-egui/src/browser.rs:348
 msgid "Legends are coming in a later version."
 msgstr "As legendas virão em uma versão futura."
 
@@ -9473,7 +9473,7 @@ msgstr "Vista 3D vinculada: a vista 3D ao lado desta planta, cortada no seu nív
 msgid "Linked File"
 msgstr "Arquivo vinculado"
 
-#: crates/ui-egui/src/browser.rs:720
+#: crates/ui-egui/src/browser.rs:724
 msgid "Linked Models"
 msgstr "Modelos vinculados"
 
@@ -9481,7 +9481,7 @@ msgstr "Modelos vinculados"
 msgid "List"
 msgstr "Lista"
 
-#: crates/ui-egui/src/browser.rs:269
+#: crates/ui-egui/src/browser.rs:275
 msgid "List {}"
 msgstr "Listar {}"
 
@@ -11271,7 +11271,7 @@ msgstr "Nenhum"
 msgid "None of the chosen codes has this section yet."
 msgstr "Nenhum dos códigos escolhidos tem esta seção ainda."
 
-#: crates/ui-egui/src/browser.rs:418
+#: crates/ui-egui/src/browser.rs:420
 msgid "None of these can be printed yet."
 msgstr ""
 
@@ -11420,7 +11420,7 @@ msgstr ""
 msgid "Nothing has that ID or GUID: {}"
 msgstr "Nada tem esse ID ou GUID: {}"
 
-#: crates/ui-egui/src/browser.rs:353
+#: crates/ui-egui/src/browser.rs:355
 msgid "Nothing here yet."
 msgstr "Nada aqui ainda."
 
@@ -11445,7 +11445,7 @@ msgstr "Nada está selecionado."
 msgid "Nothing is unused."
 msgstr "Nada está sem uso."
 
-#: crates/ui-egui/src/browser.rs:353
+#: crates/ui-egui/src/browser.rs:355
 #: crates/ui-egui/src/editor/document.rs:2281
 #: crates/ui-egui/src/editor/types_dialog.rs:293
 msgid "Nothing matches the search."
@@ -12137,7 +12137,7 @@ msgstr "Quadro de cargas: a vista do quadro de distribuição selecionado, que v
 msgid "Panel Schedule: {}"
 msgstr "Quadro de cargas: {}"
 
-#: crates/ui-egui/src/browser.rs:690
+#: crates/ui-egui/src/browser.rs:694
 msgid "Panel Schedules"
 msgstr "Quadros de cargas"
 
@@ -13435,7 +13435,7 @@ msgstr "Principal ({})"
 msgid "Print"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:536
+#: crates/ui-egui/src/browser.rs:540
 msgid "Print Set {}"
 msgstr ""
 
@@ -13697,7 +13697,7 @@ msgstr ""
 msgid "Publisher"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:471
+#: crates/ui-egui/src/browser.rs:473
 #: crates/ui-egui/src/lib.rs:4962
 msgid "Publisher…"
 msgstr ""
@@ -13971,7 +13971,7 @@ msgstr "Retângulo"
 msgid "Rectangle: four lines between two opposite corners"
 msgstr "Retângulo: quatro linhas entre dois cantos opostos"
 
-#: crates/ui-egui/src/browser.rs:755
+#: crates/ui-egui/src/browser.rs:759
 msgid "Rectangular Mullion"
 msgstr ""
 
@@ -14146,7 +14146,7 @@ msgstr "Armadura"
 msgid "Reinforcement Detail"
 msgstr "Detalhe da armadura"
 
-#: crates/ui-egui/src/browser.rs:699
+#: crates/ui-egui/src/browser.rs:703
 msgid "Reinforcement Details"
 msgstr "Detalhes da armadura"
 
@@ -14162,11 +14162,11 @@ msgstr ""
 msgid "Relationship"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:713
+#: crates/ui-egui/src/browser.rs:717
 msgid "Reload"
 msgstr "Recarregar"
 
-#: crates/ui-egui/src/browser.rs:720
+#: crates/ui-egui/src/browser.rs:724
 msgid "Reload All"
 msgstr "Recarregar todos"
 
@@ -15289,7 +15289,7 @@ msgstr "Campos da tabela (em ordem):"
 msgid "Schedules"
 msgstr "Tabelas"
 
-#: crates/ui-egui/src/browser.rs:701
+#: crates/ui-egui/src/browser.rs:705
 msgid "Schedules/Quantities (all)"
 msgstr "Tabelas/quantitativos (todas)"
 
@@ -15338,7 +15338,7 @@ msgstr "Pesquisar parâmetros"
 msgid "Search scripts…"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:333
+#: crates/ui-egui/src/browser.rs:339
 msgid "Search the Project Browser"
 msgstr "Pesquisar no Navegador de projeto"
 
@@ -15347,7 +15347,7 @@ msgstr "Pesquisar no Navegador de projeto"
 msgid "Search:"
 msgstr "Pesquisar:"
 
-#: crates/ui-egui/src/browser.rs:326
+#: crates/ui-egui/src/browser.rs:332
 #: crates/ui-egui/src/editor/document.rs:2212
 #: crates/ui-egui/src/editor/types_dialog.rs:204
 #: crates/ui-egui/src/printsets.rs:169
@@ -15400,7 +15400,7 @@ msgstr ""
 msgid "Sections"
 msgstr "Cortes"
 
-#: crates/ui-egui/src/browser.rs:649
+#: crates/ui-egui/src/browser.rs:653
 msgid "Sections (Building Section)"
 msgstr "Cortes (corte da construção)"
 
@@ -15478,7 +15478,7 @@ msgid "Select All"
 msgstr "Selecionar tudo"
 
 #: crates/core/src/commands.rs:3604
-#: crates/ui-egui/src/browser.rs:740
+#: crates/ui-egui/src/browser.rs:744
 #: crates/ui-egui/src/context.rs:26
 #: crates/ui-egui/src/context.rs:107
 msgid "Select All Instances"
@@ -15822,7 +15822,7 @@ msgstr ""
 msgid "Sheets"
 msgstr "Folhas"
 
-#: crates/ui-egui/src/browser.rs:552
+#: crates/ui-egui/src/browser.rs:556
 msgid "Sheets (all)"
 msgstr "Folhas (todas)"
 
@@ -15932,8 +15932,8 @@ msgstr ""
 msgid "Show another view under this one"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:621
-#: crates/ui-egui/src/browser.rs:656
+#: crates/ui-egui/src/browser.rs:625
+#: crates/ui-egui/src/browser.rs:660
 msgid "Show as Underlay"
 msgstr ""
 
@@ -19430,7 +19430,7 @@ msgstr ""
 msgid "Views"
 msgstr "Vistas"
 
-#: crates/ui-egui/src/browser.rs:664
+#: crates/ui-egui/src/browser.rs:668
 #: crates/ui-egui/src/editor/document.rs:1319
 msgid "Views (all)"
 msgstr "Vistas (todas)"
@@ -21200,7 +21200,7 @@ msgstr "{} (modelo vinculado)"
 msgid "{} (not found)"
 msgstr "{} (não encontrado)"
 
-#: crates/ui-egui/src/browser.rs:712
+#: crates/ui-egui/src/browser.rs:716
 msgid "{} (not loaded)"
 msgstr "{} (não carregado)"
 
