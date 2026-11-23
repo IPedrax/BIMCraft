@@ -178,28 +178,69 @@ impl BimApp {
     }
 
     fn install_plugins(&mut self, plugins: Plugins) {
-        plugins.register(&mut self.session);
-        self.plugin_tabs = plugins.tabs();
         self.plugins = plugins;
+        self.place_plugins();
+    }
+
+    /// Puts the plugins' commands, ribbon tabs and palettes in place after the folder was read or a plugin was switched.
+    /// A palette keeps its place by its name, though the registry's indices move; one whose plugin left is kept in the
+    /// layout as a name, so switching the plugin on again finds it where it was.
+    fn place_plugins(&mut self) {
+        self.plugins.register(&mut self.session);
+        self.plugin_tabs = self.plugins.tabs();
+        let before: Vec<(String, bool)> = crate::dock::plugin_palettes()
+            .iter()
+            .enumerate()
+            .map(|(i, panel)| (panel.name.to_string(), self.docking.shown(crate::dock::Palette::Plugin(i))))
+            .collect();
+        for i in 0..crate::dock::plugin_palettes().len() {
+            self.docking.take(crate::dock::Palette::Plugin(i));
+        }
+        self.docking.forget_plugin_palettes();
+        let panels = self.plugins.panels();
+        let names: Vec<String> = panels.iter().map(|panel| panel.name()).collect();
+        crate::dock::set_plugin_palettes(&panels);
+        // A form of a function that the folder no longer has is no use: its command would fail.
+        let commands: Vec<String> =
+            self.plugins.plugins.iter().filter(|plugin| plugin.status.is_loaded()).flat_map(|plugin| plugin.command_ids()).collect();
+        self.plugin_forms.retain(|id, _| commands.contains(id));
+        if self.plugin_form_open.as_ref().is_some_and(|id| !commands.contains(id)) {
+            self.plugin_form_open = None;
+        }
+        let known = crate::dock::Palette::known();
+        self.plugin_panel_states.retain(|name, _| names.contains(name));
+        for (name, was_shown) in before {
+            match crate::dock::Palette::named(&name, &known) {
+                Some(p) => {
+                    if was_shown {
+                        self.docking.show(p, true);
+                    }
+                }
+                None => {
+                    if !self.docking.unknown.iter().any(|q| q == &name) {
+                        self.docking.unknown.push(name.clone());
+                    }
+                    // It was open when the plugin left: when the plugin comes back, `adopt` shows it again.
+                    if was_shown && !self.docking.unknown_open.iter().any(|q| q == &name) {
+                        self.docking.unknown_open.push(name);
+                    }
+                }
+            }
+        }
+        self.docking.adopt(&known);
         self.leave_a_gone_plugin_tab();
     }
 
     /// Reads the folder again, keeps the plugins' state and the log, and puts their commands and tabs in place.
     fn refresh_plugins(&mut self) {
         self.plugins.refresh();
-        self.plugins.register(&mut self.session);
-        self.plugin_tabs = self.plugins.tabs();
-        self.leave_a_gone_plugin_tab();
+        self.place_plugins();
         self.status = crate::Status { text: t("The plugin folder was read again.").to_string(), error: false };
     }
 
     fn switch_plugin(&mut self, id: &str, enabled: bool) {
         match self.plugins.set_enabled(id, enabled) {
-            Ok(()) => {
-                self.plugins.register(&mut self.session);
-                self.plugin_tabs = self.plugins.tabs();
-                self.leave_a_gone_plugin_tab();
-            }
+            Ok(()) => self.place_plugins(),
             Err(e) => self.status = crate::Status { text: e, error: true },
         }
     }
@@ -209,9 +250,7 @@ impl BimApp {
     fn permit_plugin(&mut self, id: &str, permission: &'static str, granted: bool) {
         match self.plugins.set_permission(id, permission, granted) {
             Ok(()) => {
-                self.plugins.register(&mut self.session);
-                self.plugin_tabs = self.plugins.tabs();
-                self.leave_a_gone_plugin_tab();
+                self.place_plugins();
                 self.status = crate::Status {
                     text: if granted {
                         t("The plugin may now use files.").to_string()
@@ -285,7 +324,26 @@ impl BimApp {
             });
             return;
         }
+        // A function whose parameters the host can draw a form from opens it: the click runs it with the values in the
+        // form. A function whose parameters are empty runs in one click, as every function did before the form existed.
+        if let Some(function) = self.plugin_function(id)
+            && crate::plugin_form::PluginForm::has_fields(&function)
+        {
+            if !self.plugin_forms.contains_key(id) {
+                let form = crate::plugin_form::PluginForm::from_schema(&function, &self.session.model);
+                self.plugin_forms.insert(id.to_string(), form);
+            }
+            self.plugin_form_open = Some(id.to_string());
+            return;
+        }
         self.finish_plugin_function(id, label, serde_json::Map::new());
+    }
+
+    /// A loaded plugin's function, by its command id.
+    fn plugin_function(&self, id: &str) -> Option<bimcraft_plugin::Function> {
+        let (plugin, function) = id.strip_prefix("plugin:")?.split_once(':')?;
+        let p = self.plugins.plugins.iter().find(|p| p.manifest.id == plugin && p.status.is_loaded())?;
+        p.manifest.functions.iter().find(|f| f.id == function).cloned()
     }
 
     /// The plugin's name, when its function needs a file and the manifest asks for the `files` permission but the user
@@ -317,7 +375,7 @@ impl BimApp {
     /// Runs the function with `params` and opens its `report`, as the button says what it found. A report the window
     /// can't read — an unknown format, no text, a number — is refused with one line in the plugin log and opens nothing:
     /// the function's call itself still succeeded.
-    fn finish_plugin_function(&mut self, id: &str, label: String, params: serde_json::Map<String, serde_json::Value>) {
+    pub(crate) fn finish_plugin_function(&mut self, id: &str, label: String, params: serde_json::Map<String, serde_json::Value>) {
         if let Some(value) = self.run(id, serde_json::Value::Object(params))
             && let Some(report) = value.get("report")
         {
@@ -465,6 +523,8 @@ struct PluginView {
     description: String,
     status: Status,
     functions: usize,
+    /// The titles of the palettes the plugin declares, in registry order: what Manage > Plugins lists.
+    panels: Vec<String>,
     /// Whether the manifest asks to reach files, and whether the user granted it.
     asks_files: bool,
     files_granted: bool,
@@ -482,6 +542,7 @@ impl PluginView {
             description: p.manifest.description.clone(),
             status: p.status.clone(),
             functions: p.manifest.functions.len(),
+            panels: p.manifest.panels.iter().map(|panel| format!("{} ({})", panel.title, panel.id)).collect(),
             asks_files: p.manifest.asks_for_files(),
             files_granted: granted,
             shown: None,
@@ -519,6 +580,14 @@ fn plugin_row(ui: &mut Ui, p: &PluginView, asked: &mut Option<Asked>) {
             }
         });
     });
+    if !p.panels.is_empty() {
+        // The palettes the plugin declares, and what became of each: a panel the manifest got wrong refuses the whole
+        // plugin, so its reason is the row's own.
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            ui.label(RichText::new(tf("Panels: {}", &[&p.panels.join(", ")])).color(pal().muted).size(12.0));
+        });
+    }
     if p.asks_files {
         // The manifest's request, which only the user can answer: the plugin's own description says why it wants it.
         ui.horizontal(|ui| {
