@@ -208,7 +208,7 @@ other_files(
     ),
     edit_files(
         "reload_from",
-        "Reload From",
+        ui_msg!("Reload From"),
         &[],
         "{id, path} Reload From, as Manage Links has it: the file `path` (a .bimc, .bimcraft or .ifc) read in place of the one \
          link `id` reads, for every link of that file, each staying where it stands and loaded again if it was unloaded. A \
@@ -219,7 +219,7 @@ other_files(
     ),
     edit(
         "unload",
-        "Unload Link",
+        ui_msg!("Unload Link"),
         &[],
         "{id} unloads link `id`'s file, as Manage Links does: every link of that file stays where it stands and draws \
          nothing, and opening the project doesn't read it, until `reload` names one of them. Returns `unloaded` (the links' \
@@ -241,7 +241,7 @@ other_files(
     .menu("Manage > Asset Manager"),
     edit(
         "delete_assets",
-        "Delete Assets",
+        ui_msg!("Delete Assets"),
         &[],
         "{materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} takes the named assets \
          out of the project, as the Asset Manager's Delete does: refused, saying what uses it, for one something else uses \
@@ -250,7 +250,7 @@ other_files(
     ),
     other_files(
         "export_assets",
-        "Export Assets",
+        ui_msg!("Export Assets"),
         "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?} writes the \
          project's assets to a .bima file, to bring into another project with `import_assets`: those the lists name (a list \
          given as true takes every asset of its kind), or with none, every asset. What they need goes with them: a material's \
@@ -262,7 +262,7 @@ other_files(
     ),
     edit_files(
         "import_assets",
-        "Import Assets",
+        ui_msg!("Import Assets"),
         &[],
         "{path, materials?: [name, …], fill_types?, fill_patterns?, line_patterns?, line_styles?, pictures?, existing?: \
          skip|replace|rename} brings the assets of a .bima file (`export_assets`) into the project: those the lists name (true \
@@ -432,7 +432,7 @@ other_files(
     ),
     edit_files(
         "reload_mesh",
-        "Reload 3D Model",
+        ui_msg!("Reload 3D Model"),
         &[],
         "{path, from?} reads the 3D model `path` again (an OBJ or glTF brought in by `import_mesh`, its path as `links` lists it \
          under `models`), or with `from` another file in its place (Reload From): each family made from it has its forms \
@@ -485,7 +485,7 @@ other_files(
     ),
     other_files(
         "pdf_pages",
-        "PDF Pages",
+        ui_msg!("PDF Pages"),
         "{path} the pages of a PDF, which `image` places one of: `pages` [{page, size: [w, h]}], each page's size on paper, mm. It \
          changes nothing",
         pdf_pages,
@@ -493,7 +493,7 @@ other_files(
     ),
     edit_files(
         "reload_image",
-        "Reload Image",
+        ui_msg!("Reload Image"),
         &[],
         "{id, path?, page?} reads linked image `id`'s file again (a PDF's page again, or `page`), for every image placed from it; with `path`, Reload From: that file \
          in its place (an image brought in unlinked too), linked to it from then on. Each keeps its middle and its width. \

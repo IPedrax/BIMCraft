@@ -5194,6 +5194,10 @@ msgstr "Löschen (DE): die gewählten Linien"
 msgid "Delete (DE): what is selected, with what depends on it"
 msgstr ""
 
+#: crates/core/src/commands.rs:244
+msgid "Delete Assets"
+msgstr ""
+
 #: crates/ui-egui/src/parameters.rs:952
 #: crates/ui-egui/src/parameters.rs:1277
 msgid "Delete Checked"
@@ -6774,6 +6778,10 @@ msgstr "Exportieren"
 #: crates/ui-egui/src/asset_manager.rs:259
 #: crates/ui-egui/src/codes.rs:1332
 msgid "Export All…"
+msgstr ""
+
+#: crates/core/src/commands.rs:253
+msgid "Export Assets"
 msgstr ""
 
 #: crates/core/src/commands.rs:3067
@@ -8551,6 +8559,10 @@ msgstr "3D-Modell importieren: die Objekte einer OBJ- oder glTF-Datei als Famili
 
 #: crates/ui-egui/src/codes.rs:1334
 msgid "Import All…"
+msgstr ""
+
+#: crates/core/src/commands.rs:265
+msgid "Import Assets"
 msgstr ""
 
 #: crates/core/src/commands.rs:3078
@@ -12347,6 +12359,10 @@ msgstr "Vorhandene Version und ihre Parameterwerte überschreiben"
 msgid "PDF"
 msgstr ""
 
+#: crates/core/src/commands.rs:488
+msgid "PDF Pages"
+msgstr ""
+
 #: crates/ui-egui/src/export/mod.rs:381
 msgid "PDF Settings"
 msgstr ""
@@ -14507,6 +14523,10 @@ msgstr ""
 msgid "Reload"
 msgstr "Neu laden"
 
+#: crates/core/src/commands.rs:435
+msgid "Reload 3D Model"
+msgstr ""
+
 #: crates/ui-egui/src/browser.rs:750
 msgid "Reload All"
 msgstr "Alle neu laden"
@@ -14516,8 +14536,16 @@ msgstr "Alle neu laden"
 msgid "Reload CAD"
 msgstr "CAD neu laden"
 
+#: crates/core/src/commands.rs:211
+msgid "Reload From"
+msgstr ""
+
 #: crates/ui-egui/src/manage_links.rs:175
 msgid "Reload From…"
+msgstr ""
+
+#: crates/core/src/commands.rs:496
+msgid "Reload Image"
 msgstr ""
 
 #: crates/core/src/commands.rs:202
@@ -19578,6 +19606,10 @@ msgstr ""
 
 #: crates/ui-egui/src/manage_links.rs:176
 msgid "Unload"
+msgstr ""
+
+#: crates/core/src/commands.rs:222
+msgid "Unload Link"
 msgstr ""
 
 #: crates/ui-egui/src/manage_links.rs:63
