@@ -637,9 +637,9 @@ impl BimApp {
                 }
             }
             DocTab::Annotate => {
-                // What the family's plans draw besides its forms (a door's swing): Revit's Symbolic Line and Text, and a dot. Each
-                // is made selected, its numbers typed in Properties.
-                if !adaptive {
+                // What an annotation family's plan draws: symbolic lines, arcs, text, labels, dots and regions. A component
+                // family keeps the Annotate tab as it was; its symbols are plan marks made in Properties, not drawn here.
+                if !adaptive && ed.category.is_annotation() {
                     use super::views::SymbolKind;
                     ribbon::panel(ui, msg!("Detail"), |ui| {
                         let drawing = ed.views.symbol.as_ref().map(|d| d.kind);
