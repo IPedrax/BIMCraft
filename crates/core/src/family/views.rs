@@ -173,16 +173,6 @@ fn nested_drawn(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, wh
 /// What `family` takes up sized by `values`, in its axes, its least and greatest corners: what any of its types draws (a form
 /// the type hides is still drawn, halftone); a family that builds nothing, two metres round its origin.
 pub fn extents(family: &Family, values: &BTreeMap<String, Val>) -> (P3, P3) {
-    // An annotation family is a sheet of paper: its frame is Width by Height, not the size of what happens to be drawn on it.
-    // A symbol past that edge is clipped until Width or Height says otherwise, as a sheet's is.
-    if family.is_annotation() {
-        let size = |name: &str, default: f64| match values.get(name) {
-            Some(Val::Number(x)) if x.is_finite() && *x > 1.0 => *x,
-            _ => default,
-        };
-        let (width, height) = (size("Width", 200.0), size("Height", 150.0));
-        return ([0.0, 0.0, 0.0], [width, height, 0.0]);
-    }
     let mut every = family.clone();
     every.forms.iter_mut().for_each(|f| f.visible = None);
     let shapes = every.shapes(values);
@@ -225,15 +215,10 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
             (lo[i], hi[i]) = (lo[i].min(p[i]), hi[i].max(p[i]));
         }
     }
-    let room: (P3, P3) = if family.is_annotation() {
-        // Its paper, 20 mm around it: a click across the canvas makes a line of paper millimetres, not metres.
-        ([lo[0] - 20.0, lo[1] - 20.0, lo[2] - 20.0], [hi[0] + 20.0, hi[1] + 20.0, hi[2] + 20.0])
-    } else {
-        (
-            std::array::from_fn(|i| if i == 2 { (lo[i] - 300.0).min(0.0) } else { (lo[i] - 300.0).min(-1500.0) }),
-            std::array::from_fn(|i| (hi[i] + 300.0).max(1500.0)),
-        )
-    };
+    let room: (P3, P3) = (
+        std::array::from_fn(|i| if i == 2 { (lo[i] - 300.0).min(0.0) } else { (lo[i] - 300.0).min(-1500.0) }),
+        std::array::from_fn(|i| (hi[i] + 300.0).max(1500.0)),
+    );
     // Ref. Level runs across the room in every elevation, as the planes' traces do, and under the reference lines drawn
     // over the views, which aren't elements of the model and so wouldn't stretch it.
     if let Some(Element::Level(l)) = m.elements.get_mut(level) {

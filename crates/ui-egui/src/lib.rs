@@ -1255,9 +1255,6 @@ pub struct BimApp {
     /// What the Project Browser keeps to, and its search.
     browser_tab: browser::Tab,
     browser_find: String,
-    /// The family just loaded, highlighted in the browser, and whether it still has to be scrolled to.
-    browser_reveal: Option<String>,
-    browser_scroll: bool,
     /// Unsaved changes were dealt with: the window may close.
     closing: bool,
     title: String,
@@ -2139,8 +2136,6 @@ impl BimApp {
             browser_picked: Vec::new(),
             browser_anchor: None,
             browser_fold: None,
-            browser_reveal: None,
-            browser_scroll: false,
             export_job: None,
             export_format: None,
             export_last: Default::default(),
@@ -7044,9 +7039,6 @@ impl BimApp {
             (Sheet::Section(_) | Sheet::Paper(_), Tool::Text) => {
                 return msg!("Type the note in the Options Bar, then click where it goes.");
             }
-            (Sheet::Section(_) | Sheet::Paper(_), Tool::Component) if self.placing_annotation().is_some() => {
-                return msg!("Click where the annotation symbol goes.");
-            }
             (Sheet::Section(_), Tool::Spot) => return msg!("Click a point to mark its height."),
             (Sheet::Section(_), Tool::Dimension(..)) => {
                 return msg!("Pick levels, perpendicular grids or detail lines in this view, then click to place the dimension.");
@@ -7403,11 +7395,6 @@ impl BimApp {
             .clone()
             .filter(|(f, t)| m.families.get(f).is_some_and(|f| fits(f) && f.types.contains_key(t)))
             .or_else(|| m.families.iter().filter(|(_, f)| fits(f)).find_map(|(n, f)| f.types.keys().next().map(|t| (n.clone(), t.clone()))))
-    }
-
-    /// The annotation family and type the Symbol tool places, when what it picked is one.
-    pub(crate) fn placing_annotation(&self) -> Option<(String, String)> {
-        self.placing().filter(|(f, _)| self.session.model.families.get(f).is_some_and(bimcraft_core::family::Family::is_annotation))
     }
 
     // ---------- the middle: view tabs, schedules ----------
