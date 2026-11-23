@@ -31,6 +31,11 @@ fn with_stamp(dir: &Path) -> (Session, String) {
     (s, dir.join("favorites.json").to_string_lossy().into_owned())
 }
 
+/// The pictures a new project holds: the starter materials' (#536).
+fn starter() -> usize {
+    Session::new().model.images.len()
+}
+
 #[test]
 fn a_title_block_is_kept_with_its_logo_and_taken_into_another_project() {
     let dir = tempfile::tempdir().unwrap();
@@ -47,7 +52,7 @@ fn a_title_block_is_kept_with_its_logo_and_taken_into_another_project() {
     assert_eq!(listed["materials"], json!([]), "and the other kinds are as they were");
     // Another project takes it, its picture with it, and a sheet of its paper draws with it.
     let mut b = Session::new();
-    assert!(b.model.title_blocks.is_empty() && b.model.images.is_empty());
+    assert!(b.model.title_blocks.is_empty() && b.model.images.len() == starter());
     run(&mut b, "favorite", json!({"action": "load", "kind": "title_block", "name": "Office A3", "path": file}));
     assert_eq!(b.model.title_blocks["Office A3"], a.model.title_blocks["ESCRITORIO"]);
     assert_eq!(b.model.images, a.model.images, "the picture of its logo came with it");
@@ -59,7 +64,7 @@ fn a_title_block_is_kept_with_its_logo_and_taken_into_another_project() {
     assert_eq!(drawn.as_deref(), Some("Office A3"));
     // Loading twice under other names shares the one picture; a name the project has is its own unless it's to be replaced.
     run(&mut b, "favorite", json!({"action": "load", "kind": "title_block", "name": "Office A3", "as": "Copy", "path": file}));
-    assert_eq!((b.model.title_blocks.len(), b.model.images.len()), (2, 1));
+    assert_eq!((b.model.title_blocks.len(), b.model.images.len()), (2, starter() + 1));
     let e = b.execute("favorite", &json!({"action": "load", "kind": "title_block", "name": "Office A3", "path": file})).unwrap_err();
     assert!(e.contains("replace"), "{e}");
     run(&mut b, "title_block", json!({"name": "Office A3", "width": 120}));
@@ -70,11 +75,11 @@ fn a_title_block_is_kept_with_its_logo_and_taken_into_another_project() {
     assert_eq!(b.model.title_blocks["Office A3"].width, 120.0);
     run(&mut b, "title_block", json!({"name": "Office A3", "delete": true}));
     run(&mut b, "title_block", json!({"name": "Copy", "delete": true}));
-    assert!(b.model.images.is_empty());
+    assert_eq!(b.model.images.len(), starter());
     // Deleted from the favorites it's gone from them, and the project it was saved from keeps its own.
     run(&mut a, "favorite", json!({"action": "delete", "kind": "title_block", "name": "Office A3", "path": file}));
     assert_eq!(run(&mut a, "favorite", json!({"path": file}))["title_blocks"], json!([]));
-    assert!(a.model.title_blocks.contains_key("ESCRITORIO") && a.model.images.len() == 1);
+    assert!(a.model.title_blocks.contains_key("ESCRITORIO") && a.model.images.len() == starter() + 1);
 }
 
 #[test]

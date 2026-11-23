@@ -88,9 +88,10 @@ fn a_picture_says_which_materials_its_texture_is() {
     run(&mut s, "material", json!({"name": "Oak", "texture": {"kind": "image", "path": path.to_string_lossy()}}));
     let v = run(&mut s, "assets", json!({"kind": "pictures"}));
     let pictures = v["pictures"].as_array().unwrap();
-    assert_eq!(pictures.len(), 1, "{v}");
-    assert_eq!(pictures[0]["used_by"], json!([{"kind": "material", "name": "Oak"}]));
-    assert_eq!(pictures[0]["size"], json!([2, 1]));
+    // The starter materials hold pictures of their own (#536): Oak's is the one more.
+    let oak = pictures.iter().find(|p| p["used_by"] == json!([{"kind": "material", "name": "Oak"}])).unwrap_or_else(|| panic!("{v}"));
+    assert_eq!(pictures.len(), Session::new().model.images.len() + 1, "{v}");
+    assert_eq!(oak["size"], json!([2, 1]));
 }
 
 /// A folder of this test's own, empty.
@@ -130,7 +131,7 @@ fn a_bima_takes_what_an_asset_needs_and_brings_it_back_with_its_guid() {
     let bytes = std::fs::read(&path).unwrap();
     let files = crate::bimc::unzip_files(&bytes, 1 << 26).unwrap();
     let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
-    let id = a.model.images.keys().next().unwrap().clone();
+    let id = a.model.materials["Oak"].texture.as_ref().unwrap().image.clone();
     assert_eq!(names, vec!["assets.json".to_string(), format!("images/{id}.png")]);
     assert_eq!(files[1].1, a.model.images[&id].file());
 
