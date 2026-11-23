@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: vi\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:524
+#: crates/core/src/sheet.rs:525
 msgid "AS INDICATED"
 msgstr "NHƯ GHI CHÚ"
 
@@ -25,15 +25,15 @@ msgstr ""
 msgid "Area"
 msgstr "Diện tích"
 
-#: crates/core/src/family.rs:3328
+#: crates/core/src/family.rs:3469
 msgid "Arm Width"
 msgstr "Chiều rộng tay"
 
-#: crates/core/src/family.rs:3372
+#: crates/core/src/family.rs:3513
 msgid "Base Cabinet"
 msgstr "Tủ bếp dưới"
 
-#: crates/core/src/family.rs:3426
+#: crates/core/src/family.rs:3567
 msgid "Bathtub"
 msgstr "Bồn tắm"
 
@@ -41,11 +41,11 @@ msgstr "Bồn tắm"
 msgid "Beam"
 msgstr ""
 
-#: crates/core/src/family.rs:3313
+#: crates/core/src/family.rs:3454
 msgid "Bed"
 msgstr "Giường"
 
-#: crates/core/src/model.rs:4554
+#: crates/core/src/model.rs:4727
 msgid "Brick"
 msgstr "Gạch"
 
@@ -53,11 +53,11 @@ msgstr "Gạch"
 msgid "Brick 225 x 75"
 msgstr "Gạch 225 x 75"
 
-#: crates/core/src/commands.rs:6532
+#: crates/core/src/commands.rs:6995
 msgid "Camera"
 msgstr "Camera"
 
-#: crates/core/src/family.rs:3615
+#: crates/core/src/family.rs:3756
 msgid "Casement Window"
 msgstr "Cửa sổ mở quay"
 
@@ -69,7 +69,7 @@ msgstr "Danh mục"
 msgid "Ceiling Luminaire"
 msgstr "Đèn trần"
 
-#: crates/core/src/render.rs:3920
+#: crates/core/src/render.rs:4235
 msgid "Ceiling Plan"
 msgstr "Mặt bằng trần"
 
@@ -81,11 +81,11 @@ msgstr "Tâm"
 msgid "Centre Lines"
 msgstr "Đường tâm"
 
-#: crates/core/src/model.rs:4562
+#: crates/core/src/model.rs:4735
 msgid "Ceramic tile"
 msgstr "Gạch men"
 
-#: crates/core/src/family.rs:3298
+#: crates/core/src/family.rs:3439
 msgid "Chair"
 msgstr "Ghế"
 
@@ -111,11 +111,11 @@ msgstr ""
 msgid "Column"
 msgstr ""
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3378
 msgid "Concrete"
 msgstr "Bê tông"
 
-#: crates/core/src/model.rs:4556
+#: crates/core/src/model.rs:4729
 msgid "Concrete block"
 msgstr "Gạch block bê tông"
 
@@ -124,15 +124,15 @@ msgstr "Gạch block bê tông"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:4570
+#: crates/core/src/model.rs:4743
 msgid "Copper"
 msgstr "Đồng"
 
-#: crates/core/src/commands.rs:2301
+#: crates/core/src/commands.rs:2463
 msgid "Copy"
 msgstr "Sao chép"
 
-#: crates/core/src/commands.rs:2308
+#: crates/core/src/commands.rs:2470
 msgid "Copy to Clipboard"
 msgstr ""
 
@@ -148,12 +148,12 @@ msgstr ""
 msgid "Crosshatch"
 msgstr "Gạch chéo lưới"
 
-#: crates/core/src/commands.rs:2318
+#: crates/core/src/commands.rs:2480
 msgid "Cut to Clipboard"
 msgstr ""
 
-#: crates/core/src/render.rs:4974
-#: crates/core/src/render.rs:5319
+#: crates/core/src/render.rs:5290
+#: crates/core/src/render.rs:5635
 msgid "DN"
 msgstr "XUỐNG"
 
@@ -180,11 +180,11 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:15602
+#: crates/core/src/commands.rs:16474
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
-#: crates/core/src/family.rs:3235
+#: crates/core/src/family.rs:3376
 msgid "Depth"
 msgstr "Chiều sâu"
 
@@ -193,11 +193,12 @@ msgstr "Chiều sâu"
 msgid "Description"
 msgstr ""
 
-#: crates/core/src/family.rs:3344
+#: crates/core/src/family.rs:3485
 msgid "Desk"
 msgstr "Bàn làm việc"
 
 #: crates/core/src/commands/rebar_detail.rs:163
+#: crates/core/src/commands.rs:16264
 msgid "Detail"
 msgstr ""
 
@@ -233,15 +234,15 @@ msgstr "Bảng thống kê cửa đi"
 msgid "Dot"
 msgstr "Chấm"
 
-#: crates/core/src/family.rs:3522
+#: crates/core/src/family.rs:3663
 msgid "Double Door"
 msgstr "Cửa đi hai cánh"
 
-#: crates/core/src/model.rs:3817
+#: crates/core/src/model.rs:3985
 msgid "Double Sliding"
 msgstr "Trượt hai cánh"
 
-#: crates/core/src/model.rs:3815
+#: crates/core/src/model.rs:3983
 msgid "Double Swing"
 msgstr "Mở quay hai chiều"
 
@@ -254,7 +255,7 @@ msgstr ""
 msgid "Earthing Electrode"
 msgstr "Cọc nối đất"
 
-#: crates/core/src/model.rs:2516
+#: crates/core/src/model.rs:2664
 msgid "East"
 msgstr "Đông"
 
@@ -262,21 +263,21 @@ msgstr "Đông"
 msgid "Elbow 90"
 msgstr "Cút 90"
 
-#: crates/core/src/graphics.rs:1021
+#: crates/core/src/graphics.rs:1035
 msgid "Electrical Ceiling"
 msgstr "Điện trần"
 
-#: crates/core/src/graphics.rs:1020
+#: crates/core/src/graphics.rs:1034
 msgid "Electrical Lighting"
 msgstr "Điện chiếu sáng"
 
-#: crates/core/src/graphics.rs:1019
+#: crates/core/src/graphics.rs:1033
 msgid "Electrical Power"
 msgstr "Điện động lực"
 
-#: crates/core/src/commands.rs:15347
-#: crates/core/src/commands.rs:15363
-#: crates/core/src/commands.rs:20407
+#: crates/core/src/commands.rs:16129
+#: crates/core/src/commands.rs:16145
+#: crates/core/src/commands.rs:21350
 msgid "Elevation"
 msgstr "Mặt đứng"
 
@@ -293,7 +294,7 @@ msgstr ""
 msgid "Existing"
 msgstr "Hiện trạng"
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3378
 msgid "Fabric"
 msgstr "Vải"
 
@@ -301,11 +302,11 @@ msgstr "Vải"
 msgid "Family"
 msgstr "Họ"
 
-#: crates/core/src/model.rs:3819
+#: crates/core/src/model.rs:3987
 msgid "Fixed"
 msgstr "Cố định"
 
-#: crates/core/src/family.rs:3590
+#: crates/core/src/family.rs:3731
 msgid "Fixed Window"
 msgstr "Cửa sổ cố định"
 
@@ -321,7 +322,7 @@ msgstr "Phễu thu sàn"
 msgid "Floor Schedule"
 msgstr "Bảng thống kê sàn"
 
-#: crates/core/src/model.rs:3818
+#: crates/core/src/model.rs:3986
 msgid "Folding"
 msgstr "Gấp"
 
@@ -333,15 +334,15 @@ msgstr ""
 msgid "Formwork Area"
 msgstr ""
 
-#: crates/core/src/family.rs:3462
+#: crates/core/src/family.rs:3603
 msgid "Frame Depth"
 msgstr "Chiều sâu khung"
 
-#: crates/core/src/family.rs:3464
+#: crates/core/src/family.rs:3605
 msgid "Frame Material"
 msgstr "Vật liệu khung"
 
-#: crates/core/src/family.rs:3462
+#: crates/core/src/family.rs:3603
 msgid "Frame Width"
 msgstr "Chiều rộng khung"
 
@@ -349,8 +350,8 @@ msgstr "Chiều rộng khung"
 msgid "Gate Valve"
 msgstr "Van cổng"
 
-#: crates/core/src/family.rs:3464
-#: crates/core/src/view3d.rs:1674
+#: crates/core/src/family.rs:3605
+#: crates/core/src/view3d.rs:1724
 msgid "Glass"
 msgstr "Kính"
 
@@ -407,7 +408,7 @@ msgstr ""
 msgid "Gross Floor Area"
 msgstr "Tổng diện tích sàn"
 
-#: crates/core/src/model.rs:4561
+#: crates/core/src/model.rs:4734
 msgid "Gypsum board"
 msgstr "Tấm thạch cao"
 
@@ -415,11 +416,11 @@ msgstr "Tấm thạch cao"
 msgid "Hairline"
 msgstr "Nét mảnh nhất"
 
-#: crates/core/src/family.rs:3306
+#: crates/core/src/family.rs:3447
 msgid "Headboard Height"
 msgstr "Chiều cao đầu giường"
 
-#: crates/core/src/family.rs:264
+#: crates/core/src/family.rs:286
 msgid "Height"
 msgstr "Chiều cao"
 
@@ -455,24 +456,24 @@ msgstr ""
 msgid "Kitchen Sink"
 msgstr "Chậu rửa bếp"
 
-#: crates/core/src/family.rs:3464
+#: crates/core/src/family.rs:3605
 msgid "Leaf Material"
 msgstr "Vật liệu cánh"
 
-#: crates/core/src/family.rs:3462
+#: crates/core/src/family.rs:3603
 msgid "Leaf Thickness"
 msgstr "Chiều dày cánh"
 
-#: crates/core/src/family.rs:3236
+#: crates/core/src/family.rs:3377
 msgid "Leg Width"
 msgstr "Chiều rộng chân"
 
-#: crates/core/src/family.rs:3235
+#: crates/core/src/family.rs:3376
 msgid "Length"
 msgstr "Chiều dài"
 
-#: crates/core/src/commands.rs:9586
-#: crates/core/src/model.rs:4711
+#: crates/core/src/commands.rs:10049
+#: crates/core/src/model.rs:4884
 msgid "Level"
 msgstr "Tầng"
 
@@ -504,7 +505,7 @@ msgstr "Gạch dài"
 msgid "Mains"
 msgstr ""
 
-#: crates/core/src/model.rs:1908
+#: crates/core/src/model.rs:2056
 msgid "Mark"
 msgstr "Ký hiệu"
 
@@ -512,7 +513,7 @@ msgstr "Ký hiệu"
 msgid "Masking"
 msgstr "Che"
 
-#: crates/core/src/commands.rs:12349
+#: crates/core/src/commands.rs:13045
 msgid "Mass"
 msgstr "Khối"
 
@@ -532,11 +533,11 @@ msgstr "Nét trung bình"
 msgid "Membrane"
 msgstr "Màng"
 
-#: crates/core/src/commands.rs:4523
-#: crates/core/src/commands.rs:18952
-#: crates/core/src/curtain.rs:130
-#: crates/core/src/family.rs:3464
-#: crates/core/src/model.rs:6478
+#: crates/core/src/commands.rs:4736
+#: crates/core/src/commands.rs:19843
+#: crates/core/src/curtain.rs:133
+#: crates/core/src/family.rs:3605
+#: crates/core/src/model.rs:6698
 #: crates/core/src/quantities.rs:112
 msgid "Metal"
 msgstr "Kim loại"
@@ -545,11 +546,11 @@ msgstr "Kim loại"
 msgid "Mounting Height"
 msgstr "Chiều cao lắp đặt"
 
-#: crates/core/src/render.rs:3699
+#: crates/core/src/render.rs:4001
 msgid "NOT ENCLOSED"
 msgstr "KHÔNG KHÉP KÍN"
 
-#: crates/core/src/model.rs:1909
+#: crates/core/src/model.rs:2057
 msgid "Name"
 msgstr "Tên"
 
@@ -561,7 +562,7 @@ msgstr "Xây mới"
 msgid "No"
 msgstr "Không"
 
-#: crates/core/src/model.rs:2514
+#: crates/core/src/model.rs:2662
 msgid "North"
 msgstr "Bắc"
 
@@ -603,7 +604,7 @@ msgstr ""
 msgid "Panel"
 msgstr ""
 
-#: crates/core/src/commands.rs:2326
+#: crates/core/src/commands.rs:2488
 msgid "Paste"
 msgstr ""
 
@@ -637,7 +638,7 @@ msgstr "Thạch cao"
 msgid "Poles"
 msgstr ""
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3378
 msgid "Porcelain"
 msgstr "Sứ"
 
@@ -645,7 +646,7 @@ msgstr "Sứ"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4830
+#: crates/core/src/commands.rs:5053
 #: crates/core/src/title_starters.rs:35
 #: crates/core/src/title_starters.rs:55
 #: crates/core/src/title_starters.rs:75
@@ -656,15 +657,15 @@ msgstr "Dự án"
 msgid "Project no."
 msgstr ""
 
-#: crates/core/src/commands.rs:10334
+#: crates/core/src/commands.rs:11026
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3699
+#: crates/core/src/render.rs:4001
 msgid "REDUNDANT"
 msgstr "THỪA"
 
-#: crates/core/src/family.rs:152
+#: crates/core/src/family.rs:166
 msgid "Rack"
 msgstr "Tủ rack"
 
@@ -694,15 +695,15 @@ msgstr "Chiều cao bậc đứng"
 msgid "Risers"
 msgstr "Bậc đứng"
 
-#: crates/core/src/model.rs:3821
+#: crates/core/src/model.rs:3989
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:4563
+#: crates/core/src/model.rs:4736
 msgid "Roof tiles"
 msgstr "Ngói"
 
-#: crates/core/src/commands.rs:12879
+#: crates/core/src/commands.rs:13575
 msgid "Room"
 msgstr "Phòng"
 
@@ -718,11 +719,11 @@ msgstr "Số phòng"
 msgid "Room Schedule"
 msgstr "Bảng thống kê phòng"
 
-#: crates/core/src/sheet.rs:513
+#: crates/core/src/sheet.rs:514
 msgid "SCALE"
 msgstr "TỶ LỆ"
 
-#: crates/core/src/sheet.rs:515
+#: crates/core/src/sheet.rs:516
 msgid "SCALE AS INDICATED"
 msgstr "TỶ LỆ NHƯ GHI CHÚ"
 
@@ -736,16 +737,16 @@ msgstr "Cát"
 msgid "Scale"
 msgstr ""
 
-#: crates/core/src/model.rs:4559
+#: crates/core/src/model.rs:4732
 msgid "Screed"
 msgstr "Lớp vữa láng"
 
-#: crates/core/src/family.rs:3236
+#: crates/core/src/family.rs:3377
 msgid "Seat Height"
 msgstr "Chiều cao mặt ghế"
 
-#: crates/core/src/commands.rs:15281
-#: crates/core/src/commands.rs:20406
+#: crates/core/src/commands.rs:16063
+#: crates/core/src/commands.rs:21349
 msgid "Section"
 msgstr "Mặt cắt"
 
@@ -753,7 +754,7 @@ msgstr "Mặt cắt"
 msgid "Section Area"
 msgstr ""
 
-#: crates/core/src/model.rs:3820
+#: crates/core/src/model.rs:3988
 msgid "Sectional"
 msgstr ""
 
@@ -818,19 +819,19 @@ msgstr "Vòi sen"
 msgid "Sill"
 msgstr "Bậu cửa"
 
-#: crates/core/src/family.rs:3500
+#: crates/core/src/family.rs:3641
 msgid "Single Door"
 msgstr "Cửa đi một cánh"
 
-#: crates/core/src/model.rs:3816
+#: crates/core/src/model.rs:3984
 msgid "Sliding"
 msgstr "Trượt"
 
-#: crates/core/src/family.rs:3549
+#: crates/core/src/family.rs:3690
 msgid "Sliding Door"
 msgstr "Cửa đi trượt"
 
-#: crates/core/src/family.rs:3646
+#: crates/core/src/family.rs:3787
 msgid "Sliding Window"
 msgstr "Cửa sổ trượt"
 
@@ -843,7 +844,7 @@ msgstr "Độ dốc"
 msgid "Slot"
 msgstr ""
 
-#: crates/core/src/family.rs:3330
+#: crates/core/src/family.rs:3471
 msgid "Sofa"
 msgstr "Sofa"
 
@@ -855,7 +856,7 @@ msgstr "Đen đặc"
 msgid "Solid fill"
 msgstr "Tô đặc"
 
-#: crates/core/src/model.rs:2515
+#: crates/core/src/model.rs:2663
 msgid "South"
 msgstr "Nam"
 
@@ -875,7 +876,7 @@ msgstr ""
 msgid "Steel Summary"
 msgstr ""
 
-#: crates/core/src/model.rs:3814
+#: crates/core/src/model.rs:3982
 msgid "Swing"
 msgstr "Mở quay"
 
@@ -883,7 +884,7 @@ msgstr "Mở quay"
 msgid "Switch"
 msgstr "Công tắc"
 
-#: crates/core/src/family.rs:3277
+#: crates/core/src/family.rs:3418
 msgid "Table"
 msgstr "Bàn"
 
@@ -891,7 +892,7 @@ msgstr "Bàn"
 msgid "Tee"
 msgstr "Tê"
 
-#: crates/core/src/family.rs:3236
+#: crates/core/src/family.rs:3377
 msgid "Thickness"
 msgstr "Chiều dày"
 
@@ -907,7 +908,7 @@ msgstr "Ổ cắm ba pha"
 msgid "Tile 300"
 msgstr "Gạch ốp lát 300"
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3378
 msgid "Timber"
 msgstr "Gỗ"
 
@@ -916,11 +917,11 @@ msgstr "Gỗ"
 msgid "Title"
 msgstr ""
 
-#: crates/core/src/commands.rs:10376
+#: crates/core/src/commands.rs:11068
 msgid "Toposolid"
 msgstr ""
 
-#: crates/core/src/sheet.rs:452
+#: crates/core/src/sheet.rs:453
 msgid "Total"
 msgstr "Tổng"
 
@@ -937,12 +938,12 @@ msgstr "Mặt bậc"
 msgid "Trip"
 msgstr ""
 
-#: crates/core/src/model.rs:1910
+#: crates/core/src/model.rs:2058
 msgid "Type"
 msgstr "Kiểu"
 
-#: crates/core/src/render.rs:4974
-#: crates/core/src/render.rs:5319
+#: crates/core/src/render.rs:5290
+#: crates/core/src/render.rs:5635
 msgid "UP"
 msgstr "LÊN"
 
@@ -954,7 +955,7 @@ msgstr "Chiều cao không giới hạn"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15940
+#: crates/core/src/commands.rs:16822
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
@@ -979,11 +980,11 @@ msgstr ""
 msgid "Volume"
 msgstr "Thể tích"
 
-#: crates/core/src/family.rs:3386
+#: crates/core/src/family.rs:3527
 msgid "WC"
 msgstr "Bồn cầu"
 
-#: crates/core/src/commands.rs:399
+#: crates/core/src/commands.rs:533
 msgid "Wall"
 msgstr "Tường"
 
@@ -991,11 +992,11 @@ msgstr "Tường"
 msgid "Wall Schedule"
 msgstr "Bảng thống kê tường"
 
-#: crates/core/src/family.rs:3358
+#: crates/core/src/family.rs:3499
 msgid "Wardrobe"
 msgstr "Tủ quần áo"
 
-#: crates/core/src/family.rs:3405
+#: crates/core/src/family.rs:3546
 msgid "Washbasin"
 msgstr "Chậu rửa mặt"
 
@@ -1008,7 +1009,7 @@ msgstr "Khối lượng"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2517
+#: crates/core/src/model.rs:2665
 msgid "West"
 msgstr "Tây"
 
@@ -1016,7 +1017,7 @@ msgstr "Tây"
 msgid "Wide Lines"
 msgstr "Nét đậm"
 
-#: crates/core/src/family.rs:263
+#: crates/core/src/family.rs:285
 msgid "Width"
 msgstr "Chiều rộng"
 
@@ -1024,7 +1025,7 @@ msgstr "Chiều rộng"
 msgid "Window Schedule"
 msgstr "Bảng thống kê cửa sổ"
 
-#: crates/core/src/family.rs:3370
+#: crates/core/src/family.rs:3511
 msgid "Worktop"
 msgstr "Mặt bàn bếp"
 
