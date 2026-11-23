@@ -58,8 +58,10 @@ fn options_merge_round_trip_and_null_takes_one_back_to_its_default() {
         "room_calculation_point": ["Width / 2", 900.0, 0.0], "cut_in_views": true,
         "omniclass": {"number": "23.40.20.00", "title": "General Furniture"}
     });
+    let mut expected = all.clone();
+    expected["scale_with_view"] = json!(true);
     let r = run(&mut s, "family", json!({"name": "Cabinet", "options": all}));
-    assert_eq!(r["options"], all);
+    assert_eq!(r["options"], expected);
     // Always vertical off without work plane based is allowed (a wall-hosted family has it either way).
     run(&mut s, "family", json!({"name": "Cabinet", "options": {"work_plane_based": false}}));
     let f = &s.model.families["Cabinet"];
