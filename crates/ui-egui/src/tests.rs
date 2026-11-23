@@ -3233,7 +3233,7 @@ fn lengths_typed_while_drawing_read_in_the_project_units() {
 fn the_interface_speaks_portuguese() {
     let mut h = app(BOX);
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     press(&mut h, "Português (Brasil)");
     for label in ["Arquitetura", "Anotar", "Vista", "Gerenciar", "Modificar", "Propriedades", "Plantas de piso", "Intervalo da vista"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
@@ -3264,7 +3264,7 @@ fn the_interface_speaks_portuguese() {
 fn the_interface_speaks_spanish() {
     let mut h = app(BOX);
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     press(&mut h, "Español");
     for label in ["Arquitectura", "Anotar", "Vista", "Gestionar", "Modificar", "Propiedades", "Plantas", "Rango de vista"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
@@ -3291,7 +3291,7 @@ fn the_interface_speaks_spanish() {
 fn the_interface_speaks_dutch() {
     let mut h = app(BOX);
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     press(&mut h, "Nederlands");
     assert_eq!(h.state().lang, crate::lang::Lang::Dutch);
     for label in ["Architectuur", "Annoteren", "Beheren", "Wijzigen", "Eigenschappen", "Plattegronden", "Weergavebereik"] {
