@@ -635,3 +635,23 @@ fn a_click_on_a_chain_s_last_point_ends_it_as_escape_does() {
     click(&mut h, P2(0.0, 3000.0));
     assert_eq!(ids(&h, "roomseparator").len(), before.len() + 1, "the next click is a new line's start");
 }
+
+#[test]
+fn backspace_deletes_the_selection_as_delete_does_for_a_mac_keyboard() {
+    // A Mac's keyboard has no Delete key: its "delete" is Backspace, so Backspace deletes what is selected when it has
+    // nothing else to take back.
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall");
+    h.state_mut().selection = vec![walls[0]];
+    h.run();
+    key(&mut h, Key::Backspace);
+    assert_eq!(ids(&h, "wall").len(), walls.len() - 1, "the wall selected is deleted");
+    // A number being typed takes Backspace first: a digit goes, the selection stays.
+    let walls = ids(&h, "wall");
+    h.state_mut().selection = vec![walls[0]];
+    h.state_mut().typed_length = "12".into();
+    h.run();
+    key(&mut h, Key::Backspace);
+    assert_eq!(h.state().typed_length, "1");
+    assert_eq!(ids(&h, "wall").len(), walls.len(), "nothing deleted while a number is typed");
+}
