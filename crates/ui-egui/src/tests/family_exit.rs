@@ -375,7 +375,9 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     press(&mut h, "View");
     press(&mut h, "Schedules");
     press(&mut h, "Schedule/Quantities…");
-    pick(&mut h, Role::Button, "Windows");
+    // The Project Browser stays on Families after the load and shows its Windows group too; the dialog's is drawn last.
+    h.get_all_by_role_and_label(Role::Button, "Windows").last().expect("the Windows category").click();
+    h.run();
     type_into(&mut h, "Name:", "Exit Windows");
     press(&mut h, "OK");
     let sc = ids(&h, "schedule")[0];

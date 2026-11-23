@@ -724,6 +724,12 @@ pub(crate) fn draw_traced(m: &Model, id: impl Key) -> Option<(Drawing, Vec<(usiz
             d.own(Some(nid));
             render::note(&mut d, m, n);
         }
+        if let Element::Annotation(a) = e
+            && a.view == guid
+        {
+            d.own(Some(nid));
+            render::annotation_symbol(&mut d, m, a, true);
+        }
         if let Element::DetailLine(l) = e
             && l.view == guid
         {

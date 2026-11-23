@@ -368,6 +368,7 @@ pub(crate) enum Part {
     Arc,
     Text,
     Dot,
+    Fill,
 }
 
 /// A symbol as typed. `centre` is an arc's or a dot's centre or a label's point; `radius` an arc's or a dot's radius or a
@@ -384,6 +385,18 @@ struct SymbolText {
     to: String,
     value: String,
     align: LabelAlign,
+    /// The project's line style its line or arc is drawn in; blank, Thin Lines.
+    style: String,
+    /// A fill's rings, as JSON: `[[x, y], …]` per ring, numbers or formulas.
+    fill: String,
+    /// A fill's project type: `Masking`, `Solid Black`, a hatch; blank, solid black.
+    fill_type: String,
+    /// The project's text type its label is drawn in; blank, the family's stroke lettering.
+    text_type: String,
+    /// Where its point sits in its label.
+    valign: bimcraft_core::family::VAlign,
+    /// A width past which its label wraps; blank, never.
+    wrap: String,
     visible: String,
     /// The subcategory it is drawn in, by its English name (`Opening`); blank, its category.
     subcategory: String,
@@ -404,6 +417,12 @@ impl SymbolText {
             to: String::new(),
             value: String::new(),
             align: LabelAlign::Left,
+            style: String::new(),
+            fill: String::new(),
+            fill_type: String::new(),
+            text_type: String::new(),
+            valign: bimcraft_core::family::VAlign::Middle,
+            wrap: String::new(),
             visible: String::new(),
             subcategory: String::new(),
             visibility: None,
@@ -413,6 +432,7 @@ impl SymbolText {
             Part::Arc => SymbolText { centre: [s("0"), s("0")], radius: s("900"), from: s("0"), to: s("90"), ..base },
             Part::Text => SymbolText { centre: [s("0"), s("0")], radius: s("100"), value: s("A"), ..base },
             Part::Dot => SymbolText { centre: [s("0"), s("0")], radius: s("20"), ..base },
+            Part::Fill => SymbolText { fill: s("[[0, 0], [100, 0], [100, 50], [0, 50]]"), ..base },
         }
     }
 
@@ -421,6 +441,7 @@ impl SymbolText {
         let mut t = SymbolText::blank(Part::Line);
         t.ident = (y.id, y.guid);
         t.line = profile_text(&y.line);
+        t.style = y.style.clone().unwrap_or_default();
         t.visible = y.visible.as_ref().map(expr_text).unwrap_or_default();
         t.subcategory = y.subcategory.clone().unwrap_or_default();
         t.visibility = y.visibility;
@@ -430,8 +451,15 @@ impl SymbolText {
         } else if let Some(l) = &y.text {
             (t.part, t.centre, t.radius, t.value, t.align) =
                 (Part::Text, [ex(&l.at[0]), ex(&l.at[1])], ex(&l.height), l.value.clone(), l.align);
+            t.text_type = l.text_type.clone().unwrap_or_default();
+            t.valign = l.valign;
+            t.wrap = l.wrap.as_ref().map(expr_text).unwrap_or_default();
         } else if let Some(c) = &y.dot {
             (t.part, t.centre, t.radius) = (Part::Dot, [ex(&c.centre[0]), ex(&c.centre[1])], ex(&c.radius));
+        } else if let Some(f) = &y.fill {
+            t.part = Part::Fill;
+            t.fill = serde_json::to_string(&f.rings).unwrap_or_default();
+            t.fill_type = f.type_name.clone().unwrap_or_default();
         }
         t
     }
@@ -441,17 +469,36 @@ impl SymbolText {
         let (id, guid) = self.ident;
         let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
         let subcategory = (!self.subcategory.trim().is_empty()).then(|| self.subcategory.clone());
-        let base = Symbol { visible, id, guid, subcategory, visibility: self.visibility, ..Symbol::default() };
+        let style = (!self.style.trim().is_empty()).then(|| self.style.clone());
+        let base = Symbol { visible, id, guid, subcategory, visibility: self.visibility, style, ..Symbol::default() };
         Ok(match self.part {
             Part::Arc => Symbol {
                 arc: Some(Curve { centre, radius: text_expr(&self.radius), from: text_expr(&self.from), to: text_expr(&self.to) }),
                 ..base
             },
             Part::Text => Symbol {
-                text: Some(Label { at: centre, height: text_expr(&self.radius), value: self.value.clone(), align: self.align }),
+                text: Some(Label {
+                    at: centre,
+                    height: text_expr(&self.radius),
+                    value: self.value.clone(),
+                    align: self.align,
+                    text_type: (!self.text_type.trim().is_empty()).then(|| self.text_type.clone()),
+                    valign: self.valign,
+                    wrap: (!self.wrap.trim().is_empty()).then(|| text_expr(&self.wrap)),
+                }),
                 ..base
             },
             Part::Dot => Symbol { dot: Some(Circle { centre, radius: text_expr(&self.radius) }), ..base },
+            Part::Fill => {
+                let rings: Vec<Vec<[Expr; 2]>> = serde_json::from_str(&self.fill).map_err(|e| format!("fill rings: {e}"))?;
+                Symbol {
+                    fill: Some(bimcraft_core::family::Fill {
+                        rings,
+                        type_name: (!self.fill_type.trim().is_empty()).then(|| self.fill_type.clone()),
+                    }),
+                    ..base
+                }
+            }
             Part::Line => Symbol { line: text_profile(&self.line)?, ..base },
         })
     }
@@ -553,8 +600,19 @@ pub(crate) struct FamilyEditor {
     pub(crate) views: views::Views,
     /// A form being sketched (F5, `editor/sketch.rs`): no part of the draft until Finish.
     pub(crate) sketch: Option<Box<sketch::FormSketch>>,
-    /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
+    /// What the family's plans snap to: the window's until its own Snaps dialog changes them.
     pub(crate) snaps: bimcraft_core::snap::Snaps,
+    /// The family's Snaps dialog is open, and whether its settings were changed here (which stops the window's own from
+    /// replacing them).
+    pub(crate) snaps_open: bool,
+    pub(crate) snaps_edited: bool,
+    /// Whether a point with nothing to snap to rounds to `snap_step` mm; off, it follows the cursor exactly. Family
+    /// millimetres are paper millimetres, so the project's 10 mm step is a coarse grid here.
+    pub(crate) snap_to_coordinates: bool,
+    /// The step `snap_to_coordinates` rounds to, mm: 1 mm in a new family.
+    pub(crate) snap_step: f64,
+    /// The same step as typed, so a half-typed number isn't rounded back under the caret.
+    pub(crate) snap_step_text: String,
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
     /// Manage > Purge Unused, open (FE-19).
@@ -648,7 +706,7 @@ impl FamilyEditor {
             .iter()
             .map(|(n, set)| (n.clone(), own.iter().filter_map(|p| Some((p.name.clone(), value_text(p.kind, set.get(&p.name)?)))).collect()))
             .collect();
-        FamilyEditor {
+        let mut ed = FamilyEditor {
             original: Some(name.to_string()),
             name: name.to_string(),
             category: f.category,
@@ -687,12 +745,112 @@ impl FamilyEditor {
             views: Default::default(),
             sketch: None,
             snaps: Default::default(),
+            snaps_open: false,
+            snaps_edited: false,
+            snap_to_coordinates: false,
+            snap_step: 1.0,
+            snap_step_text: "1".into(),
             nested: f.nested.clone(),
             purging: None,
             nested_instances: f.nested_instances.clone(),
             placing: None,
             into_host: false,
             open_nested: None,
+        };
+        if f.category.is_annotation() {
+            // Its one view is the plan, drawn in its own millimetres.
+            ed.views.show(Some(bimcraft_core::family::views::Which::Plan));
+        }
+        ed
+    }
+
+    /// The family's Snaps dialog: what its plans' clicks stick to. Its own settings, not the project's, once changed here.
+    pub(crate) fn snaps_dialog(&mut self, ctx: &Context) {
+        if !self.snaps_open {
+            return;
+        }
+        use bimcraft_core::snap::Kind as Snap;
+        let before = self.snaps;
+        let before_grid = (self.snap_to_coordinates, self.snap_step);
+        let mut close = false;
+        let r = Modal::new(UiId::new("family-snaps"), t("Snaps")).width(400.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.add_space(6.0);
+                ui.label(RichText::new(t("Object Snaps")).strong());
+                ui.label(RichText::new(t("These apply to the lines, arcs, labels and regions drawn in this family's plan.")).small());
+                ui.checkbox(&mut self.snap_to_coordinates, t("Snap to coordinates"))
+                    .on_hover_text(t("Off: a point with nothing to snap to follows the cursor exactly. On: it rounds to the step below."));
+                ui.horizontal(|ui| {
+                    ui.add_space(18.0);
+                    ui.add_enabled_ui(self.snap_to_coordinates, |ui| {
+                        ui.label(t("Step"));
+                        let r = ui.add(egui::TextEdit::singleline(&mut self.snap_step_text).desired_width(64.0).hint_text("1"));
+                        ui.label("mm");
+                        if r.changed() {
+                            let typed = self.snap_step_text.trim().replace(',', ".");
+                            if let Ok(step) = typed.parse::<f64>()
+                                && step.is_finite()
+                                && (0.001..=1000.0).contains(&step)
+                            {
+                                self.snap_step = step;
+                            }
+                        }
+                        r.on_hover_text(t("How far apart the coordinate grid's points are, in the family's millimetres (1 mm by default)"));
+                    });
+                });
+                ui.add_space(4.0);
+                let s = &mut self.snaps;
+                let kinds: [(&mut bool, Snap, &str); 10] = [
+                    (&mut s.endpoint, Snap::Endpoint, msg!("The ends of symbols and reference lines, and the points picked so far")),
+                    (&mut s.midpoint, Snap::Midpoint, msg!("The middle of a symbolic line")),
+                    (&mut s.intersection, Snap::Intersection, msg!("Where two symbolic lines cross")),
+                    (&mut s.centre, Snap::Centre, msg!("The centre of an arc or a dot")),
+                    (&mut s.perpendicular, Snap::Perpendicular, msg!("The foot of the perpendicular from the last point")),
+                    (&mut s.quadrant, Snap::Quadrant, msg!("An arc's points along its axes: east, north, west and south")),
+                    (&mut s.tangent, Snap::Tangent, msg!("Where a line from the last point touches an arc")),
+                    (&mut s.nearest, Snap::Nearest, msg!("The nearest point of a symbolic line")),
+                    (&mut s.annotation, Snap::Anchor, msg!("Where a label is placed")),
+                    (&mut s.cloud, Snap::Point, msg!("A scan's points, which a family has none of")),
+                ];
+                for (on, kind, tip) in kinds {
+                    ui.checkbox(on, t(kind.name())).on_hover_text(t(tip));
+                }
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    let label = ui.label(t("Angle steps"));
+                    let now = if s.angle >= 1.0 { format!("{}°", s.angle) } else { t("Off").to_string() };
+                    let c = egui::ComboBox::from_id_salt("family-snap-angle").selected_text(now).width(110.0).show_ui(ui, |ui| {
+                        for step in [0.0, 5.0, 15.0, 30.0, 45.0, 90.0] {
+                            let name = if step >= 1.0 { format!("{step}°") } else { t("Off").to_string() };
+                            ui.selectable_value(&mut s.angle, step, name);
+                        }
+                    });
+                    c.response.labelled_by(label.id);
+                });
+                ui.add_space(8.0);
+                ui.separator();
+                ui.checkbox(&mut s.alignment_guides, t("Alignment Guides"));
+                if s.alignment_guides {
+                    ui.horizontal(|ui| {
+                        ui.label(t("Snap tolerance"));
+                        ui.add(egui::Slider::new(&mut s.alignment_tolerance, 2.0..=32.0).suffix(" px"));
+                    });
+                    ui.checkbox(&mut s.guides_from_grids, t("Guides from grids"));
+                    ui.checkbox(&mut s.mark_on_hover, t("Mark on hover (0.45 s)"));
+                    ui.checkbox(&mut s.guides_from_whole_model, t("Guides from the whole model"));
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
+            });
+        });
+        if self.snaps != before || (self.snap_to_coordinates, self.snap_step) != before_grid {
+            self.snaps_edited = true;
+        }
+        if close || r.should_close() {
+            self.snaps_open = false;
+            // A half-typed or refused number goes back to what the step is.
+            self.snap_step_text = format!("{}", self.snap_step);
         }
     }
 
@@ -779,7 +937,11 @@ impl FamilyEditor {
     pub(crate) fn blank(category: Category) -> FamilyEditor {
         let length = |name: &str, value: f64| json!({"name": name, "value": value});
         let block = |x: [&str; 2], y: [&str; 2], z: [&str; 2]| json!({"profile": [[x[0], y[0]], [x[1], y[0]], [x[1], y[1]], [x[0], y[1]]], "from": z[0], "to": z[1]});
-        let family = if category.hosted() {
+        let family = if category.is_annotation() {
+            // A paper canvas: a width and a height to draw against, no forms, and one type to begin with.
+            json!({"category": category, "parameters": [length("Width", 100.0), length("Height", 50.0)],
+                   "types": {"Standard": {}}})
+        } else if category.hosted() {
             json!({"category": category, "parameters": [length("Width", 900.0), length("Height", if category == Category::Door { 2100.0 } else { 1200.0 }), length("Sill Height", if category == Category::Door { 0.0 } else { 900.0 })],
                    "types": {"900": {}},
                    "forms": [block(["-Width / 2", "-Width / 2 + 50"], ["-Wall Thickness / 2", "Wall Thickness / 2"], ["0", "Height"]),
@@ -796,6 +958,10 @@ impl FamilyEditor {
         }
         let mut editor = FamilyEditor::of(t("New Family"), &family);
         editor.original = None;
+        if category.is_annotation() {
+            // The plan is its canvas: a paper millimetre is a unit of the family there.
+            editor.views.show(Some(bimcraft_core::family::views::Which::Plan));
+        }
         editor
     }
 
@@ -900,7 +1066,13 @@ impl FamilyEditor {
             // What a ghosted form is made of.
             m.materials
                 .insert(GHOST.into(), bimcraft_core::model::Material { color: [150, 150, 150], transparency: 65, ..Default::default() });
-            m.families.insert(name.to_string(), family.clone());
+            // The scratch stands the family at its own size: an annotation family's paper scaling is a view's, not the
+            // editor's, so it is drawn 1 : 1 here.
+            let mut scratch = family.clone();
+            if scratch.is_annotation() {
+                scratch.scale_with_view = false;
+            }
+            m.families.insert(name.to_string(), scratch);
         }
         let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p);
         // Its forms stand where its planes are drawn: its insertion point at its origin (O1).
@@ -915,6 +1087,22 @@ impl FamilyEditor {
                 p["sill"] = json!(0);
             }
             place(&mut s, kind, p)?;
+        } else if family.is_annotation() {
+            // Its symbols are drawn in the plan of Ref. Level, its own millimetres at 1 : 1.
+            let level = match s.model_mut().levels().first() {
+                Some((id, _)) => *id,
+                None => s.model_mut().insert(bimcraft_core::model::Element::Level(bimcraft_core::model::Level::new("Ref. Level", 0.0))),
+            };
+            let view = s.model_mut().guid(level);
+            s.model_mut().insert(bimcraft_core::model::Element::Annotation(bimcraft_core::model::Annotation {
+                view,
+                family: name.to_string(),
+                type_name,
+                at: bimcraft_core::geom::P2(0.0, 0.0),
+                angle: 0.0,
+                mirrored: false,
+                params: self.preview_params.clone(),
+            }));
         } else {
             let mut p = json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params});
             at_origin(family, &mut p);
@@ -963,7 +1151,7 @@ pub(super) fn ghosted(f: &Family, values: &BTreeMap<String, bimcraft_core::famil
 }
 
 /// The categories a family may be of, in the order they're offered.
-pub(crate) const CATEGORIES: [Category; 20] = [
+pub(crate) const CATEGORIES: [Category; 21] = [
     Category::Furniture,
     Category::Casework,
     Category::Plumbing,
@@ -984,6 +1172,7 @@ pub(crate) const CATEGORIES: [Category; 20] = [
     Category::Generic,
     Category::Door,
     Category::Window,
+    Category::Annotation,
 ];
 
 pub(crate) fn category_label(c: Category) -> String {
@@ -1008,6 +1197,7 @@ pub(crate) fn category_label(c: Category) -> String {
         Category::Generic => msg!("Generic"),
         Category::Door => "Door",
         Category::Window => "Window",
+        Category::Annotation => msg!("Generic Annotation"),
     })
     .to_string()
 }
@@ -1123,12 +1313,30 @@ fn symbol_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize) {
     let n = i + 1;
     let w = (ui.available_width() / 2.0 - 16.0).max(60.0);
     document::group(ui, msg!("Constraints"), |ui| {
+        if y.part == Part::Fill {
+            ui.label(t("Rings (JSON)"));
+            let r = ui.add(TextEdit::multiline(&mut y.fill).desired_rows(3).desired_width(w).id_salt(("fe-symbol-fill", i)));
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Filled Region Rings"))));
+            ui.end_row();
+            ui.label(t("Fill Type"));
+            field(ui, format!("{} {n}", t("Symbol Fill Type")), &mut y.fill_type, w);
+            ui.end_row();
+            return;
+        }
         if y.part == Part::Line {
             ui.label(t("Points"));
             let r = ui.add(TextEdit::multiline(&mut y.line).desired_rows(3).desired_width(w).id_salt(("fe-symbol-line", i)));
             r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Symbol Points"))));
             ui.end_row();
+            ui.label(t("Line Style"));
+            field(ui, format!("{} {n}", t("Symbol Line Style")), &mut y.style, w);
+            ui.end_row();
             return;
+        }
+        if y.part == Part::Arc {
+            ui.label(t("Line Style"));
+            field(ui, format!("{} {n}", t("Symbol Line Style")), &mut y.style, w);
+            ui.end_row();
         }
         let centre = if y.part == Part::Text { msg!("Middle of the text") } else { msg!("Centre") };
         for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
@@ -1161,6 +1369,32 @@ fn symbol_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize) {
             ui.label(t("Text"));
             field(ui, format!("{} {n}", t("Symbol Text")), &mut y.value, w);
             ui.end_row();
+            // A label naming a parameter the family hasn't would draw nothing and stop the view: say which, and what there is.
+            let (missing, broken) = match bimcraft_core::family::label_parameters(&y.value) {
+                Ok(names) => {
+                    let mut missing: Vec<String> = Vec::new();
+                    for name in names {
+                        if !params.iter().any(|(p, _)| p == name) && !missing.iter().any(|m| m == name) {
+                            missing.push(name.to_string());
+                        }
+                    }
+                    (missing, None)
+                }
+                Err(e) => (Vec::new(), Some(e)),
+            };
+            if !missing.is_empty() || broken.is_some() {
+                let said = match broken {
+                    Some(e) => e,
+                    None => {
+                        let there: Vec<&str> = params.iter().map(|(p, _)| p.as_str()).collect();
+                        tf("No parameter `{}`. Create it in Family Types, or use one of: {}", &[&missing.join(", "), &there.join(", ")])
+                    }
+                };
+                ui.end_row();
+                ui.label("");
+                ui.label(RichText::new(said).color(pal().error));
+                ui.end_row();
+            }
             ui.label(t("Align"));
             ui.horizontal_wrapped(|ui| {
                 for (a, label) in
@@ -1169,6 +1403,23 @@ fn symbol_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize) {
                     ui.selectable_value(&mut y.align, a, t(label));
                 }
             });
+            ui.end_row();
+            ui.label(t("Text Type"));
+            field(ui, format!("{} {n}", t("Symbol Text Type")), &mut y.text_type, w);
+            ui.end_row();
+            ui.label(t("Vertical Align"));
+            ui.horizontal_wrapped(|ui| {
+                for (a, label) in [
+                    (bimcraft_core::family::VAlign::Top, msg!("Top")),
+                    (bimcraft_core::family::VAlign::Middle, msg!("Middle")),
+                    (bimcraft_core::family::VAlign::Bottom, msg!("Bottom")),
+                ] {
+                    ui.selectable_value(&mut y.valign, a, t(label));
+                }
+            });
+            ui.end_row();
+            ui.label(t("Wrap Width"));
+            field(ui, format!("{} {n}", t("Symbol Wrap Width")), &mut y.wrap, w);
             ui.end_row();
         }
     });
@@ -1231,15 +1482,15 @@ impl FamilyEditor {
         self.select_only(select_box::Picked::Form(i));
     }
 
-    /// Nothing selected: Properties show the family's own.
-    pub(crate) fn let_everything_go(&mut self) {
-        self.selection.clear();
-    }
-
     /// A symbol of `part` added, as the Detail panel draws one, and selected so Properties show its rows.
     pub(crate) fn add_symbol(&mut self, part: Part) {
         self.symbols.push(SymbolText::blank(part));
         self.select_symbol(self.symbols.len() - 1);
+    }
+
+    /// Nothing selected: Properties show the family's own.
+    pub(crate) fn let_everything_go(&mut self) {
+        self.selection.clear();
     }
 
     /// The selected symbol's name, as Properties and the Project Browser give it.
@@ -1248,6 +1499,7 @@ impl FamilyEditor {
             Some(Part::Arc) => t("Symbolic Arc"),
             Some(Part::Text) => t("Text"),
             Some(Part::Dot) => t("Dot"),
+            Some(Part::Fill) => t("Filled Region"),
             _ => t("Symbolic Line"),
         };
         format!("{}. {what}", i + 1)
@@ -1871,6 +2123,9 @@ mod tests {
                 height: Expr::Number(60.0),
                 value: "C{Circuit}".into(),
                 align: LabelAlign::Center,
+                text_type: None,
+                valign: bimcraft_core::family::VAlign::Middle,
+                wrap: None,
             }),
             visible: Some(Expr::Formula("Show".into())),
             ..Symbol::default()

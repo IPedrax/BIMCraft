@@ -530,6 +530,10 @@ impl FamilyEditor {
                     if let Some(c) = y.dot.as_mut() {
                         ok &= by(&mut c.centre);
                     }
+                    // An annotation's filled region goes with it: every point of every ring.
+                    if let Some(f) = y.fill.as_mut() {
+                        ok &= f.rings.iter_mut().flatten().all(by);
+                    }
                     if !ok {
                         let was = Origin::back(&names.origin.symbols, i);
                         return Err(refused(tf("symbol {}", &[&(was + 1).to_string()])));

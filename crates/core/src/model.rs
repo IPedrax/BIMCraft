@@ -1568,6 +1568,25 @@ pub struct Note {
     pub runs: Vec<crate::text::Run>,
 }
 
+/// An annotation family placed in a view: its type's symbols, in the family's millimetres, with the instance's values.
+/// `view` is a sheet or a flat view (a plan, a ceiling plan, a section, an elevation or a detail view); `at` is in that
+/// view's own terms: paper mm on a sheet, plan mm in a plan, along and up in a section or an elevation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Annotation {
+    pub view: Guid,
+    pub family: String,
+    #[serde(rename = "type")]
+    pub type_name: String,
+    pub at: P2,
+    #[serde(default)]
+    pub angle: f64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mirrored: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
 /// How a note's leader reaches the point it names: straight from the note's side, in two segments (a shoulder level
 /// with the note, its lettering's height long, then to the point), or as an arc bowing from that shoulder's corner.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -2735,6 +2754,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? r.join { f(g) }
             }
             Element::Text(n) => f(& $($m)? n.view),
+            Element::Annotation(a) => f(& $($m)? a.view),
             Element::DetailLine(l) => f(& $($m)? l.view),
             Element::FilledRegion(r) => f(& $($m)? r.view),
             Element::DetailGroup(g) => {
@@ -2832,6 +2852,8 @@ pub enum Element {
     Railing(Railing),
     Roof(Roof),
     Text(Note),
+    /// An annotation family placed in a sheet or a flat view; of Revit's Annotation Symbols.
+    Annotation(Annotation),
     /// A detail line: drawn in one view, in a line style; of the Lines category, as Revit's.
     #[serde(rename = "line")]
     DetailLine(DetailLine),
@@ -2886,6 +2908,7 @@ impl Element {
             | Element::Footing(Column { params, .. })
             | run_arm!(Run { params, .. })
             | Element::Component(Component { params, .. })
+            | Element::Annotation(Annotation { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
@@ -2911,6 +2934,7 @@ impl Element {
             | Element::Footing(Column { params, .. })
             | run_arm!(Run { params, .. })
             | Element::Component(Component { params, .. })
+            | Element::Annotation(Annotation { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
@@ -2966,6 +2990,7 @@ impl Element {
     pub fn family(&self) -> Option<(&str, &str)> {
         match self {
             Element::Component(c) => Some((&c.family, &c.type_name)),
+            Element::Annotation(a) => Some((&a.family, &a.type_name)),
             Element::Door(o) | Element::Window(o) => o.family.as_deref().map(|f| (f, o.type_name.as_str())),
             _ => None,
         }
@@ -3033,6 +3058,7 @@ impl Element {
     pub fn family_mut(&mut self) -> Option<&mut String> {
         match self {
             Element::Component(c) => Some(&mut c.family),
+            Element::Annotation(a) => Some(&mut a.family),
             Element::Door(o) | Element::Window(o) => o.family.as_mut(),
             _ => None,
         }
@@ -3041,6 +3067,7 @@ impl Element {
     pub fn category(&self) -> &'static str {
         match self {
             Element::Text(_) => "text",
+            Element::Annotation(_) => "annotation",
             Element::DetailLine(_) => "line",
             Element::FilledRegion(_) => "region",
             Element::DetailGroup(_) => "detailgroup",
@@ -6206,12 +6233,14 @@ impl Model {
         }
     }
 
-    /// The plan an annotation is in: a level's own, or a plan view; none for what isn't annotation of a plan.
+    /// The view an annotation is in: a level's own plan, a plan view, a sheet, a section, an elevation or a detail view;
+    /// none for what isn't annotation.
     pub fn annotation_plan(&self, e: &Element) -> Option<Guid> {
         match e {
             Element::Dimension(d) => Some(d.view.unwrap_or(d.level)),
             Element::Tag(t) => t.view.or_else(|| self.level_of(e)),
             Element::Text(Note { view, .. })
+            | Element::Annotation(Annotation { view, .. })
             | Element::Spot(Spot { view, .. })
             | Element::DetailLine(DetailLine { view, .. })
             | Element::FilledRegion(FilledRegion { view, .. })
@@ -6592,8 +6621,9 @@ impl Model {
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
             // On the board's level: its plan is where it is drawn.
             Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
-            // Notes and spot elevations in a level's plan.
+            // Notes, annotation symbols and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
+            | Element::Annotation(Annotation { view, .. })
             | Element::Spot(Spot { view, .. })
             | Element::DetailLine(DetailLine { view, .. })
             | Element::FilledRegion(FilledRegion { view, .. })
@@ -8664,6 +8694,27 @@ impl Model {
                     point(&format!("{who} leader"), l)?;
                 }
             }
+            Element::Annotation(a) => {
+                point(who, a.at)?;
+                coord(&format!("{who} angle"), a.angle)?;
+                let f = self.families.get(&a.family).ok_or_else(|| {
+                    let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
+                    format!("{who}: family `{}` doesn't exist (there are: {})", a.family, names.join(", "))
+                })?;
+                if !f.is_annotation() {
+                    return Err(format!(
+                        "{who}: family `{}` is a component's, not an annotation family (its category is not `annotation`)",
+                        a.family
+                    ));
+                }
+                if let Some(k) = a.params.keys().find(|k| !f.parameters.iter().any(|p| p.name == **k)) {
+                    let names: Vec<&str> = f.parameters.iter().map(|p| p.name.as_str()).collect();
+                    return Err(format!("{who}: `{k}` isn't a parameter of `{}` (there are: {})", a.family, names.join(", ")));
+                }
+                self.family_values_ok(who, &a.family, f, &a.params)?;
+                let values = f.values(&a.type_name, &a.params).map_err(|e| format!("{who}: {e}"))?;
+                crate::family::annotation::marks(f, &values).map_err(|e| format!("{who}: {e}"))?;
+            }
             Element::DetailLine(l) => {
                 l.check(who)?;
                 if !self.line_styles.contains_key(&l.style) {
@@ -10005,6 +10056,7 @@ impl Model {
                 }
             }
             Element::Text(Note { view, .. })
+            | Element::Annotation(Annotation { view, .. })
             | Element::DetailLine(DetailLine { view, .. })
             | Element::FilledRegion(FilledRegion { view, .. }) => {
                 view_ok(*view, true)?;

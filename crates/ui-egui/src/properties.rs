@@ -1468,6 +1468,7 @@ impl BimApp {
             .iter()
             .map(|id| match m.elements.get(id) {
                 Some(Element::Component(c)) => Some((c.family.clone(), c.type_name.clone())),
+                Some(Element::Annotation(a)) => Some((a.family.clone(), a.type_name.clone())),
                 _ => None,
             })
             .collect::<Option<_>>()?;

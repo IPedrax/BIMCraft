@@ -3587,6 +3587,18 @@ impl BimApp {
             Tool::Component | Tool::Fixture(_) => {
                 if self.adaptive_count().is_some() {
                     self.adaptive_click(m, level, v, at);
+                } else if let Some((family, ty)) = self.placing_annotation() {
+                    let at = self.snap_point(m, level, v, at, &[], false);
+                    if let Some(made) = self.run(
+                        "annotation",
+                        json!({"family": family, "type": ty, "view": key, "at": point(at), "angle": self.component_angle}),
+                    ) {
+                        // It is placed: show it selected, as a component placed is, and leave the tool.
+                        if let Some(id) = made["id"].as_u64() {
+                            self.selection = vec![id];
+                        }
+                        self.set_tool(Tool::Modify);
+                    }
                 } else if let Some((family, ty)) = self.placing() {
                     let at = self.snap_point(m, level, v, at, &[], false);
                     let z = m.elevation(level);
