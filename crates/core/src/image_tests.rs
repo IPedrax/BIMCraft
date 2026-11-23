@@ -82,7 +82,7 @@ fn a_linked_image_is_listed_and_reloaded_and_an_imported_one_is_not() {
     let a = run(&mut s, "image", json!({"path": path.to_string_lossy(), "width": 1000, "link": true}))["id"].as_u64().unwrap();
     let b =
         run(&mut s, "image", json!({"path": path.to_string_lossy(), "width": 1000, "at": [5000, 0], "link": true}))["id"].as_u64().unwrap();
-    assert_eq!(s.model.images.len(), 1, "the same pixels are one picture");
+    assert_eq!(s.model.images.len(), Session::new().model.images.len() + 1, "the same pixels are one picture");
     let rows = run(&mut s, "links", json!({"kind": "images"}))["images"].clone();
     assert_eq!(rows.as_array().unwrap().len(), 1, "{rows}");
     let ids: Vec<u64> = rows[0]["ids"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).collect();
@@ -190,7 +190,7 @@ fn a_jpeg_is_kept_as_the_jpeg_it_came_in_as() {
     run(&mut s, "export_assets", json!({"path": bima, "pictures": true}));
     let mut t = Session::new();
     run(&mut t, "import_assets", json!({"path": bima}));
-    assert_eq!(t.model.images.values().next().unwrap().file(), &out[..]);
+    assert_eq!(t.model.images[v["picture"].as_str().unwrap()].file(), &out[..]);
 }
 
 /// A two-sheet PDF of this project's, in `dir`: its path.
