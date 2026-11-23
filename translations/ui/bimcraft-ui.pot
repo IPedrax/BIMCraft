@@ -2473,7 +2473,7 @@ msgstr ""
 msgid "Centre Line"
 msgstr ""
 
-#: crates/core/src/lines.rs:216
+#: crates/core/src/lines.rs:228
 msgid "Centre Lines"
 msgstr ""
 
@@ -7168,7 +7168,7 @@ msgid "Grid (GR): click its two ends"
 msgstr ""
 
 #: crates/core/src/grids.rs:29
-#: crates/core/src/lines.rs:186
+#: crates/core/src/lines.rs:198
 msgid "Grid - ASME Chain"
 msgstr ""
 
@@ -7181,7 +7181,7 @@ msgid "Grid - Architectural"
 msgstr ""
 
 #: crates/core/src/grids.rs:30
-#: crates/core/src/lines.rs:187
+#: crates/core/src/lines.rs:199
 msgid "Grid - Architectural Chain"
 msgstr ""
 
@@ -7190,7 +7190,7 @@ msgid "Grid - Compact"
 msgstr ""
 
 #: crates/core/src/grids.rs:31
-#: crates/core/src/lines.rs:188
+#: crates/core/src/lines.rs:200
 msgid "Grid - Compact Dash Dot"
 msgstr ""
 
@@ -7203,7 +7203,7 @@ msgid "Grid - DIN 1356"
 msgstr ""
 
 #: crates/core/src/grids.rs:28
-#: crates/core/src/lines.rs:185
+#: crates/core/src/lines.rs:197
 msgid "Grid - DIN Dash Dot"
 msgstr ""
 
@@ -7212,7 +7212,7 @@ msgid "Grid - ISO 128"
 msgstr ""
 
 #: crates/core/src/grids.rs:27
-#: crates/core/src/lines.rs:184
+#: crates/core/src/lines.rs:196
 msgid "Grid - ISO Dash Dot"
 msgstr ""
 
@@ -7311,7 +7311,7 @@ msgstr ""
 msgid "Gypsum board"
 msgstr ""
 
-#: crates/core/src/lines.rs:211
+#: crates/core/src/lines.rs:223
 #: crates/ui-egui/src/graphics.rs:1394
 msgid "Hairline"
 msgstr ""
@@ -7413,7 +7413,7 @@ msgstr ""
 msgid "Hidden Line and Wireframe always draw their edges"
 msgstr ""
 
-#: crates/core/src/lines.rs:203
+#: crates/core/src/lines.rs:215
 msgid "Hidden Lines"
 msgstr ""
 
@@ -9378,7 +9378,7 @@ msgstr ""
 msgid "Medium"
 msgstr ""
 
-#: crates/core/src/lines.rs:202
+#: crates/core/src/lines.rs:214
 msgid "Medium Lines"
 msgstr ""
 
@@ -11035,7 +11035,7 @@ msgstr ""
 msgid "Overhang:"
 msgstr ""
 
-#: crates/core/src/lines.rs:217
+#: crates/core/src/lines.rs:229
 msgid "Overhead Lines"
 msgstr ""
 
@@ -16638,7 +16638,7 @@ msgstr ""
 msgid "Thickness:"
 msgstr ""
 
-#: crates/core/src/lines.rs:200
+#: crates/core/src/lines.rs:212
 #: crates/ui-egui/src/editor/document.rs:590
 #: crates/ui-egui/src/lib.rs:5500
 msgid "Thin Lines"
@@ -18141,7 +18141,7 @@ msgstr ""
 msgid "Why"
 msgstr ""
 
-#: crates/core/src/lines.rs:214
+#: crates/core/src/lines.rs:226
 #: crates/ui-egui/src/linestyles.rs:398
 msgid "Wide Lines"
 msgstr ""
