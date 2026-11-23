@@ -350,3 +350,6 @@ mod text_tests;
 #[cfg(test)]
 mod profile_tests;
 pub mod profiles;
+
+#[cfg(test)]
+mod ods_catalogue_tests;

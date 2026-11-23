@@ -42,6 +42,7 @@ use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod bars;
 mod carrier;
+mod catalogue;
 mod quantities;
 mod rebar_detail;
 mod work_plane;
@@ -3623,6 +3624,21 @@ other_files(
         "Check Measured Carrier Fill",
         "{id:conduit or cable tray id|GUID, profile:nbr5410_2004|ru_sp76_2016_max_fill, areas:[mm²,…], inside_diameter?:mm, enclosure?:blind_box|lidded_box, inside_width?:mm, inside_depth?:mm} check maximum fill from the type's clear_section or from explicit measurements. Give one positive area including the insulation and sheath per cable or conductor. NBR takes a round conduit. SP 76 takes a rectangular box with an enclosure. The result includes count, capacity and whether it fits",
         carrier::carrier_fill,
+    ),
+    other_files(
+        "catalogue_export",
+        "Export ODS Catalogue",
+        "{path:ODS} export conduit, cable tray, wire and cable geometry types with their library GUIDs to an editable ODS workbook",
+        catalogue::catalogue_export,
+        Files::Write,
+    ),
+    edit_files(
+        "catalogue_import",
+        "Import ODS Catalogue",
+        &[],
+        "{path:ODS} apply the first sheet of a catalogue_export workbook. Keep GUIDs for existing types and leave them blank for new types. Dimensions in millimetres. One undo step",
+        catalogue::catalogue_import,
+        Files::Read,
     ),
 ];
 

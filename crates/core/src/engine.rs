@@ -1392,7 +1392,7 @@ impl Kept {
 }
 
 /// Whether two paths name the same file: as the system resolves them where both are there, else as they are written.
-fn same_file(a: &Path, b: &Path) -> bool {
+pub(crate) fn same_file(a: &Path, b: &Path) -> bool {
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,

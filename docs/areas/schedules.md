@@ -56,3 +56,18 @@ to do. Where the two define a quantity differently, the difference goes here, wi
 `schedule {template: "steel_list" | "steel_summary"}` fills a schedule of category `rebar` with the fields, filters, sort and grouping of a steel list or a steel summary where the call gives none, so every other parameter of the command still applies. The rule for marks, and the commands `steel_list` and `cut_plan`, are in [quantities](quantities.md).
 
 `schedule {template: "materials_summary", level?}` makes a schedule of the six categories that have quantities (beam, column, structural column, footing, strip footing, floor), grouped by level and category, with the count, Volume, Formwork Area and Rebar Weight of each group totalled. It cannot split by a project parameter, because a schedule of several categories has none among its fields: `quantities` with `by` does. The same four fields (Rebar Ratio too) are on each of those categories' own schedules, appended after the default columns, and a multi-category schedule reads each category's own. A ratio is not a grouped column, because a total of ratios would add them: `quantities` gives it.
+
+## Editable ODS type catalogue
+
+Use `catalogue_export {"path":"types.ods"}` to write conduit, cable tray, wire
+and cable geometry types. Edit the first sheet and use
+`catalogue_import {"path":"types.ods"}` to apply it in one undo step. Keep the
+headings and each existing type's GUID, category and name. Leave the GUID blank
+for a new type. Width and depth are millimetres, Round is true or false, and
+Material names a material in the project. The entire import rolls back if a
+row fails validation.
+
+This exchange is explicit. The project saves no workbook path and opening it
+never reads or writes a workbook. Use regular .ods files. Both commands are
+refused in read-only sessions and dry runs. The workbook is limited to 32 MiB
+and 20,000 rows, including the headings.
