@@ -5819,29 +5819,30 @@ fn a_materials_texture_is_set_changed_and_taken_away_and_a_picture_comes_into_th
     assert_eq!((t(&s), s.model.materials["Oak"].color), (json!(null), [160, 112, 60]));
     // A picture: its file, taken into the project (a tile a metre across, as tall as its proportions make it); the same file again, the same picture.
     let (wide, tall) = (picture_file("wide", 8, 4, [200, 100, 50, 255]), picture_file("tall", 4, 8, [20, 100, 250, 255]));
+    let starter = s.model.images.clone();
     run(&mut s, "material", json!({"name": "Oak", "texture": {"kind": "image", "path": wide}}));
     run(&mut s, "material", json!({"name": "Maple", "texture": {"kind": "image", "path": wide}}));
-    assert_eq!((s.model.images.len(), t(&s)["size"].clone()), (1, json!([1000.0, 500.0])));
+    assert_eq!((s.model.images.len(), t(&s)["size"].clone()), (starter.len() + 1, json!([1000.0, 500.0])));
     let inspected = run(&mut s, "inspect", json!({}))["images"].clone();
-    let id = s.model.images.keys().next().unwrap().clone();
+    let id = s.model.images.keys().find(|k| !starter.contains_key(*k)).unwrap().clone();
     assert_eq!(
         (&inspected[&id]["size"], inspected[&id]["name"].as_str().map(|n| n.starts_with("bimcraft-wide"))),
         (&json!([8, 4]), Some(true))
     );
     // A picture is the project's while a material's texture is made of it: out of one, still there for the other; out of both, gone.
     run(&mut s, "material", json!({"name": "Oak", "texture": {"kind": "image", "path": tall}}));
-    assert_eq!(s.model.images.len(), 2);
+    assert_eq!(s.model.images.len(), starter.len() + 2);
     run(&mut s, "material", json!({"name": "Oak", "texture": null}));
-    assert_eq!(s.model.images.len(), 1);
+    assert_eq!(s.model.images.len(), starter.len() + 1);
     run(&mut s, "material", json!({"name": "Maple", "delete": true}));
-    assert!(s.model.images.is_empty());
+    assert_eq!(s.model.images, starter);
     // A project that holds one saves it with it, and opens with it.
     run(&mut s, "material", json!({"name": "Oak", "texture": {"kind": "image", "path": tall, "angle": 45}}));
     let project = temp("textured.bimcraft");
     run(&mut s, "save", json!({"path": project}));
     let mut t2 = Session::new();
     run(&mut t2, "open", json!({"path": project}));
-    assert_eq!((t2.model.images.len(), &t2.model.materials["Oak"]), (1, &s.model.materials["Oak"]));
+    assert_eq!((t2.model.images.len(), &t2.model.materials["Oak"]), (starter.len() + 1, &s.model.materials["Oak"]));
     assert_eq!(t2.model.images, s.model.images);
     // As a hand might spoil it: a picture's data cut short comes back with its name, and the project isn't opened.
     let mut v: Value = serde_json::from_str(&crate::bimc::read_to_string(&project).unwrap()).unwrap();
@@ -5880,8 +5881,8 @@ fn a_texture_that_isnt_sound_is_refused_and_says_why_and_the_project_is_as_it_wa
         assert!(e.contains(says), "{texture}: {e}");
         assert_eq!(*s.model, *before);
     }
-    // At most 24 pictures; the 25th isn't taken in.
-    for k in 0..crate::texture::MAX_IMAGES as u8 {
+    // At most 32 pictures, the starter library's among them; the next isn't taken in.
+    for k in 0..(crate::texture::MAX_IMAGES - s.model.images.len()) as u8 {
         let file = picture_file(&format!("many{k}"), 2, 2, [k, 7, 9, 255]);
         run(&mut s, "material", json!({"name": format!("M{k}"), "texture": {"kind": "image", "path": file.clone()}}));
         std::fs::remove_file(file).unwrap();
@@ -5983,8 +5984,9 @@ fn favorites_keep_materials_and_families_for_every_project() {
     );
     // In another project, from the file alone: the lawn comes with its picture, the family with the oak it's made of.
     let mut b = Session::new();
+    let before = b.model.images.len();
     run(&mut b, "favorite", json!({"action": "load", "name": "My Lawn", "as": "Lawn", "path": file}));
-    assert_eq!((b.model.images.len(), &b.model.materials["Lawn"].texture), (1, &a.model.materials["My Lawn"].texture));
+    assert_eq!((b.model.images.len(), &b.model.materials["Lawn"].texture), (before + 1, &a.model.materials["My Lawn"].texture));
     run(&mut b, "favorite", json!({"action": "load", "kind": "family", "name": "Bench", "path": file}));
     assert_eq!(b.model.materials["My Oak"].color, [160, 112, 60]);
     let bench = run(&mut b, "component", json!({"family": "Bench", "at": [0, 0]}))["id"].as_u64().unwrap();
@@ -7775,11 +7777,11 @@ fn a_toposolid_shows_its_types_surface_pattern_in_plan_and_its_texture_in_3d() {
     let mut s = Session::new();
     // A paving surface: a model pattern of level courses, and a texture, on the type's one layer.
     run(&mut s, "fill_pattern", json!({"name": "Pavers", "target": "model", "lines": [{"angle": 0, "spacing": 1000}]}));
-    run(&mut s, "material", json!({"name": "Paving", "surface": "Pavers", "texture": {"kind": "tile", "size": [1000, 1000]}}));
+    run(&mut s, "material", json!({"name": "Pavement", "surface": "Pavers", "texture": {"kind": "tile", "size": [1000, 1000]}}));
     run(
         &mut s,
         "type",
-        json!({"category": "toposolid", "name": "Paved", "layers": [{"function": "finish", "material": "Paving", "thickness": 300}]}),
+        json!({"category": "toposolid", "name": "Paved", "layers": [{"function": "finish", "material": "Pavement", "thickness": 300}]}),
     );
     let t = run(&mut s, "toposolid", json!({"type": "Paved", "boundary": plot(), "points": [[5000, 5000, 2000]]}))["id"]
         .as_u64()

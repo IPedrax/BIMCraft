@@ -14,15 +14,14 @@ use std::sync::Arc;
 use bimcraft_core::element_json_with;
 use bimcraft_core::family::{Kind as Holds, Under, Val};
 use bimcraft_core::library::Kind as LibKind;
-use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, ParameterKind, Pattern, ProjectParameter, Scope};
+use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, ParameterKind, ProjectParameter, Scope};
 use bimcraft_core::rooms::Rooms;
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
 use bimcraft_core::snap::Kind as Snap;
-use bimcraft_core::texture::{Kind as TextureKind, Texture};
 use bimcraft_core::units::Units;
 use egui::{
     Align, Align2, Button, Checkbox, ComboBox, Context, FontId, Frame, Grid, Id as UiId, Key, Layout, Margin, Popup, Rect, RichText,
-    ScrollArea, Sense, Shape, Slider, Stroke, StrokeKind, TextEdit, TextureHandle, Ui, WidgetInfo, WidgetType, pos2, vec2,
+    ScrollArea, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -933,66 +932,6 @@ type LayerRow = (Function, String, String, bool);
 /// The categories whose types have layers: a wall's from its exterior in, the others' from the top down.
 const LAYERED: [&str; 4] = ["wall", "floor", "roof", "ceiling"];
 
-/// Each pattern as the Materials window names it.
-const PATTERNS: [(Pattern, &str); 10] = [
-    (Pattern::None, "None"),
-    (Pattern::Solid, msg!("Solid Fill")),
-    (Pattern::Diagonal, msg!("Diagonal")),
-    (Pattern::Crosshatch, msg!("Crosshatch")),
-    (Pattern::Horizontal, msg!("Horizontal")),
-    (Pattern::Vertical, msg!("Vertical")),
-    (Pattern::Grid, msg!("Square Grid")),
-    (Pattern::Brick, "Brick"),
-    (Pattern::Concrete, "Concrete"),
-    (Pattern::Insulation, "Insulation"),
-];
-
-/// A kind of texture, as the Materials window names it.
-pub(crate) fn texture_name(k: bimcraft_core::texture::Kind) -> &'static str {
-    use bimcraft_core::texture::Kind::*;
-    match k {
-        Brick => "Brick",
-        Block => msg!("Block"),
-        Boards => msg!("Boards"),
-        Concrete => "Concrete",
-        Plaster => "Plaster",
-        Tile => msg!("Tile"),
-        Roof => "Roof Tiles",
-        Fabric => "Fabric",
-        Metal => "Metal",
-        Insulation => "Insulation",
-        Image => msg!("Picture"),
-    }
-}
-
-fn pattern_name(p: Pattern) -> &'static str {
-    PATTERNS.iter().find(|(q, _)| *q == p).map_or("None", |(_, n)| n)
-}
-
-/// The Materials window: the library's materials, the one picked to edit, its name as typed (a
-/// rename once typed in), its colour as picked (applied once the mouse lets go).
-pub(crate) struct MaterialsDialog {
-    /// Opened from a family document (FE-19): it says the project's materials change, now.
-    pub(crate) from_family: bool,
-    picked: String,
-    name: String,
-    color: Option<[u8; 3]>,
-    /// Its transparency as set on the slider, percent (applied once the mouse lets go).
-    clear: Option<u8>,
-    /// The texture's fields as typed (a tile's width and height, the angle, the offset across and up), for the material and
-    /// texture they were made from.
-    texture: Option<(String, Texture, [String; 5])>,
-    /// The swatch drawn of the texture, and what it was drawn of.
-    swatch: Option<(String, TextureHandle)>,
-}
-
-impl MaterialsDialog {
-    pub(crate) fn new(m: &Model) -> MaterialsDialog {
-        let picked = m.materials.keys().next().cloned().unwrap_or_default();
-        MaterialsDialog { from_family: false, name: picked.clone(), picked, color: None, clear: None, texture: None, swatch: None }
-    }
-}
-
 /// What a layer does, as the layer editor names it.
 const FUNCTIONS: [(Function, &str); 5] = [
     (Function::Structure, msg!("Structure")),
@@ -1079,6 +1018,29 @@ fn type_value_rows(tb: &mut typeprops::Table, values: &mut [TypeValue], units: U
                 _ => tb.text(&v.name, &mut v.typed, ""),
             }
         }
+    }
+}
+
+/// A value of a parameter of `kind` as a field shows it to be typed over.
+pub(crate) fn parameter_text(kind: ParameterKind, v: &Value, units: Units) -> String {
+    match kind {
+        ParameterKind::YesNo => (if v.as_bool().unwrap_or(false) { "1" } else { "0" }).to_string(),
+        ParameterKind::Area => area_shown(v, units),
+        ParameterKind::Length => shown(Length, v, units),
+        ParameterKind::Text => shown(Text, v, units),
+        _ => shown(Number, v, units),
+    }
+}
+
+/// What is typed for a parameter of `kind` as its value: nothing typed, none. Or why it isn't one.
+pub(crate) fn parameter_value(kind: ParameterKind, typed: &str, units: Units) -> Result<Value, String> {
+    match kind {
+        _ if typed.trim().is_empty() => Ok(Value::Null),
+        ParameterKind::YesNo => Ok(json!(typed == "1")),
+        ParameterKind::Area => area_parsed(typed, units),
+        ParameterKind::Length => parse(Length, typed, units),
+        ParameterKind::Text => Ok(json!(typed)),
+        _ => parse(Number, typed, units),
     }
 }
 
@@ -3866,222 +3828,6 @@ impl BimApp {
         }
         if !(ok || cancel || r.should_close()) {
             self.type_dialog = Some(d);
-        }
-    }
-}
-
-impl BimApp {
-    /// The Materials window: Manage > Materials, Revit's Material Browser. Each change is a
-    /// `material` command, undone like any other.
-    pub(crate) fn materials_window(&mut self, ctx: &Context) {
-        let Some(mut d) = self.materials_dialog.take() else { return };
-        let model = Arc::clone(&self.session.model);
-        let (mut close, mut run, mut picked): (bool, Option<Value>, Option<String>) = (false, None, None);
-        // Save the material to the Favorites (true), or open them (false), once the window is done.
-        let mut favorite: Option<bool> = None;
-        let mut typed_wrong: Option<String> = None;
-        // The material that asked for a picture for its texture.
-        let mut picture: Option<String> = None;
-        let released = ctx.input(|i| !i.pointer.any_down());
-        let r = Modal::new(UiId::new("materials"), t("Materials")).width(440.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.add_space(6.0);
-                if d.from_family {
-                    ui.label(RichText::new(t(crate::editor::PROJECT_NOTE_MATERIALS)).strong());
-                    ui.add_space(4.0);
-                }
-                Grid::new("material-head").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                    let l = ui.label(t("Material:"));
-                    ui.horizontal(|ui| {
-                        let c = ComboBox::from_id_salt("material-name").selected_text(&d.picked).width(200.0).show_ui(ui, |ui| {
-                            for name in model.materials.keys() {
-                                if ui.selectable_label(*name == d.picked, name).clicked() {
-                                    picked = Some(name.clone());
-                                }
-                            }
-                        });
-                        c.response.labelled_by(l.id);
-                        if ui.button(t("New")).clicked() {
-                            let fresh =
-                                (1..).map(|n| format!("{} {n}", t("Material"))).find(|n| !model.materials.contains_key(n)).unwrap_or_default();
-                            run = Some(json!({"name": fresh}));
-                            picked = Some(fresh);
-                        }
-                        if ui.add_enabled(model.materials.contains_key(&d.picked), Button::new(t("Delete"))).clicked() {
-                            run = Some(json!({"name": d.picked, "delete": true}));
-                            picked = model.materials.keys().find(|n| **n != d.picked).cloned();
-                        }
-                    });
-                    ui.end_row();
-                });
-                if let Some(m) = model.materials.get(&d.picked) {
-                    ui.add_space(6.0);
-                    Grid::new("material").num_columns(2).striped(true).spacing(vec2(12.0, 6.0)).min_col_width(130.0).show(ui, |ui| {
-                        let l = ui.label(t("Name"));
-                        let r = ui.add(TextEdit::singleline(&mut d.name).desired_width(200.0)).labelled_by(l.id);
-                        if r.lost_focus() && !d.name.trim().is_empty() && d.name.trim() != d.picked {
-                            run = Some(json!({"name": d.picked, "rename": d.name.trim()}));
-                            picked = Some(d.name.trim().to_string());
-                        }
-                        ui.end_row();
-                        let l = ui.label(t("Color"));
-                        let colour = d.color.get_or_insert(m.color);
-                        ui.color_edit_button_srgb(colour).labelled_by(l.id);
-                        if released && *colour != m.color {
-                            run = Some(json!({"name": d.picked, "color": *colour}));
-                        }
-                        ui.end_row();
-                        // How see-through the 3D view draws what is made of it, percent.
-                        let l = ui.label(t("Transparency"));
-                        let clear = d.clear.get_or_insert(m.transparency);
-                        ui.add(Slider::new(clear, 0..=100).suffix("%")).labelled_by(l.id);
-                        if released && *clear != m.transparency {
-                            run = Some(json!({"name": d.picked, "transparency": *clear}));
-                        }
-                        ui.end_row();
-                        // The patterns drawn in code, then the project's fill patterns.
-                        let cut = [
-                            ("cut", msg!("Cut Pattern"), m.cut, &m.cut_pattern),
-                            ("surface", msg!("Surface Pattern"), m.surface, &m.surface_pattern),
-                        ];
-                        for (key, label, now, fill) in cut {
-                            let l = ui.label(t(label));
-                            let shown = fill.clone().unwrap_or_else(|| t(pattern_name(now)).to_string());
-                            let c = ComboBox::from_id_salt(("material-pattern", key)).selected_text(shown).width(160.0).show_ui(ui, |ui| {
-                                for (p, name) in PATTERNS {
-                                    if ui.selectable_label(fill.is_none() && p == now, t(name)).clicked() {
-                                        run = Some(json!({"name": d.picked, key: p}));
-                                    }
-                                }
-                                ui.separator();
-                                for n in model.fill_patterns.keys() {
-                                    if ui.selectable_label(fill.as_ref() == Some(n), n).clicked() {
-                                        run = Some(json!({"name": d.picked, key: n}));
-                                    }
-                                }
-                            });
-                            c.response.labelled_by(l.id);
-                            ui.end_row();
-                        }
-                        // Its texture: a pattern drawn in code or a picture, over its colour in the 3D view; a tile of it this
-                        // big, turned and moved.
-                        let l = ui.label(t("Texture"));
-                        let now = m.texture.as_ref().map(|x| x.kind);
-                        let shown = now.map_or(t("None"), |k| t(texture_name(k)));
-                        let c = ComboBox::from_id_salt("material-texture").selected_text(shown).width(160.0).show_ui(ui, |ui| {
-                            if ui.selectable_label(now.is_none(), t("None")).clicked() {
-                                run = Some(json!({"name": d.picked, "texture": null}));
-                            }
-                            for k in TextureKind::ALL.into_iter().filter(|k| *k != TextureKind::Image) {
-                                if ui.selectable_label(now == Some(k), t(texture_name(k))).clicked() {
-                                    run = Some(json!({"name": d.picked, "texture": {"kind": k}}));
-                                }
-                            }
-                            if ui.selectable_label(now == Some(TextureKind::Image), t("Picture…")).clicked() {
-                                picture = Some(d.picked.clone());
-                            }
-                        });
-                        c.response.labelled_by(l.id);
-                        ui.end_row();
-                        if let Some(x) = &m.texture {
-                            let units = model.units;
-                            if !d.texture.as_ref().is_some_and(|(n, old, _)| *n == d.picked && old == x) {
-                                let typed = [
-                                    units.length(x.size[0]),
-                                    units.length(x.size[1]),
-                                    format!("{}", x.angle),
-                                    units.length(x.offset[0]),
-                                    units.length(x.offset[1]),
-                                ];
-                                d.texture = Some((d.picked.clone(), x.clone(), typed));
-                            }
-                            if let Some((_, _, typed)) = &mut d.texture {
-                                let rows = [
-                                    (msg!("Tile Width"), 0),
-                                    (msg!("Tile Height"), 1),
-                                    (msg!("Texture Angle"), 2),
-                                    (msg!("Texture Offset Across"), 3),
-                                    (msg!("Texture Offset Up"), 4),
-                                ];
-                                for (label, k) in rows {
-                                    let l = ui.label(t(label));
-                                    let hint = if k == 2 { "°" } else { units.name() };
-                                    let r = ui.add(TextEdit::singleline(&mut typed[k]).desired_width(120.0).hint_text(hint)).labelled_by(l.id);
-                                    if r.lost_focus() {
-                                        let length = |i: usize| units.parse(&typed[i]);
-                                        match (length(0), length(1), number(&typed[2]), length(3), length(4)) {
-                                            (Some(w), Some(h), Some(a), Some(ox), Some(oy)) => {
-                                                if [w, h, a, ox, oy] != [x.size[0], x.size[1], x.angle, x.offset[0], x.offset[1]] {
-                                                    run = Some(
-                                                        json!({"name": d.picked, "texture": {"size": [w, h], "angle": a, "offset": [ox, oy]}}),
-                                                    );
-                                                }
-                                            }
-                                            _ => typed_wrong = Some(tf("`{}` is not a size, an angle or an offset", &[&typed[k]])),
-                                        }
-                                    }
-                                    ui.end_row();
-                                }
-                            }
-                        }
-                    });
-                    // A tile of its texture, or its colour; and the Favorites it can be kept in.
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        let key = format!("{:?}", (m.color, &m.texture));
-                        if d.swatch.as_ref().map(|(k, _)| k) != Some(&key) {
-                            d.swatch = crate::favorites::swatch(ui.ctx(), "material-swatch", m, &model.images, 64).map(|h| (key, h));
-                        }
-                        crate::favorites::paint_swatch(ui, 64.0, m.color, d.swatch.as_ref().map(|(_, h)| h));
-                        ui.vertical(|ui| {
-                            if ui.button(t("Save to Favorites")).clicked() {
-                                favorite = Some(true);
-                            }
-                            if ui.button(t("Favorites…")).clicked() {
-                                favorite = Some(false);
-                            }
-                        });
-                    });
-                }
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
-            });
-        });
-        if let Some(text) = typed_wrong {
-            self.status = Status { text, error: true };
-        }
-        match favorite {
-            Some(true) => {
-                let p = self.favorite_params("save", "material", &d.picked);
-                if self.run("favorite", p).is_some() {
-                    self.status = Status { text: tf("Saved {} to your Favorites", &[&d.picked]), error: false };
-                }
-            }
-            Some(false) => self.open_favorites(),
-            None => {}
-        }
-        if let Some(p) = run {
-            self.run("material", p);
-        }
-        if let Some(material) = picture {
-            let dialog = rfd::AsyncFileDialog::new().add_filter(t("Pictures"), &["png", "jpg", "jpeg"]);
-            self.ask_file(ctx, dialog, false, move |app, path| {
-                app.run("material", json!({"name": material, "texture": {"kind": "image", "path": path.to_string_lossy()}}));
-            });
-        }
-        if let Some(n) = picked {
-            (d.name, d.picked, d.color, d.clear) = (n.clone(), n, None, None);
-        } else if !self.session.model.materials.contains_key(&d.picked) {
-            d = MaterialsDialog::new(&self.session.model);
-        } else if d.color.is_some_and(|c| self.session.model.materials.get(&d.picked).is_some_and(|m| m.color == c)) {
-            d.color = None;
-        }
-        if d.clear.is_some_and(|c| self.session.model.materials.get(&d.picked).is_some_and(|m| m.transparency == c)) {
-            d.clear = None;
-        }
-        if !(close || r.should_close()) {
-            self.materials_dialog = Some(d);
         }
     }
 }

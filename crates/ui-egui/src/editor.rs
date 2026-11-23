@@ -1738,7 +1738,7 @@ impl BimApp {
                     Some(crate::objectstyles::ObjectStylesDialog::for_family(&model, ed.category.graphics_category()));
             }
             Manage::Materials => {
-                let mut d = crate::properties::MaterialsDialog::new(&model);
+                let mut d = crate::materials::MaterialsDialog::new(&model, self.favorites_path.as_ref());
                 d.from_family = true;
                 self.materials_dialog = Some(d);
             }

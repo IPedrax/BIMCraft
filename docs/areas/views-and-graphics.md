@@ -707,7 +707,7 @@ The reference workflows are Autodesk's [fill layers](https://help.autodesk.com/c
 and [sketch snaps](https://help.autodesk.com/cloudhelp/2022/ENU/Revit-Customize/files/GUID-A3947840-1F30-41D7-AF75-B61687952A07.htm).
 Boundary weights follow each boundary line's style. See also Autodesk's [region masking behavior](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/Filled-Region-with-solid-fill-does-not-cover-all-elements-in-Revit.html).
 
-A material's cut and surface may be one of the project's fill patterns (`Material::cut_pattern`, `surface_pattern`, a
+A material's cut and surface each have a foreground and a background ([materials](materials.md)). Either may be one of the project's fill patterns (`Material::cut_pattern`, `surface_pattern`, a
 library reference like a region type's), over the patterns drawn in code (`model::Pattern`), which stay for the materials
 that name them: `material` takes either name for `cut` and `surface`, and the desktop's material editor lists both. A fill
 pattern a material shows can't be deleted, and is renamed with it. `render::fill_pattern` draws a fill pattern for a

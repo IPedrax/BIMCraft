@@ -4428,8 +4428,9 @@ fn the_materials_window_edits_the_projects_library() {
     press(&mut h, "Materials");
     // A new one, picked: its cut pattern, then its name.
     press(&mut h, "New");
+    press(&mut h, "Custom");
     assert!(h.state().session.model.materials.contains_key("Material 1"));
-    h.get_by_role_and_label(Role::ComboBox, "Cut Pattern").click();
+    h.get_by_role_and_label(Role::ComboBox, "Cut Foreground Pattern").click();
     h.run();
     press(&mut h, "Diagonal");
     assert_eq!(h.state().session.model.materials["Material 1"].cut, Pattern::Diagonal);
@@ -4447,7 +4448,7 @@ fn the_materials_window_edits_the_projects_library() {
     press(&mut h, "Delete");
     assert!(!h.state().session.model.materials.contains_key("Oak"));
     press(&mut h, "Close");
-    assert!(h.query_by_label("Cut Pattern").is_none());
+    assert!(h.query_by_label("Cut Foreground Pattern").is_none());
 }
 
 #[test]
@@ -6688,7 +6689,7 @@ fn the_materials_window_gives_a_material_a_texture_and_keeps_it_in_the_favorites
     key(&mut h, Key::Enter);
     assert!(h.state().status.error && texture(&h) == Some(t));
     // Kept in the Favorites, once, whatever it is now.
-    press(&mut h, "Save to Favorites");
+    pick(&mut h, Role::CheckBox, "Favorite Brick");
     let kept = bimcraft_core::favorites::Favorites::read(&file).unwrap();
     assert_eq!(kept.materials["Brick"].material.texture.as_ref().map(|t| t.angle), Some(45.0));
     // And, from the Favorites window, into the project again, under another name, since it has that one.
@@ -6928,6 +6929,7 @@ mod lineweights;
 mod links;
 mod look;
 mod manage_links;
+mod materials;
 mod mep;
 mod minimap;
 mod notes;

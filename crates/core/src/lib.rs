@@ -196,6 +196,9 @@ mod link_dims_tests;
 mod links_tests;
 pub mod loads;
 pub mod massing;
+#[cfg(test)]
+mod material_tests;
+pub mod materials;
 pub mod memory;
 pub mod mesh_in;
 #[cfg(test)]
@@ -239,6 +242,7 @@ pub mod quantities;
 mod quantities_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
+pub mod ral;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;
@@ -389,3 +393,4 @@ mod ods_catalogue_tests;
 mod odt;
 #[cfg(test)]
 mod odt_tests;
+pub mod standard_colors;

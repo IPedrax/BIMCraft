@@ -1712,7 +1712,7 @@ impl Model {
             }
         }
         for m in self.materials.values_mut() {
-            if let Some(tx) = m.texture.as_mut().filter(|tx| !tx.image.is_empty()) {
+            for tx in m.pictures_mut().filter(|tx| !tx.image.is_empty()) {
                 f(&Kind::Picture, &mut tx.image);
             }
         }
@@ -1751,7 +1751,7 @@ impl Model {
             m.element.lib_refs_mut(f);
         }
         for x in self.materials.values_mut() {
-            for p in [&mut x.cut_pattern, &mut x.surface_pattern].into_iter().flatten() {
+            for p in x.fills_mut() {
                 f(&Kind::FillPattern, p);
             }
         }

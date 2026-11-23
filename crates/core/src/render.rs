@@ -24,10 +24,11 @@ use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
     Annotation, CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Grid, Id, Key, Layer,
-    LeaderKind, Model, Note, Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    LeaderKind, Material, Model, Note, Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
+use crate::texture::Sampler;
 use crate::units::Units;
 use crate::view3d::{self, Camera, Clip, Image, Scene};
 pub use crate::view3d::{FragmentStats, SectionCache};
@@ -50,7 +51,9 @@ pub const POCHE: Rgb = Rgb(168, 168, 168);
 /// A cut compound wall's layers that aren't its structure: lighter.
 pub const LIGHT_POCHE: Rgb = Rgb(212, 212, 212);
 const INK: Rgb = Rgb(25, 25, 25);
-const FAINT: Rgb = Rgb(120, 120, 120);
+pub(crate) const FAINT: Rgb = Rgb(120, 120, 120);
+/// How far apart a pattern's lines are in a [`Swatch`], px.
+const SWATCH_GAP: f64 = 6.0;
 /// A reference plane's line in plan.
 pub(crate) const REFERENCE_PLANE: Rgb = Rgb(70, 140, 90);
 /// A mass's outline, dashed.
@@ -320,6 +323,8 @@ pub struct Drawing {
     pattern_styles: std::collections::BTreeMap<Id, [crate::graphics::Style; 2]>,
     /// What a pick takes before anything under it: Site's points, which stand on walls' corners and the like.
     pub(crate) on_top: Vec<Id>,
+    /// The pixels its image fills cover so far, held to [`MAX_IMAGE_FILL`].
+    pictured: usize,
 }
 
 impl Drawing {
@@ -360,6 +365,7 @@ impl Drawing {
             detail: Detail::Fine,
             pattern_styles: std::collections::BTreeMap::new(),
             on_top: Vec::new(),
+            pictured: 0,
         }
     }
     /// Finish the model layer before view-specific regions and annotation are drawn.
@@ -2509,6 +2515,7 @@ impl SectionOverlay {
             detail: b.detail,
             pattern_styles: b.pattern_styles.clone(),
             on_top: b.on_top.clone(),
+            pictured: b.pictured,
         };
         if let Some(image) = picture {
             d.picture(m, self.id, image);
@@ -3843,17 +3850,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                     && d.detail == Detail::Fine
                     && let Some(x) = material
                 {
-                    match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
-                        Some(p) => fill_pattern(
-                            &mut d,
-                            p,
-                            std::slice::from_ref(&piece),
-                            std::slice::from_ref(&piece),
-                            FAINT,
-                            (f.pattern_origin, f.pattern_angle),
-                        ),
-                        None => surface(&mut d, &piece, x.surface, FAINT, (f.pattern_origin, f.pattern_angle)),
-                    }
+                    material_surface(&mut d, m, x, &piece, FAINT, (f.pattern_origin, f.pattern_angle));
                 }
             }
         }
@@ -4224,17 +4221,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 {
                     for (face, rise) in m.toposolid_slabs(t) {
                         for piece in m.less_shafts(&face, rise).0 {
-                            match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
-                                Some(p) => fill_pattern(
-                                    &mut d,
-                                    p,
-                                    std::slice::from_ref(&piece),
-                                    std::slice::from_ref(&piece),
-                                    FAINT,
-                                    (t.pattern_origin, t.pattern_angle),
-                                ),
-                                None => surface(&mut d, &piece, x.surface, FAINT, (t.pattern_origin, t.pattern_angle)),
-                            }
+                            material_surface(&mut d, m, x, &piece, FAINT, (t.pattern_origin, t.pattern_angle));
                         }
                     }
                 }
@@ -4617,17 +4604,35 @@ fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room
     let material = m.materials.get(&layer.material);
     let pattern = material.map_or(Pattern::None, |x| x.cut);
     let fill = material.and_then(|x| x.cut_pattern.as_ref()).and_then(|n| m.fill_patterns.get(n));
-    if let Some(p) = fill.filter(|_| room >= PATTERN_ROOM && d.detail == Detail::Fine) {
-        // A fill pattern of the project's, its courses along the layer.
+    let back = material
+        .and_then(|x| x.cut_background.as_ref())
+        .filter(|b| b.shows() && (gap >= 2.0 || b.fill.is_some() || b.pattern == Pattern::Solid));
+    let ink = material.and_then(|x| x.cut_color).map_or(INK, |[r, g, b]| Rgb(r, g, b));
+    let along = (P2(0.0, 0.0), u.1.atan2(u.0).to_degrees());
+    let lines = pattern != Pattern::None && gap >= 2.0;
+    // A picture in place of its patterns.
+    let picture = material.and_then(|x| x.cut_image.as_ref()).and_then(|t| Sampler::new(t, [128; 3], &m.images));
+    if let Some(s) = picture.filter(|_| room >= PATTERN_ROOM && d.detail == Detail::Fine) {
+        image_fill(d, &s, ring, along);
+        return;
+    }
+    if room >= PATTERN_ROOM && d.detail == Detail::Fine && (fill.is_some() || lines || back.is_some()) {
         if over.is_none() {
             d.fill(&[ring.to_vec()], PAPER);
         }
-        fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], INK, (P2(0.0, 0.0), u.1.atan2(u.0).to_degrees()));
-    } else if pattern != Pattern::None && room >= PATTERN_ROOM && gap >= 2.0 && d.detail == Detail::Fine {
-        if over.is_none() {
-            d.fill(&[ring.to_vec()], PAPER);
+        if let Some(b) = back {
+            let tint = b.color.map_or(INK, |[r, g, b]| Rgb(r, g, b));
+            match b.fill.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+                Some(p) => fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], tint, along),
+                None => hatch(d, ring, b.pattern, u, tint, gap / d.view.scale, P2(0.0, 0.0)),
+            }
         }
-        hatch(d, ring, pattern, u, INK, gap / d.view.scale, P2(0.0, 0.0));
+        // A fill pattern of the project's, its courses along the layer; else one drawn in code.
+        if let Some(p) = fill {
+            fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], ink, along);
+        } else if lines {
+            hatch(d, ring, pattern, u, ink, gap / d.view.scale, P2(0.0, 0.0));
+        }
     } else if layer.function != Function::Structure && over.is_none() {
         d.fill(&[ring.to_vec()], LIGHT_POCHE);
     }
@@ -4672,6 +4677,8 @@ pub(crate) fn cap_fill(
     for (prim, part) in d.prims.iter().zip(&d.parts) {
         match prim {
             Prim::Fill { color, .. } if *part == Part::Pattern => base = Some(*color),
+            // An image fill: its colour on average, a section box's cap being of one colour.
+            Prim::Image { rgba, .. } if *part == Part::Pattern => base = average(rgba).or(base),
             Prim::Line { pts, color, .. } => {
                 strokes.extend(pts.windows(2).filter_map(|w| Some(([view.mm(*w.first()?), view.mm(*w.get(1)?)], *color))))
             }
@@ -4681,10 +4688,153 @@ pub(crate) fn cap_fill(
     (base, strokes)
 }
 
+/// The average colour of the pixels of `rgba` that show.
+fn average(rgba: &[u8]) -> Option<Rgb> {
+    let (sum, n) = rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|p| p[3] > 0)
+        .fold(([0_u64; 3], 0_u64), |(s, n), p| ([s[0] + u64::from(p[0]), s[1] + u64::from(p[1]), s[2] + u64::from(p[2])], n + 1));
+    (n > 0).then(|| Rgb((sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8))
+}
+
+/// What material `x` shows on a surface over `piece`: its background, then its foreground over it, each in its colour, else in
+/// `ink`, placed as `placed` says.
+fn material_surface(d: &mut Drawing, m: &Model, x: &Material, piece: &[P2], ink: Rgb, placed: (P2, f64)) {
+    if let Some(s) = x.surface_image.as_ref().and_then(|t| Sampler::new(t, x.color, &m.images)) {
+        image_fill(d, &s, piece, placed);
+        return;
+    }
+    let tint = |c: Option<[u8; 3]>| c.map_or(ink, |[r, g, b]| Rgb(r, g, b));
+    let one = std::slice::from_ref;
+    let piece = piece.to_vec();
+    if let Some(b) = x.surface_background.as_ref().filter(|b| b.shows()) {
+        match b.fill.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+            Some(p) => fill_pattern(d, p, one(&piece), one(&piece), tint(b.color), placed),
+            None => surface(d, &piece, b.pattern, tint(b.color), placed),
+        }
+    }
+    match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+        Some(p) => fill_pattern(d, p, one(&piece), one(&piece), tint(x.surface_color), placed),
+        None => surface(d, &piece, x.surface, tint(x.surface_color), placed),
+    }
+}
+
+/// The most pixels a drawing's image fills cover between them; past it, the rest are filled in their pictures' average colour.
+pub const MAX_IMAGE_FILL: usize = 8_000_000;
+
+/// A picture laid over `ring` (mm), as image fill `s` says, placed as `placed` says (an origin, and degrees turned): the pixels
+/// of the drawing inside the ring, each the colour of the picture there, as one picture over the ring's box on the view.
+fn image_fill(d: &mut Drawing, s: &Sampler, ring: &[P2], placed: (P2, f64)) {
+    if ring.len() < 3 {
+        return;
+    }
+    let part = std::mem::replace(&mut d.part, Part::Pattern);
+    let pts: Vec<(f64, f64)> = ring.iter().map(|q| d.view.px(*q)).map(|(x, y)| (f64::from(x), f64::from(y))).collect();
+    let (lo, hi) = pts
+        .iter()
+        .fold(((f64::MAX, f64::MAX), (f64::MIN, f64::MIN)), |(lo, hi), q| ((lo.0.min(q.0), lo.1.min(q.1)), (hi.0.max(q.0), hi.1.max(q.1))));
+    // What of its box the view shows, whole pixels.
+    let (x0, y0) = (lo.0.floor().max(0.0), lo.1.floor().max(0.0));
+    let (x1, y1) = (hi.0.ceil().min(f64::from(d.view.width)), hi.1.ceil().min(f64::from(d.view.height)));
+    if !(x0 < x1 && y0 < y1) {
+        d.part = part;
+        return;
+    }
+    let (w, h) = ((x1 - x0) as usize, (y1 - y0) as usize);
+    if d.pictured.saturating_add(w * h) > MAX_IMAGE_FILL {
+        d.fill(&[ring.to_vec()], s.average());
+        let note = "a view holds more image fills than it draws at once, so some show their picture's average colour: zoom in".to_string();
+        if d.notes.len() < 32 && !d.notes.contains(&note) {
+            d.notes.push(note);
+        }
+        d.part = part;
+        return;
+    }
+    d.pictured += w * h;
+    let foot = 1.0 / d.view.scale.max(f64::MIN_POSITIVE);
+    let (sin, cos) = placed.1.to_radians().sin_cos();
+    let mut rgba = vec![0_u8; w * h * 4];
+    let mut crossings = Vec::new();
+    for (row, line) in rgba.chunks_exact_mut(w * 4).enumerate() {
+        // Where the ring crosses the middle of this row of pixels, left to right: inside between each pair.
+        let y = y0 + row as f64 + 0.5;
+        crossings.clear();
+        for (a, b) in pts.iter().zip(pts.iter().cycle().skip(1)) {
+            if (a.1 <= y) != (b.1 <= y) {
+                crossings.push(a.0 + (y - a.1) / (b.1 - a.1) * (b.0 - a.0));
+            }
+        }
+        crossings.sort_by(f64::total_cmp);
+        for [a, b] in crossings.as_chunks::<2>().0 {
+            let (from, to) = ((a - x0 - 0.5).ceil().max(0.0) as usize, ((b - x0 - 0.5).floor() + 1.0).max(0.0) as usize);
+            for col in from..to.min(w) {
+                let q = d.view.mm(((x0 + col as f64 + 0.5) as f32, y as f32));
+                let (dx, dy) = (q.0 - placed.0.0, q.1 - placed.0.1);
+                let Rgb(r, g, b) = s.at(dx * cos + dy * sin, dy * cos - dx * sin, foot);
+                if let Some(px) = line.get_mut(col * 4..col * 4 + 4) {
+                    px.copy_from_slice(&[r, g, b, 255]);
+                }
+            }
+        }
+    }
+    d.push(Prim::Image { at: (x0 as f32, y0 as f32), width: w as u32, height: h as u32, rgba, ink: false });
+    d.part = part;
+}
+
+/// A pattern drawn small, to show in a list: whether it fills, and its lines, in a box `w` by `h`, y down.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Swatch {
+    pub solid: bool,
+    pub lines: Vec<[P2; 2]>,
+}
+
+/// `pattern` as a [`Swatch`] `w` by `h` across.
+pub fn pattern_swatch(pattern: Pattern, w: f64, h: f64) -> Swatch {
+    if pattern == Pattern::Solid {
+        return Swatch { solid: true, lines: Vec::new() };
+    }
+    if !(w.is_finite() && h.is_finite() && w >= 1.0 && h >= 1.0 && w <= 4096.0 && h <= 4096.0) {
+        return Swatch::default();
+    }
+    let view = View { angle: 0.0, scale: 1.0, cx: w / 2.0, cy: h / 2.0, width: w.ceil() as u32, height: h.ceil() as u32 };
+    let mut d = Drawing::new(view);
+    let ring = [P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)];
+    hatch(&mut d, &ring, pattern, P2(1.0, 0.0), INK, SWATCH_GAP, P2(0.0, 0.0));
+    let mut lines = Vec::new();
+    for prim in &d.prims {
+        if let Prim::Line { pts, .. } = prim {
+            let at = |q: &(f32, f32)| P2(f64::from(q.0), f64::from(q.1));
+            lines.extend(pts.windows(2).filter_map(|s| in_box([at(s.first()?), at(s.get(1)?)], w, h)));
+        }
+    }
+    Swatch { solid: false, lines }
+}
+
+/// What of a line lies in the box `w` by `h`: a pattern's dashes start inside and may run past its edge.
+fn in_box([a, b]: [P2; 2], w: f64, h: f64) -> Option<[P2; 2]> {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let (mut from, mut to) = (0.0_f64, 1.0_f64);
+    for (d, room) in [(-dx, a.0), (dx, w - a.0), (-dy, a.1), (dy, h - a.1)] {
+        if d == 0.0 {
+            if room < 0.0 {
+                return None;
+            }
+        } else if d < 0.0 {
+            from = from.max(room / d);
+        } else {
+            to = to.min(room / d);
+        }
+    }
+    (from < to).then_some([P2(a.0 + dx * from, a.1 + dy * from), P2(a.0 + dx * to, a.1 + dy * to)])
+}
+
 /// A surface pattern over `ring`, where its lines are far enough apart to read: its courses turned by `placed`'s angle
 /// and its lines started at its origin, as a named fill pattern's are — one paving over every piece of a shaped slab.
 fn surface(d: &mut Drawing, ring: &[P2], pattern: Pattern, color: Rgb, (origin, angle): (P2, f64)) {
-    if MODULE * d.view.scale >= GAP / 2.0 {
+    // A solid one has no lines to run together.
+    if pattern == Pattern::Solid || MODULE * d.view.scale >= GAP / 2.0 {
         let (sin, cos) = angle.to_radians().sin_cos();
         hatch(d, ring, pattern, P2(cos, sin), color, MODULE, origin);
     }
@@ -4830,10 +4980,7 @@ fn ceiling(d: &mut Drawing, m: &Model, id: Id, c: &Ceiling) {
         for piece in less_holes(m.less_shafts(face, *rise).0, &cut_by) {
             let replaced = override_patterns(d, m, std::slice::from_ref(&piece), false, (P2(0.0, 0.0), 0.0));
             if !replaced && let Some(x) = material {
-                match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
-                    Some(p) => fill_pattern(d, p, std::slice::from_ref(&piece), std::slice::from_ref(&piece), INK, (P2(0.0, 0.0), 0.0)),
-                    None => surface(d, &piece, x.surface, INK, (P2(0.0, 0.0), 0.0)),
-                }
+                material_surface(d, m, x, &piece, INK, (P2(0.0, 0.0), 0.0));
             }
         }
     }

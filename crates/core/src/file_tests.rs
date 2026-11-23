@@ -90,7 +90,10 @@ fn a_project_saves_as_compact_json_or_zipped_when_asked_and_opens_either_way() {
     assert_eq!(s.execute("save", &json!({"path": zipped, "compress": true})).unwrap()["compressed"], json!(true));
     let bytes = std::fs::read(&zipped).unwrap();
     assert!(crate::bimc::is_zip(&bytes));
-    assert!(bytes.len() * 4 < json.len(), "{} bytes zipped of {}", bytes.len(), json.len());
+    // The project's text, that is: its pictures are JPEGs and PNGs, compressed already, which zip to about their own bytes.
+    let pictures = serde_json::to_string(&s.model.images).unwrap().len();
+    let (text, zipped_text) = (json.len() - pictures, bytes.len().saturating_sub(pictures * 3 / 4));
+    assert!(zipped_text * 4 < text, "{} bytes zipped of {}, {pictures} of them pictures", bytes.len(), json.len());
     // A .json is always plain; `compress` is true or false.
     let as_json = dir.path().join("house.json");
     assert_eq!(s.execute("save", &json!({"path": as_json, "compress": true})).unwrap()["compressed"], json!(false));

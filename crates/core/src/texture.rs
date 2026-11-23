@@ -14,8 +14,8 @@ use zune_jpeg::zune_core::options::DecoderOptions;
 use crate::model::{MAX_COORD, MAX_TEXT, mix};
 use crate::render::Rgb;
 
-/// Pictures one project may hold.
-pub const MAX_IMAGES: usize = 24;
+/// Pictures one project may hold: the five of the starter library's Grass, Gravel, Wood, Paving and Water among them.
+pub const MAX_IMAGES: usize = 32;
 /// The longest side a material's picture is kept at, px: a larger one is halved down to it.
 pub const MAX_SIDE: usize = 1024;
 /// The longest side a picture placed in a view is kept at, px: a drawing needs more than a texture does.
@@ -23,6 +23,10 @@ pub const MAX_PLACED_SIDE: usize = 4096;
 /// What a file may be before it's refused: bytes, and pixels.
 pub const MAX_BYTES: usize = 32 << 20;
 const MAX_PIXELS: u64 = 16_000_000;
+/// A picture an image fill is made of, smaller than a texture's, since a plan draws it pixel by pixel: the longest side it is
+/// kept at, px, and the largest file taken.
+pub const FILL_MAX_SIDE: usize = 512;
+pub const FILL_MAX_BYTES: usize = 8 << 20;
 /// The side of a pattern drawn in code, px.
 const SIDE: usize = 256;
 /// The longest a tile of a texture may be, mm, and the shortest.
@@ -126,6 +130,21 @@ impl Texture {
         Texture { kind, size: kind.natural(), angle: 0.0, offset: [0.0; 2], image: String::new() }
     }
 
+    /// An image fill of picture `image`: a tile of it a metre across, as tall as the picture's `w` by `h` px make it.
+    pub fn image_fill(image: String, (w, h): (usize, usize)) -> Texture {
+        let size = [1000.0, (1000.0 * h as f64 / w.max(1) as f64).clamp(SHORTEST, LONGEST)];
+        Texture { kind: Kind::Image, size, angle: 0.0, offset: [0.0; 2], image }
+    }
+
+    /// Whether it's sound as an image fill, what a material's cut or surfaces show in place of their patterns: as a texture,
+    /// and of a picture.
+    pub fn check_fill(&self, images: &BTreeMap<String, Picture>) -> Result<(), String> {
+        if self.kind != Kind::Image {
+            return Err(format!("an image fill is of a picture, not of `{}`", self.kind.name()));
+        }
+        self.check(images)
+    }
+
     /// Whether it's sound: a tile of a usable size, turned and moved by numbers, and of a picture `images` holds.
     pub fn check(&self, images: &BTreeMap<String, Picture>) -> Result<(), String> {
         if !self.size.iter().all(|s| (SHORTEST..=LONGEST).contains(s)) {
@@ -205,7 +224,7 @@ fn chain(base: Level) -> Vec<Level> {
     levels
 }
 
-/// A picture of a project: the PNG it's kept as, and its levels for texturing with.
+/// A picture of a project: the PNG it's kept as (or the JPEG of one BIMCraft ships with), and its levels for texturing with.
 #[derive(Clone)]
 pub struct Picture {
     name: String,
@@ -240,7 +259,7 @@ impl TryFrom<PictureFile> for Picture {
     fn try_from(f: PictureFile) -> Result<Picture, String> {
         let bytes = unbase64(&f.png).ok_or("a picture's data isn't base64")?;
         let base = decode(&bytes).map_err(|e| format!("picture `{}`: {e}", f.name))?;
-        Ok(Picture { name: f.name, png: Arc::new(bytes), levels: Arc::new(chain(shrunk(base))) })
+        Ok(Picture { name: f.name, png: Arc::new(bytes), levels: Arc::new(chain(shrunk_to(base, MAX_SIDE))) })
     }
 }
 
@@ -284,6 +303,11 @@ impl Picture {
         Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(file), levels: Arc::new(chain(base)) })
     }
 
+    /// The same, kept at most `side` px a side ([`MAX_SIDE`] at most): an image fill's at [`FILL_MAX_SIDE`].
+    pub fn import_within(name: &str, bytes: &[u8], side: usize) -> Result<Picture, String> {
+        Picture::import_at(name, bytes, side.clamp(1, MAX_SIDE))
+    }
+
     /// Whether it is kept as a JPEG (else a PNG).
     pub fn is_jpeg(&self) -> bool {
         is_jpeg(&self.png)
@@ -315,6 +339,23 @@ impl Picture {
     /// The file it is kept as: a PNG, or a JPEG as it came.
     pub fn file(&self) -> &[u8] {
         &self.png
+    }
+
+    /// A picture BIMCraft ships with, named `name`: its file's bytes kept as they are (a JPEG stays one, smaller in a project
+    /// than a PNG of it would be; a file reads either), read once however many projects are made.
+    pub(crate) fn bundled(name: &'static str, bytes: &'static [u8]) -> Option<Picture> {
+        type Read = Mutex<HashMap<&'static str, Picture>>;
+        static READ: OnceLock<Read> = OnceLock::new();
+        let read = READ.get_or_init(Default::default);
+        if let Some(hit) = read.lock().ok().and_then(|r| r.get(name).cloned()) {
+            return Some(hit);
+        }
+        let base = decode(bytes).ok().filter(|l| l.w.max(l.h) <= FILL_MAX_SIDE)?;
+        let picture = Picture { name: name.into(), png: Arc::new(bytes.to_vec()), levels: Arc::new(chain(base)) };
+        if let Ok(mut r) = read.lock() {
+            r.insert(name, picture.clone());
+        }
+        Some(picture)
     }
 
     pub fn name(&self) -> &str {
@@ -657,6 +698,14 @@ impl Sampler {
     /// The level of the mip chain a pixel that covers `foot` mm of the face looks up in.
     pub fn level_for(&self, foot: f64) -> usize {
         level_for(self.texel, foot, self.levels.len())
+    }
+
+    /// Its colour on average: its coarsest level's one pixel.
+    pub fn average(&self) -> Rgb {
+        match self.levels.last().and_then(|l| l.rgb.get(..3)) {
+            Some(&[r, g, b]) => Rgb(r, g, b),
+            _ => Rgb(128, 128, 128),
+        }
     }
 
     /// Everything a graphics card needs to look up the colours [`at`](Self::at) does.
