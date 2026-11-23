@@ -11,16 +11,16 @@ msgstr " Esclusi: {}{}."
 msgid " Moved {}, {} mm to bring it near the origin."
 msgstr " Spostato di {}, {} mm per portarlo vicino all'origine."
 
-#: crates/ui-egui/src/shortcuts.rs:2107
+#: crates/ui-egui/src/shortcuts.rs:2108
 msgid "\"{}\" is already assigned to \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1460
-#: crates/ui-egui/src/shortcuts.rs:1463
+#: crates/ui-egui/src/shortcuts.rs:1461
+#: crates/ui-egui/src/shortcuts.rs:1464
 msgid "\"{}\" is reserved by the application"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1426
+#: crates/ui-egui/src/shortcuts.rs:1427
 msgid "\"{}\" needs a modifier or a second key"
 msgstr ""
 
@@ -224,7 +224,7 @@ msgstr "Un calcolatore di coordinate: scrivi un punto come lo dà un sistema e l
 msgid "A chat is kept for each saved project, on this computer, beside settings.json (never in the project). A picture sent in it is not kept."
 msgstr "Per ogni progetto salvato si conserva una chat, su questo computer, accanto a settings.json (mai nel progetto). Un'immagine inviata nella chat non viene conservata."
 
-#: crates/ui-egui/src/shortcuts.rs:3674
+#: crates/ui-egui/src/shortcuts.rs:3675
 msgid "A chord such as Ctrl+D, or two keys such as WA. Esc cancels; Backspace clears."
 msgstr ""
 
@@ -336,7 +336,7 @@ msgstr "Un pianerottolo è troppo corto. Allungalo."
 msgid "A landing of the ramp is too short. Make it longer."
 msgstr "Un pianerottolo della rampa è troppo corto. Allungalo."
 
-#: crates/ui-egui/src/shortcuts.rs:1466
+#: crates/ui-egui/src/shortcuts.rs:1467
 msgid "A letter or digit needs a modifier or a second key"
 msgstr ""
 
@@ -376,8 +376,8 @@ msgstr "Una mesh da file non ha uno schizzo da modificare."
 msgid "A model group of the walls, floors, doors, components and the like selected; the rest is left out"
 msgstr "Un gruppo di modello dei muri, solai, porte, componenti ed elementi simili selezionati; il resto è escluso"
 
-#: crates/ui-egui/src/shortcuts.rs:1389
-#: crates/ui-egui/src/shortcuts.rs:1423
+#: crates/ui-egui/src/shortcuts.rs:1390
+#: crates/ui-egui/src/shortcuts.rs:1424
 msgid "A modifier alone is not a binding"
 msgstr ""
 
@@ -439,18 +439,18 @@ msgstr ""
 msgid "A plugin is a folder with plugin.json and its module; BIMCraft runs its functions in a sandbox, through commands."
 msgstr "Un plugin è una cartella con plugin.json e il suo modulo; BIMCraft ne esegue le funzioni in un ambiente isolato, attraverso i comandi."
 
-#: crates/ui-egui/src/shortcuts.rs:2654
+#: crates/ui-egui/src/shortcuts.rs:2655
 msgid "A preset named “{}” already exists"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3204
+#: crates/ui-egui/src/shortcuts.rs:3205
 msgid "A preset named “{}” already exists. Replace it?"
 msgstr ""
 
 #: crates/ui-egui/src/presets.rs:237
-#: crates/ui-egui/src/shortcuts.rs:2589
-#: crates/ui-egui/src/shortcuts.rs:2606
-#: crates/ui-egui/src/shortcuts.rs:2641
+#: crates/ui-egui/src/shortcuts.rs:2590
+#: crates/ui-egui/src/shortcuts.rs:2607
+#: crates/ui-egui/src/shortcuts.rs:2642
 msgid "A preset needs a name, of at most 64 letters"
 msgstr "Una configurazione ha bisogno di un nome, di al massimo 64 lettere"
 
@@ -639,7 +639,7 @@ msgstr "Acquisisci da esso le coordinate"
 msgid "Acquire from {}"
 msgstr "Acquisisci da {}"
 
-#: crates/ui-egui/src/shortcuts.rs:3357
+#: crates/ui-egui/src/shortcuts.rs:3358
 msgid "Actions"
 msgstr ""
 
@@ -864,7 +864,7 @@ msgstr "Aggiungi tensione"
 msgid "Add Wire Type"
 msgstr "Aggiungi tipo di conduttore"
 
-#: crates/ui-egui/src/shortcuts.rs:3473
+#: crates/ui-egui/src/shortcuts.rs:3474
 msgid "Add a binding"
 msgstr ""
 
@@ -918,7 +918,7 @@ msgstr "Aggiungi al gruppo: clicca un elemento in grigio, o trascina un riquadro
 msgid "Add to Project"
 msgstr "Aggiungi al progetto"
 
-#: crates/ui-egui/src/shortcuts.rs:3755
+#: crates/ui-egui/src/shortcuts.rs:3756
 msgid "Add to the current set"
 msgstr ""
 
@@ -1175,8 +1175,8 @@ msgstr "Guide di allineamento attive"
 msgid "All"
 msgstr "Tutto"
 
-#: crates/ui-egui/src/shortcuts.rs:3060
-#: crates/ui-egui/src/shortcuts.rs:3062
+#: crates/ui-egui/src/shortcuts.rs:3061
+#: crates/ui-egui/src/shortcuts.rs:3063
 msgid "All categories"
 msgstr ""
 
@@ -1315,8 +1315,8 @@ msgstr "Un agente può lavorare su questo progetto: bimcraft-cli mcp --connect {
 msgid "An archive has its standard's version"
 msgstr "Un archivio ha la versione del suo standard"
 
-#: crates/ui-egui/src/shortcuts.rs:1358
-#: crates/ui-egui/src/shortcuts.rs:1365
+#: crates/ui-egui/src/shortcuts.rs:1359
+#: crates/ui-egui/src/shortcuts.rs:1366
 msgid "An empty binding"
 msgstr ""
 
@@ -1492,7 +1492,7 @@ msgstr "Vale per tutte le viste; aggancia alla griglia principale o secondaria a
 msgid "Apply"
 msgstr "Applica"
 
-#: crates/ui-egui/src/shortcuts.rs:3530
+#: crates/ui-egui/src/shortcuts.rs:3531
 msgid "Apply Changes"
 msgstr ""
 
@@ -1501,7 +1501,7 @@ msgstr ""
 msgid "Apply Hide/Isolate to View"
 msgstr "Applica Nascondi/Isola alla vista"
 
-#: crates/ui-egui/src/shortcuts.rs:3769
+#: crates/ui-egui/src/shortcuts.rs:3770
 msgid "Apply Import"
 msgstr ""
 
@@ -1509,7 +1509,7 @@ msgstr ""
 msgid "Apply Overrides"
 msgstr "Applica sostituzioni"
 
-#: crates/ui-egui/src/shortcuts.rs:3099
+#: crates/ui-egui/src/shortcuts.rs:3100
 msgid "Apply Preset"
 msgstr ""
 
@@ -1685,7 +1685,7 @@ msgstr ""
 msgid "Assign View Template"
 msgstr "Assegna modello di vista"
 
-#: crates/ui-egui/src/shortcuts.rs:3524
+#: crates/ui-egui/src/shortcuts.rs:3525
 msgid "Assigned {} of {}"
 msgstr ""
 
@@ -2013,7 +2013,7 @@ msgstr "Base collegata"
 msgid "Based on the last completed export of each print set"
 msgstr "In base all'ultima esportazione completata di ogni set di stampa"
 
-#: crates/ui-egui/src/shortcuts.rs:3151
+#: crates/ui-egui/src/shortcuts.rs:3152
 msgid "Based on: {}"
 msgstr ""
 
@@ -2321,11 +2321,11 @@ msgid "Building information modelling, open and free."
 msgstr "Modellazione delle informazioni dell'edificio, aperta e libera."
 
 #: crates/ui-egui/src/properties.rs:3528
-#: crates/ui-egui/src/shortcuts.rs:3081
+#: crates/ui-egui/src/shortcuts.rs:3082
 msgid "Built-in"
 msgstr "Predefinito"
 
-#: crates/ui-egui/src/shortcuts.rs:2645
+#: crates/ui-egui/src/shortcuts.rs:2646
 msgid "Built-in presets cannot be renamed or deleted"
 msgstr ""
 
@@ -2536,15 +2536,15 @@ msgstr "Camera: clicca dove sta il punto di vista, poi ciò che guarda: una vist
 #: crates/ui-egui/src/reinforce.rs:558
 #: crates/ui-egui/src/scale.rs:136
 #: crates/ui-egui/src/scale.rs:197
-#: crates/ui-egui/src/shortcuts.rs:3156
-#: crates/ui-egui/src/shortcuts.rs:3183
-#: crates/ui-egui/src/shortcuts.rs:3196
-#: crates/ui-egui/src/shortcuts.rs:3209
-#: crates/ui-egui/src/shortcuts.rs:3265
-#: crates/ui-egui/src/shortcuts.rs:3533
-#: crates/ui-egui/src/shortcuts.rs:3705
-#: crates/ui-egui/src/shortcuts.rs:3711
-#: crates/ui-egui/src/shortcuts.rs:3797
+#: crates/ui-egui/src/shortcuts.rs:3157
+#: crates/ui-egui/src/shortcuts.rs:3184
+#: crates/ui-egui/src/shortcuts.rs:3197
+#: crates/ui-egui/src/shortcuts.rs:3210
+#: crates/ui-egui/src/shortcuts.rs:3266
+#: crates/ui-egui/src/shortcuts.rs:3534
+#: crates/ui-egui/src/shortcuts.rs:3706
+#: crates/ui-egui/src/shortcuts.rs:3712
+#: crates/ui-egui/src/shortcuts.rs:3798
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:755
 #: crates/ui-egui/src/titleblocks.rs:756
@@ -2658,7 +2658,7 @@ msgstr "Categorie di {}"
 #: crates/ui-egui/src/editor/selection.rs:200
 #: crates/ui-egui/src/objectstyles.rs:76
 #: crates/ui-egui/src/properties.rs:3623
-#: crates/ui-egui/src/shortcuts.rs:3324
+#: crates/ui-egui/src/shortcuts.rs:3325
 #: crates/ui-egui/src/standards.rs:193
 #: crates/ui-egui/src/steel.rs:331
 msgid "Category"
@@ -3913,7 +3913,7 @@ msgstr "In senso orario"
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:541
-#: crates/ui-egui/src/shortcuts.rs:3536
+#: crates/ui-egui/src/shortcuts.rs:3537
 #: crates/ui-egui/src/steel.rs:478
 #: crates/ui-egui/src/underlay.rs:467
 msgid "Close"
@@ -4091,7 +4091,7 @@ msgstr "Unisci: ciò che è stato creato, demolito e mostrato in questa fase pas
 msgid "Coming in a later version"
 msgstr "In arrivo in una versione successiva"
 
-#: crates/ui-egui/src/shortcuts.rs:3313
+#: crates/ui-egui/src/shortcuts.rs:3314
 msgid "Command"
 msgstr ""
 
@@ -4574,12 +4574,12 @@ msgstr "Montante d'angolo"
 msgid "Could not fit the 3D view: {}"
 msgstr "Impossibile adattare la vista 3D: {}"
 
-#: crates/ui-egui/src/shortcuts.rs:3248
+#: crates/ui-egui/src/shortcuts.rs:3249
 msgid "Could not open the file: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3863
-#: crates/ui-egui/src/shortcuts.rs:3878
+#: crates/ui-egui/src/shortcuts.rs:3864
+#: crates/ui-egui/src/shortcuts.rs:3879
 msgid "Could not write the file: {}"
 msgstr ""
 
@@ -5169,7 +5169,7 @@ msgstr "Gradi, da 5 a 135: a sinistra, o con il meno a destra"
 #: crates/ui-egui/src/presets.rs:330
 #: crates/ui-egui/src/properties.rs:3909
 #: crates/ui-egui/src/properties.rs:4141
-#: crates/ui-egui/src/shortcuts.rs:3193
+#: crates/ui-egui/src/shortcuts.rs:3194
 #: crates/ui-egui/src/templates.rs:477
 #: crates/ui-egui/src/titleblocks.rs:670
 msgid "Delete"
@@ -5217,7 +5217,7 @@ msgid "Delete Parameter"
 msgstr "Elimina parametro"
 
 #: crates/ui-egui/src/reinforce.rs:482
-#: crates/ui-egui/src/shortcuts.rs:3122
+#: crates/ui-egui/src/shortcuts.rs:3123
 msgid "Delete Preset"
 msgstr "Elimina preimpostazione"
 
@@ -5278,7 +5278,7 @@ msgstr ""
 msgid "Delete the parameters no value, schedule, filter, tag or formula uses."
 msgstr "Elimina i parametri che nessun valore, abaco, filtro, etichetta o formula usa."
 
-#: crates/ui-egui/src/shortcuts.rs:3191
+#: crates/ui-egui/src/shortcuts.rs:3192
 msgid "Delete the preset “{}”?"
 msgstr ""
 
@@ -5671,7 +5671,7 @@ msgstr "Non consentire unione"
 
 #: crates/ui-egui/src/autosave.rs:307
 #: crates/ui-egui/src/classification.rs:766
-#: crates/ui-egui/src/shortcuts.rs:3276
+#: crates/ui-egui/src/shortcuts.rs:3277
 msgid "Discard"
 msgstr "Scarta"
 
@@ -5679,7 +5679,7 @@ msgstr "Scarta"
 msgid "Discard Changes"
 msgstr "Scarta le modifiche"
 
-#: crates/ui-egui/src/shortcuts.rs:3274
+#: crates/ui-egui/src/shortcuts.rs:3275
 msgid "Discard the changes made here?"
 msgstr ""
 
@@ -6835,7 +6835,7 @@ msgstr ""
 msgid "Exported {} to {}."
 msgstr "Esportato {} in {}."
 
-#: crates/ui-egui/src/shortcuts.rs:3860
+#: crates/ui-egui/src/shortcuts.rs:3861
 msgid "Exported."
 msgstr ""
 
@@ -6846,7 +6846,7 @@ msgstr "Esportazione…"
 #: crates/ui-egui/src/codes.rs:1031
 #: crates/ui-egui/src/export/mod.rs:365
 #: crates/ui-egui/src/lib.rs:5096
-#: crates/ui-egui/src/shortcuts.rs:3225
+#: crates/ui-egui/src/shortcuts.rs:3226
 #: crates/ui-egui/src/steel.rs:461
 msgid "Export…"
 msgstr "Esporta…"
@@ -8189,7 +8189,7 @@ msgstr "Altezza:"
 msgid "Held by Dimensions"
 msgstr "Vincolato da quote"
 
-#: crates/ui-egui/src/shortcuts.rs:3228
+#: crates/ui-egui/src/shortcuts.rs:3229
 msgid "Help (Markdown)…"
 msgstr ""
 
@@ -8643,7 +8643,7 @@ msgstr "Importa da {}"
 msgid "Import units"
 msgstr "Unità di importazione"
 
-#: crates/ui-egui/src/shortcuts.rs:3747
+#: crates/ui-egui/src/shortcuts.rs:3748
 msgid "Import {}"
 msgstr ""
 
@@ -8678,7 +8678,7 @@ msgstr "Importato da questo file"
 msgid "Imported {} assets, replaced {}, renamed {}, kept {} of the project's."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3789
+#: crates/ui-egui/src/shortcuts.rs:3790
 msgid "Imported {} bindings ({} skipped)."
 msgstr ""
 
@@ -8690,13 +8690,13 @@ msgstr "Importato {}: {}."
 msgid "Imported: {} made, {} changed."
 msgstr "Importati: {} creati, {} modificati."
 
-#: crates/ui-egui/src/shortcuts.rs:3793
+#: crates/ui-egui/src/shortcuts.rs:3794
 msgid "Imported; the old profile is in {}."
 msgstr ""
 
 #: crates/ui-egui/src/asset_manager.rs:247
 #: crates/ui-egui/src/codes.rs:1029
-#: crates/ui-egui/src/shortcuts.rs:3222
+#: crates/ui-egui/src/shortcuts.rs:3223
 msgid "Import…"
 msgstr "Importa…"
 
@@ -9120,7 +9120,7 @@ msgstr "Allineamento"
 msgid "Justification:"
 msgstr "Allineamento:"
 
-#: crates/ui-egui/src/shortcuts.rs:3279
+#: crates/ui-egui/src/shortcuts.rs:3280
 msgid "Keep Editing"
 msgstr ""
 
@@ -9163,11 +9163,11 @@ msgstr "Spessore di taglio"
 msgid "Key"
 msgstr "Chiave"
 
-#: crates/ui-egui/src/shortcuts.rs:3335
+#: crates/ui-egui/src/shortcuts.rs:3336
 msgid "Key combinations"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3045
+#: crates/ui-egui/src/shortcuts.rs:3046
 msgid "Keyboard Shortcuts"
 msgstr "Scorciatoie da tastiera"
 
@@ -9175,11 +9175,11 @@ msgstr "Scorciatoie da tastiera"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Scorciatoie da tastiera (KS): personalizza, modifica e carica le scorciatoie"
 
-#: crates/ui-egui/src/shortcuts.rs:3077
+#: crates/ui-egui/src/shortcuts.rs:3078
 msgid "Keyboard presets"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2699
+#: crates/ui-egui/src/shortcuts.rs:2700
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
@@ -10246,11 +10246,11 @@ msgstr "Segna come riserva"
 msgid "Mark on hover (0.45 s)"
 msgstr "Marca al passaggio del puntatore (0,45 s)"
 
-#: crates/ui-egui/src/shortcuts.rs:3875
+#: crates/ui-egui/src/shortcuts.rs:3876
 msgid "Markdown help written."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3848
+#: crates/ui-egui/src/shortcuts.rs:3849
 msgid "Markdown is a help file; use Help (Markdown)… to write it."
 msgstr ""
 
@@ -11046,7 +11046,7 @@ msgstr "Più categorie ({})"
 msgid "Multistorey"
 msgstr "Multipiano"
 
-#: crates/ui-egui/src/shortcuts.rs:3090
+#: crates/ui-egui/src/shortcuts.rs:3091
 msgid "My presets"
 msgstr ""
 
@@ -11306,7 +11306,7 @@ msgstr "Nuovo elenca i primi {}; spostane uno in alto per elencarlo. Un modello 
 
 #: crates/ui-egui/src/printsets.rs:141
 #: crates/ui-egui/src/publisher.rs:606
-#: crates/ui-egui/src/shortcuts.rs:3135
+#: crates/ui-egui/src/shortcuts.rs:3136
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "New name"
 msgstr "Nuovo nome"
@@ -11622,15 +11622,15 @@ msgstr ""
 msgid "Not Loaded"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2071
+#: crates/ui-egui/src/shortcuts.rs:2072
 msgid "Not a binding: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1363
+#: crates/ui-egui/src/shortcuts.rs:1364
 msgid "Not a key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2152
+#: crates/ui-egui/src/shortcuts.rs:2153
 msgid "Not a shortcuts file"
 msgstr ""
 
@@ -12123,7 +12123,7 @@ msgstr "Apri l'ultimo progetto all'avvio"
 msgid "Open the project's building codes"
 msgstr "Apri le normative del progetto"
 
-#: crates/ui-egui/src/shortcuts.rs:3244
+#: crates/ui-egui/src/shortcuts.rs:3245
 msgid "Open the saved file"
 msgstr ""
 
@@ -13730,7 +13730,7 @@ msgstr "Prefisso:"
 msgid "Preserve"
 msgstr "Conserva"
 
-#: crates/ui-egui/src/shortcuts.rs:3135
+#: crates/ui-egui/src/shortcuts.rs:3136
 msgid "Preset name"
 msgstr ""
 
@@ -13738,19 +13738,19 @@ msgstr ""
 msgid "Preset name:"
 msgstr "Nome della configurazione:"
 
-#: crates/ui-egui/src/shortcuts.rs:2579
+#: crates/ui-egui/src/shortcuts.rs:2580
 msgid "Preset “{}” applied to the pending set."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2692
+#: crates/ui-egui/src/shortcuts.rs:2693
 msgid "Preset “{}” deleted."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2675
+#: crates/ui-egui/src/shortcuts.rs:2676
 msgid "Preset “{}” renamed."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2631
+#: crates/ui-egui/src/shortcuts.rs:2632
 msgid "Preset “{}” saved."
 msgstr ""
 
@@ -13771,7 +13771,7 @@ msgstr ""
 msgid "Presets"
 msgstr "Configurazioni"
 
-#: crates/ui-egui/src/shortcuts.rs:3673
+#: crates/ui-egui/src/shortcuts.rs:3674
 msgid "Press a combination…"
 msgstr ""
 
@@ -14597,8 +14597,8 @@ msgstr "Ricorda la chiave"
 msgid "Remove"
 msgstr "Rimuovi"
 
-#: crates/ui-egui/src/shortcuts.rs:3303
-#: crates/ui-egui/src/shortcuts.rs:3496
+#: crates/ui-egui/src/shortcuts.rs:3304
+#: crates/ui-egui/src/shortcuts.rs:3497
 msgid "Remove All"
 msgstr ""
 
@@ -14737,7 +14737,7 @@ msgstr "Rinomina gli spuntati"
 msgid "Rename Option"
 msgstr "Rinomina opzione"
 
-#: crates/ui-egui/src/shortcuts.rs:3115
+#: crates/ui-egui/src/shortcuts.rs:3116
 msgid "Rename Preset…"
 msgstr ""
 
@@ -14791,9 +14791,9 @@ msgstr "Dettaglio ripetuto: clicca inizio e fine; il gruppo indicato nella Barra
 
 #: crates/ui-egui/src/parameters.rs:823
 #: crates/ui-egui/src/parameters.rs:1480
-#: crates/ui-egui/src/shortcuts.rs:3180
-#: crates/ui-egui/src/shortcuts.rs:3206
-#: crates/ui-egui/src/shortcuts.rs:3697
+#: crates/ui-egui/src/shortcuts.rs:3181
+#: crates/ui-egui/src/shortcuts.rs:3207
+#: crates/ui-egui/src/shortcuts.rs:3698
 msgid "Replace"
 msgstr "Sostituisci"
 
@@ -14809,7 +14809,7 @@ msgstr "Sostituisci con testo"
 msgid "Replace With Text:"
 msgstr "Sostituisci con testo:"
 
-#: crates/ui-egui/src/shortcuts.rs:3754
+#: crates/ui-egui/src/shortcuts.rs:3755
 msgid "Replace everything"
 msgstr ""
 
@@ -14817,7 +14817,7 @@ msgstr ""
 msgid "Replace imported by same name"
 msgstr "Sostituisci gli importati con lo stesso nome"
 
-#: crates/ui-egui/src/shortcuts.rs:3178
+#: crates/ui-egui/src/shortcuts.rs:3179
 msgid "Replace the set being edited with “{}”?"
 msgstr ""
 
@@ -14855,7 +14855,7 @@ msgstr "Parametro di report"
 msgid "Reservation"
 msgstr "Riserva idrica"
 
-#: crates/ui-egui/src/shortcuts.rs:2042
+#: crates/ui-egui/src/shortcuts.rs:2043
 msgid "Reserved key: \"{}\""
 msgstr ""
 
@@ -14864,9 +14864,9 @@ msgstr ""
 #: crates/ui-egui/src/graphics.rs:1415
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:99
-#: crates/ui-egui/src/shortcuts.rs:3258
-#: crates/ui-egui/src/shortcuts.rs:3303
-#: crates/ui-egui/src/shortcuts.rs:3493
+#: crates/ui-egui/src/shortcuts.rs:3259
+#: crates/ui-egui/src/shortcuts.rs:3304
+#: crates/ui-egui/src/shortcuts.rs:3494
 msgid "Reset"
 msgstr "Ripristina"
 
@@ -14874,7 +14874,7 @@ msgstr "Ripristina"
 msgid "Reset Accent"
 msgstr "Ripristina risalto"
 
-#: crates/ui-egui/src/shortcuts.rs:3231
+#: crates/ui-egui/src/shortcuts.rs:3232
 msgid "Reset All"
 msgstr ""
 
@@ -15011,7 +15011,7 @@ msgstr "Ripristina tutti gli esclusi: ogni membro escluso torna nel gruppo, come
 msgid "Restore Down"
 msgstr "Ripristina dimensioni"
 
-#: crates/ui-egui/src/shortcuts.rs:3256
+#: crates/ui-egui/src/shortcuts.rs:3257
 msgid "Return every action to the starting profile?"
 msgstr ""
 
@@ -15062,7 +15062,7 @@ msgstr "Revisione {}, modificata {}"
 msgid "Revision:"
 msgstr "Revisione:"
 
-#: crates/ui-egui/src/shortcuts.rs:3852
+#: crates/ui-egui/src/shortcuts.rs:3853
 msgid "Revit XML import is supported; export it from Revit."
 msgstr ""
 
@@ -15264,7 +15264,7 @@ msgstr "Linee di separazione delle zone"
 
 #: crates/core/src/commands.rs:881
 #: crates/ui-egui/src/lib.rs:5301
-#: crates/ui-egui/src/shortcuts.rs:895
+#: crates/ui-egui/src/shortcuts.rs:896
 msgid "Room Separator"
 msgstr "Separatore di zona"
 
@@ -15516,7 +15516,7 @@ msgstr "Salva con nome"
 msgid "Save Code"
 msgstr "Salva normativa"
 
-#: crates/ui-egui/src/shortcuts.rs:3107
+#: crates/ui-egui/src/shortcuts.rs:3108
 msgid "Save Current as Preset…"
 msgstr ""
 
@@ -15547,7 +15547,7 @@ msgstr "Salva motivo"
 
 #: crates/ui-egui/src/presets.rs:349
 #: crates/ui-egui/src/reinforce.rs:480
-#: crates/ui-egui/src/shortcuts.rs:3155
+#: crates/ui-egui/src/shortcuts.rs:3156
 msgid "Save Preset"
 msgstr "Salva preimpostazione"
 
@@ -15815,7 +15815,7 @@ msgstr "Cerca:"
 #: crates/ui-egui/src/editor/types_dialog.rs:204
 #: crates/ui-egui/src/printsets.rs:169
 #: crates/ui-egui/src/publisher.rs:884
-#: crates/ui-egui/src/shortcuts.rs:3053
+#: crates/ui-egui/src/shortcuts.rs:3054
 msgid "Search…"
 msgstr "Cerca…"
 
@@ -16178,7 +16178,7 @@ msgid "Shaft"
 msgstr "Cavedio"
 
 #: crates/core/src/commands.rs:620
-#: crates/ui-egui/src/shortcuts.rs:890
+#: crates/ui-egui/src/shortcuts.rs:891
 msgid "Shaft Opening"
 msgstr "Apertura per cavedio"
 
@@ -16865,7 +16865,7 @@ msgstr "Ordinamento/Raggruppamento"
 #: crates/ui-egui/src/parameters.rs:846
 #: crates/ui-egui/src/parameters.rs:1338
 #: crates/ui-egui/src/parameters.rs:1832
-#: crates/ui-egui/src/shortcuts.rs:3346
+#: crates/ui-egui/src/shortcuts.rs:3347
 msgid "Source"
 msgstr "Fonte"
 
@@ -17884,7 +17884,7 @@ msgid "That holds no JSON answer."
 msgstr "Non contiene una risposta JSON."
 
 #: crates/ui-egui/src/presets.rs:246
-#: crates/ui-egui/src/shortcuts.rs:2602
+#: crates/ui-egui/src/shortcuts.rs:2603
 msgid "That is as many presets as are kept: delete one first"
 msgstr "Si possono tenere al massimo queste configurazioni: prima eliminane una"
 
@@ -17896,7 +17896,7 @@ msgstr "Non è un indirizzo IP: 0.0.0.0 ascolta su tutti gli indirizzi di questa
 msgid "That is the reference: pick what moves onto it."
 msgstr "Questo è il riferimento: scegli ciò che vi si allinea."
 
-#: crates/ui-egui/src/shortcuts.rs:3821
+#: crates/ui-egui/src/shortcuts.rs:3822
 msgid "That is too big to be a shortcuts file."
 msgstr "È troppo grande per essere un file di scorciatoie."
 
@@ -17904,8 +17904,8 @@ msgstr "È troppo grande per essere un file di scorciatoie."
 msgid "That point of the work plane is too far off: click nearer the family, or turn the view."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2570
-#: crates/ui-egui/src/shortcuts.rs:2658
+#: crates/ui-egui/src/shortcuts.rs:2571
+#: crates/ui-egui/src/shortcuts.rs:2659
 msgid "That preset is no longer there"
 msgstr ""
 
@@ -18136,15 +18136,15 @@ msgstr "La famiglia {} che stai caricando è già presente in questa famiglia, c
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "La famiglia {} che stai caricando è già presente in questo progetto, con una definizione diversa. Cosa vuoi fare?"
 
-#: crates/ui-egui/src/shortcuts.rs:3832
+#: crates/ui-egui/src/shortcuts.rs:3833
 msgid "The file has no usable bindings."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2111
+#: crates/ui-egui/src/shortcuts.rs:2112
 msgid "The file has too many bindings"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2015
+#: crates/ui-egui/src/shortcuts.rs:2016
 msgid "The file has too many lines"
 msgstr ""
 
@@ -18272,7 +18272,7 @@ msgstr "Il plugin non può più usare i file."
 msgid "The plugin may now use files."
 msgstr "Il plugin ora può usare i file."
 
-#: crates/ui-egui/src/shortcuts.rs:2612
+#: crates/ui-egui/src/shortcuts.rs:2613
 msgid "The presets hold as many bindings as are kept: delete one first"
 msgstr ""
 
@@ -18779,7 +18779,7 @@ msgstr "Questa rampa è troppo alta senza un pianerottolo. Aggiungi un pianerott
 msgid "This format has no settings."
 msgstr "Questo formato non ha impostazioni."
 
-#: crates/ui-egui/src/shortcuts.rs:3815
+#: crates/ui-egui/src/shortcuts.rs:3816
 msgid "This is a help file to read. Use .bks, .txt or .json to import."
 msgstr ""
 
@@ -19328,7 +19328,7 @@ msgstr "Due posizioni si chiamano {}."
 msgid "Two {} are called {}."
 msgstr "Due {} si chiamano {}."
 
-#: crates/ui-egui/src/shortcuts.rs:3049
+#: crates/ui-egui/src/shortcuts.rs:3050
 msgid "Two- and three-key shortcuts are typed plainly, W then A for Wall. A combination runs only as it is assigned here: Ctrl+D does nothing until it is."
 msgstr ""
 
@@ -19495,7 +19495,7 @@ msgstr "Vista sottostante"
 msgid "Underlay Settings"
 msgstr "Impostazioni della vista sottostante"
 
-#: crates/ui-egui/src/shortcuts.rs:2976
+#: crates/ui-egui/src/shortcuts.rs:2977
 msgid "Underlay Settings is for a plan, a section or an elevation"
 msgstr "Le impostazioni della vista sottostante valgono per una pianta, una sezione o un prospetto"
 
@@ -19607,20 +19607,20 @@ msgstr "Unità"
 msgid "Units Format"
 msgstr "Formato unità"
 
-#: crates/ui-egui/src/shortcuts.rs:2036
-#: crates/ui-egui/src/shortcuts.rs:2092
-#: crates/ui-egui/src/shortcuts.rs:2094
-#: crates/ui-egui/src/shortcuts.rs:2127
+#: crates/ui-egui/src/shortcuts.rs:2037
+#: crates/ui-egui/src/shortcuts.rs:2093
+#: crates/ui-egui/src/shortcuts.rs:2095
+#: crates/ui-egui/src/shortcuts.rs:2128
 msgid "Unknown action: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1377
-#: crates/ui-egui/src/shortcuts.rs:1406
-#: crates/ui-egui/src/shortcuts.rs:1411
+#: crates/ui-egui/src/shortcuts.rs:1378
+#: crates/ui-egui/src/shortcuts.rs:1407
+#: crates/ui-egui/src/shortcuts.rs:1412
 msgid "Unknown key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1373
+#: crates/ui-egui/src/shortcuts.rs:1374
 msgid "Unknown modifier: \"{}\""
 msgstr ""
 
@@ -19824,7 +19824,7 @@ msgstr "Versione"
 msgid "Version {}"
 msgstr "Versione {}"
 
-#: crates/ui-egui/src/shortcuts.rs:2056
+#: crates/ui-egui/src/shortcuts.rs:2057
 msgid "Version {} is not supported"
 msgstr ""
 
@@ -20930,7 +20930,7 @@ msgstr "una dimensione in mm"
 msgid "a whole number"
 msgstr "un numero intero"
 
-#: crates/ui-egui/src/shortcuts.rs:3129
+#: crates/ui-egui/src/shortcuts.rs:3130
 msgid "active"
 msgstr ""
 
@@ -21289,7 +21289,7 @@ msgstr "min."
 msgid "mirrored"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3129
+#: crates/ui-egui/src/shortcuts.rs:3130
 msgid "modified"
 msgstr ""
 
@@ -21846,7 +21846,7 @@ msgstr "{} a x {}, y {}"
 msgid "{} bars in {} rows: {} of steel, {} kg."
 msgstr "{} barre in {} righe: {} di acciaio, {} kg."
 
-#: crates/ui-egui/src/shortcuts.rs:3749
+#: crates/ui-egui/src/shortcuts.rs:3750
 msgid "{} bindings read; {} errors."
 msgstr ""
 
@@ -22593,15 +22593,15 @@ msgstr "{}° a sinistra"
 msgid "{}° to the Right"
 msgstr "{}° a destra"
 
-#: crates/ui-egui/src/shortcuts.rs:3737
+#: crates/ui-egui/src/shortcuts.rs:3738
 msgid "“{}” assigned to “{}”."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2593
+#: crates/ui-egui/src/shortcuts.rs:2594
 msgid "“{}” is a built-in preset's name"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3691
+#: crates/ui-egui/src/shortcuts.rs:3692
 msgid "“{}” is already assigned to “{}”."
 msgstr ""
 
@@ -22677,7 +22677,7 @@ msgstr "• Spessa (0,50 mm — 0,70 mm): muri tagliati e sezioni strutturali."
 msgid "• changed in this project"
 msgstr "• modificato in questo progetto"
 
-#: crates/ui-egui/src/shortcuts.rs:3766
+#: crates/ui-egui/src/shortcuts.rs:3767
 msgid "…and {} more"
 msgstr ""
 
