@@ -111,10 +111,12 @@ impl Family {
         for (k, v) in o {
             match k.as_str() {
                 "scale_with_view" => {
-                    if !self.category.is_annotation() && v != &Value::Null {
+                    // A component's options come back as they were given (`options_json` says `true`): only turning it off is refused.
+                    let on = flag(k, v, true)?;
+                    if !self.category.is_annotation() && !on {
                         return Err("`scale_with_view` is an annotation family's option; a component's millimetres are the model's".into());
                     }
-                    self.scale_with_view = flag(k, v, true)?;
+                    self.scale_with_view = on;
                 }
                 "work_plane_based" => self.work_plane_based = flag(k, v, false)?,
                 "always_vertical" => self.always_vertical = flag(k, v, true)?,
