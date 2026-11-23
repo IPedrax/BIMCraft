@@ -21,6 +21,7 @@ pub mod cad;
 mod cad_tests;
 #[cfg(test)]
 mod camera_view_tests;
+mod carrier_fill;
 #[cfg(test)]
 mod circuit_tests;
 pub mod classification;

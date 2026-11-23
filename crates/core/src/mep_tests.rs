@@ -1162,3 +1162,79 @@ fn a_placed_device_is_written_to_ifc_with_the_electrical_device_property_set() {
         assert!(has(what), "{what}: {file}");
     }
 }
+
+#[test]
+fn measured_carrier_fill_keeps_the_existing_carrier_commands_and_type_guids() {
+    let mut s = Session::new();
+    for (alias, category, name) in [("CN", "conduit", "Measured pipe"), ("CT", "cabletray", "Measured box")] {
+        run(&mut s, "type", json!({"category":category,"name":name,"width":100,"depth":60,"round":category == "conduit"}));
+        let made = run(&mut s, alias, json!({"type":name,"points":[[0,0],[6000,0]]}));
+        let id = ids(&made)[0];
+        let guid = s.model.library.guid(&crate::library::Kind::Type(category.into()), name).unwrap();
+        assert_eq!(element_json(&s.model, id)["category"], category);
+        let before = s.model.clone();
+        let params = if category == "conduit" {
+            json!({"id":id,"profile":"nbr5410_2004","inside_diameter":40,"areas":[180,220]})
+        } else {
+            json!({"id":id,"profile":"ru_sp76_2016_max_fill","enclosure":"blind_box","inside_width":80,"inside_depth":40,"areas":[600,520]})
+        };
+        let checked = run(&mut s, "carrier_fill", params);
+        assert_eq!(checked["count"], 2);
+        if category == "conduit" {
+            assert_eq!(checked["limit_percent"], 31.0);
+            assert_eq!(checked["ok"], false);
+        } else {
+            assert_eq!(checked["capacity_mm2"], 1120.0);
+            assert_eq!(checked["ok"], true);
+        }
+        assert_eq!(s.model.library.guid(&crate::library::Kind::Type(category.into()), name), Some(guid));
+        assert_eq!(s.model, before);
+    }
+}
+
+#[test]
+fn measured_carrier_fill_checks_the_selected_enclosure_and_dimensions() {
+    let mut s = Session::new();
+    let made = run(&mut s, "CT", json!({"points":[[0,0],[6000,0]]}));
+    let id = ids(&made)[0];
+    for params in [
+        json!({"id":id,"profile":"nbr5410_2004","inside_diameter":40,"areas":[20]}),
+        json!({"id":id,"profile":"ru_sp76_2016_max_fill","enclosure":"tray","inside_width":80,"inside_depth":40,"areas":[20]}),
+        json!({"id":id,"profile":"ru_sp76_2016_max_fill","enclosure":"lidded_box","inside_width":100000,"inside_depth":40,"areas":[20]}),
+        json!({"id":id,"profile":"ru_sp76_2016_max_fill","enclosure":"lidded_box","inside_width":80,"inside_depth":40,"areas":[0]}),
+    ] {
+        assert!(s.execute("carrier_fill", &params).is_err(), "{params}");
+    }
+}
+
+#[test]
+fn carrier_type_measurements_survive_save_and_keep_type_guids() {
+    let mut s = Session::new();
+    let files = tempfile::tempdir().unwrap();
+    let path = files.path().join("carriers.bim");
+    for (alias, category, section) in
+        [("CN", "conduit", json!({"diameter":40})), ("CT", "cabletray", json!({"width":80,"depth":40,"enclosure":"lidded_box"}))]
+    {
+        let kind = crate::library::Kind::Type(category.into());
+        run(&mut s, "type", json!({"category":category,"name":"Measured","width":100,"depth":60,"round":category == "conduit"}));
+        let guid = s.model.library.guid(&kind, "Measured").unwrap();
+        let made = run(&mut s, alias, json!({"type":"Measured","points":[[0,0],[6000,0]]}));
+        let id = ids(&made)[0];
+        let profile = if category == "conduit" { "nbr5410_2004" } else { "ru_sp76_2016_max_fill" };
+        let fill = json!({"id":id,"profile":profile,"areas":[150,200]});
+        assert!(s.execute("carrier_fill", &fill).is_err());
+        run(&mut s, "type", json!({"category":category,"name":"Measured","clear_section":section}));
+        run(&mut s, "type", json!({"category":category,"name":"Measured","width":101}));
+        let expected = if category == "conduit" { std::f64::consts::PI * 400.0 } else { 3200.0 };
+        assert_eq!(run(&mut s, "carrier_fill", fill.clone())["inside_mm2"], expected);
+        let before = s.model.clone();
+        assert!(s.execute("type", &json!({"category":category,"name":"Measured","width":30})).is_err());
+        assert_eq!(s.model, before);
+        run(&mut s, "save", json!({"path":path}));
+        run(&mut s, "open", json!({"path":path}));
+        assert_eq!(s.model.library.guid(&kind, "Measured"), Some(guid));
+        assert_eq!(run(&mut s, "carrier_fill", fill.clone())["inside_mm2"], expected);
+        run(&mut s, "type", json!({"category":category,"name":"Measured","clear_section":null}));
+        assert!(s.execute("carrier_fill", &fill).is_err());
+    }
+}

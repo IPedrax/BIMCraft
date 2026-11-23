@@ -3174,8 +3174,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.material == material && k.profile == profile
         };
         let types = m.types.runs.entry(category.to_string()).or_default();
-        let type_name =
-            kind(types, &base, same, RunType { width: w, depth: d, round, material: material.clone(), profile: profile.clone() });
+        let type_name = kind(
+            types,
+            &base,
+            same,
+            RunType { width: w, depth: d, round, material: material.clone(), profile: profile.clone(), clear_section: None },
+        );
         let height = |z: f64| ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         // The body is the centre line; the justification BIMCraft wrote puts the heights back on the line they were typed at.
         let justify = run_props.get(&id).and_then(|(j, _)| *j).unwrap_or(Justify::Centre);
