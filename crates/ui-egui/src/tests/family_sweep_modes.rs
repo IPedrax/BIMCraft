@@ -261,38 +261,42 @@ fn edit_sweep_opens_the_sweeps_own_mode_with_its_path_and_profile() {
     assert!(!editor(&h).sketching(), "{:?}", status(&h));
 }
 
-/// Each step of making a sweep, from its own mode to Sketch Path and Edit Profile, saved where `BIMCRAFT_SWEEP_MODES_DUMP` says (only then).
+/// Each step of making a sweep, from its own mode to Sketch Path and Edit Profile, in the light and the dark look, saved where
+/// `BIMCRAFT_SWEEP_MODES_DUMP` says (only then).
 #[test]
 fn sweep_modes_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_SWEEP_MODES_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
-    let mut h = open();
-    let save = |h: &mut Harness<BimApp>, name: &str| {
-        h.run();
-        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("sweep-modes-{name}.png"))).unwrap();
-    };
-    button(&mut h, "Sweep");
-    save(&mut h, "1-sweep");
-    button(&mut h, "Sketch Path");
-    l_path(&mut h);
-    save(&mut h, "2-path");
-    button(&mut h, "Finish Edit Mode");
-    save(&mut h, "3-path-finished");
-    button(&mut h, "Edit Profile");
-    save(&mut h, "4-go-to-view");
-    go_to(&mut h, "Elevation: Right");
-    rectangle(&mut h, P2(-100.0, 0.0), P2(100.0, 200.0));
-    save(&mut h, "5-profile");
-    button(&mut h, "Finish Edit Mode");
-    save(&mut h, "6-profile-finished");
-    button(&mut h, "Finish Edit Mode");
-    super::family_views::view(&mut h, None);
-    // {3D} keeps the frame it had; Zoom to Fit takes the sweep in too.
-    h.state_mut().active_family_mut().unwrap().zoom_to_fit();
-    for _ in 0..4 {
-        h.run();
+    for (look, dark) in [("light", false), ("dark", true)] {
+        let mut h = open();
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        let save = |h: &mut Harness<BimApp>, name: &str| {
+            h.run();
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("sweep-modes-{name}-{look}.png"))).unwrap();
+        };
+        button(&mut h, "Sweep");
+        save(&mut h, "1-sweep");
+        button(&mut h, "Sketch Path");
+        l_path(&mut h);
+        save(&mut h, "2-path");
+        button(&mut h, "Finish Edit Mode");
+        save(&mut h, "3-path-finished");
+        button(&mut h, "Edit Profile");
+        save(&mut h, "4-go-to-view");
+        go_to(&mut h, "Elevation: Right");
+        rectangle(&mut h, P2(-100.0, 0.0), P2(100.0, 200.0));
+        save(&mut h, "5-profile");
+        button(&mut h, "Finish Edit Mode");
+        save(&mut h, "6-profile-finished");
+        button(&mut h, "Finish Edit Mode");
+        super::family_views::view(&mut h, None);
+        // {3D} keeps the frame it had; Zoom to Fit takes the sweep in too.
+        h.state_mut().active_family_mut().unwrap().zoom_to_fit();
+        for _ in 0..4 {
+            h.run();
+        }
+        save(&mut h, "7-made");
     }
-    save(&mut h, "7-made");
 }
 
 /// Cancel in a nested mode puts back all it changed, a dimension made there too.

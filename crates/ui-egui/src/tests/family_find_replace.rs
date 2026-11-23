@@ -106,3 +106,20 @@ fn a_brace_in_what_replaces_it_is_refused() {
     press(&mut h, "Close");
     assert_eq!(texts(&h), before);
 }
+
+/// Find/Replace open on the family's text, in the light and the dark look, saved where `BIMCRAFT_FIND_REPLACE_DUMP` says
+/// (only then).
+#[test]
+fn find_replace_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FIND_REPLACE_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (look, dark) in [("light", false), ("dark", true)] {
+        let mut h = open();
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        ask(&mut h, "Door", "Gate", false, false);
+        for _ in 0..3 {
+            h.run();
+        }
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("find-replace-{look}.png"))).unwrap();
+    }
+}

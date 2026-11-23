@@ -143,7 +143,10 @@ fn selection_box_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_FAMILY_SELECTION_BOX_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
     for (name, dark) in [("light", false), ("dark", true)] {
-        let (mut h, _) = cabinet();
+        let mut h = app(super::preview_visibility::CABINET);
+        h.set_size(vec2(1600.0, 1200.0));
+        h.state_mut().edit_family("Cabinet");
+        h.run();
         h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
         let save = |h: &mut Harness<BimApp>, what: &str| {
             for _ in 0..6 {
