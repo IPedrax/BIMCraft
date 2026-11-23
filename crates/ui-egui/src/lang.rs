@@ -290,6 +290,9 @@ pub fn category(category: &str, several: bool) -> String {
         "toposolid" => (msg!("category", "Toposolid"), msg!("category-plural", "Toposolids")),
         "region" => (msg!("category", "Filled Region"), msg!("category-plural", "Filled Regions")),
         "massfloor" => (msg!("category", "Mass Floor"), msg!("category-plural", "Mass Floors")),
+        // A type category, not an element's: its types under Families, Type Properties' system family.
+        "framing" => (msg!("category", "Framing"), msg!("category-plural", "Framing Types")),
+        "framingmember" => (msg!("category", "Framing Member"), msg!("category-plural", "Framing Members")),
         "ramp" => (msg!("category", "Ramp"), msg!("category-plural", "Ramps")),
         "railing" => (msg!("category", "Railing"), msg!("category-plural", "Railings")),
         "propertyline" => (msg!("category", "Property Line"), msg!("category-plural", "Property Lines")),

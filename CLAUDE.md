@@ -123,7 +123,7 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - `network.rs`: the `network` command, the pipe network worked out from pipes' ends and pipe connectors, never stored (nodes, edges, open ends, warnings).
 - `panel_schedule.rs`, `sheet/panel.rs`: panel schedules, drawn on sheets.
 - `electrical.rs`: the electrical settings: voltages, distribution systems, wire types, panels and circuits (the `voltage`, `distribution_system`, `wire_type`, `panel` and `circuit` commands; also rules of the electrical code; [structure and MEP](docs/areas/structure-and-mep.md)).
-- `timber.rs`: the `timber_framing` command, a wall's studs and plates, read and never built ([structure and MEP](docs/areas/structure-and-mep.md)).
+- `framing.rs`, `framing/*.rs`: wood framing worked out, never stored; `timber.rs`: `timber_framing`, read and never built ([structure and MEP](docs/areas/structure-and-mep.md#wood-framing)).
 - `coordinates.rs`: the Project Base Point, the Survey Point and the project's locations, and the transform to shared coordinates ([coordinates](docs/areas/coordinates.md)).
 - `tests.rs`, `mep_tests.rs`, `structure_tests.rs`, `eberick_tests.rs`, `reinforce_tests.rs`, `autosave_tests.rs`: the engine driven through commands.
 

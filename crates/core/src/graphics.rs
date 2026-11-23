@@ -149,6 +149,19 @@ pub const SUBCATEGORIES: &[Sub] = &[
     // of the project's own type's swing.
     Sub { key: "dooropening", parent: "door", name: ui_msg!("Opening"), off: false },
     Sub { key: "windowopening", parent: "window", name: ui_msg!("Opening"), off: false },
+    // A framed wall's studs, plates and headers (`crate::framing`): hidden, its structure layer is drawn as an unframed wall's.
+    Sub { key: "framing", parent: "wall", name: ui_msg!("Framing"), off: false },
+    // A framed floor's joists, rims, trimmers, headers and blocking (`crate::framing::floor`) in 3D and sections: hidden, its
+    // structure layer is drawn as an unframed floor's. In a plan they lie under its top: their outlines, hidden lines, are
+    // `floorframingline` (singular, as every key: a trailing s is read as a plural), off unless a plan shows them, as the
+    // framing plan a framer builds the floor from does.
+    Sub { key: "floorframing", parent: "floor", name: ui_msg!("Framing"), off: false },
+    Sub { key: "floorframingline", parent: "floor", name: ui_msg!("Framing Lines"), off: true },
+    // A framed roof's rafters, ridge boards, rims, trimmers, headers and blocking (`crate::framing::roof`) in 3D and sections:
+    // hidden, its structure layer is drawn as an unframed roof's. In a plan of its level, their outlines, dashed, are
+    // `roofframingline`, off unless a plan shows them, as a roof framing plan does.
+    Sub { key: "roofframing", parent: "roof", name: ui_msg!("Framing"), off: false },
+    Sub { key: "roofframingline", parent: "roof", name: ui_msg!("Framing Lines"), off: true },
     // The three origins, as Revit's Site has them: hidden unless a view shows them.
     Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
     Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
@@ -1159,6 +1172,12 @@ pub struct Look {
     parts_hidden: Option<u16>,
     /// What the view's rows for a curtain wall's panels and its mullions say.
     parts: [Override; 2],
+    /// Walls > Framing hidden: a framed wall's structure layer is drawn in place of its members.
+    unframed: bool,
+    /// Floors > Framing hidden: a framed floor's structure layer is drawn in place of its members.
+    unframed_floors: bool,
+    /// Roofs > Framing hidden: a framed roof's structure layer is drawn in place of its members.
+    unframed_roofs: bool,
 }
 
 /// The bits of the stair parts graphics `g` hides; with none, those off unless shown.
@@ -1234,7 +1253,27 @@ impl Look {
     /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
     /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
     pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
-        vis == 0 || self.forms.shows(vis, cut)
+        match crate::family::visibility::framing(vis) {
+            Some(member) if vis & crate::family::visibility::FLOOR != 0 => member != self.unframed_floors,
+            Some(member) if vis & crate::family::visibility::ROOF != 0 => member != self.unframed_roofs,
+            Some(member) => member != self.unframed,
+            None => vis == 0 || self.forms.shows(vis, cut),
+        }
+    }
+
+    /// Whether it draws a framed wall's structure layer in place of its members: Walls > Framing hidden.
+    pub fn unframed(&self) -> bool {
+        self.unframed
+    }
+
+    /// Whether it draws a framed floor's structure layer in place of its members: Floors > Framing hidden.
+    pub fn unframed_floors(&self) -> bool {
+        self.unframed_floors
+    }
+
+    /// Whether it draws a framed roof's structure layer in place of its members: Roofs > Framing hidden.
+    pub fn unframed_roofs(&self) -> bool {
+        self.unframed_roofs
     }
 
     /// How a 3D view draws its edges and shadows: its Graphic Display Options.
@@ -1273,8 +1312,16 @@ impl Look {
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
         let forms = crate::family::visibility::FormView { detail: g.detail, ..Default::default() };
-        let mut look =
-            Look { style: g.style, layers: own.layers.clone(), forms, parts_hidden: Some(parts_mask(Some(&g))), ..Look::default() };
+        let mut look = Look {
+            style: g.style,
+            layers: own.layers.clone(),
+            forms,
+            parts_hidden: Some(parts_mask(Some(&g))),
+            unframed: g.hides("framing"),
+            unframed_floors: g.hides("floorframing"),
+            unframed_roofs: g.hides("roofframing"),
+            ..Look::default()
+        };
         look.parts = CURTAIN_PARTS.map(|c| g.categories.get(c).cloned().unwrap_or_default());
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));

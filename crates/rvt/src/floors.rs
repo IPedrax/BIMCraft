@@ -357,6 +357,8 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         params: Default::default(),
                         sketch: Vec::new(),
                         shape: shape_of(&s.vertices, s.top, p),
+                        framing: None,
+                        framing_angle: None,
                         pattern_origin: Default::default(),
                         pattern_angle: 0.0,
                     };

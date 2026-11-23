@@ -235,6 +235,13 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a grid has a type (`type`), and a project holds grid types (`grid_types`, library entries of kind `grid-type`); a grid of
 /// 20 has none, and reading it as 21 gives it the type the standards name; a build that reads up to 20 would leave both out as
 /// fields it doesn't know and draw every grid in the one line it had, not say "saved by a newer BIMCraft".
+/// 21 also: a wall may be framed (`framing`, the name of a framing type, held by its GUID) and a project holds framing types
+/// (`types.framing`, library entries of kind `type:framing`); nothing in a file of 20 changes, but a build that reads up to
+/// 20 would leave a wall's `framing` and the project's framing types out of a file, unframing its walls without a word, not
+/// "saved by a newer BIMCraft".
+/// 21 also: a floor's `framing` and `framing_angle` (its joists worked out as a wall's studs are), and a framing type's `rim`,
+/// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'. And a roof's
+/// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -474,6 +481,10 @@ pub struct Wall {
     /// The curtain wall and cell it stands in place of a panel in: kept fitted to that, it joins nothing and bounds no room.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_of: Option<crate::curtain::PanelOf>,
+    /// Its framing type (`types.framing`), whose studs, plates and headers are worked out from it ([`crate::framing`]);
+    /// none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -782,6 +793,13 @@ pub struct Floor {
     /// or one slope.
     #[serde(default, skip_serializing_if = "Shape::is_empty")]
     pub shape: Shape,
+    /// Its framing type (`types.framing`), whose joists, rims, trimmers and blocking are worked out from it
+    /// ([`crate::framing::floor`]); none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
+    /// The way its joists run, degrees from +x; none, square to its outline's longest edge (spanning the short way).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing_angle: Option<f64>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -2506,6 +2524,10 @@ pub struct Roof {
     /// underside following its top.
     #[serde(default, skip_serializing_if = "Shape::is_empty")]
     pub shape: Shape,
+    /// Its framing type (`types.framing`), whose rafters, ridge boards, rims, trimmers and blocking are worked out from it
+    /// ([`crate::framing::roof`]); none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -4099,6 +4121,9 @@ pub struct Types {
     /// The types of the Corner Mullion system family, what stands where two curtain walls meet.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub corner_mullion: BTreeMap<String, crate::curtain::MullionType>,
+    /// Framing types: how a framed wall's studs, plates and headers go. A new project has none; `frame` makes one.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub framing: BTreeMap<String, crate::framing::FramingType>,
 }
 
 /// What a project parameter holds: text, a number, a length (mm), or yes or no.
@@ -5755,6 +5780,7 @@ impl Model {
         // `across`), and to a linked model's elements (`Reference::link`). A file of 20 holds none, so nothing to do.
         // 20 to 21: the building codes. `codes_from_386` above takes a file's `building_code`, `stair_rules` and `building_codes` into
         // `codes`; a file of 20 holds none of them, so nothing to do.
+        // 20 to 21 (framed walls and framing types) has no step: a file of 20 holds none.
         self.format = FORMAT;
     }
 
@@ -6439,6 +6465,7 @@ impl Model {
             "curtainpanel" => names(&self.types.curtain_panel),
             "mullion" => names(&self.types.mullion),
             "cornermullion" => names(&self.types.corner_mullion),
+            "framing" => names(&self.types.framing),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -6467,6 +6494,7 @@ impl Model {
             "curtainpanel" => crate::curtain::GLAZED,
             "mullion" => crate::curtain::RECTANGULAR_MULLION,
             "cornermullion" => crate::curtain::RECTANGULAR_CORNER,
+            "framing" => crate::framing::DEFAULT_TYPE,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -6988,6 +7016,8 @@ impl Model {
             pattern_angle: 0.0,
             sketch: Vec::new(),
             shape: r.shape.clone(),
+            framing: None,
+            framing_angle: None,
             params: BTreeMap::new(),
         }
     }
@@ -9516,6 +9546,9 @@ impl Model {
                 return Err(format!("railing type `{n}`: spacing {} mm; balusters stand 50 mm apart or more, or 0 for none", t.spacing));
             }
         }
+        for (n, t) in &self.types.framing {
+            crate::framing::check_type(self, n, t)?;
+        }
         for (n, t) in &self.types.room {
             let who = format!("room type `{n}`");
             if let Some(f) = &t.floor {
@@ -10026,6 +10059,7 @@ impl Model {
                         "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
                     ));
                 }
+                crate::framing::check(self, w).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Floor(f) => {
                 point(&format!("{who} pattern origin"), f.pattern_origin)?;
@@ -10049,6 +10083,7 @@ impl Model {
                     None => {}
                 }
                 shape_ok(&who, f, Variable::of(self.type_layers("floor", &f.type_name)))?;
+                crate::framing::floor::check(self, f).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Ceiling(c) => {
                 known(&who, &c.type_name, &self.types.ceiling)?;
@@ -11072,6 +11107,7 @@ impl Model {
                     shape_ok(&who, &self.roof_as_floor(r), Variable::of(self.type_layers("roof", &r.type_name)))?;
                 }
                 self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
+                crate::framing::roof::check(self, r).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Sheet(sh) => {
                 text(&who, "number", &sh.number)?;
@@ -11946,6 +11982,7 @@ mod tests {
             panel_of: None,
             slant: 0.0,
             profile: Vec::new(),
+            framing: None,
         })
     }
 

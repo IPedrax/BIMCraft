@@ -703,6 +703,7 @@ impl Model {
                 "curtainpanel" => self.types.curtain_panel.remove(name).is_some(),
                 "mullion" => self.types.mullion.remove(name).is_some(),
                 "cornermullion" => self.types.corner_mullion.remove(name).is_some(),
+                "framing" => self.types.framing.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
                 "toposolid" => self.types.toposolid.remove(name).is_some(),
@@ -754,6 +755,7 @@ impl Model {
                 "curtainpanel" => mv(&mut self.types.curtain_panel, from, to),
                 "mullion" => mv(&mut self.types.mullion, from, to),
                 "cornermullion" => mv(&mut self.types.corner_mullion, from, to),
+                "framing" => mv(&mut self.types.framing, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
                 "toposolid" => mv(&mut self.types.toposolid, from, to),
@@ -853,6 +855,7 @@ impl Model {
         add(Kind::Type("curtainpanel".into()), &mut t.curtain_panel.keys());
         add(Kind::Type("mullion".into()), &mut t.mullion.keys());
         add(Kind::Type("cornermullion".into()), &mut t.corner_mullion.keys());
+        add(Kind::Type("framing".into()), &mut t.framing.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -1551,10 +1554,23 @@ impl crate::model::Element {
                 if let Some(c) = &mut w.curtain {
                     c.names_mut(f);
                 }
+                if let Some(framing) = &mut w.framing {
+                    f(&Kind::Type("framing".into()), framing);
+                }
             }
-            Element::Floor(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Floor(x) => {
+                f(&Kind::Type(category), &mut x.type_name);
+                if let Some(framing) = &mut x.framing {
+                    f(&Kind::Type("framing".into()), framing);
+                }
+            }
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
-            Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Roof(x) => {
+                f(&Kind::Type(category), &mut x.type_name);
+                if let Some(framing) = &mut x.framing {
+                    f(&Kind::Type("framing".into()), framing);
+                }
+            }
             Element::Toposolid(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
@@ -1673,6 +1689,9 @@ impl Model {
         }
         for r in t.runs.values_mut().flat_map(|x| x.values_mut()).filter(|r| !r.material.is_empty()) {
             f(&Kind::Material, &mut r.material);
+        }
+        for m in t.framing.values_mut().filter_map(|x| x.material.as_mut()) {
+            f(&Kind::Material, m);
         }
         // A room type's floor and ceiling are types of the project's.
         for r in t.room.values_mut() {

@@ -80,6 +80,8 @@ icon_names! {
     Column,
     Beam,
     Rebar,
+    Frame,
+    Unframe,
     Footing,
     WallFooting,
     Pipe,
@@ -873,6 +875,27 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(5.0, 5.0), (19.0, 5.0), (19.0, 19.0), (5.0, 19.0)]);
             for (x, y) in [(8.5, 8.5), (15.5, 8.5), (8.5, 15.5), (15.5, 15.5)] {
                 g.circle((x, y), 1.8);
+            }
+        }
+        Icon::Frame | Icon::Unframe => {
+            // A framed wall: a double top plate and a bottom plate with studs standing between them; Remove Framing keeps the
+            // first stud and a minus where the others stood.
+            g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 7.0), (3.0, 7.0)]);
+            g.closed(&[(3.0, 17.0), (21.0, 17.0), (21.0, 20.0), (3.0, 20.0)]);
+            if !compact {
+                g.line(&[(3.0, 5.5), (21.0, 5.5)]);
+            }
+            let studs: &[f32] = if matches!(icon, Icon::Unframe) { &[5.0] } else { &[5.0, 12.0, 19.0] };
+            for &x in studs {
+                if compact {
+                    g.line(&[(x, 7.0), (x, 17.0)]);
+                } else {
+                    g.line(&[(x - 1.0, 7.0), (x - 1.0, 17.0)]);
+                    g.line(&[(x + 1.0, 7.0), (x + 1.0, 17.0)]);
+                }
+            }
+            if matches!(icon, Icon::Unframe) {
+                g.line(&[(10.0, 12.0), (19.0, 12.0)]);
             }
         }
         Icon::Footing => {
