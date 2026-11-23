@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::render::{self, Rgb, View};
 use bimcraft_core::view3d::{Image, MAX_SIDE};
 use egui::{Color32, ColorImage, Context, Rect, Sense, TextureHandle, TextureOptions, Ui, pos2};
@@ -18,7 +18,7 @@ use crate::orbit::rgb;
 use crate::section_worker::{Frame, Renderer, Request};
 use crate::style::canvas_pal;
 use crate::view_worker::Latest;
-use crate::{BimApp, Status, Tool};
+use crate::{BimApp, Sheet, Status, Tool};
 
 mod tools;
 
@@ -255,6 +255,7 @@ impl BimApp {
         // Where the pointer is on the section's drawing, for the others in a Co-Work session.
         self.cowork_seen.pointer = local.map(|q| (id, view.mm(q)));
         let crop = self.crop_grips(ui, &response, rect, &view, id);
+        let callout = self.callout_grips(ui, &response, rect, &view, id);
         let level_ends = self
             .cut
             .shown
@@ -490,6 +491,7 @@ impl BimApp {
             return;
         }
         p.extend(crop);
+        p.extend(callout);
         // A drag draws a selection box: it takes what the drawing over the picture has in it, and
         // what the picture shows.
         let held = self.cut.image.take();
@@ -525,6 +527,13 @@ impl BimApp {
             }
             P2((p.0 / 10.0).round() * 10.0, (p.1 / 10.0).round() * 10.0)
         };
+        // A double click on a detail's callout opens the detail.
+        if response.double_clicked()
+            && let Some(id) = hovered.filter(|id| matches!(model.elements.get(*id), Some(Element::DetailView(_))))
+        {
+            self.open_sheet(if model.plan_level(id).is_some() { Sheet::Plan(id) } else { Sheet::Section(id) });
+            return;
+        }
         // A double click on a note writes in it.
         if response.double_clicked()
             && let Some(note) = hovered.filter(|h| crate::notes::is_note(&model, *h))

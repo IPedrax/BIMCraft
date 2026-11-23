@@ -980,6 +980,54 @@ text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered pas
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
 
+## Callout: detail views and callouts
+
+A Callout (`detail_view`, `model::DetailView`, category `detail`) is a fragment of a plan, section or elevation shown
+larger. In the interface it is called **Callout**, as in Revit; on the ribbon it is **View > Create > Callout**, and in the
+browser it is the **Callouts** group with a subgroup for each parent view. The model keeps its parent (`parent`), the
+fragment rectangle (`region`) and its own scale (`scale`, 1…50, 5 by default); old projects open without migration,
+because it is a new view, not a change to the existing ones. `region` is in the parent's coordinates: the south-west and
+north-east corners of a plan, or its distance along the line from its start and its heights for a section or an elevation.
+`elements` gives `kind: "detail"`, `parent`, `parent_id`, `region`, `scale` and `number`.
+
+Rendering uses the same pipeline as the parent (`render::detail`, `render::detail_at`). A detail of a plan is drawn by
+`draw_plan` with the detail itself as the key: `Model::plan_level` follows the parent's level, `crop_of` gives `region`,
+and `graphics_of` and `scale_of` give the detail's settings. So everything the detail shows is cropped to the fragment,
+and its annotation (`text`, `detail_line`, `filled_region`, `dimension`, `repeating_detail`) is kept in the parent's
+coordinates and follows the model. A detail of a section or an elevation is built by `Model::section_geometry`: the parent
+line is cut by `region` horizontally and by `crop` in height; `section_finish` shifts annotation by the start of the
+region, so it stays in the parent's coordinates. `drawing_plane` uses the parent's line for such a detail.
+
+On the parent, a Callout shows the **fragment boundary** — the `region` rectangle — and its mark (`render::detail_boundary`,
+`render::detail_mark`): an 8 mm circle on the paper with its number (`number`, such as `D-03`) and a leader that leaves the
+mark and **stops on the boundary**, never running on to its middle. The mark's position is kept in `DetailView::mark` (in
+the parent's coordinates); without one it stands at the north-east corner. The mark can be dragged, and the leader follows
+it to the boundary.
+
+The boundary is editable on **both** views: on the parent and on the Callout's own view. A selected Callout shows four edge
+grips; dragging a grip changes `region`, and so both the boundary on the parent and the area the Callout shows. Dragging
+the boundary or the mark moves `region`/`mark`; annotation inside the Callout stays in the parent's coordinates. The mark
+and boundary belong to the view, not to the model, so they never reach a schedule. A number may be given by hand, else it
+is taken in order (`D-01`, `D-02`, …). `modify {region}` moves the fragment; the crop and the mark follow. Deleting a
+Callout removes its mark and boundary; deleting its parent removes the Callout and everything drawn in it.
+
+The mark shows the view's name (`View Name`) without the automatic number prefix: `D-01 Corner` reads as `Corner`, and a
+renamed view shows its new name at once. The number stays a separate `number` field in Properties.
+
+A Callout's scale is changed as any other view's: the **Scale** bar at the foot of the view and **Properties → Graphics →
+View Scale** — a drop-down, with the `Scale Value 1:` field beside it. It is kept in `DetailView::scale` (1 : n), and
+`graphics::scale_of` gives it to everything that reads a view's scale; sheet viewports follow it as they do for a plan,
+section or elevation.
+
+The manual **Callout** tool asks for two opposite corners of the fragment on a plan, section or elevation. The scale
+`1 : n`, name and number are set in the Options Bar; after the second click the view is made, and the boundary and mark
+appear on the parent.
+
+On a sheet a detail takes `region / scale` paper millimetres (`sheet::framing_in` through `render::detail_extent`), is
+placed by `place` as any view, is titled with its name and scale and prints to PNG/PDF; `render {view}` draws the detail
+itself (`detail plan` or `detail section`). The Project Browser lists Callouts in the **Callouts** group; a detail of a
+plan opens as a plan, and a detail of a section as a section.
+
 ## Elevations that look at a reference
 
 The Elevation tool asks for something to look at (`elevation.rs`): a straight wall, a line (a detail line, a grid, a line of a

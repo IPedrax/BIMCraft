@@ -115,7 +115,8 @@ pub(crate) fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         | Element::RebarDetail(_)
         | Element::ProjectInfo(_)
         | Element::View3D(_)
-        | Element::PlanView(_) => Vec::new(),
+        | Element::PlanView(_)
+        | Element::DetailView(_) => Vec::new(),
         Element::Room(_) | Element::Spot(_) | Element::Tag(_) | Element::Rebar(_) | Element::Circuit(_) | Element::Annotation(_) => {
             Vec::new()
         }

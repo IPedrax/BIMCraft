@@ -71,6 +71,7 @@ icon_names! {
     TagAll,
     View3D,
     Section,
+    DetailView,
     Elevation,
     Camera,
     Sheet,
@@ -788,6 +789,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(9.0, 16.0), (12.0, 16.0)]);
             g.line(&[(15.0, 16.0), (18.0, 16.0)]);
             g.line(&[(21.0, 12.0), (21.0, 20.0)]);
+        }
+        Icon::DetailView => {
+            // A callout's fragment, and its numbered circle on a leader.
+            g.closed(&[(3.0, 4.0), (15.0, 4.0), (15.0, 13.0), (3.0, 13.0)]);
+            g.circle((18.0, 17.5), 3.5);
+            g.line(&[(15.0, 13.0), (16.2, 15.3)]);
         }
         Icon::Elevation => {
             // An elevation direction marker, with the triangle above the circular head.

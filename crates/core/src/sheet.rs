@@ -63,6 +63,7 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
         Element::Section(_) | Element::Elevation(_) => {
             render::section_extent(m, work.get_or_init(|| render::SectionWork::new(m)), view, k, 1.0)?.to_vec()
         }
+        Element::DetailView(_) => render::detail_extent(m, view)?.into_iter().map(|p| turn(p, angle)).collect(),
         Element::Schedule(sc) => {
             let (width, height) = table_size(&sc.name, &table_of(m, m.elements.id(view), sc));
             return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
@@ -559,6 +560,21 @@ fn view_into(
         Some(Element::Level(_) | Element::PlanView(_)) => render::draw_at(m, id, view, 1.0),
         Some(Element::Section(_) | Element::Elevation(_)) => {
             // Its regions keep the ink of this very picture.
+            let w = work.get_or_init(|| render::SectionWork::new(m));
+            let img = render::section_picture_in(m, w, id, view, &[]);
+            let drawing = match &img {
+                Some(img) => render::section_at_over_in(m, w, id, view, 1.0, img),
+                None => render::section_at(m, id, view, 1.0),
+            };
+            if let Some(img) = img {
+                d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
+            }
+            drawing
+        }
+        // A detail of a plan is drawn as the plan is, cropped to its region.
+        Some(Element::DetailView(_)) if m.plan_level(id).is_some() => render::detail_at(m, id, view, 1.0),
+        // A detail of a section or an elevation goes over the picture of what lies beyond its fragment.
+        Some(Element::DetailView(_)) => {
             let w = work.get_or_init(|| render::SectionWork::new(m));
             let img = render::section_picture_in(m, w, id, view, &[]);
             let drawing = match &img {

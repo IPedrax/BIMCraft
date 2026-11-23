@@ -456,6 +456,12 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "start", "Start", Point),
             ("Other", "end", "End", Point),
         ],
+        "detail" => &[
+            ("Identity Data", "name", "View Name", Text),
+            ("Identity Data", "number", "Number", Text),
+            ("Identity Data", "parent", msg!("Parent View"), ViewName),
+            ("Extents", "region", msg!("Region"), Shown),
+        ],
         "pointcloud" => &[
             ("Constraints", "level", "Level", Level),
             ("Constraints", "offset", "Offset", Length),
@@ -875,7 +881,7 @@ fn apply(ui: &mut Ui) {
 
 /// What the palette shows.
 #[derive(Clone, Copy, PartialEq)]
-enum Subject {
+pub(crate) enum Subject {
     Element(Id),
     /// Several selected elements, all of a category.
     Elements(&'static str),
@@ -1396,7 +1402,7 @@ impl BimApp {
         counts
     }
 
-    fn subject(&self) -> Subject {
+    pub(crate) fn subject(&self) -> Subject {
         let m = &self.session.model;
         if matches!(self.sketch.as_ref().map(|sk| sk.of), Some(crate::sketch::Of::Region { .. })) {
             return Subject::New("region");
@@ -1440,6 +1446,8 @@ impl BimApp {
             ([], Tool::Mass(_), _) => Subject::New("mass"),
             // A section's or an elevation's view shows its own parameters.
             ([], _, Sheet::Section(id) | Sheet::Paper(id)) => Subject::Element(id),
+            // A Callout opened as a plan or a section shows its own parameters, not its level's or its parent's.
+            ([], _, Sheet::Plan(id)) if matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))) => Subject::Element(id),
             // Modify, and the tools that pick walls rather than place anything: the view.
             ([], _, Sheet::Plan(level)) => Subject::Plan(level),
             ([], _, Sheet::Ceiling(_)) => Subject::CeilingPlan,
@@ -1725,6 +1733,7 @@ impl BimApp {
         }
         // A view's graphics: the template it follows, and its overrides.
         let view_shown = matches!(subject, Subject::Plan(_) | Subject::CeilingPlan | Subject::View3D)
+            || matches!(subject, Subject::Element(id) if matches!(model.elements.get(id), Some(Element::DetailView(_))))
             || (matches!(subject, Subject::Element(_)) && self.selection.is_empty() && matches!(self.sheet, Sheet::Section(_)));
         if subject == Subject::View3D {
             self.camera_properties(ui, active_3d);
@@ -1750,14 +1759,18 @@ impl BimApp {
         let mut other = 0;
         for pick in &self.browser_picked {
             let (kind, id, rows): (&'static str, Option<Id>, &'static [Row]) = match *pick {
-                crate::browser::Pick::View(Sheet::Plan(id)) => match model.plan_view(id) {
-                    Some(v) if v.parent.is_some() => (msg!("Floor Plans"), Some(id), PLAN_DEPENDENT),
-                    Some(_) => (msg!("Floor Plans"), Some(id), PLAN_VIEW),
-                    None => (msg!("Floor Plans"), Some(id), PLAN),
+                crate::browser::Pick::View(Sheet::Plan(id)) => match model.elements.get(id) {
+                    Some(Element::DetailView(_)) => (msg!("Callouts"), Some(id), rows("detail")),
+                    _ => match model.plan_view(id) {
+                        Some(v) if v.parent.is_some() => (msg!("Floor Plans"), Some(id), PLAN_DEPENDENT),
+                        Some(_) => (msg!("Floor Plans"), Some(id), PLAN_VIEW),
+                        None => (msg!("Floor Plans"), Some(id), PLAN),
+                    },
                 },
                 crate::browser::Pick::View(Sheet::Ceiling(id)) => (msg!("Ceiling Plans"), Some(id), &[]),
                 crate::browser::Pick::View(Sheet::Section(id)) => match model.elements.get(id).map(|e| e.category()) {
                     Some("elevation") => (msg!("Elevations"), Some(id), rows("elevation")),
+                    Some("detail") => (msg!("Callouts"), Some(id), rows("detail")),
                     _ => (msg!("Sections"), Some(id), rows("section")),
                 },
                 crate::browser::Pick::View(Sheet::Paper(id)) => (msg!("Sheets"), Some(id), rows("sheet")),

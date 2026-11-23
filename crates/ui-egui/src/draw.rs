@@ -86,6 +86,10 @@ pub struct Drawing {
     pub insulation: Option<String>,
     /// Revit's Revision Cloud: the Detail Line tool draws clouds of scallops this long, of this revision, as typed.
     pub cloud: Option<(String, String)>,
+    /// The Callout tool's scale, `1 : detail_scale`, and the name and number its view takes.
+    pub detail_scale: String,
+    pub detail_name: String,
+    pub detail_number: String,
     /// While sketching, Trim/Extend's first line (or boundary) picked, and where.
     pub trim: Option<(usize, P2)>,
     /// Align's reference owner: a model element or a line of the active sketch.
@@ -122,6 +126,9 @@ impl Default for Drawing {
             align_lock: None,
             insulation: None,
             cloud: None,
+            detail_scale: "5".into(),
+            detail_name: String::new(),
+            detail_number: String::new(),
             centre_mark: false,
             field: 0,
             other: String::new(),

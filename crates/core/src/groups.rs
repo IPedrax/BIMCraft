@@ -123,6 +123,7 @@ pub fn kind_of(e: &Element) -> Result<Kind, String> {
         | E::Schedule(_)
         | E::View3D(_)
         | E::PlanView(_)
+        | E::DetailView(_)
         | E::PanelSchedule(_)
         | E::RebarDetail(_) => Err("a view, a sheet or what places a view is no group's".into()),
         E::Link(_) | E::PointCloud(_) | E::CadImport(_) => {

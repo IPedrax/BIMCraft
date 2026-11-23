@@ -1814,6 +1814,56 @@ pub struct PlanView {
     pub underlay: Option<crate::underlay::Underlay>,
 }
 
+/// A detail view: a fragment of a plan, section or elevation, drawn larger at its own scale, with annotation of its own.
+/// Its `region` is in the parent view's coordinates: the south-west and north-east corners in a plan, or its distance along
+/// the parent line from its start and its height in a section or an elevation. The fragment follows the model: annotation
+/// on it is kept in the parent's coordinates and is drawn at this view's scale.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DetailView {
+    pub name: String,
+    /// The view this is a fragment of.
+    pub parent: Guid,
+    /// The fragment, in the parent's coordinates, mm: its south-west and north-east corners in a plan, or its start along
+    /// the line and its bottom, and its end and its top, in a section or an elevation.
+    pub region: [P2; 2],
+    /// The paper it stands for, 1 : `scale`.
+    pub scale: f64,
+    /// Its number on callouts and on its title (`У-03`), kept apart from its name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub number: String,
+    /// Where its mark stands in the parent's coordinates; none, just outside the fragment's north-east corner. The leader
+    /// runs from the mark to the fragment's boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<P2>,
+    /// What it hides and how it draws the rest.
+    #[serde(default, skip_serializing_if = "Graphics::is_default")]
+    pub graphics: Graphics,
+}
+
+impl DetailView {
+    /// The middle of its region, in the parent's coordinates.
+    pub fn middle(&self) -> P2 {
+        (self.region[0] + self.region[1]) * 0.5
+    }
+
+    /// What its mark says: its name, without the number the name starts with (`D-01 Corner` reads `Corner`; renamed, the new
+    /// name reads as it is). A view named only by its number keeps it.
+    pub fn label(&self) -> &str {
+        let name = self.name.trim();
+        let number = self.number.trim();
+        if !number.is_empty()
+            && let Some(rest) = name.strip_prefix(number)
+        {
+            let rest = rest.trim_start();
+            if !rest.is_empty() {
+                return rest;
+            }
+        }
+        name
+    }
+}
+
 /// A 3D view, seen from `azimuth` degrees round from east (counter-clockwise) and `elevation`
 /// degrees up.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -2687,6 +2737,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? v.parent { f(g) }
                 if let Some(u) = & $($m)? v.underlay { f(& $($m)? u.view) }
             }
+            Element::DetailView(v) => f(& $($m)? v.parent),
             Element::Wall(w) => {
                 f(& $($m)? w.level);
                 if let Some(g) = & $($m)? w.top_level { f(g) }
@@ -2873,6 +2924,9 @@ pub enum Element {
     Schedule(Schedule),
     View3D(View3D),
     PlanView(PlanView),
+    /// A detail view: a fragment of a plan, section or elevation, at its own scale (`detail_view`).
+    #[serde(rename = "detail")]
+    DetailView(DetailView),
     Link(Link),
     /// A scan placed in the model.
     PointCloud(PointCloud),
@@ -3082,6 +3136,7 @@ impl Element {
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
             Element::PlanView(_) => "planview",
+            Element::DetailView(_) => "detail",
             Element::Level(_) => "level",
             Element::Grid(_) => "grid",
             Element::RefPlane(_) => "refplane",
@@ -6124,7 +6179,11 @@ impl Model {
     /// The view range plan `key` has (a level's own plan, or a plan view): its own, unless a view template it follows controls
     /// it, or it is a dependent view, which has its parent's.
     pub fn view_range_of(&self, key: impl Key) -> ViewRange {
-        let key = self.plan_source(key);
+        // A detail view follows the plan it is a fragment of.
+        let key = match self.elements.get(key) {
+            Some(Element::DetailView(v)) => v.parent,
+            _ => self.plan_source(key),
+        };
         let (range, graphics) = match self.elements.get(key) {
             Some(Element::Level(l)) => (l.view_range, &l.graphics),
             Some(Element::PlanView(v)) => (v.view_range, &v.graphics),
@@ -6185,6 +6244,8 @@ impl Model {
         match self.elements.get(key)? {
             Element::Level(_) => self.elements.id(key),
             Element::PlanView(v) => self.elements.id(v.level),
+            // A detail of a plan is of the plan's level.
+            Element::DetailView(v) => self.plan_level(v.parent),
             _ => None,
         }
     }
@@ -6229,6 +6290,8 @@ impl Model {
         match self.elements.get(key)? {
             Element::Level(l) => l.crop,
             Element::PlanView(v) => v.crop,
+            // A detail shows its fragment, whichever plan its parent is.
+            Element::DetailView(v) if self.plan_level(v.parent).is_some() => Some(v.region),
             _ => None,
         }
     }
@@ -6644,6 +6707,7 @@ impl Model {
             | Element::Link(_)
             | Element::ProjectInfo(_)
             | Element::Dimension3D(_)
+            | Element::DetailView(_)
             | Element::View3D(_) => None,
         }
     }
@@ -7603,15 +7667,17 @@ impl Model {
             Some(Element::RebarDetail(rd)) => Some(&rd.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
+            Some(Element::DetailView(v)) => Some(&v.name),
             _ => None,
         }
     }
 
-    /// The views, by id: the levels' plans, the plan views, sections, elevations, schedules and 3D views. From the lookup.
+    /// The views, by id: the levels' plans, the plan views, sections, elevations, detail views, schedules and 3D views. From
+    /// the lookup.
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
         let mut ids: BTreeSet<Id> = lookup.levels().collect();
-        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "rebardetail", "view3d"] {
+        for cat in ["planview", "section", "elevation", "detail", "schedule", "panelschedule", "rebardetail", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
@@ -7648,6 +7714,33 @@ impl Model {
     pub fn section(&self, id: impl Key) -> Option<&Section> {
         match self.elements.get(id) {
             Some(Element::Section(v) | Element::Elevation(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Section or elevation `id`, or the section a detail view of one shows: its region cut from its parent's line, with
+    /// the detail's own name and graphics. None for another view.
+    pub fn section_geometry(&self, id: impl Key) -> Option<Section> {
+        match self.elements.get(id)? {
+            Element::Section(v) | Element::Elevation(v) => Some(v.clone()),
+            Element::DetailView(d) => {
+                let parent = match self.elements.get(d.parent)? {
+                    Element::Section(v) | Element::Elevation(v) => v,
+                    _ => return None,
+                };
+                let u = (parent.end - parent.start).unit();
+                let [lo, hi] = d.region;
+                let mut s = parent.clone();
+                s.name = d.name.clone();
+                s.start = parent.start + u * lo.0;
+                s.end = parent.start + u * hi.0;
+                s.crop = Some([lo.1, hi.1]);
+                s.mark = None;
+                s.reference = parent.reference;
+                s.graphics = d.graphics.clone();
+                s.underlay = None;
+                Some(s)
+            }
             _ => None,
         }
     }
@@ -9531,7 +9624,7 @@ impl Model {
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
         let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
-            Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
+            Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_) | Element::DetailView(_)) => Ok(()),
             Some(Element::Sheet(_)) if sheets => Ok(()),
             Some(other) => Err(format!(
                 "{who}: {} {} isn't a plan, a section, an elevation{}",
@@ -10227,6 +10320,42 @@ impl Model {
                 }
                 if !view_names.insert(sc.name.as_str()) {
                     return Err(format!("{who}: another view is already named `{}`", sc.name));
+                }
+            }
+            Element::DetailView(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                if !matches!(
+                    self.elements.get(v.parent),
+                    Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_))
+                ) {
+                    return Err(format!(
+                        "{who}: parent {} isn't a plan, a section or an elevation; a detail is a fragment of one",
+                        self.shown(v.parent)
+                    ));
+                }
+                if self.same(v.parent, id) {
+                    return Err(format!("{who}: it can't be a detail of itself"));
+                }
+                let [a, b] = v.region;
+                coord(&format!("{who} region"), a.0)?;
+                coord(&format!("{who} region"), a.1)?;
+                coord(&format!("{who} region"), b.0)?;
+                coord(&format!("{who} region"), b.1)?;
+                if !(a.0 < b.0 - TOL && a.1 < b.1 - TOL) {
+                    return Err(format!("{who}: its region runs from a south-west or bottom-left corner to a north-east or top-right one"));
+                }
+                if !(v.scale.is_finite() && (1.0..=50.0).contains(&v.scale)) {
+                    return Err(format!("{who}: its scale is 1 : 1 to 1 : 50, not 1 : {}", v.scale));
+                }
+                if let Some(mark) = v.mark {
+                    point(&format!("{who} mark"), mark)?;
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
                 }
             }
             Element::PlanView(v) => {

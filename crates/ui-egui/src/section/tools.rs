@@ -22,8 +22,10 @@ impl BimApp {
         hovered: Option<Id>,
     ) -> bool {
         // Move with a curtain grid picked moves that grid, on the wall's face (`curtain_face_tool`).
-        if !matches!(self.tool, Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. })
-            || self.curtain_face_tool()
+        if !matches!(
+            self.tool,
+            Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::DetailView(_) | Tool::Trim(_) | Tool::TrimTo { .. }
+        ) || self.curtain_face_tool()
         {
             return false;
         }
@@ -165,6 +167,21 @@ impl BimApp {
                         };
                     } else {
                         self.place_detail_line(id, at);
+                    }
+                }
+            }
+            Tool::DetailView(first) => {
+                if let (Some(a), Some(b)) = (first, cursor) {
+                    let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)].map(screen);
+                    p.add(egui::Shape::closed_line(c.to_vec(), stroke));
+                }
+                if clicked.is_some()
+                    && let Some(at) = cursor
+                {
+                    match first {
+                        None => self.tool = Tool::DetailView(Some(at)),
+                        Some(a) if a.dist(at) > 1e-6 && self.make_callout(id, a, at) => self.tool = Tool::DetailView(None),
+                        Some(_) => {}
                     }
                 }
             }
