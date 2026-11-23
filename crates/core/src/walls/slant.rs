@@ -31,7 +31,7 @@ pub(crate) fn lofted(m: &Model, id: Id, index: Option<&Index>) -> bool {
     if !w.join || w.panel_of.is_some() || crate::curtain::pattern(m, w).is_some() {
         return false;
     }
-    [false, true].into_iter().any(|at_end| arms(m, id, at_end, index, &|_| true, None).0.iter().any(|a| a.id != id && a.leans))
+    [false, true].into_iter().any(|at_end| arms(m, id, at_end, index, &|_| true, true, None).0.iter().any(|a| a.id != id && a.leans))
 }
 
 /// Wall `id`'s solid, lofted: closed pieces, round its doors and windows (with `openings`), but those whose families cut it with
