@@ -183,6 +183,9 @@ mod ifc_member_tests;
 #[cfg(test)]
 mod image_tests;
 pub mod import;
+pub mod imported;
+#[cfg(test)]
+mod imported_shape_tests;
 pub mod inquiry;
 pub mod insert;
 pub mod language;
@@ -328,10 +331,6 @@ mod vertical_tools_tests;
 pub mod view3d;
 #[cfg(test)]
 mod wall_mitre_tests;
-#[cfg(test)]
-mod wall_shape_tests;
-#[cfg(test)]
-mod imported_shape_tests;
 #[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;

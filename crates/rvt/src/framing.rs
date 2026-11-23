@@ -98,6 +98,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts) {
         let new = ColumnType { width, depth, round: false, profile: None };
         let type_name = kind(&mut cx.model.types.footing, &format!("Imported {} x {}", size(width), size(depth)), same, new);
         let footing = Column {
+            imported: None,
             room_bounding: true,
             type_name,
             level,

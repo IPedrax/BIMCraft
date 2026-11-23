@@ -295,6 +295,7 @@ mod tests {
                     m.elements.insert(
                         id,
                         Element::Column(Column {
+                            imported: None,
                             type_name: "Probe".into(),
                             level,
                             at,

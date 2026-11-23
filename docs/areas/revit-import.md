@@ -119,15 +119,17 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   box, and the note says why. The hole is the rectangle of its box: an arched one's arch is not read. A door or a window whose nearest wall is a curtain wall (a door panel of the grid) is set
   in no other wall: a BIMCraft curtain wall holds one only in a wall in its cell, so it comes in as a component of a generic family
   of its Revit family's name, with its shape (`openings::in_curtain`, `Import::in_curtain`, `generic::Scope::Only`). A curtain grid
-  line (class `CurtainGridLine`) is left out, its box being no body. A wall made (all but a curtain wall) is **drawn in 3D as its
-  own graphics draw it** (`walls::shaped`, after the doors and windows are set): `generic::drawn_where_it_stands`, the components'
-  reading and checks, gives its triangles in the project's axes, kept as the wall's `shape` by material (Revit's corners as its joins
-  cut them, its lean, the outline it was edited to and the holes of its doors and windows, which BIMCraft's own layers do not
-  draw). It stays a BIMCraft wall, its line, type, layers, doors and windows as before, which plans, schedules and IFC read; the
-  shape is drawn only while the wall is as it came in (`finish` gives it the key of the model as checked), and its layers once it is
-  edited. A wall whose graphics do not read, or are not the box they give round their solids, keeps its layers, with a note why;
-  one the file holds no graphics of, with none. Across the twelve 2025 samples, 2,648 of the 2,775 walls made are drawn so; of the
-  rest, 68 are not the box their graphics give, 13 have an edge two faces put in different places, and 7 draw no solid.
+  line (class `CurtainGridLine`) is left out, its box being no body. A wall, a floor, a roof, a ceiling or a column made (all but a curtain wall) is **drawn in 3D as
+  its own graphics draw it** (`imported.rs`, once the walls, floors, roofs, openings and columns are made):
+  `generic::drawn_where_it_stands`, the components' reading and checks, gives its triangles in the project's axes, kept as the
+  element's `imported` shape by material (Revit's corners as its joins cut them, a wall's lean and edited outline and the holes of
+  its doors and windows, a roof's and a floor's slopes where they come in level, a column's section where it comes in as the
+  rectangle of its box). It stays a BIMCraft element, which plans, schedules and IFC read; the shape is drawn only while the
+  element is as it came in (`finish` gives it the key of the model as checked), and its own geometry once it is edited. One whose
+  graphics do not read, or are not the box they give round their solids, keeps its own geometry, with a note why; one the file
+  holds no graphics of, with none; a floor or a ceiling whose sketch came in as one element for each loop keeps them, each drawn
+  from its own geometry. Across the twelve 2025 samples, so drawn: 2,648 of 2,882 walls, 966 of 1,030 floors, 151 of 156
+  ceilings, 43 of 46 roofs, 124 of 137 columns and 386 of 435 structural columns.
 
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line

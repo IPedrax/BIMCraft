@@ -21,6 +21,7 @@ mod generic;
 mod graphics;
 pub mod gzip;
 mod import;
+mod imported;
 pub mod info;
 pub mod inventory;
 mod names;

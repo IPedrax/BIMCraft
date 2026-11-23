@@ -442,3 +442,42 @@ fn a_profile_that_runs_east_to_west_in_the_file_is_read_west_to_east() {
         assert_eq!((x.from, x.to), (-1524.0, 7620.0), "to its left, which is north");
     }
 }
+
+#[test]
+fn a_roof_that_rises_is_drawn_in_3d_as_its_graphics_draw_it_though_it_comes_in_level() {
+    // Roof 100 rises 3 ft over its 0.25 ft type (it comes in level); its graphics draw a symbol 20 by 10 by 3 ft where its box is.
+    use crate::project_fixture::{box_tree, graphics_block, instance_tree, tree_bytes};
+    let mut p = with_roof_type(2024);
+    let whole = [0.0, 0.0, 12.0, 20.0, 10.0, 15.0];
+    roof(&mut p, 100, PROFILE_ROOF, whole);
+    rectangle(&mut p, 100, 200, [0.0, 0.0, 20.0, 10.0], 3.0, true);
+    p.graphics.extend(graphics_block(650, &tree_bytes(&box_tree(650, [20.0, 10.0, 3.0], None))));
+    p.extra_ids.push(650);
+    let square = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    p.graphics.extend(graphics_block(100, &tree_bytes(&instance_tree(100, 650, square, [0.0, 0.0, 12.0], whole))));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let (id, r) = i
+        .model
+        .elements
+        .iter()
+        .find_map(|(id, e)| match e {
+            Element::Roof(r) => Some((*id, r)),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{:?}", i.skipped));
+    let shape = r.imported.as_ref().unwrap_or_else(|| panic!("{:?}", i.skipped));
+    assert_eq!(bimcraft_core::imported::key(&i.model, id), Some(shape.key), "drawn for the roof as it came in");
+    assert!(
+        i.skipped.iter().any(|s| s.contains("1 roof: it is drawn in 3D as its own graphics draw it") && s.contains("100")),
+        "{:?}",
+        i.skipped
+    );
+    // In 3D it rises as Revit draws it: its record box, where the level roof would be 0.25 ft thick.
+    let ids: std::collections::HashSet<bimcraft_core::model::Id> = [id].into();
+    let boxes = bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids);
+    let [(lo, hi)] = boxes.values().copied().collect::<Vec<_>>()[..] else { panic!("{boxes:?}") };
+    let want = whole.map(|v| v * 304.8);
+    let got = [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]];
+    assert!(got.iter().zip(want).all(|(g, w)| (g - w).abs() < 1.0), "{got:?} against {want:?}");
+}

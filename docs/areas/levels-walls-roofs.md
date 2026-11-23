@@ -176,15 +176,17 @@ takes it, or what the wall is attached to): its `top_level`'s elevation plus its
 mm, negative below the level), or its base plus its `height` when it has no top level, which an offset does not touch.
 `Model::check` refuses a wall whose top does not come out above its base, saying how tall it comes out and by how much to raise it.
 The Properties palette shows Top Offset under Top Constraint for a wall that has one.
-A wall may carry a **shape another program drew it in** (`Wall::shape`, `WallShape`: triangles in the model's axes, mm, in parts
-by material, at most `MAX_SHAPE_PARTS` parts and `MAX_SHAPE_TRIANGLES` triangles; the Revit import gives each wall Revit's own
-geometry of it). The 3D view draws that in place of its layers (`view3d::wall_solids`, each part in its material's colour) while
-the wall is the one it was drawn for: the shape holds a key (`walls::shape_key`, FNV-1a over its type and thickness, its line,
-levels and their elevations, heights, offsets, location line and attachments, and each door and window in it), and once an edit
-changes any of them, the wall is drawn from its layers again, its doors and windows cutting it as ever. Sections and elevations,
+A wall, a floor, a roof, a ceiling, a column or a structural column may carry a **shape another program drew it in**
+(`imported`, `ImportedShape`: triangles in the model's axes, mm, in parts by material, at most `MAX_IMPORTED_PARTS` parts and
+`MAX_IMPORTED_TRIANGLES` triangles; the Revit import gives each its Revit geometry: a wall's corners and lean, a roof's and a
+floor's slopes, a column's section). The 3D view draws that in place of the element's own geometry (`view3d::imported_solids`, each
+part in its material's colour) while the element is the one it was drawn for: the shape holds a key (`imported::key`, FNV-1a over
+the element's JSON without the shape and its parameters' values, its type, what it points at (its levels, what it is attached
+to) and each door and window set in it, with their types), and once an edit changes any of them, the element is drawn from its
+own geometry again. A tag or a dimension on it, or a value of a project parameter, changes nothing. Sections and elevations,
 which cut the 3D scene, draw the shape too, cut in one piece (`view3d::layered_with` gives it no layers); plans and IFC draw the
-wall from its layers always. `Model::check` holds a shape to its caps, its corners finite within `MAX_COORD`, and its
-materials to the library's (a rename carries through, `Model::rename_material_in_families`).
+element from its own geometry always. `Model::check` holds a shape to its caps, its corners finite within `MAX_COORD`, and its
+materials to the library's (a rename carries through, and a material a shape is drawn in is in use).
 A door or a window stands in its wall from its `sill` up its type's height (issue #215): `Model::check` keeps its width within the
 wall's length, its sill at or over the wall's base and under its top all across it (`walls::top_at`, which a roof the wall is
 attached to may raise; within `TOL` of the top is at it), and the openings in one wall apart; its head may rise past the top, as

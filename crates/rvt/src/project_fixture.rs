@@ -902,7 +902,7 @@ fn graphics_classes() -> Vec<u8> {
         class("Trf", None, &[("m_3x3", rows), ("m_or", three)]),
         class("InstInfoBase", None, &[("m_Trf", by("Trf")), ("m_symbolId", by("ElementId")), ("m_GRepId", Ty::plain(4))]),
         class("InstanceInfo", Some("InstInfoBase"), &[]),
-        class("GInstance", Some("GNode"), &[("m_instanceInfo", owned)]),
+        class("GInstance", Some("GNode"), &[("m_instanceInfo", owned), ("m_oEmbeddedSymbolGRep", owned)]),
         class("GFilling", Some("GNode"), &[("m_pattern", owned)]),
         class("FillPatternData", None, &[("m_scale", Ty::plain(7)), ("m_grids", list)]),
         class("FillGrid", None, &[("m_angle", Ty::plain(7))]),
@@ -985,11 +985,14 @@ pub fn ginfo(tag: u32) -> V {
 /// The objects of a tree, by index: their class and their fields' values, bases' first.
 pub type Objects = BTreeMap<u32, (&'static str, Vec<V>)>;
 
-/// A tree's bytes, from its root object (index 2) on, breadth first: each object's owned objects in turn, and its inline ones
-/// right after the last object queued once it is written (the last it owns, else the queue's last, else itself). An inline
-/// object's own inline objects follow the same rule, next where nothing is queued.
+/// An inline object to write: its class, its fields, and the last index named before its pointer.
+type Pending = (&'static str, Vec<V>, Option<u32>);
+
+/// A tree's bytes, from its root object (index 2) on, breadth first: each object's owned objects in turn, and each inline one
+/// right after the last object named when its pointer is written (what its owner owns named before it, else the queue's last,
+/// else itself). An inline object's own inline objects follow the same rule, next where nothing is queued.
 pub fn tree_bytes(objects: &Objects) -> Vec<u8> {
-    fn put(v: &V, out: &mut Vec<u8>, kids: &mut Vec<u32>, inline: &mut Vec<(&'static str, Vec<V>)>) {
+    fn put(v: &V, out: &mut Vec<u8>, kids: &mut Vec<u32>, inline: &mut Vec<Pending>) {
         match v {
             V::Byte(b) => out.push(*b),
             V::U32(x) => out.extend_from_slice(&x.to_le_bytes()),
@@ -1011,26 +1014,30 @@ pub fn tree_bytes(objects: &Objects) -> Vec<u8> {
             V::Inline(class, fields) => {
                 out.extend_from_slice(&u32::MAX.to_le_bytes());
                 out.extend_from_slice(&tag(class).to_le_bytes());
-                inline.push((class, fields.clone()));
+                inline.push((class, fields.clone(), kids.last().copied()));
             }
             V::Weak(i) => out.extend_from_slice(&i.to_le_bytes()),
         }
     }
     let mut out = Vec::new();
     let mut queue = VecDeque::from([2u32]);
-    let mut pending: BTreeMap<u32, Vec<(&'static str, Vec<V>)>> = BTreeMap::new();
+    let mut pending: BTreeMap<u32, Vec<Pending>> = BTreeMap::new();
     while let Some(i) = queue.pop_front() {
         let Some((_, fields)) = objects.get(&i) else { continue };
         let (mut kids, mut inline) = (Vec::new(), Vec::new());
         fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut inline));
-        pending.entry(kids.last().or(queue.back()).copied().unwrap_or(i)).or_default().extend(inline);
+        for p in inline {
+            pending.entry(p.2.or(queue.back().copied()).unwrap_or(i)).or_default().push(p);
+        }
         let mut work: VecDeque<_> = pending.remove(&i).unwrap_or_default().into();
-        while let Some((_, fields)) = work.pop_front() {
+        while let Some((_, fields, _)) = work.pop_front() {
             let mut nested = Vec::new();
             fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut nested));
-            match kids.last().or(queue.back()).copied() {
-                Some(after) => pending.entry(after).or_default().extend(nested),
-                None => work.extend(nested),
+            for p in nested {
+                match p.2.or(queue.back().copied()) {
+                    Some(after) => pending.entry(after).or_default().push(p),
+                    None => work.push_back(p),
+                }
             }
         }
         queue.extend(kids);
@@ -1146,6 +1153,18 @@ pub fn instance_tree(id: u32, symbol: u32, axes: [[f64; 3]; 3], origin: [f64; 3]
     let info = V::Inline("InstanceInfo", vec![V::Seq(vec![rows, p3(origin)]), element_id(symbol.into()), V::U32(0)]);
     let mut objects = Objects::new();
     objects.insert(2, root(id, vec![V::Own(3, "GInstance")], whole, whole));
-    objects.insert(3, ("GInstance", vec![ginfo(0), info]));
+    objects.insert(3, ("GInstance", vec![ginfo(0), info, V::Null]));
+    objects
+}
+
+/// An instance's tree ([`instance_tree`]) whose instance also holds a symbol's graphics of its own (`m_oEmbeddedSymbolGRep`, as a
+/// column's does), a tree that draws nothing, named after its placement: the placement is written before that tree.
+pub fn embedding(mut objects: Objects, whole: [f64; 6]) -> Objects {
+    if let Some((_, fields)) = objects.get_mut(&3)
+        && let Some(slot) = fields.get_mut(2)
+    {
+        *slot = V::Own(4, "GElement");
+    }
+    objects.insert(4, root(0, Vec::new(), whole, whole));
     objects
 }

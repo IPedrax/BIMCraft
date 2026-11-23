@@ -12,10 +12,11 @@
 //! - so many side by side (modifier `0x10` and a count), or a `u32` count and that many (`0x50`, `0x60`);
 //! - an array (13) as its inner type, an object by value (14, modifier 0) as its class's fields;
 //! - an owned object (14, modifier 1) as a `u32` index, 0 for none, and the `u16` tag of its class: it is written in its turn in
-//!   the queue; or, where the index is `0xffffffff`, **inline**, right after the object of the highest index named once its owner
-//!   is written: the last its owner owns, else the last of the queue (an image's info follows the filters queued beside the image),
-//!   else the owner itself. An inline object may own inline objects of its own (a fill's pattern its grids), placed by the same
-//!   rule, next where that object is written already;
+//!   the queue; or, where the index is `0xffffffff`, **inline**, right after the object of the highest index named when its
+//!   pointer is read: what its owner owns named before it (a face's loop, before its surface), else the last of the queue (an
+//!   image's info follows the filters queued beside the image; an instance's placement, named before its symbol's tree, follows
+//!   the queue too), else the owner itself. An inline object may own inline objects of its own (a fill's pattern its grids),
+//!   placed by the same rule, next where that object is written already;
 //! - a weak pointer (14, modifier 3) as a `u32` index alone, the object written elsewhere.
 //!
 //! A read is bounded: the objects, a list's length, how deep objects by value nest and how many values one tree may take
@@ -153,9 +154,10 @@ struct Decoder<'b, 'l, 's> {
     layouts: &'l Layouts<'s>,
     /// The class of each index named so far.
     kinds: BTreeMap<u32, u16>,
-    /// What the object being read owns, in turn and inline.
+    /// What the object being read owns, in turn and inline: each inline object's class, and the last index named before it in
+    /// the object being read.
     children: Vec<u32>,
-    inline: Vec<u16>,
+    inline: Vec<(u16, Option<u32>)>,
 }
 
 impl Decoder<'_, '_, '_> {
@@ -249,7 +251,7 @@ impl Decoder<'_, '_, '_> {
             return Err(format!("an object of class {tag}, which the schema does not have, at {at:#x}"));
         }
         if index == u32::MAX {
-            self.inline.push(tag);
+            self.inline.push((tag, self.children.last().copied()));
             return Ok(Value::Inline(self.inline.len() - 1));
         }
         if self.kinds.insert(index, tag).is_some() {
@@ -323,10 +325,13 @@ pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
         let values = d.object(tag, 0)?;
         let mut kids = std::mem::take(&mut d.children);
         objects.insert(i, Obj { tag, values, inline: Vec::new() });
-        // Its inline objects follow the object of the highest index named so far: its own last, else the queue's last, else itself.
-        let inline = std::mem::take(&mut d.inline);
-        let after = kids.last().or(queue.back()).copied().unwrap_or(i);
-        pending.entry(after).or_default().extend(inline.into_iter().map(|t| ((i, Vec::new()), t)));
+        // Each inline object follows the object of the highest index named when its pointer is read: what it owns named before
+        // it, else the queue's last, else itself. (A face names its loop and then its surface, which follows the loop; an
+        // instance names its placement and then its symbol's tree, so its placement comes before that tree.)
+        for (t, named) in std::mem::take(&mut d.inline) {
+            let after = named.or(queue.back().copied()).unwrap_or(i);
+            pending.entry(after).or_default().push(((i, Vec::new()), t));
+        }
         let mut work: VecDeque<(Owner, u16)> = pending.remove(&i).unwrap_or_default().into();
         while let Some(((owner, path), t)) = work.pop_front() {
             if path.len() >= MAX_DEPTH {
@@ -335,21 +340,25 @@ pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
             d.children.clear();
             d.inline.clear();
             let values = d.object(t, 0)?;
+            let before = kids.last().copied();
             kids.append(&mut d.children);
             let mut o = objects.get_mut(&owner).ok_or("an inline object's owner is not in the tree")?;
             for k in &path {
                 o = o.inline.get_mut(*k).ok_or("an inline object's owner is not in the tree")?;
             }
             o.inline.push(Obj { tag: t, values, inline: Vec::new() });
-            // What it owns inline follows the object of the highest index named so far; where that one is read, next.
+            // What it owns inline follows the object of the highest index named when its pointer is read; where that one is read
+            // already, next.
             let nested = std::mem::take(&mut d.inline);
             if !nested.is_empty() {
                 let mut down = path;
                 down.push(o.inline.len() - 1);
-                let items = nested.into_iter().map(|t| ((owner, down.clone()), t));
-                match kids.last().or(queue.back()).copied() {
-                    Some(after) => pending.entry(after).or_default().extend(items),
-                    None => work.extend(items),
+                for (t, named) in nested {
+                    let item = ((owner, down.clone()), t);
+                    match named.or(before).or(queue.back().copied()) {
+                        Some(after) => pending.entry(after).or_default().push(item),
+                        None => work.push_back(item),
+                    }
                 }
             }
         }

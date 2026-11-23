@@ -39,57 +39,6 @@ pub(crate) fn wanted(f: &Facts, out: &mut BTreeSet<u32>) {
     out.extend(f.types.get(&OST_WALLS).into_iter().flatten());
 }
 
-/// The walls whose graphics are read, for the shape each is drawn in: all but those a curtain wall's parts name as their host.
-pub(crate) fn drawn(f: &Facts) -> Vec<u32> {
-    let hosts = curtain_hosts(f);
-    f.of_category(OST_WALLS).map(|r| r.id).filter(|id| !hosts.contains(id)).collect()
-}
-
-/// Each wall made gets the shape its own graphics draw ([`bimcraft_core::model::WallShape`]), its triangles by the material each
-/// is drawn in: its corners as its joins cut them, its lean, the outline it was edited to and the holes its doors and windows cut,
-/// as Revit has them. The model draws it so in 3D while the wall is as it came in (its key is set once the model is checked,
-/// `import::finish`), and from its layers once it is edited. A wall whose graphics are not read, or not the box its record gives,
-/// keeps its layers, with a note why.
-pub(crate) fn shaped(cx: &mut Import, f: &Facts, g: &Gathered) {
-    use bimcraft_core::model::{MAX_SHAPE_PARTS, MAX_SHAPE_TRIANGLES, ShapePart, WallShape};
-    for r in f.of_category(OST_WALLS) {
-        let Some(id) = cx.walls.get(&r.id).copied() else { continue };
-        if cx.model.wall(id).is_none_or(|w| w.curtain.is_some()) {
-            continue;
-        }
-        let shape = (|| -> Result<WallShape, String> {
-            let drawn = crate::generic::drawn_where_it_stands(g, r)?;
-            if drawn.triangles.len() > MAX_SHAPE_TRIANGLES {
-                return Err(format!(
-                    "it draws {} triangles, past the {MAX_SHAPE_TRIANGLES} a wall's shape may hold",
-                    drawn.triangles.len()
-                ));
-            }
-            let mut by: BTreeMap<&str, Vec<[[f64; 3]; 3]>> = BTreeMap::new();
-            for (k, t) in drawn.triangles.iter().enumerate() {
-                let name = drawn.materials.get(k).copied().flatten().and_then(|m| g.materials.get(&m)).map_or("", String::as_str);
-                by.entry(name).or_default().push(*t);
-            }
-            if by.len() > MAX_SHAPE_PARTS {
-                return Err(format!("it is drawn in {} materials, past the {MAX_SHAPE_PARTS} a wall's shape may hold", by.len()));
-            }
-            let parts = by.into_iter().map(|(m, tris)| ShapePart { material: m.to_string(), tris: std::sync::Arc::new(tris) }).collect();
-            Ok(WallShape { key: 0, parts })
-        })();
-        match shape {
-            Ok(shape) => {
-                if let Some(Element::Wall(w)) = cx.model.elements.get_mut(id) {
-                    w.shape = Some(shape);
-                }
-                cx.note("wall", r.id, "it is drawn in 3D as its own graphics draw it, until it is edited");
-            }
-            // A wall the file holds no graphics of says nothing of its shape: its layers are all there is.
-            Err(why) if why == crate::generic::NO_GRAPHICS => {}
-            Err(why) => cx.note("wall", r.id, &format!("it is drawn in 3D from its layers: {why}")),
-        }
-    }
-}
-
 /// A wall's location line or arc.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Curve {
@@ -413,7 +362,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 slant: 0.0,
                 profile: Vec::new(),
                 framing: None,
-                shape: None,
+                imported: None,
             };
             let note = if tid == 0 {
                 "no_type".to_string()

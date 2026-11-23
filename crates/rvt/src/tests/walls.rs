@@ -723,9 +723,9 @@ fn a_wall_is_drawn_in_3d_as_its_graphics_draw_it_until_it_is_edited() {
     let i = import(&p);
     assert!(i.model.check().is_ok(), "{:?}", i.model.check());
     let [(id, w)] = walls(&i)[..] else { panic!("{:?}", i.skipped) };
-    let shape = w.shape.as_ref().unwrap_or_else(|| panic!("{:?}", i.skipped));
+    let shape = w.imported.as_ref().unwrap_or_else(|| panic!("{:?}", i.skipped));
     assert_eq!(shape.parts.iter().map(|p| p.tris.len()).sum::<usize>(), 12);
-    assert_eq!(bimcraft_core::walls::shape_key(&i.model, id), Some(shape.key), "drawn for the wall as it came in");
+    assert_eq!(bimcraft_core::imported::key(&i.model, id), Some(shape.key), "drawn for the wall as it came in");
     assert!(
         i.skipped.iter().any(|s| s.contains("1 wall: it is drawn in 3D as its own graphics draw it") && s.contains("100")),
         "{:?}",
@@ -743,5 +743,5 @@ fn a_wall_is_drawn_in_3d_as_its_graphics_draw_it_until_it_is_edited() {
     s.reset(i.model, None);
     s.execute("move", &serde_json::json!({"ids": [id], "by": [0, 1000]})).unwrap_or_else(|e| panic!("{e}"));
     let Some(Element::Wall(w)) = s.model.elements.get(id) else { panic!("no wall") };
-    assert_ne!(bimcraft_core::walls::shape_key(&s.model, id), w.shape.as_ref().map(|x| x.key));
+    assert_ne!(bimcraft_core::imported::key(&s.model, id), w.imported.as_ref().map(|x| x.key));
 }

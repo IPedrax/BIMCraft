@@ -346,6 +346,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 }
                 for p in &s.pieces {
                     let floor = Floor {
+                        imported: None,
                         type_name: s.type_name.clone(),
                         level: s.level,
                         boundary: ring(&p.outer),
@@ -391,6 +392,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 }
                 for p in &s.pieces {
                     let ceiling = Ceiling {
+                        imported: None,
                         type_name: s.type_name.clone(),
                         level: s.level,
                         boundary: ring(&p.outer),

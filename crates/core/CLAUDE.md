@@ -112,7 +112,9 @@ The core caches what it works out from the model and keeps the whole computation
 A new element kind or field reaches it in three places: its rules in `Model::check_element` (or the project rules round it), its
 references in `visit_refs!` (the lookup follows them both ways), and anything a cache reads that the element's own change doesn't
 say (a type, a level, a neighbour) as a dependency of that cache. A new part of an element (`HasPart`) goes in `library.rs`'s
-`element_parts` too, so a command's library is synced by what it changed.
+`element_parts` too, so a command's library is synced by what it changed. An imported shape (`imported.rs`) is drawn only while
+its key holds, which reads the element's type, what it points at and the doors and windows in it: a cache of 3D geometry
+rebuilds an element when any of those changes, as it does for its layers and voids.
 
 ## Shared geometry definitions
 
