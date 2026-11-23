@@ -26,6 +26,7 @@ fn materials_from_a_family_says_it_changes_the_project_and_its_change_is_the_pro
     assert!(h.query_by_label_contains("changes the project's materials now").is_some(), "the dialog says so");
     let before = h.state().session.model.materials.len();
     press(&mut h, "New");
+    press(&mut h, "Custom");
     assert_eq!(h.state().session.model.materials.len(), before + 1, "a material of the project's, now");
     press(&mut h, "Close");
     // The family's Undo leaves it: it is no step of the family's.
