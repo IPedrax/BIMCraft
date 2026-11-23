@@ -468,6 +468,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "extrusion.from", msg!("Extrusion Start"), LengthIf),
             ("Constraints", "extrusion.to", msg!("Extrusion End"), LengthIf),
             ("Dimensions", "slope", "Slope", Angle),
+            ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Dimensions", "ridge", msg!("Max Ridge Height"), LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "plan_area_m2", msg!("Plan Area"), AreaShown),
