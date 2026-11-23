@@ -187,6 +187,91 @@ fn the_same_sum_takes_another_standard_s_numbers() {
     assert!(near(t.lighting_va, 200.0) && near(t.tug_va, 1200.0), "{t:?}");
 }
 
+#[test]
+fn english_names_and_a_service_bathroom_keep_their_kinds() {
+    // What the names said before they were data: a service area's bathroom is a service area, as its name says first.
+    for (name, kind) in [
+        ("Banheiro de serviço", Kind::Service),
+        ("Bathroom", Kind::Bath),
+        ("Toilet", Kind::Bath),
+        ("Restroom", Kind::Bath),
+        ("Bath 2", Kind::Bath),
+        ("BWC", Kind::Bath),
+        ("Bathtub storage", Kind::Other),
+        ("Kitchen", Kind::Kitchen),
+        ("Pantry", Kind::Kitchen),
+        ("Laundry", Kind::Service),
+        ("Utility room", Kind::Service),
+        ("Balcony", Kind::Veranda),
+        ("Sacada", Kind::Veranda),
+        ("Living room", Kind::Dry),
+        ("Bedroom 1", Kind::Dry),
+        ("Quarto", Kind::Dry),
+    ] {
+        assert_eq!(kind_of(name), kind, "{name}");
+    }
+}
+
+#[test]
+fn italian_rooms_are_known_by_their_names() {
+    for (name, kind) in [
+        ("Bagno", Kind::Bath),
+        ("Bagno di servizio", Kind::Bath),
+        ("Antibagno", Kind::Bath),
+        ("Servizi igienici", Kind::Bath),
+        ("WC", Kind::Bath),
+        ("Cucina", Kind::Kitchen),
+        ("Cucinotto", Kind::Kitchen),
+        ("Angolo cottura", Kind::Kitchen),
+        ("Lavanderia", Kind::Service),
+        ("Stireria", Kind::Service),
+        ("Balcone", Kind::Veranda),
+        ("Terrazzo", Kind::Veranda),
+        ("Loggia", Kind::Veranda),
+        ("Soggiorno", Kind::Dry),
+        ("Salotto", Kind::Dry),
+        ("Camera da letto", Kind::Dry),
+        ("Camera 2", Kind::Dry),
+        ("Studio", Kind::Dry),
+        ("Sala da pranzo", Kind::Dry),
+        ("Disimpegno", Kind::Other),
+        ("Ripostiglio", Kind::Other),
+        ("Corridoio", Kind::Other),
+    ] {
+        assert_eq!(kind_of(name), kind, "{name}");
+    }
+    assert_eq!(counter_outlets(Kind::Kitchen, "Cucina"), 2);
+    assert_eq!(counter_outlets(Kind::Kitchen, "Angolo cottura"), 2);
+    assert_eq!(counter_outlets(Kind::Kitchen, "Pantry"), 0, "a pantry is a kitchen without the sink's counter");
+}
+
+#[test]
+fn the_names_are_data_and_a_set_without_them_takes_bimcraft_s() {
+    for set in rule_sets() {
+        for r in set.rooms.iter().filter(|r| r.kind != "other") {
+            assert!(!r.names.is_empty(), "{} {}: no names say the kind", set.standard, r.kind);
+        }
+        assert!(set.check().is_ok(), "{}: {:?}", set.standard, set.check());
+    }
+    // A project's rows changed before the names were data hold none: they keep finding the kinds by BIMCraft's.
+    let old: RuleSet = serde_json::from_str(
+        r#"{"standard": "Old", "source": "a test",
+            "lighting": {"va": 100, "up_to_m2": 6, "step_m2": 4, "step_va": 60, "source": "t"},
+            "alternative": {"above": 6, "first": 2, "source": "t"},
+            "rooms": [{"kind": "bath", "va": 100, "source": "t"}, {"kind": "kitchen", "counter": 2, "va": 100, "source": "t"}]}"#,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(old.kind_of("Bagno"), Kind::Bath);
+    assert_eq!(old.counter_outlets(Kind::Kitchen, "Cucina"), 2);
+    // Too many names, or one too long, is refused: a project's code is hostile input.
+    let mut many: RuleSet = serde_json::from_str(r#"{"standard": "X", "source": "t", "lighting": {"va": 1, "up_to_m2": 1, "step_m2": 1, "step_va": 1, "source": "t"}, "alternative": {"above": 1, "first": 1, "source": "t"}, "rooms": [{"kind": "bath", "va": 1, "source": "t"}]}"#)
+        .unwrap_or_else(|e| panic!("{e}"));
+    many.rooms[0].names = vec!["bagno".into(); 51];
+    assert!(many.check().is_err());
+    many.rooms[0].names = vec!["b".repeat(65)];
+    assert!(many.check().is_err());
+}
+
 mod command {
     use crate::engine::Session;
     use serde_json::{Value, json};
@@ -291,5 +376,51 @@ mod command {
             run(&mut s, "load_points", json!({"standard": "NBR 5410:2004", "rooms": [{"name": "Cozinha", "area": 9, "perimeter": 12000}]}));
         assert_eq!(same, r);
         assert!(s.execute("load_points", &json!({"standard": "NEC 2023", "rooms": []})).is_err());
+    }
+
+    #[test]
+    fn a_project_names_its_rooms_in_its_code_and_hostile_names_are_refused() {
+        use crate::codes::Discipline;
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410"}));
+        let room = json!({"rooms": [{"name": "Tinello", "area": 12, "perimeter": 14000}]});
+        assert_eq!(run(&mut s, "load_points", room.clone())["rooms"][0]["kind"], "other");
+        // The project's own name for a living room, added to the dry rooms' row.
+        let mut rooms = s.model.resolve_code(Discipline::Electrical, "load_points").value["rooms"].clone();
+        for r in rooms.as_array_mut().into_iter().flatten().filter(|r| r["kind"] == "dry") {
+            if let Some(names) = r["names"].as_array_mut() {
+                names.push(json!("tinello"));
+            }
+        }
+        run(&mut s, "building_code", json!({"discipline": "electrical", "rules": {"load_points": {"rooms": rooms.clone()}}}));
+        assert_eq!(run(&mut s, "load_points", room.clone())["rooms"][0]["kind"], "dry");
+        // Fifty-one names in a row is more than a row holds: refused, and the project's code stays as it was.
+        for r in rooms.as_array_mut().into_iter().flatten().filter(|r| r["kind"] == "dry") {
+            r["names"] = json!(vec!["sala"; 51]);
+        }
+        assert!(s.execute("building_code", &json!({"discipline": "electrical", "rules": {"load_points": {"rooms": rooms}}})).is_err());
+        assert_eq!(run(&mut s, "load_points", room)["rooms"][0]["kind"], "dry");
+    }
+
+    #[test]
+    fn a_flat_named_in_italian_gets_its_kinds_and_the_kitchen_its_counter() {
+        let mut s = Session::new();
+        let r = run(
+            &mut s,
+            "load_points",
+            json!({"rooms": [
+                {"name": "Cucina", "area": 9, "perimeter": 12000},
+                {"name": "Bagno", "area": 4, "perimeter": 8000},
+                {"name": "Soggiorno", "area": 20, "perimeter": 18000},
+                {"name": "Camera da letto", "area": 12, "perimeter": 14000},
+                {"name": "Balcone", "area": 3, "perimeter": 8000},
+                {"name": "Lavanderia", "area": 4, "perimeter": 8000},
+                {"name": "Disimpegno", "area": 3, "perimeter": 7000}
+            ]}),
+        );
+        let kinds: Vec<&str> = r["rooms"].as_array().into_iter().flatten().filter_map(|x| x["kind"].as_str()).collect();
+        assert_eq!(kinds, ["kitchen", "bath", "dry", "dry", "veranda", "service", "other"], "{r}");
+        assert_eq!(r["rooms"][0]["counter_outlets"], json!(2), "{r}");
+        assert!(r["rooms"][1]["note"].is_null(), "a bathroom named in Italian is not taken as `other`: {r}");
     }
 }
