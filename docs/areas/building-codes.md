@@ -56,8 +56,9 @@ The rules in force are the layers', the last one winning rule by rule (`codes::r
 3. the project's changes.
 
 An amendment's `amends` names the base, or another amendment chosen: a member of a group of utilities over the group's
-standard, over the national standard. Examples: São Paulo's IT 22 over NBR 5626/8160/10844; a city's code over the IBC; a
-utility's standard (Cemig, Copel, Fecoergs…) over NBR 5410. The amendments go in the order the project gives (the dialog's
+standard, over the national standard. Examples: São Paulo's IT 22 over NBR 5626/8160/10844; Friuli Venezia Giulia's
+LR 44/1985 over Italy's DM 5 July 1975; a city's code over the IBC; a utility's standard (Cemig, Copel, Fecoergs…) over
+NBR 5410. The amendments go in the order the project gives (the dialog's
 list, dragged), the last winning rule by rule.
 
 **A change goes into the amendment edited.** With `amend` (in the dialog, the amendment marked "changes go here", the last

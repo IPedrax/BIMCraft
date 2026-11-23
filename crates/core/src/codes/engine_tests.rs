@@ -520,6 +520,90 @@ fn a_room_is_held_to_the_window_area_its_kind_asks_for() {
     assert_eq!(outside(&mut s, room), ["light_min"]);
 }
 
+/// Italian building code (DM 5/7/1975) and regional amendment for Friuli Venezia Giulia (LR 44/1985 and LR 19/2009):
+/// room heights (2.70 m national, 2.50 m FVG; 1.90 m attic), minimum room areas (14 m² double bedroom,
+/// 9 m² single bedroom) and natural lighting (1/8 national, 1/10 FVG, 1/20 attic).
+#[test]
+fn italian_building_code_checks_room_heights_areas_and_natural_lighting() {
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"set": "it-dm-1975"}));
+    assert_eq!(s.model.codes.architectural.code.as_deref(), Some("it-dm-1975"));
+
+    // 1. Single bedroom (Camera singola): 2.5 x 3.2 m = 8.0 m² (< 9 m²) at height 2.60 m (< 2.70 m) with no window.
+    run(&mut s, "wall", json!({"points": [[0, 0], [2500, 0], [2500, 3200], [0, 3200], [0, 0]]}));
+    let single =
+        run(&mut s, "room", json!({"point": [1000, 1000], "name": "Camera singola", "top_level": null, "limit_offset": 2600.0}))["id"]
+            .as_u64()
+            .unwrap();
+    let findings = outside(&mut s, single);
+    assert_eq!(findings, ["area_min", "light_min", "height_min"]);
+
+    // 2. Bathroom (Bagno): height 2.50 m (> 2.40 m), light_min is 0.0.
+    run(&mut s, "wall", json!({"points": [[3000, 0], [5000, 0], [5000, 2000], [3000, 2000], [3000, 0]]}));
+    let bath = run(&mut s, "room", json!({"point": [4000, 1000], "name": "Bagno", "top_level": null, "limit_offset": 2500.0}))["id"]
+        .as_u64()
+        .unwrap();
+    assert!(outside(&mut s, bath).is_empty(), "a bathroom needs only 2.40 m height and no mandatory window in DM 75");
+
+    // 3. Double bedroom (Camera matrimoniale): 4.0 x 3.6 m = 14.4 m² (> 14 m²), height 2.70 m.
+    // Window needed: 14.4 / 8 = 1.80 m².
+    run(&mut s, "wall", json!({"points": [[6000, 0], [10000, 0], [10000, 3600], [6000, 3600], [6000, 0]]}));
+    let double =
+        run(&mut s, "room", json!({"point": [8000, 1800], "name": "Camera matrimoniale", "top_level": null, "limit_offset": 2700.0}))["id"]
+            .as_u64()
+            .unwrap();
+    assert_eq!(outside(&mut s, double), ["light_min"]);
+
+    // Add a window of 1.4 x 1.4 m = 1.96 m² (> 1.80 m²):
+    run(&mut s, "type", json!({"category": "window", "name": "Finestra 140x140", "width": 1400, "height": 1400, "sill": 1000}));
+    run(&mut s, "window", json!({"at": [8000, 0], "type": "Finestra 140x140"}));
+    assert!(outside(&mut s, double).is_empty(), "with 1/8 window area it passes all checks");
+
+    // 4. Friuli Venezia Giulia amendment (L.R. 44/1985 and L.R. 19/2009):
+    // Habitable height minimum is 2.50 m (art. 2) and natural lighting minimum is 1/10 (art. 7).
+    run(&mut s, "building_code", json!({"set": "it-dm-1975", "amendments": ["it-fvg"]}));
+    assert_eq!(s.model.codes.architectural.code.as_deref(), Some("it-dm-1975"));
+    assert_eq!(s.model.codes.architectural.amendments, ["it-fvg"]);
+
+    // A room 3.0 x 3.2 m = 9.6 m² at height 2.50 m with window 1.0 x 1.0 m = 1.0 m²:
+    // Under DM 75 (national): 2.50 m fails height_min (2.70 m), and 1.0 / 9.6 = 10.4% fails light_min (12.5%).
+    // Under FVG LR 44/85: 2.50 m passes height_min (2.50 m), and 10.4% passes light_min (10.0%)!
+    run(&mut s, "wall", json!({"points": [[12000, 0], [15000, 0], [15000, 3200], [12000, 3200], [12000, 0]]}));
+    let fvg_room =
+        run(&mut s, "room", json!({"point": [13000, 1500], "name": "Camera singola 2", "top_level": null, "limit_offset": 2500.0}))["id"]
+            .as_u64()
+            .unwrap();
+    run(&mut s, "type", json!({"category": "window", "name": "Finestra 100x100", "width": 1000, "height": 1000, "sill": 1000}));
+    run(&mut s, "window", json!({"at": [13500, 0], "type": "Finestra 100x100"}));
+    assert!(outside(&mut s, fvg_room).is_empty(), "under FVG LR 44/85, 2.50 m height and 1/10 window area pass");
+
+    // LR 44/85 art. 6, in a seismic zone: a double bedroom needs 12 m², not 14 m². 3.5 x 3.6 m = 12.6 m² at 2.60 m,
+    // with a window of 1.96 m² (15.6% of the floor).
+    run(&mut s, "wall", json!({"points": [[22000, 0], [25500, 0], [25500, 3600], [22000, 3600], [22000, 0]]}));
+    let fvg_double =
+        run(&mut s, "room", json!({"point": [23500, 1800], "name": "Camera doppia 2", "top_level": null, "limit_offset": 2600.0}))["id"]
+            .as_u64()
+            .unwrap();
+    run(&mut s, "window", json!({"at": [23500, 0], "type": "Finestra 140x140"}));
+    assert!(outside(&mut s, fvg_double).is_empty(), "under FVG LR 44/85 art. 6 a double bedroom of 12.6 m² passes");
+
+    // Switching back to national code reports both height and light outside rules:
+    run(&mut s, "building_code", json!({"set": "it-dm-1975", "amendments": []}));
+    assert_eq!(outside(&mut s, fvg_room), ["light_min", "height_min"]);
+    assert_eq!(outside(&mut s, fvg_double), ["area_min", "height_min"]);
+
+    // 5. Attic recovery under L.R. 19/2009 art. 39:
+    // Average height minimum 1.90 m and natural lighting minimum 1/20 (5%).
+    run(&mut s, "building_code", json!({"set": "it-dm-1975", "amendments": ["it-fvg"]}));
+    run(&mut s, "wall", json!({"points": [[16000, 0], [20000, 0], [20000, 3000], [16000, 3000], [16000, 0]]}));
+    let attic = run(&mut s, "room", json!({"point": [17000, 1500], "name": "Mansarda", "top_level": null, "limit_offset": 2000.0}))["id"]
+        .as_u64()
+        .unwrap();
+    run(&mut s, "type", json!({"category": "window", "name": "Velux 80x80", "width": 800, "height": 800, "sill": 800}));
+    run(&mut s, "window", json!({"at": [17000, 0], "type": "Velux 80x80"}));
+    assert!(outside(&mut s, attic).is_empty(), "attic recovery under FVG LR 19/2009 passes with 2.00 m height and 1/20 light");
+}
+
 /// The electrical commands follow the project's electrical code: NBR 5410's sections, a utility's amendment for a building's
 /// demand and its categories, and what the project or an amendment changed of them.
 #[test]
