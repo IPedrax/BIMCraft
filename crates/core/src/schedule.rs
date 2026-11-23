@@ -203,6 +203,8 @@ const TYPE: Own = ("Type", Kind::Text, From::Key("type"));
 const FAMILY: Own = (msg!("Family"), Kind::Text, From::Key("family"));
 const LEVEL: Own = ("Level", Kind::Text, From::Level);
 const AREA: Own = (msg!("Area"), Kind::Area, From::Key("area_m2"));
+const OPENINGS_AREA: Own = (msg!("Openings Area"), Kind::Area, From::Key("openings_area_m2"));
+const PLAN_AREA: Own = (msg!("Plan Area"), Kind::Area, From::Key("plan_area_m2"));
 const WIDTH: Own = ("Width", Kind::Length, From::Key("width"));
 const HEIGHT: Own = ("Height", Kind::Length, From::Key("height"));
 const LENGTH: Own = ("Length", Kind::Length, From::Key("length"));
@@ -257,6 +259,7 @@ const SHARED: (&str, usize, &[Own]) = (
         ("Length", Kind::Length, From::Shared),
         ("Thickness", Kind::Length, From::Shared),
         (msg!("Area"), Kind::Area, From::Shared),
+        OPENINGS_AREA,
         (msg!("Material"), Kind::Text, From::Material),
         ID,
         MARK,
@@ -312,7 +315,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("wall", 6, &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "wall",
+        6,
+        &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, AREA, OPENINGS_AREA, VOLUME, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     // A curtain wall's parts have no ids of their own: `host` is its wall, what picking a row selects.
     ("curtainpanel", 5, &[TYPE, WIDTH, HEIGHT, AREA, HOST_WALL, THICKNESS, COUNT]),
     ("mullion", 3, &[TYPE, LENGTH, HOST_WALL, COUNT]),
@@ -325,6 +332,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
             LEVEL,
             AREA,
             THICKNESS,
+            PLAN_AREA,
+            OPENINGS_AREA,
             OFFSET,
             COUNT,
             (ui_msg!("Structural"), Kind::YesNo, From::Flag("structural")),
@@ -337,7 +346,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             REBAR_RATIO,
         ],
     ),
-    ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "ceiling",
+        5,
+        &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, OPENINGS_AREA, VOLUME, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     ("toposolid", 5, &[NAME, LEVEL, AREA, VOLUME, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "roof",
@@ -347,7 +360,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             TYPE,
             LEVEL,
             (msg!("Slope"), Kind::Number, From::Key("slope")),
-            (msg!("Plan Area"), Kind::Area, From::Key("area_m2")),
+            PLAN_AREA,
+            AREA,
+            OPENINGS_AREA,
+            VOLUME,
             OFFSET,
             COUNT,
             PHASE_CREATED,
@@ -1139,7 +1155,6 @@ impl Row<'_> {
     /// Field `name`, holding `kind`, as its element's own category has it; else an area worked out from its sizes.
     fn shared(&self, name: &str, kind: Kind) -> Value {
         let cat = self.e.category();
-        let name = if (cat, name) == ("roof", "Area") { "Plan Area" } else { name };
         if own(cat).1.iter().any(|(n, k, _)| *n == name && *k == kind) {
             return self.field_of(cat, name);
         }
