@@ -46,6 +46,7 @@ mod catalogue;
 mod quantities;
 mod rebar_detail;
 mod work_plane;
+mod writer;
 
 type R = Result<Value, String>;
 
@@ -3639,6 +3640,20 @@ other_files(
         "{path:ODS} apply the first sheet of a catalogue_export workbook. Keep GUIDs for existing types and leave them blank for new types. Dimensions in millimetres. One undo step",
         catalogue::catalogue_import,
         Files::Read,
+    ),
+    other_files(
+        "odt_template",
+        "Fill ODT Template",
+        "{template:ODT, path:ODT, fields:{name:string,…}} copy one ODT and replace only existing text:variable-set values. Every named variable must occur exactly once; computed text:formula fields are left untouched. Other XML, styles, images, links and manual text are preserved; the template and project are unchanged. Writes atomically; at most 256 fields, 256 ZIP entries, 32 MiB content.xml and 256 MiB input/output",
+        writer::odt_template,
+        Files::Write,
+    ),
+    other_files(
+        "odt_set",
+        "Copy ODT Document Set",
+        "{templates:[ODT/ODM,…], path:new directory, fields:{name:string,…}} copy up to 32 linked ODT/ODM documents. Rewrites section links to copied members and validates referenced sections. Fills named variables wherever present. Publishes the complete set into a new directory. Up to 256 MiB total input and output",
+        writer::odt_set,
+        Files::Write,
     ),
 ];
 

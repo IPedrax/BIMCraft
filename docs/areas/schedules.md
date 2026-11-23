@@ -71,3 +71,31 @@ This exchange is explicit. The project saves no workbook path and opening it
 never reads or writes a workbook. Use regular .ods files. Both commands are
 refused in read-only sessions and dry runs. The workbook is limited to 32 MiB
 and 20,000 rows, including the headings.
+
+## Fill an ODT template
+
+Use `odt_template {"template":"cover.odt","path":"project-cover.odt","fields":{"ProjectName":"Library"}}`
+from the CLI, a script, or MCP. The command copies a Writer document and replaces
+the contents of named `text:variable-set` elements. Each requested variable must
+occur once. Formula fields keep their formulas. Other document entries, including
+styles and images, are copied. The source and project stay intact.
+
+Use a regular .odt file for the source and a different .odt path for the copy.
+The command validates the fields before replacing the destination atomically.
+It accepts up to 256 fields, 256 archive entries, 32 MiB of content XML, and
+256 MiB per archive. Co-Work guest sessions and dry runs refuse the export.
+
+### Copy a linked Writer document set
+
+Use `odt_set {"templates":["forms/master.odm","forms/cover.odt","info.odt"],"path":"issue","fields":{"ProjectName":"Library"}}`
+to copy a master document and its linked documents into one directory. Supply all
+members explicitly, with unique file names, and choose a new directory whose parent
+already exists. Linked sections must refer to members of the set. A missing relative
+path can be recovered by matching its file name to a member. Section names are checked
+before publication and links in the copies point to the copied files.
+
+Fields are replaced wherever they occur. A field may be absent from individual
+documents, and an empty field map copies the set and updates its links. Existing
+destinations are refused and the source documents stay intact. The set accepts up to
+32 documents, 256 MiB of archives in each direction, and 128 MiB of content XML.
+Co-Work guest sessions and dry runs refuse the export.
