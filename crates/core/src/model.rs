@@ -896,6 +896,22 @@ pub fn volume((corners, faces): &Polyhedron) -> f64 {
     six / 6.0
 }
 
+/// A planar element's areas, mm²: what its surface measures and what its openings take from it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Areas {
+    pub net: f64,
+    pub openings: f64,
+}
+
+/// What a planar element measures, mm² and mm³: its [`Areas`], its plan projection (`plan`, a
+/// floor's or a roof's) and its net volume.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Quantities {
+    pub areas: Areas,
+    pub plan: Option<f64>,
+    pub volume: f64,
+}
+
 /// A shaped floor's top triangulated: the triangles, each corner lifted to its height, and each triangle's plane.
 type ShapeMesh = (crate::triangulation::Triangulation, Vec<[f64; 3]>, Vec<walls::Plane>);
 
@@ -7007,6 +7023,110 @@ impl Model {
                 (ring, under.unwrap_or(p), top)
             })
             .collect()
+    }
+
+    /// What a wall, a floor, a ceiling or a roof measures, worked out from its geometry, mm² and
+    /// mm³: none for anything else, for a wall of no known thickness and for a roof whose faces
+    /// can't be found.
+    pub fn quantities(&self, id: impl Key) -> Option<Quantities> {
+        let id = self.elements.id(id)?;
+        match self.elements.get(id)? {
+            Element::Wall(w) => self.wall_quantities(id, w),
+            Element::Floor(f) => Some(self.floor_quantities(f)),
+            Element::Ceiling(c) => Some(self.ceiling_quantities(c)),
+            Element::Roof(r) => self.roof_quantities(r),
+            _ => None,
+        }
+    }
+
+    /// [`Quantities::areas`].
+    pub fn areas(&self, id: impl Key) -> Option<Areas> {
+        self.quantities(id).map(|q| q.areas)
+    }
+
+    /// [`Quantities::plan`].
+    pub fn plan_area(&self, id: impl Key) -> Option<f64> {
+        self.quantities(id).and_then(|q| q.plan)
+    }
+
+    /// [`Quantities::volume`].
+    pub fn volume(&self, id: impl Key) -> Option<f64> {
+        self.quantities(id).map(|q| q.volume)
+    }
+
+    /// A wall's areas and net volume: its prisms with and without its openings, their volumes over
+    /// its thickness. None where the type is unknown, as no side can be measured from no thickness.
+    fn wall_quantities(&self, id: Id, w: &Wall) -> Option<Quantities> {
+        let thickness = self.thickness(w);
+        if thickness <= 0.0 {
+            return None;
+        }
+        let volume = |openings| walls::prisms(self, id, openings).iter().map(walls::prism_volume).sum::<f64>();
+        let (gross, net) = (volume(false), volume(true));
+        Some(Quantities { areas: Areas { net: net / thickness, openings: ((gross - net) / thickness).max(0.0) }, plan: None, volume: net })
+    }
+
+    /// A floor's net areas and volume: its prisms less its shafts, by its slope, and its plan; its
+    /// openings filled for what they take from it.
+    fn floor_quantities(&self, f: &Floor) -> Quantities {
+        let (mut net, mut plan, mut volume) = (0.0, 0.0, 0.0);
+        for (ring, bottom, top) in self.floor_prisms(f) {
+            let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+            let pieces = self.less_shafts(&bottom.lift(&ring), rise).0;
+            let area: f64 = pieces.iter().map(|p| geom::area(p).abs()).sum();
+            plan += area;
+            net += area * (1.0 + top.g.dot(top.g)).sqrt();
+            volume += pieces
+                .iter()
+                .map(|p| {
+                    let c = geom::centroid(p);
+                    geom::area(p).abs() * (top.at(c) - bottom.at(c))
+                })
+                .sum::<f64>();
+        }
+        let mut whole = f.clone();
+        whole.openings.clear();
+        let gross: f64 =
+            self.floor_prisms(&whole).into_iter().map(|(ring, _, top)| geom::area(&ring).abs() * (1.0 + top.g.dot(top.g)).sqrt()).sum();
+        Quantities { areas: Areas { net, openings: (gross - net).max(0.0) }, plan: Some(plan), volume }
+    }
+
+    /// A ceiling's net area and volume: its slabs less its shafts, its thickness over that.
+    fn ceiling_quantities(&self, c: &Ceiling) -> Quantities {
+        let net: f64 = self
+            .ceiling_slabs(c)
+            .iter()
+            .map(|(face, rise)| self.less_shafts(face, *rise).0.iter().map(|p| geom::area(p).abs()).sum::<f64>())
+            .sum();
+        let gross = geom::area(&c.boundary).abs();
+        let thickness = self.types.ceiling.get(&c.type_name).map_or(0.0, |t| t.thickness);
+        Quantities { areas: Areas { net, openings: (gross - net).max(0.0) }, plan: None, volume: net * thickness }
+    }
+
+    /// A roof's net areas and volume: its prisms less its shafts, by their slopes, and its plan;
+    /// its openings filled for what they take from it. None where its faces can't be found.
+    fn roof_quantities(&self, r: &Roof) -> Option<Quantities> {
+        self.roof_pieces(r).ok()?;
+        let (mut net, mut plan, mut volume) = (0.0, 0.0, 0.0);
+        for (ring, bottom, top) in self.roof_prisms(r) {
+            let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+            let pieces = self.less_shafts(&bottom.lift(&ring), rise).0;
+            let area: f64 = pieces.iter().map(|p| geom::area(p).abs()).sum();
+            plan += area;
+            net += area * (1.0 + top.g.dot(top.g)).sqrt();
+            volume += pieces
+                .iter()
+                .map(|p| {
+                    let c = geom::centroid(p);
+                    geom::area(p).abs() * (top.at(c) - bottom.at(c))
+                })
+                .sum::<f64>();
+        }
+        let mut whole = r.clone();
+        whole.openings.clear();
+        let gross: f64 =
+            self.roof_prisms(&whole).into_iter().map(|(ring, _, top)| geom::area(&ring).abs() * (1.0 + top.g.dot(top.g)).sqrt()).sum();
+        Some(Quantities { areas: Areas { net, openings: (gross - net).max(0.0) }, plan: Some(plan), volume })
     }
 
     /// A shaped flat roof's underside, level at its base, when its type has a variable layer, and that layer: the layers
