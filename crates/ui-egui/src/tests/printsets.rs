@@ -38,7 +38,7 @@ fn ctrl_picks_views_in_the_browser_and_its_right_click_makes_them_a_print_set() 
     assert_eq!(h.state().sheet, Sheet::Plan(l[0]), "Ctrl picks, it doesn't open");
     // Properties shows what the two share.
     assert!(h.query_by_label("Floor Plans (2)").is_some(), "the palette names the two");
-    assert!(h.query_by_label("Cut Plane").is_some(), "and their view range");
+    assert!(h.query_by_label("Edit View Range").is_some(), "and their view range");
     // Ctrl again takes one out.
     click_in(&mut h, "Level 2", Modifiers::COMMAND);
     assert_eq!(h.state().browser_picked.len(), 1);

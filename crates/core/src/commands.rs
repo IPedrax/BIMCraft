@@ -2218,7 +2218,11 @@ other_files(
          A filled region's, a floor's or a toposolid's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
-         outline it sets is held to what `floor` says of it",
+         outline it sets is held to what `floor` says of it. A plan's (a level's or a plan view's) `view_range` merges \
+         {top?, cut?, bottom?, depth?: mm, top_from?, bottom_from?, depth_from?: associated|above|below|unlimited|{level: \
+         id|GUID}}: each plane an offset over the level it is measured from (the plan's own, the next up or down, one \
+         named, or no limit); the cut plane is the plan's own level's, and a top of null from its own level is the level above. \
+         The planes must run top ≥ cut plane ≥ bottom ≥ view depth where they are",
         modify,
     ),
     edit(
@@ -2770,6 +2774,17 @@ other_files(
     )
     .menu("Manage > Line Weights"),
     edit(
+        "halftone",
+        ui_msg!("Halftone/Underlay"),
+        &[],
+        "{fade?: 1..100} how far toward the paper halftone draws, percent, as Revit's Halftone/Underlay: what Visibility/Graphics \
+         marks Halftone, a linked model, and what a plan sees between its view range's bottom and its view depth (the \
+         underlay), every line and fill of it lightened, still seen. 50, as a project starts, is halfway; 100 is the paper. \
+         Without `fade`, it says what it is. Says `fade`",
+        halftone,
+    )
+    .menu("Manage > Annotation Settings > Halftone/Underlay"),
+    edit(
         "object_styles",
         ui_msg!("Object Styles"),
         &[],
@@ -3175,7 +3190,7 @@ other_files(
         &[],
         "{name, from?: a level's, section's, elevation's or 3D view's name or id, like?: another template's name, \
          kind?: plan | section | 3d | null, rename?, controls?: [categories, filters, range, \
-         phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
+         phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?, top_from?, bottom_from?, depth_from?}, phase?, phase_filter?, options?, \
          scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
          background_grid?: grid settings as in graphics, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
          views to follow with `graphics {template}`. `kind` is the views it is for (plans, elevations and sections, or 3D \
@@ -3186,7 +3201,8 @@ other_files(
          categories, its filters, a plan's view range, its phase with its phase filter, its design options, its scale (`scale` \
          command), its detail level (`detail`), its visual style (`visual_style`). `hide`, `show`, `categories`, `filters`, \
          `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style`, `background_grid` and `reset` change it as they change a view; \
-         `view_range` merges into its range. Changed, every view following it follows. Gone, they keep their own settings. \
+         `view_range` merges into its range, its planes measured from the level of each plan that follows it (associated, \
+         above, below or unlimited; never a level named, as `modify` may give a plan's). Changed, every view following it follows. Gone, they keep their own settings. \
          `name` alone reads one",
         view_template,
     ),
@@ -6732,7 +6748,11 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             ..Graphics::default()
         };
         t.view_range = match m.elements.get(view) {
-            Some(Element::Level(_) | Element::PlanView(_)) => Some(m.view_range_of(view)),
+            // Measured from the view's own level where it names one: a template serves every storey.
+            Some(Element::Level(_) | Element::PlanView(_)) => {
+                let level = m.plan_level(view).map(|l| m.guid(l)).unwrap_or_default();
+                Some(crate::view_range::relative(m, level, &m.view_range_of(view)))
+            }
             _ => None,
         };
         t.kind = m.elements.get(view).and_then(graphics::ViewKind::of);
@@ -6759,7 +6779,12 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             merge(&mut now, v);
             t.view_range = Some(serde_json::from_value(now).map_err(|e| bad(c, format!("`view_range`: {e}")))?);
         }
-        Some(v) => return Err(bad(c, format!("`view_range` is {{top?, cut?, bottom?, depth?}} in mm, not {v}"))),
+        Some(v) => {
+            return Err(bad(
+                c,
+                format!("`view_range` is {{top?, cut?, bottom?, depth?}} in mm and {{top_from?, bottom_from?, depth_from?}}, not {v}"),
+            ));
+        }
         None => {}
     }
     edit_graphics(c, m, p, &mut t.graphics, true)?;
@@ -22009,6 +22034,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 || e.and_then(crate::underlay::of_element).is_some_and(|u| gone.contains(&u.view))
         })
         .collect();
+    // A plan whose view range is measured from a level that goes is measured from its own level, at the height it was.
+    let rebased = crate::view_range::rebased(&s.model, &gone);
     let m = s.model_mut();
     m.pinned.retain(|g| !gone.contains(g));
     for id in &gone {
@@ -22025,6 +22052,11 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             && slot.as_ref().is_some_and(|u| gone.contains(&u.view))
         {
             *slot = None;
+        }
+    }
+    for (id, r) in rebased {
+        if let Some(slot) = m.elements.get_mut(id).and_then(crate::view_range::of_mut) {
+            *slot = r;
         }
     }
     for (id, d) in kept {
@@ -22162,6 +22194,8 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
         }
     }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
+    // A plan whose view range is measured from a level that goes is measured from its own level, at the height it was.
+    let rebased = crate::view_range::rebased(&s.model, &gone);
     let m = s.model_mut();
     m.pinned.retain(|g| !gone.contains(g));
     // A 3D view whose work plane's level goes sketches on the lowest level again.
@@ -22191,6 +22225,11 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for slot in m.elements.values_mut().filter_map(crate::underlay::slot) {
         if slot.as_ref().is_some_and(|u| gone.contains(&u.view)) {
             *slot = None;
+        }
+    }
+    for (id, r) in rebased {
+        if let Some(slot) = m.elements.get_mut(id).and_then(crate::view_range::of_mut) {
+            *slot = r;
         }
     }
     for (id, d) in kept {
@@ -22492,6 +22531,26 @@ fn units(s: &mut Session, p: &Value) -> R {
         (m.units, m.decimals) = (units, decimals);
     }
     Ok(json!({"length": s.model.units.name(), "decimals": s.model.decimals_shown()}))
+}
+
+fn halftone(s: &mut Session, p: &Value) -> R {
+    let c = "halftone";
+    only(c, p, &["fade"])?;
+    match p.get("fade") {
+        v if absent(v) => {}
+        Some(v) => {
+            let fade = v
+                .as_u64()
+                .filter(|n| (1..=100).contains(n))
+                .ok_or_else(|| bad(c, format!("`fade` is how far toward the paper halftone draws, 1 to 100 percent, not {v}")))?;
+            let fade = u8::try_from(fade).unwrap_or(crate::graphics::HALFTONE);
+            if fade != s.model.halftone {
+                s.model_mut().halftone = fade;
+            }
+        }
+        None => {}
+    }
+    Ok(json!({"fade": s.model.halftone}))
 }
 
 fn room_area(s: &mut Session, p: &Value) -> R {

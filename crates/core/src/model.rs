@@ -299,32 +299,7 @@ impl Level {
     }
 }
 
-/// A plan's view range, as Revit's: mm above its level. Cut by the `cut` plane, seen from it down
-/// to the `bottom` and, beyond, to the view `depth`; above the cut, up to the `top` (the level
-/// above when none) for what overhangs.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct ViewRange {
-    pub top: Option<f64>,
-    pub cut: f64,
-    pub bottom: f64,
-    pub depth: f64,
-}
-
-impl Default for ViewRange {
-    fn default() -> ViewRange {
-        ViewRange { top: None, cut: CUT_HEIGHT, bottom: 0.0, depth: 0.0 }
-    }
-}
-
-/// A plan's view range as heights: its top, cut plane, bottom and view depth.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PlanRange {
-    pub top: f64,
-    pub cut: f64,
-    pub bottom: f64,
-    pub depth: f64,
-}
+pub use crate::view_range::{PlanRange, ViewRange};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -2647,7 +2622,14 @@ macro_rules! visit_refs {
         let f: &mut dyn FnMut(& $($m)? Guid) = $f;
         match $e {
             // A view's graphics, as `views_graphics` gives them.
-            Element::Level(Level { underlay, .. }) | Element::Section(Section { underlay, .. }) | Element::Elevation(Section { underlay, .. }) => {
+            Element::Level(Level { underlay, view_range, .. }) => {
+                if let Some(u) = underlay { f(& $($m)? u.view) }
+                // The levels its view range's planes are measured from.
+                for b in [& $($m)? view_range.top_from, & $($m)? view_range.bottom_from, & $($m)? view_range.depth_from] {
+                    if let crate::view_range::Base::Level(g) = b { f(g) }
+                }
+            }
+            Element::Section(Section { underlay, .. }) | Element::Elevation(Section { underlay, .. }) => {
                 if let Some(u) = underlay { f(& $($m)? u.view) }
             }
             Element::View3D(v) => {
@@ -2667,6 +2649,9 @@ macro_rules! visit_refs {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
                 if let Some(u) = & $($m)? v.underlay { f(& $($m)? u.view) }
+                for b in [& $($m)? v.view_range.top_from, & $($m)? v.view_range.bottom_from, & $($m)? v.view_range.depth_from] {
+                    if let crate::view_range::Base::Level(g) = b { f(g) }
+                }
             }
             Element::Wall(w) => {
                 f(& $($m)? w.level);
@@ -4252,6 +4237,10 @@ pub struct Model {
     /// Where room areas are measured: at the walls' centre lines, or at their finish faces.
     #[serde(default, skip_serializing_if = "RoomArea::is_default")]
     pub room_area: RoomArea,
+    /// How far toward the paper halftone draws what it lightens, percent (1 to 100): Visibility/Graphics' Halftone, a link, and
+    /// what a plan sees between its view range's bottom and its view depth (the underlay). Revit's Halftone/Underlay.
+    #[serde(default = "crate::graphics::default_halftone", skip_serializing_if = "crate::graphics::is_default_halftone")]
+    pub halftone: u8,
     pub next_id: Id,
     pub types: Shared<Types>,
     /// What layers are made of, by name.
@@ -4496,6 +4485,7 @@ impl Model {
             decimals: None,
             language,
             room_area: RoomArea::default(),
+            halftone: crate::graphics::HALFTONE,
             next_id: FIRST_ID,
             types: Types::default().into(),
             materials: BTreeMap::new().into(),
@@ -6112,14 +6102,12 @@ impl Model {
             .unwrap_or(range)
     }
 
-    /// The heights of the view range of plan `key`. A top that isn't set is the level above
-    /// (none above: no limit), and never below the cut plane.
+    /// The heights of the view range of plan `key`, each plane from the level it is measured from ([`ViewRange`]): the top
+    /// never below the cut plane (the level above may be), and unlimited planes infinite.
     pub fn plan_range(&self, key: impl Key) -> PlanRange {
-        let level = self.plan_level(key).unwrap_or_default();
-        let z = self.elevation(level);
-        let r = self.view_range_of(key);
-        let above = || self.level_above(level).map_or(f64::INFINITY, |a| self.elevation(a));
-        PlanRange { top: r.top.map_or_else(above, |t| z + t).max(z + r.cut), cut: z + r.cut, bottom: z + r.bottom, depth: z + r.depth }
+        let level = self.plan_level(key).map(|l| self.guid(l)).unwrap_or_default();
+        let r = self.range_heights(level, &self.view_range_of(key));
+        PlanRange { top: r.top.max(r.cut), ..r }
     }
 
     /// The default 3D view's section box, its min and max corners, if plan `key` follows it (a dependent view as its parent
@@ -8834,6 +8822,9 @@ impl Model {
         if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
             return Err(format!("`pinned` names an element that is gone ({g})"));
         }
+        if !(1..=100).contains(&self.halftone) {
+            return Err(format!("`halftone` is how far toward the paper halftone draws, 1 to 100 percent, not {}", self.halftone));
+        }
         if let Some(d) = self.decimals {
             match self.units.decimals() {
                 Some(r) if r.contains(&d) => {}
@@ -9540,6 +9531,7 @@ impl Model {
                     return Err(format!("{who}: another level is already named `{}`", l.name));
                 }
                 range_ok(&who, &l.view_range)?;
+                self.check_range(&who, id)?;
                 if let Some([a, b]) = l.crop {
                     crop(&who, a, b)?;
                 }
@@ -10154,6 +10146,7 @@ impl Model {
                 }
                 level_ok(v.level)?;
                 range_ok(&who, &v.view_range)?;
+                self.check_range(&who, id)?;
                 if let Some([a, b]) = v.crop {
                     crop(&who, a, b)?;
                 }
@@ -10819,6 +10812,7 @@ impl Model {
             decimals,
             language,
             room_area,
+            halftone,
             next_id: _,
             types,
             materials,
@@ -10879,6 +10873,7 @@ impl Model {
             && *decimals == o.decimals
             && *language == o.language
             && *room_area == o.room_area
+            && *halftone == o.halftone
             && *types == o.types
             && *materials == o.materials
             && *images == o.images
@@ -11027,7 +11022,7 @@ impl<'a> Tally<'a> {
     }
 }
 
-fn coord(what: &str, v: f64) -> Result<(), String> {
+pub(crate) fn coord(what: &str, v: f64) -> Result<(), String> {
     if v.is_finite() && v.abs() <= MAX_COORD { Ok(()) } else { Err(format!("{what}: {v} is not a usable number")) }
 }
 
@@ -11060,22 +11055,9 @@ fn camera_ok(who: &str, cam: &ViewCamera) -> Result<(), String> {
     Ok(())
 }
 
-/// Whether `r` is a view range that makes sense: usable numbers running top ≥ cut plane ≥ bottom ≥
-/// view depth.
+/// Whether `r` is a plan's own view range that makes sense on its own ([`crate::view_range::range_ok`]).
 pub(crate) fn range_ok(who: &str, r: &ViewRange) -> Result<(), String> {
-    for (what, v) in [("cut", r.cut), ("bottom", r.bottom), ("depth", r.depth)].into_iter().chain(r.top.map(|t| ("top", t))) {
-        coord(&format!("{who} view range {what}"), v)?;
-    }
-    if !(r.depth <= r.bottom && r.bottom <= r.cut && r.top.is_none_or(|t| r.cut <= t)) {
-        return Err(format!(
-            "{who}: its plan's view range runs top ≥ cut plane ≥ bottom ≥ view depth, not top {}, cut {}, bottom {}, depth {}",
-            r.top.map_or_else(|| "at the level above".into(), |t| t.to_string()),
-            r.cut,
-            r.bottom,
-            r.depth
-        ));
-    }
-    Ok(())
+    crate::view_range::range_ok(who, r, false)
 }
 
 fn size(what: &str, v: f64) -> Result<(), String> {
