@@ -2260,6 +2260,30 @@ impl BimApp {
         format!("{}: {}", t(kind), self.view_name(sheet))
     }
 
+    /// The project file's name without its extension, as the title bars show it: `House`. A project never saved has none.
+    pub(crate) fn project_file_stem(&self) -> Option<String> {
+        let name = self.session.path.as_deref()?.file_stem()?;
+        Some(name.to_string_lossy().into_owned())
+    }
+
+    /// The whole window, as the system's title bar and the task switcher say it.
+    pub(crate) fn window_title(&self, view: &str) -> String {
+        let file = self.project_file_stem().map(|f| format!("{f} · ")).unwrap_or_default();
+        let star = if self.dirty() { "*" } else { "" };
+        format!("{file}{}{star} · {view} · {}BIMCraft", self.session.model.name, self.cowork_title())
+    }
+
+    /// What the window's own title bar says: the file, the project and the view, or the project and the view when the file's name
+    /// would take the room of either.
+    pub(crate) fn bar_title(&self, view: &str, room: f32, ctx: &Context) -> String {
+        let with_file = match self.project_file_stem() {
+            Some(file) => format!("{file} · {} · {view}", self.session.model.name),
+            None => return format!("{} · {view}", self.session.model.name),
+        };
+        let width = ctx.fonts_mut(|f| f.layout_no_wrap(with_file.clone(), FontId::proportional(12.5), Color32::WHITE)).size().x;
+        if width <= room { with_file } else { format!("{} · {view}", self.session.model.name) }
+    }
+
     /// The whole window.
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
@@ -2313,9 +2337,7 @@ impl BimApp {
         let view = self.view_title(self.sheet);
         let title = match self.family_title() {
             Some(family) => format!("{family} · BIMCraft"),
-            None => {
-                format!("{}{} · {view} · {}BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }, self.cowork_title())
-            }
+            None => self.window_title(&view),
         };
         if title != self.title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
@@ -4750,7 +4772,7 @@ impl BimApp {
         let right = at.left() - gap;
         let left = row.right() + gap;
         let mut title = egui::text::LayoutJob::simple_singleline(
-            self.family_title().unwrap_or_else(|| format!("{} · {view}", self.session.model.name)),
+            self.family_title().unwrap_or_else(|| self.bar_title(view, (right - left).max(0.0), ui.ctx())),
             FontId::proportional(12.5),
             pal().app_bar_muted,
         );
