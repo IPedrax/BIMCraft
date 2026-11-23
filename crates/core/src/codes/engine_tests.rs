@@ -1458,3 +1458,84 @@ fn taking_away_a_setting_an_element_names_never_hands_it_another_layer_s_rules()
         assert_eq!(s.model.distribution_systems.get("Shared").cloned(), system, "{target}: the board's system as it was");
     }
 }
+
+#[test]
+fn a_broken_rule_is_refused_on_the_layer_it_is_given_even_under_another_that_hides_it() {
+    // A door's clear width below zero, given in the lower amendment while the upper one gives its own: hidden in force, it
+    // would answer the day the upper one goes. Refused on its layer, with nothing changed, as alone; a good one is taken.
+    for upper in [false, true] {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"create": "Lower", "amendments": ["Lower"]}));
+        run(&mut s, "building_code", json!({"create": "Upper", "amendments": ["Lower", "Upper"]}));
+        if upper {
+            run(&mut s, "building_code", json!({"amend": "Upper", "rules": {"doors": {"clear_width_min": 900}}}));
+        }
+        let codes = s.model.codes.clone();
+        let r = s.execute("building_code", &json!({"amend": "Lower", "rules": {"doors": {"clear_width_min": -5}}}));
+        assert!(r.is_err(), "hidden by the upper one {upper}: a broken rule was taken");
+        assert_eq!(s.model.codes, codes, "hidden by the upper one {upper}: refused, nothing changed");
+        run(&mut s, "building_code", json!({"amend": "Lower", "rules": {"doors": {"clear_width_min": 850}}}));
+    }
+}
+
+#[test]
+fn a_broken_rule_is_refused_on_its_layer_as_the_layers_stand_and_a_split_or_empty_ask_is_judged_whole() {
+    // The layers as they stand, in the order the project chose (`Child` under `Parent`, though made over it): a broken rule
+    // in `Child`, hidden by `Parent`'s over it, is refused; and `Child`'s rules are under `Target` when it stands under it.
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"create": "Parent", "amendments": ["Parent"]}));
+    run(&mut s, "building_code", json!({"create": "Child", "over": "Parent", "amendments": ["Child", "Parent"]}));
+    run(&mut s, "building_code", json!({"amend": "Parent", "rules": {"doors": {"clear_width_min": 900}}}));
+    let codes = s.model.codes.clone();
+    let r = s.execute("building_code", &json!({"amend": "Child", "rules": {"doors": {"clear_width_min": -5}}}));
+    assert!(r.is_err(), "over its parent, chosen before it: a broken rule was taken");
+    assert_eq!(s.model.codes, codes, "refused, nothing changed");
+    // Under `Target` as they stand, `Child`'s rules are under it though what `Child` was made over stands above.
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"create": "Parent", "amendments": ["Parent"]}));
+    run(&mut s, "building_code", json!({"create": "Child", "over": "Parent", "amendments": ["Child", "Parent"]}));
+    run(&mut s, "building_code", json!({"create": "Target", "amendments": ["Child", "Target", "Parent"]}));
+    run(&mut s, "building_code", json!({"amend": "Child", "rules": {"stairs": {"riser_max": 300}}}));
+    run(&mut s, "building_code", json!({"amend": "Target", "rules": {"stairs": {"riser_min": 250}}}));
+    // One ask in two parts (`rules.stairs` and `stairs`) is judged as it ends: 200 to 250 is a riser's range.
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"create": "Lower", "amendments": ["Lower"]}));
+    run(&mut s, "building_code", json!({"amend": "Lower", "rules": {"stairs": {"riser_max": 180}}}));
+    run(&mut s, "building_code", json!({"amend": "Lower", "rules": {"stairs": {"riser_min": 200}}, "stairs": {"riser_max": 250}}));
+    // A section asked with no rule changes nothing: taken, even over a broken rule an older file holds.
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"create": "Lower", "amendments": ["Lower"]}));
+    run(&mut s, "building_code", json!({"create": "Upper", "amendments": ["Lower", "Upper"]}));
+    run(&mut s, "building_code", json!({"amend": "Upper", "rules": {"doors": {"clear_width_min": 900}}}));
+    let mut codes = (*s.model.codes).clone();
+    let lower = codes.own.iter_mut().find(|c| c.code == "Lower").unwrap();
+    lower.sections.insert("doors".into(), json!({"clear_width_min": -5}));
+    s.model_mut().codes = crate::shared::Shared::new(codes);
+    run(&mut s, "building_code", json!({"amend": "Lower", "rules": {"doors": {}}}));
+}
+
+#[test]
+fn a_method_s_last_rule_taken_away_is_not_checked_as_an_ordinary_section() {
+    // A utility's method whole with its last rule taken away is no ordinary section: what is under it (here a broken
+    // method an older file holds, hidden by another utility's on top) is not checked in its place.
+    use crate::shared::Shared;
+    let e = Discipline::Electrical;
+    let mut s = Session::new();
+    let p = json!({"discipline": "electrical", "set": "nbr-5410", "create": "Middle", "amendments": ["cemig", "Middle", "fecoergs"]});
+    run(&mut s, "building_code", p);
+    let mut codes = (*s.model.codes).clone();
+    let mut lower = codes.find(e, "cemig").unwrap().clone();
+    lower.based_on = "cemig".into();
+    lower.sections.get_mut("building_demand").unwrap()["min_dwellings"] = json!("broken");
+    let middle = codes.own.iter_mut().find(|c| c.code == "Middle").unwrap();
+    middle.based_on = "cemig".into();
+    middle.sections.insert("building_demand".into(), json!({"min_dwellings": 3}));
+    codes.own.push(lower);
+    codes.check().unwrap();
+    s.model_mut().codes = Shared::new(codes);
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "amend": "Middle", "rules": {"building_demand": {"min_dwellings": null}}}),
+    );
+}
