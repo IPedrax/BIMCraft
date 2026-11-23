@@ -2843,12 +2843,8 @@ fn wall_mm_per_pixel(
     along: f64,
     up: f64,
 ) -> f64 {
-    let axis = bimcraft_core::walls::Axis::of(w);
-    let (plane, base) = (bimcraft_core::curtain::grid_plane(m, w), m.own_base(w));
-    let point = |a: f64| {
-        let q = axis.at(a, plane);
-        [q.0, q.1, base + up]
-    };
+    let f = bimcraft_core::curtain::surface(m, w);
+    let point = |a: f64| f.at(a, up, 0.0);
     let (x0, y0, _) = cam.project(point(along));
     let (x1, y1, _) = cam.project(point(along + 100.0));
     let pixels = (x1 - x0).hypot(y1 - y0);

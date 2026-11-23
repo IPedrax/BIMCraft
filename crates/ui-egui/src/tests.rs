@@ -62,6 +62,14 @@ fn harness(script: &str, step: f32, profile: crate::style::Profile) -> Harness<'
     h
 }
 
+/// A tool of the Modify Wall panel: from its list where a narrow ribbon has handed it over.
+fn wall_tool(h: &mut Harness<BimApp>, label: &str) {
+    if h.query_by_label(label).is_none() {
+        press(h, "Modify Wall ▾");
+    }
+    press(h, label);
+}
+
 fn press(h: &mut Harness<BimApp>, label: &str) {
     h.get_by_label(label).click();
     h.run();
@@ -3708,8 +3716,9 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     h.run();
     press(&mut h, "Finish Face: Interior");
     assert_eq!((field(&h, wall, "location"), field(&h, wall, "start")), (json!("interior-finish"), json!([0.0, -100.0])));
-    // Attach Top/Base, then the roof, by its edge seen overhead: the wall's top follows it.
-    press(&mut h, "Attach Top/Base");
+    // Attach Top/Base, then the roof, by its edge seen overhead: the wall's top follows it. Beside the wall's Mode panel a 1280
+    // ribbon lists it in the Modify Wall panel.
+    wall_tool(&mut h, "Attach Top/Base");
     let roof = ids(&h, "roof")[0];
     click(&mut h, P2(4000.0, -600.0));
     assert_eq!(field(&h, wall, "attach_top"), json!(roof));
@@ -3719,7 +3728,7 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     // Flipped from the same tab, it runs the other way; detached, its top is its own again.
     press(&mut h, "Flip");
     assert_eq!(walls(&h)[0], (P2(8000.0, -100.0), P2(0.0, -100.0)));
-    press(&mut h, "Detach Top/Base");
+    wall_tool(&mut h, "Detach Top/Base");
     assert_eq!(field(&h, wall, "attach_top"), Value::Null);
 }
 
@@ -4419,8 +4428,9 @@ fn the_materials_window_edits_the_projects_library() {
     press(&mut h, "Materials");
     // A new one, picked: its cut pattern, then its name.
     press(&mut h, "New");
+    press(&mut h, "Custom");
     assert!(h.state().session.model.materials.contains_key("Material 1"));
-    h.get_by_role_and_label(Role::ComboBox, "Cut Pattern").click();
+    h.get_by_role_and_label(Role::ComboBox, "Cut Foreground Pattern").click();
     h.run();
     press(&mut h, "Diagonal");
     assert_eq!(h.state().session.model.materials["Material 1"].cut, Pattern::Diagonal);
@@ -4438,7 +4448,7 @@ fn the_materials_window_edits_the_projects_library() {
     press(&mut h, "Delete");
     assert!(!h.state().session.model.materials.contains_key("Oak"));
     press(&mut h, "Close");
-    assert!(h.query_by_label("Cut Pattern").is_none());
+    assert!(h.query_by_label("Cut Foreground Pattern").is_none());
 }
 
 #[test]
@@ -6037,12 +6047,12 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
 #[test]
 fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list_their_tools() {
     let mut h = app(BOX);
-    // Narrow enough that Manage folds its last panels: at 1020 Settings, handing its last tools over, makes room enough for
+    // Narrow enough that Manage folds its last panels: at 970 Settings, handing its last tools over, makes room enough for
     // Design Options to stay whole.
-    h.set_size(vec2(990.0, 800.0));
+    h.set_size(vec2(945.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
-    // Set, not pressed: at 990 the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
+    // Set, not pressed: this narrow, the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
     // end), so a click on it lands outside the strip and does nothing, upstream too.
     h.state_mut().tab = Tab::Manage;
     h.run();
@@ -6679,7 +6689,7 @@ fn the_materials_window_gives_a_material_a_texture_and_keeps_it_in_the_favorites
     key(&mut h, Key::Enter);
     assert!(h.state().status.error && texture(&h) == Some(t));
     // Kept in the Favorites, once, whatever it is now.
-    press(&mut h, "Save to Favorites");
+    pick(&mut h, Role::CheckBox, "Favorite Brick");
     let kept = bimcraft_core::favorites::Favorites::read(&file).unwrap();
     assert_eq!(kept.materials["Brick"].material.texture.as_ref().map(|t| t.angle), Some(45.0));
     // And, from the Favorites window, into the project again, under another name, since it has that one.
@@ -6874,6 +6884,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 
 mod adaptive_modelling;
 mod align;
+mod asset_manager;
 mod assistant;
 mod autosave;
 mod browser;
@@ -6893,6 +6904,7 @@ mod dimensions;
 mod dims3d;
 mod display;
 mod dock;
+mod dock_policy;
 mod draw;
 mod electrical;
 mod export;
@@ -6901,6 +6913,9 @@ mod file_extensions;
 mod fills;
 mod filter;
 mod fonts;
+mod framing;
+mod framing_floors;
+mod framing_roofs;
 mod gpu;
 mod graphics;
 mod groups;
@@ -6913,6 +6928,8 @@ mod lines;
 mod lineweights;
 mod links;
 mod look;
+mod manage_links;
+mod materials;
 mod mep;
 mod minimap;
 mod notes;
@@ -6938,6 +6955,7 @@ mod reinforce;
 mod revit;
 mod ribbon_fit;
 mod rooms;
+mod scale;
 mod section_box;
 mod shape3d;
 mod sheets;
@@ -6962,6 +6980,7 @@ mod typeprops;
 mod underlay;
 mod vertical_tools;
 mod view_controls;
+mod wall_shapes;
 mod window;
 mod work_plane_based;
 mod working3d;

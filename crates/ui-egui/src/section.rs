@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::render::{self, Rgb, View};
 use bimcraft_core::view3d::{Image, MAX_SIDE};
 use egui::{Color32, ColorImage, Context, Rect, Sense, TextureHandle, TextureOptions, Ui, pos2};
@@ -18,7 +18,7 @@ use crate::orbit::rgb;
 use crate::section_worker::{Frame, Renderer, Request};
 use crate::style::canvas_pal;
 use crate::view_worker::Latest;
-use crate::{BimApp, Status, Tool};
+use crate::{BimApp, Sheet, Status, Tool};
 
 mod tools;
 
@@ -255,6 +255,7 @@ impl BimApp {
         // Where the pointer is on the section's drawing, for the others in a Co-Work session.
         self.cowork_seen.pointer = local.map(|q| (id, view.mm(q)));
         let crop = self.crop_grips(ui, &response, rect, &view, id);
+        let callout = self.callout_grips(ui, &response, rect, &view, id);
         let level_ends = self
             .cut
             .shown
@@ -490,6 +491,7 @@ impl BimApp {
             return;
         }
         p.extend(crop);
+        p.extend(callout);
         // A drag draws a selection box: it takes what the drawing over the picture has in it, and
         // what the picture shows.
         let held = self.cut.image.take();
@@ -503,11 +505,23 @@ impl BimApp {
             found.dedup();
             found
         };
-        let boxed = self.drag_box(ui, &response, rect, inside);
+        // Edit Profile sketched here: its lines on the wall's face, a drag from a picked line's end holding its grip, not a box.
+        let profile = self
+            .sketch_face_in(Sheet::Section(id))
+            .zip(render::section_camera(&model, id, view))
+            .map(|(surface, (cam, _))| crate::sketch3d::Plane { cam, rect, ppp: 1.0, surface });
+        let gripped = self.sketch3d_grab(ui, &response, profile);
+        let boxed = if gripped { Vec::new() } else { self.drag_box(ui, &response, rect, inside) };
         self.cut.image = held;
         p.extend(boxed);
         p.extend(datum);
         let clicked = self.clicked_at(&response).filter(|_| !picking).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
+        if let Some(plane) = profile {
+            self.sketch3d(ui, &response, &p, plane, clicked.map(|q| rect.min + egui::vec2(q.0, q.1)), None);
+            self.context_menu(&response);
+            self.nav_bar(ui, rect, id);
+            return;
+        }
         // Along the line and up, to the nearest 10 mm.
         let grid = self.background_grid();
         let snapping = self.grid_snapping;
@@ -525,6 +539,13 @@ impl BimApp {
             }
             P2((p.0 / 10.0).round() * 10.0, (p.1 / 10.0).round() * 10.0)
         };
+        // A double click on a detail's callout opens the detail.
+        if response.double_clicked()
+            && let Some(id) = hovered.filter(|id| matches!(model.elements.get(*id), Some(Element::DetailView(_))))
+        {
+            self.open_sheet(if model.plan_level(id).is_some() { Sheet::Plan(id) } else { Sheet::Section(id) });
+            return;
+        }
         // A double click on a note writes in it.
         if response.double_clicked()
             && let Some(note) = hovered.filter(|h| crate::notes::is_note(&model, *h))

@@ -2,7 +2,7 @@
 //! the way a user drives them: menus, drags and clicks.
 
 use super::*;
-use crate::dock::{Arrange, Docking, Edge, Palette, Side, Target};
+use crate::dock::{Arrange, Docking, Edge, Palette, Policy, Side, Target};
 use egui::{Rect, Vec2};
 use egui_kittest::kittest::NodeT;
 
@@ -330,9 +330,9 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
     let mut d = Docking::default();
     d.put(Palette::Browser, Target::With(Palette::Properties));
     d.put(Palette::Properties, Target::Float(pos2(40.0, 50.0)));
-    assert_eq!(Docking::from_json(&d.to_json()), d);
+    assert_eq!(Docking::from_json(&d.to_json(&Palette::known()), Policy::Live, &Palette::known()), d);
     d.take(Palette::Properties);
-    let back = Docking::from_json(&d.to_json());
+    let back = Docking::from_json(&d.to_json(&Palette::known()), Policy::Live, &Palette::known());
     assert_eq!(back, d);
     assert!(!back.shown(Palette::Properties), "closed stays closed");
     // A palette named twice, one it doesn't know, numbers out of range, an empty stack.
@@ -341,7 +341,7 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
         "right": "nonsense",
         "floats": [{"tabs": ["Project Browser"], "at": [1e300, -1e300], "size": [0, 1e9]}, {"tabs": ["Properties"], "at": [0, 0], "size": [100, 100]}],
     });
-    let d = Docking::from_json(&hostile);
+    let d = Docking::from_json(&hostile, Policy::Live, &Palette::known());
     assert_eq!(d.left.len(), 2, "and the Tools palette, which the file doesn't name, first");
     assert_eq!(d.left[0].tabs, [Palette::Tools]);
     assert_eq!((d.left[1].tabs.as_slice(), d.left[1].active), ([Palette::Properties].as_slice(), 0));
@@ -349,9 +349,9 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
     assert!(f.at.x <= 20_000.0 && f.at.y >= -20_000.0 && f.size.x >= 120.0 && f.size.y <= 4000.0, "{f:?}");
     assert_eq!(d.floats.len(), 1, "Properties is placed once");
     // A palette it neither places nor closes, as one added since would be, docks on the left; nonsense is the default.
-    let d = Docking::from_json(&json!({"left": [{"tabs": ["Project Browser"]}]}));
+    let d = Docking::from_json(&json!({"left": [{"tabs": ["Project Browser"]}]}), Policy::Live, &Palette::known());
     assert_eq!(d.docked(Palette::Properties), Some(Side::Left));
-    assert_eq!(Docking::from_json(&json!([1, 2])), Docking::default());
+    assert_eq!(Docking::from_json(&json!([1, 2]), Policy::Live, &Palette::known()), Docking::default());
 }
 
 #[test]
@@ -767,4 +767,18 @@ fn the_bottom_left_corner_belongs_to_the_bottom_zone() {
     let views = h.state().views_rect;
     drag_view(&mut h, Sheet::View3D, pos2(views.left() + 8.0, views.bottom() - 2.0 * 36.0));
     assert_eq!(h.state().floating.iter().find(|f| f.sheet == Sheet::View3D).unwrap().edge, Some(Edge::Left));
+}
+
+#[test]
+fn resetting_the_palette_layout_brings_panels_and_tools_back() {
+    let mut h = bimcraft(BOX);
+    h.state_mut().docking.put(Palette::Tools, Target::Side(Side::Right));
+    h.state_mut().tools_hidden.insert("Door".to_string());
+    h.state_mut().panels_hidden.insert("tab:View/Phasing".to_string());
+    h.run();
+    press(&mut h, "Palettes");
+    press(&mut h, "Reset Palette Layout");
+    assert_eq!(*docking(&h), Docking::default(), "the standard layout of the profile");
+    assert!(h.state().tools_hidden.is_empty(), "every tool is shown again");
+    assert!(h.state().panels_hidden.is_empty(), "every panel is shown again");
 }

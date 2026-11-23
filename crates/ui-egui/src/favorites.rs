@@ -136,7 +136,7 @@ impl BimApp {
                                 ui.vertical(|ui| {
                                     ui.label(RichText::new(name).strong());
                                     let what =
-                                        e.material.texture.as_ref().map_or(t("No texture"), |x| t(crate::properties::texture_name(x.kind)));
+                                        e.material.texture.as_ref().map_or(t("No texture"), |x| t(crate::materials::texture_name(x.kind)));
                                     ui.label(RichText::new(what).color(pal().muted));
                                 });
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

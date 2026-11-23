@@ -22,13 +22,19 @@ and whose height holds it, so an outlet on a wall's face is in the room on that 
 `room_name`; a component outside every room, or over or under it, has none.
 A multi-category schedule (`of: "multicategory"`, `schedule::MULTI`, as Revit's Multi-Category Schedule) has a row for each
 element of the categories it lists (`Schedule::categories`; none, every built one, `schedule::built`: not rooms, levels,
-masses and sheets) and the fields they share (`SHARED`): Category (the element's, as elements name theirs), Family, Type, Level, Count,
+masses, mass floors, framing members and sheets) and the fields they share (`SHARED`): Category (the element's, as elements name theirs), Family, Type, Level, Count,
 Width, Height, Length, Thickness, Area and Openings Area, each its own category's field of that name where it has one
 holding the same and empty where not; a door's or a window's area is width by height. A wall's, floor's, ceiling's and
 roof's Area is the net surface `Model::quantities` works out (a wall's one face; a slab's or roof's surface by its slope),
 not a gross area; a roof's plan is its own `Plan Area`, and a floor's too. And Material, its type's structure layer's (or
 its thickest's), a run's type's or a family's first material parameter's. Its filters, sorting, grouping, totals and
 calculated fields are any schedule's; only it lists categories.
+Two categories have rows that are no elements, made in `schedule::sources`: `massfloor`, a mass at each level it crosses
+([masses](massing.md)), and `framingmember` (`schedule {category: framingmembers}`, Framing Members), a row for each member of
+each framed wall, floor and roof, worked out as it is read and pointing at its host: Host, Host Type, Framing Type, Role, Section (one ply as
+sawn, `38 x 89`; plies before it, `2 x 38 x 184`), Length (the cut length to the mm), Stock Length (0 where it is longer than
+every stock length of its framing type), Level, Key and Count. Grouped by Role, Section and Length with Count, it is the cut list
+([structure and MEP](structure-and-mep.md#wood-framing)).
 A table goes to a file as CSV (`schedule::to_csv`, text a spreadsheet would read as a formula guarded with `'`) or, for a path
 ending `.xlsx`, as a workbook of one sheet (`schedule::to_xlsx` over `xlsx.rs`, which writes the parts and the zip by hand on
 `flate2`): headings in bold, numbers as numbers so they sum, text as inline strings, which a spreadsheet never takes for a formula.

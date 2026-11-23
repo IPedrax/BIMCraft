@@ -549,6 +549,23 @@ impl Curve {
         }
     }
 
+    /// `k` times its size about `about`, which stays: its points from there, a circle's radius and an ellipse's radii `k`
+    /// times as long; arcs turn as far, and a spline's ends leave the same way. `k` is over 0 (`scale.rs` checks it).
+    pub fn scaled(&self, about: P2, k: f64) -> Curve {
+        let f = |p: P2| about + (p - about) * k;
+        match self {
+            Curve::Poly { points, arcs, closed } => {
+                Curve::Poly { points: points.iter().map(|p| f(*p)).collect(), arcs: arcs.clone(), closed: *closed }
+            }
+            Curve::Circle { centre, radius } => Curve::Circle { centre: f(*centre), radius: radius * k },
+            Curve::Ellipse { centre, radii, angle, span } => {
+                Curve::Ellipse { centre: f(*centre), radii: [radii[0] * k, radii[1] * k], angle: *angle, span: *span }
+            }
+            Curve::Spline { control, knots } => Curve::Spline { control: control.iter().map(|p| f(*p)).collect(), knots: knots.clone() },
+            Curve::Fit { points, tangents } => Curve::Fit { points: points.iter().map(|p| f(*p)).collect(), tangents: *tangents },
+        }
+    }
+
     /// Each point it holds moved by `f`, a move, a turn or a mirror: a circle's centre, an ellipse's centre and axes, a
     /// spline's points and the ways its ends leave; a mirror turns arcs the other way.
     pub fn map(&self, f: impl Fn(P2) -> P2) -> Curve {

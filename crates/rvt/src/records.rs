@@ -118,6 +118,8 @@ pub(crate) struct Tags {
     pub group: Option<u16>,
     /// `Toposolid` and `SiteSurface`: terrain, a surface whose box is no stand-in for it.
     pub terrain: [Option<u16>; 2],
+    /// `CurtainGridLine`: a curtain wall's grid line, which is no body (its mullions and panels are elements of their own).
+    pub grid_line: Option<u16>,
 }
 
 impl Tags {
@@ -141,6 +143,7 @@ impl Tags {
             roof: schema.tag("Roof"),
             group: schema.tag("ElementGroup"),
             terrain: [schema.tag("Toposolid"), schema.tag("SiteSurface")],
+            grid_line: schema.tag("CurtainGridLine"),
         })
     }
 

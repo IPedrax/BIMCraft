@@ -122,6 +122,8 @@ impl BimApp {
             Some(Element::Viewport(v)) => match model.elements.get(v.view) {
                 Some(Element::Level(_) | Element::PlanView(_)) => model.elements.id(v.view).map(Sheet::Plan),
                 Some(Element::Section(_) | Element::Elevation(_)) => model.elements.id(v.view).map(Sheet::Section),
+                Some(Element::DetailView(_)) if model.plan_level(v.view).is_some() => model.elements.id(v.view).map(Sheet::Plan),
+                Some(Element::DetailView(_)) => model.elements.id(v.view).map(Sheet::Section),
                 Some(Element::View3D(_)) => Some(Sheet::View3D),
                 Some(Element::PanelSchedule(_) | Element::RebarDetail(_)) => model.elements.id(v.view).map(Sheet::Table),
                 Some(Element::Schedule(sc)) => match bimcraft_core::schedule::builtin(Some(&sc.name), None) {

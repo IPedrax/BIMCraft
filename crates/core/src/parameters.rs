@@ -97,7 +97,7 @@ pub struct DictionaryRef {
 }
 
 /// The categories whose elements have no type: a type parameter can't be for them.
-pub const TYPELESS: [&str; 5] = ["room", "stair", "ramp", "mass", "project"];
+pub const TYPELESS: [&str; 6] = ["room", "stair", "ramp", "mass", "project", "material"];
 
 /// The category of project parameters a family's elements are.
 pub fn family_category(c: Category) -> &'static str {
@@ -275,8 +275,9 @@ pub fn kind_word(k: ParameterKind) -> &'static str {
 }
 
 /// Categories that are ours under another program's name, Revit's above all.
-const NAMED_CATEGORIES: [(&str, &str); 23] = [
+const NAMED_CATEGORIES: [(&str, &str); 24] = [
     ("projectinformation", "project"),
+    ("materials", "material"),
     ("walls", "wall"),
     ("floors", "floor"),
     ("ceilings", "ceiling"),
@@ -668,7 +669,9 @@ fn join<S: std::fmt::Display>(items: &[S]) -> String {
 /// Whether an element of its categories holds a value of project parameter `name`.
 fn has_values(m: &Model, name: &str) -> bool {
     let Some(p) = m.parameters.get(name) else { return false };
-    !p.type_values.is_empty() || m.elements.values().any(|e| holds_value(m, e, name) && p.categories.iter().any(|c| c == e.category()))
+    !p.type_values.is_empty()
+        || m.elements.values().any(|e| holds_value(m, e, name) && p.categories.iter().any(|c| c == e.category()))
+        || m.materials.values().any(|x| x.parameters.contains_key(name))
 }
 
 /// Whether `e` holds a value of `name` that's the project parameter's, not its family's parameter of that name.
@@ -1210,6 +1213,11 @@ pub(crate) fn merge(s: &mut Session, p: &Value) -> R {
             differ += 1;
         }
     }
+    differ += model
+        .materials
+        .values()
+        .filter(|x| matches!((x.parameters.get(&from), x.parameters.get(&into)), (Some(a), Some(b)) if a != b))
+        .count();
     if differ > 0 && !overwrite {
         return Err(bad(
             c,
@@ -1244,6 +1252,14 @@ pub(crate) fn merge(s: &mut Session, p: &Value) -> R {
         {
             if overwrite || !ps.contains_key(&into) {
                 ps.insert(into.clone(), v);
+            }
+            moved += 1;
+        }
+    }
+    for x in m.materials.values_mut() {
+        if let Some(v) = x.parameters.remove(&from) {
+            if overwrite || !x.parameters.contains_key(&into) {
+                x.parameters.insert(into.clone(), v);
             }
             moved += 1;
         }
