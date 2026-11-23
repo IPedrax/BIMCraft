@@ -6779,6 +6779,7 @@ mod groups;
 mod guides;
 mod inspector;
 mod korean;
+mod labels;
 mod light_canvas;
 mod lines;
 mod lineweights;

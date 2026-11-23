@@ -7,6 +7,7 @@ use std::path::Path;
 
 use bimcraft_core::geom::P2;
 use bimcraft_core::snap::Kind as Snap;
+use bimcraft_i18n::msg;
 use egui::{Align, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea, TextEdit, vec2};
 
 use crate::graphics;
@@ -30,12 +31,12 @@ pub const ACTIONS: &[&str] = &[
     "Roof",
     "Roof by Extrusion",
     "Ceiling",
-    "Shaft Opening",
+    msg!("Shaft Opening"),
     "Stair",
     "Ramp",
     "Railing",
     "Room",
-    "Room Separator",
+    msg!("Room Separator"),
     "Column",
     "Structural Column",
     "Beam",
