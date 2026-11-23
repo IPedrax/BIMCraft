@@ -2328,7 +2328,7 @@ msgid "Building Codes…"
 msgstr "Normative…"
 
 #: crates/core/src/codes.rs:348
-#: crates/core/src/commands.rs:3781
+#: crates/core/src/commands.rs:3798
 msgid "Building Demand"
 msgstr "Fabbisogno dell'edificio"
 
@@ -2879,7 +2879,7 @@ msgstr "Spunta tutte le famiglie"
 msgid "Check All Parameters"
 msgstr "Spunta tutti i parametri"
 
-#: crates/core/src/commands.rs:3692
+#: crates/core/src/commands.rs:3709
 msgid "Check Bathroom Volumes"
 msgstr "Verifica le zone dei bagni"
 
@@ -2891,7 +2891,7 @@ msgstr "Verifica le normative"
 msgid "Check Classification"
 msgstr "Verifica la classificazione"
 
-#: crates/core/src/commands.rs:3917
+#: crates/core/src/commands.rs:3934
 msgid "Check Measured Carrier Fill"
 msgstr ""
 
@@ -2904,7 +2904,7 @@ msgstr "Deseleziona tutto"
 msgid "Check Override Formatting in the Options Bar to make a part bold, italic or underlined."
 msgstr "Spunta Sostituisci formattazione nella Barra delle opzioni per rendere una parte in grassetto, corsivo o sottolineata."
 
-#: crates/core/src/commands.rs:3672
+#: crates/core/src/commands.rs:3689
 msgid "Check Residual-Current Protection"
 msgstr "Verifica la protezione differenziale"
 
@@ -2912,7 +2912,7 @@ msgstr "Verifica la protezione differenziale"
 msgid "Check Stairs"
 msgstr "Verifica le scale"
 
-#: crates/core/src/commands.rs:3716
+#: crates/core/src/commands.rs:3733
 msgid "Check Surge Protection"
 msgstr "Verifica la protezione dalle sovratensioni"
 
@@ -2979,7 +2979,7 @@ msgstr "Verificato"
 msgid "Checking for updates…"
 msgstr "Controllo aggiornamenti…"
 
-#: crates/core/src/commands.rs:5317
+#: crates/core/src/commands.rs:5334
 msgid "Checking the model"
 msgstr "Verifica del modello"
 
@@ -3016,7 +3016,7 @@ msgstr "Lunghezza della corda"
 msgid "Circle: click its centre, then a point on it (or only its centre, with Radius)"
 msgstr "Cerchio: clicca il centro, poi un punto sulla circonferenza (o solo il centro, con Raggio)"
 
-#: crates/core/src/commands.rs:3545
+#: crates/core/src/commands.rs:3562
 msgid "Circuit"
 msgstr "Circuito"
 
@@ -4216,7 +4216,7 @@ msgid "Conduit (CN): click its start and its end; a chain of clicks makes a cond
 msgstr "Cavidotto (CN): clicca l'inizio e la fine; una serie di clic crea un cavidotto per ogni tratto"
 
 #: crates/core/src/codes.rs:404
-#: crates/core/src/commands.rs:3576
+#: crates/core/src/commands.rs:3593
 msgid "Conduit Fill"
 msgstr "Riempimento dei cavidotti"
 
@@ -4543,7 +4543,7 @@ msgstr "Copia ID"
 msgid "Copy IFC GlobalIds"
 msgstr "Copia IFC GlobalId"
 
-#: crates/core/src/commands.rs:3945
+#: crates/core/src/commands.rs:3962
 msgid "Copy ODT Document Set"
 msgstr ""
 
@@ -5426,7 +5426,7 @@ msgstr "Coefficiente di contemporaneità"
 msgid "Demand Factors"
 msgstr "Coefficienti di contemporaneità"
 
-#: crates/core/src/commands.rs:3738
+#: crates/core/src/commands.rs:3755
 msgid "Demand and Service Category"
 msgstr "Fabbisogno e categoria di fornitura"
 
@@ -5446,7 +5446,7 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr "Demolizioni"
 
-#: crates/core/src/commands.rs:16478
+#: crates/core/src/commands.rs:16565
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -5494,7 +5494,7 @@ msgstr "Condizioni di progetto"
 msgid "Design Option"
 msgstr "Opzione di progettazione"
 
-#: crates/core/src/commands.rs:3518
+#: crates/core/src/commands.rs:3535
 #: crates/ui-egui/src/lib.rs:5985
 #: crates/ui-egui/src/phasing.rs:318
 #: crates/ui-egui/src/templates.rs:697
@@ -5523,7 +5523,7 @@ msgstr "Scollega sommità/base"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr "Scollega sommità/base: sommità e basi di muri e pilastri tornano indipendenti"
 
-#: crates/core/src/commands.rs:16268
+#: crates/core/src/commands.rs:16355
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -6581,7 +6581,7 @@ msgstr "Impostazioni elettriche"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Impostazioni elettriche: le tensioni, i sistemi di distribuzione e i tipi di conduttore a cui fanno riferimento circuiti e quadri; sezioni in mm²"
 
-#: crates/core/src/commands.rs:3902
+#: crates/core/src/commands.rs:3919
 msgid "Elements"
 msgstr "Elementi"
 
@@ -6918,7 +6918,7 @@ msgstr "Esporta motivi di retino"
 msgid "Export Formats"
 msgstr "Formati di esportazione"
 
-#: crates/core/src/commands.rs:3923
+#: crates/core/src/commands.rs:3940
 msgid "Export ODS Catalogue"
 msgstr ""
 
@@ -7231,7 +7231,7 @@ msgstr ""
 msgid "Fill"
 msgstr ""
 
-#: crates/core/src/commands.rs:3938
+#: crates/core/src/commands.rs:3955
 msgid "Fill ODT Template"
 msgstr ""
 
@@ -7304,7 +7304,7 @@ msgstr "Raccordo ad arco: scegli due linee, poi clicca per dimensionare l'arco (
 msgid "Fills"
 msgstr "Campiture"
 
-#: crates/core/src/commands.rs:3892
+#: crates/core/src/commands.rs:3909
 #: crates/ui-egui/src/editor/document.rs:2155
 #: crates/ui-egui/src/editor/selection.rs:197
 #: crates/ui-egui/src/editor/selection.rs:342
@@ -8618,7 +8618,7 @@ msgstr "ID"
 msgid "ID {}"
 msgstr "ID {}"
 
-#: crates/core/src/commands.rs:3875
+#: crates/core/src/commands.rs:3892
 #: crates/ui-egui/src/editor/selection.rs:270
 #: crates/ui-egui/src/editor/selection.rs:360
 #: crates/ui-egui/src/inquiry.rs:160
@@ -8774,7 +8774,7 @@ msgstr ""
 msgid "Import Mesh"
 msgstr "Importa mesh"
 
-#: crates/core/src/commands.rs:3930
+#: crates/core/src/commands.rs:3947
 msgid "Import ODS Catalogue"
 msgstr ""
 
@@ -9682,7 +9682,7 @@ msgstr "Abaco piani"
 msgid "Level:"
 msgstr "Piano:"
 
-#: crates/core/src/commands.rs:3853
+#: crates/core/src/commands.rs:3870
 msgid "Library"
 msgstr "Libreria"
 
@@ -10556,7 +10556,7 @@ msgstr "Angolo massimo"
 msgid "Maximum Riser Height"
 msgstr "Altezza massima alzata"
 
-#: crates/core/src/commands.rs:3534
+#: crates/core/src/commands.rs:3551
 #: crates/ui-egui/src/editor/document.rs:854
 #: crates/ui-egui/src/editor/document.rs:858
 #: crates/ui-egui/src/editor/document.rs:862
@@ -12954,7 +12954,7 @@ msgstr "Fase di creazione"
 msgid "Phase Demolished"
 msgstr "Fase di demolizione"
 
-#: crates/core/src/commands.rs:3506
+#: crates/core/src/commands.rs:3523
 #: crates/ui-egui/src/phasing.rs:438
 #: crates/ui-egui/src/templates.rs:702
 msgid "Phase Filter"
@@ -13424,7 +13424,7 @@ msgstr "Raccordo tubazione"
 msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
 msgstr "Raccordo tubazione (PF): una curva o un raccordo a T, dove clicchi all'altezza di una tubazione; Spazio lo ruota"
 
-#: crates/core/src/commands.rs:3630
+#: crates/core/src/commands.rs:3647
 msgid "Pipe Network"
 msgstr "Rete di tubazioni"
 
@@ -14218,7 +14218,7 @@ msgid "Properties over the Project Browser on the left, every panel and tool sho
 msgstr ""
 
 #: crates/core/src/commands.rs:846
-#: crates/core/src/commands.rs:11100
+#: crates/core/src/commands.rs:11187
 msgid "Property Line"
 msgstr "Confine di proprietà"
 
@@ -14441,7 +14441,7 @@ msgstr "Leggi un cartiglio disegnato al vero (in mm sulla carta) nello spazio mo
 msgid "Reading elements"
 msgstr "Lettura degli elementi"
 
-#: crates/core/src/commands.rs:5274
+#: crates/core/src/commands.rs:5291
 msgid "Reading the file"
 msgstr "Lettura del file"
 
@@ -14954,6 +14954,7 @@ msgstr "Rinomina…"
 msgid "Render"
 msgstr "Genera immagine"
 
+#: crates/core/src/commands.rs:3506
 #: crates/ui-egui/src/phasing.rs:189
 msgid "Renovation"
 msgstr "Ristrutturazione"
@@ -15163,7 +15164,7 @@ msgstr "Ripristina predefiniti NBR"
 msgid "Reset to Standard View"
 msgstr ""
 
-#: crates/core/src/commands.rs:3648
+#: crates/core/src/commands.rs:3665
 msgid "Residential Load Points"
 msgstr "Punti di utilizzo residenziali"
 
@@ -16149,7 +16150,7 @@ msgstr "Seleziona"
 msgid "Select All"
 msgstr "Seleziona tutto"
 
-#: crates/core/src/commands.rs:3883
+#: crates/core/src/commands.rs:3900
 #: crates/ui-egui/src/browser.rs:746
 #: crates/ui-egui/src/context.rs:26
 #: crates/ui-egui/src/context.rs:107
@@ -16196,7 +16197,7 @@ msgstr "Seleziona una linea del profilo per modificare le coordinate dei suoi es
 msgid "Select an element first to match its properties"
 msgstr "Seleziona prima un elemento di cui copiare le proprietà"
 
-#: crates/core/src/commands.rs:3865
+#: crates/core/src/commands.rs:3882
 #: crates/ui-egui/src/editor/document.rs:1722
 #: crates/ui-egui/src/editor/selection.rs:226
 #: crates/ui-egui/src/editor/selection.rs:354
@@ -16764,27 +16765,27 @@ msgstr "Sito e clima"
 msgid "Size"
 msgstr "Dimensione"
 
-#: crates/core/src/commands.rs:3807
+#: crates/core/src/commands.rs:3824
 msgid "Size Cold Water Pipes"
 msgstr "Dimensiona le tubazioni dell'acqua fredda"
 
-#: crates/core/src/commands.rs:3614
+#: crates/core/src/commands.rs:3631
 msgid "Size Hydrants"
 msgstr "Dimensiona gli idranti"
 
-#: crates/core/src/commands.rs:3822
+#: crates/core/src/commands.rs:3839
 msgid "Size Water Reservation"
 msgstr "Dimensiona la riserva idrica"
 
-#: crates/core/src/commands.rs:3590
+#: crates/core/src/commands.rs:3607
 msgid "Size a Sanitary Drain"
 msgstr "Dimensiona uno scarico"
 
-#: crates/core/src/commands.rs:3605
+#: crates/core/src/commands.rs:3622
 msgid "Size a Sanitary Vent"
 msgstr "Dimensiona una ventilazione di scarico"
 
-#: crates/core/src/commands.rs:3839
+#: crates/core/src/commands.rs:3856
 msgid "Size a Storm Drain"
 msgstr "Dimensiona uno scarico delle acque meteoriche"
 
@@ -19369,7 +19370,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr "Topologia: {} ({} triangoli)"
 
 #: crates/core/src/commands.rs:858
-#: crates/core/src/commands.rs:11142
+#: crates/core/src/commands.rs:11229
 msgid "Toposolid"
 msgstr "Terreno"
 
@@ -19920,11 +19921,11 @@ msgstr "Sblocca"
 msgid "Unlock alignment"
 msgstr "Sblocca allineamento"
 
-#: crates/core/src/commands.rs:16826
+#: crates/core/src/commands.rs:16913
 msgid "Unnamed"
 msgstr "Senza nome"
 
-#: crates/core/src/commands.rs:5291
+#: crates/core/src/commands.rs:5308
 msgid "Unpacking the project"
 msgstr "Estrazione del progetto"
 

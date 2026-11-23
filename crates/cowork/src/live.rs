@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use bimcraft_core::cowork::{self, Delta, Place, Presence};
-use bimcraft_core::engine::Session;
+use bimcraft_core::engine::{MadeIn, Session};
 use bimcraft_core::memory::Budget;
 use bimcraft_core::model::{Id, Model};
 use serde_json::{Value, json};
@@ -462,7 +462,7 @@ impl Hosting {
     /// model again for a guest that lost step.
     fn answer(&mut self, session: &mut Session, peer: u32, msg: &Value, said: &mut Vec<Happened>) {
         let Some(name) = self.people.get(&peer).map(|o| o.name.clone()) else { return };
-        let made_in = (text(&msg["phase"]), text(&msg["option"]));
+        let made_in = MadeIn { phase: text(&msg["phase"]), option: text(&msg["option"]), demolish: text(&msg["demolish"]) };
         let result = match msg["op"].as_str() {
             Some("execute") => match (msg["command"].as_str().filter(|c| c.len() <= MAX_LABEL), params(&msg["params"])) {
                 (Some(command), Some(params)) => cowork::run_for_guest(session, &name, command, &params, made_in, self.edit),
@@ -750,7 +750,7 @@ impl Joined {
                 None => Err(why),
             },
             Place::Host => {
-                let msg = json!({"op": "execute", "command": command, "params": params, "phase": session.phase, "option": session.option});
+                let msg = json!({"op": "execute", "command": command, "params": params, "phase": session.phase, "option": session.option, "demolish": session.demolish});
                 let answer = self.ask(session, msg);
                 follow_group_edit(session, command, params, answer.is_ok());
                 answer
@@ -768,7 +768,7 @@ impl Joined {
             return session.transaction(label, |s| commands.iter().map(|(c, p)| s.execute(c, p)).collect());
         }
         let list: Vec<Value> = commands.iter().map(|(c, p)| json!([c, p])).collect();
-        let msg = json!({"op": "batch", "label": label, "commands": list, "phase": session.phase, "option": session.option});
+        let msg = json!({"op": "batch", "label": label, "commands": list, "phase": session.phase, "option": session.option, "demolish": session.demolish});
         Ok(self.ask(session, msg)?.as_array().cloned().unwrap_or_default())
     }
 
@@ -785,13 +785,13 @@ impl Joined {
         }
         let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let msg = json!({"op": "import", "command": command, "params": params, "name": name,
-            "bytes": cowork::base64(&bytes), "phase": session.phase, "option": session.option});
+            "bytes": cowork::base64(&bytes), "phase": session.phase, "option": session.option, "demolish": session.demolish});
         self.ask(session, msg)
     }
 
     /// A script (Manage > Run Script) run on the host's model as one undo step of this guest's, once its dry run passes there.
     pub fn script(&mut self, session: &mut Session, text: &str) -> Result<Vec<Value>, String> {
-        let msg = json!({"op": "script", "text": text, "phase": session.phase, "option": session.option});
+        let msg = json!({"op": "script", "text": text, "phase": session.phase, "option": session.option, "demolish": session.demolish});
         Ok(self.ask(session, msg)?.as_array().cloned().unwrap_or_default())
     }
 
