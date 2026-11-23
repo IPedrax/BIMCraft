@@ -1517,7 +1517,9 @@ fn panels_and_mullions_are_rows_under_walls_that_a_view_hides() {
     let sub = crate::graphics::sub("mullion").unwrap();
     assert_eq!(sub.parent, "wall");
     assert_eq!(crate::graphics::sub("curtainpanel").unwrap().parent, "wall");
-    assert!(crate::graphics::subcategories("wall").count() == 2);
+    // Framing (a wall framed by rules, #467) is a subcategory of walls too: these two are among them.
+    let subs: Vec<&str> = crate::graphics::subcategories("wall").map(|s| s.key).collect();
+    assert!(subs.contains(&"curtainpanel") && subs.contains(&"mullion"), "{subs:?}");
     let mut s = session();
     let level = s.model.levels()[0].0;
     run(&mut s, "graphics", json!({"view": level, "categories": {"mullion": {"hidden": true}}}));
