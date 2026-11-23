@@ -76,16 +76,21 @@ fn the_planes_keep_their_order_wherever_they_are_measured_from() {
     let basement = id(&run(&mut s, "level", json!({"elevation": -3000})));
     // The bottom can't be lower than the view depth.
     let e = fails(&mut s, "modify", json!({"id": L2, "view_range": {"bottom": 0, "bottom_from": {"level": basement}}}));
-    assert!(e.contains("bottom") && e.contains("view depth"), "{e}");
+    assert!(e.contains("view depth (3000 mm, its own level +0) is above its bottom (-3000 mm, `Level 3` +0)"), "{e}");
+    assert!(e.ends_with("the bottom can't be lower than the view depth"), "{e}");
     // The cut plane can't be higher than the top.
     let e = fails(&mut s, "modify", json!({"id": L1, "view_range": {"top": 0, "top_from": {"level": basement}}}));
-    assert!(e.contains("top") && e.contains("cut plane"), "{e}");
-    fails(&mut s, "modify", json!({"id": L1, "view_range": {"top": 1000}}));
+    assert!(e.contains("cut plane (1200 mm, its own level +1200) is above its top (-3000 mm, `Level 3` +0)"), "{e}");
+    assert!(e.ends_with("the cut plane can't be higher than the top"), "{e}");
+    let e = fails(&mut s, "modify", json!({"id": L1, "view_range": {"top": 1000}}));
+    assert!(e.ends_with("the cut plane can't be higher than the top"), "{e}");
     // The bottom can't be higher than the cut plane.
     let e = fails(&mut s, "modify", json!({"id": L1, "view_range": {"bottom": 1500}}));
-    assert!(e.contains("view range"), "{e}");
+    assert!(e.contains("bottom (+1500 over the plan's level) is above its cut plane (+1200 over the plan's level)"), "{e}");
+    assert!(e.ends_with("the bottom can't be higher than the cut plane"), "{e}");
     // An unlimited bottom takes an unlimited view depth.
-    fails(&mut s, "modify", json!({"id": L1, "view_range": {"bottom_from": "unlimited"}}));
+    let e = fails(&mut s, "modify", json!({"id": L1, "view_range": {"bottom_from": "unlimited"}}));
+    assert!(e.ends_with("the bottom can't be lower than the view depth"), "{e}");
     run(&mut s, "modify", json!({"id": L1, "view_range": {"bottom_from": "unlimited", "depth_from": "unlimited"}}));
     // What isn't a level can't be measured from.
     let e = fails(&mut s, "modify", json!({"id": L1, "view_range": {"top": 0, "top_from": {"level": 999999}}}));

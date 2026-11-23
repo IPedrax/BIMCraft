@@ -238,8 +238,17 @@ impl Model {
         let h = self.range_heights(level, &r);
         // The top as files have always had it (none: the level above) isn't held to the cut plane; one given is.
         let implicit_top = r.top.is_none() && r.top_from == Base::Associated;
+        // Where a plane is, as the message says it: its height, and what it is measured from.
         let shown = |p: Plane, z: f64| {
-            if z.is_infinite() { "unlimited".to_string() } else { format!("{} ({} over its level)", self.with_unit(z), r.plane(p).1) }
+            let (base, offset) = r.plane(p);
+            let from = match base {
+                Base::Associated => "its own level".to_string(),
+                Base::Above => "the level above".to_string(),
+                Base::Below => "the level below".to_string(),
+                Base::Unlimited => return "unlimited".to_string(),
+                Base::Level(g) => self.level(g).map_or_else(|| g.to_string(), |l| format!("`{}`", l.name)),
+            };
+            if z.is_infinite() { format!("unlimited: {from} is missing") } else { format!("{}, {from} {offset:+}", self.with_unit(z)) }
         };
         let order = [(Plane::Top, h.top), (Plane::Cut, h.cut), (Plane::Bottom, h.bottom), (Plane::Depth, h.depth)];
         for pair in order.windows(2) {
@@ -248,16 +257,7 @@ impl Model {
                 continue;
             }
             if hi < lo - TOL {
-                return Err(format!(
-                    "{who}: its view range's {} is at {} and its {} at {}; the {} can't be lower than the {}: \
-                     the planes run top ≥ cut plane ≥ bottom ≥ view depth",
-                    p.name(),
-                    shown(p, hi),
-                    q.name(),
-                    shown(q, lo),
-                    p.name(),
-                    q.name()
-                ));
+                return Err(clash(who, (p, &shown(p, hi)), (q, &shown(q, lo))));
             }
         }
         Ok(())
@@ -288,16 +288,24 @@ pub(crate) fn range_ok(who: &str, r: &ViewRange, template: bool) -> Result<(), S
     .into_iter()
     .flatten()
     .collect();
-    if mine.windows(2).any(|w| w[0].1 < w[1].1) {
-        return Err(format!(
-            "{who}: its plan's view range runs top ≥ cut plane ≥ bottom ≥ view depth, not top {}, cut {}, bottom {}, depth {}",
-            top.map_or_else(|| "at the level above".into(), |t| t.to_string()),
-            r.cut,
-            r.bottom,
-            r.depth
-        ));
+    if let Some(w) = mine.windows(2).find(|w| w[0].1 < w[1].1) {
+        let over = |(p, v): (Plane, f64)| (p, format!("{v:+} over the plan's level"));
+        let ((p, a), (q, b)) = (over(w[0]), over(w[1]));
+        return Err(clash(who, (p, &a), (q, &b)));
     }
     Ok(())
+}
+
+/// What is wrong where plane `upper`, which should be at or over plane `lower`, is under it: which plane is out of place, and
+/// against which, each where it is (`upper.1`, `lower.1`).
+fn clash(who: &str, upper: (Plane, &str), lower: (Plane, &str)) -> String {
+    let ((p, at_p), (q, at_q)) = (upper, lower);
+    let rule = match (p, q) {
+        (Plane::Top, Plane::Cut) => "the cut plane can't be higher than the top".to_string(),
+        (Plane::Bottom, Plane::Depth) => "the bottom can't be lower than the view depth".to_string(),
+        _ => format!("the {} can't be higher than the {}", q.name(), p.name()),
+    };
+    format!("{who}: the view range's {} ({at_q}) is above its {} ({at_p}): {rule}", q.name(), p.name())
 }
 
 /// Range `r` of a plan of `level` with each plane that names a level in `which` measured from `level` instead, at the height
@@ -316,7 +324,7 @@ fn rebase(m: &Model, level: Guid, r: &ViewRange, which: impl Fn(&Guid) -> bool) 
 
 /// Range `r` of a plan of `level` measured from that plan's levels alone: a plane that names a level is measured from
 /// `level` at the height it was. What a view template takes from a plan.
-pub(crate) fn relative(m: &Model, level: Guid, r: &ViewRange) -> ViewRange {
+pub fn relative(m: &Model, level: Guid, r: &ViewRange) -> ViewRange {
     rebase(m, level, r, |_| true)
 }
 

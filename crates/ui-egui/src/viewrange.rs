@@ -1,10 +1,11 @@
 //! View Range, as Revit's dialog: a plan's four planes, each a level it is measured from and an offset over it, under a
 //! picture of what each plane does (`assets/help/view-range.jpg`). The Properties palette's View Range row (Edit…) opens it
-//! on a plan, and a view template's View Range row on the template's draft. A plan's planes may be measured from any level;
-//! a template's only from the level of each plan that follows it (Associated Level, the level above or below, or Unlimited).
-//! OK and Apply run `modify` on the plan; the core keeps the planes in order and says what to fix.
+//! on the plans it shows, and a view template's View Range row on the template's draft. One plan's planes are measured from
+//! levels by name (its own for the cut plane), or Unlimited; plans picked together, and a template, from the level of each
+//! plan (Associated Level, the level above or below), or Unlimited. OK and Apply run `modify` on the plans; the core keeps the
+//! planes in order and says which is out of place against which.
 
-use bimcraft_core::model::{Element, Id, Model};
+use bimcraft_core::model::{Element, Guid, Id, Model};
 use bimcraft_core::view_range::{Base, Plane, ViewRange};
 use bimcraft_i18n::msg;
 use egui::{Align, Button, ComboBox, Context, Id as UiId, Layout, RichText, TextEdit, TextureHandle, Ui, vec2};
@@ -18,7 +19,7 @@ use crate::style::pal;
 /// The picture the dialog shows: the four planes in a section through a house, and what each does.
 const PICTURE: &[u8] = include_bytes!("../../../assets/help/view-range.jpg");
 /// How wide the picture is shown, points.
-const PICTURE_W: f32 = 560.0;
+const PICTURE_W: f32 = 700.0;
 
 /// One plane as the form has it: what it is measured from, and its offset as typed.
 #[derive(Clone, PartialEq)]
@@ -27,12 +28,20 @@ struct Row {
     offset: String,
 }
 
+/// What the planes are measured from in a form.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Mode {
+    /// One plan, of this level: levels by name, or Unlimited.
+    Plan(Guid),
+    /// Plans picked together, or a template: the level of each plan, the one above or below it, or Unlimited.
+    Relative,
+}
+
 /// The four planes as typed, until OK; and the picture, once loaded.
 #[derive(Clone)]
 pub(crate) struct RangeForm {
     rows: [Row; 4],
-    /// Whether a plane may be measured from a level named: a plan's may, a template's may not.
-    named: bool,
+    mode: Mode,
     picture: Option<TextureHandle>,
 }
 
@@ -48,18 +57,30 @@ pub(crate) fn range_json(r: &ViewRange) -> Value {
     v
 }
 
-/// What a plane may be measured from, in the order the list shows them: the plan's own level, the next one up (the top) or
-/// down (the bottom and the view depth), no limit, and each level by name where `named`.
-fn bases(m: &Model, p: Plane, named: bool) -> Vec<Base> {
-    let mut out = match p {
-        Plane::Cut => return vec![Base::Associated],
-        Plane::Top => vec![Base::Associated, Base::Above, Base::Unlimited],
-        Plane::Bottom | Plane::Depth => vec![Base::Associated, Base::Below, Base::Unlimited],
-    };
-    if named {
-        out.extend(m.levels().into_iter().map(|(id, _)| Base::Level(m.guid(id))));
+/// What a plane may be measured from, in the order the list shows them. One plan's: every level by name, low to high, then
+/// Unlimited (the cut plane its own level alone). Else: the plan's own level, the next one up (the top) or down (the bottom
+/// and the view depth), and Unlimited.
+fn bases(m: &Model, p: Plane, mode: Mode) -> Vec<Base> {
+    match (mode, p) {
+        (Mode::Plan(level), Plane::Cut) => vec![Base::Level(level)],
+        (Mode::Plan(_), _) => {
+            m.levels().into_iter().map(|(id, _)| Base::Level(m.guid(id))).chain(std::iter::once(Base::Unlimited)).collect()
+        }
+        (Mode::Relative, Plane::Cut) => vec![Base::Associated],
+        (Mode::Relative, Plane::Top) => vec![Base::Associated, Base::Above, Base::Unlimited],
+        (Mode::Relative, _) => vec![Base::Associated, Base::Below, Base::Unlimited],
     }
-    out
+}
+
+/// `b` in a plan of `level` as a level by name: its own, the one above or below it (none there, Unlimited).
+fn specific(m: &Model, level: Guid, b: Base) -> Base {
+    let named = |g: Option<Guid>| g.map_or(Base::Unlimited, Base::Level);
+    match b {
+        Base::Associated => Base::Level(level),
+        Base::Above => named(m.level_above(level)),
+        Base::Below => named(m.level_below(level)),
+        other => other,
+    }
 }
 
 /// What the list calls `b`.
@@ -74,13 +95,17 @@ fn base_name(m: &Model, b: Base) -> String {
 }
 
 impl RangeForm {
-    /// The form for range `r`; `named`, a plan's, whose planes may be measured from a level by name.
-    pub(crate) fn new(m: &Model, r: &ViewRange, named: bool) -> RangeForm {
+    /// The form for range `r`, its planes measured as `mode` says: one plan's from its levels by name.
+    pub(crate) fn new(m: &Model, r: &ViewRange, mode: Mode) -> RangeForm {
         let row = |p: Plane| {
             let (base, offset) = r.plane(p);
+            let base = match mode {
+                Mode::Plan(level) => specific(m, level, base),
+                Mode::Relative => base,
+            };
             Row { base, offset: m.field(offset) }
         };
-        RangeForm { rows: Plane::ALL.map(row), named, picture: None }
+        RangeForm { rows: Plane::ALL.map(row), mode, picture: None }
     }
 
     /// The range as typed, or what is wrong with it.
@@ -92,7 +117,12 @@ impl RangeForm {
                 _ if row.offset.trim().is_empty() => 0.0,
                 _ => m.units.parse(&row.offset).ok_or_else(|| tf("{}: the offset is a length", &[t(label(p))]).to_string())?,
             };
-            r = r.with(p, row.base, offset);
+            // A plan's own level by name is its associated level, as files have always held it.
+            let base = match self.mode {
+                Mode::Plan(level) if row.base == Base::Level(level) => Base::Associated,
+                _ => row.base,
+            };
+            r = r.with(p, base, offset);
         }
         Ok(r)
     }
@@ -108,7 +138,7 @@ impl RangeForm {
                 .on_hover_text(t("Top, Cut Plane, Bottom and View Depth, in a section through a house"));
         });
         ui.add_space(8.0);
-        let named = self.named;
+        let mode = self.mode;
         egui::Grid::new("view-range-planes").num_columns(4).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
             for (i, p) in Plane::ALL.into_iter().enumerate() {
                 // The primary range, then, apart, how far past it the plan sees.
@@ -118,7 +148,7 @@ impl RangeForm {
                 }
                 let row = &mut self.rows[i];
                 let name = ui.label(t(label(p)));
-                let choices = bases(m, p, named);
+                let choices = bases(m, p, mode);
                 let c = ui.add_enabled_ui(choices.len() > 1, |ui| {
                     ComboBox::from_id_salt(("view-range-base", i)).width(190.0).selected_text(base_name(m, row.base)).show_ui(ui, |ui| {
                         for b in choices {
@@ -137,10 +167,11 @@ impl RangeForm {
             }
         });
         ui.add_space(4.0);
-        let note = if named {
-            t("The cut plane is always over the plan's own level. Top ≥ Cut Plane ≥ Bottom ≥ View Depth.")
-        } else {
-            t("A template's planes are measured from the level of each plan that follows it. Top ≥ Cut Plane ≥ Bottom ≥ View Depth.")
+        let note = match mode {
+            Mode::Plan(_) => t("The cut plane is always over the plan's own level. Top ≥ Cut Plane ≥ Bottom ≥ View Depth."),
+            Mode::Relative => {
+                t("Measured from the level of each plan: Associated Level is its own. Top ≥ Cut Plane ≥ Bottom ≥ View Depth.")
+            }
         };
         ui.label(RichText::new(note).color(pal().muted).small());
     }
@@ -169,36 +200,47 @@ fn load_picture(ctx: &Context) -> TextureHandle {
 
 /// The View Range dialog on a plan: the form, and why the last Apply was refused.
 pub(crate) struct RangeDialog {
-    pub(crate) view: Id,
+    /// The plans it edits: one, or several picked together.
+    pub(crate) views: Vec<Id>,
     pub(crate) form: RangeForm,
-    /// The template that controls the plan's range, if one does: then it is shown, not edited.
+    /// The template that controls a plan's range, if one does: then it is shown, not edited.
     template: Option<String>,
-    error: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 impl BimApp {
-    /// View Range for plan `view` (a level's own plan or a plan view; a dependent view, its parent's).
-    pub(crate) fn open_view_range(&mut self, view: Id) {
+    /// View Range for the plans `views` (a level's own plan or a plan view; a dependent view, its parent's): one, its planes from
+    /// levels by name; several, from each one's own level, as the first has them.
+    pub(crate) fn open_view_ranges(&mut self, views: &[Id]) {
         let m = &self.session.model;
-        let source = m.plan_source(view);
-        let Some(view) = m.elements.id(source) else { return };
-        let template = match m.elements.get(view) {
-            Some(Element::Level(l)) => l.graphics.template.clone(),
-            Some(Element::PlanView(v)) => v.graphics.template.clone(),
-            _ => return,
-        }
-        .filter(|n| m.view_templates.get(n).is_some_and(|t| t.controls.contains(&bimcraft_core::graphics::Group::Range)));
-        let form = RangeForm::new(m, &m.view_range_of(view), true);
-        self.view_range_dialog = Some(RangeDialog { view, form, template, error: None });
+        let mut plans: Vec<Id> = views.iter().filter_map(|v| m.elements.id(m.plan_source(*v))).collect();
+        plans.dedup();
+        plans.retain(|v| matches!(m.elements.get(*v), Some(Element::Level(_) | Element::PlanView(_))));
+        let Some(&first) = plans.first() else { return };
+        let template = plans
+            .iter()
+            .filter_map(|v| match m.elements.get(*v) {
+                Some(Element::Level(l)) => l.graphics.template.clone(),
+                Some(Element::PlanView(p)) => p.graphics.template.clone(),
+                _ => None,
+            })
+            .find(|n| m.view_templates.get(n).is_some_and(|t| t.controls.contains(&bimcraft_core::graphics::Group::Range)));
+        let level = m.plan_level(first).map(|l| m.guid(l)).unwrap_or_default();
+        let form = match plans.len() {
+            1 => RangeForm::new(m, &m.view_range_of(first), Mode::Plan(level)),
+            _ => RangeForm::new(m, &bimcraft_core::view_range::relative(m, level, &m.view_range_of(first)), Mode::Relative),
+        };
+        self.view_range_dialog = Some(RangeDialog { views: plans, form, template, error: None });
     }
 
     pub(crate) fn view_range_window(&mut self, ctx: &Context) {
         let Some(d) = self.view_range_dialog.as_mut() else { return };
         let m = &self.session.model;
         let (mut ok, mut apply, mut close) = (false, false, false);
-        let title = match m.view_name(d.view) {
-            Some(n) => tf("View Range: {}", &[n]).to_string(),
-            None => t("View Range").to_string(),
+        let title = match (d.views.as_slice(), d.views.first().and_then(|v| m.view_name(*v))) {
+            ([_], Some(n)) => tf("View Range: {}", &[n]).to_string(),
+            ([_], None) => t("View Range").to_string(),
+            (all, _) => tf("View Range: {} plans", &[&all.len().to_string()]).to_string(),
         };
         let locked = d.template.is_some();
         let r = Modal::new(UiId::new("view-range"), title).width(PICTURE_W + 40.0).show(ctx, |ui| {
@@ -206,7 +248,7 @@ impl BimApp {
                 ui.add_enabled_ui(!locked, |ui| d.form.show(ui, m));
                 if let Some(n) = &d.template {
                     ui.add_space(4.0);
-                    ui.label(RichText::new(tf("Its view template, {}, controls its view range.", &[n])).color(pal().muted));
+                    ui.label(RichText::new(tf("A view template, {}, controls the view range.", &[n])).color(pal().muted));
                 }
                 if let Some(e) = &d.error {
                     ui.add_space(6.0);
@@ -237,7 +279,7 @@ impl BimApp {
     /// wrong is said in the dialog.
     fn apply_view_range(&mut self) -> bool {
         let Some(d) = self.view_range_dialog.as_ref() else { return false };
-        let view = d.view;
+        let views = d.views.clone();
         let range = match d.form.range(&self.session.model) {
             Ok(r) => r,
             Err(e) => {
@@ -247,10 +289,10 @@ impl BimApp {
                 return false;
             }
         };
-        if range == self.session.model.view_range_of(view) {
+        if views.iter().all(|v| self.session.model.view_range_of(*v) == range) {
             return true;
         }
-        if self.run("modify", json!({"id": view, "view_range": range_json(&range)})).is_some() {
+        if self.run("modify", json!({"ids": views, "view_range": range_json(&range)})).is_some() {
             if let Some(d) = self.view_range_dialog.as_mut() {
                 d.error = None;
             }

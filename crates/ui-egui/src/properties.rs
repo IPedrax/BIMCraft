@@ -2601,9 +2601,9 @@ impl BimApp {
                             ui.label(RichText::new(name).color(pal().muted));
                         }
                         Range => {
-                            // One plan's at a time: plans picked together may be measured from different levels.
-                            let r = ui.add_enabled_ui(ids.len() == 1, |ui| wide_button(ui, t("Edit…"))).inner;
-                            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ids.len() == 1, tf("Edit {}", &[label])));
+                            // One plan's from its levels by name; plans picked together, each from its own level.
+                            let r = wide_button(ui, t("Edit…"));
+                            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[label])));
                             range |= r.clicked();
                         }
                         Crop => {
@@ -2761,8 +2761,8 @@ impl BimApp {
         if let Some(other) = select {
             self.selection = vec![other];
         }
-        if let (true, &[view]) = (range, ids) {
-            self.open_view_range(view);
+        if range {
+            self.open_view_ranges(ids);
         }
         if let Some(name) = edit_framing {
             self.type_dialog = Some(TypeDialog::new(model, "framing", name, ids.to_vec()));

@@ -751,8 +751,12 @@ Halftone is how far toward the paper (`Model::halftone`, 1 to 100 percent, 50 as
 Visibility/Graphics' Halftone, a link and a stair's halftone part all take it (`Look::fade`). The `halftone` command sets it, and Manage >
 Annotation Settings > Halftone/Underlay is its slider (`crates/ui-egui/src/halftone.rs`). The desktop's View Range dialog
 (`crates/ui-egui/src/viewrange.rs`, Properties' View Range: Edit…, and the template editor's View Range row) shows each plane as a list
-of what it is measured from and its offset, under a picture of the four planes (`assets/help/view-range.jpg`, the project's own);
-a plan following a template that controls its range shows it greyed, the template named.
+of what it is measured from and its offset, under a picture of the four planes (`assets/help/view-range.jpg`, the project's own).
+One plan's lists are its levels by name and Unlimited (`Mode::Plan`: its own level is written as `associated`, the level above and
+below by name); plans picked together and a template's are Associated Level, Level Above or Below, and Unlimited (`Mode::Relative`),
+each plan measuring from its own level. A plan following a template that controls its range shows it greyed, the template named.
+An order the core refuses names the plane out of place and the one it crosses, each where it is (`view_range::clash`): "the bottom
+(+2000 over the plan's level) is above its cut plane (+1200 over the plan's level): the bottom can't be higher than the cut plane".
 
 ## Reference planes in views
 
