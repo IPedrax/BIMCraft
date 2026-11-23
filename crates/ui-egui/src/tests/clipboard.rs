@@ -413,3 +413,18 @@ fn aligned_to_picked_level_lights_the_level_under_the_cursor() {
     let Some(Element::Wall(w)) = h.state().session.model.elements.get(pasted[0]) else { panic!("not a wall") };
     assert_eq!(w.level, h.state().session.model.guid(level), "onto the level lit");
 }
+
+#[test]
+fn a_familys_copy_on_the_system_clipboard_isnt_pasted_as_the_projects_older_one() {
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    ctrl_c(&mut h);
+    // A family's copy made since, in this window or another: the project's paste refuses it, saying where it goes.
+    let source = bimcraft_core::family::clipboard::Source { family: "Box".into(), copy: Guid::new() };
+    let clip = bimcraft_core::family::clipboard::Clip::default();
+    let text = bimcraft_core::family::clipboard::text(&source, bimcraft_core::family::clipboard::Copied::Elements(&clip)).unwrap();
+    ctrl_v(&mut h, &text);
+    assert_ne!(h.state().tool, Tool::Paste, "nothing follows the cursor");
+    assert!(h.state().status.error && h.state().status.text.contains("family's copy"), "{}", h.state().status.text);
+    assert_eq!(walls(&h), 4);
+}

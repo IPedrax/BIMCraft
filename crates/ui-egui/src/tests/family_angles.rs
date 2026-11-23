@@ -123,7 +123,7 @@ fn angular_dimension_measures_a_line_from_a_plane_and_its_label_turns_the_rig() 
     let second = editor(&h).dimensions.last().cloned().unwrap();
     assert_eq!(second.refs, vec![DimRef::Plane(g(CLR)), DimRef::Line(g(RIG), Face::Vertical)], "{}", status(&h));
     key(&mut h, Key::Escape);
-    ed_mut(&mut h).views.dim = Some(second.guid);
+    ed_mut(&mut h).select_only(crate::editor::select_box::Picked::Dimension(second.guid));
     h.run();
     h.get_by_label("Label").click();
     h.run();

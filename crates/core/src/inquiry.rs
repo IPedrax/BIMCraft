@@ -23,11 +23,9 @@ pub struct Found {
 
 /// The elements `text` names; too long a list is cut at [`MAX_LIST`] characters and [`MAX_NAMES`] names.
 pub fn find(m: &Model, text: &str) -> Found {
-    let end = (0..=MAX_LIST.min(text.len())).rev().find(|i| text.is_char_boundary(*i)).unwrap_or(0);
-    let text = text.get(..end).unwrap_or_default();
     let mut out = Found::default();
     let mut seen = BTreeSet::new();
-    for word in text.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';')).filter(|w| !w.is_empty()).take(MAX_NAMES) {
+    for word in words(text) {
         match (one(m, word), library(m, word)) {
             (Some(id), _) if seen.insert(id) => out.ids.push(id),
             (None, Some(id)) if seen.insert(id) => out.library.push(id),
@@ -36,6 +34,14 @@ pub fn find(m: &Model, text: &str) -> Found {
         }
     }
     out
+}
+
+/// The names a list holds, as pasted: separated by spaces, commas, semicolons or lines; too long a list is cut at
+/// [`MAX_LIST`] characters and [`MAX_NAMES`] names. What a family document's Select by ID reads too (`family::select`).
+pub(crate) fn words(text: &str) -> impl Iterator<Item = &str> {
+    let end = (0..=MAX_LIST.min(text.len())).rev().find(|i| text.is_char_boundary(*i)).unwrap_or(0);
+    let text = text.get(..end).unwrap_or_default();
+    text.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';')).filter(|w| !w.is_empty()).take(MAX_NAMES)
 }
 
 /// The element `word` names: an id, a GUID, or an IFC GlobalId.
@@ -53,7 +59,7 @@ pub fn library(m: &Model, word: &str) -> Option<Id> {
 }
 
 /// The GUID `word` is, however written, or the id it is (a pending GUID).
-fn guid_of(word: &str) -> Option<Guid> {
+pub(crate) fn guid_of(word: &str) -> Option<Guid> {
     let word = word.trim().trim_matches(|c| matches!(c, '"' | '\''));
     Guid::parse(word)
         .or_else(|| {

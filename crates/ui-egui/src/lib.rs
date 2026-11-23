@@ -696,6 +696,13 @@ pub struct BimApp {
     /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
     /// which spares cutting the model each time the box moves.
     pub(crate) cut_fills_3d: bool,
+    /// Select Elements by Face, in a family document's plans and elevations (`editor/selection.rs`): on, a
+    /// face selects what it is of; off, only an edge does. The user's, kept in the settings file.
+    pub(crate) select_by_face: bool,
+    /// Drag Elements on Selection, beside it: on, a drag from the face of a form or a nested instance that isn't
+    /// selected is that element's and selects it, where a face selects; off (at first), that face is a selection box's to
+    /// begin in. The user's, kept in the settings file.
+    pub(crate) drag_on_selection: bool,
     /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
     /// never in a drawing that is printed or exported.
     show_origin: bool,
@@ -1134,10 +1141,13 @@ pub struct BimApp {
     pub(crate) clip_text: Option<Arc<str>>,
     /// The clipboard Paste from Clipboard or Aligned to Picked Level places, while its tool is on.
     pub(crate) pasting: Option<clipboard::Pasting>,
-    /// What the right-click menu asked of the clipboard, for the next frame.
+    /// What the right-click menu (or a family tab's Find) asked of the clipboard, for the next frame.
     pub(crate) clip_request: Option<clipboard::Request>,
-    /// A paste the ribbon asked the system clipboard's text for, and when.
-    pub(crate) paste_asked: Option<(clipboard::PasteMode, f64)>,
+    /// What Copy to Clipboard last kept on a family tab (`editor/clipboard.rs`): the window's, so it outlives views and tabs.
+    pub(crate) family_clip: Option<editor::clipboard::Held>,
+    /// A paste the ribbon asked the system clipboard's text for, when, and on which tab (a family document's, or none: the
+    /// project's).
+    pub(crate) paste_asked: Option<(clipboard::PasteMode, f64, Option<editor::tabs::DocId>)>,
     /// Aligned to Selected Levels' or Selected Views' list, while it's open.
     pub(crate) paste_choose: Option<clipboard::Choose>,
     /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.
@@ -1727,6 +1737,8 @@ impl BimApp {
             guide_style: style::GuideStyle::default(),
             compressed_save: false,
             cut_fills_3d: true,
+            select_by_face: true,
+            drag_on_selection: false,
             show_origin: true,
             show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
@@ -1974,6 +1986,7 @@ impl BimApp {
             pasting: None,
             paste_asked: None,
             clip_request: None,
+            family_clip: None,
             paste_choose: None,
             paste_where: None,
             active_option: None,
@@ -4271,6 +4284,8 @@ impl BimApp {
             (self.sheet, self.front) = (sheet, sheet);
             if let Some(ed) = self.family_of_mut(id) {
                 ed.views.shown = view;
+                // What changed while another tab was in front goes from its selection.
+                ed.prune_selection();
             }
             return;
         }
@@ -4603,6 +4618,7 @@ impl BimApp {
         fresh.guide_style = self.guide_style;
         fresh.compressed_save = self.compressed_save;
         fresh.cut_fills_3d = self.cut_fills_3d;
+        (fresh.select_by_face, fresh.drag_on_selection) = (self.select_by_face, self.drag_on_selection);
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
@@ -7195,17 +7211,35 @@ impl BimApp {
 
     fn status_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(t(self.prompt())).color(pal().muted));
+            // The indicators at the right first, then the prompt in what is left, cut short with an ellipsis rather than
+            // run under them.
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // How many elements are selected, by the selection filter, as Revit shows it.
-                // A click on it filters the selection, as Revit's does.
-                ui.label(format!(":{}", self.selection.len()));
+                // How many elements are selected, by the selection filter: on a family's tab, of the
+                // family document's own selection. A click on it filters the selection.
+                let selected = self.active_family().map_or(self.selection.len(), |ed| ed.selected_count());
+                ui.label(format!(":{selected}"));
                 self.export_progress(ui);
                 let (r, funnel) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
                 icons::paint(ui.painter(), Icon::Filter, r, pal().icon);
                 funnel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Filter Selection")));
                 if funnel.on_hover_text(t("Filter Selection")).clicked() {
-                    self.open_filter();
+                    // The family document's Filter on its tab (FE-20), never the project's from there.
+                    match self.active_family_mut() {
+                        Some(ed) => ed.open_filter(),
+                        None => self.open_filter(),
+                    }
+                }
+                // Drag Elements on Selection and Select Elements by Face, left of it: a family
+                // document's that isn't adaptive, greyed where they change nothing ({3D}, a sketch).
+                if let Some(usable) = self.active_family().filter(|ed| ed.adaptive.is_none()).map(|ed| ed.picks_by_face()) {
+                    let on = self.drag_on_selection;
+                    if ui.add_enabled_ui(usable, |ui| editor::selection::drag_toggle(ui, on)).inner.clicked() {
+                        self.drag_on_selection = !on;
+                    }
+                    let on = self.select_by_face;
+                    if ui.add_enabled_ui(usable, |ui| editor::selection::face_toggle(ui, on)).inner.clicked() {
+                        self.select_by_face = !on;
+                    }
                 }
                 if let Some(p) = self.canvas.cursor {
                     let u = self.session.model.units;
@@ -7226,6 +7260,9 @@ impl BimApp {
                     ui.label(RichText::new(t("Unsaved changes")).color(pal().muted));
                 }
                 self.option_selector(ui);
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    ui.add(egui::Label::new(RichText::new(t(self.prompt())).color(pal().muted)).truncate());
+                });
             });
         });
     }

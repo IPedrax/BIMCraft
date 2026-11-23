@@ -1132,7 +1132,7 @@ impl BimApp {
         let Some(sk) = &mut self.sketch else { return true };
         match drag {
             Drag::Grip(from) => sk.move_end(from, to),
-            Drag::Box(from) if (from.0 - at.0).abs().max((from.1 - at.1).abs()) < 6.0 => {
+            Drag::Box(from) if (from.0 - at.0).abs().max((from.1 - at.1).abs()) < crate::canvas::STILL => {
                 let reach = f64::from(crate::canvas::PICK) / view.scale;
                 let hit = sk.line_at(view.mm(from), reach);
                 if !(mods.shift || mods.command || mods.ctrl) {

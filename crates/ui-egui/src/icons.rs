@@ -63,6 +63,7 @@ icon_names! {
     MirrorDraw,
     Align,
     Offset,
+    Scale,
     Trim,
     Split,
     Dimension,
@@ -117,6 +118,7 @@ icon_names! {
     Crop,
     Units,
     Line,
+    ReferenceLine,
     Arc,
     Flip,
     Attach,
@@ -232,6 +234,7 @@ icon_names! {
     FamilyTypes,
     LoadIntoProject,
     LoadIntoProjectClose,
+    DragOnSelection,
     Cowork,
     Script,
     Player,
@@ -563,6 +566,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(8.5, 8.5), (15.0, 15.0)]);
             g.line(&[(15.0, 11.0), (15.0, 15.0), (11.0, 15.0)]);
         }
+        Icon::Scale => {
+            // A small square grown into a large one from their shared corner, an arrow along the diagonal.
+            g.closed(&[(3.0, 13.0), (11.0, 13.0), (11.0, 21.0), (3.0, 21.0)]);
+            g.closed(&[(3.0, 3.0), (21.0, 3.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.line(&[(11.0, 13.0), (18.0, 6.0)]);
+            g.line(&[(13.0, 6.0), (18.0, 6.0), (18.0, 11.0)]);
+        }
         Icon::Trim => {
             // A clean right-angle join and a short leftover segment.
             g.line(&[(5.0, 21.0), (5.0, 5.0), (21.0, 5.0)]);
@@ -645,6 +655,16 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 6.0), (4.0, 6.0)]);
             g.line(&[(12.0, 11.0), (12.0, 17.0)]);
             g.line(&[(9.0, 14.0), (15.0, 14.0)]);
+        }
+        Icon::DragOnSelection => {
+            // An element, and Move's cross over its corner: what is pressed on is its own to drag.
+            g.closed(&[(3.0, 3.0), (13.0, 3.0), (13.0, 13.0), (3.0, 13.0)]);
+            g.line(&[(16.0, 10.0), (16.0, 22.0)]);
+            g.line(&[(10.0, 16.0), (22.0, 16.0)]);
+            g.line(&[(14.0, 12.0), (16.0, 10.0), (18.0, 12.0)]);
+            g.line(&[(14.0, 20.0), (16.0, 22.0), (18.0, 20.0)]);
+            g.line(&[(12.0, 14.0), (10.0, 16.0), (12.0, 18.0)]);
+            g.line(&[(20.0, 14.0), (22.0, 16.0), (20.0, 18.0)]);
         }
         Icon::RepeatingDetail => {
             // A brick course: the same block again and again along a line.
@@ -1188,6 +1208,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(7.0, 17.0), (17.0, 7.0)]);
             g.closed(&[(3.0, 17.0), (7.0, 17.0), (7.0, 21.0), (3.0, 21.0)]);
             g.closed(&[(17.0, 3.0), (21.0, 3.0), (21.0, 7.0), (17.0, 7.0)]);
+        }
+        Icon::ReferenceLine => {
+            // A segment between round endpoints, crossed at its middle by the plane it carries: the family's Reference
+            // Line, told apart from Reference Plane's segment between square handles.
+            g.line(&[(6.4, 17.6), (17.6, 6.4)]);
+            g.circle((5.0, 19.0), 2.0);
+            g.circle((19.0, 5.0), 2.0);
+            g.line(&[(9.0, 9.0), (15.0, 15.0)]);
         }
         Icon::Arc => {
             // A smooth curve joining two endpoint handles, with the midpoint indication omitted when small.

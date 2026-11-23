@@ -934,6 +934,8 @@ fn pattern_name(p: Pattern) -> &'static str {
 /// The Materials window: the library's materials, the one picked to edit, its name as typed (a
 /// rename once typed in), its colour as picked (applied once the mouse lets go).
 pub(crate) struct MaterialsDialog {
+    /// Opened from a family document (FE-19): it says the project's materials change, now.
+    pub(crate) from_family: bool,
     picked: String,
     name: String,
     color: Option<[u8; 3]>,
@@ -949,7 +951,7 @@ pub(crate) struct MaterialsDialog {
 impl MaterialsDialog {
     pub(crate) fn new(m: &Model) -> MaterialsDialog {
         let picked = m.materials.keys().next().cloned().unwrap_or_default();
-        MaterialsDialog { name: picked.clone(), picked, color: None, clear: None, texture: None, swatch: None }
+        MaterialsDialog { from_family: false, name: picked.clone(), picked, color: None, clear: None, texture: None, swatch: None }
     }
 }
 
@@ -3601,6 +3603,10 @@ impl BimApp {
         let r = Modal::new(UiId::new("materials"), t("Materials")).width(440.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(6.0);
+                if d.from_family {
+                    ui.label(RichText::new(t(crate::editor::PROJECT_NOTE_MATERIALS)).strong());
+                    ui.add_space(4.0);
+                }
                 Grid::new("material-head").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
                     let l = ui.label(t("Material:"));
                     ui.horizontal(|ui| {

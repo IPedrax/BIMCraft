@@ -19,6 +19,8 @@ use crate::lang::{category, t};
 /// The Object Styles dialog: every model category's pens as edited and not yet applied.
 pub(crate) struct ObjectStylesDialog {
     draft: BTreeMap<&'static str, ObjectStyle>,
+    /// Opened from a family document (FE-19): its category, whose rows come first, and the note that the project changes.
+    family: Option<&'static str>,
 }
 
 impl ObjectStylesDialog {
@@ -26,7 +28,12 @@ impl ObjectStylesDialog {
     pub(crate) fn new(m: &Model) -> ObjectStylesDialog {
         // Every model category, the subcategories that have rows of their own (Doors > Opening), and a curtain wall's parts.
         let keys = MODEL.iter().copied().chain(bimcraft_core::styles::model_subs()).chain(CURTAIN_PARTS);
-        ObjectStylesDialog { draft: keys.map(|c| (c, m.object_style(c))).collect() }
+        ObjectStylesDialog { draft: keys.map(|c| (c, m.object_style(c))).collect(), family: None }
+    }
+
+    /// Open from a family document of category `category` (its graphics category's key): its rows first.
+    pub(crate) fn for_family(m: &Model, category: &'static str) -> ObjectStylesDialog {
+        ObjectStylesDialog { family: Some(category), ..ObjectStylesDialog::new(m) }
     }
 }
 
@@ -59,6 +66,10 @@ impl BimApp {
                 ui.label(t(
                     "The pen each category draws its lines in, seen and cut, in every plan and section. A view's Visibility/Graphics overrides them.",
                 ));
+                if d.family.is_some() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(t(super::editor::PROJECT_NOTE_STYLES)).strong());
+                }
                 ui.add_space(4.0);
                 ScrollArea::vertical().max_height(520.0).show(ui, |ui| {
                     Grid::new("object-styles").striped(true).num_columns(3).show(ui, |ui| {
@@ -66,8 +77,14 @@ impl BimApp {
                         ui.label(RichText::new(t("Projection")).strong());
                         ui.label(RichText::new(t("Cut")).strong());
                         ui.end_row();
-                        let mut rows: Vec<(String, &mut ObjectStyle)> = d.draft.iter_mut().map(|(c, s)| (row_name(c), s)).collect();
-                        rows.sort_by(|a, b| a.0.cmp(&b.0));
+                        // A family's category, and its subcategories, first (FE-19); the rest by name.
+                        let family = d.family;
+                        let theirs =
+                            |c: &str| family.is_some_and(|f| c == f || bimcraft_core::graphics::sub(c).is_some_and(|s| s.parent == f));
+                        let mut rows: Vec<(bool, String, &mut ObjectStyle)> =
+                            d.draft.iter_mut().map(|(c, s)| (!theirs(c), row_name(c), s)).collect();
+                        rows.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+                        let rows: Vec<(String, &mut ObjectStyle)> = rows.into_iter().map(|(_, n, s)| (n, s)).collect();
                         for (name, style) in rows {
                             ui.label(&name);
                             pen_field(ui, &mut style.projection, format!("{name}: {}", t("Projection")));

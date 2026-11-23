@@ -902,17 +902,23 @@ fn outlines(m: &Model, view: Id, p: P2, window: f64, look: &Look, editing: Optio
     }
 }
 
+/// A step kept horizontal or vertical from `from`, along the larger cursor displacement.
+/// Returns the constrained point and whether the step runs along x. Shared by plan
+/// snapping and family work-plane drawing and movement.
+pub fn orthogonal_step(from: P2, to: P2) -> (P2, bool) {
+    let along_x = (to.0 - from.0).abs() > (to.1 - from.1).abs();
+    (if along_x { P2(to.0, from.1) } else { P2(from.0, to.1) }, along_x)
+}
+
 fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps, nearest_lines: bool) -> Found {
     let last = from.last().copied();
     let mut p = p;
     // The coordinate a square step pinned to the last point's: y if it runs along x.
     let mut pinned = None;
     if square && let Some(f) = last {
-        if (p.0 - f.0).abs() > (p.1 - f.1).abs() {
-            (p.1, pinned) = (f.1, Some((true, f.1)));
-        } else {
-            (p.0, pinned) = (f.0, Some((false, f.0)));
-        }
+        let (at, along_x) = orthogonal_step(f, p);
+        p = at;
+        pinned = Some((along_x, if along_x { f.1 } else { f.0 }));
     }
     // A wall face `Tab` chose holds the pick while the pointer stays on that wall, even at its ends where an end would
     // otherwise win: a Tab that moved nothing you can see would be a Tab you cannot follow.

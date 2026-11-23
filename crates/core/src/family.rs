@@ -19,12 +19,16 @@ use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
+pub mod clipboard;
 pub mod constraints;
 pub mod forms;
+pub mod handles;
 pub mod nested;
 mod options;
 mod origin;
 mod planes;
+pub mod purge;
+pub mod select;
 pub mod sketch;
 mod validate;
 pub mod views;
@@ -2590,73 +2594,95 @@ impl Family {
     }
 
     /// [`Family::marks_tagged`], at `detail` if it says (else every symbol), its nested instances' counted by `meter`.
-    pub(crate) fn marks_metered<'a>(
-        &'a self,
+    pub(crate) fn marks_metered(
+        &self,
         values: &BTreeMap<String, Val>,
         detail: Option<crate::graphics::Detail>,
         meter: &mut nested::Meter,
     ) -> Result<Vec<Tagged>, String> {
         let mut read = HashMap::new();
         let mut out = Vec::new();
-        for (i, sym) in self.symbols.iter().enumerate() {
-            let said = |e: String| format!("symbol {}: {e}", i + 1);
-            let ways = usize::from(!sym.line.is_empty())
-                + usize::from(sym.arc.is_some())
-                + usize::from(sym.text.is_some())
-                + usize::from(sym.dot.is_some());
-            if ways != 1 || sym.line.len() > MAX_PROFILE {
-                return Err(said(format!("it takes a `line` of up to {MAX_PROFILE} points, an `arc`, a `text` or a `dot`, one of them")));
-            }
-            if let Some(v) = &sym.visible
-                && number(v, values, &mut read).map_err(said)? == 0.0
-            {
-                continue;
-            }
-            if let Some(d) = detail
-                && !sym.visibility.unwrap_or(visibility::SYMBOL_DEFAULT).at(d)
-            {
-                continue;
-            }
-            let sub = sym.subcategory.as_deref().and_then(|n| self.subcategory_key(n));
-            let mut n = |e: &'a Expr| number(e, values, &mut read).map_err(said);
-            if let Some(c) = &sym.dot {
-                let (centre, r) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?);
-                if r <= 0.0 {
-                    return Err(said(format!("its dot has radius {r}; it needs a radius above zero")));
-                }
-                out.push((Mark::Dot { centre, radius: r }, sub));
-                continue;
-            }
-            if let Some(l) = &sym.text {
-                let (at, height) = (P2(n(&l.at[0])?, n(&l.at[1])?), n(&l.height)?);
-                if height <= 0.0 {
-                    return Err(said(format!("its text has height {height}; it needs a height above zero")));
-                }
-                let text = said_text(&l.value, values, &self.parameters).map_err(said)?;
-                out.push((Mark::Label { at, height, text, align: l.align }, sub));
-                continue;
-            }
-            let mut pts = Vec::new();
-            for [a, b] in &sym.line {
-                pts.push(P2(n(a)?, n(b)?));
-            }
-            if let Some(c) = &sym.arc {
-                let (centre, r, from, to) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?, n(&c.from)?, n(&c.to)?);
-                if r <= 0.0 || (to - from).abs() > 360.0 || to == from {
-                    return Err(said(format!(
-                        "its arc has radius {r} and runs from {from} to {to} degrees; it needs a radius above zero and up to a full turn"
-                    )));
-                }
-                let steps = ((to - from).abs() / ARC_STEP).ceil().max(1.0) as usize;
-                pts.extend((0..=steps).map(|k| {
-                    let (s, c) = (from + (to - from) * k as f64 / steps as f64).to_radians().sin_cos();
-                    P2(centre.0 + r * c, centre.1 + r * s)
-                }));
-            }
-            out.push((Mark::Line(pts), sub));
+        for i in 0..self.symbols.len() {
+            out.extend(self.symbol_read(i, values, detail, &mut read)?);
         }
         out.extend(self.nested_marks(values, detail, meter)?);
         Ok(out)
+    }
+
+    /// Symbol `i` as a plan at `detail` (else at any) draws it, sized by `values`, in the family's axes: what a front end
+    /// outlines it by where it is selected or boxed. None where its Visible or its Visibility Settings leave it out, or where
+    /// it has no place in the list.
+    pub fn symbol_mark(
+        &self,
+        i: usize,
+        values: &BTreeMap<String, Val>,
+        detail: Option<crate::graphics::Detail>,
+    ) -> Result<Option<Mark>, String> {
+        Ok(self.symbol_read(i, values, detail, &mut HashMap::new())?.map(|(mark, _)| mark))
+    }
+
+    /// [`Family::symbol_mark`] with its subcategory, `read` holding the formulas read already.
+    fn symbol_read<'a>(
+        &'a self,
+        i: usize,
+        values: &BTreeMap<String, Val>,
+        detail: Option<crate::graphics::Detail>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+    ) -> Result<Option<Tagged>, String> {
+        let Some(sym) = self.symbols.get(i) else { return Ok(None) };
+        let said = |e: String| format!("symbol {}: {e}", i + 1);
+        let ways = usize::from(!sym.line.is_empty())
+            + usize::from(sym.arc.is_some())
+            + usize::from(sym.text.is_some())
+            + usize::from(sym.dot.is_some());
+        if ways != 1 || sym.line.len() > MAX_PROFILE {
+            return Err(said(format!("it takes a `line` of up to {MAX_PROFILE} points, an `arc`, a `text` or a `dot`, one of them")));
+        }
+        if let Some(v) = &sym.visible
+            && number(v, values, read).map_err(said)? == 0.0
+        {
+            return Ok(None);
+        }
+        if let Some(d) = detail
+            && !sym.visibility.unwrap_or(visibility::SYMBOL_DEFAULT).at(d)
+        {
+            return Ok(None);
+        }
+        let sub = sym.subcategory.as_deref().and_then(|n| self.subcategory_key(n));
+        let mut n = |e: &'a Expr| number(e, values, read).map_err(said);
+        if let Some(c) = &sym.dot {
+            let (centre, r) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?);
+            if r <= 0.0 {
+                return Err(said(format!("its dot has radius {r}; it needs a radius above zero")));
+            }
+            return Ok(Some((Mark::Dot { centre, radius: r }, sub)));
+        }
+        if let Some(l) = &sym.text {
+            let (at, height) = (P2(n(&l.at[0])?, n(&l.at[1])?), n(&l.height)?);
+            if height <= 0.0 {
+                return Err(said(format!("its text has height {height}; it needs a height above zero")));
+            }
+            let text = said_text(&l.value, values, &self.parameters).map_err(said)?;
+            return Ok(Some((Mark::Label { at, height, text, align: l.align }, sub)));
+        }
+        let mut pts = Vec::new();
+        for [a, b] in &sym.line {
+            pts.push(P2(n(a)?, n(b)?));
+        }
+        if let Some(c) = &sym.arc {
+            let (centre, r, from, to) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?, n(&c.from)?, n(&c.to)?);
+            if r <= 0.0 || (to - from).abs() > 360.0 || to == from {
+                return Err(said(format!(
+                    "its arc has radius {r} and runs from {from} to {to} degrees; it needs a radius above zero and up to a full turn"
+                )));
+            }
+            let steps = ((to - from).abs() / ARC_STEP).ceil().max(1.0) as usize;
+            pts.extend((0..=steps).map(|k| {
+                let (s, c) = (from + (to - from) * k as f64 / steps as f64).to_radians().sin_cos();
+                P2(centre.0 + r * c, centre.1 + r * s)
+            }));
+        }
+        Ok(Some((Mark::Line(pts), sub)))
     }
 
     /// Its visible forms' solids, sized by `values`, less what its voids cut; `read`, its formulas as
@@ -3683,6 +3709,29 @@ mod tests {
         // Nested past reason: refused, not a stack overflow.
         let deep = format!("{}1{}", "(".repeat(10_000), ")".repeat(10_000));
         assert!(eval(&deep, &mut with(&values)).unwrap_err().contains("deep"));
+    }
+
+    /// Each symbol alone, as a plan draws it (what a front end boxes and lights it by): its mark sized by the values, none where
+    /// its Visible or its Visibility Settings leave it out, or past the end of the list; the marks of all are those of each.
+    #[test]
+    fn a_symbol_alone_is_the_mark_the_plan_draws_it_with() {
+        use crate::graphics::Detail;
+        let f: Family = serde_json::from_value(json!({
+            "parameters": [{"name": "Width", "value": 600}],
+            "types": {"T": {}},
+            "symbols": [{"line": [[0, 0], ["Width", 0]]}, {"dot": {"centre": [0, 100], "radius": 20}, "visible": 0},
+                        {"text": {"at": [0, -200], "height": 100, "value": "A"}, "visibility": {"coarse": true, "medium": false, "fine": false}}],
+        }))
+        .unwrap();
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        assert_eq!(f.symbol_mark(0, &values, None).unwrap(), Some(Mark::Line(vec![P2(0.0, 0.0), P2(600.0, 0.0)])));
+        assert_eq!(f.symbol_mark(1, &values, None).unwrap(), None, "hidden by its Visible");
+        assert!(matches!(f.symbol_mark(2, &values, Some(Detail::Coarse)).unwrap(), Some(Mark::Label { .. })));
+        assert_eq!(f.symbol_mark(2, &values, Some(Detail::Fine)).unwrap(), None, "left out at Fine");
+        assert_eq!(f.symbol_mark(3, &values, None).unwrap(), None, "no fourth");
+        let each: Vec<Mark> = (0..3).filter_map(|i| f.symbol_mark(i, &values, Some(Detail::Coarse)).unwrap()).collect();
+        let all: Vec<Mark> = f.marks_in(&values, Detail::Coarse).unwrap().into_iter().map(|(m, _)| m).collect();
+        assert_eq!(each, all);
     }
 
     fn table() -> Family {

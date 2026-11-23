@@ -49,6 +49,8 @@ pub(crate) enum Retry {
     Align(DimRef, DimRef),
     /// Family Types' Apply (or OK, which closes it).
     Types { ok: bool },
+    /// A rotation, a mirror or a scale.
+    Modify(super::modify::Again),
 }
 
 /// Create Parameter…, for the selected dimension's label: the Parameter Properties a label needs.
@@ -232,6 +234,11 @@ fn ink() -> Color32 {
     if crate::style::canvas_dark() { Color32::from_gray(225) } else { Color32::from_gray(30) }
 }
 
+/// The view's paper, which a dimension's text is set on.
+fn paper() -> Color32 {
+    crate::canvas::color(bimcraft_core::render::PAPER)
+}
+
 /// A padlock at `c`: shut, or open (its shackle lifted to one side).
 pub(super) fn padlock(painter: &Painter, c: Pos2, locked: bool, color: Color32) {
     let body = Rect::from_center_size(c + vec2(0.0, 2.5), vec2(10.0, 7.5));
@@ -308,6 +315,11 @@ pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2,
         let (s, c) = angle.sin_cos();
         let half = vec2(size.x / 2.0, size.y);
         let corner = mid - vec2(half.x * c - half.y * s, half.x * s + half.y * c);
+        // On the paper, so a line under it (a plane's trace through its middle) doesn't cross it out.
+        let turned = |x: f32, y: f32| corner + vec2(x * c - y * s, x * s + y * c);
+        let pad = 2.0;
+        let ring = vec![turned(-pad, 0.0), turned(size.x + pad, 0.0), turned(size.x + pad, size.y), turned(-pad, size.y)];
+        painter.add(egui::Shape::convex_polygon(ring, paper(), Stroke::NONE));
         painter.add(egui::epaint::TextShape::new(corner, galley, color).with_angle(angle));
         if selected && let Some(at) = lock_at(m, i, screen) {
             let locked = m.locked.get(i).copied().unwrap_or(false);
@@ -360,7 +372,10 @@ fn paint_radial(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2, sel
     // Level, read as a note is, beyond the leader's end on its side.
     let (anchor, at) =
         if along.x >= 0.0 { (egui::Align2::LEFT_CENTER, end + vec2(4.0, 0.0)) } else { (egui::Align2::RIGHT_CENTER, end - vec2(4.0, 0.0)) };
-    painter.text(at, anchor, text, egui::FontId::proportional(12.0), color);
+    let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), color);
+    let r = anchor.anchor_size(at, galley.size());
+    painter.rect_filled(r.expand2(vec2(2.0, 0.0)), 0.0, paper());
+    painter.galley(r.min, galley, color);
     if selected && let Some(at) = lock_at(m, 0, screen) {
         let locked = m.locked.first().copied().unwrap_or(false);
         padlock(painter, at, locked, if locked { pal().accent } else { pal().muted });
@@ -608,7 +623,12 @@ pub(super) fn drawn_as(flexed: &Family, values: &BTreeMap<String, Val>, st: &Sta
 impl FamilyEditor {
     /// Aligned Dimension (DI): the tool, in a plan or an elevation of a family that isn't adaptive; the selection goes.
     pub(crate) fn dimension_tool(&mut self) {
-        if self.editing_2d() && self.sketch.is_none() {
+        // While a form is sketched, where the view sees its plane flat.
+        if self.sketch.is_some() {
+            self.sketch_dimension_tool(DimKind::Aligned);
+            return;
+        }
+        if self.editing_2d() {
             self.drop_tools();
             self.views.dimensioning = Some(Vec::new());
         }
@@ -617,7 +637,11 @@ impl FamilyEditor {
     /// Radial Dimension or Diameter Dimension (F7b): pick a circle or an arc of a sketch seen flat, then click where it goes;
     /// Angular Dimension (F7c): pick lines that cross, then click where its arc goes.
     pub(crate) fn radial_tool(&mut self, kind: DimKind) {
-        if self.editing_2d() && self.sketch.is_none() {
+        if self.sketch.is_some() {
+            self.sketch_dimension_tool(kind);
+            return;
+        }
+        if self.editing_2d() {
             self.drop_tools();
             self.views.dimensioning = Some(Vec::new());
             self.views.dim_kind = kind;
@@ -633,6 +657,9 @@ impl FamilyEditor {
                 s.points.clear();
                 s.align_from = None;
                 s.trim = None;
+                s.edit = None;
+                s.selected_dim = None;
+                self.views.dimensioning = None;
                 self.views.aligning = Some(None);
                 return;
             }
@@ -642,28 +669,35 @@ impl FamilyEditor {
     }
 
     /// Every tool of the views put down and the selection let go.
-    fn drop_tools(&mut self) {
+    pub(super) fn drop_tools(&mut self) {
         self.views.drawing = None;
+        self.views.measuring = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.dim_kind = DimKind::Aligned;
         self.views.aligning = None;
         self.views.align_lock = None;
-        self.views.plane = None;
-        self.views.dim = None;
-        self.views.line = None;
         self.views.pivoting = None;
-        self.form = None;
+        self.views.modify = None;
+        self.views.pasting = None;
+        self.let_everything_go();
     }
 
-    /// The dimension selected, while the family has it.
+    /// The dimension selected, while it alone is and the family has it.
     pub(crate) fn selected_dimension(&self) -> Option<Guid> {
-        self.views.dim.filter(|g| self.dimensions.iter().any(|d| d.guid == *g))
+        match self.only_selected() {
+            Some(super::select_box::Picked::Dimension(g)) => Some(g),
+            _ => None,
+        }
     }
 
     /// The draft's family with `change` made to its dimensions, if its constraints still solve for the type previewed: else
     /// why not, nothing changed.
     fn try_dimensions(&mut self, change: impl FnOnce(&mut Vec<FamilyDimension>)) -> Result<(), Unsat> {
+        // While a form is sketched, the sketch's dimensions, its lines driven by them.
+        if self.sketch.is_some() {
+            return self.sketch_try(change);
+        }
         let mut f = self.family().map_err(Unsat::from)?;
         change(&mut f.dimensions);
         let values = self.values();
@@ -674,7 +708,16 @@ impl FamilyEditor {
 
     /// The selected dimension's label set (`None`: taken off). Refused as over-constrained where it adds nothing to what holds
     /// the planes already.
+    /// A reporting parameter is one dimension's: one another dimension reports already is refused.
     pub(crate) fn set_label(&mut self, g: Guid, label: Option<String>) -> Result<(), String> {
+        if let Some(l) = label.as_deref()
+            && self.params.iter().any(|p| p.name == l && p.original.reporting)
+        {
+            let sketched = self.sketch.as_ref().map(|s| s.dims.as_slice()).unwrap_or_default();
+            if let Some(k) = self.dimensions.iter().chain(sketched).position(|d| d.guid != g && d.label.as_deref() == Some(l)) {
+                return Err(tf("Dimension {} reports `{}` already: a reporting parameter is one dimension's.", &[&(k + 1).to_string(), l]));
+            }
+        }
         self.try_dimensions(|dims| {
             if let Some(d) = dims.iter_mut().find(|d| d.guid == g) {
                 d.label = label;
@@ -710,10 +753,12 @@ impl FamilyEditor {
 
     /// Dimension `g` taken away.
     pub(crate) fn delete_dimension(&mut self, g: Guid) {
-        self.dimensions.retain(|d| d.guid != g);
-        if self.views.dim == Some(g) {
-            self.views.dim = None;
+        if self.sketch.is_some() {
+            self.delete_sketch_dimension(g);
+            return;
         }
+        self.dimensions.retain(|d| d.guid != g);
+        self.selection.forget(super::select_box::Picked::Dimension(g));
     }
 
     /// The draft's dimensions measuring to plane or form `g` lose it, as deleting it does in Revit.
@@ -726,6 +771,8 @@ impl FamilyEditor {
     /// Edits a drag or Align worked out, made to the draft: planes moved along their normals, extrusion ends given numbers, a
     /// label's parameter given its new value in the type previewed (an instance parameter's, its default).
     pub(crate) fn apply_edits(&mut self, edits: Vec<Edit>) {
+        // What the solve read the numbers as: a point's coordinate it left where it was keeps what places it.
+        let values = self.values();
         for e in edits {
             match e {
                 Edit::Plane(g, at) => {
@@ -747,7 +794,9 @@ impl FamilyEditor {
                         *slot = number_text(v);
                     }
                 }
-                Edit::Point(i, k, spot, p) => self.move_sketch_point(i, k, spot, p),
+                // Only the coordinate that moved is written: a face aligned to a plane holds the face there, and its corners
+                // still slide along it, each keeping the formula that places it across.
+                Edit::Point(i, k, spot, p) => self.shift_sketch_point(i, k, spot, p, &values),
                 Edit::Line(g, by) => {
                     // The line and the lines drawn on it, as far down as they go.
                     let mut moving = vec![g];
@@ -828,23 +877,6 @@ impl FamilyEditor {
         let Ok(mut f) = ft.form() else { return };
         let Some(FormCurve::Line { turn, .. }) = f.sketch.get_mut(k).map(|l| &mut l.curve) else { return };
         *turn = Some(Expr::Number(t));
-        let tag = ft.tag;
-        self.forms[i] = FormText::again(&f, tag);
-    }
-
-    /// Point `spot` of line `k` of form `i`'s sketch put at `p` (its host's axes), a number.
-    fn move_sketch_point(&mut self, i: usize, k: usize, spot: Spot, p: [f64; 2]) {
-        use bimcraft_core::family::sketch::FormCurve;
-        let Some(ft) = self.forms.get(i) else { return };
-        let Ok(mut f) = ft.form() else { return };
-        let Some(line) = f.sketch.get_mut(k) else { return };
-        let at = [Expr::Number(p[0]), Expr::Number(p[1])];
-        match (&mut line.curve, spot) {
-            (FormCurve::Line { start, .. }, Spot::Start) => *start = at,
-            (FormCurve::Line { end, .. }, Spot::End) => *end = at,
-            (FormCurve::Circle { centre, .. }, Spot::Centre) => *centre = at,
-            _ => return,
-        }
         let tag = ft.tag;
         self.forms[i] = FormText::again(&f, tag);
     }
@@ -971,12 +1003,19 @@ impl FamilyEditor {
         });
         if remove {
             self.views.unsatisfied = None;
+            // What it was before the constraints come off: a retry refused puts it back, leaving neither.
+            let before = self.draft();
             self.remove_constraints(&u.dims);
             match u.retry {
                 Retry::Drag(g, to) => self.drag_through(g, to),
                 Retry::Align(a, b) => {
                     if let Some((_, _, at, which)) = self.views.align_pending.take() {
                         self.align_through(a, b, at, which);
+                    }
+                }
+                Retry::Modify(a) => {
+                    if !self.modify_again(a) {
+                        self.put_back(before);
                     }
                 }
                 Retry::Types { ok } => {
@@ -1045,20 +1084,21 @@ impl FamilyEditor {
         if name.is_empty() {
             return Err(t("a parameter needs a name").to_string());
         }
-        if self.param_at(name).is_some() {
+        if self.param_at(name).is_some() || self.sketch_params().iter().any(|(n, _)| n == name) {
             return Err(tf("there's a parameter `{}` already", &[name]));
         }
-        let angular = self.dimensions.iter().any(|d| d.guid == c.dim && d.kind == DimKind::Angular);
+        let angular = self.dimensions_now().iter().any(|d| d.guid == c.dim && d.kind == DimKind::Angular);
         let length = self.dimension_length(c.dim).unwrap_or(if angular { 90.0 } else { 1000.0 });
         let kind = if angular { "angle" } else { "length" };
         let p: Parameter =
             serde_json::from_value(json!({"name": name, "kind": kind, "instance": c.instance, "reporting": c.reporting, "value": length}))
                 .map_err(|e| e.to_string())?;
-        self.params.push(ParamText::of(&p));
+        // While a form is sketched, held with the sketch until Finish.
+        self.params_held().push(ParamText::of(&p));
         match self.set_label(c.dim, Some(name.to_string())) {
             Ok(()) => Ok(()),
             Err(e) => {
-                self.params.pop();
+                self.params_held().pop();
                 Err(e)
             }
         }
@@ -1073,18 +1113,25 @@ impl FamilyEditor {
 
     /// Dimension `g`'s first segment's length, flexed for the type previewed.
     pub(crate) fn dimension_length(&self, g: Guid) -> Option<f64> {
-        let f = self.family().ok()?;
+        let (f, values) = if self.sketch.is_some() {
+            let f = self.sketch_family().ok()?;
+            let values = self.sketch_values(&f);
+            (f, values)
+        } else {
+            (self.family().ok()?, self.values())
+        };
         let at = f.dimensions.iter().position(|d| d.guid == g)?;
-        f.measured(&self.values()).ok()?.get(at)?.first().copied()
+        f.measured(&values).ok()?.get(at)?.first().copied()
     }
 
     /// The Options Bar of a dimension selected: Label, a length parameter of the family's (an angle, for an angular one), none,
     /// or Create Parameter….
     pub(crate) fn dimension_options(&mut self, ui: &mut Ui, g: Guid) -> Option<String> {
-        let d = self.dimensions.iter().find(|d| d.guid == g)?.clone();
+        let d = self.dimensions_now().into_iter().find(|d| d.guid == g)?;
         let one = d.segments() == 1 && !d.alignment;
         let holds = if d.kind == DimKind::Angular { Holds::Angle } else { Holds::Length };
-        let lengths: Vec<String> = self.params.iter().filter(|p| p.kind == holds).map(|p| p.name.trim().to_string()).collect();
+        let mut lengths: Vec<String> = self.params.iter().filter(|p| p.kind == holds).map(|p| p.name.trim().to_string()).collect();
+        lengths.extend(self.sketch_params().into_iter().filter(|(_, k)| *k == holds).map(|(n, _)| n));
         let l = ui.label(t("Label"));
         let shown = d.label.clone().unwrap_or_else(|| t(NONE).to_string());
         let mut picked: Option<Option<String>> = None;
@@ -1123,7 +1170,7 @@ impl Views {
 }
 
 /// What `e` says, as the desktop says it: T19's words for a constraint that adds nothing.
-fn said(e: Unsat) -> String {
+pub(super) fn said(e: Unsat) -> String {
     if e.over && !e.message.starts_with(NOT_SATISFIED) { format!("{}: {}", t(OVER), e.message) } else { e.message }
 }
 
@@ -1197,6 +1244,158 @@ pub(super) fn marks_of(
             f.dimensions.push(d);
             constraints::marks(drawn, &f, values, st, which)
         }
+    }
+}
+
+/// The reference under `p` the dimension tool of `kind` picks in view `which` (`plane`, the plane the view's drawing has
+/// there): a circle or an arc by its edge for Radial and Diameter, a line for Angular, else a reference (`reference_at`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn pick_reference(
+    f: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    kind: DimKind,
+    plane: Option<Guid>,
+    p: Pos2,
+    screen: &dyn Fn(P2) -> Pos2,
+) -> Option<DimRef> {
+    match kind {
+        DimKind::Radial | DimKind::Diameter => circle_at(f, values, st, which, p, screen).map(|c| c.r),
+        DimKind::Angular => line_at(f, values, st, which, plane, p, screen),
+        DimKind::Aligned => reference_at(f, values, st, which, plane, p, screen),
+    }
+}
+
+/// The dimension of `kind` being placed through `at` (the view's mm), the pointer over `under`: once it has its references
+/// (`refs`, and `under` where it may join them), drawn as it would be made.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn placing(
+    f: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    kind: DimKind,
+    refs: &[DimRef],
+    under: Option<DimRef>,
+    at: P2,
+) -> Option<FamilyDimension> {
+    if kind.is_round() {
+        return (refs.len() == 1).then(|| new_dimension(f, values, st, which, refs, at, kind));
+    }
+    if refs.is_empty() {
+        return None;
+    }
+    let mut refs = refs.to_vec();
+    let fits = |refs: &[DimRef], r: &DimRef| {
+        if kind == DimKind::Angular { crosses_last(f, values, which, refs, r) } else { parallel(f, values, refs, r) }
+    };
+    if let Some(r) = under.filter(|r| !refs.contains(r) && fits(&refs, r)) {
+        refs.push(r);
+    }
+    let enough = refs.len() >= 2 && (kind == DimKind::Angular || has_way(f, values, &refs));
+    enough.then(|| new_dimension(f, values, st, which, &refs, at, kind))
+}
+
+/// A click of the dimension tool of `kind` with `refs` picked so far, over `under` (the reference there, if one), at `q`
+/// (the view's mm): `under` picked, or the dimension placed once it has its references (`refs` cleared for the next). What
+/// it placed, or why the click did nothing.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn dimension_click(
+    f: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    kind: DimKind,
+    refs: &mut Vec<DimRef>,
+    under: Option<DimRef>,
+    q: P2,
+) -> Result<Option<FamilyDimension>, String> {
+    let place = |refs: &mut Vec<DimRef>| {
+        let d = new_dimension(f, values, st, which, refs, q, kind);
+        refs.clear();
+        Ok(Some(d))
+    };
+    if kind.is_round() {
+        // Radial or Diameter Dimension: a circle, then a click where it goes.
+        return match (refs.first(), under) {
+            (None, Some(r)) => {
+                refs.push(r);
+                Ok(None)
+            }
+            (Some(_), _) => place(refs),
+            _ => Err(t("Pick a circle or an arc, then click where the dimension goes.").to_string()),
+        };
+    }
+    if kind == DimKind::Angular {
+        // Angular Dimension: lines one after another, each crossing the one before; a click on nothing places it.
+        return match under {
+            Some(r) if !crosses_last(f, values, which, refs, &r) => Err(t("Pick a line that crosses the one before.").to_string()),
+            Some(r) => {
+                if !refs.contains(&r) {
+                    refs.push(r);
+                }
+                Ok(None)
+            }
+            None if refs.len() >= 2 => place(refs),
+            None => Err(t("Pick lines that cross, then click where the dimension goes.").to_string()),
+        };
+    }
+    // Aligned Dimension: references one after another, parallel to the first; a click on nothing places it.
+    match under {
+        Some(r) if !parallel(f, values, refs, &r) => Err(t("Pick a reference parallel to the first.").to_string()),
+        Some(r) => {
+            if !refs.contains(&r) {
+                refs.push(r);
+            }
+            Ok(None)
+        }
+        None if refs.len() >= 2 && has_way(f, values, refs) => place(refs),
+        None if refs.len() >= 2 => Err(t("Pick a plane or a line too: points alone face no way to measure along.").to_string()),
+        None => Err(t("Pick two references or more, then click where the dimension goes.").to_string()),
+    }
+}
+
+/// Reference `r`, picked by a dimension tool, lit over view `which`: the line it is drawn as, a ring round a point, a
+/// circle or an arc itself.
+pub(super) fn paint_picked(
+    painter: &Painter,
+    f: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    r: &DimRef,
+    screen: &dyn Fn(P2) -> Pos2,
+) {
+    let stroke = Stroke::new(2.5, PICKED);
+    if let Some(round) = constraints::sketch_circles(f, values, st, which).into_iter().find(|x| x.r == *r) {
+        let (centre, radius) = (round.centre, round.radius);
+        let (from, sweep) = match round.arc {
+            None => (0.0, std::f64::consts::TAU),
+            Some([a, m, b]) => {
+                let angle = |q: P2| (q.1 - centre.1).atan2(q.0 - centre.0);
+                let tau = std::f64::consts::TAU;
+                let (to_m, to_b) = ((angle(m) - angle(a)).rem_euclid(tau), (angle(b) - angle(a)).rem_euclid(tau));
+                (angle(a), if to_m <= to_b { to_b } else { to_b - tau })
+            }
+        };
+        let pts: Vec<Pos2> = (0..=64)
+            .map(|k| {
+                let t = from + sweep * f64::from(k) / 64.0;
+                screen(P2(centre.0 + radius * t.cos(), centre.1 + radius * t.sin()))
+            })
+            .collect();
+        painter.add(egui::Shape::line(pts, stroke));
+        return;
+    }
+    match drawn_as(f, values, st, which, r) {
+        Some((a, b)) if a == b => {
+            painter.circle_stroke(screen(a), 5.0, Stroke::new(2.0, PICKED));
+        }
+        Some((a, b)) => {
+            painter.line_segment([screen(a), screen(b)], stroke);
+        }
+        None => {}
     }
 }
 
