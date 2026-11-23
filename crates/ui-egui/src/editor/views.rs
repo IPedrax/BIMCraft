@@ -10,7 +10,6 @@
 use super::dimensions::{self as dims, Clicked};
 use super::select_box::Picked;
 use super::*;
-use bimcraft_core::family::annotation::PaperMark;
 use bimcraft_core::family::views::{self as fv, Side, Staged, Which};
 use bimcraft_core::family::{DimRef, FamilyDimension};
 use bimcraft_core::geom::P2;
@@ -44,178 +43,6 @@ pub(super) mod erased {
     impl<T: serde::Serialize> Json for T {
         fn json(&self) -> String {
             serde_json::to_string(self).unwrap_or_default()
-        }
-    }
-}
-
-/// A symbol the plan is drawing: a line, an arc or a fill by its clicks, or a label, text or dot where one is clicked.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SymbolKind {
-    Line,
-    Arc,
-    Fill,
-    Label,
-    Text,
-    Dot,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct SymbolDraw {
-    pub(crate) kind: SymbolKind,
-    pub(crate) points: Vec<P2>,
-    pub(crate) fill_type: String,
-}
-
-impl SymbolDraw {
-    pub(crate) fn new(kind: SymbolKind) -> SymbolDraw {
-        SymbolDraw { kind, points: Vec::new(), fill_type: "Solid Black".into() }
-    }
-}
-
-/// A grip a symbol's plan draws and a drag takes: a point of a line, a ring's point, or an arc's start, middle or end.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SymbolNode {
-    Line(usize),
-    Ring { ring: usize, point: usize },
-    ArcGrip(usize),
-}
-
-/// A symbol coordinate moved by `d`: a number by adding it, a formula by adding it to the formula, so the expression stays
-/// readable and any parameters in it keep working.
-fn shifted(e: &bimcraft_core::family::Expr, d: f64) -> bimcraft_core::family::Expr {
-    use bimcraft_core::family::Expr;
-    match e {
-        Expr::Number(x) => Expr::Number(x + d),
-        Expr::Formula(f) => Expr::Formula(format!("({f}) + {d}")),
-    }
-}
-
-fn shifted_text(s: &str, d: f64) -> String {
-    super::expr_text(&shifted(&super::text_expr(s), d))
-}
-
-/// An arc's centre, radius and end angles, when every one of them is a plain number the grips can be worked from.
-fn arc_numbers(y: &super::SymbolText) -> Option<(P2, f64, f64, f64)> {
-    let x = y.centre[0].trim().parse::<f64>().ok()?;
-    let z = y.centre[1].trim().parse::<f64>().ok()?;
-    let r = y.radius.trim().parse::<f64>().ok()?;
-    let from = y.from.trim().parse::<f64>().ok()?;
-    let to = y.to.trim().parse::<f64>().ok()?;
-    (r > 0.0 && from != to).then_some((P2(x, z), r, from, to))
-}
-
-/// A point `deg` degrees round an arc's centre.
-fn on_arc(c: P2, r: f64, deg: f64) -> P2 {
-    let (s, co) = deg.to_radians().sin_cos();
-    P2(c.0 + r * co, c.1 + r * s)
-}
-
-/// An arc's three grips: its start, its middle and its end.
-fn arc_grips(y: &super::SymbolText) -> Option<[P2; 3]> {
-    let (c, r, from, to) = arc_numbers(y)?;
-    Some([on_arc(c, r, from), on_arc(c, r, (from + to) * 0.5), on_arc(c, r, to)])
-}
-
-/// The arc through `a`, `b` and `c`: its centre, radius, and the angles it runs from and to, so that it passes `b`.
-fn fit_arc(a: P2, b: P2, c: P2) -> Option<(P2, f64, f64, f64)> {
-    let d = 2.0 * (a.0 * (b.1 - c.1) + b.0 * (c.1 - a.1) + c.0 * (a.1 - b.1));
-    if d.abs() < 1e-9 {
-        return None;
-    }
-    let (a2, b2, c2) = (a.0 * a.0 + a.1 * a.1, b.0 * b.0 + b.1 * b.1, c.0 * c.0 + c.1 * c.1);
-    let centre =
-        P2((a2 * (b.1 - c.1) + b2 * (c.1 - a.1) + c2 * (a.1 - b.1)) / d, (a2 * (c.0 - b.0) + b2 * (a.0 - c.0) + c2 * (b.0 - a.0)) / d);
-    let r = centre.dist(a);
-    if !r.is_finite() || r <= 1e-9 {
-        return None;
-    }
-    let angle = |p: P2| (p.1 - centre.1).atan2(p.0 - centre.0).to_degrees();
-    let (fa, fb, fc) = (angle(a), angle(b), angle(c));
-    let to_c = (fc - fa).rem_euclid(360.0);
-    let to_b = (fb - fa).rem_euclid(360.0);
-    // Counter-clockwise when the middle point lies between the ends that way; clockwise when it lies the other.
-    let to = if to_b <= to_c { fa + to_c } else { fa - (360.0 - to_c) };
-    Some((centre, r, fa, to))
-}
-
-/// Points along the arc through `a`, `b` and `c`, for a preview or a drag, at most a turn.
-fn arc_points(a: P2, b: P2, c: P2) -> Option<Vec<P2>> {
-    let (centre, r, from, to) = fit_arc(a, b, c)?;
-    let steps = (((to - from).abs() / 5.0).ceil() as usize).clamp(8, 96);
-    Some((0..=steps).map(|k| on_arc(centre, r, from + (to - from) * k as f64 / steps as f64)).collect())
-}
-
-/// A symbol moved by `d`, or one grip of it moved alone: the same as a drag, for Copy.
-fn shift_symbol(y: &mut super::SymbolText, node: Option<SymbolNode>, d: P2) {
-    use super::Part;
-    match y.part {
-        Part::Line => {
-            if let Ok(mut pts) = super::text_profile(&y.line) {
-                match node {
-                    Some(SymbolNode::Line(n)) if n < pts.len() => {
-                        pts[n][0] = shifted(&pts[n][0], d.0);
-                        pts[n][1] = shifted(&pts[n][1], d.1);
-                    }
-                    Some(_) => {}
-                    None => {
-                        for p in &mut pts {
-                            p[0] = shifted(&p[0], d.0);
-                            p[1] = shifted(&p[1], d.1);
-                        }
-                    }
-                }
-                y.line =
-                    pts.iter().map(|[a, b]| format!("{}, {}", super::expr_text(a), super::expr_text(b))).collect::<Vec<_>>().join("\n");
-            }
-        }
-        Part::Arc => {
-            let Some((centre, r, from, to)) = arc_numbers(y) else { return };
-            let moved = match node {
-                Some(SymbolNode::ArcGrip(which)) => {
-                    let Some([a, m, b]) = arc_grips(y) else { return };
-                    // A grip moves and the arc is drawn through the other two, so an end swings and the middle bends it.
-                    match which {
-                        0 => fit_arc(a + d, m, b),
-                        2 => fit_arc(a, m, b + d),
-                        _ => fit_arc(a, m + d, b),
-                    }
-                }
-                None => Some((centre + d, r, from, to)),
-                _ => None,
-            };
-            if let Some((centre, r, from, to)) = moved {
-                y.centre = [format!("{}", centre.0), format!("{}", centre.1)];
-                y.radius = format!("{r}");
-                y.from = format!("{from}");
-                y.to = format!("{to}");
-            }
-        }
-        Part::Fill => match node {
-            Some(SymbolNode::Ring { ring, point }) => {
-                if let Ok(mut rings) = serde_json::from_str::<Vec<Vec<[f64; 2]>>>(&y.fill)
-                    && let Some(p) = rings.get_mut(ring).and_then(|r| r.get_mut(point))
-                {
-                    p[0] += d.0;
-                    p[1] += d.1;
-                    y.fill = serde_json::to_string(&rings).unwrap_or_default();
-                }
-            }
-            Some(_) => {}
-            None => {
-                if let Ok(mut rings) = serde_json::from_str::<Vec<Vec<[f64; 2]>>>(&y.fill) {
-                    for ring in &mut rings {
-                        for p in ring {
-                            p[0] += d.0;
-                            p[1] += d.1;
-                        }
-                    }
-                    y.fill = serde_json::to_string(&rings).unwrap_or_default();
-                }
-            }
-        },
-        _ => {
-            y.centre[0] = shifted_text(&y.centre[0], d.0);
-            y.centre[1] = shifted_text(&y.centre[1], d.1);
         }
     }
 }
@@ -256,10 +83,6 @@ pub(crate) struct Views {
     still: bool,
     /// The press origin, retained while Shift constrains a drag across frames.
     drag_origin: Option<P2>,
-    /// A symbolic line, an arc, a fill, a text, a label or a dot being drawn in the plan.
-    pub(crate) symbol: Option<SymbolDraw>,
-    /// A symbol being dragged: its place in the list, the grip taken (none, the whole symbol), and where the pointer was.
-    pub(crate) symbol_drag: Option<(usize, Option<SymbolNode>, P2)>,
     /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
     /// millimetres, the normal it moves along, and the view as it was when the drag began, which the pointer is read through
     /// while it goes on (a drag that changes what the view frames would otherwise change its scale under the hand).
@@ -746,384 +569,10 @@ impl FamilyEditor {
                 self.problem = None;
             }
             Err(e) => {
-                // Keep the last picture on screen: a mistyped label says what is wrong under the tab instead of leaving a blank
-                // view, and the next good edit draws again.
+                self.views.cache = None;
                 self.problem = Some(e);
             }
         }
-    }
-
-    /// A symbolic line, a fill or a label being drawn in the plan: its clicks, its preview, and the symbol it makes when it
-    /// closes. Click the line's points and press Enter or double-click; click a fill's ring, its first point again or Enter;
-    /// click where a label goes.
-    #[allow(clippy::too_many_arguments)]
-    fn symbol_in_view(
-        &mut self,
-        ui: &mut Ui,
-        response: &egui::Response,
-        painter: &egui::Painter,
-        view: View,
-        pane: Rect,
-        which: Which,
-        staged: &Staged,
-    ) -> Option<String> {
-        if which != Which::Plan {
-            self.views.symbol = None;
-            return Some(t("annotation symbols are drawn in the plan").to_string());
-        }
-        let mut draw = self.views.symbol.take()?;
-        let screen = |q: P2| {
-            let (x, y) = view.px(q);
-            pane.min + vec2(x, y)
-        };
-        let at_view = |p: egui::Pos2| view.mm((p.x - pane.min.x, p.y - pane.min.y));
-        // The same snaps as the project: the family's symbols, forms, reference planes and lines.
-        let family = self.family().ok();
-        let values = self.values();
-        let mut traces: Vec<(P2, P2)> = Vec::new();
-        let mut segments: Vec<(P2, P2)> = Vec::new();
-        if let Some(f) = &family {
-            for g in staged.planes.values() {
-                if let Some(p) = f.planes.iter().find(|p| p.guid == *g)
-                    && let Some((a, b)) = plane_trace(staged, which, &p.frame())
-                {
-                    traces.push((a, b));
-                }
-            }
-            for l in &f.lines {
-                segments.push((staged.to_view(which, l.start), staged.to_view(which, l.end)));
-            }
-            if let Ok(marks) = f.marks(&values) {
-                for mark in marks {
-                    if let bimcraft_core::family::Mark::Line(pts) = mark {
-                        for w in pts.windows(2) {
-                            segments.push((w[0], w[1]));
-                        }
-                    }
-                }
-            }
-            for i in 0..f.forms.len() {
-                let ring = fv::outline(f, &values, staged, which, i);
-                for k in 0..ring.len() {
-                    segments.push((ring[k], ring[(k + 1) % ring.len()]));
-                }
-            }
-        }
-        let reach =
-            bimcraft_core::snap::Reach { point: crate::canvas::SNAP / view.scale, line: f64::from(crate::canvas::PICK) / view.scale };
-        let square = ui.input(|i| i.modifiers.shift);
-        let (snaps, snap_to_coordinates) = (self.snaps, self.snap_to_coordinates);
-        let snap_step = if self.snap_step.is_finite() && self.snap_step > 0.0 { self.snap_step } else { 1.0 };
-        let snap_at = |q: P2, from: &[P2]| {
-            let found = bimcraft_core::snap::among(&traces, &segments, &[], q, reach, from, square, &snaps);
-            // The engine's last resort rounds to 10 mm: a paper millimetre grid in a family, too coarse to draw with. Off,
-            // a point with nothing to snap to stays where the cursor is; on, it rounds to the family's own step.
-            if found.kind == bimcraft_core::snap::Kind::Free {
-                let at =
-                    if snap_to_coordinates { P2((q.0 / snap_step).round() * snap_step, (q.1 / snap_step).round() * snap_step) } else { q };
-                bimcraft_core::snap::Found { at, ..found }
-            } else {
-                found
-            }
-        };
-        let hover = response.hover_pos().filter(|p| pane.contains(*p)).map(at_view).map(|q| snap_at(q, &draw.points).at);
-        let close_reach = 8.0 / view.scale.max(1e-9);
-        if let Some(f) = response.hover_pos().filter(|p| pane.contains(*p)).map(at_view) {
-            let found = snap_at(f, &draw.points);
-            crate::canvas::snap_mark(
-                painter,
-                screen(found.at),
-                found.guide.map(|g| screen(g.from)),
-                found.kind,
-                crate::canvas::Lock::Free,
-                crate::canvas::GuideLook::of(painter, false),
-                found.kind.name().to_string(),
-            );
-        }
-        // The preview: the line so far and to the pointer, the fill's ring, where the label would go, or the arc through the
-        // start, the pointer and the end.
-        if draw.kind == SymbolKind::Arc {
-            match (draw.points.as_slice(), hover) {
-                ([a], Some(b)) => {
-                    painter.line_segment([screen(*a), screen(b)], Stroke::new(1.5, PICKED));
-                }
-                ([a, b], Some(t)) => match arc_points(*a, t, *b) {
-                    Some(pts) => {
-                        painter.add(egui::Shape::line(pts.iter().map(|p| screen(*p)).collect(), Stroke::new(1.5, PICKED)));
-                    }
-                    None => {
-                        painter.line_segment([screen(*a), screen(*b)], Stroke::new(1.0, pal().muted));
-                    }
-                },
-                _ => {}
-            }
-        } else {
-            let preview = draw.points.iter().copied().chain(hover.filter(|_| !draw.points.is_empty())).collect::<Vec<_>>();
-            if preview.len() >= 2 {
-                painter.add(egui::Shape::line(preview.iter().map(|p| screen(*p)).collect(), Stroke::new(1.5, PICKED)));
-            }
-        }
-        for p in &draw.points {
-            painter.circle_filled(screen(*p), 3.0, PICKED);
-        }
-        if matches!(draw.kind, SymbolKind::Label | SymbolKind::Text)
-            && let Some(p) = hover
-        {
-            let at = screen(p);
-            painter.line_segment([at + vec2(-6.0, 0.0), at + vec2(6.0, 0.0)], Stroke::new(1.0, PICKED));
-            painter.line_segment([at + vec2(0.0, -6.0), at + vec2(0.0, 6.0)], Stroke::new(1.0, PICKED));
-        }
-        if draw.kind == SymbolKind::Dot
-            && let Some(p) = hover
-        {
-            painter.circle_stroke(screen(p), view.scale as f32, Stroke::new(1.0, PICKED));
-        }
-        let mut close = false;
-        // A click that only puts the pointer in the view — just after a ribbon button — may arrive as a release without egui's
-        // `clicked`; take it too, so the first point after switching tools lands.
-        let released = ui.input(|i| i.pointer.primary_released()) && ui.input(|i| i.pointer.latest_pos()).is_some_and(|p| pane.contains(p));
-        let clicked = response.clicked() || released;
-        let pointer = response.interact_pointer_pos().or_else(|| ui.input(|i| i.pointer.latest_pos()));
-        if response.double_clicked()
-            && let Some(p) = response.interact_pointer_pos().map(at_view).map(|q| snap_at(q, &draw.points).at)
-        {
-            if draw.kind == SymbolKind::Line {
-                draw.points.push(p);
-                close = true;
-            }
-        } else if clicked && let Some(p) = pointer.filter(|p| pane.contains(*p)).map(at_view).map(|q| snap_at(q, &draw.points).at) {
-            match draw.kind {
-                SymbolKind::Label => {
-                    self.place_label(p);
-                    return None;
-                }
-                SymbolKind::Text => {
-                    self.place_text(p);
-                    return None;
-                }
-                SymbolKind::Dot => {
-                    self.place_dot(p);
-                    return None;
-                }
-                SymbolKind::Arc => match draw.points.as_slice() {
-                    // Start, then end, then a point the arc passes through.
-                    [] | [_] => draw.points.push(p),
-                    [a, b] => {
-                        if fit_arc(*a, p, *b).is_some() {
-                            self.place_arc(*a, *b, p);
-                            return None;
-                        }
-                        self.views.status = Some(t("Arc: click the third point off the line through the first two").to_string());
-                    }
-                    _ => {}
-                },
-                SymbolKind::Line => draw.points.push(p),
-                SymbolKind::Fill => {
-                    let first = draw.points.first().copied();
-                    if draw.points.len() >= 3 && first.is_some_and(|q| q.dist(p) <= close_reach) {
-                        close = true;
-                    } else {
-                        draw.points.push(p);
-                    }
-                }
-            }
-        }
-        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            close = true;
-        }
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.views.symbol = None;
-            return None;
-        }
-        if close {
-            match draw.kind {
-                SymbolKind::Line if draw.points.len() >= 2 => self.place_line(&draw.points),
-                SymbolKind::Fill if draw.points.len() >= 3 => self.place_fill(&draw.points, &draw.fill_type),
-                SymbolKind::Label | SymbolKind::Text | SymbolKind::Dot | SymbolKind::Arc => {}
-                _ => self.views.symbol = Some(draw),
-            }
-            self.views.symbol = None;
-        } else {
-            self.views.symbol = Some(draw);
-        }
-        None
-    }
-
-    /// The symbols as the plan draws them, each with its place in the family's list.
-    fn symbol_marks(&self) -> Vec<(usize, PaperMark)> {
-        let Some(f) = self.family().ok() else { return Vec::new() };
-        let values = self.values();
-        bimcraft_core::family::annotation::marks_indexed(&f, &values).unwrap_or_default()
-    }
-
-    /// The symbol under `q`, and the grip of it when the pointer is on one: what a click selects and a drag takes.
-    fn symbol_at(&self, q: P2, reach: f64) -> Option<(usize, Option<SymbolNode>)> {
-        for (i, mark) in self.symbol_marks() {
-            match mark {
-                PaperMark::Line { pts, .. } => {
-                    // A grip first, so an end can be moved without moving the whole symbol.
-                    if let Some(arc) = self.symbols.get(i).filter(|y| y.part == super::Part::Arc) {
-                        if let Some(node) = arc_grips(arc).and_then(|g| g.iter().position(|p| p.dist(q) <= reach)) {
-                            return Some((i, Some(SymbolNode::ArcGrip(node))));
-                        }
-                    } else if let Some(node) = pts.iter().position(|p| p.dist(q) <= reach) {
-                        return Some((i, Some(SymbolNode::Line(node))));
-                    }
-                    if pts.windows(2).any(|w| bimcraft_core::geom::dist_to_segment(q, w[0], w[1]) <= reach) {
-                        return Some((i, None));
-                    }
-                }
-                PaperMark::Fill { rings, .. } => {
-                    // A ring's point first, so a corner can be dragged without moving the whole region.
-                    for (ring, points) in rings.iter().enumerate() {
-                        if let Some(point) = points.iter().position(|p| p.dist(q) <= reach) {
-                            return Some((i, Some(SymbolNode::Ring { ring, point })));
-                        }
-                    }
-                    if rings.iter().any(|r| bimcraft_core::geom::contains(r, q)) {
-                        return Some((i, None));
-                    }
-                }
-                PaperMark::Dot { centre, radius } => {
-                    if centre.dist(q) <= radius + reach {
-                        return Some((i, None));
-                    }
-                }
-                PaperMark::Label { at, height, text, .. } => {
-                    let wide = text.chars().count() as f64 * height * 0.6;
-                    if q.0 >= at.0 - reach && q.0 <= at.0 + wide + reach && (q.1 - at.1).abs() <= height.max(reach) {
-                        return Some((i, None));
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// The plan's next tool takes its clicks: any other drawing, dimension or Modify tool lets go.
-    fn begin_plan_tool(&mut self) {
-        self.views.symbol = None;
-        self.views.drawing = None;
-        self.views.dimensioning = None;
-        self.views.aligning = None;
-    }
-
-    pub(crate) fn start_symbol_draw(&mut self, kind: SymbolKind, fill_type: &str) {
-        let mut draw = SymbolDraw::new(kind);
-        if !fill_type.is_empty() {
-            draw.fill_type = fill_type.to_string();
-        }
-        self.begin_plan_tool();
-        self.views.symbol = Some(draw);
-    }
-
-    fn drag_symbol(&mut self, i: usize, node: Option<SymbolNode>, d: P2) {
-        let Some(y) = self.symbols.get_mut(i) else { return };
-        shift_symbol(y, node, d);
-    }
-
-    /// A symbol over the picture: selected, its grips drawn.
-    fn paint_symbol(&self, painter: &egui::Painter, view: View, pane: Rect, mark: &PaperMark) {
-        let screen = |q: P2| {
-            let (x, y) = view.px(q);
-            pane.min + vec2(x, y)
-        };
-        let grip = |p: P2| {
-            painter.circle_filled(screen(p), 4.0, PICKED);
-            painter.circle_stroke(screen(p), 4.0, Stroke::new(1.0, Color32::WHITE));
-        };
-        let selected = self.selected_symbol().and_then(|i| self.symbols.get(i));
-        // The selection's own highlight is `select_box`'s, for every element; here are the grips a drag takes.
-        match mark {
-            PaperMark::Line { pts, .. } => match selected.map(|y| y.part) {
-                // A line's every point is a grip; an arc's start, middle and end are.
-                Some(super::Part::Arc) => {
-                    if let Some(grips) = selected.and_then(arc_grips) {
-                        grips.into_iter().for_each(grip);
-                    }
-                }
-                Some(super::Part::Line) => pts.iter().copied().for_each(grip),
-                _ => {}
-            },
-            PaperMark::Fill { rings, .. } => {
-                // Both regions — Filled and Masking — take a drag of any of their corners.
-                for ring in rings {
-                    ring.iter().copied().for_each(grip);
-                }
-            }
-            PaperMark::Dot { .. } | PaperMark::Label { .. } => {}
-        }
-    }
-
-    /// A line through `points` as a symbolic line, selected.
-    fn place_line(&mut self, points: &[P2]) {
-        use super::Part;
-        let mut t = super::SymbolText::blank(Part::Line);
-        t.line = points.iter().map(|p| format!("{}, {}", p.0, p.1)).collect::<Vec<_>>().join("\n");
-        self.symbols.push(t);
-        let i = self.symbols.len() - 1;
-        self.select_symbol(i);
-    }
-
-    /// The arc from `start` to `end` through `through`, as a symbolic arc, selected.
-    fn place_arc(&mut self, start: P2, end: P2, through: P2) {
-        use super::Part;
-        let Some((centre, radius, from, to)) = fit_arc(start, through, end) else { return };
-        let mut t = super::SymbolText::blank(Part::Arc);
-        t.centre = [format!("{}", centre.0), format!("{}", centre.1)];
-        t.radius = format!("{radius}");
-        t.from = format!("{from}");
-        t.to = format!("{to}");
-        self.symbols.push(t);
-        let i = self.symbols.len() - 1;
-        self.select_symbol(i);
-    }
-
-    /// The ring `points` as a filled region of `type_name`, selected.
-    fn place_fill(&mut self, points: &[P2], type_name: &str) {
-        use super::Part;
-        let mut t = super::SymbolText::blank(Part::Fill);
-        let ring = points.iter().map(|p| [p.0, p.1]).collect::<Vec<_>>();
-        t.fill = serde_json::to_string(&vec![ring]).unwrap_or_default();
-        t.fill_type = type_name.to_string();
-        self.symbols.push(t);
-        let i = self.symbols.len() - 1;
-        self.select_symbol(i);
-    }
-
-    /// A label at `at`, reading the family's first parameter until its Properties say another.
-    fn place_label(&mut self, at: P2) {
-        use super::Part;
-        let mut t = super::SymbolText::blank(Part::Text);
-        t.centre = [format!("{}", at.0), format!("{}", at.1)];
-        t.radius = "2.5".into();
-        t.value = self.parameter_kinds().first().map_or_else(String::new, |(name, _)| format!("{{{name}}}"));
-        self.symbols.push(t);
-        let i = self.symbols.len() - 1;
-        self.select_symbol(i);
-    }
-
-    /// Plain text at `at`, selected: its Properties say what it reads.
-    fn place_text(&mut self, at: P2) {
-        use super::Part;
-        let mut t = super::SymbolText::blank(Part::Text);
-        t.centre = [format!("{}", at.0), format!("{}", at.1)];
-        t.radius = "2.5".into();
-        t.value = "Text".into();
-        self.symbols.push(t);
-        let i = self.symbols.len() - 1;
-        self.select_symbol(i);
-    }
-
-    /// A filled dot at `at`, 1 mm across in the family's units, selected; its Properties change the radius.
-    fn place_dot(&mut self, at: P2) {
-        use super::Part;
-        let mut t = super::SymbolText::blank(Part::Dot);
-        t.centre = [format!("{}", at.0), format!("{}", at.1)];
-        t.radius = "1".into();
-        self.symbols.push(t);
-        let i = self.symbols.len() - 1;
-        self.select_symbol(i);
     }
 
     /// The plan or elevation shown, filling `pane`: its picture, what is selected over it, the work plane tinted while Show is
@@ -1165,20 +614,6 @@ impl FamilyEditor {
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
-        // The first click after a ribbon button may arrive as a release without egui's `clicked`: take it as a click too.
-        let released = ui.input(|i| i.pointer.primary_released()) && ui.input(|i| i.pointer.latest_pos()).is_some_and(|p| pane.contains(p));
-        // A symbolic line, a fill or a label takes the plan's clicks until it is done; the family is drawn under it.
-        if self.views.symbol.is_some() {
-            let cache = self.views.cache.take().filter(|c| c.which == which)?;
-            let view = cache.view;
-            let painter = ui.painter_at(pane);
-            painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
-            crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &cache.drawing, &[], None, false, &[]);
-            let problem = self.symbol_in_view(ui, &response, &painter, view, pane, which, &cache.staged);
-            self.views.cache = Some(cache);
-            self.zoom_and_pan(ui, &response, which, view.scale);
-            return problem;
-        }
         let c = self.views.cache.as_ref().filter(|c| c.which == which)?;
         let view = c.view;
         let painter = ui.painter_at(pane);
@@ -1194,22 +629,6 @@ impl FamilyEditor {
         };
         let at_view = |p: egui::Pos2| view.mm((p.x - pane.min.x, p.y - pane.min.y));
         let editable = self.adaptive.is_none();
-        // A filled region's boundary is invisible in the project; here a dashed hint shows where its contour is. It is the
-        // editor's alone, not a symbol line: it never reaches the family's drawing or a sheet.
-        if editable {
-            for (_, mark) in self.symbol_marks() {
-                if let PaperMark::Fill { rings, .. } = mark {
-                    for ring in rings {
-                        if ring.len() < 2 {
-                            continue;
-                        }
-                        let mut pts: Vec<egui::Pos2> = ring.iter().map(|p| screen(*p)).collect();
-                        pts.push(pts[0]);
-                        painter.add(egui::Shape::dashed_line(&pts, Stroke::new(1.0, pal().muted), 5.0, 3.0));
-                    }
-                }
-            }
-        }
         // The planes under the pointer, and Tab stepping through them where several lie on one another (F10c).
         let under =
             response.hover_pos().map(|p| planes_under(&c.drawing, &c.staged, (p.x - pane.min.x, p.y - pane.min.y))).unwrap_or_default();
@@ -1613,13 +1032,6 @@ impl FamilyEditor {
         if editable && let Some(scene) = scene.as_ref() {
             scene.paint_selected(&painter, self.selection.items());
         }
-        // An annotation symbol selected: its grips, which the plan's clicks drag.
-        if editable
-            && let Some(i) = self.selected_symbol()
-            && let Some((_, mark)) = self.symbol_marks().into_iter().find(|(j, _)| *j == i)
-        {
-            self.paint_symbol(&painter, view, pane, &mark);
-        }
         // A Modify tool: what of the selection the view shows and takes, the view's way into the family, the axis Mirror
         // - Pick Axis would take under the pointer, and what Offset takes where a click is.
         let space = super::modify::Space::of(&c.staged, which);
@@ -1965,7 +1377,6 @@ impl FamilyEditor {
         }
         // What a click selects (FE-1): an element, or (inner none) nothing.
         let mut select: Option<Option<Picked>> = None;
-        let mut symbol_move: Option<(usize, Option<SymbolNode>, P2)> = None;
         let mut pin: Option<(Guid, (bimcraft_core::family::PivotPoint, bimcraft_core::family::PivotAt))> = None;
         let mut grip_moved: Option<super::pivot::GripMove> = None;
         // A grip pressed (F7d): the rotate grip, or a line's end; the drag is the grip's.
@@ -2016,8 +1427,8 @@ impl FamilyEditor {
         let box_click = self.selection.box_click(ui, &response);
         // An adaptive family's views only show it: its tools are in {3D}.
         if editable
-            && (response.clicked() || box_click.is_some() || released)
-            && let Some(p) = box_click.or_else(|| response.interact_pointer_pos()).or_else(|| ui.input(|i| i.pointer.latest_pos()))
+            && (response.clicked() || box_click.is_some())
+            && let Some(p) = box_click.or_else(|| response.interact_pointer_pos())
         {
             let q = at_view(p);
             clicked_any = true;
@@ -2128,8 +1539,6 @@ impl FamilyEditor {
                     _ => Vec::new(),
                 };
                 on_dims = Some((hit, lengths));
-            } else if let Some((i, _)) = self.symbol_at(q, 6.0 / view.scale.max(1e-9)) {
-                select = Some(Some(Picked::Symbol(i)));
             } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
                 select = Some(Some(Picked::Connector(i)));
             } else if let Some(i) = scene.as_ref().and_then(|s| s.nested_face(q)) {
@@ -2170,29 +1579,8 @@ impl FamilyEditor {
             && self.views.moving.is_none()
             && self.views.modify.is_none()
             && self.views.pasting.is_none();
-        // Where the annotation symbols' grips show: a press on one drags that corner, not the selection.
-        let symbol_grips: Vec<egui::Pos2> = self
-            .symbol_marks()
-            .into_iter()
-            .flat_map(|(i, mark)| {
-                let part = self.symbols.get(i).map(|y| y.part);
-                let pts: Vec<P2> = match mark {
-                    PaperMark::Line { .. } if part == Some(super::Part::Arc) => {
-                        self.symbols.get(i).and_then(arc_grips).map(|g| g.to_vec()).unwrap_or_default()
-                    }
-                    PaperMark::Line { pts, .. } => pts,
-                    PaperMark::Fill { rings, .. } => rings.into_iter().flatten().collect(),
-                    _ => Vec::new(),
-                };
-                pts.into_iter().map(&on_screen).collect::<Vec<_>>()
-            })
-            .collect();
         let press_hit = |p: egui::Pos2| -> Option<Picked> {
-            if !tools_free
-                || on_handle(p)
-                || grips.iter().any(|(_, at)| at.distance(p) <= super::pivot::REACH)
-                || symbol_grips.iter().any(|g| g.distance(p) <= 6.0)
-            {
+            if !tools_free || on_handle(p) || grips.iter().any(|(_, at)| at.distance(p) <= super::pivot::REACH) {
                 return None;
             }
             match dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
@@ -2246,7 +1634,6 @@ impl FamilyEditor {
                 free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
                     && !on_handle(*p)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
-                    && self.symbol_at(at_view(*p), reach).is_none_or(|(_, n)| n.is_none())
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
             });
         let boxed = super::select_box::track(&mut self.selection, ui, &response, &painter, pane, start);
@@ -2281,32 +1668,6 @@ impl FamilyEditor {
                 }
             }
         }
-        // An annotation symbol's grip pressed: that corner, arc end or line point drags alone; the whole symbol is the
-        // selection's drag above.
-        if editable
-            && self.views.symbol_drag.is_none()
-            && self.views.moving.is_none()
-            && self.views.modify.is_none()
-            && self.views.measuring.is_none()
-            && response.drag_started_by(PointerButton::Primary)
-            && let Some(p) = ui.input(|i| i.pointer.press_origin())
-        {
-            let q = at_view(p);
-            if let Some((i, Some(node))) = self.symbol_at(q, 6.0 / view.scale.max(1e-9)) {
-                self.selection.apply(&[Picked::Symbol(i)], super::select_box::How::Replace);
-                self.views.symbol_drag = Some((i, Some(node), q));
-            }
-        }
-        if let Some((i, node, last)) = self.views.symbol_drag
-            && response.dragged_by(PointerButton::Primary)
-            && let Some(now) = response.interact_pointer_pos().map(at_view)
-        {
-            let d = P2(now.0 - last.0, now.1 - last.1);
-            if d.0 != 0.0 || d.1 != 0.0 {
-                symbol_move = Some((i, node, d));
-                self.views.symbol_drag = Some((i, node, now));
-            }
-        }
         // Within a click's few points of the press, a drag moves nothing yet; once past them, it does to the end.
         if response.drag_started_by(PointerButton::Primary) {
             self.views.still = true;
@@ -2329,7 +1690,6 @@ impl FamilyEditor {
         // A plane of the family's own, selected, dragged square to itself.
         if editable
             && self.views.moving.is_none()
-            && self.views.symbol_drag.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.end_drag.is_none()
@@ -2364,7 +1724,6 @@ impl FamilyEditor {
             self.views.drag_origin = None;
             self.views.end_drag = None;
             self.views.grip = None;
-            self.views.symbol_drag = None;
         }
         let param_let_go = response.drag_stopped() || !ui.input(|i| i.pointer.primary_down());
         self.zoom_and_pan(ui, &response, which, view.scale);
@@ -2572,9 +1931,6 @@ impl FamilyEditor {
             let guid = Guid::new();
             self.lines.push(RefLine { guid, start, end, host, ..Default::default() });
             self.select_only(Picked::Line(guid));
-        }
-        if let Some((i, node, d)) = symbol_move {
-            self.drag_symbol(i, node, d);
         }
         problem.or_else(|| self.views.status.take())
     }

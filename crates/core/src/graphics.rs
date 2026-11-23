@@ -103,21 +103,8 @@ pub const COMPONENTS: [&str; 18] = [
     "patchpanel",
     "rack",
 ];
-pub const ANNOTATION: [&str; 13] = [
-    "dimension",
-    "tag",
-    "text",
-    "line",
-    "region",
-    "spot",
-    "spotcoordinate",
-    "grid",
-    "level",
-    "section",
-    "elevation",
-    "circuit",
-    "annotation",
-];
+pub const ANNOTATION: [&str; 12] =
+    ["dimension", "tag", "text", "line", "region", "spot", "spotcoordinate", "grid", "level", "section", "elevation", "circuit"];
 /// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
 /// category, so Object Styles has no row for them.
 pub const SCANS: [&str; 1] = ["pointcloud"];
@@ -257,7 +244,6 @@ pub fn component_category(category: crate::family::Category) -> Option<&'static 
         C::VoiceOutlet => "voiceoutlet",
         C::PatchPanel => "patchpanel",
         C::Rack => "rack",
-        C::Annotation => "annotation",
         C::Door | C::Window => return None,
     })
 }
