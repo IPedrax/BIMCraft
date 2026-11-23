@@ -249,7 +249,8 @@ fn a_plan_cuts_the_kings_and_jacks_beside_a_window_and_leaves_its_opening_open()
 #[test]
 fn walls_have_a_framing_subcategory_off_with_its_wall() {
     let subs: Vec<&str> = crate::graphics::subcategories("wall").map(|s| s.key).collect();
-    assert_eq!(subs, ["framing"]);
+    // The curtain walls' panels and mullions are subcategories of walls as well.
+    assert!(subs.contains(&"framing"), "{subs:?}");
     let mut s = Session::new();
     run(&mut s, "graphics", json!({"view": "Level 1", "hide": ["wall"]}));
     let g = crate::graphics::graphics_of(&s.model, 100000).unwrap();
