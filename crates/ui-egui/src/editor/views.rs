@@ -1194,6 +1194,8 @@ impl FamilyEditor {
         };
         let at_view = |p: egui::Pos2| view.mm((p.x - pane.min.x, p.y - pane.min.y));
         let editable = self.adaptive.is_none();
+        // Annotation symbols have paper marks and their own grips; a component family keeps the selection #598 gives it.
+        let annotation = self.category.is_annotation();
         // A filled region's boundary is invisible in the project; here a dashed hint shows where its contour is. It is the
         // editor's alone, not a symbol line: it never reaches the family's drawing or a sheet.
         if editable {
@@ -1615,6 +1617,7 @@ impl FamilyEditor {
         }
         // An annotation symbol selected: its grips, which the plan's clicks drag.
         if editable
+            && annotation
             && let Some(i) = self.selected_symbol()
             && let Some((_, mark)) = self.symbol_marks().into_iter().find(|(j, _)| *j == i)
         {
@@ -2128,7 +2131,7 @@ impl FamilyEditor {
                     _ => Vec::new(),
                 };
                 on_dims = Some((hit, lengths));
-            } else if let Some((i, _)) = self.symbol_at(q, 6.0 / view.scale.max(1e-9)) {
+            } else if annotation && let Some((i, _)) = self.symbol_at(q, 6.0 / view.scale.max(1e-9)) {
                 select = Some(Some(Picked::Symbol(i)));
             } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
                 select = Some(Some(Picked::Connector(i)));
@@ -2171,22 +2174,25 @@ impl FamilyEditor {
             && self.views.modify.is_none()
             && self.views.pasting.is_none();
         // Where the annotation symbols' grips show: a press on one drags that corner, not the selection.
-        let symbol_grips: Vec<egui::Pos2> = self
-            .symbol_marks()
-            .into_iter()
-            .flat_map(|(i, mark)| {
-                let part = self.symbols.get(i).map(|y| y.part);
-                let pts: Vec<P2> = match mark {
-                    PaperMark::Line { .. } if part == Some(super::Part::Arc) => {
-                        self.symbols.get(i).and_then(arc_grips).map(|g| g.to_vec()).unwrap_or_default()
-                    }
-                    PaperMark::Line { pts, .. } => pts,
-                    PaperMark::Fill { rings, .. } => rings.into_iter().flatten().collect(),
-                    _ => Vec::new(),
-                };
-                pts.into_iter().map(&on_screen).collect::<Vec<_>>()
-            })
-            .collect();
+        let symbol_grips: Vec<egui::Pos2> = if annotation {
+            self.symbol_marks()
+                .into_iter()
+                .flat_map(|(i, mark)| {
+                    let part = self.symbols.get(i).map(|y| y.part);
+                    let pts: Vec<P2> = match mark {
+                        PaperMark::Line { .. } if part == Some(super::Part::Arc) => {
+                            self.symbols.get(i).and_then(arc_grips).map(|g| g.to_vec()).unwrap_or_default()
+                        }
+                        PaperMark::Line { pts, .. } => pts,
+                        PaperMark::Fill { rings, .. } => rings.into_iter().flatten().collect(),
+                        _ => Vec::new(),
+                    };
+                    pts.into_iter().map(&on_screen).collect::<Vec<_>>()
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let press_hit = |p: egui::Pos2| -> Option<Picked> {
             if !tools_free
                 || on_handle(p)
@@ -2246,7 +2252,7 @@ impl FamilyEditor {
                 free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
                     && !on_handle(*p)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
-                    && self.symbol_at(at_view(*p), reach).is_none_or(|(_, n)| n.is_none())
+                    && (!annotation || self.symbol_at(at_view(*p), reach).is_none_or(|(_, n)| n.is_none()))
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
             });
         let boxed = super::select_box::track(&mut self.selection, ui, &response, &painter, pane, start);
@@ -2284,6 +2290,7 @@ impl FamilyEditor {
         // An annotation symbol's grip pressed: that corner, arc end or line point drags alone; the whole symbol is the
         // selection's drag above.
         if editable
+            && annotation
             && self.views.symbol_drag.is_none()
             && self.views.moving.is_none()
             && self.views.modify.is_none()
