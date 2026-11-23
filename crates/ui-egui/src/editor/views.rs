@@ -1165,8 +1165,6 @@ impl FamilyEditor {
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
-        // The first click after a ribbon button may arrive as a release without egui's `clicked`: take it as a click too.
-        let released = ui.input(|i| i.pointer.primary_released()) && ui.input(|i| i.pointer.latest_pos()).is_some_and(|p| pane.contains(p));
         // A symbolic line, a fill or a label takes the plan's clicks until it is done; the family is drawn under it.
         if self.views.symbol.is_some() {
             let cache = self.views.cache.take().filter(|c| c.which == which)?;
@@ -2019,8 +2017,8 @@ impl FamilyEditor {
         let box_click = self.selection.box_click(ui, &response);
         // An adaptive family's views only show it: its tools are in {3D}.
         if editable
-            && (response.clicked() || box_click.is_some() || released)
-            && let Some(p) = box_click.or_else(|| response.interact_pointer_pos()).or_else(|| ui.input(|i| i.pointer.latest_pos()))
+            && (response.clicked() || box_click.is_some())
+            && let Some(p) = box_click.or_else(|| response.interact_pointer_pos())
         {
             let q = at_view(p);
             clicked_any = true;

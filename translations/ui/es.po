@@ -236,7 +236,7 @@ msgstr "Una ciudad, un país, un código EPSG o palabras del nombre: Madrid, Ale
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "El material, el aislamiento y la temperatura de trabajo de un conductor, y la capacidad de corriente de cada sección, en mm²."
 
-#: crates/ui-egui/src/editor/views.rs:2285
+#: crates/ui-egui/src/editor/views.rs:2283
 msgid "A connector with no place of its own stays where it is: give it one in Properties to move it."
 msgstr ""
 
@@ -244,7 +244,7 @@ msgstr ""
 msgid "A copy is drawn on a reference plane or a reference line the family no longer has: it can't be pasted."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1680
+#: crates/ui-egui/src/editor/views.rs:1678
 msgid "A datum stays where it is: offset a reference plane of the family's own."
 msgstr ""
 
@@ -304,7 +304,7 @@ msgstr ""
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:2114
+#: crates/ui-egui/src/editor/views.rs:2112
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -1071,7 +1071,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "Alinear se ajusta a lo que muestra una planta: en la vista 3D, arrastre el extremo de una línea o dibújela de nuevo."
 
-#: crates/ui-egui/src/editor/views.rs:2116
+#: crates/ui-egui/src/editor/views.rs:2114
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -1145,7 +1145,7 @@ msgstr ""
 msgid "Aligned."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:2415
+#: crates/ui-egui/src/editor/views.rs:2413
 msgid "Aligned: let go, then click the padlock to lock it there."
 msgstr ""
 
@@ -11652,7 +11652,7 @@ msgstr "Desfase desde anfitrión"
 msgid "Offset from Surface:"
 msgstr "Desfase desde la superficie:"
 
-#: crates/ui-egui/src/editor/views.rs:1685
+#: crates/ui-egui/src/editor/views.rs:1683
 msgid "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines."
 msgstr ""
 
@@ -12636,7 +12636,7 @@ msgstr "Designa un plano de referencia, una línea de referencia o una arista de
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Designa un plano de referencia, una línea de referencia o una línea y luego una línea del boceto."
 
-#: crates/ui-egui/src/editor/views.rs:2117
+#: crates/ui-egui/src/editor/views.rs:2115
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Designa un plano de referencia, un extremo de una extrusión o una línea de una forma."
 
@@ -12813,7 +12813,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "Designar tres puntos: tras Aceptar, haz clic en tres puntos del modelo; cada uno se ajusta a una esquina cercana al puntero"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1355
-#: crates/ui-egui/src/editor/views.rs:2096
+#: crates/ui-egui/src/editor/views.rs:2094
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Designa dos referencias o más y luego haz clic donde va la cota."
 
@@ -17404,7 +17404,7 @@ msgstr "Ese es el máximo de modelos que se guardan: elimine uno primero"
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "Eso no es una dirección IP: 0.0.0.0 escucha en todas las direcciones de esta máquina"
 
-#: crates/ui-egui/src/editor/views.rs:2107
+#: crates/ui-egui/src/editor/views.rs:2105
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -18073,7 +18073,7 @@ msgstr "La vista mira a lo largo de la cota: gírala para colocar su línea."
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:2063
+#: crates/ui-egui/src/editor/views.rs:2061
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
