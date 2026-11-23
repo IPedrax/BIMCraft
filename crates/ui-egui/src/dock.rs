@@ -37,7 +37,15 @@ pub enum Palette {
 }
 
 impl Palette {
-    pub const ALL: [Palette; 5] = [Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts];
+    /// The most palettes there are, and the longest name one has: a settings file's, and a plugin's.
+    const MOST: usize = 512;
+    const NAME: usize = 200;
+
+    /// Every palette the window knows, the one place that lists them: the settings' switches and a preset's editor ask here, and
+    /// the layout reads and writes its names through this list. A plugin's palettes come here with the plugin registry.
+    pub fn known() -> Vec<Palette> {
+        vec![Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts]
+    }
 
     /// Whether it is open in a window that starts afresh (and in one whose settings are from before it came).
     fn opens_at_start(self) -> bool {
@@ -70,9 +78,18 @@ impl Palette {
         }
     }
 
-    fn named(name: &str) -> Option<Palette> {
-        Palette::ALL.into_iter().find(|p| p.name() == name)
+    /// The palette the layout calls `name`, of those `known` this build has: none for a plugin's, which a newer build may know.
+    pub fn named(name: &str, known: &[Palette]) -> Option<Palette> {
+        known.iter().copied().find(|p| p.name() == name)
     }
+}
+
+/// How a layout is read: the window's own (`settings.json`) opens a palette the file never named, so a palette added by a newer
+/// version still shows; a preset's keeps exactly the palettes it was saved with, and one added later stays closed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Policy {
+    Live,
+    Preset,
 }
 
 /// A side of the window a palette docks on.
@@ -167,6 +184,9 @@ pub struct Docking {
     pub floats: Vec<Float>,
     /// The side each palette was last docked on, where showing it again puts it.
     home: BTreeMap<Palette, Side>,
+    /// Names a file kept that this build has no palette for (a plugin's, while its plugin is off): not drawn, but written back in
+    /// `closed`, so turning the plugin on again finds the layout as it was.
+    pub unknown: Vec<String>,
 }
 
 impl Default for Docking {
@@ -178,6 +198,7 @@ impl Default for Docking {
             bottom: Vec::new(),
             floats: Vec::new(),
             home: BTreeMap::new(),
+            unknown: Vec::new(),
         }
     }
 }
@@ -191,6 +212,7 @@ impl Docking {
             bottom: Vec::new(),
             floats: Vec::new(),
             home: BTreeMap::from([(Palette::Tools, Side::Left)]),
+            unknown: Vec::new(),
         }
     }
 
@@ -368,8 +390,8 @@ impl Docking {
         }
     }
 
-    /// As the settings file keeps it.
-    pub fn to_json(&self) -> Value {
+    /// As the settings file keeps it: `known` names the palettes this build has, its own and, with the plugin registry, a plugin's.
+    pub fn to_json(&self, known: &[Palette]) -> Value {
         let stack = |s: &Stack| json!({"tabs": s.tabs.iter().map(|p| p.name()).collect::<Vec<_>>(), "active": s.active});
         let mut v = json!({});
         for side in Side::ALL {
@@ -385,28 +407,61 @@ impl Docking {
                 s
             })
             .collect();
-        v["closed"] = Palette::ALL.into_iter().filter(|p| !self.shown(*p)).map(Palette::name).collect();
+        let mut closed: Vec<&str> = known.iter().filter(|p| !self.shown(**p)).map(|p| p.name()).collect();
+        // A palette this build has no name for is kept closed, as it was read: a plugin's survives its plugin being off.
+        for name in &self.unknown {
+            if !closed.contains(&name.as_str()) {
+                closed.push(name);
+            }
+        }
+        v["closed"] = json!(closed);
         v["home"] = self.home.iter().map(|(p, s)| (p.name().to_string(), json!(s.key()))).collect::<serde_json::Map<_, _>>().into();
         v
     }
 
-    /// Reads back what [`to_json`](Self::to_json) wrote, as hostile as any file: a palette it doesn't know or names
-    /// twice is left out, numbers are finite and in range, and a palette it neither places nor closes (one added since)
-    /// docks on the left, unless it is one that starts closed (Script Automation). Anything but an object is the default layout.
-    pub fn from_json(v: &Value) -> Docking {
+    /// Reads back what [`to_json`](Self::to_json) wrote, `policy` saying what a palette it neither places nor closes does (see
+    /// [`Policy`]), `known` what palettes this build has. As hostile as any file: a palette it names twice is left out, numbers are
+    /// finite and in range, and a name it doesn't know is kept to write back. Anything but an object is the default layout.
+    pub fn from_json(v: &Value, policy: Policy, known: &[Palette]) -> Docking {
         if !v.is_object() {
             return Docking::default();
         }
+        let mut unknown = Vec::new();
         let mut seen = BTreeSet::new();
-        let mut stack = |v: &Value| -> Option<Stack> {
-            let tabs: Vec<Palette> =
-                v["tabs"].as_array()?.iter().filter_map(|n| Palette::named(n.as_str()?)).filter(|p| seen.insert(*p)).collect();
+        let mut stack = |v: &Value, unknown: &mut Vec<String>| -> Option<Stack> {
+            let tabs: Vec<Palette> = v["tabs"]
+                .as_array()?
+                .iter()
+                .filter_map(|n| n.as_str())
+                .filter_map(|n| match Palette::named(n, known) {
+                    Some(p) => Some(p),
+                    None => {
+                        if !n.is_empty()
+                            && n.chars().count() <= Palette::NAME
+                            && unknown.len() < Palette::MOST
+                            && !unknown.iter().any(|q| q == n)
+                        {
+                            unknown.push(n.to_string());
+                        }
+                        None
+                    }
+                })
+                .filter(|p| seen.insert(*p))
+                .collect();
             let active = v["active"].as_u64().and_then(|a| usize::try_from(a).ok()).filter(|a| *a < tabs.len()).unwrap_or(0);
             (!tabs.is_empty()).then_some(Stack { tabs, active })
         };
-        let mut d = Docking { left: Vec::new(), right: Vec::new(), bottom: Vec::new(), floats: Vec::new(), home: BTreeMap::new() };
+        let mut d = Docking {
+            left: Vec::new(),
+            right: Vec::new(),
+            bottom: Vec::new(),
+            floats: Vec::new(),
+            home: BTreeMap::new(),
+            unknown: Vec::new(),
+        };
         for side in Side::ALL {
-            let stacks: Vec<Stack> = v[side.key()].as_array().map(|a| a.iter().filter_map(&mut stack).collect()).unwrap_or_default();
+            let stacks: Vec<Stack> =
+                v[side.key()].as_array().map(|a| a.iter().filter_map(|s| stack(s, &mut unknown)).collect()).unwrap_or_default();
             *d.side_mut(side) = stacks;
         }
         let pair = |v: &Value, lo: f32, hi: f32| -> Option<Vec2> {
@@ -417,21 +472,45 @@ impl Docking {
         };
         for f in v["floats"].as_array().into_iter().flatten() {
             let (Some(at), Some(size)) = (pair(&f["at"], -FAR, FAR), pair(&f["size"], 120.0, 4000.0)) else { continue };
-            if let Some(stack) = stack(f) {
-                d.floats.push(Float { stack, at: at.to_pos2(), size });
+            if let Some(s) = stack(f, &mut unknown) {
+                d.floats.push(Float { stack: s, at: at.to_pos2(), size });
             }
         }
         for (name, side) in v["home"].as_object().into_iter().flatten() {
-            if let (Some(p), Some(s)) = (Palette::named(name), Side::ALL.into_iter().find(|s| side.as_str() == Some(s.key()))) {
+            if let (Some(p), Some(s)) = (Palette::named(name, known), Side::ALL.into_iter().find(|s| side.as_str() == Some(s.key()))) {
                 d.home.insert(p, s);
             }
         }
-        let closed: BTreeSet<Palette> = v["closed"].as_array().into_iter().flatten().filter_map(|n| Palette::named(n.as_str()?)).collect();
-        for p in Palette::ALL {
-            // The Assistant opens when the user asks: a file from before it was added leaves it closed.
-            if !d.shown(p) && !closed.contains(&p) && p != Palette::Assistant && p.opens_at_start() {
+        let closed: BTreeSet<Palette> = v["closed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|n| n.as_str())
+            .filter_map(|n| match Palette::named(n, known) {
+                Some(p) => Some(p),
+                None => {
+                    if !n.is_empty()
+                        && n.chars().count() <= Palette::NAME
+                        && unknown.len() < Palette::MOST
+                        && !unknown.iter().any(|q| q == n)
+                    {
+                        unknown.push(n.to_string());
+                    }
+                    None
+                }
+            })
+            .collect();
+        d.unknown = unknown;
+        for p in known {
+            // The window's own layout opens what the file never named, so a palette added since still shows; a preset keeps exactly
+            // what it was saved with, and one added later stays closed.
+            let opens = match policy {
+                Policy::Live => p.opens_at_start() && *p != Palette::Assistant,
+                Policy::Preset => false,
+            };
+            if !d.shown(*p) && !closed.contains(p) && opens {
                 // First on the left: the Tools palette, which a file from before it holds nothing of, stands where it would have.
-                d.put(p, Target::Side(Side::Left));
+                d.put(*p, Target::Side(Side::Left));
                 d.left.rotate_right(1);
             }
         }
@@ -490,17 +569,32 @@ enum Land {
 }
 
 impl BimApp {
+    /// A stack as this frame draws it: in Rev the ribbon is the tools, so the Tools palette is left out of the drawing and takes no
+    /// room, though it stays in the layout as the user's intent (`Docking::show`). None when nothing of it is left to draw.
+    fn drawn_stack(&self, stack: &Stack) -> Option<Stack> {
+        if !crate::style::rev() || !stack.tabs.contains(&Palette::Tools) {
+            return Some(stack.clone());
+        }
+        let tabs: Vec<Palette> = stack.tabs.iter().copied().filter(|p| *p != Palette::Tools).collect();
+        if tabs.is_empty() {
+            return None;
+        }
+        let active = stack.shown().and_then(|p| tabs.iter().position(|q| *q == p)).unwrap_or(0);
+        Some(Stack { tabs, active })
+    }
+
     /// The docked palettes, round the views; call between the bars and the views.
     pub(crate) fn docks(&mut self, ui: &mut Ui) {
         self.drop_headers.clear();
         // The side holds the stacks' cards; between them and round them, the view's ground.
         let frame = Frame::NONE;
         for side in Side::ALL {
-            if self.docking.side(side).is_empty() {
+            let stacks: Vec<Stack> = self.docking.side(side).iter().filter_map(|s| self.drawn_stack(s)).collect();
+            if stacks.is_empty() {
                 continue;
             }
             // A side of the Tools palette alone is a rail and a column of names wide.
-            let tools = self.docking.side(side) == [Stack::of(Palette::Tools)];
+            let tools = stacks.len() == 1 && stacks[0].tabs == [Palette::Tools];
             let width = if tools { TOOLS_WIDTH } else { 290.0 };
             let panel = match side {
                 Side::Left => Panel::left("dock-left").default_size(width),
@@ -508,13 +602,12 @@ impl BimApp {
                 Side::Right => Panel::right("dock-right").default_size(width + RIGHT_EXTRA),
                 Side::Bottom => Panel::bottom("dock-bottom").default_size(240.0),
             };
-            panel.frame(frame).show_separator_line(false).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side));
+            panel.frame(frame).show_separator_line(false).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side, &stacks));
         }
     }
 
     /// The stacks docked on a side: one over the other, or side by side along the bottom, each but the last resizable.
-    fn dock_side(&mut self, ui: &mut Ui, side: Side) {
-        let stacks = self.docking.side(side).to_vec();
+    fn dock_side(&mut self, ui: &mut Ui, side: Side, stacks: &[Stack]) {
         let n = stacks.len();
         for (i, stack) in stacks.iter().enumerate() {
             // Each stack a card, standing off the window's edges and the next card: the last one off the bottom (or, along
@@ -559,7 +652,10 @@ impl BimApp {
     /// The palettes floating in windows of their own.
     pub(crate) fn palette_windows(&mut self, ctx: &Context) {
         for f in self.docking.floats.clone() {
-            let Some(first) = f.stack.tabs.first().copied() else { continue };
+            let Some(origin) = f.stack.tabs.first().copied() else { continue };
+            // In Rev the Tools palette is left out of the drawing, but its window (with others in it) stays as it is in the layout.
+            let Some(stack) = self.drawn_stack(&f.stack) else { continue };
+            let Some(first) = stack.tabs.first().copied() else { continue };
             let frame = Frame::window(&ctx.global_style()).fill(pal().panel).inner_margin(0.0);
             let shown = egui::Window::new(t(first.name()))
                 .id(UiId::new(("palette-window", first)))
@@ -571,12 +667,12 @@ impl BimApp {
                 .frame(frame)
                 .show(ctx, |ui| {
                     ui.set_min_size(ui.available_size());
-                    self.stack_ui(ui, &f.stack, true);
+                    self.stack_ui(ui, &stack, true);
                 });
             // Where egui put it (it keeps a window on screen, and a resize moves it), and its size, with what its title
             // was dragged by meanwhile.
             if let Some(r) = shown
-                && let Some(now) = self.docking.float_of_mut(first)
+                && let Some(now) = self.docking.float_of_mut(origin)
             {
                 (now.at, now.size) = (r.response.rect.min + (now.at - f.at), r.response.rect.size());
             }

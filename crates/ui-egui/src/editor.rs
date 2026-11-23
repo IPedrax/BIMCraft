@@ -590,6 +590,21 @@ pub(crate) const PROJECT_NOTE_MATERIALS: &str =
 pub(crate) const PROJECT_NOTE_UNITS: &str =
     msg!("This changes the project's units now, not on Load into Project; the project's Undo takes it back.");
 
+impl DocTab {
+    /// Its English name, which its panels' keys carry: `tab:family:<name>/<panel>` (`ТЗ-019`).
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            DocTab::Create => "Create",
+            DocTab::Insert => "Insert",
+            DocTab::Annotate => "Annotate",
+            DocTab::View => "View",
+            DocTab::Manage => "Manage",
+            DocTab::Modify => "Modify",
+            DocTab::Context => "Context",
+        }
+    }
+}
+
 /// A family document's dialogs: Family Types (its parameters and types) and Family Category and Parameters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DocDialog {
