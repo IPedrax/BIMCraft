@@ -771,6 +771,7 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                 },
             );
         }
+        add(family::OPENING_AREA, Kind::Area);
     }
     out
 }
@@ -1139,6 +1140,13 @@ impl Row<'_> {
                 (k, _) if k.text() && v.as_str() == Some("") => Value::Null,
                 _ => v,
             };
+        }
+        // A host-cutting family's opening area is worked out with its values, not a parameter of its own.
+        if cat == "component"
+            && name == crate::family::OPENING_AREA
+            && let Some(x) = j.get("values").and_then(|v| v.get(name)).and_then(Value::as_f64)
+        {
+            return serde_json::json!(fine(x / 1e6));
         }
         let cat = self.cat;
         if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
