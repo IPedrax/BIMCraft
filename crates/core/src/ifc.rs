@@ -2637,9 +2637,19 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
                 // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
                 // A roof whose faces can't be found (a gable edge its footprint doesn't have) has no area to say: none is written.
-                if let Some(q) = m.quantities(id)
-                    && let Some(projected) = q.plan
-                {
+                if let Some(q) = m.quantities(id) {
+                    // ProjectedArea stays the gross plan of the schema: its openings are filled, as GrossArea fills them.
+                    let mut gross_roof = r.clone();
+                    gross_roof.openings.clear();
+                    let projected: f64 = m.roof_faces(&gross_roof).map_or(0.0, |faces| {
+                        faces
+                            .iter()
+                            .map(|(loops, _)| {
+                                let Some((outer, holes)) = loops.split_first() else { return 0.0 };
+                                geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>()
+                            })
+                            .sum()
+                    });
                     let gross = q.areas.net + q.areas.openings;
                     let values = [
                         ("GrossArea", "AREA", gross / 1e6),
