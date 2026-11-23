@@ -2870,7 +2870,7 @@ impl Family {
             let from = number(&form.from, values, &mut read).ok()?;
             let to = number(&form.to, values, &mut read).ok()?;
             let length = to - from;
-            if !(length > 0.0) {
+            if !length.is_finite() || length <= 0.0 {
                 return None;
             }
             let Some(piece) = f.solid(i, values, &mut read).ok()? else { continue };
