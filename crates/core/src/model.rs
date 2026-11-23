@@ -8876,6 +8876,25 @@ impl Model {
                  face, or put it on another work plane with `edit_work_plane`"
             )
         }));
+        // A wall whose type has no thickness has no side area: say so, rather than show 0.
+        out.extend(self.elements.iter().filter_map(|(id, e)| match e {
+            Element::Wall(w) if self.thickness(w) <= 0.0 => Some(if self.types.wall.contains_key(&w.type_name) {
+                format!("wall {id}: type `{}` has no thickness, so its area and volume are unknown", w.type_name)
+            } else {
+                format!("wall {id}: type `{}` isn't in the project, so its area and volume are unknown: choose a wall type", w.type_name)
+            }),
+            _ => None,
+        }));
+        // A roof whose faces can't be found has no area or volume either.
+        out.extend(self.elements.iter().filter_map(|(id, e)| {
+            match e {
+                Element::Roof(r) => self
+                    .roof_pieces(r)
+                    .err()
+                    .map(|why| format!("roof {id}: its faces can't be found ({why}), so its area and volume are unknown")),
+                _ => None,
+            }
+        }));
         out.extend(crate::electrical::circuit_warnings(self));
         out.extend(crate::curtain::malformed_walls(self).into_iter().map(|id| format!("curtain wall {id}: {}", crate::curtain::MALFORMED)));
         out

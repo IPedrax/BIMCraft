@@ -7940,3 +7940,15 @@ fn a_toposolid_goes_to_ifc_as_a_terrain_slab_and_comes_back_from_the_file() {
     assert_eq!(t.map(|t| m.toposolid_thickness(t)), Some(300.0), "its type's thickness, kept as the type");
     assert_eq!(m.types.toposolid["Generic - 300mm"].thickness, 300.0);
 }
+
+#[test]
+fn a_wall_of_an_unknown_type_says_its_area_is_unknown() {
+    let mut s = Session::new();
+    let id = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]}))["ids"][0].as_u64().unwrap();
+    let mut m = (*s.model).clone();
+    let Some(crate::model::Element::Wall(w)) = m.elements.get_mut(id) else { panic!("no wall {id}") };
+    w.type_name = "No Such Type".into();
+    let warnings = m.warnings();
+    assert!(warnings.iter().any(|w| w.contains(&format!("wall {id}")) && w.contains("No Such Type")), "{warnings:?}");
+    assert!(m.quantities(id).is_none(), "no area is known");
+}
