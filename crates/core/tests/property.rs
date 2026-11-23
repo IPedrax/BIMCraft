@@ -629,11 +629,15 @@ impl Ledger {
             if held && !copy {
                 let keys: BTreeSet<String> = self.layers().iter().flat_map(|(_, c)| c.keys()).collect();
                 let before: Vec<(String, Map<String, Value>)> = keys.into_iter().map(|k| (k.clone(), self.resolved(&k, true).0)).collect();
+                let stood: Vec<String> = self.layers().iter().skip(1).map(|(n, _)| n.clone()).collect();
                 let gone = self.own.remove(&name).expect("own");
                 self.amendments.retain(|a| *a != name);
                 if self.base.as_deref() == Some(name.as_str()) {
                     self.base = codes::find(E, &gone.based_on).filter(|k| k.amends.is_empty()).map(|k| k.code.clone());
                 }
+                // One chosen that didn't stand over the code taken away, and would now, is no longer chosen.
+                let stands: Vec<String> = self.layers().iter().skip(1).map(|(n, _)| n.clone()).collect();
+                self.amendments.retain(|a| stood.contains(a) || !stands.contains(a));
                 for (k, v) in before {
                     self.changes.insert(k, v);
                 }
@@ -892,6 +896,9 @@ impl Run {
                 let keeps = p.get("save").is_some()
                     || p.get("delete").and_then(Value::as_str).is_some_and(|n| codes::find(E, n).is_none() && self.l.own.contains_key(n));
                 let before = keeps.then(|| rules_of(&mut self.s));
+                // Where the ledger names the amendments chosen as the engine does (a `save` renames them), a delete keeps
+                // agreeing.
+                let agreed = self.s.model.codes.choice(E).amendments == self.l.amendments;
                 if self.s.execute("building_code", p).is_ok() {
                     self.l.building_code(p);
                     if let Some(before) = before {
@@ -904,6 +911,11 @@ impl Run {
                                 self.fails.extend(failed("I2", format!("kept:{what}"), d));
                                 break;
                             }
+                        }
+                        // A delete keeps the amendments chosen the ledger keeps: none chosen is lost, none dropped is kept.
+                        let chosen = self.s.model.codes.choice(E).amendments.clone();
+                        if agreed && p.get("delete").is_some() && chosen != self.l.amendments {
+                            self.fails.extend(failed("I2", "kept:chosen".into(), format!("{chosen:?} not {:?}", self.l.amendments)));
                         }
                     }
                 }
