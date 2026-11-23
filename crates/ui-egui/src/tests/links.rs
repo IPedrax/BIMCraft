@@ -94,10 +94,12 @@ fn a_link_whose_file_is_missing_is_listed_as_not_loaded_and_reload_says_so() {
 }
 
 #[test]
-fn the_manage_tab_offers_link_model_and_the_linked_models_group_reloads_them_all() {
+fn the_insert_tab_offers_link_model_once_and_the_linked_models_group_reloads_them_all() {
     let path = shell("manage");
     let mut h = app("");
     press(&mut h, "Manage");
+    assert!(h.query_by_label("Link Model").is_none(), "Link Model is the Insert tab's, not Manage's too");
+    press(&mut h, "Insert");
     assert!(h.query_by_label("Link Model").is_some());
     h.state_mut().link_path(&path);
     h.run();

@@ -47,6 +47,11 @@ fn with_logo(s: &mut Session, dir: &Path) -> Value {
     )
 }
 
+/// The pictures a new project holds: the starter materials' (#536).
+fn starter() -> usize {
+    Session::new().model.images.len()
+}
+
 #[test]
 fn a_logo_is_read_from_a_png_kept_in_the_project_and_printed_where_it_is_placed() {
     let dir = tempfile::tempdir().unwrap();
@@ -58,8 +63,8 @@ fn a_logo_is_read_from_a_png_kept_in_the_project_and_printed_where_it_is_placed(
         (json!([2.0, 2.0]), Some(20.0), Some(10.0)),
         "{made}"
     );
-    assert_eq!(s.model.images.len(), 1, "its picture is the project's");
-    assert_eq!(logo["image"].as_str(), s.model.images.keys().next().map(String::as_str));
+    assert_eq!(s.model.images.len(), starter() + 1, "its picture is the project's");
+    assert!(logo["image"].as_str().is_some_and(|k| s.model.images.contains_key(k)));
     run(&mut s, "sheet", json!({"number": "A101", "title_block": "ESCRITORIO"}));
     run(&mut s, "sheet", json!({"number": "A102"}));
     // A3: the title block stands in the border's bottom right corner; the logo's middle is 12 mm along and 7 up in it.
@@ -83,20 +88,20 @@ fn a_logo_stays_with_its_project_file_and_its_picture_goes_when_it_does() {
     with_logo(&mut s, dir.path());
     // Changing a material, which prunes the pictures nothing uses, leaves the logo's.
     run(&mut s, "material", json!({"name": "Plaster", "color": "#ffffff"}));
-    assert_eq!(s.model.images.len(), 1);
+    assert_eq!(s.model.images.len(), starter() + 1);
     let file = dir.path().join("logo.bimc");
     run(&mut s, "save", json!({"path": file}));
     let mut t = Session::new();
     let opened = run(&mut t, "open", json!({"path": file}));
     assert!(opened.get("left_out").is_none(), "{opened}");
     assert_eq!(t.model.title_blocks, s.model.title_blocks);
-    assert_eq!(t.model.images.len(), 1);
+    assert_eq!(t.model.images.len(), starter() + 1);
     // Taken out of the title block, its picture is taken out of the project; the other edits leave a logo alone.
     run(&mut s, "title_block", json!({"name": "ESCRITORIO", "width": 110}));
     assert_eq!(s.model.title_blocks["ESCRITORIO"].logos.len(), 1);
     run(&mut s, "title_block", json!({"name": "ESCRITORIO", "logos": []}));
     assert!(s.model.title_blocks["ESCRITORIO"].logos.is_empty());
-    assert!(s.model.images.is_empty());
+    assert_eq!(s.model.images.len(), starter());
     // A picture of the project's is placed by its id, and a copy of the block carries the logo.
     let path = write_png(dir.path(), "again.png", (10, 10), [0, 0, 255]);
     let made = run(&mut s, "title_block", json!({"name": "A", "logos": [{"path": path, "at": [0, 0], "height": 8}]}));
@@ -105,10 +110,10 @@ fn a_logo_stays_with_its_project_file_and_its_picture_goes_when_it_does() {
     let copy = run(&mut s, "title_block", json!({"name": "B", "like": "A"}));
     assert_eq!(copy["title_block"]["logos"][0]["image"], id.as_str());
     run(&mut s, "title_block", json!({"name": "C", "logos": [{"image": id, "at": [1, 1], "width": 5}]}));
-    assert_eq!(s.model.images.len(), 1, "one picture, three users");
+    assert_eq!(s.model.images.len(), starter() + 1, "one picture, three users");
     run(&mut s, "title_block", json!({"name": "A", "delete": true}));
     run(&mut s, "title_block", json!({"name": "B", "delete": true}));
-    assert_eq!(s.model.images.len(), 1, "still C's");
+    assert_eq!(s.model.images.len(), starter() + 1, "still C's");
 }
 
 #[test]
@@ -130,7 +135,7 @@ fn a_logo_that_is_not_one_is_refused_and_says_what_to_fix() {
     refused(json!([{"path": path, "at": [0, 0], "width": 10, "colour": "red"}]), "colour");
     refused(json!("logo.png"), "logos");
     refused(json!((0..9).map(|_| json!({"path": path, "at": [0, 0], "width": 10})).collect::<Vec<_>>()), "logos");
-    assert!(s.model.title_blocks.is_empty() && s.model.images.is_empty(), "nothing was kept");
+    assert!(s.model.title_blocks.is_empty() && s.model.images.len() == starter(), "nothing was kept");
     // A file that is neither a PNG nor a JPEG.
     let text = dir.path().join("logo.txt");
     std::fs::write(&text, "not a picture").unwrap();

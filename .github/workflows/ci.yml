@@ -33,7 +33,9 @@ jobs:
       matrix:
         include:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
-          - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
+          # 120: with the wood framing tests (r12) and the stacked batches over it the core's unit tests alone took 45 minutes on a slow
+          # runner and the job reached 90 minutes in its last test crate, twice.
+          - { name: Linux, runner: ubuntu-22.04, timeout: 120 }
           # Windows and macOS compile slowly (Windows 32 minutes, macOS 35, Linux 13) and took 74 to 92 and 64 to 86 minutes in all on
           # main. Their crates are built without debug info and the timings are kept (below), so a slow run shows what is left to cut.
           # They also leave out the three tests that run longest, which only Linux runs: the hostile sweep and the two random-edit

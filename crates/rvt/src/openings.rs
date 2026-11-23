@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Opening, OpeningType};
 
-use crate::import::{Facts, Import, kind, micron, mm};
+use crate::import::{Facts, Import, clip, kind, micron, mm};
 use crate::inventory::Gathered;
 use crate::records::Record;
 
@@ -71,9 +71,11 @@ fn turned(start: P2, end: P2, bbox: &[f64; 6]) -> Option<(f64, f64)> {
     (width > 0.0 && depth > 0.0 && offset.is_finite()).then(|| (micron(width), micron(offset)))
 }
 
-pub(crate) fn wanted(f: &Facts, out: &mut BTreeSet<u32>) {
-    // Nothing of an opening is read from its data: its record and its type's name are all.
-    let _ = (f, out);
+pub(crate) fn wanted(f: &Facts, out: &mut crate::inventory::Wants) {
+    // Nothing of an opening is read from its data but its placement: its record, its type's name, and what its graphics draw.
+    let mine: Vec<u32> = [OST_DOORS, OST_WINDOWS].into_iter().flat_map(|c| f.of_category(c)).map(|r| r.id).collect();
+    out.placements.extend(&mine);
+    out.drawings.extend(mine);
 }
 
 /// The type of a family instance: the one family symbol of its category its reference list names that has a name entry of the
@@ -136,9 +138,117 @@ struct Pending {
     clamped: bool,
 }
 
+/// The families the doors and windows that draw a shape come in with: by category and Revit family, the model's name of each, and
+/// by family and Revit type, the shapes and sizes each of its types holds (the first the Revit type's name, the next numbered on).
+#[derive(Default)]
+struct OpeningFamilies {
+    names: std::collections::BTreeMap<(bool, Option<u32>), String>,
+    variants: std::collections::BTreeMap<(String, String), Vec<Variant>>,
+}
+
+/// A type's shape in its opening's axes, and its width and height, mm.
+type Variant = (Vec<[[f64; 3]; 3]>, f64, f64);
+
+impl OpeningFamilies {
+    /// The family and type opening `p` (record `r`, `width` wide at `offset` along its wall) comes in with, its shape what its
+    /// graphics draw in the opening's own axes (x along its wall from its middle, y across from the wall's middle plane toward
+    /// the wall's left, its exterior, z up from its sill); or why not.
+    fn shaped(
+        &mut self,
+        cx: &mut Import,
+        f: &Facts,
+        g: &Gathered,
+        r: &Record,
+        p: &Pending,
+        (width, offset): (f64, f64),
+    ) -> Result<(String, String), String> {
+        let drawn = crate::generic::drawn_where_it_stands(g, r)?;
+        let wall = cx.model.wall(p.host).ok_or("its host wall is gone")?;
+        let (start, end) = (wall.start, wall.end);
+        let long = start.dist(end);
+        if long <= 0.0 {
+            return Err("its host wall has no length".into());
+        }
+        let x = [(end.0 - start.0) / long, (end.1 - start.1) / long];
+        let y = [-x[1], x[0]];
+        let origin = [start.0 + x[0] * offset, start.1 + x[1] * offset, cx.model.own_base(wall) + p.sill];
+        let local = |q: [f64; 3]| -> [f64; 3] {
+            let d = [q[0] - origin[0], q[1] - origin[1]];
+            [micron(d[0] * x[0] + d[1] * x[1]), micron(d[0] * y[0] + d[1] * y[1]), micron(q[2] - origin[2])]
+        };
+        let triangles: Vec<[[f64; 3]; 3]> = drawn.triangles.iter().map(|t| t.map(local)).collect();
+        let category = if p.door { OST_DOORS } else { OST_WINDOWS };
+        let revit = crate::openings::family_of(r, g, category, f.release);
+        let name = match self.names.get(&(p.door, revit.as_ref().map(|(id, _)| *id))) {
+            Some(n) => n.clone(),
+            None => {
+                let base = revit
+                    .as_ref()
+                    .map(|(_, n)| clip(n))
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| if p.door { "Doors".to_string() } else { "Windows".to_string() });
+                let mut taken: BTreeSet<String> = cx.model.families.keys().cloned().collect();
+                let n = crate::import::fresh(&mut taken, &base);
+                self.names.insert((p.door, revit.as_ref().map(|(id, _)| *id)), n.clone());
+                n
+            }
+        };
+        let held = self.variants.entry((name.clone(), p.name.clone())).or_default();
+        let k = match held.iter().position(|(t, w, h)| *t == triangles && (w - width).abs() < 0.05 && (h - p.height).abs() < 0.05) {
+            Some(k) => k,
+            None => {
+                held.push((triangles.clone(), width, p.height));
+                held.len() - 1
+            }
+        };
+        let type_name = if k == 0 { p.name.clone() } else { clip(&format!("{} ({})", p.name, k + 1)) };
+        let family = cx.model.families.entry(name.clone()).or_insert_with(|| opening_family(p.door));
+        if family.types.contains_key(&type_name) {
+            return Ok((name, type_name));
+        }
+        let solid = crate::shapes::Shape { triangles, materials: drawn.materials, ..crate::shapes::Shape::default() };
+        if !crate::generic::show(family, &type_name, &solid, &g.materials) {
+            family.types.remove(&type_name);
+            return Err("its family holds as many shapes as one family may".into());
+        }
+        let values = family.types.entry(type_name.clone()).or_default();
+        values.insert("Width".to_string(), width.into());
+        values.insert("Height".to_string(), p.height.into());
+        Ok((name, type_name))
+    }
+}
+
+/// A door's or a window's family whose types are Revit's: its opening's width and height, each type's own, and no form but the
+/// shapes its types show.
+fn opening_family(door: bool) -> bimcraft_core::family::Family {
+    use bimcraft_core::family::{Category, Family, Kind, Parameter};
+    let length = |name: &str| Parameter { name: name.to_string(), kind: Kind::Length, value: 1000.0.into(), ..Parameter::default() };
+    Family {
+        category: if door { Category::Door } else { Category::Window },
+        parameters: vec![length("Width"), length("Height")],
+        ..Family::default()
+    }
+}
+
 /// The most two neighbouring holes may overlap and be fitted, as a share of the narrower one: Revit lets windows overlap, BIMCraft
 /// does not.
 const MAX_FITTED_OVERLAP: f64 = 0.1;
+
+/// The doors and windows whose nearest wall is one the parts of a curtain wall name as their host: those that may come in as
+/// components (`Import::in_curtain` says which do), whose graphics are read for it.
+pub(crate) fn in_curtain(f: &Facts) -> Vec<u32> {
+    let walls: BTreeSet<u32> = f.of_category(crate::walls::OST_WALLS).map(|r| r.id).collect();
+    let hosts = crate::walls::curtain_hosts(f);
+    [OST_DOORS, OST_WINDOWS]
+        .into_iter()
+        .flat_map(|c| f.of_category(c))
+        .filter(|r| candidates(r, &walls).first().is_some_and(|w| hosts.contains(w)))
+        .map(|r| r.id)
+        .collect()
+}
+
+/// Why a door or a window whose host is a curtain wall is not set in it.
+const CURTAIN_HOST: &str = "its host is a curtain wall, which holds a door or a window only in a wall set in its cell";
 
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     let walls: BTreeSet<u32> = f.of_category(crate::walls::OST_WALLS).map(|r| r.id).collect();
@@ -160,6 +270,11 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 // The host is the nearest wall the list names (rvt-rs RE-23, RE-85) that the opening fits in; failing one, the
                 // nearest it names, and then the hole is cut down to what that wall gives. A wall whose box cuts the opening
                 // short is the file's own inconsistency: Revit draws the frame a little past the wall's box.
+                // The nearest a curtain wall: it is the host, and a BIMCraft curtain wall holds a door or a window only in a wall
+                // set in its cell, so it is set in no other wall.
+                if named.first().is_some_and(|w| cx.curtain.contains(w)) {
+                    return Err(CURTAIN_HOST.into());
+                }
                 let mut first: Option<(u32, bimcraft_core::model::Id, f64, f64, f64, f64)> = None;
                 let mut fits = None;
                 let mut unreadable: Option<String> = None;
@@ -198,7 +313,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         return Err(if named.iter().any(|w| !cx.curtain.contains(w)) {
                             format!("its host wall {} was left out", named[0])
                         } else {
-                            "its host is a curtain wall, which BIMCraft has no element for".to_string()
+                            CURTAIN_HOST.to_string()
                         });
                     }
                 };
@@ -231,6 +346,11 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             })();
             match read {
                 Ok(p) => pending.push(p),
+                // A door or a window in a curtain wall comes in as a component of its family, drawn as Revit draws it.
+                Err(why) if why == CURTAIN_HOST => {
+                    cx.note(label, r.id, &format!("{why}: it comes in as a component of its family"));
+                    cx.in_curtain.insert(r.id);
+                }
                 Err(why) => cx.left_out(label, r.id, &why),
             }
         }
@@ -260,24 +380,48 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             }
         }
     }
+    let mut families = OpeningFamilies::default();
     for p in pending {
         let (width, offset) = (micron(p.span.1 - p.span.0), micron((p.span.0 + p.span.1) / 2.0));
-        let types = if p.door { &mut cx.model.types.door } else { &mut cx.model.types.window };
-        let type_name = kind(
-            types,
-            &p.name,
-            |t| (t.width - width).abs() < 0.05 && (t.height - p.height).abs() < 0.05,
-            OpeningType { width, height: p.height, sill: p.sill, operation: None },
-        );
+        let label = if p.door { "door" } else { "window" };
+        // Its shape, where its graphics draw one that reads: a family of its own, drawn as Revit draws it; else a type of the
+        // project's own, the size of its box.
+        let shaped = f
+            .current
+            .get(&p.id)
+            .ok_or_else(|| "its record is gone".to_string())
+            .and_then(|r| families.shaped(cx, f, g, r, &p, (width, offset)));
+        let (type_name, family) = match shaped {
+            Ok((family, type_name)) => {
+                cx.note(label, p.id, "comes in with its shape, read from the file, in a family of its own");
+                (type_name, Some(family))
+            }
+            Err(why) => {
+                // One whose graphics are not in the file at all is an opening of its box, as ever, said of none.
+                if why != crate::generic::NO_GRAPHICS {
+                    let why = crate::generic::short(&why);
+                    cx.note(label, p.id, &format!("comes in as an opening of its box: its shape is not read: {why}"));
+                }
+                let types = if p.door { &mut cx.model.types.door } else { &mut cx.model.types.window };
+                let type_name = kind(
+                    types,
+                    &p.name,
+                    |t| (t.width - width).abs() < 0.05 && (t.height - p.height).abs() < 0.05,
+                    OpeningType { width, height: p.height, sill: p.sill, operation: None },
+                );
+                (type_name, None)
+            }
+        };
         let opening = Opening {
             type_name,
-            family: None,
+            family,
             host: cx.model.guid(p.host),
             offset,
             sill: p.sill,
             mark: String::new(),
             flip_facing: false,
             flip_hand: false,
+            slanted: false,
             params: Default::default(),
         };
         if p.clamped {

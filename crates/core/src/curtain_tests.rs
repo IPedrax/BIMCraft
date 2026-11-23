@@ -340,7 +340,12 @@ fn what_a_curtain_wall_cant_be_yet_is_refused() {
     let mut s = session();
     grid(&mut s, "CW", &[1000.0], &[3000.0], json!({}));
     let id = wall(&mut s, "CW", 2000.0, 3000.0);
-    assert!(fails(&mut s, "modify", json!({"id": id, "arc": 45})).contains("curved"));
+    // Curved, it is faceted; but a segment wider than its arc's circle is no chord of it.
+    s.execute("modify", &json!({"id": id, "arc": 45})).unwrap_or_else(|e| panic!("{e}"));
+    grid(&mut s, "Wide", &[2500.0], &[3000.0], json!({}));
+    let e = fails(&mut s, "modify", json!({"id": id, "arc": 180, "type": "Wide"}));
+    assert!(e.contains("chord"), "{e}");
+    s.execute("modify", &json!({"id": id, "arc": 0})).unwrap_or_else(|e| panic!("{e}"));
     assert!(fails(&mut s, "modify", json!({"id": id, "location": "centre"})).contains("exterior"));
     let e = fails(&mut s, "door", json!({"wall": id, "offset": 1000}));
     assert!(e.contains("panel"), "{e}");
@@ -365,13 +370,26 @@ fn a_bad_pattern_is_refused_saying_what_to_fix() {
         (json!({"panels": [["Nothing"]]}), "Nothing"),
         (json!({"panels": [["Glazed", "Glazed"]]}), "panels"),
         (json!({"vertical": [[{"type": "Nothing"}]]}), "Nothing"),
-        (json!({"panel": null, "mullion": null}), "panel or a mullion"),
         (json!({"min_panel": -1}), "min_panel"),
         (json!({"columns": {"segments": [60]}}), "too small"),
     ] {
         let e = fails(&mut s, "type", grid_of(extra.clone()));
         assert!(e.contains(says), "{extra}: {e}");
     }
+}
+
+#[test]
+fn a_pattern_of_neither_panels_nor_mullions_is_a_curtain_wall_that_draws_nothing_of_its_own() {
+    // As Revit's curtain wall of empty panels and no mullions: a wall, with nothing of its own to draw (an import brings in its
+    // panels and mullions as elements of their own).
+    let mut s = session();
+    grid(&mut s, "Empty", &[1000.0], &[1000.0], json!({"panel": null, "mullion": null}));
+    assert_eq!(s.model.types.wall["Empty"].thickness, 0.0);
+    let id = wall(&mut s, "Empty", 5000.0, 3000.0);
+    assert!(s.model.check().is_ok(), "{:?}", s.model.check());
+    assert!(layout_of(&s, id).parts.is_empty());
+    let ids: std::collections::HashSet<u64> = [id].into();
+    assert!(crate::view3d::Scene::new(&s.model).boxes(&ids).is_empty());
 }
 
 #[test]
@@ -1499,7 +1517,9 @@ fn panels_and_mullions_are_rows_under_walls_that_a_view_hides() {
     let sub = crate::graphics::sub("mullion").unwrap();
     assert_eq!(sub.parent, "wall");
     assert_eq!(crate::graphics::sub("curtainpanel").unwrap().parent, "wall");
-    assert!(crate::graphics::subcategories("wall").count() == 2);
+    // Framing (a wall framed by rules, #467) is a subcategory of walls too: these two are among them.
+    let subs: Vec<&str> = crate::graphics::subcategories("wall").map(|s| s.key).collect();
+    assert!(subs.contains(&"curtainpanel") && subs.contains(&"mullion"), "{subs:?}");
     let mut s = session();
     let level = s.model.levels()[0].0;
     run(&mut s, "graphics", json!({"view": level, "categories": {"mullion": {"hidden": true}}}));

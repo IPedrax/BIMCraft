@@ -228,3 +228,131 @@ Zlib, BSD-2-Clause (arrayref), BSD-3-Clause (tiny-skia-path, as tiny-skia
 already is) and Unicode-3.0 (yoke, zerofrom). The sRGB and grey colour profiles it puts in a file's
 output intent are from Compact-ICC-Profiles
 (https://github.com/saucecontrol/Compact-ICC-Profiles), released under CC0 1.0.
+
+==============================================================================
+Reading PDFs: hayro, and PDFium's Foxit fonts
+==============================================================================
+
+The core (bimcraft-core) draws a PDF's page to place it in a view (Insert >
+PDF) through hayro, unmodified:
+
+  hayro  Apache-2.0 OR MIT  PDF interpretation and rendering, in Rust
+    by Laurenz Stampfl and its contributors
+    https://github.com/LaurenzV/hayro
+    https://crates.io/crates/hayro/0.9.0
+
+Its own crates (hayro-syntax, hayro-interpret, hayro-font, hayro-cmap,
+hayro-jbig2, hayro-jpeg2000, hayro-ccitt, hayro-postscript) are Apache-2.0 OR
+MIT, and so are vello_cpu, vello_common, kurbo, peniko, skrifa and the rest of
+its dependencies but these: BSD-3-Clause AND MIT (brotli,
+brotli-decompressor), BSD-3-Clause (alloc-no-stdlib, alloc-stdlib),
+BSD-3-Clause OR Apache-2.0 (moxcms, pic-scale, pxfm), Apache-2.0
+(ab_glyph_rasterizer), Zlib (zlib-rs, foldhash), MIT (phf, libm) and
+Unicode-3.0 (yoke, zerofrom).
+
+hayro-font carries fourteen Type 1 fonts from PDFium, built into BIMCraft's
+executables, which draw a PDF's text in the standard fonts it doesn't embed
+(Helvetica, Times, Courier, Symbol, ZapfDingbats): FoxitSans, FoxitSerif and
+FoxitFixed in their regular, bold, italic and bold italic, FoxitSymbol and
+FoxitDingbats. BIMCraft does not change them. They carry this notice:
+
+    Copyright 2014 PDFium Authors. All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+       * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+       * Redistributions in binary form must reproduce the above
+    copyright notice, this list of conditions and the following disclaimer
+    in the documentation and/or other materials provided with the
+    distribution.
+       * Neither the name of Google Inc. nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"Foxit" is a trademark of Foxit Software Inc.; the fonts keep the names PDFium
+gave them. BIMCraft is not affiliated with Foxit or Google.
+
+==============================================================================
+RAL Classic colour values
+==============================================================================
+
+The numbers, English names and CIELAB values of the RAL Classic colours in
+crates/core/src/ral.rs are taken from the Color library for Haskell,
+https://github.com/lehins/Color (Graphics.Color.Standard.RAL, version 0.4.1),
+which carries this licence:
+
+    Copyright Alexey Kuleshevich (c) 2019-2025
+
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+
+        * Redistributions of source code must retain the above copyright
+          notice, this list of conditions and the following disclaimer.
+
+        * Redistributions in binary form must reproduce the above
+          copyright notice, this list of conditions and the following
+          disclaimer in the documentation and/or other materials provided
+          with the distribution.
+
+        * Neither the name of Alexey Kuleshevich nor the names of other
+          contributors may be used to endorse or promote products derived
+          from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"RAL" is a trademark of its owner, who has no connection with this project. The
+name appears only to identify the colours. The sRGB values shown are
+approximations worked out from the CIELAB values above.
+
+==============================================================================
+Starter material pictures (crates/core/assets/materials)
+==============================================================================
+
+The pictures of the starter materials Grass, Gravel, Wood, Paving and Water come
+from OpenGameArt.org. Each was shrunk to 128 pixels on its longest side and
+saved again as a JPEG.
+
+"Paving - Grey and slightly greenish bricks- Seamless Texture with normalmap"
+by Keith333, https://opengameart.org/content/paving-grey-and-slightly-greenish-bricks-seamless-texture-with-normalmap
+licensed under CC BY 3.0, https://creativecommons.org/licenses/by/3.0/
+Changed: shrunk and re-encoded.
+
+These are dedicated to the public domain under CC0 1.0
+(https://creativecommons.org/publicdomain/zero/1.0/); they are credited here as
+a courtesy:
+  "Grass Texture,seamless 2d" by surfacecurve,
+    https://opengameart.org/content/grass-textureseamless-2d
+  "Surface pack - ground1.jpg" by prolific,
+    https://opengameart.org/content/surface-pack-ground1jpg
+  "Wood Texture Tiles" by JCW,
+    https://opengameart.org/content/wood-texture-tiles
+  "Photorealistic Texture Pack 3 - PTP-Elements_07-256x256.png" by Screaming
+    Brain Studios,
+    https://opengameart.org/content/photorealistic-texture-pack-3-ptp-elements07-256x256png

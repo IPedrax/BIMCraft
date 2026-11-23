@@ -15,6 +15,9 @@ use crate::library::Kind;
 use crate::model::{Element, Location, MAX_COORD, Model, Wall, WallType};
 use crate::walls::Axis;
 
+mod surface;
+pub use surface::Surface;
+
 /// The Generic Panel type a new curtain wall fills its cells with.
 pub const GLAZED: &str = "Glazed";
 /// The other Generic Panel type a project starts with.
@@ -649,6 +652,8 @@ pub struct Layout {
     pub gone: HashSet<Address>,
     /// The cells merged, each with the cell whose name their one panel goes by.
     pub merged: HashMap<(i64, i64), (i64, i64)>,
+    /// Where its parts stand in the model: along its run (a curved wall's chords), up its face (a slanted one's slope).
+    pub surface: Surface,
 }
 
 impl Layout {
@@ -761,8 +766,9 @@ fn cells(m: &Model, l: &CurtainLayout, w: &Wall) -> f64 {
     let by_hand = |way: GridWay| w.curtain.as_ref().map_or(0, |e| e.grids.iter().filter(|g| g.way == way).count()) as f64;
     // A storey's cut rows come on top of what the height alone would make.
     let storeys = w.curtain.as_ref().filter(|_| l.anchor_rows).map_or(0, |e| e.levels.len().min(MAX_ANCHORS)) as f64;
+    let face = Surface::straight(m, w, 0.0).height(m.own_top(w) - m.own_base(w));
     (stretches(&l.columns, Axis::of(w).length()) + by_hand(GridWay::Vertical))
-        * (stretches(&l.rows, m.own_top(w) - m.own_base(w)) + storeys * 2.0 * l.rows.segments.len() as f64 + by_hand(GridWay::Horizontal))
+        * (stretches(&l.rows, face) + storeys * 2.0 * l.rows.segments.len() as f64 + by_hand(GridWay::Horizontal))
 }
 
 /// A pattern's stretches over `length`: repeated from where it's justified and cut by the ends, or fitted evenly. Nothing for a pattern or a
@@ -833,7 +839,10 @@ fn levels_within(m: &Model, l: &CurtainLayout, w: &Wall) -> Vec<f64> {
         return Vec::new();
     }
     let (base, top) = (m.own_base(w), m.own_top(w));
-    let mut at: Vec<f64> = m.levels().iter().map(|(_, x)| x.elevation - base).filter(|z| *z > SAME && *z < top - base - SAME).collect();
+    // Up a slanted wall's face, a level is as far again as its slope is longer.
+    let up = |z: f64| Surface::straight(m, w, 0.0).height(z);
+    let mut at: Vec<f64> =
+        m.levels().iter().map(|(_, x)| x.elevation - base).filter(|z| *z > SAME && *z < top - base - SAME).map(up).collect();
     at.sort_by(f64::total_cmp);
     at.truncate(MAX_ANCHORS);
     at
@@ -1566,7 +1575,11 @@ fn layout_with(m: &Model, w: &Wall, walled: &[(i64, i64)]) -> Layout {
     if cells(m, l, w) > MAX_CELLS {
         return Layout::default();
     }
-    let (length, height) = (Axis::of(w).length(), m.own_top(w) - m.own_base(w));
+    // Along its run (a curved wall's chords between its vertical grid lines) and up its face (a slanted wall's slope).
+    let plane = grid_plane(m, w);
+    let straight = Surface::straight(m, w, plane);
+    let length = surface::unrolled(w, &l.columns, l.columns.segments.len()).unwrap_or_else(|| Axis::of(w).length());
+    let height = straight.height(m.own_top(w) - m.own_base(w));
     let (mut columns, mut rows) = (divide(&l.columns, length), rows_of(l, w, height));
     if columns.is_empty() || rows.is_empty() {
         return Layout::default();
@@ -1612,7 +1625,9 @@ fn layout_with(m: &Model, w: &Wall, walled: &[(i64, i64)]) -> Layout {
         }
     }
     let corners = [meets[0].as_ref().is_some_and(|x| x.holds), meets[1].as_ref().is_some_and(|x| x.holds)];
+    let surface = if w.arc != 0.0 { Surface::curved(m, w, plane, &built.columns, length) } else { straight };
     Layout {
+        surface,
         walls: built.walls,
         columns: built.columns,
         rows: built.rows,
@@ -1666,7 +1681,7 @@ struct Meeting<'a> {
 
 /// The other wall where `w`'s start or end meets one, if a corner mullion belongs there.
 fn meeting<'a>(m: &'a Model, w: &Wall, at_end: bool) -> Option<Meeting<'a>> {
-    if w.panel_of.is_some() || w.arc != 0.0 {
+    if w.panel_of.is_some() || w.arc != 0.0 || w.slant != 0.0 {
         return None;
     }
     let node = if at_end { w.end } else { w.start };
@@ -1695,7 +1710,7 @@ fn meeting<'a>(m: &'a Model, w: &Wall, at_end: bool) -> Option<Meeting<'a>> {
         }
     }
     let (other, other_end) = found?;
-    if pattern(m, other).is_none() || other.arc != 0.0 {
+    if pattern(m, other).is_none() || other.arc != 0.0 || other.slant != 0.0 {
         return None;
     }
     let (u, v) = ((w.end - w.start).unit(), (other.end - other.start).unit());
@@ -2037,24 +2052,19 @@ pub fn address(part: &str, column: i64, row: i64) -> Option<Address> {
     }
 }
 
-/// Where the line from `a` through `b` meets `w`'s grid plane: along the wall and up from its base.
+/// Where wall `w`'s parts stand ([`Surface`]): a curved wall's along the chords of its layout's grid.
+pub fn surface(m: &Model, w: &Wall) -> Surface {
+    if w.arc != 0.0 { layout(m, w).surface } else { Surface::straight(m, w, grid_plane(m, w)) }
+}
+
+/// Where the line from `a` through `b` meets `w`'s grid: along its run and up its face.
 pub fn on_plane(m: &Model, w: &Wall, a: [f64; 3], b: [f64; 3]) -> Option<(f64, f64)> {
-    let axis = Axis::of(w);
-    let (o, u) = (axis.at(0.0, grid_plane(m, w)), axis.tangent(0.0));
-    let n = u.perp();
-    let off = |p: [f64; 3]| (P2(p[0], p[1]) - o).dot(n);
-    let (da, db) = (off(a), off(b));
-    if (da - db).abs() < 1e-9 {
-        return None;
-    }
-    let t = da / (da - db);
-    let at = |k: usize| a[k] + (b[k] - a[k]) * t;
-    Some(((P2(at(0), at(1)) - o).dot(u), at(2) - m.own_base(w)))
+    surface(m, w).hit(a, b)
 }
 
 /// What marks a place on a plan: its part's or its extent's corners, from above. `l` is the wall's [`layout`], which a
 /// front end keeps from frame to frame.
-pub fn plan_ring(l: &Layout, m: &Model, w: &Wall, at: Address) -> Option<[P2; 4]> {
+pub fn plan_ring(l: &Layout, _m: &Model, _w: &Wall, at: Address) -> Option<[P2; 4]> {
     let [u0, u1, ..] = l.extent(at)?;
     let part = l.parts.iter().find(|p| p.address == at);
     let shape = part.and_then(|p| l.shapes.get(p.shape as usize));
@@ -2062,26 +2072,23 @@ pub fn plan_ring(l: &Layout, m: &Model, w: &Wall, at: Address) -> Option<[P2; 4]
         (Some(p), Some(s)) => (p.centre[2], s.size[2] / 2.0),
         _ => (0.0, MARK / 2.0),
     };
-    let (axis, plane) = (Axis::of(w), grid_plane(m, w));
-    let c = |along: f64, side: f64| axis.at(along, plane + middle + side);
+    let flat = |q: [f64; 3]| P2(q[0], q[1]);
+    let c = |along: f64, side: f64| flat(l.surface.at(along, 0.0, middle + side));
     if let (Some(p), Some(s)) = (part, shape)
         && (p.turn != 0.0 || s.plan.is_some())
     {
-        return Some(p.corners(s).map(|q| axis.at(q[0], plane + q[1])));
+        return Some(p.corners(s).map(|q| flat(l.surface.at(q[0], 0.0, q[1]))));
     }
     Some([c(u0, -half), c(u1, -half), c(u1, half), c(u0, half)])
 }
 
 /// Where a grid line of way `way` at `at` would run on the wall's grid plane: its two ends.
 pub fn line_on_face(m: &Model, w: &Wall, way: GridWay, at: f64) -> [[f64; 3]; 2] {
-    let (axis, plane, base) = (Axis::of(w), grid_plane(m, w), m.own_base(w));
-    let c = |along: f64, up: f64| {
-        let q = axis.at(along, plane);
-        [q.0, q.1, base + up]
-    };
+    let f = surface(m, w);
+    let height = f.height(m.own_top(w) - m.own_base(w));
     match way {
-        GridWay::Vertical => [c(at, 0.0), c(at, m.own_top(w) - base)],
-        GridWay::Horizontal => [c(0.0, at), c(axis.length(), at)],
+        GridWay::Vertical => [f.at(at, 0.0, 0.0), f.at(at, height, 0.0)],
+        GridWay::Horizontal => [f.at(0.0, at, 0.0), f.at(f.length(), at, 0.0)],
     }
 }
 
@@ -2094,12 +2101,9 @@ pub fn outline_on_plan(m: &Model, w: &Wall) -> [P2; 4] {
 
 /// A curtain wall's outline on its grid plane, in 3D: as [`outline_on_plan`].
 pub fn outline_on_face(m: &Model, w: &Wall) -> [[f64; 3]; 4] {
-    let (axis, plane, base, top) = (Axis::of(w), grid_plane(m, w), m.own_base(w), m.own_top(w));
-    let c = |along: f64, z: f64| {
-        let q = axis.at(along, plane);
-        [q.0, q.1, z]
-    };
-    [c(0.0, base), c(axis.length(), base), c(axis.length(), top), c(0.0, top)]
+    let f = surface(m, w);
+    let (len, height) = (f.length(), f.height(m.own_top(w) - m.own_base(w)));
+    [f.at(0.0, 0.0, 0.0), f.at(len, 0.0, 0.0), f.at(len, height, 0.0), f.at(0.0, height, 0.0)]
 }
 
 /// A segment of a grid line, its ends on the wall's grid plane.
@@ -2117,24 +2121,20 @@ pub fn segment_on_face(m: &Model, w: &Wall, at: Address) -> Option<[[f64; 3]; 2]
         }
         _ => return None,
     };
-    let (axis, plane, base) = (Axis::of(w), grid_plane(m, w), m.own_base(w));
-    let c = |along: f64, up: f64| {
-        let q = axis.at(along, plane);
-        [q.0, q.1, base + up]
-    };
-    Some([c(u0, v0), c(u1, v1)])
+    Some([l.surface.at(u0, v0, 0.0), l.surface.at(u1, v1, 0.0)])
 }
 
 /// Where a vertical grid line at `at` crosses the wall on a plan: its two faces.
 pub fn line_on_plan(m: &Model, w: &Wall, at: f64) -> [P2; 2] {
-    let axis = Axis::of(w);
     let (ext, int) = crate::walls::faces(m, w);
-    [axis.at(at, int), axis.at(at, ext)]
+    let f = surface(m, w);
+    [f.plan(at, int), f.plan(at, ext)]
 }
 
 /// Which of a point's two places on a wall a grid of way `way` takes, if the point is on the wall.
 pub fn grid_place(m: &Model, w: &Wall, way: GridWay, along: f64, up: f64) -> Option<f64> {
-    let (length, height) = (Axis::of(w).length(), m.own_top(w) - m.own_base(w));
+    let f = surface(m, w);
+    let (length, height) = (f.length(), f.height(m.own_top(w) - m.own_base(w)));
     ((0.0..=length).contains(&along) && (0.0..=height).contains(&up)).then_some(if way == GridWay::Vertical { along } else { up })
 }
 
@@ -2145,11 +2145,7 @@ pub fn face_rings(l: &Layout, m: &Model, w: &Wall, at: Address) -> Vec<[[f64; 3]
         return face_ring(l, m, w, at).into_iter().collect();
     }
     let Some([u0, u1, v0, v1]) = l.extent(at) else { return Vec::new() };
-    let (axis, plane, base) = (Axis::of(w), grid_plane(m, w), m.own_base(w));
-    let c = |along: f64, up: f64| {
-        let q = axis.at(along, plane);
-        [q.0, q.1, base + up]
-    };
+    let c = |along: f64, up: f64| l.surface.at(along, up, 0.0);
     // The stretches of the line, each its span across, those gone left out and the rest run together.
     let vertical = matches!(at, Address::VerticalGrid { .. });
     let spans = if vertical { &l.rows } else { &l.columns };
@@ -2176,13 +2172,9 @@ pub fn face_rings(l: &Layout, m: &Model, w: &Wall, at: Address) -> Vec<[[f64; 3]
 }
 
 /// What marks a place in 3D: its extent's corners on the wall's grid plane. `l` is the wall's [`layout`].
-pub fn face_ring(l: &Layout, m: &Model, w: &Wall, at: Address) -> Option<[[f64; 3]; 4]> {
+pub fn face_ring(l: &Layout, _m: &Model, _w: &Wall, at: Address) -> Option<[[f64; 3]; 4]> {
     let [u0, u1, v0, v1] = l.extent(at)?;
-    let (axis, plane, base) = (Axis::of(w), grid_plane(m, w), m.own_base(w));
-    let c = |along: f64, up: f64| {
-        let q = axis.at(along, plane);
-        [q.0, q.1, base + up]
-    };
+    let c = |along: f64, up: f64| l.surface.at(along, up, 0.0);
     Some([c(u0, v0), c(u1, v0), c(u1, v1), c(u0, v1)])
 }
 
@@ -2614,7 +2606,8 @@ fn panel_plan(m: &Model) -> PanelPlan {
     let held: BTreeSet<Guid> = if hosts.is_empty() { BTreeSet::new() } else { m.elements.values().flat_map(Element::refs).collect() };
     for (guid, walls) in &hosts {
         let Some(host_id) = m.elements.id(*guid) else { continue };
-        let Some(host) = m.wall(host_id).filter(|h| pattern(m, h).is_some()) else { continue };
+        // A curved or slanted host has no flat upright cell for a wall: `check` refuses one there.
+        let Some(host) = m.wall(host_id).filter(|h| pattern(m, h).is_some() && h.arc == 0.0 && h.slant == 0.0) else { continue };
         let mut walled: Vec<(i64, i64)> = walls.iter().map(|(_, _, p)| (p.column, p.row)).collect();
         walled.sort_unstable();
         walled.dedup();
@@ -2717,9 +2710,6 @@ fn check_pattern(m: &Model, n: &str, l: &CurtainLayout) -> Result<(), String> {
     if !(l.min_panel.is_finite() && (0.0..=MAX_SIZE).contains(&l.min_panel)) {
         return Err(format!("{who}: min_panel {} mm; it is from 0 to {MAX_SIZE} mm", l.min_panel));
     }
-    if envelope(m, l).is_none() {
-        return Err(format!("{who}: its pattern needs a panel or a mullion somewhere"));
-    }
     // Three whole modules each way hold every meeting of its segments with each other and the borders.
     let whole = |d: &Direction| Direction { segments: d.segments.clone(), fit: d.fit, justify: Justify::Start };
     let (cs, rs) = (whole(&l.columns), whole(&l.rows));
@@ -2782,8 +2772,17 @@ fn check_wall(m: &Model, id: u64, w: &Wall, l: &CurtainLayout) -> Result<(), Str
             return Err(format!("curtain wall {id}: grid number {} is out of range or used twice", g.number));
         }
     }
-    if w.arc != 0.0 {
-        return Err(format!("curtain wall {id}: a curved curtain wall isn't supported yet; draw it straight"));
+    // Curved, its chords turn round its arc: none may be wider than the arc's circle.
+    if let Some(r) = Axis::of(w).radius()
+        && let Some(widest) = l.columns.segments.iter().copied().reduce(f64::max).filter(|s| *s > 2.0 * r)
+    {
+        return Err(format!(
+            "curtain wall {id}: a segment {widest:.0} mm wide can't be a chord of its arc, {:.0} mm across; make its segments narrower or its arc wider",
+            2.0 * r
+        ));
+    }
+    if (w.arc != 0.0 || w.slant != 0.0) && w.curtain.as_ref().is_some_and(|e| !e.walled.is_empty()) {
+        return Err(format!("curtain wall {id}: a curved or slanted curtain wall can't have walls in its cells yet; delete them first"));
     }
     if w.attach_top.is_some() || w.attach_base.is_some() {
         return Err(format!("curtain wall {id}: attaching its top or base to a roof or floor isn't supported yet; detach it"));

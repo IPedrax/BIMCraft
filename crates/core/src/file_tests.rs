@@ -90,7 +90,10 @@ fn a_project_saves_as_compact_json_or_zipped_when_asked_and_opens_either_way() {
     assert_eq!(s.execute("save", &json!({"path": zipped, "compress": true})).unwrap()["compressed"], json!(true));
     let bytes = std::fs::read(&zipped).unwrap();
     assert!(crate::bimc::is_zip(&bytes));
-    assert!(bytes.len() * 4 < json.len(), "{} bytes zipped of {}", bytes.len(), json.len());
+    // The project's text, that is: its pictures are JPEGs and PNGs, compressed already, which zip to about their own bytes.
+    let pictures = serde_json::to_string(&s.model.images).unwrap().len();
+    let (text, zipped_text) = (json.len() - pictures, bytes.len().saturating_sub(pictures * 3 / 4));
+    assert!(zipped_text * 4 < text, "{} bytes zipped of {}, {pictures} of them pictures", bytes.len(), json.len());
     // A .json is always plain; `compress` is true or false.
     let as_json = dir.path().join("house.json");
     assert_eq!(s.execute("save", &json!({"path": as_json, "compress": true})).unwrap()["compressed"], json!(false));
@@ -180,4 +183,33 @@ fn a_check_on_every_core_says_what_the_check_one_by_one_says() {
         assert!(e.is_err());
         assert_eq!(e, one_by_one(m));
     }
+}
+
+#[test]
+fn a_file_naming_a_line_pattern_it_doesnt_hold_opens_with_it_replaced_by_solid_and_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = house();
+    s.execute("line_pattern", &json!({"name": "Chain", "segments": [{"dash": 4}, {"space": 1}]})).unwrap();
+    s.execute("line_style", &json!({"name": "Chained", "pen": 2, "pattern": "Chain"})).unwrap();
+    s.execute("grid_type", &json!({"name": "Zig", "like": "Grid - ISO 128", "line_pattern": "Chain"})).unwrap();
+    let path = dir.path().join("house.bimc");
+    s.execute("save", &json!({"path": path})).unwrap();
+    // The pattern goes missing, as it does in a file edited by hand or one an older BIMCraft wrote without it.
+    let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    file["line_patterns"].as_object_mut().unwrap().remove("Chain");
+    std::fs::write(&path, file.to_string()).unwrap();
+    // The open doesn't fail for it: the references draw solid, and the reply says what was replaced.
+    let mut t = Session::new();
+    let reply = t.execute("open", &json!({"path": path})).unwrap();
+    let warnings = reply["warnings"].as_array().expect("the reply says what was replaced");
+    assert!(warnings.contains(&json!("line style `Chained`: line pattern `Chain` was replaced with Solid")), "{warnings:?}");
+    assert!(warnings.contains(&json!("grid type `Zig`: line pattern `Chain` was replaced with Solid")), "{warnings:?}");
+    assert_eq!(t.model.line_styles["Chained"].pattern, None);
+    assert_eq!(t.model.grid_types["Zig"].line_pattern, None);
+    // And a file that holds its patterns opens saying nothing.
+    let again = dir.path().join("whole.bimc");
+    s.execute("save", &json!({"path": again})).unwrap();
+    let mut u = Session::new();
+    let reply = u.execute("open", &json!({"path": again})).unwrap();
+    assert!(reply.get("warnings").is_none(), "{reply}");
 }

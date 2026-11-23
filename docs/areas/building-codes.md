@@ -3,7 +3,7 @@
 A project's **building codes** are the rules it is held to by law or by a standard of practice, in five disciplines:
 architectural, structural, electrical, mechanical and plumbing. They range from how high a riser may be, through how many
 units a drain carries, to how thick a beam's cover is. They are apart from the **technical standard** (`standards.rs`,
-Manage > Technical Standards), which is about drafting: line weights, sheets, object styles.
+Manage > Technical Standards), which is about drafting: line weights, sheets, object styles. The technical standards' numbers are the contributor's and unchecked.
 
 **No code values in code.** A number that a standard, a utility, a fire brigade, a maker's table or a common practice gives
 is a rule of a building code. It lives in the code's data with its source, and the project can change it. Rust holds the

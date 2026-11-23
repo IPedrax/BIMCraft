@@ -14,3 +14,8 @@ asset is taken only if it is named exactly for the version and the kind of insta
   on Windows stops on it as dead code.
 - Rename a release asset in `.github/workflows/release.yml` and updates quietly stop installing: keep it as `Target::asset_name` names it.
 - `cargo test -p bimcraft-update` runs in about five seconds.
+
+## Modules
+
+Moved from the root `CLAUDE.md`'s map: `updater.rs` the state the banner draws; `net.rs` HTTPS to GitHub; `detect.rs` which install
+this is; `install.rs` Windows, `appimage.rs` Linux, `macos.rs` macOS; `exec.rs`, `prefs.rs`, `testing.rs`.

@@ -453,6 +453,8 @@ fn made(r: &Room, part: Part, ty: &str, offset: f64, boundary: Vec<P2>, openings
             pattern_angle: 0.0,
             sketch: Vec::new(),
             shape: Default::default(),
+            framing: None,
+            framing_angle: None,
             params,
         }),
         Part::Ceiling => {

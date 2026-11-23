@@ -46,22 +46,27 @@ mod footer;
 mod gpu;
 mod halftone;
 mod printsets;
+mod profile;
 mod publisher;
 mod stairgrips;
 mod stairtype;
 mod viewrange;
 pub use gpu::limits_for;
+mod asset_manager;
 mod graphics;
 mod gridtypes;
 mod groups;
 mod guide_refs;
 pub mod icons;
+mod image_grips;
 mod inquiry;
 pub mod lang;
 mod linestyles;
 mod lineweights;
 mod links;
+mod manage_links;
 mod markdown;
+mod materials;
 mod mep;
 mod mesh;
 mod minimap;
@@ -90,6 +95,7 @@ mod renames;
 mod retained;
 pub mod revit;
 mod ribbon;
+mod scale;
 mod script;
 mod section;
 mod section_box;
@@ -228,6 +234,9 @@ pub enum Tool {
     ExportRegion(Option<P2>),
     /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
     Acquire,
+    /// Scale the selection's annotation, CAD drawings, images and PDFs: how (`scale.rs`), then the point that stays or two
+    /// points and the length between them.
+    Scale(scale::Step),
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
     Mirror {
         draw: bool,
@@ -287,6 +296,8 @@ pub enum Tool {
     Tag,
     /// A section: its start, once clicked.
     Section(Option<P2>),
+    /// A detail view's fragment: its first corner, once clicked, on a plan, a section or an elevation.
+    DetailView(Option<P2>),
     /// An elevation, looking at the side of the building clicked beside.
     Elevation,
     /// A camera: the point its eye stands at, once clicked; then its target. The eye and target heights
@@ -766,12 +777,20 @@ pub struct BimApp {
     settings_page: Option<settings::Page>,
     /// Find (Ctrl+K), while it's open: what is typed in it.
     find: Option<String>,
-    /// The project's scale, the tools the user took out, whether Edit Tools is on, and the kept presets (`presets.rs`); with what
-    /// Settings' preset name field holds and why the last save was refused.
+    /// The project's scale, the tools and panels the user took out, whether Edit Tools is on, and the kept presets
+    /// (`presets.rs`); with what Settings' preset name field holds and why the last save was refused.
     scale: presets::Scale,
     tools_hidden: BTreeSet<String>,
+    /// The ribbon panels the user took out (`tab:<tab>/<panel>`): their tools stay in Find and in Edit Tools.
+    panels_hidden: BTreeSet<String>,
+    /// The panel keys the window has drawn, which the preset editor lists under their tabs.
+    panel_keys: BTreeSet<String>,
     editing_tools: bool,
     presets: Vec<presets::Preset>,
+    /// The preset last applied, which the title bar's chip names and marks: none until one is used.
+    active_preset: Option<String>,
+    /// The preset being edited, if its dialog is open: its draft is not the window until the preset is used.
+    preset_editor: Option<presets::PresetEditor>,
     preset_name: String,
     preset_note: Option<String>,
     settings_path: Option<PathBuf>,
@@ -941,7 +960,13 @@ pub struct BimApp {
     spot_type_dialog: Option<spots::SpotTypeDialog>,
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
+    /// The selected image's corner being dragged: the image, and which corner.
+    pub(crate) image_grip: Option<(Id, usize)>,
+    /// Insert > PDF's page picker, while a PDF of several pages waits for its page.
+    pub(crate) pdf_page_box: Option<mesh::PdfPageBox>,
     curtain_editor: Option<curtain::CurtainEditor>,
+    /// Go To View, while Edit Profile begun in a plan asks for a view that looks at the wall.
+    go_to_view: Option<profile::GoToView>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
     curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
     /// With a mullion's whole grid picked, the other places on it.
@@ -1075,7 +1100,7 @@ pub struct BimApp {
     /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
     deleting_rooms: Option<Vec<Id>>,
     type_dialog: Option<properties::TypeDialog>,
-    materials_dialog: Option<properties::MaterialsDialog>,
+    materials_dialog: Option<materials::MaterialsDialog>,
     family_dialog: Option<properties::FamilyDialog>,
     /// The Favorites window, while it's open; where the favorites file is, when the app was told (else the usual place).
     favorites_dialog: Option<favorites::FavoritesDialog>,
@@ -1171,6 +1196,8 @@ pub struct BimApp {
     pub(crate) survey_moves: bimcraft_core::coordinates::Move,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
+    pub(crate) manage_links: Option<manage_links::ManageLinks>,
+    pub(crate) asset_manager: Option<asset_manager::AssetManager>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
     /// Manage > Run Script, while open.
@@ -1198,6 +1225,8 @@ pub struct BimApp {
     pub(crate) paste_choose: Option<clipboard::Choose>,
     /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.
     pub(crate) paste_where: Option<clipboard::Pasting>,
+    /// Scale's popups: how it scales, the percentage and the length typed.
+    pub(crate) scaling: scale::Options,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
@@ -1708,6 +1737,26 @@ const TABS: [(Tab, &str, Icon); 14] = [
     (Tab::Modify, "Modify", Icon::Modify),
 ];
 
+/// The panels each built-in tab draws, for the preset editor: a panel's key is `tab:<tab>/<panel>` (`ТЗ-019`). `ribbon::panel`
+/// keeps what it draws, and these make the list complete before a tab is opened. A panel a tool, a script or a plugin adds still
+/// comes from the drawing; `Tab::Modify` lists the panels it always draws, the tool in hand adding the rest.
+const PANELS: [(Tab, &[&str]); 14] = [
+    (Tab::Architecture, &["Select", "Build", "Circulation", "Room & Area", "Opening", "Datum"]),
+    (Tab::Structure, &["Select", "Structure", "Reinforcement", "Quantities", "Foundation"]),
+    (Tab::Plumbing, &["Select", "Plumbing & Piping"]),
+    (Tab::Electrical, &["Select", "Electrical", "Symbols", "Conduit & Wire"]),
+    (Tab::Lightning, &["Select", "Capture & Descent", "Earthing"]),
+    (Tab::Data, &["Select", "Outlets & Equipment", "Cabling"]),
+    (Tab::Insert, &["Link", "Import"]),
+    (Tab::Annotate, &["Select", "Dimension", "Detail", "Region", "Text", "Measure", "Tag"]),
+    (Tab::Massing, &["Conceptual Mass", "Model by Face"]),
+    (Tab::Collaborate, &["Work Together"]),
+    (Tab::View, &["Graphics", "Create", "Sheet Composition", "Windows"]),
+    (Tab::Manage, &["Settings", "Inquiry", "Phasing", "Design Options", "Macros"]),
+    (Tab::PyAddins, &["Scripts", "Run"]),
+    (Tab::Modify, &["Select", "Properties", "Clipboard"]),
+];
+
 /// A tab on the Tools palette's rail: its icon, lit while it is open; its name for screen readers and in its tooltip.
 fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
     let label = t(label);
@@ -1795,8 +1844,12 @@ impl BimApp {
             find: None,
             scale: presets::Scale::default(),
             tools_hidden: BTreeSet::new(),
+            panels_hidden: BTreeSet::new(),
+            panel_keys: BTreeSet::new(),
             editing_tools: false,
             presets: Vec::new(),
+            active_preset: None,
+            preset_editor: None,
             preset_name: String::new(),
             preset_note: None,
             settings_path: None,
@@ -1898,7 +1951,10 @@ impl BimApp {
             dimension_type_dialog: None,
             spot_type_dialog: None,
             spot_grip: None,
+            image_grip: None,
+            pdf_page_box: None,
             curtain_editor: None,
+            go_to_view: None,
             curtain_part: None,
             curtain_more: Vec::new(),
             curtain_hover: None,
@@ -2028,6 +2084,8 @@ impl BimApp {
             survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
             purge_dialog: None,
+            manage_links: None,
+            asset_manager: None,
             select_by_id: None,
             run_script: None,
             work_plane: None,
@@ -2042,6 +2100,7 @@ impl BimApp {
             family_clip: None,
             paste_choose: None,
             paste_where: None,
+            scaling: scale::Options { percent: "100".into(), ..Default::default() },
             active_option: None,
             new_schedule: None,
             component: None,
@@ -2200,6 +2259,7 @@ impl BimApp {
             | Tool::Copy(_)
             | Tool::Rotate { .. }
             | Tool::RotateNorth { .. }
+            | Tool::Scale(_)
             | Tool::Mirror { .. }
             | Tool::Align(_)
             | Tool::Trim(_)
@@ -2249,6 +2309,7 @@ impl BimApp {
             Tool::Measure(_) => Some("Measure"),
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
+            Tool::DetailView(_) => Some(msg!("Callout")),
             Tool::Elevation => Some("Elevation"),
             Tool::Camera(_) => Some("Camera"),
             Tool::Column => Some(msg!("Place Column")),
@@ -2304,7 +2365,7 @@ impl BimApp {
             Sheet::View3D => {
                 self.active_3d().and_then(|id| self.session.model.view_name(id).map(String::from)).unwrap_or_else(|| "{3D}".into())
             }
-            Sheet::Section(id) => self.session.model.section(id).map_or_else(|| "Section".into(), |v| v.name.clone()),
+            Sheet::Section(id) => self.session.model.view_name(id).map_or_else(|| "Section".into(), String::from),
             Sheet::Paper(id) => self.session.model.sheet(id).map_or_else(|| "Sheet".into(), |s| format!("{} - {}", s.number, s.name)),
             Sheet::Schedule(cat) => match schedule::standard(&self.session.model, cat) {
                 (Some(_), sc) => sc.name,
@@ -2323,10 +2384,12 @@ impl BimApp {
     /// The view as the title bar names it: `Floor Plan: Level 1`.
     fn view_title(&self, sheet: Sheet) -> String {
         let kind = match sheet {
+            Sheet::Plan(id) if matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))) => msg!("Callout"),
             Sheet::Plan(_) => "Floor Plan",
             Sheet::Ceiling(_) => "Ceiling Plan",
             Sheet::View3D => "3D View",
             Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::Elevation(_))) => "Elevation",
+            Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))) => msg!("Callout"),
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
             Sheet::Table(id) if matches!(self.session.model.elements.get(id), Some(Element::PanelSchedule(_))) => "Panel Schedule",
@@ -2389,6 +2452,7 @@ impl BimApp {
         };
         style::follow(&ctx, look);
         ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
+        ribbon::panel_rules(self.panels_hidden.clone());
         // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
         // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
         // window stays in English and says why.
@@ -2478,9 +2542,6 @@ impl BimApp {
         // The ribbon is Rev's: BIMCraft's tools are a palette (`Palette::Tools`), which Rev never shows. A family document (an
         // adaptive family open) has a ribbon, palettes and a view of its own, as Revit's family editor, in either profile.
         let family = self.family_doc();
-        if style::rev() {
-            self.docking.show(dock::Palette::Tools, false);
-        }
         if style::rev() || family {
             let card = style::card([true, true, true, false]);
             Panel::top("ribbon")
@@ -2561,6 +2622,13 @@ impl BimApp {
                 self.tools_hidden.insert(name);
             }
         }
+        for key in ribbon::take_toggled_panels() {
+            if !self.panels_hidden.remove(&key) {
+                self.panels_hidden.insert(key);
+            }
+        }
+        // The panels drawn since the last frame: what the preset editor lists.
+        self.panel_keys.extend(ribbon::take_seen_panels());
         self.keep_settings(&ctx);
         self.track_sketch();
         if self.own_bar() {
@@ -2683,7 +2751,7 @@ impl BimApp {
         let exists = |s: &Sheet| match s {
             Sheet::Family(id, _) => docs.contains(id),
             Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key).is_some(),
-            Sheet::Section(id) => m.section(*id).is_some(),
+            Sheet::Section(id) => m.section_geometry(*id).is_some(),
             Sheet::Paper(id) => m.sheet(*id).is_some(),
             Sheet::View3D | Sheet::Schedule(_) => true,
             Sheet::Table(id) => {
@@ -2724,6 +2792,7 @@ impl BimApp {
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
             || self.curtain_editor.is_some()
+            || self.go_to_view.is_some()
             || !self.curtain_asking.is_empty()
             || self.grid_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
@@ -2750,6 +2819,9 @@ impl BimApp {
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
+            || self.manage_links.is_some()
+            || self.asset_manager.is_some()
+            || self.pdf_page_box.is_some()
             || self.select_by_id.is_some()
             || self.run_script.is_some()
             || self.work_plane.as_ref().is_some_and(|d| d.picking.is_none())
@@ -2907,6 +2979,10 @@ impl BimApp {
         }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        // Scale's length is typed in its own popup, which takes its Enter.
+        if matches!(self.tool, Tool::Scale(_)) {
+            enter = false;
+        }
         if enter && let Sheet::Section(view) = self.sheet {
             self.vertical_enter(view);
             enter = false;
@@ -3444,8 +3520,17 @@ impl BimApp {
         if matches!(tool, Tool::Paint | Tool::Unpaint) && self.sheet != Sheet::View3D {
             self.open_sheet(Sheet::View3D);
         }
-        // Move, Copy, Rotate and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
-        let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
+        // Scale asks first whether there's anything here it takes, and then how.
+        if let Tool::Scale(_) = tool {
+            if let Some(why) = self.scale_refused() {
+                self.status = Status { text: why, error: true };
+                return;
+            }
+            tool = Tool::Scale(scale::Step::Choose);
+            (self.scaling.error, self.scaling.focused) = (None, false);
+        }
+        // Move, Copy, Rotate, Scale and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
+        let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Scale(_) | Tool::Mirror { .. });
         let picks = matches!(
             tool,
             Tool::Align(_)
@@ -3830,6 +3915,7 @@ impl BimApp {
             | Tool::Section(start)
             | Tool::SlopeArrow(start)
             | Tool::AddSplitLine(start) => *start,
+            Tool::Scale(scale::Step::Second(a)) => Some(*a),
             Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
                 pts.last().copied()
             }
@@ -3937,6 +4023,7 @@ impl BimApp {
             Tool::Angular(refs) if !refs.is_empty() => Tool::Angular(Vec::new()),
             Tool::Round(k, picked) if !picked.is_empty() => Tool::Round(k, Vec::new()),
             Tool::Section(Some(_)) => Tool::Section(None),
+            Tool::DetailView(Some(_)) => Tool::DetailView(None),
             Tool::Measure(Some(_)) => Tool::Measure(None),
             // The ruler begun or laid goes first, then the tool, in a plan and in the 3D view alike.
             Tool::Measure(None) if !std::mem::take(&mut self.orbit.chain).is_empty() => {
@@ -4148,6 +4235,7 @@ impl BimApp {
             | Tool::DetailLine(pts) => pts.clear(),
             Tool::Move(_)
             | Tool::Copy(_)
+            | Tool::Scale(_)
             | Tool::SlopeArrow(_)
             | Tool::ModifySubElements
             | Tool::AddPoint
@@ -4371,7 +4459,13 @@ impl BimApp {
             self.note_recent(path);
         }
         self.autosave_document();
-        if reply["format"].is_string() {
+        // What the open had to mend: a line pattern a file names but doesn't hold (issue 566), or a formula saying a name
+        // its family lacks.
+        let warnings: Vec<&str> = reply["warnings"].as_array().map_or_else(Vec::new, |a| a.iter().filter_map(Value::as_str).collect());
+        if !warnings.is_empty() {
+            let text = tf("{} opened with warnings:\n{}", &[&name, &warnings.join("\n")]);
+            self.status = Status { text, error: false };
+        } else if reply["format"].is_string() {
             self.status = Status { text: import_note(&name, reply), error: false };
         } else if let Some(left_out) = reply["left_out"].as_array() {
             let count = reply["left_out_count"].as_u64().map_or(left_out.len(), |n| n as usize);
@@ -4407,6 +4501,8 @@ impl BimApp {
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         (fresh.compact, fresh.profile, fresh.scale) = (self.compact, self.profile, self.scale);
         (fresh.tools_hidden, fresh.presets) = (std::mem::take(&mut self.tools_hidden), std::mem::take(&mut self.presets));
+        fresh.active_preset = self.active_preset.take();
+        (fresh.panels_hidden, fresh.panel_keys) = (std::mem::take(&mut self.panels_hidden), std::mem::take(&mut self.panel_keys));
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
@@ -4751,9 +4847,11 @@ impl BimApp {
                     if icon_button(ui, icon, label).clicked() {
                         self.fold_ribbon(!self.ribbon_min);
                     }
-                    // Edit Tools on: the ribbon's buttons are boxes to tick until this.
-                    if self.editing_tools && ui.button(t("Done")).clicked() {
-                        self.editing_tools = false;
+                    // Edit Tools on: the ribbon's buttons are boxes to tick until this, which keeps the layout in the selected preset.
+                    if self.editing_tools
+                        && ui.button(t("Done")).on_hover_text(t("Done keeps the tools, panels and layout in the selected preset")).clicked()
+                    {
+                        self.edit_tools(false);
                     }
                 });
             });
@@ -4804,6 +4902,10 @@ impl BimApp {
 
     /// The panels of `tab`: on the ribbon side by side, in the Tools palette as rows.
     fn tab_content(&mut self, ui: &mut Ui, tab: Tab) {
+        // The panels' keys: `tab:<tab>/<panel>`, a plugin's `tab:plugin:<name>/<panel>`, a contextual tab's `tab:Modify/…`.
+        let name = self.tab_name(tab);
+        ribbon::set_tab(&name);
+        ribbon::begin_tab();
         match tab {
             Tab::Architecture => self.architecture_tab(ui),
             Tab::Structure => self.structure_tab(ui),
@@ -4821,12 +4923,50 @@ impl BimApp {
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
         }
+        if ribbon::drawn_panels() == 0 && ribbon::hidden_panels() > 0 {
+            self.empty_tab_notice(ui, &name);
+        }
+    }
+
+    /// The name a tab's panels' keys carry: its English name, `plugin:<name>` for a plugin's tab, `Modify` for the contextual
+    /// tab, which the same panels draw.
+    fn tab_name(&self, tab: Tab) -> String {
+        match tab {
+            // The manifest's name, never translated: a key must read the same in every language.
+            Tab::Plugin(i) => {
+                let name = self.plugin_tabs.get(i).and_then(|t| t.name.clone()).unwrap_or_else(|| "Plugins".to_string());
+                format!("plugin:{name}")
+            }
+            Tab::Modify | Tab::Context => "Modify".to_string(),
+            tab => TABS.iter().find(|(t, ..)| *t == tab).map_or("", |(_, label, _)| *label).to_string(),
+        }
+    }
+
+    /// The panel keys the preset editor lists: every built-in tab's panels, whether it has been opened or not, and every plugin
+    /// tab's declared panels. A tool's or a script's own panels join them from what the window has drawn (`panel_keys`).
+    pub(crate) fn known_panel_keys(&self) -> BTreeSet<String> {
+        let mut keys = BTreeSet::new();
+        for (tab, panels) in PANELS {
+            let name = self.tab_name(tab);
+            for panel in panels {
+                keys.insert(format!("tab:{name}/{panel}"));
+            }
+        }
+        for tab in &self.plugin_tabs {
+            let name = tab.name.clone().unwrap_or_else(|| "Plugins".to_string());
+            for panel in &tab.panels {
+                keys.insert(format!("tab:plugin:{name}/{}", panel.name));
+            }
+        }
+        keys
     }
 
     /// BIMCraft's Tools palette, in place of the ribbon: a rail of the ribbon's tabs down its left, and beside it, as rows under their
     /// panels' names, the Select panel, the tool in hand's or the selection's (the contextual tab's, named for it) and the open tab's.
     pub(crate) fn tool_column(&mut self, ui: &mut Ui) {
         let open = if self.tab == Tab::Context { self.back } else { self.tab };
+        // The Select panel belongs to the open tab: its key, and the tab's panels' keys, follow it.
+        ribbon::set_tab(&self.tab_name(open));
         // The rail and the rows side by side, each in a rect of its own: what is wider than the rows' is cut, never widens the column.
         let all = ui.available_rect_before_wrap();
         let rail = all.with_max_x(all.left() + 36.0).shrink2(vec2(2.0, 4.0));
@@ -4856,9 +4996,11 @@ impl BimApp {
             ScrollArea::both().id_salt(scroll).auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(rows.width() - 12.0);
                 let edit = if self.editing_tools { msg!("Done") } else { msg!("Edit Tools") };
-                let tip = msg!("Tick the tools this palette shows; Find still has the others");
+                let tip = msg!(
+                    "Tick the tools and panels this window shows; Done keeps them, and the palette layout, in the selected preset; Find still has the others"
+                );
                 if ui.button(t(edit)).on_hover_text(t(tip)).clicked() {
-                    self.editing_tools = !self.editing_tools;
+                    self.edit_tools(!self.editing_tools);
                 }
                 ribbon::rows(ui, |ui| self.select_panel(ui));
                 ribbon::skip_select(true);
@@ -4866,6 +5008,7 @@ impl BimApp {
                 if let Some(name) = &context {
                     ui.add_space(8.0);
                     ui.label(RichText::new(name).color(pal().context).strong());
+                    ribbon::set_tab("Modify");
                     ribbon::rows(ui, |ui| self.modify_tab(ui));
                 }
                 // The Modify tab is what the contextual rows already are.
@@ -5333,6 +5476,34 @@ impl BimApp {
         });
     }
 
+    /// A Callout of the fragment from `a` to `b` on `parent`: its view, and the boundary and mark on the parent.
+    pub(crate) fn make_callout(&mut self, parent: Id, a: P2, b: P2) -> bool {
+        let Some(scale) = self.drawing.detail_scale.trim().parse::<f64>().ok().filter(|n| (1.0..=50.0).contains(n)) else {
+            self.status =
+                Status { text: tf("callout: `{}` is not a scale from 1 to 50", &[self.drawing.detail_scale.trim()]), error: true };
+            return false;
+        };
+        let (lo, hi) = (P2(a.0.min(b.0), a.1.min(b.1)), P2(a.0.max(b.0), a.1.max(b.1)));
+        let mut p = json!({"parent": parent, "region": [[lo.0, lo.1], [hi.0, hi.1]], "scale": scale});
+        if !self.drawing.detail_name.trim().is_empty() {
+            p["name"] = json!(self.drawing.detail_name.trim());
+        }
+        if !self.drawing.detail_number.trim().is_empty() {
+            p["number"] = json!(self.drawing.detail_number.trim());
+        }
+        match self.run("detail_view", p) {
+            Some(made) => {
+                let name = made["name"].as_str().unwrap_or_default().to_string();
+                self.status = Status {
+                    text: tf("Callout `{}` made: open it from the Project Browser, or double-click its mark", &[&name]),
+                    error: false,
+                };
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Duplicate View (DP): a new plan view of the plan on screen (`mode` as the command says), opened as the kind of plan it
     /// was made from.
     pub(crate) fn duplicate_plan(&mut self, mode: &'static str) {
@@ -5375,12 +5546,12 @@ impl BimApp {
             if big_button(ui, Icon::Template, "View Templates", self.templates_dialog.is_some(), tip).clicked() {
                 self.open_templates();
             }
-            if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
+            if small_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;
             }
             let dark = style::dark();
             let tip = msg!("Choose a theme, including a dark interface with a light canvas");
-            let r = big_button(ui, Icon::Theme, "Dark Mode", dark, tip);
+            let r = small_button(ui, Icon::Theme, "Dark Mode", dark, tip);
             let at = r.rect.right_top() + vec2(-8.0, 9.0);
             ui.painter().add(egui::Shape::convex_polygon(
                 vec![at + vec2(-3.0, -2.0), at + vec2(3.0, -2.0), at + vec2(0.0, 2.0)],
@@ -5422,6 +5593,22 @@ impl BimApp {
                     }
                 }
             });
+            let tip = msg!(
+                "Callout: click two opposite corners of a fragment on a plan, a section or an elevation; a larger view of it is made at the Options Bar's scale, and its callout and boundary stay on this view"
+            );
+            let can_callout = match self.sheet {
+                Sheet::Plan(id) | Sheet::Section(id) => !matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))),
+                _ => false,
+            };
+            if ui
+                .add_enabled_ui(can_callout, |ui| {
+                    big_button(ui, Icon::DetailView, "Callout", matches!(self.tool, Tool::DetailView(_)), tip)
+                })
+                .inner
+                .clicked()
+            {
+                self.set_tool(Tool::DetailView(None));
+            }
             let tip = msg!("Section (CR): click its start, then its end; it looks to the left of the line");
             if big_button(ui, Icon::Section, "Section", matches!(self.tool, Tool::Section(_)), tip).clicked() {
                 self.set_tool(Tool::Section(None));
@@ -5511,7 +5698,7 @@ impl BimApp {
             let tip = msg!("Show or hide the palettes, and pick the interface's language");
             let r = big_button(ui, Icon::Interface, "User Interface", false, tip);
             ribbon::choices(ui, &r, false, |ui| {
-                for p in dock::Palette::ALL {
+                for p in dock::Palette::known() {
                     let mut on = self.docking.shown(p);
                     if ui.checkbox(&mut on, t(p.name())).changed() {
                         self.show_palette(p, on);
@@ -5556,6 +5743,12 @@ impl BimApp {
             if big_button(ui, Icon::LinkCad, "Link CAD", self.cad_box.as_ref().is_some_and(|b| b.linked()), tip).clicked() {
                 self.cad_dialog = Some(true);
             }
+            let tip = msg!(
+                "Manage Links: every linked model, IFC, CAD drawing, point cloud and 3D model, its path and status and how many instances place it; Reload, Reload From and Unload"
+            );
+            if big_button(ui, Icon::Link, "Manage Links", self.manage_links.is_some(), tip).clicked() {
+                self.open_manage_links();
+            }
         });
         panel(ui, msg!("Import"), |ui| {
             let tip = msg!(
@@ -5570,6 +5763,30 @@ impl BimApp {
             if big_button(ui, Icon::Component, "Import 3D Model", false, tip).clicked() {
                 self.import_mesh_dialog(ui.ctx());
             }
+            let tip = msg!(
+                "Image: a PNG or JPEG picture placed under the model in the plans of this plan's level, moved and sized as an element"
+            );
+            let r = big_button(ui, Icon::Component, "Image", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), false, false);
+                }
+                if ui.button(t("Link Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), true, false);
+                }
+            });
+            let tip = msg!(
+                "PDF: a PDF's first page placed under the model in the plans of this plan's level, at its paper's size at the plan's scale, so a drawing printed at that scale lies true"
+            );
+            let r = big_button(ui, Icon::Sheet, "PDF", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), false, true);
+                }
+                if ui.button(t("Link PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), true, true);
+                }
+            });
         });
     }
 
@@ -5588,7 +5805,7 @@ impl BimApp {
         panel(ui, "Settings", |ui| {
             let tip = msg!("Materials: the project's library, each material's colour in 3D and the patterns its cut and its surfaces show");
             if big_button(ui, Icon::Materials, "Materials", self.materials_dialog.is_some(), tip).clicked() {
-                self.materials_dialog = Some(properties::MaterialsDialog::new(&self.session.model));
+                self.materials_dialog = Some(materials::MaterialsDialog::new(&self.session.model, self.favorites_path.as_ref()));
             }
             let tip = msg!("Favorites: the materials and families you keep for every project; add one to this project with a click");
             if big_button(ui, Icon::Favorite, "Favorites", self.favorites_dialog.is_some(), tip).clicked() {
@@ -5623,8 +5840,10 @@ impl BimApp {
             let open = self.line_weights_dialog.is_some()
                 || self.line_styles_dialog.is_some()
                 || self.fill_patterns_dialog.is_some()
+                || self.asset_manager.is_some()
                 || self.halftone_dialog.is_some();
-            let tip = msg!("Annotation Settings: line weights, line styles, line patterns, fill patterns and halftone");
+            let tip =
+                msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns, halftone, and the Asset Manager");
             let r = big_button(ui, Icon::AnnotationSettings, "Annotation Settings", open, tip);
             ribbon::choices(ui, &r, false, |ui| {
                 // As wide as its longest name, not the window.
@@ -5651,6 +5870,12 @@ impl BimApp {
                 );
                 if list_row(ui, Icon::Halftone, "Halftone/Underlay", false, tip).clicked() {
                     self.open_halftone();
+                }
+                let tip = msg!(
+                    "Asset Manager: the project's materials, fill types and patterns, line patterns and styles and pictures, where each is used, and their import and export as a .bima file"
+                );
+                if list_row(ui, Icon::Materials, "Asset Manager", false, tip).clicked() {
+                    self.open_asset_manager();
                 }
             });
             let now_std = self.session.model.standard();
@@ -5743,13 +5968,8 @@ impl BimApp {
                 self.open_classification();
             }
         });
-        // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
-        // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
-        ribbon::yielding(ui, msg!("Project Location"), |ui| {
-            let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
-            if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
-                self.link_dialog = true;
-            }
+        // Revit's Project Location: where the project stands (a model is linked from Insert > Link).
+        panel(ui, msg!("Project Location"), |ui| {
             let tip = msg!(
                 "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
             );
@@ -5791,6 +6011,12 @@ impl BimApp {
                 self.open_run_script();
             }
         });
+    }
+
+    /// Whether the selection is images and PDFs placed in plans, and nothing else.
+    pub(crate) fn images_selected(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty() && self.selection.iter().all(|id| matches!(m.elements.get(*id), Some(Element::Image(_))))
     }
 
     fn modify_tab(&mut self, ui: &mut Ui) {
@@ -5872,6 +6098,8 @@ impl BimApp {
         }
         // Revit's Modify panel: small buttons in rows. Those taking the selection need one.
         let some = !self.selection.is_empty();
+        // Images and PDFs alone: what they take, moving, copying, mirroring and deleting, and nothing that trims or paints.
+        let images = some && self.images_selected();
         // The button lit while its tool is on (the two Mirrors told apart by how they take the axis).
         let on = |t: &Tool, other: &Tool| match (t, other) {
             (Tool::Mirror { draw: a, .. }, Tool::Mirror { draw: b, .. }) => a == b,
@@ -5937,6 +6165,13 @@ impl BimApp {
                     "Rotate",
                     msg!("Rotate (RO): click the angle's start, then its end"),
                     Some(Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false }),
+                    some,
+                ),
+                (
+                    Icon::Scale,
+                    "Scale",
+                    msg!("Scale (RE): annotation, CAD drawings, images and PDFs, by a percentage or by a length between two points"),
+                    Some(Tool::Scale(scale::Step::Choose)),
                     some,
                 ),
                 (
@@ -6114,7 +6349,10 @@ impl BimApp {
         let attachable = self.selected_attachable();
         if !attachable.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
             let title = if walls.is_empty() { msg!("Modify Column") } else { msg!("Modify Wall") };
-            panel(ui, title, |ui| {
+            // With one wall's Mode panel beside it, it makes room first, keeping Flip: a narrow ribbon lists Attach and Detach
+            // before it takes the Modify panel's tools, as the Mode panel would otherwise make it.
+            let mode = matches!(walls.as_slice(), [id] if profile::profile_editable(&self.session.model, *id));
+            let body = |ui: &mut Ui| {
                 if !walls.is_empty() {
                     let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
                     if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
@@ -6128,6 +6366,27 @@ impl BimApp {
                 let tip = msg!("Detach Top/Base: the tops and bases of the walls and columns their own again");
                 if big_button(ui, Icon::Detach, "Detach Top/Base", false, tip).clicked() {
                     self.run("modify", json!({"ids": attachable, "attach_top": null, "attach_base": null}));
+                }
+            };
+            if mode { ribbon::yielding(ui, title, body) } else { panel(ui, title, body) }
+        }
+        // One straight, upright wall: Revit's Mode panel of Modify | Walls, its shape in elevation sketched again.
+        if let [id] = self.selected_walls().as_slice()
+            && self.tool == Tool::Modify
+            && profile::profile_editable(&self.session.model, *id)
+        {
+            let id = *id;
+            panel(ui, msg!("Mode"), |ui| {
+                let tip =
+                    msg!("Edit Profile: sketch the wall's outline, and any holes, on its face in an elevation, a section or the 3D view");
+                let on = self.go_to_view.is_some() || matches!(self.sketch.as_ref().map(|sk| sk.of), Some(sketch::Of::Profile(_)));
+                if big_button(ui, Icon::EditProfile, msg!("Edit Profile"), on, tip).clicked() {
+                    self.edit_profile(id);
+                }
+                let shaped = self.session.model.wall(id).is_some_and(|w| !w.profile.is_empty());
+                let tip = msg!("Reset Profile: the wall's rectangle back, from its base to its top");
+                if shaped && big_button(ui, Icon::ResetProfile, msg!("Reset Profile"), false, tip).clicked() {
+                    self.run("modify", json!({"id": id, "profile": []}));
                 }
             });
         }
@@ -6175,7 +6434,10 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in rows {
                     ui.horizontal(|ui| {
-                        for (icon, label, tip, tool, enabled) in row {
+                        let taken = |tool: &Option<Tool>| {
+                            !images || matches!(tool, None | Some(Tool::Move(_) | Tool::Copy(_) | Tool::Scale(_) | Tool::Mirror { .. }))
+                        };
+                        for (icon, label, tip, tool, enabled) in row.iter().filter(|b| taken(&b.3)) {
                             let active = tool.as_ref().is_some_and(|t| on(t, &self.tool) && *t != Tool::Modify);
                             if ui.add_enabled_ui(*enabled, |ui| small_button(ui, *icon, label, active, tip)).inner.clicked() {
                                 match tool {
@@ -6188,6 +6450,10 @@ impl BimApp {
                 }
             });
         });
+        if images {
+            self.mode_panel(ui);
+            return;
+        }
         panel(ui, "Phasing", |ui| {
             let tip = msg!("Demolish (DW): click an element to take it down in the view's phase; click it again to take it back");
             let on = self.graphic_view().is_some();
@@ -6487,6 +6753,14 @@ impl BimApp {
                     let l = ui.label(t("Label:"));
                     ui.add(TextEdit::singleline(&mut self.tag_label).desired_width(160.0).hint_text(t("a field, such as Type or Height")))
                         .labelled_by(l.id);
+                }
+                Tool::DetailView(_) => {
+                    let l = ui.label(t("Scale 1:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.drawing.detail_scale).desired_width(48.0)).labelled_by(l.id);
+                    let l = ui.label(t("Name:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.drawing.detail_name).desired_width(180.0)).labelled_by(l.id);
+                    let l = ui.label(t("Number:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.drawing.detail_number).desired_width(70.0)).labelled_by(l.id);
                 }
                 Tool::DetailLine(_) => self.line_style_options(ui),
                 // Between endpoints: as the cursor lies, aligned, horizontal or vertical (Space steps them).
@@ -6886,6 +7160,11 @@ impl BimApp {
             Tool::RotateNorth { start: Some(_), .. } => {
                 msg!("Click the end of the angle: the model turns, and true north with it, so nothing moves in the world. Esc cancels.")
             }
+            Tool::Scale(scale::Step::Choose) => msg!("Scale: choose by a percentage or by a length between two points, then OK."),
+            Tool::Scale(scale::Step::Base(_)) => msg!("Click the point that stays: the selection grows or shrinks about it. Esc cancels."),
+            Tool::Scale(scale::Step::First) => msg!("Click the first point, the one that stays. Esc cancels."),
+            Tool::Scale(scale::Step::Second(_)) => msg!("Click the second point: then type the length between them. Esc cancels."),
+            Tool::Scale(scale::Step::Length(..)) => msg!("Type the new length between the two points and press Enter. Esc cancels."),
             Tool::Mirror { draw: false, .. } => msg!("Pick a wall or grid to mirror across."),
             Tool::Mirror { draw: true, start: None } => msg!("Click the start of the mirror axis."),
             Tool::Mirror { draw: true, start: Some(_) } => msg!("Click the end of the mirror axis."),
@@ -6986,6 +7265,8 @@ impl BimApp {
             Tool::GableEdge => msg!("Click an edge of a roof's footprint: it stands upright, a gable end; click it again to slope it."),
             Tool::Floor => msg!("Click inside the walls to floor them: the slab runs under their outline, its top at the level."),
             Tool::Ceiling => msg!("Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says."),
+            Tool::DetailView(None) => msg!("Click one corner of the fragment to call out."),
+            Tool::DetailView(Some(_)) => msg!("Click the fragment's opposite corner; the callout is made at the Options Bar's scale."),
             Tool::Shaft(None) => msg!("Click a corner of the shaft opening."),
             Tool::Shaft(Some(_)) => {
                 msg!("Click the opposite corner: the shaft cuts the floors, ceilings and roofs up to its top. Esc cancels.")
@@ -7072,10 +7353,10 @@ impl BimApp {
         });
     }
 
-    /// Why the last command failed, in a box over the views' bottom right corner until the next one works. It is a layer of
-    /// the views' own order, so it is raised to the top of it every frame: the windows a split lays out are layers of that
-    /// order too, and one of them clicked or dragged after the note came up would otherwise hide it. Modal dialogs and menus
-    /// stand above it in orders of their own.
+    /// Why the last command failed, in a box over the views' bottom right corner until the next one works. Its text can be
+    /// copied, so a bug report can quote it (issue 566). It is a layer of the views' own order, so it is raised to the top of it
+    /// every frame: the windows a split lays out are layers of that order too, and one of them clicked or dragged after the
+    /// note came up would otherwise hide it. Modal dialogs and menus stand above it in orders of their own.
     fn warning(&mut self, ctx: &Context) {
         if self.status.text.is_empty() {
             return;
@@ -7085,6 +7366,8 @@ impl BimApp {
         let view =
             if !self.home.shown && !self.family_doc() && self.arrange != dock::Arrange::Tabs { self.views_rect } else { self.view_rect };
         let at = view.right_bottom() - vec2(16.0, 16.0);
+        let copied = egui::Id::new("warning copied");
+        let mut was: Option<String> = ctx.data_mut(|d| d.get_temp::<String>(copied));
         Area::new(UiId::new("warning")).order(Order::Middle).fixed_pos(at).pivot(Align2::RIGHT_BOTTOM).show(ctx, |ui| {
             Frame::popup(ui.style()).fill(pal().surface).stroke(Stroke::new(1.0, color)).show(ui, |ui| {
                 ui.set_max_width(380.0);
@@ -7094,13 +7377,24 @@ impl BimApp {
                         if icon_button(ui, Icon::Close, "Dismiss").clicked() {
                             self.status = Status::default();
                         }
-                        if ui.button(t("Copy")).on_hover_text(t("Copy the message to the clipboard")).clicked() {
-                            ui.ctx().copy_text(self.status.text.clone());
+                        let said = was.as_deref() == Some(self.status.text.as_str());
+                        if icon_button(ui, Icon::Copy, if said { "Copied" } else { "Copy" }).clicked() {
+                            ctx.copy_text(self.status.text.clone());
+                            was = Some(self.status.text.clone());
+                            ctx.request_repaint();
                         }
                     });
                 });
-                ui.add(egui::Label::new(&self.status.text).selectable(true));
+                ui.add(egui::Label::new(RichText::new(&self.status.text)).selectable(true));
             });
+        });
+        // A new message hasn't been copied: the button says Copy again.
+        ctx.data_mut(|d| {
+            if self.status.text.is_empty() {
+                d.remove::<String>(copied);
+            } else {
+                d.insert_temp(copied, was.unwrap_or_default());
+            }
         });
         ctx.move_to_top(egui::LayerId::new(Order::Middle, UiId::new("warning")));
     }
@@ -7345,6 +7639,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
         self.curtain_editor_window(ctx);
+        self.go_to_view_window(ctx);
         self.curtain_message(ctx);
         self.grid_type_window(ctx);
         self.dimension_text_window(ctx);
@@ -7353,6 +7648,9 @@ impl BimApp {
         self.findings_window(ctx);
         self.coordinates_window(ctx);
         self.options_window(ctx);
+        self.manage_links_window(ctx);
+        self.asset_manager_window(ctx);
+        self.pdf_page_window(ctx);
         self.purge_window(ctx);
         self.cowork_window(ctx);
         self.lend_window(ctx);
@@ -7376,9 +7674,15 @@ impl BimApp {
         self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
         self.paste_window(ctx);
+        self.scale_window(ctx);
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
+        // The preset editor is the dialog on top: Escape closes it alone, leaving the Settings window behind it open.
+        if self.preset_editor.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.preset_editor = None;
+        }
         self.settings_window(ctx);
+        self.preset_editor_window(ctx);
         self.new_project_window(ctx);
         self.plugins_window(ctx);
         self.plugin_report_window(ctx);
