@@ -71,6 +71,8 @@ enum Kind {
     LengthIf,
     /// An area in m², read only: shown in m² or ft².
     AreaShown,
+    /// A family's area in mm², read only: shown in m² or ft².
+    Mm2Shown,
     /// A volume in m³, read only: shown in m³ or ft³.
     VolumeShown,
     /// An angle in degrees, typed as a number, shown with °.
@@ -120,6 +122,8 @@ fn relevant(e: &Value, key: &str) -> bool {
         (Some(_), "revision") => !e["cloud"].is_null(),
         // A wall's Top Offset is from its top constraint: an unconnected wall stands `height` tall and has none.
         (_, "top_offset") => !e["top_level"].is_null(),
+        // Opening Area is for a family that cuts its host, or a door's or a window's rectangle.
+        (_, "values.Opening Area") => !e["values"]["Opening Area"].is_null(),
         // An extrusion roof takes its pitch from its profile, not the footprint's slope.
         (_, "slope") => e["extrusion"].is_null(),
         _ => true,
@@ -164,6 +168,9 @@ fn rows(category: &str) -> &'static [Row] {
         ],
         "door" => &[
             ("Constraints", "level", "Level", LevelName),
+            ("Dimensions", "width", "Width", LengthShown),
+            ("Dimensions", "height", "Height", LengthShown),
+            ("Dimensions", "values.Opening Area", msg!("Opening Area"), Mm2Shown),
             (msg!("Identity Data"), "mark", "Mark", Text),
             ("Other", "host", msg!("Host Wall"), Link),
             ("Other", "offset", "Offset", Length),
@@ -174,6 +181,9 @@ fn rows(category: &str) -> &'static [Row] {
         "window" => &[
             ("Constraints", "level", "Level", LevelName),
             ("Constraints", "sill", "Sill Height", Length),
+            ("Dimensions", "width", "Width", LengthShown),
+            ("Dimensions", "height", "Height", LengthShown),
+            ("Dimensions", "values.Opening Area", msg!("Opening Area"), Mm2Shown),
             ("Identity Data", "mark", "Mark", Text),
             ("Other", "host", "Host Wall", Link),
             ("Other", "offset", "Offset", Length),
@@ -347,6 +357,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "offset", msg!("Elevation from Level"), Length),
             ("Constraints", "work_plane", "Work Plane", Shown),
             ("Constraints", "offset_from_host", msg!("Offset from Host"), Length),
+            ("Dimensions", "values.Opening Area", msg!("Opening Area"), Mm2Shown),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation", Angle),
         ],
@@ -781,6 +792,10 @@ fn shown(kind: Kind, v: &Value, units: Units) -> String {
         MetresShown => each(&|x| units.with_unit(x * 1000.0)),
         AreaShown => each(&|x| {
             let (area, unit) = units.area(x * 1e6);
+            format!("{area:.2} {unit}")
+        }),
+        Mm2Shown => each(&|x| {
+            let (area, unit) = units.area(x);
             format!("{area:.2} {unit}")
         }),
         VolumeShown => each(&|x| {
@@ -2402,7 +2417,7 @@ impl BimApp {
                         Values if v["kind"] == "angular" => {
                             ui.label(RichText::new(format!("{}°", text(val))).color(pal().muted));
                         }
-                        LengthShown | AreaShown | VolumeShown | MetresShown | Values => {
+                        LengthShown | AreaShown | Mm2Shown | VolumeShown | MetresShown | Values => {
                             ui.label(RichText::new(shown(kind, val, units)).color(pal().muted));
                         }
                         LevelName => {
