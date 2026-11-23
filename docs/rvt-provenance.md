@@ -401,7 +401,9 @@ for every project, and is made on its own.
   symbol's solids are all read, whatever views their conditions (`GFilter`) show them in: a family that draws one shape in plan and
   another in 3D, or a coarse and a fine one, brings both in. Materials and what a symbol nests are not read (such an instance
   comes in as a box, saying why). A mirrored instance is read as a turn and a mirror, but no sample has one; a mesh reaching
-  outside the box round the solids is taken to be none of them from one kind of light's alone.
+  outside the box round the solids is taken to be none of them from one kind of light's alone. A wall's graphics are read by the
+  same rules, found on no other observation than that they are a tree of the same classes as a component's (`walls::shaped`), and
+  checked only by the same test: what they draw is the box they give.
 - Anything about releases other than the samples (2018, 2023 to 2026, and the two Snowdon Towers files of 2024), and nothing about
   files that are not Autodesk's own sample projects. Releases 2015 to 2017, 2019 to 2022 and 2027 are decoded by the same rules and
   tested only on synthetic files; the same goes for a linked model and a file that has passed through several saves. The three 2018

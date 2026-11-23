@@ -1135,6 +1135,17 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 /// reach as triangles less them, a mesh a section cuts in its own shape. Should cutting fail (too many faces), every opening
 /// cuts its rectangle.
 fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
+    // A shape another program drew it in, while it is the wall it was drawn for: each part in its material's colour.
+    if let Some(shape) = walls::live_shape(m, id, index) {
+        return shape
+            .parts
+            .iter()
+            .map(|p| {
+                let color = m.materials.get(&p.material).map_or(WALL, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+                Solid::Mesh { owner: id, color, tex: 0, tris: p.tris.to_vec(), caps: 0, round: false, shared: false, cut: true, vis: 0 }
+            })
+            .collect();
+    }
     let prism = |p: walls::Prism| Solid::Prism {
         owner: id,
         color: WALL,
@@ -2135,6 +2146,8 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
 /// [`layered`], each piece with the place of its layer among its type's, none where it has no layers.
 pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
     let layers = match m.elements.get(s.owner()) {
+        // A wall drawn in its imported shape is in that shape's materials already.
+        Some(Element::Wall(_)) if walls::live_shape(m, s.owner(), None).is_some() => &[],
         Some(Element::Wall(w)) => m.type_layers("wall", &w.type_name),
         Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
         Some(Element::Roof(r)) => m.type_layers("roof", &r.type_name),

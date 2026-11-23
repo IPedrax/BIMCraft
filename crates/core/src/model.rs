@@ -488,7 +488,43 @@ pub struct Wall {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The shape another program drew it in (a Revit wall's own geometry: its corners, its lean, the outline it was edited to, the
+    /// holes its doors and windows cut), drawn in 3D in place of its layers while it is the wall it was drawn for
+    /// ([`WallShape::key`]); once it is edited, or a door in it is, it is drawn from its layers again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<WallShape>,
 }
+
+/// A wall's shape as another program drew it: its triangles in the model's axes, mm, by the material each is in, and the key
+/// ([`crate::walls::shape_key`]) of the wall it was drawn for.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WallShape {
+    pub key: u64,
+    pub parts: Vec<ShapePart>,
+}
+
+/// The triangles of a wall's shape in one material (none: the wall's own colour).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapePart {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+    pub tris: Arc<Vec<[[f64; 3]; 3]>>,
+}
+
+/// The materials a wall's imported shape ([`Wall::shape`]) is drawn in.
+fn shape_materials(e: &Element) -> impl Iterator<Item = &str> {
+    let shape = match e {
+        Element::Wall(w) => w.shape.as_ref(),
+        _ => None,
+    };
+    shape.into_iter().flat_map(|s| s.parts.iter()).map(|p| p.material.as_str()).filter(|m| !m.is_empty())
+}
+
+/// The most parts a wall's shape has, and the most triangles in all.
+pub const MAX_SHAPE_PARTS: usize = 64;
+pub const MAX_SHAPE_TRIANGLES: usize = 200_000;
 
 /// A room's Limit Offset unless it says: its top 2500 mm over its own level.
 pub const ROOM_LIMIT_OFFSET: f64 = 2500.0;
@@ -4996,6 +5032,7 @@ impl Model {
         named.extend(self.families.values().flat_map(|f| f.materials()).map(String::from));
         named.extend(self.types.runs.values().flat_map(|t| t.values().map(|t| t.material.clone())));
         named.extend(self.elements.values().flat_map(|e| self.component_materials(e)).map(String::from));
+        named.extend(self.elements.values().flat_map(shape_materials).map(String::from));
         for n in named.into_iter().filter(|n| !n.is_empty()) {
             self.materials.entry(n).or_default();
         }
@@ -5018,6 +5055,9 @@ impl Model {
         };
         if let Some((id, e)) = self.elements.iter().find(|(_, e)| painted(e)) {
             return Some(format!("the paint of {} {id}", e.category()));
+        }
+        if let Some((id, _)) = self.elements.iter().find(|(_, e)| shape_materials(e).any(|m| m == name)) {
+            return Some(format!("the shape of wall {id}"));
         }
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
@@ -5093,6 +5133,12 @@ impl Model {
             if let Some(serde_json::Value::Object(paint)) = e.params_mut().and_then(|p| p.get_mut(crate::paint::KEY)) {
                 for v in paint.values_mut().filter(|v| v.as_str() == Some(from)) {
                     *v = serde_json::Value::String(to.into());
+                }
+            }
+            // The parts of a wall's imported shape drawn in it.
+            if let Element::Wall(w) = e {
+                for p in w.shape.iter_mut().flat_map(|s| s.parts.iter_mut()).filter(|p| p.material == from) {
+                    p.material = to.to_string();
                 }
             }
             if let Some(f) = e.family().and_then(|(f, _)| families.get(f))
@@ -10088,6 +10134,22 @@ impl Model {
                         ));
                     }
                 }
+                if let Some(s) = &w.shape {
+                    let triangles: usize = s.parts.iter().map(|p| p.tris.len()).sum();
+                    if s.parts.len() > MAX_SHAPE_PARTS || triangles > MAX_SHAPE_TRIANGLES {
+                        return Err(format!(
+                            "{who}: its shape has {} parts of {triangles} triangles; a wall's has at most {MAX_SHAPE_PARTS} of \
+                             {MAX_SHAPE_TRIANGLES}",
+                            s.parts.len()
+                        ));
+                    }
+                    if s.parts.iter().flat_map(|p| p.tris.iter()).flatten().flatten().any(|v| !v.is_finite() || v.abs() > MAX_COORD) {
+                        return Err(format!("{who}: a corner of its shape is not a number within 1000 km of the origin"));
+                    }
+                    if let Some(p) = s.parts.iter().find(|p| !p.material.is_empty() && !self.materials.contains_key(&p.material)) {
+                        return Err(format!("{who}: its shape's material `{}` isn't in the library; add it with `material`", p.material));
+                    }
+                }
                 let (base, top) = (self.base_z(w), self.top_z(w));
                 if top <= base + TOL {
                     let (tall, short) = ((top - base).round() + 0.0, (base - top).round() + 0.0);
@@ -12018,6 +12080,7 @@ mod tests {
             slant: 0.0,
             profile: Vec::new(),
             framing: None,
+            shape: None,
         })
     }
 

@@ -1554,6 +1554,9 @@ impl crate::model::Element {
                 if let Some(c) = &mut w.curtain {
                     c.names_mut(f);
                 }
+                for p in w.shape.iter_mut().flat_map(|s| s.parts.iter_mut()).filter(|p| !p.material.is_empty()) {
+                    f(&Kind::Material, &mut p.material);
+                }
                 if let Some(framing) = &mut w.framing {
                     f(&Kind::Type("framing".into()), framing);
                 }

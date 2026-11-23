@@ -268,6 +268,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     unread(&mut cx, &inv);
     let mut wants = Wants { materials: facts.materials.clone(), ..Wants::default() };
     walls::wanted(&facts, &mut wants.data);
+    wants.drawings.extend(walls::drawn(&facts));
     floors::wanted(&facts, &mut wants.data);
     roofs::wanted(&facts, &mut wants.data);
     openings::wanted(&facts, &mut wants);
@@ -283,6 +284,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     roofs::import(&mut cx, &facts, &gathered);
     attached(&mut cx, &facts);
     openings::import(&mut cx, &facts, &gathered);
+    walls::shaped(&mut cx, &facts, &gathered);
     columns::import(&mut cx, &facts, &gathered);
     rooms::import(&mut cx, &facts, &gathered);
     pipes::import(&mut cx, &facts, &gathered);
@@ -431,6 +433,17 @@ fn finish(mut cx: Import, schema: String) -> Result<Imported, String> {
     }
     if !checked {
         m.check()?;
+    }
+    // Each wall's shape is held to the wall as the model now has it, its doors and windows those that came in.
+    let shaped: Vec<Id> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(w) if w.shape.is_some())).map(|(id, _)| *id).collect();
+    for id in shaped {
+        let key = bimcraft_core::walls::shape_key(m, id);
+        if let (Some(Element::Wall(w)), Some(key)) = (m.elements.get_mut(id), key)
+            && let Some(s) = &mut w.shape
+        {
+            s.key = key;
+        }
     }
     for (id, why) in dropped {
         cx.dropped(id, &why);

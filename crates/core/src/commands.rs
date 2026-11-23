@@ -12651,6 +12651,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 slant,
                 profile: Vec::new(),
                 framing: None,
+                shape: None,
             }))),
             _ => None,
         })
@@ -15464,6 +15465,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             slant: 0.0,
             profile: Vec::new(),
             framing: None,
+            shape: None,
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));

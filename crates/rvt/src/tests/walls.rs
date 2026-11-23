@@ -712,3 +712,36 @@ fn a_material_comes_in_with_its_shading_colour_and_transparency() {
         assert!(i.model.check().is_ok(), "{:?}", i.model.check());
     }
 }
+
+#[test]
+fn a_wall_is_drawn_in_3d_as_its_graphics_draw_it_until_it_is_edited() {
+    // Wall 100 runs east along y = 0.375 ft, its record box 20 by 0.75 by 10 ft from the origin, and its graphics draw that box.
+    use crate::project_fixture::{box_tree, graphics_block, tree_bytes};
+    let mut p = base(2024);
+    wall_of(&mut p, 100, [0.0, 0.0, 0.0, 20.0, 0.75, 10.0], &[10, 11, 500, 100], line_bytes(0.0, 20.0, [0.0, 0.375, 0.0], [1.0, 0.0, 0.0]));
+    p.graphics.extend(graphics_block(100, &tree_bytes(&box_tree(100, [20.0, 0.75, 10.0], None))));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let [(id, w)] = walls(&i)[..] else { panic!("{:?}", i.skipped) };
+    let shape = w.shape.as_ref().unwrap_or_else(|| panic!("{:?}", i.skipped));
+    assert_eq!(shape.parts.iter().map(|p| p.tris.len()).sum::<usize>(), 12);
+    assert_eq!(bimcraft_core::walls::shape_key(&i.model, id), Some(shape.key), "drawn for the wall as it came in");
+    assert!(
+        i.skipped.iter().any(|s| s.contains("1 wall: it is drawn in 3D as its own graphics draw it") && s.contains("100")),
+        "{:?}",
+        i.skipped
+    );
+    // Where it stands: its record box.
+    let ids: std::collections::HashSet<Id> = [id].into();
+    let boxes = bimcraft_core::view3d::Scene::new(&i.model).boxes(&ids);
+    let [(lo, hi)] = boxes.values().copied().collect::<Vec<_>>()[..] else { panic!("{boxes:?}") };
+    let got = [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]];
+    let want = [0.0, 0.0, 0.0, 6096.0, 228.6, 3048.0];
+    assert!(got.iter().zip(want).all(|(g, w)| (g - w).abs() < 1.0), "{got:?} against {want:?}");
+    // Moved, it is no longer the wall its shape was drawn for.
+    let mut s = bimcraft_core::engine::Session::new();
+    s.reset(i.model, None);
+    s.execute("move", &serde_json::json!({"ids": [id], "by": [0, 1000]})).unwrap_or_else(|e| panic!("{e}"));
+    let Some(Element::Wall(w)) = s.model.elements.get(id) else { panic!("no wall") };
+    assert_ne!(bimcraft_core::walls::shape_key(&s.model, id), w.shape.as_ref().map(|x| x.key));
+}
