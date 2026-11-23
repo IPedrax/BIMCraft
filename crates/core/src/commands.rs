@@ -1281,13 +1281,20 @@ other_files(
          a column's or structural column's centre line along its angle (the default; west to east at angle 0), `across`, \
          its centre line square to that (south to north), its left or right face (of its angle's direction: north or \
          south), or its start or end cap (west or east); a round column has only its two centre lines (radial: its edge); \
-         a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one). With `point: \
+         a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one); a component's \
+         reference planes that stand upright and are a reference, where it stands: its centre line along it (the default, \
+         its family's Center (Front/Back)), `across` (Center (Left/Right)), or any other plane of its family by its GUID, \
+         `face: {plane: GUID}`. A linked model's element too: `{id, face?, link}`, `id` its GUID in the linked file and \
+         `link` the link, or the id the views give it (from 100000000 up), which the dimension keeps as those; it is measured \
+         where the link stands and follows it, is never locked or kept equal, and stays, undrawn, while the link isn't \
+         loaded. With `point: \
          start|end`, {id, face?, point} is the point at that end of the line: a wall's centre line's end, a face's \
          corner, a column's corner or centre line's end, a grid's, a detail line's (of any shape) or a jamb's end. Or a \
          point [x, y] on one of those lines (for radial and diameter, on a round edge; for arc_length, on the arc), or \
          {endpoint: [x, y]}, the end of one nearest it, within 100 mm, found in the plan of `level` as it draws it: among \
          the walls and columns its cut plane passes through, whatever level they stand on (a column from a level below \
-         that runs up through it too), their doors and windows, the grids and the plan's detail lines. It follows what it \
+         that runs up through it too), their doors and windows, the grids, the components on its level (their \
+         reference planes) and the plan's detail lines. It follows what it \
          measures",
         dimension,
     ),
@@ -12840,8 +12847,16 @@ fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
         }
         _ => false,
     }));
+    // A component's reference planes stay within [`COMPONENT_REACH`] of where it stands, the most a family's planes are
+    // drawn out: those on the level.
+    out.extend(m.rare("component").into_iter().filter(
+        |&id| matches!(m.elements.get(id), Some(Element::Component(c)) if c.level == level && c.at.dist(p) <= reach + COMPONENT_REACH),
+    ));
     out
 }
+
+/// How far a component's reference planes may reach from its insertion point in plan, mm, for finding the one near a point.
+const COMPONENT_REACH: f64 = 5000.0;
 
 /// Of the lines a plan of `level` shows that `keep` takes (walls' faces, centre lines and ends,
 /// doors' and windows' centres and jambs, grids, the centre lines and faces of the columns it cuts), the nearest `p`,
@@ -12866,6 +12881,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
         Some(e @ (Element::Column(_) | Element::StructuralColumn(_))) => m.column_cut_by(e, level),
         Some(Element::Grid(_)) => true,
         Some(Element::Stair(st)) => st.level == level || st.top_level == Some(level),
+        Some(Element::Component(c)) => c.level == level,
         _ => false,
     })
     .filter_map(|id| m.reference_at(id, p, &keep))
@@ -13075,7 +13091,14 @@ fn dimension(s: &mut Session, p: &Value) -> R {
 }
 
 /// `refs` of a dimension being made or edited: references, `{endpoint}`, or points near what the plan shows.
-fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: DimKind, given: &[Value]) -> Result<Vec<Reference>, String> {
+fn dimension_refs(
+    c: &str,
+    m: &Arc<Model>,
+    level: Guid,
+    view: Option<Guid>,
+    kind: DimKind,
+    given: &[Value],
+) -> Result<Vec<Reference>, String> {
     if given.len() > MAX_POINTS {
         return Err(bad(c, format!("`refs` has more than {MAX_POINTS} references")));
     }
@@ -13092,13 +13115,15 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
             })
             .collect();
     }
+    // What the plan draws, the links' elements with the project's: a point finds a linked wall as it finds one of its own.
+    let seen = crate::link::seen(m);
     for v in given {
         let near = |q: P2, what: &str| bad(c, format!("no {what} at [{}, {}] on {}", q.0, q.1, level_name(m, level)));
         let endpoint = v.get("endpoint").filter(|_| v.as_object().is_some_and(|o| o.len() == 1));
         if let Some(e) = endpoint {
             let q = point(e).ok_or_else(|| bad(c, format!("`endpoint` is a point [x, y], not {e}")))?;
             refs.push(
-                endpoint_near(m, level, view, q)
+                endpoint_near(&seen, level, view, q)
                     .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a column, a grid or a detail line"))?,
             );
             continue;
@@ -13110,17 +13135,38 @@ fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: Dim
             Some(q) if kind == DimKind::ArcLength => sweep_near(m, level, view, q).ok_or_else(|| near(q, "curved wall or arc"))?,
             Some(q) => {
                 // After the first: one parallel to it, or for an angle, one across it.
-                let first = refs.first().and_then(|r| m.reference_line(r).ok());
+                let first = refs.first().and_then(|r| seen.reference_line(r).ok());
                 let keep = |l: Line| first.is_none_or(|(a, b)| geom::parallel(a, b, l.0, l.1) == (kind == DimKind::Aligned));
-                reference_near(m, level, q, keep)
-                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column or grid line"))?
+                reference_near(&seen, level, q, keep)
+                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column, grid line or component's plane"))?
             }
             None => serde_json::from_value::<Reference>(v.clone())
                 .map_err(|e| bad(c, format!("{v} is not a reference {{id, face?}} or a point [x, y]: {e}")))?,
         };
         refs.push(r);
     }
-    Ok(refs.into_iter().map(|r| resolved_reference(m, r)).collect())
+    Ok(refs.into_iter().map(|r| resolved_reference(m, kept_reference(m, &seen, r))).collect())
+}
+
+/// Reference `r` as this project keeps it: to an element the views bring in from a link (by its id there, from
+/// [`crate::ids::LINKED`] up, or by its GUID there), it names the link and the element's GUID in the linked file, which never
+/// change ([`crate::link::origin_of`]); to the project's own, as it is.
+fn kept_reference(m: &Arc<Model>, seen: &Model, mut r: Reference) -> Reference {
+    if r.link.is_some() {
+        return r;
+    }
+    let shown = match r.id.pending() {
+        Some(id) => Some(id),
+        None if m.elements.id(r.id).is_none() => seen.elements.id(r.id),
+        None => None,
+    };
+    if let Some(id) = shown.filter(|id| crate::link::is_linked(*id))
+        && let Some((link, g)) = crate::link::origin_of(m, id)
+    {
+        r.id = g;
+        r.link = Some(m.guid(link));
+    }
+    r
 }
 
 /// Whether two stations' references are one segment's two ends, in either order.
@@ -20415,7 +20461,7 @@ fn resolved_reference(m: &Model, mut r: Reference) -> Reference {
 
 /// Whether two references name the same line or point.
 fn same_reference(a: &Reference, b: &Reference) -> bool {
-    a.id == b.id && a.face == b.face && a.point == b.point
+    a.id == b.id && a.face == b.face && a.point == b.point && a.link == b.link
 }
 
 /// How `hold` names a reference the segment doesn't end at, for an error.
@@ -20428,6 +20474,7 @@ fn reference_way(r: &Reference) -> String {
         Face::Start => "start",
         Face::End => "end",
         Face::Edge(_) => "stair edge",
+        Face::Plane(_) => "reference plane",
     };
     match r.point {
         Some(End::Start) => format!("{face}'s start"),
@@ -21761,11 +21808,11 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
     while let Some(id) = dimensions.pop_first() {
         let guid = m.guid(id);
         let Some(Element::Dimension(d)) = m.elements.get(id) else { continue };
-        if gone.contains(&guid) || !d.refs.iter().any(|r| gone.contains(&r.id)) {
+        if gone.contains(&guid) || !d.refs.iter().any(|r| gone.contains(&r.target())) {
             continue;
         }
         let mut d = d.clone();
-        d.refs.retain(|r| !gone.contains(&r.id));
+        d.refs.retain(|r| !gone.contains(&r.target()));
         if d.refs.len() < 2 {
             gone.insert(guid);
             // The oracle visits dimensions once in id order; preserve that ordering even
@@ -21926,10 +21973,10 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for (id, guid, e) in m.elements.with_guids() {
         if let Element::Dimension(d) = e
             && !gone.contains(&guid)
-            && d.refs.iter().any(|r| gone.contains(&r.id))
+            && d.refs.iter().any(|r| gone.contains(&r.target()))
         {
             let mut d = d.clone();
-            d.refs.retain(|r| !gone.contains(&r.id));
+            d.refs.retain(|r| !gone.contains(&r.target()));
             if d.refs.len() < 2 {
                 gone.insert(guid);
             } else {

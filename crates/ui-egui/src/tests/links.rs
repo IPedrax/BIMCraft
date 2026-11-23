@@ -153,3 +153,30 @@ fn link_model_asks_how_to_position_the_file_and_links_it_by_shared_coordinates()
     assert_eq!(l.by, bimcraft_core::link::By::Shared);
     assert!(h.state().link_box.is_none(), "the box closed");
 }
+
+#[test]
+fn the_aligned_dimension_measures_from_a_linked_wall_to_the_projects_own() {
+    // Issue 537: in a model that links the architecture, a dimension measures to the linked walls, as Revit's to a link.
+    let path = shell("dims");
+    let mut h = app(r#"column {"at": [3000, 3000]}"#);
+    h.state_mut().link_path(&path);
+    h.run();
+    press(&mut h, "Annotate");
+    press(&mut h, "Aligned");
+    // The linked box's west wall, by its centre line at x = 0, then the column's line across it at x = 3000.
+    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(3000.0, 3100.0));
+    click(&mut h, P2(1500.0, 4500.0));
+    let _ = std::fs::remove_file(&path);
+    let dims = ids(&h, "dimension");
+    assert_eq!(dims.len(), 1, "{}", h.state().status.text);
+    let d = match h.state().session.model.elements.get(dims[0]) {
+        Some(Element::Dimension(d)) => d.clone(),
+        e => panic!("{e:?}"),
+    };
+    // It names the link, not a wall of the project's.
+    let link = links(&h)[0];
+    assert_eq!(d.refs[0].link, Some(h.state().session.model.guid(link)), "{:?}", d.refs);
+    assert_eq!(d.refs[1].link, None);
+    assert_eq!(field(&h, dims[0], "values"), json!([3000.0]));
+}

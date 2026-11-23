@@ -1201,7 +1201,8 @@ impl Kept {
 /// Which of an element's lines a dimension measures to: a wall's centre line, its face on the
 /// left or the right of its start-to-end direction, or its start or end; a column's centre line
 /// along its angle, the line across it, its faces or its end caps; a door's or a window's centre,
-/// or its jamb toward its wall's start or end. A grid has only its line.
+/// or its jamb toward its wall's start or end. A grid has only its line. A component has its family's reference planes: its
+/// centre lines, along and across it, and the others by GUID.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Face {
@@ -1217,6 +1218,10 @@ pub enum Face {
     /// A stair's edge seen in plan, by its place in [`crate::stairs::reference_edges`]: a run's side or end, a riser, a
     /// landing's edge.
     Edge(u32),
+    /// A component's reference plane, by its GUID in the component's family: one that stands upright and is a reference
+    /// ([`Model::component_reference_lines`]). Its datums are its `Centre` (Center (Front/Back)) and `Across` (Center
+    /// (Left/Right)), as a column's centre lines are. New in file format 21.
+    Plane(Guid),
 }
 
 impl Face {
@@ -1249,12 +1254,15 @@ impl Face {
             Face::Start => "start",
             Face::End => "end",
             Face::Edge(_) => "edge",
+            Face::Plane(_) => "reference plane",
         }
     }
 }
 
 /// A line a dimension measures to, or with `point`, the point at one end of it: a wall's centre line's end, a face's
-/// corner, a detail line's or a grid's end, a jamb's end at either face of its wall.
+/// corner, a detail line's or a grid's end, a jamb's end at either face of its wall. With `link`, an element of a linked
+/// model's: `id` is its GUID in the linked file, which never changes, and `link` the link, this project's element; it is
+/// measured in the link's model and placed as the link stands ([`Model::link_map`]).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
@@ -1263,12 +1271,25 @@ pub struct Reference {
     pub face: Face,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub point: Option<End>,
+    /// The link whose model `id` is an element of. New in file format 21.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Guid>,
 }
 
 impl Reference {
     /// Element `id`'s line `face`.
     pub fn line(id: Guid, face: Face) -> Reference {
-        Reference { id, face, point: None }
+        Reference { id, face, point: None, link: None }
+    }
+
+    /// The same reference, as the linked model it names an element of sees it: without its `link`.
+    pub fn own(self) -> Reference {
+        Reference { link: None, ..self }
+    }
+
+    /// The element of this project it points at: its own, or for a linked model's, its link.
+    pub fn target(&self) -> Guid {
+        self.link.unwrap_or(self.id)
     }
 
     /// The same of a mirrored element, which runs back the other way ([`Face::mirrored`]): the end of a line along it
@@ -2678,8 +2699,12 @@ macro_rules! visit_refs {
             Element::Dimension(d) => {
                 f(& $($m)? d.level);
                 if let Some(g) = & $($m)? d.view { f(g) }
+                // A reference to a linked model's element points at its link: its `id` is the linked file's.
                 for r in & $($m)? d.refs {
-                    f(& $($m)? r.id);
+                    match & $($m)? r.link {
+                        Some(link) => f(link),
+                        None => f(& $($m)? r.id),
+                    }
                 }
             }
             Element::Tag(t) => {
@@ -4920,6 +4945,49 @@ impl Model {
         marks.iter().map(|k| k.map(place)).collect()
     }
 
+    /// The lines dimensions measure to on component `c` in plan, as Revit's dimension a family instance: its family's
+    /// reference planes that stand upright and are a reference (Strong, Weak, or one of the named sides and middles; not Not
+    /// a Reference), each where it stands for the component's values ([`crate::family::Family::flexed`]), mirrored if it is,
+    /// turned and moved to where it stands, as its symbols are. Its datums are its centre lines: Center (Front/Back), along
+    /// it, its `Centre`, and Center (Left/Right), across it, its `Across`; every other plane is `Plane`, by its GUID. The weak
+    /// ones come last, so where planes lie over each other the nearest taken is a strong or a named one, as Revit prefers.
+    /// None for a component tilted off the plan or placed by adaptive points, or whose family doesn't work out.
+    pub fn component_reference_lines(&self, c: &Component) -> Vec<(Face, Line)> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        let placed = self.component_placement(c);
+        if !placed.upright || self.placed_by_points(c) {
+            return Vec::new();
+        }
+        let Ok(values) = f.values(&c.type_name, &c.params) else { return Vec::new() };
+        let Ok(flexed) = f.flexed(&values) else { return Vec::new() };
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        let place = |p: [f64; 3]| {
+            let q = placed.place([p[0], flip * p[1], 0.0]);
+            P2(q[0], q[1])
+        };
+        // Upright: the plane's up runs plumb, so plan sees it edge on, as its line.
+        let upright = |u: [f64; 3]| u[2].abs() > 0.0 && u[0].hypot(u[1]) <= 1e-9 * u[2].abs();
+        let mut lines: Vec<(bool, Face, Line)> = flexed
+            .planes
+            .iter()
+            .filter(|pl| !pl.level && pl.reference != crate::family::Reference::NotAReference && upright(pl.up))
+            .filter_map(|pl| {
+                let face = match pl.guid {
+                    g if g == crate::family::CENTER_FRONT_BACK => Face::Centre,
+                    g if g == crate::family::CENTER_LEFT_RIGHT => Face::Across,
+                    g if g.is_nil() => return None,
+                    g => Face::Plane(g),
+                };
+                let (a, b) = (place(pl.start), place(pl.end));
+                let weak = pl.reference == crate::family::Reference::Weak;
+                (a.dist(b) > 1e-6 && a.is_finite() && b.is_finite()).then_some((weak, face, (a, b)))
+            })
+            .collect();
+        // A stable sort: the family's own order stands within the strong ones and within the weak.
+        lines.sort_by_key(|(weak, ..)| *weak);
+        lines.into_iter().map(|(_, face, l)| (face, l)).collect()
+    }
+
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
     /// moved with it to where it stands (x, y and the height over the project's origin); its insertion point where its family
     /// has none, or the point doesn't work out.
@@ -5501,6 +5569,8 @@ impl Model {
         // 20 to 21: a family's `placed_origin`, the origin its instances stand against. A file of 20 holds none, which is the datums,
         // so `settle_origins` on read makes it the family's origin and moves nothing: its instances stay where they were drawn.
         // 20 to 21: dimensions in sections and elevations. A file of 20 holds none, so nothing to do.
+        // 20 to 21: dimensions measuring to a component's reference planes (`Face::Plane`, and a component's `centre` and
+        // `across`), and to a linked model's elements (`Reference::link`). A file of 20 holds none, so nothing to do.
         // 20 to 21: the building codes. `codes_from_386` above takes a file's `building_code`, `stair_rules` and `building_codes` into
         // `codes`; a file of 20 holds none of them, so nothing to do.
         self.format = FORMAT;
@@ -7672,8 +7742,21 @@ impl Model {
             Face::Right => (c.at - v * d - u * w, c.at - v * d + u * w),
             Face::Start => (c.at - u * w - v * d, c.at - u * w + v * d),
             Face::End => (c.at + u * w - v * d, c.at + u * w + v * d),
-            Face::Edge(_) => return Err(format!("column {id} has no numbered edges; measure to its centre lines or faces")),
+            Face::Edge(_) | Face::Plane(_) => {
+                return Err(format!("column {id} has no numbered edges or reference planes; measure to its centre lines or faces"));
+            }
         })
+    }
+
+    /// Where link `link` (this project's element) stands: its model as it was loaded, and the map from that model's plan to
+    /// this project's, turned and moved as the views draw it ([`crate::link::placement`]). A link that isn't loaded, or that
+    /// is no link, gives why.
+    pub fn link_map(&self, link: Guid) -> Result<(&Model, impl Fn(P2) -> P2 + use<>), String> {
+        let Some(Element::Link(l)) = self.elements.get(link) else { return Err(format!("{link} isn't a link of this project")) };
+        let other = self.loaded.get(&l.path).ok_or_else(|| format!("link {} isn't loaded", l.name))?;
+        let (at, angle, _) = crate::link::placement(self, l, other);
+        let (sin, cos) = angle.to_radians().sin_cos();
+        Ok((other.as_ref(), move |p: P2| P2(p.0 * cos - p.1 * sin + at.0, p.0 * sin + p.1 * cos + at.1)))
     }
 
     /// The line `r` measures to, or why there is none. A straight wall's lines reach as far as its
@@ -7681,6 +7764,12 @@ impl Model {
     /// window's centre and jambs, run across it from face to face. Its centre is its centre line,
     /// wherever its location line is.
     pub fn reference_line(&self, r: &Reference) -> Result<Line, String> {
+        // A linked model's element: measured there, placed as the link stands.
+        if let Some(link) = r.link {
+            let (other, map) = self.link_map(link)?;
+            let (a, b) = other.reference_line(&r.own()).map_err(|e| format!("in the linked model: {e}"))?;
+            return Ok((map(a), map(b)));
+        }
         match (self.elements.get(r.id), r.face) {
             (Some(Element::Stair(st)), Face::Edge(i)) => crate::stairs::reference_edges(self, st)
                 .get(i as usize)
@@ -7688,6 +7777,18 @@ impl Model {
                 .ok_or_else(|| format!("stair {} has no edge {i} any more: it was changed; measure to it again", r.id)),
             (Some(Element::Stair(_)), _) => Err(format!("stair {}'s lines are its edges (`face`: {{\"edge\": n}})", r.id)),
             (_, Face::Edge(_)) => Err(format!("element {} has no numbered edges; only a stair does", r.id)),
+            // A component's lines are its family's reference planes, placed where it stands.
+            (Some(Element::Component(c)), face) => {
+                self.component_reference_lines(c).into_iter().find(|(f, _)| *f == face).map(|(_, l)| l).ok_or_else(|| {
+                    format!(
+                        "component {} has no such {} in plan: measure to its centre lines (`centre`, `across`) or to a reference \
+                         plane of its family that stands upright and is a reference",
+                        r.id,
+                        face.name()
+                    )
+                })
+            }
+            (Some(e), Face::Plane(_)) => Err(format!("{} {} has no reference planes; only a component does", e.category(), r.id)),
             (Some(Element::Grid(g)), Face::Centre) => Ok((g.start, g.end)),
             (Some(Element::Grid(_)), _) => Err(format!("grid {} has no faces; measure to its line", r.id)),
             (Some(e @ (Element::Column(_) | Element::StructuralColumn(_))), face) => self.column_reference_line(e, face, r.id),
@@ -7713,7 +7814,7 @@ impl Model {
                     Face::Right => (axis.at(a, int), axis.at(b, int)),
                     Face::Start => (axis.at(a, int), axis.at(a, ext)),
                     Face::End => (axis.at(b, int), axis.at(b, ext)),
-                    Face::Across | Face::Edge(_) => {
+                    Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         return Err(format!("wall {} has no across line; measure to its centre line, faces or ends", r.id));
                     }
                 })
@@ -7728,7 +7829,7 @@ impl Model {
                     Face::Centre => middle,
                     Face::Start => middle - t.width / 2.0,
                     Face::End => middle + t.width / 2.0,
-                    Face::Left | Face::Right | Face::Across | Face::Edge(_) => {
+                    Face::Left | Face::Right | Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         return Err(format!("{what} has a centre and two jambs, start and end; measure to one of those"));
                     }
                 };
@@ -7750,7 +7851,7 @@ impl Model {
                     Face::Centre => Ok((a, b)),
                     Face::Start => Ok((a - n, a + n)),
                     Face::End => Ok((b - n, b + n)),
-                    Face::Left | Face::Right | Face::Across | Face::Edge(_) => {
+                    Face::Left | Face::Right | Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         Err(format!("detail line {} has a line and two ends; measure to one of those", r.id))
                     }
                 }
@@ -7764,6 +7865,10 @@ impl Model {
     /// line does, and a face where the wall's outline turns off it (a corner, mitred where walls join); a curved wall's
     /// faces are arcs, ending square to its ends; a detail line of any shape ends where it does.
     pub fn reference_point(&self, r: &Reference) -> Result<P2, String> {
+        if let Some(link) = r.link {
+            let (other, map) = self.link_map(link)?;
+            return other.reference_point(&r.own()).map(map).map_err(|e| format!("in the linked model: {e}"));
+        }
         let Some(end) = r.point else { return Err(format!("{} {} is measured to as a line", self.cat(r.id), self.shown(r.id))) };
         let pick = |(a, b): Line| if end == End::Start { a } else { b };
         match (self.elements.get(r.id), r.face) {
@@ -7817,7 +7922,7 @@ impl Model {
         };
         faces
             .iter()
-            .flat_map(|&face| [End::Start, End::End].map(|point| Reference { id, face, point: Some(point) }))
+            .flat_map(|&face| [End::Start, End::End].map(|point| Reference { id, face, point: Some(point), link: None }))
             .filter_map(|r| Some((r, self.reference_point(&r).ok()?)))
             .collect()
     }
@@ -7852,6 +7957,10 @@ impl Model {
                 .enumerate()
                 .map(|(i, l)| (Reference::line(id, Face::Edge(i as u32)), l))
                 .collect();
+        }
+        // A component's: its family's reference planes where it stands.
+        if let Some(Element::Component(c)) = self.elements.get(id) {
+            return self.component_reference_lines(c).into_iter().map(|(face, l)| (Reference::line(id, face), l)).collect();
         }
         let faces: &[Face] = match self.elements.get(id) {
             Some(Element::Wall(_)) => &[Face::Centre, Face::Left, Face::Right, Face::Start, Face::End],
@@ -7980,6 +8089,9 @@ impl Model {
     /// curved wall's, of its centre line or one of its faces.
     pub fn reference_arc(&self, r: &Reference) -> Result<(P2, f64), String> {
         let what = "a radial dimension measures round columns and curved walls";
+        if r.link.is_some() {
+            return Err(format!("{what} of the project's own, not of a linked model"));
+        }
         match self.elements.get(r.id) {
             Some(e) if e.column().is_some() => match (e.column(), self.column_type(e)) {
                 (Some(c), Some(t)) if t.round => Ok((c.at, t.width / 2.0)),
@@ -8014,6 +8126,9 @@ impl Model {
     /// or a detail line that is an arc.
     pub fn reference_sweep(&self, r: &Reference) -> Result<(P2, f64, f64, f64), String> {
         let what = "an arc length dimension measures along curved walls and arcs";
+        if r.link.is_some() {
+            return Err(format!("{what} of the project's own, not of a linked model"));
+        }
         match self.elements.get(r.id) {
             Some(Element::Wall(w)) => {
                 let axis = walls::Axis::of(w);
@@ -8023,7 +8138,7 @@ impl Model {
                     Face::Left => ext,
                     Face::Right => int,
                     Face::Centre => (ext + int) / 2.0,
-                    Face::Start | Face::End | Face::Across | Face::Edge(_) => {
+                    Face::Start | Face::End | Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         return Err(format!("wall {}'s ends are straight; {what}", r.id));
                     }
                 };
@@ -9793,8 +9908,23 @@ impl Model {
                 }
                 let linear = d.kind == DimKind::Linear;
                 let along = self.measured_along(d);
+                // A linked model's element is measured, never held: no locks, no equality, no alignment, and in a plan.
+                if let Some(r) = d.refs.iter().find(|r| r.link.is_some()) {
+                    if vertical || d.equal || !d.locked.is_empty() || d.alignment {
+                        return Err(format!(
+                            "{who}: it measures to a linked model's element, which a dimension only measures: in a plan, with no locks or equality"
+                        ));
+                    }
+                    if let Some(l) = r.link
+                        && !matches!(self.elements.get(l), Some(Element::Link(_)))
+                    {
+                        return Err(format!("{who}: {l} isn't a link of this project"));
+                    }
+                }
                 let mut seen = BTreeSet::new();
                 let mut first: Option<(Reference, Line)> = None;
+                // A link that isn't loaded, or changed so the element is gone, leaves the dimension standing, undrawn.
+                let mut lost = false;
                 for r in &d.refs {
                     match d.kind {
                         DimKind::Radial => {
@@ -9815,8 +9945,15 @@ impl Model {
                     if r.point.is_some() && d.kind == DimKind::Angular {
                         return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
                     }
-                    let line = crate::drawing_plane::reference(self, d.view, r).map_err(|e| format!("{who}: {e}"))?;
-                    if !seen.insert((r.id, r.face, r.point)) {
+                    let line = match crate::drawing_plane::reference(self, d.view, r) {
+                        Ok(line) => line,
+                        Err(_) if r.link.is_some() => {
+                            lost = true;
+                            continue;
+                        }
+                        Err(e) => return Err(format!("{who}: {e}")),
+                    };
+                    if !seen.insert((r.id, r.face, r.point, r.link)) {
                         let at = match r.point {
                             Some(End::Start) => "start of its ",
                             Some(End::End) => "end of its ",
@@ -9851,7 +9988,7 @@ impl Model {
                         }
                     }
                 }
-                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() {
+                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() && !lost {
                     return Err(format!("{who}: its points are all in one place, so it has no way to run"));
                 }
             }

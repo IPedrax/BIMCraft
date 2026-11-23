@@ -793,12 +793,29 @@ unchanged. See [vertical drawing tools](desktop.md#drawing-tools-in-sections-and
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines
 (`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a column's or structural column's two
 centre lines, along its angle and across it (`Face::Across`, file format 18), its left and right faces and its start and end caps (`Model::column_reference_line`;
-a round one has only its centre lines), a grid, a straight detail line) or, with
+a round one has only its centre lines), a grid, a straight detail line, a component's reference planes) or, with
 `point: start|end`, the point at that end of one (`Model::reference_point`: a wall's centre line ends where its location line does, a face where
 the outline turns off it, so at the mitred corner; a detail line of any shape at its ends; `reference_points` lists them, `endpoint_at` finds the
 nearest, `{endpoint: [x, y]}` in a command). A point given to the command finds what the plan of its level draws (`commands::near_point`): the
 walls its cut plane passes through (`Model::cut_by`) and the columns (`Model::column_cut_by`, the plan's own test, so a column standing on a level
-below that runs up through the cut is one), their doors and windows, the grids and the plan's detail lines. `reference_geometry` gives either as
+below that runs up through the cut is one), their doors and windows, the grids, the components on the level and the plan's detail lines.
+A component is measured as Revit measures a family instance, by its family's reference planes (`Model::component_reference_lines`, issue
+537): those that stand upright, seen edge on in plan, and are a reference (Strong, Weak or one of the named sides and middles, never Not a
+Reference), each where it stands for the component's values (`Family::flexed`), mirrored, turned and moved with it as its symbols are. Its datums
+are its centre lines, `Centre` along it (Center (Front/Back)) and `Across` (Center (Left/Right)), as a column's; any other plane is
+`Face::Plane(GUID)`. Where planes lie over each other, a point and the Dimension tool take a strong or named one before a weak one, as
+Revit prefers the strong reference. A component tilted off the plan or placed by adaptive points has none. The reference names the plane
+by its GUID, so a family loaded again (`family {path | definition, overwrite}`) keeps the project's dimensions to every plane it gives
+again with its GUID, wherever that plane now stands and in whatever order; a plane given with no GUID takes the one of the plane at its
+place before (`library::keep_parts`), so a publisher writes them. A load that takes away a plane a project dimension measures to, or makes
+it Not a Reference or tilts it, is refused whole, naming the dimension; `invalid_dimensions` deletes only the family's own. A linked model's element is
+measured as Revit measures into a link: the reference keeps the link (`Reference::link`, the project's element) and the element's
+GUID in the linked file, which never change, so it survives the link moved, reloaded or linked twice (`link::origin_of` finds them
+for an element the views bring in, whose id there, from `LINKED` up, is given anew each time). It is measured in the link's model
+and placed as the link stands (`Model::link_map`, the views' own `link::placement`). It only measures: no locks, no equality, no
+alignment, and only in a plan. `visit_refs` gives the link for it, so taking the link away takes its references (a dimension left with
+one goes), and `Model::check` keeps a dimension whose link isn't loaded, or whose element is gone, undrawn rather than refuse the
+project. A point given to the command is found in the views' model (`link::seen`), linked walls and all. `reference_geometry` gives either as
 a line, a point as a line of no length, and `crossings` lays
 them along the way the dimension measures (`measured_along`): a linear one's `orient` (horizontal or vertical), else square to its first line,
 else from its first point to the next elsewhere. `Model::check` refuses a line not parallel to the first, or not square to a linear one's line,
