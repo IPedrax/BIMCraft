@@ -23,8 +23,8 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
-    Annotation, CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Grid, Id, Key, Layer,
-    LeaderKind, Model, Note, Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Grid, Id, Key, Layer, LeaderKind, Model,
+    Note, Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -955,7 +955,6 @@ fn plan_filter<'a>(
             // A 3D view's own dimension shows in no plan.
             Element::Dimension3D(_) => false,
             Element::Text(_)
-            | Element::Annotation(_)
             | Element::DetailLine(_)
             | Element::FilledRegion(_)
             | Element::Dimension(_)
@@ -1097,11 +1096,6 @@ fn style_of(m: &Model, owner: Option<Id>, sub: Option<&'static str>) -> ObjectSt
 /// Whether what `owner` is draws in the annotation's pens: a dimension, a tag, text, a spot elevation, a grid, a level, a
 /// room's tag, the mark of a section or an elevation. The rest is the model's.
 fn annotates(m: &Model, owner: Option<Id>) -> bool {
-    // An annotation family that doesn't grow with the view is drawn in the model's line weights, as its size is the
-    // model's too; on a sheet every symbol is annotation, which the sheet's own draw says.
-    if let Some(Element::Annotation(a)) = owner.and_then(|id| m.elements.get(id)) {
-        return m.families.get(&a.family).is_none_or(|f| f.scale_with_view);
-    }
     matches!(
         owner.and_then(|id| m.elements.get(id)),
         Some(
@@ -1520,10 +1514,6 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             crate::model::run_arm!(_) if m.level_of(e) == Some(level) => extent.extend(crate::runs::outline_in(m, *id, index)),
             Element::Roof(r) if r.level == level || m.level_above(level) == Some(r.level) => extent.extend(m.roof_outline(r)),
             Element::Text(n) if m.annotation_in(e, key) => extent.extend([Some(n.at), n.leader].into_iter().flatten()),
-            Element::Annotation(a) if m.annotation_in(e, key) => {
-                extent.push(a.at);
-                extent.extend(annotation_corners(m, a));
-            }
             Element::DetailLine(l) if m.annotation_in(e, key) => extent.extend(l.curve.points()),
             Element::FilledRegion(r) if m.annotation_in(e, key) => extent.extend(r.sketch.iter().flat_map(|l| l.points())),
             Element::DetailGroup(g) if m.annotation_in(e, key) => extent.push(g.at),
@@ -1550,7 +1540,6 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Dimension(dm) => dimension(&mut d, m, dm),
         Element::Tag(t) => tag(&mut d, m, t, &crate::rooms::Rooms::new(m)),
         Element::Text(n) => note(&mut d, m, n),
-        Element::Annotation(a) => annotation_symbol(&mut d, m, a, false),
         Element::DetailLine(l) => detail_line(&mut d, m, l),
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
         Element::RepeatingDetail(r) => detail_members(&mut d, m, &r.members(m)),
@@ -3104,7 +3093,6 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
         d.owner = Some(nid);
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),
-            Element::Annotation(a) if m.same(a.view, id) => annotation_symbol(&mut d, m, a, false),
             Element::Dimension(dm) if dm.view.is_some_and(|v| m.same(v, id)) => dimension(&mut d, m, dm),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::RepeatingDetail(r) if m.same(r.view, id) => detail_members(&mut d, m, &r.members(m)),
@@ -3939,7 +3927,6 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             // A circuit, on the plan of its board's level, which is none of an annotation's own views.
             Element::Circuit(c) if !up && m.level_of(e) == Some(level) => circuit_mark(&mut d, m, c),
             Element::Text(n) if m.annotation_in(e, key) && inside(n.at) => note(&mut d, m, n),
-            Element::Annotation(a) if m.annotation_in(e, key) && inside(a.at) => annotation_symbol(&mut d, m, a, false),
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
             Element::RepeatingDetail(r) if m.annotation_in(e, key) => detail_members(&mut d, m, &r.members(m)),
             Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
@@ -3975,7 +3962,6 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                         | Element::Tag(_)
                         | Element::Circuit(_)
                         | Element::Text(_)
-                        | Element::Annotation(_)
                         | Element::Spot(_)
                         | Element::Elevation(_)
                 )
@@ -5922,193 +5908,6 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
                 arrow(d, elbow, to);
             }
         }
-    }
-}
-
-/// Where an annotation instance's own millimetres land: its `at`, turned and, mirrored, reflected, and how many model (or
-/// paper) millimetres one of its own is. Its labels stay readable: `text` places them without the mirror.
-#[derive(Clone, Copy)]
-struct AnnotationPlace {
-    at: P2,
-    angle: f64,
-    mirrored: bool,
-    k: f64,
-}
-
-impl AnnotationPlace {
-    fn point(self, q: P2) -> P2 {
-        let (sin, cos) = self.angle.to_radians().sin_cos();
-        let q = P2(q.0, if self.mirrored { -q.1 } else { q.1 });
-        P2(self.at.0 + (q.0 * cos - q.1 * sin) * self.k, self.at.1 + (q.0 * sin + q.1 * cos) * self.k)
-    }
-
-    /// A label's anchor, mirrored with the rest of the symbol; its lettering is drawn upright at it.
-    fn text(self, q: P2) -> P2 {
-        self.point(q)
-    }
-
-    /// A label's lettering point: turned with the instance but never mirrored, so it reads.
-    fn upright(self, q: P2, at: P2) -> P2 {
-        let (sin, cos) = self.angle.to_radians().sin_cos();
-        let d = q - at;
-        let anchor = self.point(at);
-        P2(anchor.0 + (d.0 * cos - d.1 * sin) * self.k, anchor.1 + (d.0 * sin + d.1 * cos) * self.k)
-    }
-}
-
-/// An annotation family's instance: its fills, lines, arcs, dots and labels, laid out in the family's millimetres. On a
-/// sheet one of them is a paper millimetre; in a view it is `scale_with_view`: a paper millimetre, grown by the view's
-/// scale, or a model millimetre as it is.
-pub(crate) fn annotation_symbol(d: &mut Drawing, m: &Model, a: &Annotation, sheet: bool) {
-    let Some(f) = m.families.get(&a.family) else { return };
-    if !f.is_annotation() {
-        return;
-    }
-    let values = match f.values(&a.type_name, &a.params) {
-        Ok(v) => v,
-        Err(e) => {
-            note_once(d, format!("annotation {}: {e}", a.family));
-            return;
-        }
-    };
-    let marks = match crate::family::annotation::marks(f, &values) {
-        Ok(v) => v,
-        Err(e) => {
-            note_once(d, format!("annotation {}: {e}", a.family));
-            return;
-        }
-    };
-    let k = if sheet || !f.scale_with_view { 1.0 } else { scale_of(m, a.view) };
-    let place = AnnotationPlace { at: a.at, angle: a.angle, mirrored: a.mirrored, k };
-    let px_per_unit = k * d.view.scale;
-    // Fills first, so a mask hides the model under the rest of the symbol.
-    for mark in &marks {
-        let crate::family::annotation::PaperMark::Fill { rings, type_name } = mark else { continue };
-        let rings: Vec<Vec<P2>> = rings.iter().map(|r| r.iter().map(|p| place.point(*p)).collect()).collect();
-        let Some(first) = rings.first() else { continue };
-        let mut pieces = vec![first.clone()];
-        for hole in rings.iter().skip(1) {
-            pieces = walls::minus(&pieces, hole);
-        }
-        let part = std::mem::replace(&mut d.part, Part::Pattern);
-        let t = m.region_types.get(type_name.as_deref().unwrap_or(crate::fills::SOLID_BLACK));
-        let masking =
-            t.is_some_and(|t| t.masking) || type_name.as_deref().is_some_and(|n| n.trim().eq_ignore_ascii_case(crate::fills::MASKING));
-        if masking {
-            d.fill(&pieces, PAPER);
-            regions::mask(d, &pieces);
-        }
-        let mut layers: Vec<(&crate::fills::FillPattern, Rgb)> = Vec::new();
-        if let Some(t) = t {
-            for (name, color) in [(&t.background, t.background_color), (&t.foreground, t.foreground_color)] {
-                if let Some(p) = name.as_ref().and_then(|n| m.fill_patterns.get(n)) {
-                    layers.push((p, Rgb(color[0], color[1], color[2])));
-                }
-            }
-        }
-        if layers.is_empty() && !masking {
-            d.fill(&pieces, Rgb(0, 0, 0));
-        }
-        for (p, color) in layers {
-            fill_pattern(d, p, &rings, &pieces, color, (P2(0.0, 0.0), 0.0));
-        }
-        d.part = part;
-    }
-    for mark in &marks {
-        match mark {
-            crate::family::annotation::PaperMark::Fill { .. } | crate::family::annotation::PaperMark::Dot { .. } => {
-                if let crate::family::annotation::PaperMark::Dot { centre, radius } = mark {
-                    let (x, y) = (place.point(*centre), *radius * k);
-                    // A disc, not a square: a plan's dot is round at any zoom.
-                    let ring: Vec<P2> = (0..24)
-                        .map(|j| {
-                            let (s, c) = (std::f64::consts::TAU * f64::from(j) / 24.0).sin_cos();
-                            P2(x.0 + y * c, x.1 + y * s)
-                        })
-                        .collect();
-                    d.fill(&[ring], INK);
-                }
-            }
-            crate::family::annotation::PaperMark::Line { pts, style } => {
-                let pts: Vec<P2> = pts.iter().map(|p| place.point(*p)).collect();
-                match style.as_deref().and_then(|n| m.line_styles.get(n)) {
-                    Some(st) => d.styled(m, st, pts.iter().map(|p| d.view.px(*p)).collect(), false),
-                    None => d.line(&pts, Pen::FINE, INK, false),
-                }
-                if let Some(n) = style
-                    && !m.line_styles.contains_key(n)
-                {
-                    note_once(d, format!("annotation `{}`: there's no line style `{n}`; Thin Lines is used", a.family));
-                }
-            }
-            crate::family::annotation::PaperMark::Label { at, height, text, align, text_type, valign, wrap } => {
-                let anchor = place.text(*at);
-                let color = text_type.as_deref().and_then(|n| m.text_types.get(n)).map_or(INK, |t| Rgb(t.color[0], t.color[1], t.color[2]));
-                match text_type.as_deref().and_then(|n| m.text_types.get(n)) {
-                    Some(t) => {
-                        let typed = match wrap {
-                            Some(w) => wrap_text(t, text, *w),
-                            None => text.clone(),
-                        };
-                        let layout = crate::text::layout(t, &typed, &[]);
-                        let top = match valign {
-                            crate::family::VAlign::Top => anchor,
-                            crate::family::VAlign::Middle => P2(anchor.0, anchor.1 - layout.height / 2.0),
-                            crate::family::VAlign::Bottom => P2(anchor.0, anchor.1 - layout.height),
-                        };
-                        let frame = NoteFrame { at: d.view.px(top), k: px_per_unit as f32, angle: -(a.angle.to_radians() as f32) };
-                        lettering(d, &layout, frame, color);
-                    }
-                    None => {
-                        if let Some(n) = text_type {
-                            note_once(d, format!("annotation `{}`: there's no text type `{n}`; its lettering is used", a.family));
-                        }
-                        for line in crate::family::lettering(text, *at, *height, *align) {
-                            let pts: Vec<P2> = line.iter().map(|p| place.upright(*p, *at)).collect();
-                            d.line(&pts, Pen::FINE, color, false);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// The corners of an annotation instance's box, in the view's own terms: what its plan's extent and its picking need.
-fn annotation_corners(m: &Model, a: &Annotation) -> Vec<P2> {
-    let Some(f) = m.families.get(&a.family).filter(|f| f.is_annotation()) else { return Vec::new() };
-    let Ok(values) = f.values(&a.type_name, &a.params) else { return Vec::new() };
-    let Ok(Some([lo, hi])) = crate::family::annotation::bounds(f, &values) else { return Vec::new() };
-    let k = if f.scale_with_view { scale_of(m, a.view) } else { 1.0 };
-    let place = AnnotationPlace { at: a.at, angle: a.angle, mirrored: a.mirrored, k };
-    [P2(lo.0, lo.1), P2(hi.0, lo.1), P2(hi.0, hi.1), P2(lo.0, hi.1)].into_iter().map(|p| place.point(p)).collect()
-}
-
-/// `text` broken into lines no wider than `width` in the family's millimetres, keeping the lines it has.
-fn wrap_text(t: &crate::text::TextType, text: &str, width: f64) -> String {
-    let mut out = String::new();
-    for paragraph in text.split('\n') {
-        let mut line = String::new();
-        for word in paragraph.split_whitespace() {
-            let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
-            if !line.is_empty() && crate::text::layout(t, &candidate, &[]).width > width {
-                out.push_str(&line);
-                out.push('\n');
-                line = word.to_string();
-            } else {
-                line = candidate;
-            }
-        }
-        out.push_str(&line);
-        out.push('\n');
-    }
-    out.pop();
-    out
-}
-
-fn note_once(d: &mut Drawing, note: String) {
-    if d.notes.len() < 32 && !d.notes.contains(&note) {
-        d.notes.push(note);
     }
 }
 

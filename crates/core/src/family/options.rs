@@ -15,8 +15,7 @@ use crate::model::MAX_TEXT;
 pub const MAX_OMNICLASS: usize = 64;
 
 /// The keys of a family's options, as a file and the `family` command's `options` name them.
-pub const OPTION_KEYS: [&str; 9] = [
-    "scale_with_view",
+pub const OPTION_KEYS: [&str; 8] = [
     "work_plane_based",
     "always_vertical",
     "default_elevation",
@@ -85,7 +84,6 @@ impl Family {
     /// Its options, every one of them, defaults too: what the `family` command replies and takes back as `options`.
     pub fn options_json(&self) -> Value {
         json!({
-            "scale_with_view": self.scale_with_view,
             "work_plane_based": self.work_plane_based,
             "always_vertical": self.always_vertical,
             "default_elevation": self.default_elevation,
@@ -110,12 +108,6 @@ impl Family {
         };
         for (k, v) in o {
             match k.as_str() {
-                "scale_with_view" => {
-                    if !self.category.is_annotation() && v != &Value::Null {
-                        return Err("`scale_with_view` is an annotation family's option; a component's millimetres are the model's".into());
-                    }
-                    self.scale_with_view = flag(k, v, true)?;
-                }
                 "work_plane_based" => self.work_plane_based = flag(k, v, false)?,
                 "always_vertical" => self.always_vertical = flag(k, v, true)?,
                 "default_elevation" => {
@@ -182,9 +174,6 @@ impl Family {
         }
         if self.work_plane_based && self.category.hosted() {
             return Err("a door's or a window's family stands in a wall: it can't be work plane-based (`work_plane_based`)".into());
-        }
-        if !self.category.is_annotation() && !self.scale_with_view {
-            return Err("`scale_with_view` is an annotation family's option; a component's millimetres are the model's".into());
         }
         if let Some(o) = &self.omniclass {
             o.check()?;

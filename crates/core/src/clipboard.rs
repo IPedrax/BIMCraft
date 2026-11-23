@@ -155,7 +155,6 @@ fn sort(e: &Element) -> Result<Sort, &'static str> {
         Element::ProjectInfo(_) => return Err("a project has one Project Information"),
         Element::Circuit(_) => return Err("a circuit is made anew of the pasted devices with `circuit`"),
         Element::Text(_)
-        | Element::Annotation(_)
         | Element::Spot(_)
         | Element::DetailLine(_)
         | Element::FilledRegion(_)
@@ -212,7 +211,6 @@ fn into_view(e: &mut Element, view: Guid, frame: &Frame) {
             }
         }
         Element::Text(Note { view: v, .. })
-        | Element::Annotation(crate::model::Annotation { view: v, .. })
         | Element::Spot(Spot { view: v, .. })
         | Element::DetailLine(DetailLine { view: v, .. })
         | Element::FilledRegion(crate::fills::FilledRegion { view: v, .. })

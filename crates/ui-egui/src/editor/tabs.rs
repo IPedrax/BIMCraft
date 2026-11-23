@@ -333,14 +333,8 @@ impl BimApp {
     /// The tab's title of family view `sheet`: "{family} - {view}".
     pub(crate) fn family_tab_name(&self, sheet: Sheet) -> String {
         let Sheet::Family(id, view) = sheet else { return String::new() };
-        let ed = self.family_of(id);
-        let family = ed.map(|ed| ed.title().to_string()).unwrap_or_default();
-        let view = if ed.is_some_and(|ed| ed.category.is_annotation()) {
-            t("Generic Annotation").to_string()
-        } else {
-            super::views::view_tab(view)
-        };
-        format!("{family} - {view}")
+        let family = self.family_of(id).map(|ed| ed.title().to_string()).unwrap_or_default();
+        format!("{family} - {}", super::views::view_tab(view))
     }
 }
 
