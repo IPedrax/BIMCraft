@@ -184,6 +184,8 @@ enum From {
     Flag(&'static str),
     /// A value among the element's parameters, under the field's own name (its phases, its design option).
     Param,
+    /// A family's value, under a key of its `values`, mm²: an area shown in m².
+    FamilyArea(&'static str),
     /// How a door or a window opens, in the project's language.
     Operation,
     /// Its element's category, as elements name theirs: `wall`.
@@ -204,6 +206,7 @@ const FAMILY: Own = (msg!("Family"), Kind::Text, From::Key("family"));
 const LEVEL: Own = ("Level", Kind::Text, From::Level);
 const AREA: Own = (msg!("Area"), Kind::Area, From::Key("area_m2"));
 const OPENINGS_AREA: Own = (msg!("Openings Area"), Kind::Area, From::Key("openings_area_m2"));
+const OPENING_AREA: Own = (msg!("Opening Area"), Kind::Area, From::FamilyArea(crate::family::OPENING_AREA));
 const PLAN_AREA: Own = (msg!("Plan Area"), Kind::Area, From::Key("plan_area_m2"));
 const WIDTH: Own = ("Width", Kind::Length, From::Key("width"));
 const HEIGHT: Own = ("Height", Kind::Length, From::Key("height"));
@@ -295,7 +298,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("door", 6, &[MARK, TYPE, WIDTH, HEIGHT, LEVEL, HOST, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "door",
+        6,
+        &[MARK, TYPE, WIDTH, HEIGHT, OPENING_AREA, LEVEL, HOST, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     (
         "window",
         7,
@@ -304,6 +311,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             TYPE,
             WIDTH,
             HEIGHT,
+            OPENING_AREA,
             (msg!("Sill"), Kind::Length, From::Key("sill")),
             LEVEL,
             HOST,
@@ -1124,6 +1132,9 @@ impl Row<'_> {
                 },
                 From::Category => Value::String(self.e.category().to_string()),
                 From::Material => self.material(),
+                From::FamilyArea(k) => {
+                    j.get("values").and_then(|v| v.get(k)).and_then(Value::as_f64).map_or(Value::Null, |x| serde_json::json!(fine(x / 1e6)))
+                }
                 From::Shared => self.shared(name, *kind),
             };
         }
@@ -1142,7 +1153,7 @@ impl Row<'_> {
             };
         }
         // A host-cutting family's opening area is worked out with its values, not a parameter of its own.
-        if cat == "component"
+        if matches!(cat, "component" | "door" | "window")
             && name == crate::family::OPENING_AREA
             && let Some(x) = j.get("values").and_then(|v| v.get(name)).and_then(Value::as_f64)
         {

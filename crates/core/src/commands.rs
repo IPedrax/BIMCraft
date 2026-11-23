@@ -4467,15 +4467,23 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 }
                 extra.insert("level".into(), json!(w.level));
                 extra.insert("at".into(), json!(m.anchor(id)));
-                // Of a family: every parameter's value, worked out.
-                if let Some(v) = o
+                // Of a family: every parameter's value, worked out. A door or a window of a project type has none: its
+                // Opening Area is the rectangle of its Width and Height.
+                let mut values = o
                     .family
                     .as_ref()
                     .and_then(|n| m.families.get(n))
-                    .and_then(|f| f.values_in(&o.type_name, &o.params, m.thickness(w)).ok())
-                {
-                    extra.insert("values".into(), values_json(v));
-                }
+                    .and_then(|f| f.values_in(&o.type_name, &o.params, m.thickness(w)).ok());
+                let area = values
+                    .as_ref()
+                    .and_then(|v| v.get(crate::family::OPENING_AREA))
+                    .and_then(|v| match v {
+                        crate::family::Val::Number(x) => Some(*x),
+                        _ => None,
+                    })
+                    .unwrap_or(t.width * t.height);
+                values.get_or_insert_with(BTreeMap::new).insert(crate::family::OPENING_AREA.to_string(), crate::family::Val::Number(area));
+                extra.insert("values".into(), values_json(values.unwrap_or_default()));
             }
         }
         Element::Dimension(d) => {

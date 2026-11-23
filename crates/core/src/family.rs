@@ -2068,10 +2068,17 @@ impl Family {
                 self.resolve(&p.name, set, instance, &mut done, &mut Vec::new())?;
             }
         }
-        if !done.contains_key(OPENING_AREA)
-            && let Some(area) = self.host_void_area(&done)
-        {
-            done.insert(OPENING_AREA.to_string(), Val::Number(area));
+        if !done.contains_key(OPENING_AREA) {
+            let area = self.host_void_area(&done).or_else(|| {
+                // A door or a window with no void of its own takes the rectangle of its Width and Height from the wall.
+                self.category.hosted().then(|| match (done.get(WIDTH), done.get(HEIGHT)) {
+                    (Some(Val::Number(w)), Some(Val::Number(h))) => w * h,
+                    _ => 0.0,
+                })
+            });
+            if let Some(area) = area.filter(|a| a.is_finite() && *a > 0.0) {
+                done.insert(OPENING_AREA.to_string(), Val::Number(area));
+            }
         }
         Ok(done)
     }
