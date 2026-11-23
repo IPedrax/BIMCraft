@@ -858,7 +858,7 @@ msgstr "Mostrar anterior + novo"
 msgid "Shower"
 msgstr "Chuveiro"
 
-#: crates/core/src/schedule.rs:315
+#: crates/core/src/schedule.rs:314
 msgid "Sill"
 msgstr "Peitoril"
 

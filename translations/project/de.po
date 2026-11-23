@@ -857,7 +857,7 @@ msgstr "Bestand + Neu anzeigen"
 msgid "Shower"
 msgstr "Dusche"
 
-#: crates/core/src/schedule.rs:315
+#: crates/core/src/schedule.rs:314
 msgid "Sill"
 msgstr "Brüstung"
 

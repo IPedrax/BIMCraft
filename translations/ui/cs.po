@@ -16717,7 +16717,7 @@ msgstr "Strany:"
 msgid "Silhouettes"
 msgstr "Siluety"
 
-#: crates/core/src/schedule.rs:315
+#: crates/core/src/schedule.rs:314
 #: crates/ui-egui/src/editor.rs:1672
 msgid "Sill"
 msgstr "Parapet"

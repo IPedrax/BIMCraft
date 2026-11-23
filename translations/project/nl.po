@@ -858,7 +858,7 @@ msgstr "Vorige + nieuw tonen"
 msgid "Shower"
 msgstr "Douche"
 
-#: crates/core/src/schedule.rs:315
+#: crates/core/src/schedule.rs:314
 msgid "Sill"
 msgstr "Vensterbank"
 

@@ -858,7 +858,7 @@ msgstr "Afficher précédent + nouveau"
 msgid "Shower"
 msgstr "Douche"
 
-#: crates/core/src/schedule.rs:315
+#: crates/core/src/schedule.rs:314
 msgid "Sill"
 msgstr "Allège"
 

@@ -858,7 +858,7 @@ msgstr "Visa tidigare + nytt"
 msgid "Shower"
 msgstr "Dusch"
 
-#: crates/core/src/schedule.rs:315
+#: crates/core/src/schedule.rs:314
 msgid "Sill"
 msgstr "Bröstningshöjd"
 

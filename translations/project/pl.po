@@ -858,7 +858,7 @@ msgstr "Pokaż istniejące i nowe"
 msgid "Shower"
 msgstr "Prysznic"
 
-#: crates/core/src/schedule.rs:315
+#: crates/core/src/schedule.rs:314
 msgid "Sill"
 msgstr "Parapet"
 
