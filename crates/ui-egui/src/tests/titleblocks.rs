@@ -219,6 +219,8 @@ fn the_logos_tab_lists_a_title_blocks_pictures_and_takes_one_away() {
     );
     let mut h = app(&script);
     assert_eq!(h.state().session.model.title_blocks["T"].logos.len(), 1);
+    // The starter materials hold pictures of their own now (#536): the logo's is the one more.
+    let held = h.state().session.model.images.len();
     h.state_mut().open_title_blocks(Some("T"));
     h.run();
     press(&mut h, "Logos");
@@ -227,7 +229,7 @@ fn the_logos_tab_lists_a_title_blocks_pictures_and_takes_one_away() {
     press_near(&mut h, "Apply", "Cancel");
     let m = &h.state().session.model;
     assert!(m.title_blocks["T"].logos.is_empty(), "the logo is gone from the title block");
-    assert!(m.images.is_empty(), "and its picture from the project");
+    assert_eq!(m.images.len(), held - 1, "and its picture from the project");
 }
 
 #[test]

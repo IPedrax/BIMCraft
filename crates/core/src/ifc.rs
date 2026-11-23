@@ -113,6 +113,9 @@ const CURTAIN_PART: u64 = 99;
 const CURTAIN_MATERIALS: u64 = 100;
 /// The project's classification tables' codes (`classify`).
 const CODES_CLASSIFIED: u64 = 101;
+/// A framed wall's, floor's or roof's members, and their material.
+const FRAMING_MEMBER: u64 = 102;
+const FRAMING_MATERIALS: u64 = 103;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -433,8 +436,17 @@ fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey
             }
         };
         let [along, up, across] = p.centre;
-        let turned = (p.turn != 0.0).then(|| P2(p.turn.cos(), p.turn.sin()));
-        let place = w.place(Some(at), (along, plane + across, up), turned);
+        let f = &l.surface;
+        let place = if f.leans() || f.faceted() {
+            // On a curved wall's chord, or tilted up a slanted wall's face: its axes in the wall's own frame.
+            let (o, ax) = (f.at(along, up, across), f.axes(along, p.turn));
+            let local = |v: [f64; 3]| [v[0] * u.0 + v[1] * u.1, -v[0] * u.1 + v[1] * u.0, v[2]];
+            let d = local([o[0] - wl.start.0, o[1] - wl.start.1, o[2] - m.own_base(wl)]);
+            w.place_tilted(at, (d[0], d[1], d[2]), local(ax[2]), local(ax[0]))
+        } else {
+            let turned = (p.turn != 0.0).then(|| P2(p.turn.cos(), p.turn.sin()));
+            w.place(Some(at), (along, plane + across, up), turned)
+        };
         let global = s(&part_global(w.uid, guid_of_wall, p.address));
         let name = s(&shape.type_name);
         let part = match shape.kind {
@@ -1222,6 +1234,69 @@ impl Step {
         self.shell(&b, &t)
     }
 
+    /// Framing `f`'s members, wall, floor or roof `id`'s, each placed in the placement `at` of the framing's frame (its origin,
+    /// its `s` axis, at `base`), or a member's own frame in that: a box swept up, or a bevelled or sloped one's closed shell. A
+    /// wall's are each an `IfcMember`, a stud, a king, a jack or a cripple a STUD, a plate or a sill a PLATE, a header or
+    /// blocking a MEMBER; a floor's joists, rims, trimmers and headers each an `IfcBeam`, a JOIST, and its blocking an
+    /// `IfcMember`, a MEMBER; a roof's rafters and trimmers each an `IfcMember`, a RAFTER, and its ridge boards, rims, headers
+    /// and blocking `IfcMember`s, MEMBERs (IFC4 has no kind of member for them). Each
+    /// has its role for its name and object type and its key for its tag; its GlobalId comes from the host's GUID and its key,
+    /// so it stays while the member does. All in the framing's material.
+    fn members(&mut self, m: &Model, id: Id, f: &crate::framing::Framing, at: u64, base: f64) -> Vec<u64> {
+        use crate::framing::Role;
+        let host = self.own.get(&id).map_or(id, |g| fold(*g));
+        let floor = matches!(m.elements.get(id), Some(Element::Floor(_)));
+        let roof = matches!(m.elements.get(id), Some(Element::Roof(_)));
+        let mut out = Vec::new();
+        for member in &f.members {
+            let ([s0, s1], [a0, a1], [b0, b1], [t0, t1]) = (member.s, member.across, member.bottom, member.top);
+            let shape = if b0 == b1 && t0 == t1 {
+                let profile = self.rectangle(P2((s0 + s1) / 2.0, (a0 + a1) / 2.0), P2(s1 - s0, a1 - a0));
+                self.body(profile, b0 - base, t0 - b0, &[])
+            } else {
+                let plane = |z0: f64, z1: f64| {
+                    let k = (z1 - z0) / (s1 - s0).max(1e-9);
+                    walls::Plane { z: z0 - k * s0, g: P2(k, 0.0) }
+                };
+                let ring = [P2(s0, a0), P2(s1, a0), P2(s1, a1), P2(s0, a1)];
+                let brep = self.prism(&ring, &plane(b0, b1), &plane(t0, t1), base);
+                self.solid(&[brep], &[])
+            };
+            let (class, kind) = match member.role {
+                Role::Joist | Role::Rim | Role::Trimmer | Role::Header if floor => ("IFCBEAM", "JOIST"),
+                Role::Rafter | Role::Trimmer if roof => ("IFCMEMBER", "RAFTER"),
+                Role::Rafter => ("IFCMEMBER", "RAFTER"),
+                Role::Stud | Role::King | Role::Jack | Role::Cripple => ("IFCMEMBER", "STUD"),
+                Role::BottomPlate | Role::TopPlate | Role::Sill => ("IFCMEMBER", "PLATE"),
+                Role::Header | Role::Blocking | Role::Joist | Role::Rim | Role::Trimmer | Role::Ridge => ("IFCMEMBER", "MEMBER"),
+            };
+            // A wall's in its wall's placement, which is the framing's frame. A floor's or a roof's in its own placement,
+            // which is in plan: the member's own frame, or the framing's, placed there directly, since IFC2x3 lets a
+            // placement place one product and no more, so no placement of the framing's frame alone.
+            let place = match (member.frame, floor || roof) {
+                (Some([o, x]), true) => self.place(Some(at), (o.0, o.1, 0.0), Some(x)),
+                (None, true) => self.place(Some(at), (f.origin.0, f.origin.1, 0.0), Some(f.x_axis)),
+                (Some([o, x]), false) => {
+                    let (d, y) = (o - f.origin, f.x_axis.perp());
+                    self.place(Some(at), (d.dot(f.x_axis), d.dot(y), 0.0), Some(P2(x.dot(f.x_axis), x.dot(y))))
+                }
+                (None, false) => self.place(Some(at), (0.0, 0.0, 0.0), None),
+            };
+            let key = member.key.bytes().fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+            let role = s(member.role.name());
+            out.push(self.add(format!(
+                "{class}({},$,{role},$,{role},#{place},#{shape},{},.{kind}.)",
+                self.guid(FRAMING_MEMBER, mix(host ^ key)),
+                s(&member.key)
+            )));
+        }
+        if !out.is_empty() && !f.material.is_empty() {
+            let material = self.material(m, &f.material);
+            self.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,({}),#{material})", self.guid(FRAMING_MATERIALS, id), refs(&out)));
+        }
+        out
+    }
+
     /// Landings: each a slab from `base` up to its top, placed in `at`; and the treads that are no run's (a curved
     /// flight's, winders, a spiral's, one level with a floor), each a flight of one tread, of the kind `treads` says.
     fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id, treads: &str) -> Vec<u64> {
@@ -1745,6 +1820,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     let mut wholes: BTreeMap<Id, (u64, u64, f64, Vec<u64>)> = BTreeMap::new();
     // Reinforcing bars as (level, host, entity): aggregated to their host, else in their level.
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
+    // Framed walls' and floors' members, by their host: its parts.
+    let mut framed: Vec<(Id, Vec<u64>)> = Vec::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The boards on each distribution system, by its name, for the IfcDistributionSystem they are assigned to.
@@ -1778,9 +1855,32 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let pts: Vec<u64> = path.points(0.0, path.length(), 0.0).into_iter().map(|p| w.point(local(p))).collect();
                 let line = w.add(format!("IFCPOLYLINE(({}))", refs(&pts)));
                 let axis_rep = w.add(format!("IFCSHAPEREPRESENTATION(#{axis},'Axis','Curve2D',(#{line}))"));
-                // Its outline swept up, mitred where it joins others as the plan's is; attached to a
-                // roof or a floor, a closed shell for each piece under (or over) a plane of it.
-                let shape = if wl.attach_top.is_none() && wl.attach_base.is_none() {
+                // Its outline swept up, mitred where it joins others as the plan's is; attached to a roof or a floor, with an
+                // edited profile, or taller than what it joins, a closed shell for each of its prisms.
+                let shape = if walls::slant::lofted(m, id, None) {
+                    // Slanted, or joined to a slanted wall: the pieces it is lofted from, each a closed face set in its frame.
+                    let sets: Vec<u64> = walls::slant::pieces(m, id, false, None)
+                        .iter()
+                        .map(|piece| {
+                            let tris: Vec<[P3; 3]> = piece
+                                .iter()
+                                .map(|t| {
+                                    t.map(|p| {
+                                        let l = local(P2(p[0], p[1]));
+                                        [l.0, l.1, p[2] - base]
+                                    })
+                                })
+                                .collect();
+                            w.faceset(&tris)
+                        })
+                        .collect();
+                    let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&sets)));
+                    w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep},#{axis_rep}))"))
+                } else if wl.attach_top.is_none()
+                    && wl.attach_base.is_none()
+                    && wl.profile.is_empty()
+                    && walls::cap_heights(m, id, None).is_empty()
+                {
                     let outline: Vec<P2> = walls::outline(m, id).into_iter().map(local).collect();
                     let profile = w.profile(&outline, &[]);
                     w.body(profile, 0.0, m.own_top(wl) - base, &[axis_rep])
@@ -1823,6 +1923,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 w.typed("IFCWALLTYPE", ".STANDARD.", &wl.type_name, ent);
                 let values = wall_quantities(m, id, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
                 w.quantities(ent, "Qto_WallBaseQuantities", &values, id);
+                // Framed, its members are its parts; it keeps its own body, the whole wall, as an assembly's does.
+                if wl.framing.is_some()
+                    && let Ok(Some(f)) = crate::framing::wall(m, id)
+                {
+                    framed.push((id, w.members(m, id, &f, at, base)));
+                }
             }
             Element::Floor(f) => {
                 let Some(&(_, storey)) = storeys.get(&f.level) else { continue };
@@ -1880,6 +1986,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
                 };
                 w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
+                // Framed, its members are its parts, placed in its own placement; it keeps its own body, the whole slab.
+                if f.framing.is_some()
+                    && let Ok(Some(framing)) = crate::framing::floor::floor(m, id)
+                {
+                    framed.push((id, w.members(m, id, &framing, at, m.elevation(f.level))));
+                }
             }
             Element::Toposolid(t) => {
                 let Some(&(_, storey)) = storeys.get(&t.level) else { continue };
@@ -2532,6 +2644,20 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let flat = r.extrusion.is_none() && r.slope == 0.0;
                 w.typed("IFCROOFTYPE", if flat { ".FLAT_ROOF." } else { ".NOTDEFINED." }, &r.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
+                // Framed, its members are its parts, each placed in its slope's frame in the roof's own placement (at the plan's
+                // origin and axes), none in a placement of its own that would place no product (IFC2x3 holds each to one); it
+                // keeps its own body, the whole roof. IFC2x3's IfcRoof may be decomposed only when it has no body of its own,
+                // so there they stand in its storey instead.
+                if r.framing.is_some()
+                    && let Ok(Some(framing)) = crate::framing::roof::roof(m, id)
+                {
+                    let members = w.members(m, id, &framing, at, m.elevation(r.level));
+                    if w.schema == Schema::Ifc2x3 {
+                        contained.entry(r.level).or_default().extend(members);
+                    } else {
+                        framed.push((id, members));
+                    }
+                }
                 // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
                 // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
                 // A roof whose faces can't be found (a gable edge its footprint doesn't have) has no area to say: none is written.
@@ -2579,8 +2705,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     for (id, (ent, _, _, parts)) in &wholes {
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, *id), refs(parts)));
     }
-    // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level.
-    let mut reinforced: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
+    // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level. A framed
+    // wall's, floor's or roof's members are its parts with them.
+    let mut reinforced: BTreeMap<Id, Vec<u64>> = framed.into_iter().collect();
     for (level, host, ent) in bars {
         match host.filter(|h| products.contains_key(h)) {
             Some(h) => reinforced.entry(h).or_default().push(ent),
@@ -2666,9 +2793,19 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         });
         // Of a family whose voids cut the wall, those voids, closed face sets standing at the middle of the opening as its
         // forms do; else the rectangle of its width and height.
-        let voids = m.opening_voids_local(e);
+        // In a slanted wall they lean with it from its base, where `at` stands, so they cut it whichever way the opening stands.
+        let rate = m.host_lean(o);
+        let voids: Vec<Vec<[P3; 3]>> = m
+            .opening_voids_local(e)
+            .into_iter()
+            .map(|v| v.iter().map(|t| t.map(|p| [p[0], p[1] + rate * (sill + p[2]), p[2]])).collect())
+            .collect();
+        // Through a slanted wall, as deep again as it leans over the opening's height, either way, so it cuts all of it.
+        let lean = rate.abs() * (2.0 * (o.sill.abs() + t.height));
+        let (thick, _) = walls::faces_at(m, wl, Some(m.own_base(wl)));
+        let thick = (thick - walls::faces_at(m, wl, Some(m.own_base(wl))).1).max(m.thickness(wl));
         let (opening_at, shape) = if voids.is_empty() {
-            let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, m.thickness(wl) + 20.0 + 2.0 * bow));
+            let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, thick + 20.0 + 2.0 * bow + 2.0 * lean));
             (at, w.body(profile, 0.0, t.height, &[]))
         } else {
             let items: Vec<u64> = voids.iter().map(|v| w.faceset(v)).collect();
@@ -2679,12 +2816,18 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.add(format!("IFCRELVOIDSELEMENT({},$,$,$,#{wall},#{opening})", w.guid(VOIDS, id)));
         // The door or window itself: a 50 mm panel centred in the wall; of a family, its forms as a component's are,
         // closed face sets in their materials' colours, standing at the middle of the opening.
+        // In a slanted wall, across it where the wall has leant to: a slanted one at each height, a vertical one halfway up.
+        let leaning = |p: P3| {
+            let up = if o.slanted { p[2] } else { t.height / 2.0 };
+            [p[0], p[1] + rate * (sill + up), p[2]]
+        };
+        let leant = |tris: &[[P3; 3]]| -> Vec<[P3; 3]> { tris.iter().map(|t| t.map(leaning)).collect() };
         let mut made_of: Vec<u64> = Vec::new();
         let (fill_at, shape) = match m.opening_local(e) {
             Some((pieces, _)) => {
                 let mut items = Vec::new();
                 for piece in &pieces {
-                    let set = w.faceset(&piece.tris);
+                    let set = w.faceset(&leant(&piece.tris));
                     if !piece.material.trim().is_empty() {
                         let (material, style) = w.material_style(m, piece.material.trim());
                         if let Some(style) = style {
@@ -2698,6 +2841,13 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 }
                 let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&items)));
                 (w.place(Some(at), (t.width / 2.0, across, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+            }
+            None if rate != 0.0 => {
+                let ring =
+                    |z: f64| [[0.0, -25.0], [t.width, -25.0], [t.width, 25.0], [0.0, 25.0]].map(|[x, y]| leaning([x, y, z])).to_vec();
+                let set = w.faceset(&walls::slant::closed(ring(0.0), ring(t.height)));
+                let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','Tessellation',(#{set}))", w.body));
+                (w.place(Some(at), (0.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
             }
             None => {
                 let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, 50.0));

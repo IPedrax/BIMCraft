@@ -166,6 +166,24 @@ const FINE: u32 = 1 << 5;
 const ONLY_CUT: u32 = 1 << 6;
 /// Where the angle of the component's x axis in plan sits, as a fraction of a half turn in 16 bits.
 const ANGLE_SHIFT: u32 = 8;
+/// Not a form's settings but a framed wall's pieces, which carry no [`SET`]: a framing member, drawn where a view shows
+/// Walls > Framing ([`crate::framing`]), and the structure layer the members stand in, drawn only where it hides them.
+pub const MEMBER: u32 = 1 << 30;
+pub const FRAMED: u32 = 1 << 29;
+/// With [`MEMBER`] or [`FRAMED`]: a framed floor's piece, which Floors > Framing shows and hides in place of Walls > Framing.
+pub const FLOOR: u32 = 1 << 28;
+/// With [`MEMBER`] or [`FRAMED`]: a framed roof's piece, which Roofs > Framing shows and hides in place of Walls > Framing.
+pub const ROOF: u32 = 1 << 27;
+
+/// Of a piece packed as `bits`: whether it is a framing member (true) or the structure layer they stand in (false); none for
+/// anything else.
+pub fn framing(bits: u32) -> Option<bool> {
+    match bits & (MEMBER | FRAMED) {
+        MEMBER => Some(true),
+        FRAMED => Some(false),
+        _ => None,
+    }
+}
 
 /// Settings `v` of a part whose component's x axis runs along `x` in plan, packed for a triangle: 0 for none. The flags say
 /// what hides it; the axis is kept to a half turn, which is all [`class`] reads.

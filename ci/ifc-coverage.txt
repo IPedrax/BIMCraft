@@ -97,3 +97,25 @@ stair {"start": [70000, 0], "width": 1000, "type": "Stringers - Closed Risers", 
 family {"name": "Sign", "category": "generic", "types": {"A": {}}, "options": {"work_plane_based": true, "always_vertical": false}, "forms": [{"profile": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "to": 100}]}
 reference_plane {"name": "Ramp", "start": [80000, 0, 0], "end": [84000, 0, 0], "up": [0, 0.8660254037844386, 0.5]}
 component {"family": "Sign", "at": [81000, 1000], "host": {"plane": "Ramp"}}
+
+# A framed wall with a window: its studs, plates, header and sill IfcMembers aggregated to it, the wall keeping its body.
+type {"category":"wall","name":"2x4 Framed","layers":[{"function":"finish","material":"Plaster","thickness":13},{"function":"structure","material":"Timber","thickness":89},{"function":"finish","material":"Plaster","thickness":13}]}
+@framed = wall {"points":[[0,20000],[6000,20000]],"type":"2x4 Framed","height":2448}
+type {"category":"window","name":"Framed 1200 x 1200","width":1200,"height":1200,"sill":832}
+window {"wall":"@framed.ids.0","offset":3000,"type":"Framed 1200 x 1200"}
+frame {"id":"@framed.ids.0"}
+
+# A framed floor over a beam, open through an opening: its joists, rims, trimmers and headers IfcBeams (JOIST) aggregated to the
+# slab, which keeps its body.
+type {"category":"floor","name":"2x8 Framed","layers":[{"function":"substrate","material":"Timber","thickness":18},{"function":"structure","material":"Timber","thickness":184}]}
+type {"category":"beam","name":"3-2x10","width":114,"depth":235}
+beam {"points":[[0,32000],[6000,32000]],"type":"3-2x10","offset":-202}
+@joisted = floor {"boundary":[[0,30000],[6000,30000],[6000,34000],[0,34000]],"type":"2x8 Framed","openings":[[[1500,30800],[2500,30800],[2500,31600],[1500,31600]]]}
+frame {"id":"@joisted","angle":90}
+
+# A framed gable roof over a beam, open through a skylight: its rafters and trimmers IfcMembers (RAFTER), its ridge board,
+# headers and blocking IfcMembers (MEMBER), aggregated to the roof, which keeps its body.
+type {"category":"roof","name":"2x10 Framed","layers":[{"function":"substrate","material":"Timber","thickness":11},{"function":"structure","material":"Timber","thickness":235}]}
+@rafted = roof {"boundary":[[0,40000],[8000,40000],[8000,46000],[0,46000]],"gables":[1,3],"slope":30,"type":"2x10 Framed","level":100000,"offset":2400,"overhang":0,"openings":[[[1000,41000],[2000,41000],[2000,42200],[1000,42200]]]}
+beam {"points":[[0,41500],[8000,41500]],"type":"3-2x10","level":100000,"offset":3266.03}
+frame {"id":"@rafted"}

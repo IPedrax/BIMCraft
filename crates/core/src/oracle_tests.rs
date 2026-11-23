@@ -34,6 +34,52 @@ fn pick(s: &Session, dice: &mut Dice, categories: &[&str]) -> Option<Id> {
     ids.get(dice.below(ids.len())).copied()
 }
 
+/// Frames the walls of the tower's type with a structure layer (`framing.rs`), its first slab on joists over a beam
+/// (`framing/floor.rs`) and a gable roof beside it on rafters over another (`framing/roof.rs`), so random edits move, copy and
+/// delete framed walls, the windows in them, the walls standing on the floor, the beams under it and the roof: their members
+/// are worked out from them, and every cache must follow.
+pub(crate) fn frame_some(s: &mut Session) {
+    let walls: Vec<Id> = s
+        .model
+        .elements
+        .iter()
+        .filter(|(_, e)| matches!(e, Element::Wall(w) if w.type_name == "Exterior - 300mm"))
+        .map(|(id, _)| *id)
+        .collect();
+    assert!(!walls.is_empty(), "the tower has walls to frame");
+    s.execute("frame", &json!({"ids": walls})).unwrap_or_else(|e| panic!("{e}"));
+    let floor = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Floor(_))).map(|(id, _)| *id).expect("the tower has a slab");
+    let joists =
+        json!({"category": "floor", "name": "Joists 184", "layers": [{"function": "structure", "material": "Timber", "thickness": 184}]});
+    for (cmd, p) in [
+        ("type", joists),
+        ("modify", json!({"id": floor, "type": "Joists 184"})),
+        ("beam", json!({"points": [[0, 15_000], [36_000, 15_000]], "offset": -184})),
+        ("frame", json!({"id": floor, "angle": 90})),
+    ] {
+        s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd} {p}: {e}"));
+    }
+    // A gable roof beside it on rafters over a beam under its south slope (`framing/roof.rs`).
+    let level = s.model.levels().first().map(|(id, _)| *id).expect("the tower has a level");
+    let rafters =
+        json!({"category": "roof", "name": "Rafters 235", "layers": [{"function": "structure", "material": "Timber", "thickness": 235}]});
+    s.execute("type", &rafters).unwrap_or_else(|e| panic!("{e}"));
+    let roof = s
+        .execute(
+            "roof",
+            &json!({"boundary": [[40_000, 0], [48_000, 0], [48_000, 6000], [40_000, 6000]], "gables": [1, 3], "slope": 30,
+                    "type": "Rafters 235", "level": level, "offset": 3000, "overhang": 0}),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))["id"]
+        .clone();
+    let top = 3000.0 + 1500.0 * 30f64.to_radians().tan();
+    for (cmd, p) in
+        [("beam", json!({"points": [[40_000, 1500], [48_000, 1500]], "level": level, "offset": top})), ("frame", json!({"id": roof}))]
+    {
+        s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd} {p}: {e}"));
+    }
+}
+
 pub(crate) fn edit(s: &mut Session, dice: &mut Dice) -> (String, Value) {
     let any = ["wall", "door", "window", "component", "structuralcolumn", "beam", "pipe", "conduit", "room", "ceiling", "tag"];
     let by = |dice: &mut Dice| json!([dice.mm(3000), dice.mm(3000)]);
@@ -65,7 +111,7 @@ fn random_edits_of_a_tower_check_the_same_by_what_changed_as_whole() {
         let mut s = Session::new();
         s.reset(model.clone(), None);
         // The first command checks the whole tower; from then on, the engine checks what each changes and, here, both.
-        s.execute("move", &json!({"ids": [], "by": [0, 0]})).ok();
+        frame_some(&mut s);
         let mut dice = Dice(0x9e37_79b9_7f4a_7c15 ^ seed);
         let (mut done, mut refused) = (0, 0);
         for _ in 0..60 {

@@ -173,8 +173,9 @@ the draft curve, keeps its id, GUID and style, and moves joined endpoints so a c
 reference stays fixed. Changes use the sketch's Ctrl+Z history and reach the model only through Finish Edit Mode; Cancel
 leaves the model as it was. Invalid geometry leaves the draft and reference intact, and undo or Escape drops stale picks.
 
-A sketch line picked alone in Modify has a small palette over the view at its middle (`BimApp::edge_palette`, both profiles): Add
-Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
+A sketch line picked alone in Modify has a small palette over a plan at its middle (`BimApp::edge_palette`, both profiles): Add
+Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. Edit Profile
+and a sketch in the 3D view have none: the ribbon has the same tools. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
 Offset. Trim highlights sketch candidates and keeps its first pick lit; its prompt says which line to pick and to click
 the part to keep. A failed trim leaves that first pick available for another target; a successful edit clears the error.
 Multiple Trim keeps the boundary across successive target edits while that indexed line is unchanged, and drops it if
@@ -200,6 +201,15 @@ is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre
 running from the centre), and the angle is the exact one between the snapped points. Digits typed over the view while Rotate
 (or Rotate Project North) waits for its angle are the angle (`BimApp::typed_angle`, a leading minus turns clockwise), shown
 on the ghost as "45° (Enter)", and Enter turns by it.
+Scale (RE, `scale.rs`) is `Tool::Scale(Step)`: `Choose` while its popup asks how (`BimApp::scaling` keeps the choice, the
+percentage and the length from one use to the next), `Base(factor)` waiting for the point that stays, `First` and `Second(a)` for
+the two points (snapped through `found`, Shift squaring the second, a line and its length following the cursor), and
+`Length(a, b)` while the popup at the second click asks the length they come to. It starts only in a plan, a ceiling plan, a
+section or an elevation and with something selected it takes (`bimcraft_core::scale::scalable`; `BimApp::scale_refused` says
+why not), and runs the core's `scale_elements` in the view's own terms, so a section's detail lines scale by its along and up.
+The plan's preview draws what it scales grown about the point (`ghost_of` with the factor, the percentage's at the cursor, the
+length's as typed). What the core leaves out goes in the status bar, each with why. The 3D view and sheets show nothing it
+takes, so it says so there.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
@@ -378,13 +388,27 @@ BIMCraft's title bar and an icon among Rev's; the tools are the Tools palette or
 are window settings in `settings.json`, never in a project, and work the same on both. The project's scale (`presets::Scale`: Sketch,
 Studio, Team, Team the default so nobody loses a tool) leaves out panels and tools a project doesn't need yet (`Scale::hides`, by English
 name: below Team design options, links and inquiry, in Sketch also sheets, phasing and view templates); a chip on the title bar of both
-profiles switches it at any time and lists the presets, Edit Tools and Manage Presets. Edit Tools turns every tool, a ribbon button or a
+profiles switches it at any time and lists the presets with the one applied ticked, Edit Tools and Manage Presets. Edit Tools turns every
+tool, a ribbon button or a
 palette row, into a box to tick (`edit_tool`): a click ticks or clears it and takes no tool, and what is cleared is `tools_hidden`, left
-out of the ribbon and the palette (Find still lists it). The ribbon and the palette read both through `ribbon::tool_rules`, set each frame;
-`ribbon::panel` leaves out a panel the scale does, `big_button`, `small_button`, `stacked_button` and `list_row` a tool. A preset
-(`presets::Preset`) keeps, by name, where the palettes are, the tools shown, the scale and the layout; Settings > User Interface > Presets
-saves the layout now under a name, uses or deletes one, and shows every tool again. A settings file's presets are read as hostile: unnamed,
-over-long or repeated ones are left out, 32 at most.
+out of the ribbon and the palette (Find still lists it). A panel's name is a box too: clearing it hides the whole panel, in either profile,
+and keeps its tools in Edit Tools and Find; what is cleared is `panels_hidden`, keyed by `tab:<tab>/<panel>` (a plugin's
+`tab:plugin:<name>/<panel>`). A tab every panel of which is hidden says so, with a button that brings them all back. **Done** in Edit
+Tools keeps the palette layout, the panels and the tools in the preset the window wears (the one ticked in the Project scale chip); with
+no preset chosen it changes the window only and says so. The ribbon and the
+palette read both through `ribbon::tool_rules` and `ribbon::panel_rules`, set each frame; `ribbon::panel` leaves out a panel the scale or
+the user does, `big_button`, `small_button`, `stacked_button` and `list_row` a tool. A preset (`presets::Preset`) keeps, by name, where the
+palettes are and which are closed, the panels and tools shown, the profile, the scale and the layout; reading a preset's palettes keeps
+exactly the set it was saved with (`Policy::Preset`), so a palette added by a later version stays closed in an old preset, while the
+window's own layout (`Policy::Live`) still opens it. Applying a preset puts its profile first, then its layout, panels, tools and scale.
+Settings > User Interface > Presets saves the layout now under a name, uses, edits or deletes one, shows every tool and every panel again,
+and edits a preset's profile, palettes, panels and scale without touching the window until Use. A preset's **Reset to Standard View**
+resets its content (the standard layout of its profile, no hidden panels or tools, Team, floating), keeping its name, its place and its
+profile; the window's own **Reset Palette Layout** is a separate action: the standard docking of its profile, every panel and every tool
+shown again, the project's scale untouched. A settings file's presets are read as hostile: unnamed, over-long
+or repeated ones are left out, 32 at most; a preset from before profiles were kept in them leaves the window's profile alone when applied.
+Rev's ribbon never draws the Tools palette, but the palette stays in the layout as the user's intent: switching profiles no longer
+rewrites the saved palettes or the presets.
 
 Themes, the same in both profiles. The window follows the system's light or dark until the user picks (Settings > User Interface >
 Theme, or View > Dark Mode); beside the profile's own light, dark and dark-with-a-light-canvas are three presets, dark ones (`style::Scheme`:

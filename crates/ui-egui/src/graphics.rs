@@ -195,20 +195,43 @@ impl BimApp {
         }
     }
 
-    /// The graphics the active view holds now: the default 3D view has none until something changes it.
-    pub(crate) fn graphics_now(&self) -> Graphics {
-        let m = &self.session.model;
-        let id = match self.sheet {
+    /// The view the active tab is of, when it is one whose graphics it keeps.
+    fn active_view_id(&self) -> Option<Id> {
+        match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) => Some(id),
             Sheet::View3D => self.active_3d(),
             _ => None,
-        };
-        id.and_then(|id| bimcraft_core::graphics::graphics_of(m, id)).cloned().unwrap_or_default()
+        }
+    }
+
+    /// The graphics view `id` holds now, with a Callout's scale, which it keeps in the view itself.
+    pub(crate) fn graphics_for(&self, id: Id) -> Graphics {
+        let m = &self.session.model;
+        let mut g = bimcraft_core::graphics::graphics_of(m, id).cloned().unwrap_or_default();
+        if let Some(bimcraft_core::model::Element::DetailView(v)) = m.elements.get(id) {
+            g.scale = Some(v.scale);
+        }
+        g
+    }
+
+    /// What view `id`'s graphics come to: its own, but for what its view template controls.
+    pub(crate) fn graphics_shown_for(&self, id: Id) -> Graphics {
+        let m = &self.session.model;
+        let mut g = self.graphics_for(id).resolved(m).into_owned();
+        if let Some(bimcraft_core::model::Element::DetailView(v)) = m.elements.get(id) {
+            g.scale = Some(v.scale);
+        }
+        g
+    }
+
+    /// The graphics the active view holds now: the default 3D view has none until something changes it.
+    pub(crate) fn graphics_now(&self) -> Graphics {
+        self.active_view_id().map_or_else(Default::default, |id| self.graphics_for(id))
     }
 
     /// What the active view's graphics come to: its own, but for what its view template controls.
     pub(crate) fn graphics_shown(&self) -> Graphics {
-        self.graphics_now().resolved(&self.session.model).into_owned()
+        self.active_view_id().map_or_else(Default::default, |id| self.graphics_shown_for(id))
     }
 
     /// The view template that sets `group` of the active view, if it follows one that does.
@@ -530,10 +553,19 @@ impl BimApp {
     /// Properties' Graphics group for the active view: its view template, and Edit… for its
     /// Visibility/Graphics Overrides.
     pub(crate) fn graphics_properties(&mut self, ui: &mut Ui) {
-        let Some(view) = self.graphic_view() else { return };
+        // A Callout picked on its parent view has its own graphics and scale, not the parent's.
+        let picked_detail = match self.subject() {
+            crate::properties::Subject::Element(id)
+                if matches!(self.session.model.elements.get(id), Some(bimcraft_core::model::Element::DetailView(_))) =>
+            {
+                Some(id)
+            }
+            _ => None,
+        };
+        let Some(view) = picked_detail.map_or_else(|| self.graphic_view(), |id| Some(json!(id))) else { return };
         let model = Arc::clone(&self.session.model);
-        let own = self.graphics_now();
-        let shown = self.graphics_shown();
+        let own = picked_detail.map_or_else(|| self.graphics_now(), |id| self.graphics_for(id));
+        let shown = picked_detail.map_or_else(|| self.graphics_shown(), |id| self.graphics_shown_for(id));
         let group = msg!("Graphics");
         let open = !self.collapsed.contains(group);
         if crate::properties::group_header(ui, t(group), open) && !self.collapsed.remove(group) {
@@ -544,10 +576,10 @@ impl BimApp {
         }
         let (mut edit, mut assign, mut set) = (false, false, None::<(&str, Value)>);
         // The id the scale's field edits under: the view's own, which the 3D view's has no field for.
-        let own_id = match self.sheet {
+        let own_id = picked_detail.or(match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) => Some(id),
             _ => None,
-        };
+        });
         crate::properties::grid(ui, "graphics-properties", |ui| {
             let controlled = |g: Group| own.controlled_by(&model, g).map(controlled_note);
             if let Some(id) = own_id {

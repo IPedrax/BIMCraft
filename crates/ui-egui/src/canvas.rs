@@ -359,6 +359,10 @@ pub struct Canvas {
     cycle: usize,
     /// A crop region's grip being dragged: the view, and which edge (see [`grips`]).
     crop_drag: Option<(Id, usize)>,
+    /// A callout's boundary grip being dragged: the callout, and which edge.
+    callout_drag: Option<(Id, usize)>,
+    /// The callout whose mark is being dragged.
+    callout_mark_drag: Option<Id>,
     /// A selected wall's end being dragged: the wall, and whether it's its start.
     grip: Option<(Id, bool)>,
     /// A part of the selected section or elevation being dragged in plan: the view, the part (its line, an end, its far
@@ -433,6 +437,8 @@ impl Default for Canvas {
             under: Vec::new(),
             cycle: 0,
             crop_drag: None,
+            callout_drag: None,
+            callout_mark_drag: None,
             grip: None,
             view_grip: None,
             stair_grip: None,
@@ -824,14 +830,31 @@ pub(crate) fn paint_prim(
         return;
     }
     let accent = match owner {
+        // A picture keeps its colours, a tint over it lighting it (`image_frames`): lit line by line, a page would read as ink.
+        _ if part == render::Part::Picture => None,
         Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
         Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
         _ => None,
     };
     match prim {
         Prim::Text { .. } => {}
+        // What a placed image or PDF fills (its letters, mostly): by the non-zero rule, every edge feathered, so a stroke thinner
+        // than a pixel (a serif letter's bars at a plan's zoom) shades the pixels it crosses rather than missing them all.
+        Prim::Fill { rings, color: c } if part == render::Part::Picture => {
+            let fill = color(*c);
+            let mut mesh = Mesh::default();
+            for tri in letter(rings).iter() {
+                let first = mesh.vertices.len() as u32;
+                for q in tri {
+                    mesh.colored_vertex(at.pos(*q), fill);
+                }
+                mesh.add_triangle(first, first + 1, first + 2);
+            }
+            feather(&mut mesh, rings, at, fill);
+            out(Shape::mesh(mesh));
+        }
         // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
-        // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
+        // Single-contour fills (including dots) keep their ordinary polygon rendering below.
         Prim::Fill { rings, color: c } if part == render::Part::Text || (part == render::Part::LinePattern && rings.len() > 1) => {
             let fill = accent.map_or(color(*c), |a| a.0);
             let mut mesh = Mesh::default();
@@ -902,6 +925,36 @@ pub(crate) fn paint_prim(
                     out(Shape::line(pts, stroke));
                 }
             }
+        }
+    }
+}
+
+/// How far an edge's feather reaches each side of it, points: a pixel across in all, as egui feathers what it fills itself.
+const FEATHER: f32 = 0.5;
+
+/// Each edge of `rings` (wound for the non-zero rule, its holes the other way), as `at` places them, given a strip from
+/// [`FEATHER`] inside it in `fill` to as far outside it clear: what a mesh, which egui doesn't feather, needs to shade an edge as
+/// much as it covers a pixel. The fill is on the same side of every edge, the side its largest ring winds round.
+fn feather(mesh: &mut Mesh, rings: &[Vec<(f32, f32)>], at: Place, fill: Color32) {
+    let area = |r: &[(f32, f32)]| (0..r.len()).map(|i| r[i].0 * r[(i + 1) % r.len()].1 - r[(i + 1) % r.len()].0 * r[i].1).sum::<f32>();
+    let Some(s) = rings.iter().map(|r| area(r)).max_by(|a, b| a.abs().total_cmp(&b.abs())).map(f32::signum) else { return };
+    for r in rings.iter().filter(|r| r.len() >= 2) {
+        for i in 0..r.len() {
+            let (a, b) = (at.pos(r[i]), at.pos(r[(i + 1) % r.len()]));
+            let d = b - a;
+            let len = d.length();
+            if len.is_nan() || len <= 1e-4 {
+                continue;
+            }
+            // Away from the fill: the fill is to the left of an edge of a ring that winds positively.
+            let away = vec2(d.y, -d.x) / len * s * FEATHER;
+            let first = mesh.vertices.len() as u32;
+            mesh.colored_vertex(a - away, fill);
+            mesh.colored_vertex(b - away, fill);
+            mesh.colored_vertex(b + away, Color32::TRANSPARENT);
+            mesh.colored_vertex(a + away, Color32::TRANSPARENT);
+            mesh.add_triangle(first, first + 1, first + 2);
+            mesh.add_triangle(first, first + 2, first + 3);
         }
     }
 }
@@ -1625,6 +1678,7 @@ fn start_of(tool: &Tool) -> &[P2] {
         | Tool::Move(start)
         | Tool::Copy(start)
         | Tool::Section(start)
+        | Tool::DetailView(start)
         | Tool::Measure(start)
         | Tool::Run(_, start) => start.as_slice(),
         _ => &[],
@@ -1649,9 +1703,11 @@ fn picked(tool: &Tool) -> Vec<P2> {
         | Tool::AddSplitLine(p)
         | Tool::Measure(p)
         | Tool::Run(_, p) => p.iter().copied().collect(),
-        Tool::Mirror { start, .. } | Tool::PatternCorner(start) | Tool::Shaft(start) | Tool::RepeatingDetail(start) => {
-            start.iter().copied().collect()
-        }
+        Tool::Mirror { start, .. }
+        | Tool::PatternCorner(start)
+        | Tool::Shaft(start)
+        | Tool::DetailView(start)
+        | Tool::RepeatingDetail(start) => start.iter().copied().collect(),
         _ => Vec::new(),
     }
 }
@@ -2488,6 +2544,7 @@ impl BimApp {
         // While a note is written here, the pointer is its editor's.
         let writing = self.writing_in(key);
         let crop = self.crop_grips(ui, &response, rect, &view, key);
+        let callout = self.callout_grips(ui, &response, rect, &view, key);
         let dragged = self.sketch_drag(ui, &response, rect, &view, level);
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
@@ -2496,6 +2553,7 @@ impl BimApp {
         self.adaptive_grip_drag(ui, &response, rect, &view, level);
         self.view_grip_drag(ui, &response, rect, &view);
         self.spot_grip_drag(ui, &response, rect, &view, level);
+        self.image_grip_drag(ui, &response, rect, &view);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box. Walls' Outline's open
         // panel takes every drag as a box over the walls it picks.
@@ -2507,12 +2565,15 @@ impl BimApp {
             && !writing
             && !picking
             && self.canvas.crop_drag.is_none()
+            && self.canvas.callout_drag.is_none()
+            && self.canvas.callout_mark_drag.is_none()
             && self.canvas.grip.is_none()
             && self.canvas.view_grip.is_none()
             && self.canvas.stair_grip.is_none()
             && self.drawing.grip.is_none()
             && self.adaptive_grip.is_none()
             && self.spot_grip.is_none()
+            && self.image_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -2580,6 +2641,13 @@ impl BimApp {
             && let Some(id) = hovered.filter(|id| model.section(*id).is_some())
         {
             self.open_sheet(Sheet::Section(id));
+            return;
+        }
+        // A double click on a detail's callout opens the detail.
+        if response.double_clicked()
+            && let Some(id) = hovered.filter(|id| matches!(model.elements.get(*id), Some(Element::DetailView(_))))
+        {
+            self.open_sheet(if model.plan_level(id).is_some() { Sheet::Plan(id) } else { Sheet::Section(id) });
             return;
         }
         // A double click on a camera's mark opens its 3D view.
@@ -2849,6 +2917,7 @@ impl BimApp {
             }
         }
         p.extend(crop);
+        p.extend(callout);
         let lit: Vec<Id> = hovered.iter().chain(&self.selection).copied().collect();
         let outlines = self.canvas.drawing.room_outlines(&model, &lit);
         let hover_lit = usize::from(hovered.is_some());
@@ -2945,6 +3014,8 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.spot_grip_overlay(&ui.painter_at(rect), rect, &view, spot_cursor);
+        self.image_frames(&ui.painter_at(rect), rect, &view, hovered);
+        self.image_grip_overlay(ui, &ui.painter_at(rect), rect, &view);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
         self.dimension_overlays(ui, &model, &view, rect, key);
@@ -2972,6 +3043,8 @@ impl BimApp {
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
             && self.canvas.crop_drag.is_none()
+            && self.canvas.callout_drag.is_none()
+            && self.canvas.callout_mark_drag.is_none()
             && self.canvas.level_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin()).map(local)
         {
@@ -3013,6 +3086,10 @@ impl BimApp {
     /// grip at the middle of each edge. A drag from a grip moves that edge; on release, `crop`.
     /// What to paint over the view once it's drawn.
     pub(crate) fn crop_grips(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, id: Id) -> Vec<Shape> {
+        // A Callout's boundary is its region, edited by `callout_grips` from either of its views.
+        if matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))) {
+            return Vec::new();
+        }
         let Some(region) = render::crop_region(&self.session.model, id) else { return Vec::new() };
         let at = |p: P2| pos(rect.min, view.px(p));
         let modify = self.tool == Tool::Modify;
@@ -3050,6 +3127,112 @@ impl BimApp {
                 shapes.push(Shape::rect_filled(r, 1.0, pal().surface));
                 shapes.push(Shape::rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle));
             }
+        }
+        shapes
+    }
+
+    /// The boundary, its grips and the mark of the Callout selected alone with Modify: on the view it is placed on (`current`
+    /// is its parent) or on the Callout's own view. A drag from a grip edits its region; a drag from its mark moves the mark.
+    /// Both run `modify`, so the boundary and the view stay one region.
+    pub(crate) fn callout_grips(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, current: Id) -> Vec<Shape> {
+        let m = Arc::clone(&self.session.model);
+        let Some((id, region, mark, on_parent, offset)) = (match self.selection.as_slice() {
+            &[id] if self.tool == Tool::Modify => m.elements.get(id).and_then(|e| match e {
+                Element::DetailView(v) if m.same(v.parent, current) => Some((id, v.region, v.mark, true, P2(0.0, 0.0))),
+                Element::DetailView(v) if id == current => {
+                    // A Callout's own view measures its section along the region, from 0: its parent's coordinates add that.
+                    let offset = if m.plan_level(id).is_some() { P2(0.0, 0.0) } else { P2(v.region[0].0, 0.0) };
+                    Some((id, v.region, v.mark, false, offset))
+                }
+                _ => None,
+            }),
+            _ => None,
+        })
+        .or_else(|| {
+            // The Callout on screen shows its own boundary and grips while Modify is on, even before it is picked.
+            match m.elements.get(current) {
+                Some(Element::DetailView(v)) if self.tool == Tool::Modify => {
+                    let offset = if m.plan_level(current).is_some() { P2(0.0, 0.0) } else { P2(v.region[0].0, 0.0) };
+                    Some((current, v.region, v.mark, false, offset))
+                }
+                _ => None,
+            }
+        }) else {
+            self.canvas.callout_drag = None;
+            self.canvas.callout_mark_drag = None;
+            return Vec::new();
+        };
+        let at = |p: P2| pos(rect.min, view.px(p - offset));
+        let to_parent = |q: (f32, f32)| view.mm(q) + offset;
+        let k = render::annotation(&m, current, *view);
+        let r = (4.0 * bimcraft_core::sheet::DENSITY as f32) * k;
+        let mark_at = |mark: Option<P2>, region: [P2; 2]| -> Pos2 {
+            match mark {
+                Some(p) => at(p),
+                None => {
+                    let corner = at(region[1]);
+                    pos2(corner.x + 0.9 * r, corner.y - 0.9 * r)
+                }
+            }
+        };
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(o) = ui.input(|i| i.pointer.press_origin())
+        {
+            let marker = mark_at(mark, region);
+            if on_parent && marker.distance(o) <= r + 4.0 {
+                self.canvas.callout_mark_drag = Some(id);
+            } else if let Some(k) = geom::edge_grips(region).iter().position(|g| at(*g).distance(o) <= 8.0) {
+                self.canvas.callout_drag = Some((id, k));
+            }
+        }
+        let held_edge = self.canvas.callout_drag.filter(|(v, _)| *v == id).map(|(_, k)| k);
+        let held_mark = self.canvas.callout_mark_drag.filter(|v| *v == id).is_some();
+        let now = ui.input(|i| i.pointer.latest_pos()).map(|q| to_parent((q.x - rect.min.x, q.y - rect.min.y)));
+        let shown = match (held_edge, now) {
+            (Some(k), Some(p)) => geom::move_edge(region, k, round(p)),
+            _ => region,
+        };
+        if response.drag_stopped() {
+            if held_edge.is_some() {
+                self.canvas.callout_drag = None;
+                if !self.canvas.quick() && shown != region {
+                    self.run("modify", json!({"id": id, "region": [point(shown[0]), point(shown[1])]}));
+                }
+            }
+            if held_mark {
+                self.canvas.callout_mark_drag = None;
+                if let Some(p) = now {
+                    self.run("modify", json!({"id": id, "mark": point(round(p))}));
+                }
+            }
+        }
+        let ring = [shown[0], P2(shown[1].0, shown[0].1), shown[1], P2(shown[0].0, shown[1].1)].map(at).to_vec();
+        let mut shapes = vec![Shape::closed_line(
+            ring,
+            Stroke::new(1.0, if held_edge.is_some() || held_mark { pal().accent } else { canvas_pal().muted }),
+        )];
+        if self.tool == Tool::Modify {
+            for g in geom::edge_grips(shown) {
+                let r = Rect::from_center_size(at(g), vec2(9.0, 9.0));
+                shapes.push(Shape::rect_filled(r, 1.0, pal().surface));
+                shapes.push(Shape::rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle));
+            }
+        }
+        // The mark being dragged follows the pointer, its leader stopping on the boundary.
+        if held_mark && let Some(p) = now {
+            let old = mark_at(mark, shown);
+            shapes.push(Shape::circle_filled(old, r + 3.0, pal().surface));
+            let target = render::detail_boundary_point(shown, p);
+            let cursor = at(p);
+            let target = at(target);
+            let (dx, dy) = (target.x - cursor.x, target.y - cursor.y);
+            let len = dx.hypot(dy).max(1e-6);
+            shapes.push(Shape::line_segment(
+                [pos2(cursor.x + dx / len * r, cursor.y + dy / len * r), target],
+                Stroke::new(1.0, canvas_pal().text),
+            ));
+            shapes.push(Shape::circle_filled(cursor, r, pal().surface));
+            shapes.push(Shape::circle_stroke(cursor, r, Stroke::new(1.0, canvas_pal().text)));
         }
         shapes
     }
@@ -3371,6 +3554,15 @@ impl BimApp {
                 if self.drawing.armed {
                     self.clear_typed();
                 }
+            }
+            // The point that stays, or the two whose length is typed: snapped as any point, Shift squaring the second.
+            &Tool::Scale(step) => {
+                let from: Vec<P2> = match step {
+                    crate::scale::Step::Second(a) => vec![a],
+                    _ => Vec::new(),
+                };
+                let pt = self.snap_point(m, level, v, at, &from, mods.shift && !from.is_empty());
+                self.scale_point(pt);
             }
             &Tool::Rotate { centre, start, place } => {
                 self.tool = match (place, start) {
@@ -3857,6 +4049,19 @@ impl BimApp {
                 match first {
                     None => self.tool = Tool::PatternCorner(Some(p)),
                     Some(a) => self.pattern_corners(a, p),
+                }
+            }
+            // A callout's fragment: two opposite corners, on a plan, a section or an elevation.
+            &Tool::DetailView(first) => {
+                let p = self.snap_point(m, level, v, at, first.as_slice(), false);
+                match first {
+                    None => self.tool = Tool::DetailView(Some(p)),
+                    Some(a) if a.dist(p) > TOL => {
+                        if self.make_callout(key, a, p) {
+                            self.tool = Tool::DetailView(None);
+                        }
+                    }
+                    Some(_) => {}
                 }
             }
             // Two opposite corners of a rectangle.
@@ -4878,6 +5083,8 @@ impl BimApp {
         let at = |p: P2| pos(rect.min, view.px(p));
         if response.drag_started_by(PointerButton::Primary)
             && self.canvas.crop_drag.is_none()
+            && self.canvas.callout_drag.is_none()
+            && self.canvas.callout_mark_drag.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let near = |p: P2| at(p).distance(o);
@@ -5014,6 +5221,8 @@ impl BimApp {
         let at = |p: P2| pos(rect.min, view.px(p));
         if response.drag_started_by(PointerButton::Primary)
             && self.canvas.crop_drag.is_none()
+            && self.canvas.callout_drag.is_none()
+            && self.canvas.callout_mark_drag.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let near = |p: P2| at(p).distance(o);
@@ -6037,6 +6246,7 @@ impl BimApp {
             | Tool::Move(_)
             | Tool::Copy(_)
             | Tool::Section(None)
+            | Tool::DetailView(None)
             | Tool::Shaft(None)
             | Tool::PatternCorner(None)
             | Tool::SlopeArrow(None)
@@ -6113,6 +6323,41 @@ impl BimApp {
                     p.add(Shape::closed_line(g.outer.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
                     let (area, unit) = m.units.area(g.area());
                     label(cursor, format!("{area:.2} {unit}"));
+                }
+                return;
+            }
+            &Tool::Scale(step) => {
+                use crate::scale::Step;
+                let cross = |c: Pos2| {
+                    p.circle_stroke(c, 5.0, stroke);
+                    p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
+                    p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
+                };
+                // What it scales, as it would stand, about the point on screen `c`.
+                let taken = self.scaled_selection();
+                let grown = |c: Pos2, k: f64| ghost_of(&taken, &|pt: Pos2| c + (pt - c) * k as f32);
+                match step {
+                    Step::Choose => {}
+                    Step::Base(k) => {
+                        let c = sc.screen(self.found(sc, q, &[], false));
+                        cross(c);
+                        grown(c, k);
+                        label(cursor, format!("{}%", (k * 1e4).round() / 100.0));
+                    }
+                    Step::First => cross(sc.screen(self.found(sc, q, &[], false))),
+                    Step::Second(a) => {
+                        let b = self.found(sc, q, &[a], shift);
+                        cross(sc.screen(a));
+                        p.line_segment([sc.screen(a), sc.screen(b)], stroke);
+                        label(cursor, m.length(a.dist(b)));
+                    }
+                    Step::Length(a, b) => {
+                        cross(sc.screen(a));
+                        p.line_segment([sc.screen(a), sc.screen(b)], stroke);
+                        if let Some((about, k)) = self.scale_typed() {
+                            grown(sc.screen(about), k);
+                        }
+                    }
                 }
                 return;
             }
@@ -6507,6 +6752,13 @@ impl BimApp {
             }
             // The tile a click would close: the rectangle to the cursor.
             &Tool::PatternCorner(Some(a)) => {
+                let b = self.found(sc, q, &[a], false);
+                let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)].map(|pt| sc.screen(pt));
+                p.add(Shape::closed_line(c.to_vec(), stroke));
+                return;
+            }
+            // The fragment a callout would take: the rectangle to the cursor.
+            &Tool::DetailView(Some(a)) => {
                 let b = self.found(sc, q, &[a], false);
                 let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)].map(|pt| sc.screen(pt));
                 p.add(Shape::closed_line(c.to_vec(), stroke));

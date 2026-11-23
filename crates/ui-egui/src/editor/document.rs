@@ -503,11 +503,17 @@ impl BimApp {
         Frame::new().inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 4 }).show(ui, |ui| {
             let key = UiId::new(("family-ribbon-widths", ed.doc_tab as u8));
             let room = ui.available_width();
+            let tab = format!("family:{}", ed.doc_tab.key());
+            ribbon::set_tab(&tab);
+            ribbon::begin_tab();
             ScrollArea::horizontal().id_salt(("family-ribbon", ed.doc_tab as u8)).auto_shrink([false, true]).show(ui, |ui| {
                 ribbon::tab(ui, key, room, |ui| {
                     ui.horizontal(|ui| self.family_panels(ui, &mut ed));
                 });
             });
+            if ribbon::drawn_panels() == 0 && ribbon::hidden_panels() > 0 {
+                self.empty_tab_notice(ui, &tab);
+            }
         });
         self.put_family(ed);
     }
