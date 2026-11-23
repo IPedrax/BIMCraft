@@ -4600,6 +4600,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 .fold(m.elevation(r.level) + r.offset, f64::max);
             let outline = m.roof_outline(r);
             extra.insert("ridge".into(), json!(hundredth(ridge)));
+            extra.insert("thickness".into(), json!(m.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness)));
             planar_quantities(m, id, &mut extra);
             extra.insert("outline".into(), json!(outline.into_iter().map(micron).collect::<Vec<_>>()));
         }

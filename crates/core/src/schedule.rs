@@ -368,6 +368,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             TYPE,
             LEVEL,
             (msg!("Slope"), Kind::Number, From::Key("slope")),
+            THICKNESS,
             PLAN_AREA,
             AREA,
             OPENINGS_AREA,
