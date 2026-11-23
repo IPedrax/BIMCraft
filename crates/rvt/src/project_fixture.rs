@@ -362,9 +362,11 @@ impl Project {
         let basic = fixture::basic_file_info(&Basic { release: self.release, username: &self.saved_by, ..Basic::default() });
         fixture::container(&[
             ("BasicFileInfo", &basic),
-            ("Formats/Latest", &fixture::gzip(&Self::schema_bytes())),
-            ("Global/ElemTable", &fixture::global(&self.element_table())),
-            ("Partitions/21", &fixture::partition(&chunks)),
+            // Revit stores the large streams in pages (`fixture::paged`): the reader strips the page trailers of any stream of
+            // this size, so a fixture past one page, which the compressor's output size decides, must carry them too.
+            ("Formats/Latest", &fixture::paged(&fixture::gzip(&Self::schema_bytes()))),
+            ("Global/ElemTable", &fixture::paged(&fixture::global(&self.element_table()))),
+            ("Partitions/21", &fixture::paged(&fixture::partition(&chunks))),
         ])
     }
 }
