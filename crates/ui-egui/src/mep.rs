@@ -25,11 +25,6 @@ pub(crate) struct FixtureTool {
     pub icon: Icon,
 }
 
-/// The run category a two-letter shortcut picks (the command's alias), if it is one.
-pub(crate) fn run_with(letters: &str) -> Option<&'static str> {
-    bimcraft_core::engine::find(letters).and_then(|c| bimcraft_core::run_category_of(c.id))
-}
-
 pub(crate) const FIXTURES: &[FixtureTool] = &[
     FixtureTool {
         key: "plumbing",
@@ -152,11 +147,6 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
 
 pub(crate) fn fixture(key: &str) -> Option<&'static FixtureTool> {
     FIXTURES.iter().find(|f| f.key == key)
-}
-
-/// The fixture tool a two-letter shortcut picks.
-pub(crate) fn fixture_with(letters: &str) -> Option<&'static FixtureTool> {
-    FIXTURES.iter().find(|f| f.letters == letters)
 }
 
 /// The kinds of family the fixture tool `key` places.

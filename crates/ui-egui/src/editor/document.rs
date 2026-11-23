@@ -14,7 +14,7 @@ use crate::ribbon;
 use crate::{big_button, icon_button, tab_button};
 use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane};
 use bimcraft_core::units::Units;
-use egui::{Align2, FontId, Frame, Margin, UiBuilder};
+use egui::{Align2, Event, FontId, Frame, Margin, UiBuilder};
 
 /// What the family document keeps of its own: its history.
 #[derive(Default)]
@@ -1850,6 +1850,23 @@ impl BimApp {
         true
     }
 
+    /// The chords a family tab takes from the registry: its own Save, Save As, Find, Undo and Redo, and the window's palettes
+    /// and dialogs, which act the same there. A project tool's chord is the project's, and a family tab leaves it.
+    const FAMILY_CHORDS: &'static [&'static str] = &[
+        "cmd.save",
+        "ui.file.save_as",
+        "ui.find",
+        "cmd.undo",
+        "cmd.redo",
+        "ui.palette.properties",
+        "ui.palette.browser",
+        "ui.settings",
+        "ui.settings.shortcuts",
+        "ui.view.3d",
+        "ui.view.zoom_fit",
+        "ui.assistant",
+    ];
+
     /// Save and Save As on a family tab (the Quick Access Toolbar's Save, File > Save Family and Save Family As…, Ctrl+S and
     /// Ctrl+Shift+S): the active family document to its file, as Revit saves the active document; the project never.
     pub(crate) fn family_save(&mut self, ask: bool) {
@@ -1862,30 +1879,43 @@ impl BimApp {
         }
     }
 
-    /// The family document's keys: Ctrl+S saves it (Ctrl+Shift+S asks where), Ctrl+K opens Find, Ctrl+Z undoes a step of its
-    /// own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of Temporary Hide/Isolate (`temp_hide.rs`), unless a field
-    /// being typed in (whose own they are) or a dialog has them; Ctrl+S and Ctrl+K work while a field has the keyboard, as on
-    /// a project's tab.
+    /// The family document's keys: the chords Keyboard Shortcuts assigned (Ctrl+S saves the family, Ctrl+Shift+S asks where,
+    /// Ctrl+K opens Find, Ctrl+Z and Ctrl+Y undo and redo a step of the document's own), and the two letters of Temporary
+    /// Hide/Isolate (`temp_hide.rs`), unless a field being typed in (whose own they are) or a dialog has them; Ctrl+S and
+    /// Ctrl+K work while a field has the keyboard, as on a project's tab.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family() else { return };
         if ed.modal() {
             return;
         }
         if !self.keys_taken(ctx) {
-            let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
-            if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
-                self.family_save(true);
-            }
-            // In a text field Ctrl's keys are the field's but S and K, which act at once; elsewhere they are letters typed
-            // with Ctrl (`family_typed`), which wait for a second.
-            if ctx.text_edit_focused() {
-                if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
-                    self.family_save(false);
+            let focused = ctx.text_edit_focused();
+            let events: Vec<Event> = ctx.input(|i| i.events.clone());
+            let mut handled: Vec<(egui::Key, Option<egui::Key>, egui::Modifiers)> = Vec::new();
+            for event in &events {
+                let Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. } = event else { continue };
+                // A bare key (Delete, the arrows, the F keys) belongs to the document's own handling, or has no binding of
+                // its own. Only a combination is a chord the registry resolves here.
+                if !(modifiers.ctrl || modifiers.alt || modifiers.command || modifiers.mac_cmd) {
+                    continue;
                 }
-                if pressed(egui::Modifiers::COMMAND, egui::Key::K) {
-                    self.find = Some(String::new());
+                // A field being typed in keeps its own keys but for the ones a family tab shares with the project.
+                if focused && !matches!(physical_key.unwrap_or(*key), egui::Key::S | egui::Key::K) {
+                    continue;
                 }
+                let physical = physical_key.unwrap_or(*key);
+                let chord = crate::shortcuts::KeyChord::from_event(physical, *modifiers);
+                let Some(action) = self.shortcuts.action_for_chord(&chord).cloned() else { continue };
+                // Only what a family tab does: its own Save, Save As, Find, Undo and Redo, and the window's palettes and
+                // dialogs. A project tool's chord is the project's, and would change it out of sight.
+                if !Self::FAMILY_CHORDS.contains(&action.as_ref()) {
+                    continue;
+                }
+                handled.push((*key, *physical_key, *modifiers));
+                self.typed.clear();
+                self.family_shortcut_action(ctx, &action);
             }
+            crate::consume_key_events(ctx, &handled);
         }
         if ctx.text_edit_focused() {
             return;
@@ -1976,12 +2006,27 @@ impl BimApp {
         {
             refused = Some(e);
         }
-        // Ctrl+Z and Ctrl+Y are letters typed with Ctrl (`family_ctrl_key`); Ctrl+Shift+Z redoes at once.
-        if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) {
-            ed.ask.redo = true;
-        }
+        // Ctrl+Shift+Z redoes, as its binding says; the sketch's own Z is the sketch's, above.
         if let Some(text) = refused {
             self.status = Status { text, error: true };
+        }
+    }
+
+    /// One of the registry's actions done on the active family document where the document does it itself, else as the window
+    /// does everywhere: Save saves the family (asking where when its file is unknown), Find opens, Undo and Redo step through
+    /// the document's own history, and its two-letter actions are the document's.
+    fn family_shortcut_action(&mut self, ctx: &Context, action: &str) {
+        match action {
+            "cmd.save" => self.family_save(false),
+            "ui.file.save_as" => self.family_save(true),
+            "ui.find" => self.find = Some(String::new()),
+            "cmd.undo" => self.family_undo(),
+            "cmd.redo" => self.family_redo(),
+            _ => {
+                if !self.execute_action(ctx, action) {
+                    self.status = Status { text: t("That shortcut has nothing to do here").to_string(), error: true };
+                }
+            }
         }
     }
 
