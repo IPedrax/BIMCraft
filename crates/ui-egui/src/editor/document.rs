@@ -682,6 +682,30 @@ impl BimApp {
                             ed.start_symbol_draw(SymbolKind::Fill, "Masking");
                         }
                     });
+                } else if !adaptive {
+                    // A component family's plan symbols: a line or an arc, text and a dot, made selected so Properties show
+                    // their numbers. They are plan marks, not annotation paper.
+                    use super::Part;
+                    ribbon::panel(ui, msg!("Detail"), |ui| {
+                        let tip = msg!("Symbolic Line: a line or an arc the family's plans draw, not part of its forms (a door's swing)");
+                        let r = big_button(ui, Icon::Line, msg!("Symbolic Line"), false, tip);
+                        ribbon::choices(ui, &r, false, |ui| {
+                            for (part, label) in [(Part::Line, msg!("Line")), (Part::Arc, msg!("Arc"))] {
+                                if ui.button(t(label)).clicked() {
+                                    ed.add_symbol(part);
+                                    ui.close();
+                                }
+                            }
+                        });
+                        let tip = msg!("Text: a label the family's plans draw");
+                        if big_button(ui, Icon::Text, "Text", false, tip).clicked() {
+                            ed.add_symbol(Part::Text);
+                        }
+                        let tip = msg!("Dot: a filled circle the family's plans draw");
+                        if big_button(ui, Icon::PointElement, msg!("Dot"), false, tip).clicked() {
+                            ed.add_symbol(Part::Dot);
+                        }
+                    });
                 }
             }
             DocTab::Insert => {
