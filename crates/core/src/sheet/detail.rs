@@ -12,7 +12,7 @@ use super::{CELL_TEXT, INK, ROW};
 use crate::font;
 use crate::model::{Element, Id, Model, Rebar};
 use crate::pen::Pen;
-use crate::rebar_detail::{self, MAX_STATIONS, RebarDetail, Set, in_frame, sketch, square, tag_text};
+use crate::rebar_detail::{self, MAX_STATIONS, RebarDetail, Set, in_frame, sketch, square};
 use crate::reinforce::{Frame, Kind, Located};
 use crate::render::{Drawing, Prim};
 use crate::steel::{self, Bars, Scope};
@@ -165,6 +165,30 @@ fn widest(tags: &[((f32, f32), String)]) -> f32 {
     tags.iter().map(|(_, t)| font::width(t, TAG)).fold(0.0, f32::max)
 }
 
+/// A tag not yet worded: where it points and the set it is of, with the bars it will say (a joined tag says several sets').
+struct Pending<'a> {
+    at: (f32, f32),
+    set: &'a Set,
+    count: usize,
+    spread: bool,
+    join: bool,
+}
+
+/// Adds the tag of `set` at `at`. A set that may `join` and says no spacing joins the tag of an earlier set of its mark, its bars
+/// added to that tag's: a detailer writes `N1 8` for a column's bars that lie in rows of 3, 2 and 3, not a tag for each row.
+fn pend<'a>(tags: &mut Vec<Pending<'a>>, at: (f32, f32), set: &'a Set, spread: bool, join: bool) {
+    let earlier = if join && !spread { tags.iter().position(|t| t.join && !t.spread && t.set.mark == set.mark) } else { None };
+    match earlier.and_then(|i| tags.get_mut(i)) {
+        Some(t) => t.count += set.count,
+        None => tags.push(Pending { at, set, count: set.count, spread, join }),
+    }
+}
+
+/// `tags` worded, each an anchor and its text.
+fn worded(m: &Model, tags: Vec<Pending>) -> Vec<((f32, f32), String)> {
+    tags.into_iter().map(|t| (t.at, rebar_detail::tag_count(m, t.set, t.count, t.spread))).collect()
+}
+
 fn bar(m: &Model, id: Id) -> Option<&Rebar> {
     match m.elements.get(id) {
         Some(Element::Rebar(rb)) => Some(rb),
@@ -230,13 +254,35 @@ fn list(ink: &mut Ink, m: &Model, bars: &Bars, host: Id, top: f32) -> f32 {
     }
     let w = |name: &str| m.language.word(name).to_string();
     let heads = [w("Mark"), w("Shape"), w("Diameter"), w("Count"), w("Length"), w("Total Length"), w("Weight")];
-    let cols = [70.0f32, SHAPE_COLUMN, 70.0, 70.0, 90.0, 100.0, 90.0];
+    let table: Vec<[Option<String>; 7]> = rows
+        .iter()
+        .map(|row| {
+            [
+                Some(row.mark.clone()),
+                None,
+                Some(row.diameter.to_string()),
+                Some(row.count.to_string()),
+                Some(m.length(row.length)),
+                Some(m.length(row.total_length)),
+                Some(format!("{:.2}", row.weight_kg)),
+            ]
+        })
+        .collect();
+    // A column is as wide as its heading or its widest cell needs (a heading in another language, a long length), never less than usual.
+    let mut cols = [70.0f32, SHAPE_COLUMN, 70.0, 70.0, 90.0, 100.0, 90.0];
+    for (i, c) in cols.iter_mut().enumerate() {
+        let head = heads.get(i).map(String::as_str);
+        let cells = table.iter().filter_map(|r| r.get(i).and_then(|t| t.as_deref()));
+        let wide = cells.chain(head).map(|t| font::width(t, CELL_TEXT)).fold(0.0, f32::max);
+        *c = c.max(wide + 16.0);
+    }
     // Where each column starts, and the table's width at the end.
     let mut x: Vec<f32> = vec![0.0];
     for c in cols {
         x.push(x.last().copied().unwrap_or(0.0) + c);
     }
     let width = x.last().copied().unwrap_or(0.0);
+    let middle = |i: usize| (x.get(i).copied().unwrap_or(0.0) + x.get(i + 1).copied().unwrap_or(width)) / 2.0;
     let height = ROW + SHAPE_ROW * rows.len() as f32 + ROW;
     ink.rect((0.0, top), (width, top + height), Pen::HEAVY);
     for (i, head) in heads.iter().enumerate() {
@@ -248,23 +294,13 @@ fn list(ink: &mut Ink, m: &Model, bars: &Bars, host: Id, top: f32) -> f32 {
     }
     ink.line(vec![(0.0, top + ROW), (width, top + ROW)], Pen::MEDIUM, false);
     let mut total = 0.0;
-    for (n, row) in rows.iter().enumerate() {
+    for (n, (row, cells)) in rows.iter().zip(&table).enumerate() {
         let y = top + ROW + SHAPE_ROW * n as f32;
         ink.line(vec![(0.0, y + SHAPE_ROW), (width, y + SHAPE_ROW)], Pen::FINE, false);
         let mid = y + SHAPE_ROW / 2.0;
-        let cells = [
-            Some(row.mark.clone()),
-            None,
-            Some(row.diameter.to_string()),
-            Some(row.count.to_string()),
-            Some(m.length(row.length)),
-            Some(m.length(row.total_length)),
-            Some(format!("{:.2}", row.weight_kg)),
-        ];
         for (i, cell) in cells.iter().enumerate() {
-            let (l, r) = (x.get(i).copied().unwrap_or(0.0), x.get(i + 1).copied().unwrap_or(width));
             if let Some(text) = cell {
-                ink.centred(text, ((l + r) / 2.0, mid), CELL_TEXT);
+                ink.centred(text, (middle(i), mid), CELL_TEXT);
             }
         }
         if let Some(path) = row.bars.first().and_then(|b| bar(m, *b)).map(|rb| rb.path.as_slice()) {
@@ -273,14 +309,13 @@ fn list(ink: &mut Ink, m: &Model, bars: &Bars, host: Id, top: f32) -> f32 {
         total += row.weight_kg;
     }
     let y = top + ROW + SHAPE_ROW * rows.len() as f32;
-    ink.centred(&w("Total"), (35.0, y + ROW / 2.0), CELL_TEXT);
-    let last = x.get(6).copied().unwrap_or(0.0);
-    ink.centred(&format!("{total:.2}"), (last + 45.0, y + ROW / 2.0), CELL_TEXT);
+    ink.centred(&w("Total"), (middle(0), y + ROW / 2.0), CELL_TEXT);
+    ink.centred(&format!("{total:.2}"), (middle(6), y + ROW / 2.0), CELL_TEXT);
     top + height
 }
 
 /// A bar's sketch in the cell `(left, top, width, height)`: its unfolded legs scaled to fit, each lettered with its length, and each
-/// bend that is not a right angle with its angle.
+/// bend that is not a right angle with its angle (a curved bar, such as a round hoop, is drawn without them).
 fn shape(ink: &mut Ink, m: &Model, path: &[P3], (left, top, w, h): (f32, f32, f32, f32)) {
     let sk = sketch(path);
     let (Some(first), true) = (sk.points.first().copied(), sk.points.len() >= 2) else { return };
@@ -298,10 +333,22 @@ fn shape(ink: &mut Ink, m: &Model, path: &[P3], (left, top, w, h): (f32, f32, f3
     let pts: Vec<(f32, f32)> = sk.points.iter().map(at).collect();
     ink.line(pts.clone(), Pen::MEDIUM, false);
     let turns = steel::shape(path).turns;
-    for (i, pair) in sk.points.windows(2).enumerate().take(steel::MAX_LABEL_LEGS) {
+    // A round hoop is a polygon of many short chords turning a few degrees each: lettering each would pile up, so it is drawn bare.
+    let gentle = turns.iter().filter(|t| **t <= 45.0).count();
+    let curved = sk.points.len() > steel::MAX_LABEL_LEGS + 1 && gentle * 4 >= turns.len() * 3;
+    for (i, pair) in sk.points.windows(2).enumerate().take(if curved { 0 } else { steel::MAX_LABEL_LEGS }) {
         if let ([a, b], Some(pa), Some(pb)) = (pair, pts.get(i), pts.get(i + 1)) {
-            let len = (b[0] - a[0]).hypot(b[1] - a[1]);
-            ink.centred(&m.length(len), ((pa.0 + pb.0) / 2.0, (pa.1 + pb.1) / 2.0 - 7.0), SMALL);
+            let len = m.length((b[0] - a[0]).hypot(b[1] - a[1]));
+            let (mx, my) = ((pa.0 + pb.0) / 2.0, (pa.1 + pb.1) / 2.0);
+            if (pb.1 - pa.1).abs() > (pb.0 - pa.0).abs() {
+                // A steep leg is lettered beside it, outside the sketch, so the two sides of a narrow stirrup don't print on each other.
+                let side = if mx < left + w / 2.0 { -1.0 } else { 1.0 };
+                ink.centred(&len, (mx + side * (4.0 + font::width(&len, SMALL) / 2.0), my), SMALL);
+            } else {
+                // A flat leg is lettered above it, but below it when it lies under the sketch's middle (a stirrup's bottom).
+                let side = if my > top + h / 2.0 + 1.0 { 7.0 } else { -7.0 };
+                ink.centred(&len, (mx, my + side), SMALL);
+            }
         }
         if let (Some(turn), Some(p)) = (turns.get(i), pts.get(i + 1))
             && (turn - 90.0).abs() > 1.0
@@ -354,7 +401,7 @@ fn member(ink: &mut Ink, m: &Model, rd: &RebarDetail, b: &Located, sets: &[Set],
     let (ey0, ey1) = (c0.1.min(c1.1), c0.1.max(c1.1));
     ink.rect(c0, c1, Pen::PROJECTION);
     let mut seen: HashSet<Vec<(i64, i64)>> = HashSet::new();
-    let mut tags: Vec<((f32, f32), String)> = Vec::new();
+    let mut tags: Vec<Pending> = Vec::new();
     for set in sets {
         let lines: Vec<Vec<(f32, f32)>> =
             set.bars.iter().filter_map(|id| bar(m, *id)).map(|rb| rb.path.iter().map(|p| elev(in_frame(f, *p))).collect()).collect();
@@ -386,10 +433,10 @@ fn member(ink: &mut Ink, m: &Model, rd: &RebarDetail, b: &Located, sets: &[Set],
         }
         if let Some(first) = lines.first() {
             let anchor = if tall && stirrup { anchor_right(first) } else { anchor_of(first, stirrup) };
-            tags.push((anchor, tag_text(m, set, rebar_detail::spreads(set, f))));
+            pend(&mut tags, anchor, set, rebar_detail::spreads(set, f), !stirrup);
         }
     }
-    ink.column(tags, ex1 + 40.0, ey0);
+    ink.column(worded(m, tags), ex1 + 40.0, ey0);
 
     // The stations of its sections, marked on the elevation.
     let stations: Vec<f64> = if rd.stations.is_empty() { rebar_detail::default_stations(m, sets, b) } else { rd.stations.clone() }
@@ -443,7 +490,7 @@ fn member(ink: &mut Ink, m: &Model, rd: &RebarDetail, b: &Located, sets: &[Set],
         } else {
             ink.rect((cx - sw / 2.0, cy - sh / 2.0), (cx + sw / 2.0, cy + sh / 2.0), Pen::PROJECTION);
         }
-        let mut tags: Vec<((f32, f32), String)> = Vec::new();
+        let mut tags: Vec<Pending> = Vec::new();
         for set in sets {
             let bars: Vec<&Rebar> = set.bars.iter().filter_map(|id| bar(m, *id)).collect();
             if bars.iter().all(|rb| square(f, &rb.path)) {
@@ -455,7 +502,7 @@ fn member(ink: &mut Ink, m: &Model, rd: &RebarDetail, b: &Located, sets: &[Set],
                 if let Some(rb) = near.filter(|_| *s >= lo - reach && *s <= hi + reach) {
                     let pts: Vec<(f32, f32)> = rb.path.iter().map(|p| in_frame(f, *p)).map(|q| at(q[1], q[2])).collect();
                     ink.rod(&pts, Pen::MEDIUM, set.diameter * kk);
-                    tags.push((anchor_of(&pts, true), tag_text(m, set, false)));
+                    pend(&mut tags, anchor_of(&pts, true), set, false, false);
                 }
             } else {
                 let spots: Vec<[f64; 2]> = bars.iter().filter_map(|rb| crossing(f, &rb.path, *s)).collect();
@@ -463,10 +510,11 @@ fn member(ink: &mut Ink, m: &Model, rd: &RebarDetail, b: &Located, sets: &[Set],
                     ink.dot(at(q[0], q[1]), (set.diameter * kk / 2.0).max(MIN_DOT) as f32);
                 }
                 if let Some(q) = spots.first() {
-                    tags.push((at(q[0], q[1]), tag_text(m, set, false)));
+                    pend(&mut tags, at(q[0], q[1]), set, false, true);
                 }
             }
         }
+        let tags = worded(m, tags);
         let column_x = cx + sw / 2.0 + 30.0;
         let wide = widest(&tags);
         ink.column(tags, column_x, cy - sh / 2.0);
@@ -498,7 +546,7 @@ fn plan(ink: &mut Ink, m: &Model, b: &Located, sets: &[Set], k: f64) -> [f32; 4]
         ink.rect(c0, c1, Pen::PROJECTION);
     }
     let mut seen: HashSet<Vec<(i64, i64)>> = HashSet::new();
-    let mut tags: Vec<((f32, f32), String)> = Vec::new();
+    let mut tags: Vec<Pending> = Vec::new();
     for set in sets {
         let lines: Vec<Vec<(f32, f32)>> =
             set.bars.iter().filter_map(|id| bar(m, *id)).map(|rb| rb.path.iter().map(|p| at(in_frame(f, *p))).collect()).collect();
@@ -517,10 +565,11 @@ fn plan(ink: &mut Ink, m: &Model, b: &Located, sets: &[Set], k: f64) -> [f32; 4]
             ink.line(vec![anchor_of(a, false), anchor_of(z, false)], Pen::FINE, false);
         }
         if let Some(first) = lines.first() {
-            tags.push((anchor_of(first, false), tag_text(m, set, spread)));
+            // One tag for each direction of a mesh, so each says where it points: they never join.
+            pend(&mut tags, anchor_of(first, false), set, spread, false);
         }
     }
-    ink.column(tags, x1 + 60.0, y0);
+    ink.column(worded(m, tags), x1 + 60.0, y0);
     let across = if b.round { format!("ø{}", m.length(b.length)) } else { m.length(b.length) };
     ink.dimension(x0, x1, y1 + 30.0, &across);
     if !b.round {

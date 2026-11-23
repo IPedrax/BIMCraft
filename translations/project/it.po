@@ -1079,7 +1079,7 @@ msgstr "Piano di lavoro cucina"
 msgid "Yes"
 msgstr "Sì"
 
-#: crates/core/src/sheet/detail.rs:314
+#: crates/core/src/sheet/detail.rs:361
 msgid "spatial"
 msgstr ""
 

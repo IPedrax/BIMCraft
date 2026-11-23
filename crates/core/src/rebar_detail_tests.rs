@@ -362,6 +362,78 @@ fn a_round_column_has_round_sections() {
 }
 
 #[test]
+fn bars_of_one_mark_in_rows_are_one_tag_but_the_zones_of_a_stirrup_stay_apart() {
+    // The eight bars of a square column lie in rows of 3, 2 and 3, and a round one's round its circle: sets, but one mark and one tag,
+    // in the elevation and in each of the three sections.
+    for kind in ["Concrete 300 x 300", "Concrete Round 400"] {
+        let mut s = Session::new();
+        let host = column(&mut s, kind);
+        let id = view(&mut s, json!({"host": host}))["id"].as_u64().unwrap();
+        let said = words(&laid(&s, id));
+        assert_eq!(said.iter().filter(|x| *x == "N1 8 ø16 C=2950").count(), 4, "{kind}: {said:?}");
+        assert!(!said.iter().any(|x| x.starts_with("N1 ") && x != "N1 8 ø16 C=2950"), "{kind}: {said:?}");
+    }
+    // A beam's two end zones of stirrups are two tags that read alike: they spread, so they say where they are and never join.
+    let mut s = Session::new();
+    let host = armed(&mut s);
+    let id = view(&mut s, json!({"host": host}))["id"].as_u64().unwrap();
+    let said = words(&laid(&s, id));
+    assert_eq!(said.iter().filter(|x| *x == "N3 7 ø5 c/100 C=1180").count(), 2, "{said:?}");
+}
+
+#[test]
+fn the_lists_headings_fit_their_columns_and_a_round_hoop_is_sketched_bare() {
+    let mut s = Session::new();
+    let host = armed(&mut s);
+    let id = view(&mut s, json!({"host": host}))["id"].as_u64().unwrap();
+    let l = laid(&s, id);
+    // Each heading's box clears the next one's, so none runs into its neighbour.
+    let mut spans: Vec<(f32, f32)> = ["Diameter", "Count", "Length", "Total Length", "Weight"]
+        .iter()
+        .filter_map(|head| {
+            l.ops.iter().find_map(|op| match op {
+                Op::Text { text, at, height } if text == head => {
+                    Some((at.0 - crate::font::width(text, *height) / 2.0, at.0 + crate::font::width(text, *height) / 2.0))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(spans.len(), 5);
+    spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for pair in spans.windows(2) {
+        assert!(pair[0].1 + 4.0 <= pair[1].0, "{spans:?}");
+    }
+    // A stirrup's legs are lettered with their lengths; a round hoop's twenty-four chords are not lettered at all.
+    let said = words(&l);
+    assert!(said.iter().any(|x| x == "145"), "{said:?}");
+    // The two sides of the narrow stirrup are both 445, and their lettering stands apart.
+    let mut sides: Vec<(f32, f32)> = l
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Text { text, at, height } if text == "445" => {
+                let half = crate::font::width(text, *height) / 2.0;
+                Some((at.0 - half, at.0 + half))
+            }
+            _ => None,
+        })
+        .collect();
+    sides.sort_by(|a, b| a.0.total_cmp(&b.0));
+    assert!(sides.len() == 2 && sides[0].1 <= sides[1].0, "{sides:?}");
+    // Its top leg's 145 is above the sketch and its bottom leg's below it: two labels, one over the other.
+    let mut flats: Vec<f32> =
+        l.ops.iter().filter_map(|op| if let Op::Text { text, at, .. } = op { (text == "145").then_some(at.1) } else { None }).collect();
+    flats.sort_by(f32::total_cmp);
+    assert!(flats.len() == 2 && flats[1] - flats[0] > 40.0, "{flats:?}");
+    let mut s = Session::new();
+    let host = column(&mut s, "Concrete Round 400");
+    let id = view(&mut s, json!({"host": host}))["id"].as_u64().unwrap();
+    let said = words(&laid(&s, id));
+    assert!(!said.iter().any(|x| x.ends_with('°') || x == "45"), "{said:?}");
+}
+
+#[test]
 fn a_footing_detail_has_a_plan_a_section_under_it_and_a_list() {
     let mut s = Session::new();
     let host = footing(&mut s);
