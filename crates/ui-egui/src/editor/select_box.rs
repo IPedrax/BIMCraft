@@ -27,6 +27,8 @@
 //! element is boxed by what it is drawn with on screen: a form's or a nested instance's edges as the view draws them (an L's
 //! inner corner, never the hull's chord across it, `views::outline_edges`), a plane's trace, a
 //! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place.
+//! An annotation family's symbols are paper marks (`family::annotation::marks_indexed`), its fills included, so the scene
+//! boxes and hits those by the same paper geometry the plan draws (`docs/areas/annotation-families.md`).
 //! Select Elements by Face (FE-20, `selection.rs`) says what a face does: on, a click on a form's or a nested instance's
 //! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
 //! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, and a
@@ -433,6 +435,38 @@ impl Scene<'_> {
                 // Symbols are annotation of the plans: the elevations draw none.
                 if !matches!(self.which, Which::Plan | Which::Ceiling) {
                     return Vec::new();
+                }
+                // An annotation family draws paper marks, its fills included; the plan marks serve the other families.
+                if self.family.is_annotation()
+                    && let Ok(marks) = bimcraft_core::family::annotation::marks_indexed(self.family, self.values)
+                    && let Some((_, mark)) = marks.into_iter().find(|(j, _)| *j == i)
+                {
+                    use bimcraft_core::family::annotation::PaperMark;
+                    return match mark {
+                        PaperMark::Line { pts, .. } => open(&pts),
+                        PaperMark::Fill { rings, .. } => rings
+                            .iter()
+                            .flat_map(|ring| {
+                                let mut pts = ring.clone();
+                                if let Some(first) = pts.first().copied() {
+                                    pts.push(first);
+                                }
+                                open(&pts)
+                            })
+                            .collect(),
+                        PaperMark::Dot { centre, radius } => {
+                            let ring: Vec<P2> = (0..=12)
+                                .map(|k| {
+                                    let (s, c) = (std::f64::consts::TAU * f64::from(k) / 12.0).sin_cos();
+                                    P2(centre.0 + radius * c, centre.1 + radius * s)
+                                })
+                                .collect();
+                            open(&ring)
+                        }
+                        PaperMark::Label { at, height, text, align, .. } => {
+                            bimcraft_core::family::lettering(&text, at, height, align).iter().flat_map(|stroke| open(stroke)).collect()
+                        }
+                    };
                 }
                 use bimcraft_core::family::Mark;
                 match self.family.symbol_mark(i, self.values, Some(self.detail)) {
