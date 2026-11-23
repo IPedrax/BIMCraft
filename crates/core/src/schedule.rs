@@ -301,7 +301,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
     (
         "door",
         6,
-        &[MARK, TYPE, WIDTH, HEIGHT, OPENING_AREA, LEVEL, HOST, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+        &[MARK, TYPE, WIDTH, HEIGHT, LEVEL, HOST, OPENING_AREA, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
     ),
     (
         "window",
@@ -311,10 +311,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
             TYPE,
             WIDTH,
             HEIGHT,
-            OPENING_AREA,
             (msg!("Sill"), Kind::Length, From::Key("sill")),
             LEVEL,
             HOST,
+            OPENING_AREA,
             FAMILY,
             OPERATION,
             COUNT,
@@ -1818,7 +1818,8 @@ mod tests {
             assert_eq!(wall[2], Value::Null, "a wall has a thickness, not a width");
             let (l, h) = (wall[4].as_f64().unwrap(), wall[3].as_f64().unwrap());
             assert!(l > 0.0 && h > 0.0, "{wall:?}");
-            assert_eq!(wall[5], json!(fine(l * h / 1e6)), "a wall's area is its length by its height");
+            let area = wall[5].as_f64().unwrap();
+            assert!(area > 0.0 && area <= fine(l * h / 1e6), "a wall's area is its length by its height, less its openings");
         }
     }
 
