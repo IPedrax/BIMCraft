@@ -4,6 +4,25 @@ What the project's structure comes to: concrete, formwork and steel (`quantities
 `quantities_tests.rs`), the steel list and the cut plan (`steel.rs`, `commands/bars.rs`; tests in `steel_tests.rs`; the desktop's dialog is
 `ui-egui/src/steel.rs`). Cost is planned next and will be written here.
 
+## Areas of walls, floors, ceilings and roofs
+
+Nothing here is stored either: `Model::quantities` works out a planar element's areas and volume when its JSON is made, so
+its `elements` keys, its schedule's fields, the IFC quantities and `export_crosscheck` follow one rule. A wall measures one
+face; a floor, a ceiling and a roof measure their surface, by the slope of each piece, and a floor or a roof also reports
+its plan projection.
+
+| Key | Meaning |
+|---|---|
+| `area_m2` | net surface: a wall's one face, a floor's, ceiling's or roof's surface by its slope |
+| `openings_area_m2` | what its openings take from that surface: a wall's doors, windows and the voids their families cut; a slab's or roof's own openings and the shafts through it |
+| `plan_area_m2` | a floor's or a roof's net plan projection; a flat floor's equals its `area_m2` |
+| `volume_m3` | net volume, less openings and shafts |
+
+A wall's net side is its net volume over its thickness (`walls::prisms`, `walls::prism_volume`), so an arched window cuts
+its arc, not its bounding rectangle; a wall of no known thickness has no area (null, not 0). A ceiling is flat, so its
+surface and plan are the same. A roof whose faces can't be found has no area, as the IFC already says. The gross areas are
+not exposed: they are only what the two numbers above are worked out from.
+
 ## Concrete, formwork and steel
 
 Nothing here is stored either. A member's `volume_m3`, `formwork_m2`, `rebar_kg` and `rebar_ratio` are worked out when its JSON is made
