@@ -101,6 +101,7 @@ impl Draft {
         ed.types = self.types;
         ed.forms = self.forms;
         ed.symbols = self.symbols;
+        ed.connectors = self.connectors;
         ed.adaptive = self.adaptive;
         ed.picked = self.picked;
         ed.planes = self.planes;
