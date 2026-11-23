@@ -7,11 +7,15 @@ pub mod align;
 #[cfg(test)]
 mod align_tests;
 pub mod alignment;
+pub mod assets;
+#[cfg(test)]
+mod assets_tests;
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
 pub mod bath;
+pub mod bima;
 pub mod bimc;
 pub mod bounds;
 pub mod bridge;
@@ -157,6 +161,8 @@ mod ifc_generic_tests;
 mod ifc_geometry_tests;
 #[cfg(test)]
 mod ifc_member_tests;
+#[cfg(test)]
+mod image_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
@@ -167,6 +173,8 @@ pub mod lines;
 pub mod link;
 #[cfg(test)]
 mod link_dims_tests;
+#[cfg(test)]
+mod links_tests;
 pub mod loads;
 pub mod massing;
 pub mod memory;
@@ -192,6 +200,7 @@ mod parameter_tests;
 pub mod parameters;
 pub mod pat;
 pub mod pdf;
+pub mod pdf_in;
 pub mod pen;
 pub mod phasing;
 pub mod places;
@@ -243,6 +252,9 @@ pub mod rooms;
 mod run_join_tests;
 pub mod runs;
 pub mod sample;
+pub mod scale;
+#[cfg(test)]
+mod scale_tests;
 pub mod schedule;
 #[cfg(test)]
 mod section_box_tests;
@@ -293,6 +305,8 @@ mod vertical_tools_tests;
 pub mod view3d;
 #[cfg(test)]
 mod wall_mitre_tests;
+#[cfg(test)]
+mod wall_shape_tests;
 #[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;

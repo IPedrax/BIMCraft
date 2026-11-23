@@ -714,7 +714,10 @@ impl Model {
                 name.split_once(": ").is_some_and(|(f, t)| self.families.get_mut(f).is_some_and(|fam| fam.types.remove(t).is_some()))
             }
             Kind::Material => self.materials.remove(name).is_some(),
-            Kind::Picture => self.images.remove(name).is_some(),
+            Kind::Picture => {
+                self.pdfs.remove(name);
+                self.images.remove(name).is_some()
+            }
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
             Kind::TitleBlock => self.title_blocks.remove(name).is_some(),
@@ -1446,7 +1449,7 @@ impl Model {
 
 /// Each name `g` holds of a library entry, given to `f` with what it names, which may put another in its place: a view's
 /// template, filters, phase, phase filter, design options, its linework's line styles and the CAD drawings whose layers it hides.
-fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
+pub(crate) fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
     for o in g.categories.values_mut().chain(g.elements.values_mut()).chain(g.filters.iter_mut().map(|a| &mut a.over)) {
         for name in o.patterns_mut() {
             f(&Kind::FillPattern, name);
@@ -1600,6 +1603,7 @@ impl crate::model::Element {
                 }
             }
             Element::CadImport(ci) => f(&Kind::Cad, &mut ci.cad),
+            Element::Image(im) => f(&Kind::Picture, &mut im.picture),
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),

@@ -505,11 +505,23 @@ impl BimApp {
             found.dedup();
             found
         };
-        let boxed = self.drag_box(ui, &response, rect, inside);
+        // Edit Profile sketched here: its lines on the wall's face, a drag from a picked line's end holding its grip, not a box.
+        let profile = self
+            .sketch_face_in(Sheet::Section(id))
+            .zip(render::section_camera(&model, id, view))
+            .map(|(surface, (cam, _))| crate::sketch3d::Plane { cam, rect, ppp: 1.0, surface });
+        let gripped = self.sketch3d_grab(ui, &response, profile);
+        let boxed = if gripped { Vec::new() } else { self.drag_box(ui, &response, rect, inside) };
         self.cut.image = held;
         p.extend(boxed);
         p.extend(datum);
         let clicked = self.clicked_at(&response).filter(|_| !picking).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
+        if let Some(plane) = profile {
+            self.sketch3d(ui, &response, &p, plane, clicked.map(|q| rect.min + egui::vec2(q.0, q.1)), None);
+            self.context_menu(&response);
+            self.nav_bar(ui, rect, id);
+            return;
+        }
         // Along the line and up, to the nearest 10 mm.
         let grid = self.background_grid();
         let snapping = self.grid_snapping;

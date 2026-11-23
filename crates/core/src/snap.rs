@@ -500,6 +500,9 @@ impl<'a> Scene<'a> {
                 Element::Railing(r) if r.level == level => s.points.extend(ring(&r.path)),
                 Element::PropertyLine(pl) if pl.level == level => s.polyline(&pl.points, true, of),
                 Element::CadImport(ci) if ci.level == level => cad_scene(&mut s, m, ci, p, window, look, id),
+                Element::Image(im) if im.snaps && im.level == level && im.view.is_none_or(|v| v == m.guid(view)) => {
+                    pdf_scene(&mut s, m, im, p, window, id)
+                }
                 _ => {}
             }
         }
@@ -590,6 +593,83 @@ fn cad_scene(s: &mut Scene, m: &Model, ci: &crate::model::CadImport, p: P2, wind
                 }
                 s.segment(place(a), place(b), of);
             }
+        }
+    }
+}
+
+/// A PDF's edge shorter than this, points, is taken for a step of a curve followed: its line is snapped to, not its ends.
+const CURVE_STEP: f32 = 2.0;
+/// The most edges one placed PDF gives one snap.
+const MAX_PDF_EDGES: usize = 4_000;
+
+/// What of a placed PDF that snaps (`PlacedImage::snaps`) lies within `window` mm of `p`: its lines' and its shapes' straight
+/// edges, their ends and middles, as a CAD import's, so a wall can be traced over a drawing; a step of a curve its line alone,
+/// and a letter nothing. They are the image's, `id`.
+fn pdf_scene(s: &mut Scene, m: &Model, im: &crate::model::PlacedImage, p: P2, window: f64, id: Id) {
+    use crate::pdf_in::Item;
+    let of = Some(id);
+    let (Some(doc), Some(h)) = (m.pdfs.get(&im.picture), im.height(m)) else { return };
+    let page = doc.drawing();
+    let [pw, ph] = page.size;
+    if !(pw > 0.0 && ph > 0.0 && im.width > 0.0 && h > 0.0) {
+        return;
+    }
+    let (left, top, w) = (im.at.0 - im.width / 2.0, im.at.1 + h / 2.0, im.width);
+    let place = |q: [f32; 2]| {
+        let (mut u, mut v) = (f64::from(q[0]) / pw, f64::from(q[1]) / ph);
+        if im.flip_x {
+            u = 1.0 - u;
+        }
+        if im.flip_y {
+            v = 1.0 - v;
+        }
+        P2(left + u * w, top - v * h)
+    };
+    // The window on the page, points: its corners taken back through the image, flipped or not.
+    let unplace = |q: P2| {
+        let (mut u, mut v) = ((q.0 - left) / w, (top - q.1) / h);
+        if im.flip_x {
+            u = 1.0 - u;
+        }
+        if im.flip_y {
+            v = 1.0 - v;
+        }
+        [(u * pw) as f32, (v * ph) as f32]
+    };
+    let (a, b) = (unplace(P2(p.0 - window, p.1 - window)), unplace(P2(p.0 + window, p.1 + window)));
+    let (lo, hi) = ([a[0].min(b[0]), a[1].min(b[1])], [a[0].max(b[0]), a[1].max(b[1])]);
+    let near = |b: [f32; 4]| b[0] <= hi[0] && b[2] >= lo[0] && b[1] <= hi[1] && b[3] >= lo[1];
+    let mut edges = 0;
+    let mut take = |s: &mut Scene, pts: &[[f32; 2]], closed: bool| {
+        let close = closed.then(|| pts.last().copied().zip(pts.first().copied())).flatten();
+        for (a, b) in pts.windows(2).filter_map(|w| Some((*w.first()?, *w.get(1)?))).chain(close) {
+            if edges >= MAX_PDF_EDGES {
+                return;
+            }
+            if !near([a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])]) {
+                continue;
+            }
+            edges += 1;
+            if (a[0] - b[0]).hypot(a[1] - b[1]) >= CURVE_STEP {
+                s.segment(place(a), place(b), of);
+            } else {
+                s.lines.push((place(a), place(b), of));
+            }
+        }
+    };
+    for item in page.items.iter().filter(|i| near(i.bounds())) {
+        match item {
+            Item::Stroke { lines, .. } => {
+                for (pts, closed) in lines {
+                    take(s, pts, *closed);
+                }
+            }
+            Item::Fill { rings, letter: false, .. } => {
+                for r in rings {
+                    take(s, r, true);
+                }
+            }
+            _ => {}
         }
     }
 }

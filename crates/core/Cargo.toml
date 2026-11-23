@@ -20,6 +20,7 @@ zune-jpeg = { workspace = true }
 zune-jpegxl = { workspace = true }
 zune-core = { workspace = true }
 jpeg-encoder = { workspace = true }
+hayro = { workspace = true }
 encoding_rs = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }

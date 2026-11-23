@@ -827,14 +827,31 @@ pub(crate) fn paint_prim(
         return;
     }
     let accent = match owner {
+        // A picture keeps its colours, a tint over it lighting it (`image_frames`): lit line by line, a page would read as ink.
+        _ if part == render::Part::Picture => None,
         Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
         Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
         _ => None,
     };
     match prim {
         Prim::Text { .. } => {}
+        // What a placed image or PDF fills (its letters, mostly): by the non-zero rule, every edge feathered, so a stroke thinner
+        // than a pixel (a serif letter's bars at a plan's zoom) shades the pixels it crosses rather than missing them all.
+        Prim::Fill { rings, color: c } if part == render::Part::Picture => {
+            let fill = color(*c);
+            let mut mesh = Mesh::default();
+            for tri in letter(rings).iter() {
+                let first = mesh.vertices.len() as u32;
+                for q in tri {
+                    mesh.colored_vertex(at.pos(*q), fill);
+                }
+                mesh.add_triangle(first, first + 1, first + 2);
+            }
+            feather(&mut mesh, rings, at, fill);
+            out(Shape::mesh(mesh));
+        }
         // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
-        // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
+        // Single-contour fills (including dots) keep their ordinary polygon rendering below.
         Prim::Fill { rings, color: c } if part == render::Part::Text || (part == render::Part::LinePattern && rings.len() > 1) => {
             let fill = accent.map_or(color(*c), |a| a.0);
             let mut mesh = Mesh::default();
@@ -905,6 +922,36 @@ pub(crate) fn paint_prim(
                     out(Shape::line(pts, stroke));
                 }
             }
+        }
+    }
+}
+
+/// How far an edge's feather reaches each side of it, points: a pixel across in all, as egui feathers what it fills itself.
+const FEATHER: f32 = 0.5;
+
+/// Each edge of `rings` (wound for the non-zero rule, its holes the other way), as `at` places them, given a strip from
+/// [`FEATHER`] inside it in `fill` to as far outside it clear: what a mesh, which egui doesn't feather, needs to shade an edge as
+/// much as it covers a pixel. The fill is on the same side of every edge, the side its largest ring winds round.
+fn feather(mesh: &mut Mesh, rings: &[Vec<(f32, f32)>], at: Place, fill: Color32) {
+    let area = |r: &[(f32, f32)]| (0..r.len()).map(|i| r[i].0 * r[(i + 1) % r.len()].1 - r[(i + 1) % r.len()].0 * r[i].1).sum::<f32>();
+    let Some(s) = rings.iter().map(|r| area(r)).max_by(|a, b| a.abs().total_cmp(&b.abs())).map(f32::signum) else { return };
+    for r in rings.iter().filter(|r| r.len() >= 2) {
+        for i in 0..r.len() {
+            let (a, b) = (at.pos(r[i]), at.pos(r[(i + 1) % r.len()]));
+            let d = b - a;
+            let len = d.length();
+            if len.is_nan() || len <= 1e-4 {
+                continue;
+            }
+            // Away from the fill: the fill is to the left of an edge of a ring that winds positively.
+            let away = vec2(d.y, -d.x) / len * s * FEATHER;
+            let first = mesh.vertices.len() as u32;
+            mesh.colored_vertex(a - away, fill);
+            mesh.colored_vertex(b - away, fill);
+            mesh.colored_vertex(b + away, Color32::TRANSPARENT);
+            mesh.colored_vertex(a + away, Color32::TRANSPARENT);
+            mesh.add_triangle(first, first + 1, first + 2);
+            mesh.add_triangle(first, first + 2, first + 3);
         }
     }
 }
@@ -2485,6 +2532,7 @@ impl BimApp {
         self.adaptive_grip_drag(ui, &response, rect, &view, level);
         self.view_grip_drag(ui, &response, rect, &view);
         self.spot_grip_drag(ui, &response, rect, &view, level);
+        self.image_grip_drag(ui, &response, rect, &view);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box. Walls' Outline's open
         // panel takes every drag as a box over the walls it picks.
@@ -2504,6 +2552,7 @@ impl BimApp {
             && self.drawing.grip.is_none()
             && self.adaptive_grip.is_none()
             && self.spot_grip.is_none()
+            && self.image_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -2931,6 +2980,8 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.spot_grip_overlay(&ui.painter_at(rect), rect, &view, spot_cursor);
+        self.image_frames(&ui.painter_at(rect), rect, &view, hovered);
+        self.image_grip_overlay(ui, &ui.painter_at(rect), rect, &view);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
         self.dimension_overlays(ui, &model, &view, rect, key);
@@ -3457,6 +3508,15 @@ impl BimApp {
                 if self.drawing.armed {
                     self.clear_typed();
                 }
+            }
+            // The point that stays, or the two whose length is typed: snapped as any point, Shift squaring the second.
+            &Tool::Scale(step) => {
+                let from: Vec<P2> = match step {
+                    crate::scale::Step::Second(a) => vec![a],
+                    _ => Vec::new(),
+                };
+                let pt = self.snap_point(m, level, v, at, &from, mods.shift && !from.is_empty());
+                self.scale_point(pt);
             }
             &Tool::Rotate { centre, start, place } => {
                 self.tool = match (place, start) {
@@ -6086,6 +6146,41 @@ impl BimApp {
                     p.add(Shape::closed_line(g.outer.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
                     let (area, unit) = m.units.area(g.area());
                     label(cursor, format!("{area:.2} {unit}"));
+                }
+                return;
+            }
+            &Tool::Scale(step) => {
+                use crate::scale::Step;
+                let cross = |c: Pos2| {
+                    p.circle_stroke(c, 5.0, stroke);
+                    p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
+                    p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
+                };
+                // What it scales, as it would stand, about the point on screen `c`.
+                let taken = self.scaled_selection();
+                let grown = |c: Pos2, k: f64| ghost_of(&taken, &|pt: Pos2| c + (pt - c) * k as f32);
+                match step {
+                    Step::Choose => {}
+                    Step::Base(k) => {
+                        let c = sc.screen(self.found(sc, q, &[], false));
+                        cross(c);
+                        grown(c, k);
+                        label(cursor, format!("{}%", (k * 1e4).round() / 100.0));
+                    }
+                    Step::First => cross(sc.screen(self.found(sc, q, &[], false))),
+                    Step::Second(a) => {
+                        let b = self.found(sc, q, &[a], shift);
+                        cross(sc.screen(a));
+                        p.line_segment([sc.screen(a), sc.screen(b)], stroke);
+                        label(cursor, m.length(a.dist(b)));
+                    }
+                    Step::Length(a, b) => {
+                        cross(sc.screen(a));
+                        p.line_segment([sc.screen(a), sc.screen(b)], stroke);
+                        if let Some((about, k)) = self.scale_typed() {
+                            grown(sc.screen(about), k);
+                        }
+                    }
                 }
                 return;
             }

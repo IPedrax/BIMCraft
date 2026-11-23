@@ -59,6 +59,7 @@ icon_names! {
     Cut,
     CopyClipboard,
     Rotate,
+    Scale,
     MirrorPick,
     MirrorDraw,
     Align,
@@ -124,6 +125,8 @@ icon_names! {
     Flip,
     Attach,
     Detach,
+    EditProfile,
+    ResetProfile,
     Ai,
     Floor,
     WorkPlane,
@@ -537,6 +540,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // A circular arc with a tangential return arrow; no floating arrowhead.
             g.line(&[(1.5, 15.0), (4.0, 12.0), (6.5, 15.0)]);
             g.arc((12.0, 12.0), 8.0, -90.0, 180.0);
+        }
+        Icon::Scale => {
+            // A small square grown into a big one from the corner they share, an arrow out along the diagonal.
+            g.closed(&[(3.0, 21.0), (3.0, 14.0), (10.0, 14.0), (10.0, 21.0)]);
+            g.line(&[(3.0, 11.0), (3.0, 3.0), (21.0, 3.0), (21.0, 21.0), (13.0, 21.0)]);
+            g.line(&[(8.0, 16.0), (17.0, 7.0)]);
+            g.line(&[(12.0, 7.0), (17.0, 7.0), (17.0, 12.0)]);
         }
         Icon::MirrorPick => {
             // Mirrored triangles around a dashed picked axis.
@@ -1252,6 +1262,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(2.5, 20.0), (9.0, 4.0), (15.5, 20.0)]);
             g.line(&[(5.0, 14.5), (13.0, 14.5)]);
             g.line(&[(20.5, 4.0), (20.5, 20.0)]);
+        }
+        Icon::EditProfile => {
+            // A wall in elevation with a gable top, a hole in it, and a pencil on its edge.
+            g.closed(&[(3.0, 21.0), (3.0, 11.0), (10.0, 5.0), (17.0, 11.0), (17.0, 21.0)]);
+            g.closed(&[(7.0, 14.0), (11.0, 14.0), (11.0, 18.0), (7.0, 18.0)]);
+            g.line(&[(14.0, 9.0), (19.0, 4.0)]);
+            g.line(&[(16.0, 11.0), (21.0, 6.0)]);
+            g.line(&[(19.0, 4.0), (21.0, 6.0)]);
+            g.line(&[(14.0, 9.0), (13.0, 12.0), (16.0, 11.0)]);
+        }
+        Icon::ResetProfile => {
+            // The wall's rectangle again, and the arrow of an undo round its corner.
+            g.closed(&[(3.0, 21.0), (3.0, 9.0), (17.0, 9.0), (17.0, 21.0)]);
+            g.line(&[(11.0, 5.0), (16.0, 3.0), (21.0, 6.0), (21.0, 12.0)]);
+            g.line(&[(11.0, 5.0), (14.0, 2.5)]);
+            g.line(&[(11.0, 5.0), (14.5, 7.5)]);
         }
         Icon::Detach => {
             g.line(&[(3.0, 8.0), (12.0, 3.0), (21.0, 8.0)]);

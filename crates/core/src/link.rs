@@ -10,6 +10,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+pub mod manage;
+
 use crate::commands::{Motion, transformed};
 use crate::geom::P2;
 use crate::ids::{Guid, Id, LINKED};

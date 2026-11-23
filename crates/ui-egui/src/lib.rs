@@ -45,20 +45,24 @@ mod fly;
 mod footer;
 mod gpu;
 mod printsets;
+mod profile;
 mod publisher;
 mod stairgrips;
 mod stairtype;
 pub use gpu::limits_for;
+mod asset_manager;
 mod graphics;
 mod gridtypes;
 mod groups;
 mod guide_refs;
 pub mod icons;
+mod image_grips;
 mod inquiry;
 pub mod lang;
 mod linestyles;
 mod lineweights;
 mod links;
+mod manage_links;
 mod markdown;
 mod mep;
 mod mesh;
@@ -88,6 +92,7 @@ mod renames;
 mod retained;
 pub mod revit;
 mod ribbon;
+mod scale;
 mod script;
 mod section;
 mod section_box;
@@ -226,6 +231,9 @@ pub enum Tool {
     ExportRegion(Option<P2>),
     /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
     Acquire,
+    /// Scale the selection's annotation, CAD drawings, images and PDFs: how (`scale.rs`), then the point that stays or two
+    /// points and the length between them.
+    Scale(scale::Step),
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
     Mirror {
         draw: bool,
@@ -949,7 +957,13 @@ pub struct BimApp {
     spot_type_dialog: Option<spots::SpotTypeDialog>,
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
+    /// The selected image's corner being dragged: the image, and which corner.
+    pub(crate) image_grip: Option<(Id, usize)>,
+    /// Insert > PDF's page picker, while a PDF of several pages waits for its page.
+    pub(crate) pdf_page_box: Option<mesh::PdfPageBox>,
     curtain_editor: Option<curtain::CurtainEditor>,
+    /// Go To View, while Edit Profile begun in a plan asks for a view that looks at the wall.
+    go_to_view: Option<profile::GoToView>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
     curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
     /// With a mullion's whole grid picked, the other places on it.
@@ -1175,6 +1189,8 @@ pub struct BimApp {
     pub(crate) survey_moves: bimcraft_core::coordinates::Move,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
+    pub(crate) manage_links: Option<manage_links::ManageLinks>,
+    pub(crate) asset_manager: Option<asset_manager::AssetManager>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
     /// Manage > Run Script, while open.
@@ -1202,6 +1218,8 @@ pub struct BimApp {
     pub(crate) paste_choose: Option<clipboard::Choose>,
     /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.
     pub(crate) paste_where: Option<clipboard::Pasting>,
+    /// Scale's popups: how it scales, the percentage and the length typed.
+    pub(crate) scaling: scale::Options,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
@@ -1929,7 +1947,10 @@ impl BimApp {
             dimension_type_dialog: None,
             spot_type_dialog: None,
             spot_grip: None,
+            image_grip: None,
+            pdf_page_box: None,
             curtain_editor: None,
+            go_to_view: None,
             curtain_part: None,
             curtain_more: Vec::new(),
             curtain_hover: None,
@@ -2057,6 +2078,8 @@ impl BimApp {
             survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
             purge_dialog: None,
+            manage_links: None,
+            asset_manager: None,
             select_by_id: None,
             run_script: None,
             work_plane: None,
@@ -2071,6 +2094,7 @@ impl BimApp {
             family_clip: None,
             paste_choose: None,
             paste_where: None,
+            scaling: scale::Options { percent: "100".into(), ..Default::default() },
             active_option: None,
             new_schedule: None,
             component: None,
@@ -2231,6 +2255,7 @@ impl BimApp {
             | Tool::Copy(_)
             | Tool::Rotate { .. }
             | Tool::RotateNorth { .. }
+            | Tool::Scale(_)
             | Tool::Mirror { .. }
             | Tool::Align(_)
             | Tool::Trim(_)
@@ -2763,6 +2788,7 @@ impl BimApp {
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
             || self.curtain_editor.is_some()
+            || self.go_to_view.is_some()
             || !self.curtain_asking.is_empty()
             || self.grid_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
@@ -2787,6 +2813,9 @@ impl BimApp {
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
+            || self.manage_links.is_some()
+            || self.asset_manager.is_some()
+            || self.pdf_page_box.is_some()
             || self.select_by_id.is_some()
             || self.run_script.is_some()
             || self.work_plane.as_ref().is_some_and(|d| d.picking.is_none())
@@ -2944,6 +2973,10 @@ impl BimApp {
         }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        // Scale's length is typed in its own popup, which takes its Enter.
+        if matches!(self.tool, Tool::Scale(_)) {
+            enter = false;
+        }
         if enter && let Sheet::Section(view) = self.sheet {
             self.vertical_enter(view);
             enter = false;
@@ -3481,8 +3514,17 @@ impl BimApp {
         if matches!(tool, Tool::Paint | Tool::Unpaint) && self.sheet != Sheet::View3D {
             self.open_sheet(Sheet::View3D);
         }
-        // Move, Copy, Rotate and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
-        let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
+        // Scale asks first whether there's anything here it takes, and then how.
+        if let Tool::Scale(_) = tool {
+            if let Some(why) = self.scale_refused() {
+                self.status = Status { text: why, error: true };
+                return;
+            }
+            tool = Tool::Scale(scale::Step::Choose);
+            (self.scaling.error, self.scaling.focused) = (None, false);
+        }
+        // Move, Copy, Rotate, Scale and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
+        let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Scale(_) | Tool::Mirror { .. });
         let picks = matches!(
             tool,
             Tool::Align(_)
@@ -3867,6 +3909,7 @@ impl BimApp {
             | Tool::Section(start)
             | Tool::SlopeArrow(start)
             | Tool::AddSplitLine(start) => *start,
+            Tool::Scale(scale::Step::Second(a)) => Some(*a),
             Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
                 pts.last().copied()
             }
@@ -4186,6 +4229,7 @@ impl BimApp {
             | Tool::DetailLine(pts) => pts.clear(),
             Tool::Move(_)
             | Tool::Copy(_)
+            | Tool::Scale(_)
             | Tool::SlopeArrow(_)
             | Tool::ModifySubElements
             | Tool::AddPoint
@@ -5693,6 +5737,12 @@ impl BimApp {
             if big_button(ui, Icon::LinkCad, "Link CAD", self.cad_box.as_ref().is_some_and(|b| b.linked()), tip).clicked() {
                 self.cad_dialog = Some(true);
             }
+            let tip = msg!(
+                "Manage Links: every linked model, IFC, CAD drawing, point cloud and 3D model, its path and status and how many instances place it; Reload, Reload From and Unload"
+            );
+            if big_button(ui, Icon::Link, "Manage Links", self.manage_links.is_some(), tip).clicked() {
+                self.open_manage_links();
+            }
         });
         panel(ui, msg!("Import"), |ui| {
             let tip = msg!(
@@ -5707,6 +5757,30 @@ impl BimApp {
             if big_button(ui, Icon::Component, "Import 3D Model", false, tip).clicked() {
                 self.import_mesh_dialog(ui.ctx());
             }
+            let tip = msg!(
+                "Image: a PNG or JPEG picture placed under the model in the plans of this plan's level, moved and sized as an element"
+            );
+            let r = big_button(ui, Icon::Component, "Image", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), false, false);
+                }
+                if ui.button(t("Link Image…")).clicked() {
+                    self.image_dialog(ui.ctx(), true, false);
+                }
+            });
+            let tip = msg!(
+                "PDF: a PDF's first page placed under the model in the plans of this plan's level, at its paper's size at the plan's scale, so a drawing printed at that scale lies true"
+            );
+            let r = big_button(ui, Icon::Sheet, "PDF", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                if ui.button(t("Import PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), false, true);
+                }
+                if ui.button(t("Link PDF…")).clicked() {
+                    self.image_dialog(ui.ctx(), true, true);
+                }
+            });
         });
     }
 
@@ -5757,8 +5831,11 @@ impl BimApp {
                 }
             });
             // What annotation draws with: pens, line styles and patterns, fill patterns; one button that lists them.
-            let open = self.line_weights_dialog.is_some() || self.line_styles_dialog.is_some() || self.fill_patterns_dialog.is_some();
-            let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns");
+            let open = self.line_weights_dialog.is_some()
+                || self.line_styles_dialog.is_some()
+                || self.fill_patterns_dialog.is_some()
+                || self.asset_manager.is_some();
+            let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns, and the Asset Manager");
             let r = big_button(ui, Icon::AnnotationSettings, "Annotation Settings", open, tip);
             ribbon::choices(ui, &r, false, |ui| {
                 // As wide as its longest name, not the window.
@@ -5779,6 +5856,12 @@ impl BimApp {
                 let tip = msg!("Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn");
                 if list_row(ui, Icon::FillPatterns, "Fill Patterns", false, tip).clicked() {
                     self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
+                }
+                let tip = msg!(
+                    "Asset Manager: the project's materials, fill types and patterns, line patterns and styles and pictures, where each is used, and their import and export as a .bima file"
+                );
+                if list_row(ui, Icon::Materials, "Asset Manager", false, tip).clicked() {
+                    self.open_asset_manager();
                 }
             });
             let now_std = self.session.model.standard();
@@ -5871,13 +5954,8 @@ impl BimApp {
                 self.open_classification();
             }
         });
-        // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
-        // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
-        ribbon::yielding(ui, msg!("Project Location"), |ui| {
-            let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
-            if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
-                self.link_dialog = true;
-            }
+        // Revit's Project Location: where the project stands (a model is linked from Insert > Link).
+        panel(ui, msg!("Project Location"), |ui| {
             let tip = msg!(
                 "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
             );
@@ -5919,6 +5997,12 @@ impl BimApp {
                 self.open_run_script();
             }
         });
+    }
+
+    /// Whether the selection is images and PDFs placed in plans, and nothing else.
+    pub(crate) fn images_selected(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty() && self.selection.iter().all(|id| matches!(m.elements.get(*id), Some(Element::Image(_))))
     }
 
     fn modify_tab(&mut self, ui: &mut Ui) {
@@ -6000,6 +6084,8 @@ impl BimApp {
         }
         // Revit's Modify panel: small buttons in rows. Those taking the selection need one.
         let some = !self.selection.is_empty();
+        // Images and PDFs alone: what they take, moving, copying, mirroring and deleting, and nothing that trims or paints.
+        let images = some && self.images_selected();
         // The button lit while its tool is on (the two Mirrors told apart by how they take the axis).
         let on = |t: &Tool, other: &Tool| match (t, other) {
             (Tool::Mirror { draw: a, .. }, Tool::Mirror { draw: b, .. }) => a == b,
@@ -6065,6 +6151,13 @@ impl BimApp {
                     "Rotate",
                     msg!("Rotate (RO): click the angle's start, then its end"),
                     Some(Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false }),
+                    some,
+                ),
+                (
+                    Icon::Scale,
+                    "Scale",
+                    msg!("Scale (RE): annotation, CAD drawings, images and PDFs, by a percentage or by a length between two points"),
+                    Some(Tool::Scale(scale::Step::Choose)),
                     some,
                 ),
                 (
@@ -6242,7 +6335,10 @@ impl BimApp {
         let attachable = self.selected_attachable();
         if !attachable.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
             let title = if walls.is_empty() { msg!("Modify Column") } else { msg!("Modify Wall") };
-            panel(ui, title, |ui| {
+            // With one wall's Mode panel beside it, it makes room first, keeping Flip: a narrow ribbon lists Attach and Detach
+            // before it takes the Modify panel's tools, as the Mode panel would otherwise make it.
+            let mode = matches!(walls.as_slice(), [id] if profile::profile_editable(&self.session.model, *id));
+            let body = |ui: &mut Ui| {
                 if !walls.is_empty() {
                     let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
                     if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
@@ -6256,6 +6352,27 @@ impl BimApp {
                 let tip = msg!("Detach Top/Base: the tops and bases of the walls and columns their own again");
                 if big_button(ui, Icon::Detach, "Detach Top/Base", false, tip).clicked() {
                     self.run("modify", json!({"ids": attachable, "attach_top": null, "attach_base": null}));
+                }
+            };
+            if mode { ribbon::yielding(ui, title, body) } else { panel(ui, title, body) }
+        }
+        // One straight, upright wall: Revit's Mode panel of Modify | Walls, its shape in elevation sketched again.
+        if let [id] = self.selected_walls().as_slice()
+            && self.tool == Tool::Modify
+            && profile::profile_editable(&self.session.model, *id)
+        {
+            let id = *id;
+            panel(ui, msg!("Mode"), |ui| {
+                let tip =
+                    msg!("Edit Profile: sketch the wall's outline, and any holes, on its face in an elevation, a section or the 3D view");
+                let on = self.go_to_view.is_some() || matches!(self.sketch.as_ref().map(|sk| sk.of), Some(sketch::Of::Profile(_)));
+                if big_button(ui, Icon::EditProfile, msg!("Edit Profile"), on, tip).clicked() {
+                    self.edit_profile(id);
+                }
+                let shaped = self.session.model.wall(id).is_some_and(|w| !w.profile.is_empty());
+                let tip = msg!("Reset Profile: the wall's rectangle back, from its base to its top");
+                if shaped && big_button(ui, Icon::ResetProfile, msg!("Reset Profile"), false, tip).clicked() {
+                    self.run("modify", json!({"id": id, "profile": []}));
                 }
             });
         }
@@ -6303,7 +6420,10 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in rows {
                     ui.horizontal(|ui| {
-                        for (icon, label, tip, tool, enabled) in row {
+                        let taken = |tool: &Option<Tool>| {
+                            !images || matches!(tool, None | Some(Tool::Move(_) | Tool::Copy(_) | Tool::Scale(_) | Tool::Mirror { .. }))
+                        };
+                        for (icon, label, tip, tool, enabled) in row.iter().filter(|b| taken(&b.3)) {
                             let active = tool.as_ref().is_some_and(|t| on(t, &self.tool) && *t != Tool::Modify);
                             if ui.add_enabled_ui(*enabled, |ui| small_button(ui, *icon, label, active, tip)).inner.clicked() {
                                 match tool {
@@ -6316,6 +6436,10 @@ impl BimApp {
                 }
             });
         });
+        if images {
+            self.mode_panel(ui);
+            return;
+        }
         panel(ui, "Phasing", |ui| {
             let tip = msg!("Demolish (DW): click an element to take it down in the view's phase; click it again to take it back");
             let on = self.graphic_view().is_some();
@@ -7025,6 +7149,11 @@ impl BimApp {
             Tool::RotateNorth { start: Some(_), .. } => {
                 msg!("Click the end of the angle: the model turns, and true north with it, so nothing moves in the world. Esc cancels.")
             }
+            Tool::Scale(scale::Step::Choose) => msg!("Scale: choose by a percentage or by a length between two points, then OK."),
+            Tool::Scale(scale::Step::Base(_)) => msg!("Click the point that stays: the selection grows or shrinks about it. Esc cancels."),
+            Tool::Scale(scale::Step::First) => msg!("Click the first point, the one that stays. Esc cancels."),
+            Tool::Scale(scale::Step::Second(_)) => msg!("Click the second point: then type the length between them. Esc cancels."),
+            Tool::Scale(scale::Step::Length(..)) => msg!("Type the new length between the two points and press Enter. Esc cancels."),
             Tool::Mirror { draw: false, .. } => msg!("Pick a wall or grid to mirror across."),
             Tool::Mirror { draw: true, start: None } => msg!("Click the start of the mirror axis."),
             Tool::Mirror { draw: true, start: Some(_) } => msg!("Click the end of the mirror axis."),
@@ -7502,6 +7631,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
         self.curtain_editor_window(ctx);
+        self.go_to_view_window(ctx);
         self.curtain_message(ctx);
         self.grid_type_window(ctx);
         self.dimension_text_window(ctx);
@@ -7510,6 +7640,9 @@ impl BimApp {
         self.findings_window(ctx);
         self.coordinates_window(ctx);
         self.options_window(ctx);
+        self.manage_links_window(ctx);
+        self.asset_manager_window(ctx);
+        self.pdf_page_window(ctx);
         self.purge_window(ctx);
         self.cowork_window(ctx);
         self.lend_window(ctx);
@@ -7533,6 +7666,7 @@ impl BimApp {
         self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
         self.paste_window(ctx);
+        self.scale_window(ctx);
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         // The preset editor is the dialog on top: Escape closes it alone, leaving the Settings window behind it open.

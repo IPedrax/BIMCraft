@@ -1195,6 +1195,9 @@ pub struct Family {
     /// in a file of a build that placed every family by its datums, which leaves it out.
     #[serde(default, skip_serializing_if = "PlacedOrigin::datums")]
     pub placed_origin: PlacedOrigin,
+    /// The 3D model it was made from (`import_mesh`), which Manage Links lists and `reload_mesh` reads again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<crate::mesh_in::Source>,
 }
 
 impl Default for Family {
@@ -1225,6 +1228,7 @@ impl Default for Family {
             nested: Vec::new(),
             nested_instances: Vec::new(),
             placed_origin: PlacedOrigin::default(),
+            source: None,
         }
     }
 }
@@ -2224,6 +2228,9 @@ impl Family {
     pub(crate) fn check_in(&self, has_material: &dyn Fn(&str) -> bool, chain: &mut Vec<String>, total: &mut usize) -> Result<(), String> {
         if let Some(definition) = &self.adaptive {
             definition.check()?;
+        }
+        if let Some(source) = &self.source {
+            source.check()?;
         }
         for (what, n, most) in [
             ("parameters", self.parameters.len(), MAX_PARAMETERS),

@@ -149,6 +149,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
+            ("Constraints", "slant", msg!("Angle From Vertical (°)"), Number),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
@@ -161,6 +162,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", msg!("Flip Facing"), Flag),
             ("Other", "flip_hand", msg!("Flip Hand"), Flag),
+            ("Other", "slanted", msg!("Slanted with Wall"), Flag),
             ("Other", "code_check", msg!("Building Code"), Shown),
         ],
         "window" => &[
@@ -170,6 +172,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "host", "Host Wall", Link),
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", "Flip Facing", Flag),
+            ("Other", "slanted", "Slanted with Wall", Flag),
         ],
         "room" => &[
             ("Constraints", "level", "Level", Level),
@@ -484,6 +487,22 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "scale", "Scale", Number),
             ("Graphics", "colors", "Colors", Choice(&[("preserve", "Preserve"), ("invert", "Invert"), ("black", "Black and White")])),
         ],
+        // A picture or a PDF's page placed in a plan: its file, its size (a PDF's paper and scale too), and whether it draws in
+        // front of the model.
+        "image" => &[
+            ("Constraints", "level", "Level", Level),
+            ("Identity Data", "source", "File", Shown),
+            ("Identity Data", "linked", msg!("Linked File"), Shown),
+            ("Identity Data", "page", msg!("Page"), Shown),
+            ("Identity Data", "missing_fonts", msg!("Fonts Substituted"), Shown),
+            ("Dimensions", "width", "Width", Length),
+            ("Dimensions", "height", "Height", Length),
+            ("Dimensions", "paper", msg!("Paper Size"), Shown),
+            ("Dimensions", "scale", msg!("Scale (1 : n)"), Number),
+            ("Graphics", "front", msg!("Draw in Front of Model"), Flag),
+            ("Graphics", "snaps", msg!("Snap to Its Lines"), Flag),
+            ("Other", "at", msg!("Position"), Point),
+        ],
         "link" => &[
             ("Identity Data", "name", "Name", Text),
             ("Identity Data", "path", "File", Shown),
@@ -698,6 +717,7 @@ fn icon(category: &str) -> Icon {
         "view3d" => Icon::View3D,
         "pointcloud" => Icon::PointCloud,
         "cadimport" => Icon::ImportCad,
+        "image" => Icon::Component,
         _ => Icon::Plan,
     }
 }
@@ -2345,6 +2365,12 @@ impl BimApp {
                     let val = &v[key];
                     // A length one element hasn't got (a straight wall's radius): no row.
                     if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
+                        continue;
+                    }
+                    // An image has a page, a paper and a scale when it is a PDF's page, and no row of them else; nor does it snap
+                    // to its lines when it has none to snap to.
+                    let flag = key == "front" || (key == "snaps" && !first["paper"].is_null());
+                    if ids.len() == 1 && first["category"] == "image" && val.is_null() && !flag {
                         continue;
                     }
                     if ids.len() == 1 && !relevant(&first, key) {
