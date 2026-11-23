@@ -2921,6 +2921,10 @@ msgstr ""
 msgid "Check Classification"
 msgstr ""
 
+#: crates/core/src/commands.rs:3930
+msgid "Check Measured Carrier Fill"
+msgstr ""
+
 #: crates/ui-egui/src/filter.rs:47
 #: crates/ui-egui/src/printsets.rs:202
 msgid "Check None"
@@ -4573,6 +4577,10 @@ msgstr "IDs kopieren"
 #: crates/ui-egui/src/inquiry.rs:196
 msgid "Copy IFC GlobalIds"
 msgstr "IFC GlobalIds kopieren"
+
+#: crates/core/src/commands.rs:3958
+msgid "Copy ODT Document Set"
+msgstr ""
 
 #: crates/ui-egui/src/revit.rs:262
 msgid "Copy Report"
@@ -6937,6 +6945,10 @@ msgstr ""
 msgid "Export Formats"
 msgstr ""
 
+#: crates/core/src/commands.rs:3936
+msgid "Export ODS Catalogue"
+msgstr ""
+
 #: crates/core/src/commands.rs:2049
 msgid "Export Parameters"
 msgstr ""
@@ -7244,6 +7256,10 @@ msgstr ""
 
 #: crates/ui-egui/src/materials.rs:569
 msgid "Fill"
+msgstr ""
+
+#: crates/core/src/commands.rs:3951
+msgid "Fill ODT Template"
 msgstr ""
 
 #: crates/core/src/commands.rs:2699
@@ -8803,6 +8819,10 @@ msgstr ""
 
 #: crates/core/src/commands.rs:420
 msgid "Import Mesh"
+msgstr ""
+
+#: crates/core/src/commands.rs:3943
+msgid "Import ODS Catalogue"
 msgstr ""
 
 #: crates/ui-egui/src/mesh.rs:174
