@@ -8828,6 +8828,30 @@ impl Model {
         Ok(())
     }
 
+    /// A file that names a line pattern it doesn't hold: the reference draws solid again, and the warnings say what was
+    /// replaced, so such a file opens instead of failing (issue 566). A command still refuses, as ever: a file is read
+    /// kindly, a command strictly.
+    pub fn repair_line_patterns(&mut self) -> Vec<String> {
+        let mut warnings = Vec::new();
+        for (n, s) in &mut self.line_styles {
+            if let Some(p) = &s.pattern
+                && !self.line_patterns.contains_key(p)
+            {
+                warnings.push(format!("line style `{n}`: line pattern `{p}` was replaced with {}", lines::SOLID));
+                s.pattern = None;
+            }
+        }
+        for (n, t) in &mut self.grid_types {
+            if let Some(p) = &t.line_pattern
+                && !self.line_patterns.contains_key(p)
+            {
+                warnings.push(format!("grid type `{n}`: line pattern `{p}` was replaced with {}", lines::SOLID));
+                t.line_pattern = None;
+            }
+        }
+        warnings
+    }
+
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {

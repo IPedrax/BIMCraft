@@ -4361,7 +4361,13 @@ impl BimApp {
             self.note_recent(path);
         }
         self.autosave_document();
-        if reply["format"].is_string() {
+        // What the open had to mend: a line pattern a file names but doesn't hold (issue 566), or a formula saying a name
+        // its family lacks.
+        let warnings: Vec<&str> = reply["warnings"].as_array().map_or_else(Vec::new, |a| a.iter().filter_map(Value::as_str).collect());
+        if !warnings.is_empty() {
+            let text = tf("{} opened with warnings:\n{}", &[&name, &warnings.join("\n")]);
+            self.status = Status { text, error: false };
+        } else if reply["format"].is_string() {
             self.status = Status { text: import_note(&name, reply), error: false };
         } else if let Some(left_out) = reply["left_out"].as_array() {
             let count = reply["left_out_count"].as_u64().map_or(left_out.len(), |n| n as usize);
@@ -7053,10 +7059,10 @@ impl BimApp {
         });
     }
 
-    /// Why the last command failed, in a box over the views' bottom right corner until the next one works. It is a layer of
-    /// the views' own order, so it is raised to the top of it every frame: the windows a split lays out are layers of that
-    /// order too, and one of them clicked or dragged after the note came up would otherwise hide it. Modal dialogs and menus
-    /// stand above it in orders of their own.
+    /// Why the last command failed, in a box over the views' bottom right corner until the next one works. Its text can be
+    /// copied, so a bug report can quote it (issue 566). It is a layer of the views' own order, so it is raised to the top of it
+    /// every frame: the windows a split lays out are layers of that order too, and one of them clicked or dragged after the
+    /// note came up would otherwise hide it. Modal dialogs and menus stand above it in orders of their own.
     fn warning(&mut self, ctx: &Context) {
         if self.status.text.is_empty() {
             return;
@@ -7066,6 +7072,8 @@ impl BimApp {
         let view =
             if !self.home.shown && !self.family_doc() && self.arrange != dock::Arrange::Tabs { self.views_rect } else { self.view_rect };
         let at = view.right_bottom() - vec2(16.0, 16.0);
+        let copied = egui::Id::new("warning copied");
+        let mut was: Option<String> = ctx.data_mut(|d| d.get_temp::<String>(copied));
         Area::new(UiId::new("warning")).order(Order::Middle).fixed_pos(at).pivot(Align2::RIGHT_BOTTOM).show(ctx, |ui| {
             Frame::popup(ui.style()).fill(pal().surface).stroke(Stroke::new(1.0, color)).show(ui, |ui| {
                 ui.set_max_width(380.0);
@@ -7075,13 +7083,24 @@ impl BimApp {
                         if icon_button(ui, Icon::Close, "Dismiss").clicked() {
                             self.status = Status::default();
                         }
-                        if ui.button(t("Copy")).on_hover_text(t("Copy the message to the clipboard")).clicked() {
-                            ui.ctx().copy_text(self.status.text.clone());
+                        let said = was.as_deref() == Some(self.status.text.as_str());
+                        if icon_button(ui, Icon::Copy, if said { "Copied" } else { "Copy" }).clicked() {
+                            ctx.copy_text(self.status.text.clone());
+                            was = Some(self.status.text.clone());
+                            ctx.request_repaint();
                         }
                     });
                 });
-                ui.add(egui::Label::new(&self.status.text).selectable(true));
+                ui.add(egui::Label::new(RichText::new(&self.status.text)).selectable(true));
             });
+        });
+        // A new message hasn't been copied: the button says Copy again.
+        ctx.data_mut(|d| {
+            if self.status.text.is_empty() {
+                d.remove::<String>(copied);
+            } else {
+                d.insert_temp(copied, was.unwrap_or_default());
+            }
         });
         ctx.move_to_top(egui::LayerId::new(Order::Middle, UiId::new("warning")));
     }
