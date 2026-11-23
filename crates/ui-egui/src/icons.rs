@@ -64,7 +64,6 @@ icon_names! {
     MirrorDraw,
     Align,
     Offset,
-    Scale,
     Trim,
     Split,
     Dimension,
@@ -576,13 +575,6 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(10.0, 21.0), (21.0, 10.0)]);
             g.line(&[(8.5, 8.5), (15.0, 15.0)]);
             g.line(&[(15.0, 11.0), (15.0, 15.0), (11.0, 15.0)]);
-        }
-        Icon::Scale => {
-            // A small square grown into a large one from their shared corner, an arrow along the diagonal.
-            g.closed(&[(3.0, 13.0), (11.0, 13.0), (11.0, 21.0), (3.0, 21.0)]);
-            g.closed(&[(3.0, 3.0), (21.0, 3.0), (21.0, 21.0), (3.0, 21.0)]);
-            g.line(&[(11.0, 13.0), (18.0, 6.0)]);
-            g.line(&[(13.0, 6.0), (18.0, 6.0), (18.0, 11.0)]);
         }
         Icon::Trim => {
             // A clean right-angle join and a short leftover segment.
