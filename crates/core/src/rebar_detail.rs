@@ -13,7 +13,7 @@ use std::ops::RangeInclusive;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Element, Guid, Id, MAX_COORD, MAX_TEXT, Model, Rebar};
-use crate::reinforce::{Frame, Located, along, beam_frame};
+use crate::reinforce::{Frame, Kind, Located, along, member_frame};
 use crate::steel::{self, Bars, Item, Scope};
 use crate::view3d::{P3, cross, dot, sub, unit};
 
@@ -33,7 +33,8 @@ fn is_true(b: &bool) -> bool {
     *b
 }
 
-/// A reinforced member's detail: one drawing, its elevation, its sections and its steel list.
+/// A reinforced member's detail (a beam, a column, a footing or a floor): one drawing, its elevation or plan, its sections and its
+/// steel list.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RebarDetail {
@@ -75,8 +76,8 @@ pub fn check(m: &Model, who: &str, rd: &RebarDetail) -> Result<(), String> {
         return Err(format!("{who}: a station of {x} mm isn't a length along a member"));
     }
     match m.elements.get(rd.host) {
-        Some(Element::Beam(_)) => Ok(()),
-        Some(other) => Err(format!("{who}: a {} has no detail yet; a beam has one", other.category())),
+        Some(Element::Beam(_) | Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) | Element::Floor(_)) => Ok(()),
+        Some(other) => Err(format!("{who}: a {} has no detail; a beam, a column, a footing or a floor has one", other.category())),
         None => Err(format!("{who}: its member isn't an element of the project")),
     }
 }
@@ -242,27 +243,57 @@ pub fn tag_text(m: &Model, set: &Set, spread: bool) -> String {
     t
 }
 
-/// Where a beam's sections are cut when none is chosen: the middle of each zone of stirrups, or the middle of the beam where it
-/// has none. Whole tenths of a millimetre, in order, no more than [`MAX_STATIONS`].
+/// How far along the member each point of `set`'s bars is (only each bar's first, with `first_only`), mm.
+fn along_of(m: &Model, set: &Set, f: &Frame, first_only: bool) -> Vec<f64> {
+    set.bars
+        .iter()
+        .filter_map(|id| match m.elements.get(*id) {
+            Some(Element::Rebar(rb)) => Some(rb),
+            _ => None,
+        })
+        .flat_map(|rb| rb.path.iter().take(if first_only { 1 } else { usize::MAX }).map(|p| along(f, f.a, *p)))
+        .collect()
+}
+
+fn lowest_and_highest(xs: &[f64]) -> Option<(f64, f64)> {
+    Some((xs.iter().copied().reduce(f64::min)?, xs.iter().copied().reduce(f64::max)?))
+}
+
+/// A station in whole tenths of a millimetre, unless there is one within a millimetre of it already.
+fn put(at: &mut Vec<f64>, x: f64) {
+    let x = (x * 10.0).round() / 10.0;
+    if !at.iter().any(|y| (y - x).abs() < 1.0) {
+        at.push(x);
+    }
+}
+
+/// Where a member's sections are cut when none is chosen. A beam's: the middle of each zone of stirrups, or the middle of the beam
+/// where it has none. A column's: the foot, the middle and the head of its stirrups (of its bars, where it has none). A footing and
+/// a floor have none. Whole tenths of a millimetre, in order, no more than [`MAX_STATIONS`].
 pub(crate) fn default_stations(m: &Model, sets: &[Set], b: &Located) -> Vec<f64> {
     let mut at: Vec<f64> = Vec::new();
-    for s in sets.iter().filter(|s| s.layer == "stirrup") {
-        let us: Vec<f64> = s
-            .bars
-            .iter()
-            .filter_map(|id| match m.elements.get(*id) {
-                Some(Element::Rebar(rb)) => rb.path.first().map(|p| along(&b.frame, b.frame.a, *p)),
-                _ => None,
-            })
-            .collect();
-        let (Some(lo), Some(hi)) = (us.iter().copied().reduce(f64::min), us.iter().copied().reduce(f64::max)) else { continue };
-        let mid = ((lo + hi) / 2.0 * 10.0).round() / 10.0;
-        if !at.iter().any(|x| (x - mid).abs() < 1.0) {
-            at.push(mid);
+    match b.kind {
+        Kind::Footing | Kind::Floor => return Vec::new(),
+        Kind::Beam => {
+            for s in sets.iter().filter(|s| s.layer == "stirrup") {
+                if let Some((lo, hi)) = lowest_and_highest(&along_of(m, s, &b.frame, true)) {
+                    put(&mut at, (lo + hi) / 2.0);
+                }
+            }
+        }
+        Kind::Column => {
+            let stirrups: Vec<f64> = sets.iter().filter(|s| s.layer == "stirrup").flat_map(|s| along_of(m, s, &b.frame, true)).collect();
+            let all: Vec<f64> =
+                if stirrups.is_empty() { sets.iter().flat_map(|s| along_of(m, s, &b.frame, false)).collect() } else { stirrups };
+            if let Some((lo, hi)) = lowest_and_highest(&all) {
+                for x in [lo, (lo + hi) / 2.0, hi] {
+                    put(&mut at, x);
+                }
+            }
         }
     }
     if at.is_empty() {
-        at.push((b.length / 2.0 * 10.0).round() / 10.0);
+        put(&mut at, b.length / 2.0);
     }
     at.sort_by(f64::total_cmp);
     at.truncate(MAX_STATIONS);
@@ -273,6 +304,20 @@ pub(crate) fn default_stations(m: &Model, sets: &[Set], b: &Located) -> Vec<f64>
 /// tag in an elevation says its spacing.
 pub(crate) fn spreads(set: &Set, f: &Frame) -> bool {
     set.step.is_some_and(|s| dot(s, f.a).abs() >= 1.0)
+}
+
+/// Whether `set`'s tag says its spacing in the picture its member's detail draws it in: a beam's or a column's elevation, a footing's
+/// or a floor's plan.
+pub(crate) fn spread_in(set: &Set, b: &Located) -> bool {
+    match b.kind {
+        Kind::Beam | Kind::Column => spreads(set, &b.frame),
+        Kind::Footing | Kind::Floor => spreads_over(set, [b.frame.a, b.frame.b]),
+    }
+}
+
+/// Whether `set`'s bars spread across a picture of the plane of `axes` (a plan's), so its tag there says its spacing.
+pub(crate) fn spreads_over(set: &Set, axes: [P3; 2]) -> bool {
+    set.step.is_some_and(|s| dot(s, axes[0]).hypot(dot(s, axes[1])) >= 1.0)
 }
 
 /// A bar unfolded into its plane, for the steel list to sketch: its points as (along the first leg, across it), mm.
@@ -314,7 +359,7 @@ pub fn sketch(path: &[P3]) -> Sketch {
     Sketch { points, spatial }
 }
 
-/// The member's frame, when `rd` has one to draw: its beam, with a type.
+/// The member's frame, when `rd` has one to draw: a member with a type (a floor, an outline).
 pub(crate) fn host_frame(m: &Model, rd: &RebarDetail) -> Option<Located> {
-    m.elements.get(rd.host).and_then(|e| beam_frame(m, e))
+    m.elements.get(rd.host).and_then(|e| member_frame(m, e))
 }

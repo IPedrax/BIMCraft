@@ -1,6 +1,6 @@
-//! A rebar detail on a sheet: the member's elevation with every set of bars drawn and tagged and its lengths dimensioned,
-//! a section at each station at twice the scale, and the steel list with each bar's shape sketched, as one drawing from its top left
-//! corner. Everything is laid out as a display list ([`Op`]) first, in pixels, so the frame it needs and what it draws are one
+//! A rebar detail on a sheet: a beam's or a column's elevation, or a footing's or a floor's plan, with every set of bars drawn and
+//! tagged and its lengths dimensioned, a section at each station at twice the scale (a footing's, one along its first axis), and the
+//! steel list with each bar's shape sketched, as one drawing from its top left corner. Everything is laid out as a display list ([`Op`]) first, in pixels, so the frame it needs and what it draws are one
 //! computation and a test can read it; [`draw`] puts that list on a sheet's drawing.
 //!
 //! The picture is the member's and its bars' as they are now. It is not [`crate::render::section_in`]: a section of the model hides a
@@ -12,8 +12,8 @@ use super::{CELL_TEXT, INK, ROW};
 use crate::font;
 use crate::model::{Element, Id, Model, Rebar};
 use crate::pen::Pen;
-use crate::rebar_detail::{self, MAX_STATIONS, RebarDetail, in_frame, sketch, square, tag_text};
-use crate::reinforce::Frame;
+use crate::rebar_detail::{self, MAX_STATIONS, RebarDetail, Set, in_frame, sketch, square, tag_text};
+use crate::reinforce::{Frame, Kind, Located};
 use crate::render::{Drawing, Prim};
 use crate::steel::{self, Bars, Scope};
 use crate::view3d::P3;
@@ -114,15 +114,28 @@ impl Ink {
         self.centred(text, ((x1 + x2) / 2.0, y - 9.0), TAG);
     }
 
+    /// A dimension line from `y1` to `y2` at `x`, a tick at each end and its text to the left of it.
+    fn dimension_v(&mut self, y1: f32, y2: f32, x: f32, text: &str) {
+        self.line(vec![(x, y1), (x, y2)], Pen::PROJECTION, false);
+        for y in [y1, y2] {
+            self.line(vec![(x - 5.0, y), (x + 5.0, y)], Pen::HEAVY, false);
+        }
+        self.centred(text, (x - 9.0 - font::width(text, TAG) / 2.0, (y1 + y2) / 2.0), TAG);
+    }
+
     /// A filled circle of radius `r` at `c`.
     fn dot(&mut self, c: (f32, f32), r: f32) {
-        let ring = (0..12)
-            .map(|i| {
-                let a = std::f32::consts::TAU * i as f32 / 12.0;
-                (c.0 + r * a.cos(), c.1 + r * a.sin())
-            })
-            .collect();
-        self.push(Op::Dot { ring });
+        self.push(Op::Dot { ring: circle(c, r, 12) });
+    }
+
+    /// A bar's line, or its dot where it is seen end on: all its points in one place, `d` px across.
+    fn rod(&mut self, pts: &[(f32, f32)], pen: Pen, d: f64) {
+        match pts.first() {
+            Some(p) if pts.iter().all(|q| (q.0 - p.0).abs() < 0.5 && (q.1 - p.1).abs() < 0.5) => {
+                self.dot(*p, (d / 2.0).max(MIN_DOT) as f32)
+            }
+            _ => self.line(pts.to_vec(), pen, false),
+        }
     }
 
     /// `tags`, each an anchor on the drawing and what it says, in a column at `x` from `top` down, with a leader from each to its
@@ -135,6 +148,16 @@ impl Ink {
             self.word(&text, x, y, TAG);
         }
     }
+}
+
+/// The corners of a regular polygon of `n` sides round `c`, `r` from it.
+fn circle(c: (f32, f32), r: f32, n: usize) -> Vec<(f32, f32)> {
+    (0..n)
+        .map(|i| {
+            let a = std::f32::consts::TAU * i as f32 / n as f32;
+            (c.0 + r * a.cos(), c.1 + r * a.sin())
+        })
+        .collect()
 }
 
 /// How wide the widest of `tags` is, px.
@@ -178,6 +201,11 @@ fn anchor_of(pts: &[(f32, f32)], stirrup: bool) -> (f32, f32) {
         })
         .max_by(|(a, b), (c, d)| len(*a, *b).total_cmp(&len(*c, *d)))
         .map_or_else(|| pts.first().copied().unwrap_or_default(), |(a, b)| ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0))
+}
+
+/// The anchor of a tag on a stirrup seen across a column: its point furthest right, nearest the column of tags.
+fn anchor_right(pts: &[(f32, f32)]) -> (f32, f32) {
+    pts.iter().copied().max_by(|a, b| a.0.total_cmp(&b.0)).unwrap_or_default()
 }
 
 /// The letters of sections, A to Z.
@@ -291,29 +319,45 @@ fn shape(ink: &mut Ink, m: &Model, path: &[P3], (left, top, w, h): (f32, f32, f3
 pub(crate) fn layout(m: &Model, rd: &RebarDetail, k: f64) -> Option<Layout> {
     let host = m.elements.id(rd.host)?;
     let b = rebar_detail::host_frame(m, rd)?;
-    let f = &b.frame;
     let bars = Bars::new(m);
     let sets = rebar_detail::sets(m, &bars, host);
     if sets.is_empty() {
         return None;
     }
     let mut ink = Ink::default();
+    let under = match b.kind {
+        Kind::Beam | Kind::Column => member(&mut ink, m, rd, &b, &sets, k),
+        Kind::Footing => footing(&mut ink, m, &b, &sets, k),
+        Kind::Floor => plan(&mut ink, m, &b, &sets, k)[3] + 40.0,
+    };
+    // Its steel list.
+    if rd.list {
+        list(&mut ink, m, &bars, host, under + GAP);
+    }
+    Some(frame(ink))
+}
+
+/// A beam's or a column's elevation with its tags, stations and dimensions, and its sections at twice the scale side by side under
+/// it. A beam lies along x with its depth up; a column stands, its length along y and its width across. Returns where it ends, y.
+fn member(ink: &mut Ink, m: &Model, rd: &RebarDetail, b: &Located, sets: &[Set], k: f64) -> f32 {
+    let f = &b.frame;
     let (length, depth) = (b.length, b.depth);
-    let px = |u: f64, v: f64| -> (f32, f32) { ((u * k) as f32, (-v * k) as f32) };
-    let (top, bottom) = (-(depth / 2.0 * k) as f32, (depth / 2.0 * k) as f32);
-    let right = (length * k) as f32;
+    let tall = b.kind == Kind::Column;
+    // A point of the member, in its own axes, as the elevation draws it, and where `u` mm along it is.
+    let elev =
+        |q: P3| -> (f32, f32) { if tall { ((q[1] * k) as f32, (-q[0] * k) as f32) } else { ((q[0] * k) as f32, (-q[2] * k) as f32) } };
+    let pos = |u: f64| -> f32 { if tall { (-u * k) as f32 } else { (u * k) as f32 } };
 
     // The elevation: the concrete's outline, then each set's bars.
-    ink.rect((0.0, top), (right, bottom), Pen::PROJECTION);
+    let (c0, c1) = (elev(b.lo), elev([b.lo[0] + length, b.lo[1] + b.width, b.lo[2] + depth]));
+    let (ex0, ex1) = (c0.0.min(c1.0), c0.0.max(c1.0));
+    let (ey0, ey1) = (c0.1.min(c1.1), c0.1.max(c1.1));
+    ink.rect(c0, c1, Pen::PROJECTION);
     let mut seen: HashSet<Vec<(i64, i64)>> = HashSet::new();
     let mut tags: Vec<((f32, f32), String)> = Vec::new();
-    for set in &sets {
-        let lines: Vec<Vec<(f32, f32)>> = set
-            .bars
-            .iter()
-            .filter_map(|id| bar(m, *id))
-            .map(|rb| rb.path.iter().map(|p| in_frame(f, *p)).map(|q| px(q[0], q[2])).collect())
-            .collect();
+    for set in sets {
+        let lines: Vec<Vec<(f32, f32)>> =
+            set.bars.iter().filter_map(|id| bar(m, *id)).map(|rb| rb.path.iter().map(|p| elev(in_frame(f, *p))).collect()).collect();
         let stirrup = set.bars.iter().filter_map(|id| bar(m, *id)).all(|rb| square(f, &rb.path));
         // A zone of stirrups is its first and its last with a thin line between, not every one.
         let drawn: Vec<&Vec<(f32, f32)>> =
@@ -321,59 +365,86 @@ pub(crate) fn layout(m: &Model, rd: &RebarDetail, k: f64) -> Option<Layout> {
         for pts in &drawn {
             let key: Vec<(i64, i64)> = pts.iter().map(|p| (p.0.round() as i64, p.1.round() as i64)).collect();
             if !ink.full() && seen.insert(key) {
-                ink.line((*pts).clone(), if stirrup { Pen::MEDIUM } else { Pen::HEAVY }, false);
+                ink.rod(pts, if stirrup { Pen::MEDIUM } else { Pen::HEAVY }, set.diameter * k);
             }
         }
         if stirrup
             && lines.len() >= 3
             && let (Some(a), Some(z)) = (lines.first(), lines.last())
         {
-            let (ya, yz) = (anchor_of(a, true).1, anchor_of(z, true).1);
-            let mid = (ya + yz) / 2.0 + (bottom - top) / 4.0;
-            let (xa, xz) = (a.first().map_or(0.0, |p| p.0), z.first().map_or(0.0, |p| p.0));
-            ink.line(vec![(xa, mid), (xz, mid)], Pen::FINE, false);
+            if tall {
+                let left = |l: &Vec<(f32, f32)>| l.iter().map(|p| p.0).fold(f32::MAX, f32::min);
+                let x = (left(a) + left(z)) / 2.0 + (ex1 - ex0) / 4.0;
+                let y = |l: &Vec<(f32, f32)>| l.first().map_or(0.0, |p| p.1);
+                ink.line(vec![(x, y(a)), (x, y(z))], Pen::FINE, false);
+            } else {
+                let (ya, yz) = (anchor_of(a, true).1, anchor_of(z, true).1);
+                let mid = (ya + yz) / 2.0 + (ey1 - ey0) / 4.0;
+                let (xa, xz) = (a.first().map_or(0.0, |p| p.0), z.first().map_or(0.0, |p| p.0));
+                ink.line(vec![(xa, mid), (xz, mid)], Pen::FINE, false);
+            }
         }
         if let Some(first) = lines.first() {
-            tags.push((anchor_of(first, stirrup), tag_text(m, set, rebar_detail::spreads(set, f))));
+            let anchor = if tall && stirrup { anchor_right(first) } else { anchor_of(first, stirrup) };
+            tags.push((anchor, tag_text(m, set, rebar_detail::spreads(set, f))));
         }
     }
-    ink.column(tags, right + 40.0, top);
+    ink.column(tags, ex1 + 40.0, ey0);
 
     // The stations of its sections, marked on the elevation.
-    let stations: Vec<f64> = if rd.stations.is_empty() { rebar_detail::default_stations(m, &sets, &b) } else { rd.stations.clone() }
+    let stations: Vec<f64> = if rd.stations.is_empty() { rebar_detail::default_stations(m, sets, b) } else { rd.stations.clone() }
         .into_iter()
         .filter(|s| (0.0..=length).contains(s))
         .take(MAX_STATIONS)
         .collect();
     for (i, s) in stations.iter().enumerate() {
-        let x = (s * k) as f32;
-        ink.line(vec![(x, top - 12.0), (x, bottom + 12.0)], Pen::MEDIUM, false);
-        ink.centred(&letter(i).to_string(), (x, top - 22.0), TAG);
-    }
-
-    // Its dimensions: the length, and each zone of stirrups.
-    let row1 = bottom + 30.0;
-    ink.dimension(0.0, right, row1, &m.length(length));
-    for set in sets.iter().filter(|s| s.layer == "stirrup" && s.count >= 2) {
-        let us: Vec<f64> =
-            set.bars.iter().filter_map(|id| bar(m, *id)).filter_map(|rb| rb.path.first()).map(|p| in_frame(f, *p)[0]).collect();
-        if let (Some(lo), Some(hi)) = (us.iter().copied().reduce(f64::min), us.iter().copied().reduce(f64::max)) {
-            ink.dimension((lo * k) as f32, (hi * k) as f32, row1 + DIM, &m.length(hi - lo));
+        let p = pos(*s);
+        if tall {
+            ink.line(vec![(ex0 - 12.0, p), (ex1 + 12.0, p)], Pen::MEDIUM, false);
+            ink.centred(&letter(i).to_string(), (ex0 - 22.0, p), TAG);
+        } else {
+            ink.line(vec![(p, ey0 - 12.0), (p, ey1 + 12.0)], Pen::MEDIUM, false);
+            ink.centred(&letter(i).to_string(), (p, ey0 - 22.0), TAG);
         }
     }
+
+    // Its dimensions: the length, and each zone of stirrups. A beam's are in rows under it, a column's in columns to its left.
+    let zones = sets.iter().filter(|s| s.layer == "stirrup" && s.count >= 2).filter_map(|set| {
+        let us: Vec<f64> =
+            set.bars.iter().filter_map(|id| bar(m, *id)).filter_map(|rb| rb.path.first()).map(|p| in_frame(f, *p)[0]).collect();
+        Some((us.iter().copied().reduce(f64::min)?, us.iter().copied().reduce(f64::max)?))
+    });
+    let ends = if tall {
+        ink.dimension_v(pos(length), pos(0.0), ex0 - 90.0, &m.length(length));
+        for (lo, hi) in zones {
+            ink.dimension_v(pos(hi), pos(lo), ex0 - 40.0, &m.length(hi - lo));
+        }
+        ey1 + 12.0
+    } else {
+        let row = ey1 + 30.0;
+        ink.dimension(0.0, ex1, row, &m.length(length));
+        for (lo, hi) in zones {
+            ink.dimension(pos(lo), pos(hi), row + DIM, &m.length(hi - lo));
+        }
+        row + DIM
+    };
 
     // Its sections, at twice the scale, side by side under it.
     let kk = 2.0 * k;
     let scale = crate::sheet::DENSITY / kk;
     let (sw, sh) = ((b.width * kk) as f32, (depth * kk) as f32);
-    let y0 = row1 + DIM + GAP;
+    let y0 = ends + GAP;
     let (mut x0, mut under) = (0.0f32, y0 + sh);
     for (i, s) in stations.iter().enumerate() {
         let (cx, cy) = (x0 + sw / 2.0, y0 + sh / 2.0);
         let at = |w: f64, v: f64| -> (f32, f32) { (cx + (w * kk) as f32, cy - (v * kk) as f32) };
-        ink.rect((cx - sw / 2.0, cy - sh / 2.0), (cx + sw / 2.0, cy + sh / 2.0), Pen::PROJECTION);
+        if b.round {
+            ink.line(circle((cx, cy), sw / 2.0, 48), Pen::PROJECTION, true);
+        } else {
+            ink.rect((cx - sw / 2.0, cy - sh / 2.0), (cx + sw / 2.0, cy + sh / 2.0), Pen::PROJECTION);
+        }
         let mut tags: Vec<((f32, f32), String)> = Vec::new();
-        for set in &sets {
+        for set in sets {
             let bars: Vec<&Rebar> = set.bars.iter().filter_map(|id| bar(m, *id)).collect();
             if bars.iter().all(|rb| square(f, &rb.path)) {
                 // The stirrup of the zone this station is in: the nearest of the set, if the set reaches it.
@@ -383,7 +454,7 @@ pub(crate) fn layout(m: &Model, rd: &RebarDetail, k: f64) -> Option<Layout> {
                 let reach = set.spacing.unwrap_or(100.0) / 2.0;
                 if let Some(rb) = near.filter(|_| *s >= lo - reach && *s <= hi + reach) {
                     let pts: Vec<(f32, f32)> = rb.path.iter().map(|p| in_frame(f, *p)).map(|q| at(q[1], q[2])).collect();
-                    ink.line(pts.clone(), Pen::MEDIUM, false);
+                    ink.rod(&pts, Pen::MEDIUM, set.diameter * kk);
                     tags.push((anchor_of(&pts, true), tag_text(m, set, false)));
                 }
             } else {
@@ -399,17 +470,91 @@ pub(crate) fn layout(m: &Model, rd: &RebarDetail, k: f64) -> Option<Layout> {
         let column_x = cx + sw / 2.0 + 30.0;
         let wide = widest(&tags);
         ink.column(tags, column_x, cy - sh / 2.0);
-        ink.dimension(cx - sw / 2.0, cx + sw / 2.0, cy + sh / 2.0 + 22.0, &m.length(b.width));
+        let across = if b.round { format!("ø{}", m.length(b.width)) } else { m.length(b.width) };
+        ink.dimension(cx - sw / 2.0, cx + sw / 2.0, cy + sh / 2.0 + 22.0, &across);
         ink.centred(&format!("{0}-{0}   {1}", letter(i), m.units.scale(scale)), (cx, cy + sh / 2.0 + 48.0), TAG);
         under = under.max(cy + sh / 2.0 + 56.0);
         x0 = column_x + wide + GAP;
     }
+    under
+}
 
-    // Its steel list.
-    if rd.list {
-        list(&mut ink, m, &bars, host, under + GAP);
+/// The plan of a footing or a floor, its width along x and its depth up: the outline (a floor's, its openings too), every set of bars
+/// with its tag (these bars spread across the plan, so a tag says its spacing) and the dimensions. Returns the outline's box, px:
+/// left, top, right, bottom.
+fn plan(ink: &mut Ink, m: &Model, b: &Located, sets: &[Set], k: f64) -> [f32; 4] {
+    let f = &b.frame;
+    let at = |q: P3| -> (f32, f32) { ((q[0] * k) as f32, (-q[1] * k) as f32) };
+    let (c0, c1) = (at(b.lo), at([b.lo[0] + b.length, b.lo[1] + b.width, 0.0]));
+    let (x0, x1) = (c0.0.min(c1.0), c0.0.max(c1.0));
+    let (y0, y1) = (c0.1.min(c1.1), c0.1.max(c1.1));
+    if b.kind == Kind::Floor {
+        for ring in &b.rings {
+            ink.line(ring.iter().map(|p| at([p.0, p.1, 0.0])).collect(), Pen::PROJECTION, true);
+        }
+    } else if b.round {
+        ink.line(circle(((x0 + x1) / 2.0, (y0 + y1) / 2.0), (x1 - x0) / 2.0, 48), Pen::PROJECTION, true);
+    } else {
+        ink.rect(c0, c1, Pen::PROJECTION);
     }
-    Some(frame(ink))
+    let mut seen: HashSet<Vec<(i64, i64)>> = HashSet::new();
+    let mut tags: Vec<((f32, f32), String)> = Vec::new();
+    for set in sets {
+        let lines: Vec<Vec<(f32, f32)>> =
+            set.bars.iter().filter_map(|id| bar(m, *id)).map(|rb| rb.path.iter().map(|p| at(in_frame(f, *p))).collect()).collect();
+        let spread = rebar_detail::spreads_over(set, [f.a, f.b]);
+        // A set that spreads over the plan is its first bar and its last with a thin line between, not every one.
+        let many = spread && lines.len() >= 3;
+        let drawn: Vec<&Vec<(f32, f32)>> =
+            if many { lines.first().into_iter().chain(lines.last()).collect() } else { lines.iter().collect() };
+        for pts in &drawn {
+            let key: Vec<(i64, i64)> = pts.iter().map(|p| (p.0.round() as i64, p.1.round() as i64)).collect();
+            if !ink.full() && seen.insert(key) {
+                ink.rod(pts, Pen::HEAVY, set.diameter * k);
+            }
+        }
+        if many && let (Some(a), Some(z)) = (lines.first(), lines.last()) {
+            ink.line(vec![anchor_of(a, false), anchor_of(z, false)], Pen::FINE, false);
+        }
+        if let Some(first) = lines.first() {
+            tags.push((anchor_of(first, false), tag_text(m, set, spread)));
+        }
+    }
+    ink.column(tags, x1 + 60.0, y0);
+    let across = if b.round { format!("ø{}", m.length(b.length)) } else { m.length(b.length) };
+    ink.dimension(x0, x1, y1 + 30.0, &across);
+    if !b.round {
+        ink.dimension_v(y0, y1, x0 - 50.0, &m.length(b.width));
+    }
+    [x0, y0, x1, y1]
+}
+
+/// A footing's plan, and under it, lined up with it, its section along its first axis through the middle: the bars as they lie, the
+/// layers of the mesh one over the other, and its thickness. Returns where it ends, y.
+fn footing(ink: &mut Ink, m: &Model, b: &Located, sets: &[Set], k: f64) -> f32 {
+    let f = &b.frame;
+    let [x0, y0, x1, y1] = plan(ink, m, b, sets, k);
+    let ymid = (y0 + y1) / 2.0;
+    ink.line(vec![(x0 - 12.0, ymid), (x1 + 12.0, ymid)], Pen::MEDIUM, false);
+    ink.centred("A", (x0 - 24.0, ymid), TAG);
+    ink.centred("A", (x1 + 24.0, ymid), TAG);
+    let t = b.depth;
+    let base = y1 + 30.0 + DIM + GAP + (t * k) as f32;
+    let sec = |q: P3| -> (f32, f32) { ((q[0] * k) as f32, base - (q[2] * k) as f32) };
+    ink.rect(sec([b.lo[0], 0.0, 0.0]), sec([b.lo[0] + b.length, 0.0, t]), Pen::PROJECTION);
+    let mut seen: HashSet<Vec<(i64, i64)>> = HashSet::new();
+    for set in sets {
+        for rb in set.bars.iter().filter_map(|id| bar(m, *id)) {
+            let pts: Vec<(f32, f32)> = rb.path.iter().map(|p| sec(in_frame(f, *p))).collect();
+            let key: Vec<(i64, i64)> = pts.iter().map(|p| (p.0.round() as i64, p.1.round() as i64)).collect();
+            if !ink.full() && seen.insert(key) {
+                ink.rod(&pts, Pen::HEAVY, set.diameter * k);
+            }
+        }
+    }
+    ink.dimension_v(base - (t * k) as f32, base, x0 - 50.0, &m.length(t));
+    ink.centred(&format!("A-A   {}", m.units.scale(crate::sheet::DENSITY / k)), ((x0 + x1) / 2.0, base + 22.0), TAG);
+    base + 30.0
 }
 
 /// `ink` moved so that what it draws starts `MARGIN` px from the top left corner, and the room that takes.

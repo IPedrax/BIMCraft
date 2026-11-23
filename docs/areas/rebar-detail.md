@@ -2,15 +2,14 @@
 
 The drawing a detailer issues for a reinforced member. Code: `crates/core/src/rebar_detail.rs` (the element, its check, the sets of
 bars, the tag text, the shapes) and `crates/core/src/sheet/detail.rs` (the layout and the drawing); the command is in
-`crates/core/src/commands/rebar_detail.rs`, tests in `rebar_detail_tests.rs`. A beam has a detail so far; a column, a footing and a
-floor follow.
+`crates/core/src/commands/rebar_detail.rs`, tests in `rebar_detail_tests.rs`. A beam, a column, a footing and a floor have one.
 
 ## What is stored, and what is not
 
 `Element::RebarDetail` (category `rebardetail`) is a view of its own, as a panel schedule is: `name`, `host` (a GUID), `scale` (1 : n,
-default 50), `stations` (where its sections are cut, mm along the beam; none means the default) and `list` (whether its steel list is
-in). It took no FORMAT step of its own: it shares 21's. Everything it shows is worked out from the beam and its bars each time it is
-drawn, so reinforcing the beam again changes it with no command. Deleting the beam deletes it and any viewport of it. Nothing may be
+default 50), `stations` (where its sections are cut, mm along the beam or column; none means the default) and `list` (whether its steel list is
+in). It took no FORMAT step of its own: it shares 21's. Everything it shows is worked out from the member and its bars each time it is
+drawn, so reinforcing the member again changes it with no command. Deleting the member deletes it and any viewport of it. Nothing may be
 annotated in it; a note goes on the sheet.
 
 ## Sets
@@ -38,7 +37,17 @@ a zone of three or more stirrups as its first and its last with a thin line betw
 ordered by where its anchor is, so none overlaps), section marks A, B, C, the beam's length and each zone dimensioned; under that the
 sections, each at **twice the scale** of the elevation and lettered with its own, with the stirrup of the zone it is in, each bar it
 cuts as a dot, and the width dimensioned; under those the steel list (`steel::rows` for the beam) with each bar's shape sketched.
-Default stations are the middle of each zone of stirrups, or of the beam where it has none.
+Default stations of a beam are the middle of each zone of stirrups, or of the beam where it has none.
+
+**A column** is drawn standing: the same elevation turned up (its length on y), its tags to the right, its zones and its height
+dimensioned in columns to its left, and its sections (a circle for a round one) under it at the foot, the middle and the head of its
+stirrups, which are its default stations. A tie, seen end on in the elevation, is a dot. **A footing** is drawn in plan, a to the right
+and b up (its own axes, so a turned footing is drawn square): the outline, each mesh layer as its first bar and its last with a thin
+line between, tagged with its spacing, since those bars spread across the plan; its section A-A is under it, lined up with it, the bars
+projected as they lie (a layer's bars along the cut as a line, those across it as dots), with its thickness dimensioned. **A floor** is
+the plan alone, its outline and openings in its own x and y; it has no section (`section` draws a floor with its bars as dots already).
+A footing and a floor take no stations. A floor whose bars differ in length (an outline that isn't a rectangle) has a set, so a tag,
+for each length: that is the sets rule, bars that are copies of one another, and not a shortcut that hides them.
 
 Stated shortcuts, each one function to change: tags stack in a column (no smarter placer), a bar's dot is never under 0.4 mm on the
 paper, a spatial bar's sketch is its projection and says so, there are no support ticks, and a drawing stops at 50,000 lines and says
@@ -47,15 +56,15 @@ Eberick's.
 
 ## The command
 
-`rebar_detail {host | hosts, stations?, scale?, list?, sheet?, replace?}`: makes a detail for each beam (up to 1,000), or changes the
+`rebar_detail {host | hosts, stations?, scale?, list?, sheet?, replace?}`: makes a detail for each member (up to 1,000), or changes the
 one it has and keeps its name and its place; `sheet` places it through `place`; `replace` takes the values back to the defaults. A
-beam with no bars is refused, saying to reinforce it. The reply lists each view's `sets` (mark, layer, diameter, count, spacing,
+member with no bars is refused, saying to reinforce it; so is `stations` for a footing or a floor. The reply lists each view's `sets` (mark, layer, diameter, count, spacing,
 length, tag, the ids of the bars), so an agent can read what the drawing says. `render {"view": <its name>}` draws it. Its shortcut is DD.
 
 ## The desktop
 
-`crates/ui-egui/src/rebar_detail.rs`. The Structure tab's Detail (DD) opens the Reinforcement Detail dialog for the beams selected (all
-of the selection must be beams: it says what to select otherwise): Stations in the project's unit, the scale as a 1 : n, whether the
+`crates/ui-egui/src/rebar_detail.rs`. The Structure tab's Detail (DD) opens the Reinforcement Detail dialog for the members selected (all
+of the selection must be beams, columns, footings or floors: it says what to select otherwise): Stations in the project's unit, the scale as a 1 : n, whether the
 steel list is in, and where it goes (no sheet, a sheet, or a new one). Make runs `rebar_detail` (with a `sheet` command before it for a
 new one, numbered A101, A102 and so on, in one undo step) and opens what it made: the sheet, or the detail's own tab. A refusal (a
 beam with no bars, a station that is not a length) is the command's words, said inside the dialog. The tab is a `Sheet::Table`, as a

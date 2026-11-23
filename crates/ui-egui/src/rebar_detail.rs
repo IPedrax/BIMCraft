@@ -35,7 +35,7 @@ pub(crate) enum Onto {
 /// The dialog: the beams it is for, and what is typed.
 pub(crate) struct DetailDialog {
     pub(crate) hosts: Vec<Id>,
-    /// Where the sections are cut, along the beam, in the project's unit: blank is the middle of each zone of stirrups.
+    /// Where the sections are cut, along a beam or a column, in the project's unit: blank is the default.
     pub(crate) stations: String,
     /// The n of 1 : n.
     pub(crate) scale: String,
@@ -96,12 +96,23 @@ impl BimApp {
         }
     }
 
-    /// Detail (DD): the dialog for the beams selected, which must be beams and all of them.
+    /// Detail (DD): the dialog for the members selected, which must be beams, columns, footings or floors, all of them.
     pub(crate) fn open_rebar_detail(&mut self) {
         let m = &self.session.model;
-        let hosts: Vec<Id> = self.selection.iter().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::Beam(_)))).collect();
+        let hosts: Vec<Id> = self
+            .selection
+            .iter()
+            .copied()
+            .filter(|id| {
+                matches!(
+                    m.elements.get(*id),
+                    Some(Element::Beam(_) | Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) | Element::Floor(_))
+                )
+            })
+            .collect();
         if hosts.is_empty() || hosts.len() != self.selection.len() {
-            self.status = Status { text: t("Select the reinforced beams to detail first.").into(), error: true };
+            self.status =
+                Status { text: t("Select the reinforced beams, columns, footings or floors to detail first.").into(), error: true };
             return;
         }
         self.detail_dialog = Some(DetailDialog {
@@ -128,7 +139,7 @@ impl BimApp {
         let r = Modal::new(UiId::new("rebar-detail"), t("Reinforcement Detail")).width(520.0).min_height(260.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.add_space(4.0);
-                ui.label(tf("Beams: {}", &[&names.join(", ")]));
+                ui.label(tf("Members: {}", &[&names.join(", ")]));
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     labelled(ui, &tf("{}:", &[t("Stations")]), &mut d.stations, t("Stations").to_string(), 160.0, hint);
@@ -136,7 +147,7 @@ impl BimApp {
                 });
                 ui.label(
                     RichText::new(t(
-                        "Stations are where the sections are cut, along the beam; blank is the middle of each zone of stirrups.",
+                        "Stations are where the sections are cut, along a beam or a column; blank is the middle of each zone of stirrups of a beam, and the foot, middle and head of a column. A footing and a floor take none.",
                     ))
                     .color(pal().muted),
                 );
@@ -246,7 +257,7 @@ impl BimApp {
             ui.painter_at(rect).text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
-                t("Nothing to draw: the beam has no bars."),
+                t("Nothing to draw: the member has no bars."),
                 egui::FontId::proportional(14.0),
                 pal().muted,
             );
