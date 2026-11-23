@@ -2761,6 +2761,10 @@ msgstr "Verifica le normative"
 msgid "Check Classification"
 msgstr "Verifica la classificazione"
 
+#: crates/core/src/commands.rs:3625
+msgid "Check Measured Carrier Fill"
+msgstr ""
+
 #: crates/ui-egui/src/filter.rs:47
 #: crates/ui-egui/src/printsets.rs:202
 msgid "Check None"
@@ -4354,6 +4358,10 @@ msgstr "Copia ID"
 #: crates/ui-egui/src/inquiry.rs:196
 msgid "Copy IFC GlobalIds"
 msgstr "Copia IFC GlobalId"
+
+#: crates/core/src/commands.rs:3653
+msgid "Copy ODT Document Set"
+msgstr ""
 
 #: crates/ui-egui/src/revit.rs:262
 msgid "Copy Report"
@@ -6601,6 +6609,10 @@ msgstr "Esporta motivi di retino"
 msgid "Export Formats"
 msgstr "Formati di esportazione"
 
+#: crates/core/src/commands.rs:3631
+msgid "Export ODS Catalogue"
+msgstr ""
+
 #: crates/core/src/commands.rs:1837
 msgid "Export Parameters"
 msgstr "Esporta parametri"
@@ -6884,6 +6896,10 @@ msgstr "Nome del file"
 #: crates/ui-egui/src/settings.rs:347
 msgid "Files"
 msgstr "File"
+
+#: crates/core/src/commands.rs:3646
+msgid "Fill ODT Template"
+msgstr ""
 
 #: crates/core/src/commands.rs:2474
 #: crates/ui-egui/src/fillpatterns.rs:706
@@ -8312,6 +8328,10 @@ msgstr "Importa motivi di retino"
 #: crates/core/src/commands.rs:337
 msgid "Import Mesh"
 msgstr "Importa mesh"
+
+#: crates/core/src/commands.rs:3638
+msgid "Import ODS Catalogue"
+msgstr ""
 
 #: crates/core/src/commands.rs:1820
 msgid "Import Parameters"
