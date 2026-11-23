@@ -3308,11 +3308,29 @@ pub fn align_ref_3d(
         return Err("it runs square to the work plane, so no face of it stands square to the plane there".into());
     }
     let flexed = f.flexed(values).map_err(|u| u.message)?;
+    align_ref_3d_flexed(&flexed, values, frame, r, e)
+}
+
+/// [`align_ref_3d`] on a family `flexed` for `values` already: what a front end that keeps the flexed draft calls, so a pick
+/// doesn't flex the family again.
+pub fn align_ref_3d_flexed(
+    flexed: &Family,
+    values: &BTreeMap<String, Val>,
+    frame: &Frame,
+    r: views::Reference3d,
+    e: (P3, P3),
+) -> Result<DimRef, String> {
+    use views::Reference3d;
+    let along: P3 = sub(e.1, e.0);
+    let len = dot(along, along).sqrt();
+    if !matches!(r, Reference3d::Plane(_)) && len > TOL && dot(along, frame.z).abs() > len * (1.0 - 1e-9) {
+        return Err("it runs square to the work plane, so no face of it stands square to the plane there".into());
+    }
     // The first of `candidates` facing square to the plane, through both ends of the edge.
     let square = |candidates: Vec<DimRef>| {
         candidates.into_iter().find(|c| {
-            let Ok(Some(n)) = direction(&flexed, c, values) else { return false };
-            let Ok(at) = place(&flexed, c, values, n) else { return false };
+            let Ok(Some(n)) = direction(flexed, c, values) else { return false };
+            let Ok(at) = place(flexed, c, values, n) else { return false };
             dot(n, frame.z).abs() < 1e-6 && [e.0, e.1].iter().all(|p| (dot(n, *p) - at).abs() < 0.5)
         })
     };

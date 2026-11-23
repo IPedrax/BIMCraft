@@ -1402,7 +1402,7 @@ a Sweep's "Modify | Sweep > Sketch Path" with Sketch Path, Pick Path (Pick Lines
 Select Profile showing "<By Sketch>"; a Swept Blend's the same with Profile 1 and Profile 2. A Sweep and a Swept Blend are
 made a mode inside a mode (`FormSketch::nested`): Create > Sweep opens "Modify | Sweep" (or
 "Modify | Swept Blend"), which draws nothing itself (no Draw, Modify, Dimension or Work Plane panel; a click in the view adds
-nothing, and Find's Modify, Delete, dimension and Modify-panel tools say to open a part first); Sketch Path and Pick Path open "Modify | Sweep > Sketch Path", Edit Profile (Profile 1, Profile 2) "… > Edit
+nothing, and Find leaves out Delete, the dimension tools and the Modify panel's tools); Sketch Path and Pick Path open "Modify | Sweep > Sketch Path", Edit Profile (Profile 1, Profile 2) "… > Edit
 Profile", each with the Draw panel and its own Finish Edit Mode (the path checked to chain, a Swept Blend's to be one line
 or one arc; a profile to close into loops) and Cancel Edit Mode (its lines as it began), both back to the sweep's own mode;
 Ctrl+Z inside one never goes back past where it began. The sweep's own Finish makes the form, one step of the history; a part

@@ -24,13 +24,13 @@ pub(crate) struct Kept {
     ranges: BTreeMap<Which, ViewRange>,
     /// {3D}'s Graphic Display Options.
     pub(crate) display: bimcraft_core::view3d::DisplayOptions,
-    /// The box {3D} is cut to, its least and greatest corners in the family's axes, while Selection Box (BX) keeps one.
+    /// The box {3D} is cut to, its least and greatest corners in the family's axes, while Selection Box keeps one.
     pub(crate) section_box: Option<([f64; 3], [f64; 3])>,
     /// The View Range dialog, open on a plan: its four fields as typed, and why OK was refused.
     range_dialog: Option<RangeDialog>,
-    /// The views that reveal what they hide (RH): drawn in magenta, so it can be picked and unhidden.
+    /// The views that reveal what they hide (Reveal Hidden Elements): drawn in magenta, so it can be picked and unhidden.
     reveal: BTreeSet<Option<Which>>,
-    /// View-Specific Element Graphics (EO), open: the view, the forms it overrides (by GUID), the override it opened on and
+    /// View-Specific Element Graphics (Override Graphics by Element), open: the view, the forms it overrides (by GUID), the override it opened on and
     /// the override as edited.
     override_dialog: Option<(Option<Which>, Vec<Guid>, Override, Override)>,
 }
@@ -79,7 +79,7 @@ impl Kept {
         Some((r.bottom.min(r.depth), r.top.unwrap_or(f64::INFINITY)))
     }
 
-    /// Whether view `which` reveals what it hides (RH).
+    /// Whether view `which` reveals what it hides.
     pub(crate) fn revealing(&self, which: Option<Which>) -> bool {
         self.reveal.contains(&which)
     }
@@ -268,7 +268,7 @@ impl FamilyEditor {
 }
 
 impl BimApp {
-    /// Visibility/Graphics (VV, VG) for the family document's view shown.
+    /// Visibility/Graphics for the family document's view shown.
     pub(crate) fn family_vg(&mut self) {
         let (Some(doc), Some(ed)) = (self.active_doc(), self.active_family()) else { return };
         self.vg_dialog = Some(vg_for(doc, ed));
@@ -284,7 +284,7 @@ impl BimApp {
         }
     }
 
-    /// Wireframe, Hidden Line or Shaded (WF, HL, SD) for {3D}; in a plan or an elevation, says they are {3D}'s.
+    /// Wireframe, Hidden Line or Shaded for {3D}; in a plan or an elevation, says they are {3D}'s.
     pub(crate) fn family_style(&mut self, style: VisualStyle) {
         let Some(ed) = self.active_family_mut() else { return };
         if ed.views.shown.is_some() {
@@ -296,7 +296,7 @@ impl BimApp {
         ed.views.kept.set_graphics(None, g);
     }
 
-    /// Graphic Display Options (GD) for {3D}; in a plan or an elevation, says they are {3D}'s.
+    /// Graphic Display Options for {3D}; in a plan or an elevation, says they are {3D}'s.
     pub(crate) fn family_display(&mut self) {
         let Some(ed) = self.active_family() else { return };
         if ed.views.shown.is_some() {
@@ -316,7 +316,7 @@ impl BimApp {
         }
     }
 
-    /// View Range (VR) for the floor plan; in another view, says it is the floor plan's. A ceiling plan looks up from its own
+    /// View Range for the floor plan; in another view, says it is the floor plan's. A ceiling plan looks up from its own
     /// cut, as a project's does, and keeps none.
     pub(crate) fn family_view_range(&mut self) {
         let units = self.session.model.units;
@@ -410,7 +410,7 @@ impl FamilyEditor {
         (forms, self.picked_planes().collect())
     }
 
-    /// Hide in View (EH), or with `category` its category (VH), for what is selected; the selection goes, as the project's does.
+    /// Hide Element in the view, or with `category` Hide Category, for what is selected; the selection goes, as the project's does.
     /// Why not, when nothing of it can be.
     pub(crate) fn hide_in_view(&mut self, category: bool) -> Result<(), &'static str> {
         if self.adaptive.is_some() {
@@ -434,7 +434,7 @@ impl FamilyEditor {
         Ok(())
     }
 
-    /// Unhide Element (EU), or with `category` Unhide Category (VU), for what is selected while the view reveals what it hides.
+    /// Unhide Elements, or with `category` Unhide Category, for what is selected while the view reveals what it hides.
     pub(crate) fn unhide_in_view(&mut self, category: bool) -> Result<(), &'static str> {
         let which = self.views.shown;
         let (forms, planes) = self.picked_elements();
@@ -454,7 +454,7 @@ impl FamilyEditor {
         Ok(())
     }
 
-    /// Reveal Hidden Elements (RH) in the view shown, on or off.
+    /// Reveal Hidden Elements in the view shown, on or off.
     pub(crate) fn toggle_reveal(&mut self) {
         let which = self.views.shown;
         if !self.views.kept.reveal.remove(&which) {
@@ -462,7 +462,7 @@ impl FamilyEditor {
         }
     }
 
-    /// Override Graphics in View by Element (EO): View-Specific Element Graphics on the forms selected, as the first has it.
+    /// Override Graphics by Element: View-Specific Element Graphics on the forms selected, as the first has it.
     pub(crate) fn open_override(&mut self) -> Result<(), &'static str> {
         let (forms, _) = self.picked_elements();
         let Some(first) = forms.first() else {
@@ -477,7 +477,8 @@ impl FamilyEditor {
 }
 
 impl BimApp {
-    /// EH, VH, EU, VU, RH and EO in the family document's view shown; why not, in the status bar.
+    /// Hide Element, Hide Category, Unhide Elements, Unhide Category, Reveal Hidden Elements and Override Graphics by Element
+    /// in the family document's view shown; why not, in the status bar.
     pub(crate) fn family_view_element(&mut self, action: &str) {
         let Some(ed) = self.active_family_mut() else { return };
         let done = match action {

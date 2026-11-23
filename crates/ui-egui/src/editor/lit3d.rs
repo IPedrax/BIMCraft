@@ -223,7 +223,7 @@ impl FamilyEditor {
             azimuth: AZIMUTH,
             elevation: ELEVATION,
             graphics,
-            // Selection Box: the box BX keeps, while it keeps one.
+            // Selection Box: the box kept, while there is one.
             section_box: self.views.kept.section_box.map(|(min, max)| bimcraft_core::model::SectionBox { min, max, on: true }),
             perspective: None,
             camera: None,
@@ -354,7 +354,7 @@ fn datum_mark(cam: &Camera, f: &Family, lit: Lit, c: Color32, extents: ([f64; 3]
 const BOX_GROWS: (f64, f64) = (0.05, 50.0);
 
 impl BimApp {
-    /// Selection Box (BX), as the project's: {3D} cut to a box round the forms and nested instances selected, a little
+    /// Selection Box, as the project's: {3D} cut to a box round the forms and nested instances selected, a little
     /// bigger, and opened. With nothing selected, a box it keeps is taken away; with none, a note says what to select. The
     /// box is the view's for the session, as its other graphics are (`view_graphics.rs`): not saved, no step of the history.
     pub(crate) fn family_selection_box(&mut self) {

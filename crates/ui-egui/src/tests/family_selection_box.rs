@@ -27,12 +27,12 @@ fn selection_box_cuts_3d_to_a_box_round_the_form_selected_and_on_nothing_takes_i
     let shown = preview(&h, &pictures);
     let ground = shown.pixels[0];
     // With nothing selected, Selection Box has nothing to box: it says so and changes nothing.
-    command(&mut h, "Section Box");
+    command(&mut h, "Selection Box");
     assert!(boxed(&h).is_none());
     assert!(h.state().status.text.contains("Select"), "{:?}", h.state().status);
     // The first form selected: a box round it, a little bigger, which leaves the second form out.
     press(&mut h, "1. Extrusion");
-    command(&mut h, "Section Box");
+    command(&mut h, "Selection Box");
     let (lo, hi) = boxed(&h).expect("a box round the form");
     assert!(lo[0] < 0.0 && hi[0] > 1000.0 && hi[0] < 2000.0, "round the first form, short of the second: {lo:?} {hi:?}");
     assert!(lo[2] < 0.0 && hi[2] > 500.0);
@@ -45,7 +45,7 @@ fn selection_box_cuts_3d_to_a_box_round_the_form_selected_and_on_nothing_takes_i
     assert_eq!(ed.steps(), 0);
     // Selection Box on nothing: the box goes, and {3D} is drawn as it was.
     key(&mut h, Key::Escape);
-    command(&mut h, "Section Box");
+    command(&mut h, "Selection Box");
     assert!(boxed(&h).is_none());
     assert_eq!(differ(&preview(&h, &pictures), &shown), Vec::<usize>::new());
 }
@@ -70,7 +70,7 @@ fn the_inactive_3d_tile_draws_the_box_too() {
     h.state_mut().open_sheet(Sheet::Family(doc, None));
     h.run();
     assert!(!h.state().active_family().unwrap().selected_3d().is_empty(), "still selected");
-    command(&mut h, "Section Box");
+    command(&mut h, "Selection Box");
     assert!(boxed(&h).is_some());
     super::family_views::view(&mut h, Some(Which::Plan));
     h.run();
@@ -84,7 +84,7 @@ fn the_inactive_3d_tile_draws_the_box_too() {
 fn the_box_goes_with_the_family() {
     let (mut h, _) = cabinet();
     press(&mut h, "1. Extrusion");
-    command(&mut h, "Section Box");
+    command(&mut h, "Selection Box");
     assert!(boxed(&h).is_some());
     press(&mut h, "Close Family");
     h.state_mut().edit_family("Cabinet");
@@ -110,7 +110,7 @@ fn mixed() -> Harness<'static, BimApp> {
 /// Selection Box on `items`: the box it keeps.
 fn box_on(h: &mut Harness<BimApp>, items: &[Picked]) -> Option<([f64; 3], [f64; 3])> {
     super::family_drag_move::pick(h, items);
-    command(h, "Section Box");
+    command(h, "Selection Box");
     boxed(h)
 }
 
@@ -153,7 +153,7 @@ fn selection_box_screenshots() {
         };
         save(&mut h, "before");
         press(&mut h, "1. Extrusion");
-        command(&mut h, "Section Box");
+        command(&mut h, "Selection Box");
         key(&mut h, Key::Escape);
         save(&mut h, "boxed");
     }

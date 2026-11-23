@@ -186,9 +186,16 @@ impl FamilyEditor {
 
     /// Re-arm the document's last tool from its initial state. Commands that directly edit the draft are never recorded.
     pub(crate) fn repeat_last_tool(&mut self) -> Result<(), String> {
-        let Some(action) = self.last_tool else { return Ok(()) };
+        let Some(action) = self.last_tool else {
+            return Err(t("Repeat Last Command: no tool has been picked in this family yet.").to_string());
+        };
         if let Some(tool) = super::modify::found(action) {
             return self.modify_tool_on(tool);
+        }
+        // The tools that draw or pick in a plan or an elevation (Align in {3D} too) say so elsewhere, as their buttons do.
+        let in_2d = self.editing_2d() || (action == "Align" && self.aligns_in_3d());
+        if !in_2d && action != "Component" {
+            return Err(tf("{} works in a plan or an elevation.", &[t(action)]));
         }
         match action {
             "Reference Plane" => self.reference_plane_tool(),
@@ -545,22 +552,24 @@ impl BimApp {
             let key = (h.finish(), size);
             if ed.views.tile_3d.as_ref().is_none_or(|c| c.key != key) {
                 ed.stage_3d(&self.session.model);
-                let Some(staged) = ed.scene3d.as_ref() else { return };
-                let scene = Scene::new(&staged.model);
-                let look = Look::of_3d(&staged.model);
-                let cam = scene.fit_in(azimuth, elevation, size[0], size[1], &look);
-                let image = scene.render_in(&cam, &[], &look);
-                let pixels = image
-                    .rgba
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2])))
-                    .collect();
-                let picture =
-                    egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
-                let texture = ui.ctx().load_texture("family-tile-3d", picture, egui::TextureOptions::NEAREST);
-                ed.views.tile_3d = Some(super::views::Tile3d { key, texture });
+                // A draft {3D} can't be staged for keeps the last picture.
+                if let Some(staged) = ed.scene3d.as_ref().filter(|_| ed.problem.is_none()) {
+                    let scene = Scene::new(&staged.model);
+                    let look = Look::of_3d(&staged.model);
+                    let cam = scene.fit_in(azimuth, elevation, size[0], size[1], &look);
+                    let image = scene.render_in(&cam, &[], &look);
+                    let pixels = image
+                        .rgba
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2])))
+                        .collect();
+                    let picture =
+                        egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
+                    let texture = ui.ctx().load_texture("family-tile-3d", picture, egui::TextureOptions::NEAREST);
+                    ed.views.tile_3d = Some(super::views::Tile3d { key, texture });
+                }
             }
         }
         if let Some(tile) = &ed.views.tile_3d {
@@ -782,7 +791,7 @@ impl BimApp {
                         }
                         // Find/Replace in the family's text, beside Text; greyed while a form is sketched, as Find leaves it
                         // out then.
-                        let tip = msg!("Find/Replace: find text in the family's labels, and replace it");
+                        let tip = msg!("Find/Replace: find words in the family's text, and replace them");
                         let free = ed.sketch.is_none();
                         let find = ui.add_enabled_ui(free, |ui| big_button(ui, Icon::Text, msg!("Find/Replace"), false, tip)).inner;
                         if find.on_disabled_hover_text(t("Finish or cancel the sketch first.")).clicked() {
@@ -817,13 +826,13 @@ impl BimApp {
             DocTab::View => {
                 // The view shown's Visibility/Graphics, and the window's Thin Lines.
                 ribbon::panel(ui, msg!("Graphics"), |ui| {
-                    let tip = msg!("Visibility/Graphics (VV): what the view shown draws of each category, for the session");
+                    let tip = msg!("Visibility/Graphics: what the view shown draws of each category, for the session");
                     if big_button(ui, Icon::Visibility, msg!("Visibility/Graphics"), self.vg_dialog.is_some(), tip).clicked()
                         && let Some(doc) = self.active_doc()
                     {
                         self.vg_dialog = Some(super::view_graphics::vg_for(doc, ed));
                     }
-                    if big_button(ui, Icon::ThinLines, msg!("Thin Lines"), self.thin, "Thin Lines (TL): every line one pixel wide")
+                    if big_button(ui, Icon::ThinLines, msg!("Thin Lines"), self.thin, msg!("Thin Lines: every line one pixel wide"))
                         .clicked()
                     {
                         self.thin = !self.thin;
@@ -832,16 +841,12 @@ impl BimApp {
                 ribbon::panel(ui, msg!("Windows"), |ui| {
                     if ui
                         .button(t(msg!("Tile Windows")))
-                        .on_hover_text(t(msg!("Tile Windows (WT): show this family's open views together")))
+                        .on_hover_text(t(msg!("Tile Windows: show this family's open views together")))
                         .clicked()
                     {
                         ed.views.tiled = true;
                     }
-                    if ui
-                        .button(t(msg!("Tab Windows")))
-                        .on_hover_text(t(msg!("Tab Windows (TW): show one family view at a time")))
-                        .clicked()
-                    {
+                    if ui.button(t(msg!("Tab Windows"))).on_hover_text(t(msg!("Tab Windows: show one family view at a time"))).clicked() {
                         ed.views.tiled = false;
                     }
                     let tip = msg!("Close Inactive Views: keep this view and one view of every other open family");
@@ -1690,7 +1695,7 @@ impl BimApp {
                 // {3D}'s Visual Style, as the project's 3D view has it, with its Graphic Display Options.
                 if ed.views.shown.is_none() {
                     let now = ed.views.kept.graphics_of(None).style;
-                    let tip = msg!("Visual Style: how {3D} draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe");
+                    let tip = msg!("Visual Style: how {3D} draws surfaces: Shaded, Hidden Line or Wireframe");
                     let r = crate::footer::menu_button(ui, "Visual Style", now.name(), tip, None);
                     egui::Popup::menu(&r).show(|ui| {
                         for v in bimcraft_core::graphics::VisualStyle::ALL {
@@ -1733,7 +1738,7 @@ impl BimApp {
                 // Reveal Hidden Elements, as the project's bar has it: what the view hides in magenta, to unhide.
                 if ed.adaptive.is_none() {
                     let on = ed.views.kept.revealing(ed.views.shown);
-                    let tip = msg!("Reveal Hidden Elements (RH): what the view hides drawn in magenta, so it can be picked and unhidden");
+                    let tip = msg!("Reveal Hidden Elements: what the view hides drawn in magenta, so it can be picked and unhidden");
                     if crate::small_button(ui, Icon::Reveal, "Reveal Hidden Elements", on, tip).clicked() {
                         ed.toggle_reveal();
                     }
@@ -1986,10 +1991,15 @@ impl BimApp {
     /// does each, as its button does.
     pub(crate) fn family_find_actions(&self) -> Vec<&'static str> {
         let Some(ed) = self.active_family() else { return Vec::new() };
-        let mut out = vec!["Modify", "Delete"];
+        // A sweep's own mode draws nothing: the sketch's tools wait for Sketch Path or Edit Profile.
+        let waits = ed.sketch.as_ref().is_some_and(|s| s.parent());
+        let mut out = vec!["Modify"];
+        if !waits {
+            out.push("Delete");
+        }
         if ed.editing_2d() && ed.sketch.is_none() {
             out.extend(["Aligned Dimension", "Align", msg!("Reference Line")]);
-        } else if ed.editing_2d() {
+        } else if ed.editing_2d() && !waits {
             // While a form is sketched, the dimensions where the view sees the sketch's plane flat.
             out.push("Aligned Dimension");
         }
@@ -2007,7 +2017,7 @@ impl BimApp {
         }
         // The Modify panel's tools, in a family that isn't adaptive: one that can't be used now says why, as its greyed
         // button's tooltip does.
-        if ed.adaptive.is_none() {
+        if ed.adaptive.is_none() && !waits {
             out.extend(super::modify::FIND.iter().map(|(name, _)| *name));
             out.extend(super::clipboard::FIND.iter().map(|(name, _)| *name));
         }
@@ -2023,23 +2033,25 @@ impl BimApp {
             out.extend(["Object Styles", "Materials", "Project Units", "Purge Unused"]);
         }
         // The view shown's graphics, for the session: Visibility/Graphics, {3D}'s visual styles and Graphic Display Options,
-        // the floor plan's View Range, Hide in View and its undoing, Reveal Hidden Elements and Override Graphics; and the
-        // window's Thin Lines.
-        out.extend([
-            "Visibility/Graphics",
-            "Thin Lines",
-            "Wireframe",
-            "Hidden Line",
-            "Shaded",
-            "Graphic Display Options",
-            "View Range",
-            "Hide Element",
-            "Hide Category",
-            "Unhide Elements",
-            "Unhide Category",
-            "Reveal Hidden Elements",
-            "Override Graphics by Element",
-        ]);
+        // the floor plan's View Range, Hide in View and its undoing, Reveal Hidden Elements and Override Graphics, in a family
+        // that isn't adaptive (whose views hide for now only); and the window's Thin Lines.
+        out.push("Thin Lines");
+        if ed.adaptive.is_none() {
+            out.extend([
+                "Visibility/Graphics",
+                "Wireframe",
+                "Hidden Line",
+                "Shaded",
+                "Graphic Display Options",
+                "View Range",
+                "Hide Element",
+                "Hide Category",
+                "Unhide Elements",
+                "Unhide Category",
+                "Reveal Hidden Elements",
+                "Override Graphics by Element",
+            ]);
+        }
         out.extend([
             "Temporary Hide Element",
             "Temporary Hide Category",
@@ -2049,15 +2061,19 @@ impl BimApp {
             "3D View",
         ]);
         // The window's commands: Close Inactive Views, Tile Windows and Tab Windows (this family's views together or one at a
-        // time), and Repeat Last Command outside a sketch.
-        out.extend(["Close Inactive Views", "Tile Windows", "Tab Windows"]);
+        // time, but for an adaptive family, whose modelling view keeps the whole canvas), and Repeat Last Command outside a
+        // sketch.
+        out.push("Close Inactive Views");
+        if ed.adaptive.is_none() {
+            out.extend(["Tile Windows", "Tab Windows"]);
+        }
         if !ed.sketching() {
             out.push("Repeat Last Command");
         }
         out.push("Zoom to Fit");
         // Selection Box, from any of its views.
         if ed.adaptive.is_none() {
-            out.push("Section Box");
+            out.push(msg!("Selection Box"));
         }
         // Find/Replace on its text, outside a sketch; Edit Witness Lines in a plan or an elevation.
         if ed.adaptive.is_none() && ed.sketch.is_none() {
@@ -2074,13 +2090,6 @@ impl BimApp {
     pub(crate) fn family_find_action(&mut self, action: &str) -> bool {
         if !self.family_find_actions().contains(&action) {
             return false;
-        }
-        // A sweep's own mode draws nothing: the sketch's tools wait for Sketch Path or Edit Profile.
-        let waits = matches!(action, "Modify" | "Aligned Dimension" | "Align" | "Delete") || super::modify::found(action).is_some();
-        if waits && self.active_family().and_then(|ed| ed.sketch.as_ref()).is_some_and(|s| s.parent()) {
-            let text = t("Open Sketch Path or Edit Profile first: the sweep's own mode draws nothing.").to_string();
-            self.status = Status { text, error: true };
-            return true;
         }
         let temp = |category| super::temp_hide::Asked::Hide { category };
         let isolate = |category| super::temp_hide::Asked::Isolate { category };
@@ -2155,7 +2164,7 @@ impl BimApp {
             | "Override Graphics by Element" => self.family_view_element(action),
             "Select Elements by Face" => self.select_by_face = !self.select_by_face,
             "Drag Elements on Selection" => self.drag_on_selection = !self.drag_on_selection,
-            "Section Box" => self.family_selection_box(),
+            "Selection Box" => self.family_selection_box(),
             "Close Inactive Views" => self.close_inactive_family_views(),
             "Tile Windows" | "Tab Windows" => {
                 if let Some(ed) = self.active_family_mut() {
@@ -2959,7 +2968,7 @@ impl BimApp {
         if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
         }
-        // The box's frame, with no grips: BX on another selection makes another.
+        // The box's frame, with no grips: Selection Box on another selection makes another.
         if let Some(b) = boxed {
             let at = on_pane(cam, size, pane);
             crate::section_box::draw(&p, &cam, b, false, (None, None), |q| at(q).unwrap_or(egui::pos2(f32::NAN, f32::NAN)));

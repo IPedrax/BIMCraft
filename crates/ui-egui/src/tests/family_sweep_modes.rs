@@ -360,9 +360,12 @@ fn a_nested_undo_floor_follows_the_history_cap() {
 fn the_sweeps_own_mode_takes_no_tool_and_a_profile_keeps_its_plane() {
     let mut h = open();
     button(&mut h, "Sweep");
-    super::family_selection::command(&mut h, "Aligned Dimension");
+    // Find leaves the sketch's tools out: Modify alone is there.
+    assert!(!h.state().family_find_actions().contains(&"Aligned Dimension"));
+    assert!(h.state_mut().family_find_action("Modify"));
+    assert!(!h.state_mut().family_find_action("Aligned Dimension"));
+    h.run();
     assert!(editor(&h).views.dimensioning.is_none(), "Aligned Dimension waits");
-    assert!(status(&h).1, "said why: {:?}", status(&h));
     button(&mut h, "Sketch Path");
     assert!(editor(&h).views.dimensioning.is_none());
     l_path(&mut h);

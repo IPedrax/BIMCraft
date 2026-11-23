@@ -128,8 +128,8 @@ pub(crate) struct Views {
     /// How many times a cache above was worked out: what a test reads to see it kept as the pointer moves.
     #[cfg(test)]
     pub(crate) cache_builds: u32,
-    /// What {3D} picks references among, and what it was made for.
-    pub(crate) refs_3d: Option<(u64, super::modify::Refs3d)>,
+    /// What {3D} picks references among and the draft flexed as it shows it, and what they were made for.
+    pub(crate) refs_3d: Option<(u64, super::modify::Refs3d, super::modify::Flexed3d)>,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
@@ -211,20 +211,6 @@ impl Views {
         if !open.contains(&None) {
             self.tile_3d = None;
         }
-    }
-
-    /// When a tile becomes active, exchange its picture with the active view's (each view keeps its own fit).
-    pub(crate) fn activate_tile(&mut self, old: Option<Which>, new: Option<Which>) {
-        if old == new || !self.tiled {
-            return;
-        }
-        if let Some(which) = old {
-            self.tiles_2d.insert(which, Tile2d { cache: self.cache.take() });
-        } else {
-            self.cache = None;
-        }
-        let next = new.and_then(|which| self.tiles_2d.remove(&which)).unwrap_or_default();
-        self.cache = next.cache;
     }
 }
 

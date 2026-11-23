@@ -96,9 +96,10 @@ fn adaptive_family_keeps_its_full_modelling_canvas_when_tiled() {
     h.run();
     super::family_views::view(&mut h, Some(Which::Plan));
     let before = h.state().view_rect;
-    command(&mut h, "Tile Windows");
+    // Find leaves Tile Windows out in an adaptive family; tiled all the same, its modelling view keeps the whole canvas.
+    assert!(!h.state().family_find_actions().contains(&"Tile Windows"));
+    h.state_mut().active_family_mut().unwrap().views.tiled = true;
     h.run();
-    assert!(h.state().active_family().unwrap().views.tiled);
     assert_eq!(h.state().view_rect, before);
 }
 
