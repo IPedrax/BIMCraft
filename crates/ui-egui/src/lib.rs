@@ -870,7 +870,16 @@ pub struct BimApp {
     ramp_height: String,
     ramp_width: String,
     ramp_slope: String,
-    /// How high the Ceiling tool's ceilings are; the Slope Arrow's slope; the Shaft tool's top.
+    /// How the Ramp tool draws: along straight stretches or arcs, or round a centre; whether the next stretch is a landing;
+    /// what each stretch clicked was (a landing, an arc, its slope); and which way a circular one winds.
+    ramp_shape: RampShape,
+    ramp_landing: bool,
+    ramp_kinds: Vec<(bool, bool, f64)>,
+    ramp_clockwise: bool,
+    /// The line the Ramp tool draws along (its left edge, its middle or its right edge), and the unit its slope is typed in.
+    pub(crate) ramp_line: bimcraft_core::model::StairLine,
+    pub(crate) slope_unit: SlopeUnit,
+    /// How the Ceiling tool's ceilings are; the Slope Arrow's slope; the Shaft tool's top.
     ceiling_height: String,
     floor_slope: String,
     /// Add Point's elevation: above the floor's top as it would be without its shape, or with `shape_absolute`, above its
@@ -1311,6 +1320,67 @@ fn height_options(ui: &mut Ui, m: &Model, level: Id, top: &mut Option<Option<Id>
     if now.is_none() {
         ui.add(TextEdit::singleline(height).desired_width(64.0).hint_text(m.units.name())).labelled_by(label.id);
     }
+}
+
+/// How a slope is typed and shown: percent (rise over run), degrees, or a grade (1 : the run for a rise of one).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SlopeUnit {
+    Percent,
+    Degrees,
+    Grade,
+}
+
+impl SlopeUnit {
+    pub(crate) const ALL: [SlopeUnit; 3] = [SlopeUnit::Percent, SlopeUnit::Degrees, SlopeUnit::Grade];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            SlopeUnit::Percent => msg!("Percent (%)"),
+            SlopeUnit::Degrees => msg!("Degrees (°)"),
+            SlopeUnit::Grade => msg!("Grade (1:x)"),
+        }
+    }
+
+    /// A slope of `percent`, as this unit writes it.
+    pub(crate) fn show(self, percent: f64) -> String {
+        let trim = |x: f64, places: usize| {
+            let s = format!("{x:.places$}");
+            if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
+        };
+        match self {
+            SlopeUnit::Percent => trim(percent, 2),
+            SlopeUnit::Degrees => trim(bimcraft_core::ramps::degrees(percent), 2),
+            SlopeUnit::Grade => format!("1:{}", trim(bimcraft_core::ramps::grade(percent), 2)),
+        }
+    }
+
+    /// What is typed in this unit, as percent: a grade as `1:12`, `1/12` or `12`.
+    pub(crate) fn read(self, typed: &str) -> Option<f64> {
+        let s = typed.trim().trim_end_matches(['%', '°']).trim();
+        let p = match self {
+            SlopeUnit::Percent => crate::properties::number(s)?,
+            SlopeUnit::Degrees => crate::properties::number(s).filter(|d| *d > 0.0 && *d < 89.0)?.to_radians().tan() * 100.0,
+            SlopeUnit::Grade => {
+                let run = match s.split_once([':', '/']) {
+                    Some((rise, run)) => crate::properties::number(run)? / crate::properties::number(rise).filter(|r| *r > 0.0)?,
+                    None => crate::properties::number(s)?,
+                };
+                if run > 0.0 { 100.0 / run } else { return None }
+            }
+        };
+        (p.is_finite() && p > 0.0).then_some(p)
+    }
+}
+
+/// How the Ramp tool draws a ramp.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RampShape {
+    /// Along a line, the stretch to the next click straight.
+    Straight,
+    /// Along a line, the stretch to the next click an arc leaving the one before smoothly.
+    Arc,
+    /// Round a centre, as far as it needs to reach its top.
+    Circular,
 }
 
 /// How the Stair tool draws a stair.
@@ -1852,6 +1922,12 @@ impl BimApp {
             ramp_height: units.length(600.0),
             ramp_width: units.length(bimcraft_core::codes::library_rules::<bimcraft_core::codes::checks::RampRules>().width),
             ramp_slope: "8.33".into(),
+            ramp_shape: RampShape::Straight,
+            ramp_landing: false,
+            ramp_kinds: Vec::new(),
+            ramp_clockwise: false,
+            ramp_line: Default::default(),
+            slope_unit: SlopeUnit::Percent,
             ceiling_height: units.length(CEILING_HEIGHT),
             floor_slope: "5".into(),
             shape_z: String::new(),
@@ -2917,6 +2993,7 @@ impl BimApp {
                 }
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
+                (Tool::Ramp(_), true) => self.finish_ramp_path(level),
                 (Tool::Stair(_), true) if self.stair_shape == StairShape::Risers => self.finish_stair_sketch(level),
                 (Tool::Stair(_), true) if self.stair_shape != StairShape::Spiral => self.finish_stair_path(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
@@ -3706,7 +3783,7 @@ impl BimApp {
             .copied()
             .filter(|id| {
                 m.wall(*id).is_some()
-                    || matches!(m.elements.get(*id), Some(Element::Stair(_)))
+                    || matches!(m.elements.get(*id), Some(Element::Stair(_) | Element::Ramp(_)))
                     || m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any())
             })
             .collect()
@@ -3935,7 +4012,10 @@ impl BimApp {
             }
             Tool::Measure(None) if self.measured.take().is_some() => Tool::Measure(None),
             Tool::Stair(pts) if !pts.is_empty() => Tool::Stair(Vec::new()),
-            Tool::Ramp(pts) if !pts.is_empty() => Tool::Ramp(Vec::new()),
+            Tool::Ramp(pts) if !pts.is_empty() => {
+                self.ramp_kinds.clear();
+                Tool::Ramp(Vec::new())
+            }
             Tool::Railing(pts) if !pts.is_empty() => Tool::Railing(Vec::new()),
             Tool::Mass(pts) if !pts.is_empty() => Tool::Mass(Vec::new()),
             Tool::DetailLine(pts) if !pts.is_empty() => Tool::DetailLine(Vec::new()),
@@ -5778,6 +5858,7 @@ impl BimApp {
         self.select_panel(ui);
         if self.sketch.is_some() {
             self.sketch_draw(ui);
+            self.ramp_sketch_panel(ui);
             self.walls_outline_panel(ui);
             self.sketch_modify_panel(ui);
             self.mode_panel(ui);
@@ -6021,6 +6102,79 @@ impl BimApp {
                     }
                 });
             }
+        }
+        // The Ramp tool: how its line is drawn, or a sketch; and whether the next stretch is a flight or a landing.
+        if matches!(self.tool, Tool::Ramp(_)) {
+            panel(ui, msg!("Draw"), |ui| {
+                let shapes = [
+                    (RampShape::Straight, Icon::Line, "Straight", msg!("Straight: the next stretch of the ramp runs in a straight line")),
+                    (
+                        RampShape::Arc,
+                        Icon::TangentArc,
+                        "Arc",
+                        msg!("Arc: the next stretch curves, carrying on smoothly from the one before it"),
+                    ),
+                    (
+                        RampShape::Circular,
+                        Icon::Circle,
+                        "Circular",
+                        msg!("Circular: click the centre first, then the middle of the ramp's foot. It winds round the centre to its top."),
+                    ),
+                ];
+                for (shape, icon, label, tip) in shapes {
+                    if big_button(ui, icon, label, self.ramp_shape == shape, tip).clicked() && self.ramp_shape != shape {
+                        let line = |s: RampShape| matches!(s, RampShape::Straight | RampShape::Arc);
+                        if !(line(shape) && line(self.ramp_shape)) {
+                            self.tool = Tool::Ramp(Vec::new());
+                            self.ramp_kinds.clear();
+                        }
+                        self.ramp_shape = shape;
+                    }
+                }
+                let tip = msg!(
+                    "Sketch: draw the ramp's two sides as Boundary lines, then its start line, its end line and two lines round each landing as Run lines"
+                );
+                if big_button(ui, Icon::Line, "Sketch", false, tip).clicked()
+                    && let Some(level) = self.plan_level()
+                {
+                    self.ramp_kinds.clear();
+                    self.start_sketch(crate::sketch::Of::Ramp(level), Vec::new());
+                }
+            });
+            if self.ramp_shape != RampShape::Circular {
+                panel(ui, msg!("Segment"), |ui| {
+                    let tip = msg!("Flight: the next stretch you draw slopes, at the Options Bar's slope");
+                    if big_button(ui, Icon::Ramp, "Flight", !self.ramp_landing, tip).clicked() {
+                        self.ramp_landing = false;
+                    }
+                    let tip = msg!("Landing: the next stretch you draw is a flat landing, as long as you draw it");
+                    if big_button(ui, Icon::Landing, "Landing", self.ramp_landing, tip).clicked() {
+                        self.ramp_landing = true;
+                    }
+                });
+            }
+        }
+        // Ramps selected: Flip, and a sketched one's Edit Sketch.
+        let ramps: Vec<Id> =
+            (self.selection.iter().copied()).filter(|id| matches!(self.session.model.elements.get(*id), Some(Element::Ramp(_)))).collect();
+        if !ramps.is_empty() && self.tool == Tool::Modify {
+            panel(ui, msg!("Modify Ramp"), |ui| {
+                let tip = msg!("Flip (Space): make the ramp climb the other way, so its top becomes its foot");
+                if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
+                    self.flip();
+                }
+                if let [id] = ramps.as_slice()
+                    && let Some(Element::Ramp(r)) = self.session.model.elements.get(*id)
+                    && !r.sketch.is_empty()
+                {
+                    let lines = r.sketch.clone();
+                    let tip = msg!("Edit Sketch: change the ramp's sides, its start and end lines and its landings' lines");
+                    if big_button(ui, Icon::Line, "Edit Sketch", false, tip).clicked() {
+                        let id = *id;
+                        self.start_sketch(crate::sketch::Of::RampEdit(id), lines);
+                    }
+                }
+            });
         }
         // Stairs selected: which way they climb, and what their building code says of them.
         let stairs = self.selected_stairs();
@@ -6414,7 +6568,39 @@ impl BimApp {
                     let l = ui.label(t("Width:"));
                     ui.add(TextEdit::singleline(&mut self.ramp_width).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
                     let l = ui.label(t("Slope:"));
-                    ui.add(TextEdit::singleline(&mut self.ramp_slope).desired_width(48.0).hint_text("%")).labelled_by(l.id);
+                    ui.add(TextEdit::singleline(&mut self.ramp_slope).desired_width(56.0)).labelled_by(l.id).on_hover_text(t(
+                        "The slope of the flight being drawn: change it between clicks for each flight its own",
+                    ));
+                    let was = self.slope_unit;
+                    egui::ComboBox::from_id_salt("ramp-slope-unit").selected_text(t(self.slope_unit.label())).show_ui(ui, |ui| {
+                        for u in SlopeUnit::ALL {
+                            ui.selectable_value(&mut self.slope_unit, u, t(u.label()));
+                        }
+                    });
+                    // The slope typed, written again in the unit picked.
+                    if self.slope_unit != was
+                        && let Some(p) = was.read(&self.ramp_slope)
+                    {
+                        self.ramp_slope = self.slope_unit.show(p);
+                    }
+                    if self.ramp_shape != RampShape::Circular {
+                        let l = ui.label(t("Location Line:"));
+                        use bimcraft_core::model::StairLine;
+                        let lines = [(StairLine::Left, "Run: Left"), (StairLine::Centre, "Run: Center"), (StairLine::Right, "Run: Right")];
+                        let now = lines.iter().find(|(x, _)| *x == self.ramp_line).map_or("", |(_, n)| n);
+                        egui::ComboBox::from_id_salt("ramp-line")
+                            .selected_text(t(now))
+                            .show_ui(ui, |ui| {
+                                for (x, n) in lines {
+                                    ui.selectable_value(&mut self.ramp_line, x, t(n));
+                                }
+                            })
+                            .response
+                            .labelled_by(l.id);
+                    }
+                    if self.ramp_shape == RampShape::Circular {
+                        ui.checkbox(&mut self.ramp_clockwise, t("Clockwise"));
+                    }
                     ui.checkbox(&mut self.railings, t("Railings"));
                 }
                 Tool::Roof => {
@@ -6946,14 +7132,22 @@ impl BimApp {
                     "Click where this flight ends: past the top, the stair is done. Landing, in the ribbon, draws a landing next; a double click or Enter finishes the stair as drawn, its top under its top level by what is not drawn."
                 )
             }
+            Tool::Ramp(pts) if pts.is_empty() && self.ramp_shape == RampShape::Circular => {
+                msg!("Click the centre the ramp winds round.")
+            }
+            Tool::Ramp(_) if self.ramp_shape == RampShape::Circular => {
+                msg!("Click the middle of its foot: it winds round the centre from there until it reaches its top.")
+            }
             Tool::Ramp(pts) if pts.is_empty() => msg!("Click where the ramp starts: the middle of its foot."),
-            Tool::Ramp(pts) if pts.len() == 1 => {
+            Tool::Ramp(_) if self.ramp_landing => {
                 msg!(
-                    "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
+                    "Click where this landing ends. Flight, in the ribbon, goes on with a flight; a double click or Enter finishes the ramp."
                 )
             }
             Tool::Ramp(_) => {
-                msg!("Click which way the next run goes from the landing: on, left, right, or back beside it.")
+                msg!(
+                    "Click where this flight ends, at the Options Bar's slope: past the top, the ramp is done. Landing, in the ribbon, draws a landing next; a double click or Enter finishes the ramp as drawn."
+                )
             }
             Tool::Railing(pts) if pts.is_empty() => msg!("Click a stair or a ramp for a railing down each side, or the start of a path."),
             Tool::Railing(_) => msg!("Click the path's next point. Enter finishes, Esc cancels."),

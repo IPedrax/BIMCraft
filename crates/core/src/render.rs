@@ -5263,24 +5263,105 @@ fn numbers(d: &mut Drawing, m: &Model, st: &Stair, l: &stairs::Layout, cut: f64,
     }
 }
 
-/// A ramp in the plan of `level`: from its own level, its runs' and landings' outlines, dashed
-/// where they're over the cut plane, and its walk line marked UP; from the level it climbs to, all
-/// of it, marked DN.
+/// A ramp in the plan of `level`, as its type says it shows there, as a stair's does (a ramp of no type as ramps always
+/// were: on its own level, in full under the cut plane and dashed over it, its walk line marked UP; on the level it climbs
+/// to, all of it, marked DN). Each flight the plane passes is split there, with the type's break mark across it.
 fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) {
     let level = m.guid(level);
-    let up = r.level == level;
-    if !up && r.top_level != Some(level) {
+    let kind = m.types.ramp.get(&r.type_name);
+    let own = r.level == level;
+    let topped = r.top_level == Some(level) && !own;
+    let under = !own && !topped && m.level_above(level) == Some(r.level);
+    let ways = kind.map(|t| t.plan).unwrap_or_default();
+    let way = match (own, topped, under) {
+        (true, ..) => ways.same,
+        (_, true, _) => ways.above,
+        (.., true) => ways.below,
+        _ => return,
+    };
+    // A ramp of no type: under the plane in full and over it hidden, with no break mark; from above, all of it.
+    let (below, above, mark) = match (kind, own) {
+        (None, true) => (Shown::Full, Shown::Hidden, false),
+        (None, false) if topped => (Shown::Full, Shown::Full, false),
+        (None, false) => return,
+        (Some(_), _) => match way.look() {
+            Some(l) => l,
+            None => return,
+        },
+    };
+    let style = |name: Option<&String>, usual: &str| {
+        name.filter(|n| !n.is_empty())
+            .and_then(|n| m.line_styles.get(n))
+            .or_else(|| m.line_styles.get(m.language.word(usual)))
+            .or_else(|| m.line_styles.get(usual))
+    };
+    let full = kind.and_then(|t| style(Some(&t.line_visible), crate::lines::MEDIUM));
+    let hidden = kind.and_then(|t| style(Some(&t.line_hidden), crate::lines::HIDDEN));
+    let fill = kind.and_then(|t| m.fill_patterns.get(&t.fill));
+    let cut_style = kind.map_or(crate::model::CutMark::default(), |t| t.cut_mark);
+    let cut = m.plan_range(level).cut;
+    let line = |d: &mut Drawing, pts: &[P2], over: bool| {
+        if pts.len() < 2 {
+            return;
+        }
+        let (st, dash) = match if over { above } else { below } {
+            Shown::Full => (full, None),
+            Shown::Hidden => (hidden, Some(vec![6.0, 4.0])),
+            Shown::Out => return,
+        };
+        let px: Vec<(f32, f32)> = pts.iter().map(|q| d.view.px(*q)).collect();
+        match st {
+            Some(s) => d.styled(m, s, px, false),
+            None => d.stroke(px, BY_CATEGORY, INK, dash, false),
+        }
+    };
+    for p in crate::ramps::pieces(m, r) {
+        // The plane passing through a flight: the part under it and the part over it, the mark between.
+        let (parts, split) = match p.split(cut) {
+            Some((a, b)) => {
+                let at = (a.end_cut.first().copied(), a.end_cut.last().copied());
+                (vec![a, b], Some(at))
+            }
+            None => (vec![p], None),
+        };
+        let n = parts.len();
+        for (k, part) in parts.iter().enumerate() {
+            let over = (part.z.0 + part.z.1) / 2.0 > cut + 1e-6;
+            if let (Some(f), Shown::Full) = (fill, if over { above } else { below }) {
+                fill_pattern(d, f, std::slice::from_ref(&part.ring), std::slice::from_ref(&part.ring), INK, (P2(0.0, 0.0), 0.0));
+            }
+            if part.landing || part.left.len() < 2 {
+                for (a, b) in geom::ring_edges(&part.ring) {
+                    line(d, &[a, b], over);
+                }
+                continue;
+            }
+            line(d, &part.left, over);
+            line(d, &part.right, over);
+            // Its ends, but not where the plane cuts it: the break mark is there.
+            if k == 0 {
+                line(d, &part.start_cut, over);
+            }
+            if k + 1 == n {
+                line(d, &part.end_cut, over);
+            }
+        }
+        if let (true, Some((Some(a), Some(b)))) = (mark, split) {
+            let way = parts.first().and_then(|x| x.walk.windows(2).last().map(|w| (w[1] - w[0]).unit())).unwrap_or(P2(1.0, 0.0));
+            cut_mark(d, a, b, way * 150.0, cut_style);
+        }
+    }
+    if under {
         return;
     }
     let l = stairs::ramp(m, r);
-    let cut = if up { m.plan_range(level).cut } else { f64::INFINITY };
-    let rings = l.runs.iter().map(|run| (run.ring(), run.z.0)).chain(l.pads.iter().map(|p| (p.ring.clone(), p.z)));
-    for (ring, z) in rings {
-        for (a, b) in geom::ring_edges(&ring) {
-            segment(d, a, b, z > cut);
+    match kind {
+        Some(t) => {
+            let walk = if t.walk_rounded { round_corners(&l.walk, r.width / 2.0) } else { l.walk.clone() };
+            walk_marked(d, m, &walk, own, (t.arrow, t.walk_start));
         }
+        None => walk(d, m, &l.walk, own),
     }
-    walk(d, m, &l.walk, up);
 }
 
 /// A railing in a plan cutting at height `cut`: its line, solid where what it runs along is under
@@ -5299,12 +5380,6 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
             d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
         }
     }
-}
-
-/// A line from `a` to `b`, one pixel wide; dashed, `over`.
-fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
-    let pts = vec![d.view.px(a), d.view.px(b)];
-    d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
 }
 
 /// A stair's or a ramp's walk line, its arrow at the top, marked UP at its foot; from above, the

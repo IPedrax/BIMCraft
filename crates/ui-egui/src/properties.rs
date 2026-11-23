@@ -426,8 +426,13 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "top_level", "Top Level", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
+            (
+                "Constraints",
+                "line",
+                msg!("Location Line"),
+                Choice(&[("left", "Run: Left"), ("centre", "Run: Center"), ("right", "Run: Right")]),
+            ),
             ("Dimensions", "width", "Width", Length),
-            ("Dimensions", "slope", msg!("Max Slope (%)"), Number),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "code_check", msg!("Building Code"), Shown),
             ("Other", "start", "Start", Point),
@@ -599,6 +604,13 @@ fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
     &of[name]
 }
 
+/// A ramp's slope three ways, each with its label.
+const SLOPES: [(crate::SlopeUnit, &str); 3] = [
+    (crate::SlopeUnit::Percent, msg!("Slope (%)")),
+    (crate::SlopeUnit::Degrees, msg!("Slope (°)")),
+    (crate::SlopeUnit::Grade, msg!("Grade (1:x)")),
+];
+
 /// A type's parameters, as its Type Properties list them: the group it's under, its field, its label.
 fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static str)] {
     const C: &str = msg!("Construction");
@@ -614,6 +626,7 @@ fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static 
         "roof" => &[(C, "thickness", msg!("Thickness"))],
         "ceiling" => &[(C, "thickness", msg!("Thickness")), (C, "grid", msg!("Tile Size"))],
         "railing" => &[(C, "height", msg!("Height")), (C, "spacing", msg!("Baluster Spacing"))],
+        "ramp" => &[(C, "thickness", msg!("Thickness"))],
         "stair" => &[
             (C, "waist", msg!("Monolithic Slab Thickness")),
             (C, "tread_thickness", msg!("Tread Thickness")),
@@ -893,7 +906,7 @@ enum Subject {
 type LayerRow = (Function, String, String, bool);
 
 /// The categories whose types have layers: a wall's from its exterior in, the others' from the top down.
-const LAYERED: [&str; 4] = ["wall", "floor", "roof", "ceiling"];
+const LAYERED: [&str; 5] = ["wall", "floor", "roof", "ceiling", "ramp"];
 
 /// Each pattern as the Materials window names it.
 const PATTERNS: [(Pattern, &str); 10] = [
@@ -1110,6 +1123,8 @@ pub(crate) struct TypeDialog {
     project: Vec<TypeValue>,
     /// A stair type's rules and how its stairs show in plan.
     stair: Option<crate::stairtype::StairDraft>,
+    /// A ramp type's structure and how plans draw it.
+    ramp: Option<crate::stairtype::RampDraft>,
     /// A curtain wall type's pattern and how thick that makes it: it has no fields or layers to type.
     curtain: Option<(bimcraft_core::curtain::CurtainLayout, f64)>,
 }
@@ -1228,6 +1243,7 @@ impl TypeDialog {
         let name_of = name.clone();
         let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name));
         let stair = (category == "stair").then(|| crate::stairtype::StairDraft::new(m, &name_of));
+        let ramp = (category == "ramp").then(|| crate::stairtype::RampDraft::new(m, &name_of));
         TypeDialog {
             category,
             auto_rotation,
@@ -1242,6 +1258,7 @@ impl TypeDialog {
             room: (category == "room").then(|| RoomRows::new(m, &name_of)),
             project,
             stair,
+            ramp,
             curtain,
         }
     }
@@ -1348,6 +1365,9 @@ impl TypeDialog {
         }
         if let Some(stair) = &self.stair {
             stair.params(&mut p, units)?;
+        }
+        if let Some(ramp) = &self.ramp {
+            ramp.params(&mut p);
         }
         if let Some((l, _)) = &self.curtain {
             p["curtain"] = json!(l);
@@ -1693,6 +1713,7 @@ impl BimApp {
                 if let Subject::Element(id) = subject {
                     self.stair_turns(ui, &model, id);
                     self.stair_flights(ui, &model, id);
+                    self.ramp_flights(ui, &model, id);
                     self.ties(ui, &model, id);
                 }
                 self.component_parameters(ui, &model, &ids);
@@ -2589,6 +2610,114 @@ impl BimApp {
         }
     }
 
+    /// A ramp's flights and landings from its foot as drawn: each flight's slope (its own to type, on a ramp drawn along
+    /// a line: the flight grows or shrinks to climb what it did, what comes after moving with its end), length and rise,
+    /// the one picked by Tab or a click first; and whether it is flipped.
+    fn ramp_flights(&mut self, ui: &mut Ui, model: &Model, id: Id) {
+        let Some(Element::Ramp(r)) = model.elements.get(id) else { return };
+        let group = msg!("Flights and Landings");
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        let pieces = bimcraft_core::ramps::pieces(model, r);
+        let picked = self.canvas.ramp_part.filter(|(s, _)| *s == id).map(|(_, i)| i);
+        let mut order: Vec<usize> = (0..pieces.len()).collect();
+        if let Some(i) = picked.filter(|i| *i < pieces.len()) {
+            order.retain(|j| *j != i);
+            order.insert(0, i);
+        }
+        let units = model.units;
+        let mut flipped = r.flipped;
+        let mut change: Option<Value> = None;
+        let mut failed = None;
+        grid(ui, ("ramp-flights", id), |ui| {
+            ui.label(t("Flipped")).on_hover_text(t("It climbs the other way: its top where its foot was drawn"));
+            if ui.checkbox(&mut flipped, "").changed() {
+                change = Some(json!({"id": id, "flipped": flipped}));
+            }
+            ui.end_row();
+            // Its slope three ways, linked: what is typed in one sets them all, and every flight of a ramp drawn along a line.
+            let sketched = !r.sketch.is_empty();
+            for (u, label) in SLOPES {
+                let name = ui.label(t(label)).on_hover_text(t("The ramp's slope: typed in any of the three, the others follow"));
+                let now = u.show(r.slope);
+                if sketched {
+                    ui.label(t("By its sketch"));
+                } else if let Some(typed) = self.field(ui, id, &format!("ramp-slope-{label}"), now.clone(), name.id, &now) {
+                    match u.read(&typed).filter(|k| (1.0..=50.0).contains(k)) {
+                        Some(k) if r.path.is_empty() => change = Some(json!({"id": id, "slope": k})),
+                        Some(k) => {
+                            let next = bimcraft_core::ramps::with_all_slopes(r, k);
+                            change = Some(json!({"id": id, "slope": k, "path": next.path}));
+                        }
+                        None => failed = Some(tf("`{}` is not a slope from 1 to 50%", &[typed.trim()])),
+                    }
+                }
+                ui.end_row();
+            }
+            let (mut flights, mut landings) = (0, 0);
+            let names: Vec<String> = pieces
+                .iter()
+                .map(|p| {
+                    if p.landing {
+                        landings += 1;
+                        tf("Landing {}", &[&landings.to_string()])
+                    } else {
+                        flights += 1;
+                        tf("Flight {}", &[&flights.to_string()])
+                    }
+                })
+                .collect();
+            for i in order {
+                let (Some(p), Some(name)) = (pieces.get(i), names.get(i)) else { continue };
+                let label = RichText::new(name).strong();
+                ui.label(if picked == Some(i) { label.color(pal().accent) } else { label });
+                ui.end_row();
+                ui.label(t("Length"));
+                ui.label(units.length(p.length()));
+                ui.end_row();
+                if p.landing {
+                    continue;
+                }
+                ui.label(t("Rise"));
+                ui.label(units.length((p.z.1 - p.z.0).abs()));
+                ui.end_row();
+                for (u, label) in SLOPES {
+                    let name = ui.label(t(label)).on_hover_text(t(
+                        "How steep this flight is. On a ramp drawn along a line, type it in any of the three: the flight grows or shrinks to climb what it did",
+                    ));
+                    let now = u.show(p.slope());
+                    match p.seg {
+                        Some(seg) => {
+                            if let Some(typed) = self.field(ui, id, &format!("ramp-{i}-{label}"), now.clone(), name.id, &now) {
+                                match u.read(&typed).filter(|k| (1.0..=50.0).contains(k)) {
+                                    Some(k) => {
+                                        let next = bimcraft_core::ramps::with_slope(r, seg, k);
+                                        change = Some(json!({"id": id, "path": next.path}));
+                                    }
+                                    None => failed = Some(tf("`{}` is not a slope from 1 to 50%", &[typed.trim()])),
+                                }
+                            }
+                        }
+                        None => {
+                            ui.label(now);
+                        }
+                    }
+                    ui.end_row();
+                }
+            }
+        });
+        if let Some(e) = failed {
+            self.status = Status { text: e, error: true };
+        } else if let Some(p) = change {
+            self.run("modify", p);
+        }
+    }
+
     /// A stair drawn along a path, part by part from its foot: each flight and landing and how wide it is, the one picked
     /// on its own on the canvas first. A width typed is that part's own; empty, it is as wide as the stair.
     fn stair_flights(&mut self, ui: &mut Ui, model: &Model, id: Id) {
@@ -3482,6 +3611,9 @@ impl BimApp {
                             let variable = matches!(d.category, "floor" | "roof");
                             tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), variable));
                         }
+                    }
+                    if let Some(ramp) = &mut d.ramp {
+                        ramp.show(tb, &model);
                     }
                     type_value_rows(tb, &mut d.project, model.units);
                 });

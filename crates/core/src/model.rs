@@ -235,6 +235,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a grid has a type (`type`), and a project holds grid types (`grid_types`, library entries of kind `grid-type`); a grid of
 /// 20 has none, and reading it as 21 gives it the type the standards name; a build that reads up to 20 would leave both out as
 /// fields it doesn't know and draw every grid in the one line it had, not say "saved by a newer BIMCraft".
+/// And a ramp may be drawn along a line (`path`), sketched (`sketch`, its run lines styled `ramp run`) or `flipped`; a build that
+/// reads up to 20 would leave those out and lay it as one straight run. A file of 20 needs no step: it holds none.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -2266,6 +2268,9 @@ impl Landing {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ramp {
+    /// Its type: what it is built of and how plans draw it; none for a ramp solid to its level drawn as ramps always were.
+    #[serde(rename = "type", default, skip_serializing_if = "String::is_empty")]
+    pub type_name: String,
     pub level: Guid,
     #[serde(default)]
     pub top_level: Option<Guid>,
@@ -2277,9 +2282,42 @@ pub struct Ramp {
     pub slope: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landings: Vec<Landing>,
+    /// Drawn along a line from `start`: each segment a flight or a landing, straight or an arc, each flight rising at its
+    /// own slope. The ramp then climbs as high as its flights take it, and `landings` are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path: Vec<RampSeg>,
+    /// Sketched: its two sides (boundary lines) and its run lines ([`RAMP_RUN`] in their `style`), the first its start,
+    /// the second its end, and each two more the two ends of a landing. It climbs from its start to its end, rising at
+    /// one slope over its flights.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sketch: Vec<crate::sketch::SketchLine>,
+    /// It climbs the other way: its top where its foot was drawn.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flipped: bool,
+    /// The line its `path` is drawn along: its left edge, its middle or its right edge, looking up it as drawn.
+    #[serde(default, skip_serializing_if = "StairLine::is_centre")]
+    pub line: StairLine,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+}
+
+/// What a ramp's sketch line holds in its `style` when it is a run line (its start, its end, a landing's end), not a side.
+pub const RAMP_RUN: &str = "ramp run";
+
+/// A segment of the line a ramp is drawn along: on to the point `to`; a flight, or with `landing` a flat landing; straight,
+/// or with `arc` an arc turning through that many degrees (to the left, or with a minus to the right). A flight rises at
+/// its own `slope` (percent), or the ramp's.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RampSeg {
+    pub to: P2,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub landing: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub arc: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slope: Option<f64>,
 }
 
 /// A side of a stair or a ramp, going up it.
@@ -2372,6 +2410,7 @@ impl Element {
             Element::Roof(r) => Some(&r.sketch),
             Element::Shaft(sh) => Some(&sh.sketch),
             Element::FilledRegion(r) => Some(&r.sketch),
+            Element::Ramp(r) => Some(&r.sketch),
             _ => None,
         }
     }
@@ -2402,6 +2441,7 @@ impl Element {
             Element::Roof(r) => Some(&mut r.sketch),
             Element::Shaft(sh) => Some(&mut sh.sketch),
             Element::FilledRegion(r) => Some(&mut r.sketch),
+            Element::Ramp(r) => Some(&mut r.sketch),
             _ => None,
         }
     }
@@ -3666,6 +3706,68 @@ pub fn stair_types() -> BTreeMap<String, StairType> {
     ])
 }
 
+/// A ramp type: what its ramps are built of and how plans draw them. `Solid` ones are solid down to their level, of
+/// `material` (else its first layer's); the others a slab `thickness` thick under their top, of its `layers` from the top
+/// down. In plan, as a stair type's: how they show on the level below, their own and the level above, the line styles of
+/// what shows and what is hidden, the fill of what shows, the walk line's head and foot, and the break mark.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RampType {
+    pub thickness: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<Layer>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub solid: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+    #[serde(default, skip_serializing_if = "PlanShows::is_usual")]
+    pub plan: PlanShows,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_visible: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_hidden: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fill: String,
+    #[serde(default, skip_serializing_if = "ArrowHead::is_usual")]
+    pub arrow: ArrowHead,
+    #[serde(default, skip_serializing_if = "WalkStart::is_usual")]
+    pub walk_start: WalkStart,
+    #[serde(default, skip_serializing_if = "CutMark::is_usual")]
+    pub cut_mark: CutMark,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub walk_rounded: bool,
+}
+
+impl Default for RampType {
+    fn default() -> RampType {
+        RampType {
+            thickness: 200.0,
+            layers: Vec::new(),
+            solid: false,
+            material: String::new(),
+            plan: PlanShows::default(),
+            line_visible: String::new(),
+            line_hidden: String::new(),
+            fill: String::new(),
+            arrow: ArrowHead::default(),
+            walk_start: WalkStart::default(),
+            cut_mark: CutMark::default(),
+            walk_rounded: false,
+        }
+    }
+}
+
+/// The ramp type a new ramp gets when none is named.
+pub const RAMP_TYPE: &str = "Ramp - 200mm";
+
+/// The ramp types a project starts with: a slab 200 thick under the slope, and one solid to its level.
+pub fn ramp_types() -> BTreeMap<String, RampType> {
+    BTreeMap::from([
+        (RAMP_TYPE.to_string(), RampType::default()),
+        ("Ramp - Solid".to_string(), RampType { solid: true, ..RampType::default() }),
+    ])
+}
+
 /// A railing type: how high its rail stands, and how far apart its balusters are (0: none).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3915,6 +4017,8 @@ pub struct Types {
     pub room: BTreeMap<String, RoomType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub stair: BTreeMap<String, StairType>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ramp: BTreeMap<String, RampType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub structural_column: BTreeMap<String, ColumnType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -4707,6 +4811,7 @@ impl Model {
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
         m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         m.types.stair = stair_types();
+        m.types.ramp = ramp_types();
         crate::curtain::starter_types(&mut m);
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
@@ -4723,7 +4828,8 @@ impl Model {
         let roofs = t.roof.iter().map(|(n, x)| ("roof", n.as_str(), x.thickness, x.layers.as_slice()));
         let ceilings = t.ceiling.iter().map(|(n, x)| ("ceiling", n.as_str(), x.thickness, x.layers.as_slice()));
         let toposolids = t.toposolid.iter().map(|(n, x)| ("toposolid", n.as_str(), x.thickness, x.layers.as_slice()));
-        walls.chain(floors).chain(roofs).chain(ceilings).chain(toposolids)
+        let ramps = t.ramp.iter().map(|(n, x)| ("ramp", n.as_str(), x.thickness, x.layers.as_slice()));
+        walls.chain(floors).chain(roofs).chain(ceilings).chain(toposolids).chain(ramps)
     }
 
     /// The layers of type `name` of `category`, a wall's from its exterior in, the others' from
@@ -4734,12 +4840,13 @@ impl Model {
 
     /// Every type's layers, to change.
     pub fn layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
-        let Types { wall, floor, roof, ceiling, toposolid, .. } = &mut *self.types;
+        let Types { wall, floor, roof, ceiling, toposolid, ramp, .. } = &mut *self.types;
         (wall.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(floor.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(roof.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(ceiling.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(toposolid.values_mut().flat_map(|t| t.layers.iter_mut()))
+            .chain(ramp.values_mut().flat_map(|t| t.layers.iter_mut()))
     }
 
     /// Every material the types' layers name that the library hasn't, put in it: what a project
@@ -5416,6 +5523,10 @@ impl Model {
         // file of 20, which holds none.
         if self.types.stair.is_empty() {
             self.types.stair = stair_types();
+        }
+        // A file from before ramp types has none: it gets the ones a project starts with. Its ramps have none, and stay solid.
+        if self.types.ramp.is_empty() {
+            self.types.ramp = ramp_types();
         }
         // A file from before line styles leaves the patterns and styles out, so it has the English ones, whatever its
         // language: named in its language (a file that holds them has them by GUID, never equal to these).
@@ -6253,6 +6364,7 @@ impl Model {
             "toposolid" => names(&self.types.toposolid),
             "room" => names(&self.types.room),
             "stair" => names(&self.types.stair),
+            "ramp" => names(&self.types.ramp),
             "curtainpanel" => names(&self.types.curtain_panel),
             "mullion" => names(&self.types.mullion),
             "cornermullion" => names(&self.types.corner_mullion),
@@ -6281,6 +6393,7 @@ impl Model {
             "railing" => "Railing - 1000mm",
             "room" => ROOM_TYPE,
             "stair" => "Monolithic 150mm",
+            "ramp" => RAMP_TYPE,
             "curtainpanel" => crate::curtain::GLAZED,
             "mullion" => crate::curtain::RECTANGULAR_MULLION,
             "cornermullion" => crate::curtain::RECTANGULAR_CORNER,
@@ -9150,7 +9263,7 @@ impl Model {
             }
             match layers.iter().filter(|l| l.variable).count() {
                 0 => {}
-                _ if matches!(cat, "wall" | "ceiling" | "toposolid") => {
+                _ if matches!(cat, "wall" | "ceiling" | "toposolid" | "ramp") => {
                     return Err(format!("{who}: only a floor's or a roof's layer can be variable, to take up a shaped top's falls"));
                 }
                 1 => {}
@@ -10535,6 +10648,9 @@ impl Model {
                 landings(&who, &st.landings, Some(f64::from(n)))?;
             }
             Element::Ramp(r) => {
+                if !r.type_name.is_empty() {
+                    known(&who, &r.type_name, &self.types.ramp)?;
+                }
                 level_ok(r.level)?;
                 point(&who, r.start)?;
                 coord(&format!("{who} angle"), r.angle)?;
@@ -10546,8 +10662,10 @@ impl Model {
                 if !(1.0..=50.0).contains(&r.slope) {
                     return Err(format!("{who}: slope {}% isn't from 1% to 50%", r.slope));
                 }
+                crate::sketch::check(&who, &r.sketch)?;
+                crate::ramps::check(&who, self, r)?;
                 let (bottom, top) = self.span(r.level, 0.0, r.top_level, r.height);
-                if top <= bottom + TOL {
+                if top <= bottom + TOL && r.path.is_empty() {
                     return Err(format!("{who}: its top must be above its base"));
                 }
                 coord(&format!("{who} length"), (top - bottom) / r.slope * 100.0)?;

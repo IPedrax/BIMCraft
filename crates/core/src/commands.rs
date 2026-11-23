@@ -1215,7 +1215,12 @@ other_files(
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, slope?, landings?: [{at, turn?}, …], railings?} a ramp \
          from the middle of its foot at `start`, climbing toward `end` (or `angle` degrees) up to the next level, or `height` mm, \
          `width` wide (1200), at `slope` percent (8.33, 1 in 12), as long as that makes it; with landings `at` mm up, turning \
-         as a stair's do, and with `railings`, a railing down each side. Solid down to its level",
+         as a stair's do, and with `railings`, a railing down each side. Solid down to its level. Or {start, path: [{to: [x,y], \
+         landing?, arc?, slope?}, …]}: drawn along a line from `start`, each segment a flight (at its own `slope`, else the \
+         ramp's) or a `landing`, straight or an `arc` turning so many degrees (left; right with a minus), climbing as high as \
+         its flights rise. Or {sketch: [lines], runs: [[[x,y],[x,y]], …]}: sketched, its two sides as sketch lines and its run \
+         lines in `runs` (or sketch lines with `style` \"ramp run\"): the first its start, the second its end, and each two more \
+         a landing between them; its flights share its height. `flipped` makes any ramp climb the other way",
         ramp,
     )
     .menu("Architecture > Ramp"),
@@ -4566,7 +4571,16 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Ramp(r) => {
             let (bottom, top) = m.span(r.level, 0.0, r.top_level, r.height);
             let l = stairs::ramp(m, r);
-            extra.insert("height".into(), json!(top - bottom));
+            let height = if r.path.is_empty() { top - bottom } else { crate::ramps::path_rise(r) };
+            extra.insert("height".into(), json!(hundredth(height)));
+            let flights: Vec<Value> = crate::ramps::pieces(m, r)
+                .iter()
+                .map(|p| {
+                    json!({"landing": p.landing, "length": hundredth(p.length()), "rise": hundredth((p.z.1 - p.z.0).abs()),
+                           "slope": hundredth(p.slope()), "segment": p.seg})
+                })
+                .collect();
+            extra.insert("pieces".into(), json!(flights));
             extra.insert("length".into(), json!(hundredth(l.runs.iter().map(|r| r.length).sum())));
             runs(&mut extra, &l);
         }
@@ -11948,12 +11962,12 @@ fn flip(s: &mut Session, p: &Value) -> R {
     if cycle.is_some() && (hand.is_some() || facing.is_some()) {
         return Err(bad(c, "`cycle` turns an opening by its own rule, so it takes neither `hand` nor `facing`"));
     }
-    let stair = |id: &Id| matches!(m.elements.get(id), Some(Element::Stair(_)));
+    let stair = |id: &Id| matches!(m.elements.get(id), Some(Element::Stair(_) | Element::Ramp(_)));
     let walls: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_some()).collect();
     let openings: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_none() && !stair(id)).collect();
     if let Some(id) = openings.iter().find(|id| m.elements.get(**id).is_none_or(|e| m.opening_flips(e).is_none())) {
         let what = m.elements.get(*id).map_or("nothing", Element::category);
-        return Err(bad(c, format!("{what} {id} isn't a wall, a stair, a door or a window")));
+        return Err(bad(c, format!("{what} {id} isn't a wall, a stair, a ramp, a door or a window")));
     }
     // What each opening can turn: a flag it doesn't have is refused, and one given without `cycle` needs its own.
     let mut capable: BTreeMap<Id, Flips> = BTreeMap::new();
@@ -11998,6 +12012,12 @@ fn flip(s: &mut Session, p: &Value) -> R {
     for (id, st) in flipped {
         if let Some(Element::Stair(old)) = m.elements.get_mut(id) {
             *old = st;
+        }
+    }
+    // A ramp climbs the other way along what was drawn.
+    for id in &ids {
+        if let Some(Element::Ramp(r)) = m.elements.get_mut(id) {
+            r.flipped = !r.flipped;
         }
     }
     let lengths: BTreeMap<Guid, f64> = walls.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
@@ -14444,11 +14464,48 @@ fn ramp(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     // What a new ramp starts with: the project's code's.
     let new_ramp = m.rules::<crate::codes::checks::RampRules>();
-    let start = point_req(c, p, "start")?;
-    let angle = climb(c, p, start)?;
+    let path: Vec<crate::model::RampSeg> = match p.get("path") {
+        v if absent(v) => Vec::new(),
+        Some(v @ Value::Array(a)) if a.len() <= 200 => {
+            serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`path` is [{{to: [x,y], landing?, arc?, slope?}}, …]: {e}")))?
+        }
+        _ => return Err(bad(c, "`path` is a list of at most 200 segments [{to: [x,y], landing?, arc?, slope?}, …]")),
+    };
+    let mut sketch = sketch_param(c, p, "sketch", &[])?.unwrap_or_default();
+    match p.get("runs") {
+        v if absent(v) => {}
+        Some(v @ Value::Array(a)) if a.len() <= 200 => {
+            let runs: Vec<[P2; 2]> = serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`runs` is [[[x,y],[x,y]], …]: {e}")))?;
+            sketch
+                .extend(runs.into_iter().map(|[a, b]| SketchLine { style: Some(crate::model::RAMP_RUN.into()), ..SketchLine::new(a, b) }));
+        }
+        _ => return Err(bad(c, "`runs` is a list of at most 200 lines [[[x,y],[x,y]], …]")),
+    }
+    // A sketched one's foot is the middle of its start line.
+    let first_run = sketch.iter().find(|l| l.style.as_deref() == Some(crate::model::RAMP_RUN)).map(|l| l.middle());
+    let start = match (first_run, point_opt(c, p, "start")?) {
+        (_, Some(s)) => s,
+        (Some(s), None) => micron(s),
+        (None, None) => point_req(c, p, "start")?,
+    };
+    let angle = match path.first() {
+        Some(first) if first.to.dist(start) > 1e-6 => degrees((first.to - start).1.atan2((first.to - start).0).to_degrees()),
+        _ => climb(c, p, start)?,
+    };
     let level = level_param(c, m, p, "level")?;
-    let (top_level, height) = top_param(c, m, p, level)?;
-    let r = Ramp {
+    let (mut top_level, mut height) = top_param(c, m, p, level)?;
+    let type_name = match string(c, p, "type")? {
+        Some(t) => t,
+        None => m.default_type("ramp").map(String::from).unwrap_or_default(),
+    };
+    let mut r = Ramp {
+        type_name,
+        line: match p.get("line") {
+            v if absent(v) => Default::default(),
+            Some(v) => serde_json::from_value(v.clone())
+                .map_err(|_| bad(c, "`line` is \"left\", \"centre\" or \"right\": the line `path` is drawn along"))?,
+            None => Default::default(),
+        },
         params: Default::default(),
         level,
         top_level,
@@ -14458,7 +14515,19 @@ fn ramp(s: &mut Session, p: &Value) -> R {
         width: num(c, p, "width")?.unwrap_or(new_ramp.width),
         slope: num(c, p, "slope")?.unwrap_or(new_ramp.slope),
         landings: landings_param(c, p)?,
+        path,
+        sketch,
+        flipped: flag(c, p, "flipped")?,
     };
+    // Drawn along a line, it climbs as high as its flights rise: to its top level when they reach it, else that high.
+    if !r.path.is_empty() {
+        let rise = crate::ramps::path_rise(&r);
+        let (bottom, top) = m.span(level, 0.0, top_level, height);
+        if (top - bottom - rise).abs() > 1.0 {
+            (top_level, height) = (None, (rise * 1000.0).round() / 1000.0);
+        }
+        (r.top_level, r.height) = (top_level, height);
+    }
     let length: f64 = stairs::ramp(m, &r).runs.iter().map(|r| r.length).sum();
     let level = r.level;
     let id = s.model_mut().insert(Element::Ramp(r));
@@ -18710,6 +18779,53 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.roof.insert(name.clone(), t.clone());
             json!(t)
         }
+        "ramp" => {
+            let old = m.types.ramp.get(&name).cloned().unwrap_or_default();
+            let (thickness, layers) = layered(c, p, Some((old.thickness, old.layers.as_slice())), thickness, &need)?;
+            let choice = |key: &str| p.get(key).filter(|v| !absent(Some(*v))).cloned();
+            let t = crate::model::RampType {
+                thickness,
+                layers,
+                solid: match p.get("solid") {
+                    v if absent(v) => old.solid,
+                    _ => flag(c, p, "solid")?,
+                },
+                material: string(c, p, "material")?.unwrap_or(old.material),
+                plan: match choice("plan") {
+                    None => old.plan,
+                    Some(v) => {
+                        let mut all = serde_json::to_value(old.plan).map_err(|e| bad(c, e))?;
+                        merge(&mut all, &v);
+                        serde_json::from_value(all)
+                            .map_err(|e| bad(c, format!("`plan` is {{below, same, above}}, each as a stair type's: {e}")))?
+                    }
+                },
+                line_visible: string(c, p, "line_visible")?.unwrap_or(old.line_visible),
+                line_hidden: string(c, p, "line_hidden")?.unwrap_or(old.line_hidden),
+                fill: string(c, p, "fill")?.unwrap_or(old.fill),
+                arrow: match choice("arrow") {
+                    None => old.arrow,
+                    Some(v) => serde_json::from_value(v)
+                        .map_err(|_| bad(c, "`arrow` is \"open\", \"filled\", \"hollow\", \"tick\" or \"none\""))?,
+                },
+                walk_start: match choice("walk_start") {
+                    None => old.walk_start,
+                    Some(v) => serde_json::from_value(v).map_err(|_| bad(c, "`walk_start` is \"none\", \"dot\" or \"circle\""))?,
+                },
+                cut_mark: match choice("cut_mark") {
+                    None => old.cut_mark,
+                    Some(v) => {
+                        serde_json::from_value(v).map_err(|_| bad(c, "`cut_mark` is \"zigzag\", \"double\", \"straight\" or \"wave\""))?
+                    }
+                },
+                walk_rounded: match p.get("walk_rounded") {
+                    v if absent(v) => old.walk_rounded,
+                    _ => flag(c, p, "walk_rounded")?,
+                },
+            };
+            m.types.ramp.insert(name.clone(), t.clone());
+            json!(t)
+        }
         "stair" => {
             let old = m.types.stair.get(&name).cloned().unwrap_or_default();
             let part = |key: &str, was: f64| num(c, p, key).map(|v| v.unwrap_or(was));
@@ -19585,10 +19701,12 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 };
             }
         }
-        Element::Ramp(Ramp { start, angle, landings, .. }) => {
+        Element::Ramp(Ramp { start, angle, landings, path, .. }) => {
             (*start, *angle) = turned(f, *start, *angle);
+            path.iter_mut().for_each(|s| s.to = f(s.to));
             if mo.mirror {
                 landings.iter_mut().for_each(|l| l.turn = -l.turn + 0.0);
+                path.iter_mut().for_each(|s| s.arc = -s.arc + 0.0);
             }
         }
         Element::Railing(rl) => match rl.host {
