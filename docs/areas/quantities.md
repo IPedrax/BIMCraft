@@ -19,9 +19,21 @@ its plan projection.
 | `volume_m3` | net volume, less openings and shafts |
 
 A wall's net side is its net volume over its thickness (`walls::prisms`, `walls::prism_volume`), so an arched window cuts
-its arc, not its bounding rectangle; a wall of no known thickness has no area (null, not 0). A ceiling is flat, so its
-surface and plan are the same. A roof whose faces can't be found has no area, as the IFC already says. The gross areas are
-not exposed: they are only what the two numbers above are worked out from.
+its arc, not its bounding rectangle; a wall of no known thickness has no area (null, not 0) and `Model::warnings` says
+which wall and why. A ceiling is flat, so its surface and plan are the same. A roof whose faces can't be found has no
+area, and a warning says so. The gross areas are not exposed: they are only what the two numbers above are worked out
+from.
+
+## Changed in this version
+
+`Area` now always means net surface, not a mix of gross and plan:
+
+- a wall's `Area` in a schedule and `elements.area_m2` are new: length by height less its doors, windows and family voids;
+- a roof's `elements.area_m2` is its surface by slope; its former plan is `plan_area_m2` (and `Plan Area` in a schedule);
+- a sloped floor's `Area` is its surface; `Plan Area` is the projection;
+- a roof's `Plan Area` is now net of its openings and the shafts through it;
+- a wall, ceiling or roof now has a net `Volume`, and the multi-category schedule shows it;
+- `Openings Area` is new for all four, and in a multi-category schedule.
 
 ## Concrete, formwork and steel
 
