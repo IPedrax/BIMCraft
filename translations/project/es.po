@@ -25,15 +25,15 @@ msgstr ""
 msgid "Area"
 msgstr "Área"
 
-#: crates/core/src/family.rs:3328
+#: crates/core/src/family.rs:3365
 msgid "Arm Width"
 msgstr "Ancho del brazo"
 
-#: crates/core/src/family.rs:3372
+#: crates/core/src/family.rs:3409
 msgid "Base Cabinet"
 msgstr "Mueble bajo"
 
-#: crates/core/src/family.rs:3426
+#: crates/core/src/family.rs:3463
 msgid "Bathtub"
 msgstr "Bañera"
 
@@ -41,7 +41,7 @@ msgstr "Bañera"
 msgid "Beam"
 msgstr "Viga"
 
-#: crates/core/src/family.rs:3313
+#: crates/core/src/family.rs:3350
 msgid "Bed"
 msgstr "Cama"
 
@@ -57,7 +57,7 @@ msgstr "Ladrillo 225 x 75"
 msgid "Camera"
 msgstr "Cámara"
 
-#: crates/core/src/family.rs:3615
+#: crates/core/src/family.rs:3652
 msgid "Casement Window"
 msgstr "Ventana abatible"
 
@@ -85,7 +85,7 @@ msgstr "Líneas de eje"
 msgid "Ceramic tile"
 msgstr "Baldosa cerámica"
 
-#: crates/core/src/family.rs:3298
+#: crates/core/src/family.rs:3335
 msgid "Chair"
 msgstr "Silla"
 
@@ -111,7 +111,7 @@ msgstr ""
 msgid "Column"
 msgstr "Columna"
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3274
 msgid "Concrete"
 msgstr "Hormigón"
 
@@ -184,7 +184,7 @@ msgstr ""
 msgid "Dependent"
 msgstr "Dependiente"
 
-#: crates/core/src/family.rs:3235
+#: crates/core/src/family.rs:3272
 msgid "Depth"
 msgstr "Profundidad"
 
@@ -193,7 +193,7 @@ msgstr "Profundidad"
 msgid "Description"
 msgstr ""
 
-#: crates/core/src/family.rs:3344
+#: crates/core/src/family.rs:3381
 msgid "Desk"
 msgstr "Escritorio"
 
@@ -233,7 +233,7 @@ msgstr "Tabla de puertas"
 msgid "Dot"
 msgstr "Puntos"
 
-#: crates/core/src/family.rs:3522
+#: crates/core/src/family.rs:3559
 msgid "Double Door"
 msgstr "Puerta doble"
 
@@ -293,7 +293,7 @@ msgstr ""
 msgid "Existing"
 msgstr "Existente"
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3274
 msgid "Fabric"
 msgstr "Tela"
 
@@ -305,7 +305,7 @@ msgstr "Familia"
 msgid "Fixed"
 msgstr "Fija"
 
-#: crates/core/src/family.rs:3590
+#: crates/core/src/family.rs:3627
 msgid "Fixed Window"
 msgstr "Ventana fija"
 
@@ -333,15 +333,15 @@ msgstr "Zapata"
 msgid "Formwork Area"
 msgstr "Área de encofrado"
 
-#: crates/core/src/family.rs:3462
+#: crates/core/src/family.rs:3499
 msgid "Frame Depth"
 msgstr "Profundidad del marco"
 
-#: crates/core/src/family.rs:3464
+#: crates/core/src/family.rs:3501
 msgid "Frame Material"
 msgstr "Material del marco"
 
-#: crates/core/src/family.rs:3462
+#: crates/core/src/family.rs:3499
 msgid "Frame Width"
 msgstr "Ancho del marco"
 
@@ -349,7 +349,7 @@ msgstr "Ancho del marco"
 msgid "Gate Valve"
 msgstr "Válvula de compuerta"
 
-#: crates/core/src/family.rs:3464
+#: crates/core/src/family.rs:3501
 #: crates/core/src/view3d.rs:1674
 msgid "Glass"
 msgstr "Vidrio"
@@ -415,7 +415,7 @@ msgstr "Placa de yeso"
 msgid "Hairline"
 msgstr "Línea capilar"
 
-#: crates/core/src/family.rs:3306
+#: crates/core/src/family.rs:3343
 msgid "Headboard Height"
 msgstr "Altura del cabecero"
 
@@ -455,19 +455,19 @@ msgstr "Interno"
 msgid "Kitchen Sink"
 msgstr "Fregadero de cocina"
 
-#: crates/core/src/family.rs:3464
+#: crates/core/src/family.rs:3501
 msgid "Leaf Material"
 msgstr "Material de la hoja"
 
-#: crates/core/src/family.rs:3462
+#: crates/core/src/family.rs:3499
 msgid "Leaf Thickness"
 msgstr "Espesor de la hoja"
 
-#: crates/core/src/family.rs:3236
+#: crates/core/src/family.rs:3273
 msgid "Leg Width"
 msgstr "Ancho de la pata"
 
-#: crates/core/src/family.rs:3235
+#: crates/core/src/family.rs:3272
 msgid "Length"
 msgstr "Longitud"
 
@@ -535,7 +535,7 @@ msgstr "Lámina impermeable"
 #: crates/core/src/commands.rs:4531
 #: crates/core/src/commands.rs:18955
 #: crates/core/src/curtain.rs:130
-#: crates/core/src/family.rs:3464
+#: crates/core/src/family.rs:3501
 #: crates/core/src/model.rs:6494
 #: crates/core/src/quantities.rs:112
 msgid "Metal"
@@ -557,7 +557,7 @@ msgstr "Nombre"
 msgid "New Construction"
 msgstr "Nueva construcción"
 
-#: crates/core/src/schedule.rs:1452
+#: crates/core/src/schedule.rs:1460
 msgid "No"
 msgstr "No"
 
@@ -572,6 +572,10 @@ msgstr "Número"
 #: crates/core/src/schedule.rs:214
 msgid "Offset"
 msgstr "Desfase"
+
+#: crates/core/src/family.rs:268
+msgid "Opening Area"
+msgstr ""
 
 #: crates/core/src/schedule.rs:206
 msgid "Openings Area"
@@ -641,7 +645,7 @@ msgstr "Enlucido"
 msgid "Poles"
 msgstr ""
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3274
 msgid "Porcelain"
 msgstr "Porcelana"
 
@@ -744,7 +748,7 @@ msgstr ""
 msgid "Screed"
 msgstr "Recrecido"
 
-#: crates/core/src/family.rs:3236
+#: crates/core/src/family.rs:3273
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
@@ -822,7 +826,7 @@ msgstr "Ducha"
 msgid "Sill"
 msgstr "Antepecho"
 
-#: crates/core/src/family.rs:3500
+#: crates/core/src/family.rs:3537
 msgid "Single Door"
 msgstr "Puerta simple"
 
@@ -830,11 +834,11 @@ msgstr "Puerta simple"
 msgid "Sliding"
 msgstr "Corredera"
 
-#: crates/core/src/family.rs:3549
+#: crates/core/src/family.rs:3586
 msgid "Sliding Door"
 msgstr "Puerta corredera"
 
-#: crates/core/src/family.rs:3646
+#: crates/core/src/family.rs:3683
 msgid "Sliding Window"
 msgstr "Ventana corredera"
 
@@ -847,7 +851,7 @@ msgstr "Pendiente"
 msgid "Slot"
 msgstr ""
 
-#: crates/core/src/family.rs:3330
+#: crates/core/src/family.rs:3367
 msgid "Sofa"
 msgstr "Sofá"
 
@@ -887,7 +891,7 @@ msgstr "Batiente"
 msgid "Switch"
 msgstr "Interruptor"
 
-#: crates/core/src/family.rs:3277
+#: crates/core/src/family.rs:3314
 msgid "Table"
 msgstr "Mesa"
 
@@ -895,7 +899,7 @@ msgstr "Mesa"
 msgid "Tee"
 msgstr "Te"
 
-#: crates/core/src/family.rs:3236
+#: crates/core/src/family.rs:3273
 msgid "Thickness"
 msgstr "Espesor"
 
@@ -911,7 +915,7 @@ msgstr "Tomacorriente trifásico"
 msgid "Tile 300"
 msgstr "Baldosa 300"
 
-#: crates/core/src/family.rs:3237
+#: crates/core/src/family.rs:3274
 msgid "Timber"
 msgstr "Madera"
 
@@ -983,7 +987,7 @@ msgstr ""
 msgid "Volume"
 msgstr "Volumen"
 
-#: crates/core/src/family.rs:3386
+#: crates/core/src/family.rs:3423
 msgid "WC"
 msgstr "Inodoro"
 
@@ -995,11 +999,11 @@ msgstr "Muro"
 msgid "Wall Schedule"
 msgstr "Tabla de muros"
 
-#: crates/core/src/family.rs:3358
+#: crates/core/src/family.rs:3395
 msgid "Wardrobe"
 msgstr "Armario"
 
-#: crates/core/src/family.rs:3405
+#: crates/core/src/family.rs:3442
 msgid "Washbasin"
 msgstr "Lavabo"
 
@@ -1028,11 +1032,11 @@ msgstr "Ancho"
 msgid "Window Schedule"
 msgstr "Tabla de ventanas"
 
-#: crates/core/src/family.rs:3370
+#: crates/core/src/family.rs:3407
 msgid "Worktop"
 msgstr "Encimera"
 
-#: crates/core/src/schedule.rs:1452
+#: crates/core/src/schedule.rs:1460
 msgid "Yes"
 msgstr "Sí"
 
