@@ -1535,3 +1535,248 @@ fn a_method_s_last_rule_taken_away_is_not_checked_as_an_ordinary_section() {
         json!({"discipline": "electrical", "amend": "Middle", "rules": {"building_demand": {"min_dwellings": null}}}),
     );
 }
+
+#[test]
+fn every_column_of_every_utility_s_entrance_tables_has_its_kind_and_every_cell_fits_it() {
+    // What the window takes a cell typed in as, against every value BIMCraft's codes hold there.
+    let def = section_def(Discipline::Electrical, "entrance").unwrap();
+    let mut cells = 0;
+    let mut by_code = std::collections::BTreeMap::new();
+    fn walk(at: &mut Vec<String>, v: &Value, out: &mut Vec<(Vec<String>, Value)>) {
+        match v {
+            Value::Object(o) => {
+                for (k, x) in o {
+                    at.push(k.clone());
+                    walk(at, x, out);
+                    at.pop();
+                }
+            }
+            other => out.push((at.clone(), other.clone())),
+        }
+    }
+    for code in of(Discipline::Electrical) {
+        let Some(e) = code.sections.get("entrance") else { continue };
+        for table in e["tables"].as_array().into_iter().flatten() {
+            for row in table["rows"].as_array().into_iter().flatten() {
+                let mut out = Vec::new();
+                walk(&mut Vec::new(), row, &mut out);
+                for (col, v) in out {
+                    let mut at: Vec<String> = ["tables", "[]", "rows", "[]"].map(String::from).to_vec();
+                    at.extend(col.iter().cloned());
+                    let kind = (def.columns)(&at);
+                    // The kind `entrance::Row` gives each field, written out here, not asked of the registry.
+                    let want = match col.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+                        ["name"] | ["measurement"] => ColumnKind::Text,
+                        ["phases"] | ["demand_kva" | "installed_kw", "over" | "up_to"] => ColumnKind::Number,
+                        ["breaker_a"] => ColumnKind::Numbers,
+                        ["columns", ..] => ColumnKind::Printed,
+                        other => panic!("{} {other:?}: a field `entrance::Row` doesn't have", code.code),
+                    };
+                    assert_eq!(kind, Some(want), "{} {}", code.code, col.join("."));
+                    *by_code.entry(code.code.clone()).or_insert(0) += 1;
+                    let fits = match kind {
+                        Some(ColumnKind::Number) => v.is_number(),
+                        Some(ColumnKind::Numbers) => v.as_array().is_some_and(|a| a.iter().all(Value::is_number)),
+                        Some(ColumnKind::Text) => v.is_string(),
+                        Some(ColumnKind::Printed) => !v.is_object(),
+                        None => false,
+                    };
+                    assert!(fits, "{} {}: {v} is no {kind:?}", code.code, col.join("."));
+                    cells += 1;
+                }
+            }
+        }
+    }
+    assert!(cells > 500, "cells asked ({cells})");
+    // Every utility BIMCraft has an entrance for is asked.
+    let with_entrance = of(Discipline::Electrical).filter(|c| c.sections.get("entrance").is_some_and(|e| e["tables"].is_array())).count();
+    assert_eq!(by_code.len(), with_entrance, "{by_code:?}");
+}
+
+#[test]
+fn every_column_of_every_building_demand_method_s_tables_has_its_kind_and_every_cell_fits_it() {
+    // The kinds `building_demand::Method` gives its tables' fields, written out here, against every value BIMCraft holds.
+    let def = section_def(Discipline::Electrical, "building_demand").unwrap();
+    let want = |at: &[&str]| -> Option<ColumnKind> {
+        match at {
+            ["diversity", "errata", "[]", "why"]
+            | ["dwelling", "grades", "[]", "name" | "source"]
+            | ["common", "[]", "class" | "source"]
+            | ["premises", "[]", "use" | "source"]
+            | ["entrance", "rows", "[]", "columns", _] => Some(ColumnKind::Text),
+            ["diversity", "errata", "[]", _]
+            | ["dwelling", "grades", "[]", _]
+            | ["common", "[]", "power_factor"]
+            | ["common", "[]", "bands", "[]", _]
+            | ["premises", "[]", _]
+            | ["entrance", "rows", "[]", _] => Some(ColumnKind::Number),
+            _ => None,
+        }
+    };
+    // Every leaf of every list of objects, by its keys from the section down.
+    fn walk(at: &mut Vec<String>, v: &Value, in_table: bool, out: &mut Vec<(Vec<String>, Value)>) {
+        match v {
+            Value::Object(o) => {
+                for (k, x) in o {
+                    at.push(k.clone());
+                    walk(at, x, in_table, out);
+                    at.pop();
+                }
+            }
+            Value::Array(a) if a.iter().all(Value::is_object) && !a.is_empty() => {
+                at.push("[]".into());
+                for x in a {
+                    walk(at, x, true, out);
+                }
+                at.pop();
+            }
+            other if in_table => out.push((at.clone(), other.clone())),
+            _ => {}
+        }
+    }
+    let (mut cells, mut methods) = (0, 0);
+    for code in of(Discipline::Electrical) {
+        let Some(m) = code.sections.get("building_demand") else { continue };
+        methods += 1;
+        let mut out = Vec::new();
+        walk(&mut Vec::new(), m, false, &mut out);
+        for (at, v) in out {
+            let keys: Vec<&str> = at.iter().map(String::as_str).collect();
+            let kind = (def.columns)(&at);
+            assert_eq!(kind, want(&keys), "{} {}", code.code, at.join("."));
+            let fits = match kind {
+                Some(ColumnKind::Number) => v.is_number() || v.is_null(),
+                Some(ColumnKind::Text) => v.is_string() || v.is_null(),
+                _ => true,
+            };
+            assert!(fits, "{} {}: {v} is no {kind:?}", code.code, at.join("."));
+            cells += usize::from(kind.is_some());
+        }
+    }
+    assert!(methods >= 5 && cells > 100, "methods {methods}, cells {cells}");
+}
+
+#[test]
+fn every_column_of_every_unit_demand_method_s_tables_has_its_kind_and_every_cell_fits_it() {
+    // The kinds `demand::Method`'s tables give their fields, written out here, against every value BIMCraft holds.
+    let def = section_def(Discipline::Electrical, "unit_demand").unwrap();
+    let texts = ["name", "measurement", "junction_box", "system", "kind", "use", "network", "annex", "beyond"];
+    let want = |at: &[&str]| -> Option<ColumnKind> {
+        let leaf = *at.last()?;
+        match at {
+            ["method", "annexes", "by_current", "rows", "[]", "names"] => None,
+            ["method", "annexes", "by_current", "rows", "[]", "phases"] => Some(ColumnKind::Numbers),
+            ["method", "terms", "special", "[]", "factors", "beyond"] => Some(ColumnKind::Number),
+            _ if texts.contains(&leaf) => Some(ColumnKind::Text),
+            ["method", ..] => Some(ColumnKind::Number),
+            _ => None,
+        }
+    };
+    fn walk(at: &mut Vec<String>, v: &Value, in_table: bool, out: &mut Vec<(Vec<String>, Value)>) {
+        match v {
+            Value::Object(o) => {
+                for (k, x) in o {
+                    at.push(k.clone());
+                    walk(at, x, in_table, out);
+                    at.pop();
+                }
+            }
+            Value::Array(a) if a.iter().all(Value::is_object) && !a.is_empty() => {
+                at.push("[]".into());
+                for x in a {
+                    walk(at, x, true, out);
+                }
+                at.pop();
+            }
+            other if in_table => out.push((at.clone(), other.clone())),
+            _ => {}
+        }
+    }
+    let (mut cells, mut methods) = (0, 0);
+    for code in of(Discipline::Electrical) {
+        let Some(m) = code.sections.get("unit_demand") else { continue };
+        methods += 1;
+        let mut out = Vec::new();
+        walk(&mut Vec::new(), m, false, &mut out);
+        for (at, v) in out {
+            let keys: Vec<&str> = at.iter().map(String::as_str).collect();
+            // A list that isn't numbers (a list of pairs, the by-current rows' names) has no kind: the window reads it as
+            // before.
+            if v.is_array() && !v.as_array().is_some_and(|a| a.iter().all(Value::is_number)) {
+                assert_eq!((def.columns)(&at), None, "{} {}", code.code, at.join("."));
+                continue;
+            }
+            let kind = (def.columns)(&at);
+            assert_eq!(kind, want(&keys), "{} {}", code.code, at.join("."));
+            let fits = match kind {
+                Some(ColumnKind::Number) => v.is_number() || v.is_null(),
+                Some(ColumnKind::Numbers) => v.as_array().is_some_and(|a| a.iter().all(Value::is_number)),
+                Some(ColumnKind::Text) => v.is_string() || v.is_null(),
+                _ => true,
+            };
+            assert!(fits, "{} {}: {v} is no {kind:?}", code.code, at.join("."));
+            cells += usize::from(kind.is_some());
+        }
+    }
+    assert!(methods >= 3 && cells > 300, "methods {methods}, cells {cells}");
+}
+
+#[test]
+fn the_other_electrical_sections_say_of_every_field_of_their_tables_the_kind_its_values_have() {
+    // Every field of every row and card of these sections, in every library code, has the kind its values have there: a
+    // text a text, a number a number, a list of numbers a list; a truth or a list of texts has none (the window reads it as
+    // before).
+    fn walk(at: &mut Vec<String>, v: &Value, in_rows: bool, out: &mut Vec<(Vec<String>, Value)>) {
+        match v {
+            Value::Object(o) => {
+                for (k, x) in o {
+                    at.push(k.clone());
+                    walk(at, x, in_rows, out);
+                    at.pop();
+                }
+            }
+            Value::Array(a) if !a.is_empty() && a.iter().all(Value::is_object) => {
+                at.push("[]".into());
+                for x in a {
+                    walk(at, x, true, out);
+                }
+                at.pop();
+            }
+            other if in_rows => out.push((at.clone(), other.clone())),
+            _ => {}
+        }
+    }
+    let mut asked = std::collections::BTreeMap::new();
+    for key in ["rcd", "bath_volumes", "load_points", "circuits", "conduit_fill", "surge", "wire_types"] {
+        let def = section_def(Discipline::Electrical, key).unwrap();
+        for code in of(Discipline::Electrical) {
+            let Some(section) = code.sections.get(key) else { continue };
+            // A wire type is its own card, by its name: its fields are a row's.
+            let mut out = Vec::new();
+            if key == "wire_types" {
+                for (name, w) in section.as_object().into_iter().flatten() {
+                    walk(&mut vec![name.clone()], w, true, &mut out);
+                }
+            } else {
+                walk(&mut Vec::new(), section, false, &mut out);
+            }
+            for (at, v) in out {
+                let want = match &v {
+                    Value::String(_) => Some(ColumnKind::Text),
+                    Value::Number(_) => Some(ColumnKind::Number),
+                    Value::Array(a) if !a.is_empty() && a.iter().all(Value::is_number) => Some(ColumnKind::Numbers),
+                    Value::Null => continue,
+                    _ => None,
+                };
+                // A list of pairs (a conduit family's sizes) is shown by place: it has no kind.
+                if v.as_array().is_some_and(|a| a.iter().any(Value::is_array)) {
+                    assert_eq!((def.columns)(&at), None, "{} {key} {}", code.code, at.join("."));
+                    continue;
+                }
+                assert_eq!((def.columns)(&at), want, "{} {key} {}", code.code, at.join("."));
+                *asked.entry(key).or_insert(0) += 1;
+            }
+        }
+    }
+    assert_eq!(asked.len(), 7, "{asked:?}");
+}
