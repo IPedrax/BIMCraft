@@ -1070,6 +1070,28 @@ mod tests {
     }
 
     #[test]
+    fn a_text_column_of_a_unit_s_demand_annex_keeps_a_text_that_reads_as_a_number() {
+        // `unit_demand` by annexes: a row's `measurement` is a text (`AnnexRow`), so "7" typed stays "7".
+        let kinds = bimcraft_core::codes::section_def(Discipline::Electrical, "unit_demand").map(|d| d.columns);
+        let row = |name: &str| {
+            json!({"name": name, "phases": 1, "over": 0, "up_to": 5, "breaker": 40,
+                   "connection": {"conductors_per_phase": 1, "phase": 10, "neutral": 10},
+                   "entry": {"phase": 10, "neutral": 10}, "earthing": 10, "measurement": "direct"})
+        };
+        let v = json!({"annexes": {"networks": [{"network": "n", "annex": "a", "rows": [row("A1"), row("A2")]}]}});
+        let mut h = Harness::builder().with_size([2400.0, 1600.0]).with_step_dt(0.25).build_ui_state(
+            move |ui, (v, pasted): &mut (Value, String)| {
+                let hints = Hints { at: vec!["method".into()], kinds, ..Default::default() };
+                editor(ui, "method", "method", v, &hints, pasted)
+            },
+            (v, String::new()),
+        );
+        h.run();
+        g7_type(&mut h, "A2", "Measurement", "7");
+        assert_eq!(h.state().0["annexes"]["networks"][0]["rows"][1]["measurement"], json!("7"));
+    }
+
+    #[test]
     fn g7_tooltip_translation() {
         // In Portuguese, the language of the utilities' codes it closes cells of; the others fall back to English.
         let tip = "This row gives one value for these columns";

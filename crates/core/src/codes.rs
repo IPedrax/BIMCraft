@@ -168,6 +168,34 @@ fn no_columns(_: &[String]) -> Option<ColumnKind> {
     None
 }
 
+/// The columns of a unit's demand method's tables (`demand::Standard` and its `Method`).
+fn unit_demand_columns(at: &[String]) -> Option<ColumnKind> {
+    use ColumnKind::*;
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        // By terms: the categories of supply, the special loads, the uses.
+        ["method", "terms", "categories", "[]", "system"] => Some(Text),
+        ["method", "terms", "categories", "[]", "rows", "[]", "name"] => Some(Text),
+        ["method", "terms", "categories", "[]", "rows", "[]", _] => Some(Number),
+        ["method", "terms", "special", "[]", "kind"] | ["method", "terms", "uses", "[]", "use"] => Some(Text),
+        ["method", "terms", "special", "[]", "factors", "beyond"] => Some(Number),
+        // By annexes: each network's rows, and the rows by current.
+        ["method", "annexes", "networks", "[]", "network" | "annex"] => Some(Text),
+        ["method", "annexes", "networks", "[]", "primary_above"] => Some(Number),
+        ["method", "annexes", "networks", "[]", "rows", "[]", "name" | "measurement" | "junction_box"] => Some(Text),
+        ["method", "annexes", "networks", "[]", "rows", "[]", _, ..] => Some(Number),
+        ["method", "annexes", "by_current", "rows", "[]", "measurement"] => Some(Text),
+        ["method", "annexes", "by_current", "rows", "[]", "phases"] => Some(Numbers),
+        ["method", "annexes", "by_current", "rows", "[]", "breaker" | "entry" | "earthing"] => Some(Number),
+        ["method", "annexes", "by_current", "rows", "[]", "connection", _] => Some(Number),
+        // By a table: each network's rows.
+        ["method", "table", "networks", "[]", "network" | "beyond"] => Some(Text),
+        ["method", "table", "networks", "[]", "rows", "[]", "name"] => Some(Text),
+        ["method", "table", "networks", "[]", "rows", "[]", _, ..] => Some(Number),
+        _ => None,
+    }
+}
+
 /// The columns of a building's demand method's tables (`building_demand::Method`).
 fn building_demand_columns(at: &[String]) -> Option<ColumnKind> {
     use ColumnKind::*;
@@ -585,6 +613,7 @@ pub fn sections() -> &'static [SectionDef] {
             match (def.discipline, def.key) {
                 (Electrical, "entrance") => def.columns = entrance_columns,
                 (Electrical, "building_demand") => def.columns = building_demand_columns,
+                (Electrical, "unit_demand") => def.columns = unit_demand_columns,
                 _ => {}
             }
         }
