@@ -1265,7 +1265,11 @@ fn discipline_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog, actions: &mut Act
                 && s == key
             {
                 // The rule being edited, under the grid, shown as what it is: a form, a table, cards.
-                let hints = tree::Hints { columns: rules.get("columns").and_then(Value::as_object).cloned().unwrap_or_default() };
+                let hints = tree::Hints {
+                    columns: rules.get("columns").and_then(Value::as_object).cloned().unwrap_or_default(),
+                    at: vec![r.clone()],
+                    kinds: codes::section_def(tab.discipline, &key).map(|def| def.columns),
+                };
                 if let Some(v) = rules.get_mut(&r) {
                     ui.add_space(6.0);
                     egui::Frame::group(ui.style()).show(ui, |ui| {
