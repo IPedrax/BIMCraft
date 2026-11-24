@@ -605,7 +605,7 @@ msgstr "Acima da Linha de Chamada"
 msgid "Above dimension line (continuous)"
 msgstr "Acima da linha de cota (contínua)"
 
-#: crates/ui-egui/src/dock.rs:1256
+#: crates/ui-egui/src/dock.rs:1254
 msgid "Above {}"
 msgstr ""
 
@@ -3984,7 +3984,7 @@ msgid "Close every view but this one"
 msgstr "Fechar todas as vistas menos esta"
 
 #: crates/ui-egui/src/dock.rs:724
-#: crates/ui-egui/src/dock.rs:1179
+#: crates/ui-egui/src/dock.rs:1177
 #: crates/ui-egui/src/lib.rs:7474
 msgid "Close {}"
 msgstr "Fechar {}"
@@ -5865,24 +5865,24 @@ msgstr ""
 msgid "Dock All Views: every floating view back onto the tab bar, in one view under the tabs"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1238
+#: crates/ui-egui/src/dock.rs:1236
 msgid "Dock Bottom"
 msgstr "Encaixar embaixo"
 
-#: crates/ui-egui/src/dock.rs:1228
+#: crates/ui-egui/src/dock.rs:1226
 msgid "Dock Left"
 msgstr "Encaixar à esquerda"
 
-#: crates/ui-egui/src/dock.rs:1233
+#: crates/ui-egui/src/dock.rs:1231
 msgid "Dock Right"
 msgstr "Encaixar à direita"
 
-#: crates/ui-egui/src/dock.rs:1271
+#: crates/ui-egui/src/dock.rs:1269
 msgid "Dock in the Views"
 msgstr "Encaixar nas vistas"
 
 #: crates/ui-egui/src/dock.rs:727
-#: crates/ui-egui/src/dock.rs:1182
+#: crates/ui-egui/src/dock.rs:1180
 msgid "Dock {}"
 msgstr "Encaixar {}"
 
@@ -7599,8 +7599,8 @@ msgstr "Face invertida"
 msgid "Flipped hand"
 msgstr "Lado invertido"
 
-#: crates/ui-egui/src/dock.rs:790
-#: crates/ui-egui/src/dock.rs:1328
+#: crates/ui-egui/src/dock.rs:788
+#: crates/ui-egui/src/dock.rs:1326
 #: crates/ui-egui/src/lib.rs:7496
 msgid "Float"
 msgstr "Flutuar"
@@ -9558,7 +9558,7 @@ msgstr "Esquerda"
 msgid "Left Filing / Binding Margin:"
 msgstr "Margem esquerda de fixação / arquivamento:"
 
-#: crates/ui-egui/src/dock.rs:1252
+#: crates/ui-egui/src/dock.rs:1250
 msgid "Left of {}"
 msgstr ""
 
@@ -15226,10 +15226,6 @@ msgstr ""
 msgid "Return period"
 msgstr "Período de retorno"
 
-#: crates/ui-egui/src/dock.rs:752
-msgid "Rev has the ribbon: the Tools palette is shown in the BIMCraft profile"
-msgstr ""
-
 #: crates/core/src/title_starters.rs:43
 #: crates/core/src/title_starters.rs:67
 #: crates/core/src/title_starters.rs:83
@@ -16934,15 +16930,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Linhas suaves (anti-aliasing)"
 
-#: crates/ui-egui/src/dock.rs:1281
+#: crates/ui-egui/src/dock.rs:1279
 msgid "Snap Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1272
+#: crates/ui-egui/src/dock.rs:1270
 msgid "Snap Left"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1276
+#: crates/ui-egui/src/dock.rs:1274
 msgid "Snap Right"
 msgstr ""
 
@@ -17884,7 +17880,7 @@ msgstr ""
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr "Use Tab até um membro de um grupo e selecione-o para excluí-lo"
 
-#: crates/ui-egui/src/dock.rs:1246
+#: crates/ui-egui/src/dock.rs:1244
 msgid "Tab with {}"
 msgstr "Aba com {}"
 
@@ -24144,3 +24140,6 @@ msgstr "Superior"
 #: crates/ui-egui/src/shortcuts.rs:242
 #~ msgid "{} Skipped {}."
 #~ msgstr "{} Ignorados: {}."
+#: crates/ui-egui/src/dock.rs:752
+#~ msgid "Rev has the ribbon: the Tools palette is shown in the BIMCraft profile"
+#~ msgstr ""
