@@ -382,11 +382,29 @@ fn the_app_bars_palettes_menu_brings_a_closed_palette_back_and_resets_the_layout
     h.state_mut().show_palette(Palette::Browser, false);
     h.run();
     press(&mut h, "Palettes");
-    pick(&mut h, Role::CheckBox, "Tools");
-    assert!(docking(&h).shown(Palette::Tools), "the Tools palette, which has no shortcut, comes back from the bar");
+    assert!(h.get_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "the tools' surface is no palette");
+    pick(&mut h, Role::CheckBox, "Project Browser");
+    assert!(docking(&h).shown(Palette::Browser), "a closed palette comes back from the bar");
+    // A layout from a preset or an older file may have closed the tools' palette: the standard layout brings it back.
+    assert!(!docking(&h).shown(Palette::Tools));
     press(&mut h, "Palettes");
     press(&mut h, "Reset Palette Layout");
-    assert_eq!(docking(&h), &Docking::default(), "the layout as at first, the Navigator back too");
+    assert_eq!(docking(&h), &Docking::default(), "the layout as at first, the Navigator and the tools' palette back too");
+}
+
+#[test]
+fn the_switchable_palettes_are_the_known_ones_without_tools() {
+    let switchable = Palette::switchable();
+    assert!(!switchable.contains(&Palette::Tools));
+    assert_eq!(switchable.len() + 1, Palette::known().len());
+}
+
+#[test]
+fn the_settings_palette_list_leaves_the_tools_palette_out() {
+    let mut h = bimcraft(BOX);
+    press(&mut h, "Settings");
+    assert!(h.get_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "Settings lists palettes, not the tools' surface");
+    press(&mut h, "Close");
 }
 
 // ---------- the windows of views: magnets, columns, rows and tiles ----------
