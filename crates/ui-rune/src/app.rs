@@ -503,8 +503,10 @@ mod tests {
         assert!(app.has_file() && file.exists());
         assert!(app.save(), "a saved project saves to its own file: {:?}", app.message);
         let mut other = App::new(Session::new());
-        assert_ne!(other.levels, app.levels, "a new project is not the sample house");
+        let (new, house) = (other.session.model.elements.len(), app.session.model.elements.len());
+        assert_ne!(new, house, "a new project is not the sample house (it has its two levels too, with the same ids)");
         assert!(other.open_path(file.clone()), "refused: {:?}", other.message);
+        assert_eq!(other.session.model.elements.len(), house, "the file's elements, not the new project's");
         assert_eq!(other.levels, app.levels);
         assert!(other.drawing.is_some());
         assert!(!other.open_path(dir.join("missing.bimc")) && other.message.is_some());
