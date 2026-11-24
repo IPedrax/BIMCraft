@@ -6139,6 +6139,12 @@ fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) -> bool {
     true
 }
 
+/// A line from `a` to `b`, one pixel wide; dashed, `over`.
+fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
+    let pts = vec![d.view.px(a), d.view.px(b)];
+    d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
+}
+
 /// A ramp of neither the plan's level nor ending on it, seen from above where all of it is under the cut plane and its top
 /// over the view depth: its runs' and landings' edges, solid. Whether it was drawn.
 fn ramp_below(d: &mut Drawing, m: &Model, r: &Ramp, range: &PlanRange) -> bool {
