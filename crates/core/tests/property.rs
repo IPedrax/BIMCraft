@@ -582,8 +582,17 @@ impl Ledger {
                 // A layer under it names it, whether or not this one gives it too.
                 let under = v.is_null() && settings && {
                     let mut below = self.clone();
-                    if let Some(at) = below.amendments.iter().position(|a| a == t) {
-                        below.amendments.truncate(at);
+                    // The layers as they stand, not in the order chosen.
+                    let standing: Vec<String> = below.layers().iter().skip(1).map(|(n, _)| n.clone()).collect();
+                    if let Some(at) = standing.iter().position(|a| a == t) {
+                        let under = standing[..at].to_vec();
+                        below.amendments = under.clone();
+                        let base = below.base_code();
+                        for (n, o) in below.own.iter_mut() {
+                            if under.contains(n) {
+                                o.amends = base.clone();
+                            }
+                        }
                     } else if let Some(o) = below.own.get_mut(t).and_then(|o| o.sections.get_mut(key)) {
                         o.remove(k);
                     }

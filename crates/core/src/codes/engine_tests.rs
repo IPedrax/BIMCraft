@@ -1535,3 +1535,25 @@ fn a_method_s_last_rule_taken_away_is_not_checked_as_an_ordinary_section() {
         json!({"discipline": "electrical", "amend": "Middle", "rules": {"building_demand": {"min_dwellings": null}}}),
     );
 }
+
+#[test]
+fn a_setting_taken_away_stays_away_over_an_amendment_chosen_before_it_that_was_made_over_it() {
+    // `Child` was made over `Target` and chosen before it: it stands under `Target`. Both give `Mine`, each its own; taken
+    // away in `Target`, `Child`'s must not come back.
+    let e = Discipline::Electrical;
+    for key in ["voltages", "distribution_systems", "wire_types"] {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": "Target", "amendments": ["Target"]}));
+        run(
+            &mut s,
+            "building_code",
+            json!({"discipline": "electrical", "create": "Child", "over": "Target", "amendments": ["Child", "Target"]}),
+        );
+        let some = s.model.resolve_code(e, key).value.values().find(|v| !v.is_null()).cloned().unwrap();
+        for code in ["Child", "Target"] {
+            run(&mut s, "building_code", json!({"discipline": "electrical", "amend": code, "rules": {key: {"Mine": some.clone()}}}));
+        }
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "Target", "rules": {key: {"Mine": null}}}));
+        assert!(s.model.resolve_code(e, key).value.get("Mine").is_none_or(Value::is_null), "{key}: Child's came back");
+    }
+}

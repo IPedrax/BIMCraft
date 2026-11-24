@@ -584,9 +584,18 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
             // the layers under this amendment alone, without it and those over it.
             let under = settings && v.is_null() && {
                 let mut below = next.clone();
-                let target = &below.own[i].code;
-                if let Some(at) = below.choice(d).amendments.iter().position(|a| a == target) {
-                    below.choice_mut(d).amendments.truncate(at);
+                let target = below.own[i].code.clone();
+                // The layers as they stand, not in the order chosen: one made over this amendment, chosen before it,
+                // stands under it all the same.
+                let standing: Vec<String> = below.layers(d).iter().skip(1).map(|c| c.code.clone()).collect();
+                if let Some(at) = standing.iter().position(|a| *a == target) {
+                    let under = standing[..at].to_vec();
+                    below.choice_mut(d).amendments = under.clone();
+                    // Each stands where it stood, though what it was made over may now be left out of the list.
+                    let base = below.base(d).code.clone();
+                    for c in below.own.iter_mut().filter(|c| c.discipline == d && under.contains(&c.code)) {
+                        c.amends = base.clone();
+                    }
                 } else if let Some(o) = below.own[i].sections.get_mut(&key).and_then(Value::as_object_mut) {
                     o.remove(&k);
                 }
