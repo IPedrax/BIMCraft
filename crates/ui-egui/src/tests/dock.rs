@@ -809,7 +809,8 @@ fn resetting_the_palette_layout_brings_panels_and_tools_back() {
 #[test]
 fn right_clicking_a_palettes_header_lists_every_palette_with_its_box() {
     let mut h = app(BOX);
-    right_click_at(&mut h, header_of(&h, "Properties"));
+    let at = header_of(&h, "Properties");
+    right_click_at(&mut h, at);
     for p in Palette::known().into_iter().filter(|p| *p != Palette::Tools) {
         let node = h.get_by_role_and_label(Role::CheckBox, p.name());
         let ticked = node.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True);
@@ -822,7 +823,8 @@ fn right_clicking_a_palettes_header_lists_every_palette_with_its_box() {
 #[test]
 fn a_palettes_box_in_its_menu_closes_and_opens_it_and_the_menu_stays_open() {
     let mut h = app(BOX);
-    right_click_at(&mut h, header_of(&h, "Properties"));
+    let at = header_of(&h, "Properties");
+    right_click_at(&mut h, at);
     h.get_by_role_and_label(Role::CheckBox, "Project Browser").click();
     h.run();
     assert!(!h.state().docking.shown(Palette::Browser), "the palette is closed");
@@ -836,7 +838,8 @@ fn a_palettes_box_in_its_menu_closes_and_opens_it_and_the_menu_stays_open() {
 #[test]
 fn the_palettes_menu_closes_with_its_own_palette_and_does_not_reopen() {
     let mut h = app(BOX);
-    right_click_at(&mut h, header_of(&h, "Properties"));
+    let at = header_of(&h, "Properties");
+    right_click_at(&mut h, at);
     h.get_by_role_and_label(Role::CheckBox, "Properties").click();
     h.run();
     assert!(!h.state().docking.shown(Palette::Properties), "the palette went with its box");
@@ -850,7 +853,8 @@ fn the_palettes_menu_closes_with_its_own_palette_and_does_not_reopen() {
 #[test]
 fn the_palettes_menu_opens_on_the_inspectors_header_in_bimcraft() {
     let mut h = bimcraft(BOX);
-    right_click_at(&mut h, header_of(&h, crate::lang::t("Inspector")));
+    let at = header_of(&h, crate::lang::t("Inspector"));
+    right_click_at(&mut h, at);
     h.get_by_role_and_label(Role::CheckBox, crate::lang::t("Navigator")).click();
     h.run();
     assert!(!h.state().docking.shown(Palette::Browser), "the Navigator is closed from the menu");
