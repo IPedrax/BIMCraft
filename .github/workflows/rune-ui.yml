@@ -161,7 +161,7 @@ jobs:
           ls /usr/share/vulkan/icd.d/
           lvp=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)
           echo "VK_ICD_FILENAMES=$lvp" >> "$GITHUB_ENV"
-      - name: Headless frames of the Rune UI on lavapipe (Rune's own clock: no display)
+      - name: Headless frames of the Rune UI on lavapipe, no display
         run: |
           mkdir -p results
           python3 - <<'PY'
