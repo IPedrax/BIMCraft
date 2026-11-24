@@ -568,17 +568,16 @@ fn a_panel_the_scale_leaves_out_is_listed_unticked_and_cannot_be_ticked() {
 #[test]
 fn the_menu_opens_on_a_folded_panel_and_in_the_tools_palette() {
     // Rev, narrow: the last panels fold to one button, and its right click opens the same menu.
-    // A tab of one panel, narrow enough for it to fold and alone in the room: its button stays on screen.
-    let mut h = app(BOX);
-    h.set_size(vec2(300.0, 800.0));
+    // A family's Create tab at 1280: its Dimension panel folds, as tests/ribbon_fit.rs has it.
+    use bimcraft_core::family::Category;
+    let mut h = app("");
+    h.set_size(vec2(1280.0, 900.0));
+    h.state_mut().new_family(Category::Furniture);
     h.run();
-    h.get_by_label("Collaborate").scroll_to_me();
-    h.run();
-    press(&mut h, "Collaborate");
-    let folded = h.get_by_label("Work Together ▾").rect();
+    let folded = h.get_by_label("Dimension ▾").rect();
     assert!(folded.height() > 40.0, "the panel folded to its button");
-    right_click(&mut h, Role::Button, "Work Together ▾");
-    h.get_by_role_and_label(Role::CheckBox, "Work Together");
+    right_click(&mut h, Role::Button, "Dimension ▾");
+    h.get_by_role_and_label(Role::CheckBox, "Dimension");
     // BIMCraft: the panel's name in the Tools palette takes the right click too.
     let mut h = bimcraft(BOX);
     press(&mut h, "View");
@@ -593,7 +592,7 @@ fn the_menu_leaves_the_edit_tools_box_alone() {
     press(&mut h, "Team");
     press(&mut h, "Edit Tools");
     right_click_topmost(&mut h, Role::CheckBox, "Build");
-    let build = h.get_by_role_and_label(Role::CheckBox, "Build");
+    let build = h.get_all_by_role_and_label(Role::CheckBox, "Build").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap();
     assert_eq!(build.accesskit_node().toggled(), Some(egui::accesskit::Toggled::True), "the box is not flipped by a right click");
     assert!(!h.state().panels_hidden.contains("tab:Architecture/Build"));
     // A panel of another tab, from the menu: the same queue and the same keys as Edit Tools' boxes.
