@@ -1535,3 +1535,60 @@ fn a_method_s_last_rule_taken_away_is_not_checked_as_an_ordinary_section() {
         json!({"discipline": "electrical", "amend": "Middle", "rules": {"building_demand": {"min_dwellings": null}}}),
     );
 }
+
+#[test]
+fn every_column_of_every_utility_s_entrance_tables_has_its_kind_and_every_cell_fits_it() {
+    // What the window takes a cell typed in as, against every value BIMCraft's codes hold there.
+    let def = section_def(Discipline::Electrical, "entrance").unwrap();
+    let mut cells = 0;
+    let mut by_code = std::collections::BTreeMap::new();
+    fn walk(at: &mut Vec<String>, v: &Value, out: &mut Vec<(Vec<String>, Value)>) {
+        match v {
+            Value::Object(o) => {
+                for (k, x) in o {
+                    at.push(k.clone());
+                    walk(at, x, out);
+                    at.pop();
+                }
+            }
+            other => out.push((at.clone(), other.clone())),
+        }
+    }
+    for code in of(Discipline::Electrical) {
+        let Some(e) = code.sections.get("entrance") else { continue };
+        for table in e["tables"].as_array().into_iter().flatten() {
+            for row in table["rows"].as_array().into_iter().flatten() {
+                let mut out = Vec::new();
+                walk(&mut Vec::new(), row, &mut out);
+                for (col, v) in out {
+                    let mut at: Vec<String> = ["tables", "[]", "rows", "[]"].map(String::from).to_vec();
+                    at.extend(col.iter().cloned());
+                    let kind = (def.columns)(&at);
+                    // The kind `entrance::Row` gives each field, written out here, not asked of the registry.
+                    let want = match col.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+                        ["name"] | ["measurement"] => ColumnKind::Text,
+                        ["phases"] | ["demand_kva" | "installed_kw", "over" | "up_to"] => ColumnKind::Number,
+                        ["breaker_a"] => ColumnKind::Numbers,
+                        ["columns", ..] => ColumnKind::Printed,
+                        other => panic!("{} {other:?}: a field `entrance::Row` doesn't have", code.code),
+                    };
+                    assert_eq!(kind, Some(want), "{} {}", code.code, col.join("."));
+                    *by_code.entry(code.code.clone()).or_insert(0) += 1;
+                    let fits = match kind {
+                        Some(ColumnKind::Number) => v.is_number(),
+                        Some(ColumnKind::Numbers) => v.as_array().is_some_and(|a| a.iter().all(Value::is_number)),
+                        Some(ColumnKind::Text) => v.is_string(),
+                        Some(ColumnKind::Printed) => !v.is_object(),
+                        None => false,
+                    };
+                    assert!(fits, "{} {}: {v} is no {kind:?}", code.code, col.join("."));
+                    cells += 1;
+                }
+            }
+        }
+    }
+    assert!(cells > 500, "cells asked ({cells})");
+    // Every utility BIMCraft has an entrance for is asked.
+    let with_entrance = of(Discipline::Electrical).filter(|c| c.sections.get("entrance").is_some_and(|e| e["tables"].is_array())).count();
+    assert_eq!(by_code.len(), with_entrance, "{by_code:?}");
+}
