@@ -34,6 +34,13 @@ impl Hints {
         Hints { columns: columns.clone(), at, kinds: self.kinds }
     }
 
+    /// The kind of field `key` of the object shown here, as the section says it.
+    fn field_kind(&self, key: &str) -> Option<bimcraft_core::codes::ColumnKind> {
+        let mut at = self.at.clone();
+        at.push(key.to_string());
+        self.kinds.and_then(|f| f(&at))
+    }
+
     /// The kind of column `col` (its keys joined with dots) of the table shown here, as the section says it.
     fn kind_of(&self, col: &str) -> Option<bimcraft_core::codes::ColumnKind> {
         let mut at = self.at.clone();
@@ -343,15 +350,24 @@ fn text_field(ui: &mut Ui, s: &mut String) -> bool {
 
 /// A plain value's field: a tick, a number, a text.
 fn scalar_field(ui: &mut Ui, v: &mut Value) -> bool {
+    scalar_field_as(ui, v, None)
+}
+
+/// `scalar_field`, where the section says what kind of value the field holds: a text stays a text, whatever it reads as.
+fn scalar_field_as(ui: &mut Ui, v: &mut Value, kind: Option<bimcraft_core::codes::ColumnKind>) -> bool {
     match v {
         Value::Bool(b) => ui.checkbox(b, "").changed(),
         Value::String(s) => text_field(ui, s),
         other => {
-            let mut text = cell_text(other);
+            // An empty field is empty to type in: its dash is a hint, not text typed after, as a table's cell.
+            let mut text = if other.is_null() { String::new() } else { cell_text(other) };
             let w = width_of(std::iter::once(text.chars().count())).max(70.0);
-            let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(w));
+            let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(w).hint_text("—"));
             if r.changed() {
-                *other = cell_value(&text);
+                *other = match kind {
+                    Some(bimcraft_core::codes::ColumnKind::Text) if !text.is_empty() => Value::String(text),
+                    _ => cell_value(&text),
+                };
             }
             r.changed()
         }
@@ -389,7 +405,7 @@ fn object(ui: &mut Ui, id: &str, o: &mut Map<String, Value>, hints: &Hints, past
             for k in &plain {
                 ui.label(RichText::new(human(k)).color(pal().muted));
                 if let Some(v) = o.get_mut(k) {
-                    scalar_field(ui, v);
+                    scalar_field_as(ui, v, hints.field_kind(k));
                 }
                 ui.end_row();
             }
@@ -442,7 +458,7 @@ fn values(ui: &mut Ui, id: &str, rows: &mut Vec<Value>) {
 }
 
 /// The buttons under a table: a row added, the table copied for a spreadsheet, rows pasted from one.
-fn table_tools(ui: &mut Ui, rows: &mut Vec<Value>, pasted: &mut String) {
+fn table_tools(ui: &mut Ui, rows: &mut Vec<Value>, pasted: &mut String, hints: Option<&Hints>) {
     ui.horizontal(|ui| {
         if ui.small_button(t("Add Row")).clicked() {
             let blank = match rows.last() {
@@ -477,7 +493,25 @@ fn table_tools(ui: &mut Ui, rows: &mut Vec<Value>, pasted: &mut String) {
             ui.add(egui::TextEdit::multiline(pasted).desired_rows(1).desired_width(360.0).hint_text(t("Paste rows here")));
             take = ui.add_enabled(!pasted.trim().is_empty(), egui::Button::new(t("Use Pasted Rows"))).clicked();
         });
-        if take && let Some(Value::Array(new)) = from_tsv(pasted, &Value::Array(rows.clone())) {
+        if take && let Some(Value::Array(mut new)) = from_tsv(pasted, &Value::Array(rows.clone())) {
+            // A text column keeps what was pasted as a text, whatever it reads as: the cell as written, not as read.
+            if let Some(hints) = hints
+                && new.iter().all(Value::is_object)
+            {
+                let lines: Vec<&str> = pasted.lines().filter(|l| !l.trim().is_empty()).collect();
+                let head: Vec<&str> = lines.first().map(|h| h.split('\t').map(str::trim).collect()).unwrap_or_default();
+                for (row, line) in new.iter_mut().zip(lines.iter().skip(1)) {
+                    for (c, cell) in head.iter().zip(line.split('\t')) {
+                        // As the parser reads the row, cell by cell, the last of a header named twice winning.
+                        if hints.kind_of(c) == Some(bimcraft_core::codes::ColumnKind::Text)
+                            && let Value::Object(o) = row
+                        {
+                            let v = if cell.is_empty() { cell_value(cell) } else { Value::String(cell.to_string()) };
+                            o.insert((*c).to_string(), v);
+                        }
+                    }
+                }
+            }
             *rows = new;
             pasted.clear();
             stop_typing(ui);
@@ -552,7 +586,7 @@ fn plain_table(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, pasted: 
         rows.remove(i);
         stop_typing(ui);
     }
-    table_tools(ui, rows, pasted);
+    table_tools(ui, rows, pasted, None);
 }
 
 /// A table of objects: a column for each key, an object inside a row spread over columns of its own, its source last; a
@@ -679,7 +713,7 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
         // it, never into the row after.
         stop_typing(ui);
     }
-    table_tools(ui, rows, pasted);
+    table_tools(ui, rows, pasted, Some(hints));
 }
 
 /// What a cell holds as typed while it is typed in (`object_table`).
@@ -1089,6 +1123,52 @@ mod tests {
         h.run();
         g7_type(&mut h, "A2", "Measurement", "7");
         assert_eq!(h.state().0["annexes"]["networks"][0]["rows"][1]["measurement"], json!("7"));
+    }
+
+    #[test]
+    fn a_card_s_own_text_field_and_rows_pasted_into_a_text_column_keep_texts_that_read_as_numbers() {
+        // A network's `annex` (a text, `Annex`) typed "7" in its card's form; a dwelling grade's `name` (a text, `Grade`)
+        // pasted as "7": both stay texts.
+        use bimcraft_core::codes::section_def;
+        let unit = section_def(Discipline::Electrical, "unit_demand").map(|d| d.columns);
+        let v = json!({"annexes": {"networks": [{"network": "n", "annex": null, "rows": [{"name": "A1", "breaker": 40}]}]}});
+        let mut h = Harness::builder().with_size([1800.0, 1200.0]).with_step_dt(0.25).build_ui_state(
+            move |ui, (v, pasted): &mut (Value, String)| {
+                let hints = Hints { at: vec!["method".into()], kinds: unit, ..Default::default() };
+                editor(ui, "method", "method", v, &hints, pasted)
+            },
+            (v, String::new()),
+        );
+        h.run();
+        let label_y = h.get_by_label("Annex").rect().center().y;
+        h.get_all_by(|n| n.role() == Role::TextInput)
+            .find(|n| (n.rect().center().y - label_y).abs() < 8.0)
+            .expect("the annex's field")
+            .focus();
+        h.run();
+        h.event(egui::Event::Text("7".into()));
+        h.run();
+        assert_eq!(h.state().0["annexes"]["networks"][0]["annex"], json!("7"));
+
+        let building = section_def(Discipline::Electrical, "building_demand").map(|d| d.columns);
+        let v = json!({"grades": [{"name": "A", "demand": 1, "source": "s"}]});
+        let mut h = Harness::builder().with_size([1800.0, 1200.0]).with_step_dt(0.25).build_ui_state(
+            move |ui, (v, pasted): &mut (Value, String)| {
+                let hints = Hints { at: vec!["dwelling".into()], kinds: building, ..Default::default() };
+                editor(ui, "dwelling", "dwelling", v, &hints, pasted)
+            },
+            (v, "name\tdemand\tsource\n7\t2\ts\n".to_string()),
+        );
+        h.run();
+        h.get_by_label("Use Pasted Rows").click_accesskit();
+        h.run();
+        assert_eq!(h.state().0["grades"], json!([{"name": "7", "demand": 2, "source": "s"}]));
+        // A header named twice: the last cell wins, as the parser reads it, an empty one too.
+        h.state_mut().1 = "name\tname\tdemand\n007\t\t2\n".to_string();
+        h.run();
+        h.get_by_label("Use Pasted Rows").click_accesskit();
+        h.run();
+        assert_eq!(h.state().0["grades"], json!([{"name": null, "demand": 2}]));
     }
 
     #[test]

@@ -820,9 +820,9 @@ msgstr "Aggiungi set di stampa"
 msgid "Add Rectangle"
 msgstr "Aggiungi rettangolo"
 
-#: crates/ui-egui/src/codes/tree.rs:430
-#: crates/ui-egui/src/codes/tree.rs:447
-#: crates/ui-egui/src/codes/tree.rs:785
+#: crates/ui-egui/src/codes/tree.rs:446
+#: crates/ui-egui/src/codes/tree.rs:463
+#: crates/ui-egui/src/codes/tree.rs:819
 #: crates/ui-egui/src/codes.rs:827
 #: crates/ui-egui/src/curtain.rs:339
 msgid "Add Row"
@@ -4492,7 +4492,7 @@ msgid "Copper"
 msgstr "Rame"
 
 #: crates/core/src/commands.rs:2500
-#: crates/ui-egui/src/codes/tree.rs:469
+#: crates/ui-egui/src/codes/tree.rs:485
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:819
@@ -4555,7 +4555,7 @@ msgstr "Copia rapporto"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Copia ID, GUID e IFC GlobalId"
 
-#: crates/ui-egui/src/codes/tree.rs:469
+#: crates/ui-egui/src/codes/tree.rs:485
 msgid "Copy the table to paste it into a spreadsheet"
 msgstr "Copia la tabella per incollarla in un foglio di calcolo"
 
@@ -5397,10 +5397,10 @@ msgstr "Elimina le chat salvate"
 msgid "Delete this code from the project. If the project uses it, its rules are kept."
 msgstr "Elimina questa normativa dal progetto. Se il progetto la usa, le sue regole vengono conservate."
 
-#: crates/ui-egui/src/codes/tree.rs:424
-#: crates/ui-egui/src/codes/tree.rs:544
-#: crates/ui-egui/src/codes/tree.rs:669
-#: crates/ui-egui/src/codes/tree.rs:772
+#: crates/ui-egui/src/codes/tree.rs:440
+#: crates/ui-egui/src/codes/tree.rs:578
+#: crates/ui-egui/src/codes/tree.rs:703
+#: crates/ui-egui/src/codes/tree.rs:806
 #: crates/ui-egui/src/codes.rs:818
 msgid "Delete this row"
 msgstr "Elimina questa riga"
@@ -12802,7 +12802,7 @@ msgstr "Incolla in queste viste:"
 msgid "Paste onto these levels:"
 msgstr "Incolla su questi piani:"
 
-#: crates/ui-egui/src/codes/tree.rs:477
+#: crates/ui-egui/src/codes/tree.rs:493
 msgid "Paste rows here"
 msgstr "Incolla qui le righe"
 
@@ -17086,7 +17086,7 @@ msgstr "Fonte"
 msgid "Source code on GitHub"
 msgstr "Codice sorgente su GitHub"
 
-#: crates/ui-egui/src/codes/tree.rs:411
+#: crates/ui-egui/src/codes/tree.rs:427
 msgid "Source:"
 msgstr "Fonte:"
 
@@ -19078,11 +19078,11 @@ msgstr "Questo progetto non ha piani. Aggiungine uno con lo strumento Piano."
 msgid "This project has {}, the file {}"
 msgstr "Questo progetto ha {}, il file {}"
 
-#: crates/ui-egui/src/codes/tree.rs:617
+#: crates/ui-egui/src/codes/tree.rs:651
 msgid "This row gives one value for these columns"
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:615
+#: crates/ui-egui/src/codes/tree.rs:649
 msgid "This row gives this value in the columns after it"
 msgstr ""
 
@@ -19992,7 +19992,7 @@ msgstr "Limite superiore"
 msgid "Use"
 msgstr "Usa"
 
-#: crates/ui-egui/src/codes/tree.rs:478
+#: crates/ui-egui/src/codes/tree.rs:494
 msgid "Use Pasted Rows"
 msgstr "Usa le righe incollate"
 
@@ -22542,7 +22542,7 @@ msgstr "{} ridefinito da linee"
 msgid "{} roofs framed as {}: {} members."
 msgstr ""
 
-#: crates/ui-egui/src/codes/tree.rs:402
+#: crates/ui-egui/src/codes/tree.rs:418
 #: crates/ui-egui/src/codes.rs:192
 msgid "{} rows"
 msgstr "{} righe"
