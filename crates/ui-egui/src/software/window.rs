@@ -68,7 +68,7 @@ pub fn run(app: BimApp, viewport: ViewportBuilder, start: Start) -> Result<(), S
         error: None,
     };
     event_loop.run_app(&mut runner).map_err(|e| format!("the window's event loop failed: {e}"))?;
-    runner.error.map_or(Ok(()), Err)
+    runner.error.take().map_or(Ok(()), Err)
 }
 
 /// Where a window of `inner` points goes to be centred on a monitor at `at` of `size` points: never above or left of it.
