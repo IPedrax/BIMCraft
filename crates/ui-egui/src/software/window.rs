@@ -29,6 +29,8 @@ const CLEAR: Color32 = Color32::from_rgb(12, 12, 12);
 const MAX_PIXELS: usize = 16_384 * 16_384;
 /// How long a hidden or minimised window waits between its frames, as eframe's does.
 const HIDDEN: Duration = Duration::from_millis(10);
+/// The soonest a hidden or minimised window's next frame comes after one: it's run directly, with no redraw to wait for.
+const HIDDEN_EVERY: Duration = Duration::from_millis(100);
 
 /// What wakes the loop: egui asked for a frame at this time.
 #[derive(Debug)]
@@ -75,6 +77,12 @@ pub fn run(app: BimApp, viewport: ViewportBuilder, start: Start) -> Result<(), S
 /// Where a window of `inner` points goes to be centred on a monitor at `at` of `size` points: never above or left of it.
 pub fn centred(inner: Vec2, at: Pos2, size: Vec2) -> Pos2 {
     at + ((size - inner) * 0.5).max(Vec2::ZERO)
+}
+
+/// Whether a frame draws the window, or runs the app's logic alone (hidden or minimised). The window is made hidden and shown by
+/// its first frame drawn, so until then it is drawn whatever the system says of it: else it would never be drawn, nor shown.
+pub fn draws(shown: bool, visible: Option<bool>, minimized: Option<bool>) -> bool {
+    !shown || (visible.unwrap_or(true) && minimized != Some(true))
 }
 
 /// Whether a frame that saw the window asked to close, with these commands from the app, ends the run: unless it said
@@ -177,8 +185,14 @@ impl Runner {
         if let Some(start) = self.start.take() {
             start(&mut self.app, &self.ctx);
         }
-        window.request_redraw();
         self.window = Some(window);
+        // Windows sends a hidden window no redraw (egui's issue 5229), and the first frame is what shows it: drawn here.
+        self.frame(event_loop);
+    }
+
+    /// Whether the system says the window is hidden or minimised. Windows then sends it no redraw, so its frames are run directly.
+    fn hidden(window: &Window) -> bool {
+        window.is_visible() == Some(false) || window.is_minimized() == Some(true)
     }
 
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
@@ -190,7 +204,7 @@ impl Runner {
         raw.viewports = std::iter::once((ViewportId::ROOT, self.info.clone())).collect();
         self.app.input_hook(&self.ctx, &mut raw);
         let close_requested = raw.viewport().close_requested();
-        let visible = self.info.visible().unwrap_or(true) && self.info.minimized != Some(true);
+        let visible = draws(self.shown, self.info.visible(), self.info.minimized);
         let mut host = Soft { window: &window, cpu: self.cpu };
         let (app, ctx) = (&mut self.app, &self.ctx);
         if !visible {
@@ -262,13 +276,11 @@ impl Runner {
             }
         }
         self.raster.set_textures(&self.pending);
-        let (Some(nw), Some(nh)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
-            self.raster.free_textures(&mut self.pending);
-            return;
-        };
         let print = fingerprint(primitives, ppp, [w, h]);
         let same = !self.fresh && shots.is_empty() && self.pending.set.is_empty() && self.last == Some(print);
+        let mut drawn = same;
         if !same
+            && let (Some(nw), Some(nh)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
             && w.saturating_mul(h) <= MAX_PIXELS
             && let Some(surface) = self.surface.as_mut()
             && surface.resize(nw, nh).is_ok()
@@ -284,13 +296,18 @@ impl Runner {
                 self.ctx.request_repaint();
             }
             if buffer.present().is_ok() {
-                (self.last, self.fresh) = (Some(print), false);
+                (self.last, self.fresh, drawn) = (Some(print), false, true);
             }
         }
         self.raster.free_textures(&mut self.pending);
         if !self.shown {
             window.set_visible(true);
             self.shown = true;
+        }
+        // A frame that couldn't be shown (no size yet, the buffer refused) is asked for again, whole.
+        if !drawn {
+            self.fresh = true;
+            self.ctx.request_repaint();
         }
     }
 }
@@ -352,10 +369,20 @@ impl ApplicationHandler<Wake> for Runner {
         match self.next {
             Some(when) if when <= Instant::now() => {
                 self.next = None;
-                if let Some(window) = &self.window {
-                    window.request_redraw();
+                match self.window.clone() {
+                    Some(window) if !self.shown || Self::hidden(&window) => {
+                        // No redraw would come: the frame is run here, and the next no sooner than HIDDEN_EVERY.
+                        self.frame(event_loop);
+                        let soonest = Instant::now() + HIDDEN_EVERY;
+                        self.next = self.next.map(|n| n.max(soonest));
+                    }
+                    Some(window) => window.request_redraw(),
+                    None => {}
                 }
-                event_loop.set_control_flow(ControlFlow::Wait);
+                match self.next {
+                    Some(when) => event_loop.set_control_flow(ControlFlow::WaitUntil(when)),
+                    None => event_loop.set_control_flow(ControlFlow::Wait),
+                }
             }
             Some(when) => event_loop.set_control_flow(ControlFlow::WaitUntil(when)),
             None => event_loop.set_control_flow(ControlFlow::Wait),
@@ -372,6 +399,20 @@ mod tests {
         assert_eq!(centred(Vec2::new(1440.0, 900.0), Pos2::new(0.0, 0.0), Vec2::new(1920.0, 1080.0)), Pos2::new(240.0, 90.0));
         assert_eq!(centred(Vec2::new(1440.0, 900.0), Pos2::new(1920.0, 0.0), Vec2::new(1920.0, 1080.0)), Pos2::new(2160.0, 90.0));
         assert_eq!(centred(Vec2::new(3000.0, 900.0), Pos2::new(0.0, 0.0), Vec2::new(1920.0, 1080.0)), Pos2::new(0.0, 90.0));
+    }
+
+    #[test]
+    fn the_hidden_window_is_drawn_until_its_first_frame_shows_it_and_then_only_when_it_shows() {
+        // Made hidden, so its first frame can show it: drawn whatever the system says.
+        assert!(draws(false, Some(false), None));
+        assert!(draws(false, Some(false), Some(true)));
+        assert!(draws(false, None, None));
+        // Shown once: hidden or minimised runs the logic alone.
+        assert!(!draws(true, Some(false), None));
+        assert!(!draws(true, Some(true), Some(true)));
+        assert!(!draws(true, None, Some(true)));
+        assert!(draws(true, Some(true), Some(false)));
+        assert!(draws(true, None, None));
     }
 
     #[test]
