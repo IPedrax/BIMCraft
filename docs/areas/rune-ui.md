@@ -8,7 +8,7 @@ feature in both UIs, differing only visually; the BIMCraft and Rev profiles are 
 crate: [crates/ui-rune/CLAUDE.md](../../crates/ui-rune/CLAUDE.md).
 
 Why: egui is immediate mode and repaints the whole interface when the pointer moves, which pins a CPU on a machine with no graphics
-card (issue 628 measured 1.78 of 2 cores on a Windows VM on WARP). Rune keeps a retained tree and redraws what changed.
+card (PR 628 measured 1.78 of 2 cores on a Windows VM on WARP). Rune keeps a retained tree and redraws what changed.
 
 ## What is built (stages 0 and 1)
 
@@ -59,7 +59,7 @@ Rune's MIT notice and Inter's (OFL) with its text in `assets/fonts/inter/OFL.txt
 file as `fonts/inter/OFL.txt`, as it carries the Plex ones.
 
 Rune is pinned to revision `80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047` of `dev` (2026-11-24). It never rewrites `dev`. It has no API
-promise (the root `Cargo.toml` lists 56 crates and the unreleased changelog already holds more than 1,200 entries), takes issues and no
+promise (25 library crates, and the unreleased changelog already holds more than 1,200 entries), takes issues and no
 pull requests, and changes daily. Bumping it is one revision in five places (the crate's `CLAUDE.md`) and a rebuilt lockfile.
 
 ## What costs what with no graphics card
@@ -75,14 +75,14 @@ moves the pointer round an ellipse over the plan (1,500 moves, about 55 a second
 about 30 a second) and drags the plan once round a circle (1,000 moves, with the middle button for egui, which pans with it, and the
 left for Rune). The process's CPU time (user and system, every thread, so lavapipe's rasterizer threads too) is read over each
 stretch and divided by the number of events. Every UI ran twice, one after the other on the same machine; the table gives the range
-of the two. egui is `bimcraft --sample` as it is on main, and as `IPedrax-Test/join-628` has it (issue 628's join, run with
+of the two. egui is `bimcraft --sample` as it is on main, and as `IPedrax-Test/join-628` has it (PR 628's join, run with
 `BIMCRAFT_SOFTWARE=1`: frames paced by their cost on a software adapter, one in flight). Rune is `bimcraft-rune`, the window of this
 branch: the Tools palette (36 rows), the plan, Properties and the status bar.
 
 | UI | runs | idle cores | pointer: cores | CPU ms per move | wheel: CPU ms per notch | drag: CPU ms per move | RSS MB |
 |---|---|---|---|---|---|---|---|
 | egui, main | 2 | 0.00 | 2.438 to 2.545 | 43.07 to 45.01 | 391.1 to 391.9 | 50.21 to 50.4 | 414 to 420 |
-| egui, main with the join of 628 (BIMCRAFT_SOFTWARE=1) | 2 | 0.00 | 1.21 to 1.246 | 20.63 to 21.37 | 222.25 to 223 | 28.04 to 28.16 | 405 to 407 |
+| egui, main with the join of PR 628 (BIMCRAFT_SOFTWARE=1) | 2 | 0.00 | 1.21 to 1.246 | 20.63 to 21.37 | 222.25 to 223 | 28.04 to 28.16 | 405 to 407 |
 | Rune, shapes, on lavapipe (its default) | 2 | 0.00 | 2.605 to 2.623 | 46.23 to 46.4 | 131.95 to 132.65 | 17.63 to 17.65 | 266 to 267 |
 | Rune, shapes, CPU renderer (RUNE_CPU_FIRST=only) | 2 | 0.00 | 0.277 to 0.278 | 4.49 to 4.51 | 71.55 to 75.65 | 17.03 to 17.04 | 94 |
 | Rune, plan as an image, on lavapipe | 2 | 0.00 | 3.269 to 3.317 | 57.34 to 58.56 | 226.25 to 233.7 | 17.45 to 17.48 | 263 to 266 |
@@ -94,8 +94,8 @@ divided by the events, the nearest thing to a frame's cost the same method gives
 **What it says.**
 
 - **Idle is free everywhere**: no UI uses CPU at rest (0.00 cores), egui included.
-- **A pointer moving over the plan, the case of issue 628**: Rune on its CPU renderer costs 4.5 ms of CPU a move (0.28 cores), a tenth
-  of egui's 43 to 45 ms (2.4 to 2.5 cores) and a fifth of egui with the join of 628 (21 ms, 1.2 cores). The same Rune on its default
+- **A pointer moving over the plan, the case of PR 628**: Rune on its CPU renderer costs 4.5 ms of CPU a move (0.28 cores), a tenth
+  of egui's 43 to 45 ms (2.4 to 2.5 cores) and a fifth of egui with the join of PR 628 (21 ms, 1.2 cores). The same Rune on its default
   path, which hands the window to the GPU as soon as a device exists, and on a software adapter that is lavapipe or WARP, costs 46 ms
   (2.6 cores): as much as egui on main. So **Rune is not cheaper than egui on software Vulkan, and is much cheaper on its own CPU
   renderer**, which repaints the tiles that changed (here the hover layer and the status text) and not the window.
@@ -109,8 +109,8 @@ divided by the events, the nearest thing to a frame's cost the same method gives
   layout (its own bench: 13.7 ms a frame down to 2.0 at 6,000 elements); stage 3 does the same here.
 - **Memory**: Rune on the CPU renderer 94 MB, on lavapipe 266 MB, egui 405 to 420 MB.
 - **Frame cost, by each toolkit's own clock.** egui's `--bench` (frames forced as if the user kept moving, on the real window): a median
-  frame of 28 to 29 ms idle and zoomed, 33 ms panned; with the join of 628, 60 to 82 ms, because it paces on cost (14 to 15 frames a second panned or
-  zoomed against 31 to 32: #628 buys its CPU with frame rate). Rune headless on lavapipe (`--script`, CPU time of update, build and submit): a
+  frame of 28 to 29 ms idle and zoomed, 33 ms panned; with the join of PR 628, 60 to 82 ms, because it paces on cost (14 to 15 frames a second panned or
+  zoomed against 31 to 32: PR 628 buys its CPU with frame rate). Rune headless on lavapipe (`--script`, CPU time of update, build and submit): a
   hover frame at a median of 42 to 65 ms over three runs of the same binary, and the zoom scene, which leaves 832 instances in view, costs
   67 ms too, so the GPU path's cost on a software adapter is a floor per frame and not a function of the content. One full-window
   repaint on the CPU renderer (1280x800 at 2x, 12,516 instances) is 19.5 ms of CPU, and 44 of its 4,096,000 pixels differ from the GPU's
@@ -120,7 +120,7 @@ divided by the events, the nearest thing to a frame's cost the same method gives
 
 **What could not be measured here, and bears on the answer.**
 
-1. **A real Windows VM on WARP**, the machine of issue 628. This is Linux and lavapipe on a shared 4 vCPU runner. The direction
+1. **A real Windows VM on WARP**, the machine of PR 628. This is Linux and lavapipe on a shared 4 vCPU runner. The direction
    should hold (Rune's CPU renderer landed on Windows on 2026-11-12, on Linux on 2026-11-24, both unreleased; WARP is a software adapter
    as lavapipe is), the numbers will not. dansity's VM is the test: `bimcraft-rune --software`.
 2. **A chrome as dense as egui's.** egui here is the whole app (Tools, Inspector, Navigator, view bar, status bar); Rune's window has
@@ -133,7 +133,7 @@ divided by the events, the nearest thing to a frame's cost the same method gives
 
 **Choosing the CPU renderer.** Rune reads `RUNE_CPU_FIRST` from the environment when it makes a window, and a program cannot set its
 own variable without `unsafe` (`std::env::set_var` is, in edition 2024), which this workspace forbids. `bimcraft-rune --software`
-(or `BIMCRAFT_SOFTWARE=1`, the variable the egui app has since #628) therefore starts the program again with the variable set
+(or `BIMCRAFT_SOFTWARE=1`, the variable the egui app has since PR 628) therefore starts the program again with the variable set
 (`software.rs`: `exec` on Unix, a child on Windows, a test of when it does). What is still open is the choice itself. Rune
 does not pick the CPU renderer for a software adapter: lavapipe and WARP make a device, so the window goes to them and costs what the
 table says. The window has to be told, by a flag, a setting, or a detection (the egui app notices a software adapter after wgpu has made it;
@@ -270,18 +270,18 @@ copy keeps merging until then):
 | 5 | the 3D view, sheets and schedules on screen, export and print | the sample house exports and prints from Rune |
 | 6 | the Family Editor, the MEP and structure tabs, Co-Work, the Assistant, PyAddins, Plugins, Building Codes | parity: the registry test passes with no entry missing |
 
-Before Rune becomes the default, one run on a machine with no graphics card must show it cheaper than egui on that machine with #628's
+Before Rune becomes the default, one run on a machine with no graphics card must show it cheaper than egui on that machine with PR 628's
 join, on a big project (the tower sample), not only the sample house, and a person must have used it for a day of real work. Until
 then `bimcraft` stays egui, the Rune binary is `bimcraft-rune`, and packages do not carry it.
 
 ## What the maintainer decides
 
 1. **Go on past stage 1, or stop and take Iced?** The numbers do not say stop: with no card, Rune's CPU renderer costs a tenth of what
-   egui costs when the pointer moves over the plan, and 4.7 times less than egui with the join of 628. They do not say Rune is simply
+   egui costs when the pointer moves over the plan, and 4.7 times less than egui with the join of PR 628. They do not say Rune is simply
    faster either: on its default path on a software adapter it costs the same as egui. The case for Rune is one feature, the CPU
    renderer, that is a few days old (Windows 2026-11-12, Linux 2026-11-24), unreleased, off by default, switched by an environment
    variable, and whose only measurement I know of is its author's. My recommendation is **stage 2 only, with three gates**: a run of
-   `bimcraft-rune --software` on a real Windows VM on WARP (dansity's, who measured #628) with the table's method; the same measurement again
+   `bimcraft-rune --software` on a real Windows VM on WARP (dansity's, who measured PR 628) with the table's method; the same measurement again
    once the chrome is as dense as egui's and on the tower sample; and an answer upstream to the issue below. If a gate fails, the
    fallback is Iced (0.14, tiny-skia, incremental rendering), not measured here.
 2. **A pre-release dependency with no API promise.** Rune is `0.0.1`, pinned to a revision of `dev`; it changes daily (more than 1,200
