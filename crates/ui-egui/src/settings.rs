@@ -116,6 +116,8 @@ pub struct Settings {
     pub autosave_minutes: u32,
     /// Draw the 3D view on the graphics card, when there is one.
     pub gpu_3d: bool,
+    /// The most frames a second the window draws (`pacing::Limit`).
+    pub frame_limit: crate::pacing::Limit,
     /// Fill what the 3D view's section box cuts.
     pub cut_fills_3d: bool,
     pub window: Window,
@@ -189,6 +191,7 @@ impl Settings {
             "palettes": self.docking.to_json(&Palette::known()),
             "autosave_minutes": self.autosave_minutes,
             "gpu_3d": self.gpu_3d,
+            "frame_limit": self.frame_limit.to_json(),
             "cut_fills_3d": self.cut_fills_3d,
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
@@ -246,6 +249,7 @@ impl Settings {
             },
             autosave_minutes: v["autosave_minutes"].as_u64().filter(|n| *n <= 120).map_or(base.autosave_minutes, |n| n as u32),
             gpu_3d: v["gpu_3d"].as_bool().unwrap_or(base.gpu_3d),
+            frame_limit: crate::pacing::Limit::from_json(&v["frame_limit"]).unwrap_or(base.frame_limit),
             cut_fills_3d: v["cut_fills_3d"].as_bool().unwrap_or(base.cut_fills_3d),
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
@@ -398,6 +402,7 @@ impl BimApp {
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
         self.card.wanted = kept.gpu_3d;
+        self.frame_limit = kept.frame_limit;
         self.cut_fills_3d = kept.cut_fills_3d;
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
@@ -465,6 +470,7 @@ impl BimApp {
             docking: self.docking.clone(),
             autosave_minutes: self.autosave.interval_minutes,
             gpu_3d: self.card.wanted,
+            frame_limit: self.frame_limit,
             cut_fills_3d: self.cut_fills_3d,
             window: self.window.kept,
             high_contrast: self.scan_contrast,
@@ -736,6 +742,30 @@ impl BimApp {
             (true, None) => crate::lang::tf("Card: {}", &[&self.card.adapter().unwrap_or_default()]),
         };
         muted(ui, text);
+        heading(ui, msg!("Frame rate"));
+        let name = |limit: crate::pacing::Limit| match limit {
+            crate::pacing::Limit::Auto => t("Automatic").to_string(),
+            crate::pacing::Limit::Hz(hz) => crate::lang::tf("{} frames a second", &[&hz.to_string()]),
+        };
+        ui.horizontal(|ui| {
+            let l = ui.label(t("Frame rate limit"));
+            ComboBox::from_id_salt("settings-frame-limit")
+                .selected_text(name(self.frame_limit))
+                .show_ui(ui, |ui| {
+                    for limit in crate::pacing::Limit::ALL {
+                        ui.selectable_value(&mut self.frame_limit, limit, name(limit));
+                    }
+                })
+                .response
+                .labelled_by(l.id)
+                .on_hover_text(t(
+                    "Automatic follows the monitor on a graphics card, and without one leaves half the processor to other applications. A \
+                 lower limit leaves them more",
+                ));
+        });
+        if let Some(adapter) = &self.software_adapter {
+            muted(ui, crate::lang::tf("No graphics card found: the window is drawn in software, on the processor ({})", &[adapter]));
+        }
         heading(ui, msg!("3D view"));
         ui.checkbox(&mut self.cut_fills_3d, t("Fill what the section box cuts")).on_hover_text(t(
             "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster",

@@ -180,21 +180,27 @@ impl Palette {
     }
 
     /// What its title and tab say in the profile this frame wears: BIMCraft calls Properties the Inspector and the Project
-    /// Browser the Navigator. A plugin's palette says its own title.
+    /// Browser the Navigator. A plugin's palette is named by its plugin and its panel's title; [`Palette::title`] puts
+    /// `Plugin:` before them.
     pub fn label(self) -> &'static str {
         match (self, crate::style::rev()) {
             (Palette::Properties, false) => msg!("Inspector"),
             (Palette::Browser, false) => msg!("Navigator"),
-            (Palette::Plugin(i), _) => plugin_palette(i).map_or("", |p| p.title),
+            (Palette::Plugin(i), _) => plugin_palette(i).map_or("", |p| p.plugin_name),
             _ => self.name(),
         }
     }
 
-    /// What a menu, a tab or a title calls it: the interface's word for a built-in palette, and a plugin's own title,
-    /// which is its data and is never translated.
+    /// What a menu, a tab or a title calls it: the interface's word for a built-in palette, and for a plugin's palette
+    /// `Plugin: <the plugin's name>: <the panel's title>`, which is the plugin's data and is not translated.
     pub fn title(self) -> String {
         match self {
-            Palette::Plugin(_) => self.label().to_string(),
+            Palette::Plugin(i) => {
+                let panel = plugin_palette(i);
+                let plugin = panel.map_or("", |p| p.plugin_name);
+                let title = panel.map_or("", |p| p.title);
+                tf("Plugin: {}: {}", &[plugin, title])
+            }
             _ => t(self.label()).to_string(),
         }
     }
@@ -825,7 +831,7 @@ impl BimApp {
             let Some(stack) = self.drawn_stack(&f.stack) else { continue };
             let Some(first) = stack.tabs.first().copied() else { continue };
             let frame = Frame::window(&ctx.global_style()).fill(pal().panel).inner_margin(0.0);
-            let shown = egui::Window::new(t(first.name()))
+            let shown = egui::Window::new(first.title())
                 .id(UiId::new(("palette-window", first)))
                 .title_bar(false)
                 .resizable(true)
@@ -930,11 +936,7 @@ impl BimApp {
     fn palette_title(&self, p: Palette) -> String {
         match p {
             Palette::Properties | Palette::Tools | Palette::Assistant | Palette::Scripts | Palette::Renovation => t(p.label()).to_string(),
-            Palette::Plugin(i) => {
-                let title = plugin_palette(i).map_or_else(|| t("Plugin panel").to_string(), |panel| panel.title.to_string());
-                let badge = self.plugin_panel_badge(i);
-                if badge.is_empty() { title } else { format!("{title} · {badge}") }
-            }
+            Palette::Plugin(_) => p.title(),
             Palette::Browser => match self.active_family() {
                 Some(ed) => format!("{} · {}", t(p.label()), ed.title()),
                 _ => format!("{} · {}", t(p.label()), self.session.model.name),

@@ -668,9 +668,13 @@ pub struct BimApp {
     pub session: Session,
     /// A scenario being run on the window (`bimcraft --bench`): it drives the window and times its frames.
     pub bench: Option<bench::Bench>,
-    /// The window's own pacing of its frames where the system's vsync doesn't (Windows: `pacing.rs`). None where it doesn't
-    /// pace them (other systems, the tests).
+    /// The window's own pacing of its frames where the system's vsync doesn't (Windows), on a software adapter, or to the user's
+    /// limit (`pacing.rs`). None in the tests, which have no window.
     pub frames: Option<pacing::Pacer>,
+    /// The user's limit on the frame rate (Settings > Performance), which the pacer follows.
+    pub frame_limit: pacing::Limit,
+    /// The software adapter the window draws on, where it has no graphics card (`pacing::software`): its name.
+    pub software_adapter: Option<String>,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
     /// The window draws its own title bar (`titlebar.rs`): the desktop's `main` says so where the system lets it (Windows and
@@ -2104,6 +2108,8 @@ impl BimApp {
             canvas: canvas::Canvas::default(),
             bench: None,
             frames: None,
+            frame_limit: pacing::Limit::Auto,
+            software_adapter: None,
             orbit: orbit::Orbit::default(),
             active_3d: None,
             card: gpu::Card::default(),
@@ -7977,23 +7983,47 @@ impl BimApp {
 }
 
 impl BimApp {
-    /// Where the window paces its own frames: the present mode for its card, set once, and the wait that keeps frames from
-    /// coming closer than the monitor's refresh. Only a frame's first pass waits: a sizing pass egui asks for comes at once.
+    /// The window draws on `adapter`, a software adapter (`pacing::software`): its frames are paced by their cost, and the status
+    /// bar says so once.
+    pub fn software_rendering(&mut self, adapter: &str) {
+        self.software_adapter = Some(adapter.to_string());
+        if let Some(pacer) = self.frames.as_mut() {
+            pacer.software = true;
+        }
+        if !self.status.error {
+            self.status = Status { text: t("No graphics card found: drawing in software, frame rate limited").to_string(), error: false };
+        }
+    }
+
+    /// Where the window paces its own frames: the surface for its adapter, set once (`pacing::surface_for`), and the wait that keeps
+    /// frames from coming closer than the monitor's refresh, the user's limit and, on a software adapter, the frames' cost. Only a
+    /// frame's first pass waits: a sizing pass egui asks for comes at once.
     fn pace_frame(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        let limit = self.frame_limit;
         let Some(pacer) = self.frames.as_mut() else { return };
         if ctx.current_pass_index() > 0 {
             return;
         }
         if !pacer.configured {
             if let Some(state) = frame.wgpu_render_state() {
-                let mut config = state.surface_config;
-                config.present_mode = pacing::present_for(state.adapter.get_info().backend, config.present_mode);
-                frame.set_wgpu_surface_config(config);
+                let config = pacing::surface_for(state.adapter.get_info().backend, pacer.software, pacer.monitor, state.surface_config);
+                if config != state.surface_config {
+                    frame.set_wgpu_surface_config(config);
+                }
             }
             pacer.configured = true;
         }
+        pacer.limit = limit;
+        if !pacer.active() {
+            return;
+        }
         let now = std::time::Instant::now();
-        let every = pacer.every(now, || frame.winit_window()?.current_monitor()?.refresh_rate_millihertz());
+        let monitor = if pacer.monitor {
+            pacer.every(now, || frame.winit_window()?.current_monitor()?.refresh_rate_millihertz())
+        } else {
+            std::time::Duration::ZERO
+        };
+        let every = pacer.every_for(now, monitor);
         let wait = pacer.wait(now, every);
         if !wait.is_zero() {
             std::thread::sleep(wait);
