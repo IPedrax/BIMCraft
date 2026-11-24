@@ -80,6 +80,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             let offset = micron(mm(a[2]) - mm(elevation));
             let end = micron(mm(b[2]) - mm(elevation));
             Ok(Run {
+                imported: None,
                 type_name,
                 level,
                 start: point(a[0], a[1]),

@@ -323,6 +323,7 @@ mod tests {
                         m.elements.insert(
                             id,
                             Element::Pipe(Run {
+                                imported: None,
                                 type_name: "Probe".into(),
                                 level,
                                 start: P2(0.0, 0.0),

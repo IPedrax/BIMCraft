@@ -15081,6 +15081,7 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
             [a, b] => Element::of_run(
                 category,
                 crate::model::Run {
+                    imported: None,
                     type_name: type_name.clone(),
                     level,
                     start: *a,

@@ -1156,7 +1156,7 @@ fn imported_color(e: &Element) -> Rgb {
         Element::Floor(_) => SLAB,
         Element::Ceiling(_) => CEILING,
         Element::Roof(_) => ROOF,
-        Element::StructuralColumn(_) => STRUCTURE,
+        Element::StructuralColumn(_) | Element::Beam(_) => STRUCTURE,
         _ => WALL,
     }
 }

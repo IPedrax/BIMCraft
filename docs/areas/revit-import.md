@@ -49,10 +49,22 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   lines, rebar, areas, assemblies, wall reveals) are listed in the notes with how many there are.
 
   The categories the name table knows that had no reader come in from the survey's own records, their category and box, with no
-  new finding in an element's data (`framing.rs`, `generic.rs`'s `KINDS`). Structural framing is a beam along its box's longer side,
-  through the middle of the box across it, its top the box's top on the level at or below it, its section the box across it; a member
-  whose box runs across the axes in plan (wider than a third of its length) or stands (as deep as it is long) is left out, since its
-  line is not read and its box would make a beam of another width and direction. Structural foundations are isolated footings of their
+  new finding in an element's data (`framing.rs`, `generic.rs`'s `KINDS`). A structural framing member is a beam along the line its
+  graphics draw where they read (`framing::line_of`): a member is a straight solid of one section, so the faces along it are square
+  to its line, which is the direction their areas weigh least in, found once from all its faces and again from those nearly along
+  that, which its ends (cut plumb, level, mitred or rounded) no longer pull. It is a member where its faces along that line are 90 %
+  of all it draws, or half of it with the rest at its ends (within twice its section's greater side) or within its section's
+  outline (a web's openings, bolts' holes); a solid that tapers or turns is none. The beam runs through the middle of its top from end
+  to end, at any angle in plan and sloped (`end_offset`), on the level at or below its lower end, its section what its faces along it
+  take in. A member's record box holds its location line as well as its solids, which its joins cut back, so its graphics are taken
+  as the member's where its record's box lies between the box round its solids and the box round all they draw
+  (`generic::member_drawn`). Any other member is a beam along its box's longer side, through the middle of the box across it, its top
+  the box's top on the level at or below it, its section the box across it; one whose box runs across the axes in plan (wider than a
+  third of its length) or stands (as deep as it is long) is left out, since its box would make a beam of another width and
+  direction. Across the twelve 2025 samples, 2,196 of the 2,357 members come in along their graphics' line (938 of Snowdon's
+  structural sample's 942, 996 of the Japanese structural sample's 1,079, 262 of Golden Nugget's architecture's 336), 77 along
+  their box, and 84 are left out: most where their graphics do not read or are not the box they give, and one that stands, which
+  a beam may not. Structural foundations are isolated footings of their
   box (a wall foundation or a mat too). Stairs' runs, landings and supports, ramps, railings, curtain panels and mullions, wall sweeps, slab
   edges, conduits, furniture systems (of the furniture category), site pads, masses, trusses, beam systems, stiffeners and
   connections come in as boxes of a family of their category, as fittings do, each saying so (a model group, class
@@ -119,17 +131,17 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   box, and the note says why. The hole is the rectangle of its box: an arched one's arch is not read. A door or a window whose nearest wall is a curtain wall (a door panel of the grid) is set
   in no other wall: a BIMCraft curtain wall holds one only in a wall in its cell, so it comes in as a component of a generic family
   of its Revit family's name, with its shape (`openings::in_curtain`, `Import::in_curtain`, `generic::Scope::Only`). A curtain grid
-  line (class `CurtainGridLine`) is left out, its box being no body. A wall, a floor, a roof, a ceiling or a column made (all but a curtain wall) is **drawn in 3D as
-  its own graphics draw it** (`imported.rs`, once the walls, floors, roofs, openings and columns are made):
+  line (class `CurtainGridLine`) is left out, its box being no body. A wall, a floor, a roof, a ceiling, a column or a beam made (all but a curtain wall) is **drawn in 3D as
+  its own graphics draw it** (`imported.rs`, once the walls, floors, roofs, openings, columns and framing are made):
   `generic::drawn_where_it_stands`, the components' reading and checks, gives its triangles in the project's axes, kept as the
   element's `imported` shape by material (Revit's corners as its joins cut them, a wall's lean and edited outline and the holes of
   its doors and windows, a roof's and a floor's slopes where they come in level, a column's section where it comes in as the
-  rectangle of its box). It stays a BIMCraft element, which plans, schedules and IFC read; the shape is drawn only while the
+  rectangle of its box, a beam's section and the ends its joins cut). It stays a BIMCraft element, which plans, schedules and IFC read; the shape is drawn only while the
   element is as it came in (`finish` gives it the key of the model as checked), and its own geometry once it is edited. One whose
   graphics do not read, or are not the box they give round their solids, keeps its own geometry, with a note why; one the file
   holds no graphics of, with none; a floor or a ceiling whose sketch came in as one element for each loop keeps them, each drawn
   from its own geometry. Across the twelve 2025 samples, so drawn: 2,648 of 2,882 walls, 966 of 1,030 floors, 151 of 156
-  ceilings, 43 of 46 roofs, 124 of 137 columns and 386 of 435 structural columns.
+  ceilings, 43 of 46 roofs, 124 of 137 columns, 386 of 435 structural columns and 2,259 of 2,273 beams.
 
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line

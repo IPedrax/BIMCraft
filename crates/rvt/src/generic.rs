@@ -485,7 +485,7 @@ pub(crate) fn short(why: &str) -> &str {
 
 /// What element `r` draws, where its own graphics read and, placed, give its record's box: one symbol placed (its type's shape,
 /// shared), or its own shape, the solids it draws where they stand and the symbols it places, each where its transform puts it.
-fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
+fn drawing<'a>(g: &'a Gathered, r: &Record, member: bool) -> Result<Drawn<'a>, String> {
     let d = match g.drawn.get(&r.id) {
         None => return Err(NO_GRAPHICS.to_string()),
         Some(Err(why)) => return Err(format!("its graphics are not read: {}", short(why))),
@@ -530,7 +530,11 @@ fn drawing<'a>(g: &'a Gathered, r: &Record) -> Result<Drawn<'a>, String> {
     materials.resize(tris.len(), None);
     let shape = Solid { triangles, solids, faces, whole, materials, ..Solid::default() };
     let at = Transform { axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], origin: corner };
-    fits(&shape, &at, &r.bbox)?;
+    if !member {
+        fits(&shape, &at, &r.bbox)?;
+    } else if !between(&d.tight, &r.bbox, &d.whole) {
+        return Err("its record's box is not between the box round its solids and the box round all it draws".to_string());
+    }
     Ok(Drawn { own: true, symbol: r.id, at, shape: std::borrow::Cow::Owned(shape) })
 }
 
@@ -570,7 +574,25 @@ pub(crate) fn room(
 /// What element `r` draws where Revit draws it: its triangles and their materials, millimetres in the project's axes; or why it is
 /// not read. The same reading and checks as a component's shape ([`drawing`]), for the doors and windows set in walls.
 pub(crate) fn drawn_where_it_stands(g: &Gathered, r: &Record) -> Result<Solid, String> {
-    let d = drawing(g, r)?;
+    placed(drawing(g, r, false)?)
+}
+
+/// What structural framing member `r` draws where Revit draws it, as [`drawn_where_it_stands`] reads it, but for its record's box:
+/// a member's holds its location line as well as its solids, which are cut back where it joins others, and its graphics' stick
+/// line runs on past the line's ends. So the record's box is taken as the member's where it lies between the box round its solids
+/// and the box round all it draws ([`between`]).
+pub(crate) fn member_drawn(g: &Gathered, r: &Record) -> Result<Solid, String> {
+    placed(drawing(g, r, true)?)
+}
+
+/// Whether box `b` (feet) holds box `inner` and box `outer` holds it, each to the nearest millimetre.
+fn between(inner: &[f64; 6], b: &[f64; 6], outer: &[f64; 6]) -> bool {
+    let tol = 1.0 / 304.8;
+    (0..3).all(|k| outer[k] - tol <= b[k] && b[k] <= inner[k] + tol && inner[k + 3] - tol <= b[k + 3] && b[k + 3] <= outer[k + 3] + tol)
+}
+
+/// A drawing's shape, placed where it stands.
+fn placed(d: Drawn<'_>) -> Result<Solid, String> {
     let mut out = Solid::default();
     let mut marks = Vec::new();
     crate::shapes::place(&d.shape, &d.at, &mut out.triangles, &mut marks, &mut out.materials)?;
@@ -720,7 +742,7 @@ fn boxes(
             continue;
         }
         // What it draws, where its own graphics say: a path whose graphics draw its body comes in with it, whatever its box.
-        let draws = drawing(g, r);
+        let draws = drawing(g, r, false);
         match taken {
             Shape::Envelope => {}
             Shape::Path if runs_along(&r.bbox) || draws.is_ok() => {}

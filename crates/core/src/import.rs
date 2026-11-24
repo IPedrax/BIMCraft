@@ -3224,6 +3224,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             .map(clip)
             .unwrap_or_default();
         let run = Run {
+            imported: None,
             type_name,
             level,
             start: micron(r.flat(found.start)),

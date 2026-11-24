@@ -2240,6 +2240,11 @@ pub struct Run {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The shape another program drew it in ([`ImportedShape`]: a Revit beam's own geometry, its section and the ends its joins
+    /// cut), drawn in 3D in place of its own while it is the run it was drawn for; once it is edited, it is drawn from its own
+    /// geometry again. Only a beam carries one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportedShape>,
 }
 
 /// A family's type placed: at `at` on `level`, `offset` mm up from it, turned `angle` degrees
@@ -3197,12 +3202,13 @@ impl Element {
             Element::Roof(r) => r.imported.as_ref(),
             Element::Ceiling(c) => c.imported.as_ref(),
             Element::Column(c) | Element::StructuralColumn(c) => c.imported.as_ref(),
+            Element::Beam(r) => r.imported.as_ref(),
             _ => None,
         }
     }
 
-    /// Where its imported shape is held, for a kind that may carry one: a wall, a floor, a roof, a ceiling, a column or a
-    /// structural column. None for any other kind.
+    /// Where its imported shape is held, for a kind that may carry one: a wall, a floor, a roof, a ceiling, a column, a
+    /// structural column or a beam. None for any other kind.
     pub fn imported_mut(&mut self) -> Option<&mut Option<ImportedShape>> {
         match self {
             Element::Wall(w) => Some(&mut w.imported),
@@ -3210,6 +3216,7 @@ impl Element {
             Element::Roof(r) => Some(&mut r.imported),
             Element::Ceiling(c) => Some(&mut c.imported),
             Element::Column(c) | Element::StructuralColumn(c) => Some(&mut c.imported),
+            Element::Beam(r) => Some(&mut r.imported),
             _ => None,
         }
     }
@@ -9924,6 +9931,8 @@ impl Model {
         let who = format!("{} {id}", e.category());
         if let Some(s) = e.imported() {
             self.check_imported(&who, s)?;
+        } else if e.run().is_some_and(|r| r.imported.is_some()) {
+            return Err(format!("{who} carries an imported shape, which only a beam among the runs may"));
         }
         crate::curtain::check_element(self, id, e, panel_cells)?;
         if let Some(u) = crate::underlay::of_element(e) {

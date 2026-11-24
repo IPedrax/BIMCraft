@@ -285,11 +285,11 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     attached(&mut cx, &facts);
     openings::import(&mut cx, &facts, &gathered);
     columns::import(&mut cx, &facts, &gathered);
-    imported::shaped(&mut cx, &facts, &gathered);
     rooms::import(&mut cx, &facts, &gathered);
     pipes::import(&mut cx, &facts, &gathered);
     ducts::import(&mut cx, &facts, &gathered);
-    framing::import(&mut cx, &facts);
+    framing::import(&mut cx, &facts, &gathered);
+    imported::shaped(&mut cx, &facts, &gathered);
     generic::import(&mut cx, &facts, &gathered, &inv);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))

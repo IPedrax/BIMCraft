@@ -38,7 +38,10 @@ through the section's line, `Solid::cuts`: the hull of where its edges cross it,
 it and know no category. A run's heights are those of its `justify` line, which a beam or a footing has at the top by default and
 anything else at the middle (`runs::default_justify`); the desktop keeps each run tool's own justification and offset
 (`keep_run_options`). A beam or strip footing can't stand or lean past 75°
-(`runs::check`, `may_stand`: what stands is a column; a pipe, a conduit or a conductor may stand, a riser). In plan (`render::stands`) a footing or a run
+(`runs::check`, `may_stand`: what stands is a column; a pipe, a conduit or a conductor may stand, a riser). A beam may carry
+the shape another program drew it in (`Run::imported`: a Revit beam's section and the ends its joins cut), drawn in 3D while it
+is the beam it was drawn for, as [levels, walls and roofs](levels-walls-roofs.md) says of the other kinds; no other run may
+carry one (`Model::check`). In plan (`render::stands`) a footing or a run
 hangs under the level it is drawn on, its top flush with the view's bottom, and is seen (`seen_below` allows `TOL` for these only,
 or a wall of the storey below would show in the plan above); through the cut plane it's cut; over it and under the view range's top
 it's dashed; a faint dashed centre line is drawn where it's seen or overhead, which is also where a click picks it. A structural column and an

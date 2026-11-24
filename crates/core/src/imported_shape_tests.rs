@@ -1,5 +1,5 @@
-//! An element's imported shape (`Element::imported`): another program's own geometry of a wall, a floor, a roof, a ceiling or a
-//! column, drawn in 3D while it is the element it was drawn for, and its own geometry again once it is edited.
+//! An element's imported shape (`Element::imported`): another program's own geometry of a wall, a floor, a roof, a ceiling, a
+//! column or a beam, drawn in 3D while it is the element it was drawn for, and its own geometry again once it is edited.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -35,6 +35,7 @@ fn kinds() -> Vec<(&'static str, Value)> {
         ("ceiling", json!({"boundary": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]]})),
         ("column", json!({"at": [0, 0]})),
         ("structural_column", json!({"at": [500, 500]})),
+        ("beam", json!({"points": [[0, 0], [5000, 2000]], "offset": 3000})),
     ]
 }
 
@@ -129,4 +130,16 @@ fn a_shapes_material_is_named_anew_when_the_material_is_renamed_and_is_in_use() 
         let shape = s.model.elements.get(id).and_then(Element::imported).unwrap_or_else(|| panic!("{command}: no shape"));
         assert_eq!(shape.parts[0].material, "Stucco", "{command}");
     }
+}
+
+#[test]
+fn a_run_other_than_a_beam_carrying_an_imported_shape_is_refused() {
+    let mut s = Session::new();
+    let id = made(&run(&mut s, "pipe", json!({"points": [[0, 0], [5000, 0]], "offset": 2500})));
+    let shape = ImportedShape { key: 0, parts: vec![ImportedPart { material: String::new(), tris: Arc::new(cuboid([0.0; 3], [1.0; 3])) }] };
+    if let Some(Element::Pipe(r)) = s.model_mut().elements.get_mut(id) {
+        r.imported = Some(shape);
+    }
+    let why = s.model.check().unwrap_err();
+    assert!(why.contains("only a beam"), "{why}");
 }

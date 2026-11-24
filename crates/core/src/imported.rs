@@ -1,5 +1,5 @@
-//! What an element's imported shape ([`ImportedShape`]: another program's own geometry of a wall, a floor, a roof, a ceiling or a
-//! column) is held to: the element as it was when the shape was drawn for it. The shape holds a key of that element; while the
+//! What an element's imported shape ([`ImportedShape`]: another program's own geometry of a wall, a floor, a roof, a ceiling, a
+//! column or a beam) is held to: the element as it was when the shape was drawn for it. The shape holds a key of that element; while the
 //! element's key is still the shape's, the 3D view draws the shape in place of the element's own geometry, and once an edit changes
 //! the key, the element's own geometry again.
 //!

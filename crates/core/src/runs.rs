@@ -703,6 +703,7 @@ mod tests {
 
     fn run(level: crate::model::Guid, a: P2, b: P2, offset: f64, end_offset: Option<f64>, justify: Justify) -> Run {
         Run {
+            imported: None,
             type_name: "t".into(),
             level,
             start: a,

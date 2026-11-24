@@ -176,10 +176,10 @@ takes it, or what the wall is attached to): its `top_level`'s elevation plus its
 mm, negative below the level), or its base plus its `height` when it has no top level, which an offset does not touch.
 `Model::check` refuses a wall whose top does not come out above its base, saying how tall it comes out and by how much to raise it.
 The Properties palette shows Top Offset under Top Constraint for a wall that has one.
-A wall, a floor, a roof, a ceiling, a column or a structural column may carry a **shape another program drew it in**
+A wall, a floor, a roof, a ceiling, a column, a structural column or a beam may carry a **shape another program drew it in**
 (`imported`, `ImportedShape`: triangles in the model's axes, mm, in parts by material, at most `MAX_IMPORTED_PARTS` parts and
 `MAX_IMPORTED_TRIANGLES` triangles; the Revit import gives each its Revit geometry: a wall's corners and lean, a roof's and a
-floor's slopes, a column's section). The 3D view draws that in place of the element's own geometry (`view3d::imported_solids`, each
+floor's slopes, a column's and a beam's section). The 3D view draws that in place of the element's own geometry (`view3d::imported_solids`, each
 part in its material's colour) while the element is the one it was drawn for: the shape holds a key (`imported::key`, FNV-1a over
 the element's JSON without the shape and its parameters' values, its type, what it points at (its levels, what it is attached
 to) and each door and window set in it, with their types), and once an edit changes any of them, the element is drawn from its
