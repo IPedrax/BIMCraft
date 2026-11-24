@@ -48,13 +48,12 @@ impl PanelValue {
 }
 
 /// What a plugin's panel holds while it is open: its fields' values, the text of its `text_panel`s and read-only
-/// `text` widgets, its table, its badge, its error line. Kept in the window, never in the project or the settings file.
+/// `text` widgets, its table and its error line. Kept in the window, never in the project or the settings file.
 #[derive(Clone, Debug, Default)]
 pub struct PluginPanelState {
     values: BTreeMap<String, PanelValue>,
     texts: BTreeMap<String, String>,
     table: Option<PanelTable>,
-    badge: String,
     error: Option<String>,
     /// Its `on_open` has been called.
     opened: bool,
@@ -69,12 +68,6 @@ struct Action {
 }
 
 impl BimApp {
-    /// The badge a plugin panel shows beside its title: its answer's, or nothing.
-    pub(crate) fn plugin_panel_badge(&self, index: usize) -> String {
-        let Some(panel) = dock::plugin_palette(index) else { return String::new() };
-        self.plugin_panel_states.get(panel.name).map(|state| state.badge.clone()).unwrap_or_default()
-    }
-
     /// The body of the palette [`crate::dock::Palette::Plugin`] `index`: its label, its fields, its buttons, its table
     /// and its text, as its manifest declares them, and the answer's error line at the foot. The first frame it is open
     /// calls the panel's `on_open`.
@@ -169,8 +162,9 @@ impl BimApp {
         }
     }
 
-    /// Puts an answer's values into the panel's widgets, its table, text, badge and error line. A value for a widget the
-    /// panel hasn't is one line in the plugin log.
+    /// Puts an answer's values into the panel's widgets, its table, text and error line. A value for a widget the
+    /// panel hasn't is one line in the plugin log. The answer's `badge` is taken and never shown: the panel's name is
+    /// the plugin's and the panel's own, with no state the plugin can put in it.
     fn apply_panel_answer(&mut self, name: &str, widgets: &[Widget], answer: PanelAnswer) {
         let units = self.session.model.units;
         let mut state = self.plugin_panel_states.get(name).cloned().unwrap_or_default();
@@ -196,9 +190,6 @@ impl BimApp {
         }
         if let Some(table) = answer.table {
             state.table = Some(table);
-        }
-        if let Some(badge) = answer.badge {
-            state.badge = badge;
         }
         state.error = answer.error;
         self.plugin_panel_states.insert(name.to_string(), state);

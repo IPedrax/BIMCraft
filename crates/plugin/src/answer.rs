@@ -32,7 +32,8 @@ pub struct PanelAnswer {
     pub text: Option<String>,
     /// The table a `table` widget shows.
     pub table: Option<PanelTable>,
-    /// A count or a state shown beside the panel's title.
+    /// A count or a state a plugin sends for its panel. The window keeps the field for compatibility and never shows it:
+    /// a panel's name is its plugin's and its own, with no state the plugin can put there.
     pub badge: Option<String>,
     /// A line in red at the foot of the panel. It takes nothing back.
     pub error: Option<String>,
