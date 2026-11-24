@@ -378,18 +378,26 @@ fn a_palette_dropped_at_the_top_of_another_goes_above_it_in_its_own_stack_in_bot
 #[test]
 fn the_app_bars_palettes_menu_brings_a_closed_palette_back_and_resets_the_layout() {
     let mut h = bimcraft(BOX);
-    h.state_mut().show_palette(Palette::Tools, false);
     h.state_mut().show_palette(Palette::Browser, false);
     h.run();
     press(&mut h, "Palettes");
     assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "the tools' surface is no palette");
     pick(&mut h, Role::CheckBox, "Project Browser");
     assert!(docking(&h).shown(Palette::Browser), "a closed palette comes back from the bar");
-    // A layout from a preset or an older file may have closed the tools' palette: the standard layout brings it back.
-    assert!(!docking(&h).shown(Palette::Tools));
     press(&mut h, "Palettes");
     press(&mut h, "Reset Palette Layout");
-    assert_eq!(docking(&h), &Docking::default(), "the layout as at first, the Navigator and the tools' palette back too");
+    assert_eq!(docking(&h), &Docking::default(), "the layout as at first, the Navigator back too");
+}
+
+#[test]
+fn the_tools_palette_has_no_close_box_and_comes_back_if_a_layout_closed_it() {
+    let mut h = bimcraft(BOX);
+    assert!(h.query_by_label("Close Tools").is_none(), "the tools are the ribbon's place: no box closes them");
+    assert!(h.query_by_label("Close Inspector").is_some(), "the other palettes close as they did");
+    // A preset or an older file may have closed them: the next frame brings them back, as the ribbon is always there.
+    h.state_mut().show_palette(Palette::Tools, false);
+    h.run();
+    assert!(h.state().docking.shown(Palette::Tools), "the tools come back without a tick or a reset");
 }
 
 #[test]
