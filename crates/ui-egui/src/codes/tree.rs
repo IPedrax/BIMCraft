@@ -1049,6 +1049,27 @@ mod tests {
     }
 
     #[test]
+    fn a_printed_column_a_building_s_demand_keeps_as_text_takes_a_number_typed_as_a_text() {
+        // `building_demand`'s entrance rows print their columns as texts (`EntranceRow::columns`): "25" typed stays "25",
+        // where the column's other rows hold texts that read as numbers.
+        let kinds = bimcraft_core::codes::section_def(Discipline::Electrical, "building_demand").map(|d| d.columns);
+        let rows = json!({"rows": [
+            {"over": 0, "up_to": 10, "breaker_a": 40, "columns": {"wire": "10"}},
+            {"over": 10, "up_to": 20, "breaker_a": 50, "columns": {"wire": "16"}}
+        ]});
+        let mut h = Harness::builder().with_size([1800.0, 1200.0]).with_step_dt(0.25).build_ui_state(
+            move |ui, (v, pasted): &mut (Value, String)| {
+                let hints = Hints { at: vec!["entrance".into()], kinds, ..Default::default() };
+                editor(ui, "entrance", "entrance", v, &hints, pasted)
+            },
+            (rows, String::new()),
+        );
+        h.run();
+        g7_type(&mut h, "16", "Wire", "25");
+        assert_eq!(h.state().0["rows"][1]["columns"]["wire"], json!("25"));
+    }
+
+    #[test]
     fn g7_tooltip_translation() {
         // In Portuguese, the language of the utilities' codes it closes cells of; the others fall back to English.
         let tip = "This row gives one value for these columns";

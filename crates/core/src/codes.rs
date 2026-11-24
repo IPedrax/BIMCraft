@@ -168,6 +168,27 @@ fn no_columns(_: &[String]) -> Option<ColumnKind> {
     None
 }
 
+/// The columns of a building's demand method's tables (`building_demand::Method`).
+fn building_demand_columns(at: &[String]) -> Option<ColumnKind> {
+    use ColumnKind::*;
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["diversity", "errata", "[]", "at" | "printed" | "value"] => Some(Number),
+        ["diversity", "errata", "[]", "why"] => Some(Text),
+        ["dwelling", "grades", "[]", "name" | "source"] => Some(Text),
+        ["dwelling", "grades", "[]", "demand"] => Some(Number),
+        ["common", "[]", "class" | "source"] => Some(Text),
+        ["common", "[]", "power_factor"] => Some(Number),
+        ["common", "[]", "bands", "[]", "up_to" | "factor"] => Some(Number),
+        ["premises", "[]", "use" | "source"] => Some(Text),
+        ["premises", "[]", "w_per_m2" | "least_w"] => Some(Number),
+        ["entrance", "rows", "[]", "over" | "up_to" | "breaker_a"] => Some(Number),
+        // The printed columns are texts here (`EntranceRow::columns`), a dash where the table prints none.
+        ["entrance", "rows", "[]", "columns", _] => Some(Text),
+        _ => None,
+    }
+}
+
 /// The columns of a service entrance's tables (`entrance::Row`).
 fn entrance_columns(at: &[String]) -> Option<ColumnKind> {
     let at: Vec<&str> = at.iter().map(String::as_str).collect();
@@ -561,8 +582,10 @@ pub fn sections() -> &'static [SectionDef] {
         ];
         // The sections that say what their tables' columns hold.
         for def in all.iter_mut() {
-            if (def.discipline, def.key) == (Electrical, "entrance") {
-                def.columns = entrance_columns;
+            match (def.discipline, def.key) {
+                (Electrical, "entrance") => def.columns = entrance_columns,
+                (Electrical, "building_demand") => def.columns = building_demand_columns,
+                _ => {}
             }
         }
         all

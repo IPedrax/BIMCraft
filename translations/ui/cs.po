@@ -633,11 +633,11 @@ msgstr "Přijmout primární: prvky primární varianty zůstanou v modelu; prvk
 msgid "Accept from confidence"
 msgstr ""
 
-#: crates/core/src/codes.rs:330
+#: crates/core/src/codes.rs:351
 msgid "Accessibility"
 msgstr ""
 
-#: crates/core/src/codes.rs:331
+#: crates/core/src/codes.rs:352
 msgid "Accessible routes, turning spaces, reach ranges and accessible toilets."
 msgstr ""
 
@@ -2067,7 +2067,7 @@ msgstr ""
 msgid "Batch {} of {} · waiting for the answer… {} s"
 msgstr ""
 
-#: crates/core/src/codes.rs:378
+#: crates/core/src/codes.rs:399
 msgid "Bathroom Volumes"
 msgstr ""
 
@@ -2326,7 +2326,7 @@ msgstr ""
 msgid "Building Codes…"
 msgstr ""
 
-#: crates/core/src/codes.rs:394
+#: crates/core/src/codes.rs:415
 #: crates/core/src/commands.rs:3781
 msgid "Building Demand"
 msgstr ""
@@ -3024,7 +3024,7 @@ msgstr ""
 msgid "Circuit Number"
 msgstr ""
 
-#: crates/core/src/codes.rs:442
+#: crates/core/src/codes.rs:463
 msgid "Circuit Sizing"
 msgstr ""
 
@@ -4052,7 +4052,7 @@ msgstr ""
 msgid "Coil up to"
 msgstr ""
 
-#: crates/core/src/codes.rs:514
+#: crates/core/src/codes.rs:535
 msgid "Cold Water"
 msgstr ""
 
@@ -4189,7 +4189,7 @@ msgstr "Výška výpočtu"
 msgid "Conceptual Mass"
 msgstr "Koncepční objem"
 
-#: crates/core/src/codes.rs:362
+#: crates/core/src/codes.rs:383
 #: crates/core/src/family.rs:3244
 msgid "Concrete"
 msgstr "Beton"
@@ -4198,7 +4198,7 @@ msgstr "Beton"
 msgid "Concrete block"
 msgstr "Betonová tvárnice"
 
-#: crates/core/src/codes.rs:363
+#: crates/core/src/codes.rs:384
 msgid "Concrete cover by exposure class, steel ratios, bars, stirrups and skin bars, used by the reinforcement check."
 msgstr ""
 
@@ -4214,7 +4214,7 @@ msgstr "Trubka elektroinstalace a vodič"
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "Trubka elektroinstalace (CN): klikněte na její počátek a konec; řetězec kliknutí vytvoří trubku pro každý krok"
 
-#: crates/core/src/codes.rs:450
+#: crates/core/src/codes.rs:471
 #: crates/core/src/commands.rs:3576
 msgid "Conduit Fill"
 msgstr ""
@@ -5190,7 +5190,7 @@ msgstr ""
 msgid "Datum"
 msgstr "Základní prvky"
 
-#: crates/core/src/codes.rs:525
+#: crates/core/src/codes.rs:546
 msgid "Days of water stored, refill time, compartments and pumps."
 msgstr ""
 
@@ -5485,7 +5485,7 @@ msgstr ""
 msgid "Description of {}"
 msgstr ""
 
-#: crates/core/src/codes.rs:498
+#: crates/core/src/codes.rs:519
 msgid "Design Conditions"
 msgstr ""
 
@@ -5850,7 +5850,7 @@ msgstr "Rozváděč"
 msgid "Distribution System"
 msgstr ""
 
-#: crates/core/src/codes.rs:418
+#: crates/core/src/codes.rs:439
 #: crates/core/src/commands.rs:1079
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Distribution Systems"
@@ -5940,7 +5940,7 @@ msgstr ""
 msgid "Door Schedule"
 msgstr "Výkaz dveří"
 
-#: crates/core/src/codes.rs:306
+#: crates/core/src/codes.rs:327
 msgid "Doors and Openings"
 msgstr ""
 
@@ -6130,7 +6130,7 @@ msgstr ""
 msgid "Duct"
 msgstr "Vzduchovod"
 
-#: crates/core/src/codes.rs:490
+#: crates/core/src/codes.rs:511
 msgid "Ducts and Piping"
 msgstr ""
 
@@ -6180,7 +6180,7 @@ msgstr "Duplikovat s detaily"
 msgid "Duplicate…"
 msgstr "Duplikovat…"
 
-#: crates/core/src/codes.rs:386
+#: crates/core/src/codes.rs:407
 msgid "Dwelling Lighting and Outlets"
 msgstr ""
 
@@ -6201,7 +6201,7 @@ msgstr ""
 msgid "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster"
 msgstr ""
 
-#: crates/core/src/codes.rs:507
+#: crates/core/src/codes.rs:528
 msgid "Each fixture's design flows, weight, fixture units and minimum drain."
 msgstr ""
 
@@ -6536,7 +6536,7 @@ msgstr ""
 msgid "Edit…"
 msgstr "Upravit…"
 
-#: crates/core/src/codes.rs:322
+#: crates/core/src/codes.rs:343
 msgid "Egress"
 msgstr ""
 
@@ -6758,7 +6758,7 @@ msgstr ""
 msgid "Entities"
 msgstr "Entity"
 
-#: crates/core/src/codes.rs:346
+#: crates/core/src/codes.rs:367
 msgid "Envelope and Energy"
 msgstr ""
 
@@ -6774,7 +6774,7 @@ msgstr "Zobrazení rovnosti"
 msgid "Equality Text"
 msgstr "Text rovnosti"
 
-#: crates/core/src/codes.rs:474
+#: crates/core/src/codes.rs:495
 msgid "Equipment Working Space"
 msgstr ""
 
@@ -7489,15 +7489,15 @@ msgstr ""
 msgid "Finishes"
 msgstr ""
 
-#: crates/core/src/codes.rs:338
+#: crates/core/src/codes.rs:359
 msgid "Fire Safety"
 msgstr ""
 
-#: crates/core/src/codes.rs:549
+#: crates/core/src/codes.rs:570
 msgid "Fire hydrant systems by type, the fire water reserve, pipe roughness, and the limits on speed and pressure."
 msgstr ""
 
-#: crates/core/src/codes.rs:339
+#: crates/core/src/codes.rs:360
 msgid "Fire resistance by element, compartments and separation."
 msgstr ""
 
@@ -7534,7 +7534,7 @@ msgstr "Fixní okno"
 msgid "Fixed to Dimension Line"
 msgstr "Pevně od kótovací čáry"
 
-#: crates/core/src/codes.rs:506
+#: crates/core/src/codes.rs:527
 msgid "Fixtures"
 msgstr ""
 
@@ -8483,11 +8483,11 @@ msgstr ""
 msgid "Host this project"
 msgstr "Hostovat tento projekt"
 
-#: crates/core/src/codes.rs:395
+#: crates/core/src/codes.rs:416
 msgid "How a utility or a country calculates a building's demand: the demand of one home, the factor for the number of homes, and the shared loads."
 msgstr ""
 
-#: crates/core/src/codes.rs:435
+#: crates/core/src/codes.rs:456
 msgid "How a utility works out one unit's demand, and the supply category it gives for the load or demand."
 msgstr ""
 
@@ -8519,7 +8519,7 @@ msgstr ""
 msgid "How far the tread finish stands out past the riser finish below it."
 msgstr ""
 
-#: crates/core/src/codes.rs:451
+#: crates/core/src/codes.rs:472
 msgid "How full a conduit may be, the conduits makers sell, and the outside size of each cable."
 msgstr ""
 
@@ -8531,7 +8531,7 @@ msgstr "Způsob zobrazení prvků ve fázi pohledu:"
 msgid "How many bars, how thick and how far apart is yours to say; a field left empty is not used. A spacing is the most between bars."
 msgstr "Počet prutů, jejich tloušťku i rozteč určujete vy; prázdné pole se nepoužije. Rozteč je největší vzdálenost mezi pruty."
 
-#: crates/core/src/codes.rs:533
+#: crates/core/src/codes.rs:554
 msgid "How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."
 msgstr ""
 
@@ -8599,7 +8599,7 @@ msgstr ""
 msgid "How wide this flight or landing is; empty for as wide as the stair"
 msgstr ""
 
-#: crates/core/src/codes.rs:548
+#: crates/core/src/codes.rs:569
 msgid "Hydrants and Hose Reels"
 msgstr ""
 
@@ -8923,7 +8923,7 @@ msgstr ""
 msgid "Indicator as Prefix / Suffix"
 msgstr ""
 
-#: crates/core/src/codes.rs:499
+#: crates/core/src/codes.rs:520
 msgid "Indoor temperatures and humidity for heating and cooling."
 msgstr ""
 
@@ -9701,7 +9701,7 @@ msgstr "Osvětlovací těleso"
 msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
 msgstr "Osvětlovací těleso (LF): svítidlo v místě kliknutí, zavěšené pod deskou; Mezerník prvek otočí"
 
-#: crates/core/src/codes.rs:466
+#: crates/core/src/codes.rs:487
 msgid "Lighting Levels"
 msgstr ""
 
@@ -10047,7 +10047,7 @@ msgstr ""
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
-#: crates/core/src/codes.rs:354
+#: crates/core/src/codes.rs:375
 msgid "Loads and Combinations"
 msgstr ""
 
@@ -10240,7 +10240,7 @@ msgstr "Hlavní rozteč Y"
 msgid "Mains"
 msgstr ""
 
-#: crates/core/src/codes.rs:467
+#: crates/core/src/codes.rs:488
 msgid "Maintained illuminance by room or task, and emergency lighting."
 msgstr ""
 
@@ -10712,11 +10712,11 @@ msgstr "Minimum"
 msgid "Minimum Angle"
 msgstr "Minimální úhel"
 
-#: crates/core/src/codes.rs:556
+#: crates/core/src/codes.rs:577
 msgid "Minimum Fixtures by Use"
 msgstr ""
 
-#: crates/core/src/codes.rs:315
+#: crates/core/src/codes.rs:336
 msgid "Minimum area, width, height and natural light of rooms, by the kind of room its name shows."
 msgstr ""
 
@@ -12075,7 +12075,7 @@ msgstr ""
 msgid "Object Styles…"
 msgstr "Styly objektů…"
 
-#: crates/core/src/codes.rs:323
+#: crates/core/src/codes.rs:344
 msgid "Occupant load factors, exit widths, travel distances and corridors."
 msgstr ""
 
@@ -12452,7 +12452,7 @@ msgstr ""
 msgid "Out"
 msgstr "Výstup"
 
-#: crates/core/src/codes.rs:483
+#: crates/core/src/codes.rs:504
 msgid "Outdoor air by use, per person and per area, default occupancies and exhaust rates."
 msgstr ""
 
@@ -12752,7 +12752,7 @@ msgstr "Částečná elipsa"
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "Částečná elipsa: klikněte na konce její osy a poté určete její vyklenutí"
 
-#: crates/core/src/codes.rs:355
+#: crates/core/src/codes.rs:376
 msgid "Partial factors, imposed loads by use and unit weights."
 msgstr ""
 
@@ -14391,7 +14391,7 @@ msgstr "Zábradlí"
 msgid "Rainfall intensity"
 msgstr ""
 
-#: crates/core/src/codes.rs:541
+#: crates/core/src/codes.rs:562
 msgid "Rainfall, slopes, roughness, the minimum downpipe and the downpipe charts."
 msgstr ""
 
@@ -14403,7 +14403,7 @@ msgstr "Rampa"
 msgid "Ramp: click where it starts, then where its run ends; a landing turns it"
 msgstr "Rampa: klikněte na začátek a poté na konec ramene; podesta jej zalomí"
 
-#: crates/core/src/codes.rs:298
+#: crates/core/src/codes.rs:319
 msgid "Ramps"
 msgstr "Rampy"
 
@@ -15052,7 +15052,7 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "Parametr výkazu"
 
-#: crates/core/src/codes.rs:524
+#: crates/core/src/codes.rs:545
 msgid "Reservation"
 msgstr ""
 
@@ -15166,7 +15166,7 @@ msgstr ""
 msgid "Residential Load Points"
 msgstr ""
 
-#: crates/core/src/codes.rs:370
+#: crates/core/src/codes.rs:391
 msgid "Residual-Current Devices"
 msgstr ""
 
@@ -15358,7 +15358,7 @@ msgstr ""
 msgid "Risers"
 msgstr "Počet stupňů"
 
-#: crates/core/src/codes.rs:291
+#: crates/core/src/codes.rs:312
 msgid "Risers, treads, widths, landings, winders, nosings, handrails and guards of stairs."
 msgstr ""
 
@@ -15473,7 +15473,7 @@ msgstr ""
 msgid "Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"
 msgstr "Oddělovač místností: čáry, které místnosti ohraničují stejně jako stěny a rozdělují otevřený prostor; klikejte od bodu k bodu"
 
-#: crates/core/src/codes.rs:314
+#: crates/core/src/codes.rs:335
 msgid "Rooms and Habitability"
 msgstr ""
 
@@ -15699,7 +15699,7 @@ msgstr "Ukázkový projekt"
 msgid "Sand"
 msgstr "Písek"
 
-#: crates/core/src/codes.rs:532
+#: crates/core/src/codes.rs:553
 msgid "Sanitary Drainage and Vents"
 msgstr ""
 
@@ -16311,7 +16311,7 @@ msgstr ""
 msgid "Separator"
 msgstr ""
 
-#: crates/core/src/codes.rs:402
+#: crates/core/src/codes.rs:423
 msgid "Service Categories"
 msgstr ""
 
@@ -17275,7 +17275,7 @@ msgstr "Schodiště: klikněte na místo začátku a poté na směr stoupání"
 msgid "Stair: click where the stair starts, then where each flight or landing ends"
 msgstr ""
 
-#: crates/core/src/codes.rs:290
+#: crates/core/src/codes.rs:311
 msgid "Stairs and Railings"
 msgstr ""
 
@@ -17483,7 +17483,7 @@ msgstr ""
 msgid "Stop the script running"
 msgstr ""
 
-#: crates/core/src/codes.rs:540
+#: crates/core/src/codes.rs:561
 msgid "Storm Drainage"
 msgstr ""
 
@@ -17673,7 +17673,7 @@ msgstr "Povrch, {}"
 msgid "Surface, {}°"
 msgstr "Povrch, {}°"
 
-#: crates/core/src/codes.rs:458
+#: crates/core/src/codes.rs:479
 msgid "Surge Protection"
 msgstr ""
 
@@ -18292,7 +18292,7 @@ msgstr ""
 msgid "The centre of a curved wall, a column or a component"
 msgstr "Střed zakřivené stěny, sloupu nebo komponenty"
 
-#: crates/core/src/codes.rs:475
+#: crates/core/src/codes.rs:496
 msgid "The clear space in front of panels and switchboards."
 msgstr ""
 
@@ -18328,7 +18328,7 @@ msgstr ""
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "Řídicí port, kterým agent pracuje na tomto projektu (bimcraft-cli mcp --connect): zda je otevřený, kolik agentů je připojeno a zda smějí jen číst. Kliknutím otevřete Soubor > Nastavení > Agenti"
 
-#: crates/core/src/codes.rs:443
+#: crates/core/src/codes.rs:464
 msgid "The current each cable carries, the corrections for heat, grouping and soil, voltage drop, cable sizes and breakers."
 msgstr ""
 
@@ -18430,7 +18430,7 @@ msgstr "Soubory u této zprávy nejsou takové, které asistent přijímá"
 msgid "The first guest hosts the session; the others move there"
 msgstr "První host relaci hostuje, ostatní se přesunou k němu"
 
-#: crates/core/src/codes.rs:516
+#: crates/core/src/codes.rs:537
 msgid "The flow method, the maximum speed, the minimum pressure at a fixture, and the equivalent lengths of pipes and fittings."
 msgstr ""
 
@@ -18454,7 +18454,7 @@ msgstr "Písmo rozhraní, ztmavené nebo zesvětlené tam, kde by na panelech ne
 msgid "The key stays on this computer: the request is made from here. The answer holds for this session; File > Settings > Co-Work keeps a standing one."
 msgstr "Klíč zůstává na tomto počítači: požadavek se odesílá odsud. Odpověď platí pro tuto relaci; trvalou nastavíte v Soubor > Nastavení > Co-Work."
 
-#: crates/core/src/codes.rs:427
+#: crates/core/src/codes.rs:448
 msgid "The kinds of wire, by material and insulation, and the current each size carries."
 msgstr ""
 
@@ -18487,7 +18487,7 @@ msgstr "Čáry, kde se povrchy stýkají"
 msgid "The loop is open: {} line ends don't meet another line."
 msgstr "Smyčka je otevřená: {} konců čar nenavazuje na jinou čáru."
 
-#: crates/core/src/codes.rs:491
+#: crates/core/src/codes.rs:512
 msgid "The maximum air and water speeds, and friction losses."
 msgstr ""
 
@@ -18495,11 +18495,11 @@ msgstr ""
 msgid "The middle of a wall, along its arc"
 msgstr "Střed stěny podél jejího oblouku"
 
-#: crates/core/src/codes.rs:307
+#: crates/core/src/codes.rs:328
 msgid "The minimum clear width and height of doors, the widest leaf, and the doors that are not checked."
 msgstr ""
 
-#: crates/core/src/codes.rs:387
+#: crates/core/src/codes.rs:408
 msgid "The minimum lighting and outlets for each room of a home, and the power of each point."
 msgstr ""
 
@@ -18734,7 +18734,7 @@ msgstr "Náčrt obsahuje příliš mnoho čar."
 msgid "The skill is installed."
 msgstr ""
 
-#: crates/core/src/codes.rs:299
+#: crates/core/src/codes.rs:320
 msgid "The slope and width of new ramps, the steepest slope allowed, the height between landings, widths and landings."
 msgstr ""
 
@@ -18758,7 +18758,7 @@ msgstr ""
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr "Použije se záhlaví a rámeček operačního systému namísto okna: panel aplikace se pak umístí pod něj"
 
-#: crates/core/src/codes.rs:419
+#: crates/core/src/codes.rs:440
 msgid "The systems that feed a board: the phases and wires, the voltages, and the earthing."
 msgstr ""
 
@@ -18803,7 +18803,7 @@ msgstr ""
 msgid "The treads stand out too far over the risers. Give the stair type a shorter nosing."
 msgstr ""
 
-#: crates/core/src/codes.rs:403
+#: crates/core/src/codes.rs:424
 msgid "The utility's service categories by supply system and use: the load or demand of each, with its breaker and cables."
 msgstr ""
 
@@ -18831,7 +18831,7 @@ msgstr "Pohled vidí pracovní rovinu z hrany: načrtněte v pohledu, který ji 
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr "Napětí projektu ve voltech a pásmo, v němž se může pohybovat napětí zařízení. Rozvodná soustava je uvádí podle názvu."
 
-#: crates/core/src/codes.rs:411
+#: crates/core/src/codes.rs:432
 msgid "The voltages the project uses, each with the lowest and highest a device may get."
 msgstr ""
 
@@ -18881,7 +18881,7 @@ msgstr ""
 msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
 msgstr "Pracovní rovina musí být vodorovná: podlaha, podhled, střecha nebo šachta se načrtává na vodorovné rovině. Nastavte pracovní rovinu (na ovládacím panelu 3D pohledu) na podlaží, vodorovný povrch nebo tři body ve stejné výšce."
 
-#: crates/core/src/codes.rs:379
+#: crates/core/src/codes.rs:400
 msgid "The zones around a bathtub or shower, their size, the IP rating, and what may be installed in each."
 msgstr ""
 
@@ -18921,7 +18921,7 @@ msgstr "Zde není podlaha ani střecha, na kterou by se dal umístit."
 msgid "Thermal"
 msgstr "Tepelná vrstva"
 
-#: crates/core/src/codes.rs:347
+#: crates/core/src/codes.rs:368
 msgid "Thermal transmittance of walls, roofs, floors and windows by climate zone."
 msgstr ""
 
@@ -19280,7 +19280,7 @@ msgstr ""
 msgid "To change a rule for this project, open Manage > Building Codes."
 msgstr ""
 
-#: crates/core/src/codes.rs:557
+#: crates/core/src/codes.rs:578
 msgid "Toilets, washbasins and other fixtures a building needs for the people in it."
 msgstr ""
 
@@ -19865,7 +19865,7 @@ msgstr "Odkrýt prvky"
 msgid "Unhosted bars"
 msgstr ""
 
-#: crates/core/src/codes.rs:434
+#: crates/core/src/codes.rs:455
 msgid "Unit Demand and Supply"
 msgstr ""
 
@@ -20087,7 +20087,7 @@ msgstr ""
 msgid "Vector"
 msgstr ""
 
-#: crates/core/src/codes.rs:482
+#: crates/core/src/codes.rs:503
 msgid "Ventilation"
 msgstr ""
 
@@ -20406,7 +20406,7 @@ msgstr "Napětí {}: název"
 msgid "Voltage {} nominal"
 msgstr "Napětí {}: jmenovité"
 
-#: crates/core/src/codes.rs:410
+#: crates/core/src/codes.rs:431
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Voltages"
 msgstr "Napětí"
@@ -20626,7 +20626,7 @@ msgstr "Co je nového"
 msgid "When Selected"
 msgstr ""
 
-#: crates/core/src/codes.rs:459
+#: crates/core/src/codes.rs:480
 msgid "When a surge protective device is needed, where it goes, how it is connected, and the least currents and voltages."
 msgstr ""
 
@@ -20678,7 +20678,7 @@ msgstr ""
 msgid "Where two walls or grids cross"
 msgstr "Kde se kříží dvě stěny nebo modulové osy"
 
-#: crates/core/src/codes.rs:371
+#: crates/core/src/codes.rs:392
 msgid "Which circuits need a high-sensitivity residual-current device (RCD), by place and type of point, and the highest residual current allowed."
 msgstr ""
 
@@ -20785,7 +20785,7 @@ msgstr "Vodič"
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "Vodič (EW): klikněte na jeho začátek a konec; řetězec kliknutí vytvoří vodič pro každý segment"
 
-#: crates/core/src/codes.rs:426
+#: crates/core/src/codes.rs:447
 #: crates/core/src/commands.rs:1090
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Wire Types"
