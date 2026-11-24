@@ -7064,6 +7064,7 @@ mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
 mod smallest;
+mod software;
 mod spacemouse;
 mod spots;
 mod standards;
