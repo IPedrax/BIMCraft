@@ -7029,28 +7029,43 @@ pub fn detail_boundary_point([lo, hi]: [P2; 2], from: P2) -> P2 {
     near.map_or(c, |t| c + d * t)
 }
 
-/// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
-/// looks, and its name behind it.
-/// The box an elevation mark takes in pixels (`[left, top, right, bottom]`), its ring, its arrow and its name, a gap round it.
+/// An elevation mark's ring, in pixels across from its centre.
+const MARK_R: f32 = 9.0;
+/// How far an elevation mark's arrow reaches past its ring, in pixels.
+const MARK_ARROW: f32 = 7.0;
+/// How far an elevation mark's name stands behind its ring, in pixels.
+const MARK_NAME_GAP: f32 = 6.0;
+/// The size of an elevation mark's name, in pixels.
+const MARK_NAME_SIZE: f32 = 10.0;
+/// The room kept clear round an elevation mark's box ([`elevation_mark_box`]), in pixels.
+const MARK_CLEAR: f32 = 4.0;
+
+/// How far behind its centre, along the way it looks (`lx`, `ly`), an elevation mark's name `name` stands.
+fn mark_name_back(name: &str, lx: f32, ly: f32) -> f32 {
+    MARK_R + MARK_NAME_GAP + font::width(name, MARK_NAME_SIZE) / 2.0 * lx.abs() + MARK_NAME_GAP * ly.abs()
+}
+
+/// The box an elevation mark takes in pixels (`[left, top, right, bottom]`), its ring, its arrow and its name, a gap round it:
+/// what [`elevation_mark`] draws.
 pub(crate) fn elevation_mark_box(view: &View, v: &Section) -> [f32; 4] {
-    const R: f32 = 9.0;
     let c = view.px(crate::elevation::mark(v));
     let (lx, ly) = looking_px(view, v);
-    let (w, h) = (font::width(&v.name, 10.0), 10.0);
-    let back = R + 6.0 + w / 2.0 * lx.abs() + 6.0 * ly.abs();
+    let (w, h) = (font::width(&v.name, MARK_NAME_SIZE), MARK_NAME_SIZE);
+    let back = mark_name_back(&v.name, lx, ly);
     let name = (c.0 - lx * back, c.1 - ly * back);
-    let reach = R + 7.0;
-    let gap = 4.0;
+    let reach = MARK_R + MARK_ARROW;
     [
-        (c.0 - reach).min(name.0 - w / 2.0) - gap,
-        (c.1 - reach).min(name.1 - h / 2.0) - gap,
-        (c.0 + reach).max(name.0 + w / 2.0) + gap,
-        (c.1 + reach).max(name.1 + h / 2.0) + gap,
+        (c.0 - reach).min(name.0 - w / 2.0) - MARK_CLEAR,
+        (c.1 - reach).min(name.1 - h / 2.0) - MARK_CLEAR,
+        (c.0 + reach).max(name.0 + w / 2.0) + MARK_CLEAR,
+        (c.1 + reach).max(name.1 + h / 2.0) + MARK_CLEAR,
     ]
 }
 
+/// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
+/// looks, and its name behind it.
 fn elevation_mark(d: &mut Drawing, v: &Section) {
-    const R: f32 = 9.0;
+    const R: f32 = MARK_R;
     let c = d.view.px(crate::elevation::mark(v));
     let from = d.prims.len();
     let ring: Vec<(f32, f32)> = (0..32)
@@ -7063,10 +7078,11 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
     d.stroke(ring, Pen::BUBBLE, INK, None, true);
     let (lx, ly) = looking_px(&d.view, v);
     let side = (-ly * R * 0.8, lx * R * 0.8);
-    let flag = vec![(c.0 + side.0, c.1 + side.1), (c.0 + lx * (R + 7.0), c.1 + ly * (R + 7.0)), (c.0 - side.0, c.1 - side.1)];
+    let tip = R + MARK_ARROW;
+    let flag = vec![(c.0 + side.0, c.1 + side.1), (c.0 + lx * tip, c.1 + ly * tip), (c.0 - side.0, c.1 - side.1)];
     d.push(Prim::Fill { rings: vec![flag], color: INK });
-    let back = R + 6.0 + font::width(&v.name, 10.0) / 2.0 * lx.abs() + 6.0 * ly.abs();
-    d.text(&v.name, (c.0 - lx * back, c.1 - ly * back), 10.0, INK);
+    let back = mark_name_back(&v.name, lx, ly);
+    d.text(&v.name, (c.0 - lx * back, c.1 - ly * back), MARK_NAME_SIZE, INK);
     d.grow(from, c);
 }
 
