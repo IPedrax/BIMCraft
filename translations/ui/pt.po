@@ -610,7 +610,7 @@ msgstr "Acima da Linha de Chamada"
 msgid "Above dimension line (continuous)"
 msgstr "Acima da linha de cota (contínua)"
 
-#: crates/ui-egui/src/dock.rs:1444
+#: crates/ui-egui/src/dock.rs:1445
 msgid "Above {}"
 msgstr ""
 
@@ -4017,8 +4017,8 @@ msgstr "Fechar diálogo"
 msgid "Close every view but this one"
 msgstr "Fechar todas as vistas menos esta"
 
-#: crates/ui-egui/src/dock.rs:914
-#: crates/ui-egui/src/dock.rs:1367
+#: crates/ui-egui/src/dock.rs:915
+#: crates/ui-egui/src/dock.rs:1368
 #: crates/ui-egui/src/lib.rs:7713
 msgid "Close {}"
 msgstr "Fechar {}"
@@ -5907,24 +5907,24 @@ msgstr ""
 msgid "Dock All Views: every floating view back onto the tab bar, in one view under the tabs"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1426
+#: crates/ui-egui/src/dock.rs:1427
 msgid "Dock Bottom"
 msgstr "Encaixar embaixo"
 
-#: crates/ui-egui/src/dock.rs:1416
+#: crates/ui-egui/src/dock.rs:1417
 msgid "Dock Left"
 msgstr "Encaixar à esquerda"
 
-#: crates/ui-egui/src/dock.rs:1421
+#: crates/ui-egui/src/dock.rs:1422
 msgid "Dock Right"
 msgstr "Encaixar à direita"
 
-#: crates/ui-egui/src/dock.rs:1459
+#: crates/ui-egui/src/dock.rs:1460
 msgid "Dock in the Views"
 msgstr "Encaixar nas vistas"
 
-#: crates/ui-egui/src/dock.rs:917
-#: crates/ui-egui/src/dock.rs:1370
+#: crates/ui-egui/src/dock.rs:918
+#: crates/ui-egui/src/dock.rs:1371
 msgid "Dock {}"
 msgstr "Encaixar {}"
 
@@ -7672,8 +7672,8 @@ msgstr "Face invertida"
 msgid "Flipped hand"
 msgstr "Lado invertido"
 
-#: crates/ui-egui/src/dock.rs:974
-#: crates/ui-egui/src/dock.rs:1516
+#: crates/ui-egui/src/dock.rs:975
+#: crates/ui-egui/src/dock.rs:1517
 #: crates/ui-egui/src/lib.rs:7735
 msgid "Float"
 msgstr "Flutuar"
@@ -9675,7 +9675,7 @@ msgstr "Esquerda"
 msgid "Left Filing / Binding Margin:"
 msgstr "Margem esquerda de fixação / arquivamento:"
 
-#: crates/ui-egui/src/dock.rs:1440
+#: crates/ui-egui/src/dock.rs:1441
 msgid "Left of {}"
 msgstr ""
 
@@ -12772,7 +12772,7 @@ msgstr "Pintar"
 msgid "Paint (PT): lay a material, and its texture, over the face you click in the 3D view"
 msgstr "Pintar (PT): aplica um material, e sua textura, na face clicada na vista 3D"
 
-#: crates/ui-egui/src/dock.rs:935
+#: crates/ui-egui/src/dock.rs:936
 #: crates/ui-egui/src/lib.rs:4832
 #: crates/ui-egui/src/presets.rs:405
 #: crates/ui-egui/src/settings.rs:705
@@ -13902,7 +13902,7 @@ msgstr ""
 msgid "Player: your Python scripts, each with a form of what it asks for, to run on the model"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:881
+#: crates/ui-egui/src/dock.rs:882
 msgid "Plugin panel: {}"
 msgstr ""
 
@@ -17126,15 +17126,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Linhas suaves (anti-aliasing)"
 
-#: crates/ui-egui/src/dock.rs:1469
+#: crates/ui-egui/src/dock.rs:1470
 msgid "Snap Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1460
+#: crates/ui-egui/src/dock.rs:1461
 msgid "Snap Left"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1464
+#: crates/ui-egui/src/dock.rs:1465
 msgid "Snap Right"
 msgstr ""
 
@@ -18094,7 +18094,7 @@ msgstr ""
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr "Use Tab até um membro de um grupo e selecione-o para excluí-lo"
 
-#: crates/ui-egui/src/dock.rs:1434
+#: crates/ui-egui/src/dock.rs:1435
 msgid "Tab with {}"
 msgstr "Aba com {}"
 

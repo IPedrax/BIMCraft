@@ -754,8 +754,9 @@ impl BimApp {
     /// The docked palettes, round the views; call between the bars and the views.
     pub(crate) fn docks(&mut self, ui: &mut Ui) {
         // BIMCraft's tools are its ribbon in another dress, so they are part of its layout whatever a file or a preset said: a layout
-        // that closed them has them back. Rev draws the ribbon instead and keeps them in the layout as the user's intent.
-        if !crate::style::rev() {
+        // that closed them has them back. Rev draws the ribbon instead and keeps them in the layout as the user's intent. The window's
+        // own profile, not the frame's look: a preset switches it as it is applied, before `style` catches up.
+        if self.profile != crate::style::Profile::Rev {
             self.docking.show(Palette::Tools, true);
         }
         self.drop_headers.clear();
