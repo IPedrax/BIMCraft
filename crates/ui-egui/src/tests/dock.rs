@@ -16,6 +16,11 @@ fn at_start(h: &Harness<BimApp>, label: &str) -> Pos2 {
     h.get_by_label_contains(label).rect().center()
 }
 
+/// A palette's header named `label`: the topmost of those named so, the header standing over what the palette draws.
+fn header_of(h: &Harness<BimApp>, label: &str) -> Pos2 {
+    h.get_all_by_label(label).map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).expect("the palette's header").center()
+}
+
 /// A palette's Dock menu, and an item of it.
 fn dock_by_menu(h: &mut Harness<BimApp>, palette: &str, item: &str) {
     press(h, &format!("Dock {palette}"));
@@ -781,4 +786,53 @@ fn resetting_the_palette_layout_brings_panels_and_tools_back() {
     assert_eq!(*docking(&h), Docking::default(), "the standard layout of the profile");
     assert!(h.state().tools_hidden.is_empty(), "every tool is shown again");
     assert!(h.state().panels_hidden.is_empty(), "every panel is shown again");
+}
+
+#[test]
+fn right_clicking_a_palettes_header_lists_every_palette_with_its_box() {
+    let mut h = app(BOX);
+    right_click_at(&mut h, header_of(&h, "Properties"));
+    for p in Palette::known() {
+        let node = h.get_by_role_and_label(Role::CheckBox, p.name());
+        let ticked = node.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True);
+        assert_eq!(ticked, h.state().docking.shown(p), "{}", p.name());
+    }
+}
+
+#[test]
+fn a_palettes_box_in_its_menu_closes_and_opens_it_and_the_menu_stays_open() {
+    let mut h = app(BOX);
+    right_click_at(&mut h, header_of(&h, "Properties"));
+    h.get_by_role_and_label(Role::CheckBox, "Project Browser").click();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Browser), "the palette is closed");
+    assert!(h.query_by_label("Palettes").is_some(), "the menu stays open");
+    h.get_by_role_and_label(Role::CheckBox, "Project Browser").click();
+    h.run();
+    assert!(h.state().docking.shown(Palette::Browser), "and its box opens it again");
+    assert!(h.query_by_label("Project Browser").is_some());
+}
+
+#[test]
+fn the_palettes_menu_closes_with_its_own_palette_and_does_not_reopen() {
+    let mut h = app(BOX);
+    right_click_at(&mut h, header_of(&h, "Properties"));
+    h.get_by_role_and_label(Role::CheckBox, "Properties").click();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Properties), "the palette went with its box");
+    assert!(h.query_by_label("Palettes").is_none(), "and the menu went with it");
+    h.state_mut().docking.show(Palette::Properties, true);
+    h.run();
+    assert!(h.get_all_by_label("Properties").next().is_some(), "the palette is back");
+    assert!(h.query_by_label("Palettes").is_none(), "the menu did not come back with it");
+}
+
+#[test]
+fn the_palettes_menu_opens_on_the_inspectors_header_in_bimcraft() {
+    let mut h = bimcraft(BOX);
+    right_click_at(&mut h, header_of(&h, crate::lang::t("Inspector")));
+    h.get_by_role_and_label(Role::CheckBox, crate::lang::t("Navigator")).click();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Browser), "the Navigator is closed from the menu");
+    assert!(h.query_by_label("Palettes").is_some(), "the menu stays open");
 }
