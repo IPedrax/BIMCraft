@@ -605,7 +605,7 @@ msgstr "Encima de la directriz"
 msgid "Above dimension line (continuous)"
 msgstr "Sobre la línea de cota (continua)"
 
-#: crates/ui-egui/src/dock.rs:1394
+#: crates/ui-egui/src/dock.rs:1396
 msgid "Above {}"
 msgstr ""
 
@@ -3984,8 +3984,8 @@ msgstr "Cerrar diálogo"
 msgid "Close every view but this one"
 msgstr "Cerrar todas las vistas menos esta"
 
-#: crates/ui-egui/src/dock.rs:894
-#: crates/ui-egui/src/dock.rs:1317
+#: crates/ui-egui/src/dock.rs:900
+#: crates/ui-egui/src/dock.rs:1319
 #: crates/ui-egui/src/lib.rs:7464
 msgid "Close {}"
 msgstr "Cerrar {}"
@@ -5866,24 +5866,24 @@ msgstr ""
 msgid "Dock All Views: every floating view back onto the tab bar, in one view under the tabs"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1376
+#: crates/ui-egui/src/dock.rs:1378
 msgid "Dock Bottom"
 msgstr "Acoplar abajo"
 
-#: crates/ui-egui/src/dock.rs:1366
+#: crates/ui-egui/src/dock.rs:1368
 msgid "Dock Left"
 msgstr "Acoplar a la izquierda"
 
-#: crates/ui-egui/src/dock.rs:1371
+#: crates/ui-egui/src/dock.rs:1373
 msgid "Dock Right"
 msgstr "Acoplar a la derecha"
 
-#: crates/ui-egui/src/dock.rs:1409
+#: crates/ui-egui/src/dock.rs:1411
 msgid "Dock in the Views"
 msgstr "Acoplar en las vistas"
 
-#: crates/ui-egui/src/dock.rs:897
-#: crates/ui-egui/src/dock.rs:1320
+#: crates/ui-egui/src/dock.rs:903
+#: crates/ui-egui/src/dock.rs:1322
 msgid "Dock {}"
 msgstr "Acoplar {}"
 
@@ -7600,8 +7600,8 @@ msgstr "Orientación invertida"
 msgid "Flipped hand"
 msgstr "Lado invertido"
 
-#: crates/ui-egui/src/dock.rs:920
-#: crates/ui-egui/src/dock.rs:1466
+#: crates/ui-egui/src/dock.rs:926
+#: crates/ui-egui/src/dock.rs:1468
 #: crates/ui-egui/src/lib.rs:7486
 msgid "Float"
 msgstr "Flotar"
@@ -8985,7 +8985,7 @@ msgstr "Caja de inspección (IB): sobre un electrodo, a ras del nivel, donde hag
 msgid "Inspection Boxes"
 msgstr "Cajas de inspección"
 
-#: crates/ui-egui/src/dock.rs:182
+#: crates/ui-egui/src/dock.rs:183
 msgid "Inspector"
 msgstr "Inspector"
 
@@ -9559,7 +9559,7 @@ msgstr "Izquierda"
 msgid "Left Filing / Binding Margin:"
 msgstr "Margen izquierdo de fijación / archivo:"
 
-#: crates/ui-egui/src/dock.rs:1390
+#: crates/ui-egui/src/dock.rs:1392
 msgid "Left of {}"
 msgstr ""
 
@@ -11332,7 +11332,7 @@ msgstr "Sistema nacional"
 msgid "Natural Light"
 msgstr "Iluminación Natural"
 
-#: crates/ui-egui/src/dock.rs:183
+#: crates/ui-egui/src/dock.rs:184
 msgid "Navigator"
 msgstr "Navegador"
 
@@ -11929,7 +11929,7 @@ msgid "Nothing on the clipboard is drawn in this view: paste it in a view that s
 msgstr ""
 
 #: crates/ui-egui/src/plugin_form.rs:317
-#: crates/ui-egui/src/plugin_panels.rs:485
+#: crates/ui-egui/src/plugin_panels.rs:476
 #: crates/ui-egui/src/pyaddins.rs:660
 msgid "Nothing selected"
 msgstr ""
@@ -13745,12 +13745,12 @@ msgstr ""
 msgid "Player: your Python scripts, each with a form of what it asks for, to run on the model"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:930
-msgid "Plugin panel"
+#: crates/ui-egui/src/dock.rs:869
+msgid "Plugin panel: {}"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:863
-msgid "Plugin panel: {}"
+#: crates/ui-egui/src/dock.rs:198
+msgid "Plugin: {}: {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:5827
@@ -14655,7 +14655,7 @@ msgstr ""
 msgid "Refined draws solid plum guides and a pill badge; Classic the dashed magenta and its squares"
 msgstr ""
 
-#: crates/ui-egui/src/plugin_panels.rs:104
+#: crates/ui-egui/src/plugin_panels.rs:97
 #: crates/ui-egui/src/plugins.rs:498
 msgid "Refresh"
 msgstr ""
@@ -15667,7 +15667,7 @@ msgstr "Ejecutar script: comandos, uno por línea como los escriben los agentes 
 msgid "Running {}…"
 msgstr ""
 
-#: crates/ui-egui/src/plugin_panels.rs:115
+#: crates/ui-egui/src/plugin_panels.rs:108
 #: crates/ui-egui/src/pyaddins.rs:794
 msgid "Running…"
 msgstr ""
@@ -15676,7 +15676,7 @@ msgstr ""
 msgid "Runs"
 msgstr ""
 
-#: crates/ui-egui/src/plugin_panels.rs:493
+#: crates/ui-egui/src/plugin_panels.rs:484
 #: crates/ui-egui/src/plugins.rs:289
 msgid "Runs the plugin's command"
 msgstr ""
@@ -16944,15 +16944,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Líneas suaves (antialiasing)"
 
-#: crates/ui-egui/src/dock.rs:1419
+#: crates/ui-egui/src/dock.rs:1421
 msgid "Snap Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1410
+#: crates/ui-egui/src/dock.rs:1412
 msgid "Snap Left"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1414
+#: crates/ui-egui/src/dock.rs:1416
 msgid "Snap Right"
 msgstr ""
 
@@ -17894,7 +17894,7 @@ msgstr ""
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1384
+#: crates/ui-egui/src/dock.rs:1386
 msgid "Tab with {}"
 msgstr "Pestaña con {}"
 
@@ -18566,11 +18566,11 @@ msgstr ""
 msgid "The plugin may now use files."
 msgstr ""
 
-#: crates/ui-egui/src/plugin_panels.rs:83
+#: crates/ui-egui/src/plugin_panels.rs:76
 msgid "The plugin's panel couldn't be shown"
 msgstr ""
 
-#: crates/ui-egui/src/plugin_panels.rs:156
+#: crates/ui-egui/src/plugin_panels.rs:149
 msgid "The plugin's panel couldn't be shown: {}"
 msgstr ""
 
@@ -22600,7 +22600,7 @@ msgid "{} scripts, {} buttons."
 msgstr ""
 
 #: crates/ui-egui/src/plugin_form.rs:315
-#: crates/ui-egui/src/plugin_panels.rs:485
+#: crates/ui-egui/src/plugin_panels.rs:476
 #: crates/ui-egui/src/pyaddins.rs:660
 msgid "{} selected"
 msgstr ""
@@ -22774,7 +22774,7 @@ msgstr "{}:"
 #: crates/ui-egui/src/plugin_form.rs:139
 #: crates/ui-egui/src/plugin_form.rs:147
 #: crates/ui-egui/src/plugin_form.rs:156
-#: crates/ui-egui/src/plugin_panels.rs:329
+#: crates/ui-egui/src/plugin_panels.rs:320
 msgid "{}: A number is expected"
 msgstr ""
 
@@ -22815,7 +22815,7 @@ msgid "{}: Name"
 msgstr "{}: nombre"
 
 #: crates/ui-egui/src/plugin_form.rs:226
-#: crates/ui-egui/src/plugin_panels.rs:331
+#: crates/ui-egui/src/plugin_panels.rs:322
 msgid "{}: Out of range"
 msgstr ""
 
@@ -24185,4 +24185,10 @@ msgstr "Superior"
 #~ msgstr ""
 #: crates/ui-egui/src/editor/views.rs:772
 #~ msgid "annotation symbols are drawn in the plan"
+#~ msgstr ""
+#: crates/ui-egui/src/dock.rs:930
+#~ msgid "Plugin panel"
+#~ msgstr ""
+#: crates/ui-egui/src/dock.rs:193
+#~ msgid "Plugin: {}"
 #~ msgstr ""

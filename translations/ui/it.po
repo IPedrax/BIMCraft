@@ -605,7 +605,7 @@ msgstr "Sopra la linea di richiamo"
 msgid "Above dimension line (continuous)"
 msgstr "Sopra la linea di quota (continua)"
 
-#: crates/ui-egui/src/dock.rs:1394
+#: crates/ui-egui/src/dock.rs:1396
 msgid "Above {}"
 msgstr "Sopra {}"
 
@@ -3984,8 +3984,8 @@ msgstr "Chiudi finestra"
 msgid "Close every view but this one"
 msgstr "Chiudi tutte le viste tranne questa"
 
-#: crates/ui-egui/src/dock.rs:894
-#: crates/ui-egui/src/dock.rs:1317
+#: crates/ui-egui/src/dock.rs:900
+#: crates/ui-egui/src/dock.rs:1319
 #: crates/ui-egui/src/lib.rs:7464
 msgid "Close {}"
 msgstr "Chiudi {}"
@@ -5866,24 +5866,24 @@ msgstr ""
 msgid "Dock All Views: every floating view back onto the tab bar, in one view under the tabs"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1376
+#: crates/ui-egui/src/dock.rs:1378
 msgid "Dock Bottom"
 msgstr "Ancora in basso"
 
-#: crates/ui-egui/src/dock.rs:1366
+#: crates/ui-egui/src/dock.rs:1368
 msgid "Dock Left"
 msgstr "Ancora a sinistra"
 
-#: crates/ui-egui/src/dock.rs:1371
+#: crates/ui-egui/src/dock.rs:1373
 msgid "Dock Right"
 msgstr "Ancora a destra"
 
-#: crates/ui-egui/src/dock.rs:1409
+#: crates/ui-egui/src/dock.rs:1411
 msgid "Dock in the Views"
 msgstr "Ancora tra le viste"
 
-#: crates/ui-egui/src/dock.rs:897
-#: crates/ui-egui/src/dock.rs:1320
+#: crates/ui-egui/src/dock.rs:903
+#: crates/ui-egui/src/dock.rs:1322
 msgid "Dock {}"
 msgstr "Ancora {}"
 
@@ -7600,8 +7600,8 @@ msgstr "Lato invertito"
 msgid "Flipped hand"
 msgstr "Mano invertita"
 
-#: crates/ui-egui/src/dock.rs:920
-#: crates/ui-egui/src/dock.rs:1466
+#: crates/ui-egui/src/dock.rs:926
+#: crates/ui-egui/src/dock.rs:1468
 #: crates/ui-egui/src/lib.rs:7486
 msgid "Float"
 msgstr "Sgancia"
@@ -8985,7 +8985,7 @@ msgstr "Pozzetto di ispezione (IB): sopra un dispersore, a filo del piano, dove 
 msgid "Inspection Boxes"
 msgstr "Pozzetti di ispezione"
 
-#: crates/ui-egui/src/dock.rs:182
+#: crates/ui-egui/src/dock.rs:183
 msgid "Inspector"
 msgstr "Ispettore"
 
@@ -9559,7 +9559,7 @@ msgstr "Sinistra"
 msgid "Left Filing / Binding Margin:"
 msgstr "Margine sinistro di archiviazione / rilegatura:"
 
-#: crates/ui-egui/src/dock.rs:1390
+#: crates/ui-egui/src/dock.rs:1392
 msgid "Left of {}"
 msgstr "A sinistra di {}"
 
@@ -11332,7 +11332,7 @@ msgstr "Griglia nazionale"
 msgid "Natural Light"
 msgstr "Illuminazione naturale"
 
-#: crates/ui-egui/src/dock.rs:183
+#: crates/ui-egui/src/dock.rs:184
 msgid "Navigator"
 msgstr "Navigatore"
 
@@ -11929,7 +11929,7 @@ msgid "Nothing on the clipboard is drawn in this view: paste it in a view that s
 msgstr ""
 
 #: crates/ui-egui/src/plugin_form.rs:317
-#: crates/ui-egui/src/plugin_panels.rs:485
+#: crates/ui-egui/src/plugin_panels.rs:476
 #: crates/ui-egui/src/pyaddins.rs:660
 msgid "Nothing selected"
 msgstr "Niente selezionato"
@@ -13745,12 +13745,12 @@ msgstr "Player"
 msgid "Player: your Python scripts, each with a form of what it asks for, to run on the model"
 msgstr "Player: i tuoi script Python, ciascuno con un modulo di ciò che chiede, da eseguire sul modello"
 
-#: crates/ui-egui/src/dock.rs:930
-msgid "Plugin panel"
+#: crates/ui-egui/src/dock.rs:869
+msgid "Plugin panel: {}"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:863
-msgid "Plugin panel: {}"
+#: crates/ui-egui/src/dock.rs:198
+msgid "Plugin: {}: {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:5827
@@ -14655,7 +14655,7 @@ msgstr "Raffinato"
 msgid "Refined draws solid plum guides and a pill badge; Classic the dashed magenta and its squares"
 msgstr "Raffinato disegna guide continue color prugna e un'etichetta arrotondata; Classico quelle tratteggiate magenta con i quadratini"
 
-#: crates/ui-egui/src/plugin_panels.rs:104
+#: crates/ui-egui/src/plugin_panels.rs:97
 #: crates/ui-egui/src/plugins.rs:498
 msgid "Refresh"
 msgstr "Aggiorna"
@@ -15667,7 +15667,7 @@ msgstr "Esegui script: comandi, uno per riga come li scrivono gli agenti e la ri
 msgid "Running {}…"
 msgstr "Esecuzione di {}…"
 
-#: crates/ui-egui/src/plugin_panels.rs:115
+#: crates/ui-egui/src/plugin_panels.rs:108
 #: crates/ui-egui/src/pyaddins.rs:794
 msgid "Running…"
 msgstr "Esecuzione…"
@@ -15676,7 +15676,7 @@ msgstr "Esecuzione…"
 msgid "Runs"
 msgstr "Rampe"
 
-#: crates/ui-egui/src/plugin_panels.rs:493
+#: crates/ui-egui/src/plugin_panels.rs:484
 #: crates/ui-egui/src/plugins.rs:289
 msgid "Runs the plugin's command"
 msgstr "Esegue il comando del plugin"
@@ -16944,15 +16944,15 @@ msgstr "Pannello più piccolo"
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Linee smussate (anti-aliasing)"
 
-#: crates/ui-egui/src/dock.rs:1419
+#: crates/ui-egui/src/dock.rs:1421
 msgid "Snap Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1410
+#: crates/ui-egui/src/dock.rs:1412
 msgid "Snap Left"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1414
+#: crates/ui-egui/src/dock.rs:1416
 msgid "Snap Right"
 msgstr ""
 
@@ -17894,7 +17894,7 @@ msgstr "SOPRA"
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr "Con Tab arriva a un membro di un gruppo e selezionalo per escluderlo"
 
-#: crates/ui-egui/src/dock.rs:1384
+#: crates/ui-egui/src/dock.rs:1386
 msgid "Tab with {}"
 msgstr "Scheda con {}"
 
@@ -18566,11 +18566,11 @@ msgstr "Il plugin non può più usare i file."
 msgid "The plugin may now use files."
 msgstr "Il plugin ora può usare i file."
 
-#: crates/ui-egui/src/plugin_panels.rs:83
+#: crates/ui-egui/src/plugin_panels.rs:76
 msgid "The plugin's panel couldn't be shown"
 msgstr ""
 
-#: crates/ui-egui/src/plugin_panels.rs:156
+#: crates/ui-egui/src/plugin_panels.rs:149
 msgid "The plugin's panel couldn't be shown: {}"
 msgstr ""
 
@@ -22600,7 +22600,7 @@ msgid "{} scripts, {} buttons."
 msgstr "{} script, {} pulsanti."
 
 #: crates/ui-egui/src/plugin_form.rs:315
-#: crates/ui-egui/src/plugin_panels.rs:485
+#: crates/ui-egui/src/plugin_panels.rs:476
 #: crates/ui-egui/src/pyaddins.rs:660
 msgid "{} selected"
 msgstr "{} selezionati"
@@ -22774,7 +22774,7 @@ msgstr "{}:"
 #: crates/ui-egui/src/plugin_form.rs:139
 #: crates/ui-egui/src/plugin_form.rs:147
 #: crates/ui-egui/src/plugin_form.rs:156
-#: crates/ui-egui/src/plugin_panels.rs:329
+#: crates/ui-egui/src/plugin_panels.rs:320
 msgid "{}: A number is expected"
 msgstr ""
 
@@ -22815,7 +22815,7 @@ msgid "{}: Name"
 msgstr "{}: Nome"
 
 #: crates/ui-egui/src/plugin_form.rs:226
-#: crates/ui-egui/src/plugin_panels.rs:331
+#: crates/ui-egui/src/plugin_panels.rs:322
 msgid "{}: Out of range"
 msgstr ""
 
@@ -24185,4 +24185,10 @@ msgstr "Sopra"
 #~ msgstr ""
 #: crates/ui-egui/src/editor/views.rs:772
 #~ msgid "annotation symbols are drawn in the plan"
+#~ msgstr ""
+#: crates/ui-egui/src/dock.rs:930
+#~ msgid "Plugin panel"
+#~ msgstr ""
+#: crates/ui-egui/src/dock.rs:193
+#~ msgid "Plugin: {}"
 #~ msgstr ""
