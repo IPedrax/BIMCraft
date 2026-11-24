@@ -71,6 +71,8 @@ thread_local! {
     static CURRENT_TAB: RefCell<String> = const { RefCell::new(String::new()) };
     /// The keys of the panels the user took out of the window, drawn in Edit Tools alone.
     static PANELS_HIDDEN: RefCell<std::collections::BTreeSet<String>> = const { RefCell::new(std::collections::BTreeSet::new()) };
+    /// Every tab the window can show and its panels, by name, in the order they are drawn: what the panels menu lists (ТЗ-019.2).
+    static PANEL_GROUPS: RefCell<Vec<(String, Vec<String>)>> = const { RefCell::new(Vec::new()) };
     /// The panels whose box was ticked or cleared in Edit Tools this frame, by key.
     static TOGGLED_PANELS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     /// Every panel key drawn since the window started: what a preset's editor lists under its tabs.
@@ -175,9 +177,11 @@ pub(crate) fn panel_key(title: &str) -> String {
     format!("tab:{tab}/{title}")
 }
 
-/// What the panels drawn now leave out: the user's hidden panels (`panels_hidden` in `settings.json`).
-pub(crate) fn panel_rules(hidden: std::collections::BTreeSet<String>) {
+/// What the panels drawn now leave out (the user's hidden panels, `panels_hidden` in `settings.json`), and every tab with its panels,
+/// for the panels menu (ТЗ-019.2).
+pub(crate) fn panel_rules(hidden: std::collections::BTreeSet<String>, groups: Vec<(String, Vec<String>)>) {
     PANELS_HIDDEN.with(|h| *h.borrow_mut() = hidden);
+    PANEL_GROUPS.with(|g| *g.borrow_mut() = groups);
 }
 
 /// Whether the user took the panel whose key is `key` out of the window.
@@ -193,6 +197,14 @@ pub(crate) fn toggle_panel(key: &str) {
 /// The panels ticked or cleared since the last call.
 pub(crate) fn take_toggled_panels() -> Vec<String> {
     TOGGLED_PANELS.with(|t| std::mem::take(&mut *t.borrow_mut()))
+}
+
+/// A tab's name as the window reads it: a plugin's as its manifest names it, a family document's or a built-in tab's translated.
+pub(crate) fn tab_label(tab: &str) -> String {
+    match tab.strip_prefix("plugin:") {
+        Some(name) => name.to_string(),
+        None => t(tab.strip_prefix("family:").unwrap_or(tab)).to_string(),
+    }
 }
 
 /// Starts counting the panels the tab drawn next has: [`drawn_panels`] says whether any was drawn.

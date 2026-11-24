@@ -472,10 +472,7 @@ impl BimApp {
             return;
         }
         for (tab, panels) in tabs {
-            let label = match tab.strip_prefix("plugin:") {
-                Some(name) => name.to_string(),
-                None => t(tab.strip_prefix("family:").unwrap_or(&tab)).to_string(),
-            };
+            let label = crate::ribbon::tab_label(&tab);
             ui.label(RichText::new(label).strong());
             ui.indent(("preset-panels", &tab), |ui| {
                 for panel in panels {
