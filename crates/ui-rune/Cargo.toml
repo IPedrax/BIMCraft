@@ -1,0 +1,66 @@
+[package]
+name = "bimcraft-ui-rune"
+description = "BIMCraft's desktop front end in Rune: a thin shell over the core's Session (experimental; a workspace of its own)"
+version = "0.12.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.99"
+publish = false
+
+# A workspace of its own, left out of the root one (`exclude` there). Rune needs `[patch.crates-io]` forks of winit, wgpu-hal and
+# naga, and cargo applies a patch to every crate in a workspace: eframe's winit and wgpu would be replaced too. Nothing in the
+# root workspace depends on this crate, and it depends on the core and the i18n crate by path. docs/areas/rune-ui.md says why.
+[workspace]
+
+[[bin]]
+name = "bimcraft-rune"
+path = "src/main.rs"
+
+[dependencies]
+bimcraft-core = { path = "../core" }
+bimcraft-i18n = { path = "../i18n", default-features = false }
+serde_json = { version = "1", features = ["raw_value"] }
+# The system's language, on Windows and macOS too, where no environment variable says it.
+sys-locale = "0.3"
+# Pre-release: a pinned revision of `dev`, which is never rewritten. Rune's default features but `ogg-audio` (BIMCraft plays no sound,
+# and that feature is what brings in the MPL-2.0 symphonia and opuscule on macOS), and `tooling`, which adds `--snap`, `--tree` and
+# `--script` to a release build.
+rune = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047", default-features = false, features = ["accessibility", "dbus", "embedded-fonts", "metal-backend", "svg", "tooling"] }
+
+[build-dependencies]
+bimcraft-i18n = { path = "../i18n", features = ["catalog"] }
+
+# Cargo doesn't hand a dependency's patches on: these are Rune's own (its root Cargo.toml), at the same revision as `rune`.
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+naga = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+accesskit_atspi_common = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047" }
+
+[lints]
+workspace = true
+
+# The root workspace's lints: the same rules for every crate of BIMCraft.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+dbg_macro = "warn"
+
+# The core draws plans in software: optimised in debug builds too, as in the root workspace.
+[profile.dev.package.bimcraft-core]
+opt-level = 2
+
+# What the CI measurement runs (docs/areas/rune-ui.md): release, with line tables for a backtrace.
+[profile.release]
+debug = "line-tables-only"

@@ -1,0 +1,5 @@
+# Rune's own pin (its rust-toolchain.toml at the revision this crate depends on): it is pre-release and built against this compiler.
+# Only commands run inside crates/ui-rune see it; the root workspace keeps `stable`.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt"]

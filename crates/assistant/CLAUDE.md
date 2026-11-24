@@ -54,3 +54,7 @@ What comes from the network is hostile, and what goes out is the user's:
   first message held to `MAX_HISTORY`. A change to `complete`, `SYSTEM` or the tools reaches it: its tests are in the desktop's
   ([classification](../../docs/areas/classification.md#the-ai-step)).
 - `cargo test -p bimcraft-assistant` runs in about a second.
+
+## Modules
+
+Moved from the root `CLAUDE.md`'s map: `anthropic.rs`, `openai.rs`, `gemini.rs` the provider clients (pure: a conversation to a request, a reply to a `Reply`); `net.rs` HTTPS to the three API hosts; `seal.rs` the saved key, scrambled under a secret built in; `tools.rs` the model's tools, run through `bridge::run`; `chat.rs` the turn loop on a `Session`; `testing.rs` a fake network. The Classification Manager asks through `complete` too.

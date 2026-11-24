@@ -141,7 +141,9 @@ PyAddins, the user's scripts: [notes](crates/pyaddins/CLAUDE.md), [area](docs/ar
 
 `crates/update` (the updater, the only code that phones home; notes and its module map: [crates/update/CLAUDE.md](crates/update/CLAUDE.md); area: [updates](docs/areas/updates.md)).
 
-`crates/assistant` (`bimcraft-assistant`, the AI chat, which the core never depends on; notes: [crates/assistant/CLAUDE.md](crates/assistant/CLAUDE.md); area: [the assistant](docs/areas/assistant.md)): `anthropic.rs`, `openai.rs`, `gemini.rs` the provider clients (pure: a conversation to a request, a reply to a `Reply`); `net.rs` HTTPS to the three API hosts; `seal.rs` the saved key, scrambled under a secret built in; `tools.rs` the model's tools, run through `bridge::run`; `chat.rs` the turn loop on a `Session`; `testing.rs` a fake network. The Classification Manager asks through `complete` too.
+`crates/assistant` (`bimcraft-assistant`, the AI chat, which the core never depends on; notes and its module map: [crates/assistant/CLAUDE.md](crates/assistant/CLAUDE.md); area: [the assistant](docs/areas/assistant.md)).
+
+`crates/ui-rune` (`bimcraft-ui-rune`, the desktop in Rune: a workspace of its own, no dependency of the core or the apps; notes and module map: [crates/ui-rune/CLAUDE.md](crates/ui-rune/CLAUDE.md); area and migration plan: [the Rune UI](docs/areas/rune-ui.md)). The egui app stays the shipped UI until Rune reaches parity.
 
 `crates/cowork` (`bimcraft-cowork`, Co-Work's transport, which the core never depends on; notes: [crates/cowork/CLAUDE.md](crates/cowork/CLAUDE.md); area: [Co-Work](docs/areas/cowork.md)): `code.rs` the join code; `noise.rs` the handshake and the ciphers; `wire.rs` frames and the writer thread; `host.rs` and `guest.rs` the two sides; `discovery.rs` finding hosts on the LAN; `knock.rs` asking to join without the code, by six digits both compare; `live.rs` a session on a `Session`, the host's and a guest's, which the window pumps.
 

@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/*"]
+# The Rune front end is a workspace of its own: Rune needs patched winit, wgpu-hal and naga, which eframe's would clash with (docs/areas/rune-ui.md).
+exclude = ["crates/ui-rune"]
 
 [workspace.package]
 version = "0.12.0"

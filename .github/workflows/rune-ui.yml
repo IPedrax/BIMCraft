@@ -1,0 +1,210 @@
+# The Rune front end (crates/ui-rune), a workspace of its own that the main CI's `cargo test --workspace` does not reach, and the
+# measurement of what a UI costs with no graphics card (docs/areas/rune-ui.md). Nothing here is on the road to a release: the egui
+# front end is the shipped UI until Rune reaches parity.
+name: Rune UI
+
+on:
+  push:
+    branches: [main, 'IPedrax-Test/Rune-GUI']
+    paths:
+      - 'crates/ui-rune/**'
+      - 'crates/core/**'
+      - 'crates/i18n/**'
+      - 'translations/ui/**'
+      - 'ci/measure-ui.sh'
+      - '.github/workflows/rune-ui.yml'
+  pull_request:
+    paths:
+      - 'crates/ui-rune/**'
+      - '.github/workflows/rune-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rune-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  check:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux, runner: ubuntu-24.04 }
+          - { name: Windows, runner: windows-latest }
+          - { name: macOS, runner: macos-15 }
+    defaults:
+      run:
+        shell: bash
+        working-directory: crates/ui-rune
+    steps:
+      - uses: actions/checkout@v4
+
+      # What Rune's README lists for a Linux build: the XKB and Wayland headers (winit's X11 and Wayland, layer-shell).
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libxkbcommon-x11-0
+
+      # The toolchain Rune is built against: the one in crates/ui-rune/rust-toolchain.toml, which a bump changes in both places.
+      - name: Rust
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/ui-rune
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' }}
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+  # The two UIs on a machine with no graphics card: GitHub's runners have none, and Mesa's lavapipe stands in for one under Xvfb.
+  # Binaries are built in parallel jobs and measured one after another in a third, on the same machine.
+  build-rune:
+    name: Build Rune UI
+    if: github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev
+      - name: Rust
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/ui-rune
+          save-if: ${{ github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' }}
+      - name: Build
+        working-directory: crates/ui-rune
+        run: cargo build --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bimcraft-rune
+          path: crates/ui-rune/target/release/bimcraft-rune
+          if-no-files-found: error
+
+  # egui as it is on this branch's base (main), and as the join of #628 has it (BIMCRAFT_SOFTWARE=1: frames paced by their cost on a
+  # software adapter, one frame in flight). The second leg may fail without failing the run: it is another branch's work.
+  build-egui:
+    name: Build egui (${{ matrix.name }})
+    if: github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    continue-on-error: ${{ matrix.name != 'main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: main, ref: '' }
+          - { name: join-628, ref: 'IPedrax-Test/join-628' }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+      - name: Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+      - name: Rust
+        run: rustup update stable && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: egui-${{ matrix.name }}
+          save-if: ${{ github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' }}
+      - name: Build
+        run: cargo build --release -p bimcraft --no-default-features
+      - run: cp target/release/bimcraft "bimcraft-egui-${{ matrix.name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bimcraft-egui-${{ matrix.name }}
+          path: bimcraft-egui-${{ matrix.name }}
+          if-no-files-found: error
+
+  measure:
+    name: Measure (no graphics card)
+    needs: [build-rune, build-egui]
+    if: ${{ !cancelled() && needs.build-rune.result == 'success' && needs.build-egui.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: bins
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xdotool imagemagick x11-utils libxkbcommon-x11-0 libxcursor1 libxi6 libxrandr2 libxcb-xinput0 libx11-xcb1 libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri vulkan-tools fonts-dejavu-core fonts-noto-cjk
+          chmod +x bins/*/*
+      - name: Machine and driver
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          nproc
+          ls /usr/share/vulkan/icd.d/
+          lvp=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)
+          echo "VK_ICD_FILENAMES=$lvp" >> "$GITHUB_ENV"
+      - name: Headless frames of the Rune UI on lavapipe (Rune's own clock: no display)
+        run: |
+          mkdir -p results
+          python3 - <<'PY'
+          import json, math
+          ev = [{"t": 0.2 + i / 60, "type": "move", "x": 480 + 260 * math.cos(i * 0.15), "y": 400 + 200 * math.sin(i * 0.15)} for i in range(180)]
+          json.dump({"events": ev}, open("hover.json", "w"))
+          PY
+          bins/bimcraft-rune/bimcraft-rune --script hover.json --frames 180 --size 1280x800 --out results/frames --every 1000 2>&1 | tee results/rune-headless.log
+          bins/bimcraft-rune/bimcraft-rune --snap results/rune-snap.png --size 1280x800 2>&1 | tail -3
+      - name: Start a display
+        run: |
+          Xvfb :99 -screen 0 1600x1000x24 &
+          sleep 3
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+      - name: Rune UI, GPU path on lavapipe
+        run: ci/measure-ui.sh rune-gpu results -- bins/bimcraft-rune/bimcraft-rune
+      - name: Rune UI, CPU renderer (RUNE_CPU_FIRST=only)
+        run: RUNE_CPU_FIRST=only ci/measure-ui.sh rune-cpu results -- bins/bimcraft-rune/bimcraft-rune
+      - name: egui on main
+        run: ci/measure-ui.sh egui-main results -- bins/bimcraft-egui-main/bimcraft-egui-main --sample
+      - name: egui with the join of 628, BIMCRAFT_SOFTWARE=1
+        if: ${{ hashFiles('bins/bimcraft-egui-join-628/bimcraft-egui-join-628') != '' }}
+        run: BIMCRAFT_SOFTWARE=1 ci/measure-ui.sh egui-join-628 results -- bins/bimcraft-egui-join-628/bimcraft-egui-join-628 --sample
+      - name: Fonts the system has (the fallback question)
+        run: |
+          fc-list : family | sort -u | head -40 | tee results/fonts.txt
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### UI cost with no graphics card (lavapipe, Xvfb, 4 vCPU runner)'
+            echo '| UI | idle cores | moving cores | CPU ms per move | RSS MB |'
+            echo '|---|---|---|---|---|'
+            for f in results/*.json; do
+              [ -f "$f" ] && python3 -c "import json,sys; r=json.load(open(sys.argv[1])); print(f\"| {r['name']} | {r['idle_cores']} | {r['move_cores']} | {r['ms_cpu_per_move']} | {r['rss_mb']} |\")" "$f"
+            done
+            echo
+            echo '```'
+            grep -h '^rune:' results/rune-headless.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: measurements
+          path: results
