@@ -1587,7 +1587,11 @@ impl BimApp {
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         let tabs = self.active_doc().map(|id| self.doc_tabs(id)).unwrap_or_default();
-        let tiled = ed.adaptive.is_none() && ed.views.tiled && tabs.len() > 1;
+        // Down to one view, there is nothing to tile: the next view opened comes as a tab, as Tab Windows would have it.
+        if tabs.len() < 2 {
+            ed.views.tiled = false;
+        }
+        let tiled = ed.adaptive.is_none() && ed.views.tiled;
         let open: Vec<Option<bimcraft_core::family::views::Which>> = if tiled {
             tabs.iter()
                 .filter_map(|s| match s {

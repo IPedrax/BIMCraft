@@ -45,6 +45,24 @@ fn tile_windows_is_a_document_local_session_layout() {
 }
 
 #[test]
+fn tiled_views_down_to_one_tab_are_tabbed_again() {
+    let mut h = open();
+    let doc = h.state().active_doc().unwrap();
+    command(&mut h, "Tile Windows");
+    h.run();
+    assert!(h.state().active_family().unwrap().views.tiled);
+    // Close Inactive Views leaves the plan alone: nothing is tiled, and the next view opened comes as a tab.
+    command(&mut h, "Close Inactive Views");
+    h.run();
+    assert_eq!(h.state().doc_tabs(doc).len(), 1);
+    assert!(!h.state().active_family().unwrap().views.tiled);
+    super::family_views::view(&mut h, None);
+    h.run();
+    assert_eq!(h.state().doc_tabs(doc).len(), 2);
+    assert!(!h.state().active_family().unwrap().views.tiled, "a view opened after is a tab, not a tile");
+}
+
+#[test]
 fn tile_rects_cover_clear_area_without_overlap() {
     let area = Rect::from_min_max(pos2(20.0, 50.0), pos2(620.0, 450.0));
     for count in 1..=7 {
