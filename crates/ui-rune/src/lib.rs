@@ -13,6 +13,7 @@ pub mod lang;
 pub mod paint;
 pub mod props;
 pub mod status;
+pub mod tools;
 pub mod ui;
 
 use rune::AppSpec;

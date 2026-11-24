@@ -12,6 +12,8 @@ pub struct Facts<'a> {
     /// The element under the pointer: its category and id.
     pub hovered: Option<(&'a str, u64)>,
     pub selected: usize,
+    /// The tool in hand, by its (English) label.
+    pub tool: Option<&'a str>,
     /// A command's refusal, as the core says it (English: agents read it too).
     pub message: Option<&'a str>,
 }
@@ -22,6 +24,9 @@ pub fn line(f: &Facts) -> String {
         return m.to_string();
     }
     let mut parts = vec![f.level.to_string()];
+    if let Some(tool) = f.tool {
+        parts.push(tf("Tool: {}", &[t(tool)]));
+    }
     if let Some((x, y)) = f.cursor {
         parts.push(tf("x {} y {} mm", &[&format!("{x:.0}"), &format!("{y:.0}")]));
     }
@@ -48,7 +53,7 @@ mod tests {
     use crate::lang::set;
 
     fn facts<'a>() -> Facts<'a> {
-        Facts { level: "Level 1", cursor: Some((1234.4, 56.6)), hovered: Some(("wall", 100234)), selected: 2, message: None }
+        Facts { level: "Level 1", cursor: Some((1234.4, 56.6)), hovered: Some(("wall", 100234)), selected: 2, tool: None, message: None }
     }
 
     #[test]
@@ -57,6 +62,7 @@ mod tests {
         assert_eq!(line(&facts()), "Level 1   |   x 1234 y 57 mm   |   Wall 100234   |   2 selected");
         let quiet = Facts { cursor: None, hovered: None, selected: 0, ..facts() };
         assert_eq!(line(&quiet), "Level 1   |   Nothing selected");
+        assert_eq!(line(&Facts { tool: Some("Wall"), ..quiet }), "Level 1   |   Tool: Wall   |   Nothing selected");
     }
 
     #[test]

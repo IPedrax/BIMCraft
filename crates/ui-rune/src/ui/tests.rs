@@ -99,3 +99,16 @@ fn the_buttons_are_buttons_to_a_screen_reader() {
         assert!(buttons.iter().any(|k| k == key), "{key} is a button: {buttons:?}");
     }
 }
+
+#[test]
+fn a_tool_is_picked_from_the_palette_and_the_status_bar_says_so() {
+    let mut rt = window();
+    let wall = rt.find("tool-wall").expect("the Wall tool in the palette");
+    tap(&mut rt, wall);
+    assert_eq!(rt.state.tool, Some("wall"));
+    assert!(text_of(&rt, "status-line").unwrap_or_default().contains("Tool: Wall"));
+    assert!(
+        rt.elements().iter().any(|e| e.key.as_deref() == Some("tool-wall") && e.role == "button"),
+        "a tool is a button to a screen reader"
+    );
+}

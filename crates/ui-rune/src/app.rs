@@ -56,6 +56,8 @@ pub struct App {
     /// Counts the drawings made: what the canvas's kept shapes are keyed by.
     pub revision: u64,
     pub hovered: Option<Id>,
+    /// The tool picked in the Tools palette, by its id in `tools::TOOLS`.
+    pub tool: Option<&'static str>,
     pub selection: Vec<Id>,
     /// The pointer over the plan, points from its top left.
     pub cursor: Option<(f32, f32)>,
@@ -81,6 +83,7 @@ impl App {
             drawing: None,
             revision: 0,
             hovered: None,
+            tool: None,
             selection: Vec::new(),
             cursor: None,
             props: Vec::new(),
@@ -235,6 +238,12 @@ impl App {
         }
     }
 
+    /// Picks the tool with this id, or puts it down when it is the one in hand; an id the palette does not have picks nothing.
+    pub fn set_tool(&mut self, id: &str) {
+        let picked = crate::tools::id_of(id);
+        self.tool = if picked == self.tool { None } else { picked };
+    }
+
     pub fn delete_selection(&mut self) -> bool {
         !self.selection.is_empty() && self.run("delete", &json!({"ids": self.selection}))
     }
@@ -255,6 +264,7 @@ impl App {
             cursor: self.cursor_mm(),
             hovered,
             selected: self.selection.len(),
+            tool: self.tool.and_then(crate::tools::label),
             message: self.message.as_deref(),
         })
     }
@@ -342,6 +352,20 @@ mod tests {
         assert!(app.undo(), "refused: {:?}", app.message);
         assert!(app.session.model.elements.get(id).is_some(), "undo gave it back");
         assert!(!app.delete_selection(), "with nothing selected there is nothing to delete");
+    }
+
+    #[test]
+    fn a_tool_is_picked_put_down_and_a_stale_id_picks_nothing() {
+        let mut app = App::sample();
+        app.set_tool("wall");
+        assert_eq!(app.tool, Some("wall"));
+        assert!(app.status().contains("Wall"), "the bar names the tool: {}", app.status());
+        app.set_tool("door");
+        assert_eq!(app.tool, Some("door"));
+        app.set_tool("door");
+        assert_eq!(app.tool, None, "a second press puts it down");
+        app.set_tool("no such tool");
+        assert_eq!(app.tool, None);
     }
 
     #[test]

@@ -9,6 +9,7 @@ use crate::app::App;
 mod plan;
 mod properties;
 mod status_bar;
+mod tools;
 
 /// The Properties panel's width, points.
 pub const PANEL_WIDTH: f32 = 300.0;
@@ -20,7 +21,7 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
         .w_full()
         .h_full()
         .fill(th.bg)
-        .child(row().grow(1.0).min_h(0.0).child(plan::plan(s)).child(properties::panel(s, &th)))
+        .child(row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(plan::plan(s)).child(properties::panel(s, &th)))
         .child(status_bar::bar(s, &th))
 }
 
