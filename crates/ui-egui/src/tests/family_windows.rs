@@ -201,7 +201,7 @@ fn close_inactive_includes_floating_family_views() {
     h.state_mut().open_sheet(Sheet::Family(box_doc, Some(Which::Plan)));
     let float = Sheet::Family(crate_doc, None);
     h.state_mut().views.retain(|s| *s != float);
-    h.state_mut().floating.push(crate::dock::FloatView { sheet: float, at: pos2(0.0, 0.0), size: vec2(500.0, 400.0) });
+    h.state_mut().floating.push(crate::dock::FloatView { sheet: float, at: pos2(0.0, 0.0), size: vec2(500.0, 400.0), edge: None });
     h.state_mut().close_inactive_family_views();
     assert!(h.state().floating.is_empty());
     assert_eq!(h.state().doc_tabs(crate_doc), vec![Sheet::Family(crate_doc, Some(Which::Plan))]);

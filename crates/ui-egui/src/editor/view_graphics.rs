@@ -369,7 +369,7 @@ impl BimApp {
             match (top, parse(&d.fields[1]), parse(&d.fields[2]), parse(&d.fields[3])) {
                 (Some(top), Some(cut), Some(bottom), Some(depth)) => {
                     // As the project checks a plan's: within reach, and top ≥ cut plane ≥ bottom ≥ view depth.
-                    let range = ViewRange { top, cut, bottom, depth };
+                    let range = ViewRange { top, cut, bottom, depth, ..ViewRange::default() };
                     match bimcraft_core::model::range_ok(t("Ref. Level"), &range) {
                         // OK on what the dialog showed of a plan that had none sets none: it still sees every form.
                         Ok(()) if range == ViewRange::default() && !ed.views.kept.ranges.contains_key(&d.which) => {}

@@ -239,7 +239,7 @@ fn view_range_sets_a_plans_range_alone() {
     // Out of order (the cut plane over the top), refused with the project's reason.
     view_range(&mut h, "1000", "2000", "0", "0");
     assert!(h.query_by_label("Cut Plane").is_some(), "refused: still open");
-    assert!(h.query_by_label_contains("top ≥ cut plane ≥ bottom ≥ view depth").is_some(), "says why");
+    assert!(h.query_by_label_contains("the cut plane can't be higher than the top").is_some(), "says why");
     press(&mut h, "Cancel");
     assert_eq!(editor(&h).views.kept.range_of(Which::Plan), r, "Cancel keeps the range");
     // An elevation has no view range: the status bar says so.

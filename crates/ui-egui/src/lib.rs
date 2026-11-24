@@ -7608,11 +7608,14 @@ impl BimApp {
             return;
         }
         let (title, color) = if self.status.error { (t("Error"), pal().error) } else { (t("Note"), pal().accent_ink) };
-        // The whole views' area in Split and Tile, not the one window drawn last; the view under the tabs otherwise. Above the
-        // view-control bar where it floats over the view's foot; a family view is drawn above its own.
-        let view =
-            if !self.home.shown && !self.family_doc() && self.arrange != dock::Arrange::Tabs { self.views_rect } else { self.view_rect };
-        let at = view.right_bottom() - vec2(16.0, 16.0 + self.bar_cover(ctx));
+        // The whole views' area in Split and Tile, not the one window drawn last, in its corner; the view under the tabs
+        // otherwise, above the view-control bar where it floats over the view's foot (a family view is drawn above its own).
+        let (view, cover) = if !self.home.shown && !self.family_doc() && self.arrange != dock::Arrange::Tabs {
+            (self.views_rect, 0.0)
+        } else {
+            (self.view_rect, self.bar_cover(ctx))
+        };
+        let at = view.right_bottom() - vec2(16.0, 16.0 + cover);
         let copied = egui::Id::new("warning copied");
         let mut was: Option<String> = ctx.data_mut(|d| d.get_temp::<String>(copied));
         Area::new(UiId::new("warning")).order(Order::Middle).fixed_pos(at).pivot(Align2::RIGHT_BOTTOM).show(ctx, |ui| {

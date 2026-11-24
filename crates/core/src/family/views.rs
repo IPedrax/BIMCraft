@@ -1142,13 +1142,13 @@ mod tests {
             }
             assert!(dark(&st.draw(Which::Plan, w, h, 1.0, P2(0.0, 0.0)).unwrap()), "{w}: the box, drawn");
             // A range above the box: from 2500 up to 3500, cut at 3000.
-            let above = ViewRange { top: Some(3500.0), cut: 3000.0, bottom: 2500.0, depth: 2500.0 };
+            let above = ViewRange { top: Some(3500.0), cut: 3000.0, bottom: 2500.0, depth: 2500.0, ..ViewRange::default() };
             set(&mut st, above);
             assert!(!dark(&st.draw(Which::Plan, w, h, 1.0, P2(0.0, 0.0)).unwrap()), "{w}: a box under the view's depth is left out");
             // Drawing leaves the range as it was set: its cut stays 3000.
             assert_eq!(st.model.level(st.level).map(|l| l.view_range), Some(above), "the range kept");
             // One through it sees it.
-            set(&mut st, ViewRange { top: Some(3500.0), cut: 3000.0, bottom: 0.0, depth: 0.0 });
+            set(&mut st, ViewRange { top: Some(3500.0), cut: 3000.0, bottom: 0.0, depth: 0.0, ..ViewRange::default() });
             assert!(dark(&st.draw(Which::Plan, w, h, 1.0, P2(0.0, 0.0)).unwrap()), "{w}: through it");
         }
     }
