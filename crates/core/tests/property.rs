@@ -1297,6 +1297,19 @@ fn sig(f: &Fail) -> String {
     format!("{} {}", f.inv, f.kind)
 }
 
+/// Two amendments of the project's own, chosen in a random order, that both give `48 V`, each its own.
+fn shared_start(r: &mut Rng) -> Vec<Op> {
+    let (a, b) = if r.pct(50) { (OWN_NAMES[0], OWN_NAMES[1]) } else { (OWN_NAMES[1], OWN_NAMES[0]) };
+    let low = json!({"nominal": 48, "min": 43.2, "max": 52.8});
+    let high = json!({"nominal": 48, "min": 44, "max": 52});
+    vec![
+        Op::Bc(bc(json!({"create": a, "amendments": [a]}))),
+        Op::Bc(bc(json!({"create": b, "amendments": [a, b]}))),
+        Op::Bc(bc(json!({"amend": a, "rules": {"voltages": {"48 V": low}}}))),
+        Op::Bc(bc(json!({"amend": b, "rules": {"voltages": {"48 V": high}}}))),
+    ]
+}
+
 fn gen_op(r: &mut Rng, l: &Ledger, nochange: bool) -> Op {
     let lb = lib();
     let held: Vec<String> = l.layers().iter().skip(1).map(|(n, _)| n.clone()).collect();
@@ -1378,7 +1391,28 @@ fn gen_op(r: &mut Rng, l: &Ledger, nochange: bool) -> Op {
             }
             35..=48 if !nochange && !held.is_empty() => {
                 let t = r.pick(&held);
-                let mut p = if r.pct(25) {
+                // A setting another chosen amendment gives, given here too or taken away here: the same name in two layers,
+                // where which one stands over the other decides what is in force.
+                let shared: Vec<(String, String, Value)> = held
+                    .iter()
+                    .filter(|h| **h != t)
+                    .filter_map(|h| l.own.get(h))
+                    .flat_map(|o| {
+                        SETTINGS.iter().flat_map(move |sec| {
+                            o.sections
+                                .get(*sec)
+                                .into_iter()
+                                .flatten()
+                                .filter(|(_, v)| !v.is_null())
+                                .map(move |(n, v)| (sec.to_string(), n.clone(), v.clone()))
+                        })
+                    })
+                    .collect();
+                let mut p = if !shared.is_empty() && r.pct(40) {
+                    let (sec, name, v) = shared[r.below(shared.len())].clone();
+                    let v = if r.pct(50) { Value::Null } else { v };
+                    json!({"amend": t, "rules": {sec: {name: v}}})
+                } else if r.pct(25) {
                     let (sec, name, v) = setting_rule(r);
                     json!({"amend": t, "rules": {sec: {name: v}}})
                 } else {
@@ -1517,8 +1551,15 @@ fn campaign(label: &str, nochange: bool) {
                     // The ops are made against the ledger as the run goes, then replayed as data.
                     let mut r = Run::new(dir.clone(), nochange);
                     let mut ops = Vec::new();
-                    for step in 0..n {
-                        let op = gen_op(&mut rng, &r.l, nochange);
+                    // Some sequences start with two amendments of the project's own that both give the same voltage, each its
+                    // own: what is in force then depends on which stands over the other, and on a null in either.
+                    let mut first = Vec::new();
+                    if !nochange && rng.pct(30) {
+                        first = shared_start(&mut rng);
+                    }
+                    let mut from = first.into_iter();
+                    for step in 0..n + 4 {
+                        let op = from.next().unwrap_or_else(|| gen_op(&mut rng, &r.l, nochange));
                         ops.push(op.clone());
                         if r.step(step, &op) {
                             break;
