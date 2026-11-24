@@ -114,7 +114,38 @@ Usual complaints:
 - **Too many places to set one thing**, and results seen late.
 - **Ends** (extensions to a wall or the floor, returns, terminations) are hard, and accessibility codes ask for them.
 
-## What this suggests for BIMCraft
+## Decided (2026-11-24)
+
+- **Several hosts.** A railing follows stairs, ramps and floors together: a stair and the floor it comes up to. Picked as
+  Edit Group picks members: Edit Hosts, then Add and Remove, clicking the hosts.
+- **No top rail and handrail types.** Revit's split is too complicated. A railing type is made visually, as Archicad's and
+  BIMCraft's curtain wall Edit Pattern are: add a part, click it, set its shape (rectangle, circle; a custom profile later),
+  material, height and offset.
+- **Rails** are named, so any upright can go up to one ("up to Rail1") or stand on one.
+- **Uprights** are of two kinds: a post stands on the host; a baluster stands where its bottom says (the host or a rail),
+  with offsets at both ends.
+- **A panel** can fill each bay between posts instead of balusters: material, thickness, gaps at the bottom, the top and the
+  posts, and an offset across.
+- **Height** is worked out: the top surface of the top rail.
+
+## First version (built)
+
+- Core: `RailingType` gains `rails`, `posts` (posts and balusters) and `panel` (`model.rs`); `railings.rs` lays them along a
+  railing's line (`railings::build`) and checks them (`check_type`); a type without them is the older one rail and
+  balusters. `Railing` gains `hosts`; `railings::follow` gives a line the heights of the hosts under it. Commands: `type`
+  takes `rails`, `posts`, `panel`; `railing` takes `hosts`; `railing_hosts {id, add, remove}`. Deleting a host drops it;
+  copying a railing with its hosts points at the copies.
+- 3D: each part in its material, round ones as tubes. IFC: each part as a prism (round ones as their box). Plan: the line, as
+  before.
+- Desktop: Type Properties of a railing type shows its height and Structure: Edit…, which opens Edit Railing (`railingtype.rs`):
+  Add Rail, Add Post, Add Baluster, Add Panel, Remove; a list of parts; the picked part's fields; a preview of two bays in
+  elevation and a section across, where a click picks a part. A railing selected: Modify tab, Railing > Edit Hosts; Add,
+  Remove, Finish; the hosts lit while editing.
+
+Next, after comments: grips to edit a railing's path (to run a stair's railing on over the floor), custom profiles, the plan
+showing rails and posts, joins at corners and between slopes, ends and extensions.
+
+## What the research suggested for BIMCraft
 
 Proposals, to settle before building:
 

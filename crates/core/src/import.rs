@@ -4030,6 +4030,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     base_offset: 0.0,
                     host: Some(Guid::of_id(host)),
                     side: Some(side),
+                    hosts: Vec::new(),
                 };
                 let start = |side| stairs::railing(&m, &on(side)).first().copied();
                 let side = [Side::Left, Side::Right]
@@ -4044,7 +4045,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 }
                 let base = named.clone().unwrap_or_else(|| format!("Imported - {}mm", num(h)));
                 Railing {
-                    type_name: kind(&mut m.types.railing, &base, |t| (t.height - h).abs() < 0.5, RailingType { height: h, spacing: 0.0 }),
+                    type_name: kind(
+                        &mut m.types.railing,
+                        &base,
+                        |t| (t.height - h).abs() < 0.5,
+                        RailingType { height: h, spacing: 0.0, ..RailingType::default() },
+                    ),
                     ..on(side)
                 }
             }
@@ -4057,11 +4063,16 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     continue;
                 }
                 let base = named.clone().unwrap_or_else(|| format!("Imported - {}mm", num(h)));
-                let type_name = kind(&mut m.types.railing, &base, |t| (t.height - h).abs() < 0.5, RailingType { height: h, spacing: 0.0 });
+                let type_name = kind(
+                    &mut m.types.railing,
+                    &base,
+                    |t| (t.height - h).abs() < 0.5,
+                    RailingType { height: h, spacing: 0.0, ..RailingType::default() },
+                );
                 let level = level_for(id, first[2] - h);
                 let path = axis.iter().map(|p| micron(r.flat(*p))).collect();
                 let base_offset = ((first[2] - h - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-                Railing { params: Default::default(), type_name, level, path, base_offset, host: None, side: None }
+                Railing { params: Default::default(), type_name, level, path, base_offset, host: None, side: None, hosts: Vec::new() }
             }
         };
         let rid = m.insert(Element::Railing(railing));

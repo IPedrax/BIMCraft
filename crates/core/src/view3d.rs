@@ -1909,17 +1909,22 @@ fn solids_in_with(
                 }
                 out.extend(l.pads.iter().map(|p| slab(id, SLAB, &p.ring, (base, p.z))));
             }
-            Element::Railing(rl) => out.extend(stairs::railing_parts(m, rl).into_iter().map(|(ring, bottom, top)| Solid::Prism {
-                owner: id,
-                color: RAIL,
-                tex: 0,
-                ring,
-                bottom,
-                top,
-                curve: None,
-                part: 0,
-                vis: 0,
-            })),
+            // Each rail, post, baluster and panel in its material's colour; a round one a tube.
+            Element::Railing(rl) => {
+                for part in crate::railings::parts(m, rl) {
+                    let color = m.materials.get(&part.material).map_or(RAIL, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+                    let tex = skin(m, &part.material);
+                    out.push(match part.piece {
+                        crate::railings::Piece::Prism(ring, bottom, top) => {
+                            Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None, part: 0, vis: 0 }
+                        }
+                        crate::railings::Piece::Tube(g) => {
+                            let (tris, caps) = g.tube();
+                            Solid::Mesh { owner: id, color, tex, tris, caps, round: true, shared: false, cut: true, vis: 0 }
+                        }
+                    });
+                }
+            }
             // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
                 let pieces = m.opening_pieces(e);

@@ -2749,6 +2749,8 @@ impl BimApp {
             .into_iter()
             .filter(|id| Some(*id) != shaped)
             .collect();
+        // A railing's hosts, while they are edited.
+        marked.extend(self.railing_hosts_lit());
         // Walls picked for Walls' Outline are lit as the selection is.
         if self.outline_pending {
             marked.extend(self.outline_walls.iter().copied());
@@ -3290,6 +3292,10 @@ impl BimApp {
     }
 
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
+        // Edit Hosts' Add or Remove: the stair, ramp or floor picked joins the railing's hosts or leaves them.
+        if self.railing_host_pick_up(&found) {
+            return;
+        }
         // Edit Group's Add or Remove: what is picked joins the group or leaves it, and isn't selected.
         if self.group_pick_up(&found) {
             return;

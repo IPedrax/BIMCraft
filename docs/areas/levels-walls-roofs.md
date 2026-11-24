@@ -326,7 +326,14 @@ are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
-its side (`stairs::railing`), so it goes wherever its host goes. A stair's `start` is on its location line
+its side (`stairs::railing`), so it goes wherever its host goes. A railing may follow more hosts (`hosts`, `railing_hosts`; the desktop's Edit
+Hosts, picked as Edit Group picks members): stairs, ramps and floors; its line in plan stays, and its heights are those of
+the first host under each point, looked up every 50 mm and kept where they bend (`railings::follow`), so one railing runs up
+a stair and on along the floor it comes to. A railing type stacks its parts (`railings.rs`, the desktop's Edit Railing):
+named rails, each a rectangle or a circle, its top `height` over the line and `offset` to its left; posts on the host at the
+ends, the corners and at most `spacing` apart; balusters between the posts, from the host or a rail's top up to a rail's
+underside or the railing's top; and a panel in each bay. Its `height` is worked out, the top of its highest rail; a type
+without parts is the older one rail and balusters (`railings::stack`). A stair's `start` is on its location line
 (`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
 the line stays when the width changes. A turn is straight on, back beside the run, or any angle from 5 to 135 degrees (the runs then share the turn's inside
 corner). A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may

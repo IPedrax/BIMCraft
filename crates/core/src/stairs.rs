@@ -2654,10 +2654,11 @@ fn all_nosings(m: &Model, st: &Stair, l: &Layout) -> Vec<Nosing> {
 /// The line a railing follows, in plan, with the height of what it runs along at each point: on a
 /// stair or a ramp, its walk line moved out to the side, [`RAILING_INSET`] in from its edge; else
 /// its path, on its level and `base_offset` above it.
+/// With more `hosts`, its line in plan the same, its heights those of the hosts under it ([`crate::railings::follow`]).
 pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
     let host = rl.host.and_then(|h| m.elements.get(h)).and_then(|e| layout(m, e));
-    match (host, rl.side) {
-        (Some(l), Some(side)) => {
+    let line = match (host, rl.side) {
+        (Some(l), Some(side)) if rl.path.is_empty() => {
             let d = (l.width / 2.0 - RAILING_INSET).max(0.0) * if side == Side::Left { 1.0 } else { -1.0 };
             offset(&l.walk, d)
         }
@@ -2665,38 +2666,19 @@ pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
             let z = m.elevation(rl.level) + rl.base_offset;
             rl.path.iter().map(|p| (*p, z)).collect()
         }
+    };
+    if rl.hosts.is_empty() && (rl.host.is_none() || rl.path.is_empty()) {
+        return line;
     }
+    let plan: Vec<P2> = line.iter().map(|(p, _)| *p).collect();
+    let fallback = m.elevation(rl.level) + rl.base_offset;
+    crate::railings::follow(m, &crate::railings::hosts(rl), &plan, rl.base_offset, fallback)
 }
 
-/// A railing's solids, each a ring in plan between two planes: its rail along each stretch of its
-/// line, 50 mm square, its type's height over the line; and its balusters, 20 mm square and its
-/// type's `spacing` apart, from the line up under the rail.
+/// A railing's solids, each a ring in plan between two planes: its rails, posts, balusters and panels
+/// ([`crate::railings::parts`]), a round one as its square box.
 pub fn railing_parts(m: &Model, rl: &Railing) -> Vec<(Vec<P2>, Plane, Plane)> {
-    let Some(t) = m.types.railing.get(&rl.type_name) else { return Vec::new() };
-    let mut out = Vec::new();
-    // How far along the next stretch the next baluster stands.
-    let mut next = 0.0;
-    for w in railing(m, rl).windows(2) {
-        let &[(p, zp), (q, zq)] = w else { continue };
-        let len = p.dist(q);
-        if len < 1e-9 {
-            continue;
-        }
-        let u = (q - p) * (1.0 / len);
-        let (n, g) = (u.perp() * 25.0, u * ((zq - zp) / len));
-        let top = Plane { z: zp + t.height - g.dot(p), g };
-        out.push((vec![p - n, q - n, q + n, p + n], Plane { z: top.z - 50.0, g }, top));
-        if t.spacing > 0.0 {
-            while next <= len {
-                let (at, z) = (p + u * next, zp + (zq - zp) * next / len);
-                let (a, b) = (u * 10.0, u.perp() * 10.0);
-                out.push((vec![at - a - b, at + a - b, at + a + b, at - a + b], Plane::flat(z), Plane::flat(z + t.height - 50.0)));
-                next += t.spacing;
-            }
-            next -= len;
-        }
-    }
-    out
+    crate::railings::parts(m, rl).iter().map(|p| p.piece.prism()).collect()
 }
 
 /// `line` moved `d` to its left, its corners mitred, each point keeping its height.
@@ -2731,7 +2713,7 @@ fn beside(line: &[(P2, f64)], side: f64) -> Vec<P2> {
     out
 }
 
-fn offset(line: &[(P2, f64)], d: f64) -> Vec<(P2, f64)> {
+pub(crate) fn offset(line: &[(P2, f64)], d: f64) -> Vec<(P2, f64)> {
     let mut pts: Vec<(P2, f64)> = line.to_vec();
     pts.dedup_by(|b, a| a.0.dist(b.0) < 1e-9);
     let dirs: Vec<P2> = pts.windows(2).filter_map(|w| Some((w.get(1)?.0 - w.first()?.0).unit())).collect();

@@ -2495,6 +2495,10 @@ pub struct Railing {
     pub host: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub side: Option<Side>,
+    /// More hosts its heights follow: stairs, ramps and floors. Where its line passes over one (its `host` first, then
+    /// these in order) it stands on that one's top; where over none, it keeps the height it had last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<Guid>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -2922,6 +2926,7 @@ macro_rules! visit_refs {
             Element::Railing(r) => {
                 f(& $($m)? r.level);
                 if let Some(g) = & $($m)? r.host { f(g) }
+                for g in & $($m)? r.hosts { f(g) }
             }
             Element::Roof(r) => {
                 f(& $($m)? r.level);
@@ -3870,13 +3875,110 @@ pub fn stair_types() -> BTreeMap<String, StairType> {
     ])
 }
 
-/// A railing type: how high its rail stands, and how far apart its balusters are (0: none).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// A railing type: its rails, its posts and balusters, and a panel between its posts (`railings.rs`). One with none of
+/// these is the older kind: one 50 mm square rail `height` up and 20 mm balusters `spacing` apart (0: none). With rails,
+/// `height` is worked out, the top of its highest rail, and kept so an older version draws a railing as high.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RailingType {
     pub height: f64,
     #[serde(default)]
     pub spacing: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rails: Vec<RailPart>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub posts: Vec<PostPart>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<PanelPart>,
+}
+
+/// The section of a rail, a post or a baluster.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PartShape {
+    #[default]
+    Rectangle,
+    Circle,
+}
+
+/// A rail along a railing: `name`d, so posts and balusters can stand on it or go up to it; its section `width` across
+/// and `depth` high (a circle's diameter is its width); its top `height` over what the railing runs along, `offset` mm
+/// to the left of the railing's line, going along it; of `material` ("" for the railing's grey).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RailPart {
+    pub name: String,
+    #[serde(default)]
+    pub shape: PartShape,
+    pub width: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub depth: f64,
+    pub height: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+}
+
+/// What an upright stands on: a post always on the host, a baluster wherever its `bottom` says.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PostKind {
+    #[default]
+    Post,
+    Baluster,
+}
+
+/// Uprights along a railing. Posts stand on the host at its ends and corners and at most `spacing` apart between (0: at
+/// ends and corners only); balusters stand between the posts (or along the whole railing, without posts), at most
+/// `spacing` apart. Each from `bottom` (a rail's top, by name; none, the host) `bottom_offset` up, to `top` (a rail's
+/// underside, by name; none, the railing's top) `top_offset` up; its section as a rail's, `offset` to the left.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PostPart {
+    pub name: String,
+    #[serde(default)]
+    pub kind: PostKind,
+    #[serde(default)]
+    pub shape: PartShape,
+    pub width: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub depth: f64,
+    #[serde(default)]
+    pub spacing: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bottom: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bottom_offset: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+}
+
+/// A panel in each bay between posts (along the whole railing, without posts): `thickness` thick, `offset` to the left of
+/// the line; from `bottom` mm over the host to `top` (a rail's underside, by name; none, the railing's top) less
+/// `top_gap`, and `side_gap` in from each post's face.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelPart {
+    pub thickness: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bottom: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_gap: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub side_gap: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
 }
 
 /// A ceiling type: how thick, and with `grid`, square tiles that wide, which its reflected ceiling
@@ -4951,7 +5053,7 @@ impl Model {
         m.types.roof.insert("Generic - 300mm".into(), RoofType { thickness: 300.0, layers: Vec::new() });
         m.types.ceiling.insert("Generic - 20mm".into(), CeilingType { thickness: 20.0, grid: 0.0, layers: Vec::new() });
         m.types.ceiling.insert("Tile 600 x 600".into(), CeilingType { thickness: 20.0, grid: 600.0, layers: Vec::new() });
-        m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
+        m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0, ..RailingType::default() });
         m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         m.types.stair = stair_types();
         crate::curtain::starter_types(&mut m);
@@ -9577,10 +9679,7 @@ impl Model {
             self.check_stair_type(n, t)?;
         }
         for (n, t) in &self.types.railing {
-            size(&format!("railing type `{n}` height"), t.height)?;
-            if !(t.spacing == 0.0 || (50.0..=MAX_COORD).contains(&t.spacing)) {
-                return Err(format!("railing type `{n}`: spacing {} mm; balusters stand 50 mm apart or more, or 0 for none", t.spacing));
-            }
+            crate::railings::check_type(self, n, t)?;
         }
         for (n, t) in &self.types.framing {
             crate::framing::check_type(self, n, t)?;
@@ -11055,13 +11154,25 @@ impl Model {
                     (Some(_), None) => {
                         return Err(format!("{who}: a railing on a stair or a ramp runs along its left or its right side"));
                     }
-                    (None, _) => {
-                        if rl.path.len() < 2 || rl.path.len() > MAX_POINTS {
-                            return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
-                        }
-                        for p in &rl.path {
-                            point(&who, *p)?;
-                        }
+                    (None, _) => {}
+                }
+                if rl.host.is_none() || !rl.path.is_empty() {
+                    if rl.path.len() < 2 || rl.path.len() > MAX_POINTS {
+                        return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
+                    }
+                    for p in &rl.path {
+                        point(&who, *p)?;
+                    }
+                }
+                if rl.hosts.len() > MAX_POINTS {
+                    return Err(format!("{who}: {} hosts; a railing follows up to {MAX_POINTS}", rl.hosts.len()));
+                }
+                for (i, h) in rl.hosts.iter().enumerate() {
+                    if rl.host == Some(*h) || rl.hosts.get(..i).is_some_and(|before| before.contains(h)) {
+                        return Err(format!("{who}: host {} is listed twice", self.shown(*h)));
+                    }
+                    if !matches!(self.elements.get(*h), Some(Element::Stair(_) | Element::Ramp(_) | Element::Floor(_))) {
+                        return Err(format!("{who}: host {} isn't a stair, a ramp or a floor", self.shown(*h)));
                     }
                 }
                 let line = crate::stairs::railing(self, rl);
@@ -11069,9 +11180,7 @@ impl Model {
                 if length <= TOL {
                     return Err(format!("{who}: its path has no length"));
                 }
-                if t.spacing > 0.0 && length / t.spacing > MAX_BALUSTERS {
-                    return Err(format!("{who}: {:.0} balusters, more than {MAX_BALUSTERS}; space them wider", length / t.spacing));
-                }
+                crate::railings::check_count(&who, t, length)?;
             }
             Element::Roof(r) => {
                 known(&who, &r.type_name, &self.types.roof)?;
