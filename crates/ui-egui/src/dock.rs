@@ -13,8 +13,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::f32::consts::FRAC_PI_2;
 
 use egui::{
-    Align, Align2, Context, CornerRadius, FontId, Frame, Id as UiId, Layout, Order, Panel, Popup, Pos2, Rect, Sense, Stroke, StrokeKind,
-    Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
+    Align, Align2, Context, CornerRadius, FontId, Frame, Id as UiId, Layout, Order, Panel, Popup, PopupCloseBehavior, Pos2, Rect, Response,
+    RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -716,6 +716,7 @@ impl BimApp {
                     if r.drag_started() {
                         self.dragging = Some(Drag::Palette(*tab));
                     }
+                    self.palette_menu_popup(&r, *tab);
                 }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -727,11 +728,44 @@ impl BimApp {
                 Popup::menu(&r).show(|ui| self.dock_menu(ui, shown, rect));
             });
         });
+        self.palette_menu_popup(&back, shown);
         let body = Frame::NONE;
         body.show(ui, |ui| {
             ui.set_min_size(ui.available_size());
             self.palette_body(ui, shown);
         });
+    }
+
+    /// The menu of the palettes, hung from the header of the stack showing `own`: every palette the window knows, ticked while it is
+    /// open. A tick closes or opens it at once, through the same `Docking::show` as the View > User Interface boxes; the menu stays
+    /// open to change several, and closes when the palette it hangs from is taken out (ТЗ-019.2).
+    fn palette_menu(&mut self, ui: &mut Ui, own: Palette) {
+        ui.set_min_width(200.0);
+        ui.label(RichText::new(t("Palettes")).strong());
+        ui.indent("dock-palette-menu-rows", |ui| {
+            for p in Palette::known() {
+                let mut on = self.docking.shown(p);
+                if ui.checkbox(&mut on, t(p.label())).changed() {
+                    self.show_palette(p, on);
+                    if p == own && !on {
+                        Popup::close_id(ui.ctx(), palette_menu_id(own));
+                    }
+                }
+            }
+        });
+    }
+
+    /// Hangs the palettes menu from `r`, a palette's header or tab: a popup of its own, so it never mixes with another menu; a second
+    /// right click on the same header closes it, and a click inside it leaves it open for another palette's box.
+    fn palette_menu_popup(&mut self, r: &Response, own: Palette) {
+        let id = palette_menu_id(own);
+        let open = Popup::is_id_open(&r.ctx, id);
+        let set = r.secondary_clicked().then_some(egui::SetOpenCommand::Bool(!open));
+        Popup::context_menu(r)
+            .id(id)
+            .open_memory(set)
+            .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| self.palette_menu(ui, own));
     }
 
     /// The Dock menu: where else the palette can go.
@@ -1350,6 +1384,11 @@ fn zone_label(p: &egui::Painter, r: Rect, label: &str, angle: f32, on: bool) {
 }
 
 /// A palette's tab, in a stack of several: click shows it, a drag takes it elsewhere.
+/// The palettes menu's id of the palette whose header it hangs from: one per palette, apart from every other popup in the window.
+fn palette_menu_id(own: Palette) -> UiId {
+    UiId::new(("dock-palette-menu", own.name()))
+}
+
 fn palette_tab(ui: &mut Ui, label: &str, active: bool) -> egui::Response {
     let font = FontId::proportional(12.5);
     let size = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
