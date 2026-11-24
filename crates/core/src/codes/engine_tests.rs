@@ -1722,7 +1722,7 @@ fn every_column_of_every_unit_demand_method_s_tables_has_its_kind_and_every_cell
 }
 
 #[test]
-fn the_other_electrical_sections_say_of_every_field_of_their_tables_the_kind_its_values_have() {
+fn the_other_sections_say_of_every_field_of_their_tables_the_kind_its_values_have() {
     // Every field of every row and card of these sections, in every library code, has the kind its values have there: a
     // text a text, a number a number, a list of numbers a list; a truth or a list of texts has none (the window reads it as
     // before).
@@ -1747,9 +1747,22 @@ fn the_other_electrical_sections_say_of_every_field_of_their_tables_the_kind_its
         }
     }
     let mut asked = std::collections::BTreeMap::new();
-    for key in ["rcd", "bath_volumes", "load_points", "circuits", "conduit_fill", "surge", "wire_types"] {
-        let def = section_def(Discipline::Electrical, key).unwrap();
-        for code in of(Discipline::Electrical) {
+    let sections = [
+        (Discipline::Electrical, "rcd"),
+        (Discipline::Electrical, "bath_volumes"),
+        (Discipline::Electrical, "load_points"),
+        (Discipline::Electrical, "circuits"),
+        (Discipline::Electrical, "conduit_fill"),
+        (Discipline::Electrical, "surge"),
+        (Discipline::Electrical, "wire_types"),
+        (Discipline::Plumbing, "drainage"),
+        (Discipline::Plumbing, "fixtures"),
+        (Discipline::Plumbing, "hydrants"),
+        (Discipline::Plumbing, "storm"),
+    ];
+    for (d, key) in sections {
+        let def = section_def(d, key).unwrap();
+        for code in of(d) {
             let Some(section) = code.sections.get(key) else { continue };
             // A wire type is its own card, by its name: its fields are a row's.
             let mut out = Vec::new();
@@ -1778,5 +1791,14 @@ fn the_other_electrical_sections_say_of_every_field_of_their_tables_the_kind_its
             }
         }
     }
-    assert_eq!(asked.len(), 7, "{asked:?}");
+    assert_eq!(asked.len(), sections.len(), "{asked:?}");
+    // Fields the library leaves empty everywhere, so its values can't say their kind: written out here.
+    let path = |p: &[&str]| p.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+    for (d, key, at, want) in [
+        (Discipline::Plumbing, "fixtures", path(&["fixtures", "[]", "hot_flow"]), ColumnKind::Number),
+        (Discipline::Electrical, "bath_volumes", path(&["volumes", "[]", "selv_max_v"]), ColumnKind::Number),
+        (Discipline::Electrical, "rcd", path(&["rules", "[]", "lights_from_mm"]), ColumnKind::Number),
+    ] {
+        assert_eq!((section_def(d, key).unwrap().columns)(&at), Some(want), "{key} {}", at.join("."));
+    }
 }

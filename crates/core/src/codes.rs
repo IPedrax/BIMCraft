@@ -168,6 +168,26 @@ fn no_columns(_: &[String]) -> Option<ColumnKind> {
     None
 }
 
+/// The columns of the plumbing sections' tables: drainage vent stacks (`drainage::DrainageRules`), fixtures
+/// (`plumbing::Fixtures`), hydrant systems and Hazen-Williams coefficients (`hydrant::HydrantRules`), storm roughness and
+/// downpipe curves (`storm::StormRules`).
+fn plumbing_columns(at: &[String]) -> Option<ColumnKind> {
+    use ColumnKind::*;
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["vent_stacks", "[]", "served" | "units"] => Some(Number),
+        ["fixtures", "[]", "kind" | "name" | "unit" | "water_source" | "drain_source"] => Some(Text),
+        ["fixtures", "[]", "cold_flow" | "hot_flow" | "weight" | "uhc" | "drain_dn"] => Some(Number),
+        // A hydrant system's key is a text, "1" as much as "A".
+        ["types", "[]", "key"] | ["hazen_c", "[]", "material"] | ["roughness", "[]", "material"] => Some(Text),
+        ["types", "[]", "type" | "nozzle_dn" | "hose_dn" | "hose_length" | "jet_flow" | "nozzle_head"] => Some(Number),
+        ["hazen_c", "[]", "c"] | ["roughness", "[]", "n"] => Some(Number),
+        ["downpipe_curves", "edge" | "funnel", "lengths", "[]", "length"] => Some(Number),
+        ["downpipe_curves", "edge" | "funnel", "lengths", "[]", "c"] => Some(Numbers),
+        _ => None,
+    }
+}
+
 /// The columns of the residual-current device rules' table (`dr::RuleSet`).
 fn rcd_columns(at: &[String]) -> Option<ColumnKind> {
     let at: Vec<&str> = at.iter().map(String::as_str).collect();
@@ -689,6 +709,7 @@ pub fn sections() -> &'static [SectionDef] {
                 (Electrical, "conduit_fill") => def.columns = conduit_fill_columns,
                 (Electrical, "surge") => def.columns = surge_columns,
                 (Electrical, "wire_types") => def.columns = wire_types_columns,
+                (Plumbing, "drainage" | "fixtures" | "hydrants" | "storm") => def.columns = plumbing_columns,
                 _ => {}
             }
         }
