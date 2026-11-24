@@ -23,12 +23,31 @@ fn plugins() -> Option<(Plugins, tempfile::TempDir)> {
         "version": "0.1.0",
         "name": "Sample",
         "description": "The rooms' areas, read by the guest SDK.",
-        "abi": 1,
+        "abi": 2,
         "module": "sample_plugin.wasm",
+        "panels": [{
+            "id": "areas",
+            "title": "Area Summary",
+            "order": 1,
+            "dock": "right",
+            "on_open": "panel_summary",
+            "refresh": "panel_summary",
+            "widgets": [
+                {"type": "label", "text": "Totals by level"},
+                {"type": "level", "id": "level", "label": "Level"},
+                {"type": "button", "id": "run", "label": "Summarise", "function": "panel_summary"},
+                {"type": "table", "id": "rows", "columns": [
+                    {"key": "what", "label": "What", "width": 120},
+                    {"key": "value", "label": "Value", "width": 90, "align": "right"}
+                ]},
+                {"type": "text", "id": "note", "label": "Note", "readonly": true}
+            ]
+        }],
         "functions": [
             {"id": "summary", "label": "Summary", "tab": "Sample"},
             {"id": "write_note", "label": "Write Note", "tab": "Sample"},
-            {"id": "fail", "label": "Fail", "tab": "Sample"}
+            {"id": "fail", "label": "Fail", "tab": "Sample"},
+            {"id": "panel_summary", "label": "Area Summary", "ui": "panel"}
         ]
     });
     let path = dir.path().join("sample");

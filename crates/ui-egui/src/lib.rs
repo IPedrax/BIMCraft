@@ -44,6 +44,8 @@ mod finishes;
 mod fly;
 mod footer;
 mod gpu;
+mod plugin_form;
+mod plugin_panels;
 mod printsets;
 mod profile;
 mod publisher;
@@ -1181,6 +1183,13 @@ pub struct BimApp {
     /// the path left to set. Running a function is one click on the ribbon, and a function that needs a file asks for
     /// it there.
     pub(crate) plugin_pick: Option<(String, serde_json::Map<String, serde_json::Value>)>,
+    /// The values and the answer of each plugin's panel, by the palette's name (`plugin:<plugin id>:<panel id>`): kept while
+    /// the window is open, and never written to the project or the settings file.
+    pub(crate) plugin_panel_states: std::collections::BTreeMap<String, crate::plugin_panels::PluginPanelState>,
+    /// The form a plugin function's `params` make, by the command's id: its values stay while the window is open.
+    pub(crate) plugin_forms: std::collections::BTreeMap<String, plugin_form::PluginForm>,
+    /// The command whose form is open in a dialog.
+    pub(crate) plugin_form_open: Option<String>,
     /// The folder being read on a thread of its own, so the first frame isn't kept waiting by it.
     plugins_job: Option<std::sync::mpsc::Receiver<bimcraft_plugin::Plugins>>,
     /// Manage > Coordinates, while it is open.
@@ -2071,6 +2080,9 @@ impl BimApp {
             plugins_dialog: false,
             plugin_report: None,
             plugin_pick: None,
+            plugin_panel_states: std::collections::BTreeMap::new(),
+            plugin_forms: std::collections::BTreeMap::new(),
+            plugin_form_open: None,
             plugins_job: None,
             coordinates_dialog: None,
             survey_moves: bimcraft_core::coordinates::Move::Point,
@@ -2145,6 +2157,9 @@ impl BimApp {
             revit_report: None,
         };
         shortcuts::publish(&app.shortcuts);
+        // A new window has no plugin palettes until its plugins are read: the registry is the thread's, and a test may
+        // have left one there.
+        crate::dock::set_plugin_palettes(&[]);
         app
     }
 
@@ -2819,6 +2834,7 @@ impl BimApp {
             || self.selection_filter.is_some()
             || self.settings_page.is_some()
             || self.plugins_dialog
+            || self.plugin_form_open.is_some()
             || self.find.is_some()
             || self.new_schedule.is_some()
             || self.show_shortcuts
@@ -4535,8 +4551,13 @@ impl BimApp {
         (fresh.plugins, fresh.plugin_tabs) = (std::mem::take(&mut self.plugins), std::mem::take(&mut self.plugin_tabs));
         fresh.plugins_job = self.plugins_job.take();
         fresh.plugins_dialog = self.plugins_dialog;
+        fresh.plugin_panel_states = std::mem::take(&mut self.plugin_panel_states);
+        fresh.plugin_forms = std::mem::take(&mut self.plugin_forms);
+        fresh.plugin_form_open = self.plugin_form_open.take();
         fresh.plugins.register(&mut fresh.session);
         fresh.plugin_tabs = fresh.plugins.tabs();
+        // A new window starts with no plugin palettes, but this one keeps them: they are the user's folder, as the tabs are.
+        crate::dock::set_plugin_palettes(&fresh.plugins.panels());
         *self = fresh;
     }
 
@@ -5690,7 +5711,7 @@ impl BimApp {
             ribbon::choices(ui, &r, false, |ui| {
                 for p in dock::Palette::known() {
                     let mut on = self.docking.shown(p);
-                    if ui.checkbox(&mut on, t(p.name())).changed() {
+                    if ui.checkbox(&mut on, p.title()).changed() {
                         self.show_palette(p, on);
                     }
                 }
@@ -7666,6 +7687,7 @@ impl BimApp {
         self.new_project_window(ctx);
         self.plugins_window(ctx);
         self.plugin_report_window(ctx);
+        self.plugin_form_window(ctx);
         self.background_grid_window(ctx);
         self.underlay_window(ctx);
         self.installing_box(ctx);

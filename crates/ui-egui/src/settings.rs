@@ -581,7 +581,7 @@ impl BimApp {
     pub(crate) fn palette_switches(&mut self, ui: &mut Ui) {
         for p in Palette::known() {
             let mut on = self.docking.shown(p);
-            if ui.checkbox(&mut on, t(p.name())).changed() {
+            if ui.checkbox(&mut on, p.title()).changed() {
                 self.show_palette(p, on);
             }
         }
