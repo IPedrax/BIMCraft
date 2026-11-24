@@ -352,6 +352,28 @@ sizing pass comes at once) so that frames come no closer than the monitor's refr
 driver's vsync, to compare. The tests have no pacer (`frames: None`). The core's own times on Windows matched Linux's (`docs/performance.md`), so
 a Windows-only slowness is to be looked for in presentation first: run the benchmark and compare the frames' interval with their `cpu_ms`.
 
+No graphics card (software rendering). Where the machine has no graphics card, wgpu draws on a software adapter: Direct3D's WARP
+("Microsoft Basic Render Driver") on Windows, llvmpipe or lavapipe on Linux. Measured on a two-core Windows 11 VM with only a QXL display
+(0.12.0, 2026-11-24): a frame that cost the window 4 to 7 ms took WARP 450 to 1000 ms of both cores, moving the pointer over a plan held
+the process at 1.78 of 2 cores and starved the other applications, the processor stayed busy for 2 s after the pointer stopped (two frames
+queued), and the pan's frames alternated between about 1050 ms and 50 to 90 ms, wgpu's one-second wait for the swap chain timing out. Now
+`main` reads the adapter's type when the window comes up (`pacing::software`: type `Cpu`, or a known rasterizer's name), the log's
+`window up:` line names it (`(Dx12, Cpu, software rendering, …)`), and `BimApp::software_rendering` says so once on the status bar and on
+Settings > Performance. On a software adapter the surface is Fifo with one frame in flight (`pacing::surface_for`: Mailbox renders frames
+only to throw them away), and the pacer paces frames by their cost (`Pacer::every_for`): a running average of the time from one frame's
+start to the next (a gap of over 1.5 s is a pause, not a cost), and frames no closer than that over `BUDGET` (0.5), so a 400 ms frame is
+followed by 400 ms of rest, never more than a second. Input that comes meanwhile is gathered into the next frame, and `BimApp::pace`
+still cuts it after a click, so a click lands where it was made. Settings > Performance > Frame rate limit (Automatic, 60, 30, 15, 10;
+`frame_limit` in `settings.json`, `pacing::Limit`) caps the rate on any adapter; on Linux, where vsync paces a card, a limit makes the
+pacer wait too (`Pacer::active`). `BIMCRAFT_SOFTWARE=1` draws on a software adapter anyway (DirectX 12's WARP on Windows; on Linux
+lavapipe where Mesa has it), to reproduce a machine with no card, or for a user whose driver is broken; like `WGPU_BACKEND` it is never
+kept. wgpu's, egui-wgpu's and eframe's own warnings now reach `bimcraft.log` (`apps/bimcraft/src/wgpu_log.rs`: the first 20 of a start,
+then one line a minute counting the rest), and the frames whose surface wgpu couldn't give are counted (`on_surface_status`,
+`pacing::surface_failures`) and reported by the benchmark per step and in all (`surface_failures`). Not changed, for now: dithering
+(egui-wgpu's renderer is made before the adapter is known, so it would mean choosing the adapter before the window); the 3D view's CPU
+workers (already `cores − 1`, so one on a two-core machine); the process's priority (it needs Win32 calls, and so `unsafe`). The real
+fix, drawing egui on the processor ourselves and presenting with `softbuffer`, is phase 2 of the plan in the pull request.
+
 Tags. A `Tag` names an element at a `host` by a `label`: the name of one of the fields its category's schedule has (`schedule::field_text` reads it
 as the schedule shows it, in the project's units), or, with none, the category's usual one (`Tag::usual`: a door's or window's `Mark`, a room's `Name`, else
 the `Type`), `?` while that has no value. The host is anything `Model::anchor` finds a point for (a door or window's centre, the middle of a wall's or a run's
@@ -897,7 +919,9 @@ quit
 ```
 
 Each step prints a line on standard error (its time, its frames, the median, 95th percentile and longest frame, the memory
-allocated) and the report has every frame's interval. A benchmark sends nothing to the network. Every frame is drawn while it
+allocated) and the report has every frame's interval, and the frames whose surface wgpu couldn't give (`surface_failures`, per step
+and in all: a swap chain that timed out). To measure a machine without a graphics card on one that has it, set `BIMCRAFT_SOFTWARE=1`,
+and on Windows hold the process to two cores: `cmd /c start "" /affinity 3 bimcraft.exe --sample --bench bench.txt --bench-out out.json`. A benchmark sends nothing to the network. Every frame is drawn while it
 runs, as if the user kept moving.
 
 Run it where frames are presented: a locked or hidden window gets no frames from its compositor (Wayland withholds them), so
