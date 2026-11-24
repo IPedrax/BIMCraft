@@ -12432,6 +12432,10 @@ msgstr ""
 msgid "Other Borders (Top, Right, Bottom):"
 msgstr ""
 
+#: crates/ui-egui/src/ribbon.rs:220
+msgid "Other Tabs"
+msgstr ""
+
 #: crates/ui-egui/src/cowork.rs:614
 #: crates/ui-egui/src/cowork.rs:759
 msgid "Others may ask to join without the code"
@@ -18609,6 +18613,10 @@ msgstr ""
 
 #: crates/ui-egui/src/asset_manager.rs:174
 msgid "The project has none."
+msgstr ""
+
+#: crates/ui-egui/src/ribbon.rs:241
+msgid "The project scale leaves this panel out"
 msgstr ""
 
 #: crates/ui-egui/src/start.rs:333

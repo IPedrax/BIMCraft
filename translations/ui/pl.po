@@ -12432,6 +12432,10 @@ msgstr ""
 msgid "Other Borders (Top, Right, Bottom):"
 msgstr ""
 
+#: crates/ui-egui/src/ribbon.rs:220
+msgid "Other Tabs"
+msgstr ""
+
 #: crates/ui-egui/src/cowork.rs:614
 #: crates/ui-egui/src/cowork.rs:759
 msgid "Others may ask to join without the code"
@@ -18611,6 +18615,10 @@ msgstr ""
 msgid "The project has none."
 msgstr ""
 
+#: crates/ui-egui/src/ribbon.rs:241
+msgid "The project scale leaves this panel out"
+msgstr ""
+
 #: crates/ui-egui/src/start.rs:333
 msgid "The project stays as you left it."
 msgstr ""
@@ -23812,13 +23820,34 @@ msgstr ""
 #: crates/ui-egui/src/codes.rs:641
 #~ msgid "A name of your own"
 #~ msgstr ""
+#: crates/ui-egui/src/editor.rs:828
+#~ msgid "A scan's points, which a family has none of"
+#~ msgstr ""
 #: crates/ui-egui/src/shortcuts.rs:413
 #: crates/ui-egui/src/shortcuts.rs:434
 #~ msgid "Add Shortcut"
 #~ msgstr "Dodaj skrót"
+#: crates/ui-egui/src/editor/document.rs:552
+#~ msgid "An annotation family is two-dimensional: draw it with Symbolic Line, Text and Filled Region."
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:824
+#~ msgid "An arc's points along its axes: east, north, west and south"
+#~ msgstr ""
 #: crates/ui-egui/src/lib.rs:5761
 #~ msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns"
 #~ msgstr "Ustawienia adnotacji: grubości linii, style linii, wzory linii i wzory wypełnienia"
+#: crates/core/src/commands.rs:1472
+#~ msgid "Annotation Symbol"
+#~ msgstr ""
+#: crates/ui-egui/src/orbit.rs:1563
+#~ msgid "Annotation symbols go on a sheet or a flat view: open one from the Project Browser."
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:656
+#~ msgid "Arc: click its start and its end, then a point the arc passes through"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/views.rs:916
+#~ msgid "Arc: click the third point off the line through the first two"
+#~ msgstr ""
 #: crates/ui-egui/src/rebar_detail.rs:131
 #~ msgid "Beams: {}"
 #~ msgstr ""
@@ -23843,6 +23872,9 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:2325
 #~ msgid "Click to see which rules, and what would bring the stair inside them"
 #~ msgstr ""
+#: crates/ui-egui/src/lib.rs:7048
+#~ msgid "Click where the annotation symbol goes."
+#~ msgstr ""
 #: crates/ui-egui/src/lib.rs:6826
 #~ msgid "Click where the detail line starts."
 #~ msgstr ""
@@ -23864,162 +23896,15 @@ msgstr ""
 #: crates/ui-egui/src/codes.rs:216
 #~ msgid "Documents this code's numbers are from:"
 #~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:668
+#~ msgid "Dot: click where a filled circle goes"
+#~ msgstr ""
 #: crates/ui-egui/src/codes.rs:235
 #~ msgid "Each rule shows where its number comes from on the Stairs tab."
 #~ msgstr ""
 #: crates/ui-egui/src/shortcuts.rs:232
 #: crates/ui-egui/src/shortcuts.rs:235
 #~ msgid "Failed to read file: {}"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:565
-#~ msgid "Left out of the file, unknown to this version: {}"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:380 crates/ui-egui/src/codes.rs:419
-#~ msgid "Left to the project"
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:409
-#~ msgid "Load File..."
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:241
-#~ msgid "Loaded {} shortcuts from file."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:494
-#~ msgid "Make the stair this one, in one step that Undo takes back"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:204
-#~ msgid "Manage > Building Codes changes a rule for this project."
-#~ msgstr ""
-#: crates/ui-egui/src/rebar_detail.rs:249
-#~ msgid "Nothing to draw: the beam has no bars."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:529
-#~ msgid "Open the project's building code and its rules"
-#~ msgstr ""
-#: crates/ui-egui/src/properties.rs:3980
-#~ msgid "Picture…"
-#~ msgstr ""
-#: crates/ui-egui/src/settings.rs:586
-#~ msgid "Properties over the Project Browser, on the left, as at first"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:631
-#~ msgid "Read a building code from an XML file, as one of the project's own"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:666
-#~ msgid "Reset to the Code's Rules"
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:423
-#: crates/ui-egui/src/shortcuts.rs:426
-#~ msgid "Restore Defaults"
-#~ msgstr ""
-#: crates/ui-egui/src/lib.rs:4827
-#~ msgid "Save As…"
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:459
-#~ msgid "Select an action to assign."
-#~ msgstr ""
-#: crates/ui-egui/src/rebar_detail.rs:104
-#~ msgid "Select the reinforced beams to detail first."
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:468
-#~ msgid "Shortcut '{}' added for '{}'."
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:572
-#~ msgid "Shortcut '{}' updated."
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:436
-#~ msgid "Shortcut Keys:"
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:456
-#: crates/ui-egui/src/shortcuts.rs:565
-#~ msgid "Shortcut keys are two characters, letters or numbers."
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:401
-#~ msgid "Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall."
-#~ msgstr ""
-#: crates/ui-egui/src/rebar_detail.rs:139
-#~ msgid "Stations are where the sections are cut, along the beam; blank is the middle of each zone of stirrups."
-#~ msgstr ""
-#: crates/ui-egui/src/steel.rs:288
-#~ msgid "Steel List and Cut Plan"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:509
-#~ msgid "Still outside: {}"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:634
-#~ msgid "Take this code of the project's own away; a project held to it keeps its rules"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:602
-#~ msgid "The building code this project's stairs and railings are held to. A new stair starts with its numbers. Any rule can be changed, for a state's or a city's own; a stair outside the rules is still built, and marked."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:397
-#~ msgid "The methods the project's electrical demand is worked out by. A command given a method of its own uses that one instead."
-#~ msgstr ""
-#: crates/ui-egui/src/presets.rs:217
-#~ msgid "The palettes, the tools shown, the project scale and the layout, kept under this name"
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:464
-#: crates/ui-egui/src/shortcuts.rs:567
-#~ msgid "The shortcut '{}' already exists for '{}'."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:174
-#~ msgid "The stair is built as drawn. These rules it is outside of:"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:185
-#~ msgid "The stair:"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:449
-#~ msgid "The tables' numbers are the method's own, and aren't edited here."
-#~ msgstr ""
-#: crates/ui-egui/src/settings.rs:584
-#~ msgid "The tools on the left, the Inspector over the Navigator on the right, as at first"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:84
-#~ msgid "The winders come too close to a point at the inside. Spread them into the flights so each keeps some depth."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:228
-#~ msgid "These numbers haven't been checked against the documents yet. Check one against a copy before you rely on it."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:78
-#~ msgid "This flight climbs too far without a rest. Add a landing to break it up; Add Landings Due in Properties does it for you."
-#~ msgstr ""
-#: crates/ui-egui/src/lib.rs:4849
-#~ msgid "Tick the tools this palette shows; Find still has the others"
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:643
-#~ msgid "Unsaved, the rules are still the project's when applied."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:632
-#~ msgid "Write these rules as an XML file, to hand to another project or office"
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:242
-#~ msgid "{} Skipped {}."
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:828
-#~ msgid "A scan's points, which a family has none of"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:552
-#~ msgid "An annotation family is two-dimensional: draw it with Symbolic Line, Text and Filled Region."
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:824
-#~ msgid "An arc's points along its axes: east, north, west and south"
-#~ msgstr ""
-#: crates/core/src/commands.rs:1472
-#~ msgid "Annotation Symbol"
-#~ msgstr ""
-#: crates/ui-egui/src/orbit.rs:1563
-#~ msgid "Annotation symbols go on a sheet or a flat view: open one from the Project Browser."
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:656
-#~ msgid "Arc: click its start and its end, then a point the arc passes through"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/views.rs:916
-#~ msgid "Arc: click the third point off the line through the first two"
-#~ msgstr ""
-#: crates/ui-egui/src/lib.rs:7048
-#~ msgid "Click where the annotation symbol goes."
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:668
-#~ msgid "Dot: click where a filled circle goes"
 #~ msgstr ""
 #: crates/ui-egui/src/editor.rs:1336
 #~ msgid "Fill Type"
@@ -24043,8 +23928,26 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:664
 #~ msgid "Label: click where a label reading a parameter goes"
 #~ msgstr ""
+#: crates/ui-egui/src/codes.rs:565
+#~ msgid "Left out of the file, unknown to this version: {}"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:380 crates/ui-egui/src/codes.rs:419
+#~ msgid "Left to the project"
+#~ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:652
 #~ msgid "Line: click its points in the plan; Enter or a double-click closes it"
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:409
+#~ msgid "Load File..."
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:241
+#~ msgid "Loaded {} shortcuts from file."
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:494
+#~ msgid "Make the stair this one, in one step that Undo takes back"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:204
+#~ msgid "Manage > Building Codes changes a rule for this project."
 #~ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:686
 #~ msgid "Masking Region: a filled region that hides the model under it"
@@ -24055,17 +23958,64 @@ msgstr ""
 #: crates/ui-egui/src/editor.rs:1405
 #~ msgid "No parameter `{}`. Create it in Family Types, or use one of: {}"
 #~ msgstr ""
+#: crates/ui-egui/src/rebar_detail.rs:249
+#~ msgid "Nothing to draw: the beam has no bars."
+#~ msgstr ""
 #: crates/ui-egui/src/editor.rs:797
 #~ msgid "Off: a point with nothing to snap to follows the cursor exactly. On: it rounds to the step below."
 #~ msgstr ""
 #: crates/ui-egui/src/editor/options.rs:94
 #~ msgid "On: 1 × 1 at 1:100 becomes 100 × 100 in the model. Off: it stays 1 × 1 in the model."
 #~ msgstr ""
+#: crates/ui-egui/src/codes.rs:529
+#~ msgid "Open the project's building code and its rules"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:3980
+#~ msgid "Picture…"
+#~ msgstr ""
+#: crates/ui-egui/src/settings.rs:586
+#~ msgid "Properties over the Project Browser, on the left, as at first"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:631
+#~ msgid "Read a building code from an XML file, as one of the project's own"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:666
+#~ msgid "Reset to the Code's Rules"
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:423
+#: crates/ui-egui/src/shortcuts.rs:426
+#~ msgid "Restore Defaults"
+#~ msgstr ""
 #: crates/ui-egui/src/editor.rs:1332
 #~ msgid "Rings (JSON)"
 #~ msgstr ""
+#: crates/ui-egui/src/lib.rs:4827
+#~ msgid "Save As…"
+#~ msgstr ""
 #: crates/ui-egui/src/editor/options.rs:16
 #~ msgid "Scale with View"
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:459
+#~ msgid "Select an action to assign."
+#~ msgstr ""
+#: crates/ui-egui/src/rebar_detail.rs:104
+#~ msgid "Select the reinforced beams to detail first."
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:468
+#~ msgid "Shortcut '{}' added for '{}'."
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:572
+#~ msgid "Shortcut '{}' updated."
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:436
+#~ msgid "Shortcut Keys:"
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:456
+#: crates/ui-egui/src/shortcuts.rs:565
+#~ msgid "Shortcut keys are two characters, letters or numbers."
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:401
+#~ msgid "Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall."
 #~ msgstr ""
 #: crates/ui-egui/src/editor.rs:796
 #~ msgid "Snap to coordinates"
@@ -24073,8 +24023,17 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:748
 #~ msgid "Snaps: what this family's plans stick to while its symbols are drawn"
 #~ msgstr ""
+#: crates/ui-egui/src/rebar_detail.rs:139
+#~ msgid "Stations are where the sections are cut, along the beam; blank is the middle of each zone of stirrups."
+#~ msgstr ""
+#: crates/ui-egui/src/steel.rs:288
+#~ msgid "Steel List and Cut Plan"
+#~ msgstr ""
 #: crates/ui-egui/src/editor.rs:801
 #~ msgid "Step"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:509
+#~ msgid "Still outside: {}"
 #~ msgstr ""
 #: crates/ui-egui/src/editor.rs:1337
 #~ msgid "Symbol Fill Type"
@@ -24089,11 +24048,17 @@ msgstr ""
 #: crates/ui-egui/src/editor.rs:1437
 #~ msgid "Symbol Wrap Width"
 #~ msgstr ""
+#: crates/ui-egui/src/codes.rs:634
+#~ msgid "Take this code of the project's own away; a project held to it keeps its rules"
+#~ msgstr ""
 #: crates/ui-egui/src/editor.rs:1422
 #~ msgid "Text Type"
 #~ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:660
 #~ msgid "Text: click where plain text goes, then type it in Properties"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:602
+#~ msgid "The building code this project's stairs and railings are held to. A new stair starts with its numbers. Any rule can be changed, for a state's or a city's own; a stair outside the rules is still built, and marked."
 #~ msgstr ""
 #: crates/ui-egui/src/editor.rs:822
 #~ msgid "The centre of an arc or a dot"
@@ -24104,14 +24069,51 @@ msgstr ""
 #: crates/ui-egui/src/editor.rs:823
 #~ msgid "The foot of the perpendicular from the last point"
 #~ msgstr ""
+#: crates/ui-egui/src/codes.rs:397
+#~ msgid "The methods the project's electrical demand is worked out by. A command given a method of its own uses that one instead."
+#~ msgstr ""
 #: crates/ui-egui/src/editor.rs:820
 #~ msgid "The middle of a symbolic line"
 #~ msgstr ""
 #: crates/ui-egui/src/editor.rs:826
 #~ msgid "The nearest point of a symbolic line"
 #~ msgstr ""
+#: crates/ui-egui/src/presets.rs:217
+#~ msgid "The palettes, the tools shown, the project scale and the layout, kept under this name"
+#~ msgstr ""
+#: crates/ui-egui/src/shortcuts.rs:464
+#: crates/ui-egui/src/shortcuts.rs:567
+#~ msgid "The shortcut '{}' already exists for '{}'."
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:174
+#~ msgid "The stair is built as drawn. These rules it is outside of:"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:185
+#~ msgid "The stair:"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:449
+#~ msgid "The tables' numbers are the method's own, and aren't edited here."
+#~ msgstr ""
+#: crates/ui-egui/src/settings.rs:584
+#~ msgid "The tools on the left, the Inspector over the Navigator on the right, as at first"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:84
+#~ msgid "The winders come too close to a point at the inside. Spread them into the flights so each keeps some depth."
+#~ msgstr ""
 #: crates/ui-egui/src/editor.rs:795
 #~ msgid "These apply to the lines, arcs, labels and regions drawn in this family's plan."
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:228
+#~ msgid "These numbers haven't been checked against the documents yet. Check one against a copy before you rely on it."
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:78
+#~ msgid "This flight climbs too far without a rest. Add a landing to break it up; Add Landings Due in Properties does it for you."
+#~ msgstr ""
+#: crates/ui-egui/src/lib.rs:4849
+#~ msgid "Tick the tools this palette shows; Find still has the others"
+#~ msgstr ""
+#: crates/ui-egui/src/codes.rs:643
+#~ msgid "Unsaved, the rules are still the project's when applied."
 #~ msgstr ""
 #: crates/ui-egui/src/editor.rs:1425
 #~ msgid "Vertical Align"
@@ -24128,12 +24130,12 @@ msgstr ""
 #: crates/ui-egui/src/editor.rs:1436
 #~ msgid "Wrap Width"
 #~ msgstr ""
+#: crates/ui-egui/src/codes.rs:632
+#~ msgid "Write these rules as an XML file, to hand to another project or office"
+#~ msgstr ""
 #: crates/ui-egui/src/editor/views.rs:772
 #~ msgid "annotation symbols are drawn in the plan"
 #~ msgstr ""
-#: crates/ui-egui/src/ribbon.rs:220
-#~ msgid "Other Tabs"
-#~ msgstr ""
-#: crates/ui-egui/src/ribbon.rs:241
-#~ msgid "The project scale leaves this panel out"
+#: crates/ui-egui/src/shortcuts.rs:242
+#~ msgid "{} Skipped {}."
 #~ msgstr ""
