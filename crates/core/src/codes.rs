@@ -144,6 +144,93 @@ pub struct SectionDef {
     pub about: &'static str,
     pub read_by: &'static [&'static str],
     pub read: fn(&Value) -> Result<Value, String>,
+    /// The kind of value a column of one of its tables holds, by the column's keys from the section down (`[]` for the
+    /// rows of a list): what the window takes a cell typed in as. None: the window goes by what the column holds.
+    pub columns: fn(&[String]) -> Option<ColumnKind>,
+}
+
+/// The kind of value a table's column holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColumnKind {
+    /// A number.
+    Number,
+    /// A list of numbers.
+    Numbers,
+    /// A text, whatever it reads as ("7" stays a text).
+    Text,
+    /// What a standard prints in that place, as printed (a number, a text, a list): the window reads it as the column's
+    /// other rows hold it.
+    Printed,
+}
+
+/// A section that says nothing of its columns.
+fn no_columns(_: &[String]) -> Option<ColumnKind> {
+    None
+}
+
+/// The columns of a unit's demand method's tables (`demand::Standard` and its `Method`).
+fn unit_demand_columns(at: &[String]) -> Option<ColumnKind> {
+    use ColumnKind::*;
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        // By terms: the categories of supply, the special loads, the uses.
+        ["method", "terms", "categories", "[]", "system"] => Some(Text),
+        ["method", "terms", "categories", "[]", "rows", "[]", "name"] => Some(Text),
+        ["method", "terms", "categories", "[]", "rows", "[]", _] => Some(Number),
+        ["method", "terms", "special", "[]", "kind"] | ["method", "terms", "uses", "[]", "use"] => Some(Text),
+        ["method", "terms", "special", "[]", "factors", "beyond"] => Some(Number),
+        // By annexes: each network's rows, and the rows by current.
+        ["method", "annexes", "networks", "[]", "network" | "annex"] => Some(Text),
+        ["method", "annexes", "networks", "[]", "primary_above"] => Some(Number),
+        ["method", "annexes", "networks", "[]", "rows", "[]", "name" | "measurement" | "junction_box"] => Some(Text),
+        ["method", "annexes", "networks", "[]", "rows", "[]", _, ..] => Some(Number),
+        ["method", "annexes", "by_current", "rows", "[]", "measurement"] => Some(Text),
+        ["method", "annexes", "by_current", "rows", "[]", "phases"] => Some(Numbers),
+        ["method", "annexes", "by_current", "rows", "[]", "breaker" | "entry" | "earthing"] => Some(Number),
+        ["method", "annexes", "by_current", "rows", "[]", "connection", _] => Some(Number),
+        // By a table: each network's rows.
+        ["method", "table", "networks", "[]", "network" | "beyond"] => Some(Text),
+        ["method", "table", "networks", "[]", "rows", "[]", "name"] => Some(Text),
+        ["method", "table", "networks", "[]", "rows", "[]", _, ..] => Some(Number),
+        _ => None,
+    }
+}
+
+/// The columns of a building's demand method's tables (`building_demand::Method`).
+fn building_demand_columns(at: &[String]) -> Option<ColumnKind> {
+    use ColumnKind::*;
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["diversity", "errata", "[]", "at" | "printed" | "value"] => Some(Number),
+        ["diversity", "errata", "[]", "why"] => Some(Text),
+        ["dwelling", "grades", "[]", "name" | "source"] => Some(Text),
+        ["dwelling", "grades", "[]", "demand"] => Some(Number),
+        ["common", "[]", "class" | "source"] => Some(Text),
+        ["common", "[]", "power_factor"] => Some(Number),
+        ["common", "[]", "bands", "[]", "up_to" | "factor"] => Some(Number),
+        ["premises", "[]", "use" | "source"] => Some(Text),
+        ["premises", "[]", "w_per_m2" | "least_w"] => Some(Number),
+        ["entrance", "rows", "[]", "over" | "up_to" | "breaker_a"] => Some(Number),
+        // The printed columns are texts here (`EntranceRow::columns`), a dash where the table prints none.
+        ["entrance", "rows", "[]", "columns", _] => Some(Text),
+        _ => None,
+    }
+}
+
+/// The columns of a service entrance's tables (`entrance::Row`).
+fn entrance_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["tables", "[]", "rows", "[]", rest @ ..] => match rest {
+            ["name"] | ["measurement"] => Some(ColumnKind::Text),
+            ["phases"] => Some(ColumnKind::Number),
+            ["breaker_a"] => Some(ColumnKind::Numbers),
+            ["demand_kva" | "installed_kw", "over" | "up_to"] => Some(ColumnKind::Number),
+            ["columns", _, ..] => Some(ColumnKind::Printed),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 impl SectionDef {
@@ -236,8 +323,16 @@ pub fn sections() -> &'static [SectionDef] {
     use Discipline::*;
     static ALL: OnceLock<Vec<SectionDef>> = OnceLock::new();
     ALL.get_or_init(|| {
-        let s = |discipline, key, label, about, read_by, read| SectionDef { discipline, key, label, about, read_by, read };
-        vec![
+        let s = |discipline, key, label, about, read_by, read| SectionDef {
+            discipline,
+            key,
+            label,
+            about,
+            read_by,
+            read,
+            columns: no_columns,
+        };
+        let mut all = vec![
             s(
                 Architectural,
                 "stairs",
@@ -512,7 +607,17 @@ pub fn sections() -> &'static [SectionDef] {
                 &[],
                 reference,
             ),
-        ]
+        ];
+        // The sections that say what their tables' columns hold.
+        for def in all.iter_mut() {
+            match (def.discipline, def.key) {
+                (Electrical, "entrance") => def.columns = entrance_columns,
+                (Electrical, "building_demand") => def.columns = building_demand_columns,
+                (Electrical, "unit_demand") => def.columns = unit_demand_columns,
+                _ => {}
+            }
+        }
+        all
     })
 }
 
