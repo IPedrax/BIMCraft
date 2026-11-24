@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use rune::{El, Phase, Shape, canvas, el, memo};
 
-use crate::app::App;
+use crate::app::{App, PlanMode};
 use crate::paint::{self, Palette};
 
 fn layer(key: &'static str, shape: Shape) -> El {
@@ -17,9 +17,13 @@ fn layer(key: &'static str, shape: Shape) -> El {
 pub fn plan(s: &App) -> El {
     let pal = Palette::dark();
     let size = s.size;
-    let base = memo("plan-base", (s.revision, size.0.to_bits(), size.1.to_bits()), || {
-        layer("plan-base", s.drawing.as_ref().map(|d| paint::base(d, size, true).shape).unwrap_or_default())
-    });
+    let base = match s.mode {
+        PlanMode::Shapes => memo("plan-base", (s.revision, size.0.to_bits(), size.1.to_bits()), || {
+            layer("plan-base", s.drawing.as_ref().map(|d| paint::base(d, size, true).shape).unwrap_or_default())
+        }),
+        // The image is replaced by `App::redraw` and shows without the view running again.
+        PlanMode::Pixels => el().key("plan-base").inert().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).pixels(&s.pixels),
+    };
     let selected: HashSet<_> = s.selection.iter().copied().collect();
     let hovered: HashSet<_> = s.hovered.filter(|h| !selected.contains(h)).into_iter().collect();
     let lit = |key: &'static str, owners: &HashSet<u64>, color, fill| match &s.drawing {

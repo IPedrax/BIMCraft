@@ -171,20 +171,17 @@ jobs:
           PY
           bins/bimcraft-rune/bimcraft-rune --script hover.json --frames 180 --size 1280x800 --out results/frames --every 1000 2>&1 | tee results/rune-headless.log
           bins/bimcraft-rune/bimcraft-rune --snap results/rune-snap.png --size 1280x800 2>&1 | tail -3
+          BIMCRAFT_RUNE_PLAN=pixels bins/bimcraft-rune/bimcraft-rune --snap results/rune-snap-pixels.png --size 1280x800 2>&1 | tail -3
+          for locale in zh_CN vi_VN pl_PL pt_BR; do
+            LC_ALL="$locale.UTF-8" bins/bimcraft-rune/bimcraft-rune --snap "results/rune-snap-$locale.png" --size 1280x800 2>&1 | tail -3
+          done
       - name: Start a display
         run: |
           Xvfb :99 -screen 0 1600x1000x24 &
           sleep 3
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
-      - name: Rune UI, GPU path on lavapipe
-        run: ci/measure-ui.sh rune-gpu results -- bins/bimcraft-rune/bimcraft-rune
-      - name: Rune UI, CPU renderer (RUNE_CPU_FIRST=only)
-        run: RUNE_CPU_FIRST=only ci/measure-ui.sh rune-cpu results -- bins/bimcraft-rune/bimcraft-rune
-      - name: egui on main
-        run: ci/measure-ui.sh egui-main results -- bins/bimcraft-egui-main/bimcraft-egui-main --sample
-      - name: egui with the join of 628, BIMCRAFT_SOFTWARE=1
-        if: ${{ hashFiles('bins/bimcraft-egui-join-628/bimcraft-egui-join-628') != '' }}
-        run: BIMCRAFT_SOFTWARE=1 ci/measure-ui.sh egui-join-628 results -- bins/bimcraft-egui-join-628/bimcraft-egui-join-628 --sample
+      - name: Measure every UI, twice
+        run: ci/measure-all.sh bins results
       - name: Fonts the system has (the fallback question)
         run: |
           fc-list : family | sort -u | head -40 | tee results/fonts.txt
@@ -193,11 +190,14 @@ jobs:
         run: |
           {
             echo '### UI cost with no graphics card (lavapipe, Xvfb, 4 vCPU runner)'
-            echo '| UI | idle cores | moving cores | CPU ms per move | RSS MB |'
-            echo '|---|---|---|---|---|'
-            for f in results/*.json; do
-              [ -f "$f" ] && python3 -c "import json,sys; r=json.load(open(sys.argv[1])); print(f\"| {r['name']} | {r['idle_cores']} | {r['move_cores']} | {r['ms_cpu_per_move']} | {r['rss_mb']} |\")" "$f"
-            done
+            echo '| UI | idle cores | pointer: cores | ms per move | zoom: cores | ms per notch | pan: cores | ms per move | RSS MB |'
+            echo '|---|---|---|---|---|---|---|---|---|'
+            python3 - <<'PY'
+          import glob, json
+          for f in sorted(glob.glob("results/*.json")):
+              r = json.load(open(f))
+              print(f"| {r['name']} | {r['idle_cores']} | {r['move_cores']} | {r['ms_cpu_per_move']} | {r['zoom_cores']} | {r['ms_cpu_per_zoom']} | {r['pan_cores']} | {r['ms_cpu_per_pan']} | {r['rss_mb']} |")
+          PY
             echo
             echo '```'
             grep -h '^rune:' results/rune-headless.log || true

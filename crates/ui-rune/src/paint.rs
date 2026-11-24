@@ -40,8 +40,14 @@ fn rgb8(r: u8, g: u8, b: u8) -> Color {
     rgba8(r, g, b, 255)
 }
 
+/// An sRGB byte as the linear-light value Rune's `Color` holds (its channels are linear, and it encodes them when it draws).
+fn linear(byte: u8) -> f32 {
+    let c = f32::from(byte) / 255.0;
+    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+}
+
 fn rgba8(r: u8, g: u8, b: u8, a: u8) -> Color {
-    Color { r: f32::from(r) / 255.0, g: f32::from(g) / 255.0, b: f32::from(b) / 255.0, a: f32::from(a) / 255.0 }
+    Color { r: linear(r), g: linear(g), b: linear(b), a: f32::from(a) / 255.0 }
 }
 
 /// A drawing's colour, as it is on paper, which a dark canvas shows lightened so black ink stays visible on it.
@@ -92,7 +98,8 @@ pub fn dashes(pts: &[(f32, f32)], closed: bool, pattern: &[f32]) -> Vec<Vec<(f32
     if !sound {
         return vec![path];
     }
-    let (mut runs, mut run): (Vec<Vec<(f32, f32)>>, Vec<(f32, f32)>) = (Vec::new(), Vec::new());
+    let mut runs: Vec<Vec<(f32, f32)>> = Vec::new();
+    let mut run: Vec<(f32, f32)> = Vec::new();
     let (mut index, mut left) = (0usize, pattern[0]);
     for w in path.windows(2) {
         let [(ax, ay), (bx, by)] = [w[0], w[1]];
@@ -249,6 +256,17 @@ mod tests {
         assert!(!reaches(&[(200.0, 10.0), (300.0, 20.0)], size, 1.0));
         assert!(!reaches(&[(f32::NAN, 0.0), (1.0, 1.0)], size, 1.0));
         assert!(!reaches(&[], size, 1.0));
+    }
+
+    #[test]
+    fn colours_are_handed_to_rune_in_linear_light() {
+        assert_eq!(rgb8(255, 255, 255), Color::WHITE);
+        assert_eq!(rgb8(0, 0, 0), Color::BLACK);
+        let grey = rgb8(128, 128, 128);
+        assert!((grey.r - 0.2158).abs() < 1e-3, "sRGB 128 is 21.6% linear: {}", grey.r);
+        assert_eq!(rgba8(0, 0, 0, 51).a, 0.2, "alpha stays straight");
+        let c = Color::hex(rgb8(30, 32, 36));
+        assert_eq!(c, "#1e2024ff", "and encodes back to the bytes it came from");
     }
 
     #[test]

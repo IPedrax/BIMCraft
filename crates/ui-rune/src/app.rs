@@ -6,6 +6,7 @@ use bimcraft_core::engine::Session;
 use bimcraft_core::ids::Id;
 use bimcraft_core::render::{self, Drawing};
 use bimcraft_core::sample::SAMPLE;
+use rune::Pixels;
 use serde_json::{Value, json};
 
 use crate::camera::Camera;
@@ -19,8 +20,30 @@ const CLICK: f32 = 4.0;
 /// The canvas's size before the first layout says it, points.
 const FIRST_SIZE: (f32, f32) = (900.0, 640.0);
 
+/// How the plan reaches the screen: as Rune shapes (strokes and polygons the renderer draws), or as the core's own raster of it
+/// (`render::raster`, tiny-skia on the CPU) shown as one image. `BIMCRAFT_RUNE_PLAN=pixels` picks the second: it is what a machine
+/// with no graphics card may do better at, and the measurement in docs/areas/rune-ui.md compares the two.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PlanMode {
+    #[default]
+    Shapes,
+    Pixels,
+}
+
+impl PlanMode {
+    pub fn from_env() -> PlanMode {
+        match std::env::var("BIMCRAFT_RUNE_PLAN").as_deref() {
+            Ok("pixels") => PlanMode::Pixels,
+            _ => PlanMode::Shapes,
+        }
+    }
+}
+
 pub struct App {
     pub session: Session,
+    pub mode: PlanMode,
+    /// The plan as an image, in [`PlanMode::Pixels`]: replaced whenever the plan is drawn again, shown without the view re-running.
+    pub pixels: Pixels,
     pub level: Option<Id>,
     pub level_name: String,
     pub camera: Camera,
@@ -47,6 +70,8 @@ impl App {
     pub fn new(session: Session) -> App {
         let mut app = App {
             session,
+            mode: PlanMode::from_env(),
+            pixels: Pixels::new(),
             level: None,
             level_name: String::new(),
             camera: Camera { cx: 0.0, cy: 0.0, scale: 0.1, angle: 0.0 },
@@ -109,6 +134,12 @@ impl App {
     pub fn redraw(&mut self) {
         self.drawing = self.level.map(|level| render::draw(&self.session.model, level, self.camera.view(self.size.0, self.size.1)));
         self.revision += 1;
+        if let (PlanMode::Pixels, Some(d)) = (self.mode, &self.drawing) {
+            let view = self.camera.view(self.size.0, self.size.1);
+            if let Ok(rgba) = render::raster(d, view.width, view.height, 1.0, (0.0, 0.0), None) {
+                self.pixels.set(view.width, view.height, rgba);
+            }
+        }
     }
 
     fn refresh(&mut self) {
@@ -252,6 +283,19 @@ mod tests {
         let c = app.camera;
         assert!(c.scale > 0.0 && c.cx.is_finite() && c.cy.is_finite());
         assert!(pickable(&app).is_some(), "something on the plan can be picked");
+    }
+
+    #[test]
+    fn the_plan_can_be_the_cores_own_raster_shown_as_one_image() {
+        let mut app = App::sample();
+        app.mode = PlanMode::Pixels;
+        app.redraw();
+        let size = app.pixels.with_rgba(|w, h, bytes| (w, h, bytes.len()));
+        let (w, h, len) = size.expect("an image");
+        assert_eq!((w as f32, h as f32), app.size);
+        assert_eq!(len, (w * h * 4) as usize, "RGBA, row by row");
+        let ink = app.pixels.with_rgba(|_, _, bytes| bytes.chunks(4).any(|p| p[0] < 128)).unwrap_or(false);
+        assert!(ink, "the plan has dark lines on its paper");
     }
 
     #[test]
