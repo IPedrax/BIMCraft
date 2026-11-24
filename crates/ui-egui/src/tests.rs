@@ -484,6 +484,21 @@ fn a_click_is_made_where_the_button_went_down_not_where_the_hand_had_got_to_by_t
 }
 
 #[test]
+fn a_click_made_while_a_software_frame_waits_lands_where_it_was_made() {
+    // Without a graphics card the window waits up to a second between frames (`pacing::BUDGET`): all that the hand did meanwhile
+    // reaches the app as one frame's events, a sweep across the plan with a click in the middle of it.
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    let here = h.state().screen(P2(1000.0, 1000.0));
+    let mut events: Vec<Event> =
+        (0..30).map(|i| Event::PointerMoved(h.state().screen(P2(8000.0 - 230.0 * f64::from(i), 4000.0 - 100.0 * f64::from(i))))).collect();
+    events.extend([Event::PointerMoved(here), button(here, true), button(here, false)]);
+    events.extend((0..30).map(|i| Event::PointerMoved(h.state().screen(P2(1000.0 + 150.0 * f64::from(i), 1000.0 + 90.0 * f64::from(i))))));
+    deliver(&mut h, events);
+    assert_eq!(h.state().tool, Tool::Wall(vec![P2(1000.0, 1000.0)]));
+}
+
+#[test]
 fn a_press_belongs_to_what_lay_under_it_though_the_hand_has_left_it_by_the_frames_end() {
     let mut h = app("");
     tool(&mut h, "Wall");

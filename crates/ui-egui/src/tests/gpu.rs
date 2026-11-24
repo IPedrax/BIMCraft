@@ -25,6 +25,45 @@ fn drawing_on_the_card_is_on_until_turned_off_kept_in_the_settings_and_survives_
 }
 
 #[test]
+fn the_frame_rate_limit_is_chosen_on_the_performance_page_and_kept_in_the_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app("");
+    h.state_mut().use_settings(file.clone());
+    assert_eq!(h.state().frame_limit, crate::pacing::Limit::Auto);
+    press(&mut h, "Settings");
+    press(&mut h, "Performance");
+    h.get_by_role_and_label(Role::ComboBox, "Frame rate limit").click();
+    h.run();
+    press(&mut h, "15 frames a second");
+    assert_eq!(h.state().frame_limit, crate::pacing::Limit::Hz(15));
+    h.run();
+    let kept: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(kept["frame_limit"], 15);
+    let mut again = app("");
+    again.state_mut().use_settings(file.clone());
+    assert_eq!(again.state().frame_limit, crate::pacing::Limit::Hz(15), "the next start keeps it");
+    // A rate the page doesn't offer, or a word it doesn't know, is Automatic.
+    std::fs::write(&file, br#"{"frame_limit": 1000}"#).unwrap();
+    let mut odd = app("");
+    odd.state_mut().use_settings(file);
+    assert_eq!(odd.state().frame_limit, crate::pacing::Limit::Auto);
+}
+
+#[test]
+fn a_window_drawn_in_software_says_so_and_paces_by_the_frames_cost() {
+    let mut h = app("");
+    h.state_mut().frames = Some(crate::pacing::Pacer::default());
+    h.state_mut().software_rendering("Microsoft Basic Render Driver");
+    assert!(h.state().frames.as_ref().is_some_and(|p| p.software && p.active()));
+    h.run();
+    assert!(h.query_by_label_contains("No graphics card found: drawing in software").is_some(), "the status bar says it");
+    press(&mut h, "Settings");
+    press(&mut h, "Performance");
+    assert!(h.query_by_label_contains("drawn in software, on the processor (Microsoft Basic Render Driver)").is_some());
+}
+
+#[test]
 fn the_performance_page_says_when_there_is_no_card_and_leaves_the_check_box_greyed() {
     let mut h = app("");
     press(&mut h, "Settings");
