@@ -40,7 +40,7 @@ fn plugins() -> Option<(Plugins, tempfile::TempDir)> {
                     {"key": "what", "label": "What", "width": 120},
                     {"key": "value", "label": "Value", "width": 90, "align": "right"}
                 ]},
-                {"type": "text", "id": "note", "readonly": true}
+                {"type": "text", "id": "note", "label": "Note", "readonly": true}
             ]
         }],
         "functions": [

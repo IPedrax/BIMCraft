@@ -778,7 +778,7 @@ mod tests {
                         {"key": "level", "label": "Level", "width": 120},
                         {"key": "area", "label": "Area", "width": 90, "align": "right"}
                     ]},
-                    {"type": "text", "id": "note", "readonly": true}
+                    {"type": "text", "id": "note", "label": "Note", "readonly": true}
                 ]
             }],
             "functions": [{"id": "summary", "label": "Area Summary", "tab": "Areas", "panel": "Rooms", "order": 1,
