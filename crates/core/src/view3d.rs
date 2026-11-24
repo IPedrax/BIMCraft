@@ -1503,6 +1503,29 @@ fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
 
 /// Floor, ceiling or roof `id`'s solids: [`slab_solids`], less the voids of the components on its faces that reach it
 /// ([`Model::hosted_voids`]); should cutting fail, uncut.
+/// The solids of floor, roof or toposolid `id` that reach over the box from `lo` to `hi` in plan (a mesh's triangles
+/// there only): what a railing on it stands on.
+pub(crate) fn top_solids(m: &Model, id: Id, (lo, hi): (P2, P2)) -> Vec<Solid> {
+    let Some(e) = m.elements.get(id) else { return Vec::new() };
+    let pad = 10.0;
+    let near = |q: &[P3]| {
+        let (a, b) = q.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(a, b), p| {
+            (P2(a.0.min(p[0]), a.1.min(p[1])), P2(b.0.max(p[0]), b.1.max(p[1])))
+        });
+        a.0 <= hi.0 + pad && b.0 >= lo.0 - pad && a.1 <= hi.1 + pad && b.1 >= lo.1 - pad
+    };
+    host_slab_solids(m, id, e)
+        .into_iter()
+        .filter_map(|s| match s {
+            Solid::Mesh { owner, color, tex, tris, caps: _, round, shared, cut, vis } => {
+                let tris: Vec<[P3; 3]> = tris.into_iter().filter(|t| near(t)).collect();
+                (!tris.is_empty()).then_some(Solid::Mesh { owner, color, tex, tris, caps: 0, round, shared, cut, vis })
+            }
+            other => Some(other),
+        })
+        .collect()
+}
+
 fn host_slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
     let solids = slab_solids(m, id, e);
     let voids: Vec<Vec<[P3; 3]>> = m.hosted_voids(id).into_iter().flat_map(|(_, v)| v).collect();
@@ -1921,6 +1944,10 @@ fn solids_in_with(
                         crate::railings::Piece::Tube(g) => {
                             let (tris, caps) = g.tube();
                             Solid::Mesh { owner: id, color, tex, tris, caps, round: true, shared: false, cut: true, vis: 0 }
+                        }
+                        crate::railings::Piece::Sweep { path, profile, round, .. } => {
+                            let (tris, caps) = crate::railings::sweep(&path, &profile);
+                            Solid::Mesh { owner: id, color, tex, tris, caps, round, shared: false, cut: true, vis: 0 }
                         }
                     });
                 }

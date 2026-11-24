@@ -187,7 +187,7 @@ impl RailingEditor {
         p.rect_stroke(rect, 0.0, Stroke::new(1.0, pal().border), egui::StrokeKind::Inside);
         let t = self.draft();
         let along = sample_length(&self.posts);
-        let pieces = railings::build(&t, vec![(P2(0.0, 0.0), 0.0), (P2(along, 0.0), 0.0)]);
+        let pieces = railings::build(&t, vec![(P2(0.0, 0.0), 0.0), (P2(along, 0.0), 0.0)], &railings::Ground::none());
         let top = railings::height(&t).max(100.0);
         // The elevation on the left, the section (offsets across, as looking along the railing) on the right.
         let across = 400.0;

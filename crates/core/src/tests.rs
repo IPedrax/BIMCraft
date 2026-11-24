@@ -4933,7 +4933,8 @@ fn railings_run_along_stairs_and_ramps_or_along_a_path() {
     assert_eq!(left["path"], json!([[550.0, 1000.0], [550.0, 5480.0]]), "{left}");
     // Its rail rises with the stair, a metre over its walk line.
     let rail = |s: &Session, id: u64, p: P2| crate::view3d::tops_at(&s.model, p).get(&id).copied();
-    let at = |y: f64| 3000.0 * (y - 1000.0) / 4480.0 + 1000.0;
+    // Over the treads' nosings: the first one riser up at the stair's foot, the last at its top.
+    let at = |y: f64| 3000.0 / 17.0 * (1.0 + (y - 1000.0) / 280.0) + 1000.0;
     assert!((rail(&s, ids[0], P2(550.0, 3000.0)).unwrap() - at(3000.0)).abs() < 1.0, "{:?}", rail(&s, ids[0], P2(550.0, 3000.0)));
     // It goes where its stair goes, and with it.
     run(&mut s, "move", json!({"ids": [st], "by": [500, 0]}));

@@ -529,6 +529,10 @@ fn is_yes(b: &bool) -> bool {
     *b
 }
 
+fn is_zero_u32(x: &u32) -> bool {
+    *x == 0
+}
+
 fn is_zero(x: &f64) -> bool {
     *x == 0.0
 }
@@ -3946,6 +3950,12 @@ pub struct PostPart {
     pub depth: f64,
     #[serde(default)]
     pub spacing: f64,
+    /// On a stair, a post on every `steps`th step of each flight instead (0: off), and on its first and last unless
+    /// `skip_ends`.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub steps: u32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_ends: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bottom: Option<String>,
     #[serde(default, skip_serializing_if = "is_zero")]

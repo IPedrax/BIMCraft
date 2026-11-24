@@ -5,6 +5,7 @@
 use crate::geom::{self, P2};
 use crate::model::{Element, Guid, MAX_BALUSTERS, Model, PanelPart, PartShape, PostKind, PostPart, RailPart, Railing, RailingType};
 use crate::runs::Geom;
+use crate::view3d::P3;
 use crate::walls::Plane;
 
 /// The older kind's one rail, which its balusters go up to.
@@ -52,11 +53,13 @@ fn section(shape: PartShape, width: f64, depth: f64) -> f64 {
     }
 }
 
-/// A piece of a railing: a prism (its ring in plan between two planes) or a tube along a line.
+/// A piece of a railing: a prism (its ring in plan between two planes), a tube along a line, or a section (`width`
+/// across, `depth` high) swept along a path, mitred where it bends ([`sweep`]).
 #[derive(Clone, Debug)]
 pub enum Piece {
     Prism(Vec<P2>, Plane, Plane),
     Tube(Geom),
+    Sweep { path: Vec<P3>, profile: Vec<(f64, f64)>, width: f64, depth: f64, round: bool },
 }
 
 /// Which of its type's parts a piece is of: a rail, a post or baluster (by where it is in the type's lists, as [`stack`]
@@ -77,11 +80,16 @@ pub struct Part {
 }
 
 impl Piece {
-    /// As a prism: a tube as its square box.
-    pub fn prism(&self) -> (Vec<P2>, Plane, Plane) {
+    /// As prisms: a tube as its square box, a sweep as a box along each stretch of its path.
+    pub fn prisms(&self) -> Vec<(Vec<P2>, Plane, Plane)> {
         match self {
-            Piece::Prism(ring, bottom, top) => (ring.clone(), *bottom, *top),
-            Piece::Tube(g) => Geom { round: false, ..*g }.prism(),
+            Piece::Prism(ring, bottom, top) => vec![(ring.clone(), *bottom, *top)],
+            Piece::Tube(g) => vec![Geom { round: false, ..*g }.prism()],
+            Piece::Sweep { path, width, depth, .. } => path
+                .windows(2)
+                .filter(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]) > 1e-6)
+                .map(|w| Geom { a: w[0], b: w[1], width: *width, depth: *depth, round: false }.prism())
+                .collect(),
         }
     }
 }
@@ -138,6 +146,21 @@ impl Line {
         out
     }
 
+    /// How far along it the point of it nearest `p` is, where that is at most `reach` from `p`.
+    fn along(&self, p: P2, reach: f64) -> Option<f64> {
+        let (d, s) = self
+            .pts
+            .windows(2)
+            .zip(&self.at)
+            .filter_map(|(w, s0)| {
+                let (&(a, _), &(b, _)) = (w.first()?, w.get(1)?);
+                let k = geom::param_on_segment(p, a, b);
+                Some((p.dist(a + (b - a) * k), s0 + a.dist(b) * k))
+            })
+            .min_by(|x, y| x.0.total_cmp(&y.0))?;
+        (d <= reach).then_some(s)
+    }
+
     /// The stretches of it from `s0` to `s1`, each a straight piece with its heights.
     fn between(&self, s0: f64, s1: f64) -> Vec<((P2, f64), (P2, f64))> {
         let mut cuts = vec![s0];
@@ -166,11 +189,46 @@ fn inside(a: f64, b: f64, spacing: f64) -> Vec<f64> {
 /// A railing's pieces: its rails along its line, its posts and balusters, and its panels.
 pub fn parts(m: &Model, rl: &Railing) -> Vec<Part> {
     let Some(t) = m.types.railing.get(&rl.type_name) else { return Vec::new() };
-    build(t, crate::stairs::railing(m, rl))
+    let line = crate::stairs::railing(m, rl);
+    let plan: Vec<P2> = line.iter().map(|(p, _)| *p).collect();
+    let ground = Ground::of(m, &hosts(rl), &plan, rl.base_offset);
+    build(t, line, &ground)
 }
 
-/// The pieces of a railing of type `t` along `line`, each point of it with the height of what it runs along.
-pub fn build(t: &RailingType, line: Vec<(P2, f64)>) -> Vec<Part> {
+/// The steps of a flight, going up: each one's middle in plan; and how far from them a railing beside it may be.
+type Flight = (Vec<P2>, f64);
+
+/// What a railing's posts and balusters stand on: the tops of its hosts' steps, landings and surfaces, and the flights of
+/// steps its posts may be lined up with. None, they stand on its line.
+pub struct Ground {
+    hosts: Vec<Host>,
+    lift: f64,
+}
+
+impl Ground {
+    /// Nothing under the line: the posts stand on it.
+    pub fn none() -> Ground {
+        Ground { hosts: Vec::new(), lift: 0.0 }
+    }
+
+    /// The hosts `hosts` under `plan`, `lift` added to their tops.
+    pub fn of(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64) -> Ground {
+        Ground { hosts: hosts.iter().filter_map(|g| Host::of(m, *g, plan)).collect(), lift }
+    }
+
+    /// The top of what is under `p`: a step, a landing or a surface.
+    fn at(&self, p: P2) -> Option<f64> {
+        self.hosts.iter().find_map(|h| h.ground(p)).map(|z| z + self.lift)
+    }
+
+    fn flights(&self) -> Vec<Flight> {
+        self.hosts.iter().flat_map(Host::flights).collect()
+    }
+}
+
+/// The pieces of a railing of type `t` along `line`, each point of it with the height of what it runs along, its posts
+/// and balusters standing on `ground`.
+pub fn build(t: &RailingType, line: Vec<(P2, f64)>, ground: &Ground) -> Vec<Part> {
     let (rails, posts, panel) = stack(t);
     let top = height(t);
     let line = Line::new(line);
@@ -182,39 +240,73 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>) -> Vec<Part> {
         let d = rail_depth(r);
         let round = r.shape == PartShape::Circle;
         let moved = crate::stairs::offset(&line.pts, r.offset);
-        for w in moved.windows(2) {
-            let &[(p, zp), (q, zq)] = w else { continue };
-            if p.dist(q) < 1e-6 {
-                continue;
-            }
-            // Its top `height` up, measured straight up: on a slope its section, square to it, reaches higher over its line.
-            let k = (p.dist(q).powi(2) + (zq - zp).powi(2)).sqrt() / p.dist(q);
-            let up = r.height - d / 2.0 * k;
-            let g = Geom { a: [p.0, p.1, zp + up], b: [q.0, q.1, zq + up], width: r.width, depth: d, round };
-            let piece = if round {
-                Piece::Tube(g)
-            } else {
-                let (ring, bottom, top) = g.prism();
-                Piece::Prism(ring, bottom, top)
-            };
-            out.push(Part { piece, material: r.material.clone(), which: Which::Rail(ri) });
-        }
+        // Its top `height` up, measured straight up: on a slope its section, square to it, reaches higher over its line.
+        let secant = |i: usize| {
+            let (&(p, zp), &(q, zq)) = (moved.get(i)?, moved.get(i + 1)?);
+            let run = p.dist(q);
+            (run > 1e-6).then(|| (run * run + (zq - zp) * (zq - zp)).sqrt() / run)
+        };
+        let path: Vec<P3> = moved
+            .iter()
+            .enumerate()
+            .map(|(i, &(p, z))| {
+                let k = match (i.checked_sub(1).and_then(secant), secant(i)) {
+                    (Some(a), Some(b)) => (a + b) / 2.0,
+                    (Some(a), None) | (None, Some(a)) => a,
+                    (None, None) => 1.0,
+                };
+                [p.0, p.1, z + r.height - d / 2.0 * k]
+            })
+            .collect();
+        let profile = if round { circle(r.width / 2.0) } else { rectangle(r.width, d) };
+        out.push(Part {
+            piece: Piece::Sweep { path, profile, width: r.width, depth: d, round },
+            material: r.material.clone(),
+            which: Which::Rail(ri),
+        });
     }
     let rail = |name: &Option<String>| name.as_ref().and_then(|n| rails.iter().find(|r| &r.name == n));
-    // Where the posts stand: at the ends and corners, and between at most each one's spacing apart.
+    // Where the posts stand: at the ends and corners, and between at most each one's spacing apart; or on the steps.
     let stations = line.stations();
+    let flights: Vec<Vec<f64>> = ground
+        .flights()
+        .iter()
+        .map(|(f, reach)| f.iter().filter_map(|c| line.along(*c, *reach)).collect::<Vec<f64>>())
+        .filter(|f| f.len() > 1)
+        .collect();
     let mut at_posts: Vec<f64> = Vec::new();
     let mut uprights: Vec<(usize, &PostPart, f64)> = Vec::new();
     for (pi, p) in posts.iter().enumerate().filter(|(_, p)| p.kind == PostKind::Post) {
-        for w in stations.windows(2) {
-            let &[a, b] = w else { continue };
-            for s in std::iter::once(a).chain(inside(a, b, p.spacing)) {
-                uprights.push((pi, p, s));
+        let mut here: Vec<f64> = Vec::new();
+        // Over the flights, on every so many steps, and the first and last.
+        let mut covered: Vec<(f64, f64)> = Vec::new();
+        if p.steps > 0 {
+            for f in &flights {
+                let (lo, hi) = f.iter().fold((f64::MAX, f64::MIN), |(lo, hi), s| (lo.min(*s), hi.max(*s)));
+                let half = (hi - lo) / (f.len() - 1) as f64 / 2.0;
+                covered.push((lo - half, hi + half));
+                let last = f.len() - 1;
+                let start = if p.skip_ends { p.steps as usize - 1 } else { 0 };
+                for (k, s) in f.iter().enumerate() {
+                    let on = k >= start && (k - start) % p.steps as usize == 0;
+                    if on || (!p.skip_ends && (k == 0 || k == last)) {
+                        here.push(*s);
+                    }
+                }
             }
         }
-        if let Some(&end) = stations.last() {
-            uprights.push((pi, p, end));
+        let over = |s: f64| covered.iter().any(|(a, b)| s >= *a && s <= *b);
+        here.extend(stations.iter().copied().filter(|s| !over(*s)));
+        here.sort_by(f64::total_cmp);
+        here.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+        let mut filled = here.clone();
+        for w in here.windows(2) {
+            let &[a, b] = w else { continue };
+            if !over((a + b) / 2.0) {
+                filled.extend(inside(a, b, p.spacing));
+            }
         }
+        uprights.extend(filled.into_iter().map(|s| (pi, p, s)));
     }
     at_posts.extend(uprights.iter().map(|(_, _, s)| *s));
     at_posts.sort_by(f64::total_cmp);
@@ -237,9 +329,11 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>) -> Vec<Part> {
     uprights.truncate(MAX_BALUSTERS as usize);
     for (pi, p, s) in uprights {
         let Some((at, z, u)) = line.point(s) else { continue };
+        let c = at + u.perp() * p.offset;
+        // On the step, the landing or the floor under it; on a rail, that rail's top.
         let bottom = match (p.kind, rail(&p.bottom)) {
             (PostKind::Baluster, Some(r)) => z + r.height + p.bottom_offset,
-            _ => z + p.bottom_offset,
+            _ => ground.at(c).unwrap_or(z) + p.bottom_offset,
         };
         let up = match rail(&p.top) {
             Some(r) => z + r.height - rail_depth(r) + p.top_offset,
@@ -248,7 +342,6 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>) -> Vec<Part> {
         if up - bottom < 1.0 {
             continue;
         }
-        let c = at + u.perp() * p.offset;
         let piece = match p.shape {
             PartShape::Circle => {
                 Piece::Tube(Geom { a: [c.0, c.1, bottom], b: [c.0, c.1, up], width: p.width, depth: p.width, round: true })
@@ -290,47 +383,230 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>) -> Vec<Part> {
     out
 }
 
-/// A host a railing's heights follow: a stair's or a ramp's walk line and half its width, or a floor's outline, its holes
-/// and its top.
-enum Host {
-    Walk(Vec<(P2, f64)>, f64),
-    Floor(Vec<P2>, Vec<Vec<P2>>, Plane),
+/// How many sides a round rail has.
+const SIDES: usize = 24;
+
+/// A circle of radius `r`, counter-clockwise, as a section across a rail: across it, then up.
+fn circle(r: f64) -> Vec<(f64, f64)> {
+    (0..SIDES)
+        .map(|k| {
+            let t = std::f64::consts::TAU * k as f64 / SIDES as f64;
+            (r * t.cos(), r * t.sin())
+        })
+        .collect()
 }
 
+/// A rectangle `w` across and `d` high, counter-clockwise, round its middle.
+fn rectangle(w: f64, d: f64) -> Vec<(f64, f64)> {
+    let (a, b) = (w / 2.0, d / 2.0);
+    vec![(a, -b), (a, b), (-a, b), (-a, -b)]
+}
+
+fn sub(a: P3, b: P3) -> P3 {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn add(a: P3, b: P3) -> P3 {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn mul(a: P3, k: f64) -> P3 {
+    [a[0] * k, a[1] * k, a[2] * k]
+}
+
+fn dot(a: P3, b: P3) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn cross(a: P3, b: P3) -> P3 {
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+
+fn unit(a: P3) -> P3 {
+    let l = dot(a, a).sqrt();
+    if l > 1e-12 { mul(a, 1.0 / l) } else { [0.0; 3] }
+}
+
+/// `profile` swept along `path`, mitred where it bends: a closed mesh of triangles turned out, its ends' first, and how
+/// many they are. The profile's first number is across the path (to its left), the second up, square to it.
+pub fn sweep(path: &[P3], profile: &[(f64, f64)]) -> (Vec<[P3; 3]>, usize) {
+    let mut pts: Vec<P3> = Vec::with_capacity(path.len());
+    for p in path {
+        if pts.last().is_none_or(|q| dot(sub(*p, *q), sub(*p, *q)) > 1e-6) {
+            pts.push(*p);
+        }
+    }
+    if pts.len() < 2 || profile.len() < 3 {
+        return (Vec::new(), 0);
+    }
+    // Each stretch's way, and its section's two axes: across (level, to the left) and up (square to it).
+    let frames: Vec<(P3, P3, P3)> = pts
+        .windows(2)
+        .map(|w| {
+            let d = unit(sub(w[1], w[0]));
+            let flat = unit([-d[1], d[0], 0.0]);
+            let across = if dot(flat, flat) > 0.5 { flat } else { [0.0, 1.0, 0.0] };
+            (d, across, cross(d, across))
+        })
+        .collect();
+    let at = |i: usize, (a, b): (f64, f64)| -> P3 {
+        let f = |j: usize| frames.get(j).copied().unwrap_or(([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]));
+        let p = pts.get(i).copied().unwrap_or([0.0; 3]);
+        let off = |(_, s, u): (P3, P3, P3)| add(mul(s, a), mul(u, b));
+        match (i.checked_sub(1).filter(|j| *j < frames.len()), (i < frames.len()).then_some(i)) {
+            (Some(j), Some(k)) => {
+                // On the plane halving the bend: where the lines of the two stretches meet it.
+                let (fa, fb) = (f(j), f(k));
+                let normal = unit(add(fa.0, fb.0));
+                let meet = |fr: (P3, P3, P3)| {
+                    let o = off(fr);
+                    let along = dot(normal, fr.0);
+                    if along.abs() < 1e-6 { add(p, o) } else { add(add(p, o), mul(fr.0, -dot(normal, o) / along)) }
+                };
+                mul(add(meet(fa), meet(fb)), 0.5)
+            }
+            (Some(j), None) => add(p, off(f(j))),
+            (None, _) => add(p, off(f(0))),
+        }
+    };
+    let rings: Vec<Vec<P3>> = (0..pts.len()).map(|i| profile.iter().map(|q| at(i, *q)).collect()).collect();
+    let n = profile.len();
+    let next = |k: usize| (k + 1) % n;
+    let mut tris = Vec::with_capacity(2 * n * pts.len());
+    let (Some(first), Some(last)) = (rings.first(), rings.last()) else { return (Vec::new(), 0) };
+    let middle = |r: &[P3]| mul(r.iter().fold([0.0; 3], |s, q| add(s, *q)), 1.0 / n as f64);
+    let (a, b) = (middle(first), middle(last));
+    for k in 0..n {
+        tris.push([a, first[next(k)], first[k]]);
+        tris.push([b, last[k], last[next(k)]]);
+    }
+    let caps = tris.len();
+    for w in rings.windows(2) {
+        let (ra, rb) = (&w[0], &w[1]);
+        for k in 0..n {
+            tris.push([ra[k], ra[next(k)], rb[k]]);
+            tris.push([ra[next(k)], rb[next(k)], rb[k]]);
+        }
+    }
+    (tris, caps)
+}
+
+/// A host a railing's heights follow: a stair (its walk line and half its width, its flights' runs, and its landings and
+/// winders), a ramp (its walk line), or a surface (a floor's, a roof's or a toposolid's top, as the 3D view has it).
+enum Host {
+    Stair { walk: Vec<(P2, f64)>, half: f64, runs: Vec<crate::stairs::Run>, pads: Vec<crate::stairs::Pad> },
+    Ramp(Vec<(P2, f64)>, f64),
+    Surface(Vec<crate::view3d::Solid>),
+}
+
+/// How near the walk line, past half a stair's width, a point is still over it.
+const NEAR: f64 = 1.0;
+
 impl Host {
-    fn of(m: &Model, g: Guid) -> Option<Host> {
+    /// Host `g`, of what lies near `plan`.
+    fn of(m: &Model, g: Guid, plan: &[P2]) -> Option<Host> {
         let e = m.elements.get(g)?;
         match e {
-            Element::Stair(_) | Element::Ramp(_) => {
+            Element::Stair(_) => {
                 let l = crate::stairs::layout(m, e)?;
-                Some(Host::Walk(l.walk, l.width / 2.0))
+                Some(Host::Stair { walk: l.walk, half: l.width / 2.0, runs: l.runs, pads: l.pads })
             }
-            Element::Floor(f) => Some(Host::Floor(f.boundary.clone(), f.openings.clone(), m.floor_top(f))),
+            Element::Ramp(_) => {
+                let l = crate::stairs::layout(m, e)?;
+                Some(Host::Ramp(l.walk, l.width / 2.0))
+            }
+            Element::Floor(_) | Element::Roof(_) | Element::Toposolid(_) => {
+                let id = m.elements.id(g)?;
+                let (lo, hi) = plan.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), p| {
+                    (P2(lo.0.min(p.0), lo.1.min(p.1)), P2(hi.0.max(p.0), hi.1.max(p.1)))
+                });
+                Some(Host::Surface(crate::view3d::top_solids(m, id, (lo, hi))))
+            }
             _ => None,
         }
     }
 
-    /// Its top at `p`, where `p` is over it.
+    /// Where on walk line `walk` `p` is nearest, how far from it, and its height there.
+    fn on_walk(walk: &[(P2, f64)], p: P2) -> Option<(f64, f64)> {
+        walk.windows(2)
+            .filter_map(|w| {
+                let (&(a, za), &(b, zb)) = (w.first()?, w.get(1)?);
+                let k = geom::param_on_segment(p, a, b);
+                Some((p.dist(a + (b - a) * k), za + (zb - za) * k))
+            })
+            .min_by(|x, y| x.0.total_cmp(&y.0))
+    }
+
+    /// Where `p` is over a run of a stair's steps: how far along it from its first riser, and the run.
+    fn on_run(runs: &[crate::stairs::Run], p: P2) -> Option<(f64, &crate::stairs::Run)> {
+        runs.iter().find_map(|r| {
+            let (a, c) = ((p - r.start).dot(r.u), (p - r.start).dot(r.u.perp()));
+            (a >= -1e-6 && a <= r.length + 1e-6 && c.abs() <= r.width / 2.0 + NEAR && r.risers > 1).then_some((a, r))
+        })
+    }
+
+    /// The height of its line at `p`, where `p` is over it: a stair's over its treads' nosings, flat on a landing.
     fn top(&self, p: P2) -> Option<f64> {
         match self {
-            Host::Walk(walk, half) => {
-                let (d, z) = walk
-                    .windows(2)
-                    .filter_map(|w| {
-                        let (&(a, za), &(b, zb)) = (w.first()?, w.get(1)?);
-                        let k = geom::param_on_segment(p, a, b);
-                        Some((p.dist(a + (b - a) * k), za + (zb - za) * k))
-                    })
-                    .min_by(|x, y| x.0.total_cmp(&y.0))?;
-                (d <= half + 1.0).then_some(z)
+            Host::Stair { walk, half, runs, pads } => {
+                if let Some((a, r)) = Host::on_run(runs, p) {
+                    let each = (r.z.1 - r.z.0) / f64::from(r.risers);
+                    let going = r.going();
+                    return Some(if going > 0.0 { (r.z.0 + each * (1.0 + a / going)).min(r.z.1) } else { r.z.1 });
+                }
+                if let Some(pad) = pads.iter().find(|q| !q.tread && geom::contains(&q.ring, p)) {
+                    return Some(pad.z);
+                }
+                let (d, z) = Host::on_walk(walk, p)?;
+                (d <= half + NEAR).then_some(z)
             }
-            Host::Floor(ring, holes, top) => {
-                let on_edge = geom::ring_edges(ring).any(|(a, b)| geom::dist_to_segment(p, a, b) < 2.0);
-                let over = (on_edge || geom::contains(ring, p)) && !holes.iter().any(|h| geom::contains(h, p));
-                over.then(|| top.at(p))
+            Host::Ramp(walk, half) => {
+                let (d, z) = Host::on_walk(walk, p)?;
+                (d <= half + NEAR).then_some(z)
             }
+            Host::Surface(solids) => surface(solids, p),
         }
     }
+
+    /// The top of what is under `p`: a stair's tread, landing or winder; a ramp's slope; a surface.
+    fn ground(&self, p: P2) -> Option<f64> {
+        match self {
+            Host::Stair { runs, pads, .. } => {
+                if let Some((a, r)) = Host::on_run(runs, p) {
+                    let each = (r.z.1 - r.z.0) / f64::from(r.risers);
+                    let going = r.going();
+                    let k = if going > 0.0 { (a / going).floor() + 1.0 } else { 1.0 };
+                    return Some((r.z.0 + each * k.min(f64::from(r.risers - 1))).min(r.z.1));
+                }
+                pads.iter().find(|q| geom::contains(&q.ring, p)).map(|q| q.z)
+            }
+            Host::Ramp(..) | Host::Surface(_) => self.top(p),
+        }
+    }
+
+    /// How steep its steepest flight is, rise over going: 0 but for a stair.
+    fn pitch(&self) -> f64 {
+        let Host::Stair { runs, .. } = self else { return 0.0 };
+        runs.iter()
+            .filter(|r| r.risers > 1 && r.going() > 0.0)
+            .map(|r| (r.z.1 - r.z.0) / f64::from(r.risers) / r.going())
+            .fold(0.0, f64::max)
+    }
+
+    /// A stair's flights: each run's treads' middles, going up.
+    fn flights(&self) -> Vec<Flight> {
+        let Host::Stair { runs, .. } = self else { return Vec::new() };
+        runs.iter()
+            .filter(|r| r.risers > 1)
+            .map(|r| ((1..r.risers).map(|k| r.start + r.u * ((f64::from(k) - 0.5) * r.going())).collect(), r.width / 2.0 + 200.0))
+            .collect()
+    }
+}
+
+/// The highest top of `solids` over `p`, or within 2 mm of it (a railing along a floor's edge).
+fn surface(solids: &[crate::view3d::Solid], p: P2) -> Option<f64> {
+    let at = |q: P2| solids.iter().filter(|s| s.over(q)).map(|s| s.z_at(q).1).reduce(f64::max);
+    at(p).or_else(|| [P2(2.0, 0.0), P2(-2.0, 0.0), P2(0.0, 2.0), P2(0.0, -2.0)].into_iter().find_map(|d| at(p + d)))
 }
 
 /// The hosts a railing's heights follow: its stair or ramp first, then its `hosts`.
@@ -342,7 +618,7 @@ pub fn hosts(rl: &Railing) -> Vec<Guid> {
 /// [`STEP`] along it, and a point kept where the heights stop going straight. Where over none, the height it had last
 /// (the first it has, before it), or `fallback` over none at all.
 pub fn follow(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64, fallback: f64) -> Vec<(P2, f64)> {
-    let found: Vec<Host> = hosts.iter().filter_map(|g| Host::of(m, *g)).collect();
+    let found: Vec<Host> = hosts.iter().filter_map(|g| Host::of(m, *g, plan)).collect();
     let total: f64 = plan.windows(2).filter_map(|w| Some(w.first()?.dist(*w.get(1)?))).sum();
     let step = STEP.max(total / MAX_SAMPLES as f64);
     // Each point looked up, and whether it is one of the line's own.
@@ -365,6 +641,25 @@ pub fn follow(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64, fallback: f64) 
         let z = z.unwrap_or(last);
         last = z;
         line.push((p, z + lift, own));
+    }
+    // Where a flight begins a riser over the landing before it, the line would jump: it climbs to it instead, at most
+    // twice as steep as the steepest flight, raised and never lowered, so it stays as high over the steps as it is.
+    let steepest = found.iter().map(Host::pitch).fold(0.0, f64::max);
+    if steepest > 0.0 {
+        let most = 2.0 * steepest;
+        let lift = |line: &mut Vec<(P2, f64, bool)>, i: usize, j: usize| {
+            if let (Some(&(q, zq, _)), Some(&(p, _, _))) = (line.get(j), line.get(i))
+                && let Some(at) = line.get_mut(i)
+            {
+                at.1 = at.1.max(zq - most * p.dist(q));
+            }
+        };
+        for i in (0..line.len().saturating_sub(1)).rev() {
+            lift(&mut line, i, i + 1);
+        }
+        for i in 1..line.len() {
+            lift(&mut line, i, i - 1);
+        }
     }
     // Keep the line's own points and those where the heights bend.
     let mut out: Vec<(P2, f64)> = Vec::new();
@@ -504,10 +799,10 @@ mod tests {
         let pieces = parts(&s.model, rl);
         // Two rails; posts at 0, 1000, 2000 and 3000 (1200 apart at most); 8 bars in each of the 3 bays.
         assert_eq!(pieces.len(), 2 + 4 + 24);
-        let tubes = pieces.iter().filter(|p| matches!(p.piece, Piece::Tube(_))).count();
-        assert_eq!(tubes, 1, "the round top rail");
+        let round = pieces.iter().filter(|p| matches!(p.piece, Piece::Sweep { round: true, .. })).count();
+        assert_eq!(round, 1, "the round top rail");
         // A bar stands on Rail1's top (200) and goes up to Top's underside (950).
-        let (_, bottom, top) = pieces.last().unwrap().piece.prism();
+        let (_, bottom, top) = pieces.last().unwrap().piece.prisms()[0].clone();
         assert_eq!((bottom.z, top.z), (200.0, 950.0));
         // A panel in each bay instead of the bars, 10 in from each post's face.
         run(
@@ -519,7 +814,7 @@ mod tests {
         let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
         let pieces = parts(&s.model, rl);
         assert_eq!(pieces.len(), 2 + 4 + 3);
-        let (ring, bottom, top) = pieces.last().unwrap().piece.prism();
+        let (ring, bottom, top) = pieces.last().unwrap().piece.prisms()[0].clone();
         assert_eq!((bottom.z, top.z), (100.0, 950.0));
         assert!((ring[0].0 - 2040.0).abs() < 1e-6, "from 2000 + 30 + 10: {ring:?}");
         // A post can't stand on a rail, and a baluster goes up to a rail the type has.
@@ -549,7 +844,7 @@ mod tests {
         assert!(flat(&s).iter().all(|(_, z)| *z == 0.0), "on its level, without hosts");
         assert_eq!(run(&mut s, "railing_hosts", json!({"id": id, "add": [stair, floor]}))["hosts"], json!([stair, floor]));
         let line = flat(&s);
-        assert_eq!(line.first().unwrap().1, z_foot, "at the stair's foot");
+        assert!((line.first().unwrap().1 - z_foot - 3000.0 / 17.0).abs() < 1e-6, "over the first nosing, one riser up");
         let end = line.last().unwrap();
         assert_eq!(end.1, s.model.levels()[1].1.elevation, "on the floor's top");
         assert!((line.iter().find(|(p, _)| (p.1 - top.1).abs() < 30.0).unwrap().1 - z_top).abs() < 60.0, "up the stair: {line:?}");
@@ -557,5 +852,80 @@ mod tests {
         run(&mut s, "delete", json!({"ids": [floor]}));
         let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
         assert_eq!(hosts(rl).len(), 1);
+    }
+
+    #[test]
+    fn posts_line_up_with_every_so_many_steps_and_stand_on_the_treads() {
+        let mut s = Session::new();
+        let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1200}))["id"].as_u64().unwrap();
+        run(
+            &mut s,
+            "type",
+            json!({"category": "railing", "name": "Stepped", "rails": [{"name": "Top", "width": 50, "height": 900}],
+            "posts": [{"name": "Post", "width": 40, "steps": 3, "top": "Top"}]}),
+        );
+        let id = run(&mut s, "railing", json!({"host": stair, "side": "left", "type": "Stepped"}))["ids"][0].as_u64().unwrap();
+        let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+        let posts: Vec<(P2, f64)> = parts(&s.model, rl)
+            .iter()
+            .filter(|p| p.which == Which::Post(0))
+            .map(|p| {
+                let (ring, bottom, _) = p.piece.prisms()[0].clone();
+                (geom::centroid(&ring), bottom.z)
+            })
+            .collect();
+        // 17 risers, 16 treads 280 deep: on treads 1, 4, 7, 10, 13 and 16 (the last too), each in the middle of its tread.
+        let each = 3000.0 / 17.0;
+        let steps: Vec<f64> = posts.iter().map(|(c, _)| (c.1 / 280.0 - 0.5).round() + 1.0).collect();
+        assert_eq!(steps, vec![1.0, 4.0, 7.0, 10.0, 13.0, 16.0], "{posts:?}");
+        for ((c, z), k) in posts.iter().zip(&steps) {
+            assert!((c.1 - (k - 0.5) * 280.0).abs() < 1.0);
+            assert!((z - k * each).abs() < 1e-6, "on its tread's top: {z} at step {k}");
+        }
+        // Without the first and last: every third step from the third.
+        run(
+            &mut s,
+            "type",
+            json!({"category": "railing", "name": "Stepped",
+            "posts": [{"name": "Post", "width": 40, "steps": 3, "skip_ends": true, "top": "Top"}]}),
+        );
+        let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+        let n = parts(&s.model, rl).iter().filter(|p| p.which == Which::Post(0)).count();
+        assert_eq!(n, 5, "steps 3, 6, 9, 12 and 15");
+    }
+
+    #[test]
+    fn a_railing_follows_a_sloped_floor_and_a_shaped_one() {
+        let mut s = Session::new();
+        let floor = run(
+            &mut s,
+            "floor",
+            json!({"boundary": [[0, 0], [6000, 0], [6000, 3000], [0, 3000]],
+            "slope": 5, "arrow": [[0, 1500], [6000, 1500]]}),
+        )["id"]
+            .as_u64()
+            .unwrap();
+        let id = run(&mut s, "railing", json!({"path": [[0, 100], [6000, 100]], "hosts": [floor]}))["ids"][0].as_u64().unwrap();
+        let line = |s: &Session| {
+            let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+            crate::stairs::railing(&s.model, rl)
+        };
+        let end = line(&s).last().unwrap().1;
+        assert!((end - 6000.0 * 5f64.to_radians().tan()).abs() < 1.0, "up the slope: {end}");
+        // A point raised in the middle of a flat floor: the railing goes over it, up and down.
+        run(&mut s, "modify", json!({"id": floor, "slope": 0, "arrow": null}));
+        run(&mut s, "add_point", json!({"id": floor, "at": [3000, 100], "z": 300}));
+        let z: Vec<f64> = line(&s).iter().map(|(_, z)| *z).collect();
+        let high = z.iter().copied().fold(f64::MIN, f64::max);
+        assert!((high - 300.0).abs() < 1.0 && z[0].abs() < 1.0 && z.last().unwrap().abs() < 1.0, "{z:?}");
+    }
+
+    #[test]
+    fn a_rail_is_one_sweep_mitred_at_its_corners() {
+        let (tris, caps) = sweep(&[[0.0, 0.0, 1000.0], [1000.0, 0.0, 1000.0], [1000.0, 1000.0, 1000.0]], &rectangle(40.0, 40.0));
+        assert_eq!((tris.len(), caps), (2 * 4 + 2 * 4 * 2, 8));
+        // The outer corner of the mitre: 20 out from each stretch.
+        let corner = tris.iter().flatten().any(|p| (p[0] - 1020.0).abs() < 1e-9 && (p[1] + 20.0).abs() < 1e-9);
+        assert!(corner, "mitred, not overlapped");
     }
 }

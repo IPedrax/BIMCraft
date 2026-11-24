@@ -2667,7 +2667,7 @@ pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
             rl.path.iter().map(|p| (*p, z)).collect()
         }
     };
-    if rl.hosts.is_empty() && (rl.host.is_none() || rl.path.is_empty()) {
+    if rl.hosts.is_empty() && rl.host.is_none() {
         return line;
     }
     let plan: Vec<P2> = line.iter().map(|(p, _)| *p).collect();
@@ -2678,7 +2678,7 @@ pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
 /// A railing's solids, each a ring in plan between two planes: its rails, posts, balusters and panels
 /// ([`crate::railings::parts`]), a round one as its square box.
 pub fn railing_parts(m: &Model, rl: &Railing) -> Vec<(Vec<P2>, Plane, Plane)> {
-    crate::railings::parts(m, rl).iter().map(|p| p.piece.prism()).collect()
+    crate::railings::parts(m, rl).iter().flat_map(|p| p.piece.prisms()).collect()
 }
 
 /// `line` moved `d` to its left, its corners mitred, each point keeping its height.
