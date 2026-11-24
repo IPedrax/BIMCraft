@@ -5446,7 +5446,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:16447
+#: crates/core/src/commands.rs:16444
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -5523,7 +5523,7 @@ msgstr "Détacher haut/base"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
-#: crates/core/src/commands.rs:16237
+#: crates/core/src/commands.rs:16234
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -14218,7 +14218,7 @@ msgid "Properties over the Project Browser on the left, every panel and tool sho
 msgstr ""
 
 #: crates/core/src/commands.rs:846
-#: crates/core/src/commands.rs:11069
+#: crates/core/src/commands.rs:11066
 msgid "Property Line"
 msgstr ""
 
@@ -19369,7 +19369,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:858
-#: crates/core/src/commands.rs:11111
+#: crates/core/src/commands.rs:11108
 msgid "Toposolid"
 msgstr ""
 
@@ -19920,7 +19920,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:16795
+#: crates/core/src/commands.rs:16792
 msgid "Unnamed"
 msgstr "Sans nom"
 

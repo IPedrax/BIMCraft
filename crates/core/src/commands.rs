@@ -8512,7 +8512,7 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     // A layer over it whose method for it can't be read is refused, not passed over; naming neither, the one on top.
     let on_top = s
         .model
-        .method_for::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard", who.as_ref())
+        .method_for::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard", who.as_slice())
         .map_err(|(code, _)| match who {
             Some(w) => bad(c, format!("{code}'s method for `{}` can't be read: reset it in Manage > Building Codes, or fix it", w.name())),
             None => bad(c, format!("{code}'s method can't be read: reset it in Manage > Building Codes, or fix it")),
@@ -8765,24 +8765,27 @@ fn demand(s: &mut Session, p: &Value) -> R {
             "entrance",
         ],
     )?;
-    // The utilities' methods the project's layers hold, each with its layer's place from the top.
+    use crate::codes::{Identity, MethodFor};
     let electrical = crate::codes::Discipline::Electrical;
-    let entrances = s.model.held_wholes_at::<crate::entrance::Utility>(electrical, "entrance", "rule");
-    let units = s.model.held_wholes_at::<d::Standard>(electrical, "unit_demand", "method");
-    // Not given: the utility of the method on top (its entrance's or its unit demand's; the entrance in one layer).
-    let on_top = entrances
-        .iter()
-        .map(|(u, .., at)| (*at, u.id.clone()))
-        .chain(units.iter().map(|(u, .., at)| (*at, u.utility.clone())))
-        .min_by_key(|(at, _)| *at)
-        .map(|(_, id)| id);
     let given = string(c, p, "utility")?;
+    // Not given: the utility of the method on top (its entrance's or its unit demand's; the entrance in one layer).
+    let on_top = if given.is_some() {
+        None
+    } else {
+        [
+            s.model.held_for::<crate::entrance::Utility>(electrical, "entrance", "rule", &[]).map(|(u, .., at)| (at, u.id)),
+            s.model.held_for::<d::Standard>(electrical, "unit_demand", "method", &[]).map(|(u, .., at)| (at, u.utility)),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(at, _)| *at)
+        .map(|(_, id)| id)
+    };
     // Not given, and no method that reads holds one: a method that can't be read is said, not taken for none.
     if given.is_none() && on_top.is_none() {
-        let any = |_: &serde_json::Map<String, Value>| true;
         let broken = [
-            s.model.unreadable_over::<crate::entrance::Utility>(electrical, "entrance", None, &any),
-            s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", None, &any),
+            s.model.unreadable_for::<crate::entrance::Utility>(electrical, "entrance", &[], None),
+            s.model.unreadable_for::<d::Standard>(electrical, "unit_demand", &[], None),
         ]
         .into_iter()
         .flatten()
@@ -8801,33 +8804,27 @@ fn demand(s: &mut Session, p: &Value) -> R {
             ),
         )
     })?;
-    // The utility's method, of the layers that hold one for it (its service entrance or its unit demand, the project's or
-    // BIMCraft's), the one on top: never another utility's layered with it, never a version under another of its own.
-    // A member of a group of utilities answers by its group's methods too (its unit demand is the group's).
-    let groups: Vec<String> = entrances
-        .iter()
-        .filter(|(u, ..)| u.members.iter().any(|m| m.id.eq_ignore_ascii_case(&utility)))
-        .map(|(u, ..)| u.id.clone())
+    // The utility's method, of the layers that hold one for it (its service entrance, by its id or a member's, or its unit
+    // demand, the project's or BIMCraft's), the one on top: never another utility's layered with it, never a version under
+    // another of its own. A member of a group of utilities answers by its group's methods too (its unit demand is the group's).
+    let asked = Identity::Utility(&utility);
+    let groups: Vec<String> = s
+        .model
+        .held_wholes_at::<crate::entrance::Utility>(electrical, "entrance", "rule")
+        .into_iter()
+        .filter(|(u, ..)| u.names("members").into_iter().any(|m| asked.is(m)))
+        .map(|(u, ..)| u.id)
         .chain(crate::entrance::find(&utility).filter(|(_, m)| m.is_some()).map(|(u, _)| u.id.clone()))
         .collect();
-    let entrance = entrances
-        .into_iter()
-        .find(|(u, ..)| u.id.eq_ignore_ascii_case(&utility) || u.members.iter().any(|m| m.id.eq_ignore_ascii_case(&utility)));
-    let unit = units
-        .into_iter()
-        .find(|(u, ..)| u.utility.eq_ignore_ascii_case(&utility) || groups.iter().any(|g| u.utility.eq_ignore_ascii_case(g)));
-    // A layer whose method for this utility can't be read, over the one that would answer: refused, never passed over.
+    let by_unit: Vec<Identity> = std::iter::once(asked).chain(groups.iter().map(|g| Identity::Utility(g))).collect();
+    let entrance = s.model.held_for::<crate::entrance::Utility>(electrical, "entrance", "rule", &[asked]);
+    let unit = s.model.held_for::<d::Standard>(electrical, "unit_demand", "method", &by_unit);
+    // A layer whose method for this utility can't be read, over the one that would answer: refused, never passed over. Of
+    // the two, the one higher up is named.
     let answering = entrance.as_ref().map(|e| e.3).into_iter().chain(unit.as_ref().map(|u| u.3)).min();
-    // Each named as the method is chosen above: an entrance by its id or a member's, a unit demand by its utility or
-    // its group's; of the two, the one higher up is named.
-    use crate::model::Model as M;
-    let by_entrance =
-        |v: &serde_json::Map<String, Value>| M::names_field(v, "id", &utility, false) || M::names_field(v, "members", &utility, false);
-    let by_unit =
-        |v: &serde_json::Map<String, Value>| std::iter::once(&utility).chain(&groups).any(|n| M::names_field(v, "utility", n, false));
     let unreadable = [
-        s.model.unreadable_over::<crate::entrance::Utility>(electrical, "entrance", answering, &by_entrance),
-        s.model.unreadable_over::<d::Standard>(electrical, "unit_demand", answering, &by_unit),
+        s.model.unreadable_for::<crate::entrance::Utility>(electrical, "entrance", &[asked], answering),
+        s.model.unreadable_for::<d::Standard>(electrical, "unit_demand", &by_unit, answering),
     ]
     .into_iter()
     .flatten()

@@ -1554,7 +1554,7 @@ fn a_method_is_found_for_a_standard_as_written_and_for_a_utility_whatever_the_ca
         s
     };
     let found = |s: &Session, who: Option<Identity>| {
-        s.model.method_for::<Method>(e, "building_demand", "standard", who.as_ref()).map(|f| f.map(|(m, _, _, at)| (m.standard, at)))
+        s.model.method_for::<Method>(e, "building_demand", "standard", who.as_slice()).map(|f| f.map(|(m, _, _, at)| (m.standard, at)))
     };
     let at = |standard: &str, place: usize| Ok(Some((standard.to_string(), place)));
     let s = held(None);
@@ -1581,6 +1581,38 @@ fn a_method_is_found_for_a_standard_as_written_and_for_a_utility_whatever_the_ca
     let mut v = find(e, "celesc").unwrap().sections["building_demand"].clone();
     v["factor"] = json!(2.0);
     run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "celesc", "rules": {"building_demand": v}}));
-    let own = |who: Identity| s.model.method_for::<Method>(e, "building_demand", "standard", Some(&who)).unwrap().map(|(.., own, _)| own);
+    let own = |who: Identity| s.model.method_for::<Method>(e, "building_demand", "standard", &[who]).unwrap().map(|(.., own, _)| own);
     assert_eq!((own(Identity::Utility("celesc")), own(Identity::Utility("hidropan"))), (Some(true), Some(false)));
+}
+
+#[test]
+fn a_utility_s_entrance_is_found_by_its_id_or_a_member_s_and_its_unit_demand_by_its_utility_whatever_the_case() {
+    let e = Discipline::Electrical;
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["energisa", "cpfl"]}));
+    let entrance = |s: &Session, n: &str| {
+        s.model
+            .method_for::<crate::entrance::Utility>(e, "entrance", "rule", &[Identity::Utility(n)])
+            .map(|f| f.map(|(u, .., at)| (u.id, at)))
+    };
+    let unit = |s: &Session, who: &[Identity]| {
+        s.model.method_for::<crate::demand::Standard>(e, "unit_demand", "method", who).map(|f| f.map(|(u, .., at)| (u.utility, at)))
+    };
+    let member = find(e, "energisa").unwrap().sections["entrance"]["members"][0]["id"].as_str().unwrap().to_lowercase();
+    assert_eq!(entrance(&s, "Energisa"), Ok(Some(("ENERGISA".to_string(), 1))), "by its id");
+    assert_eq!(entrance(&s, &member), Ok(Some(("ENERGISA".to_string(), 1))), "by a member's");
+    assert_eq!(entrance(&s, "cpfl"), Ok(None), "a unit demand's utility is no entrance");
+    assert_eq!(unit(&s, &[Identity::Utility("Cpfl")]), Ok(Some(("CPFL".to_string(), 0))));
+    assert_eq!(unit(&s, &[Identity::Utility("ENERGISA")]), Ok(None), "an entrance's id is no unit demand");
+    assert_eq!(unit(&s, &[Identity::Utility("Nope"), Identity::Utility("cpfl")]), Ok(Some(("CPFL".to_string(), 0))), "any of them");
+    assert_eq!(unit(&s, &[]), Ok(Some(("CPFL".to_string(), 0))), "none: the one on top");
+    // Over CPFL's, Energisa's own can't be read: asked by a member's id, it is refused, never passed over.
+    let mut v = find(e, "energisa").unwrap().sections["entrance"].clone();
+    v["rule"] = json!("own");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": ["cpfl", "energisa"]}));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "energisa", "rules": {"entrance": v}}));
+    let own = s.model_mut().codes.own.iter_mut().find(|c| c.code == "energisa").unwrap();
+    own.sections.get_mut("entrance").unwrap()["source"] = json!(7);
+    assert_eq!(entrance(&s, &member), Err(("energisa".to_string(), 0)));
+    assert_eq!(unit(&s, &[Identity::Utility(&member)]), Ok(None), "and names no unit demand under it");
 }

@@ -1741,28 +1741,46 @@ impl Model {
         })
     }
 
-    /// Whether an identity field of a method's text (`unreadable_over`) is `asked`, as a command compares it: `exact`, or
-    /// whatever the case. A list (`utilities` of names, `members` by their ids) holds it.
-    pub fn names_field(view: &Map<String, Value>, field: &str, asked: &str, exact: bool) -> bool {
-        let is = |n: &str| if exact { n == asked } else { n.eq_ignore_ascii_case(asked) };
-        view_names(view, field).into_iter().any(is)
+    /// The method `key` a command answers by for `who` (any of them; none: whichever is on top): of the project's layers
+    /// that hold one that reads (`held_wholes_at`), the one on top that is for `who`, with the source of its rule `about`,
+    /// whether it is the project's and its place from the top.
+    pub fn held_for<T: MethodFor>(
+        &self,
+        d: Discipline,
+        key: &str,
+        about: &str,
+        who: &[Identity],
+    ) -> Option<(T, Option<String>, bool, usize)> {
+        self.held_wholes_at::<T>(d, key, about).into_iter().find(|(m, ..)| who.is_empty() || who.iter().any(|w| m.is_for(w)))
     }
 
-    /// The method `key` a command answers by for `who` (none: whichever is on top): of the project's layers that hold one
-    /// that reads (`held_wholes_at`), the one on top that is for `who`, with the source of its rule `about`, whether it is
-    /// the project's and its place from the top. A layer over it whose method for `who` can't be read (`unreadable_over`;
-    /// anywhere, when none answers) refuses it, with that layer's code and place, so no version under it answers.
+    /// The highest layer above the place `answering` (none: anywhere) whose method `key` for `who` (as `held_for` takes
+    /// it) can't be read (`unreadable_over`): its code and place.
+    pub fn unreadable_for<T: MethodFor>(
+        &self,
+        d: Discipline,
+        key: &str,
+        who: &[Identity],
+        answering: Option<usize>,
+    ) -> Option<(String, usize)> {
+        let names = |v: &Map<String, Value>| {
+            who.is_empty() || who.iter().any(|w| T::fields(w).iter().any(|f| view_names(v, f).into_iter().any(|n| w.is(n))))
+        };
+        self.unreadable_over::<T>(d, key, answering, &names)
+    }
+
+    /// `held_for`, refused with the code and place of a layer over it whose method for `who` can't be read
+    /// (`unreadable_for`; anywhere, when none answers), so no version under it answers.
     #[allow(clippy::type_complexity)]
     pub fn method_for<T: MethodFor>(
         &self,
         d: Discipline,
         key: &str,
         about: &str,
-        who: Option<&Identity>,
+        who: &[Identity],
     ) -> Result<Option<(T, Option<String>, bool, usize)>, (String, usize)> {
-        let found = self.held_wholes_at::<T>(d, key, about).into_iter().find(|(m, ..)| who.is_none_or(|w| m.is_for(w)));
-        let names = |v: &Map<String, Value>| who.is_none_or(|w| T::fields(w).iter().any(|f| view_names(v, f).into_iter().any(|n| w.is(n))));
-        match self.unreadable_over::<T>(d, key, found.as_ref().map(|f| f.3), &names) {
+        let found = self.held_for::<T>(d, key, about, who);
+        match self.unreadable_for::<T>(d, key, who, found.as_ref().map(|f| f.3)) {
             Some(broken) => Err(broken),
             None => Ok(found),
         }
@@ -1823,6 +1841,40 @@ pub trait MethodFor: DeserializeOwned {
     /// Whether it is for `who`.
     fn is_for(&self, who: &Identity) -> bool {
         Self::fields(who).iter().any(|f| self.names(f).into_iter().any(|n| who.is(n)))
+    }
+}
+
+impl MethodFor for crate::demand::Standard {
+    fn fields(who: &Identity) -> &'static [&'static str] {
+        match who {
+            Identity::Standard(_) => &[],
+            Identity::Utility(_) => &["utility"],
+        }
+    }
+
+    fn names(&self, field: &str) -> Vec<&str> {
+        match field {
+            "utility" => vec![self.utility.as_str()],
+            _ => Vec::new(),
+        }
+    }
+}
+
+impl MethodFor for crate::entrance::Utility {
+    /// A utility is named by its own id or a member's.
+    fn fields(who: &Identity) -> &'static [&'static str] {
+        match who {
+            Identity::Standard(_) => &[],
+            Identity::Utility(_) => &["id", "members"],
+        }
+    }
+
+    fn names(&self, field: &str) -> Vec<&str> {
+        match field {
+            "id" => vec![self.id.as_str()],
+            "members" => self.members.iter().map(|m| m.id.as_str()).collect(),
+            _ => Vec::new(),
+        }
     }
 }
 
