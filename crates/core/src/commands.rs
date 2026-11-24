@@ -4893,7 +4893,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             runs(&mut extra, &l);
         }
         Element::Railing(rl) => {
-            let path: Vec<P2> = stairs::railing(m, rl).into_iter().map(|(p, _)| micron(p)).collect();
+            // Its line as drawn (a stair's side, a path), a straight run one line: not the points its heights are found at.
+            let path: Vec<P2> = stairs::railing_plan(m, rl).into_iter().map(micron).collect();
             extra.insert("path".into(), json!(path));
             extra.insert("level".into(), json!(m.level_of(e)));
             extra.insert("height".into(), json!(m.types.railing.get(&rl.type_name).map(crate::railings::height)));
