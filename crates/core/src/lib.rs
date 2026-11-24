@@ -243,6 +243,7 @@ mod quantities_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 pub mod ral;
+pub mod ramps;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;

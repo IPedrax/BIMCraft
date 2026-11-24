@@ -345,6 +345,19 @@ pub use fragments::{FragmentStats, SectionCache};
 pub(crate) type PreparedMade = (Vec<Prepared>, Vec<(Id, Vec<P3>)>, Vec<Option<[P3; 2]>>);
 
 /// A level slab: `ring` from `z.0` up to `z.1`.
+/// The plane through three points with their heights; none when they're in a line in plan.
+fn plane3((a, za): (P2, f64), (b, zb): (P2, f64), (c, zc): (P2, f64)) -> Option<Plane> {
+    let (u, v) = (b - a, c - a);
+    let den = u.cross(v);
+    if den.abs() < 1e-9 {
+        return None;
+    }
+    let (du, dv) = (zb - za, zc - za);
+    // g · u = du, g · v = dv.
+    let g = P2((du * v.1 - dv * u.1) / den, (dv * u.0 - du * v.0) / den);
+    Some(Plane { z: za - g.dot(a), g })
+}
+
 fn slab(owner: Id, color: Rgb, ring: &[P2], z: (f64, f64)) -> Solid {
     Solid::Slab { owner, color, tex: 0, face: ring.iter().map(|p| [p.0, p.1, z.0]).collect(), rise: z.1 - z.0 }
 }
@@ -1891,23 +1904,93 @@ fn solids_in_with(
             }
             // Each run solid from its level up to its slope, each landing up to its top.
             Element::Ramp(r) => {
-                let (base, l) = (m.elevation(r.level), stairs::ramp(m, r));
-                for run in &l.runs {
-                    let g = run.u * ((run.z.1 - run.z.0) / run.length.max(1e-9));
-                    let top = Plane { z: run.z.0 - g.dot(run.start), g };
-                    out.push(Solid::Prism {
-                        owner: id,
-                        color: SLAB,
-                        tex: 0,
-                        ring: run.ring(),
-                        bottom: Plane::flat(base),
-                        top,
-                        curve: None,
-                        part: 0,
-                        vis: 0,
-                    });
+                let base = m.elevation(r.level);
+                let kind = m.types.ramp.get(&r.type_name);
+                let colour = |name: &str| m.materials.get(name).map(|x| Rgb(x.color[0], x.color[1], x.color[2]));
+                // A type that isn't solid: its layers from the top down under the slope, each of its material's colour.
+                let bands: Vec<(f64, Rgb)> = match kind {
+                    Some(t) if !t.solid && !t.layers.is_empty() => {
+                        t.layers.iter().map(|l| (l.thickness, colour(&l.material).unwrap_or(SLAB))).collect()
+                    }
+                    Some(t) if !t.solid => vec![(t.thickness, colour(&t.material).unwrap_or(SLAB))],
+                    _ => Vec::new(),
+                };
+                let whole =
+                    kind.and_then(|t| colour(&t.material).or_else(|| t.layers.first().and_then(|l| colour(&l.material)))).unwrap_or(SLAB);
+                // Its top in tiles, each flat or a plane: a landing whole, a flight a strip of quads between its sides, each
+                // flat where it can be, else two triangles.
+                let mut tiles: Vec<(Vec<P2>, Plane)> = Vec::new();
+                for p in crate::ramps::pieces(m, r) {
+                    if p.landing || (p.z.1 - p.z.0).abs() < 1e-9 {
+                        tiles.push((p.ring.clone(), Plane::flat(p.z.0)));
+                        continue;
+                    }
+                    let (zl, zr) = (p.heights(&p.left), p.heights(&p.right));
+                    for k in 0..p.left.len().saturating_sub(1) {
+                        let (Some(&l0), Some(&l1), Some(&r0), Some(&r1)) =
+                            (p.left.get(k), p.left.get(k + 1), p.right.get(k), p.right.get(k + 1))
+                        else {
+                            continue;
+                        };
+                        let (Some(&a), Some(&b), Some(&c), Some(&d)) = (zl.get(k), zl.get(k + 1), zr.get(k), zr.get(k + 1)) else {
+                            continue;
+                        };
+                        let quad = [(l0, a), (l1, b), (r1, d), (r0, c)];
+                        let whole = plane3(quad[0], quad[1], quad[2]).filter(|pl| (pl.at(r0) - c).abs() < 0.5);
+                        let parts: Vec<Vec<(P2, f64)>> = match whole {
+                            Some(_) => vec![quad.to_vec()],
+                            None => vec![vec![quad[0], quad[1], quad[2]], vec![quad[0], quad[2], quad[3]]],
+                        };
+                        for tri in parts {
+                            let (Some(&q0), Some(&q1), Some(&q2)) = (tri.first(), tri.get(1), tri.get(2)) else { continue };
+                            let Some(top) = plane3(q0, q1, q2) else { continue };
+                            let mut ring: Vec<P2> = tri.iter().map(|q| q.0).collect();
+                            ring.dedup_by(|b, a| a.dist(*b) < 1e-6);
+                            if ring.len() < 3 || crate::geom::area(&ring).abs() < 1e-3 {
+                                continue;
+                            }
+                            if crate::geom::area(&ring) < 0.0 {
+                                ring.reverse();
+                            }
+                            tiles.push((ring, top));
+                        }
+                    }
                 }
-                out.extend(l.pads.iter().map(|p| slab(id, SLAB, &p.ring, (base, p.z))));
+                for (ring, top) in tiles {
+                    if bands.is_empty() {
+                        out.push(Solid::Prism {
+                            owner: id,
+                            color: whole,
+                            tex: 0,
+                            ring,
+                            bottom: Plane::flat(base),
+                            top,
+                            curve: None,
+                            part: 0,
+                            vis: 0,
+                        });
+                        continue;
+                    }
+                    // Each layer as thick square to the slope: deeper, measured straight down, the steeper it is.
+                    let k = (1.0 + top.g.dot(top.g)).sqrt();
+                    let mut down = 0.0;
+                    for (t, color) in &bands {
+                        let upper = Plane { z: top.z - down * k, g: top.g };
+                        let lower = Plane { z: top.z - (down + t) * k, g: top.g };
+                        out.push(Solid::Prism {
+                            owner: id,
+                            color: *color,
+                            tex: 0,
+                            ring: ring.clone(),
+                            bottom: lower,
+                            top: upper,
+                            curve: None,
+                            part: 0,
+                            vis: 0,
+                        });
+                        down += t;
+                    }
+                }
             }
             Element::Railing(rl) => out.extend(stairs::railing_parts(m, rl).into_iter().map(|(ring, bottom, top)| Solid::Prism {
                 owner: id,

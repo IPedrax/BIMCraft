@@ -2763,14 +2763,21 @@ fn ramps_climb_at_the_options_bars_slope_and_turn_at_landings() {
     h.get_by_role_and_label(Role::TextInput, "Height:").type_text("600");
     h.run();
     type_into(&mut h, "Slope:", "10");
-    // 360 mm up its first run, 3.6 m at 10%; then back beside it, to its left.
+    // A flight east at 10%, a landing north, then a flight back west: done where it reaches its top.
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(4600.0, 1000.0));
+    press(&mut h, "Landing");
+    click(&mut h, P2(4600.0, 2400.0));
     assert!(ids(&h, "ramp").is_empty());
-    click(&mut h, P2(1000.0, 2200.0));
+    press(&mut h, "Flight");
+    click(&mut h, P2(-2000.0, 2400.0));
     let r = ids(&h, "ramp");
-    assert_eq!((r.len(), field(&h, r[0], "height"), field(&h, r[0], "length")), (1, json!(600.0), json!(6000.0)));
-    assert_eq!(field(&h, r[0], "landings"), json!([{"at": 360.0, "turn": 180.0}]));
+    assert_eq!((r.len(), field(&h, r[0], "height")), (1, json!(600.0)));
+    let path = field(&h, r[0], "path");
+    assert_eq!(path.as_array().map(Vec::len), Some(3), "{path}");
+    assert_eq!(path[1]["landing"], json!(true));
+    // The last flight is cut short where it reaches the top, before the point clicked.
+    assert!(path[2]["to"][0].as_f64().is_some_and(|x| x > -2000.0 && x < 4600.0), "{path}");
     assert_eq!(ids(&h, "railing").len(), 2, "with its railings");
 }
 
