@@ -1535,3 +1535,52 @@ fn a_method_s_last_rule_taken_away_is_not_checked_as_an_ordinary_section() {
         json!({"discipline": "electrical", "amend": "Middle", "rules": {"building_demand": {"min_dwellings": null}}}),
     );
 }
+
+#[test]
+fn a_method_is_found_for_a_standard_as_written_and_for_a_utility_whatever_the_case_unless_one_over_it_cant_be_read() {
+    use crate::building_demand::Method;
+    let e = Discipline::Electrical;
+    let (celesc, hidropan) = ("CELESC N-321.0003", "HIDROPAN RIC BT 2014");
+    let held = |broken: Option<&str>| {
+        let mut s = Session::new();
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nbr-5410", "amendments": ["celesc", "hidropan"]}));
+        if let Some(code) = broken {
+            let mut v = find(e, code).unwrap().sections["building_demand"].clone();
+            v["factor"] = json!(2.0);
+            run(&mut s, "building_code", json!({"discipline": "electrical", "amend": code, "rules": {"building_demand": v}}));
+            *s.model_mut().codes.own.iter_mut().find(|c| c.code == code).unwrap().sections.get_mut("building_demand").unwrap() =
+                json!("oops");
+        }
+        s
+    };
+    let found = |s: &Session, who: Option<Identity>| {
+        s.model.method_for::<Method>(e, "building_demand", "standard", who.as_ref()).map(|f| f.map(|(m, _, _, at)| (m.standard, at)))
+    };
+    let at = |standard: &str, place: usize| Ok(Some((standard.to_string(), place)));
+    let s = held(None);
+    assert_eq!(found(&s, None), at(hidropan, 0), "naming none, the one on top");
+    assert_eq!(found(&s, Some(Identity::Utility("celesc"))), at(celesc, 1), "a utility under another, whatever the case");
+    assert_eq!(found(&s, Some(Identity::Standard(celesc))), at(celesc, 1), "a standard as written");
+    assert_eq!(found(&s, Some(Identity::Standard("celesc n-321.0003"))), Ok(None), "a standard in another case is none");
+    assert_eq!(found(&s, Some(Identity::Utility("Nope"))), Ok(None));
+    assert_eq!(found(&s, Some(Identity::Utility(celesc))), Ok(None), "a standard's name is no utility");
+    assert_eq!(found(&s, Some(Identity::Standard("CELESC"))), Ok(None), "a utility's name is no standard");
+    // Hidropan's own can't be read: it refuses what is asked of it, or of none, never what is asked of Celesc under it.
+    let s = held(Some("hidropan"));
+    assert_eq!(found(&s, Some(Identity::Utility("HIDROPAN"))), Err(("hidropan".to_string(), 0)));
+    assert_eq!(found(&s, None), Err(("hidropan".to_string(), 0)));
+    assert_eq!(found(&s, Some(Identity::Utility("celesc"))), at(celesc, 1));
+    assert_eq!(found(&s, Some(Identity::Standard(hidropan))), Err(("hidropan".to_string(), 0)), "a standard, by the text's own");
+    assert_eq!(found(&s, Some(Identity::Standard("hidropan ric bt 2014"))), Ok(None), "and as written");
+    // Celesc's can't be read, under Hidropan's: refused where nothing else answers for it.
+    let s = held(Some("celesc"));
+    assert_eq!(found(&s, Some(Identity::Utility("Celesc"))), Err(("celesc".to_string(), 1)));
+    assert_eq!(found(&s, Some(Identity::Standard(hidropan))), at(hidropan, 0));
+    // The project's own says so, and BIMCraft's does not.
+    let mut s = held(None);
+    let mut v = find(e, "celesc").unwrap().sections["building_demand"].clone();
+    v["factor"] = json!(2.0);
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amend": "celesc", "rules": {"building_demand": v}}));
+    let own = |who: Identity| s.model.method_for::<Method>(e, "building_demand", "standard", Some(&who)).unwrap().map(|(.., own, _)| own);
+    assert_eq!((own(Identity::Utility("celesc")), own(Identity::Utility("hidropan"))), (Some(true), Some(false)));
+}

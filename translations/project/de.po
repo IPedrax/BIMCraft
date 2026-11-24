@@ -179,7 +179,7 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:16478
+#: crates/core/src/commands.rs:16447
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -197,7 +197,7 @@ msgid "Desk"
 msgstr "Schreibtisch"
 
 #: crates/core/src/commands/rebar_detail.rs:163
-#: crates/core/src/commands.rs:16268
+#: crates/core/src/commands.rs:16237
 msgid "Detail"
 msgstr ""
 
@@ -274,9 +274,9 @@ msgstr "Elektro Beleuchtung"
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:16133
-#: crates/core/src/commands.rs:16149
-#: crates/core/src/commands.rs:21471
+#: crates/core/src/commands.rs:16102
+#: crates/core/src/commands.rs:16118
+#: crates/core/src/commands.rs:21440
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -496,7 +496,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:10123
+#: crates/core/src/commands.rs:10092
 #: crates/core/src/model.rs:4958
 msgid "Level"
 msgstr "Geschoss"
@@ -537,7 +537,7 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:13122
+#: crates/core/src/commands.rs:13091
 msgid "Mass"
 msgstr "Volumenkörper"
 
@@ -558,7 +558,7 @@ msgid "Membrane"
 msgstr "Membran"
 
 #: crates/core/src/commands.rs:4834
-#: crates/core/src/commands.rs:19970
+#: crates/core/src/commands.rs:19939
 #: crates/core/src/curtain.rs:133
 #: crates/core/src/family.rs:3471
 #: crates/core/src/model.rs:6776
@@ -685,7 +685,7 @@ msgstr "Projekt"
 msgid "Project no."
 msgstr ""
 
-#: crates/core/src/commands.rs:11100
+#: crates/core/src/commands.rs:11069
 msgid "Property Line"
 msgstr ""
 
@@ -735,7 +735,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:13652
+#: crates/core/src/commands.rs:13621
 msgid "Room"
 msgstr "Raum"
 
@@ -777,8 +777,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:16067
-#: crates/core/src/commands.rs:21470
+#: crates/core/src/commands.rs:16036
+#: crates/core/src/commands.rs:21439
 #: crates/core/src/schedule.rs:679
 msgid "Section"
 msgstr "Schnitt"
@@ -954,7 +954,7 @@ msgstr "Holz"
 msgid "Title"
 msgstr ""
 
-#: crates/core/src/commands.rs:11142
+#: crates/core/src/commands.rs:11111
 msgid "Toposolid"
 msgstr ""
 
@@ -992,7 +992,7 @@ msgstr "Unbegrenzte Höhe"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:16826
+#: crates/core/src/commands.rs:16795
 msgid "Unnamed"
 msgstr "Unbenannt"
 

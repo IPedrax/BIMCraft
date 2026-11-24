@@ -5446,7 +5446,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:16478
+#: crates/core/src/commands.rs:16447
 msgid "Dependent"
 msgstr "相关"
 
@@ -5523,7 +5523,7 @@ msgstr "分离顶部/底部"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
-#: crates/core/src/commands.rs:16268
+#: crates/core/src/commands.rs:16237
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -14218,7 +14218,7 @@ msgid "Properties over the Project Browser on the left, every panel and tool sho
 msgstr ""
 
 #: crates/core/src/commands.rs:846
-#: crates/core/src/commands.rs:11100
+#: crates/core/src/commands.rs:11069
 msgid "Property Line"
 msgstr ""
 
@@ -19369,7 +19369,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:858
-#: crates/core/src/commands.rs:11142
+#: crates/core/src/commands.rs:11111
 msgid "Toposolid"
 msgstr ""
 
@@ -19920,7 +19920,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:16826
+#: crates/core/src/commands.rs:16795
 msgid "Unnamed"
 msgstr "未命名"
 

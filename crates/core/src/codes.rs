@@ -1745,19 +1745,101 @@ impl Model {
     /// whatever the case. A list (`utilities` of names, `members` by their ids) holds it.
     pub fn names_field(view: &Map<String, Value>, field: &str, asked: &str, exact: bool) -> bool {
         let is = |n: &str| if exact { n == asked } else { n.eq_ignore_ascii_case(asked) };
-        match view.get(field) {
-            Some(Value::String(n)) => is(n),
-            // `utilities` lists names; `members` lists members by their ids (a name alone, in a text that lost its shape).
-            Some(Value::Array(a)) => {
-                a.iter().any(|v| v.as_str().or_else(|| v.get("id").and_then(Value::as_str).filter(|_| field == "members")).is_some_and(is))
-            }
-            _ => false,
+        view_names(view, field).into_iter().any(is)
+    }
+
+    /// The method `key` a command answers by for `who` (none: whichever is on top): of the project's layers that hold one
+    /// that reads (`held_wholes_at`), the one on top that is for `who`, with the source of its rule `about`, whether it is
+    /// the project's and its place from the top. A layer over it whose method for `who` can't be read (`unreadable_over`;
+    /// anywhere, when none answers) refuses it, with that layer's code and place, so no version under it answers.
+    #[allow(clippy::type_complexity)]
+    pub fn method_for<T: MethodFor>(
+        &self,
+        d: Discipline,
+        key: &str,
+        about: &str,
+        who: Option<&Identity>,
+    ) -> Result<Option<(T, Option<String>, bool, usize)>, (String, usize)> {
+        let found = self.held_wholes_at::<T>(d, key, about).into_iter().find(|(m, ..)| who.is_none_or(|w| m.is_for(w)));
+        let names = |v: &Map<String, Value>| who.is_none_or(|w| T::fields(w).iter().any(|f| view_names(v, f).into_iter().any(|n| w.is(n))));
+        match self.unreadable_over::<T>(d, key, found.as_ref().map(|f| f.3), &names) {
+            Some(broken) => Err(broken),
+            None => Ok(found),
         }
     }
 
     /// The rules the project's stairs and railings are held to.
     pub fn stair_rules(&self) -> Arc<StairRules> {
         self.rules::<StairRules>()
+    }
+}
+
+/// The names field `field` of a method's text holds (`unreadable_over`): `utilities` lists names, `members` lists members by
+/// their ids (a name alone, in a text that lost its shape).
+fn view_names<'v>(view: &'v Map<String, Value>, field: &str) -> Vec<&'v str> {
+    match view.get(field) {
+        Some(Value::String(n)) => vec![n.as_str()],
+        Some(Value::Array(a)) => {
+            a.iter().filter_map(|v| v.as_str().or_else(|| v.get("id").and_then(Value::as_str).filter(|_| field == "members"))).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Who a command asks a method for (`Model::method_for`). How each form compares is written here only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Identity<'a> {
+    /// A standard, by its name as written.
+    Standard(&'a str),
+    /// A utility, by its name whatever the case.
+    Utility(&'a str),
+}
+
+impl<'a> Identity<'a> {
+    /// The name asked.
+    pub fn name(&self) -> &'a str {
+        match *self {
+            Identity::Standard(n) | Identity::Utility(n) => n,
+        }
+    }
+
+    /// Whether `n` names it.
+    pub fn is(&self, n: &str) -> bool {
+        match *self {
+            Identity::Standard(asked) => n == asked,
+            Identity::Utility(asked) => n.eq_ignore_ascii_case(asked),
+        }
+    }
+}
+
+/// A method a command answers by (`Model::method_for`), which says who it is for.
+pub trait MethodFor: DeserializeOwned {
+    /// The fields of its text that name `who`, as `unreadable_over` reads them.
+    fn fields(who: &Identity) -> &'static [&'static str];
+
+    /// The names its field `field` holds.
+    fn names(&self, field: &str) -> Vec<&str>;
+
+    /// Whether it is for `who`.
+    fn is_for(&self, who: &Identity) -> bool {
+        Self::fields(who).iter().any(|f| self.names(f).into_iter().any(|n| who.is(n)))
+    }
+}
+
+impl MethodFor for crate::building_demand::Method {
+    fn fields(who: &Identity) -> &'static [&'static str] {
+        match who {
+            Identity::Standard(_) => &["standard"],
+            Identity::Utility(_) => &["utilities"],
+        }
+    }
+
+    fn names(&self, field: &str) -> Vec<&str> {
+        match field {
+            "standard" => vec![self.standard.as_str()],
+            "utilities" => self.utilities.iter().map(String::as_str).collect(),
+            _ => Vec::new(),
+        }
     }
 }
 

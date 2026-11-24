@@ -8501,71 +8501,40 @@ fn building_demand(s: &mut Session, p: &Value) -> R {
     // the project's own; else BIMCraft's by the standard's or the utility's name.
     let project = s.model.section_as::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand").filter(|(_, own)| *own);
     let project = project.map(|(m, _)| m);
-    // Each of the project's amendments' own method, wherever it stands: named, a utility under another answers by its own.
-    // The one on top answers, the project's or BIMCraft's: a copy under BIMCraft's own is passed over.
-    let held_at = s.model.held_wholes_at::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard");
-    let places: Vec<(usize, String, Vec<String>)> =
-        held_at.iter().map(|(m, .., at)| (*at, m.standard.clone(), m.utilities.clone())).collect();
-    let held: Vec<(bd::Method, bool)> = held_at.into_iter().map(|(m, _, own, _)| (m, own)).collect();
-    fn on_top(mut held: Vec<(bd::Method, bool)>, named: &dyn Fn(&bd::Method) -> bool) -> Option<(bd::Method, bool)> {
-        let i = held.iter().position(|(m, _)| named(m))?;
-        Some(held.swap_remove(i))
-    }
     let (standard_asked, utility_asked) = (string(c, p, "standard")?, string(c, p, "utility")?);
     if standard_asked.is_some() && utility_asked.is_some() {
         return Err(bad(c, "give `standard` or `utility`, not both"));
     }
-    // A layer whose method for the standard or utility asked can't be read, over the one that would answer: refused. Each
-    // is named as the method is chosen below: a standard by its name as written, a utility in the list whatever the case.
-    let asked = standard_asked.as_deref().map(|n| ("standard", n, true)).or(utility_asked.as_deref().map(|n| ("utilities", n, false)));
-    if let Some((field, asked, exact)) = asked {
-        let answering = places
-            .iter()
-            .find(|(_, standard, utilities)| match exact {
-                true => standard == asked,
-                false => utilities.iter().any(|u| u.eq_ignore_ascii_case(asked)),
-            })
-            .map(|(at, ..)| *at);
-        let names = |v: &serde_json::Map<String, Value>| crate::model::Model::names_field(v, field, asked, exact);
-        if let Some((code, _)) =
-            s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", answering, &names)
-        {
-            return Err(bad(c, format!("{code}'s method for `{asked}` can't be read: reset it in Manage > Building Codes, or fix it")));
-        }
-    }
-    // Naming neither, the method on top answers: one over it that can't be read is said, not passed over.
-    if standard_asked.is_none() && utility_asked.is_none() {
-        let any = |_: &serde_json::Map<String, Value>| true;
-        let top = places.first().map(|(at, ..)| *at);
-        if let Some((code, _)) = s.model.unreadable_over::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", top, &any) {
-            return Err(bad(c, format!("{code}'s method can't be read: reset it in Manage > Building Codes, or fix it")));
-        }
-    }
-    let m: Held<bd::Method> = match (standard_asked, utility_asked) {
-        (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
-        (Some(s), None) => match project.filter(|m| m.standard == s).map(|m| (m, true)).or_else(|| on_top(held, &|m| m.standard == s)) {
+    use crate::codes::{Identity, MethodFor};
+    let who = standard_asked.as_deref().map(Identity::Standard).or(utility_asked.as_deref().map(Identity::Utility));
+    // Of the project's amendments' own methods, wherever they stand, the one on top for the standard or utility asked (a
+    // utility under another answers by its own), the project's or BIMCraft's: a copy under BIMCraft's own is passed over.
+    // A layer over it whose method for it can't be read is refused, not passed over; naming neither, the one on top.
+    let on_top = s
+        .model
+        .method_for::<bd::Method>(crate::codes::Discipline::Electrical, "building_demand", "standard", who.as_ref())
+        .map_err(|(code, _)| match who {
+            Some(w) => bad(c, format!("{code}'s method for `{}` can't be read: reset it in Manage > Building Codes, or fix it", w.name())),
+            None => bad(c, format!("{code}'s method can't be read: reset it in Manage > Building Codes, or fix it")),
+        })?
+        .map(|(m, _, own, _)| (m, own));
+    let m: Held<bd::Method> = match who {
+        Some(w) => match project.filter(|m| m.is_for(&w)).map(|m| (m, true)).or(on_top) {
             Some((m, true)) => Held::Project(Box::new(m)),
-            _ => Held::Library(
-                bd::methods()
-                    .iter()
-                    .find(|m| m.standard == s)
-                    .ok_or_else(|| bad(c, format!("no method `{s}` in the building codes: {}", names())))?,
-            ),
-        },
-        (None, Some(u)) => {
-            let named = |m: &bd::Method| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u));
-            match project.filter(|m| named(m)).map(|m| (m, true)).or_else(|| on_top(held, &named)) {
-                Some((m, true)) => Held::Project(Box::new(m)),
-                // BIMCraft's on top: its method of that standard.
-                Some((m, false)) if bd::methods().iter().any(|x| x.standard == m.standard) => Held::Library(
+            // BIMCraft's on top, for a utility: its method of that standard.
+            Some((m, false)) if matches!(w, Identity::Utility(_)) && bd::methods().iter().any(|x| x.standard == m.standard) => {
+                Held::Library(
                     bd::methods().iter().find(|x| x.standard == m.standard).ok_or_else(|| bad(c, format!("no method `{}`", m.standard)))?,
-                ),
-                _ => Held::Library(bd::methods().iter().find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u))).ok_or_else(
-                    || bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())),
-                )?),
+                )
             }
-        }
-        (None, None) => match project {
+            _ => Held::Library(bd::methods().iter().find(|m| m.is_for(&w)).ok_or_else(|| match w {
+                Identity::Standard(s) => bad(c, format!("no method `{s}` in the building codes: {}", names())),
+                Identity::Utility(u) => {
+                    bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names()))
+                }
+            })?),
+        },
+        None => match project {
             Some(m) => Held::Project(Box::new(m)),
             None => {
                 return Err(bad(
