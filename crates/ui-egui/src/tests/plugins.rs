@@ -62,6 +62,34 @@ fn app_with_plugins(path: &Path) -> Harness<'static, BimApp> {
     h
 }
 
+/// Gives the folder's sample plugin the panel of the specification's shape: a label, a level, a button, a table and a
+/// read-only text. Its functions are the ones the built module has, so its calls run.
+fn add_panel(path: &Path) -> Option<()> {
+    let manifest = path.join("sample").join("plugin.json");
+    let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest).ok()?).ok()?;
+    value["abi"] = json!(2);
+    value["panels"] = json!([{
+        "id": "areas",
+        "title": "Area Summary",
+        "dock": "right",
+        "on_open": "summary",
+        "refresh": "summary",
+        "widgets": [
+            {"type": "label", "text": "Totals by level"},
+            {"type": "level", "id": "level", "label": "Level"},
+            {"type": "button", "id": "run", "label": "Summarise", "function": "summary"},
+            {"type": "table", "id": "rows", "columns": [{"key": "what", "label": "What"}]},
+            {"type": "text", "id": "note", "label": "Summary", "readonly": true}
+        ]
+    }]);
+    std::fs::write(&manifest, serde_json::to_string_pretty(&value).ok()?).ok()
+}
+
+/// The palette of the panel named `name`, when the registry has it.
+fn panel_palette(name: &str) -> Option<crate::dock::Palette> {
+    crate::dock::Palette::named(name, &crate::dock::Palette::known())
+}
+
 #[test]
 fn the_plugins_window_asks_for_file_access_and_the_user_grants_it() {
     // The row is built from the manifest alone: it needs no built module.
@@ -326,4 +354,72 @@ fn the_plugins_window_lists_a_plugin_and_switches_it_off_so_its_tab_goes() {
     h.run();
     assert_eq!(h.state().plugin_tabs.len(), 1, "and back with it");
     assert!(h.state().session.external_command("plugin:sample:summary").is_some());
+}
+
+#[test]
+fn a_plugin_panel_opens_with_its_widgets_and_its_button_runs_the_plugin() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(()) = folder(dir.path()) else { return };
+    let Some(()) = add_panel(dir.path()) else { return };
+    let Some(mut h) = window_with_plugins(dir.path()) else { return };
+    // The plugin's panel has joined the palettes the window knows, by its stable name.
+    let palette = panel_palette("plugin:sample:areas").expect("the plugin's panel is in the registry");
+    h.state_mut().show_palette(palette, true);
+    h.run();
+    assert!(h.query_by_label("Totals by level").is_some(), "the panel's label is drawn");
+    assert!(h.query_all_by_label("Level").count() >= 2, "its level caption and its combo box");
+    // The button calls the plugin's function with the panel's values: one call, and this one only reads.
+    let before = h.state().session.history().len();
+    h.get_by_label("Summarise").click();
+    h.run();
+    assert!(!h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(h.state().session.history().len(), before, "a read makes no undo step");
+}
+
+#[test]
+fn a_panel_of_a_disabled_plugin_is_kept_in_the_layout_and_comes_back_when_it_is_enabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(()) = folder(dir.path()) else { return };
+    let Some(()) = add_panel(dir.path()) else { return };
+    let Some(mut h) = window_with_plugins(dir.path()) else { return };
+    let palette = panel_palette("plugin:sample:areas").expect("the panel is registered");
+    h.state_mut().show_palette(palette, true);
+    h.run();
+    assert!(h.state().docking.shown(palette));
+    press(&mut h, "Manage");
+    press(&mut h, "Plugins");
+    press(&mut h, "Disable");
+    h.run();
+    h.run();
+    assert!(panel_palette("plugin:sample:areas").is_none(), "the disabled plugin's palette leaves the registry");
+    assert!(h.state().docking.unknown.iter().any(|name| name == "plugin:sample:areas"), "its name stays in the layout");
+    assert!(!h.state().docking.shown(palette), "and it is no longer drawn");
+    press(&mut h, "Enable");
+    h.run();
+    h.run();
+    let palette = panel_palette("plugin:sample:areas").expect("the palette is registered again");
+    assert!(h.state().docking.shown(palette), "and back where it was");
+}
+
+#[test]
+fn a_wide_panel_does_not_widen_the_dock() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(()) = folder(dir.path()) else { return };
+    let Some(()) = add_panel(dir.path()) else { return };
+    // A table wider than the dock: its columns may be any width a plugin declares, and they scroll, not shove the view.
+    let manifest = dir.path().join("sample").join("plugin.json");
+    let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    value["panels"][0]["widgets"][3]["columns"] = json!([
+        {"key": "a", "label": "A", "width": 200},
+        {"key": "b", "label": "B", "width": 200},
+        {"key": "c", "label": "C", "width": 200}
+    ]);
+    std::fs::write(&manifest, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+    let Some(mut h) = window_with_plugins(dir.path()) else { return };
+    let palette = panel_palette("plugin:sample:areas").expect("the panel is registered");
+    h.state_mut().show_palette(palette, true);
+    h.run();
+    h.run();
+    let dock = 1280.0 - h.state().view_rect.right();
+    assert!(dock <= 330.0, "the dock keeps its width, not {dock}");
 }

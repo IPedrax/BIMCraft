@@ -1002,7 +1002,7 @@ impl ViewTemplate {
         }
         self.graphics.check(m)?;
         if let Some(r) = &self.view_range {
-            crate::model::range_ok("its", r)?;
+            crate::view_range::range_ok("its", r, true)?;
         }
         Ok(())
     }
@@ -1158,6 +1158,8 @@ pub struct Look {
     parts_hidden: Option<u16>,
     /// What the view's rows for a curtain wall's panels and its mullions say.
     parts: [Override; 2],
+    /// How far its halftone lies toward the paper: the project's.
+    fade: Fade,
     /// Walls > Framing hidden: a framed wall's structure layer is drawn in place of its members.
     unframed: bool,
     /// Floors > Framing hidden: a framed floor's structure layer is drawn in place of its members.
@@ -1182,15 +1184,39 @@ pub(crate) fn part_row(kind: crate::curtain::PartKind) -> &'static str {
     }
 }
 
-/// `c` halfway to the paper.
-pub(crate) fn halftone(c: Rgb) -> Rgb {
-    let half = |v: u8| v + (255 - v) / 2;
-    Rgb(half(c.0), half(c.1), half(c.2))
+/// How far toward the paper halftone draws, percent, until the project says otherwise ([`Model::halftone`]): halfway.
+pub const HALFTONE: u8 = 50;
+
+pub(crate) fn default_halftone() -> u8 {
+    HALFTONE
 }
 
-/// `c` as a view's halftone draws it.
-pub(crate) fn halftoned(c: Rgb) -> Rgb {
-    halftone(c)
+pub(crate) fn is_default_halftone(v: &u8) -> bool {
+    *v == HALFTONE
+}
+
+/// How far toward the paper halftone draws, percent: the project's ([`Model::halftone`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fade(pub u8);
+
+impl Default for Fade {
+    fn default() -> Fade {
+        Fade(HALFTONE)
+    }
+}
+
+impl Fade {
+    /// Model `m`'s halftone.
+    pub fn of(m: &Model) -> Fade {
+        Fade(m.halftone.clamp(1, 100))
+    }
+
+    /// `c` this far toward the paper.
+    pub fn apply(self, c: Rgb) -> Rgb {
+        let k = u32::from(self.0.min(100));
+        let toward = |v: u8| v + ((u32::from(255 - v) * k) / 100) as u8;
+        Rgb(toward(c.0), toward(c.1), toward(c.2))
+    }
 }
 
 impl Look {
@@ -1223,7 +1249,7 @@ impl Look {
             _ => Seen::ThreeD,
         };
         let forms = crate::family::visibility::FormView { seen, ..look.forms };
-        Look { section: m.section_box(view), display, forms, ..look }
+        Look { section: m.section_box(view), display, forms, fade: Fade::of(m), ..look }
     }
 
     /// How it looks at a family's forms, and at what detail (F8).
@@ -1303,6 +1329,7 @@ impl Look {
             layers: own.layers.clone(),
             forms,
             parts_hidden: Some(parts_mask(Some(&g))),
+            fade: Fade::of(m),
             unframed: g.hides("framing"),
             unframed_floors: g.hides("floorframing"),
             unframed_roofs: g.hides("roofframing"),
@@ -1420,14 +1447,14 @@ impl Look {
         let Some(o) = self.paint.get(&id) else { return default };
         let base = if self.pattern_style(id, true).is_some() { crate::render::PAPER } else { default };
         let c = o.cut.fill.map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if o.halftone { halftone(c) } else { c }
+        if o.halftone { self.fade.apply(c) } else { c }
     }
 
     /// The colour a 3D view shades element `id` in, `base` unless it says otherwise.
     pub fn surface(&self, id: Id, base: Rgb) -> Rgb {
         let Some(o) = self.paint.get(&id) else { return base };
         let c = o.projection.fill.map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if o.halftone { halftone(c) } else { c }
+        if o.halftone { self.fade.apply(c) } else { c }
     }
 
     /// Whether the view fills element `id`'s surfaces with a colour of its own (its projection's fill), whatever theirs are.
@@ -1440,12 +1467,17 @@ impl Look {
     pub fn edge(&self, id: Id, base: Rgb) -> Rgb {
         let Some(o) = self.paint.get(&id) else { return base };
         let c = o.projection.color.map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if o.halftone { halftone(c) } else { c }
+        if o.halftone { self.fade.apply(c) } else { c }
     }
 
     /// How much of element `id`'s surface a 3D view sees through, percent.
     pub fn transparency(&self, id: Id) -> u8 {
         self.paint.get(&id).map_or(0, |o| o.transparency)
+    }
+
+    /// How far its halftone lies toward the paper.
+    pub fn fade(&self) -> Fade {
+        self.fade
     }
 
     /// Whether it changes anything.
@@ -1471,7 +1503,7 @@ impl Look {
     fn coloured(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb, pick: impl Fn(&Override) -> Option<[u8; 3]>) -> Rgb {
         let (part, own) = (kind.map(|k| self.part(k)), self.paint.get(&id));
         let c = part.and_then(&pick).or_else(|| own.and_then(&pick)).map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if part.is_some_and(|o| o.halftone) || own.is_some_and(|o| o.halftone) { halftone(c) } else { c }
+        if part.is_some_and(|o| o.halftone) || own.is_some_and(|o| o.halftone) { self.fade.apply(c) } else { c }
     }
 
     /// [`Look::surface`], for what may be a part of a curtain wall.
@@ -1519,7 +1551,7 @@ impl Look {
                             }
                         }
                         if over.halftone {
-                            *color = halftone(*color);
+                            *color = self.fade.apply(*color);
                         }
                     }
                     Prim::Fill { color, .. } => {
@@ -1538,7 +1570,7 @@ impl Look {
                             *color = Rgb(r, g, b);
                         }
                         if over.halftone {
-                            *color = halftone(*color);
+                            *color = self.fade.apply(*color);
                         }
                     }
                     Prim::Image { .. } | Prim::Text { .. } => {}

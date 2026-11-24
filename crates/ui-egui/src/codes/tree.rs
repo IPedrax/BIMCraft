@@ -133,75 +133,76 @@ fn set_flat(row: &mut Value, i: usize, to: Value) -> bool {
 
 /// The columns of a list of objects: a key a row has, or `key.inner` (`key.inner.deeper`, …) for an object inside it; a
 /// row's `name` first and its `source` last.
-fn object_columns(rows: &[Value]) -> Vec<String> {
-    fn names(prefix: &str, v: &Value, out: &mut Vec<String>) {
-        match v {
-            Value::Object(o) => {
-                for (k, x) in o {
-                    names(&format!("{prefix}.{k}"), x, out);
-                }
-            }
-            _ => {
-                if !out.iter().any(|n| n == prefix) {
-                    out.push(prefix.to_string());
-                }
-            }
-        }
-    }
-    let mut cols: Vec<String> = Vec::new();
-    for r in rows {
-        for (k, v) in r.as_object().into_iter().flatten() {
-            names(k, v, &mut cols);
-        }
-    }
-    cols.sort_by_key(|c| (c != "name", c == "source"));
-    cols
-}
-
-fn get<'a>(row: &'a Value, col: &str) -> Option<&'a Value> {
-    match col.split_once('.') {
-        Some((a, b)) if row.get(col).is_none() => row.get(a).and_then(|x| get(x, b)),
-        _ => row.get(col),
-    }
-}
-
-/// Whether a row can hold a value in a column: a column inside an object the row doesn't have yet can (the object is made
-/// as it is typed), one inside a value that isn't an object can't (it is not turned into one).
-fn reachable(row: &Value, col: &str) -> bool {
-    let Value::Object(o) = row else { return false };
-    match col.split_once('.') {
-        Some((a, b)) if !o.contains_key(col) => o.get(a).is_none_or(|inner| reachable(inner, b)),
-        _ => true,
-    }
-}
-
-/// The columns that are a key of their own with a dot in it (`"a.b"`), not a path into an object: a row without it gets that
-/// key, never an object made from the column's name.
-fn literal_columns(rows: &[Value]) -> std::collections::BTreeMap<String, Vec<String>> {
-    type Out = std::collections::BTreeMap<String, Vec<String>>;
-    fn walk(path: &mut Vec<String>, v: &Value, out: &mut Out) {
+/// A table's columns, each by the keys that reach it: a key with a dot in it (`"a.b"`) and a path into an object (`a` then
+/// `b`) are two columns, never one.
+fn object_columns(rows: &[Value]) -> Vec<Vec<String>> {
+    fn names(path: &mut Vec<String>, v: &Value, out: &mut Vec<Vec<String>>) {
         match v {
             Value::Object(o) => {
                 for (k, x) in o {
                     path.push(k.clone());
-                    walk(path, x, out);
+                    names(path, x, out);
                     path.pop();
                 }
             }
-            _ if path.iter().any(|k| k.contains('.')) => {
-                out.entry(path.join(".")).or_insert_with(|| path.clone());
+            _ => {
+                if !out.iter().any(|n| n == path) {
+                    out.push(path.clone());
+                }
             }
-            _ => {}
         }
     }
-    let mut out = Out::new();
+    let mut cols: Vec<Vec<String>> = Vec::new();
     for r in rows {
-        walk(&mut Vec::new(), r, &mut out);
+        for (k, v) in r.as_object().into_iter().flatten() {
+            names(&mut vec![k.clone()], v, &mut cols);
+        }
     }
-    out
+    cols.sort_by_key(|c| (c.as_slice() != ["name"], c.as_slice() == ["source"]));
+    cols
 }
 
-/// Whether a row can take a value at a literal column's keys: each object on the way is there or can be made.
+/// A row's value in a column, by the column's keys.
+fn get_at<'a>(row: &'a Value, keys: &[String]) -> Option<&'a Value> {
+    keys.iter().try_fold(row, |at, k| at.get(k))
+}
+
+/// Writes a cell by its column's keys: where the row has no object for it yet, one is made (another row has that column);
+/// inside a value the row gives whole, nothing is written.
+fn put_at(row: &mut Value, keys: &[String], to: Value) {
+    // A cell emptied where the row lacks a key with a dot in it writes nothing: it is not made just to hold nothing.
+    if !reachable_at(row, keys) || (to.is_null() && keys.iter().any(|k| k.contains('.')) && get_at(row, keys).is_none()) {
+        return;
+    }
+    let Some((last, path)) = keys.split_last() else { return };
+    let mut at = row;
+    for k in path {
+        let Value::Object(o) = at else { return };
+        at = o.entry(k.clone()).or_insert_with(|| Value::Object(Map::new()));
+    }
+    if let Value::Object(o) = at {
+        o.insert(last.clone(), to);
+    }
+}
+
+/// A column named by its keys joined with dots, as the older tests name them (none of their keys has a dot in it): the same
+/// cell as the dialog's own, read, opened and written by its keys.
+#[cfg(test)]
+fn keys_of(col: &str) -> Vec<String> {
+    col.split('.').map(str::to_owned).collect()
+}
+
+#[cfg(test)]
+fn get<'a>(row: &'a Value, col: &str) -> Option<&'a Value> {
+    get_at(row, &keys_of(col))
+}
+
+#[cfg(test)]
+fn reachable(row: &Value, col: &str) -> bool {
+    reachable_at(row, &keys_of(col))
+}
+
+/// Whether a row can take a value at a column's keys: each object on the way is there or can be made.
 fn reachable_at(row: &Value, keys: &[String]) -> bool {
     match (row, keys.split_first()) {
         (Value::Object(o), Some((k, rest))) => rest.is_empty() || o.get(k).is_none_or(|x| reachable_at(x, rest)),
@@ -209,37 +210,10 @@ fn reachable_at(row: &Value, keys: &[String]) -> bool {
     }
 }
 
-/// What a cell typed in writes: `put`, but a cell of a literal column the row doesn't have takes that key whole.
-fn write(row: &mut Value, col: &str, to: Value, literal: Option<&[String]>) {
-    if let Some(keys) = literal
-        && get(row, col).is_none()
-    {
-        if to.is_null() || !reachable_at(row, keys) {
-            return;
-        }
-        let mut at = row;
-        for k in keys {
-            let Value::Object(o) = at else { return };
-            at = o.entry(k.clone()).or_insert_with(|| Value::Object(Map::new()));
-        }
-        *at = to;
-        return;
-    }
-    put(row, col, to);
-}
-
 /// Writes a cell: where the row has no object for it yet, one is made (another row has that column).
+#[cfg(test)]
 fn put(row: &mut Value, col: &str, to: Value) {
-    if !reachable(row, col) {
-        return;
-    }
-    let Value::Object(o) = row else { return };
-    match col.split_once('.') {
-        Some((a, b)) if !o.contains_key(col) => put(o.entry(a).or_insert_with(|| Value::Object(Map::new())), b, to),
-        _ => {
-            o.insert(col.to_string(), to);
-        }
-    }
+    put_at(row, &keys_of(col), to);
 }
 
 /// A list as a cell shows it, and as it is typed back: values between commas.
@@ -535,21 +509,20 @@ fn plain_table(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, pasted: 
 /// column the code explains says so when pointed at.
 fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pasted: &mut String) {
     let cols = object_columns(rows);
-    let literal = literal_columns(rows);
     // Which rows hold a list in each column, and which a plain value: by row, so a row's own value, typed so far, never
     // decides its own cell's kind.
-    let holding = |c: &String, f: fn(&Value) -> bool| -> Vec<usize> {
-        rows.iter().enumerate().filter(|(_, r)| get(r, c).is_some_and(f)).map(|(i, _)| i).collect()
+    let holding = |c: &Vec<String>, f: fn(&Value) -> bool| -> Vec<usize> {
+        rows.iter().enumerate().filter(|(_, r)| get_at(r, c).is_some_and(f)).map(|(i, _)| i).collect()
     };
-    let lists: BTreeMap<&String, Vec<usize>> =
+    let lists: BTreeMap<&Vec<String>, Vec<usize>> =
         cols.iter().map(|c| (c, holding(c, |v| v.as_array().is_some_and(|a| !a.is_empty())))).collect();
-    let plains: BTreeMap<&String, Vec<usize>> = cols.iter().map(|c| (c, holding(c, |v| scalar(v) && !v.is_null()))).collect();
-    let others = |m: &BTreeMap<&String, Vec<usize>>, c: &String, i: usize| m.get(c).is_some_and(|rs| rs.iter().any(|r| *r != i));
+    let plains: BTreeMap<&Vec<String>, Vec<usize>> = cols.iter().map(|c| (c, holding(c, |v| scalar(v) && !v.is_null()))).collect();
+    let others = |m: &BTreeMap<&Vec<String>, Vec<usize>>, c: &Vec<String>, i: usize| m.get(c).is_some_and(|rs| rs.iter().any(|r| *r != i));
     let widths: Vec<f32> = cols
         .iter()
         .map(|c| {
-            let texts = rows.iter().filter_map(|r| get(r, c)).map(|v| list_text(v).chars().count());
-            let head = column_name(c.strip_prefix("columns.").unwrap_or(c)).chars().count();
+            let texts = rows.iter().filter_map(|r| get_at(r, c)).map(|v| list_text(v).chars().count());
+            let head = column_title(leaf_of(c)).chars().count();
             width_of(texts.chain(std::iter::once(head.min(14))))
         })
         .collect();
@@ -557,10 +530,9 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
     ScrollArea::horizontal().id_salt((id, "scroll")).show(ui, |ui| {
         egui::Grid::new((id, "objects")).striped(true).spacing([6.0, 3.0]).show(ui, |ui| {
             for c in &cols {
-                let leaf = c.strip_prefix("columns.").unwrap_or(c);
-                let head = ui.label(RichText::new(column_name(leaf)).color(pal().muted).small());
-                let explained = leaf.split('.').next().unwrap_or(leaf);
-                if let Some(Value::String(meaning)) = hints.columns.get(explained) {
+                let leaf = leaf_of(c);
+                let head = ui.label(RichText::new(column_title(leaf)).color(pal().muted).small());
+                if let Some(Value::String(meaning)) = leaf.first().and_then(|k| hints.columns.get(k)) {
                     head.on_hover_text(meaning);
                 }
             }
@@ -568,7 +540,7 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
             ui.end_row();
             for (i, row) in rows.iter_mut().enumerate() {
                 for (c, w) in cols.iter().zip(&widths) {
-                    let now = get(row, c).cloned().unwrap_or(Value::Null);
+                    let now = get_at(row, c).cloned().unwrap_or(Value::Null);
                     // An object this row gives here is spread over the columns after it, which are the ones typed in: this
                     // cell would overwrite them all.
                     let spread = now.is_object();
@@ -576,12 +548,11 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                     let mut text = if now.is_null() || spread { String::new() } else { list_text(&now) };
                     // While a cell is typed in, it keeps what was typed (a list's comma at its end, a number's zeros after its
                     // point), not what that reads as so far; left, it shows what it holds again.
-                    let typing = ui.make_persistent_id(("cell", i, c.as_str()));
+                    let typing = ui.make_persistent_id(("cell", i, c));
                     typed_so_far(ui, typing, &mut text);
                     // A column inside a value this row gives whole is not one it can be typed in.
-                    let lit = literal.get(c).map(Vec::as_slice);
-                    let open = !spread && lit.map_or_else(|| reachable(row, c), |keys| get(row, c).is_some() || reachable_at(row, keys));
-                    let edit = if c == "source" || *w >= 300.0 {
+                    let open = !spread && reachable_at(row, c);
+                    let edit = if c.as_slice() == ["source"] || *w >= 300.0 {
                         egui::TextEdit::multiline(&mut text).desired_width(*w).desired_rows(1).hint_text("—")
                     } else {
                         egui::TextEdit::singleline(&mut text).desired_width(*w).hint_text("—")
@@ -630,7 +601,7 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                         } else {
                             cell_value(&text)
                         };
-                        write(row, c, value, lit);
+                        put_at(row, c, value);
                     }
                 }
                 if ui.small_button("×").on_hover_text(t("Delete this row")).clicked() {
@@ -715,6 +686,32 @@ fn column_name(col: &str) -> String {
     }
 }
 
+/// A column's keys under the table's `columns`, which every one of them is under where it is.
+fn leaf_of(c: &[String]) -> &[String] {
+    match c.split_first() {
+        Some((k, rest)) if k == "columns" && !rest.is_empty() => rest,
+        _ => c,
+    }
+}
+
+/// A column in words, by its keys: `demand_kva` then `over` is "Demand (kVA) over"; a key with a dot in it reads as it is
+/// written, so it never reads as a path into an object.
+fn column_title(keys: &[String]) -> String {
+    let mut out = String::new();
+    for (i, k) in keys.iter().enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        // Written as it is, in any place: a key with a dot in it is never read as words.
+        match (k.contains('.'), i) {
+            (true, _) => out.push_str(k),
+            (false, 0) => out.push_str(&column_name(k)),
+            (false, _) => out.push_str(&column_name(k).to_lowercase()),
+        }
+    }
+    out
+}
+
 /// What a row is called on its card: its name, or what tells it from the others.
 fn title_of(row: &Value, i: usize) -> String {
     let said = |k: &str| row.get(k).map(list_text).filter(|s| !s.is_empty());
@@ -760,6 +757,11 @@ fn cards(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, hints: &Hints,
 mod tests {
     use super::*;
 
+    /// The columns as the older tests name them, by their keys joined with dots.
+    fn col_names(rows: &[Value]) -> Vec<String> {
+        object_columns(rows).iter().map(|c| c.join(".")).collect()
+    }
+
     /// Every list of objects in every electrical code BIMCraft has, by where it is.
     fn tables() -> Vec<(String, Vec<Value>)> {
         fn walk(at: &str, v: &Value, out: &mut Vec<(String, Vec<Value>)>) {
@@ -790,7 +792,7 @@ mod tests {
         // not open, because the row holds a whole value where the column looks inside one (G7).
         let (mut kept, mut closed) = (0, 0);
         for (at, rows) in tables() {
-            let cols = object_columns(&rows);
+            let cols = col_names(&rows);
             for (i, row) in rows.iter().enumerate() {
                 for c in &cols {
                     let mut typed = row.clone();
@@ -890,7 +892,7 @@ mod tests {
         ]));
         let original = h.state().0.clone();
         let header = "A b";
-        assert_eq!(object_columns(original.as_array().unwrap()), ["name", "columns.a.b", "columns.a", "source"]);
+        assert_eq!(col_names(original.as_array().unwrap()), ["name", "columns.a.b", "columns.a", "source"]);
         for (row, i) in [("missing", 1), ("empty", 2)] {
             let id = g7_cell(&h, row, header).accesskit_node().locate().0;
             g7_type(&mut h, row, header, "25");
@@ -913,19 +915,45 @@ mod tests {
 
     #[test]
     fn g7_dot_keys_and_object_paths_are_distinct() {
+        // A key with a dot in it (`"a.b"`) and a path into an object (`a` then `b`) are two columns: each cell typed in
+        // writes where its column is, never where the other one is.
         let mut rows = json!([{"a.b":7,"a":{"b":11}},{"a.b":13},{"a":{"b":17}}]);
         let rows = rows.as_array_mut().unwrap();
-        assert_eq!(object_columns(rows), ["a.b"]);
-        put(&mut rows[0], "a.b", json!(23));
-        put(&mut rows[1], "a.b", json!(25));
-        put(&mut rows[2], "a.b", json!(31));
-        assert_eq!(rows.as_slice(), [json!({"a.b":23,"a":{"b":11}}), json!({"a.b":25}), json!({"a":{"b":31}})]);
-        // A literal column a row lacks takes that key whole, never an object made from its name.
-        let literal_rows = json!([{"a.b":7},{"name":"missing"}]);
-        let lit = literal_columns(literal_rows.as_array().unwrap());
-        let mut unfilled = literal_rows[1].clone();
-        write(&mut unfilled, "a.b", json!(25), lit.get("a.b").map(Vec::as_slice));
-        assert_eq!(unfilled, json!({"name":"missing","a.b":25}));
+        let (literal, path) = (vec!["a.b".to_string()], vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(object_columns(rows), [path.clone(), literal.clone()]);
+        assert_eq!((get_at(&rows[0], &literal), get_at(&rows[0], &path)), (Some(&json!(7)), Some(&json!(11))));
+        assert_eq!((get_at(&rows[1], &path), get_at(&rows[2], &literal)), (None, None));
+        put_at(&mut rows[0], &literal, json!(23));
+        put_at(&mut rows[0], &path, json!(29));
+        put_at(&mut rows[1], &literal, json!(25));
+        put_at(&mut rows[2], &path, json!(31));
+        assert_eq!(rows.as_slice(), [json!({"a.b":23,"a":{"b":29}}), json!({"a.b":25}), json!({"a":{"b":31}})]);
+        // Each cell is empty where its row lacks it, and typed in, makes only its own.
+        put_at(&mut rows[1], &path, json!(37));
+        put_at(&mut rows[2], &literal, json!(41));
+        assert_eq!(rows[1], json!({"a.b":25,"a":{"b":37}}));
+        assert_eq!(rows[2], json!({"a":{"b":31},"a.b":41}));
+        // The review's: a row with `columns["custom.flag"]` beside a table that only has `columns.custom.flag`.
+        let mut rows = json!([{"columns":{"custom.flag":11}},{"columns":{"custom":{"flag":17}}}]);
+        let rows = rows.as_array_mut().unwrap();
+        let cols = object_columns(rows);
+        let literal = vec!["columns".to_string(), "custom.flag".to_string()];
+        assert_eq!(cols.len(), 2);
+        assert!(cols.contains(&literal));
+        put_at(&mut rows[1], &literal, json!(25));
+        assert_eq!(rows[1], json!({"columns":{"custom":{"flag":17},"custom.flag":25}}));
+        assert_eq!(column_title(leaf_of(&literal)), "custom.flag");
+        assert_eq!(column_title(&["custom".to_string(), "flag".to_string()]), "Custom flag");
+        // Emptied where the row lacks the key, nothing is made to hold nothing; a key with a dot reads as written in any
+        // place, so two that differ only in capitals never read alike.
+        let mut lacking = json!({"columns":{"custom":{"flag":17}}});
+        put_at(&mut lacking, &literal, Value::Null);
+        assert_eq!(lacking, json!({"columns":{"custom":{"flag":17}}}));
+        let deep = |leaf: &str| column_title(&["outer".into(), "middle.dot".into(), leaf.into()]);
+        assert_eq!(
+            (deep("Leaf.Dot"), deep("leaf.dot")),
+            ("Outer middle.dot Leaf.Dot".to_string(), "Outer middle.dot leaf.dot".to_string())
+        );
     }
 
     #[test]
@@ -1077,16 +1105,16 @@ mod tests {
                 for row in *rows {
                     g7_paths(row, &mut Vec::new(), &mut paths);
                 }
-                let cols = object_columns(rows);
+                let cols = col_names(rows);
                 assert_eq!(cols.len(), paths.len(), "{name}");
                 for row in *rows {
                     for path in &paths {
                         let col = path.join(".");
                         assert!(cols.contains(&col));
                         let mut observed = row.clone();
-                        let input = if get(row, &col).is_some_and(Value::is_array) { list_value("a, b") } else { cell_value("999") };
+                        let input = if get_at(row, path).is_some_and(Value::is_array) { list_value("a, b") } else { cell_value("999") };
                         let expected = g7_expected(row, path, input.clone());
-                        put(&mut observed, &col, input);
+                        put_at(&mut observed, path, input);
                         count += 1;
                         match expected {
                             Some(expected) => {
@@ -1120,7 +1148,7 @@ mod tests {
             for (table, t) in origin["tables"].as_array().unwrap().iter().enumerate() {
                 let rows = t["rows"].as_array().unwrap();
                 for (i, row) in rows.iter().enumerate() {
-                    for col in object_columns(rows) {
+                    for col in col_names(rows) {
                         let Some((outer, leaf)) = col.rsplit_once('.') else {
                             continue;
                         };
@@ -1240,7 +1268,7 @@ mod tests {
         d.table = Some(("entrance".into(), "tables".into()));
         app.codes_dialog = Some(d);
         h.run();
-        g7_type(&mut h, "T4", "Custom flag", "25");
+        g7_type(&mut h, "T4", "custom.flag", "25");
         g7_ok(&mut h);
         assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
         let after = h.state().session.model.resolve_code(Discipline::Electrical, "entrance").value;
@@ -1290,13 +1318,27 @@ mod tests {
     }
 
     #[test]
+    fn a_key_with_a_dot_and_a_path_alike_are_two_columns_in_the_dialog() {
+        // The review's (G7, round 2): one row gives `columns["custom.flag"]`, another only `columns.custom.flag` as a path.
+        // Typed in the key's column, the second row takes the key; the path's value stays as it was.
+        let mut h = g7_table(json!([
+            {"name":"seed","columns":{"custom.flag":11}},
+            {"name":"T4","columns":{"custom":{"flag":17}}}
+        ]));
+        g7_type(&mut h, "T4", "custom.flag", "25");
+        assert_eq!(h.state().0[1], json!({"name":"T4","columns":{"custom":{"flag":17},"custom.flag":25}}));
+        g7_type(&mut h, "seed", "Custom flag", "29");
+        assert_eq!(h.state().0[0], json!({"name":"seed","columns":{"custom.flag":11,"custom":{"flag":29}}}));
+    }
+
+    #[test]
     fn g7r2_codes_deep_dotted_segments() {
         let mut h = g7_table(json!([
             {"name":"seed","top.dot":11,"columns":{"outer":{"middle.dot":{"leaf.dot":12}}}},
             {"name":"target","columns":{"keep":8}}
         ]));
-        g7_type(&mut h, "target", "Top dot", "23");
-        g7_type(&mut h, "target", "Outer middle dot leaf dot", "25");
+        g7_type(&mut h, "target", "top.dot", "23");
+        g7_type(&mut h, "target", "Outer middle.dot leaf.dot", "25");
         assert_eq!(
             h.state().0[1],
             json!({
@@ -1355,7 +1397,7 @@ mod tests {
         let mut expected = g7r2_entrance(&h);
         let row = g7r2_t4(&expected);
         expected["tables"][0]["rows"][row]["columns"]["custom.flag"] = json!(25);
-        g7_type(&mut h, "T4", "Custom flag", "25");
+        g7_type(&mut h, "T4", "custom.flag", "25");
         g7_ok(&mut h);
         assert!(h.state().codes_dialog.is_none());
         assert!(g7r2_entrance(&h) == expected);

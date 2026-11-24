@@ -8,7 +8,9 @@
 //! ([`BimApp::sheet`]): any other on screen draws as it is, and a click on it makes it the active one.
 
 use bimcraft_i18n::msg;
+use bimcraft_plugin::{Dock as PluginDock, PluginPanel, Widget};
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::f32::consts::FRAC_PI_2;
 
@@ -34,6 +36,103 @@ pub enum Palette {
     Assistant,
     /// PyAddins > Player: the user's Python scripts, each to run with a form of its inputs.
     Scripts,
+    /// A palette a plugin declared, by its place in [`plugin_palettes`]. The registry is the plugins' and is rebuilt
+    /// when they are read: the index is stable within a session, and the settings file keeps the name alone.
+    Plugin(usize),
+}
+
+/// A palette a plugin declares, as the window keeps it while the plugins are loaded.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PluginPalette {
+    /// `plugin:<plugin id>:<panel id>`, as the settings file keeps it.
+    pub name: &'static str,
+    /// The palette's title: the plugin's data, not translated.
+    pub title: &'static str,
+    pub plugin: &'static str,
+    /// The plugin's name, for the palette's tooltip.
+    pub plugin_name: &'static str,
+    pub panel: &'static str,
+    /// The side it docks on when it first opens.
+    pub dock: Side,
+    /// Whether it opens as a window of its own rather than docked.
+    pub float: bool,
+    pub on_open: Option<&'static str>,
+    pub refresh: Option<&'static str>,
+    pub widgets: Vec<Widget>,
+}
+
+thread_local! {
+    /// The panels the loaded plugins declare, in the order of [`Palette::known`]. The window is one thread, and a test
+    /// has its own registry, so plugins one test loads are no other test's.
+    static PLUGIN_PALETTES: RefCell<Vec<&'static PluginPalette>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Puts the panels of the plugins just read in the registry, in the order [`Plugins::panels`](bimcraft_plugin::Plugins::panels)
+/// gave them. Their strings are kept for the session: a palette's name is `&'static str`, as every built-in palette's is.
+pub fn set_plugin_palettes(panels: &[PluginPanel]) {
+    let old = plugin_palettes();
+    let list: Vec<&'static PluginPalette> = panels
+        .iter()
+        .map(|panel| {
+            let name = panel.name();
+            // A panel the folder has again, unchanged (a refresh, a permission granted), keeps its entry: a reload of the
+            // same plugins must not grow the strings kept for the session.
+            if let Some(entry) = old.iter().find(|entry| same_panel(entry, panel, &name)) {
+                return *entry;
+            }
+            let entry: &'static PluginPalette = Box::leak(Box::new(PluginPalette {
+                name: intern(&name),
+                title: intern(&panel.title),
+                plugin: intern(&panel.plugin),
+                plugin_name: intern(&panel.plugin_name),
+                panel: intern(&panel.id),
+                dock: match panel.dock {
+                    PluginDock::Left => Side::Left,
+                    PluginDock::Right | PluginDock::Float => Side::Right,
+                    PluginDock::Bottom => Side::Bottom,
+                },
+                float: panel.dock == PluginDock::Float,
+                on_open: panel.on_open.as_deref().map(intern),
+                refresh: panel.refresh.as_deref().map(intern),
+                widgets: panel.widgets.clone(),
+            }));
+            entry
+        })
+        .collect();
+    PLUGIN_PALETTES.with(|r| *r.borrow_mut() = list);
+}
+
+/// Whether `entry` is the palette `panel` declares, under the name `name`.
+fn same_panel(entry: &PluginPalette, panel: &PluginPanel, name: &str) -> bool {
+    entry.name == name
+        && entry.title == panel.title
+        && entry.plugin == panel.plugin
+        && entry.plugin_name == panel.plugin_name
+        && entry.panel == panel.id
+        && entry.on_open == panel.on_open.as_deref()
+        && entry.refresh == panel.refresh.as_deref()
+        && entry.float == (panel.dock == PluginDock::Float)
+        && entry.dock
+            == match panel.dock {
+                PluginDock::Left => Side::Left,
+                PluginDock::Right | PluginDock::Float => Side::Right,
+                PluginDock::Bottom => Side::Bottom,
+            }
+        && entry.widgets == panel.widgets
+}
+
+fn intern(text: &str) -> &'static str {
+    Box::leak(text.to_string().into_boxed_str())
+}
+
+/// The panels of the plugins loaded now, in registry order.
+pub fn plugin_palettes() -> Vec<&'static PluginPalette> {
+    PLUGIN_PALETTES.with(|r| r.borrow().clone())
+}
+
+/// The panel [`Palette::Plugin`] `i` stands for: none while the registry has fewer, as when a plugin was switched off.
+pub fn plugin_palette(i: usize) -> Option<&'static PluginPalette> {
+    PLUGIN_PALETTES.with(|r| r.borrow().get(i).copied())
 }
 
 impl Palette {
@@ -44,20 +143,27 @@ impl Palette {
     /// Every palette the window knows, the one place that lists them: the settings' switches and a preset's editor ask here, and
     /// the layout reads and writes its names through this list. A plugin's palettes come here with the plugin registry.
     pub fn known() -> Vec<Palette> {
-        vec![Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts]
+        let mut all = vec![Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts];
+        all.extend((0..plugin_palettes().len()).map(Palette::Plugin));
+        all
     }
 
     /// Whether it is open in a window that starts afresh (and in one whose settings are from before it came).
     fn opens_at_start(self) -> bool {
-        self != Palette::Scripts
+        !matches!(self, Palette::Scripts | Palette::Plugin(_))
     }
 
     /// The side it docks on when it is first opened.
     fn first_side(self) -> Side {
-        if self == Palette::Scripts { Side::Right } else { Side::Left }
+        match self {
+            Palette::Scripts => Side::Right,
+            Palette::Plugin(i) => plugin_palette(i).map_or(Side::Right, |p| p.dock),
+            _ => Side::Left,
+        }
     }
 
-    /// Its name: what its tab says (in the interface's language) and what the settings file keeps it as.
+    /// Its name: what its tab says (in the interface's language) and what the settings file keeps it as. A plugin's is
+    /// `plugin:<plugin id>:<panel id>`, its data, and the same in every language.
     pub fn name(self) -> &'static str {
         match self {
             Palette::Properties => "Properties",
@@ -65,16 +171,27 @@ impl Palette {
             Palette::Tools => msg!("Tools"),
             Palette::Assistant => msg!("Assistant"),
             Palette::Scripts => msg!("Script Automation"),
+            Palette::Plugin(i) => plugin_palette(i).map_or("plugin:unknown", |p| p.name),
         }
     }
 
     /// What its title and tab say in the profile this frame wears: BIMCraft calls Properties the Inspector and the Project
-    /// Browser the Navigator.
+    /// Browser the Navigator. A plugin's palette says its own title.
     pub fn label(self) -> &'static str {
         match (self, crate::style::rev()) {
             (Palette::Properties, false) => msg!("Inspector"),
             (Palette::Browser, false) => msg!("Navigator"),
+            (Palette::Plugin(i), _) => plugin_palette(i).map_or("", |p| p.title),
             _ => self.name(),
+        }
+    }
+
+    /// What a menu, a tab or a title calls it: the interface's word for a built-in palette, and a plugin's own title,
+    /// which is its data and is never translated.
+    pub fn title(self) -> String {
+        match self {
+            Palette::Plugin(_) => self.label().to_string(),
+            _ => t(self.label()).to_string(),
         }
     }
 
@@ -187,6 +304,9 @@ pub struct Docking {
     /// Names a file kept that this build has no palette for (a plugin's, while its plugin is off): not drawn, but written back in
     /// `closed`, so turning the plugin on again finds the layout as it was.
     pub unknown: Vec<String>,
+    /// The unknown names a file had in a stack or a window, which were open: when their plugin arrives they are shown
+    /// again, where the plugin says. A name only ever closed is not here.
+    pub unknown_open: Vec<String>,
 }
 
 impl Default for Docking {
@@ -199,6 +319,7 @@ impl Default for Docking {
             floats: Vec::new(),
             home: BTreeMap::new(),
             unknown: Vec::new(),
+            unknown_open: Vec::new(),
         }
     }
 }
@@ -213,6 +334,7 @@ impl Docking {
             floats: Vec::new(),
             home: BTreeMap::from([(Palette::Tools, Side::Left)]),
             unknown: Vec::new(),
+            unknown_open: Vec::new(),
         }
     }
 
@@ -367,6 +489,13 @@ impl Docking {
     pub fn show(&mut self, p: Palette, on: bool) {
         match (on, self.shown(p)) {
             (true, false) => {
+                // A plugin that asks for a window of its own gets one, over the views.
+                if let Palette::Plugin(i) = p
+                    && plugin_palette(i).is_some_and(|panel| panel.float)
+                {
+                    self.put(p, Target::Float(pos2(160.0 + 24.0 * self.floats.len() as f32, 160.0)));
+                    return;
+                }
                 let side = self.home.get(&p).copied().unwrap_or(p.first_side());
                 // A chat wants height: the Assistant opens as a tab of the Project Browser's stack, unless it was last put on another side.
                 match self.docked(Palette::Browser) {
@@ -427,8 +556,9 @@ impl Docking {
             return Docking::default();
         }
         let mut unknown = Vec::new();
+        let mut unknown_open = Vec::new();
         let mut seen = BTreeSet::new();
-        let mut stack = |v: &Value, unknown: &mut Vec<String>| -> Option<Stack> {
+        let mut stack = |v: &Value, unknown: &mut Vec<String>, open: &mut Vec<String>| -> Option<Stack> {
             let tabs: Vec<Palette> = v["tabs"]
                 .as_array()?
                 .iter()
@@ -436,12 +566,13 @@ impl Docking {
                 .filter_map(|n| match Palette::named(n, known) {
                     Some(p) => Some(p),
                     None => {
-                        if !n.is_empty()
-                            && n.chars().count() <= Palette::NAME
-                            && unknown.len() < Palette::MOST
-                            && !unknown.iter().any(|q| q == n)
-                        {
-                            unknown.push(n.to_string());
+                        if !n.is_empty() && n.chars().count() <= Palette::NAME && unknown.len() < Palette::MOST {
+                            if !unknown.iter().any(|q| q == n) {
+                                unknown.push(n.to_string());
+                            }
+                            if !open.iter().any(|q| q == n) {
+                                open.push(n.to_string());
+                            }
                         }
                         None
                     }
@@ -458,10 +589,13 @@ impl Docking {
             floats: Vec::new(),
             home: BTreeMap::new(),
             unknown: Vec::new(),
+            unknown_open: Vec::new(),
         };
         for side in Side::ALL {
-            let stacks: Vec<Stack> =
-                v[side.key()].as_array().map(|a| a.iter().filter_map(|s| stack(s, &mut unknown)).collect()).unwrap_or_default();
+            let stacks: Vec<Stack> = v[side.key()]
+                .as_array()
+                .map(|a| a.iter().filter_map(|s| stack(s, &mut unknown, &mut unknown_open)).collect())
+                .unwrap_or_default();
             *d.side_mut(side) = stacks;
         }
         let pair = |v: &Value, lo: f32, hi: f32| -> Option<Vec2> {
@@ -472,7 +606,7 @@ impl Docking {
         };
         for f in v["floats"].as_array().into_iter().flatten() {
             let (Some(at), Some(size)) = (pair(&f["at"], -FAR, FAR), pair(&f["size"], 120.0, 4000.0)) else { continue };
-            if let Some(s) = stack(f, &mut unknown) {
+            if let Some(s) = stack(f, &mut unknown, &mut unknown_open) {
                 d.floats.push(Float { stack: s, at: at.to_pos2(), size });
             }
         }
@@ -501,6 +635,7 @@ impl Docking {
             })
             .collect();
         d.unknown = unknown;
+        d.unknown_open = unknown_open;
         for p in known {
             // The window's own layout opens what the file never named, so a palette added since still shows; a preset keeps exactly
             // what it was saved with, and one added later stays closed.
@@ -515,6 +650,26 @@ impl Docking {
             }
         }
         d
+    }
+
+    /// Forgets where the plugin palettes were docked: their registry is rebuilt and their indices move, so the side each
+    /// remembered is no longer about the same palette.
+    pub fn forget_plugin_palettes(&mut self) {
+        self.home.retain(|p, _| !matches!(p, Palette::Plugin(_)));
+    }
+
+    /// Shows the palettes a file named while their plugin was off, now that `known` has them: those a file had open,
+    /// where the plugin says. A name this build still hasn't is kept for the next read.
+    pub fn adopt(&mut self, known: &[Palette]) {
+        let names = std::mem::take(&mut self.unknown_open);
+        for name in names {
+            match Palette::named(&name, known) {
+                Some(p) if !self.shown(p) => self.show(p, true),
+                Some(_) => {}
+                None => self.unknown_open.push(name),
+            }
+        }
+        self.unknown.retain(|name| Palette::named(name, known).is_none());
     }
 }
 
@@ -596,13 +751,22 @@ impl BimApp {
             // A side of the Tools palette alone is a rail and a column of names wide.
             let tools = stacks.len() == 1 && stacks[0].tabs == [Palette::Tools];
             let width = if tools { TOOLS_WIDTH } else { 290.0 };
+            // A palette's content must never widen the side it docks on over most of the view: a plugin's table, or a
+            // long label, would otherwise push the dock across the drawing. It is still resizable up to this cap.
+            let most = (ui.available_width() * 0.5).max(320.0);
             let panel = match side {
                 Side::Left => Panel::left("dock-left").default_size(width),
                 // The right side's card meets the window's edge, where its scroll bar must clear the edge that resizes the window.
                 Side::Right => Panel::right("dock-right").default_size(width + RIGHT_EXTRA),
                 Side::Bottom => Panel::bottom("dock-bottom").default_size(240.0),
             };
-            panel.frame(frame).show_separator_line(false).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side, &stacks));
+            panel
+                .frame(frame)
+                .show_separator_line(false)
+                .resizable(true)
+                .min_size(140.0)
+                .max_size(most)
+                .show(ui, |ui| self.dock_side(ui, side, &stacks));
         }
     }
 
@@ -693,6 +857,13 @@ impl BimApp {
             let at = rect.left_center() + vec2(12.0, 0.0);
             ui.painter().text(at, Align2::LEFT_CENTER, title, crate::style::semibold(13.0), pal().text);
         }
+        let back = if let Palette::Plugin(i) = shown
+            && let Some(panel) = plugin_palette(i)
+        {
+            back.on_hover_text(tf("Plugin panel: {}", &[panel.plugin_name]))
+        } else {
+            back
+        };
         if back.drag_started() {
             self.dragging = Some(if floating { Drag::Window(shown) } else { Drag::Palette(shown) });
             let corner = self.docking.float_of(shown).map_or(rect.min, |f| f.at);
@@ -709,7 +880,7 @@ impl BimApp {
             ui.spacing_mut().item_spacing.x = 2.0;
             if !lone {
                 for tab in &stack.tabs {
-                    let r = palette_tab(ui, t(tab.label()), *tab == shown);
+                    let r = palette_tab(ui, &tab.title(), *tab == shown);
                     if r.clicked() {
                         self.docking.activate(*tab);
                     }
@@ -719,11 +890,11 @@ impl BimApp {
                 }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let name = t(shown.name());
-                if icon_button(ui, Icon::Close, &tf("Close {}", &[name])).clicked() {
+                let name = shown.title();
+                if icon_button(ui, Icon::Close, &tf("Close {}", &[&name])).clicked() {
                     self.docking.take(shown);
                 }
-                let r = icon_button(ui, Icon::Dock, &tf("Dock {}", &[name]));
+                let r = icon_button(ui, Icon::Dock, &tf("Dock {}", &[&name]));
                 Popup::menu(&r).show(|ui| self.dock_menu(ui, shown, rect));
             });
         });
@@ -755,6 +926,11 @@ impl BimApp {
     fn palette_title(&self, p: Palette) -> String {
         match p {
             Palette::Properties | Palette::Tools | Palette::Assistant | Palette::Scripts => t(p.label()).to_string(),
+            Palette::Plugin(i) => {
+                let title = plugin_palette(i).map_or_else(|| t("Plugin panel").to_string(), |panel| panel.title.to_string());
+                let badge = self.plugin_panel_badge(i);
+                if badge.is_empty() { title } else { format!("{title} · {badge}") }
+            }
             Palette::Browser => match self.active_family() {
                 Some(ed) => format!("{} · {}", t(p.label()), ed.title()),
                 _ => format!("{} · {}", t(p.label()), self.session.model.name),
@@ -778,6 +954,9 @@ impl BimApp {
             Palette::Tools => self.tool_column(ui),
             Palette::Assistant => self.assistant_palette(ui),
             Palette::Scripts => self.scripts_palette(ui),
+            Palette::Plugin(i) => {
+                scroll.id_salt(("plugin-panel", i)).show(ui, |ui| self.plugin_panel_body(ui, i));
+            }
         }
     }
 

@@ -1352,7 +1352,12 @@ other_files(
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, slope?, landings?: [{at, turn?}, …], railings?} a ramp \
          from the middle of its foot at `start`, climbing toward `end` (or `angle` degrees) up to the next level, or `height` mm, \
          `width` wide (1200), at `slope` percent (8.33, 1 in 12), as long as that makes it; with landings `at` mm up, turning \
-         as a stair's do, and with `railings`, a railing down each side. Solid down to its level",
+         as a stair's do, and with `railings`, a railing down each side. Solid down to its level. Or {start, path: [{to: [x,y], \
+         landing?, arc?, slope?}, …]}: drawn along a line from `start`, each segment a flight (at its own `slope`, else the \
+         ramp's) or a `landing`, straight or an `arc` turning so many degrees (left; right with a minus), climbing as high as \
+         its flights rise. Or {sketch: [lines], runs: [[[x,y],[x,y]], …]}: sketched, its two sides as sketch lines and its run \
+         lines in `runs` (or sketch lines with `style` \"ramp run\"): the first its start, the second its end, and each two more \
+         a landing between them; its flights share its height. `flipped` makes any ramp climb the other way",
         ramp,
     )
     .menu("Architecture > Ramp"),
@@ -2417,7 +2422,11 @@ other_files(
          A filled region's, a floor's or a toposolid's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
-         outline it sets is held to what `floor` says of it",
+         outline it sets is held to what `floor` says of it. A plan's (a level's or a plan view's) `view_range` merges \
+         {top?, cut?, bottom?, depth?: mm, top_from?, bottom_from?, depth_from?: associated|above|below|unlimited|{level: \
+         id|GUID}}: each plane an offset over the level it is measured from (the plan's own, the next up or down, one \
+         named, or no limit); the cut plane is the plan's own level's, and a top of null from its own level is the level above. \
+         The planes must run top ≥ cut plane ≥ bottom ≥ view depth where they are",
         modify,
     ),
     edit(
@@ -2982,6 +2991,17 @@ other_files(
     )
     .menu("Manage > Line Weights"),
     edit(
+        "halftone",
+        ui_msg!("Halftone/Underlay"),
+        &[],
+        "{fade?: 1..100} how far toward the paper halftone draws, percent, as Revit's Halftone/Underlay: what Visibility/Graphics \
+         marks Halftone, a linked model, and what a plan sees between its view range's bottom and its view depth (the \
+         underlay), every line and fill of it lightened, still seen. 50, as a project starts, is halfway; 100 is the paper. \
+         Without `fade`, it says what it is. Says `fade`",
+        halftone,
+    )
+    .menu("Manage > Annotation Settings > Halftone/Underlay"),
+    edit(
         "object_styles",
         ui_msg!("Object Styles"),
         &[],
@@ -3467,7 +3487,7 @@ other_files(
         &[],
         "{name, from?: a level's, section's, elevation's or 3D view's name or id, like?: another template's name, \
          kind?: plan | section | 3d | null, rename?, controls?: [categories, filters, range, \
-         phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
+         phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?, top_from?, bottom_from?, depth_from?}, phase?, phase_filter?, options?, \
          scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
          background_grid?: grid settings as in graphics, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
          views to follow with `graphics {template}`. `kind` is the views it is for (plans, elevations and sections, or 3D \
@@ -3478,7 +3498,8 @@ other_files(
          categories, its filters, a plan's view range, its phase with its phase filter, its design options, its scale (`scale` \
          command), its detail level (`detail`), its visual style (`visual_style`). `hide`, `show`, `categories`, `filters`, \
          `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style`, `background_grid` and `reset` change it as they change a view; \
-         `view_range` merges into its range. Changed, every view following it follows. Gone, they keep their own settings. \
+         `view_range` merges into its range, its planes measured from the level of each plan that follows it (associated, \
+         above, below or unlimited; never a level named, as `modify` may give a plan's). Changed, every view following it follows. Gone, they keep their own settings. \
          `name` alone reads one",
         view_template,
     ),
@@ -3492,13 +3513,30 @@ other_files(
          out, its elements made and taken down in `into` instead (needed while anything holds it). An element is made in a \
          phase (its `Phase Created` parameter, the first unless it says) and may be taken down in a later one (`Phase \
          Demolished`), set with `modify {params}`; `now` (a phase, or null) is the phase what this session's commands make \
-         is made in (the first phase leaves no value). A view shows a phase and a phase filter (`graphics {phase, \
+         is made in (the first phase leaves no value), and nothing they make comes down (see `renovation`). A view shows a phase and a phase filter (`graphics {phase, \
          phase_filter}`): what's made after it isn't there, what's taken down before it neither, and the rest is new (made in \
          it), existing, demolished (taken down in it) or temporary (both), each shown as its phase filter says (see \
          `phase_filter`). `overrides` ({new|existing|demolished|temporary: override | null}, merged: an override as \
          `graphics` has it, without hidden) is how a phase filter draws what it says overridden; the first two statuses \
          start halftone and dashed red. Replies with the phases, `now` and the overrides",
         view_phases,
+    )
+    .menu("Manage > Phasing"),
+    edit(
+        "renovation",
+        ui_msg!("Renovation"),
+        &[],
+        "{status?, ids?, phase?} the status of the work, as a renovation palette sets it, over the project's phases: `phase` \
+         is the work's (the project's last unless it says; a view's), the one before it what stands. `status` (existing, \
+         demolished or new) alone is what this session's commands make from now on: existing is made in the phase before, \
+         demolished made there and taken down in `phase`, new made in `phase`; null follows the view again (no phase of the \
+         session's own, as `phase {now: null}`). With `ids` it gives those elements that status instead, in one undo step, a \
+         door or window a phase of its own; existing and demolished keep an earlier phase an element was made in. `ids` alone \
+         reads them. Refused in a project of one phase. Replies with the session's `status` in `phase` (null when it follows \
+         the view), `now` and `demolish` (its phases), `existing_phase` and `new_phase`, and with `ids` each one's `status` \
+         (new, existing, demolished, temporary, or null where it isn't in `phase`) in `elements`, and `selection`: theirs \
+         when they share it, else mixed",
+        renovation,
     )
     .menu("Manage > Phasing"),
     edit(
@@ -4200,9 +4238,16 @@ fn runs(extra: &mut Map<String, Value>, l: &stairs::Layout) {
     extra.insert("runs".into(), json!(runs));
 }
 
-/// The area of the rings together, mm².
-fn area(rings: &[Vec<P2>]) -> f64 {
-    rings.iter().map(|r| geom::area(r).abs()).sum()
+/// A planar element's areas and volume as agents read them: `area_m2` (net), `openings_area_m2`,
+/// `plan_area_m2` where it has a plan, and `volume_m3` (net).
+fn planar_quantities(m: &Model, id: Id, extra: &mut Map<String, Value>) {
+    let Some(q) = m.quantities(id) else { return };
+    extra.insert("area_m2".into(), json!(m2(q.areas.net)));
+    extra.insert("openings_area_m2".into(), json!(m2(q.areas.openings)));
+    if let Some(plan) = q.plan {
+        extra.insert("plan_area_m2".into(), json!(m2(plan)));
+    }
+    extra.insert("volume_m3".into(), json!((q.volume / 1e6).round() / 1e3));
 }
 
 pub(crate) fn hundredth(x: f64) -> f64 {
@@ -4760,6 +4805,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(r) = axis.radius() {
                 extra.insert("radius".into(), json!(hundredth(r)));
             }
+            planar_quantities(m, id, &mut extra);
         }
         Element::Door(o) | Element::Window(o) => {
             if let (Some(t), Some(w)) = (m.opening_type(e), m.wall(o.host)) {
@@ -4770,15 +4816,23 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 }
                 extra.insert("level".into(), json!(w.level));
                 extra.insert("at".into(), json!(m.anchor(id)));
-                // Of a family: every parameter's value, worked out.
-                if let Some(v) = o
+                // Of a family: every parameter's value, worked out. A door or a window of a project type has none: its
+                // Opening Area is the rectangle of its Width and Height.
+                let mut values = o
                     .family
                     .as_ref()
                     .and_then(|n| m.families.get(n))
-                    .and_then(|f| f.values_in(&o.type_name, &o.params, m.thickness(w)).ok())
-                {
-                    extra.insert("values".into(), values_json(v));
-                }
+                    .and_then(|f| f.values_in(&o.type_name, &o.params, m.thickness(w)).ok());
+                let area = values
+                    .as_ref()
+                    .and_then(|v| v.get(crate::family::OPENING_AREA))
+                    .and_then(|v| match v {
+                        crate::family::Val::Number(x) => Some(*x),
+                        _ => None,
+                    })
+                    .unwrap_or(t.width * t.height);
+                values.get_or_insert_with(BTreeMap::new).insert(crate::family::OPENING_AREA.to_string(), crate::family::Val::Number(area));
+                extra.insert("values".into(), values_json(values.unwrap_or_default()));
             }
         }
         Element::Dimension(d) => {
@@ -4877,7 +4931,16 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Ramp(r) => {
             let (bottom, top) = m.span(r.level, 0.0, r.top_level, r.height);
             let l = stairs::ramp(m, r);
-            extra.insert("height".into(), json!(top - bottom));
+            let height = if r.path.is_empty() { top - bottom } else { crate::ramps::path_rise(r) };
+            extra.insert("height".into(), json!(hundredth(height)));
+            let flights: Vec<Value> = crate::ramps::pieces(m, r)
+                .iter()
+                .map(|p| {
+                    json!({"landing": p.landing, "length": hundredth(p.length()), "rise": hundredth((p.z.1 - p.z.0).abs()),
+                           "slope": hundredth(p.slope()), "segment": p.seg})
+                })
+                .collect();
+            extra.insert("pieces".into(), json!(flights));
             extra.insert("length".into(), json!(hundredth(l.runs.iter().map(|r| r.length).sum())));
             runs(&mut extra, &l);
         }
@@ -4894,9 +4957,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 .flat_map(|(loops, p)| loops.iter().flatten().map(|q| p.at(*q)))
                 .fold(m.elevation(r.level) + r.offset, f64::max);
             let outline = m.roof_outline(r);
-            let courtyards: f64 = r.courtyards.iter().map(|c| geom::area(c).abs()).sum();
             extra.insert("ridge".into(), json!(hundredth(ridge)));
-            extra.insert("area_m2".into(), json!(m2(geom::area(&outline).abs() - courtyards)));
+            extra.insert("thickness".into(), json!(m.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness)));
+            planar_quantities(m, id, &mut extra);
             extra.insert("outline".into(), json!(outline.into_iter().map(micron).collect::<Vec<_>>()));
         }
         Element::Sheet(sh) => {
@@ -4946,11 +5009,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
         // Areas less the openings and shafts through them.
         Element::Floor(f) => {
-            let left: f64 = m.floor_slabs(f).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
-            extra.insert("area_m2".into(), json!(m2(left)));
+            planar_quantities(m, id, &mut extra);
             extra.insert("thickness".into(), json!(m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness)));
-            // What it holds, less its openings and the shafts through it: under a variable layer, less where its top falls.
-            extra.insert("volume_m3".into(), json!((m.floor_volume(f) / 1e6).round() / 1e3));
             // How high its top is, at its lowest and its highest, its shape's points too.
             extra.insert("top".into(), top_range(m, f));
             // Where its top's model pattern starts and how far it's turned: shown at their defaults too, to be set by modify.
@@ -4962,8 +5022,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             }
         }
         Element::Ceiling(cl) => {
-            let left: f64 = m.ceiling_slabs(cl).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
-            extra.insert("area_m2".into(), json!(m2(left)));
+            planar_quantities(m, id, &mut extra);
             if let Some(t) = m.types.ceiling.get(&cl.type_name) {
                 extra.insert("thickness".into(), json!(t.thickness));
                 extra.insert("grid".into(), json!(t.grid));
@@ -7269,7 +7328,11 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             ..Graphics::default()
         };
         t.view_range = match m.elements.get(view) {
-            Some(Element::Level(_) | Element::PlanView(_)) => Some(m.view_range_of(view)),
+            // Measured from the view's own level where it names one: a template serves every storey.
+            Some(Element::Level(_) | Element::PlanView(_)) => {
+                let level = m.plan_level(view).map(|l| m.guid(l)).unwrap_or_default();
+                Some(crate::view_range::relative(m, level, &m.view_range_of(view)))
+            }
             _ => None,
         };
         t.kind = m.elements.get(view).and_then(graphics::ViewKind::of);
@@ -7296,7 +7359,12 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             merge(&mut now, v);
             t.view_range = Some(serde_json::from_value(now).map_err(|e| bad(c, format!("`view_range`: {e}")))?);
         }
-        Some(v) => return Err(bad(c, format!("`view_range` is {{top?, cut?, bottom?, depth?}} in mm, not {v}"))),
+        Some(v) => {
+            return Err(bad(
+                c,
+                format!("`view_range` is {{top?, cut?, bottom?, depth?}} in mm and {{top_from?, bottom_from?, depth_from?}}, not {v}"),
+            ));
+        }
         None => {}
     }
     edit_graphics(c, m, p, &mut t.graphics, true)?;
@@ -7443,7 +7511,7 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
     };
     if let Some(name) = &name {
         let m = &s.model;
-        let held = phasing::holds_phase(m, s.phase.as_deref(), name);
+        let held = phasing::holds_phase(m, s.phase.as_deref(), name) || s.demolish.as_ref() == Some(name);
         if delete {
             known(m, name)?;
             if m.phases.len() == 1 {
@@ -7467,7 +7535,10 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
                 phasing::move_phase(m, name, Some(to));
             }
             if s.phase.as_ref() == Some(name) {
-                s.phase = into;
+                s.phase = into.clone();
+            }
+            if s.demolish.as_ref() == Some(name) {
+                s.demolish = into;
             }
         } else if let Some(to) = &rename {
             known(m, name)?;
@@ -7482,6 +7553,9 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
             phasing::move_phase(m, name, Some(to));
             if s.phase.as_ref() == Some(name) {
                 s.phase = Some(to.clone());
+            }
+            if s.demolish.as_ref() == Some(name) {
+                s.demolish = Some(to.clone());
             }
         } else {
             if m.phases.contains(name) {
@@ -7532,10 +7606,74 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
         if let Some(n) = &now {
             known(&s.model, n)?;
         }
-        s.phase = now;
+        // A phase chosen is where things are made and stand: what a renovation status took down, no longer.
+        (s.phase, s.demolish) = (now, None);
     }
     let m = &s.model;
     Ok(json!({"phases": m.phases, "now": s.phase, "overrides": m.phase_overrides}))
+}
+
+fn renovation(s: &mut Session, p: &Value) -> R {
+    let c = "renovation";
+    let new = name_opt(c, p, "phase")?;
+    let (existing, at) = phasing::renovation_phases(&s.model, new.as_deref()).map_err(|e| bad(c, e))?;
+    let status = match p.get("status") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(v) => match v.as_str() {
+            Some("new") => Some(Some(phasing::Status::New)),
+            Some("existing") => Some(Some(phasing::Status::Existing)),
+            Some("demolished") => Some(Some(phasing::Status::Demolished)),
+            _ => return Err(bad(c, format!("`status` is existing, demolished or new, or null to follow the view, not {v}"))),
+        },
+    };
+    let ids = if p.get("ids").is_some() || p.get("id").is_some() { Some(ids_param(c, &s.model, p)?) } else { None };
+    let phase_name = |i: usize| s.model.phases.get(i).cloned();
+    let (existing_name, new_name) = (phase_name(existing), phase_name(at));
+    match (&ids, status) {
+        (Some(_), Some(None)) => return Err(bad(c, "`status` is the one to give the elements: existing, demolished or new")),
+        (Some(ids), Some(Some(status))) => {
+            let m = s.model_mut();
+            for id in ids {
+                phasing::give_status(m, *id, status, at).map_err(|e| bad(c, e))?;
+            }
+        }
+        (None, Some(status)) => {
+            let made_in = match status {
+                None => (None, None),
+                Some(phasing::Status::New) => (new_name.clone(), None),
+                Some(phasing::Status::Demolished) => (existing_name.clone(), new_name.clone()),
+                Some(_) => (existing_name.clone(), None),
+            };
+            (s.phase, s.demolish) = made_in;
+        }
+        (_, None) => {}
+    }
+    let m = &s.model;
+    let drawing = match (&s.phase, &s.demolish) {
+        (None, None) => None,
+        (made, down) => {
+            let made = made.as_deref().map_or(Some(0), |n| phasing::index(m, n));
+            let down = down.as_deref().and_then(|n| phasing::index(m, n));
+            made.and_then(|made| phasing::status_at(made, down.filter(|d| *d >= made), at))
+        }
+    };
+    let mut reply = json!({
+        "status": drawing.map(phasing::Status::name), "now": s.phase, "demolish": s.demolish,
+        "existing_phase": existing_name, "new_phase": new_name,
+    });
+    if let Some(ids) = ids {
+        let of = |id: &Id| m.elements.get(*id).and_then(|e| phasing::status(m, e, at)).map(phasing::Status::name);
+        let statuses: Vec<Option<&str>> = ids.iter().map(of).collect();
+        let selection = match statuses.split_first() {
+            Some((first, rest)) if rest.iter().all(|x| x == first) => json!(first),
+            Some(_) => json!("mixed"),
+            None => Value::Null,
+        };
+        reply["elements"] = ids.iter().zip(&statuses).map(|(id, st)| json!({"id": id, "status": st})).collect();
+        reply["selection"] = selection;
+    }
+    Ok(reply)
 }
 
 fn view_phase_filter(s: &mut Session, p: &Value) -> R {
@@ -12718,12 +12856,12 @@ fn flip(s: &mut Session, p: &Value) -> R {
     if cycle.is_some() && (hand.is_some() || facing.is_some()) {
         return Err(bad(c, "`cycle` turns an opening by its own rule, so it takes neither `hand` nor `facing`"));
     }
-    let stair = |id: &Id| matches!(m.elements.get(id), Some(Element::Stair(_)));
+    let stair = |id: &Id| matches!(m.elements.get(id), Some(Element::Stair(_) | Element::Ramp(_)));
     let walls: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_some()).collect();
     let openings: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_none() && !stair(id)).collect();
     if let Some(id) = openings.iter().find(|id| m.elements.get(**id).is_none_or(|e| m.opening_flips(e).is_none())) {
         let what = m.elements.get(*id).map_or("nothing", Element::category);
-        return Err(bad(c, format!("{what} {id} isn't a wall, a stair, a door or a window")));
+        return Err(bad(c, format!("{what} {id} isn't a wall, a stair, a ramp, a door or a window")));
     }
     // What each opening can turn: a flag it doesn't have is refused, and one given without `cycle` needs its own.
     let mut capable: BTreeMap<Id, Flips> = BTreeMap::new();
@@ -12768,6 +12906,12 @@ fn flip(s: &mut Session, p: &Value) -> R {
     for (id, st) in flipped {
         if let Some(Element::Stair(old)) = m.elements.get_mut(id) {
             *old = st;
+        }
+    }
+    // A ramp climbs the other way along what was drawn.
+    for id in &ids {
+        if let Some(Element::Ramp(r)) = m.elements.get_mut(id) {
+            r.flipped = !r.flipped;
         }
     }
     let lengths: BTreeMap<Guid, f64> = walls.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
@@ -15225,11 +15369,48 @@ fn ramp(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     // What a new ramp starts with: the project's code's.
     let new_ramp = m.rules::<crate::codes::checks::RampRules>();
-    let start = point_req(c, p, "start")?;
-    let angle = climb(c, p, start)?;
+    let path: Vec<crate::model::RampSeg> = match p.get("path") {
+        v if absent(v) => Vec::new(),
+        Some(v @ Value::Array(a)) if a.len() <= 200 => {
+            serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`path` is [{{to: [x,y], landing?, arc?, slope?}}, …]: {e}")))?
+        }
+        _ => return Err(bad(c, "`path` is a list of at most 200 segments [{to: [x,y], landing?, arc?, slope?}, …]")),
+    };
+    let mut sketch = sketch_param(c, p, "sketch", &[])?.unwrap_or_default();
+    match p.get("runs") {
+        v if absent(v) => {}
+        Some(v @ Value::Array(a)) if a.len() <= 200 => {
+            let runs: Vec<[P2; 2]> = serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`runs` is [[[x,y],[x,y]], …]: {e}")))?;
+            sketch
+                .extend(runs.into_iter().map(|[a, b]| SketchLine { style: Some(crate::model::RAMP_RUN.into()), ..SketchLine::new(a, b) }));
+        }
+        _ => return Err(bad(c, "`runs` is a list of at most 200 lines [[[x,y],[x,y]], …]")),
+    }
+    // A sketched one's foot is the middle of its start line.
+    let first_run = sketch.iter().find(|l| l.style.as_deref() == Some(crate::model::RAMP_RUN)).map(|l| l.middle());
+    let start = match (first_run, point_opt(c, p, "start")?) {
+        (_, Some(s)) => s,
+        (Some(s), None) => micron(s),
+        (None, None) => point_req(c, p, "start")?,
+    };
+    let angle = match path.first() {
+        Some(first) if first.to.dist(start) > 1e-6 => degrees((first.to - start).1.atan2((first.to - start).0).to_degrees()),
+        _ => climb(c, p, start)?,
+    };
     let level = level_param(c, m, p, "level")?;
-    let (top_level, height) = top_param(c, m, p, level)?;
-    let r = Ramp {
+    let (mut top_level, mut height) = top_param(c, m, p, level)?;
+    let type_name = match string(c, p, "type")? {
+        Some(t) => t,
+        None => m.default_type("ramp").map(String::from).unwrap_or_default(),
+    };
+    let mut r = Ramp {
+        type_name,
+        line: match p.get("line") {
+            v if absent(v) => Default::default(),
+            Some(v) => serde_json::from_value(v.clone())
+                .map_err(|_| bad(c, "`line` is \"left\", \"centre\" or \"right\": the line `path` is drawn along"))?,
+            None => Default::default(),
+        },
         params: Default::default(),
         level,
         top_level,
@@ -15239,7 +15420,19 @@ fn ramp(s: &mut Session, p: &Value) -> R {
         width: num(c, p, "width")?.unwrap_or(new_ramp.width),
         slope: num(c, p, "slope")?.unwrap_or(new_ramp.slope),
         landings: landings_param(c, p)?,
+        path,
+        sketch,
+        flipped: flag(c, p, "flipped")?,
     };
+    // Drawn along a line, it climbs as high as its flights rise: to its top level when they reach it, else that high.
+    if !r.path.is_empty() {
+        let rise = crate::ramps::path_rise(&r);
+        let (bottom, top) = m.span(level, 0.0, top_level, height);
+        if (top - bottom - rise).abs() > 1.0 {
+            (top_level, height) = (None, (rise * 1000.0).round() / 1000.0);
+        }
+        (r.top_level, r.height) = (top_level, height);
+    }
     let length: f64 = stairs::ramp(m, &r).runs.iter().map(|r| r.length).sum();
     let level = r.level;
     let id = s.model_mut().insert(Element::Ramp(r));
@@ -19718,6 +19911,53 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.roof.insert(name.clone(), t.clone());
             json!(t)
         }
+        "ramp" => {
+            let old = m.types.ramp.get(&name).cloned().unwrap_or_default();
+            let (thickness, layers) = layered(c, p, Some((old.thickness, old.layers.as_slice())), thickness, &need)?;
+            let choice = |key: &str| p.get(key).filter(|v| !absent(Some(*v))).cloned();
+            let t = crate::model::RampType {
+                thickness,
+                layers,
+                solid: match p.get("solid") {
+                    v if absent(v) => old.solid,
+                    _ => flag(c, p, "solid")?,
+                },
+                material: string(c, p, "material")?.unwrap_or(old.material),
+                plan: match choice("plan") {
+                    None => old.plan,
+                    Some(v) => {
+                        let mut all = serde_json::to_value(old.plan).map_err(|e| bad(c, e))?;
+                        merge(&mut all, &v);
+                        serde_json::from_value(all)
+                            .map_err(|e| bad(c, format!("`plan` is {{below, same, above}}, each as a stair type's: {e}")))?
+                    }
+                },
+                line_visible: string(c, p, "line_visible")?.unwrap_or(old.line_visible),
+                line_hidden: string(c, p, "line_hidden")?.unwrap_or(old.line_hidden),
+                fill: string(c, p, "fill")?.unwrap_or(old.fill),
+                arrow: match choice("arrow") {
+                    None => old.arrow,
+                    Some(v) => serde_json::from_value(v)
+                        .map_err(|_| bad(c, "`arrow` is \"open\", \"filled\", \"hollow\", \"tick\" or \"none\""))?,
+                },
+                walk_start: match choice("walk_start") {
+                    None => old.walk_start,
+                    Some(v) => serde_json::from_value(v).map_err(|_| bad(c, "`walk_start` is \"none\", \"dot\" or \"circle\""))?,
+                },
+                cut_mark: match choice("cut_mark") {
+                    None => old.cut_mark,
+                    Some(v) => {
+                        serde_json::from_value(v).map_err(|_| bad(c, "`cut_mark` is \"zigzag\", \"double\", \"straight\" or \"wave\""))?
+                    }
+                },
+                walk_rounded: match p.get("walk_rounded") {
+                    v if absent(v) => old.walk_rounded,
+                    _ => flag(c, p, "walk_rounded")?,
+                },
+            };
+            m.types.ramp.insert(name.clone(), t.clone());
+            json!(t)
+        }
         "stair" => {
             let old = m.types.stair.get(&name).cloned().unwrap_or_default();
             let part = |key: &str, was: f64| num(c, p, key).map(|v| v.unwrap_or(was));
@@ -20649,10 +20889,12 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 };
             }
         }
-        Element::Ramp(Ramp { start, angle, landings, .. }) => {
+        Element::Ramp(Ramp { start, angle, landings, path, .. }) => {
             (*start, *angle) = turned(f, *start, *angle);
+            path.iter_mut().for_each(|s| s.to = f(s.to));
             if mo.mirror {
                 landings.iter_mut().for_each(|l| l.turn = -l.turn + 0.0);
+                path.iter_mut().for_each(|s| s.arc = -s.arc + 0.0);
             }
         }
         Element::Railing(rl) => match rl.host {
@@ -23107,6 +23349,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 || e.and_then(crate::underlay::of_element).is_some_and(|u| gone.contains(&u.view))
         })
         .collect();
+    // A plan whose view range is measured from a level that goes is measured from its own level, at the height it was.
+    let rebased = crate::view_range::rebased(&s.model, &gone);
     let m = s.model_mut();
     m.pinned.retain(|g| !gone.contains(g));
     for id in &gone {
@@ -23123,6 +23367,11 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             && slot.as_ref().is_some_and(|u| gone.contains(&u.view))
         {
             *slot = None;
+        }
+    }
+    for (id, r) in rebased {
+        if let Some(slot) = m.elements.get_mut(id).and_then(crate::view_range::of_mut) {
+            *slot = r;
         }
     }
     for (id, d) in kept {
@@ -23262,6 +23511,8 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
         }
     }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
+    // A plan whose view range is measured from a level that goes is measured from its own level, at the height it was.
+    let rebased = crate::view_range::rebased(&s.model, &gone);
     let m = s.model_mut();
     m.pinned.retain(|g| !gone.contains(g));
     // A 3D view whose work plane's level goes sketches on the lowest level again.
@@ -23291,6 +23542,11 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for slot in m.elements.values_mut().filter_map(crate::underlay::slot) {
         if slot.as_ref().is_some_and(|u| gone.contains(&u.view)) {
             *slot = None;
+        }
+    }
+    for (id, r) in rebased {
+        if let Some(slot) = m.elements.get_mut(id).and_then(crate::view_range::of_mut) {
+            *slot = r;
         }
     }
     for (id, d) in kept {
@@ -23592,6 +23848,26 @@ fn units(s: &mut Session, p: &Value) -> R {
         (m.units, m.decimals) = (units, decimals);
     }
     Ok(json!({"length": s.model.units.name(), "decimals": s.model.decimals_shown()}))
+}
+
+fn halftone(s: &mut Session, p: &Value) -> R {
+    let c = "halftone";
+    only(c, p, &["fade"])?;
+    match p.get("fade") {
+        v if absent(v) => {}
+        Some(v) => {
+            let fade = v
+                .as_u64()
+                .filter(|n| (1..=100).contains(n))
+                .ok_or_else(|| bad(c, format!("`fade` is how far toward the paper halftone draws, 1 to 100 percent, not {v}")))?;
+            let fade = u8::try_from(fade).unwrap_or(crate::graphics::HALFTONE);
+            if fade != s.model.halftone {
+                s.model_mut().halftone = fade;
+            }
+        }
+        None => {}
+    }
+    Ok(json!({"fade": s.model.halftone}))
 }
 
 fn room_area(s: &mut Session, p: &Value) -> R {

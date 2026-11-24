@@ -700,6 +700,7 @@ impl Model {
                 "railing" => self.types.railing.remove(name).is_some(),
                 "room" => self.types.room.remove(name).is_some(),
                 "stair" => self.types.stair.remove(name).is_some(),
+                "ramp" => self.types.ramp.remove(name).is_some(),
                 "curtainpanel" => self.types.curtain_panel.remove(name).is_some(),
                 "mullion" => self.types.mullion.remove(name).is_some(),
                 "cornermullion" => self.types.corner_mullion.remove(name).is_some(),
@@ -752,6 +753,7 @@ impl Model {
                 "railing" => mv(&mut self.types.railing, from, to),
                 "room" => mv(&mut self.types.room, from, to),
                 "stair" => mv(&mut self.types.stair, from, to),
+                "ramp" => mv(&mut self.types.ramp, from, to),
                 "curtainpanel" => mv(&mut self.types.curtain_panel, from, to),
                 "mullion" => mv(&mut self.types.mullion, from, to),
                 "cornermullion" => mv(&mut self.types.corner_mullion, from, to),
@@ -852,6 +854,7 @@ impl Model {
         add(Kind::Type("railing".into()), &mut t.railing.keys());
         add(Kind::Type("room".into()), &mut t.room.keys());
         add(Kind::Type("stair".into()), &mut t.stair.keys());
+        add(Kind::Type("ramp".into()), &mut t.ramp.keys());
         add(Kind::Type("curtainpanel".into()), &mut t.curtain_panel.keys());
         add(Kind::Type("mullion".into()), &mut t.mullion.keys());
         add(Kind::Type("cornermullion".into()), &mut t.corner_mullion.keys());
@@ -1576,6 +1579,7 @@ impl crate::model::Element {
             Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
             // A stair of no type names none.
             Element::Stair(x) if !x.type_name.is_empty() => f(&Kind::Type(category), &mut x.type_name),
+            Element::Ramp(x) if !x.type_name.is_empty() => f(&Kind::Type(category), &mut x.type_name),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => f(&Kind::Type(category), &mut c.type_name),
             run_arm!(r) => f(&Kind::Type(category), &mut r.type_name),
             Element::Door(o) | Element::Window(o) => match &mut o.family {

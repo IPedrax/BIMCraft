@@ -373,6 +373,8 @@ pub struct Canvas {
     /// A part of the selected stair picked on its own (a flight, a landing): the stair, and which part
     /// (`stairs::stair_parts`).
     pub(crate) stair_part: Option<(Id, usize)>,
+    /// The flight or landing of the ramp selected picked on its own, by Tab or a click on it (`ramps::pieces`).
+    pub(crate) ramp_part: Option<(Id, usize)>,
     /// A selected level's end being dragged in a section or an elevation: the level, and whether
     /// it's its far end.
     level_grip: Option<(Id, bool)>,
@@ -441,6 +443,7 @@ impl Default for Canvas {
             view_grip: None,
             stair_grip: None,
             stair_part: None,
+            ramp_part: None,
             level_grip: None,
             press: None,
             lifted: None,
@@ -2351,6 +2354,24 @@ impl BimApp {
                 segment_tabbed = true;
             }
         }
+        // A ramp selected alone: Tab steps through its flights and landings, each picked on its own for Properties.
+        if tabbed
+            && !reference_tabbed
+            && !segment_tabbed
+            && self.tool == Tool::Modify
+            && let [id] = self.selection.as_slice()
+            && let Some(Element::Ramp(r)) = model.elements.get(*id)
+        {
+            let n = bimcraft_core::ramps::pieces(&model, r).len();
+            if n > 1 {
+                let next = match c.ramp_part {
+                    Some((held, i)) if held == *id => (i + 1) % n,
+                    _ => 0,
+                };
+                c.ramp_part = Some((*id, next));
+                segment_tabbed = true;
+            }
+        }
         // On a curtain wall that's selected and under the cursor, Tab goes through its parts there; else through what's under it.
         let free = self.tool == Tool::Modify;
         let on_cursor = c.under.get(c.cycle % c.under.len().max(1)).copied();
@@ -2724,6 +2745,10 @@ impl BimApp {
         if response.double_clicked() && !dragged && !writing && self.finishable() {
             self.finish_open_shape();
         }
+        // And a ramp drawn along a line.
+        if response.double_clicked() && !dragged && !writing && matches!(&self.tool, Tool::Ramp(pts) if pts.len() >= 2) {
+            self.finish_ramp_path(level);
+        }
         // And a stair drawn along a line: the stair of what is drawn so far.
         if response.double_clicked()
             && !dragged
@@ -2968,6 +2993,15 @@ impl BimApp {
         self.adaptive_overlay(ui, rect, &view);
         self.view_extent_overlay(ui, &model, &view, rect);
         self.stair_grip_overlay(ui, &model, &view, rect, level);
+        // The ramp's flight or landing picked on its own: its outline, thick.
+        if let Some((id, i)) = self.canvas.ramp_part
+            && self.selection.as_slice() == [id]
+            && let Some(Element::Ramp(r)) = model.elements.get(id)
+            && let Some(piece) = bimcraft_core::ramps::pieces(&model, r).get(i)
+        {
+            let ring: Vec<Pos2> = piece.ring.iter().map(|q| pos(rect.min, view.px(*q))).collect();
+            ui.painter_at(rect).add(Shape::closed_line(ring, Stroke::new(3.0, pal().accent)));
+        }
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing
@@ -3420,8 +3454,20 @@ impl BimApp {
             {
                 self.canvas.stair_part = hovered.map(|id| (id, i));
             }
+            // A click on the ramp already selected picks the flight or landing under it.
+            Tool::Modify
+                if !mods.shift
+                    && !mods.command
+                    && hovered.is_some()
+                    && self.selection.as_slice() == hovered.as_slice()
+                    && let Some(Element::Ramp(r)) = hovered.and_then(|id| m.elements.get(id))
+                    && let Some(i) = bimcraft_core::ramps::pieces(m, r).iter().position(|p| geom::contains(&p.ring, v.mm(at))) =>
+            {
+                self.canvas.ramp_part = hovered.map(|id| (id, i));
+            }
             Tool::Modify => {
                 self.canvas.stair_part = None;
+                self.canvas.ramp_part = None;
                 self.pick_up(hovered.into_iter().collect(), mods);
             }
             Tool::Door | Tool::Window => {
@@ -3805,7 +3851,14 @@ impl BimApp {
                 if pts.last().is_some_and(|l| l.dist(p) <= TOL) {
                     return;
                 }
-                // What the stretch to this click is: steps or a landing, straight or an arc.
+                // What the stretch to this click is: a flight at the slope said now, or a landing, straight or an arc.
+                if ramp {
+                    self.ramp_kinds.truncate(pts.len().saturating_sub(1));
+                    if !pts.is_empty() {
+                        let k = self.slope_unit.read(&self.ramp_slope).unwrap_or(8.33);
+                        self.ramp_kinds.push((self.ramp_landing, self.ramp_shape == crate::RampShape::Arc, k));
+                    }
+                }
                 if !ramp {
                     self.stair_kinds.truncate(pts.len().saturating_sub(1));
                     if !pts.is_empty() {
@@ -3825,6 +3878,9 @@ impl BimApp {
                         let mut params = serde_json::to_value(&e).unwrap_or_default();
                         params["railings"] = json!(self.railings);
                         self.run(e.category(), params);
+                        if ramp {
+                            self.ramp_kinds.clear();
+                        }
                         Vec::new()
                     }
                     (_, Err(e)) => {
@@ -4109,30 +4165,9 @@ impl BimApp {
                 180f64.copysign(a)
             }
         });
-        let done = |landings: &[Landing]| landings.is_empty() || pts.len() > 2;
+        let _ = (run, turn, |landings: &[Landing]| landings.is_empty());
         if ramp {
-            let slope = number(&self.ramp_slope).ok_or_else(|| tf("ramp: `{}` is not a slope", &[&self.ramp_slope]))?;
-            let width = m.units.parse(&self.ramp_width).ok_or_else(|| tf("ramp: `{}` is not a width", &[&self.ramp_width]))?;
-            let top = top_params(m, level, self.ramp_top, &self.ramp_height).map_err(|e| tf("ramp: {}", &[&e]))?;
-            let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(0.0));
-            let (bottom, top) = m.span(level, 0.0, top_level, height);
-            let up = (run * slope / 100.0 * 1000.0).round() / 1000.0;
-            let landings = if top - bottom - up > 1.0 { vec![Landing { at: up, turn, ..Landing::default() }] } else { Vec::new() };
-            let done = done(&landings);
-            Ok((
-                Element::Ramp(Ramp {
-                    params: Default::default(),
-                    level: m.guid(level),
-                    top_level,
-                    height,
-                    start,
-                    angle,
-                    width,
-                    slope,
-                    landings,
-                }),
-                done,
-            ))
+            self.ramp_flight(m, level, pts)
         } else {
             let width = m
                 .units
@@ -4271,6 +4306,149 @@ impl BimApp {
             }
             Ok((Element::Stair(st), done))
         }
+    }
+
+    /// The ramp the Ramp tool's clicks `pts` make: along the line clicked, each stretch a flight at the slope the Options
+    /// Bar said when it was clicked (the last one's, as it says now) or a landing, straight or an arc leaving the one before
+    /// smoothly; a flight that would climb past the top cut short there, which finishes it. Circular: about the first click,
+    /// from the second, round until it reaches its top.
+    pub(crate) fn ramp_flight(&self, m: &Model, level: Id, pts: &[P2]) -> Result<(Element, bool), String> {
+        use bimcraft_core::model::RampSeg;
+        use bimcraft_core::ramps;
+        let slope = self
+            .slope_unit
+            .read(&self.ramp_slope)
+            .filter(|k| (1.0..=50.0).contains(k))
+            .ok_or_else(|| tf("ramp: `{}` is not a slope from 1 to 50%", &[&self.ramp_slope]))?;
+        let width = m.units.parse(&self.ramp_width).ok_or_else(|| tf("ramp: `{}` is not a width", &[&self.ramp_width]))?;
+        let top = top_params(m, level, self.ramp_top, &self.ramp_height).map_err(|e| tf("ramp: {}", &[&e]))?;
+        let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(0.0));
+        let (bottom, top) = m.span(level, 0.0, top_level, height);
+        let rise = top - bottom;
+        let Some(&start) = pts.first() else { return Err(t("click where the ramp starts").into()) };
+        let mut r = Ramp {
+            params: Default::default(),
+            level: m.guid(level),
+            top_level,
+            height,
+            start,
+            angle: 0.0,
+            width,
+            slope,
+            landings: Vec::new(),
+            path: Vec::new(),
+            sketch: Vec::new(),
+            flipped: false,
+            type_name: self.types.get("ramp").cloned().or_else(|| m.default_type("ramp").map(String::from)).unwrap_or_default(),
+            line: self.ramp_line,
+        };
+        if self.ramp_shape == crate::RampShape::Circular {
+            // The first click its centre, the second the middle of its foot: round as far as its rise takes it.
+            let [centre, foot, ..] = *pts else { return Err(t("click the middle of its foot").into()) };
+            let radius = centre.dist(foot);
+            if radius < width / 2.0 + 1.0 {
+                return Err(tf("ramp: its centre is {} from its middle line at least, half its width", &[&m.with_unit(width / 2.0)]));
+            }
+            let sweep = (rise / (slope / 100.0) / radius).to_degrees();
+            let n = (sweep / 170.0).ceil().max(1.0);
+            let each = if self.ramp_clockwise { -sweep / n } else { sweep / n };
+            let v = foot - centre;
+            r.start = foot;
+            r.line = Default::default();
+            for k in 1..=(n as u32) {
+                let (s, c) = (each * f64::from(k)).to_radians().sin_cos();
+                r.path.push(RampSeg { to: centre + P2(v.0 * c - v.1 * s, v.0 * s + v.1 * c), landing: false, arc: each, slope: None });
+            }
+            let way = if self.ramp_clockwise { v.perp() * -1.0 } else { v.perp() };
+            r.angle = (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9;
+            return Ok((Element::Ramp(r), true));
+        }
+        if pts.len() < 2 {
+            return Err(t("click where its first stretch ends").into());
+        }
+        // Each stretch as the ribbon and the Options Bar said when it was clicked; the one to the cursor as they say now.
+        let mut way: Option<P2> = None;
+        let mut climbed = 0.0;
+        let mut done = false;
+        for (i, ends) in pts.windows(2).enumerate() {
+            let &[a, b] = ends else { continue };
+            if a.dist(b) < 1.0 {
+                continue;
+            }
+            let (landing, curved, k) =
+                self.ramp_kinds.get(i).copied().unwrap_or((self.ramp_landing, self.ramp_shape == crate::RampShape::Arc, slope));
+            let chord = (b - a).unit();
+            let arc = match way {
+                Some(from) if curved => {
+                    let turn = 2.0 * (from.0 * chord.1 - from.1 * chord.0).atan2(from.dot(chord)).to_degrees();
+                    if (1.0..=340.0).contains(&turn.abs()) { (turn * 1000.0).round() / 1000.0 } else { 0.0 }
+                }
+                _ => 0.0,
+            };
+            let mut seg = RampSeg { to: b, landing, arc, slope: ((k - slope).abs() > 1e-9).then_some(k) };
+            if !landing {
+                let length = ramps::seg_length(a, &seg);
+                let up = length * k / 100.0;
+                // Past the top: cut short where it gets there.
+                if climbed + up >= rise - 1.0 {
+                    seg = ramps::cut_short(a, &seg, (rise - climbed) / (k / 100.0));
+                    done = true;
+                }
+                climbed += ramps::seg_length(a, &seg) * k / 100.0;
+            }
+            r.path.push(seg);
+            let (s, c) = arc.to_radians().sin_cos();
+            way = Some(match way {
+                Some(from) if arc != 0.0 => P2(from.0 * c - from.1 * s, from.0 * s + from.1 * c),
+                _ => chord,
+            });
+            if done {
+                break;
+            }
+        }
+        // Its last flight to the top exactly: corners a landing takes make a flight a little shorter than its stretch.
+        if done
+            && let Some(last) = r.path.len().checked_sub(1)
+            && let Some(seg) = r.path.get(last).copied()
+        {
+            let from = if last == 0 { start } else { r.path.get(last - 1).map_or(start, |s| s.to) };
+            let k = seg.slope.unwrap_or(slope) / 100.0;
+            let short = rise - ramps::path_rise(&r);
+            let length = ramps::seg_length(from, &seg) + short / k;
+            if let Some(s) = r.path.get_mut(last) {
+                *s = ramps::cut_short(from, &seg, length);
+            }
+        }
+        // The way it climbs from its foot: along its first stretch.
+        if let Some(first) = r.path.first() {
+            let along = first.to - start;
+            r.angle = (along.1.atan2(along.0).to_degrees() * 1e9).round() / 1e9;
+        }
+        // Short of its top, it is what is drawn: as high as its flights climb.
+        if !done {
+            r.top_level = None;
+            r.height = (climbed * 1000.0).round() / 1000.0;
+        }
+        Ok((Element::Ramp(r), done))
+    }
+
+    /// A double click or Enter while the Ramp tool draws along a line: the ramp of what is drawn, as high as it climbs.
+    pub(crate) fn finish_ramp_path(&mut self, level: Id) {
+        let Tool::Ramp(pts) = &mut self.tool else { return };
+        if pts.len() < 2 {
+            return;
+        }
+        let pts = std::mem::take(pts);
+        let m = std::sync::Arc::clone(&self.session.model);
+        match self.ramp_flight(&m, level, &pts) {
+            Ok((e, _)) => {
+                let mut params = serde_json::to_value(&e).unwrap_or_default();
+                params["railings"] = json!(self.railings);
+                self.run("ramp", params);
+            }
+            Err(e) => self.status = Status { text: e, error: true },
+        }
+        self.ramp_kinds.clear();
     }
 
     /// A double click or Enter while the Stair tool draws along a line: the stair of what is drawn, its last flight taking
@@ -6013,10 +6191,21 @@ impl BimApp {
                         Element::Stair(st) => {
                             st.landings.first().map(|l| tf("{} of {} risers", &[&l.at.to_string(), &m.flight(st).0.to_string()]))
                         }
-                        Element::Ramp(r) => r.landings.first().map(|l| tf("{} up", &[&m.with_unit(l.at)])),
+                        Element::Ramp(r) => {
+                            let target = top_params(m, level, self.ramp_top, &self.ramp_height)
+                                .ok()
+                                .map(|p| {
+                                    let tl = p["top_level"].as_u64().map(|t| m.guid(t));
+                                    let (b, t) = m.span(m.guid(level), 0.0, tl, p["height"].as_f64().unwrap_or(0.0));
+                                    t - b
+                                })
+                                .unwrap_or(0.0);
+                            let up = bimcraft_core::ramps::path_rise(r);
+                            Some(tf("{} of {} up, at {}", &[&m.with_unit(up), &m.with_unit(target), &self.ramp_slope]))
+                        }
                         _ => None,
                     };
-                    let along = matches!(&e, Element::Stair(st) if !st.path.is_empty());
+                    let along = matches!(&e, Element::Stair(st) if !st.path.is_empty()) || matches!(&e, Element::Ramp(_));
                     if let Some(text) = first.filter(|_| with.len() == 2 || along) {
                         label(cursor, text);
                     }

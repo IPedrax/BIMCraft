@@ -2547,6 +2547,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"set": "nbr", "keep_rules": 5, "stairs": {"riser": 1e300, "going": -1, "flight_risers_max": 1e30, "walk_line": [], "winders": null}}),
         json!({"set": [], "reset": true, "stairs": {"riser_min": 1e-300, "riser_max": 5e-324, "walk_line_offset": f64::MAX}}),
         json!({"ids": [100002, 1e300, -1, "x"]}),
+        json!({"status": "demolished", "ids": [100002, 100000, 999999], "phase": "Existing"}),
+        json!({"status": "temporary", "ids": [100002], "phase": 5}),
+        json!({"status": ["new"], "phase": "nowhere\n"}),
+        json!({"status": "demolished", "phase": "New Construction"}),
         json!({"save": "x\ny", "delete": 5, "set": "nope"}),
         json!({"save": "Ours", "delete": "Ours", "stairs": {"riser": 150}}),
         json!({"electrical": {"demand": 5, "building_demand": []}, "set": "ibc", "keep_rules": true}),
@@ -5000,7 +5004,7 @@ fn extrusion_roofs_sweep_their_profile_across() {
     let profile = json!({"line": [[0, 0], [8000, 0]], "profile": [[-500, 0], [3000, 2000], [8500, 0]], "from": -600, "to": 6600});
     let roof = run(&mut s, "roof", json!({"extrusion": profile}))["id"].as_u64().unwrap();
     let e = element(&mut s, roof);
-    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64()), (Some(5000.0), Some(64.8)), "{e}");
+    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64(), e["plan_area_m2"].as_f64()), (Some(5000.0), Some(71.16), Some(64.8)), "{e}");
     // Halfway up its west slope: 1 m up, 300 mm thick across the slope.
     let top = crate::view3d::tops_at(&s.model, P2(1250.0, 3000.0))[&roof];
     assert!((top - (4000.0 + 300.0 * 3500f64.hypot(2000.0) / 3500.0)).abs() < 1e-6, "{top}");
@@ -5089,7 +5093,7 @@ fn roofs_slope_round_a_courtyard_up_to_a_ring_of_ridges() {
         assert!((top(&s, 8000.0, y).unwrap() - (3000.0 + 1000.0 * tan + rise)).abs() < 1e-6, "{y}");
     }
     let e = element(&mut s, roof);
-    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64()), (Some(4732.05), Some(240.0)), "{e}");
+    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64(), e["plan_area_m2"].as_f64()), (Some(4732.05), Some(277.13), Some(240.0)), "{e}");
     // In plan, its eaves round the courtyard; from Level 1, they're dashed overhead.
     let d = crate::render::plan(&s.model, 100001, 800, 600);
     assert_eq!(d.pick(d.view.px(P2(8000.0, 6000.0)), 2.0), Some(roof));
@@ -5140,7 +5144,7 @@ fn roofs_over_the_walls_leave_a_loop_of_walls_standing_free_open_as_a_courtyard(
     assert_eq!(e["courtyards"], json!([[[6600.0, 6600.0], [6600.0, 9400.0], [9400.0, 9400.0], [9400.0, 6600.0]]]));
     // Each wing 7.2 m from eaves to eaves, its ridge 3.6 m in from both, where the slopes have risen
     // from 500 mm below the base: 3000 + 3100 tan 30°. Its area: 17.2² less 2.8².
-    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64()), (Some(4789.79), Some(288.0)), "{e}");
+    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64(), e["plan_area_m2"].as_f64()), (Some(4789.79), Some(332.55), Some(288.0)), "{e}");
     let top = |s: &Session, id: u64, x: f64, y: f64| crate::view3d::tops_at(&s.model, P2(x, y)).get(&id).copied();
     assert_eq!(top(&s, roof, 8000.0, 8000.0), None, "the courtyard is open");
     // Courtyards given are the roof's own; one too small to stay open past the overhang is roofed over.
@@ -7947,4 +7951,16 @@ fn a_toposolid_goes_to_ifc_as_a_terrain_slab_and_comes_back_from_the_file() {
     assert_eq!(t.map(|t| (t.shape.points.len(), t.interval)), Some((1, 500.0)));
     assert_eq!(t.map(|t| m.toposolid_thickness(t)), Some(300.0), "its type's thickness, kept as the type");
     assert_eq!(m.types.toposolid["Generic - 300mm"].thickness, 300.0);
+}
+
+#[test]
+fn a_wall_of_an_unknown_type_says_its_area_is_unknown() {
+    let mut s = Session::new();
+    let id = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]}))["ids"][0].as_u64().unwrap();
+    let mut m = (*s.model).clone();
+    let Some(crate::model::Element::Wall(w)) = m.elements.get_mut(id) else { panic!("no wall {id}") };
+    w.type_name = "No Such Type".into();
+    let warnings = m.warnings();
+    assert!(warnings.iter().any(|w| w.contains(&format!("wall {id}")) && w.contains("No Such Type")), "{warnings:?}");
+    assert!(m.quantities(id).is_none(), "no area is known");
 }

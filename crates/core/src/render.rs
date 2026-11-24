@@ -30,6 +30,7 @@ use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
 use crate::texture::Sampler;
 use crate::units::Units;
+use crate::view_range::Zone;
 use crate::view3d::{self, Camera, Clip, Image, Scene};
 pub use crate::view3d::{FragmentStats, SectionCache};
 use crate::walls::{self, Axis};
@@ -50,7 +51,7 @@ pub const PAPER: Rgb = Rgb(255, 255, 255);
 pub const POCHE: Rgb = Rgb(168, 168, 168);
 /// A cut compound wall's layers that aren't its structure: lighter.
 pub const LIGHT_POCHE: Rgb = Rgb(212, 212, 212);
-const INK: Rgb = Rgb(25, 25, 25);
+pub(crate) const INK: Rgb = Rgb(25, 25, 25);
 pub(crate) const FAINT: Rgb = Rgb(120, 120, 120);
 /// How far apart a pattern's lines are in a [`Swatch`], px.
 const SWATCH_GAP: f64 = 6.0;
@@ -489,6 +490,24 @@ impl Drawing {
             self.subs.push(sub);
         }
     }
+    /// Every line and fill of the elements in `ids` lightened toward the paper as `fade` says: a plan's underlay.
+    fn fade_owned(&mut self, ids: &std::collections::BTreeSet<Id>, fade: crate::graphics::Fade) {
+        if ids.is_empty() {
+            return;
+        }
+        for (prim, owner) in self.prims.iter_mut().zip(&self.owners) {
+            if !owner.is_some_and(|o| ids.contains(&o)) {
+                continue;
+            }
+            for p in prim.paint_mut() {
+                match p {
+                    Prim::Line { color, .. } | Prim::Fill { color, .. } => *color = fade.apply(*color),
+                    Prim::Image { .. } | Prim::Text { .. } => {}
+                }
+            }
+        }
+    }
+
     /// The solid fills of a surface pushed since `from` (a floor's pattern or its background, filled), first, in the order they
     /// were drawn in: under all else pushed since, so a room's colour lies over them and under their lines.
     fn solid_fills_under(&mut self, from: usize) {
@@ -960,7 +979,9 @@ fn plan_filter<'a>(
             Element::Component(c) => {
                 let (bottom, top) = components.heights_of(c);
                 // Its plan symbols are annotation of its level, whatever height its forms reach.
-                bottom < r.cut && top > r.depth || c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
+                bottom < r.cut && top > r.depth
+                    || over_cut(m, e, r, bottom)
+                    || c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
             }
             Element::Room(x) => x.level == level,
             Element::RoomSeparator(x) => x.level == level,
@@ -1072,7 +1093,7 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         let row = look.part(kind);
         let (own, pen) = if cut { (&row.cut, style(kind).cut) } else { (&row.projection, style(kind).projection) };
         let color = own.color.map_or(INK, |[r, g, b]| Rgb(r, g, b));
-        d.line(pts, own.weight.unwrap_or(pen), if row.halftone { crate::graphics::halftoned(color) } else { color }, closed);
+        d.line(pts, own.weight.unwrap_or(pen), if row.halftone { look.fade().apply(color) } else { color }, closed);
         let paper = d.paper();
         if let (Some(k), Some(Prim::Line { dash, .. })) = (own.dash, d.prims.last_mut()) {
             *dash = k.pattern(paper);
@@ -1127,7 +1148,7 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         let r = ring(p, s);
         let own = look.part(PartKind::Mullion);
         let filled = own.cut.fill.map_or_else(|| look.cut_fill(id, POCHE), |[r, g, b]| Rgb(r, g, b));
-        d.fill(std::slice::from_ref(&r), if own.halftone { crate::graphics::halftoned(filled) } else { filled });
+        d.fill(std::slice::from_ref(&r), if own.halftone { look.fade().apply(filled) } else { filled });
         ink(d, &r, PartKind::Mullion, true, true);
     }
 }
@@ -1621,7 +1642,9 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
             }
         }
         Element::Stair(st) => stair(&mut d, m, st, st.level, &StairSubs::default()),
-        Element::Ramp(r) => ramp(&mut d, m, r, r.level),
+        Element::Ramp(r) => {
+            ramp(&mut d, m, r, r.level);
+        }
         Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen::MEDIUM, INK, false),
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
         Element::PropertyLine(pl) => {
@@ -3776,6 +3799,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let elements: Vec<(Id, &Element)> =
         if among { plan_elements(m, key, level, &range, up, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
     let all = || elements.iter().map(|(id, e)| (id, *e));
+    // What it sees between its bottom and its view depth: drawn as the rest is, then lightened (its underlay).
+    let mut underlay: std::collections::BTreeSet<Id> = std::collections::BTreeSet::new();
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
         scans(&mut d, m, &range, &look);
@@ -3823,8 +3848,11 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         let Element::Floor(f) = e else { continue };
         let top = m.floor_top(f);
         let (lo, hi) = f.boundary.iter().map(|q| top.at(*q)).fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
-        if hi < range.depth || lo > range.cut {
+        if hi < range.depth - TOL || lo > range.cut {
             continue;
+        }
+        if range.under(hi) {
+            underlay.insert(id);
         }
         d.owner = Some(id);
         // Surface overrides also work on an unpatterned material and at coarse detail.
@@ -3872,14 +3900,18 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         d.solid_fills_under(under);
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
-    // the cut plane and over the view depth; and the symbols of those on its level.
+    // the cut plane and over the view depth, or over the cut and under the top where a plan shows its category there
+    // (casework, generic models); and the symbols of those on its level.
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
         let mut pieces = components.pieces(c);
         d.owner = Some(id);
         if !up && !pieces.is_empty() {
             let (bottom, top) = components.heights(c);
-            if bottom < range.cut && top > range.depth {
+            if bottom < range.cut && top > range.depth || over_cut(m, e, &range, bottom) {
+                if range.under(top) {
+                    underlay.insert(id);
+                }
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
                 pieces.retain(|p| plan_draws(p, d.detail, range.cut));
                 component(&mut d, m, &pieces);
@@ -3896,7 +3928,11 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     for (id, o, top) in seen_below(m, &elements, &range, &look, index).into_iter().filter(|_| !up) {
         d.owner = Some(id);
         override_patterns(&mut d, m, std::slice::from_ref(&o), false, (P2(0.0, 0.0), 0.0));
-        let ink = if top > range.bottom - TOL { INK } else { FAINT };
+        // Past the bottom, in the underlay: lightened with the rest of it.
+        if range.under(top) {
+            underlay.insert(id);
+        }
+        let ink = INK;
         d.line(&o, BY_CATEGORY, ink, true);
         // A door or window rising past a wall's top notches it: the notch's sides, seen from above.
         if matches!(m.elements.get(id), Some(Element::Wall(_))) {
@@ -3943,6 +3979,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         let seen = range.depth - TOL < hi && hi <= range.cut;
         let over = range.cut < lo && lo <= range.top;
         if seen || over {
+            if seen && range.under(hi) {
+                underlay.insert(id);
+            }
             d.owner = Some(id);
             let pts = [P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1])].iter().map(|p| d.view.px(*p)).collect();
             let dash = d.dash(&[14.0, 5.0]);
@@ -3980,6 +4019,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     }
     let curtains = curtains_in_plan(m, &range, shown);
     for wall in curtains.iter().filter(|_| !up) {
+        if range.under(m.own_top(wall.1)) {
+            underlay.insert(wall.0);
+        }
         curtain_plan(&mut d, m, &look, wall, &range, true);
     }
     d.part(Part::Cut);
@@ -4089,6 +4131,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         {
             d.owner = Some(id);
             opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
+            if shown(id) && !up {
+                opening_over(&mut d, m, e, o, w, &range);
+            }
         }
         // A component on one of a wall's faces whose voids cut it (T16b): the wall cleared where the cut plane passes through
         // them, as a door's voids clear it. The hole is the wall's: the component hidden, it is still there.
@@ -4197,12 +4242,37 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             // A mass the plane passes through: its outline, dashed.
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level, &stair_subs),
-            Element::Ramp(r) => ramp(&mut d, m, r, level),
+            Element::Ramp(r) => {
+                if !ramp(&mut d, m, r, level) && ramp_below(&mut d, m, r, &range) {
+                    let l = stairs::ramp(m, r);
+                    let top =
+                        l.runs.iter().map(|run| run.z.0.max(run.z.1)).chain(l.pads.iter().map(|p| p.z)).fold(f64::NEG_INFINITY, f64::max);
+                    if range.under(top) {
+                        underlay.insert(id);
+                    }
+                }
+            }
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
+            // Another level's railing the plan sees from above: in projection, or in its underlay.
+            Element::Railing(rl) => {
+                let z = stairs::railing(m, rl)
+                    .into_iter()
+                    .map(|(_, z)| z)
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+                if matches!(range.zone(z.0, z.1), Some(Zone::Projection | Zone::Underlay)) {
+                    if range.under(z.1) {
+                        underlay.insert(id);
+                    }
+                    railing(&mut d, m, rl, range.cut);
+                }
+            }
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
             // A toposolid: its boundary, the lines where its top crosses each contour height, and its type's surface.
-            Element::Toposolid(t) if t.level == level => {
+            Element::Toposolid(t) if t.level == level || toposolid_seen(m, t, &range).is_some() => {
                 d.owner = Some(id);
+                if t.level != level && toposolid_seen(m, t, &range) == Some(true) {
+                    underlay.insert(id);
+                }
                 let material = m.type_layers("toposolid", &t.type_name).first().and_then(|l| m.materials.get(&l.material));
                 if d.detail == Detail::Fine
                     && let Some(x) = material
@@ -4240,15 +4310,21 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 }
             }
             // Overhead, from below: its edges, round its courtyards too, dashed, while its eaves are under
-            // the view range's top.
+            // the view range's top. Under the cut plane, another level's roof is seen from above, as a roof is on its own
+            // level's plan: in projection down to the bottom, past it in the underlay.
             Element::Roof(r) => {
-                let eave = m
+                let (eave, ridge) = m
                     .roof_faces(r)
                     .into_iter()
                     .flatten()
                     .flat_map(|(loops, p)| loops.into_iter().flatten().map(move |q| p.at(q)))
-                    .fold(f64::INFINITY, f64::min);
-                if range.cut < eave && eave <= range.top {
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+                if matches!(range.zone(eave, ridge), Some(Zone::Projection | Zone::Underlay)) {
+                    if range.under(ridge) {
+                        underlay.insert(id);
+                    }
+                    roof(&mut d, m, id, r);
+                } else if range.cut < eave && eave <= range.top {
                     for ring in std::iter::once(&m.roof_outline(r)).chain(&r.courtyards) {
                         let pts = ring.iter().map(|p| d.view.px(*p)).collect();
                         let dash = d.dash(&DASHED);
@@ -4376,6 +4452,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     if let Some(g) = crate::graphics::graphics_of(m, key) {
         linework(&mut d, m, &g.linework);
     }
+    d.fade_owned(&underlay, look.fade());
     d.weigh(|o| annotates(m, o));
     if titled {
         let mut title = m.view_name(key).map_or_else(String::new, str::to_string);
@@ -4386,6 +4463,44 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         d.text_turned(&title, at, 16.0, 0.0, INK);
     }
     d
+}
+
+/// Whether element `e`, its lowest point at `bottom`, is one a plan of range `r` shows over its cut plane: of a category it
+/// shows there (casework, generic models), all of it over the cut and some under the top.
+fn over_cut(m: &Model, e: &Element, r: &PlanRange, bottom: f64) -> bool {
+    r.cut < bottom && bottom <= r.top && crate::view_range::shown_over_cut(crate::graphics::category_of(m, e))
+}
+
+/// A door or a window all of it over a plan's cut plane and under its top, in a wall the plane cuts: seen from below, its
+/// jambs across the wall and a line along it between them, in projection; the wall isn't opened.
+fn opening_over(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, r: &PlanRange) {
+    let Some(h) = walls::hole(m, w, e, o) else { return };
+    if !(r.cut < h.bottom && h.bottom <= r.top) {
+        return;
+    }
+    let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
+    let part = d.part;
+    d.part(Part::Projection);
+    for s in [h.s0, h.s1] {
+        d.line(&[axis.at(s, int), axis.at(s, ext)], BY_CATEGORY, INK, false);
+    }
+    d.line(&axis.points(h.s0, h.s1, (ext + int) / 2.0), BY_CATEGORY, INK, false);
+    d.part(part);
+}
+
+/// Whether a plan of range `r` sees toposolid `t` of another level from above: none, where it doesn't; else whether it is in
+/// the underlay.
+fn toposolid_seen(m: &Model, t: &crate::model::Toposolid, r: &PlanRange) -> Option<bool> {
+    let (lo, hi) = m
+        .toposolid_faces(t)
+        .into_iter()
+        .flat_map(|(ring, p)| ring.into_iter().map(move |q| p.at(q)))
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+    match r.zone(lo, hi)? {
+        Zone::Projection => Some(false),
+        Zone::Underlay => Some(true),
+        Zone::Above | Zone::Cut => None,
+    }
 }
 
 /// A family's plan marks, in the model's axes: its lines and lettering in the category's pen, its dots solid ink.
@@ -5446,14 +5561,16 @@ pub(crate) struct StairSubs {
     hidden: [bool; 9],
     paint: [Option<crate::graphics::Override>; 9],
     ways: Option<crate::model::PlanShows>,
+    fade: crate::graphics::Fade,
 }
 
 impl StairSubs {
     /// As view `key` has them.
     pub(crate) fn of(m: &Model, key: impl Key) -> StairSubs {
-        let Some(own) = crate::graphics::graphics_of(m, key) else { return StairSubs::default() };
+        let fade = crate::graphics::Fade::of(m);
+        let Some(own) = crate::graphics::graphics_of(m, key) else { return StairSubs { fade, ..StairSubs::default() } };
         let g = own.resolved(m);
-        let mut out = StairSubs { ways: g.stairs, ..StairSubs::default() };
+        let mut out = StairSubs { ways: g.stairs, fade, ..StairSubs::default() };
         for (i, sub) in crate::graphics::STAIR_SUBS.iter().enumerate() {
             out.hidden[i] = g.hides(sub);
             out.paint[i] = g.categories.get(*sub).filter(|o| !o.projection.is_empty() || o.halftone).cloned();
@@ -5482,7 +5599,7 @@ impl StairSubs {
                             *dash = k.pattern(paper);
                         }
                         if o.halftone {
-                            *color = crate::graphics::halftone(*color);
+                            *color = self.fade.apply(*color);
                         }
                     }
                     Prim::Fill { color, .. } => {
@@ -5490,7 +5607,7 @@ impl StairSubs {
                             *color = Rgb(r, g, b);
                         }
                         if o.halftone {
-                            *color = crate::graphics::halftone(*color);
+                            *color = self.fade.apply(*color);
                         }
                     }
                     _ => {}
@@ -5919,24 +6036,131 @@ fn numbers(d: &mut Drawing, m: &Model, st: &Stair, l: &stairs::Layout, cut: f64,
     }
 }
 
-/// A ramp in the plan of `level`: from its own level, its runs' and landings' outlines, dashed
-/// where they're over the cut plane, and its walk line marked UP; from the level it climbs to, all
-/// of it, marked DN.
-fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) {
+/// A ramp in the plan of `level`, as its type says it shows there, as a stair's does (a ramp of no type as ramps always
+/// were: on its own level, in full under the cut plane and dashed over it, its walk line marked UP; on the level it climbs
+/// to, all of it, marked DN). Each flight the plane passes is split there, with the type's break mark across it.
+fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) -> bool {
     let level = m.guid(level);
-    let up = r.level == level;
-    if !up && r.top_level != Some(level) {
-        return;
-    }
-    let l = stairs::ramp(m, r);
-    let cut = if up { m.plan_range(level).cut } else { f64::INFINITY };
-    let rings = l.runs.iter().map(|run| (run.ring(), run.z.0)).chain(l.pads.iter().map(|p| (p.ring.clone(), p.z)));
-    for (ring, z) in rings {
-        for (a, b) in geom::ring_edges(&ring) {
-            segment(d, a, b, z > cut);
+    let kind = m.types.ramp.get(&r.type_name);
+    let own = r.level == level;
+    let topped = r.top_level == Some(level) && !own;
+    let under = !own && !topped && m.level_above(level) == Some(r.level);
+    let ways = kind.map(|t| t.plan).unwrap_or_default();
+    let way = match (own, topped, under) {
+        (true, ..) => ways.same,
+        (_, true, _) => ways.above,
+        (.., true) => ways.below,
+        _ => return false,
+    };
+    // A ramp of no type: under the plane in full and over it hidden, with no break mark; from above, all of it.
+    let (below, above, mark) = match (kind, own) {
+        (None, true) => (Shown::Full, Shown::Hidden, false),
+        (None, false) if topped => (Shown::Full, Shown::Full, false),
+        (None, false) => return false,
+        // The type says it isn't shown there: that is drawn, as far as the View Range's own say (below) goes.
+        (Some(_), _) => match way.look() {
+            Some(l) => l,
+            None => return true,
+        },
+    };
+    let style = |name: Option<&String>, usual: &str| {
+        name.filter(|n| !n.is_empty())
+            .and_then(|n| m.line_styles.get(n))
+            .or_else(|| m.line_styles.get(m.language.word(usual)))
+            .or_else(|| m.line_styles.get(usual))
+    };
+    let full = kind.and_then(|t| style(Some(&t.line_visible), crate::lines::MEDIUM));
+    let hidden = kind.and_then(|t| style(Some(&t.line_hidden), crate::lines::HIDDEN));
+    let fill = kind.and_then(|t| m.fill_patterns.get(&t.fill));
+    let cut_style = kind.map_or(crate::model::CutMark::default(), |t| t.cut_mark);
+    let cut = m.plan_range(level).cut;
+    let line = |d: &mut Drawing, pts: &[P2], over: bool| {
+        if pts.len() < 2 {
+            return;
+        }
+        let (st, dash) = match if over { above } else { below } {
+            Shown::Full => (full, None),
+            Shown::Hidden => (hidden, Some(vec![6.0, 4.0])),
+            Shown::Out => return,
+        };
+        let px: Vec<(f32, f32)> = pts.iter().map(|q| d.view.px(*q)).collect();
+        match st {
+            Some(s) => d.styled(m, s, px, false),
+            None => d.stroke(px, BY_CATEGORY, INK, dash, false),
+        }
+    };
+    for p in crate::ramps::pieces(m, r) {
+        // The plane passing through a flight: the part under it and the part over it, the mark between.
+        let (parts, split) = match p.split(cut) {
+            Some((a, b)) => {
+                let at = (a.end_cut.first().copied(), a.end_cut.last().copied());
+                (vec![a, b], Some(at))
+            }
+            None => (vec![p], None),
+        };
+        let n = parts.len();
+        for (k, part) in parts.iter().enumerate() {
+            let over = (part.z.0 + part.z.1) / 2.0 > cut + 1e-6;
+            if let (Some(f), Shown::Full) = (fill, if over { above } else { below }) {
+                fill_pattern(d, f, std::slice::from_ref(&part.ring), std::slice::from_ref(&part.ring), INK, (P2(0.0, 0.0), 0.0));
+            }
+            if part.landing || part.left.len() < 2 {
+                for (a, b) in geom::ring_edges(&part.ring) {
+                    line(d, &[a, b], over);
+                }
+                continue;
+            }
+            line(d, &part.left, over);
+            line(d, &part.right, over);
+            // Its ends, but not where the plane cuts it: the break mark is there.
+            if k == 0 {
+                line(d, &part.start_cut, over);
+            }
+            if k + 1 == n {
+                line(d, &part.end_cut, over);
+            }
+        }
+        if let (true, Some((Some(a), Some(b)))) = (mark, split) {
+            let way = parts.first().and_then(|x| x.walk.windows(2).last().map(|w| (w[1] - w[0]).unit())).unwrap_or(P2(1.0, 0.0));
+            cut_mark(d, a, b, way * 150.0, cut_style);
         }
     }
-    walk(d, m, &l.walk, up);
+    if under {
+        return true;
+    }
+    let l = stairs::ramp(m, r);
+    match kind {
+        Some(t) => {
+            let walk = if t.walk_rounded { round_corners(&l.walk, r.width / 2.0) } else { l.walk.clone() };
+            walk_marked(d, m, &walk, own, (t.arrow, t.walk_start));
+        }
+        None => walk(d, m, &l.walk, own),
+    }
+    true
+}
+
+/// A line from `a` to `b`, one pixel wide; dashed, `over`.
+fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
+    let pts = vec![d.view.px(a), d.view.px(b)];
+    d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
+}
+
+/// A ramp of neither the plan's level nor ending on it, seen from above where all of it is under the cut plane and its top
+/// over the view depth: its runs' and landings' edges, solid. Whether it was drawn.
+fn ramp_below(d: &mut Drawing, m: &Model, r: &Ramp, range: &PlanRange) -> bool {
+    let l = stairs::ramp(m, r);
+    let heights = l.runs.iter().flat_map(|run| [run.z.0, run.z.1]).chain(l.pads.iter().map(|p| p.z));
+    let (lo, hi) = heights.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+    if !matches!(range.zone(lo, hi), Some(Zone::Projection | Zone::Underlay)) {
+        return false;
+    }
+    let rings = l.runs.iter().map(|run| run.ring()).chain(l.pads.iter().map(|p| p.ring.clone()));
+    for ring in rings {
+        for (a, b) in geom::ring_edges(&ring) {
+            segment(d, a, b, false);
+        }
+    }
+    true
 }
 
 /// A railing in a plan cutting at height `cut`: its line, solid where what it runs along is under
@@ -5955,12 +6179,6 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
             d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
         }
     }
-}
-
-/// A line from `a` to `b`, one pixel wide; dashed, `over`.
-fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
-    let pts = vec![d.view.px(a), d.view.px(b)];
-    d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
 }
 
 /// A stair's or a ramp's walk line, its arrow at the top, marked UP at its foot; from above, the

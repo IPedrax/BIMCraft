@@ -69,7 +69,7 @@ fn rename_in_type_properties_renames_a_wall_type_and_a_family_type_and_what_is_o
     let chair = ids(&h, "component")[0];
     h.state_mut().select_and_edit_type(chair);
     h.run();
-    assert!(h.query_by_label("Dimensions").is_some(), "a length is a dimension");
+    assert!(h.query_all_by_label("Dimensions").next().is_some(), "a length is a dimension");
     press(&mut h, "Rename…");
     type_into(&mut h, "New name", "Child");
     press(&mut h, "Rename");

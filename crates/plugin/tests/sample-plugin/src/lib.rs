@@ -48,6 +48,25 @@ bimcraft_plugin_sdk::export! {
     "write_note" => write_note,
     "fail" => fail,
     "open_file" => open_file,
+    "panel_summary" => panel_summary,
+}
+
+/// `panel_summary`: the palette's button and its refresh. The answer's `panel` fills the palette's table, text and
+/// badge; the values it sends back are those of the widgets the call got.
+fn panel_summary(params: &Value) -> Result<Value, String> {
+    let report = areas(params)?;
+    let rooms = report["rooms"].as_u64().unwrap_or(0);
+    let area = report["total_area_m2"].clone();
+    let level = params.get("level").cloned().unwrap_or(Value::Null);
+    Ok(json!({
+        "panel": {
+            "values": {"level": level},
+            "text": format!("{rooms} room(s), {area} m²"),
+            "table": {"rows": [["Rooms", rooms], ["Area, m²", area]]},
+            "badge": rooms.to_string(),
+            "error": null
+        }
+    }))
 }
 
 /// `open_file`: opens the project at `path` in place of this one, which is what a plugin does with the `files`

@@ -143,7 +143,7 @@ pub fn apply(copy: &Model, delta: &Delta) -> Result<Model, String> {
 }
 
 /// Runs a guest's command on the host's session: as `guest`, whose steps say so and whose `undo` takes back only theirs, in the
-/// phase and option the guest makes things in (`made_in`), and only reading when the host lets guests only look (`edit`
+/// phase and option the guest makes things in, and the phase they come down in (`made_in`), and only reading when the host lets guests only look (`edit`
 /// false). A guest never replaces the project, and never reads or writes a file on the host's machine, however the command
 /// asks (`Session::execute` refuses it while the guest's command runs, a plugin's too). The session is the host's again after.
 pub fn run_for_guest(
@@ -151,7 +151,7 @@ pub fn run_for_guest(
     guest: &str,
     command: &str,
     params: &Value,
-    made_in: (Option<String>, Option<String>),
+    made_in: crate::engine::MadeIn,
     edit: bool,
 ) -> Result<Value, String> {
     may(command, edit)?;
@@ -164,7 +164,7 @@ pub fn batch_for_guest(
     guest: &str,
     label: &str,
     commands: &[(String, Value)],
-    made_in: (Option<String>, Option<String>),
+    made_in: crate::engine::MadeIn,
     edit: bool,
 ) -> Result<Vec<Value>, String> {
     commands.iter().try_for_each(|(c, _)| may(c, edit))?;
@@ -203,7 +203,7 @@ pub fn import_for_guest(
     params: &Value,
     name: &str,
     bytes: &str,
-    made_in: (Option<String>, Option<String>),
+    made_in: crate::engine::MadeIn,
     edit: bool,
 ) -> Result<Value, String> {
     let c = find(command)
@@ -237,7 +237,7 @@ pub fn script_for_guest(
     session: &mut Session,
     guest: &str,
     text: &str,
-    made_in: (Option<String>, Option<String>),
+    made_in: crate::engine::MadeIn,
     edit: bool,
 ) -> Result<Vec<Value>, String> {
     as_guest(session, guest, made_in, edit, |s| {
@@ -262,15 +262,17 @@ fn may(command: &str, edit: bool) -> Result<(), String> {
 fn as_guest<T>(
     session: &mut Session,
     guest: &str,
-    made_in: (Option<String>, Option<String>),
+    made_in: crate::engine::MadeIn,
     edit: bool,
     f: impl FnOnce(&mut Session) -> Result<T, String>,
 ) -> Result<T, String> {
     let author = session.author.replace(guest.to_string());
-    let (phase, option) = (std::mem::replace(&mut session.phase, made_in.0), std::mem::replace(&mut session.option, made_in.1));
+    let mine = session.made_in();
+    session.make_in(made_in);
     let no_files = std::mem::replace(&mut session.no_files, true);
     let result = if edit { f(session) } else { session.reading(LOOK, f) };
-    (session.author, session.phase, session.option, session.no_files) = (author, phase, option, no_files);
+    (session.author, session.no_files) = (author, no_files);
+    session.make_in(mine);
     result
 }
 
