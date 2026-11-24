@@ -47,6 +47,9 @@ bimcraft-rvt = { path = "crates/rvt" }
 bimcraft-dwg = { path = "crates/dwg" }
 egui = "0.36"
 eframe = "0.36"
+# The window without a graphics card (`ui-egui/src/software`): egui-winit as eframe pulls it, and softbuffer to show the pixels.
+egui-winit = "0.36"
+softbuffer = "0.4"
 log = { version = "0.4", features = ["std"] }
 egui_kittest = "0.36"
 rfd = "0.17"

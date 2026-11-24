@@ -372,7 +372,27 @@ then one line a minute counting the rest), and the frames whose surface wgpu cou
 `pacing::surface_failures`) and reported by the benchmark per step and in all (`surface_failures`). Not changed, for now: dithering
 (egui-wgpu's renderer is made before the adapter is known, so it would mean choosing the adapter before the window); the 3D view's CPU
 workers (already `cores − 1`, so one on a two-core machine); the process's priority (it needs Win32 calls, and so `unsafe`). The real
-fix, drawing egui on the processor ourselves and presenting with `softbuffer`, is phase 2 of the plan in the pull request.
+fix follows.
+
+The window drawn on the processor (`ui-egui/src/software/`). WARP's cost is emulating a whole Direct3D 12 device, not egui's few
+triangles, so where the machine has no graphics card the window doesn't use wgpu at all. `main` chooses before the window opens
+(`software::choose`): `BIMCRAFT_RENDERER=software` or `gpu` (the user's, logged, never kept); else Settings > Performance > Drawing
+(Automatic, Graphics card, Processor: `drawing` in `settings.json`, read at the next start); else the processor when the graphics
+ladder reached its last rung, `software` (`startup.rs`: every backend died; a 0.12.0 mark that ended on OpenGL moves on to it);
+else wgpu lists the adapters (`software::adapters`, no device made) and the processor draws when every one is a software one or
+there is none. The log says which and why (`drawing on the processor: no graphics card found, only Microsoft Basic Render Driver`).
+`software::window::run` then opens a winit window as eframe would (egui-winit's `create_window`, `State`, `update_viewport_info`,
+`process_viewport_commands`: input, IME, the clipboard, the cursor, the app's own title bar's drag and resize, CancelClose for the
+unsaved-changes prompt), runs the same frame (`BimApp::logic_on` and `show`, through the `Host` trait that `eframe::Frame` also
+implements), tessellates, draws with `software::raster` and shows the pixels with `softbuffer`. The raster snaps vertices to 1/256
+of a pixel and covers pixel centres with exact integer edge functions and the top-left rule (no seam where two triangles share an
+edge), solves each row's span rather than testing pixels, fills one-coloured triangles span by span, and blends as egui-wgpu does
+into the window's non-sRGB framebuffer: gamma space, premultiplied. It draws 32-row bands on `cores − 1` threads. A frame that
+draws what the one on screen shows (same primitives, textures and size: `raster::fingerprint`) is neither drawn nor presented. It
+draws only when egui asks (its repaint callback wakes the loop), so idle takes nothing; the pacer paces it to the monitor and to
+its frames' cost as on WARP. Without wgpu the plan canvas paints through egui's shapes (`Card::canvas` is none) and the 3D view
+is the processor's, as in the tests. `tests/software.rs` draws the start page, the sample's plan, its 3D view and a sheet with
+both and compares the pixels.
 
 Tags. A `Tag` names an element at a `host` by a `label`: the name of one of the fields its category's schedule has (`schedule::field_text` reads it
 as the schedule shows it, in the project's units), or, with none, the category's usual one (`Tag::usual`: a door's or window's `Mark`, a room's `Name`, else

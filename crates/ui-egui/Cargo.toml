@@ -23,6 +23,8 @@ serde = { workspace = true }
 quick-xml = { version = "0.41", features = ["serialize"] }
 egui = { workspace = true }
 eframe = { workspace = true }
+egui-winit = { workspace = true }
+softbuffer = { workspace = true }
 pollster = "1"
 rayon = { workspace = true }
 bytemuck = { version = "1", features = ["derive"] }

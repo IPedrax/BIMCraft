@@ -13,7 +13,7 @@ use bimcraft_core::engine::Session;
 use bimcraft_core::sample::SAMPLE;
 use bimcraft_ui_egui::control::Control;
 use bimcraft_ui_egui::revit::{Importer, is_revit};
-use bimcraft_ui_egui::{BimApp, Status, lang};
+use bimcraft_ui_egui::{BimApp, Status, lang, software};
 use serde_json::json;
 
 mod startup;
@@ -277,52 +277,72 @@ fn main() -> ExitCode {
         descriptor.required_limits = bimcraft_ui_egui::limits_for(adapter, descriptor.required_limits);
         descriptor
     });
+    // What draws the window: the processor where the machine has no graphics card (`bimcraft_ui_egui::software`), else eframe on
+    // wgpu. BIMCRAFT_SOFTWARE asks for wgpu on a software adapter, to compare.
+    // Settings > Performance > Drawing, as `use_settings` read it.
+    let drawing = app.draw_on;
+    let backends = setup.instance_descriptor.backends;
+    let choice = if bimcraft_ui_egui::pacing::software_asked() {
+        software::Choice { renderer: software::Renderer::Card, why: "BIMCRAFT_SOFTWARE asks for wgpu on a software adapter".into() }
+    } else {
+        let env = std::env::var("BIMCRAFT_RENDERER").ok();
+        software::choose(env.as_deref(), drawing, graphics.software(), || software::adapters(backends))
+    };
+    if let Some(files) = &files {
+        startup::note(
+            &files.log,
+            &format!(
+                "drawing on the {}: {}",
+                if choice.renderer == software::Renderer::Processor { "processor" } else { "graphics card" },
+                choice.why
+            ),
+        );
+    }
     options.wgpu_options.wgpu_setup = eframe::egui_wgpu::WgpuSetup::CreateNew(setup);
-    let up_files = files.clone();
     // Registered before the window opens, to catch the event that launched the app from Finder, and
     // held until it closes.
     #[cfg(target_os = "macos")]
     let (_registration, inbox) = fmv_macos_events::Registration::install();
-    // The update check runs on a thread of its own, started once the window exists: it never delays the start.
-    let start = move |cc: &eframe::CreationContext| -> Result<Box<dyn eframe::App>, _> {
-        app.enable_autosave(std::env::temp_dir().join("bimcraft-autosave"), &cc.egui_ctx);
-        if let Some(project) = failed_project {
-            app.inspect_recovery(project);
-        }
+    let up = Up {
+        failed_project,
+        files: files.clone(),
+        graphics,
+        benching,
         #[cfg(target_os = "macos")]
-        apple_events(&mut app, &cc.egui_ctx, inbox);
-        let info = cc.wgpu_render_state.as_ref().map(|state| state.adapter.get_info());
-        let adapter = info.as_ref().map(|info| {
-            let kind = if bimcraft_ui_egui::pacing::software(info.device_type, &info.name) { ", software rendering" } else { "" };
-            format!("{} ({:?}, {:?}{kind}, driver {} {})", info.name, info.backend, info.device_type, info.driver, info.driver_info)
-        });
-        startup::up(up_files.as_ref(), graphics, adapter.as_deref().unwrap_or("no wgpu adapter"));
-        // No graphics card: the frames are paced by what they cost the processor, and the status bar says so.
-        if let Some(info) = info.filter(|info| bimcraft_ui_egui::pacing::software(info.device_type, &info.name)) {
-            app.software_rendering(&info.name);
-        }
-        // The 3D view may be drawn on the card egui draws on, if the user asks (Settings > Performance); it is made then.
-        if let Some(state) = cc.wgpu_render_state.as_ref() {
-            app.use_graphics_card(state);
-        }
-        let ctx = cc.egui_ctx.clone();
-        // The settings sit beside the favorites, in the folder the core finds for the user's own files.
-        let prefs = bimcraft_core::favorites::default_path().map(|path| bimcraft_update::prefs::beside(&path));
-        app.updates = bimcraft_update::Updater::desktop(prefs, move || ctx.request_repaint());
-        // A benchmark asks nothing of the network.
-        if let Some(updates) = app.updates.as_mut()
-            && !benching
-        {
-            updates.check_at_startup();
-        }
-        // The assistant reaches the network only when the user gives it a key and sends a message (`bimcraft-assistant`).
-        app.assistant.attach(std::sync::Arc::new(bimcraft_assistant::net::Ureq::new()));
-        // The 3D mouse is read on a thread of its own too, which wakes the window as its cap moves.
-        let ctx = cc.egui_ctx.clone();
-        app.space_mouse = bimcraft_ui_egui::spacemouse::SpaceMouse::start(move || ctx.request_repaint());
-        Ok(Box::new(app))
+        inbox,
     };
-    let run = eframe::run_native("BIMCraft", options, Box::new(start));
+    let run = if choice.renderer == software::Renderer::Processor {
+        // The processor's window paces itself to the monitor and to what its frames cost.
+        if let Some(pacer) = app.frames.as_mut() {
+            (pacer.monitor, pacer.software) = (true, true);
+        }
+        app.drawn_on_processor = Some(choice.why.clone());
+        let why = choice.why;
+        let start = move |app: &mut BimApp, ctx: &eframe::egui::Context| {
+            up.window_up(app, ctx, &format!("drawn on the processor ({why})"));
+        };
+        software::window::run(app, options.viewport, Box::new(start))
+    } else {
+        // The update check runs on a thread of its own, started once the window exists: it never delays the start.
+        let start = move |cc: &eframe::CreationContext| -> Result<Box<dyn eframe::App>, _> {
+            let info = cc.wgpu_render_state.as_ref().map(|state| state.adapter.get_info());
+            let adapter = info.as_ref().map(|info| {
+                let kind = if bimcraft_ui_egui::pacing::software(info.device_type, &info.name) { ", software rendering" } else { "" };
+                format!("{} ({:?}, {:?}{kind}, driver {} {})", info.name, info.backend, info.device_type, info.driver, info.driver_info)
+            });
+            up.window_up(&mut app, &cc.egui_ctx, adapter.as_deref().unwrap_or("no wgpu adapter"));
+            // No graphics card: the frames are paced by what they cost the processor, and the status bar says so.
+            if let Some(info) = info.filter(|info| bimcraft_ui_egui::pacing::software(info.device_type, &info.name)) {
+                app.software_rendering(&info.name);
+            }
+            // The 3D view may be drawn on the card egui draws on, if the user asks (Settings > Performance); it is made then.
+            if let Some(state) = cc.wgpu_render_state.as_ref() {
+                app.use_graphics_card(state);
+            }
+            Ok(Box::new(app))
+        };
+        eframe::run_native("BIMCraft", options, Box::new(start)).map_err(|e| e.to_string())
+    };
     // The warnings held back are counted in the log.
     log::logger().flush();
     match run {
@@ -335,9 +355,48 @@ fn main() -> ExitCode {
             if let Some(files) = &files {
                 startup::note(&files.log, &format!("start failed on {} graphics: {e}", graphics.name()));
             }
-            startup::tell(language, &e.to_string(), files.as_ref());
+            startup::tell(language, &e, files.as_ref());
             ExitCode::FAILURE
         }
+    }
+}
+
+/// What a start does once its window is up, whatever draws it.
+struct Up {
+    failed_project: Option<PathBuf>,
+    files: Option<startup::Files>,
+    graphics: startup::Mark,
+    benching: bool,
+    #[cfg(target_os = "macos")]
+    inbox: fmv_macos_events::Inbox,
+}
+
+impl Up {
+    /// The window is up, drawn on `drawn_on`: the log says so, and the app's background work starts. The update check runs on a
+    /// thread of its own: it never delays the start.
+    fn window_up(self, app: &mut BimApp, ctx: &eframe::egui::Context, drawn_on: &str) {
+        app.enable_autosave(std::env::temp_dir().join("bimcraft-autosave"), ctx);
+        if let Some(project) = self.failed_project {
+            app.inspect_recovery(project);
+        }
+        #[cfg(target_os = "macos")]
+        apple_events(app, ctx, self.inbox);
+        startup::up(self.files.as_ref(), self.graphics, drawn_on);
+        let repaint = ctx.clone();
+        // The settings sit beside the favorites, in the folder the core finds for the user's own files.
+        let prefs = bimcraft_core::favorites::default_path().map(|path| bimcraft_update::prefs::beside(&path));
+        app.updates = bimcraft_update::Updater::desktop(prefs, move || repaint.request_repaint());
+        // A benchmark asks nothing of the network.
+        if let Some(updates) = app.updates.as_mut()
+            && !self.benching
+        {
+            updates.check_at_startup();
+        }
+        // The assistant reaches the network only when the user gives it a key and sends a message (`bimcraft-assistant`).
+        app.assistant.attach(std::sync::Arc::new(bimcraft_assistant::net::Ureq::new()));
+        // The 3D mouse is read on a thread of its own too, which wakes the window as its cap moves.
+        let repaint = ctx.clone();
+        app.space_mouse = bimcraft_ui_egui::spacemouse::SpaceMouse::start(move || repaint.request_repaint());
     }
 }
 
