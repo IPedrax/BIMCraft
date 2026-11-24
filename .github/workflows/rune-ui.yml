@@ -101,8 +101,8 @@ jobs:
           path: crates/ui-rune/target/release/bimcraft-rune
           if-no-files-found: error
 
-  # egui as it is on this branch's base (main), and as the join of #628 has it (BIMCRAFT_SOFTWARE=1: frames paced by their cost on a
-  # software adapter, one frame in flight). The second leg may fail without failing the run: it is another branch's work.
+  # egui as it is on this branch's base (ec8b641df), and as main has it since the join of PR 628, commit 73aceeae8 (BIMCRAFT_SOFTWARE=1:
+  # frames paced by their cost on a software adapter, one frame in flight). The second leg may fail without failing the run.
   build-egui:
     name: Build egui (${{ matrix.name }})
     if: github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' || github.event_name == 'workflow_dispatch'
@@ -114,7 +114,7 @@ jobs:
       matrix:
         include:
           - { name: main, ref: '' }
-          - { name: join-628, ref: 'IPedrax-Test/join-628' }
+          - { name: join-628, ref: '73aceeae81efdece268de404644a2b72822ce408' }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -159,7 +159,8 @@ jobs:
           grep -m1 'model name' /proc/cpuinfo
           nproc
           ls /usr/share/vulkan/icd.d/
-          lvp=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)
+          lvp=""
+          for f in /usr/share/vulkan/icd.d/lvp_icd*.json; do lvp=$f; done
           echo "VK_ICD_FILENAMES=$lvp" >> "$GITHUB_ENV"
       - name: Headless frames of the Rune UI on lavapipe, no display
         run: |

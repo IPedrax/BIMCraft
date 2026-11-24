@@ -75,14 +75,14 @@ moves the pointer round an ellipse over the plan (1,500 moves, about 55 a second
 about 30 a second) and drags the plan once round a circle (1,000 moves, with the middle button for egui, which pans with it, and the
 left for Rune). The process's CPU time (user and system, every thread, so lavapipe's rasterizer threads too) is read over each
 stretch and divided by the number of events. Every UI ran twice, one after the other on the same machine; the table gives the range
-of the two. egui is `bimcraft --sample` as it is on main, and as `IPedrax-Test/join-628` has it (PR 628's join, run with
+of the two. egui is `bimcraft --sample` as it is on this branch's base (ec8b641df), and as main has it since 73aceeae8, the join of PR 628 (run with
 `BIMCRAFT_SOFTWARE=1`: frames paced by their cost on a software adapter, one in flight). Rune is `bimcraft-rune`, the window of this
 branch: the Tools palette (36 rows), the plan, Properties and the status bar.
 
 | UI | runs | idle cores | pointer: cores | CPU ms per move | wheel: CPU ms per notch | drag: CPU ms per move | RSS MB |
 |---|---|---|---|---|---|---|---|
-| egui, main | 2 | 0.00 | 2.438 to 2.545 | 43.07 to 45.01 | 391.1 to 391.9 | 50.21 to 50.4 | 414 to 420 |
-| egui, main with the join of PR 628 (BIMCRAFT_SOFTWARE=1) | 2 | 0.00 | 1.21 to 1.246 | 20.63 to 21.37 | 222.25 to 223 | 28.04 to 28.16 | 405 to 407 |
+| egui, base of this branch (ec8b641df) | 2 | 0.00 | 2.438 to 2.545 | 43.07 to 45.01 | 391.1 to 391.9 | 50.21 to 50.4 | 414 to 420 |
+| egui, main since the join of PR 628 (73aceeae8, BIMCRAFT_SOFTWARE=1) | 2 | 0.00 | 1.21 to 1.246 | 20.63 to 21.37 | 222.25 to 223 | 28.04 to 28.16 | 405 to 407 |
 | Rune, shapes, on lavapipe (its default) | 2 | 0.00 | 2.605 to 2.623 | 46.23 to 46.4 | 131.95 to 132.65 | 17.63 to 17.65 | 266 to 267 |
 | Rune, shapes, CPU renderer (RUNE_CPU_FIRST=only) | 2 | 0.00 | 0.277 to 0.278 | 4.49 to 4.51 | 71.55 to 75.65 | 17.03 to 17.04 | 94 |
 | Rune, plan as an image, on lavapipe | 2 | 0.00 | 3.269 to 3.317 | 57.34 to 58.56 | 226.25 to 233.7 | 17.45 to 17.48 | 263 to 266 |
@@ -97,7 +97,7 @@ divided by the events, the nearest thing to a frame's cost the same method gives
 - **A pointer moving over the plan, the case of PR 628**: Rune on its CPU renderer costs 4.5 ms of CPU a move (0.28 cores), a tenth
   of egui's 43 to 45 ms (2.4 to 2.5 cores) and a fifth of egui with the join of PR 628 (21 ms, 1.2 cores). The same Rune on its default
   path, which hands the window to the GPU as soon as a device exists, and on a software adapter that is lavapipe or WARP, costs 46 ms
-  (2.6 cores): as much as egui on main. So **Rune is not cheaper than egui on software Vulkan, and is much cheaper on its own CPU
+  (2.6 cores): as much as egui before PR 628. So **Rune is not cheaper than egui on software Vulkan, and is much cheaper on its own CPU
   renderer**, which repaints the tiles that changed (here the hover layer and the status text) and not the window.
 - **The plan as the core's own raster in one image** (`BIMCRAFT_RUNE_PLAN=pixels`, `render::raster`) is no better: the same 4.5 ms of
   hover on the CPU renderer, 57 to 59 ms on lavapipe, and on the CPU renderer a wheel notch 2.3 times dearer than as shapes. The shapes stay.

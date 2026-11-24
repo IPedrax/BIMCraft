@@ -21,6 +21,10 @@ winit and wgpu would be replaced too. So here, inside `crates/ui-rune`:
 - Rune's `ogg-audio` default feature is left off (it brings MPL-2.0 audio decoders on macOS). Rune's licence (MIT) and Inter (OFL) are in
   the root `NOTICE`, and the OFL text in `assets/fonts/inter/OFL.txt`.
 
+- **Words** go through `lang::t`, `tf` and `tc` (English fallback), over the catalogs the egui crate reads. `cargo i18n` extracts only
+  `crates/ui-egui`, `crates/core` and `apps/bimcraft`, so a message first written here is not in `translations/ui/bimcraft-ui.pot`
+  and shows in English until the tool learns this folder (`catalog/extract.rs`'s roots); the ones a test reads are already there.
+
 ## Testing
 
 - The app is driven headless through Rune's own `Runtime` (`src/ui/tests.rs`): `Runtime::new(App::sample(), view, size, Env::new(..))`,
