@@ -84,3 +84,40 @@ fn the_processor_draws_the_window_as_the_graphics_card_does() {
         h.state_mut().open_sheet(Sheet::Paper(sheet));
     });
 }
+
+#[test]
+fn on_the_processor_a_view_moved_shows_the_last_drawing_until_a_worker_makes_the_next() {
+    let mut s = Session::new();
+    s.script(SAMPLE).unwrap();
+    let mut app = BimApp::new(s);
+    app.drawn_on_processor = Some("a test".into());
+    let Sheet::Plan(level) = app.sheet else { panic!("the sample opens on a plan") };
+    let ctx = egui::Context::default();
+    let mut i = 0u32;
+    let mut step = |app: &mut BimApp| {
+        let side = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+        let mut raw = egui::RawInput { screen_rect: Some(side), time: Some(f64::from(i) * 10.0), ..Default::default() };
+        raw.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(1.0);
+        i += 1;
+        // What the frame changed of the textures goes nowhere here (egui checks, in a debug build, that it isn't dropped unapplied).
+        ctx.run_ui(raw, |ui| app.show(ui)).textures_delta.clear();
+    };
+    let settled = |app: &mut BimApp, step: &mut dyn FnMut(&mut BimApp)| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while app.canvas.drawing.shown_drawing().map(|d| d.view) != app.canvas.current_view(level) {
+            assert!(std::time::Instant::now() < deadline, "the worker published nothing");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            step(app);
+        }
+    };
+    for _ in 0..4 {
+        step(&mut app);
+    }
+    settled(&mut app, &mut step);
+    let first = app.canvas.drawing.shown_drawing().unwrap();
+    app.canvas.show(level, P2(1000.0, 1000.0), P2(6000.0, 5000.0));
+    step(&mut app);
+    assert!(Arc::ptr_eq(&first, &app.canvas.drawing.shown_drawing().unwrap()), "the frame that moved doesn't wait for a drawing");
+    settled(&mut app, &mut step);
+    assert!(!Arc::ptr_eq(&first, &app.canvas.drawing.shown_drawing().unwrap()), "the worker's drawing replaced it");
+}

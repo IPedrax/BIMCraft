@@ -101,7 +101,8 @@ struct PlanJob {
     level: Id,
     view: View,
     ceiling: bool,
-    pipeline: Arc<crate::retained::Pipeline>,
+    /// The card's pipeline, to make the drawing's triangles for; none in the window drawn on the processor.
+    pipeline: Option<Arc<crate::retained::Pipeline>>,
     look: crate::retained::Look,
     selected: Vec<Id>,
     hovered: Option<Id>,
@@ -122,7 +123,10 @@ fn plan_job(job: PlanJob, cancel: &crate::view_worker::Cancel) -> Option<PlanDon
     if cancel.cancelled() {
         return None;
     }
-    let made = crate::retained::make(&pipeline, Arc::clone(&drawing), look, &selected, hovered, &|| cancel.cancelled());
+    let made = match &pipeline {
+        Some(pipeline) => crate::retained::make(pipeline, Arc::clone(&drawing), look, &selected, hovered, &|| cancel.cancelled()),
+        None => None,
+    };
     if cancel.cancelled() {
         return None;
     }
@@ -157,7 +161,8 @@ impl PlanCache {
     }
 
     /// The drawing to show of a view at `view` on a card: the last whole one, while a worker makes the one for `view`, so that moving never
-    /// waits for a plan. Only what the view moved over waits: another level, or an edit, is made here, and shows at once.
+    /// waits for a plan. Only what the view moved over waits: another level, or an edit, is made here, and shows at once. Without a
+    /// `pipeline` (the window drawn on the processor) the worker makes the drawing alone.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn moving(
         &mut self,
@@ -166,7 +171,7 @@ impl PlanCache {
         level: Id,
         view: View,
         ceiling: bool,
-        pipeline: &Arc<crate::retained::Pipeline>,
+        pipeline: Option<&Arc<crate::retained::Pipeline>>,
         look: crate::retained::Look,
     ) -> Arc<Drawing> {
         // Whether it was idle first: then what it finished is all there is, and nothing can come after asking.
@@ -205,7 +210,7 @@ impl PlanCache {
                 level,
                 view,
                 ceiling,
-                pipeline: Arc::clone(pipeline),
+                pipeline: pipeline.map(Arc::clone),
                 look,
                 selected,
                 hovered,
@@ -2213,6 +2218,9 @@ impl BimApp {
         let mods = click_modifiers(ui);
         let shape = self.shape();
         let pipeline = self.card.canvas();
+        // The window drawn on the processor moves the last drawing too, while a worker makes the next: making one each frame cost
+        // a pan most of its frame.
+        let processor = self.drawn_on_processor.is_some();
         let look = crate::retained::Look::now(ui.ctx(), &ui.painter_at(rect), rect.min, self.writing(), self.thin);
         let c = &mut self.canvas;
         c.cursor = local.map(|q| view.mm(q));
@@ -2220,7 +2228,8 @@ impl BimApp {
         // must not read as swept.
         c.pointer.set(local.map(|q| rect.min + vec2(q.0, q.1)));
         let d = match &pipeline {
-            Some(pipeline) => c.drawing.moving(ui.ctx(), &model, key, view, up, pipeline, look),
+            Some(pipeline) => c.drawing.moving(ui.ctx(), &model, key, view, up, Some(pipeline), look),
+            None if processor => c.drawing.moving(ui.ctx(), &model, key, view, up, None, look),
             None => c.drawing.drawing(&model, key, view, up),
         };
         let d = Shown::new(d, view, rect.min);

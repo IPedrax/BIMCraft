@@ -65,6 +65,7 @@ pub fn run(app: BimApp, viewport: ViewportBuilder, start: Start) -> Result<(), S
         shown: false,
         last: None,
         cpu: None,
+        times: std::env::var_os("BIMCRAFT_SOFT_TIMES").is_some_and(|v| !v.is_empty() && v != "0"),
         error: None,
     };
     event_loop.run_app(&mut runner).map_err(|e| format!("the window's event loop failed: {e}"))?;
@@ -106,6 +107,8 @@ struct Runner {
     last: Option<u64>,
     /// What the last frame took, for the benchmark.
     cpu: Option<f32>,
+    /// Each frame's times on standard error (`BIMCRAFT_SOFT_TIMES=1`), to see where a slow frame goes.
+    times: bool,
     error: Option<String>,
 }
 
@@ -205,6 +208,7 @@ impl Runner {
             std::thread::sleep(HIDDEN);
             return;
         }
+        let ran = Instant::now();
         let full = ctx.run_ui(raw, |ui| {
             app.logic_on(ui.ctx(), &mut host);
             app.show(ui);
@@ -215,8 +219,23 @@ impl Runner {
         let close = closes(close_requested, &commands);
         egui_winit::process_viewport_commands(ctx, &mut self.info, commands, &window, &mut self.actions);
         self.pending.append(full.textures_delta);
+        let tessellating = Instant::now();
         let primitives = ctx.tessellate(full.shapes, full.pixels_per_point);
+        let painting = Instant::now();
         self.paint(&window, &primitives, full.pixels_per_point);
+        if self.times {
+            let ms = |a: Instant, b: Instant| b.saturating_duration_since(a).as_secs_f64() * 1000.0;
+            let n: usize =
+                primitives.iter().map(|p| if let egui::epaint::Primitive::Mesh(m) = &p.primitive { m.indices.len() / 3 } else { 0 }).sum();
+            let waited = self.app.frames.as_ref().map_or(0.0, |p| p.slept.1.as_secs_f64() * 1000.0);
+            eprintln!(
+                "software: pass {:.1} ms (the pacer's wait {waited:.1} ms of it), tessellate {:.1} ms ({} meshes, {n} triangles), paint {:.1} ms",
+                ms(ran, tessellating),
+                ms(tessellating, painting),
+                primitives.len(),
+                ms(painting, Instant::now())
+            );
+        }
         if close {
             event_loop.exit();
         }

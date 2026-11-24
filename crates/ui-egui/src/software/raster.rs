@@ -116,7 +116,9 @@ pub struct Raster {
 
 impl Default for Raster {
     fn default() -> Raster {
-        Raster::new(std::thread::available_parallelism().map_or(1, usize::from).saturating_sub(1).max(1))
+        // The window's thread waits while the bands are drawn, so on two cores both draw; on more, one is left over.
+        let cores = std::thread::available_parallelism().map_or(1, usize::from);
+        Raster::new(cores.saturating_sub(1).max(cores.min(2)).min(8))
     }
 }
 
@@ -191,13 +193,16 @@ impl Raster {
             return;
         }
         let ready: Vec<Ready> = primitives.iter().filter_map(|p| self.ready(p, width, height, pixels_per_point)).collect();
+        let bins = bins(&ready, height.div_ceil(BAND));
         let background = pack(clear.r(), clear.g(), clear.b());
         let band = |(i, rows): (usize, &mut [u32])| {
             rows.fill(background);
             let y0 = (i * BAND) as i64;
             let y1 = y0 + (rows.len() / width) as i64;
-            for r in &ready {
-                draw_mesh(rows, width, y0, y1, r);
+            for &(mesh, tri) in bins.get(i).map_or(&[][..], Vec::as_slice) {
+                if let Some(r) = ready.get(mesh as usize) {
+                    draw_triangle(rows, width, y0, y1, r, tri as usize);
+                }
             }
         };
         match &self.pool {
@@ -259,67 +264,148 @@ fn channel(v: f32) -> u8 {
 }
 
 fn ceil_div(a: i128, b: i128) -> i128 {
-    let d = a.div_euclid(b);
-    if a.rem_euclid(b) == 0 { d } else { d + 1 }
+    Fixed::ceil_div(a, b)
 }
 
-fn draw_mesh(rows: &mut [u32], width: usize, y0: i64, y1: i64, r: &Ready) {
-    let clip = [r.clip[0], r.clip[1].max(y0), r.clip[2], r.clip[3].min(y1)];
-    if clip[1] >= clip[3] {
-        return;
+/// The integers a triangle's edges are worked out in: 64 bits where its corners are near enough for every product to fit (almost
+/// always: dividing 128-bit integers was most of a frame), 128 where a line zoomed far in reaches far past the window.
+trait Fixed:
+    Copy + Ord + std::ops::Add<Output = Self> + std::ops::Sub<Output = Self> + std::ops::Mul<Output = Self> + std::ops::Neg<Output = Self>
+{
+    const ZERO: Self;
+    const SUB: Self;
+    const HALF: Self;
+    fn of(v: i64) -> Self;
+    fn floor_div(a: Self, b: Self) -> Self;
+    fn ceil_div(a: Self, b: Self) -> Self;
+    fn f64(self) -> f64;
+    fn index(self) -> Option<usize>;
+}
+
+macro_rules! fixed {
+    ($t:ty) => {
+        impl Fixed for $t {
+            const ZERO: Self = 0;
+            const SUB: Self = SUB as $t;
+            const HALF: Self = (SUB / 2) as $t;
+            fn of(v: i64) -> Self {
+                Self::from(v)
+            }
+            fn floor_div(a: Self, b: Self) -> Self {
+                a.div_euclid(b)
+            }
+            fn ceil_div(a: Self, b: Self) -> Self {
+                let d = a.div_euclid(b);
+                if a.rem_euclid(b) == 0 { d } else { d + 1 }
+            }
+            fn f64(self) -> f64 {
+                self as f64
+            }
+            fn index(self) -> Option<usize> {
+                usize::try_from(self).ok()
+            }
+        }
+    };
+}
+fixed!(i64);
+fixed!(i128);
+
+/// The farthest a corner may be, in steps of a pixel, for a triangle's edges to be worked out in 64 bits: products stay under 2⁶¹.
+const NEAR: i128 = 1 << 28;
+
+/// A triangle's vertices, snapped, with their vertices: none where one isn't there or can't be drawn.
+fn corners<'a>(r: &'a Ready, tri: usize) -> Option<[([i128; 2], &'a Vertex); 3]> {
+    let idx = r.mesh.indices.get(tri * 3..tri * 3 + 3)?;
+    let at = |i: u32| {
+        let i = usize::try_from(i).ok()?;
+        Some((r.points.get(i).copied().flatten()?, r.mesh.vertices.get(i)?))
+    };
+    Some([at(idx[0])?, at(idx[1])?, at(idx[2])?])
+}
+
+/// Each band's triangles, in the order they're drawn: a triangle is sorted once into the bands its rows reach, rather than
+/// every band looking at every triangle.
+fn bins(ready: &[Ready], bands: usize) -> Vec<Vec<(u32, u32)>> {
+    let mut bins = vec![Vec::new(); bands];
+    for (m, r) in ready.iter().enumerate() {
+        for t in 0..r.mesh.indices.len() / 3 {
+            let Some(v) = corners(r, t) else { continue };
+            let ys = v.map(|(p, _)| p[1]);
+            let xs = v.map(|(p, _)| p[0]);
+            let (lo, hi) = (ys.iter().min().map_or(0, |y| y.div_euclid(SUB)), ys.iter().max().map_or(0, |y| ceil_div(*y, SUB)));
+            let (left, right) = (xs.iter().min().map_or(0, |x| x.div_euclid(SUB)), xs.iter().max().map_or(0, |x| ceil_div(*x, SUB)));
+            let (lo, hi) = (lo.max(i128::from(r.clip[1])), hi.min(i128::from(r.clip[3])));
+            if lo >= hi || right <= i128::from(r.clip[0]) || left >= i128::from(r.clip[2]) {
+                continue;
+            }
+            let (Ok(first), Ok(last)) = (usize::try_from(lo / BAND as i128), usize::try_from((hi - 1) / BAND as i128)) else { continue };
+            let (Ok(m), Ok(t)) = (u32::try_from(m), u32::try_from(t)) else { continue };
+            for bin in bins.iter_mut().take(last.saturating_add(1)).skip(first) {
+                bin.push((m, t));
+            }
+        }
     }
-    for tri in r.mesh.indices.as_chunks::<3>().0 {
-        let at = |i: u32| {
-            let i = usize::try_from(i).ok()?;
-            Some((r.points.get(i).copied().flatten()?, r.mesh.vertices.get(i)?))
-        };
-        if let (Some(a), Some(b), Some(c)) = (at(tri[0]), at(tri[1]), at(tri[2])) {
-            triangle(rows, width, y0, clip, [a, b, c], r.texture);
+    bins
+}
+
+fn draw_triangle(rows: &mut [u32], width: usize, y0: i64, y1: i64, r: &Ready, tri: usize) {
+    let clip = [r.clip[0], r.clip[1].max(y0), r.clip[2], r.clip[3].min(y1)];
+    if clip[1] < clip[3]
+        && let Some(v) = corners(r, tri)
+    {
+        if v.iter().all(|(p, _)| p[0].abs() < NEAR && p[1].abs() < NEAR) {
+            let near = v.map(|(p, vertex)| ([p[0] as i64, p[1] as i64], vertex));
+            triangle::<i64>(rows, width, y0, clip, near, r.texture);
+        } else {
+            triangle::<i128>(rows, width, y0, clip, v, r.texture);
         }
     }
 }
 
 /// The edge from `p` to `q` as `A x + B y + C`, positive inside a triangle wound with positive area.
-fn edge(p: [i128; 2], q: [i128; 2]) -> [i128; 3] {
+fn edge<T: Fixed>(p: [T; 2], q: [T; 2]) -> [T; 3] {
     let (a, b) = (p[1] - q[1], q[0] - p[0]);
     [a, b, -(a * p[0] + b * p[1])]
 }
 
-fn triangle(rows: &mut [u32], width: usize, y0: i64, clip: [i64; 4], mut v: [([i128; 2], &Vertex); 3], texture: Option<&Texture>) {
-    let cross = |a: [i128; 2], b: [i128; 2], c: [i128; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+fn triangle<T: Fixed>(rows: &mut [u32], width: usize, y0: i64, clip: [i64; 4], mut v: [([T; 2], &Vertex); 3], texture: Option<&Texture>) {
+    let cross = |a: [T; 2], b: [T; 2], c: [T; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
     let mut area = cross(v[0].0, v[1].0, v[2].0);
-    if area == 0 {
+    if area == T::ZERO {
         return;
     }
-    if area < 0 {
+    if area < T::ZERO {
         v.swap(1, 2);
         area = -area;
     }
     let [p0, p1, p2] = [v[0].0, v[1].0, v[2].0];
     // The pixels the triangle can reach, within the clip.
-    let lo = |i: usize| p0[i].min(p1[i]).min(p2[i]).div_euclid(SUB);
-    let hi = |i: usize| ceil_div(p0[i].max(p1[i]).max(p2[i]), SUB);
-    let (x_lo, x_hi) = (lo(0).max(i128::from(clip[0])), hi(0).min(i128::from(clip[2])));
-    let (y_lo, y_hi) = (lo(1).max(i128::from(clip[1])), hi(1).min(i128::from(clip[3])));
+    let lo = |i: usize| T::floor_div(p0[i].min(p1[i]).min(p2[i]), T::SUB);
+    let hi = |i: usize| T::ceil_div(p0[i].max(p1[i]).max(p2[i]), T::SUB);
+    let (x_lo, x_hi) = (lo(0).max(T::of(clip[0])), hi(0).min(T::of(clip[2])));
+    let (y_lo, y_hi) = (lo(1).max(T::of(clip[1])), hi(1).min(T::of(clip[3])));
     if x_lo >= x_hi || y_lo >= y_hi {
         return;
     }
     // Edge k is opposite vertex k: its value over the area is vertex k's weight.
     let edges = [edge(p1, p2), edge(p2, p0), edge(p0, p1)];
-    let shade = Shade::new(&v, texture, area);
-    let inv = 1.0 / area as f64;
-    for y in y_lo..y_hi {
-        let yc = y * SUB + SUB / 2;
+    let px_area = (area.f64() / (SUB * SUB) as f64) as f32;
+    let shade = Shade::new([v[0].1, v[1].1, v[2].1], texture, px_area);
+    let inv = 1.0 / area.f64();
+    let mut y = y_lo;
+    while y < y_hi {
+        let yc = y * T::SUB + T::HALF;
+        y = y + T::of(1);
         let (mut xs, mut xe) = (x_lo, x_hi);
         for [a, b, c] in edges {
             let k = b * yc + c;
-            if a > 0 {
+            if a > T::ZERO {
                 // A left edge: a pixel centre on it is inside.
-                xs = xs.max(ceil_div(-k - a * SUB / 2, a * SUB));
-            } else if a < 0 {
+                xs = xs.max(T::ceil_div(-k - a * T::HALF, a * T::SUB));
+            } else if a < T::ZERO {
                 // A right edge: on it is outside.
-                xe = xe.min(ceil_div(k + a * SUB / 2, -a * SUB));
-            } else if k < 0 || (k == 0 && b <= 0) {
+                xe = xe.min(T::ceil_div(k + a * T::HALF, -a * T::SUB));
+            } else if k < T::ZERO || (k == T::ZERO && b <= T::ZERO) {
                 // Level with the row: the row is inside only above a bottom edge's or on a top edge's line.
                 xe = xs;
             }
@@ -327,16 +413,16 @@ fn triangle(rows: &mut [u32], width: usize, y0: i64, clip: [i64; 4], mut v: [([i
         if xs >= xe {
             continue;
         }
-        let row = usize::try_from(y - i128::from(y0)).unwrap_or(usize::MAX);
-        let (Ok(xs), Ok(xe)) = (usize::try_from(xs), usize::try_from(xe)) else { continue };
+        let row = T::floor_div(yc, T::SUB).index().and_then(|r| r.checked_sub(usize::try_from(y0).ok()?)).unwrap_or(usize::MAX);
+        let xc = xs * T::SUB + T::HALF;
+        let (Some(xs), Some(xe)) = (xs.index(), xe.index()) else { continue };
         let Some(span) = rows.get_mut(row.saturating_mul(width) + xs..row.saturating_mul(width) + xe) else { continue };
         match &shade {
             Shade::Flat(rgba) if rgba[3] == 255 => span.fill(pack(rgba[0], rgba[1], rgba[2])),
             Shade::Flat(rgba) => span.iter_mut().for_each(|px| *px = blend(*px, *rgba)),
             Shade::Smooth { colors, texel, uv, filter } => {
-                let xc = xs as i128 * SUB + SUB / 2;
-                let w = |k: usize| ((edges[k][0] * xc + edges[k][1] * yc + edges[k][2]) as f64 * inv) as f32;
-                let dw = |k: usize| ((edges[k][0] * SUB) as f64 * inv) as f32;
+                let w = |k: usize| ((edges[k][0] * xc + edges[k][1] * yc + edges[k][2]).f64() * inv) as f32;
+                let dw = |k: usize| ((edges[k][0] * T::SUB).f64() * inv) as f32;
                 let (w0, w1, w2) = (w(0), w(1), w(2));
                 let (d0, d1, d2) = (dw(0), dw(1), dw(2));
                 for (i, px) in span.iter_mut().enumerate() {
@@ -368,29 +454,28 @@ enum Shade {
 }
 
 impl Shade {
-    fn new(v: &[([i128; 2], &Vertex); 3], texture: Option<&Texture>, area: i128) -> Shade {
+    fn new(v: [&Vertex; 3], texture: Option<&Texture>, px_area: f32) -> Shade {
         let rgba = |c: Color32| [f32::from(c.r()), f32::from(c.g()), f32::from(c.b()), f32::from(c.a())];
-        let same_uv = v[0].1.uv == v[1].1.uv && v[1].1.uv == v[2].1.uv;
+        let same_uv = v[0].uv == v[1].uv && v[1].uv == v[2].uv;
         // Magnified or minified: the texels the triangle covers against its pixels.
         let filter = texture.map_or(TextureFilter::Linear, |t| {
-            let [a, b, c] = [v[0].1.uv, v[1].1.uv, v[2].1.uv];
+            let [a, b, c] = [v[0].uv, v[1].uv, v[2].uv];
             let uv_area = ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() * (t.width * t.height) as f32;
-            let px_area = area as f32 / (SUB * SUB) as f32;
             if uv_area > px_area { t.options.minification } else { t.options.magnification }
         });
         // No texture egui knows of draws as white, as a missing texture's white pixel would.
         let texel = match texture {
-            Some(t) if same_uv => t.sample(v[0].1.uv.x, v[0].1.uv.y, filter),
+            Some(t) if same_uv => t.sample(v[0].uv.x, v[0].uv.y, filter),
             Some(_) => [255.0; 4],
             None => [255.0; 4],
         };
-        let same_color = v[0].1.color == v[1].1.color && v[1].1.color == v[2].1.color;
+        let same_color = v[0].color == v[1].color && v[1].color == v[2].color;
         if same_uv && same_color {
-            let c = rgba(v[0].1.color);
+            let c = rgba(v[0].color);
             return Shade::Flat(std::array::from_fn(|i| channel(c[i] * texel[i] / 255.0)));
         }
-        let uv = (!same_uv && texture.is_some()).then(|| [0, 1, 2].map(|i| [v[i].1.uv.x, v[i].1.uv.y]));
-        Shade::Smooth { colors: [rgba(v[0].1.color), rgba(v[1].1.color), rgba(v[2].1.color)], texel, uv, filter }
+        let uv = (!same_uv && texture.is_some()).then(|| [0, 1, 2].map(|i| [v[i].uv.x, v[i].uv.y]));
+        Shade::Smooth { colors: [rgba(v[0].color), rgba(v[1].color), rgba(v[2].color)], texel, uv, filter }
     }
 }
 
