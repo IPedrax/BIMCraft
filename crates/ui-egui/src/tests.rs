@@ -2031,13 +2031,16 @@ fn properties_show_0_where_the_json_leaves_a_number_out_and_blank_where_it_is_no
     h.state_mut().selection = floors;
     h.run();
     assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), (String::new(), "0°".into()));
-    // None is not 0: a section with no far clip sees all there is, a plan's top is the level above.
+    // None is not 0: a section with no far clip sees all there is, a plan's top is the level above (its View Range says so).
     h.state_mut().selection = ids(&h, "section");
     h.run();
     assert_eq!(value(&h, "Far Clip Offset"), "");
     h.state_mut().selection.clear();
     h.run();
-    assert_eq!(value(&h, "Top"), "");
+    h.state_mut().open_view_ranges(&[100000]);
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Top").value().unwrap_or_default(), "Level 2");
+    assert_eq!(value(&h, "Top"), "0");
 }
 
 #[test]
@@ -3213,22 +3216,98 @@ fn a_box_dragged_in_a_section_selects_as_in_a_plan() {
 }
 
 #[test]
-fn a_plans_view_range_is_in_its_properties() {
+fn a_plans_view_range_is_edited_in_its_own_dialog_each_plane_from_a_level() {
     let mut h = app(BOX);
-    assert!(h.query_by_label("View Range").is_some());
-    type_into(&mut h, "Cut Plane", "1500");
-    key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 100000, "view_range"), json!({"top": null, "cut": 1500.0, "bottom": 0.0, "depth": 0.0}));
-    type_into(&mut h, "Top", "2600");
-    key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 100000, "view_range")["top"], json!(2600.0));
-    // Cleared, back to the level above.
-    h.get_by_label("Top").focus();
+    // The palette's last row may lie under its fold: clicked as a screen reader would.
+    let open = |h: &mut Harness<BimApp>| {
+        h.get_by_label("Edit View Range").click_accesskit();
+        h.run();
+    };
+    let field_in = |h: &mut Harness<BimApp>, plane: &str, text: &str| {
+        let f = h.get_by_role_and_label(Role::TextInput, plane);
+        f.focus();
+        h.run();
+        h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+        h.get_by_role_and_label(Role::TextInput, plane).type_text(text);
+        h.run();
+    };
+    open(&mut h);
+    assert!(h.state().view_range_dialog.is_some());
+    field_in(&mut h, "Cut Plane", "1500");
+    press(&mut h, "OK");
+    assert!(h.state().view_range_dialog.is_none());
+    assert_eq!(h.state().session.model.view_range_of(100000u64).cut, 1500.0);
+    // Measured from no limit at all: the bottom and the view depth.
+    open(&mut h);
+    choose(&mut h, "Bottom", "Unlimited");
+    choose(&mut h, "View Depth", "Unlimited");
+    press(&mut h, "OK");
+    let r = h.state().session.model.plan_range(100000u64);
+    assert_eq!((r.bottom, r.depth), (f64::NEG_INFINITY, f64::NEG_INFINITY));
+    // Out of order: the dialog says so and stays.
+    open(&mut h);
+    // One plan's planes are measured from its levels by name: no Associated Level. The cut plane's list reads Level 1 too:
+    // the open list's item is the last.
+    h.get_by_role_and_label(Role::ComboBox, "Bottom").click_accesskit();
+    h.run();
+    // (Properties' own Associated Level row is the one there is.)
+    assert_eq!(h.get_all_by_label("Associated Level").count(), 1);
+    assert!(h.query_by_label("Level Below").is_none() && h.query_by_label("Unlimited").is_some());
+    h.get_all_by_label("Level 1").last().unwrap().click_accesskit();
+    h.run();
+    if egui::Popup::is_any_open(&h.ctx) {
+        h.get_by_role_and_label(Role::ComboBox, "Bottom").click_accesskit();
+        h.run();
+    }
+    field_in(&mut h, "Bottom", "2000");
+    press(&mut h, "OK");
+    assert!(h.state().view_range_dialog.is_some(), "the bottom over the cut plane");
+    // Which plane is out of place, against which.
+    let said = h.state().view_range_dialog.as_ref().and_then(|d| d.error.clone()).unwrap_or_default();
+    assert!(said.contains("bottom (+2000 over the plan's level) is above its cut plane (+1500 over the plan's level)"), "{said}");
+    assert!(said.ends_with("the bottom can't be higher than the cut plane"), "{said}");
+    assert_eq!(h.state().session.model.plan_range(100000u64).bottom, f64::NEG_INFINITY);
+    press(&mut h, "Cancel");
+    assert!(h.state().view_range_dialog.is_none());
+}
+
+#[test]
+fn plans_picked_together_share_a_view_range_each_from_its_own_level() {
+    let mut h = app(BOX);
+    h.state_mut().open_view_ranges(&[100000, 100001]);
+    h.run();
+    assert!(h.query_by_label("View Range: 2 plans").is_some());
+    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Bottom").value().unwrap_or_default(), "Associated Level");
+    let f = h.get_by_role_and_label(Role::TextInput, "Cut Plane");
+    f.focus();
     h.run();
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
-    key(&mut h, Key::Backspace);
-    key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 100000, "view_range")["top"], Value::Null);
+    h.get_by_role_and_label(Role::TextInput, "Cut Plane").type_text("1500");
+    h.run();
+    press(&mut h, "OK");
+    assert!(h.state().view_range_dialog.is_none());
+    let m = &h.state().session.model;
+    assert_eq!((m.plan_range(100000u64).cut, m.plan_range(100001u64).cut), (1500.0, 4500.0));
+}
+
+#[test]
+fn halftone_underlay_sets_how_far_toward_the_paper_halftone_draws() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Annotation Settings");
+    press(&mut h, "Halftone/Underlay");
+    assert!(h.state().halftone_dialog.is_some());
+    h.state_mut().halftone_dialog.as_mut().unwrap().fade = 70;
+    // The dialog's Apply: the last one, over the palette's.
+    h.get_all_by(|n| n.role() == Role::Button && n.label().as_deref() == Some("Apply")).last().unwrap().click_accesskit();
+    h.run();
+    assert_eq!(h.state().session.model.halftone, 70);
+    h.get_by_role_and_label(Role::Slider, "Fade").focus();
+    h.run();
+    key(&mut h, Key::ArrowRight);
+    press(&mut h, "OK");
+    assert!(h.state().halftone_dialog.is_none());
+    assert_eq!(h.state().session.model.halftone, 71);
 }
 
 #[test]
@@ -7947,6 +8026,26 @@ fn adaptive_test_frames_place_where_they_are_even_on_a_raised_level() {
     };
     let want = low(d.evaluate(&f.values("A", &Default::default()).unwrap(), &d.preview).pieces());
     assert!((low(m.component_pieces(c)) - want).abs() < 1e-6, "the test frames are the project's, whatever the level's elevation");
+}
+
+/// The View Range and Halftone/Underlay dialogs in the three looks, to look at: run with `BIMCRAFT_VIEW_RANGE_UI_DUMP` a folder.
+#[test]
+fn view_range_and_halftone_dialogs_in_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_VIEW_RANGE_UI_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app(BOX);
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().open_view_ranges(&[100000]);
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("view-range-{name}.png"))).unwrap();
+        h.state_mut().view_range_dialog = None;
+        h.state_mut().open_halftone();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("halftone-{name}.png"))).unwrap();
+    }
 }
 
 #[test]

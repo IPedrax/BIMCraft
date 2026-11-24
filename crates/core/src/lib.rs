@@ -329,6 +329,9 @@ mod units_tests;
 #[cfg(test)]
 mod vertical_tools_tests;
 pub mod view3d;
+pub mod view_range;
+#[cfg(test)]
+mod view_range_tests;
 #[cfg(test)]
 mod wall_mitre_tests;
 #[cfg(test)]

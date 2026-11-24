@@ -44,6 +44,7 @@ mod finishes;
 mod fly;
 mod footer;
 mod gpu;
+mod halftone;
 mod plugin_form;
 mod plugin_panels;
 mod printsets;
@@ -51,6 +52,7 @@ mod profile;
 mod publisher;
 mod stairgrips;
 mod stairtype;
+mod viewrange;
 pub use gpu::limits_for;
 mod asset_manager;
 mod graphics;
@@ -1152,6 +1154,10 @@ pub struct BimApp {
     phasing_dialog: Option<phasing::PhasingDialog>,
     /// Graphic Display Options (GD), while open.
     display_dialog: Option<display::DisplayDialog>,
+    /// View Range (a plan's Properties, Edit…), while open.
+    view_range_dialog: Option<viewrange::RangeDialog>,
+    /// Manage > Annotation Settings > Halftone/Underlay, while open.
+    halftone_dialog: Option<halftone::HalftoneDialog>,
     project_info_dialog: Option<projectinfo::ProjectInfoDialog>,
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
@@ -2135,6 +2141,8 @@ impl BimApp {
             templates_dialog: None,
             phasing_dialog: None,
             display_dialog: None,
+            view_range_dialog: None,
+            halftone_dialog: None,
             project_info_dialog: None,
             reinforce_dialog: None,
             steel_dialog: None,
@@ -2889,6 +2897,8 @@ impl BimApp {
             || self.templates_dialog.is_some()
             || self.phasing_dialog.is_some()
             || self.display_dialog.is_some()
+            || self.view_range_dialog.is_some()
+            || self.halftone_dialog.is_some()
             || self.project_info_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.steel_dialog.is_some()
@@ -5931,8 +5941,10 @@ impl BimApp {
             let open = self.line_weights_dialog.is_some()
                 || self.line_styles_dialog.is_some()
                 || self.fill_patterns_dialog.is_some()
-                || self.asset_manager.is_some();
-            let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns, and the Asset Manager");
+                || self.asset_manager.is_some()
+                || self.halftone_dialog.is_some();
+            let tip =
+                msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns, halftone, and the Asset Manager");
             let r = big_button(ui, Icon::AnnotationSettings, "Annotation Settings", open, tip);
             ribbon::choices(ui, &r, false, |ui| {
                 // As wide as its longest name, not the window.
@@ -5953,6 +5965,12 @@ impl BimApp {
                 let tip = msg!("Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn");
                 if list_row(ui, Icon::FillPatterns, "Fill Patterns", false, tip).clicked() {
                     self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
+                }
+                let tip = msg!(
+                    "Halftone/Underlay: how far toward the paper halftone draws, and so a plan's underlay between its bottom and its view depth"
+                );
+                if list_row(ui, Icon::Halftone, "Halftone/Underlay", false, tip).clicked() {
+                    self.open_halftone();
                 }
                 let tip = msg!(
                     "Asset Manager: the project's materials, fill types and patterns, line patterns and styles and pictures, where each is used, and their import and export as a .bima file"
@@ -7821,6 +7839,8 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.display_window(ctx);
+        self.view_range_window(ctx);
+        self.halftone_window(ctx);
         self.project_info_window(ctx);
         self.reinforce_window(ctx);
         self.steel_window(ctx);

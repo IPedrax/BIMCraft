@@ -61,6 +61,8 @@ enum Kind {
     Limit(&'static str),
     /// Whether a view is cropped: on crops it to what it shows (`crop`), off uncrops it.
     Crop,
+    /// A plan's view range: Edit… opens the View Range dialog.
+    Range,
     /// Derived from the rest; read only.
     Shown,
     /// A length (or several), read only.
@@ -566,10 +568,7 @@ const PLAN: &[Row] = &[
     ("Extents", "elevation", msg!("Level Elevation"), Length),
     ("Extents", "crop", "Crop View", Crop),
     ("Extents", "section_box", "Section Box", Flag),
-    ("View Range", "view_range.top", "Top", Limit(msg!("Level Above"))),
-    ("View Range", "view_range.cut", msg!("Cut Plane"), Length),
-    ("View Range", "view_range.bottom", msg!("Bottom"), Length),
-    ("View Range", "view_range.depth", msg!("View Depth"), Length),
+    ("Extents", "view_range", msg!("View Range"), Range),
 ];
 
 /// A plan view's parameters, read from and written to the plan view itself.
@@ -578,10 +577,7 @@ const PLAN_VIEW: &[Row] = &[
     ("Extents", "level", "Associated Level", LevelName),
     ("Extents", "crop", "Crop View", Crop),
     ("Extents", "section_box", "Section Box", Flag),
-    ("View Range", "view_range.top", "Top", Limit("Level Above")),
-    ("View Range", "view_range.cut", "Cut Plane", Length),
-    ("View Range", "view_range.bottom", "Bottom", Length),
-    ("View Range", "view_range.depth", "View Depth", Length),
+    ("Extents", "view_range", "View Range", Range),
 ];
 
 /// A dependent view's: its view range and graphics are its parent's, so it shows the parent, and a crop of its own.
@@ -2570,6 +2566,7 @@ impl BimApp {
         // A second field the change sets with it: a room's Limit Offset, kept where its top is as its Upper Limit changes.
         let mut also: Option<(&str, Value)> = None;
         let mut crop = None;
+        let mut range = false;
         // An element a link was clicked for: the selection.
         let mut select = None;
         // A stair's sign clicked: the rules it is outside of, in a window of their own.
@@ -2661,6 +2658,12 @@ impl BimApp {
                         ViewName => {
                             let name = id_of(val).and_then(|v| model.view_name(v)).unwrap_or_default();
                             ui.label(RichText::new(name).color(pal().muted));
+                        }
+                        Range => {
+                            // One plan's from its levels by name; plans picked together, each from its own level.
+                            let r = wide_button(ui, t("Edit…"));
+                            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[label])));
+                            range |= r.clicked();
                         }
                         Crop => {
                             let mut on = !val.is_null();
@@ -2816,6 +2819,9 @@ impl BimApp {
         }
         if let Some(other) = select {
             self.selection = vec![other];
+        }
+        if range {
+            self.open_view_ranges(ids);
         }
         if let Some(name) = edit_framing {
             self.type_dialog = Some(TypeDialog::new(model, "framing", name, ids.to_vec()));
