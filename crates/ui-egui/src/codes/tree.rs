@@ -13,10 +13,34 @@ use super::{as_tsv, cell_text, cell_value, from_tsv};
 use crate::lang::t;
 use crate::style::pal;
 
+/// What a section says a column of its tables holds (`SectionDef::columns`).
+pub(crate) type Kinds = fn(&[String]) -> Option<bimcraft_core::codes::ColumnKind>;
+
 /// What a rule's tables are shown with: the meanings of its columns, by name, where the code explains them.
 #[derive(Default)]
 pub(crate) struct Hints {
     pub(crate) columns: Map<String, Value>,
+    /// Where the value shown is, by its keys from the section down (`[]` for the rows of a list).
+    pub(crate) at: Vec<String>,
+    /// What the section says its tables' columns hold (`SectionDef::columns`).
+    pub(crate) kinds: Option<Kinds>,
+}
+
+impl Hints {
+    /// These hints, one key further down.
+    fn under(&self, columns: &Map<String, Value>, key: &str) -> Hints {
+        let mut at = self.at.clone();
+        at.push(key.to_string());
+        Hints { columns: columns.clone(), at, kinds: self.kinds }
+    }
+
+    /// The kind of column `col` (its keys joined with dots) of the table shown here, as the section says it.
+    fn kind_of(&self, col: &str) -> Option<bimcraft_core::codes::ColumnKind> {
+        let mut at = self.at.clone();
+        at.push("[]".to_string());
+        at.extend(col.split('.').map(str::to_owned));
+        self.kinds.and_then(|f| f(&at))
+    }
 }
 
 /// A key as a person reads it: `breaker_a` is "Breaker (A)", `up_to` "Up to".
@@ -353,7 +377,7 @@ pub(crate) fn editor(ui: &mut Ui, id: &str, key: &str, v: &mut Value, hints: &Hi
 /// An object: its plain values as a form, then each of its tables under its name; its source as a line under it.
 fn object(ui: &mut Ui, id: &str, o: &mut Map<String, Value>, hints: &Hints, pasted: &mut String) {
     // The explanations of a utility's columns are the hints of the tables beside them.
-    let mut hints_here = Hints { columns: hints.columns.clone() };
+    let mut hints_here = Hints { columns: hints.columns.clone(), at: hints.at.clone(), kinds: hints.kinds };
     if let Some(Value::Object(c)) = o.get("columns")
         && c.values().all(Value::is_string)
     {
@@ -379,7 +403,7 @@ fn object(ui: &mut Ui, id: &str, o: &mut Map<String, Value>, hints: &Hints, past
             _ => human(&k),
         };
         egui::CollapsingHeader::new(RichText::new(what).strong()).id_salt((id, k.as_str())).default_open(true).show(ui, |ui| {
-            editor(ui, &format!("{id}.{k}"), &k, v, &hints_here, pasted);
+            editor(ui, &format!("{id}.{k}"), &k, v, &hints_here.under(&hints_here.columns, &k), pasted);
         });
     }
     if let Some(Value::String(s)) = o.get_mut("source") {
@@ -607,7 +631,13 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                         let shown_first = if first.is_null() { String::new() } else { list_text(&first) };
                         let empty = began.is_null() || began.as_array().is_some_and(Vec::is_empty);
                         let written_as_list = text.contains(',') || text.trim_start().starts_with('[');
-                        let list = if empty {
+                        // The kind the section says the column holds decides; where it says none, or what is printed (a
+                        // number, a text or a list, as the standard prints it), what the column holds.
+                        use bimcraft_core::codes::ColumnKind;
+                        let kind = hints.kind_of(c).filter(|k| *k != ColumnKind::Printed);
+                        let list = if let Some(k) = kind {
+                            k == ColumnKind::Numbers
+                        } else if empty {
                             // Other rows hold lists only: a list. Plain values only: a plain value. Both, or neither: as written.
                             match (others(&lists, c, i), others(&plains, c, i)) {
                                 (true, false) => true,
@@ -627,6 +657,9 @@ fn object_table(ui: &mut Ui, id: &str, rows: &mut Vec<Value>, hints: &Hints, pas
                             first.clone()
                         } else if list {
                             list_value_over(&text, &began)
+                        } else if kind == Some(ColumnKind::Text) {
+                            // A text stays a text, whatever it reads as.
+                            if text.is_empty() { Value::Null } else { Value::String(text.clone()) }
                         } else {
                             cell_value(&text)
                         };
@@ -741,7 +774,7 @@ fn cards(ui: &mut Ui, id: &str, key: &str, rows: &mut Vec<Value>, hints: &Hints,
                     }
                 });
             });
-            ui.push_id((id, i), |ui| editor(ui, &format!("{id}[{i}]"), key, row, hints, pasted));
+            ui.push_id((id, i), |ui| editor(ui, &format!("{id}[{i}]"), key, row, &hints.under(&hints.columns, "[]"), pasted));
         });
     }
     if let Some(i) = gone {
@@ -999,6 +1032,41 @@ mod tests {
         let mut expected = json!(before);
         expected["tables"][0]["rows"][row]["columns"]["entry_pvc_mm2"] = json!({"phase":25});
         assert!(Value::Object(after) == expected, "the edit should be the only difference in the resolved section");
+    }
+
+    #[test]
+    fn a_text_column_keeps_a_name_that_reads_as_a_number() {
+        // A category named "7" is a text where the section says the column is one (`entrance` rows' `name`), not the number
+        // 7 the window would read it as, which the code refuses.
+        let mut h = g7_dialog("energisa");
+        let before = h.state().session.model.resolve_code(Discipline::Electrical, "entrance").value;
+        let row = before["tables"][0]["rows"].as_array().unwrap().iter().position(|r| r["name"] == "T4").unwrap();
+        g7_type(&mut h, "T4", "Name", "7");
+        g7_ok(&mut h);
+        assert!(h.state().codes_dialog.is_none(), "{:?}", h.state().codes_dialog.as_ref().map(|d| &d.error));
+        let after = h.state().session.model.resolve_code(Discipline::Electrical, "entrance").value;
+        assert_eq!(after["tables"][0]["rows"][row]["name"], json!("7"));
+    }
+
+    #[test]
+    fn a_printed_column_a_building_s_demand_keeps_as_text_takes_a_number_typed_as_a_text() {
+        // `building_demand`'s entrance rows print their columns as texts (`EntranceRow::columns`): "25" typed stays "25",
+        // where the column's other rows hold texts that read as numbers.
+        let kinds = bimcraft_core::codes::section_def(Discipline::Electrical, "building_demand").map(|d| d.columns);
+        let rows = json!({"rows": [
+            {"over": 0, "up_to": 10, "breaker_a": 40, "columns": {"wire": "10"}},
+            {"over": 10, "up_to": 20, "breaker_a": 50, "columns": {"wire": "16"}}
+        ]});
+        let mut h = Harness::builder().with_size([1800.0, 1200.0]).with_step_dt(0.25).build_ui_state(
+            move |ui, (v, pasted): &mut (Value, String)| {
+                let hints = Hints { at: vec!["entrance".into()], kinds, ..Default::default() };
+                editor(ui, "entrance", "entrance", v, &hints, pasted)
+            },
+            (rows, String::new()),
+        );
+        h.run();
+        g7_type(&mut h, "16", "Wire", "25");
+        assert_eq!(h.state().0["rows"][1]["columns"]["wire"], json!("25"));
     }
 
     #[test]
