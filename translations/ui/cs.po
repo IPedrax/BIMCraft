@@ -604,7 +604,7 @@ msgstr ""
 msgid "Above dimension line (continuous)"
 msgstr "Nad kótovací čárou (souvislou)"
 
-#: crates/ui-egui/src/dock.rs:1215
+#: crates/ui-egui/src/dock.rs:1256
 msgid "Above {}"
 msgstr ""
 
@@ -3982,8 +3982,8 @@ msgstr "Zavřít dialog"
 msgid "Close every view but this one"
 msgstr "Zavřít všechny pohledy kromě tohoto"
 
-#: crates/ui-egui/src/dock.rs:723
-#: crates/ui-egui/src/dock.rs:1138
+#: crates/ui-egui/src/dock.rs:724
+#: crates/ui-egui/src/dock.rs:1179
 #: crates/ui-egui/src/lib.rs:7474
 msgid "Close {}"
 msgstr "Zavřít {}"
@@ -5864,24 +5864,24 @@ msgstr ""
 msgid "Dock All Views: every floating view back onto the tab bar, in one view under the tabs"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1197
+#: crates/ui-egui/src/dock.rs:1238
 msgid "Dock Bottom"
 msgstr "Ukotvit dole"
 
-#: crates/ui-egui/src/dock.rs:1187
+#: crates/ui-egui/src/dock.rs:1228
 msgid "Dock Left"
 msgstr "Ukotvit vlevo"
 
-#: crates/ui-egui/src/dock.rs:1192
+#: crates/ui-egui/src/dock.rs:1233
 msgid "Dock Right"
 msgstr "Ukotvit vpravo"
 
-#: crates/ui-egui/src/dock.rs:1230
+#: crates/ui-egui/src/dock.rs:1271
 msgid "Dock in the Views"
 msgstr "Ukotvit v pohledech"
 
-#: crates/ui-egui/src/dock.rs:726
-#: crates/ui-egui/src/dock.rs:1141
+#: crates/ui-egui/src/dock.rs:727
+#: crates/ui-egui/src/dock.rs:1182
 msgid "Dock {}"
 msgstr "Ukotvit {}"
 
@@ -7598,8 +7598,8 @@ msgstr "Převrácený líc"
 msgid "Flipped hand"
 msgstr "Převrácená strana"
 
-#: crates/ui-egui/src/dock.rs:749
-#: crates/ui-egui/src/dock.rs:1287
+#: crates/ui-egui/src/dock.rs:790
+#: crates/ui-egui/src/dock.rs:1328
 #: crates/ui-egui/src/lib.rs:7496
 msgid "Float"
 msgstr "Uvolnit"
@@ -9557,7 +9557,7 @@ msgstr "Vlevo"
 msgid "Left Filing / Binding Margin:"
 msgstr "Levý okraj pro zakládání / vazbu:"
 
-#: crates/ui-egui/src/dock.rs:1211
+#: crates/ui-egui/src/dock.rs:1252
 msgid "Left of {}"
 msgstr ""
 
@@ -12618,6 +12618,7 @@ msgstr "Pomalovat"
 msgid "Paint (PT): lay a material, and its texture, over the face you click in the 3D view"
 msgstr "Pomalovat (PT): nanést materiál a jeho texturu na plochu, na kterou kliknete ve 3D pohledu"
 
+#: crates/ui-egui/src/dock.rs:744
 #: crates/ui-egui/src/lib.rs:4715
 #: crates/ui-egui/src/presets.rs:405
 #: crates/ui-egui/src/settings.rs:698
@@ -15224,6 +15225,10 @@ msgstr ""
 msgid "Return period"
 msgstr ""
 
+#: crates/ui-egui/src/dock.rs:752
+msgid "Rev has the ribbon: the Tools palette is shown in the BIMCraft profile"
+msgstr ""
+
 #: crates/core/src/title_starters.rs:43
 #: crates/core/src/title_starters.rs:67
 #: crates/core/src/title_starters.rs:83
@@ -16928,15 +16933,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Vyhladit čáry (anti-aliasing)"
 
-#: crates/ui-egui/src/dock.rs:1240
+#: crates/ui-egui/src/dock.rs:1281
 msgid "Snap Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1231
+#: crates/ui-egui/src/dock.rs:1272
 msgid "Snap Left"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1235
+#: crates/ui-egui/src/dock.rs:1276
 msgid "Snap Right"
 msgstr ""
 
@@ -17878,7 +17883,7 @@ msgstr ""
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1205
+#: crates/ui-egui/src/dock.rs:1246
 msgid "Tab with {}"
 msgstr "Karta s {}"
 

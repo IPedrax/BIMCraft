@@ -745,6 +745,13 @@ impl BimApp {
         ui.indent("dock-palette-menu-rows", |ui| {
             for p in Palette::known() {
                 let mut on = self.docking.shown(p);
+                // Rev draws the ribbon in the Tools palette's place, docked or floating: the box can neither show nor hide it there.
+                if p == Palette::Tools && crate::style::rev() {
+                    on = false;
+                    let r = ui.add_enabled(false, egui::Checkbox::new(&mut on, t(p.label())));
+                    r.on_disabled_hover_text(t("Rev has the ribbon: the Tools palette is shown in the BIMCraft profile"));
+                    continue;
+                }
                 if ui.checkbox(&mut on, t(p.label())).changed() {
                     self.show_palette(p, on);
                     if p == own && !on {
