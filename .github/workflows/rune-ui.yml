@@ -209,6 +209,8 @@ jobs:
           import glob, json
           for f in sorted(glob.glob("results/*.json")):
               r = json.load(open(f))
+              if "move_cores" not in r:
+                  continue
               print(f"| {r['name']} | {r['idle_cores']} | {r['move_cores']} | {r['ms_cpu_per_move']} | {r['zoom_cores']} | {r['ms_cpu_per_zoom']} | {r['pan_cores']} | {r['ms_cpu_per_pan']} | {r['rss_mb']} |")
           PY
             echo

@@ -12,6 +12,7 @@ pub mod camera;
 pub mod lang;
 pub mod paint;
 pub mod props;
+pub mod software;
 pub mod status;
 pub mod tools;
 pub mod ui;
@@ -22,8 +23,15 @@ use rune::AppSpec;
 pub const TITLE: &str = "BIMCraft (Rune)";
 pub const SIZE: (f32, f32) = (1280.0, 800.0);
 
-/// Opens the window on the sample house, in the system's language.
+/// Opens the window on the sample house, in the system's language. With `--software` it starts again on Rune's CPU renderer first.
 pub fn run() {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let (software, cpu_first) = (std::env::var("BIMCRAFT_SOFTWARE").ok(), std::env::var("RUNE_CPU_FIRST").ok());
+    if software::wanted(&args, software.as_deref(), cpu_first.as_deref()) {
+        // `relaunch` returns only to say it could not: its Ok holds no value (it is `Infallible`), so this pattern is the whole of it.
+        let Err(why) = software::relaunch(&args);
+        eprintln!("bimcraft-rune: could not start again on the CPU renderer ({why}); going on as it is");
+    }
     lang::set(lang::from_system());
     rune::set_app_id("com.ipedrax.bimcraft");
     rune::run(AppSpec { on_key: Some(ui::on_key), ..AppSpec::new(TITLE, SIZE, app::App::sample, ui::view) });

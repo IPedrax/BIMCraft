@@ -34,7 +34,8 @@ winit and wgpu would be replaced too. So here, inside `crates/ui-rune`:
 
 One line per module. A new module adds its line here, not to the root.
 
-- `lib.rs`: the modules, and `run()` (the window). `main.rs`: the `bimcraft-rune` binary.
+- `lib.rs`: the modules, and `run()` (the window). `main.rs`: the `bimcraft-rune` binary. `software.rs`: `--software`, which starts the
+  program again with `RUNE_CPU_FIRST=only` so a machine with no card draws on Rune's CPU renderer (it cannot set the variable itself, safely).
 - `app.rs`: the state (`App`) and what its handlers do, the one place that meets the core: `render::draw`, `Drawing::pick`,
   `Session::execute` for every change. It holds no widget, so it is tested without a window.
 - `ui/`: the elements, a function of `App`: `mod.rs` the window and its keys, `plan.rs` the canvas (the drawing kept as one element
