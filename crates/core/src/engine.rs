@@ -162,6 +162,14 @@ pub struct Mark {
     resets: usize,
 }
 
+/// What a session makes things in ([`Session::made_in`]): its phase and design option, and the phase they come down in.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MadeIn {
+    pub phase: Option<String>,
+    pub option: Option<String>,
+    pub demolish: Option<String>,
+}
+
 /// The commands that copy what stands: a copy is made in the session's phase and isn't taken down with its original.
 const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
 
@@ -174,6 +182,9 @@ pub struct Session {
     /// project's first phase, and no option. Not the model's: set with `phase` and `option`.
     pub phase: Option<String>,
     pub option: Option<String>,
+    /// The phase what a command makes is taken down in (its `Phase Demolished`), a renovation palette's "to be demolished";
+    /// none: it stands on. Set with `renovation`; `phase {now}` clears it.
+    pub demolish: Option<String>,
     undo: Vec<(Step, Arc<Model>)>,
     redo: Vec<(Step, Arc<Model>)>,
     /// How many times a command's model was checked, for tests that it was or wasn't.
@@ -279,6 +290,7 @@ impl Session {
             path: None,
             phase: None,
             option: None,
+            demolish: None,
             undo: Vec::new(),
             redo: Vec::new(),
             #[cfg(test)]
@@ -310,7 +322,7 @@ impl Session {
     pub fn reset(&mut self, model: Model, path: Option<PathBuf>) {
         self.model = Arc::new(model);
         self.path = path;
-        (self.phase, self.option) = (None, None);
+        (self.phase, self.option, self.demolish) = (None, None, None);
         self.resets += 1;
         self.undo.clear();
         self.redo.clear();
@@ -350,7 +362,7 @@ impl Session {
     pub fn reset_shared(&mut self, model: Arc<Model>, path: Option<PathBuf>) {
         self.model = model;
         self.path = path;
-        (self.phase, self.option) = (None, None);
+        (self.phase, self.option, self.demolish) = (None, None, None);
         self.resets += 1;
         self.undo.clear();
         self.redo.clear();
@@ -490,7 +502,7 @@ impl Session {
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let verified = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
-        let (run, first_new, session) = (cmd.run, self.model.next_id, (self.phase.clone(), self.option.clone()));
+        let (run, first_new, session) = (cmd.run, self.model.next_id, self.made_in());
         let result = catch_unwind(AssertUnwindSafe(|| run(self, params)))
             .unwrap_or_else(|p| Err(format!("internal error in `{}`: {}", cmd.id, panic_text(p.as_ref()))))
             .and_then(|v| {
@@ -665,7 +677,7 @@ impl Session {
             Err(e) => {
                 // A refused command changes nothing: not the model, nor the phase and the option it asked the session for.
                 self.model = before;
-                (self.phase, self.option) = session;
+                self.make_in(session);
                 Err(e)
             }
             Ok(v) => {
@@ -692,7 +704,7 @@ impl Session {
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let verified = self.verified.clone();
-        let (undo, redo, session) = (self.undo.clone(), self.redo.clone(), (self.phase.clone(), self.option.clone()));
+        let (undo, redo, session) = (self.undo.clone(), self.redo.clone(), self.made_in());
         let result = catch_unwind(AssertUnwindSafe(|| (cmd.run)(self, params)))
             .unwrap_or_else(|p| Err(format!("internal error in `{name}`: {}", panic_text(p.as_ref()))))
             .and_then(|v| {
@@ -712,7 +724,8 @@ impl Session {
             });
         match result {
             Err(e) => {
-                (self.model, self.phase, self.option) = (before, session.0, session.1);
+                self.model = before;
+                self.make_in(session);
                 (self.undo, self.redo) = (undo, redo);
                 self.verified = verified;
                 Err(e)
@@ -841,13 +854,14 @@ impl Session {
     pub fn transaction<T>(&mut self, label: &str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
         let before = Arc::clone(&self.model);
         let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
-        let (path, phase, option) = (self.path.clone(), self.phase.clone(), self.option.clone());
+        let (path, made_in) = (self.path.clone(), self.made_in());
         let (mut undo, redo, resets) = (std::mem::take(&mut self.undo), std::mem::take(&mut self.redo), self.resets);
         let result = catch_unwind(AssertUnwindSafe(|| f(self)))
             .unwrap_or_else(|p| Err(format!("internal error in `{label}`: {}", panic_text(p.as_ref()))));
         match result {
             Err(e) => {
-                (self.model, self.path, self.phase, self.option) = (before, path, phase, option);
+                (self.model, self.path) = (before, path);
+                self.make_in(made_in);
                 (self.undo, self.redo) = (undo, redo);
                 Err(e)
             }
@@ -915,16 +929,19 @@ impl Session {
 
     /// What elements from id `first` on, which a command just made, are made in: the session's phase
     /// (the first phase is no value at all, but for a door or window, which would follow its wall) and design
-    /// option. A name the project no longer has is left out. A copy is made in them whatever it was copied from,
+    /// option, and the phase they are taken down in (`demolish`, never one before the phase they were made in).
+    /// A name the project no longer has is left out. A copy is made in them whatever it was copied from,
     /// and isn't taken down with its original; anything else holds the phase or the option it was given.
     fn stamp(&mut self, first: Id, copies: bool) {
-        if self.phase.is_none() && self.option.is_none() || self.model.next_id <= first {
+        if self.phase.is_none() && self.option.is_none() && self.demolish.is_none() || self.model.next_id <= first {
             return;
         }
         let m = Arc::make_mut(&mut self.model);
         let phase = self.phase.clone().filter(|p| m.phases.contains(p));
         let option = self.option.clone().filter(|o| crate::phasing::option_exists(m, o));
         let is_first = phase.as_ref() == m.phases.first();
+        let phases = m.phases.clone();
+        let demolish = self.demolish.clone().and_then(|d| phases.iter().position(|x| *x == d).map(|at| (d, at)));
         for (_, e) in m.elements.range_mut(first..) {
             let follows = matches!(e, Element::Door(_) | Element::Window(_));
             let Some(params) = e.params_mut() else { continue };
@@ -945,7 +962,26 @@ impl Session {
             {
                 params.insert(crate::phasing::OPTION.into(), json!(o));
             }
+            // Taken down in the session's phase, unless that comes before the phase it was made in.
+            if let Some((d, at)) = &demolish
+                && (copies || !params.contains_key(crate::phasing::DEMOLISHED))
+            {
+                let made = params.get(crate::phasing::CREATED).and_then(Value::as_str).and_then(|n| phases.iter().position(|x| x == n));
+                if made.unwrap_or(0) <= *at {
+                    params.insert(crate::phasing::DEMOLISHED.into(), json!(d));
+                }
+            }
         }
+    }
+
+    /// The phase and the design option what a command makes is made in, and the phase it is taken down in.
+    pub fn made_in(&self) -> MadeIn {
+        MadeIn { phase: self.phase.clone(), option: self.option.clone(), demolish: self.demolish.clone() }
+    }
+
+    /// Makes what commands make in `m`'s phase and option, taken down in its phase.
+    pub fn make_in(&mut self, m: MadeIn) {
+        (self.phase, self.option, self.demolish) = (m.phase, m.option, m.demolish);
     }
 
     /// Undo (or with `redo`, redo) `count` steps; the reply names the last of them.
@@ -1358,8 +1394,7 @@ struct Kept {
     /// only what it changes.
     verified: Option<Arc<Model>>,
     path: Option<PathBuf>,
-    phase: Option<String>,
-    option: Option<String>,
+    made_in: MadeIn,
     undo: Vec<(Step, Arc<Model>)>,
     redo: Vec<(Step, Arc<Model>)>,
     resets: usize,
@@ -1371,8 +1406,7 @@ impl Kept {
             model: Arc::clone(&s.model),
             verified: s.verified.clone(),
             path: s.path.clone(),
-            phase: s.phase.clone(),
-            option: s.option.clone(),
+            made_in: s.made_in(),
             undo: s.undo.clone(),
             redo: s.redo.clone(),
             resets: s.resets,
@@ -1383,9 +1417,10 @@ impl Kept {
     /// leaves the session with its own, and is no change.
     fn keep(self, s: &mut Session) -> Result<(), ()> {
         let same = (Arc::ptr_eq(&self.model, &s.model) || *self.model == *s.model)
-            && (s.phase == self.phase && s.option == self.option && s.resets == self.resets)
+            && (s.made_in() == self.made_in && s.resets == self.resets)
             && (s.undo.len() == self.undo.len() && s.redo.len() == self.redo.len());
-        (s.model, s.verified, s.path, s.phase, s.option) = (self.model, self.verified, self.path, self.phase, self.option);
+        (s.model, s.verified, s.path) = (self.model, self.verified, self.path);
+        s.make_in(self.made_in);
         (s.undo, s.redo, s.resets) = (self.undo, self.redo, self.resets);
         if same { Ok(()) } else { Err(()) }
     }

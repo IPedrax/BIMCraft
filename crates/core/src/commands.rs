@@ -3492,13 +3492,30 @@ other_files(
          out, its elements made and taken down in `into` instead (needed while anything holds it). An element is made in a \
          phase (its `Phase Created` parameter, the first unless it says) and may be taken down in a later one (`Phase \
          Demolished`), set with `modify {params}`; `now` (a phase, or null) is the phase what this session's commands make \
-         is made in (the first phase leaves no value). A view shows a phase and a phase filter (`graphics {phase, \
+         is made in (the first phase leaves no value), and nothing they make comes down (see `renovation`). A view shows a phase and a phase filter (`graphics {phase, \
          phase_filter}`): what's made after it isn't there, what's taken down before it neither, and the rest is new (made in \
          it), existing, demolished (taken down in it) or temporary (both), each shown as its phase filter says (see \
          `phase_filter`). `overrides` ({new|existing|demolished|temporary: override | null}, merged: an override as \
          `graphics` has it, without hidden) is how a phase filter draws what it says overridden; the first two statuses \
          start halftone and dashed red. Replies with the phases, `now` and the overrides",
         view_phases,
+    )
+    .menu("Manage > Phasing"),
+    edit(
+        "renovation",
+        ui_msg!("Renovation"),
+        &[],
+        "{status?, ids?, phase?} the status of the work, as a renovation palette sets it, over the project's phases: `phase` \
+         is the work's (the project's last unless it says; a view's), the one before it what stands. `status` (existing, \
+         demolished or new) alone is what this session's commands make from now on: existing is made in the phase before, \
+         demolished made there and taken down in `phase`, new made in `phase`; null follows the view again (no phase of the \
+         session's own, as `phase {now: null}`). With `ids` it gives those elements that status instead, in one undo step, a \
+         door or window a phase of its own; existing and demolished keep an earlier phase an element was made in. `ids` alone \
+         reads them. Refused in a project of one phase. Replies with the session's `status` in `phase` (null when it follows \
+         the view), `now` and `demolish` (its phases), `existing_phase` and `new_phase`, and with `ids` each one's `status` \
+         (new, existing, demolished, temporary, or null where it isn't in `phase`) in `elements`, and `selection`: theirs \
+         when they share it, else mixed",
+        renovation,
     )
     .menu("Manage > Phasing"),
     edit(
@@ -7443,7 +7460,7 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
     };
     if let Some(name) = &name {
         let m = &s.model;
-        let held = phasing::holds_phase(m, s.phase.as_deref(), name);
+        let held = phasing::holds_phase(m, s.phase.as_deref(), name) || s.demolish.as_ref() == Some(name);
         if delete {
             known(m, name)?;
             if m.phases.len() == 1 {
@@ -7467,7 +7484,10 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
                 phasing::move_phase(m, name, Some(to));
             }
             if s.phase.as_ref() == Some(name) {
-                s.phase = into;
+                s.phase = into.clone();
+            }
+            if s.demolish.as_ref() == Some(name) {
+                s.demolish = into;
             }
         } else if let Some(to) = &rename {
             known(m, name)?;
@@ -7482,6 +7502,9 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
             phasing::move_phase(m, name, Some(to));
             if s.phase.as_ref() == Some(name) {
                 s.phase = Some(to.clone());
+            }
+            if s.demolish.as_ref() == Some(name) {
+                s.demolish = Some(to.clone());
             }
         } else {
             if m.phases.contains(name) {
@@ -7532,10 +7555,74 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
         if let Some(n) = &now {
             known(&s.model, n)?;
         }
-        s.phase = now;
+        // A phase chosen is where things are made and stand: what a renovation status took down, no longer.
+        (s.phase, s.demolish) = (now, None);
     }
     let m = &s.model;
     Ok(json!({"phases": m.phases, "now": s.phase, "overrides": m.phase_overrides}))
+}
+
+fn renovation(s: &mut Session, p: &Value) -> R {
+    let c = "renovation";
+    let new = name_opt(c, p, "phase")?;
+    let (existing, at) = phasing::renovation_phases(&s.model, new.as_deref()).map_err(|e| bad(c, e))?;
+    let status = match p.get("status") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(v) => match v.as_str() {
+            Some("new") => Some(Some(phasing::Status::New)),
+            Some("existing") => Some(Some(phasing::Status::Existing)),
+            Some("demolished") => Some(Some(phasing::Status::Demolished)),
+            _ => return Err(bad(c, format!("`status` is existing, demolished or new, or null to follow the view, not {v}"))),
+        },
+    };
+    let ids = if p.get("ids").is_some() || p.get("id").is_some() { Some(ids_param(c, &s.model, p)?) } else { None };
+    let phase_name = |i: usize| s.model.phases.get(i).cloned();
+    let (existing_name, new_name) = (phase_name(existing), phase_name(at));
+    match (&ids, status) {
+        (Some(_), Some(None)) => return Err(bad(c, "`status` is the one to give the elements: existing, demolished or new")),
+        (Some(ids), Some(Some(status))) => {
+            let m = s.model_mut();
+            for id in ids {
+                phasing::give_status(m, *id, status, at).map_err(|e| bad(c, e))?;
+            }
+        }
+        (None, Some(status)) => {
+            let made_in = match status {
+                None => (None, None),
+                Some(phasing::Status::New) => (new_name.clone(), None),
+                Some(phasing::Status::Demolished) => (existing_name.clone(), new_name.clone()),
+                Some(_) => (existing_name.clone(), None),
+            };
+            (s.phase, s.demolish) = made_in;
+        }
+        (_, None) => {}
+    }
+    let m = &s.model;
+    let drawing = match (&s.phase, &s.demolish) {
+        (None, None) => None,
+        (made, down) => {
+            let made = made.as_deref().map_or(Some(0), |n| phasing::index(m, n));
+            let down = down.as_deref().and_then(|n| phasing::index(m, n));
+            made.and_then(|made| phasing::status_at(made, down.filter(|d| *d >= made), at))
+        }
+    };
+    let mut reply = json!({
+        "status": drawing.map(phasing::Status::name), "now": s.phase, "demolish": s.demolish,
+        "existing_phase": existing_name, "new_phase": new_name,
+    });
+    if let Some(ids) = ids {
+        let of = |id: &Id| m.elements.get(*id).and_then(|e| phasing::status(m, e, at)).map(phasing::Status::name);
+        let statuses: Vec<Option<&str>> = ids.iter().map(of).collect();
+        let selection = match statuses.split_first() {
+            Some((first, rest)) if rest.iter().all(|x| x == first) => json!(first),
+            Some(_) => json!("mixed"),
+            None => Value::Null,
+        };
+        reply["elements"] = ids.iter().zip(&statuses).map(|(id, st)| json!({"id": id, "status": st})).collect();
+        reply["selection"] = selection;
+    }
+    Ok(reply)
 }
 
 fn view_phase_filter(s: &mut Session, p: &Value) -> R {

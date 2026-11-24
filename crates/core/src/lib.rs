@@ -255,6 +255,8 @@ pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
 pub mod render;
+#[cfg(test)]
+mod renovation_tests;
 pub mod reservoir;
 #[cfg(test)]
 mod roof_slopes_tests;

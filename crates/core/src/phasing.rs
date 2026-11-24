@@ -193,6 +193,11 @@ pub fn status(m: &Model, e: &Element, at: usize) -> Option<Status> {
     e.params()?;
     let created = value(m, e, CREATED).and_then(|n| index(m, n)).unwrap_or(0);
     let demolished = value(m, e, DEMOLISHED).and_then(|n| index(m, n));
+    status_at(created, demolished, at)
+}
+
+/// What is made in the phase at `created` and taken down in the one at `demolished` is in the phase at `at`.
+pub fn status_at(created: usize, demolished: Option<usize>, at: usize) -> Option<Status> {
     if created > at {
         return None;
     }
@@ -201,6 +206,62 @@ pub fn status(m: &Model, e: &Element, at: usize) -> Option<Status> {
         Some(d) if d == at => Some(if created == at { Status::Temporary } else { Status::Demolished }),
         _ => Some(if created == at { Status::New } else { Status::Existing }),
     }
+}
+
+/// The two phases a renovation's statuses are read in: the one before `new` (what stands) and `new` (the work), by their
+/// places in the project's order. Refused in a project of one phase, and for the first phase, which nothing stands before.
+pub fn renovation_phases(m: &Model, new: Option<&str>) -> Result<(usize, usize), String> {
+    if m.phases.len() < 2 {
+        let only = m.phases.first().map(String::as_str).unwrap_or_default();
+        return Err(format!(
+            "the project has one phase, `{only}`: renovation needs one for what stands and a later one for the work; add one with `phase {{name}}`"
+        ));
+    }
+    let at = match new {
+        None => m.phases.len() - 1,
+        Some(n) => index(m, n).ok_or_else(|| format!("no phase `{n}` (there are: {})", m.phases.join(", ")))?,
+    };
+    if at == 0 {
+        return Err(format!(
+            "`{}` is the first phase: nothing stands before it to be existing or demolished; give a later one",
+            m.phases.first().map(String::as_str).unwrap_or_default()
+        ));
+    }
+    Ok((at - 1, at))
+}
+
+/// Gives element `id` the status `status` (new, existing or demolished) in the phase at `at`, the one before it being
+/// what stands: new is made in it; existing and demolished stand from before it (the phase they were made in, if that
+/// is before, else the one before), and are taken down in it or not. A door or window is given a phase of its own, so it
+/// no longer follows its wall. Refused for an element that holds no phase, or the temporary status.
+pub fn give_status(m: &mut Model, id: Id, status: Status, at: usize) -> Result<(), String> {
+    let Some(e) = m.elements.get(id) else { return Err(format!("no element {id}")) };
+    if e.params().is_none() {
+        return Err(format!("{id} ({}) holds no phase: it belongs to a view or to the whole project", e.category()));
+    }
+    let follows = matches!(e, Element::Door(_) | Element::Window(_));
+    let made = value(m, e, CREATED).and_then(|n| index(m, n)).unwrap_or(0);
+    let created = match status {
+        Status::New => at,
+        Status::Existing | Status::Demolished => made.min(at - 1),
+        Status::Temporary => return Err("temporary isn't a status to give: say new, existing or demolished".into()),
+    };
+    let (Some(created), Some(demolished)) = (m.phases.get(created).cloned(), m.phases.get(at).cloned()) else {
+        return Err(format!("no phase at {at} (there are: {})", m.phases.join(", ")));
+    };
+    let first = m.phases.first() == Some(&created);
+    let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) else { return Ok(()) };
+    if first && !follows {
+        params.remove(CREATED);
+    } else {
+        params.insert(CREATED.into(), Value::String(created));
+    }
+    if status == Status::Demolished {
+        params.insert(DEMOLISHED.into(), Value::String(demolished));
+    } else {
+        params.remove(DEMOLISHED);
+    }
+    Ok(())
 }
 
 /// Whether anything in `m` is phased or in a design option.
