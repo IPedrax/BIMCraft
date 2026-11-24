@@ -753,6 +753,11 @@ impl BimApp {
 
     /// The docked palettes, round the views; call between the bars and the views.
     pub(crate) fn docks(&mut self, ui: &mut Ui) {
+        // BIMCraft's tools are its ribbon in another dress, so they are part of its layout whatever a file or a preset said: a layout
+        // that closed them has them back. Rev draws the ribbon instead and keeps them in the layout as the user's intent.
+        if !crate::style::rev() {
+            self.docking.show(Palette::Tools, true);
+        }
         self.drop_headers.clear();
         // The side holds the stacks' cards; between them and round them, the view's ground.
         let frame = Frame::NONE;
@@ -905,7 +910,8 @@ impl BimApp {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let name = shown.title();
-                if icon_button(ui, Icon::Close, &tf("Close {}", &[&name])).clicked() {
+                // The Tools palette is BIMCraft's ribbon in another dress: like the ribbon, no box closes it.
+                if shown != Palette::Tools && icon_button(ui, Icon::Close, &tf("Close {}", &[&name])).clicked() {
                     self.docking.take(shown);
                 }
                 let r = icon_button(ui, Icon::Dock, &tf("Dock {}", &[&name]));

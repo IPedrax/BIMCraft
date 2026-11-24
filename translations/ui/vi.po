@@ -610,7 +610,7 @@ msgstr ""
 msgid "Above dimension line (continuous)"
 msgstr "Phía trên đường kích thước (liền)"
 
-#: crates/ui-egui/src/dock.rs:1438
+#: crates/ui-egui/src/dock.rs:1444
 msgid "Above {}"
 msgstr ""
 
@@ -4017,8 +4017,8 @@ msgstr "Đóng hộp thoại"
 msgid "Close every view but this one"
 msgstr "Đóng mọi khung nhìn trừ khung nhìn này"
 
-#: crates/ui-egui/src/dock.rs:908
-#: crates/ui-egui/src/dock.rs:1361
+#: crates/ui-egui/src/dock.rs:914
+#: crates/ui-egui/src/dock.rs:1367
 #: crates/ui-egui/src/lib.rs:7713
 msgid "Close {}"
 msgstr "Đóng {}"
@@ -5907,24 +5907,24 @@ msgstr ""
 msgid "Dock All Views: every floating view back onto the tab bar, in one view under the tabs"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1420
+#: crates/ui-egui/src/dock.rs:1426
 msgid "Dock Bottom"
 msgstr "Neo dưới"
 
-#: crates/ui-egui/src/dock.rs:1410
+#: crates/ui-egui/src/dock.rs:1416
 msgid "Dock Left"
 msgstr "Neo trái"
 
-#: crates/ui-egui/src/dock.rs:1415
+#: crates/ui-egui/src/dock.rs:1421
 msgid "Dock Right"
 msgstr "Neo phải"
 
-#: crates/ui-egui/src/dock.rs:1453
+#: crates/ui-egui/src/dock.rs:1459
 msgid "Dock in the Views"
 msgstr "Neo vào vùng khung nhìn"
 
-#: crates/ui-egui/src/dock.rs:911
-#: crates/ui-egui/src/dock.rs:1364
+#: crates/ui-egui/src/dock.rs:917
+#: crates/ui-egui/src/dock.rs:1370
 msgid "Dock {}"
 msgstr "Neo {}"
 
@@ -7672,8 +7672,8 @@ msgstr "Lật hướng mặt"
 msgid "Flipped hand"
 msgstr "Lật hướng tay"
 
-#: crates/ui-egui/src/dock.rs:968
-#: crates/ui-egui/src/dock.rs:1510
+#: crates/ui-egui/src/dock.rs:974
+#: crates/ui-egui/src/dock.rs:1516
 #: crates/ui-egui/src/lib.rs:7735
 msgid "Float"
 msgstr "Tách nổi"
@@ -9675,7 +9675,7 @@ msgstr "Trái"
 msgid "Left Filing / Binding Margin:"
 msgstr "Lề lưu trữ / đóng gáy bên trái:"
 
-#: crates/ui-egui/src/dock.rs:1434
+#: crates/ui-egui/src/dock.rs:1440
 msgid "Left of {}"
 msgstr ""
 
@@ -12772,7 +12772,7 @@ msgstr "Sơn"
 msgid "Paint (PT): lay a material, and its texture, over the face you click in the 3D view"
 msgstr "Sơn (PT): phủ một vật liệu, kèm kết cấu bề mặt của nó, lên mặt bạn nhấp trong khung nhìn 3D"
 
-#: crates/ui-egui/src/dock.rs:929
+#: crates/ui-egui/src/dock.rs:935
 #: crates/ui-egui/src/lib.rs:4832
 #: crates/ui-egui/src/presets.rs:405
 #: crates/ui-egui/src/settings.rs:705
@@ -13902,7 +13902,7 @@ msgstr ""
 msgid "Player: your Python scripts, each with a form of what it asks for, to run on the model"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:876
+#: crates/ui-egui/src/dock.rs:881
 msgid "Plugin panel: {}"
 msgstr ""
 
@@ -17126,15 +17126,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Làm mịn đường nét (khử răng cưa)"
 
-#: crates/ui-egui/src/dock.rs:1463
+#: crates/ui-egui/src/dock.rs:1469
 msgid "Snap Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1454
+#: crates/ui-egui/src/dock.rs:1460
 msgid "Snap Left"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1458
+#: crates/ui-egui/src/dock.rs:1464
 msgid "Snap Right"
 msgstr ""
 
@@ -18094,7 +18094,7 @@ msgstr ""
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1428
+#: crates/ui-egui/src/dock.rs:1434
 msgid "Tab with {}"
 msgstr "Gộp thẻ với {}"
 
