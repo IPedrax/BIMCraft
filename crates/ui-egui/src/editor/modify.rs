@@ -1130,17 +1130,19 @@ impl FamilyEditor {
     /// What {3D} picks references among (`References3d`) and the draft flexed for the type previewed, kept while the draft
     /// {3D} shows is the same.
     fn references_3d(&mut self) -> (Refs3d, Flexed3d) {
-        let Ok(f) = self.family() else { return Default::default() };
-        let (hidden, forms_hidden) = self.hidden_3d(&f);
+        // Keyed on what decides what is hidden (Temporary Hide/Isolate, the view shown and what it keeps), not on the hidden
+        // themselves, so a frame the key holds builds no family.
         let key = self.key_3d(&|h| {
             use std::hash::Hash;
-            (&hidden, &forms_hidden).hash(h);
+            (self.temporary(), self.views.shown, self.views.kept.key(self.views.shown)).hash(h);
         });
         if let (Some(key), Some((k, refs, flexed))) = (key, &self.views.refs_3d)
             && key == *k
         {
             return (refs.clone(), flexed.clone());
         }
+        let Ok(f) = self.family() else { return Default::default() };
+        let (hidden, forms_hidden) = self.hidden_3d(&f);
         let shown = |g: Guid| !hidden.contains(&g);
         let form_shown = |i: usize| !forms_hidden.get(i).copied().unwrap_or(false);
         let values = self.values();
