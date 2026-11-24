@@ -27,6 +27,12 @@ fn right_click(h: &mut Harness<BimApp>, role: Role, label: &str) {
     right_click_at(h, pos);
 }
 
+/// A right click on the topmost of the widgets named `label`: the ribbon's own, over one a palette may draw under it.
+fn right_click_topmost(h: &mut Harness<BimApp>, role: Role, label: &str) {
+    let pos = h.get_all_by_role_and_label(role, label).map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap().center();
+    right_click_at(h, pos);
+}
+
 /// The panel of the Tools palette named `label`: the leftmost of those named so, the palette being down the window's left.
 fn palette_panel(h: &Harness<BimApp>, label: &str) -> Pos2 {
     h.get_all_by_label(label).map(|n| n.rect().center()).min_by(|a, b| a.x.total_cmp(&b.x)).expect("the panel is drawn")
@@ -562,16 +568,17 @@ fn a_panel_the_scale_leaves_out_is_listed_unticked_and_cannot_be_ticked() {
 #[test]
 fn the_menu_opens_on_a_folded_panel_and_in_the_tools_palette() {
     // Rev, narrow: the last panels fold to one button, and its right click opens the same menu.
+    // A tab of one panel, narrow enough for it to fold and alone in the room: its button stays on screen.
     let mut h = app(BOX);
-    h.set_size(vec2(320.0, 800.0));
+    h.set_size(vec2(300.0, 800.0));
     h.run();
-    h.get_by_label("View").scroll_to_me();
+    h.get_by_label("Collaborate").scroll_to_me();
     h.run();
-    press(&mut h, "View");
-    let folded = h.get_by_label("Windows ▾").rect();
+    press(&mut h, "Collaborate");
+    let folded = h.get_by_label("Work Together ▾").rect();
     assert!(folded.height() > 40.0, "the panel folded to its button");
-    right_click(&mut h, Role::Button, "Windows ▾");
-    h.get_by_role_and_label(Role::CheckBox, "Graphics");
+    right_click(&mut h, Role::Button, "Work Together ▾");
+    h.get_by_role_and_label(Role::CheckBox, "Work Together");
     // BIMCraft: the panel's name in the Tools palette takes the right click too.
     let mut h = bimcraft(BOX);
     press(&mut h, "View");
@@ -585,7 +592,7 @@ fn the_menu_leaves_the_edit_tools_box_alone() {
     let mut h = app(BOX);
     press(&mut h, "Team");
     press(&mut h, "Edit Tools");
-    right_click(&mut h, Role::CheckBox, "Build");
+    right_click_topmost(&mut h, Role::CheckBox, "Build");
     let build = h.get_by_role_and_label(Role::CheckBox, "Build");
     assert_eq!(build.accesskit_node().toggled(), Some(egui::accesskit::Toggled::True), "the box is not flipped by a right click");
     assert!(!h.state().panels_hidden.contains("tab:Architecture/Build"));

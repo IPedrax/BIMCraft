@@ -382,7 +382,7 @@ fn the_app_bars_palettes_menu_brings_a_closed_palette_back_and_resets_the_layout
     h.run();
     press(&mut h, "Palettes");
     assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "the tools' surface is no palette");
-    pick(&mut h, Role::CheckBox, "Project Browser");
+    pick(&mut h, Role::CheckBox, crate::lang::t("Navigator"));
     assert!(docking(&h).shown(Palette::Browser), "a closed palette comes back from the bar");
     press(&mut h, "Palettes");
     press(&mut h, "Reset Palette Layout");
