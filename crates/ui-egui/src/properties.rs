@@ -448,6 +448,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "host", "Host", Link),
             ("Constraints", "side", msg!("Side"), Shown),
+            ("Constraints", "flip", msg!("Flipped"), Flag),
             ("Dimensions", "height", "Height", LengthShown),
         ],
         "roof" => &[
@@ -1116,6 +1117,8 @@ pub(crate) struct TypeDialog {
     curtain: Option<(bimcraft_core::curtain::CurtainLayout, f64)>,
     /// A railing type as it is: its parts are made in Edit Railing, so it has no fields; a duplicate copies them.
     railing: Option<bimcraft_core::model::RailingType>,
+    /// Its connection, straight sections and plan display, as typed.
+    railing_rows: Option<crate::railingtype::RailingRows>,
 }
 
 /// A room type's parameters, as picked and typed: the floor type and the ceiling type its rooms have of their own ("" for
@@ -1441,6 +1444,7 @@ impl TypeDialog {
             project,
             stair,
             curtain,
+            railing_rows: railing.as_ref().map(|t| crate::railingtype::RailingRows::new(m, t)),
             railing,
         }
     }
@@ -1562,6 +1566,9 @@ impl TypeDialog {
             p["posts"] = json!(r.posts);
             p["panel"] = json!(r.panel);
             p["transition"] = json!(r.transition);
+        }
+        if let Some(rows) = &self.railing_rows {
+            rows.params(&mut p, units)?;
         }
         Ok(p)
     }
@@ -3650,6 +3657,7 @@ impl BimApp {
                     (d.shape.is_some(), msg!("Materials and Finishes")),
                     (d.room.is_some(), ROOM_FINISHES),
                     (d.room.is_some(), GRAPHICS),
+                    (d.railing.is_some(), GRAPHICS),
                 ];
                 let part = d.curtain_part();
                 let framing = d.framing.as_ref().map_or(&[][..], |_| &FRAMING_GROUPS[..]);
@@ -3741,6 +3749,9 @@ impl BimApp {
                         }
                         if let Some(framing) = &mut d.framing {
                             framing.rows(tb, g, &materials, model.units);
+                        }
+                        if let Some(rows) = &mut d.railing_rows {
+                            rows.rows(tb, g, &model);
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };

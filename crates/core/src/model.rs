@@ -2507,6 +2507,10 @@ pub struct Railing {
     /// these in order) it stands on that one's top; where over none, it keeps the height it had last.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<Guid>,
+    /// Mirrored across its line: each part's offset to the other side, so a handrail to the left of the line falls to its
+    /// right (into the stair, not outside it).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -3886,7 +3890,12 @@ pub fn stair_types() -> BTreeMap<String, StairType> {
 /// A railing type: its rails, its posts and balusters, and a panel between its posts (`railings.rs`). One with none of
 /// these is the older kind: one 50 mm square rail `height` up and 20 mm balusters `spacing` apart (0: none). With rails,
 /// `height` is worked out, the top of its highest rail, and kept so an older version draws a railing as high.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+///
+/// Its line is made of straight sections: one goes on straight while it stays no lower than its hosts ask and at most
+/// `extra` higher, and breaks where it would go further. Where its hosts' height jumps (a flight starting a riser above
+/// its landing) its rails connect as `transition` says, the higher overhanging the lower by `extension`. Its plans show
+/// it as `plan` says, in `line_visible` and `line_hidden` (none: Medium Lines and Hidden Lines).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RailingType {
     pub height: f64,
@@ -3900,6 +3909,61 @@ pub struct RailingType {
     pub panel: Option<PanelPart>,
     #[serde(default, skip_serializing_if = "is_default")]
     pub transition: Transition,
+    #[serde(default = "RailingType::usual_extra", skip_serializing_if = "RailingType::is_usual_extra")]
+    pub extra: f64,
+    #[serde(default = "RailingType::usual_extension", skip_serializing_if = "RailingType::is_usual_extension")]
+    pub extension: f64,
+    #[serde(default = "railing_plan", skip_serializing_if = "is_railing_plan")]
+    pub plan: PlanShows,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_visible: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_hidden: String,
+}
+
+/// How railings show in plan unless their type says otherwise: on their own level and the level above, as stairs do.
+fn railing_plan() -> PlanShows {
+    PlanShows::default()
+}
+
+fn is_railing_plan(p: &PlanShows) -> bool {
+    *p == railing_plan()
+}
+
+impl RailingType {
+    fn usual_extra() -> f64 {
+        100.0
+    }
+
+    fn is_usual_extra(x: &f64) -> bool {
+        *x == Self::usual_extra()
+    }
+
+    fn usual_extension() -> f64 {
+        50.0
+    }
+
+    fn is_usual_extension(x: &f64) -> bool {
+        *x == Self::usual_extension()
+    }
+}
+
+impl Default for RailingType {
+    fn default() -> RailingType {
+        RailingType {
+            height: 0.0,
+            spacing: 0.0,
+            rails: Vec::new(),
+            posts: Vec::new(),
+            panel: None,
+            transition: Transition::default(),
+            extra: RailingType::usual_extra(),
+            extension: RailingType::usual_extension(),
+            plan: railing_plan(),
+            line_visible: String::new(),
+            line_hidden: String::new(),
+        }
+    }
 }
 
 /// The section of a rail, a post or a baluster.
@@ -3940,9 +4004,26 @@ pub struct RailPart {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Transition {
+    /// Joined: climbing on a slope from one height to the other.
     #[default]
-    Slope,
+    #[serde(alias = "slope")]
+    Continuous,
+    /// Level to the step, straight up or down there.
     Gooseneck,
+    /// Not joined: each rail ends there, the higher running on over the lower.
+    Separate,
+}
+
+/// Where balusters stand in a bay: spread evenly over it, or their spacing apart from its start, round its middle or
+/// from its end.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Placing {
+    #[default]
+    Spread,
+    Start,
+    Centre,
+    End,
 }
 
 /// What an upright stands on: a post always on the host, a baluster wherever its `bottom` says.
@@ -3977,6 +4058,14 @@ pub struct PostPart {
     pub steps: u32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_ends: bool,
+    /// A baluster's place in each bay: how the row of them is placed, moved `shift` along; with `single`, one of them
+    /// only, `shift` from the bay's start, its middle or its end (spread: its middle).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub justify: Placing,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub shift: f64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub single: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bottom: Option<String>,
     #[serde(default, skip_serializing_if = "is_zero")]

@@ -4198,7 +4198,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level, &stair_subs),
             Element::Ramp(r) => ramp(&mut d, m, r, level),
-            Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
+            Element::Railing(rl) => railing(&mut d, m, rl, m.level_of(e), level, range.cut),
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
             // A toposolid: its boundary, the lines where its top crosses each contour height, and its type's surface.
             Element::Toposolid(t) if t.level == level => {
@@ -5939,20 +5939,71 @@ fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) {
     walk(d, m, &l.walk, up);
 }
 
-/// A railing in a plan cutting at height `cut`: its line, solid where what it runs along is under
-/// the cut plane, dashed over it.
-fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
-    for w in stairs::railing(m, rl).windows(2) {
-        let &[(a, za), (b, zb)] = w else { continue };
-        let parts = if (za > cut) != (zb > cut) {
-            let mid = a + (b - a) * ((cut - za) / (zb - za));
-            vec![(a, mid, za > cut), (mid, b, zb > cut)]
-        } else {
-            vec![(a, b, za > cut)]
+/// A railing in the plan of `level`, as its type shows it there (its plan display for the level it stands on, the level
+/// above and the level below; a railing of no type as on its own level): what each of its parts covers in plan, its
+/// rails by their two sides, those under the cut plane at height `cut` in the type's visible line style and those over it
+/// in its hidden one, as the way it is shown says.
+fn railing(d: &mut Drawing, m: &Model, rl: &Railing, on: Option<Guid>, level: Guid, cut: f64) {
+    let Some(on) = on else { return };
+    let t = m.types.railing.get(&rl.type_name);
+    let ways = t.map(|t| t.plan).unwrap_or_default();
+    let way = if on == level {
+        ways.same
+    } else if m.level_above(on) == Some(level) {
+        ways.above
+    } else if m.level_above(level) == Some(on) {
+        ways.below
+    } else {
+        return;
+    };
+    let Some((below, above, _)) = way.look() else { return };
+    let style = |name: Option<&String>, usual: &str| {
+        name.and_then(|n| m.line_styles.get(n)).or_else(|| m.line_styles.get(m.language.word(usual))).or_else(|| m.line_styles.get(usual))
+    };
+    let (full, hidden) = (style(t.map(|t| &t.line_visible), crate::lines::MEDIUM), style(t.map(|t| &t.line_hidden), crate::lines::HIDDEN));
+    let draw = |d: &mut Drawing, pts: Vec<P2>, closed: bool, over: bool| {
+        let (style, dash) = match if over { above } else { below } {
+            Shown::Full => (full, None),
+            Shown::Hidden => (hidden, Some(vec![6.0, 4.0])),
+            Shown::Out => return,
         };
-        for (p, q, over) in parts {
-            let pts = vec![d.view.px(p), d.view.px(q)];
-            d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
+        let px: Vec<(f32, f32)> = pts.into_iter().map(|q| d.view.px(q)).collect();
+        match style {
+            Some(s) => d.styled(m, s, px, closed),
+            None => d.stroke(px, BY_CATEGORY, INK, dash, closed),
+        }
+    };
+    for part in crate::railings::parts(m, rl) {
+        match &part.piece {
+            crate::railings::Piece::Prism(ring, bottom, _) => {
+                let low = ring.iter().map(|q| bottom.at(*q)).fold(f64::MAX, f64::min);
+                draw(d, ring.clone(), true, low >= cut);
+            }
+            crate::railings::Piece::Tube(g) => draw(d, g.footprint(), true, g.a[2].min(g.b[2]) >= cut),
+            crate::railings::Piece::Sweep { path, width, .. } => {
+                // Each stretch's two sides, and its ends across.
+                let half = width / 2.0;
+                let flat: Vec<(P2, f64)> = path.iter().map(|q| (P2(q[0], q[1]), q[2])).collect();
+                for w in flat.windows(2) {
+                    let (&(a, za), &(b, zb)) = (&w[0], &w[1]);
+                    if a.dist(b) < 1e-6 {
+                        continue;
+                    }
+                    let n = (b - a).unit().perp() * half;
+                    let over = za.min(zb) >= cut;
+                    draw(d, vec![a + n, b + n], false, over);
+                    draw(d, vec![a - n, b - n], false, over);
+                }
+                let ends = [(flat.first(), flat.get(1)), (flat.last(), flat.len().checked_sub(2).and_then(|i| flat.get(i)))];
+                for (end, next) in ends {
+                    if let (Some(&(a, za)), Some(&(b, _))) = (end, next)
+                        && a.dist(b) > 1e-6
+                    {
+                        let n = (b - a).unit().perp() * half;
+                        draw(d, vec![a + n, a - n], false, za >= cut);
+                    }
+                }
+            }
         }
     }
 }

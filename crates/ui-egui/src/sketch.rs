@@ -728,7 +728,8 @@ impl BimApp {
     /// Edit Path: the selected railing's line redrawn in plan, each stretch of it a line, its arcs as drawn.
     pub(crate) fn edit_railing_path(&mut self, id: Id) {
         let Some(Element::Railing(rl)) = self.session.model.elements.get(id) else { return };
-        let plan: Vec<P2> = bimcraft_core::stairs::railing(&self.session.model, rl).into_iter().map(|(p, _)| p).collect();
+        // The line as it was drawn, a flight one line: not the points its heights are found at.
+        let plan = bimcraft_core::stairs::railing_plan(&self.session.model, rl);
         let mut pts = plan;
         pts.dedup_by(|b, a| a.dist(*b) <= TOL);
         let lines = pts.windows(2).map(|w| SketchLine::new(w[0], w[1])).collect();

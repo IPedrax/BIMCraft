@@ -1831,7 +1831,7 @@ other_files(
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|toposolid|framing|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion|cornermullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material?, profile?, shape?, web?, flange?, radius?, clear_section? | height?, spacing?, rails?, posts?, panel?, transition? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?\
+         material?, profile?, shape?, web?, flange?, radius?, clear_section? | height?, spacing?, rails?, posts?, panel?, transition?, extra?, extension?, plan?, line_visible?, line_hidden? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?\
          | spacing?, layout?, thickness?, material?, bottom_plates?, top_plates?, kings?, jacks?, window_rough?, door_rough?, headers?, \
          sill_plates?, corner?, tee?, blocking?, stock?, rim?, lap?, bridging?, trimmers?, under_partitions?, ridge?} creates the type, or \
          changes it everywhere it's used. \
@@ -15232,6 +15232,7 @@ fn sides(c: &str, s: &mut Session, p: &Value, id: Id, level: Guid) -> Result<Vec
         host: Some(host),
         side: Some(side),
         hosts: Vec::new(),
+        flip: false,
     };
     Ok([Side::Left, Side::Right].into_iter().map(|side| m.insert(Element::Railing(railing(side)))).collect())
 }
@@ -15276,6 +15277,7 @@ fn railing(s: &mut Session, p: &Value) -> R {
         host,
         side,
         hosts: Vec::new(),
+        flip: false,
     };
     let made: Vec<Railing> = match id_opt(c, p, "host")? {
         // Along a stair's or a ramp's sides.
@@ -19908,7 +19910,12 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 rails,
                 posts,
                 panel,
-                transition: part(c, p, "transition", old.transition, "\"slope\" or \"gooseneck\"")?,
+                transition: part(c, p, "transition", old.transition, "\"continuous\", \"gooseneck\" or \"separate\"")?,
+                extra: num(c, p, "extra")?.unwrap_or(old.extra),
+                extension: num(c, p, "extension")?.unwrap_or(old.extension),
+                plan: part(c, p, "plan", old.plan, "{below?, same?, above?}, each a way a stair shows in plan")?,
+                line_visible: string(c, p, "line_visible")?.unwrap_or(old.line_visible),
+                line_hidden: string(c, p, "line_hidden")?.unwrap_or(old.line_hidden),
             };
             if !t.rails.is_empty() {
                 t.height = crate::railings::height(&t);

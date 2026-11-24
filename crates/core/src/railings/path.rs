@@ -67,6 +67,29 @@ fn plan(a: P3) -> P2 {
 /// The centre line of rail `r` along `line` (the railing's line where the rail stands, moved across by its offset, each
 /// point with the height of what it runs along): its top `height` over the line, measured straight up; the points left
 /// out where the line goes on straight, within [`STRAY`]; and each bend rounded.
+/// Rail `r`'s centre lines along `line`: one ([`rail`]); or, `apart`, one for each stretch between the line's upright
+/// steps, each ending there.
+pub fn rails(line: &[(P2, f64)], r: &RailPart, apart: bool) -> Vec<Vec<P3>> {
+    if !apart {
+        return vec![rail(line, r)];
+    }
+    let mut out = Vec::new();
+    let mut from = 0;
+    for i in 0..line.len().saturating_sub(1) {
+        let (Some(a), Some(b)) = (line.get(i), line.get(i + 1)) else { continue };
+        if a.0.dist(b.0) <= 1.0 + 1e-9 && (a.1 - b.1).abs() > 1.0 {
+            if let Some(piece) = line.get(from..=i).filter(|p| p.len() >= 2) {
+                out.push(rail(piece, r));
+            }
+            from = i + 1;
+        }
+    }
+    if let Some(piece) = line.get(from..).filter(|p| p.len() >= 2) {
+        out.push(rail(piece, r));
+    }
+    out
+}
+
 pub fn rail(line: &[(P2, f64)], r: &RailPart) -> Vec<P3> {
     let d = super::rail_depth(r);
     let raw: Vec<P3> = line.iter().map(|&(p, z)| [p.0, p.1, z + r.height - d / 2.0]).collect();

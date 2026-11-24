@@ -4031,6 +4031,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     host: Some(Guid::of_id(host)),
                     side: Some(side),
                     hosts: Vec::new(),
+                    flip: false,
                 };
                 let start = |side| stairs::railing(&m, &on(side)).first().copied();
                 let side = [Side::Left, Side::Right]
@@ -4072,7 +4073,17 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 let level = level_for(id, first[2] - h);
                 let path = axis.iter().map(|p| micron(r.flat(*p))).collect();
                 let base_offset = ((first[2] - h - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-                Railing { params: Default::default(), type_name, level, path, base_offset, host: None, side: None, hosts: Vec::new() }
+                Railing {
+                    params: Default::default(),
+                    type_name,
+                    level,
+                    path,
+                    base_offset,
+                    host: None,
+                    side: None,
+                    hosts: Vec::new(),
+                    flip: false,
+                }
             }
         };
         let rid = m.insert(Element::Railing(railing));

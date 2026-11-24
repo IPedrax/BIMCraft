@@ -2651,6 +2651,33 @@ fn all_nosings(m: &Model, st: &Stair, l: &Layout) -> Vec<Nosing> {
     nosings
 }
 
+/// The line railing `rl` is drawn along, in plan, as its path is edited: its path, or its stair's or ramp's walk line
+/// moved out to its side; a point in a straight line between the two round it left out, so a flight is one line.
+pub fn railing_plan(m: &Model, rl: &Railing) -> Vec<P2> {
+    let host = rl.host.and_then(|h| m.elements.get(h)).and_then(|e| layout(m, e));
+    let line: Vec<P2> = match (host, rl.side) {
+        (Some(l), Some(side)) if rl.path.is_empty() => {
+            let d = (l.width / 2.0 - RAILING_INSET).max(0.0) * if side == Side::Left { 1.0 } else { -1.0 };
+            offset(&l.walk, d).into_iter().map(|(p, _)| p).collect()
+        }
+        _ => rl.path.clone(),
+    };
+    let mut out: Vec<P2> = Vec::with_capacity(line.len());
+    for p in line {
+        if out.last().is_some_and(|q| q.dist(p) < 1e-6) {
+            continue;
+        }
+        if let [.., a, b] = out.as_slice() {
+            let (u, v) = ((*b - *a).unit(), (p - *b).unit());
+            if u.dot(v) > 1.0 - 1e-9 {
+                out.pop();
+            }
+        }
+        out.push(p);
+    }
+    out
+}
+
 /// The line a railing follows, in plan, with the height of what it runs along at each point: on a
 /// stair or a ramp, its walk line moved out to the side, [`RAILING_INSET`] in from its edge; else
 /// its path, on its level and `base_offset` above it.
@@ -2672,8 +2699,9 @@ pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
     }
     let plan: Vec<P2> = line.iter().map(|(p, _)| *p).collect();
     let fallback = m.elevation(rl.level) + rl.base_offset;
-    let way = m.types.railing.get(&rl.type_name).map(|t| t.transition).unwrap_or_default();
-    crate::railings::follow(m, &crate::railings::hosts(rl), &plan, rl.base_offset, fallback, way)
+    let usual = crate::model::RailingType::default();
+    let t = m.types.railing.get(&rl.type_name).unwrap_or(&usual);
+    crate::railings::follow(m, &crate::railings::hosts(rl), &plan, rl.base_offset, fallback, t)
 }
 
 /// A railing's solids, each a ring in plan between two planes: its rails, posts, balusters and panels

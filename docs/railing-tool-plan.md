@@ -153,6 +153,11 @@ rail), the sweeper keeps its faces flat; a gooseneck where a flight starts above
 no longer pulls the line down past its foot; Edit Path in 3D on the host's plane; a sketch grip dragged snaps from its line's
 other end, with Shift and the guides.
 
+Fourth round: straight sections within an allowed extra height; connections continuous, gooseneck or separate (Type
+Properties, with how far the higher rail runs on); baluster placing (spread, from the start, centre or end, offset, one per
+bay); one post per type; Flipped on each railing; plan display by level and line styles in Type Properties; the plan
+projection of every part; Edit Path from the drawn line, a flight one line.
+
 Next, after comments: custom profiles, the plan showing rails and posts, ends and extensions, gates.
 
 ## What the research suggested for BIMCraft

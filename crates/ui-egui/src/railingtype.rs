@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Model, PanelPart, PartShape, PostKind, PostPart, RailPart, RailingType, Transition};
+use bimcraft_core::model::{Model, PanelPart, PartShape, Placing, PostKind, PostPart, RailPart, RailingType, Transition};
 use bimcraft_core::railings::{self, Piece, Which};
 use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
@@ -210,7 +210,10 @@ impl RailingEditor {
             if ui.add_sized(wide, egui::Button::new(t("+ Rail"))).on_hover_text(t("Add a rail")).clicked() {
                 self.add_rail();
             }
-            if ui.add_sized(wide, egui::Button::new(t("+ Post"))).on_hover_text(t("Add posts")).clicked() {
+            let one = self.posts.iter().any(|p| p.kind == PostKind::Post);
+            let post = ui.add_enabled_ui(!one, |ui| ui.add_sized(wide, egui::Button::new(t("+ Post"))));
+            let tip = if one { t("A railing has one kind of post. Change the one it has.") } else { t("Add posts") };
+            if post.inner.on_hover_text(tip).on_disabled_hover_text(tip).clicked() {
                 self.add_post(PostKind::Post);
             }
             ui.end_row();
@@ -227,10 +230,6 @@ impl RailingEditor {
         let mut gone = None;
         let room = (ui.available_height() - 40.0).max(120.0);
         ScrollArea::vertical().id_salt("railing-parts").max_height(room).auto_shrink([false, false]).show(ui, |ui| {
-            if ui.selectable_label(self.selected.is_none(), RichText::new(t("Whole railing")).strong()).clicked() {
-                self.selected = None;
-            }
-            ui.add_space(6.0);
             let rails: Vec<(Which, String)> = self.rails.iter().enumerate().map(|(i, r)| (Which::Rail(i), r.name.clone())).collect();
             let of = |kind: PostKind| -> Vec<(Which, String)> {
                 self.posts.iter().enumerate().filter(|(_, p)| p.kind == kind).map(|(i, p)| (Which::Post(i), p.name.clone())).collect()
@@ -329,6 +328,7 @@ impl RailingEditor {
                 hint(ui, msg!("The radius of the curve. 0 makes a sharp corner."));
             }
             Some(Which::Post(i)) => {
+                let another_post = self.posts.iter().enumerate().any(|(k, p)| k != i && p.kind == PostKind::Post);
                 let Some(q) = self.posts.get_mut(i) else { return };
                 let post = q.kind == PostKind::Post;
                 ui.heading(if post { tf("Post: {}", &[&q.name]) } else { tf("Baluster: {}", &[&q.name]) });
@@ -337,7 +337,9 @@ impl RailingEditor {
                         ui.add(TextEdit::singleline(&mut q.name).desired_width(190.0));
                     });
                     let kinds = [(PostKind::Post, t("Post").to_string()), (PostKind::Baluster, t("Baluster").to_string())];
-                    row(ui, msg!("Kind"), |ui| pick(ui, "post-kind", &mut q.kind, &kinds));
+                    if post || !another_post {
+                        row(ui, msg!("Kind"), |ui| pick(ui, "post-kind", &mut q.kind, &kinds));
+                    }
                 });
                 hint(ui, msg!("A post always stands on the floor or the stair. A baluster can also stand on a rail."));
                 section(ui, msg!("Shape"), |ui| {
@@ -365,8 +367,25 @@ impl RailingEditor {
                 });
                 hint(ui, msg!("Up to a rail means up to the bottom of that rail. Plus offsets move up, minus offsets move down."));
                 section(ui, msg!("Spacing"), |ui| {
+                    if !post {
+                        row(ui, msg!("Only one in each bay"), |ui| {
+                            ui.checkbox(&mut q.single, "");
+                        });
+                        let places = [
+                            (Placing::Spread, t("Spread evenly").to_string()),
+                            (Placing::Start, t("From the start").to_string()),
+                            (Placing::Centre, t("From the centre").to_string()),
+                            (Placing::End, t("From the end").to_string()),
+                        ];
+                        row(ui, msg!("Placing"), |ui| pick(ui, "baluster-placing", &mut q.justify, &places));
+                        if q.justify != Placing::Spread || q.single {
+                            row(ui, msg!("Pattern offset"), |ui| length(ui, &mut q.shift, units));
+                        }
+                    }
                     let label = if post { msg!("Most space between") } else { msg!("Space between") };
-                    row(ui, label, |ui| length(ui, &mut q.spacing, units));
+                    if post || !q.single {
+                        row(ui, label, |ui| length(ui, &mut q.spacing, units));
+                    }
                     if post {
                         let mut on = q.steps > 0;
                         row(ui, msg!("Line up with steps"), |ui| {
@@ -396,7 +415,12 @@ impl RailingEditor {
                         ),
                     );
                 } else {
-                    hint(ui, msg!("Balusters fill the space between the posts, no more than this far apart."));
+                    hint(
+                        ui,
+                        msg!(
+                            "Balusters fill the space between the posts. Spread evenly keeps them no more than this far apart. The other choices keep them exactly this far apart, starting from the start, the centre or the end of each bay, moved by the pattern offset. Only one in each bay places a single baluster, so you can build your own pattern from several."
+                        ),
+                    );
                 }
                 section(ui, msg!("Material"), |ui| {
                     row(ui, msg!("Material"), |ui| pick(ui, "post-material", &mut q.material, &materials));
@@ -425,22 +449,9 @@ impl RailingEditor {
                 });
             }
             None => {
-                ui.heading(t("Whole railing"));
-                let ways = [
-                    (Transition::Slope, t("Slope up to it").to_string()),
-                    (Transition::Gooseneck, t("Gooseneck: level, then straight up").to_string()),
-                ];
-                section(ui, msg!("From a landing to the next flight"), |ui| {
-                    row(ui, msg!("The rail goes"), |ui| pick(ui, "transition", &mut self.transition, &ways));
-                });
-                hint(
-                    ui,
-                    msg!(
-                        "Where a flight starts one step above a landing, the rail can slope up to it, or go level and then straight up. Round the bends of a gooseneck on each rail, under Connections."
-                    ),
-                );
-                ui.add_space(12.0);
-                hint(ui, msg!("Pick a part on the left or in the picture to change it."));
+                ui.add_space(20.0);
+                ui.label(t("Pick a part on the left or in the picture to change it."));
+                hint(ui, msg!("How the rails connect at a landing, and how the railing shows on plans, are in Type Properties."));
             }
         }
         // A rail renamed keeps what stands on it and goes up to it.
@@ -468,7 +479,7 @@ impl RailingEditor {
         p.rect_stroke(rect, 0.0, Stroke::new(1.0, pal().border), egui::StrokeKind::Inside);
         let t = self.draft();
         let along = sample_length(&self.posts);
-        let pieces = railings::build(&t, vec![(P2(0.0, 0.0), 0.0), (P2(along, 0.0), 0.0)], &railings::Ground::none());
+        let pieces = railings::build(&t, vec![(P2(0.0, 0.0), 0.0), (P2(along, 0.0), 0.0)], &railings::Ground::none(), false);
         let top = railings::height(&t).max(100.0);
         let across = 400.0;
         let room = Rect::from_min_max(rect.min + vec2(24.0, 30.0), rect.max - vec2(24.0, 30.0));
@@ -604,8 +615,7 @@ impl BimApp {
             });
         });
         if ok || apply {
-            let params = json!({"category": "railing", "name": d.name, "rails": d.rails, "posts": d.posts, "panel": d.panel,
-                "transition": d.transition});
+            let params = json!({"category": "railing", "name": d.name, "rails": d.rails, "posts": d.posts, "panel": d.panel});
             let done = self.run_for_type("type", params, &mut d.error);
             ok &= done;
             if done && let Some(open) = &mut self.type_dialog {
@@ -726,4 +736,89 @@ pub(crate) fn path_plane(m: &Model, id: bimcraft_core::model::Id) -> Option<bimc
     let Some(bimcraft_core::model::Element::Railing(rl)) = m.elements.get(id) else { return None };
     let hosted = railings::hosts(rl).into_iter().filter_map(|g| m.elements.id(g)).find_map(|h| m.sketch_plane(h));
     Some(hosted.unwrap_or_else(|| bimcraft_core::walls::Plane::flat(m.elevation(rl.level) + rl.base_offset)))
+}
+
+/// A railing type's own rows in Type Properties: how its rails connect where the line steps, how far the higher runs on,
+/// how much higher a straight section may be, and how its plans show it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RailingRows {
+    connection: String,
+    extension: String,
+    extra: String,
+    plan: [String; 3],
+    line_visible: String,
+    line_hidden: String,
+}
+
+/// The connections, as the core names each and as it reads.
+const CONNECTIONS: [(Transition, &str); 3] = [
+    (Transition::Continuous, msg!("Continuous (joined on a slope)")),
+    (Transition::Gooseneck, msg!("Gooseneck (level, then up)")),
+    (Transition::Separate, msg!("Separate (each rail ends)")),
+];
+
+/// A type's line style as it reads: its name, or "(Default)" for none.
+const DEFAULT_STYLE: &str = msg!("(Default)");
+
+impl RailingRows {
+    pub(crate) fn new(m: &Model, ty: &RailingType) -> RailingRows {
+        let way = |w: bimcraft_core::model::PlanShow| {
+            crate::stairtype::plan_ways().into_iter().find(|(x, _)| *x == w).map(|(_, l)| t_(l)).unwrap_or_default()
+        };
+        let style = |s: &str| if s.is_empty() { t(DEFAULT_STYLE).to_string() } else { s.to_string() };
+        RailingRows {
+            connection: CONNECTIONS.iter().find(|(c, _)| *c == ty.transition).map(|(_, l)| t_(l)).unwrap_or_default(),
+            extension: m.field(ty.extension),
+            extra: m.field(ty.extra),
+            plan: [way(ty.plan.below), way(ty.plan.same), way(ty.plan.above)],
+            line_visible: style(&ty.line_visible),
+            line_hidden: style(&ty.line_hidden),
+        }
+    }
+
+    /// Its rows under `group`: the connection and the straight sections under Construction, the plans under Graphics.
+    pub(crate) fn rows(&mut self, tb: &mut typeprops::Table, group: &str, m: &Model) {
+        match group {
+            "Construction" => {
+                let options: Vec<String> = CONNECTIONS.iter().map(|(_, l)| t_(l)).collect();
+                tb.pick(t("Rail Connection"), &mut self.connection, &options);
+                tb.text(t("Rail Runs On By"), &mut self.extension, m.units.name());
+                tb.text(t("Allowed Extra Height"), &mut self.extra, m.units.name());
+            }
+            "Graphics" => {
+                let ways: Vec<String> = crate::stairtype::plan_ways().into_iter().map(|(_, l)| t_(l)).collect();
+                for (label, way) in
+                    [msg!("On the Level Below"), msg!("On Its Own Level"), msg!("On the Level Above")].into_iter().zip(&mut self.plan)
+                {
+                    tb.pick(t(label), way, &ways);
+                }
+                let styles: Vec<String> = std::iter::once(t(DEFAULT_STYLE).to_string()).chain(m.line_styles.keys().cloned()).collect();
+                tb.pick(t("Visible Lines"), &mut self.line_visible, &styles);
+                tb.pick(t("Hidden Lines"), &mut self.line_hidden, &styles);
+            }
+            _ => {}
+        }
+    }
+
+    /// The `type` command's parameters for its rows, or why a length isn't one.
+    pub(crate) fn params(&self, p: &mut serde_json::Value, units: Units) -> Result<(), String> {
+        let connection = CONNECTIONS.iter().find(|(_, l)| t_(l) == self.connection).map_or(Transition::Continuous, |(c, _)| *c);
+        p["transition"] = json!(connection);
+        for (key, label, typed) in
+            [("extension", msg!("Rail Runs On By"), &self.extension), ("extra", msg!("Allowed Extra Height"), &self.extra)]
+        {
+            p[key] = json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
+        }
+        let way = |typed: &str| crate::stairtype::plan_ways().into_iter().find(|(_, l)| t_(l) == typed).map(|(w, _)| w).unwrap_or_default();
+        p["plan"] = json!({"below": way(&self.plan[0]), "same": way(&self.plan[1]), "above": way(&self.plan[2])});
+        let style = |s: &str| if s == t(DEFAULT_STYLE) { String::new() } else { s.to_string() };
+        p["line_visible"] = json!(style(&self.line_visible));
+        p["line_hidden"] = json!(style(&self.line_hidden));
+        Ok(())
+    }
+}
+
+/// A label as the interface reads it, owned.
+fn t_(label: &str) -> String {
+    t(label).to_string()
 }

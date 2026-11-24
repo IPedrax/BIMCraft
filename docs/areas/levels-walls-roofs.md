@@ -331,11 +331,17 @@ Hosts, picked as Edit Group picks members): stairs, ramps, floors, roofs and top
 redraws it, `sketch::open_path`), and its heights are those of the first host under each point, looked up every 50 mm and
 kept where they bend (`railings::follow`), so one railing runs up a stair and on along the floor it comes to. Over a
 stair's flight the line runs over the treads' nosings, flat over a landing, and where a flight starts a riser above its
-landing the line climbs to it, at most twice as steep as the flight, never lower, or with the type's `transition`
-`gooseneck` runs level to it and rises straight up; past a stair's flights, landings and winders the stair is no host; over a floor, a roof or a toposolid it is
+landing the line climbs to it, at most twice as steep as the flight, never lower (`transition` `continuous`), or rises
+straight up there, the higher side running on over the lower by `extension` (`gooseneck`; `separate`, each rail ending
+there). The line is then made of straight sections (`railings::straighten`), each as long as it can be while no lower
+than the hosts ask and at most the type's `extra` (100 mm) higher, as a real railing is built; past a stair's flights, landings and winders the stair is no host; over a floor, a roof or a toposolid it is
 their top as the 3D view has it (`view3d::top_solids`: slopes, shape points and survey points). Posts and balusters on
 the host stand on the tread, landing or surface under them (`railings::Ground`), and a post with `steps` stands on every
-so many treads of each flight, its first and last too unless `skip_ends`. Each rail is solved, then swept (`railings/path.rs`): the solver keeps the points where the line
+so many treads of each flight, its first and last too unless `skip_ends`. A type has one kind of post; balusters are
+spread evenly in each bay, or their spacing apart from its start, centre or end (`justify`), moved by `shift`, or one only
+(`single`). A railing's `flip` mirrors every offset. In plan each part is drawn as it covers the floor, those under the cut
+plane in the type's visible line style and those over it in its hidden one, as its `plan` says on the level below, its own
+and the level above (the stair's ways). Each rail is solved, then swept (`railings/path.rs`): the solver keeps the points where the line
 turns or changes slope (within 0.5 mm), lowers each sloped stretch so the section's top stays at its height, and rounds
 each bend by an arc tangent to both stretches, `corner` in plan and `bend` in slope (0: sharp); the sweeper carries the
 section along it level across, unturned up an upright stretch, one ring on the plane halving each bend. A railing type stacks its parts (`railings.rs`, the desktop's Edit Railing):
