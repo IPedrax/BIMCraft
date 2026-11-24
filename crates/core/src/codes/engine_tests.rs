@@ -1583,3 +1583,72 @@ fn a_voltage_a_new_project_has_stays_when_the_system_that_named_it_is_taken_away
     assert!(!s.model.distribution_systems.values().any(|d| d.voltage_names().any(|v| v == "230 V")), "nothing names it");
     assert!(s.model.voltages.contains_key("230 V"), "a new project's voltage stays");
 }
+
+#[test]
+fn deleting_the_code_a_project_is_held_to_keeps_what_was_in_force_and_brings_in_nothing_more() {
+    // The project is held to its own saved base `S1` and has chosen `F1`, an amendment made over `generic` that doesn't
+    // stand over `S1`. Deleting `S1` holds the project to `generic` again, where `F1` would stand and bring in what wasn't in
+    // force: it is no longer chosen, and nothing in force changes.
+    let e = Discipline::Electrical;
+    let f1 = dir("held base").join("f1.xml").to_string_lossy().to_string();
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"discipline": "electrical", "create": "P1", "amendments": ["P1"]}));
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "amend": "P1", "rules": {"voltages": {"48 V": {"nominal": 48, "min": 44, "max": 52}}}}),
+    );
+    run(&mut s, "building_code_export", json!({"discipline": "electrical", "code": "P1", "name": "F1", "path": f1}));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": []}));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "save": "S1"}));
+    run(&mut s, "building_code_import", json!({"path": f1, "set": true}));
+    let voltages = |s: &Session| s.model.resolve_code(e, "voltages").value;
+    let (before, model) = (voltages(&s), s.model.voltages.clone());
+    assert!(before.get("48 V").is_none_or(Value::is_null), "F1 doesn't stand over S1");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "delete": "S1"}));
+    let after = voltages(&s);
+    for (k, v) in &after {
+        assert!(before.get(k).is_some_and(|b| b == v) || (v.is_null() && before.get(k).is_none()), "{k}: {v} came into force");
+    }
+    assert!(after.get("48 V").is_none_or(Value::is_null));
+    assert_eq!(s.model.voltages, model, "the project's settings as they were");
+    assert!(!s.model.codes.choice(e).amendments.contains(&"F1".to_string()), "F1 no longer chosen");
+    assert!(s.model.codes.own.iter().any(|c| c.code == "F1"), "F1 still the project's, to choose again");
+}
+
+#[test]
+fn deleting_a_held_code_keeps_chosen_the_amendments_that_stood_or_stand_on_neither() {
+    // Of two amendments standing, deleting one keeps the other chosen; an amendment chosen over another base, standing
+    // neither before nor after, stays chosen too.
+    let e = Discipline::Electrical;
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"discipline": "electrical", "create": "A", "amendments": ["A"]}));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "create": "B", "amendments": ["A", "B"]}));
+    run(
+        &mut s,
+        "building_code",
+        json!({"discipline": "electrical", "amend": "A", "rules": {"voltages": {"48 V": {"nominal": 48, "min": 44, "max": 52}}}}),
+    );
+    run(&mut s, "building_code", json!({"discipline": "electrical", "delete": "A"}));
+    assert_eq!(s.model.codes.choice(e).amendments, ["B"], "B stood and stands");
+    // Two amendments imported while the project is held to `S1`: `F1` made over `generic`, `G1` over `nec`.
+    let at = |n: &str| dir("held base").join(format!("{n}.xml")).to_string_lossy().to_string();
+    let mut s = Session::new();
+    for (code, base) in [("F1", "generic"), ("G1", "nec")] {
+        run(&mut s, "building_code", json!({"discipline": "electrical", "set": base}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "create": code, "amendments": [code]}));
+        run(&mut s, "building_code_export", json!({"discipline": "electrical", "code": code, "name": code, "path": at(code)}));
+        run(&mut s, "building_code", json!({"discipline": "electrical", "amendments": [], "delete": code}));
+    }
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "generic"}));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "save": "S1"}));
+    for code in ["F1", "G1"] {
+        run(&mut s, "building_code_import", json!({"path": at(code), "set": true}));
+    }
+    let chosen = s.model.codes.choice(e).amendments.clone();
+    assert!(chosen.contains(&"F1".to_string()) && chosen.contains(&"G1".to_string()), "{chosen:?}");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "delete": "S1"}));
+    let now = s.model.codes.choice(e).amendments.clone();
+    assert!(!now.contains(&"F1".to_string()), "F1 would stand over generic");
+    assert!(now.contains(&"G1".to_string()), "G1 stands on neither, and stays chosen");
+}

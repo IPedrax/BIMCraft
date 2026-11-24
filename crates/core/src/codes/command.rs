@@ -457,6 +457,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
                 ),
             ));
         }
+        let prior = held.then(|| next.clone());
         let gone = next.own.remove(i);
         if held {
             let choice = next.choice_mut(d);
@@ -466,6 +467,13 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
             }
             for (key, rules) in before {
                 next.choice_mut(d).changes.insert(key, rules);
+            }
+            // The code held to now can make an amendment chosen stand that didn't over the one taken away: it would bring in
+            // what wasn't in force, so it is no longer chosen.
+            if let Some(prior) = &prior {
+                let stood: Vec<String> = prior.layers(d).iter().skip(1).map(|k| k.code.clone()).collect();
+                let stands: Vec<String> = next.layers(d).iter().skip(1).map(|k| k.code.clone()).collect();
+                next.choice_mut(d).amendments.retain(|a| stood.contains(a) || !stands.contains(a));
             }
         }
     }
