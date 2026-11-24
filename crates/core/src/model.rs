@@ -3891,9 +3891,10 @@ pub fn stair_types() -> BTreeMap<String, StairType> {
 /// these is the older kind: one 50 mm square rail `height` up and 20 mm balusters `spacing` apart (0: none). With rails,
 /// `height` is worked out, the top of its highest rail, and kept so an older version draws a railing as high.
 ///
-/// Its line is made of straight sections: one goes on straight while it stays no lower than its hosts ask and at most
-/// `extra` higher, and breaks where it would go further. Where its hosts' height jumps (a flight starting a riser above
-/// its landing) its rails connect as `transition` says, the higher overhanging the lower by `extension`. Its plans show
+/// Its line is made of each part's straight line: a flight's over its nosings, a landing's level, a floor's at its slope.
+/// Where its hosts' height jumps (a flight starting a riser above its landing) its rails connect as `transition` says:
+/// joined, the higher line running on at its slope until it meets the lower (where the step is at most `extra`); else
+/// the higher overhanging the lower by `extension`. Its plans show
 /// it as `plan` says, in `line_visible` and `line_hidden` (none: Medium Lines and Hidden Lines).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3932,7 +3933,7 @@ fn is_railing_plan(p: &PlanShows) -> bool {
 
 impl RailingType {
     fn usual_extra() -> f64 {
-        100.0
+        200.0
     }
 
     fn is_usual_extra(x: &f64) -> bool {

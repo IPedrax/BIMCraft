@@ -1805,11 +1805,11 @@ msgstr "Tầng liên kết"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:4567
+#: crates/core/src/model.rs:4568
 msgid "At wall centre line"
 msgstr "Tại đường tim tường"
 
-#: crates/core/src/model.rs:4568
+#: crates/core/src/model.rs:4569
 msgid "At wall finish"
 msgstr "Tại mặt hoàn thiện tường"
 
@@ -2343,7 +2343,7 @@ msgstr "Đường biên: các đường của biên dạng"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:4989
+#: crates/core/src/model.rs:4990
 msgid "Brick"
 msgstr "Gạch"
 
@@ -2359,7 +2359,7 @@ msgstr ""
 msgid "Bring in renamed"
 msgstr ""
 
-#: crates/core/src/model.rs:5662
+#: crates/core/src/model.rs:5663
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2909,7 +2909,7 @@ msgstr ""
 msgid "Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:4997
+#: crates/core/src/model.rs:4998
 msgid "Ceramic tile"
 msgstr "Gạch men"
 
@@ -3063,7 +3063,7 @@ msgstr ""
 msgid "Checking for updates…"
 msgstr "Đang kiểm tra cập nhật…"
 
-#: crates/core/src/commands.rs:5332
+#: crates/core/src/commands.rs:5333
 msgid "Checking the model"
 msgstr ""
 
@@ -4287,7 +4287,7 @@ msgstr "Khối ý tưởng"
 msgid "Concrete"
 msgstr "Bê tông"
 
-#: crates/core/src/model.rs:4991
+#: crates/core/src/model.rs:4992
 msgid "Concrete block"
 msgstr "Gạch block bê tông"
 
@@ -4587,7 +4587,7 @@ msgstr "Đã sao chép {} hàng, phân tách bằng tab."
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:5005
+#: crates/core/src/model.rs:5006
 msgid "Copper"
 msgstr "Đồng"
 
@@ -5222,7 +5222,7 @@ msgid "Cylinder"
 msgstr "Hình trụ"
 
 #: crates/core/src/render.rs:5630
-#: crates/core/src/render.rs:6026
+#: crates/core/src/render.rs:6040
 msgid "DN"
 msgstr "XUỐNG"
 
@@ -5550,7 +5550,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:16540
+#: crates/core/src/commands.rs:16541
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -5631,7 +5631,7 @@ msgstr "Tách đỉnh/chân"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
-#: crates/core/src/commands.rs:16330
+#: crates/core/src/commands.rs:16331
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -6090,11 +6090,11 @@ msgstr "Nét chấm"
 msgid "Double Door"
 msgstr "Cửa đi hai cánh"
 
-#: crates/core/src/model.rs:4243
+#: crates/core/src/model.rs:4244
 msgid "Double Sliding"
 msgstr "Trượt hai cánh"
 
-#: crates/core/src/model.rs:4241
+#: crates/core/src/model.rs:4242
 msgid "Double Swing"
 msgstr "Mở quay hai chiều"
 
@@ -7660,7 +7660,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:4245
+#: crates/core/src/model.rs:4246
 msgid "Fixed"
 msgstr "Cố định"
 
@@ -7885,7 +7885,7 @@ msgstr "Thư mục cho dự án mới"
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:4244
+#: crates/core/src/model.rs:4245
 msgid "Folding"
 msgstr "Gấp"
 
@@ -8252,11 +8252,11 @@ msgstr "Card đồ họa"
 msgid "Graphics follow parent view {}"
 msgstr "Đồ họa theo khung nhìn cha {}"
 
-#: crates/core/src/model.rs:5015
+#: crates/core/src/model.rs:5016
 msgid "Grass"
 msgstr ""
 
-#: crates/core/src/model.rs:5017
+#: crates/core/src/model.rs:5018
 msgid "Gravel"
 msgstr ""
 
@@ -8421,7 +8421,7 @@ msgstr ""
 msgid "Guides from the whole model"
 msgstr ""
 
-#: crates/core/src/model.rs:4996
+#: crates/core/src/model.rs:4997
 msgid "Gypsum board"
 msgstr "Tấm thạch cao"
 
@@ -13133,7 +13133,7 @@ msgstr "Mẫu tô xuất hiện trong mặt bằng, mặt bằng trần, mặt c
 msgid "Patterns from a PAT file, AutoCAD's and Revit's"
 msgstr "Mẫu từ tệp PAT, của AutoCAD và Revit"
 
-#: crates/core/src/model.rs:5026
+#: crates/core/src/model.rs:5027
 msgid "Paving"
 msgstr ""
 
@@ -14499,7 +14499,7 @@ msgid "Properties over the Project Browser on the left, every panel and tool sho
 msgstr ""
 
 #: crates/core/src/commands.rs:846
-#: crates/core/src/commands.rs:11115
+#: crates/core/src/commands.rs:11116
 msgid "Property Line"
 msgstr ""
 
@@ -14745,15 +14745,15 @@ msgstr "Quy ước đọc"
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:5630
+#: crates/core/src/model.rs:5631
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:5289
+#: crates/core/src/commands.rs:5290
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:5674
+#: crates/core/src/model.rs:5675
 msgid "Reading the project"
 msgstr ""
 
@@ -15690,7 +15690,7 @@ msgstr ""
 msgid "Role"
 msgstr ""
 
-#: crates/core/src/model.rs:4247
+#: crates/core/src/model.rs:4248
 msgid "Roller"
 msgstr ""
 
@@ -15722,7 +15722,7 @@ msgstr "Mái theo mặt (RB): một mái trên mặt trên của các khối đ�
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Mái theo hình chiếu bằng: nhấp vào trong các tường để lợp mái, trên tầng phía trên"
 
-#: crates/core/src/model.rs:4998
+#: crates/core/src/model.rs:4999
 msgid "Roof tiles"
 msgstr "Ngói"
 
@@ -16291,7 +16291,7 @@ msgstr "Bảng thống kê/Khối lượng (tất cả)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:4994
+#: crates/core/src/model.rs:4995
 msgid "Screed"
 msgstr "Lớp vữa láng"
 
@@ -16395,7 +16395,7 @@ msgstr "Hộp cắt: cắt khung nhìn 3D theo một hộp, mỗi mặt được
 msgid "Section: {}"
 msgstr "Mặt cắt: {}"
 
-#: crates/core/src/model.rs:4246
+#: crates/core/src/model.rs:4247
 msgid "Sectional"
 msgstr ""
 
@@ -17215,7 +17215,7 @@ msgstr ""
 msgid "Slanted with Wall"
 msgstr ""
 
-#: crates/core/src/model.rs:4242
+#: crates/core/src/model.rs:4243
 msgid "Sliding"
 msgstr "Trượt"
 
@@ -18089,7 +18089,7 @@ msgstr "Khối quét chuyển tiếp: đường dẫn gồm một đường th�
 msgid "Swept Blends"
 msgstr ""
 
-#: crates/core/src/model.rs:4240
+#: crates/core/src/model.rs:4241
 msgid "Swing"
 msgstr "Mở quay"
 
@@ -19759,7 +19759,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:858
-#: crates/core/src/commands.rs:11157
+#: crates/core/src/commands.rs:11158
 msgid "Toposolid"
 msgstr ""
 
@@ -20112,7 +20112,7 @@ msgid "Type:"
 msgstr "Kiểu:"
 
 #: crates/core/src/render.rs:5630
-#: crates/core/src/render.rs:6026
+#: crates/core/src/render.rs:6040
 msgid "UP"
 msgstr "LÊN"
 
@@ -20310,11 +20310,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:16888
+#: crates/core/src/commands.rs:16889
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
-#: crates/core/src/commands.rs:5306
+#: crates/core/src/commands.rs:5307
 msgid "Unpacking the project"
 msgstr ""
 
@@ -20945,7 +20945,7 @@ msgstr "Chậu rửa mặt"
 msgid "Waste"
 msgstr ""
 
-#: crates/core/src/model.rs:5033
+#: crates/core/src/model.rs:5034
 msgid "Water"
 msgstr ""
 
@@ -21255,7 +21255,7 @@ msgstr "Chiều dài đường gióng"
 msgid "Witness Line Overshoot:"
 msgstr "Phần vượt của đường gióng:"
 
-#: crates/core/src/model.rs:5024
+#: crates/core/src/model.rs:5025
 msgid "Wood"
 msgstr ""
 

@@ -533,6 +533,127 @@ fn surface(solids: &[crate::view3d::Solid], p: P2) -> Option<f64> {
     at(p).or_else(|| [P2(2.0, 0.0), P2(-2.0, 0.0), P2(0.0, 2.0), P2(0.0, -2.0)].into_iter().find_map(|d| at(p + d)))
 }
 
+/// `line` with the corner put in where its heights bend between two of its points (a flight's top, a landing's edge):
+/// where the lines through the points either side meet, so that a straight line between the two never cuts under it.
+fn corners(line: &[(P2, f64, bool)], top: impl Fn(P2) -> Option<f64>) -> Vec<(P2, f64, bool)> {
+    let mut out = Vec::with_capacity(line.len() + line.len() / 8);
+    for i in 0..line.len() {
+        let &(p, z, own) = &line[i];
+        out.push((p, z, own));
+        let (Some(&(q, zq, _)), Some(&(o, zo, _)), Some(&(r, zr, _))) =
+            (line.get(i + 1), i.checked_sub(1).and_then(|j| line.get(j)), line.get(i + 2))
+        else {
+            continue;
+        };
+        let run = p.dist(q);
+        let mid = top(p + (q - p) * 0.5);
+        if run < 1e-6 || mid.is_none_or(|m| (m - (z + zq) / 2.0).abs() <= 0.25) {
+            continue;
+        }
+        let (a, b) = (o.dist(p), q.dist(r));
+        if a < 1e-6 || b < 1e-6 {
+            continue;
+        }
+        // The slopes coming in and going out; where they meet, t along from `p`.
+        let (g1, g2) = ((z - zo) / a, (zr - zq) / b);
+        if (g1 - g2).abs() < 1e-9 {
+            continue;
+        }
+        let t = (zq - z - g2 * run) / (g1 - g2);
+        if t > 1e-6 && t < run - 1e-6 {
+            out.push((p + (q - p) * (t / run), z + g1 * t, false));
+        }
+    }
+    out
+}
+
+/// A point of a line: where it is in plan, its height, and whether it is a corner of the line's own.
+type Point = (P2, f64, bool);
+
+/// A run-on walked into the lower side: the points it raises and to what, and the point where it meets the line there,
+/// with the place it goes in.
+type Walked = (Vec<(usize, f64)>, Option<(usize, Point)>);
+
+/// `line` with each jump (heights changing faster than twice the steepest flight between two points) joined as a railing
+/// is built: the higher side's line run on at its own slope into the lower side until it meets the line there, every
+/// point it passes raised to it; where that side does not slope down into the lower one, or the step is higher than
+/// `extra`, a joining slope twice as steep as the steepest flight instead.
+fn envelope(mut line: Vec<(P2, f64, bool)>, steepest: f64, extra: f64) -> Vec<(P2, f64, bool)> {
+    let n = line.len();
+    let mut along = vec![0.0; n];
+    for i in 1..n {
+        along[i] = along[i - 1] + line[i].0.dist(line[i - 1].0);
+    }
+    let z: Vec<f64> = line.iter().map(|q| q.1).collect();
+    // The jumps, found on the heights as the hosts give them: between `i` and `i + 1`.
+    let jumps: Vec<usize> = (0..n.saturating_sub(1))
+        .filter(|&i| {
+            let run = along[i + 1] - along[i];
+            run > 1e-6 && (z[i + 1] - z[i]).abs() > 2.0 * steepest * run + 1.0
+        })
+        .collect();
+    let mut inserts: Vec<(usize, (P2, f64, bool))> = Vec::new();
+    for i in jumps {
+        let up = z[i + 1] > z[i];
+        // The higher side's point at the jump, the one past it on that side, and the way into the lower side.
+        let (high, beyond) = if up { (i + 1, i + 2) } else { (i, i.wrapping_sub(1)) };
+        let (Some(&zh), Some(&sh)) = (z.get(high), along.get(high)) else { continue };
+        // How fast the higher line falls going into the lower side.
+        let fall = match (z.get(beyond), along.get(beyond)) {
+            (Some(&zb), Some(&sb)) if (sb - sh).abs() > 1e-6 => (zb - zh) / (sb - sh).abs(),
+            _ => 0.0,
+        };
+        let step = (z[i + 1] - z[i]).abs();
+        let going = step / steepest.max(1e-9);
+        let reach = 1.5 * going;
+        // Walked from the step into the lower side at `rate`: the points raised and where it meets the line there, if
+        // it does within `reach`.
+        let order: Vec<usize> = if up { (0..=i).rev().collect() } else { (i + 1..n).collect() };
+        let walk = |rate: f64| -> Option<Walked> {
+            let mut raised = Vec::new();
+            let mut before: Option<usize> = None;
+            for &j in &order {
+                let away = (along[j] - sh).abs();
+                let e = zh - rate * away;
+                if e > z[j] + 1e-9 {
+                    if away > reach {
+                        return None;
+                    }
+                    raised.push((j, e));
+                    before = Some(j);
+                    continue;
+                }
+                let meet = before.map(|k| {
+                    let (dj, dk) = (e - z[j], zh - rate * (along[k] - sh).abs() - z[k]);
+                    let t = if (dk - dj).abs() > 1e-12 { -dj / (dk - dj) } else { 0.0 };
+                    let (pj, pk) = (line[j].0, line[k].0);
+                    (j.max(k), (pj + (pk - pj) * t, z[j] + (z[k] - z[j]) * t, false))
+                });
+                return Some((raised, meet));
+            }
+            Some((raised, None))
+        };
+        // The higher line run on at its own slope where the step is at most `extra`; else (or where it never meets the
+        // lower line near, an inner corner's flight running beside it) joining slopes steeper and steeper.
+        let run_on = (fall > 1e-3 && step <= extra + 1e-6).then_some(fall);
+        let found = run_on.into_iter().chain([2.0, 3.0, 5.0, 8.0].map(|k| k * steepest)).find_map(walk);
+        if let Some((raised, meet)) = found {
+            for (j, e) in raised {
+                if let Some(q) = line.get_mut(j) {
+                    q.1 = q.1.max(e);
+                }
+            }
+            inserts.extend(meet);
+        }
+    }
+    // The meeting points, each between the two points it lies between.
+    inserts.sort_by_key(|q| std::cmp::Reverse(q.0));
+    for (at, point) in inserts {
+        line.insert(at.min(line.len()), point);
+    }
+    line
+}
+
 /// `line` with each jump (heights changing faster than twice the steepest flight between two points) made upright: the
 /// line level to where its hosts change, found by halving, moved `overhang` into the lower side (the higher part runs on
 /// over it, never the lower under the higher), and there up or down within a millimetre.
@@ -613,8 +734,8 @@ pub fn hosts(rl: &Railing) -> Vec<Guid> {
 
 /// `plan`, its points given the heights of `hosts` under them (the first over each), `lift` above, as railing type `t`
 /// makes its line: looked up every [`STEP`] along it (where over none, the height it had last, the first it has before
-/// it, or `fallback` over none at all); its jumps joined as the type's `transition` says; and straightened into
-/// sections no lower than the heights and at most the type's `extra` higher ([`straighten`]).
+/// it, or `fallback` over none at all); its jumps joined as the type's `transition` says ([`envelope`], [`upright`]); and
+/// a point kept only where the heights bend ([`straighten`] within half a millimetre).
 pub fn follow(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64, fallback: f64, t: &RailingType) -> Vec<(P2, f64)> {
     let found: Vec<Host> = hosts.iter().filter_map(|g| Host::of(m, *g, plan)).collect();
     let total: f64 = plan.windows(2).filter_map(|w| Some(w.first()?.dist(*w.get(1)?))).sum();
@@ -640,28 +761,18 @@ pub fn follow(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64, fallback: f64, 
         last = z;
         line.push((p, z + lift, own));
     }
-    // Where a flight begins a riser over the landing before it, the heights jump. Joined, the line climbs to it, at most
-    // twice as steep as the steepest flight, raised and never lowered; a gooseneck or rails apart, it goes straight up.
+    line = corners(&line, |p| found.iter().find_map(|h| h.top(p)).map(|z| z + lift));
+    // Where a flight begins a riser over the landing before it, the heights jump. Joined, the higher line runs on at its
+    // own slope over the lower part until it meets that part's line (higher there than it need be, by at most the step);
+    // a gooseneck or rails apart, it goes straight up or down.
     let steepest = found.iter().map(Host::pitch).fold(0.0, f64::max);
     if steepest > 0.0 && t.transition != Transition::Continuous {
         line = upright(&found, line, steepest, t.extension.max(0.0));
     } else if steepest > 0.0 {
-        let most = 2.0 * steepest;
-        let lift = |line: &mut Vec<(P2, f64, bool)>, i: usize, j: usize| {
-            if let (Some(&(q, zq, _)), Some(&(p, _, _))) = (line.get(j), line.get(i))
-                && let Some(at) = line.get_mut(i)
-            {
-                at.1 = at.1.max(zq - most * p.dist(q));
-            }
-        };
-        for i in (0..line.len().saturating_sub(1)).rev() {
-            lift(&mut line, i, i + 1);
-        }
-        for i in 1..line.len() {
-            lift(&mut line, i, i - 1);
-        }
+        line = envelope(line, steepest, t.extra.max(0.0));
     }
-    straighten(&line, t.extra.max(0.0))
+    // Each part's line straight as it is: a point kept only where the heights bend.
+    straighten(&line, 0.5)
 }
 
 /// `line` (each point with the least height it may have, and whether it is a corner of its own) made of straight
@@ -1115,5 +1226,60 @@ mod tests {
         let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
         let rails = parts(&s.model, rl).iter().filter(|p| p.which == Which::Rail(0)).count();
         assert_eq!(rails, 2, "the landing's rail and the flight's, apart");
+    }
+
+    /// A straight stair with a landing half way, and its left railing's line: each point's distance up the stair (y)
+    /// and height; the landing's two ends, its height, a riser and a going.
+    /// The line up the stair (y, height), the landing's ends, its height, a riser and a going.
+    type Landing = (Vec<(f64, f64)>, (f64, f64), f64, f64, f64);
+
+    fn landing_line(transition: &str) -> Landing {
+        let mut s = Session::new();
+        let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1200, "landings": [{"at": 8, "turn": 0}]}))["id"]
+            .as_u64()
+            .unwrap();
+        let name = s.model.types.railing.keys().next().cloned().unwrap();
+        run(&mut s, "type", json!({"category": "railing", "name": name, "transition": transition}));
+        let id = run(&mut s, "railing", json!({"host": stair, "side": "left"}))["ids"][0].as_u64().unwrap();
+        let l = crate::stairs::layout(&s.model, s.model.elements.get(stair).unwrap()).unwrap();
+        let (a, b) = (&l.runs[0], &l.runs[1]);
+        let each = (a.z.1 - a.z.0) / f64::from(a.risers);
+        let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+        let line = crate::stairs::railing(&s.model, rl).into_iter().map(|(p, z)| (p.1, z)).collect();
+        (line, (a.end().1, b.start.1), a.z.1, each, a.going())
+    }
+
+    /// The line's height `y` up the stair.
+    fn height_at(line: &[(f64, f64)], y: f64) -> f64 {
+        let w = line.windows(2).find(|w| w[0].0 <= y + 1e-9 && w[1].0 >= y - 1e-9).unwrap();
+        if w[1].0 - w[0].0 > 1e-9 { w[0].1 + (w[1].1 - w[0].1) * (y - w[0].0) / (w[1].0 - w[0].0) } else { w[1].1 }
+    }
+
+    #[test]
+    fn over_a_landing_the_line_is_level_and_the_next_flight_runs_on_over_it() {
+        let (line, (from, to), landing, each, going) = landing_line("continuous");
+        // The line is the top of what the rails stand over: the landing's top, the nosings.
+        let h = 0.0;
+        // Level over the landing from where the flight below arrives, up to a going before the next flight.
+        for y in [from + 1.0, (from + to) / 2.0, to - going - 1.0] {
+            assert!((height_at(&line, y) - (landing + h)).abs() < 0.6, "level over the landing at {y}: {line:?}");
+        }
+        // Over the last going of the landing, the next flight's line run on at its slope: half a riser up half way.
+        assert!((height_at(&line, to - going / 2.0) - (landing + h + each / 2.0)).abs() < 1.0, "{line:?}");
+        // And on up the flight over its nosings, a riser up at its first.
+        assert!((height_at(&line, to) - (landing + h + each)).abs() < 1.0);
+        // Straight pieces only: up the flight, level, the run-on, up the next flight.
+        assert!(line.len() <= 6, "{line:?}");
+    }
+
+    #[test]
+    fn a_gooseneck_runs_level_past_the_step_and_goes_straight_up() {
+        let (line, (_, to), landing, each, _) = landing_line("gooseneck");
+        let h = 0.0;
+        // Up straight 50 mm (the extension) before the flight, the higher side level over that 50.
+        let rise = line.windows(2).find(|w| (w[1].0 - w[0].0).abs() <= 1.0 + 1e-9 && w[1].1 - w[0].1 > 100.0).unwrap();
+        assert!((rise[0].0 - (to - 50.0)).abs() < 1.0, "{line:?}");
+        assert!((rise[0].1 - (landing + h)).abs() < 0.6 && (rise[1].1 - (landing + h + each)).abs() < 0.6);
+        assert!((height_at(&line, to - 20.0) - (landing + h + each)).abs() < 0.6, "level over the extension");
     }
 }

@@ -5973,13 +5973,24 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, on: Option<Guid>, level: Gu
             None => d.stroke(px, BY_CATEGORY, INK, dash, closed),
         }
     };
-    for part in crate::railings::parts(m, rl) {
+    let parts = crate::railings::parts(m, rl);
+    // Posts, balusters and panels first; over the cut plane none of them shows (a railing seen from above is its rails).
+    for part in &parts {
         match &part.piece {
             crate::railings::Piece::Prism(ring, bottom, _) => {
                 let low = ring.iter().map(|q| bottom.at(*q)).fold(f64::MAX, f64::min);
-                draw(d, ring.clone(), true, low >= cut);
+                if low < cut {
+                    draw(d, ring.clone(), true, false);
+                }
             }
-            crate::railings::Piece::Tube(g) => draw(d, g.footprint(), true, g.a[2].min(g.b[2]) >= cut),
+            crate::railings::Piece::Tube(g) if g.a[2].min(g.b[2]) < cut => draw(d, g.footprint(), true, false),
+            _ => {}
+        }
+    }
+    // The rails over them, each stretch filled with the paper's white, hiding what is under it, and its two sides.
+    for part in &parts {
+        match &part.piece {
+            crate::railings::Piece::Prism(..) | crate::railings::Piece::Tube(_) => {}
             crate::railings::Piece::Sweep { path, width, .. } => {
                 // Each stretch's two sides, and its ends across.
                 let half = width / 2.0;
@@ -5991,6 +6002,9 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, on: Option<Guid>, level: Gu
                     }
                     let n = (b - a).unit().perp() * half;
                     let over = za.min(zb) >= cut;
+                    if !(over && above == Shown::Out) && !(!over && below == Shown::Out) {
+                        d.fill(&[vec![a - n, b - n, b + n, a + n]], PAPER);
+                    }
                     draw(d, vec![a + n, b + n], false, over);
                     draw(d, vec![a - n, b - n], false, over);
                 }

@@ -158,6 +158,10 @@ Properties, with how far the higher rail runs on); baluster placing (spread, fro
 bay); one post per type; Flipped on each railing; plan display by level and line styles in Type Properties; the plan
 projection of every part; Edit Path from the drawn line, a flight one line.
 
+Fifth round: each part keeps its own straight line (landings level); the higher line runs on over the lower to where they
+meet (the extra-height zone, one going), a joining slope where they never meet (inner corners); gooseneck level, up,
+level; checked on a Z stair from six sides. Plan: rails filled white, nothing over the cut but the rails.
+
 Next, after comments: custom profiles, the plan showing rails and posts, ends and extensions, gates.
 
 ## What the research suggested for BIMCraft
