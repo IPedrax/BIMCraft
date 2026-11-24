@@ -80,13 +80,13 @@ fn a_regions_pattern_angle_a_groups_rotation_and_a_repeats_spacing_show_at_their
     ));
     let region = ids(&h, "region")[0];
     parameters(&mut h, region);
-    assert_eq!(field_text(&h, "Pattern Angle (°)"), "0", "the file leaves a zero out, the row doesn't");
+    assert_eq!(field_text(&h, "Pattern Angle"), "0°", "the file leaves a zero out, the row doesn't");
     click(&mut h, P2(5000.0, 1100.0));
     shortcut(&mut h, "GP");
     key(&mut h, Key::Escape);
     let group = ids(&h, "detailgroup")[0];
     parameters(&mut h, group);
-    assert_eq!(field_text(&h, "Rotation (°)"), "0");
+    assert_eq!(field_text(&h, "Rotation"), "0°");
     h.state_mut()
         .session
         .execute("repeating_detail", &json!({"type": "Group 1", "start": [1000, 5000], "end": [3000, 5000], "spacing": 500}))

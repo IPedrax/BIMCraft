@@ -153,7 +153,7 @@ fn a_walls_top_offset_is_a_row_under_its_top_constraint_in_both_profiles() {
         // To Level 2, it shows 0 where the wall's JSON leaves the offset out, and sets one through `modify`.
         h.state_mut().selection = vec![connected];
         h.run();
-        assert_eq!(value(&h), "0", "rev {rev}");
+        assert_eq!(value(&h), "0 mm", "rev {rev}");
         type_into(&mut h, "Top Offset", "300");
         key(&mut h, Key::Enter);
         assert_eq!((field(&h, connected, "top_offset"), field(&h, connected, "height")), (json!(300.0), json!(3300.0)), "rev {rev}");
