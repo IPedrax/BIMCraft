@@ -39,14 +39,32 @@ pub const TOOLS: &[(&str, &[(&str, &str)])] = &[
     ),
 ];
 
+/// The Modify group: the tools that act on what is there, which a ribbon shows beside the tab's own.
+pub const MODIFY: &[(&str, &str)] = &[
+    ("move", "Move"),
+    ("copy", "Copy"),
+    ("rotate", "Rotate"),
+    ("mirror", "Mirror"),
+    ("array", "Array"),
+    ("scale", "Scale"),
+    ("trim", "Trim"),
+    ("split", "Split"),
+    ("align", "Align"),
+    ("offset", "Offset"),
+];
+
+fn every() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    TOOLS.iter().flat_map(|(_, tools)| tools.iter()).chain(MODIFY.iter())
+}
+
 /// The English label of the tool with this id.
 pub fn label(id: &str) -> Option<&'static str> {
-    TOOLS.iter().flat_map(|(_, tools)| tools.iter()).find(|(tool, _)| *tool == id).map(|(_, label)| *label)
+    every().find(|(tool, _)| *tool == id).map(|(_, label)| *label)
 }
 
 /// The id a tool is picked by, for an id that is in the table (a tool that is not has no entry, so a stale id picks nothing).
 pub fn id_of(id: &str) -> Option<&'static str> {
-    TOOLS.iter().flat_map(|(_, tools)| tools.iter()).find(|(tool, _)| *tool == id).map(|(tool, _)| *tool)
+    every().find(|(tool, _)| *tool == id).map(|(tool, _)| *tool)
 }
 
 #[cfg(test)]
@@ -55,7 +73,7 @@ mod tests {
 
     #[test]
     fn every_tool_has_a_unique_id_and_a_label() {
-        let mut ids: Vec<&str> = TOOLS.iter().flat_map(|(_, t)| t.iter().map(|(id, _)| *id)).collect();
+        let mut ids: Vec<&str> = every().map(|(id, _)| *id).collect();
         let n = ids.len();
         ids.sort_unstable();
         ids.dedup();
@@ -67,6 +85,7 @@ mod tests {
     #[test]
     fn a_tool_is_found_by_its_id_and_a_stale_id_finds_none() {
         assert_eq!(label("wall"), Some("Wall"));
+        assert_eq!(label("move"), Some("Move"), "the Modify group is in the table too");
         assert_eq!(id_of("curtain_wall"), Some("curtain_wall"));
         assert_eq!(label("no such tool"), None);
         assert_eq!(id_of(""), None);

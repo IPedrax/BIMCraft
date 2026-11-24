@@ -42,8 +42,12 @@ One line per module. A new module adds its line here, not to the root.
   program again with `RUNE_CPU_FIRST=only` so a machine with no card draws on Rune's CPU renderer (it cannot set the variable itself, safely).
 - `app.rs`: the state (`App`) and what its handlers do, the one place that meets the core: `render::draw`, `Drawing::pick`,
   `Session::execute` for every change. It holds no widget, so it is tested without a window.
-- `ui/`: the elements, a function of `App`: `mod.rs` the window and its keys, `plan.rs` the canvas (the drawing kept as one element
-  while it is the same, the pointer, wheel and drag handlers, the hover and selection layers), `properties.rs`, `status_bar.rs`.
+- `ui/`: the elements, a function of `App`: `mod.rs` the window (laid out by profile) and its keys, `plan.rs` the canvas (the drawing kept as
+  one element while it is the same, the pointer, wheel and drag handlers, the hover and selection layers), `topbar.rs` (Open and Save through
+  the system's file dialogs, Undo, Redo), `tools.rs` the BIMCraft profile's palette, `ribbon.rs` Rev's, `properties.rs` (the rows, and a
+  `rune_kit::TextInput` for each field the core may take a `modify` of), `browser.rs` (the levels), `status_bar.rs`.
+- `profile.rs`: the two profiles (BIMCraft's palette, Rev's ribbon), one table drawn two ways. `project.rs`: where a project comes from
+  (`--sample`, `--highrise`, a file through the core's `open`) and what the arguments ask. `tools.rs`: the table of tools both profiles draw.
 - `camera.rs`: pan and zoom of the plan, in the core's `View`. `paint.rs`: a `Drawing`'s primitives as Rune shapes (dashes split,
   lettering through `text::triangles`, what cannot be drawn counted). `props.rs`: the Properties rows from `element_json`.
   `status.rs`: the status line. `lang.rs`: `t`, `tf`, `tc` over `translations/ui/*.po`, the catalogs egui reads.

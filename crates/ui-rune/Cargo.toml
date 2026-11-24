@@ -23,9 +23,11 @@ serde_json = { version = "1", features = ["raw_value"] }
 # The system's language, on Windows and macOS too, where no environment variable says it.
 sys-locale = "0.3"
 # Pre-release: a pinned revision of `dev`, which is never rewritten. Rune's default features but `ogg-audio` (BIMCraft plays no sound,
-# and that feature is what brings in the MPL-2.0 symphonia and opuscule on macOS), and `tooling`, which adds `--snap`, `--tree` and
+# and that feature is what brings in the MPL-2.0 symphonia and opuscule on macOS), `native-file-dialog` (Open and Save), and `tooling`, which adds `--snap`, `--tree` and
 # `--script` to a release build.
-rune = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047", default-features = false, features = ["accessibility", "dbus", "embedded-fonts", "metal-backend", "svg", "tooling"] }
+rune = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047", default-features = false, features = ["accessibility", "dbus", "embedded-fonts", "metal-backend", "native-file-dialog", "svg", "tooling"] }
+# The kit: text inputs, buttons and the rest of the components. Without its default syntax highlighting (80 lexers BIMCraft does not draw).
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "80cfdbc1a31d8f088d44cb1e4fa36cbbae01e047", default-features = false }
 
 [build-dependencies]
 bimcraft-i18n = { path = "../i18n", features = ["catalog"] }

@@ -132,6 +132,16 @@ jobs:
       - name: Build
         run: cargo build --release -p bimcraft --no-default-features
       - run: cp target/release/bimcraft "bimcraft-egui-${{ matrix.name }}"
+      # A big project for both UIs to open: three storeys of the annotated reference tower, saved by the command line.
+      - name: A tower project
+        if: matrix.name == 'main'
+        run: cargo run --release -q -p bimcraft-cli -- run --cmd 'tower {"storeys":3,"annotation":true}' --save tower.bimc
+      - uses: actions/upload-artifact@v4
+        if: matrix.name == 'main'
+        with:
+          name: tower-project
+          path: tower.bimc
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: bimcraft-egui-${{ matrix.name }}
@@ -143,7 +153,7 @@ jobs:
     needs: [build-rune, build-egui]
     if: ${{ !cancelled() && needs.build-rune.result == 'success' && needs.build-egui.result != 'cancelled' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -223,4 +233,101 @@ jobs:
         if: always()
         with:
           name: measurements
+          path: results
+
+  # The same on Windows, where a GitHub runner has no graphics card either (its adapter is WARP, the machine of PR 628): Rune, and egui as
+  # main has it since the join of PR 628, built on one runner each and measured on a third, with the pointer SetCursorPos moves.
+  build-rune-windows:
+    name: Build Rune UI (Windows)
+    if: github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/ui-rune
+          save-if: ${{ github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' }}
+      - name: Build
+        working-directory: crates/ui-rune
+        run: cargo build --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bimcraft-rune-windows
+          path: crates/ui-rune/target/release/bimcraft-rune.exe
+          if-no-files-found: error
+
+  build-egui-windows:
+    name: Build egui (Windows)
+    if: github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '73aceeae81efdece268de404644a2b72822ce408'
+      - name: Rust
+        shell: bash
+        run: rustup update stable && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: egui-windows
+          save-if: ${{ github.ref == 'refs/heads/IPedrax-Test/Rune-GUI' }}
+      - name: Build
+        run: cargo build --release -p bimcraft --no-default-features
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bimcraft-egui-windows
+          path: target/release/bimcraft.exe
+          if-no-files-found: error
+
+  measure-windows:
+    name: Measure (Windows, no graphics card)
+    needs: [build-rune-windows, build-egui-windows, build-egui]
+    if: ${{ !cancelled() && needs.build-rune-windows.result == 'success' && needs.build-egui-windows.result == 'success' }}
+    runs-on: windows-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: bins
+      - name: Machine
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+          Get-CimInstance Win32_VideoController | Select-Object Name, AdapterCompatibility, DriverVersion | Format-List
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.Screen]::PrimaryScreen.Bounds | Format-List
+      - name: Measure every UI, twice
+        shell: pwsh
+        run: |
+          $rune = "bins/bimcraft-rune-windows/bimcraft-rune.exe"
+          $egui = "bins/bimcraft-egui-windows/bimcraft.exe"
+          $tower = "bins/tower-project/tower.bimc"
+          foreach ($round in 1, 2) {
+            ./ci/measure-ui.ps1 -Name "win-rune-gpu-$round" -Out results -Exe $rune
+            $env:RUNE_CPU_FIRST = 'only'
+            ./ci/measure-ui.ps1 -Name "win-rune-cpu-$round" -Out results -Exe $rune
+            Remove-Item Env:RUNE_CPU_FIRST
+            ./ci/measure-ui.ps1 -Name "win-egui-628-$round" -Out results -Exe $egui -AppArgs '--sample' -PanButton 2
+            $env:BIMCRAFT_SOFTWARE = '1'
+            ./ci/measure-ui.ps1 -Name "win-egui-628-forced-$round" -Out results -Exe $egui -AppArgs '--sample' -PanButton 2
+            Remove-Item Env:BIMCRAFT_SOFTWARE
+            if (Test-Path $tower) {
+              $env:RUNE_CPU_FIRST = 'only'
+              ./ci/measure-ui.ps1 -Name "win-rune-cpu-tower-$round" -Out results -Exe $rune -AppArgs $tower -Settle 45
+              Remove-Item Env:RUNE_CPU_FIRST
+              ./ci/measure-ui.ps1 -Name "win-rune-gpu-tower-$round" -Out results -Exe $rune -AppArgs $tower -Settle 45
+              $env:BIMCRAFT_SOFTWARE = '1'
+              ./ci/measure-ui.ps1 -Name "win-egui-628-tower-$round" -Out results -Exe $egui -AppArgs $tower -PanButton 2 -Settle 45
+              Remove-Item Env:BIMCRAFT_SOFTWARE
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: measurements-windows
           path: results

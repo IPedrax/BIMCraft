@@ -112,3 +112,82 @@ fn a_tool_is_picked_from_the_palette_and_the_status_bar_says_so() {
         "a tool is a button to a screen reader"
     );
 }
+
+fn rev() -> Runtime<App> {
+    let mut app = App::sample();
+    app.profile = crate::profile::Profile::Rev;
+    let mut rt = Runtime::new(app, view, (1280.0, 800.0), Env::new(true, 1.0));
+    for _ in 0..3 {
+        rt.frame(0.0);
+    }
+    rt
+}
+
+#[test]
+fn a_press_on_a_level_shows_its_plan() {
+    let mut rt = window();
+    let other = rt.state.levels.iter().map(|(id, _)| *id).find(|id| Some(*id) != rt.state.level).expect("a second level");
+    let row = rt.find(&format!("level-{other}")).expect("its row in the browser");
+    tap(&mut rt, row);
+    assert_eq!(rt.state.level, Some(other));
+    let name = rt.state.level_name.clone();
+    assert!(text_of(&rt, "status-line").unwrap_or_default().starts_with(&name), "the status bar names the level shown");
+}
+
+#[test]
+fn rev_has_a_ribbon_where_bimcraft_has_a_palette_and_both_draw_the_same_tools() {
+    let bim = window();
+    assert!(bim.find("tools").is_some() && bim.find("ribbon").is_none());
+    let mut rt = rev();
+    assert!(rt.find("ribbon").is_some() && rt.find("tools").is_none());
+    let wall = rt.find("tool-wall").expect("the Wall tool in the ribbon");
+    tap(&mut rt, wall);
+    assert_eq!(rt.state.tool, Some("wall"), "a ribbon button picks the tool the palette's row picks");
+    let tab = rt.find("tab-1").expect("the Structure tab");
+    tap(&mut rt, tab);
+    assert_eq!(rt.state.tab, 1);
+    assert!(rt.find("tool-beam").is_some() && rt.find("tool-wall").is_none(), "the tab shows its own tools");
+    assert!(rt.find("tool-move").is_some(), "and the Modify group stays");
+    let (w, plan) = (rt.presented("plan").map_or(0.0, |(r, _)| r[2]), rt.presented("ribbon").map(|(r, _)| r[3]));
+    assert!(w > 700.0 && plan.is_some_and(|h| h > 100.0), "the plan is laid out beside the side column, under the ribbon");
+}
+
+#[test]
+fn open_and_save_ask_the_dialog_and_run_the_same_methods() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-rune-ui-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("house.bimc");
+    let mut rt = window();
+
+    let save = rt.find("save").expect("Save");
+    tap(&mut rt, save);
+    let asked = rt.file_dialog().map(|(kind, _)| kind);
+    assert_eq!(asked, Some(rune::FileDialogKind::Save), "a project with no file asks where");
+    rt.resolve_file_dialog(Some(file.clone())).expect("the dialog answers");
+    rt.frame(0.0);
+    assert!(file.exists(), "saved through the engine: {:?}", rt.state.message);
+    assert_eq!(text_of(&rt, "project-name").as_deref(), Some("house.bimc"));
+
+    tap(&mut rt, save);
+    assert!(rt.file_dialog().is_none(), "a project with a file saves without asking");
+
+    let open = rt.find("open").expect("Open");
+    tap(&mut rt, open);
+    assert_eq!(rt.file_dialog().map(|(kind, _)| kind), Some(rune::FileDialogKind::Open));
+    rt.resolve_file_dialog(None).expect("a cancelled dialog");
+    rt.frame(0.0);
+    assert!(rt.state.message.is_none(), "cancelling is no error");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn the_properties_of_a_selected_level_have_fields_that_edit_through_the_engine() {
+    let mut rt = window();
+    let level = rt.state.level.expect("a level");
+    rt.update(|s, _| s.select(vec![level]));
+    for _ in 0..2 {
+        rt.frame(0.0);
+    }
+    assert!(!rt.state.fields.is_empty());
+    assert!(rt.elements().iter().any(|e| e.role == "textbox"), "a field is a text box to a screen reader");
+}

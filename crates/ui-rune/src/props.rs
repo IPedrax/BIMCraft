@@ -46,6 +46,59 @@ fn cut(text: String) -> String {
     short
 }
 
+/// What a field holds, for reading what a person typed back into the JSON the core takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Text,
+    Number,
+    Bool,
+}
+
+/// The fields a person may try to change: the scalars of the JSON but its identity. Some are derived (a length, an area) and the core
+/// refuses them with its reason, which is better than a list of ours that drifts from the core's.
+const READ_ONLY: [&str; 3] = ["id", "guid", "category"];
+const MAX_TEXT: usize = 10_000;
+
+/// (name, kind, the text to start editing from) of each field of an element's JSON that can be tried, in the order of [`rows`].
+pub fn editable(json: &Value) -> Vec<(String, Kind, String)> {
+    let Value::Object(fields) = json else { return Vec::new() };
+    fields
+        .iter()
+        .filter(|(name, _)| !READ_ONLY.contains(&name.as_str()))
+        .filter_map(|(name, v)| match v {
+            Value::String(s) => Some((name.clone(), Kind::Text, s.chars().take(MAX_TEXT).collect())),
+            Value::Number(n) => Some((name.clone(), Kind::Number, n.to_string())),
+            Value::Bool(b) => Some((name.clone(), Kind::Bool, b.to_string())),
+            _ => None,
+        })
+        .take(MAX_ROWS)
+        .collect()
+}
+
+/// What was typed, as the JSON value of a field of this kind, or why it is none.
+pub fn parse(kind: Kind, typed: &str) -> Result<Value, String> {
+    let typed = typed.trim();
+    match kind {
+        Kind::Text => Ok(Value::String(typed.to_string())),
+        Kind::Number => {
+            let n: f64 = typed.parse().map_err(|_| format!("{typed:?} is not a number"))?;
+            if !n.is_finite() {
+                return Err(format!("{typed:?} is not a number"));
+            }
+            if n.fract() == 0.0 && n.abs() < 9e15 {
+                Ok(Value::from(n as i64))
+            } else {
+                serde_json::Number::from_f64(n).map(Value::Number).ok_or_else(|| format!("{typed:?} is not a number"))
+            }
+        }
+        Kind::Bool => match typed.to_lowercase().as_str() {
+            "yes" | "true" | "1" | "on" => Ok(Value::Bool(true)),
+            "no" | "false" | "0" | "off" => Ok(Value::Bool(false)),
+            _ => Err(format!("{typed:?} is not yes or no")),
+        },
+    }
+}
+
 /// The rows of an element's JSON: its `id` first, then its fields by name; an empty list for what isn't an object.
 pub fn rows(json: &Value) -> Vec<Row> {
     let Value::Object(fields) = json else { return Vec::new() };
@@ -78,6 +131,26 @@ mod tests {
         assert_eq!(value(&r, "nested"), Some("{2 fields}"));
         assert_eq!(value(&r, "gone"), None, "a null is no row");
         assert_eq!(r.len(), 7);
+    }
+
+    #[test]
+    fn the_scalars_but_the_identity_can_be_tried_and_what_is_typed_is_read_back_by_kind() {
+        let f = editable(
+            &json!({"id": 1, "guid": "g", "category": "wall", "name": "A", "height": 2700.5, "mark": 3, "open": true, "tags": ["x"], "gone": null}),
+        );
+        let names: Vec<&str> = f.iter().map(|(n, _, _)| n.as_str()).collect();
+        assert_eq!(names, ["height", "mark", "name", "open"]);
+        assert_eq!(f[0], ("height".to_string(), Kind::Number, "2700.5".to_string()));
+        assert_eq!(parse(Kind::Number, " 2700 "), Ok(json!(2700)));
+        assert_eq!(parse(Kind::Number, "2700.5"), Ok(json!(2700.5)));
+        for bad in ["", "abc", "NaN", "inf", "-inf", "1e999"] {
+            assert!(parse(Kind::Number, bad).is_err(), "{bad:?}");
+        }
+        assert_eq!(parse(Kind::Bool, "Yes"), Ok(json!(true)));
+        assert_eq!(parse(Kind::Bool, "off"), Ok(json!(false)));
+        assert!(parse(Kind::Bool, "maybe").is_err());
+        assert_eq!(parse(Kind::Text, "  Ground "), Ok(json!("Ground")));
+        assert!(editable(&json!([1])).is_empty());
     }
 
     #[test]

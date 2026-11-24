@@ -11,6 +11,8 @@ pub mod app;
 pub mod camera;
 pub mod lang;
 pub mod paint;
+pub mod profile;
+pub mod project;
 pub mod props;
 pub mod software;
 pub mod status;
@@ -23,6 +25,12 @@ use rune::AppSpec;
 pub const TITLE: &str = "BIMCraft (Rune)";
 pub const SIZE: (f32, f32) = (1280.0, 800.0);
 
+/// The state the window opens with: the arguments Rune did not take, read as `project::parse` reads them.
+fn start() -> app::App {
+    let args: Vec<std::ffi::OsString> = rune::extra_args().iter().map(std::ffi::OsString::from).collect();
+    app::App::start(&project::parse(&args))
+}
+
 /// Opens the window on the sample house, in the system's language. With `--software` it starts again on Rune's CPU renderer first.
 pub fn run() {
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
@@ -34,5 +42,5 @@ pub fn run() {
     }
     lang::set(lang::from_system());
     rune::set_app_id("com.ipedrax.bimcraft");
-    rune::run(AppSpec { on_key: Some(ui::on_key), ..AppSpec::new(TITLE, SIZE, app::App::sample, ui::view) });
+    rune::run(AppSpec { on_key: Some(ui::on_key), ..AppSpec::new(TITLE, SIZE, start, ui::view) });
 }

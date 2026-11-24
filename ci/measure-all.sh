@@ -30,6 +30,8 @@ bench() {
         --bench ci/egui-bench.scenario --bench-out "$out/$name.json" >"$out/$name.log" 2>&1 || true
 }
 
+tower="$bins/tower-project/tower.bimc"
+
 for round in 1 2; do
     try ci/measure-ui.sh "rune-gpu-$round" "$out" -- "$rune"
     try env RUNE_CPU_FIRST=only ci/measure-ui.sh "rune-cpu-$round" "$out" -- "$rune"
@@ -40,5 +42,15 @@ for round in 1 2; do
     if [ -x "$egui_join" ]; then
         try env PAN_BUTTON=2 BIMCRAFT_SOFTWARE=1 ci/measure-ui.sh "egui-join-628-$round" "$out" -- "$egui_join" --sample
         BIMCRAFT_SOFTWARE=1 bench "egui-join-628-bench-$round" "$egui_join"
+    fi
+    # The same big project in both, a three-storey annotated tower saved by the command line (the plan of a storey: about 100,000
+    # instances), which takes a while to open: a longer settle.
+    if [ -f "$tower" ]; then
+        try env SETTLE=45 RUNE_CPU_FIRST=only ci/measure-ui.sh "rune-cpu-tower-$round" "$out" -- "$rune" "$tower"
+        try env SETTLE=45 ci/measure-ui.sh "rune-gpu-tower-$round" "$out" -- "$rune" "$tower"
+        try env SETTLE=45 PAN_BUTTON=2 ci/measure-ui.sh "egui-main-tower-$round" "$out" -- "$egui_main" "$tower"
+        if [ -x "$egui_join" ]; then
+            try env SETTLE=45 PAN_BUTTON=2 BIMCRAFT_SOFTWARE=1 ci/measure-ui.sh "egui-join-628-tower-$round" "$out" -- "$egui_join" "$tower"
+        fi
     fi
 done
