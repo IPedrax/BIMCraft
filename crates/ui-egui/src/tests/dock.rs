@@ -797,6 +797,8 @@ fn right_clicking_a_palettes_header_lists_every_palette_with_its_box() {
         let ticked = node.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True);
         assert_eq!(ticked, h.state().docking.shown(p), "{}", p.name());
     }
+    // Rev has the ribbon in the Tools palette's place, so its box tells the user rather than doing nothing.
+    assert!(h.get_by_role_and_label(Role::CheckBox, "Tools").accesskit_node().is_disabled());
 }
 
 #[test]
@@ -835,4 +837,8 @@ fn the_palettes_menu_opens_on_the_inspectors_header_in_bimcraft() {
     h.run();
     assert!(!h.state().docking.shown(Palette::Browser), "the Navigator is closed from the menu");
     assert!(h.query_by_label("Palettes").is_some(), "the menu stays open");
+    // BIMCraft's tools are a palette here, not the ribbon: its box is the one that works.
+    h.get_by_role_and_label(Role::CheckBox, crate::lang::t("Tools")).click();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Tools), "the Tools palette is closed from the menu");
 }
