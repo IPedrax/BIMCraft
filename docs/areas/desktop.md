@@ -393,7 +393,12 @@ tool, a ribbon button or a
 palette row, into a box to tick (`edit_tool`): a click ticks or clears it and takes no tool, and what is cleared is `tools_hidden`, left
 out of the ribbon and the palette (Find still lists it). A panel's name is a box too: clearing it hides the whole panel, in either profile,
 and keeps its tools in Edit Tools and Find; what is cleared is `panels_hidden`, keyed by `tab:<tab>/<panel>` (a plugin's
-`tab:plugin:<name>/<panel>`). A tab every panel of which is hidden says so, with a button that brings them all back. **Done** in Edit
+`tab:plugin:<name>/<panel>`). A right click on a panel's name — on the ribbon, on a folded panel's button, in Edit Tools or in the Tools
+palette — opens the panels menu (`ribbon::panel_menu`): the tab's panels, ticked while they are shown, then **Other Tabs** with every
+other tab's, a plugin's or a family document's. A tick hides or shows the panel at once, through the same `panels_hidden` and the same
+queue as Edit Tools' boxes; the menu stays open to change several, and closes when the panel it hangs from goes. A panel the project's
+scale leaves out is listed unticked and disabled, with a tooltip. The menu changes the window, not a preset: **Done**, **Update from
+Current Layout** or **Save Preset** keeps it. Both the menu and the preset editor list the panels from `BimApp::panel_groups`. A tab every panel of which is hidden says so, with a button that brings them all back. **Done** in Edit
 Tools keeps the palette layout, the panels and the tools in the preset the window wears (the one ticked in the Project scale chip); with
 no preset chosen it changes the window only and says so. The ribbon and the
 palette read both through `ribbon::tool_rules` and `ribbon::panel_rules`, set each frame; `ribbon::panel` leaves out a panel the scale or
