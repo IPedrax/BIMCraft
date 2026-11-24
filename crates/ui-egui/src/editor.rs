@@ -271,6 +271,8 @@ struct ParamText {
     instance: bool,
     value: String,
     formula: String,
+    /// Worked out from the family's geometry, not its parameters: shown, never typed, and never saved as one.
+    derived: bool,
 }
 
 /// The name a parameter's kind goes by.
@@ -339,6 +341,20 @@ impl ParamText {
             instance: p.instance,
             value: value_text(p.kind, &p.value),
             formula: p.formula.clone().unwrap_or_default(),
+            derived: false,
+        }
+    }
+
+    /// A built-in parameter worked out from the family's geometry: its area of the opening it cuts.
+    fn derived(name: &str, kind: Holds) -> ParamText {
+        ParamText {
+            original: Parameter { name: name.to_string(), kind, ..Parameter::default() },
+            name: name.to_string(),
+            kind,
+            instance: false,
+            value: String::new(),
+            formula: String::new(),
+            derived: true,
         }
     }
 
@@ -663,11 +679,17 @@ impl FamilyEditor {
             .iter()
             .map(|(n, set)| (n.clone(), own.iter().filter_map(|p| Some((p.name.clone(), value_text(p.kind, set.get(&p.name)?)))).collect()))
             .collect();
+        let mut params: Vec<ParamText> = f.parameters.iter().map(ParamText::of).collect();
+        if !params.iter().any(|p| p.name == bimcraft_core::family::OPENING_AREA)
+            && (f.category.hosted() || f.forms.iter().any(|x| x.void && x.cuts().host()))
+        {
+            params.push(ParamText::derived(bimcraft_core::family::OPENING_AREA, Holds::Area));
+        }
         FamilyEditor {
             original: Some(name.to_string()),
             name: name.to_string(),
             category: f.category,
-            params: f.parameters.iter().map(ParamText::of).collect(),
+            params,
             types,
             forms: f.forms.iter().map(FormText::of).collect(),
             adaptive: f.adaptive.clone(),
@@ -739,6 +761,7 @@ impl FamilyEditor {
                 instance: n.instance,
                 value: n.value,
                 formula: String::new(),
+                derived: false,
             });
         }
         if !done {
@@ -816,7 +839,7 @@ impl FamilyEditor {
 
     /// The family as typed, or the first thing that isn't what it should be.
     fn family(&self) -> Result<Family, String> {
-        let parameters: Vec<Parameter> = self.params.iter().map(ParamText::parameter).collect::<Result<_, _>>()?;
+        let parameters: Vec<Parameter> = self.params.iter().filter(|p| !p.derived).map(ParamText::parameter).collect::<Result<_, _>>()?;
         let own: BTreeMap<&str, Holds> =
             parameters.iter().filter(|p| !p.instance && p.formula.is_none()).map(|p| (p.name.as_str(), p.kind)).collect();
         let mut types = BTreeMap::new();

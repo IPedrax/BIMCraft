@@ -40,6 +40,17 @@ tool (DW, `BimApp::demolish`, in the Modify tab's Phasing panel) runs `modify {p
 plan, a section or the 3D view: the phase of the view on screen (the project's last unless it has one), or null when the element
 already comes down in it, one undo step a click. A door or window that only follows its wall gets a note instead, and an element that
 holds no `params` (annotation, levels, grids, shafts) says so and changes nothing.
+The `renovation` command reads the phases as a renovation palette does (Archicad's is where the idea is seen), with three
+statuses over two phases: the work's (`phase`, the project's last unless it says, the view's on the desktop) and the one
+before it, what stands (`phasing::renovation_phases`; refused in a project of one phase, or for the first). `{status}` sets
+what the session draws in: existing is made in the phase before, new in the work's, and demolished is made in the phase
+before and taken down in the work's, by `Session::demolish`, a third field beside `Session::phase` and `Session::option`
+that `Session::stamp` writes as `Phase Demolished` (never before the phase made in), that a refused command, a transaction,
+a session that may only read and Co-Work keep with the other two (`engine::MadeIn`, the guest's `demolish` beside its `phase`
+and `option`), that renaming or deleting a phase moves, and that `phase {now}` clears; null follows the view again (no
+phase of the session's own). `{status, ids}` gives elements the status in one undo step (`phasing::give_status`): existing
+and demolished keep an earlier phase an element was made in, and a door or window is given a phase of its own, so it no
+longer follows its wall. `ids` alone reads each one's status in the work's phase and the selection's (or `mixed`).
 The view control bar's Renovation menu (`BimApp::renovation_menu`, `phasing.rs` in the desktop, the same in both profiles) says in plain
 words which phase of the work a plan, a section or the 3D view shows: All (no phase and no phase filter of its own, the view as it
 starts), Existing (the project's first phase, every status by its category), Demolition (the last phase through a filter that hides

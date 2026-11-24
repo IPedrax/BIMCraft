@@ -243,6 +243,7 @@ mod quantities_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 pub mod ral;
+pub mod ramps;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;
@@ -255,6 +256,8 @@ pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
 pub mod render;
+#[cfg(test)]
+mod renovation_tests;
 pub mod reservoir;
 #[cfg(test)]
 mod roof_slopes_tests;
@@ -326,6 +329,9 @@ mod units_tests;
 #[cfg(test)]
 mod vertical_tools_tests;
 pub mod view3d;
+pub mod view_range;
+#[cfg(test)]
+mod view_range_tests;
 #[cfg(test)]
 mod wall_mitre_tests;
 #[cfg(test)]

@@ -78,11 +78,12 @@ fn an_unknown_palette_name_survives_a_read_write_round_trip() {
 #[test]
 fn every_palette_the_ui_shows_comes_from_known() {
     let known = Palette::known();
-    assert_eq!(known, [Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts]);
-    for p in &known {
-        assert_eq!(Palette::named(p.name(), &known), Some(*p));
+    for palette in [Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts] {
+        assert!(known.contains(&palette), "{palette:?} is a palette of every build");
+        assert_eq!(Palette::named(palette.name(), &known), Some(palette));
     }
-    assert_eq!(Palette::named("plugin:rooms:areas", &known), None, "a plugin's palette joins the list with the registry");
+    // A plugin's palette joins the list with the registry, and its name is `plugin:<plugin id>:<panel id>`.
+    assert_eq!(Palette::named("plugin:rooms:areas", &known), None, "no plugin is loaded in this test");
     // Docked or floated, a palette is the same one: the layout's names all come back to known.
     let d = Docking::revit();
     assert_eq!(d.docked(Palette::Properties), Some(Side::Left));

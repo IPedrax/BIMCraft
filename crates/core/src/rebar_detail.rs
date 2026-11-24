@@ -231,9 +231,14 @@ pub fn sets(m: &Model, bars: &Bars, host: Id) -> Vec<Set> {
 /// What a set's tag says: its mark, how many, its diameter, its spacing where its bars spread across the picture it is drawn in
 /// (`spread`), and one bar's cut length; each in the project's unit but the diameter, which is in millimetres: `N2 7 ø5 c/100 C=1180`.
 pub fn tag_text(m: &Model, set: &Set, spread: bool) -> String {
+    tag_count(m, set, set.count, spread)
+}
+
+/// [`tag_text`] saying `count` bars: a tag that stands for several sets of one mark (a column's bars are rows of them).
+pub(crate) fn tag_count(m: &Model, set: &Set, count: usize, spread: bool) -> String {
     let mut t = steel::mark_text(set.mark);
-    if set.count > 1 {
-        t.push_str(&format!(" {}", set.count));
+    if count > 1 {
+        t.push_str(&format!(" {count}"));
     }
     t.push_str(&format!(" ø{}", set.diameter));
     if spread && let Some(s) = set.spacing {

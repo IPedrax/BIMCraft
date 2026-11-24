@@ -191,6 +191,7 @@ icon_names! {
     FillPatterns,
     AnnotationSettings,
     LinePatterns,
+    Halftone,
     Circle,
     Inscribed,
     Circumscribed,
@@ -1840,6 +1841,16 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
                 g.line(&[(11.0, 8.0), (8.0, 11.0)]);
             }
             g.line(&[(3.0, 20.0), (20.0, 20.0)]);
+        }
+        Icon::Halftone => {
+            // A square cut by its diagonal: one half bare, the other lightly hatched, as halftone lightens what it draws.
+            g.closed(&[(3.0, 3.0), (21.0, 3.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.line(&[(3.0, 21.0), (21.0, 3.0)]);
+            g.line(&[(12.0, 21.0), (21.0, 12.0)]);
+            if !compact {
+                g.line(&[(7.5, 21.0), (21.0, 7.5)]);
+                g.line(&[(16.5, 21.0), (21.0, 16.5)]);
+            }
         }
         Icon::LinePatterns => {
             // Three lines, dashed, dash-dot and dotted.

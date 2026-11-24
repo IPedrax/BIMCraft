@@ -1,4 +1,4 @@
-//! The guest SDK of BIMCraft's WASM plugins (host ABI 1): typed calls to the host, the exported entry points a plugin
+//! The guest SDK of BIMCraft's WASM plugins (host ABIs 1 and 2): typed calls to the host, the exported entry points a plugin
 //! module needs, and a macro that turns safe Rust handlers into the module's functions.
 //!
 //! A plugin crate is a `cdylib` for `wasm32-unknown-unknown`:
@@ -19,7 +19,20 @@
 //! plugin's transaction, as nothing changed. `execute` is the only way to the model: the plugin has no files, no clock,
 //! no randomness and no network, because the host doesn't import them.
 //!
-//! The module is the first version of the contract ([`ABI`]); a manifest whose `abi` isn't this one is refused at load.
+//! The module is the contract ([`ABI`]); a manifest whose `abi` is 1 or 2 is read by this host, and one built for another is
+//! refused at load.
+//!
+//! A plugin of ABI 2 may also declare **panels**: dockable palettes the app draws, with fields, buttons, a table and text.
+//! The guest writes no UI code: it declares the widgets in `plugin.json`, and a function answers with `panel`:
+//!
+//! ```json
+//! {"panel": {"values": {"level": "Level 1"}, "text": "3 rooms, 42.5 m²",
+//!            "table": {"rows": [["Level 1", "42.5"]]}, "badge": "5", "error": null}}
+//! ```
+//!
+//! The widget values are the call's `params`, exactly as a function's own parameters: a button of the panel calls a
+//! function of the same plugin, and the app passes the panel's values. See `docs/areas/plugins.md` for the manifest and
+//! the answer.
 
 use serde_json::json;
 

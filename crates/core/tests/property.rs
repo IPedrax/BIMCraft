@@ -667,11 +667,15 @@ impl Ledger {
             if held && !copy {
                 let keys: BTreeSet<String> = self.layers().iter().flat_map(|(_, c)| c.keys()).collect();
                 let before: Vec<(String, Map<String, Value>)> = keys.into_iter().map(|k| (k.clone(), self.resolved(&k, true).0)).collect();
+                let stood: Vec<String> = self.layers().iter().skip(1).map(|(n, _)| n.clone()).collect();
                 let gone = self.own.remove(&name).expect("own");
                 self.amendments.retain(|a| *a != name);
                 if self.base.as_deref() == Some(name.as_str()) {
                     self.base = codes::find(E, &gone.based_on).filter(|k| k.amends.is_empty()).map(|k| k.code.clone());
                 }
+                // One chosen that didn't stand over the code taken away, and would now, is no longer chosen.
+                let stands: Vec<String> = self.layers().iter().skip(1).map(|(n, _)| n.clone()).collect();
+                self.amendments.retain(|a| stood.contains(a) || !stands.contains(a));
                 for (k, v) in before {
                     self.changes.insert(k, v);
                 }
@@ -833,6 +837,33 @@ enum Op {
     Import(usize, bool),
     ImportOther(usize, bool),
     RoundTrip(u8),
+    /// A distribution board on a distribution system.
+    Board(String),
+}
+
+/// What a board keeps in the project when the codes don't name it (`from_codes`), by settings section: its system, and the
+/// voltages that system names.
+fn kept_by_boards(s: &Session) -> [BTreeSet<String>; 3] {
+    let on = boards_on(s);
+    let voltages = on
+        .iter()
+        .filter_map(|k| s.model.distribution_systems.get(k))
+        .flat_map(|d| d.voltage_names().cloned().collect::<Vec<_>>())
+        .collect();
+    [voltages, on, BTreeSet::new()]
+}
+
+/// The distribution systems the project's boards are on.
+fn boards_on(s: &Session) -> BTreeSet<String> {
+    use bimcraft_core::model::{Component, Element};
+    s.model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Component(Component { panel: Some(p), .. }) => p.distribution.clone(),
+            _ => None,
+        })
+        .collect()
 }
 
 fn shape(op: &Op) -> String {
@@ -868,6 +899,7 @@ fn shape(op: &Op) -> String {
         Op::Import(_, set) => format!("import[set={set}]"),
         Op::ImportOther(i, set) => format!("import-other[{i},set={set}]"),
         Op::RoundTrip(k) => format!("roundtrip[{k}]"),
+        Op::Board(_) => "board".into(),
     }
 }
 
@@ -883,6 +915,7 @@ fn said(op: &Op) -> String {
         Op::Import(slot, set) => format!("building_code_import {{path: f{slot}.xml, set: {set}}}"),
         Op::ImportOther(i, set) => format!("building_code_import {{path: other{i}.xml (another discipline), set: {set}}}"),
         Op::RoundTrip(k) => format!("(round trip check {k})"),
+        Op::Board(sys) => format!("component {{family: Distribution Board}} + panel {{distribution: {sys}}}"),
     }
 }
 
@@ -1003,6 +1036,15 @@ impl Run {
                 let project_method = p.get("amend").is_none()
                     && p.get("rules").and_then(Value::as_object).is_some_and(|r| WHOLES.iter().any(|k| r.contains_key(*k)));
                 let before_refusal = project_method.then(|| self.s.model.codes.clone());
+                // An edit of rules alone never takes from a board the system in force it is on, nor changes it, unless it
+                // gives that system's rules itself (I7).
+                let rules_only = p.as_object().is_some_and(|o| o.keys().all(|k| ["discipline", "rules", "amend"].contains(&k.as_str())));
+                let on = boards_on(&self.s);
+                let systems = |s: &Session| s.model.resolve_code(E, "distribution_systems").value;
+                let systems_before = systems(&self.s);
+                // Where the ledger names the amendments chosen as the engine does (a `save` renames them), a delete keeps
+                // agreeing.
+                let agreed = self.s.model.codes.choice(E).amendments == self.l.amendments;
                 let result = self.s.execute("building_code", p);
                 if let Some(before) = before_refusal {
                     if result.is_ok() || self.s.model.codes != before {
@@ -1012,6 +1054,21 @@ impl Run {
                 }
                 if result.is_ok() {
                     self.l.building_code(p);
+                    if rules_only {
+                        let after = systems(&self.s);
+                        // What the edit gives the system itself is the edit's; anything else, a null for it included, isn't.
+                        let given = |k: &String| p["rules"]["distribution_systems"].get(k.as_str()).is_some_and(|v| !v.is_null());
+                        for sys in on.iter().filter(|k| systems_before.get(*k).is_some_and(|v| !v.is_null()) && !given(k)) {
+                            if systems_before.get(sys) != after.get(sys) {
+                                let d = format!(
+                                    "{sys}: {} then {}",
+                                    short(systems_before.get(sys).unwrap_or(&Value::Null)),
+                                    short(after.get(sys).unwrap_or(&Value::Null))
+                                );
+                                self.fails.extend(failed("I7", "kept:a board's system".into(), d));
+                            }
+                        }
+                    }
                     if let Some(before) = before {
                         let after = rules_of(&mut self.s);
                         for (key, rules) in &before {
@@ -1023,7 +1080,17 @@ impl Run {
                                 break;
                             }
                         }
+                        // A delete keeps the amendments chosen the ledger keeps: none chosen is lost, none dropped is kept.
+                        let chosen = self.s.model.codes.choice(E).amendments.clone();
+                        if agreed && p.get("delete").is_some() && chosen != self.l.amendments {
+                            self.fails.extend(failed("I2", "kept:chosen".into(), format!("{chosen:?} not {:?}", self.l.amendments)));
+                        }
                     }
+                }
+            }
+            Op::Board(sys) => {
+                if let Ok(r) = self.s.execute("component", &json!({"family": "Distribution Board", "type": "12 circuits", "at": [0, 0]})) {
+                    let _ = self.s.execute("panel", &json!({"id": r["id"], "distribution": sys}));
                 }
             }
             Op::Setting(cmd, p) => {
@@ -1193,11 +1260,15 @@ impl Run {
     fn check_settings(&mut self) -> Vec<Fail> {
         let l = lib();
         let model = settings_of(&mut self.s);
+        // A system a board is on stays in the project when the codes switched stop naming it, with the voltages it names.
+        let by_boards = kept_by_boards(&self.s);
+        let kept = |i: usize, name: &String| by_boards[i].contains(name);
         let mut now: Vec<(String, String)> = Vec::new();
         for (i, key) in SETTINGS.iter().enumerate() {
             let says = self.l.resolved(key, true).0;
             for (name, v) in &says {
                 match (v.is_null(), model[i].get(name)) {
+                    (true, Some(_)) if kept(i, name) => {}
                     (true, Some(_)) => now.push((format!("settings:{key}:taken away by the codes, still in the model"), name.clone())),
                     (false, None) => now.push((format!("settings:{key}:named by the codes, not in the model"), name.clone())),
                     (false, Some(m)) if !same(v, m) => now.push((
@@ -1211,7 +1282,11 @@ impl Run {
                 if says.contains_key(name) {
                     continue;
                 }
+                // A board keeps an entry no code names, and the system it is on as it was; a voltage a new project has still
+                // comes back as a new project has it.
                 match l.starter[i].get(name) {
+                    None if kept(i, name) => {}
+                    Some(_) if i == 1 && kept(i, name) => {}
                     None => now.push((format!("settings:{key}:stale entry no code in force names"), name.clone())),
                     Some(st) if !same(st, m) => {
                         now.push((format!("settings:{key}:stale value no code in force gives"), format!("{name}: {}", short(m))));
@@ -1261,8 +1336,11 @@ impl Run {
             }
         }
         let (a, b) = (settings_of(&mut self.s), settings_of(&mut target));
+        // What only a board keeps, and no code in force names, is not in the codes; a new project has no board.
+        let by_boards = if kind == 0 || kind == 3 { kept_by_boards(&self.s) } else { Default::default() };
+        let named = |i: usize, n: &String| self.s.model.resolve_code(E, SETTINGS[i]).value.get(n).is_some_and(|v| !v.is_null());
         for i in 0..3 {
-            for (name, v) in &a[i] {
+            for (name, v) in a[i].iter().filter(|(n, _)| !by_boards[i].contains(*n) || named(i, n)) {
                 match b[i].get(name) {
                     None => return fail(format!("rt{kind}:model {} lost", SETTINGS[i]), name.clone()),
                     Some(x) if !same(v, x) => {
@@ -1295,6 +1373,23 @@ fn run(ops: &[Op], dir: &str, nochange: bool) -> Vec<Fail> {
 
 fn sig(f: &Fail) -> String {
     format!("{} {}", f.inv, f.kind)
+}
+
+/// Two amendments of the project's own, chosen in a random order, that both give `48 V`, each its own; the second also
+/// gives `48 DC`, which a board is on.
+fn shared_start(r: &mut Rng) -> Vec<Op> {
+    let (a, b) = if r.pct(50) { (OWN_NAMES[0], OWN_NAMES[1]) } else { (OWN_NAMES[1], OWN_NAMES[0]) };
+    let low = json!({"nominal": 48, "min": 43.2, "max": 52.8});
+    let high = json!({"nominal": 48, "min": 44, "max": 52});
+    vec![
+        Op::Bc(bc(json!({"create": a, "amendments": [a]}))),
+        Op::Bc(bc(json!({"create": b, "amendments": [a, b]}))),
+        Op::Bc(bc(json!({"amend": a, "rules": {"voltages": {"48 V": low}}}))),
+        Op::Bc(bc(json!({"amend": b, "rules": {"voltages": {"48 V": high}}}))),
+        // A system only the upper one gives, and a board on it.
+        Op::Bc(bc(json!({"amend": b, "rules": {"distribution_systems": {"48 DC": {"phases": 1, "wires": 2, "l_n": "48 V"}}}}))),
+        Op::Board("48 DC".into()),
+    ]
 }
 
 fn gen_op(r: &mut Rng, l: &Ledger, nochange: bool) -> Op {
@@ -1338,6 +1433,14 @@ fn gen_op(r: &mut Rng, l: &Ledger, nochange: bool) -> Op {
         ];
         r.pick(&all)
     };
+    // A board on a system in force, so the codes' edits meet a system an element is on.
+    if !nochange && r.pct(6) {
+        let systems: Vec<String> =
+            l.resolved("distribution_systems", true).0.into_iter().filter(|(_, v)| !v.is_null()).map(|(k, _)| k).collect();
+        if !systems.is_empty() {
+            return Op::Board(r.pick(&systems));
+        }
+    }
     loop {
         let w = r.below(100);
         let op = match w {
@@ -1378,7 +1481,27 @@ fn gen_op(r: &mut Rng, l: &Ledger, nochange: bool) -> Op {
             }
             35..=48 if !nochange && !held.is_empty() => {
                 let t = r.pick(&held);
-                let mut p = if r.pct(25) {
+                // A setting a chosen amendment gives (another, or this one), given here too or taken away here: the same name
+                // in two layers, where which one stands over the other decides what is in force.
+                let shared: Vec<(String, String, Value)> = held
+                    .iter()
+                    .filter_map(|h| l.own.get(h))
+                    .flat_map(|o| {
+                        SETTINGS.iter().flat_map(move |sec| {
+                            o.sections
+                                .get(*sec)
+                                .into_iter()
+                                .flatten()
+                                .filter(|(_, v)| !v.is_null())
+                                .map(move |(n, v)| (sec.to_string(), n.clone(), v.clone()))
+                        })
+                    })
+                    .collect();
+                let mut p = if !shared.is_empty() && r.pct(40) {
+                    let (sec, name, v) = shared[r.below(shared.len())].clone();
+                    let v = if r.pct(50) { Value::Null } else { v };
+                    json!({"amend": t, "rules": {sec: {name: v}}})
+                } else if r.pct(25) {
                     let (sec, name, v) = setting_rule(r);
                     json!({"amend": t, "rules": {sec: {name: v}}})
                 } else {
@@ -1517,8 +1640,15 @@ fn campaign(label: &str, nochange: bool) {
                     // The ops are made against the ledger as the run goes, then replayed as data.
                     let mut r = Run::new(dir.clone(), nochange);
                     let mut ops = Vec::new();
-                    for step in 0..n {
-                        let op = gen_op(&mut rng, &r.l, nochange);
+                    // Some sequences start with two amendments of the project's own that both give the same voltage, each its
+                    // own: what is in force then depends on which stands over the other, and on a null in either.
+                    let mut first = Vec::new();
+                    if !nochange && rng.pct(30) {
+                        first = shared_start(&mut rng);
+                    }
+                    let mut from = first.into_iter();
+                    for step in 0..n + 6 {
+                        let op = from.next().unwrap_or_else(|| gen_op(&mut rng, &r.l, nochange));
                         ops.push(op.clone());
                         if r.step(step, &op) {
                             break;
@@ -1583,7 +1713,7 @@ fn campaign(label: &str, nochange: bool) {
     for (sig, (n, _)) in &t.by {
         *inv.entry(sig.split(' ').next().unwrap_or("")).or_default() += n;
     }
-    for i in ["I1", "I2", "I3", "I4", "I5", "I6"] {
+    for i in ["I1", "I2", "I3", "I4", "I5", "I6", "I7"] {
         inv.entry(i).or_default();
     }
     out.push_str(&format!("   sequences with a failure, by invariant (a sequence counts once for each kind of failure it has): {inv:?}\n"));

@@ -184,6 +184,8 @@ enum From {
     Flag(&'static str),
     /// A value among the element's parameters, under the field's own name (its phases, its design option).
     Param,
+    /// A family's value, under a key of its `values`, mm²: an area shown in m².
+    FamilyArea(&'static str),
     /// How a door or a window opens, in the project's language.
     Operation,
     /// Its element's category, as elements name theirs: `wall`.
@@ -203,6 +205,9 @@ const TYPE: Own = ("Type", Kind::Text, From::Key("type"));
 const FAMILY: Own = (msg!("Family"), Kind::Text, From::Key("family"));
 const LEVEL: Own = ("Level", Kind::Text, From::Level);
 const AREA: Own = (msg!("Area"), Kind::Area, From::Key("area_m2"));
+const OPENINGS_AREA: Own = (msg!("Openings Area"), Kind::Area, From::Key("openings_area_m2"));
+const OPENING_AREA: Own = (msg!("Opening Area"), Kind::Area, From::FamilyArea(crate::family::OPENING_AREA));
+const PLAN_AREA: Own = (msg!("Plan Area"), Kind::Area, From::Key("plan_area_m2"));
 const WIDTH: Own = ("Width", Kind::Length, From::Key("width"));
 const HEIGHT: Own = ("Height", Kind::Length, From::Key("height"));
 const LENGTH: Own = ("Length", Kind::Length, From::Key("length"));
@@ -257,6 +262,7 @@ const SHARED: (&str, usize, &[Own]) = (
         ("Length", Kind::Length, From::Shared),
         ("Thickness", Kind::Length, From::Shared),
         (msg!("Area"), Kind::Area, From::Shared),
+        OPENINGS_AREA,
         (msg!("Material"), Kind::Text, From::Material),
         ID,
         MARK,
@@ -292,7 +298,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("door", 6, &[MARK, TYPE, WIDTH, HEIGHT, LEVEL, HOST, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "door",
+        6,
+        &[MARK, TYPE, WIDTH, HEIGHT, LEVEL, HOST, OPENING_AREA, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     (
         "window",
         7,
@@ -304,6 +314,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             (msg!("Sill"), Kind::Length, From::Key("sill")),
             LEVEL,
             HOST,
+            OPENING_AREA,
             FAMILY,
             OPERATION,
             COUNT,
@@ -312,7 +323,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("wall", 6, &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "wall",
+        6,
+        &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, AREA, OPENINGS_AREA, VOLUME, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     // A curtain wall's parts have no ids of their own: `host` is its wall, what picking a row selects.
     ("curtainpanel", 5, &[TYPE, WIDTH, HEIGHT, AREA, HOST_WALL, THICKNESS, COUNT]),
     ("mullion", 3, &[TYPE, LENGTH, HOST_WALL, COUNT]),
@@ -325,6 +340,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
             LEVEL,
             AREA,
             THICKNESS,
+            PLAN_AREA,
+            OPENINGS_AREA,
             OFFSET,
             COUNT,
             (ui_msg!("Structural"), Kind::YesNo, From::Flag("structural")),
@@ -337,7 +354,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             REBAR_RATIO,
         ],
     ),
-    ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "ceiling",
+        5,
+        &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, OPENINGS_AREA, VOLUME, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     ("toposolid", 5, &[NAME, LEVEL, AREA, VOLUME, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "roof",
@@ -347,7 +368,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             TYPE,
             LEVEL,
             (msg!("Slope"), Kind::Number, From::Key("slope")),
-            (msg!("Plan Area"), Kind::Area, From::Key("area_m2")),
+            THICKNESS,
+            PLAN_AREA,
+            AREA,
+            OPENINGS_AREA,
+            VOLUME,
             OFFSET,
             COUNT,
             PHASE_CREATED,
@@ -779,6 +804,7 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                 },
             );
         }
+        add(family::OPENING_AREA, Kind::Area);
     }
     out
 }
@@ -1131,6 +1157,9 @@ impl Row<'_> {
                 },
                 From::Category => Value::String(self.e.category().to_string()),
                 From::Material => self.material(),
+                From::FamilyArea(k) => {
+                    j.get("values").and_then(|v| v.get(k)).and_then(Value::as_f64).map_or(Value::Null, |x| serde_json::json!(fine(x / 1e6)))
+                }
                 From::Shared => self.shared(name, *kind),
             };
         }
@@ -1148,6 +1177,13 @@ impl Row<'_> {
                 _ => v,
             };
         }
+        // A host-cutting family's opening area is worked out with its values, not a parameter of its own.
+        if matches!(cat, "component" | "door" | "window")
+            && name == crate::family::OPENING_AREA
+            && let Some(x) = j.get("values").and_then(|v| v.get(name)).and_then(Value::as_f64)
+        {
+            return serde_json::json!(fine(x / 1e6));
+        }
         let cat = self.cat;
         if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
             return match crate::parameters::value_of(m, self.e, name, p) {
@@ -1163,7 +1199,6 @@ impl Row<'_> {
     /// Field `name`, holding `kind`, as its element's own category has it; else an area worked out from its sizes.
     fn shared(&self, name: &str, kind: Kind) -> Value {
         let cat = self.e.category();
-        let name = if (cat, name) == ("roof", "Area") { "Plan Area" } else { name };
         if own(cat).1.iter().any(|(n, k, _)| *n == name && *k == kind) {
             return self.field_of(cat, name);
         }
@@ -1783,7 +1818,8 @@ mod tests {
             assert_eq!(wall[2], Value::Null, "a wall has a thickness, not a width");
             let (l, h) = (wall[4].as_f64().unwrap(), wall[3].as_f64().unwrap());
             assert!(l > 0.0 && h > 0.0, "{wall:?}");
-            assert_eq!(wall[5], json!(fine(l * h / 1e6)), "a wall's area is its length by its height");
+            let area = wall[5].as_f64().unwrap();
+            assert!(area > 0.0 && area <= fine(l * h / 1e6), "a wall's area is its length by its height, less its openings");
         }
     }
 

@@ -242,6 +242,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 21 also: a floor's `framing` and `framing_angle` (its joists worked out as a wall's studs are), and a framing type's `rim`,
 /// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'. And a roof's
 /// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
+/// And a ramp may be drawn along a line (`path`), sketched (`sketch`, its run lines styled `ramp run`) or `flipped`; a build that
+/// reads up to 20 would leave those out and lay it as one straight run. A file of 20 needs no step: it holds none.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -306,32 +308,7 @@ impl Level {
     }
 }
 
-/// A plan's view range, as Revit's: mm above its level. Cut by the `cut` plane, seen from it down
-/// to the `bottom` and, beyond, to the view `depth`; above the cut, up to the `top` (the level
-/// above when none) for what overhangs.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct ViewRange {
-    pub top: Option<f64>,
-    pub cut: f64,
-    pub bottom: f64,
-    pub depth: f64,
-}
-
-impl Default for ViewRange {
-    fn default() -> ViewRange {
-        ViewRange { top: None, cut: CUT_HEIGHT, bottom: 0.0, depth: 0.0 }
-    }
-}
-
-/// A plan's view range as heights: its top, cut plane, bottom and view depth.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PlanRange {
-    pub top: f64,
-    pub cut: f64,
-    pub bottom: f64,
-    pub depth: f64,
-}
+pub use crate::view_range::{PlanRange, ViewRange};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -962,6 +939,22 @@ pub fn volume((corners, faces): &Polyhedron) -> f64 {
         })
         .sum();
     six / 6.0
+}
+
+/// A planar element's areas, mm²: what its surface measures and what its openings take from it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Areas {
+    pub net: f64,
+    pub openings: f64,
+}
+
+/// What a planar element measures, mm² and mm³: its [`Areas`], its plan projection (`plan`, a
+/// floor's or a roof's) and its net volume.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Quantities {
+    pub areas: Areas,
+    pub plan: Option<f64>,
+    pub volume: f64,
 }
 
 /// A shaped floor's top triangulated: the triangles, each corner lifted to its height, and each triangle's plane.
@@ -2454,6 +2447,9 @@ impl Landing {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ramp {
+    /// Its type: what it is built of and how plans draw it; none for a ramp solid to its level drawn as ramps always were.
+    #[serde(rename = "type", default, skip_serializing_if = "String::is_empty")]
+    pub type_name: String,
     pub level: Guid,
     #[serde(default)]
     pub top_level: Option<Guid>,
@@ -2465,9 +2461,42 @@ pub struct Ramp {
     pub slope: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landings: Vec<Landing>,
+    /// Drawn along a line from `start`: each segment a flight or a landing, straight or an arc, each flight rising at its
+    /// own slope. The ramp then climbs as high as its flights take it, and `landings` are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path: Vec<RampSeg>,
+    /// Sketched: its two sides (boundary lines) and its run lines ([`RAMP_RUN`] in their `style`), the first its start,
+    /// the second its end, and each two more the two ends of a landing. It climbs from its start to its end, rising at
+    /// one slope over its flights.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sketch: Vec<crate::sketch::SketchLine>,
+    /// It climbs the other way: its top where its foot was drawn.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flipped: bool,
+    /// The line its `path` is drawn along: its left edge, its middle or its right edge, looking up it as drawn.
+    #[serde(default, skip_serializing_if = "StairLine::is_centre")]
+    pub line: StairLine,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+}
+
+/// What a ramp's sketch line holds in its `style` when it is a run line (its start, its end, a landing's end), not a side.
+pub const RAMP_RUN: &str = "ramp run";
+
+/// A segment of the line a ramp is drawn along: on to the point `to`; a flight, or with `landing` a flat landing; straight,
+/// or with `arc` an arc turning through that many degrees (to the left, or with a minus to the right). A flight rises at
+/// its own `slope` (percent), or the ramp's.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RampSeg {
+    pub to: P2,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub landing: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub arc: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slope: Option<f64>,
 }
 
 /// A side of a stair or a ramp, going up it.
@@ -2564,6 +2593,7 @@ impl Element {
             Element::Roof(r) => Some(&r.sketch),
             Element::Shaft(sh) => Some(&sh.sketch),
             Element::FilledRegion(r) => Some(&r.sketch),
+            Element::Ramp(r) => Some(&r.sketch),
             _ => None,
         }
     }
@@ -2594,6 +2624,7 @@ impl Element {
             Element::Roof(r) => Some(&mut r.sketch),
             Element::Shaft(sh) => Some(&mut sh.sketch),
             Element::FilledRegion(r) => Some(&mut r.sketch),
+            Element::Ramp(r) => Some(&mut r.sketch),
             _ => None,
         }
     }
@@ -2839,7 +2870,14 @@ macro_rules! visit_refs {
         let f: &mut dyn FnMut(& $($m)? Guid) = $f;
         match $e {
             // A view's graphics, as `views_graphics` gives them.
-            Element::Level(Level { underlay, .. }) | Element::Section(Section { underlay, .. }) | Element::Elevation(Section { underlay, .. }) => {
+            Element::Level(Level { underlay, view_range, .. }) => {
+                if let Some(u) = underlay { f(& $($m)? u.view) }
+                // The levels its view range's planes are measured from.
+                for b in [& $($m)? view_range.top_from, & $($m)? view_range.bottom_from, & $($m)? view_range.depth_from] {
+                    if let crate::view_range::Base::Level(g) = b { f(g) }
+                }
+            }
+            Element::Section(Section { underlay, .. }) | Element::Elevation(Section { underlay, .. }) => {
                 if let Some(u) = underlay { f(& $($m)? u.view) }
             }
             Element::View3D(v) => {
@@ -2859,6 +2897,9 @@ macro_rules! visit_refs {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
                 if let Some(u) = & $($m)? v.underlay { f(& $($m)? u.view) }
+                for b in [& $($m)? v.view_range.top_from, & $($m)? v.view_range.bottom_from, & $($m)? v.view_range.depth_from] {
+                    if let crate::view_range::Base::Level(g) = b { f(g) }
+                }
             }
             Element::DetailView(v) => f(& $($m)? v.parent),
             Element::Wall(w) => {
@@ -3870,6 +3911,68 @@ pub fn stair_types() -> BTreeMap<String, StairType> {
     ])
 }
 
+/// A ramp type: what its ramps are built of and how plans draw them. `Solid` ones are solid down to their level, of
+/// `material` (else its first layer's); the others a slab `thickness` thick under their top, of its `layers` from the top
+/// down. In plan, as a stair type's: how they show on the level below, their own and the level above, the line styles of
+/// what shows and what is hidden, the fill of what shows, the walk line's head and foot, and the break mark.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RampType {
+    pub thickness: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<Layer>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub solid: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+    #[serde(default, skip_serializing_if = "PlanShows::is_usual")]
+    pub plan: PlanShows,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_visible: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_hidden: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fill: String,
+    #[serde(default, skip_serializing_if = "ArrowHead::is_usual")]
+    pub arrow: ArrowHead,
+    #[serde(default, skip_serializing_if = "WalkStart::is_usual")]
+    pub walk_start: WalkStart,
+    #[serde(default, skip_serializing_if = "CutMark::is_usual")]
+    pub cut_mark: CutMark,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub walk_rounded: bool,
+}
+
+impl Default for RampType {
+    fn default() -> RampType {
+        RampType {
+            thickness: 200.0,
+            layers: Vec::new(),
+            solid: false,
+            material: String::new(),
+            plan: PlanShows::default(),
+            line_visible: String::new(),
+            line_hidden: String::new(),
+            fill: String::new(),
+            arrow: ArrowHead::default(),
+            walk_start: WalkStart::default(),
+            cut_mark: CutMark::default(),
+            walk_rounded: false,
+        }
+    }
+}
+
+/// The ramp type a new ramp gets when none is named.
+pub const RAMP_TYPE: &str = "Ramp - 200mm";
+
+/// The ramp types a project starts with: a slab 200 thick under the slope, and one solid to its level.
+pub fn ramp_types() -> BTreeMap<String, RampType> {
+    BTreeMap::from([
+        (RAMP_TYPE.to_string(), RampType::default()),
+        ("Ramp - Solid".to_string(), RampType { solid: true, ..RampType::default() }),
+    ])
+}
+
 /// A railing type: how high its rail stands, and how far apart its balusters are (0: none).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -4119,6 +4222,8 @@ pub struct Types {
     pub room: BTreeMap<String, RoomType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub stair: BTreeMap<String, StairType>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ramp: BTreeMap<String, RampType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub structural_column: BTreeMap<String, ColumnType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -4460,6 +4565,10 @@ pub struct Model {
     /// Where room areas are measured: at the walls' centre lines, or at their finish faces.
     #[serde(default, skip_serializing_if = "RoomArea::is_default")]
     pub room_area: RoomArea,
+    /// How far toward the paper halftone draws what it lightens, percent (1 to 100): Visibility/Graphics' Halftone, a link, and
+    /// what a plan sees between its view range's bottom and its view depth (the underlay). Revit's Halftone/Underlay.
+    #[serde(default = "crate::graphics::default_halftone", skip_serializing_if = "crate::graphics::is_default_halftone")]
+    pub halftone: u8,
     pub next_id: Id,
     pub types: Shared<Types>,
     /// What layers are made of, by name.
@@ -4708,6 +4817,7 @@ impl Model {
             decimals: None,
             language,
             room_area: RoomArea::default(),
+            halftone: crate::graphics::HALFTONE,
             next_id: FIRST_ID,
             types: Types::default().into(),
             materials: BTreeMap::new().into(),
@@ -4954,6 +5064,7 @@ impl Model {
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
         m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         m.types.stair = stair_types();
+        m.types.ramp = ramp_types();
         crate::curtain::starter_types(&mut m);
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
@@ -4970,7 +5081,8 @@ impl Model {
         let roofs = t.roof.iter().map(|(n, x)| ("roof", n.as_str(), x.thickness, x.layers.as_slice()));
         let ceilings = t.ceiling.iter().map(|(n, x)| ("ceiling", n.as_str(), x.thickness, x.layers.as_slice()));
         let toposolids = t.toposolid.iter().map(|(n, x)| ("toposolid", n.as_str(), x.thickness, x.layers.as_slice()));
-        walls.chain(floors).chain(roofs).chain(ceilings).chain(toposolids)
+        let ramps = t.ramp.iter().map(|(n, x)| ("ramp", n.as_str(), x.thickness, x.layers.as_slice()));
+        walls.chain(floors).chain(roofs).chain(ceilings).chain(toposolids).chain(ramps)
     }
 
     /// The layers of type `name` of `category`, a wall's from its exterior in, the others' from
@@ -4981,12 +5093,13 @@ impl Model {
 
     /// Every type's layers, to change.
     pub fn layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
-        let Types { wall, floor, roof, ceiling, toposolid, .. } = &mut *self.types;
+        let Types { wall, floor, roof, ceiling, toposolid, ramp, .. } = &mut *self.types;
         (wall.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(floor.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(roof.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(ceiling.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(toposolid.values_mut().flat_map(|t| t.layers.iter_mut()))
+            .chain(ramp.values_mut().flat_map(|t| t.layers.iter_mut()))
     }
 
     /// Every material the types' layers name that the library hasn't, put in it: what a project
@@ -5666,6 +5779,10 @@ impl Model {
         // file of 20, which holds none.
         if self.types.stair.is_empty() {
             self.types.stair = stair_types();
+        }
+        // A file from before ramp types has none: it gets the ones a project starts with. Its ramps have none, and stay solid.
+        if self.types.ramp.is_empty() {
+            self.types.ramp = ramp_types();
         }
         // A file from before line styles leaves the patterns and styles out, so it has the English ones, whatever its
         // language: named in its language (a file that holds them has them by GUID, never equal to these).
@@ -6367,14 +6484,12 @@ impl Model {
             .unwrap_or(range)
     }
 
-    /// The heights of the view range of plan `key`. A top that isn't set is the level above
-    /// (none above: no limit), and never below the cut plane.
+    /// The heights of the view range of plan `key`, each plane from the level it is measured from ([`ViewRange`]): the top
+    /// never below the cut plane (the level above may be), and unlimited planes infinite.
     pub fn plan_range(&self, key: impl Key) -> PlanRange {
-        let level = self.plan_level(key).unwrap_or_default();
-        let z = self.elevation(level);
-        let r = self.view_range_of(key);
-        let above = || self.level_above(level).map_or(f64::INFINITY, |a| self.elevation(a));
-        PlanRange { top: r.top.map_or_else(above, |t| z + t).max(z + r.cut), cut: z + r.cut, bottom: z + r.bottom, depth: z + r.depth }
+        let level = self.plan_level(key).map(|l| self.guid(l)).unwrap_or_default();
+        let r = self.range_heights(level, &self.view_range_of(key));
+        PlanRange { top: r.top.max(r.cut), ..r }
     }
 
     /// The default 3D view's section box, its min and max corners, if plan `key` follows it (a dependent view as its parent
@@ -6512,6 +6627,7 @@ impl Model {
             "toposolid" => names(&self.types.toposolid),
             "room" => names(&self.types.room),
             "stair" => names(&self.types.stair),
+            "ramp" => names(&self.types.ramp),
             "curtainpanel" => names(&self.types.curtain_panel),
             "mullion" => names(&self.types.mullion),
             "cornermullion" => names(&self.types.corner_mullion),
@@ -6541,6 +6657,7 @@ impl Model {
             "railing" => "Railing - 1000mm",
             "room" => ROOM_TYPE,
             "stair" => "Monolithic 150mm",
+            "ramp" => RAMP_TYPE,
             "curtainpanel" => crate::curtain::GLAZED,
             "mullion" => crate::curtain::RECTANGULAR_MULLION,
             "cornermullion" => crate::curtain::RECTANGULAR_CORNER,
@@ -7311,6 +7428,110 @@ impl Model {
                 (ring, under.unwrap_or(p), top)
             })
             .collect()
+    }
+
+    /// What a wall, a floor, a ceiling or a roof measures, worked out from its geometry, mm² and
+    /// mm³: none for anything else, for a wall of no known thickness and for a roof whose faces
+    /// can't be found.
+    pub fn quantities(&self, id: impl Key) -> Option<Quantities> {
+        let id = self.elements.id(id)?;
+        match self.elements.get(id)? {
+            Element::Wall(w) => self.wall_quantities(id, w),
+            Element::Floor(f) => Some(self.floor_quantities(f)),
+            Element::Ceiling(c) => Some(self.ceiling_quantities(c)),
+            Element::Roof(r) => self.roof_quantities(r),
+            _ => None,
+        }
+    }
+
+    /// [`Quantities::areas`].
+    pub fn areas(&self, id: impl Key) -> Option<Areas> {
+        self.quantities(id).map(|q| q.areas)
+    }
+
+    /// [`Quantities::plan`].
+    pub fn plan_area(&self, id: impl Key) -> Option<f64> {
+        self.quantities(id).and_then(|q| q.plan)
+    }
+
+    /// [`Quantities::volume`].
+    pub fn volume(&self, id: impl Key) -> Option<f64> {
+        self.quantities(id).map(|q| q.volume)
+    }
+
+    /// A wall's areas and net volume: its prisms with and without its openings, their volumes over
+    /// its thickness. None where the type is unknown, as no side can be measured from no thickness.
+    fn wall_quantities(&self, id: Id, w: &Wall) -> Option<Quantities> {
+        let thickness = self.thickness(w);
+        if thickness <= 0.0 {
+            return None;
+        }
+        let volume = |openings| walls::prisms(self, id, openings).iter().map(walls::prism_volume).sum::<f64>();
+        let (gross, net) = (volume(false), volume(true));
+        Some(Quantities { areas: Areas { net: net / thickness, openings: ((gross - net) / thickness).max(0.0) }, plan: None, volume: net })
+    }
+
+    /// A floor's net areas and volume: its prisms less its shafts, by its slope, and its plan; its
+    /// openings filled for what they take from it.
+    fn floor_quantities(&self, f: &Floor) -> Quantities {
+        let (mut net, mut plan, mut volume) = (0.0, 0.0, 0.0);
+        for (ring, bottom, top) in self.floor_prisms(f) {
+            let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+            let pieces = self.less_shafts(&bottom.lift(&ring), rise).0;
+            let area: f64 = pieces.iter().map(|p| geom::area(p).abs()).sum();
+            plan += area;
+            net += area * (1.0 + top.g.dot(top.g)).sqrt();
+            volume += pieces
+                .iter()
+                .map(|p| {
+                    let c = geom::centroid(p);
+                    geom::area(p).abs() * (top.at(c) - bottom.at(c))
+                })
+                .sum::<f64>();
+        }
+        let mut whole = f.clone();
+        whole.openings.clear();
+        let gross: f64 =
+            self.floor_prisms(&whole).into_iter().map(|(ring, _, top)| geom::area(&ring).abs() * (1.0 + top.g.dot(top.g)).sqrt()).sum();
+        Quantities { areas: Areas { net, openings: (gross - net).max(0.0) }, plan: Some(plan), volume }
+    }
+
+    /// A ceiling's net area and volume: its slabs less its shafts, its thickness over that.
+    fn ceiling_quantities(&self, c: &Ceiling) -> Quantities {
+        let net: f64 = self
+            .ceiling_slabs(c)
+            .iter()
+            .map(|(face, rise)| self.less_shafts(face, *rise).0.iter().map(|p| geom::area(p).abs()).sum::<f64>())
+            .sum();
+        let gross = geom::area(&c.boundary).abs();
+        let thickness = self.types.ceiling.get(&c.type_name).map_or(0.0, |t| t.thickness);
+        Quantities { areas: Areas { net, openings: (gross - net).max(0.0) }, plan: None, volume: net * thickness }
+    }
+
+    /// A roof's net areas and volume: its prisms less its shafts, by their slopes, and its plan;
+    /// its openings filled for what they take from it. None where its faces can't be found.
+    fn roof_quantities(&self, r: &Roof) -> Option<Quantities> {
+        self.roof_pieces(r).ok()?;
+        let (mut net, mut plan, mut volume) = (0.0, 0.0, 0.0);
+        for (ring, bottom, top) in self.roof_prisms(r) {
+            let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+            let pieces = self.less_shafts(&bottom.lift(&ring), rise).0;
+            let area: f64 = pieces.iter().map(|p| geom::area(p).abs()).sum();
+            plan += area;
+            net += area * (1.0 + top.g.dot(top.g)).sqrt();
+            volume += pieces
+                .iter()
+                .map(|p| {
+                    let c = geom::centroid(p);
+                    geom::area(p).abs() * (top.at(c) - bottom.at(c))
+                })
+                .sum::<f64>();
+        }
+        let mut whole = r.clone();
+        whole.openings.clear();
+        let gross: f64 =
+            self.roof_prisms(&whole).into_iter().map(|(ring, _, top)| geom::area(&ring).abs() * (1.0 + top.g.dot(top.g)).sqrt()).sum();
+        Some(Quantities { areas: Areas { net, openings: (gross - net).max(0.0) }, plan: Some(plan), volume })
     }
 
     /// A shaped flat roof's underside, level at its base, when its type has a variable layer, and that layer: the layers
@@ -9089,6 +9310,25 @@ impl Model {
                  face, or put it on another work plane with `edit_work_plane`"
             )
         }));
+        // A wall whose type has no thickness has no side area: say so, rather than show 0.
+        out.extend(self.elements.iter().filter_map(|(id, e)| match e {
+            Element::Wall(w) if self.thickness(w) <= 0.0 => Some(if self.types.wall.contains_key(&w.type_name) {
+                format!("wall {id}: type `{}` has no thickness, so its area and volume are unknown", w.type_name)
+            } else {
+                format!("wall {id}: type `{}` isn't in the project, so its area and volume are unknown: choose a wall type", w.type_name)
+            }),
+            _ => None,
+        }));
+        // A roof whose faces can't be found has no area or volume either.
+        out.extend(self.elements.iter().filter_map(|(id, e)| {
+            match e {
+                Element::Roof(r) => self
+                    .roof_pieces(r)
+                    .err()
+                    .map(|why| format!("roof {id}: its faces can't be found ({why}), so its area and volume are unknown")),
+                _ => None,
+            }
+        }));
         out.extend(crate::electrical::circuit_warnings(self));
         out.extend(crate::curtain::malformed_walls(self).into_iter().map(|id| format!("curtain wall {id}: {}", crate::curtain::MALFORMED)));
         out
@@ -9190,6 +9430,9 @@ impl Model {
     pub fn check(&self) -> Result<(), String> {
         if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
             return Err(format!("`pinned` names an element that is gone ({g})"));
+        }
+        if !(1..=100).contains(&self.halftone) {
+            return Err(format!("`halftone` is how far toward the paper halftone draws, 1 to 100 percent, not {}", self.halftone));
         }
         if let Some(d) = self.decimals {
             match self.units.decimals() {
@@ -9522,7 +9765,7 @@ impl Model {
             }
             match layers.iter().filter(|l| l.variable).count() {
                 0 => {}
-                _ if matches!(cat, "wall" | "ceiling" | "toposolid") => {
+                _ if matches!(cat, "wall" | "ceiling" | "toposolid" | "ramp") => {
                     return Err(format!("{who}: only a floor's or a roof's layer can be variable, to take up a shaped top's falls"));
                 }
                 1 => {}
@@ -9916,6 +10159,7 @@ impl Model {
                     return Err(format!("{who}: another level is already named `{}`", l.name));
                 }
                 range_ok(&who, &l.view_range)?;
+                self.check_range(&who, id)?;
                 if let Some([a, b]) = l.crop {
                     crop(&who, a, b)?;
                 }
@@ -10640,6 +10884,7 @@ impl Model {
                 }
                 level_ok(v.level)?;
                 range_ok(&who, &v.view_range)?;
+                self.check_range(&who, id)?;
                 if let Some([a, b]) = v.crop {
                     crop(&who, a, b)?;
                 }
@@ -11021,6 +11266,9 @@ impl Model {
                 landings(&who, &st.landings, Some(f64::from(n)))?;
             }
             Element::Ramp(r) => {
+                if !r.type_name.is_empty() {
+                    known(&who, &r.type_name, &self.types.ramp)?;
+                }
                 level_ok(r.level)?;
                 point(&who, r.start)?;
                 coord(&format!("{who} angle"), r.angle)?;
@@ -11032,8 +11280,10 @@ impl Model {
                 if !(1.0..=50.0).contains(&r.slope) {
                     return Err(format!("{who}: slope {}% isn't from 1% to 50%", r.slope));
                 }
+                crate::sketch::check(&who, &r.sketch)?;
+                crate::ramps::check(&who, self, r)?;
                 let (bottom, top) = self.span(r.level, 0.0, r.top_level, r.height);
-                if top <= bottom + TOL {
+                if top <= bottom + TOL && r.path.is_empty() {
                     return Err(format!("{who}: its top must be above its base"));
                 }
                 coord(&format!("{who} length"), (top - bottom) / r.slope * 100.0)?;
@@ -11306,6 +11556,7 @@ impl Model {
             decimals,
             language,
             room_area,
+            halftone,
             next_id: _,
             types,
             materials,
@@ -11367,6 +11618,7 @@ impl Model {
             && *decimals == o.decimals
             && *language == o.language
             && *room_area == o.room_area
+            && *halftone == o.halftone
             && *types == o.types
             && *materials == o.materials
             && *images == o.images
@@ -11516,7 +11768,7 @@ impl<'a> Tally<'a> {
     }
 }
 
-fn coord(what: &str, v: f64) -> Result<(), String> {
+pub(crate) fn coord(what: &str, v: f64) -> Result<(), String> {
     if v.is_finite() && v.abs() <= MAX_COORD { Ok(()) } else { Err(format!("{what}: {v} is not a usable number")) }
 }
 
@@ -11549,22 +11801,9 @@ fn camera_ok(who: &str, cam: &ViewCamera) -> Result<(), String> {
     Ok(())
 }
 
-/// Whether `r` is a view range that makes sense: usable numbers running top ≥ cut plane ≥ bottom ≥
-/// view depth.
+/// Whether `r` is a plan's own view range that makes sense on its own ([`crate::view_range::range_ok`]).
 pub(crate) fn range_ok(who: &str, r: &ViewRange) -> Result<(), String> {
-    for (what, v) in [("cut", r.cut), ("bottom", r.bottom), ("depth", r.depth)].into_iter().chain(r.top.map(|t| ("top", t))) {
-        coord(&format!("{who} view range {what}"), v)?;
-    }
-    if !(r.depth <= r.bottom && r.bottom <= r.cut && r.top.is_none_or(|t| r.cut <= t)) {
-        return Err(format!(
-            "{who}: its plan's view range runs top ≥ cut plane ≥ bottom ≥ view depth, not top {}, cut {}, bottom {}, depth {}",
-            r.top.map_or_else(|| "at the level above".into(), |t| t.to_string()),
-            r.cut,
-            r.bottom,
-            r.depth
-        ));
-    }
-    Ok(())
+    crate::view_range::range_ok(who, r, false)
 }
 
 fn size(what: &str, v: f64) -> Result<(), String> {

@@ -1458,33 +1458,22 @@ fn member_quantities(
 }
 
 /// What a wall measures, for its `Qto_WallBaseQuantities`: its length along its axis, its thickness and height, its side
-/// (length by height, m²) and that less the doors and windows in it (`holes`, as (width, height, sill), each cut to the
-/// wall's height), and both through its thickness (m³), its joins aside. An attached wall has no single height; its
-/// volumes follow its clipped prisms, its side areas those volumes over its thickness.
-fn wall_quantities(m: &Model, id: Id, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]) -> Vec<(&'static str, &'static str, f64)> {
+/// (length by height, m²) and that less its doors, windows and the voids their families cut (`Model::quantities`), and
+/// both through its thickness (m³), its joins aside. An attached wall has no single height; its volumes follow its
+/// clipped prisms, its side areas those volumes over its thickness.
+fn wall_quantities(m: &Model, id: Id, wl: &crate::model::Wall) -> Vec<(&'static str, &'static str, f64)> {
     let (length, width) = (Axis::of(wl).length(), m.thickness(wl));
     let mut values = vec![("Length", "LENGTH", length), ("Width", "LENGTH", width)];
     if wl.attach_top.is_none() && wl.attach_base.is_none() {
-        let height = m.top_z(wl) - m.base_z(wl);
-        let gross = length * height;
-        let cut: f64 = holes.iter().map(|&(wd, h, sill)| wd.min(length) * h.min(height - sill).max(0.0)).sum();
-        let net = (gross - cut).max(0.0);
-        values.extend([
-            ("Height", "LENGTH", height),
-            ("GrossSideArea", "AREA", gross / 1e6),
-            ("NetSideArea", "AREA", net / 1e6),
-            ("GrossVolume", "VOLUME", gross * width / 1e9),
-            ("NetVolume", "VOLUME", net * width / 1e9),
-        ]);
-    } else {
-        let volume = |openings| walls::prisms(m, id, openings).iter().map(|p| prism_volume(&p.ring, &p.bottom, &p.top)).sum::<f64>();
-        let (gross, net) = (volume(false), volume(true));
-        // Of a type the project doesn't have, it is 0 thick: no side is known from its volume.
-        if width > 0.0 {
-            values.extend([("GrossSideArea", "AREA", gross / width / 1e6), ("NetSideArea", "AREA", net / width / 1e6)]);
-        }
-        values.extend([("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]);
+        values.push(("Height", "LENGTH", m.top_z(wl) - m.base_z(wl)));
     }
+    let volume = |openings| walls::prisms(m, id, openings).iter().map(walls::prism_volume).sum::<f64>();
+    let (gross, net) = (volume(false), volume(true));
+    // Of a type the project doesn't have, it is 0 thick: no side is known from its volume.
+    if width > 0.0 {
+        values.extend([("GrossSideArea", "AREA", gross / width / 1e6), ("NetSideArea", "AREA", net / width / 1e6)]);
+    }
+    values.extend([("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]);
     values
 }
 
@@ -1523,13 +1512,6 @@ fn grids(w: &mut Step, m: &Model, building: u64, building_at: u64, context: u64)
         w.add(format!("IFCGRID({},$,'Grid',$,$,#{at},#{shape},({}),({}),$,.IRREGULAR.)", w.guid(GRID, 0), refs(&u), refs(&v)))
     };
     w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,(#{ent}),#{building})", w.guid(GRID_CONTAINS, 0)));
-}
-
-/// A prism's volume, mm³: signed triangles of its plan ring times their mean height between the planes.
-fn prism_volume(ring: &[P2], bottom: &walls::Plane, top: &walls::Plane) -> f64 {
-    let Some(&o) = ring.first() else { return 0.0 };
-    let rise = |p| top.at(p) - bottom.at(p);
-    ring.windows(2).skip(1).map(|w| (w[0] - o).cross(w[1] - o) / 2.0 * (rise(o) + rise(w[0]) + rise(w[1])) / 3.0).sum::<f64>().abs()
 }
 
 /// Where an IFC file's coordinates have their origin: the internal origin (geometry as the model holds it), the Project Base
@@ -1826,15 +1808,6 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The boards on each distribution system, by its name, for the IfcDistributionSystem they are assigned to.
     let mut distribution: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
-    // The doors and windows in each wall as (width, height, sill), for what its sides measure less them.
-    let mut holes: BTreeMap<Id, Vec<(f64, f64, f64)>> = BTreeMap::new();
-    for e in m.elements.values() {
-        if let Element::Door(o) | Element::Window(o) = e
-            && let (Some(t), Some(host)) = (m.opening_type(e), m.elements.id(o.host))
-        {
-            holes.entry(host).or_default().push((t.width, t.height, o.sill));
-        }
-    }
     // A member's net volume by the rules of `quantities`, which the schedule's Volume follows too.
     let net_of = |id, e: &Element| quantities::take(m, rooms.quantities(), rooms.takeoff(), id, e).map(|t| t.volume_m3);
     for (&id, e) in &m.elements {
@@ -1921,7 +1894,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 products.insert(id, ent);
                 placed.insert(id, (ent, at));
                 w.typed("IFCWALLTYPE", ".STANDARD.", &wl.type_name, ent);
-                let values = wall_quantities(m, id, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
+                let values = wall_quantities(m, id, wl);
                 w.quantities(ent, "Qto_WallBaseQuantities", &values, id);
                 // Framed, its members are its parts; it keeps its own body, the whole wall, as an assembly's does.
                 if wl.framing.is_some()
@@ -1961,29 +1934,32 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 if f.structural {
                     w.load_bearing(ent, "Pset_SlabCommon", id);
                 }
-                // A level slab measures as its outline less its openings, through its depth; a sloped or shaped one has no
-                // one plan area to give, so its depth, and its volumes: its plan through its depth plumb, as its underside
-                // follows its top.
+                // A level slab measures as its outline less its openings and the shafts through it, through its depth; a
+                // sloped or shaped one has no one plan area to give, so its depth, and its volumes: its plan through its
+                // depth plumb, as its underside follows its top.
                 let gross = geom::area(&f.boundary).abs();
-                let net = gross - f.openings.iter().map(|o| geom::area(o).abs()).sum::<f64>();
+                let net = m.plan_area(id).unwrap_or(gross);
+                let net_volume = m.volume(id).unwrap_or(net * depth);
                 let values = if level {
                     vec![
                         ("Width", "LENGTH", depth),
                         ("Perimeter", "LENGTH", perimeter(&f.boundary)),
-                        ("GrossArea", "AREA", geom::area(&f.boundary).abs() / 1e6),
+                        ("GrossArea", "AREA", gross / 1e6),
                         ("NetArea", "AREA", net / 1e6),
-                        ("GrossVolume", "VOLUME", geom::area(&f.boundary).abs() * depth / 1e9),
-                        ("NetVolume", "VOLUME", net * depth / 1e9),
+                        ("GrossVolume", "VOLUME", gross * depth / 1e9),
+                        ("NetVolume", "VOLUME", net_volume / 1e9),
                     ]
                 } else {
                     // A shaped one's, its solid's: under a variable layer its underside is level, so its depth isn't one.
-                    let (gross, net) = match &solid {
-                        Some(solid) => {
-                            (m.shape_solid_over(f, &[]).map_or(gross * depth, |s| crate::model::volume(&s)), crate::model::volume(solid))
-                        }
-                        None => (gross * depth, net * depth),
+                    let gross_volume = match &solid {
+                        Some(_) => m.shape_solid_over(f, &[]).map_or(gross * depth, |s| crate::model::volume(&s)),
+                        None => gross * depth,
                     };
-                    vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
+                    vec![
+                        ("Width", "LENGTH", depth),
+                        ("GrossVolume", "VOLUME", gross_volume / 1e9),
+                        ("NetVolume", "VOLUME", net_volume / 1e9),
+                    ]
                 };
                 w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
                 // Framed, its members are its parts, placed in its own placement; it keeps its own body, the whole slab.
@@ -2661,29 +2637,25 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
                 // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
                 // A roof whose faces can't be found (a gable edge its footprint doesn't have) has no area to say: none is written.
-                let mut gross_roof = r.clone();
-                gross_roof.openings.clear();
-                if let Ok(faces) = m.roof_faces(&gross_roof) {
-                    let mut gross = 0.0;
-                    let mut projected = 0.0;
-                    for (loops, plane) in faces {
-                        if let Some((outer, holes)) = loops.split_first() {
-                            let area = geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>();
-                            projected += area;
-                            gross += area * (1.0 + plane.g.dot(plane.g)).sqrt();
-                        }
-                    }
-                    let net: f64 = m
-                        .roof_prisms(r)
-                        .iter()
-                        .map(|(ring, bottom, top)| {
-                            let rise = ring.iter().map(|p| top.at(*p) - bottom.at(*p)).fold(0.0, f64::max);
-                            let area: f64 = m.less_shafts(&bottom.lift(ring), rise).0.iter().map(|p| geom::area(p).abs()).sum();
-                            area * (1.0 + top.g.dot(top.g)).sqrt()
-                        })
-                        .sum();
-                    let values =
-                        [("GrossArea", "AREA", gross / 1e6), ("NetArea", "AREA", net / 1e6), ("ProjectedArea", "AREA", projected / 1e6)];
+                if let Some(q) = m.quantities(id) {
+                    // ProjectedArea stays the gross plan of the schema: its openings are filled, as GrossArea fills them.
+                    let mut gross_roof = r.clone();
+                    gross_roof.openings.clear();
+                    let projected: f64 = m.roof_faces(&gross_roof).map_or(0.0, |faces| {
+                        faces
+                            .iter()
+                            .map(|(loops, _)| {
+                                let Some((outer, holes)) = loops.split_first() else { return 0.0 };
+                                geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>()
+                            })
+                            .sum()
+                    });
+                    let gross = q.areas.net + q.areas.openings;
+                    let values = [
+                        ("GrossArea", "AREA", gross / 1e6),
+                        ("NetArea", "AREA", q.areas.net / 1e6),
+                        ("ProjectedArea", "AREA", projected / 1e6),
+                    ];
                     w.quantities(ent, "Qto_RoofBaseQuantities", &values, id);
                 }
             }
@@ -4337,7 +4309,7 @@ mod tests {
         wl.type_name = "No Such Type".into();
         let wl = wl.clone();
         assert_eq!(m.thickness(&wl), 0.0);
-        let q = wall_quantities(&m, walls[0], &wl, &[]);
+        let q = wall_quantities(&m, walls[0], &wl);
         assert!(q.iter().all(|(_, _, v)| v.is_finite()), "{q:?}");
         let names: Vec<&str> = q.iter().map(|(n, _, _)| *n).collect();
         assert!(!names.contains(&"GrossSideArea") && !names.contains(&"NetSideArea"), "{names:?}");
