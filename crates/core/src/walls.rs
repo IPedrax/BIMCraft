@@ -1304,6 +1304,13 @@ pub struct Prism {
     pub curve: Option<(P2, f64)>,
 }
 
+/// A prism's volume, mm³: signed triangles of its plan ring times their mean height between the planes.
+pub fn prism_volume(p: &Prism) -> f64 {
+    let Some(&o) = p.ring.first() else { return 0.0 };
+    let rise = |q| p.top.at(q) - p.bottom.at(q);
+    p.ring.windows(2).skip(1).map(|w| (w[0] - o).cross(w[1] - o) / 2.0 * (rise(o) + rise(w[0]) + rise(w[1])) / 3.0).sum::<f64>().abs()
+}
+
 /// Wall `id` as prisms: its outline cut across where its doors and windows start and end (with
 /// `openings`) and along an arc into short straight pieces, each piece from its base up to its
 /// top less the openings over it, cut where what it's attached to changes plane. An opening whose family cuts its wall

@@ -4217,9 +4217,16 @@ fn runs(extra: &mut Map<String, Value>, l: &stairs::Layout) {
     extra.insert("runs".into(), json!(runs));
 }
 
-/// The area of the rings together, mm².
-fn area(rings: &[Vec<P2>]) -> f64 {
-    rings.iter().map(|r| geom::area(r).abs()).sum()
+/// A planar element's areas and volume as agents read them: `area_m2` (net), `openings_area_m2`,
+/// `plan_area_m2` where it has a plan, and `volume_m3` (net).
+fn planar_quantities(m: &Model, id: Id, extra: &mut Map<String, Value>) {
+    let Some(q) = m.quantities(id) else { return };
+    extra.insert("area_m2".into(), json!(m2(q.areas.net)));
+    extra.insert("openings_area_m2".into(), json!(m2(q.areas.openings)));
+    if let Some(plan) = q.plan {
+        extra.insert("plan_area_m2".into(), json!(m2(plan)));
+    }
+    extra.insert("volume_m3".into(), json!((q.volume / 1e6).round() / 1e3));
 }
 
 pub(crate) fn hundredth(x: f64) -> f64 {
@@ -4777,6 +4784,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(r) = axis.radius() {
                 extra.insert("radius".into(), json!(hundredth(r)));
             }
+            planar_quantities(m, id, &mut extra);
         }
         Element::Door(o) | Element::Window(o) => {
             if let (Some(t), Some(w)) = (m.opening_type(e), m.wall(o.host)) {
@@ -4787,15 +4795,23 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 }
                 extra.insert("level".into(), json!(w.level));
                 extra.insert("at".into(), json!(m.anchor(id)));
-                // Of a family: every parameter's value, worked out.
-                if let Some(v) = o
+                // Of a family: every parameter's value, worked out. A door or a window of a project type has none: its
+                // Opening Area is the rectangle of its Width and Height.
+                let mut values = o
                     .family
                     .as_ref()
                     .and_then(|n| m.families.get(n))
-                    .and_then(|f| f.values_in(&o.type_name, &o.params, m.thickness(w)).ok())
-                {
-                    extra.insert("values".into(), values_json(v));
-                }
+                    .and_then(|f| f.values_in(&o.type_name, &o.params, m.thickness(w)).ok());
+                let area = values
+                    .as_ref()
+                    .and_then(|v| v.get(crate::family::OPENING_AREA))
+                    .and_then(|v| match v {
+                        crate::family::Val::Number(x) => Some(*x),
+                        _ => None,
+                    })
+                    .unwrap_or(t.width * t.height);
+                values.get_or_insert_with(BTreeMap::new).insert(crate::family::OPENING_AREA.to_string(), crate::family::Val::Number(area));
+                extra.insert("values".into(), values_json(values.unwrap_or_default()));
             }
         }
         Element::Dimension(d) => {
@@ -4911,9 +4927,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 .flat_map(|(loops, p)| loops.iter().flatten().map(|q| p.at(*q)))
                 .fold(m.elevation(r.level) + r.offset, f64::max);
             let outline = m.roof_outline(r);
-            let courtyards: f64 = r.courtyards.iter().map(|c| geom::area(c).abs()).sum();
             extra.insert("ridge".into(), json!(hundredth(ridge)));
-            extra.insert("area_m2".into(), json!(m2(geom::area(&outline).abs() - courtyards)));
+            extra.insert("thickness".into(), json!(m.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness)));
+            planar_quantities(m, id, &mut extra);
             extra.insert("outline".into(), json!(outline.into_iter().map(micron).collect::<Vec<_>>()));
         }
         Element::Sheet(sh) => {
@@ -4963,11 +4979,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
         // Areas less the openings and shafts through them.
         Element::Floor(f) => {
-            let left: f64 = m.floor_slabs(f).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
-            extra.insert("area_m2".into(), json!(m2(left)));
+            planar_quantities(m, id, &mut extra);
             extra.insert("thickness".into(), json!(m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness)));
-            // What it holds, less its openings and the shafts through it: under a variable layer, less where its top falls.
-            extra.insert("volume_m3".into(), json!((m.floor_volume(f) / 1e6).round() / 1e3));
             // How high its top is, at its lowest and its highest, its shape's points too.
             extra.insert("top".into(), top_range(m, f));
             // Where its top's model pattern starts and how far it's turned: shown at their defaults too, to be set by modify.
@@ -4979,8 +4992,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             }
         }
         Element::Ceiling(cl) => {
-            let left: f64 = m.ceiling_slabs(cl).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
-            extra.insert("area_m2".into(), json!(m2(left)));
+            planar_quantities(m, id, &mut extra);
             if let Some(t) = m.types.ceiling.get(&cl.type_name) {
                 extra.insert("thickness".into(), json!(t.thickness));
                 extra.insert("grid".into(), json!(t.grid));

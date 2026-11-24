@@ -2026,11 +2026,11 @@ fn properties_show_0_where_the_json_leaves_a_number_out_and_blank_where_it_is_no
     // A floor on its level, flat: its JSON leaves its offset and its slope out.
     h.state_mut().selection = floors[..1].to_vec();
     h.run();
-    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope (°)")), ("0".into(), "0".into()));
+    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), ("0 mm".into(), "0°".into()));
     // Both floors: the slopes they share show, their offsets differ.
     h.state_mut().selection = floors;
     h.run();
-    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope (°)")), (String::new(), "0".into()));
+    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), (String::new(), "0°".into()));
     // None is not 0: a section with no far clip sees all there is, a plan's top is the level above.
     h.state_mut().selection = ids(&h, "section");
     h.run();
@@ -2810,7 +2810,7 @@ fn the_roof_tool_roofs_the_walls_of_the_plan_on_the_level_above() {
     );
     assert_eq!(field(&h, roof[0], "boundary")[0], json!([-600.0, -600.0]), "500 mm past the walls' faces");
     assert_eq!(h.state().selection, roof, "finished, the roof is selected");
-    assert!(h.query_by_label("Modify | Roofs").is_some() && h.query_by_label("Slope (°)").is_some());
+    assert!(h.query_by_label("Modify | Roofs").is_some() && h.query_by_label("Slope").is_some());
 }
 
 #[test]

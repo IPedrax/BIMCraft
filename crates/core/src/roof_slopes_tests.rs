@@ -234,3 +234,15 @@ fn a_sketch_line_gives_its_edges_a_slope_and_none_of_it_is_kept_in_the_roofs_ske
     let e = fails(&mut s, "floor", json!({"sketch": lines}));
     assert!(e.contains("slope") && e.contains("roof"), "{e}");
 }
+
+#[test]
+fn a_roof_whose_faces_cannot_be_found_says_its_area_is_unknown() {
+    let mut s = Session::new();
+    let id = run(&mut s, "roof", json!({"boundary": rect()}))["id"].as_u64().unwrap();
+    let mut m = (*s.model).clone();
+    let Some(Element::Roof(r)) = m.elements.get_mut(id) else { panic!("no roof {id}") };
+    r.gables = vec![99];
+    let warnings = m.warnings();
+    assert!(warnings.iter().any(|w| w.contains(&format!("roof {id}")) && w.contains("faces")), "{warnings:?}");
+    assert!(m.quantities(id).is_none(), "no area is known");
+}

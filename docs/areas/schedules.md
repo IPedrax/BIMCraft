@@ -23,10 +23,12 @@ and whose height holds it, so an outlet on a wall's face is in the room on that 
 A multi-category schedule (`of: "multicategory"`, `schedule::MULTI`, as Revit's Multi-Category Schedule) has a row for each
 element of the categories it lists (`Schedule::categories`; none, every built one, `schedule::built`: not rooms, levels,
 masses, mass floors, framing members and sheets) and the fields they share (`SHARED`): Category (the element's, as elements name theirs), Family, Type, Level, Count,
-Width, Height, Length, Thickness and Area, each its own category's field of that name where it has one holding the same and
-empty where not (an area worked out for walls, length by height, and doors and windows, width by height; a roof's plan
-area), and Material, its type's structure layer's (or its thickest's), a run's type's or a family's first material
-parameter's. Its filters, sorting, grouping, totals and calculated fields are any schedule's; only it lists categories.
+Width, Height, Length, Thickness, Area and Openings Area, each its own category's field of that name where it has one
+holding the same and empty where not; a door's or a window's area is width by height. A wall's, floor's, ceiling's and
+roof's Area is the net surface `Model::quantities` works out (a wall's one face; a slab's or roof's surface by its slope),
+not a gross area; a roof's plan is its own `Plan Area`, and a floor's too. And Material, its type's structure layer's (or
+its thickest's), a run's type's or a family's first material parameter's. Its filters, sorting, grouping, totals and
+calculated fields are any schedule's; only it lists categories.
 Two categories have rows that are no elements, made in `schedule::sources`: `massfloor`, a mass at each level it crosses
 ([masses](massing.md)), and `framingmember` (`schedule {category: framingmembers}`, Framing Members), a row for each member of
 each framed wall, floor and roof, worked out as it is read and pointing at its host: Host, Host Type, Framing Type, Role, Section (one ply as
@@ -45,9 +47,9 @@ rooms by their points), a script of ours builds it again in Revit and writes wha
 by our element ids, and `compare_crosscheck` (and the test `the_small_tower_has_the_numbers_revit_gives_it`, once Revit's
 table of the small two-storey tower is committed) compares them quantity by quantity within `crosscheck::tolerance`.
 Compared: each room's area, perimeter, whether it is enclosed, its unbounded height and its volume, each wall's length
-along its centre line and its doors and windows, each floor's area less its openings and shafts, and its volume. Revit
-reports more (a wall's area and volume) than we work out yet: those come back as `only_theirs`, the list of what is still
-to do. Where the two define a quantity differently, the difference goes here, with the rule the comparison applies.
+along its centre line, its net area and its doors and windows, each floor's area less its openings and shafts, and its
+volume. Revit reports a wall's volume too, which we leave as `only_theirs` for now. Where the two define a quantity
+differently, the difference goes here, with the rule the comparison applies.
 
 - A room's volume is its area times its unbounded height (from its level and base offset up to its upper limit and limit
   offset), which is Revit's while nothing under its top bounds it. Revit also stops a room's volume at a room-bounding

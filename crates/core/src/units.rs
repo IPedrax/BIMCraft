@@ -148,6 +148,11 @@ impl Units {
         if self.imperial() { (mm2 / (FOOT * FOOT), "ft²") } else { (mm2 / 1e6, "m²") }
     }
 
+    /// A volume in cubic metres or, in inches and feet, cubic feet; and that unit.
+    pub fn volume(self, mm3: f64) -> (f64, &'static str) {
+        if self.imperial() { (mm3 / (FOOT * FOOT * FOOT), "ft³") } else { (mm3 / 1e9, "m³") }
+    }
+
     /// The scales, 1 : n, a view in these units is offered: the metric ones; in inches or feet, the architect's (an
     /// inch, or a fraction of one, to the foot) and then the engineer's (an inch to tens of feet).
     pub fn scales(self) -> &'static [f64] {
