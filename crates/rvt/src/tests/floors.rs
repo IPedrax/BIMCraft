@@ -478,3 +478,88 @@ fn a_floor_is_as_thick_as_its_type_to_within_a_millimetre_and_a_type_of_no_width
     assert!(said("no layers").contains("102"), "{:?}", i.skipped);
     assert_eq!(i.model.types.floor.values().find(|t| t.thickness == 152.4).map(|t| t.thickness), Some(152.4));
 }
+
+const SHAFTS: i64 = -2_000_996;
+
+/// A shaft's corners ([`corners`]), its level, its base offset, its height and its top level.
+type ShaftAt = (Vec<(i64, i64)>, bimcraft_core::ids::Guid, f64, f64, Option<bimcraft_core::ids::Guid>);
+
+/// A shaft's outline in plan as its corners, rounded to the micron and sorted, whichever way it runs and wherever it starts.
+fn corners(ring: &[bimcraft_core::geom::P2]) -> Vec<(i64, i64)> {
+    let mut c: Vec<(i64, i64)> = ring.iter().map(|p| ((p.0 * 1000.0).round() as i64, (p.1 * 1000.0).round() as i64)).collect();
+    c.sort_unstable();
+    c
+}
+
+#[test]
+fn a_shaft_opening_comes_in_as_a_shaft_of_the_outline_its_graphics_draw_or_else_of_its_box() {
+    use crate::project_fixture::{box_tree, graphics_block, tree_bytes};
+    let mut p = base(2024);
+    // Shaft 300 draws a solid 3.5 by 2.75 ft from level 1 up 30 ft; shaft 301 draws nothing, its box 2 by 2 ft from 1 ft up 20 ft.
+    p.recs.push(Rec::new(300, SHAFTS).at([0.0, 0.0, 0.0, 3.5, 2.75, 30.0], &[]));
+    p.graphics.extend(graphics_block(300, &tree_bytes(&box_tree(300, [3.5, 2.75, 30.0], None))));
+    p.recs.push(Rec::new(301, SHAFTS).at([10.0, 0.0, 1.0, 12.0, 2.0, 21.0], &[]));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let l1 = level_named(&i, "Level 1");
+    let got: Vec<ShaftAt> = i
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Shaft(s) => Some((corners(&s.boundary), s.level, s.base_offset, s.height, s.top_level)),
+            _ => None,
+        })
+        .collect();
+    let rect =
+        |x0: f64, y0: f64, x1: f64, y1: f64| corners(&[(x0, y0), (x1, y0), (x1, y1), (x0, y1)].map(|(x, y)| bimcraft_core::geom::P2(x, y)));
+    assert_eq!(
+        got,
+        [(rect(0.0, 0.0, 1066.8, 838.2), l1, 0.0, 9144.0, None), (rect(3048.0, 0.0, 3657.6, 609.6), l1, 304.8, 6096.0, None)],
+        "{:?}",
+        i.skipped
+    );
+    let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+    assert!(says("1 shaft opening: comes in as a shaft of the outline its graphics draw") && says("ids 300"), "{:?}", i.skipped);
+    assert!(says("1 shaft opening: comes in as a shaft of its box's rectangle") && says("ids 301"), "{:?}", i.skipped);
+    assert!(!says("Shaft Openings left out"), "{:?}", i.skipped);
+}
+
+/// A prism standing upright on `ring` (millimetres, counter-clockwise, every corner seen from the first) from `z0` to `z1`, its top
+/// moved `lean` east: its sides as two triangles each, its bottom and its top as fans.
+fn upright(ring: &[(f64, f64)], z0: f64, z1: f64, lean: f64) -> Vec<[[f64; 3]; 3]> {
+    let lo = |k: usize| [ring[k].0, ring[k].1, z0];
+    let hi = |k: usize| [ring[k].0 + lean, ring[k].1, z1];
+    let n = ring.len();
+    let mut out = Vec::new();
+    for k in 0..n {
+        let j = (k + 1) % n;
+        out.push([lo(k), lo(j), hi(j)]);
+        out.push([lo(k), hi(j), hi(k)]);
+    }
+    for k in 1..n - 1 {
+        out.push([lo(0), lo(k + 1), lo(k)]);
+        out.push([hi(0), hi(k), hi(k + 1)]);
+    }
+    out
+}
+
+#[test]
+fn a_shafts_outline_is_the_bottom_of_the_upright_prism_it_draws_and_a_leaning_one_has_none() {
+    use crate::floors::outline_of;
+    // An L, a corner on its long edge besides, which adds nothing.
+    let l = [(0.0, 0.0), (2000.0, 0.0), (4000.0, 0.0), (4000.0, 1000.0), (1000.0, 1000.0), (1000.0, 3000.0), (0.0, 3000.0)];
+    let (ring, z0, z1) = outline_of(&upright(&l, 300.0, 9000.0, 0.0)).unwrap_or_else(|| panic!("an L"));
+    assert_eq!((z0, z1), (300.0, 9000.0));
+    assert_eq!(
+        corners(&ring),
+        corners(
+            &[(0.0, 0.0), (4000.0, 0.0), (4000.0, 1000.0), (1000.0, 1000.0), (1000.0, 3000.0), (0.0, 3000.0)]
+                .map(|(x, y)| bimcraft_core::geom::P2(x, y))
+        )
+    );
+    assert!(area(&ring) > 0.0, "counter-clockwise");
+    // Leaning, none; nothing, none.
+    assert_eq!(outline_of(&upright(&l, 300.0, 9000.0, 500.0)), None);
+    assert_eq!(outline_of(&[]), None);
+}

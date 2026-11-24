@@ -30,7 +30,11 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   a floor edited with Revit's shape tools comes in shaped by its top's vertices, which its data holds, its top at the height most
   of them have (the creases between them are BIMCraft's own, and a variable layer's level underside is not read); a sketch that
   does not close is tried again without the lines that cannot bound it (another sketch's, past the element's box, and a line
-  drawn twice); a roof by footprint comes in level (one that rises is a stand-in, its slopes unread), one by extrusion only where its box
+  drawn twice); a shaft opening (`OST_ShaftOpening`) is a shaft of the outline its graphics draw, which draw it as a solid, a prism
+  standing upright from its bottom to its top (`floors::outline_of`: its bottom's outline, on the level at or below it, as tall
+  as the prism), or else of its box's rectangle, saying so: it cuts the floors, ceilings and roofs it passes through in plans,
+  sections and 3D, and an edited floor keeps the cut (across the twelve 2025 samples, 13 of 14 come in with their outline, one of
+  the Japanese structural sample's as its box); a roof by footprint comes in level (one that rises is a stand-in, its slopes unread), one by extrusion only where its box
   confirms it, and a wall that names a flat roof or one by extrusion has its top cut by it. A room tries the
   middle of its box and then a grid of points over it, and making the arrangement of a level's walls is what costs (`geom::faces`
   splits and matches every segment), so the faces of a level are made once and every point of every room of that level is asked of

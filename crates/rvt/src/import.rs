@@ -204,10 +204,11 @@ fn has_volume(r: &Record) -> bool {
 }
 
 /// The categories whose records the first pass keeps.
-const CATEGORIES: [i64; 15] = [
+const CATEGORIES: [i64; 16] = [
     walls::OST_WALLS,
     floors::OST_FLOORS,
     floors::OST_CEILINGS,
+    floors::OST_SHAFT_OPENINGS,
     floors::OST_SKETCH_LINES,
     openings::OST_DOORS,
     openings::OST_WINDOWS,
@@ -269,6 +270,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     let mut wants = Wants { materials: facts.materials.clone(), ..Wants::default() };
     walls::wanted(&facts, &mut wants.data);
     wants.drawings.extend(imported::wanted(&facts));
+    wants.drawings.extend(floors::shafts_wanted(&facts));
     floors::wanted(&facts, &mut wants.data);
     roofs::wanted(&facts, &mut wants.data);
     openings::wanted(&facts, &mut wants);
@@ -281,6 +283,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     cx.looks = gathered.looks.iter().filter_map(|(id, l)| Some((gathered.materials.get(id)?.clone(), *l))).collect();
     walls::import(&mut cx, &facts, &gathered);
     floors::import(&mut cx, &facts, &gathered);
+    floors::shafts(&mut cx, &facts, &gathered);
     roofs::import(&mut cx, &facts, &gathered);
     attached(&mut cx, &facts);
     openings::import(&mut cx, &facts, &gathered);
