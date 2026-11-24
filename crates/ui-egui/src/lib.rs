@@ -107,6 +107,7 @@ mod shape;
 pub mod shortcuts;
 mod sketch;
 mod sketch3d;
+pub mod software;
 pub mod spacemouse;
 mod spots;
 mod standards;
@@ -675,6 +676,10 @@ pub struct BimApp {
     pub frame_limit: pacing::Limit,
     /// The software adapter the window draws on, where it has no graphics card (`pacing::software`): its name.
     pub software_adapter: Option<String>,
+    /// What the user asked the window to be drawn on (Settings > Performance > Drawing), for the next start.
+    pub draw_on: software::Drawing,
+    /// Why this window is drawn on the processor (`software`), where it is.
+    pub drawn_on_processor: Option<String>,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
     /// The window draws its own title bar (`titlebar.rs`): the desktop's `main` says so where the system lets it (Windows and
@@ -2107,6 +2112,8 @@ impl BimApp {
             frames: None,
             frame_limit: pacing::Limit::Auto,
             software_adapter: None,
+            draw_on: software::Drawing::Auto,
+            drawn_on_processor: None,
             orbit: orbit::Orbit::default(),
             active_3d: None,
             card: gpu::Card::default(),
@@ -7988,19 +7995,15 @@ impl BimApp {
     /// Where the window paces its own frames: the surface for its adapter, set once (`pacing::surface_for`), and the wait that keeps
     /// frames from coming closer than the monitor's refresh, the user's limit and, on a software adapter, the frames' cost. Only a
     /// frame's first pass waits: a sizing pass egui asks for comes at once.
-    fn pace_frame(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+    fn pace_frame(&mut self, ctx: &Context, host: &mut dyn Host) {
         let limit = self.frame_limit;
         let Some(pacer) = self.frames.as_mut() else { return };
         if ctx.current_pass_index() > 0 {
             return;
         }
         if !pacer.configured {
-            if let Some(state) = frame.wgpu_render_state() {
-                let config = pacing::surface_for(state.adapter.get_info().backend, pacer.software, pacer.monitor, state.surface_config);
-                if config != state.surface_config {
-                    frame.set_wgpu_surface_config(config);
-                }
-            }
+            let (software, monitor) = (pacer.software, pacer.monitor);
+            host.configure_surface(&mut |backend, config| pacing::surface_for(backend, software, monitor, config));
             pacer.configured = true;
         }
         pacer.limit = limit;
@@ -8008,11 +8011,7 @@ impl BimApp {
             return;
         }
         let now = std::time::Instant::now();
-        let monitor = if pacer.monitor {
-            pacer.every(now, || frame.winit_window()?.current_monitor()?.refresh_rate_millihertz())
-        } else {
-            std::time::Duration::ZERO
-        };
+        let monitor = if pacer.monitor { pacer.every(now, || host.refresh_millihertz()) } else { std::time::Duration::ZERO };
         let every = pacer.every_for(now, monitor);
         let wait = pacer.wait(now, every);
         if !wait.is_zero() {
@@ -8021,27 +8020,60 @@ impl BimApp {
     }
 }
 
-impl eframe::App for BimApp {
+/// What draws the window and shows it, as the app's frames need it: eframe's on a graphics card (`eframe::Frame`), or the
+/// processor's on a machine without one (`software`).
+pub trait Host {
+    /// The monitor's refresh rate, where it says.
+    fn refresh_millihertz(&self) -> Option<u32>;
+    /// What the frame before took the window, in seconds, the pacer's wait included.
+    fn cpu_usage(&self) -> Option<f32>;
+    /// Sets the wgpu surface once its adapter is known, by `choose` (backend and present configuration to configuration); a host
+    /// without one does nothing.
+    fn configure_surface(
+        &mut self,
+        choose: &mut dyn FnMut(eframe::wgpu::Backend, eframe::egui_wgpu::SurfaceConfig) -> eframe::egui_wgpu::SurfaceConfig,
+    );
+}
+
+impl Host for eframe::Frame {
+    fn refresh_millihertz(&self) -> Option<u32> {
+        self.winit_window()?.current_monitor()?.refresh_rate_millihertz()
+    }
+
+    fn cpu_usage(&self) -> Option<f32> {
+        self.info().cpu_usage
+    }
+
+    fn configure_surface(
+        &mut self,
+        choose: &mut dyn FnMut(eframe::wgpu::Backend, eframe::egui_wgpu::SurfaceConfig) -> eframe::egui_wgpu::SurfaceConfig,
+    ) {
+        if let Some(state) = self.wgpu_render_state() {
+            let config = choose(state.adapter.get_info().backend, state.surface_config);
+            if config != state.surface_config {
+                self.set_wgpu_surface_config(config);
+            }
+        }
+    }
+}
+
+impl BimApp {
     /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
     /// window is minimised.
-    fn logic(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        self.pace_frame(ctx, frame);
+    pub fn logic_on(&mut self, ctx: &Context, host: &mut dyn Host) {
+        self.pace_frame(ctx, host);
         if let Some(mut bench) = self.bench.take() {
-            // eframe counts the frame before's wait as its processor time.
+            // The host counts the frame before's wait as its processor time.
             let slept = self.frames.as_ref().map_or(0.0, |p| p.slept.0.as_secs_f32());
-            bench.step(self, ctx, (frame.info().cpu_usage.unwrap_or(0.0) - slept).max(0.0));
+            bench.step(self, ctx, (host.cpu_usage().unwrap_or(0.0) - slept).max(0.0));
             self.bench = Some(bench);
         }
         self.pump(ctx);
     }
 
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
-        self.show(ui);
-    }
-
     /// Tab over the plan cycles through what's under the cursor, as in Revit (or moves between a shape's numbers),
     /// rather than moving the keyboard between widgets.
-    fn raw_input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
+    pub fn input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         if let Some(bench) = self.bench.as_mut() {
             bench.input(raw);
         }
@@ -8066,5 +8098,20 @@ impl eframe::App for BimApp {
             }
             raw.events.retain(|e| !matches!(e, Event::Key { key: Key::Tab, .. }));
         }
+    }
+}
+
+/// eframe's window: the app's frames on a graphics card, through wgpu.
+impl eframe::App for BimApp {
+    fn logic(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        self.logic_on(ctx, frame);
+    }
+
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        self.show(ui);
+    }
+
+    fn raw_input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
+        self.input_hook(ctx, raw);
     }
 }

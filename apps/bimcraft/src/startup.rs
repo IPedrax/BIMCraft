@@ -21,9 +21,18 @@ use serde_json::{Value, json};
 /// What a start asks of the graphics, in the order starts that didn't finish try it: wgpu's own choice (every backend the system
 /// has, the fastest adapter first), then each backend alone. DirectX 12 comes before Vulkan: wgpu lists Vulkan's adapters first
 /// and keeps that order among adapters of the same kind, so on most Windows machines its own choice already was Vulkan, and
-/// a start that died on it (issue 14) learns nothing by trying Vulkan again.
-const LADDER: &[(&str, Option<Backends>)] =
-    &[("automatic", None), ("DirectX 12", Some(Backends::DX12)), ("Vulkan", Some(Backends::VULKAN)), ("OpenGL", Some(Backends::GL))];
+/// a start that died on it (issue 14) learns nothing by trying Vulkan again. The last rung is no graphics driver at all: the
+/// window drawn on the processor (`bimcraft_ui_egui::software`).
+const LADDER: &[(&str, Option<Backends>)] = &[
+    ("automatic", None),
+    ("DirectX 12", Some(Backends::DX12)),
+    ("Vulkan", Some(Backends::VULKAN)),
+    ("OpenGL", Some(Backends::GL)),
+    (SOFTWARE, None),
+];
+
+/// The ladder's last rung: the processor draws the window.
+const SOFTWARE: &str = "software";
 
 /// The order of [`LADDER`] in 0.7.0 and 0.8.0, whose `graphics.json` kept a start's place on it, not its name.
 const LEGACY: [&str; 4] = ["automatic", "Vulkan", "DirectX 12", "OpenGL"];
@@ -112,6 +121,11 @@ impl Mark {
 
     pub fn name(self) -> &'static str {
         choices()[self.choice.min(choices().len() - 1)].0
+    }
+
+    /// Whether this start is on the ladder's last rung: every graphics backend failed, and the processor draws the window.
+    pub fn software(self) -> bool {
+        self.name() == SOFTWARE
     }
 
     pub fn backends(self) -> Option<Backends> {
@@ -243,7 +257,24 @@ mod tests {
         assert_eq!(LADDER[next.choice].0, "DirectX 12");
         assert_eq!(LADDER[next.choice].1, Some(Backends::DX12));
         let names: Vec<&str> = LADDER.iter().map(|(name, _)| *name).collect();
-        assert_eq!(names, ["automatic", "DirectX 12", "Vulkan", "OpenGL"]);
+        assert_eq!(names, ["automatic", "DirectX 12", "Vulkan", "OpenGL", "software"]);
+    }
+
+    #[test]
+    fn after_every_graphics_backend_failed_the_processor_draws_and_after_that_the_ladder_starts_again() {
+        let n = LADDER.len();
+        let file = scratch("rung.json");
+        // A mark kept by 0.12.0, whose ladder ended at OpenGL: a start that died on it moves on to the processor.
+        fs::write(&file, r#"{"backend":"OpenGL","starting":true}"#).unwrap();
+        let next = Mark::read_among(&file, n).next_among(n);
+        assert_eq!((LADDER[next.choice].0, next.starting), ("software", true));
+        assert_eq!(LADDER[next.choice].1, None);
+        // One that died there too goes back to wgpu's own choice.
+        assert_eq!(LADDER[next.next_among(n).choice].0, "automatic");
+        // A finished start on it stays on it.
+        next.finished().write(&file).unwrap();
+        assert_eq!(Mark::read_among(&file, n).next_among(n), next);
+        let _ = fs::remove_file(file);
     }
 
     #[test]
@@ -309,7 +340,7 @@ mod tests {
             fs::write(&file, odd).unwrap();
             assert_eq!(Mark::read_among(&file, n), Mark::default(), "{odd}");
         }
-        fs::write(&file, r#"{"backend":"OpenGL","starting":true}"#).unwrap();
+        fs::write(&file, r#"{"backend":"software","starting":true}"#).unwrap();
         assert_eq!(Mark::read_among(&file, n - 1), Mark::default());
         assert_eq!(Mark::read_among(&file, 1), Mark::default());
         let _ = fs::remove_file(file);

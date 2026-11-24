@@ -83,6 +83,11 @@ pub fn system_title_bar_in(path: &Path) -> bool {
     read(path).and_then(|v| v["system_title_bar"].as_bool()).unwrap_or(false)
 }
 
+/// What the settings file at `path` asks the window to be drawn on: `main` reads it before the window opens.
+pub fn drawing_in(path: &Path) -> crate::software::Drawing {
+    read(path).and_then(|v| v["drawing"].as_str().and_then(crate::software::Drawing::from_code)).unwrap_or_default()
+}
+
 /// The window the settings file at `path` keeps, if it keeps one: the app starts at its size.
 pub fn window_in(path: &Path) -> Option<Window> {
     Some(Window::from_json(&read(path)?["window"], Window::default()))
@@ -118,6 +123,8 @@ pub struct Settings {
     pub gpu_3d: bool,
     /// The most frames a second the window draws (`pacing::Limit`).
     pub frame_limit: crate::pacing::Limit,
+    /// What the window is drawn on, from the next start (`software::Drawing`).
+    pub drawing: crate::software::Drawing,
     /// Fill what the 3D view's section box cuts.
     pub cut_fills_3d: bool,
     pub window: Window,
@@ -192,6 +199,7 @@ impl Settings {
             "autosave_minutes": self.autosave_minutes,
             "gpu_3d": self.gpu_3d,
             "frame_limit": self.frame_limit.to_json(),
+            "drawing": self.drawing.code(),
             "cut_fills_3d": self.cut_fills_3d,
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
@@ -250,6 +258,7 @@ impl Settings {
             autosave_minutes: v["autosave_minutes"].as_u64().filter(|n| *n <= 120).map_or(base.autosave_minutes, |n| n as u32),
             gpu_3d: v["gpu_3d"].as_bool().unwrap_or(base.gpu_3d),
             frame_limit: crate::pacing::Limit::from_json(&v["frame_limit"]).unwrap_or(base.frame_limit),
+            drawing: v["drawing"].as_str().and_then(crate::software::Drawing::from_code).unwrap_or(base.drawing),
             cut_fills_3d: v["cut_fills_3d"].as_bool().unwrap_or(base.cut_fills_3d),
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
@@ -403,6 +412,7 @@ impl BimApp {
         self.autosave.interval_minutes = kept.autosave_minutes;
         self.card.wanted = kept.gpu_3d;
         self.frame_limit = kept.frame_limit;
+        self.draw_on = kept.drawing;
         self.cut_fills_3d = kept.cut_fills_3d;
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
@@ -471,6 +481,7 @@ impl BimApp {
             autosave_minutes: self.autosave.interval_minutes,
             gpu_3d: self.card.wanted,
             frame_limit: self.frame_limit,
+            drawing: self.draw_on,
             cut_fills_3d: self.cut_fills_3d,
             window: self.window.kept,
             high_contrast: self.scan_contrast,
@@ -765,6 +776,30 @@ impl BimApp {
         });
         if let Some(adapter) = &self.software_adapter {
             muted(ui, crate::lang::tf("No graphics card found: the window is drawn in software, on the processor ({})", &[adapter]));
+        }
+        let drawing_name = |d: crate::software::Drawing| match d {
+            crate::software::Drawing::Auto => t("Automatic"),
+            crate::software::Drawing::Card => t("Graphics card"),
+            crate::software::Drawing::Processor => t("Processor"),
+        };
+        ui.horizontal(|ui| {
+            let l = ui.label(t("Drawing"));
+            ComboBox::from_id_salt("settings-drawing")
+                .selected_text(drawing_name(self.draw_on))
+                .show_ui(ui, |ui| {
+                    for d in crate::software::Drawing::ALL {
+                        ui.selectable_value(&mut self.draw_on, d, drawing_name(d));
+                    }
+                })
+                .response
+                .labelled_by(l.id)
+                .on_hover_text(t(
+                    "What draws the window. Automatic draws on the processor where the machine has no graphics card, which is much \
+                 faster there than drawing through a software graphics driver. Takes effect when BIMCraft starts again",
+                ));
+        });
+        if let Some(why) = &self.drawn_on_processor {
+            muted(ui, crate::lang::tf("This window is drawn on the processor: {}", &[why]));
         }
         heading(ui, msg!("3D view"));
         ui.checkbox(&mut self.cut_fills_3d, t("Fill what the section box cuts")).on_hover_text(t(
