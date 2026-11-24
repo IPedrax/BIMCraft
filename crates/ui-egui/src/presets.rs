@@ -403,7 +403,9 @@ impl BimApp {
                     }
                 });
                 crate::settings::heading(ui, msg!("Palettes"));
-                for p in Palette::known() {
+                // The Tools palette is the tools' surface, not a palette: as the ribbon, it is not a box here; a preset keeps the
+                // layout's Tools as it is when it is saved or updated.
+                for p in Palette::switchable() {
                     let mut on = draft.docking.shown(p);
                     if ui.checkbox(&mut on, t(p.name())).changed() {
                         draft.docking.show(p, on);

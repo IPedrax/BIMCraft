@@ -47,6 +47,13 @@ impl Palette {
         vec![Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts]
     }
 
+    /// The palettes the user switches: every known one but the Tools palette. Tools is the tools' surface in another dress — the
+    /// ribbon's place in Rev, the left column in BIMCraft — not a palette, so Settings, the Palettes menu, View > User Interface and the
+    /// preset editor leave it out, as they leave the ribbon out. `known` stays the layout's list, Tools included.
+    pub fn switchable() -> Vec<Palette> {
+        Self::known().into_iter().filter(|p| *p != Palette::Tools).collect()
+    }
+
     /// Whether it is open in a window that starts afresh (and in one whose settings are from before it came).
     fn opens_at_start(self) -> bool {
         self != Palette::Scripts
@@ -736,19 +743,15 @@ impl BimApp {
         });
     }
 
-    /// The menu of the palettes, hung from the header of the stack showing `own`: every palette the window knows, ticked while it is
-    /// open. A tick closes or opens it at once, through the same `Docking::show` as the View > User Interface boxes; the menu stays
-    /// open to change several, and closes when the palette it hangs from is taken out (ТЗ-019.2).
+    /// The menu of the palettes, hung from the header of the stack showing `own`: every palette the window switches
+    /// ([`Palette::switchable`], the Tools palette left out), ticked while it is open. A tick closes or opens it at once, through the same
+    /// `Docking::show` as the View > User Interface boxes; the menu stays open to change several, and closes when the palette it hangs
+    /// from is taken out (ТЗ-019.2).
     fn palette_menu(&mut self, ui: &mut Ui, own: Palette) {
         ui.set_min_width(200.0);
         ui.label(RichText::new(t("Palettes")).strong());
         ui.indent("dock-palette-menu-rows", |ui| {
-            for p in Palette::known() {
-                // The Tools palette is the tools' surface in another dress — the ribbon in Rev, the left column in BIMCraft — and not a
-                // palette to switch: View > User Interface and Settings keep the way to close and open it.
-                if p == Palette::Tools {
-                    continue;
-                }
+            for p in Palette::switchable() {
                 let mut on = self.docking.shown(p);
                 if ui.checkbox(&mut on, t(p.label())).changed() {
                     self.show_palette(p, on);

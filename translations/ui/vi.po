@@ -53,7 +53,7 @@ msgstr ""
 msgid "(ref.) for reference only: no check uses these yet"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:852
+#: crates/ui-egui/src/settings.rs:853
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 cho cổng nào đang trống; cổng đang mở sẽ chuyển sang một cổng mới"
 
@@ -65,7 +65,7 @@ msgstr "0.0.0.0 lắng nghe trên mọi địa chỉ của máy này. Từ bên 
 msgid "0.75 in (19.05 mm) binding margin"
 msgstr "Lề đóng gáy 0,75 in (19,05 mm)"
 
-#: crates/ui-egui/src/settings.rs:856
+#: crates/ui-egui/src/settings.rs:857
 msgid "0: any free port"
 msgstr "0: cổng trống bất kỳ"
 
@@ -133,11 +133,11 @@ msgstr "Khung nhìn 3D"
 msgid "3D models (OBJ, glTF)"
 msgstr "Mô hình 3D (OBJ, glTF)"
 
-#: crates/ui-egui/src/settings.rs:739
+#: crates/ui-egui/src/settings.rs:740
 msgid "3D view"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:750
+#: crates/ui-egui/src/settings.rs:751
 msgid "3D view resolution"
 msgstr "Độ phân giải khung nhìn 3D"
 
@@ -605,7 +605,7 @@ msgstr ""
 msgid "Above dimension line (continuous)"
 msgstr "Phía trên đường kích thước (liền)"
 
-#: crates/ui-egui/src/dock.rs:1254
+#: crates/ui-egui/src/dock.rs:1257
 msgid "Above {}"
 msgstr ""
 
@@ -618,7 +618,7 @@ msgstr "Phía trên:"
 msgid "Absolute"
 msgstr "Tuyệt đối"
 
-#: crates/ui-egui/src/settings.rs:624
+#: crates/ui-egui/src/settings.rs:625
 msgid "Accent colour"
 msgstr "Màu nhấn"
 
@@ -1017,11 +1017,11 @@ msgstr ""
 msgid "Agents"
 msgstr "Tác nhân"
 
-#: crates/ui-egui/src/settings.rs:868
+#: crates/ui-egui/src/settings.rs:869
 msgid "Agents connected: {}"
 msgstr "Tác nhân đã kết nối: {}"
 
-#: crates/ui-egui/src/settings.rs:877
+#: crates/ui-egui/src/settings.rs:878
 msgid "Agents may only read this project."
 msgstr "Tác nhân chỉ được đọc dự án này."
 
@@ -1223,7 +1223,7 @@ msgstr ""
 msgid "Allow Join"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:871
+#: crates/ui-egui/src/settings.rs:872
 msgid "Allow agents to edit this project"
 msgstr "Cho phép tác nhân sửa dự án này"
 
@@ -1711,7 +1711,7 @@ msgstr "Gán mẫu khung nhìn"
 msgid "Assigned {} of {}"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:66
+#: crates/ui-egui/src/dock.rs:73
 #: crates/ui-egui/src/lib.rs:516
 #: crates/ui-egui/src/settings.rs:358
 msgid "Assistant"
@@ -1827,7 +1827,7 @@ msgstr ""
 msgid "Autosave"
 msgstr "Tự động lưu"
 
-#: crates/ui-egui/src/settings.rs:800
+#: crates/ui-egui/src/settings.rs:801
 msgid "Autosave in the background"
 msgstr "Tự động lưu trong nền"
 
@@ -1921,7 +1921,7 @@ msgstr "BIMCraft {} đã là bản mới nhất."
 msgid "BIMCraft's"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:609
+#: crates/ui-egui/src/settings.rs:610
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
@@ -1985,7 +1985,7 @@ msgstr "Lưới nền"
 msgid "Background Pattern"
 msgstr "Mẫu nền"
 
-#: crates/ui-egui/src/settings.rs:786
+#: crates/ui-egui/src/settings.rs:787
 msgid "Background of the 3D view"
 msgstr "Nền của khung nhìn 3D"
 
@@ -2550,7 +2550,7 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/mesh.rs:196
 #: crates/ui-egui/src/objectstyles.rs:107
 #: crates/ui-egui/src/opening.rs:128
-#: crates/ui-egui/src/presets.rs:420
+#: crates/ui-egui/src/presets.rs:422
 #: crates/ui-egui/src/printsets.rs:156
 #: crates/ui-egui/src/printsets.rs:244
 #: crates/ui-egui/src/printsets.rs:302
@@ -2626,7 +2626,7 @@ msgstr ""
 msgid "Cancelling…"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:640
+#: crates/ui-egui/src/settings.rs:641
 msgid "Canvas colour"
 msgstr "Màu vùng vẽ"
 
@@ -2646,7 +2646,7 @@ msgstr ""
 msgid "Capture Placement: the adaptive instances selected in the project give their points as the test placement"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:736
+#: crates/ui-egui/src/settings.rs:737
 msgid "Card: {}"
 msgstr "Card đồ họa: {}"
 
@@ -3983,8 +3983,8 @@ msgstr "Đóng hộp thoại"
 msgid "Close every view but this one"
 msgstr "Đóng mọi khung nhìn trừ khung nhìn này"
 
-#: crates/ui-egui/src/dock.rs:724
-#: crates/ui-egui/src/dock.rs:1177
+#: crates/ui-egui/src/dock.rs:731
+#: crates/ui-egui/src/dock.rs:1180
 #: crates/ui-egui/src/lib.rs:7474
 msgid "Close {}"
 msgstr "Đóng {}"
@@ -4136,7 +4136,7 @@ msgid "Combine: what was made, taken down and shown in this phase goes to the ne
 msgstr "Gộp: những gì được tạo, phá dỡ và hiển thị trong giai đoạn này chuyển sang giai đoạn kề bên, và giai đoạn này bị xóa"
 
 #: crates/ui-egui/src/browser.rs:291
-#: crates/ui-egui/src/settings.rs:891
+#: crates/ui-egui/src/settings.rs:892
 msgid "Coming in a later version"
 msgstr "Sẽ có trong phiên bản sau"
 
@@ -4152,7 +4152,7 @@ msgstr "Lệnh, mỗi dòng một lệnh (id {tham số json}; # bắt đầu ch
 msgid "Comments"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:674
+#: crates/ui-egui/src/settings.rs:675
 msgid "Compact"
 msgstr "Thu gọn"
 
@@ -4178,7 +4178,7 @@ msgid "Component (CM): an instance of a family loaded into this one, placed by a
 msgstr "Thành phần (CM): một đối tượng của họ được nạp vào họ này, đặt bằng một lần nhấp trong mặt bằng hoặc mặt đứng"
 
 #: crates/ui-egui/src/lib.rs:5120
-#: crates/ui-egui/src/settings.rs:826
+#: crates/ui-egui/src/settings.rs:827
 msgid "Compressed save"
 msgstr ""
 
@@ -4374,7 +4374,7 @@ msgstr "Liên tục"
 msgid "Contours"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:839
+#: crates/ui-egui/src/settings.rs:840
 msgid "Control port"
 msgstr "Cổng điều khiển"
 
@@ -5865,24 +5865,24 @@ msgstr ""
 msgid "Dock All Views: every floating view back onto the tab bar, in one view under the tabs"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1236
+#: crates/ui-egui/src/dock.rs:1239
 msgid "Dock Bottom"
 msgstr "Neo dưới"
 
-#: crates/ui-egui/src/dock.rs:1226
+#: crates/ui-egui/src/dock.rs:1229
 msgid "Dock Left"
 msgstr "Neo trái"
 
-#: crates/ui-egui/src/dock.rs:1231
+#: crates/ui-egui/src/dock.rs:1234
 msgid "Dock Right"
 msgstr "Neo phải"
 
-#: crates/ui-egui/src/dock.rs:1269
+#: crates/ui-egui/src/dock.rs:1272
 msgid "Dock in the Views"
 msgstr "Neo vào vùng khung nhìn"
 
-#: crates/ui-egui/src/dock.rs:727
-#: crates/ui-egui/src/dock.rs:1180
+#: crates/ui-egui/src/dock.rs:734
+#: crates/ui-egui/src/dock.rs:1183
 msgid "Dock {}"
 msgstr "Neo {}"
 
@@ -5988,7 +5988,7 @@ msgstr "Trượt hai cánh"
 msgid "Double Swing"
 msgstr "Mở quay hai chiều"
 
-#: crates/ui-egui/src/settings.rs:686
+#: crates/ui-egui/src/settings.rs:687
 msgid "Double-clicking a tab's name does the same; a click on a tab then shows its tools until one is picked"
 msgstr "Nhấp đúp vào tên thẻ cũng có tác dụng tương tự; sau đó nhấp vào một thẻ sẽ hiển thị công cụ của nó cho đến khi chọn một công cụ"
 
@@ -6098,7 +6098,7 @@ msgstr "Hãy vẽ một đường bao, với các lỗ mở bên trong nó: các
 msgid "Draw region…"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:730
+#: crates/ui-egui/src/settings.rs:731
 msgid "Draw the 3D view on the graphics card"
 msgstr "Vẽ khung nhìn 3D bằng card đồ họa"
 
@@ -6198,7 +6198,7 @@ msgstr "EQ"
 msgid "Each element"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:741
+#: crates/ui-egui/src/settings.rs:742
 msgid "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster"
 msgstr ""
 
@@ -6506,7 +6506,7 @@ msgstr "Sửa {}"
 msgid "Editable"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:870
+#: crates/ui-egui/src/settings.rs:871
 msgid "Editing"
 msgstr "Chỉnh sửa"
 
@@ -6805,7 +6805,7 @@ msgstr ""
 msgid "Evaluation and host references"
 msgstr ""
 
-#: crates/ui-egui/src/presets.rs:495
+#: crates/ui-egui/src/presets.rs:497
 msgid "Every panel of this tab is hidden."
 msgstr ""
 
@@ -7148,7 +7148,7 @@ msgstr "Họ…"
 msgid "Far Clip Offset"
 msgstr "Độ lệch mặt cắt xa"
 
-#: crates/ui-egui/src/settings.rs:731
+#: crates/ui-egui/src/settings.rs:732
 msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
 msgstr ""
 
@@ -7266,7 +7266,7 @@ msgstr "Mẫu tô"
 msgid "Fill patterns exported to {}"
 msgstr "Đã xuất mẫu tô ra {}"
 
-#: crates/ui-egui/src/settings.rs:740
+#: crates/ui-egui/src/settings.rs:741
 msgid "Fill what the section box cuts"
 msgstr ""
 
@@ -7599,13 +7599,13 @@ msgstr "Lật hướng mặt"
 msgid "Flipped hand"
 msgstr "Lật hướng tay"
 
-#: crates/ui-egui/src/dock.rs:788
-#: crates/ui-egui/src/dock.rs:1326
+#: crates/ui-egui/src/dock.rs:791
+#: crates/ui-egui/src/dock.rs:1329
 #: crates/ui-egui/src/lib.rs:7496
 msgid "Float"
 msgstr "Tách nổi"
 
-#: crates/ui-egui/src/settings.rs:672
+#: crates/ui-egui/src/settings.rs:673
 msgid "Floating"
 msgstr "Nổi"
 
@@ -7727,7 +7727,7 @@ msgstr "Thu gọn"
 msgid "Folder"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:816
+#: crates/ui-egui/src/settings.rs:817
 msgid "Folder for new projects"
 msgstr "Thư mục cho dự án mới"
 
@@ -7922,8 +7922,8 @@ msgstr ""
 msgid "Frozen"
 msgstr "Đóng băng"
 
-#: crates/ui-egui/src/settings.rs:752
 #: crates/ui-egui/src/settings.rs:753
+#: crates/ui-egui/src/settings.rs:754
 msgid "Full"
 msgstr "Đầy đủ"
 
@@ -8060,7 +8060,7 @@ msgstr ""
 msgid "Graphics"
 msgstr "Đồ họa"
 
-#: crates/ui-egui/src/settings.rs:728
+#: crates/ui-egui/src/settings.rs:729
 msgid "Graphics card"
 msgstr "Card đồ họa"
 
@@ -8250,7 +8250,7 @@ msgstr "Nét mảnh nhất"
 msgid "Hairlines"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:753
+#: crates/ui-egui/src/settings.rs:754
 msgid "Half"
 msgstr "Một nửa"
 
@@ -8401,11 +8401,11 @@ msgstr "Đám mây điểm độ tương phản cao"
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Đám mây điểm độ tương phản cao: vẽ các bản quét của khung nhìn này bằng một màu đậm để dễ đọc những gì chúng thể hiện; nhấn lần nữa để trở về màu riêng của chúng. Bản quét đã được đặt màu riêng trong Hiển thị/Đồ họa sẽ giữ màu đó."
 
-#: crates/ui-egui/src/settings.rs:765
+#: crates/ui-egui/src/settings.rs:766
 msgid "High contrast colour"
 msgstr "Màu độ tương phản cao"
 
-#: crates/ui-egui/src/settings.rs:784
+#: crates/ui-egui/src/settings.rs:785
 msgid "Highlight what's under the cursor"
 msgstr "Tô sáng đối tượng dưới con trỏ"
 
@@ -8984,7 +8984,7 @@ msgstr "Hộp kiểm tra (IB): trên một cọc nối đất, bằng mặt tầ
 msgid "Inspection Boxes"
 msgstr "Hộp kiểm tra"
 
-#: crates/ui-egui/src/dock.rs:75
+#: crates/ui-egui/src/dock.rs:82
 msgid "Inspector"
 msgstr "Trình kiểm tra"
 
@@ -9058,7 +9058,7 @@ msgstr "Lớp cách nhiệt: vật liệu cách nhiệt dạng tấm vẽ dọc 
 msgid "Integer"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:708
+#: crates/ui-egui/src/settings.rs:709
 msgid "Interface scale"
 msgstr "Tỷ lệ giao diện"
 
@@ -9486,7 +9486,7 @@ msgstr "Các lớp, từ trên xuống"
 
 #: crates/ui-egui/src/properties.rs:1265
 #: crates/ui-egui/src/properties.rs:3712
-#: crates/ui-egui/src/settings.rs:669
+#: crates/ui-egui/src/settings.rs:670
 msgid "Layout"
 msgstr "Bố cục"
 
@@ -9558,7 +9558,7 @@ msgstr "Trái"
 msgid "Left Filing / Binding Margin:"
 msgstr "Lề lưu trữ / đóng gáy bên trái:"
 
-#: crates/ui-egui/src/dock.rs:1250
+#: crates/ui-egui/src/dock.rs:1253
 msgid "Left of {}"
 msgstr ""
 
@@ -9625,7 +9625,7 @@ msgstr "Ống kính:"
 msgid "Let In"
 msgstr "Cho vào"
 
-#: crates/ui-egui/src/settings.rs:844
+#: crates/ui-egui/src/settings.rs:845
 msgid "Let agents work on this project"
 msgstr "Để tác nhân làm việc trên dự án này"
 
@@ -9918,7 +9918,7 @@ msgstr "Danh sách {}"
 msgid "Listen on:"
 msgstr "Lắng nghe trên:"
 
-#: crates/ui-egui/src/settings.rs:861
+#: crates/ui-egui/src/settings.rs:862
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "Đang lắng nghe trên 127.0.0.1, cổng {}: tác nhân kết nối bằng bimcraft-cli mcp --connect {}"
 
@@ -10701,7 +10701,7 @@ msgstr "Thu nhỏ"
 msgid "Minimize the Ribbon"
 msgstr "Thu nhỏ dải băng"
 
-#: crates/ui-egui/src/settings.rs:685
+#: crates/ui-egui/src/settings.rs:686
 msgid "Minimize the ribbon to its tabs"
 msgstr "Thu nhỏ dải băng chỉ còn các thẻ"
 
@@ -11331,7 +11331,7 @@ msgstr ""
 msgid "Natural Light"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:76
+#: crates/ui-egui/src/dock.rs:83
 msgid "Navigator"
 msgstr "Bộ điều hướng"
 
@@ -12034,7 +12034,7 @@ msgstr ""
 #: crates/ui-egui/src/links.rs:113
 #: crates/ui-egui/src/mesh.rs:197
 #: crates/ui-egui/src/objectstyles.rs:108
-#: crates/ui-egui/src/presets.rs:423
+#: crates/ui-egui/src/presets.rs:425
 #: crates/ui-egui/src/printsets.rs:247
 #: crates/ui-egui/src/printsets.rs:303
 #: crates/ui-egui/src/projectinfo.rs:158
@@ -12101,7 +12101,7 @@ msgstr "Tắt"
 msgid "Off a coil"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:872
+#: crates/ui-egui/src/settings.rs:873
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "Khi tắt, tác nhân chỉ đọc dự án: chúng kiểm tra dự án, đọc bảng thống kê, kết xuất khung nhìn và xuất ra tệp mới (trong đó có bản vẽ sang PDF), còn mọi yêu cầu làm thay đổi dự án, hoàn tác, thay thế hoặc ghi đè tệp đều bị từ chối"
 
@@ -12109,7 +12109,7 @@ msgstr "Khi tắt, tác nhân chỉ đọc dự án: chúng kiểm tra dự án,
 msgid "Off, guests only look: they see the project and the others, and change nothing"
 msgstr "Tắt: khách chỉ xem, họ thấy dự án và những người khác, và không thay đổi gì"
 
-#: crates/ui-egui/src/settings.rs:864
+#: crates/ui-egui/src/settings.rs:865
 msgid "Off: no agent can reach this window"
 msgstr "Tắt: không tác nhân nào truy cập được cửa sổ này"
 
@@ -12290,7 +12290,7 @@ msgstr ""
 msgid "Open the default 3D view"
 msgstr "Mở khung nhìn 3D mặc định"
 
-#: crates/ui-egui/src/settings.rs:712
+#: crates/ui-egui/src/settings.rs:713
 msgid "Open the last project at startup"
 msgstr "Mở dự án cuối cùng khi khởi động"
 
@@ -12338,7 +12338,7 @@ msgstr "Lỗ mở"
 msgid "Opens"
 msgstr "Hướng mở"
 
-#: crates/ui-egui/src/settings.rs:842
+#: crates/ui-egui/src/settings.rs:843
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
 msgstr "Mở cổng điều khiển ngay bây giờ và mỗi khi BIMCraft khởi động: tác nhân kết nối bằng bimcraft-cli mcp --connect. Chỉ máy này truy cập được, và chỉ với token trong bridge.json cạnh mục yêu thích"
 
@@ -12619,10 +12619,10 @@ msgstr "Sơn"
 msgid "Paint (PT): lay a material, and its texture, over the face you click in the 3D view"
 msgstr "Sơn (PT): phủ một vật liệu, kèm kết cấu bề mặt của nó, lên mặt bạn nhấp trong khung nhìn 3D"
 
-#: crates/ui-egui/src/dock.rs:744
+#: crates/ui-egui/src/dock.rs:752
 #: crates/ui-egui/src/lib.rs:4715
 #: crates/ui-egui/src/presets.rs:405
-#: crates/ui-egui/src/settings.rs:698
+#: crates/ui-egui/src/settings.rs:699
 msgid "Palettes"
 msgstr "Bảng công cụ"
 
@@ -12655,11 +12655,11 @@ msgstr ""
 msgid "Panel Type"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:633
+#: crates/ui-egui/src/settings.rs:634
 msgid "Panel colour"
 msgstr "Màu bảng điều khiển"
 
-#: crates/ui-egui/src/presets.rs:412
+#: crates/ui-egui/src/presets.rs:414
 msgid "Panels"
 msgstr ""
 
@@ -13706,8 +13706,8 @@ msgstr ""
 msgid "Places"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:788
 #: crates/ui-egui/src/settings.rs:789
+#: crates/ui-egui/src/settings.rs:790
 msgid "Plain"
 msgstr "Trơn"
 
@@ -13727,7 +13727,7 @@ msgstr "Mặt bằng/Mặt bằng trần"
 msgid "Plane"
 msgstr "Mặt phẳng"
 
-#: crates/ui-egui/src/settings.rs:700
+#: crates/ui-egui/src/settings.rs:701
 msgid "Plans"
 msgstr ""
 
@@ -13852,7 +13852,7 @@ msgstr "Đường đa tuyến: một đường đi qua mọi điểm được nh
 msgid "Porcelain"
 msgstr "Sứ"
 
-#: crates/ui-egui/src/settings.rs:848
+#: crates/ui-egui/src/settings.rs:849
 msgid "Port"
 msgstr "Cổng"
 
@@ -13951,7 +13951,7 @@ msgid "Preset: {}"
 msgstr ""
 
 #: crates/ui-egui/src/presets.rs:270
-#: crates/ui-egui/src/settings.rs:615
+#: crates/ui-egui/src/settings.rs:616
 msgid "Presets"
 msgstr "Thiết lập sẵn"
 
@@ -14021,7 +14021,7 @@ msgstr ""
 #: crates/core/src/schedule.rs:223
 #: crates/ui-egui/src/editor/extrusion.rs:210
 #: crates/ui-egui/src/presets.rs:390
-#: crates/ui-egui/src/settings.rs:606
+#: crates/ui-egui/src/settings.rs:607
 msgid "Profile"
 msgstr "Biên dạng"
 
@@ -14076,7 +14076,7 @@ msgstr ""
 msgid "Project Base Point {}"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:64
+#: crates/ui-egui/src/dock.rs:71
 msgid "Project Browser"
 msgstr "Trình duyệt dự án"
 
@@ -14218,7 +14218,7 @@ msgstr "Thuộc tính"
 msgid "Properties (PP): show or hide the palette"
 msgstr "Thuộc tính (PP): hiện hoặc ẩn bảng thuộc tính"
 
-#: crates/ui-egui/src/settings.rs:594
+#: crates/ui-egui/src/settings.rs:595
 msgid "Properties over the Project Browser on the left, every panel and tool shown again, as at first"
 msgstr ""
 
@@ -14508,7 +14508,7 @@ msgstr "Khôi phục bản tự động lưu…"
 msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
 msgstr "Khôi phục sẽ mở bản sao lưu như công việc chưa lưu. Loại bỏ sẽ xóa nó. Hoãn lại sẽ giữ nó để dùng sau mà không thay thế gì."
 
-#: crates/ui-egui/src/settings.rs:812
+#: crates/ui-egui/src/settings.rs:813
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr "Bản sao phục hồi được giữ cạnh các dự án đã lưu; dự án chưa đặt tên dùng thư mục tạm."
 
@@ -14558,7 +14558,7 @@ msgstr "Làm lại {} bước"
 msgid "Redraw region…"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:756
+#: crates/ui-egui/src/settings.rs:757
 msgid "Redraw views in the background"
 msgstr "Vẽ lại khung nhìn trong nền"
 
@@ -14967,7 +14967,7 @@ msgstr "Cải tạo"
 msgid "Renovation: which phase of the work this view shows: all of it, what stood before, what comes down, or what is built"
 msgstr "Cải tạo: khung nhìn này hiển thị giai đoạn nào của công việc: tất cả, những gì có từ trước, những gì bị phá dỡ, hoặc những gì được xây"
 
-#: crates/ui-egui/src/settings.rs:713
+#: crates/ui-egui/src/settings.rs:714
 msgid "Reopen the views that were open"
 msgstr "Mở lại các khung nhìn đã mở"
 
@@ -15077,7 +15077,7 @@ msgstr ""
 msgid "Reset"
 msgstr "Đặt lại"
 
-#: crates/ui-egui/src/settings.rs:628
+#: crates/ui-egui/src/settings.rs:629
 msgid "Reset Accent"
 msgstr "Đặt lại màu nhấn"
 
@@ -15085,11 +15085,11 @@ msgstr "Đặt lại màu nhấn"
 msgid "Reset All"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:642
+#: crates/ui-egui/src/settings.rs:643
 msgid "Reset Canvas"
 msgstr "Đặt lại vùng vẽ"
 
-#: crates/ui-egui/src/settings.rs:769
+#: crates/ui-egui/src/settings.rs:770
 msgid "Reset Colour"
 msgstr "Đặt lại màu"
 
@@ -15102,11 +15102,11 @@ msgstr ""
 msgid "Reset Coordinates…"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:597
+#: crates/ui-egui/src/settings.rs:598
 msgid "Reset Palette Layout"
 msgstr "Đặt lại bố cục bảng công cụ"
 
-#: crates/ui-egui/src/settings.rs:635
+#: crates/ui-egui/src/settings.rs:636
 msgid "Reset Panels"
 msgstr "Đặt lại bảng điều khiển"
 
@@ -15140,7 +15140,7 @@ msgstr "Đặt lại Ẩn/Cô lập tạm thời"
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "Đặt lại Ẩn/Cô lập tạm thời (HR)"
 
-#: crates/ui-egui/src/settings.rs:649
+#: crates/ui-egui/src/settings.rs:650
 msgid "Reset Text"
 msgstr "Đặt lại màu chữ"
 
@@ -15152,7 +15152,7 @@ msgstr ""
 msgid "Reset the counts"
 msgstr ""
 
-#: crates/ui-egui/src/presets.rs:428
+#: crates/ui-egui/src/presets.rs:430
 msgid "Reset the preset to the standard view, keeping its profile"
 msgstr ""
 
@@ -15164,7 +15164,7 @@ msgstr ""
 msgid "Reset to NBR Defaults"
 msgstr "Đặt lại về mặc định NBR"
 
-#: crates/ui-egui/src/presets.rs:427
+#: crates/ui-egui/src/presets.rs:429
 msgid "Reset to Standard View"
 msgstr ""
 
@@ -15304,7 +15304,7 @@ msgstr "Đường tròn xoay"
 msgid "Revolves"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:684
+#: crates/ui-egui/src/settings.rs:685
 msgid "Ribbon"
 msgstr "Dải băng"
 
@@ -15758,11 +15758,11 @@ msgstr "Lưu mẫu"
 msgid "Save Preset"
 msgstr "Lưu thiết lập sẵn"
 
-#: crates/ui-egui/src/settings.rs:805
+#: crates/ui-egui/src/settings.rs:806
 msgid "Save a recovery copy every"
 msgstr "Lưu bản sao phục hồi sau mỗi"
 
-#: crates/ui-egui/src/settings.rs:827
+#: crates/ui-egui/src/settings.rs:828
 msgid "Save and Save As write the project zipped: the file is several times smaller. Either kind opens as before, and an uncompressed project stays readable as text."
 msgstr ""
 
@@ -15826,7 +15826,7 @@ msgstr "Đã lưu {} vào mục yêu thích"
 msgid "Saved, encrypted with the passphrase."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:795
+#: crates/ui-egui/src/settings.rs:796
 msgid "Saving"
 msgstr ""
 
@@ -15969,7 +15969,7 @@ msgstr ""
 msgid "Screed"
 msgstr "Lớp vữa láng"
 
-#: crates/ui-egui/src/dock.rs:67
+#: crates/ui-egui/src/dock.rs:74
 msgid "Script Automation"
 msgstr ""
 
@@ -16292,7 +16292,7 @@ msgstr "Đã chọn {}."
 msgid "Selected {}; nothing has these: {}"
 msgstr "Đã chọn {}; không có gì có: {}"
 
-#: crates/ui-egui/src/settings.rs:781
+#: crates/ui-egui/src/settings.rs:782
 msgid "Selection colour"
 msgstr "Màu vùng chọn"
 
@@ -16655,7 +16655,7 @@ msgstr ""
 msgid "Show or hide the palettes, and pick the interface's language"
 msgstr "Hiện hoặc ẩn các bảng công cụ, và chọn ngôn ngữ giao diện"
 
-#: crates/ui-egui/src/settings.rs:711
+#: crates/ui-egui/src/settings.rs:712
 msgid "Show shortcut keys in tooltips"
 msgstr "Hiển thị phím tắt trong chú giải công cụ"
 
@@ -16663,11 +16663,11 @@ msgstr "Hiển thị phím tắt trong chú giải công cụ"
 msgid "Show temporary alignment guides (smart snapping) when drawing"
 msgstr "Hiển thị đường dóng căn chỉnh tạm thời (bắt điểm thông minh) khi vẽ"
 
-#: crates/ui-egui/src/presets.rs:496
+#: crates/ui-egui/src/presets.rs:498
 msgid "Show the panels"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:701
+#: crates/ui-egui/src/settings.rs:702
 msgid "Show the view's name in the corner of plans"
 msgstr ""
 
@@ -16857,7 +16857,7 @@ msgid "Skipped, because this version doesn't know them: {}"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:1135
-#: crates/ui-egui/src/settings.rs:789
+#: crates/ui-egui/src/settings.rs:790
 msgid "Sky"
 msgstr "Xanh da trời"
 
@@ -16926,19 +16926,19 @@ msgstr ""
 msgid "Smallest Panel"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:755
+#: crates/ui-egui/src/settings.rs:756
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Làm mịn đường nét (khử răng cưa)"
 
-#: crates/ui-egui/src/dock.rs:1279
+#: crates/ui-egui/src/dock.rs:1282
 msgid "Snap Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1270
+#: crates/ui-egui/src/dock.rs:1273
 msgid "Snap Left"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1274
+#: crates/ui-egui/src/dock.rs:1277
 msgid "Snap Right"
 msgstr ""
 
@@ -17880,7 +17880,7 @@ msgstr ""
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr ""
 
-#: crates/ui-egui/src/dock.rs:1244
+#: crates/ui-egui/src/dock.rs:1247
 msgid "Tab with {}"
 msgstr "Gộp thẻ với {}"
 
@@ -18114,7 +18114,7 @@ msgstr "Cỡ chữ"
 msgid "Text Types"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:647
+#: crates/ui-egui/src/settings.rs:648
 msgid "Text colour"
 msgstr "Màu chữ"
 
@@ -18198,7 +18198,7 @@ msgstr "Đối tượng đó vuông góc với mặt phẳng làm việc: không
 msgid "That shortcut has nothing to do here"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:734
+#: crates/ui-egui/src/settings.rs:735
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "Khung nhìn 3D được vẽ bằng bộ xử lý: {}"
 
@@ -18448,11 +18448,11 @@ msgstr "Chân đường vuông góc từ điểm cuối cùng tới một tườ
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "Card đồ họa không thể vẽ khung nhìn 3D ({}): khung nhìn được vẽ bằng bộ xử lý"
 
-#: crates/ui-egui/src/settings.rs:634
+#: crates/ui-egui/src/settings.rs:635
 msgid "The ground of the ribbon, the palettes, the bars and the dialogs; their bands and buttons are a step off it"
 msgstr "Nền của dải băng, các bảng công cụ, các thanh và hộp thoại; các dải và nút của chúng lệch một bậc so với nền"
 
-#: crates/ui-egui/src/settings.rs:648
+#: crates/ui-egui/src/settings.rs:649
 msgid "The interface's lettering, made darker or lighter where it would not read at 4.5:1 on the panels"
 msgstr "Chữ của giao diện, được làm tối hơn hoặc sáng hơn ở những chỗ không đạt độ tương phản 4,5:1 trên bảng điều khiển"
 
@@ -18520,7 +18520,7 @@ msgstr ""
 msgid "The name `{}` is already in use."
 msgstr "Tên `{}` đã được sử dụng."
 
-#: crates/ui-egui/src/settings.rs:702
+#: crates/ui-egui/src/settings.rs:703
 msgid "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab names it too"
 msgstr ""
 
@@ -18660,15 +18660,15 @@ msgstr ""
 msgid "The report's Markdown couldn't be read: {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:610
+#: crates/ui-egui/src/settings.rs:611
 msgid "The ribbon over the view, Properties and the Project Browser on the left"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:671
+#: crates/ui-egui/src/settings.rs:672
 msgid "The ribbon, the palettes and the bars as cards floating over the view"
 msgstr "Dải băng, các bảng công cụ và các thanh dưới dạng thẻ nổi trên khung nhìn"
 
-#: crates/ui-egui/src/settings.rs:673
+#: crates/ui-egui/src/settings.rs:674
 msgid "The ribbon, the palettes and the bars flush to the window's edges"
 msgstr "Dải băng, các bảng công cụ và các thanh sát mép cửa sổ"
 
@@ -18764,7 +18764,7 @@ msgstr ""
 msgid "The steps are too short for a comfortable stride. Deepen the treads, or use fewer risers."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:692
+#: crates/ui-egui/src/settings.rs:693
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr "Thanh tiêu đề và khung của hệ thống, thay vì của cửa sổ: thanh ứng dụng khi đó nằm bên dưới"
 
@@ -18785,7 +18785,7 @@ msgstr ""
 msgid "The texts name {} without defining them"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:590
+#: crates/ui-egui/src/settings.rs:591
 msgid "The tools on the left, the Inspector over the Navigator on the right, every panel and tool shown again, as at first"
 msgstr ""
 
@@ -18866,7 +18866,7 @@ msgstr ""
 msgid "The winders are too shallow on the walk line. Use fewer of them, or spread them into the flights."
 msgstr ""
 
-#: crates/ui-egui/src/presets.rs:471
+#: crates/ui-egui/src/presets.rs:473
 msgid "The window has not drawn a panel yet"
 msgstr ""
 
@@ -18895,7 +18895,7 @@ msgstr "Mặt phẳng làm việc phải nằm ngang: sàn, trần, mái hoặc 
 msgid "The zones around a bathtub or shower, their size, the IP rating, and what may be installed in each."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:617
+#: crates/ui-egui/src/settings.rs:618
 msgid "Theme"
 msgstr "Chủ đề"
 
@@ -19020,12 +19020,12 @@ msgstr ""
 msgid "This computer is out of memory and is using its disk instead ({} swapped): BIMCraft and other programs will be slow until memory is freed. Close other programs or views you don't need."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:721
+#: crates/ui-egui/src/settings.rs:722
 #: crates/ui-egui/src/start.rs:481
 msgid "This copy doesn't look for updates."
 msgstr "Bản cài đặt này không kiểm tra cập nhật."
 
-#: crates/ui-egui/src/settings.rs:735
+#: crates/ui-egui/src/settings.rs:736
 msgid "This copy has no graphics card it can draw the 3D view on"
 msgstr "Bản cài đặt này không có card đồ họa nào để vẽ khung nhìn 3D"
 
@@ -19171,7 +19171,7 @@ msgstr ""
 msgid "Tick every proposal that has a code"
 msgstr ""
 
-#: crates/ui-egui/src/presets.rs:413
+#: crates/ui-egui/src/presets.rs:415
 msgid "Tick the panels this preset shows; Find still has their tools"
 msgstr ""
 
@@ -19262,7 +19262,7 @@ msgstr ""
 msgid "Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:688
+#: crates/ui-egui/src/settings.rs:689
 msgid "Title bar"
 msgstr "Thanh tiêu đề"
 
@@ -19302,8 +19302,8 @@ msgstr ""
 msgid "Too dense to preview at this size."
 msgstr "Quá dày để xem trước ở kích thước này."
 
-#: crates/ui-egui/src/dock.rs:65
-#: crates/ui-egui/src/presets.rs:415
+#: crates/ui-egui/src/dock.rs:72
+#: crates/ui-egui/src/presets.rs:417
 msgid "Tools"
 msgstr "Công cụ"
 
@@ -19820,7 +19820,7 @@ msgstr "Lịch sử hoàn tác"
 msgid "Undo brings it back."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:746
+#: crates/ui-egui/src/settings.rs:747
 msgid "Undo steps kept"
 msgstr "Số bước hoàn tác được giữ"
 
@@ -19972,7 +19972,7 @@ msgstr "Lên, rồi sang phải"
 msgid "Update Project"
 msgstr ""
 
-#: crates/ui-egui/src/presets.rs:433
+#: crates/ui-egui/src/presets.rs:435
 msgid "Update from Current Layout"
 msgstr ""
 
@@ -20022,7 +20022,7 @@ msgstr ""
 msgid "Use the project's version"
 msgstr "Dùng phiên bản của dự án"
 
-#: crates/ui-egui/src/settings.rs:691
+#: crates/ui-egui/src/settings.rs:692
 msgid "Use the system's title bar"
 msgstr "Dùng thanh tiêu đề của hệ thống"
 
@@ -20580,7 +20580,7 @@ msgstr ""
 msgid "West"
 msgstr "Tây"
 
-#: crates/ui-egui/src/settings.rs:768
+#: crates/ui-egui/src/settings.rs:769
 msgid "What High Contrast Point Clouds, on the view control bar, draws a view's scans in"
 msgstr "Màu mà Đám mây điểm độ tương phản cao, trên thanh điều khiển khung nhìn, dùng để vẽ các bản quét của khung nhìn"
 
@@ -20596,7 +20596,7 @@ msgstr "Những gì đường chi tiết dùng để vẽ: một bút, một mà
 msgid "What field {} says until a sheet or the project gives it a value"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:626
+#: crates/ui-egui/src/settings.rs:627
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
 msgstr "Đối tượng được chọn và đối tượng đang có tiêu điểm được vẽ bằng màu này, trong mọi chủ đề; chữ trên đó được làm đủ tối hoặc sáng để dễ đọc"
 
@@ -20612,7 +20612,7 @@ msgstr "Những gì có trước khi thi công: giai đoạn đầu tiên của 
 msgid "What the stair is built of, its sizes and the rules it is checked against."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:641
+#: crates/ui-egui/src/settings.rs:642
 msgid "What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"
 msgstr "Nền để vẽ các khung nhìn; nét vẽ chuyển sáng trên nền tối và tối trên nền sáng"
 
@@ -21019,7 +21019,7 @@ msgstr ""
 msgid "Your name:"
 msgstr "Tên của bạn:"
 
-#: crates/ui-egui/src/settings.rs:666
+#: crates/ui-egui/src/settings.rs:667
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
 msgstr "Màu chữ của bạn quá gần với màu bảng điều khiển: nó được làm tối hơn hoặc sáng hơn để đạt độ tương phản 4,5:1"
 
@@ -22271,7 +22271,7 @@ msgstr "{} giờ trước"
 msgid "{} has this selected"
 msgstr "{} đang chọn mục này"
 
-#: crates/ui-egui/src/presets.rs:416
+#: crates/ui-egui/src/presets.rs:418
 msgid "{} hidden; edit them in Edit Tools after Use"
 msgstr ""
 
@@ -22980,7 +22980,7 @@ msgid "‹ Back"
 msgstr "‹ Quay lại"
 
 #: crates/ui-egui/src/lib.rs:5121
-#: crates/ui-egui/src/settings.rs:831
+#: crates/ui-egui/src/settings.rs:832
 msgid "⚠ A compressed project is much smaller, but saving and opening it take longer."
 msgstr ""
 

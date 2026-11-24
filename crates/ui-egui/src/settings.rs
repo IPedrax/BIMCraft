@@ -577,9 +577,10 @@ impl BimApp {
     }
 
     /// A box for each palette, shown or closed, and the layout the profile starts in: Settings > User Interface's, and the
-    /// app bar's Palettes menu, which is the way back for the Tools palette, as it has no shortcut.
+    /// app bar's Palettes menu. The Tools palette is no palette but the tools' surface, so it is left out here as the ribbon is; a
+    /// layout that closed it (a preset, an older file) comes back with **Reset Palette Layout**.
     pub(crate) fn palette_switches(&mut self, ui: &mut Ui) {
-        for p in Palette::known() {
+        for p in Palette::switchable() {
             let mut on = self.docking.shown(p);
             if ui.checkbox(&mut on, t(p.name())).changed() {
                 self.show_palette(p, on);
