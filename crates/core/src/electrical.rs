@@ -365,6 +365,9 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) -> Vec<Str
     let gone = |now: &serde_json::Map<String, Value>, key: &str| -> Vec<String> {
         was(key).into_iter().filter(|(k, _)| !now.contains_key(k)).map(|(k, _)| k).collect()
     };
+    // The voltages the project's systems name before the codes change.
+    let named_before: std::collections::BTreeSet<String> =
+        m.distribution_systems.values().flat_map(|d| d.voltage_names().cloned()).collect();
     // What elements name, the systems' voltages aside.
     let mut boards_on = std::collections::BTreeSet::new();
     let mut circuit_voltages = std::collections::BTreeSet::new();
@@ -489,6 +492,17 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) -> Vec<Str
             full.push(format!("wire type `{k}`"));
         }
     }
+    // One a system named before the codes changed, that no system names now, no code names and a new project lacks (a
+    // voltage renamed under a system kept for its board, that system now the codes' own again): nothing holds it any more.
+    // One no system ever named (a project's own, an older file's) is left as it is.
+    let named_now: std::collections::BTreeSet<String> = m.distribution_systems.values().flat_map(|d| d.voltage_names().cloned()).collect();
+    m.voltages.retain(|k, _| {
+        voltages.contains_key(k)
+            || starter().voltages.contains_key(k)
+            || !named_before.contains(k)
+            || named_now.contains(k)
+            || circuit_voltages.contains(k)
+    });
     full
 }
 

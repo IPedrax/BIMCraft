@@ -1535,3 +1535,51 @@ fn a_method_s_last_rule_taken_away_is_not_checked_as_an_ordinary_section() {
         json!({"discipline": "electrical", "amend": "Middle", "rules": {"building_demand": {"min_dwellings": null}}}),
     );
 }
+
+#[test]
+fn a_voltage_only_a_kept_system_named_leaves_when_nothing_holds_it() {
+    // 230 V renamed 231 V (the system that supplies it names 231 V), a board on that system: switched to NEC, the system
+    // stays for its board with 231 V; switched again to REBT, whose 230/400 V names 230 V, nothing names 231 V any more.
+    let mut s = Session::new();
+    run(&mut s, "voltage", json!({"name": "230 V", "rename": "231 V"}));
+    let b = run(&mut s, "component", json!({"family": "Distribution Board", "type": "12 circuits", "at": [0, 0]}))["id"].clone();
+    run(&mut s, "panel", json!({"id": b, "distribution": "230/400 V"}));
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nec"}));
+    let supplies = |s: &Session, v: &str| s.model.distribution_systems["230/400 V"].voltage_names().any(|n| n == v);
+    assert!(s.model.voltages.contains_key("231 V") && supplies(&s, "231 V"), "the kept system still names it");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "rebt"}));
+    assert!(supplies(&s, "230 V") && !supplies(&s, "231 V"), "REBT's own 230/400 V now");
+    let named = s.model.distribution_systems.values().any(|d| d.voltage_names().any(|v| v == "231 V"));
+    assert!(named || !s.model.voltages.contains_key("231 V"), "231 V stays with nothing naming it");
+    // One a new project has stays, whether a code names it or not.
+    for v in crate::electrical::voltages().into_keys().filter(|v| v != "230 V") {
+        assert!(s.model.voltages.contains_key(&v), "{v}, a new project's, is kept");
+    }
+}
+
+#[test]
+fn a_voltage_no_system_ever_named_is_left_as_it_is_when_the_codes_change() {
+    // An older file's voltage no code and no system names: a change of the codes, or a code imported again as it is, leaves
+    // it in the project.
+    let at = dir("legacy voltage").join("generic.xml").to_string_lossy().to_string();
+    let mut s = Session::new();
+    run(&mut s, "building_code_export", json!({"discipline": "architectural", "path": at, "name": "Again"}));
+    let old: crate::electrical::Voltage = serde_json::from_value(json!({"nominal": 123, "min": 110, "max": 135})).unwrap();
+    s.model_mut().voltages.insert("123 V".into(), old);
+    run(&mut s, "building_code_import", json!({"path": at, "set": false}));
+    assert!(s.model.voltages.contains_key("123 V"), "imported");
+    run(&mut s, "building_code_import", json!({"path": at, "set": false}));
+    assert!(s.model.voltages.contains_key("123 V"), "imported again, the same");
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nec"}));
+    assert!(s.model.voltages.contains_key("123 V"), "the codes switched");
+}
+
+#[test]
+fn a_voltage_a_new_project_has_stays_when_the_system_that_named_it_is_taken_away() {
+    // Under NEC, taking away 230/400 V, the only system naming 230 V, which NEC doesn't name either: a new project has 230 V,
+    // so it stays.
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"discipline": "electrical", "set": "nec", "rules": {"distribution_systems": {"230/400 V": null}}}));
+    assert!(!s.model.distribution_systems.values().any(|d| d.voltage_names().any(|v| v == "230 V")), "nothing names it");
+    assert!(s.model.voltages.contains_key("230 V"), "a new project's voltage stays");
+}
