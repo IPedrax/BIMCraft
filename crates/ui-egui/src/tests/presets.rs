@@ -563,7 +563,7 @@ fn a_panel_the_scale_leaves_out_is_listed_unticked_and_cannot_be_ticked() {
 fn the_menu_opens_on_a_folded_panel_and_in_the_tools_palette() {
     // Rev, narrow: the last panels fold to one button, and its right click opens the same menu.
     let mut h = app(BOX);
-    h.set_size(vec2(520.0, 800.0));
+    h.set_size(vec2(320.0, 800.0));
     h.run();
     h.get_by_label("View").scroll_to_me();
     h.run();
@@ -583,6 +583,7 @@ fn the_menu_opens_on_a_folded_panel_and_in_the_tools_palette() {
 #[test]
 fn the_menu_leaves_the_edit_tools_box_alone() {
     let mut h = app(BOX);
+    press(&mut h, "Team");
     press(&mut h, "Edit Tools");
     right_click(&mut h, Role::CheckBox, "Build");
     let build = h.get_by_role_and_label(Role::CheckBox, "Build");

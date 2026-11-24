@@ -382,7 +382,7 @@ fn the_app_bars_palettes_menu_brings_a_closed_palette_back_and_resets_the_layout
     h.state_mut().show_palette(Palette::Browser, false);
     h.run();
     press(&mut h, "Palettes");
-    assert!(h.get_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "the tools' surface is no palette");
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "the tools' surface is no palette");
     pick(&mut h, Role::CheckBox, "Project Browser");
     assert!(docking(&h).shown(Palette::Browser), "a closed palette comes back from the bar");
     // A layout from a preset or an older file may have closed the tools' palette: the standard layout brings it back.
@@ -403,7 +403,7 @@ fn the_switchable_palettes_are_the_known_ones_without_tools() {
 fn the_settings_palette_list_leaves_the_tools_palette_out() {
     let mut h = bimcraft(BOX);
     press(&mut h, "Settings");
-    assert!(h.get_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "Settings lists palettes, not the tools' surface");
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "Settings lists palettes, not the tools' surface");
     press(&mut h, "Close");
 }
 
@@ -817,7 +817,7 @@ fn right_clicking_a_palettes_header_lists_every_palette_with_its_box() {
         assert_eq!(ticked, h.state().docking.shown(p), "{}", p.name());
     }
     // The Tools palette is the tools' surface, not a palette to switch: the menu leaves it out.
-    assert!(h.get_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none());
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none());
 }
 
 #[test]
@@ -828,7 +828,7 @@ fn a_palettes_box_in_its_menu_closes_and_opens_it_and_the_menu_stays_open() {
     h.get_by_role_and_label(Role::CheckBox, "Project Browser").click();
     h.run();
     assert!(!h.state().docking.shown(Palette::Browser), "the palette is closed");
-    assert!(h.query_by_label("Palettes").is_some(), "the menu stays open");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_some(), "the menu stays open");
     h.get_by_role_and_label(Role::CheckBox, "Project Browser").click();
     h.run();
     assert!(h.state().docking.shown(Palette::Browser), "and its box opens it again");
@@ -843,11 +843,11 @@ fn the_palettes_menu_closes_with_its_own_palette_and_does_not_reopen() {
     h.get_by_role_and_label(Role::CheckBox, "Properties").click();
     h.run();
     assert!(!h.state().docking.shown(Palette::Properties), "the palette went with its box");
-    assert!(h.query_by_label("Palettes").is_none(), "and the menu went with it");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_none(), "and the menu went with it");
     h.state_mut().docking.show(Palette::Properties, true);
     h.run();
     assert!(h.get_all_by_label("Properties").next().is_some(), "the palette is back");
-    assert!(h.query_by_label("Palettes").is_none(), "the menu did not come back with it");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_none(), "the menu did not come back with it");
 }
 
 #[test]
@@ -858,8 +858,8 @@ fn the_palettes_menu_opens_on_the_inspectors_header_in_bimcraft() {
     h.get_by_role_and_label(Role::CheckBox, crate::lang::t("Navigator")).click();
     h.run();
     assert!(!h.state().docking.shown(Palette::Browser), "the Navigator is closed from the menu");
-    assert!(h.query_by_label("Palettes").is_some(), "the menu stays open");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_some(), "the menu stays open");
     // The tools' own palette is not among them: it is what the list of palettes is for the ribbon in Rev.
-    assert!(h.get_all_by_role_and_label(Role::CheckBox, crate::lang::t("Tools")).next().is_none());
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, crate::lang::t("Tools")).next().is_none());
     assert!(h.state().docking.shown(Palette::Tools), "and it stays as it was");
 }

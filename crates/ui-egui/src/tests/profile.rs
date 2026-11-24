@@ -217,7 +217,7 @@ fn bimcrafts_tools_are_a_palette_in_place_of_the_ribbon_and_dock_where_they_are_
     h.state_mut().docking.put(Palette::Tools, Target::Side(Side::Right));
     h.run();
     h.run();
-    assert!(h.get_by_label("Structure").rect().left() >= h.state().view_rect.right());
+    assert!(h.get_by_role_and_label(Role::Button, "Structure").rect().left() >= h.state().view_rect.right());
     // Rev has the ribbon: the Tools palette is not drawn, but stays in the layout as the user's intent.
     h.state_mut().profile = Profile::Rev;
     h.run();
