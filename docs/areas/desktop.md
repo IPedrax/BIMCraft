@@ -401,8 +401,10 @@ scale leaves out is listed unticked and disabled, with a tooltip. The menu chang
 Current Layout** or **Save Preset** keeps it. Both the menu and the preset editor list the panels from `BimApp::panel_groups`. A palette's dock
 header (or a tab of a stack of palettes, and a floating palette's title) takes the same right click: its menu lists every palette the window
 knows (`Palette::known`), ticked while it is open, and a tick closes or opens it at once through `Docking::show`, as View > User Interface's
-boxes do; the menu stays open for several and closes with the palette it hangs from. The Tools palette is left out of this menu: it is the
-tools' surface, the ribbon in Rev and the left column in BIMCraft, not a palette; View > User Interface and Settings still close and open it. A tab every panel of which is hidden says so, with a button that brings them all back. **Done** in Edit
+boxes do; the menu stays open for several and closes with the palette it hangs from. The Tools palette is left out of every palette list —
+this menu, Settings, the app bar's Palettes menu, View > User Interface and the preset editor — as the ribbon is: it is the tools' surface,
+the ribbon in Rev and the left column in BIMCraft, not a palette. `Palette::switchable` is that list; a prescribed or older layout that
+closed it comes back with **Reset Palette Layout**. A tab every panel of which is hidden says so, with a button that brings them all back. **Done** in Edit
 Tools keeps the palette layout, the panels and the tools in the preset the window wears (the one ticked in the Project scale chip); with
 no preset chosen it changes the window only and says so. The ribbon and the
 palette read both through `ribbon::tool_rules` and `ribbon::panel_rules`, set each frame; `ribbon::panel` leaves out a panel the scale or
