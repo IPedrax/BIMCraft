@@ -712,11 +712,8 @@ picked (a contextual tab comes last of all) is scrolled into view; the Options B
 steps under it where a drop-down (which doesn't wrap) still reaches over it (`BimApp::nav_corner`); and a stack of palettes standing over another leaves it `dock::LAST_MIN`, so its last card never runs under the status bar,
 even when the window was brought down from a taller one. Nothing is fitted to a size below that: the window is asked not to go there.
 
-The ribbon's panels (`ribbon.rs`). A panel's name stands under its tools. While some of them are out of sight, handed over to
-make room or shown by its list alone (Build's Curtain Wall, `ribbon::list_only`), the name is a button (named `Build ▾` for screen readers) whose list (`ribbon::list`) draws the panel's tools as
-rows: `ribbon::listing` turns `big_button` and `small_button` into `list_row`. With every tool in sight the name is painted and
-no button, since a list would only say again what stands over it; a tool's own choices (Void Forms) drop from its button all
-the same. A tab too
+The ribbon's panels (`ribbon.rs`). A panel's name, under its tools, is a button (named `Build ▾` for screen readers) whose list
+(`ribbon::list`) draws the same tools again as rows: `ribbon::listing` turns `big_button` and `small_button` into `list_row`. A tab too
 wide for the window makes room from the right, on the last frame's widths (`ribbon::tab`, `ribbon::fits`): a panel hands its last tools
 over to its list (`ribbon::handed_over`: counted, not drawn), and when one tool left isn't room enough it folds to one button that lists
 them all, and the panel before it is asked; what still doesn't fit scrolls sideways. A panel drawn with `ribbon::yielding` is asked

@@ -169,6 +169,8 @@ or Four-Point Panel for a ready-made one); Family Types and Family Category and 
 sketch forms (below). Each of the six has an icon of its own (`icons.rs`: a block rising, a square base under a
 round top, a ring on its axis, a tube, a horn, a solid in dots), and a selected form's Properties are headed by its tool's
 (`FormText::icon`); Model Text, Connector and Show have theirs too, and Reference Plane and Set the project's own tools'.
+On a family's tabs a panel's name lists its tools only while some are out of sight (handed over or folded to make room): with
+every tool on the ribbon it is painted, and no button (`ribbon::panel`, on a `family:` tab only; a project's panels keep theirs).
 Undo and Redo are the document's own (`Draft`), and never undo the project.
 Find/Replace, beside Text on Annotate's Detail panel (`editor/find_replace.rs`), works on the family's text: Find and Replace
 with, Match case, Match whole word only; Find All selects the texts it is found in, Replace All replaces it in every one, the dialog's visit one step of the history. What a text names in braces (`{Width}`, a parameter) is
