@@ -37,6 +37,9 @@ for round in 1 2; do
     try env RUNE_CPU_FIRST=only ci/measure-ui.sh "rune-cpu-$round" "$out" -- "$rune"
     try env BIMCRAFT_RUNE_PLAN=pixels ci/measure-ui.sh "rune-gpu-pixels-$round" "$out" -- "$rune"
     try env BIMCRAFT_RUNE_PLAN=pixels RUNE_CPU_FIRST=only ci/measure-ui.sh "rune-cpu-pixels-$round" "$out" -- "$rune"
+    # Rev's profile: a ribbon (a tab, its tools and the Modify group) across the top besides the top bar, the browser and Properties.
+    try env RUNE_CPU_FIRST=only ci/measure-ui.sh "rune-cpu-rev-$round" "$out" -- "$rune" --rev
+    try env ci/measure-ui.sh "rune-gpu-rev-$round" "$out" -- "$rune" --rev
     try env PAN_BUTTON=2 ci/measure-ui.sh "egui-main-$round" "$out" -- "$egui_main" --sample
     bench "egui-main-bench-$round" "$egui_main"
     if [ -x "$egui_join" ]; then

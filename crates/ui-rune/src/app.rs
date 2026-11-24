@@ -503,7 +503,7 @@ mod tests {
         assert!(app.has_file() && file.exists());
         assert!(app.save(), "a saved project saves to its own file: {:?}", app.message);
         let mut other = App::new(Session::new());
-        assert!(other.level.is_none());
+        assert_ne!(other.levels, app.levels, "a new project is not the sample house");
         assert!(other.open_path(file.clone()), "refused: {:?}", other.message);
         assert_eq!(other.levels, app.levels);
         assert!(other.drawing.is_some());

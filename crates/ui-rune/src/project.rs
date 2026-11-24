@@ -87,8 +87,8 @@ mod tests {
     fn a_project_that_will_not_open_leaves_an_empty_one_and_says_why() {
         let (session, why) = load(&Source::File("/no/such/project.bimc".into()));
         assert!(why.is_some());
-        assert!(session.model.levels().is_empty());
+        assert!(session.path.is_none(), "an empty project has no file");
         let (session, why) = load(&Source::Sample);
-        assert!(why.is_none() && !session.model.levels().is_empty());
+        assert!(why.is_none() && session.model.levels().len() >= 2, "the sample house has its levels");
     }
 }

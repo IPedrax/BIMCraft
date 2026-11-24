@@ -310,6 +310,9 @@ jobs:
           foreach ($round in 1, 2) {
             ./ci/measure-ui.ps1 -Name "win-rune-gpu-$round" -Out results -Exe $rune
             $env:RUNE_CPU_FIRST = 'only'
+            ./ci/measure-ui.ps1 -Name "win-rune-cpu-rev-$round" -Out results -Exe $rune -AppArgs '--rev'
+            Remove-Item Env:RUNE_CPU_FIRST
+            $env:RUNE_CPU_FIRST = 'only'
             ./ci/measure-ui.ps1 -Name "win-rune-cpu-$round" -Out results -Exe $rune
             Remove-Item Env:RUNE_CPU_FIRST
             ./ci/measure-ui.ps1 -Name "win-egui-628-$round" -Out results -Exe $egui -AppArgs '--sample' -PanButton 2
