@@ -1172,6 +1172,26 @@ mod tests {
     }
 
     #[test]
+    fn a_wire_size_s_label_keeps_a_text_that_reads_as_a_number() {
+        // A wire type's size `label` is a text (`WireSize`): "16" typed stays "16", where the rows' others hold texts too.
+        let kinds = bimcraft_core::codes::section_def(Discipline::Electrical, "wire_types").map(|d| d.columns);
+        let v = json!({"material": "copper", "temperature": 70, "insulation": "PVC", "sizes": [
+            {"section": 1.5, "ampacity": 15.5, "label": "14 AWG"},
+            {"section": 2.5, "ampacity": 21, "label": "12 AWG"}
+        ]});
+        let mut h = Harness::builder().with_size([1800.0, 1200.0]).with_step_dt(0.25).build_ui_state(
+            move |ui, (v, pasted): &mut (Value, String)| {
+                let hints = Hints { at: vec!["Cu".into()], kinds, ..Default::default() };
+                editor(ui, "Cu", "Cu", v, &hints, pasted)
+            },
+            (v, String::new()),
+        );
+        h.run();
+        g7_type(&mut h, "12 AWG", "Label", "16");
+        assert_eq!(h.state().0["sizes"][1]["label"], json!("16"));
+    }
+
+    #[test]
     fn g7_tooltip_translation() {
         // In Portuguese, the language of the utilities' codes it closes cells of; the others fall back to English.
         let tip = "This row gives one value for these columns";

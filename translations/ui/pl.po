@@ -634,11 +634,11 @@ msgstr "Zaakceptuj główną: elementy głównej opcji pozostają w modelu; elem
 msgid "Accept from confidence"
 msgstr ""
 
-#: crates/core/src/codes.rs:379
+#: crates/core/src/codes.rs:447
 msgid "Accessibility"
 msgstr ""
 
-#: crates/core/src/codes.rs:380
+#: crates/core/src/codes.rs:448
 msgid "Accessible routes, turning spaces, reach ranges and accessible toilets."
 msgstr ""
 
@@ -2068,7 +2068,7 @@ msgstr ""
 msgid "Batch {} of {} · waiting for the answer… {} s"
 msgstr ""
 
-#: crates/core/src/codes.rs:427
+#: crates/core/src/codes.rs:495
 msgid "Bathroom Volumes"
 msgstr ""
 
@@ -2327,7 +2327,7 @@ msgstr ""
 msgid "Building Codes…"
 msgstr ""
 
-#: crates/core/src/codes.rs:443
+#: crates/core/src/codes.rs:511
 #: crates/core/src/commands.rs:3781
 msgid "Building Demand"
 msgstr ""
@@ -3025,7 +3025,7 @@ msgstr ""
 msgid "Circuit Number"
 msgstr ""
 
-#: crates/core/src/codes.rs:491
+#: crates/core/src/codes.rs:559
 msgid "Circuit Sizing"
 msgstr ""
 
@@ -4053,7 +4053,7 @@ msgstr ""
 msgid "Coil up to"
 msgstr ""
 
-#: crates/core/src/codes.rs:563
+#: crates/core/src/codes.rs:631
 msgid "Cold Water"
 msgstr ""
 
@@ -4190,7 +4190,7 @@ msgstr ""
 msgid "Conceptual Mass"
 msgstr ""
 
-#: crates/core/src/codes.rs:411
+#: crates/core/src/codes.rs:479
 #: crates/core/src/family.rs:3244
 msgid "Concrete"
 msgstr ""
@@ -4199,7 +4199,7 @@ msgstr ""
 msgid "Concrete block"
 msgstr ""
 
-#: crates/core/src/codes.rs:412
+#: crates/core/src/codes.rs:480
 msgid "Concrete cover by exposure class, steel ratios, bars, stirrups and skin bars, used by the reinforcement check."
 msgstr ""
 
@@ -4215,7 +4215,7 @@ msgstr ""
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr ""
 
-#: crates/core/src/codes.rs:499
+#: crates/core/src/codes.rs:567
 #: crates/core/src/commands.rs:3576
 msgid "Conduit Fill"
 msgstr ""
@@ -5191,7 +5191,7 @@ msgstr ""
 msgid "Datum"
 msgstr ""
 
-#: crates/core/src/codes.rs:574
+#: crates/core/src/codes.rs:642
 msgid "Days of water stored, refill time, compartments and pumps."
 msgstr ""
 
@@ -5486,7 +5486,7 @@ msgstr ""
 msgid "Description of {}"
 msgstr ""
 
-#: crates/core/src/codes.rs:547
+#: crates/core/src/codes.rs:615
 msgid "Design Conditions"
 msgstr ""
 
@@ -5851,7 +5851,7 @@ msgstr ""
 msgid "Distribution System"
 msgstr ""
 
-#: crates/core/src/codes.rs:467
+#: crates/core/src/codes.rs:535
 #: crates/core/src/commands.rs:1079
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Distribution Systems"
@@ -5941,7 +5941,7 @@ msgstr ""
 msgid "Door Schedule"
 msgstr ""
 
-#: crates/core/src/codes.rs:355
+#: crates/core/src/codes.rs:423
 msgid "Doors and Openings"
 msgstr ""
 
@@ -6131,7 +6131,7 @@ msgstr ""
 msgid "Duct"
 msgstr ""
 
-#: crates/core/src/codes.rs:539
+#: crates/core/src/codes.rs:607
 msgid "Ducts and Piping"
 msgstr ""
 
@@ -6181,7 +6181,7 @@ msgstr ""
 msgid "Duplicate…"
 msgstr ""
 
-#: crates/core/src/codes.rs:435
+#: crates/core/src/codes.rs:503
 msgid "Dwelling Lighting and Outlets"
 msgstr ""
 
@@ -6202,7 +6202,7 @@ msgstr ""
 msgid "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster"
 msgstr ""
 
-#: crates/core/src/codes.rs:556
+#: crates/core/src/codes.rs:624
 msgid "Each fixture's design flows, weight, fixture units and minimum drain."
 msgstr ""
 
@@ -6537,7 +6537,7 @@ msgstr ""
 msgid "Edit…"
 msgstr ""
 
-#: crates/core/src/codes.rs:371
+#: crates/core/src/codes.rs:439
 msgid "Egress"
 msgstr ""
 
@@ -6759,7 +6759,7 @@ msgstr ""
 msgid "Entities"
 msgstr ""
 
-#: crates/core/src/codes.rs:395
+#: crates/core/src/codes.rs:463
 msgid "Envelope and Energy"
 msgstr ""
 
@@ -6775,7 +6775,7 @@ msgstr ""
 msgid "Equality Text"
 msgstr ""
 
-#: crates/core/src/codes.rs:523
+#: crates/core/src/codes.rs:591
 msgid "Equipment Working Space"
 msgstr ""
 
@@ -7490,15 +7490,15 @@ msgstr ""
 msgid "Finishes"
 msgstr ""
 
-#: crates/core/src/codes.rs:387
+#: crates/core/src/codes.rs:455
 msgid "Fire Safety"
 msgstr ""
 
-#: crates/core/src/codes.rs:598
+#: crates/core/src/codes.rs:666
 msgid "Fire hydrant systems by type, the fire water reserve, pipe roughness, and the limits on speed and pressure."
 msgstr ""
 
-#: crates/core/src/codes.rs:388
+#: crates/core/src/codes.rs:456
 msgid "Fire resistance by element, compartments and separation."
 msgstr ""
 
@@ -7535,7 +7535,7 @@ msgstr ""
 msgid "Fixed to Dimension Line"
 msgstr ""
 
-#: crates/core/src/codes.rs:555
+#: crates/core/src/codes.rs:623
 msgid "Fixtures"
 msgstr ""
 
@@ -8484,11 +8484,11 @@ msgstr ""
 msgid "Host this project"
 msgstr "Udostępnij ten projekt"
 
-#: crates/core/src/codes.rs:444
+#: crates/core/src/codes.rs:512
 msgid "How a utility or a country calculates a building's demand: the demand of one home, the factor for the number of homes, and the shared loads."
 msgstr ""
 
-#: crates/core/src/codes.rs:484
+#: crates/core/src/codes.rs:552
 msgid "How a utility works out one unit's demand, and the supply category it gives for the load or demand."
 msgstr ""
 
@@ -8520,7 +8520,7 @@ msgstr ""
 msgid "How far the tread finish stands out past the riser finish below it."
 msgstr ""
 
-#: crates/core/src/codes.rs:500
+#: crates/core/src/codes.rs:568
 msgid "How full a conduit may be, the conduits makers sell, and the outside size of each cable."
 msgstr ""
 
@@ -8532,7 +8532,7 @@ msgstr ""
 msgid "How many bars, how thick and how far apart is yours to say; a field left empty is not used. A spacing is the most between bars."
 msgstr ""
 
-#: crates/core/src/codes.rs:582
+#: crates/core/src/codes.rs:650
 msgid "How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."
 msgstr ""
 
@@ -8600,7 +8600,7 @@ msgstr ""
 msgid "How wide this flight or landing is; empty for as wide as the stair"
 msgstr ""
 
-#: crates/core/src/codes.rs:597
+#: crates/core/src/codes.rs:665
 msgid "Hydrants and Hose Reels"
 msgstr ""
 
@@ -8924,7 +8924,7 @@ msgstr ""
 msgid "Indicator as Prefix / Suffix"
 msgstr ""
 
-#: crates/core/src/codes.rs:548
+#: crates/core/src/codes.rs:616
 msgid "Indoor temperatures and humidity for heating and cooling."
 msgstr ""
 
@@ -9702,7 +9702,7 @@ msgstr ""
 msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
 msgstr ""
 
-#: crates/core/src/codes.rs:515
+#: crates/core/src/codes.rs:583
 msgid "Lighting Levels"
 msgstr ""
 
@@ -10048,7 +10048,7 @@ msgstr ""
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
-#: crates/core/src/codes.rs:403
+#: crates/core/src/codes.rs:471
 msgid "Loads and Combinations"
 msgstr ""
 
@@ -10241,7 +10241,7 @@ msgstr ""
 msgid "Mains"
 msgstr ""
 
-#: crates/core/src/codes.rs:516
+#: crates/core/src/codes.rs:584
 msgid "Maintained illuminance by room or task, and emergency lighting."
 msgstr ""
 
@@ -10713,11 +10713,11 @@ msgstr "Minimum"
 msgid "Minimum Angle"
 msgstr ""
 
-#: crates/core/src/codes.rs:605
+#: crates/core/src/codes.rs:673
 msgid "Minimum Fixtures by Use"
 msgstr ""
 
-#: crates/core/src/codes.rs:364
+#: crates/core/src/codes.rs:432
 msgid "Minimum area, width, height and natural light of rooms, by the kind of room its name shows."
 msgstr ""
 
@@ -12076,7 +12076,7 @@ msgstr ""
 msgid "Object Styles…"
 msgstr ""
 
-#: crates/core/src/codes.rs:372
+#: crates/core/src/codes.rs:440
 msgid "Occupant load factors, exit widths, travel distances and corridors."
 msgstr ""
 
@@ -12453,7 +12453,7 @@ msgstr ""
 msgid "Out"
 msgstr ""
 
-#: crates/core/src/codes.rs:532
+#: crates/core/src/codes.rs:600
 msgid "Outdoor air by use, per person and per area, default occupancies and exhaust rates."
 msgstr ""
 
@@ -12753,7 +12753,7 @@ msgstr ""
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr ""
 
-#: crates/core/src/codes.rs:404
+#: crates/core/src/codes.rs:472
 msgid "Partial factors, imposed loads by use and unit weights."
 msgstr ""
 
@@ -14392,7 +14392,7 @@ msgstr ""
 msgid "Rainfall intensity"
 msgstr ""
 
-#: crates/core/src/codes.rs:590
+#: crates/core/src/codes.rs:658
 msgid "Rainfall, slopes, roughness, the minimum downpipe and the downpipe charts."
 msgstr ""
 
@@ -14404,7 +14404,7 @@ msgstr ""
 msgid "Ramp: click where it starts, then where its run ends; a landing turns it"
 msgstr ""
 
-#: crates/core/src/codes.rs:347
+#: crates/core/src/codes.rs:415
 msgid "Ramps"
 msgstr ""
 
@@ -15053,7 +15053,7 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr ""
 
-#: crates/core/src/codes.rs:573
+#: crates/core/src/codes.rs:641
 msgid "Reservation"
 msgstr ""
 
@@ -15167,7 +15167,7 @@ msgstr ""
 msgid "Residential Load Points"
 msgstr ""
 
-#: crates/core/src/codes.rs:419
+#: crates/core/src/codes.rs:487
 msgid "Residual-Current Devices"
 msgstr ""
 
@@ -15359,7 +15359,7 @@ msgstr ""
 msgid "Risers"
 msgstr ""
 
-#: crates/core/src/codes.rs:340
+#: crates/core/src/codes.rs:408
 msgid "Risers, treads, widths, landings, winders, nosings, handrails and guards of stairs."
 msgstr ""
 
@@ -15474,7 +15474,7 @@ msgstr ""
 msgid "Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"
 msgstr ""
 
-#: crates/core/src/codes.rs:363
+#: crates/core/src/codes.rs:431
 msgid "Rooms and Habitability"
 msgstr ""
 
@@ -15700,7 +15700,7 @@ msgstr ""
 msgid "Sand"
 msgstr ""
 
-#: crates/core/src/codes.rs:581
+#: crates/core/src/codes.rs:649
 msgid "Sanitary Drainage and Vents"
 msgstr ""
 
@@ -16312,7 +16312,7 @@ msgstr ""
 msgid "Separator"
 msgstr ""
 
-#: crates/core/src/codes.rs:451
+#: crates/core/src/codes.rs:519
 msgid "Service Categories"
 msgstr ""
 
@@ -17276,7 +17276,7 @@ msgstr ""
 msgid "Stair: click where the stair starts, then where each flight or landing ends"
 msgstr ""
 
-#: crates/core/src/codes.rs:339
+#: crates/core/src/codes.rs:407
 msgid "Stairs and Railings"
 msgstr ""
 
@@ -17484,7 +17484,7 @@ msgstr ""
 msgid "Stop the script running"
 msgstr ""
 
-#: crates/core/src/codes.rs:589
+#: crates/core/src/codes.rs:657
 msgid "Storm Drainage"
 msgstr ""
 
@@ -17674,7 +17674,7 @@ msgstr ""
 msgid "Surface, {}°"
 msgstr ""
 
-#: crates/core/src/codes.rs:507
+#: crates/core/src/codes.rs:575
 msgid "Surge Protection"
 msgstr ""
 
@@ -18293,7 +18293,7 @@ msgstr ""
 msgid "The centre of a curved wall, a column or a component"
 msgstr ""
 
-#: crates/core/src/codes.rs:524
+#: crates/core/src/codes.rs:592
 msgid "The clear space in front of panels and switchboards."
 msgstr ""
 
@@ -18329,7 +18329,7 @@ msgstr ""
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr ""
 
-#: crates/core/src/codes.rs:492
+#: crates/core/src/codes.rs:560
 msgid "The current each cable carries, the corrections for heat, grouping and soil, voltage drop, cable sizes and breakers."
 msgstr ""
 
@@ -18431,7 +18431,7 @@ msgstr "Pliki dołączone do tej wiadomości nie są takimi, które asystent prz
 msgid "The first guest hosts the session; the others move there"
 msgstr "Pierwszy gość prowadzi sesję, a pozostali przenoszą się do niego"
 
-#: crates/core/src/codes.rs:565
+#: crates/core/src/codes.rs:633
 msgid "The flow method, the maximum speed, the minimum pressure at a fixture, and the equivalent lengths of pipes and fittings."
 msgstr ""
 
@@ -18455,7 +18455,7 @@ msgstr ""
 msgid "The key stays on this computer: the request is made from here. The answer holds for this session; File > Settings > Co-Work keeps a standing one."
 msgstr "Klucz zostaje na tym komputerze: żądanie jest wysyłane stąd. Odpowiedź obowiązuje w tej sesji; stałą ustawisz w Plik > Ustawienia > Co-Work."
 
-#: crates/core/src/codes.rs:476
+#: crates/core/src/codes.rs:544
 msgid "The kinds of wire, by material and insulation, and the current each size carries."
 msgstr ""
 
@@ -18488,7 +18488,7 @@ msgstr ""
 msgid "The loop is open: {} line ends don't meet another line."
 msgstr ""
 
-#: crates/core/src/codes.rs:540
+#: crates/core/src/codes.rs:608
 msgid "The maximum air and water speeds, and friction losses."
 msgstr ""
 
@@ -18496,11 +18496,11 @@ msgstr ""
 msgid "The middle of a wall, along its arc"
 msgstr ""
 
-#: crates/core/src/codes.rs:356
+#: crates/core/src/codes.rs:424
 msgid "The minimum clear width and height of doors, the widest leaf, and the doors that are not checked."
 msgstr ""
 
-#: crates/core/src/codes.rs:436
+#: crates/core/src/codes.rs:504
 msgid "The minimum lighting and outlets for each room of a home, and the power of each point."
 msgstr ""
 
@@ -18735,7 +18735,7 @@ msgstr ""
 msgid "The skill is installed."
 msgstr ""
 
-#: crates/core/src/codes.rs:348
+#: crates/core/src/codes.rs:416
 msgid "The slope and width of new ramps, the steepest slope allowed, the height between landings, widths and landings."
 msgstr ""
 
@@ -18759,7 +18759,7 @@ msgstr ""
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr ""
 
-#: crates/core/src/codes.rs:468
+#: crates/core/src/codes.rs:536
 msgid "The systems that feed a board: the phases and wires, the voltages, and the earthing."
 msgstr ""
 
@@ -18804,7 +18804,7 @@ msgstr ""
 msgid "The treads stand out too far over the risers. Give the stair type a shorter nosing."
 msgstr ""
 
-#: crates/core/src/codes.rs:452
+#: crates/core/src/codes.rs:520
 msgid "The utility's service categories by supply system and use: the load or demand of each, with its breaker and cables."
 msgstr ""
 
@@ -18832,7 +18832,7 @@ msgstr ""
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr ""
 
-#: crates/core/src/codes.rs:460
+#: crates/core/src/codes.rs:528
 msgid "The voltages the project uses, each with the lowest and highest a device may get."
 msgstr ""
 
@@ -18882,7 +18882,7 @@ msgstr ""
 msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
 msgstr ""
 
-#: crates/core/src/codes.rs:428
+#: crates/core/src/codes.rs:496
 msgid "The zones around a bathtub or shower, their size, the IP rating, and what may be installed in each."
 msgstr ""
 
@@ -18922,7 +18922,7 @@ msgstr ""
 msgid "Thermal"
 msgstr ""
 
-#: crates/core/src/codes.rs:396
+#: crates/core/src/codes.rs:464
 msgid "Thermal transmittance of walls, roofs, floors and windows by climate zone."
 msgstr ""
 
@@ -19281,7 +19281,7 @@ msgstr ""
 msgid "To change a rule for this project, open Manage > Building Codes."
 msgstr ""
 
-#: crates/core/src/codes.rs:606
+#: crates/core/src/codes.rs:674
 msgid "Toilets, washbasins and other fixtures a building needs for the people in it."
 msgstr ""
 
@@ -19866,7 +19866,7 @@ msgstr ""
 msgid "Unhosted bars"
 msgstr ""
 
-#: crates/core/src/codes.rs:483
+#: crates/core/src/codes.rs:551
 msgid "Unit Demand and Supply"
 msgstr ""
 
@@ -20088,7 +20088,7 @@ msgstr ""
 msgid "Vector"
 msgstr ""
 
-#: crates/core/src/codes.rs:531
+#: crates/core/src/codes.rs:599
 msgid "Ventilation"
 msgstr ""
 
@@ -20407,7 +20407,7 @@ msgstr ""
 msgid "Voltage {} nominal"
 msgstr ""
 
-#: crates/core/src/codes.rs:459
+#: crates/core/src/codes.rs:527
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Voltages"
 msgstr ""
@@ -20627,7 +20627,7 @@ msgstr ""
 msgid "When Selected"
 msgstr ""
 
-#: crates/core/src/codes.rs:508
+#: crates/core/src/codes.rs:576
 msgid "When a surge protective device is needed, where it goes, how it is connected, and the least currents and voltages."
 msgstr ""
 
@@ -20679,7 +20679,7 @@ msgstr ""
 msgid "Where two walls or grids cross"
 msgstr ""
 
-#: crates/core/src/codes.rs:420
+#: crates/core/src/codes.rs:488
 msgid "Which circuits need a high-sensitivity residual-current device (RCD), by place and type of point, and the highest residual current allowed."
 msgstr ""
 
@@ -20786,7 +20786,7 @@ msgstr "Przewód"
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr ""
 
-#: crates/core/src/codes.rs:475
+#: crates/core/src/codes.rs:543
 #: crates/core/src/commands.rs:1090
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Wire Types"

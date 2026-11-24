@@ -634,11 +634,11 @@ msgstr "接受主選項：主選項的圖元保留在模型中；其他選項的
 msgid "Accept from confidence"
 msgstr ""
 
-#: crates/core/src/codes.rs:379
+#: crates/core/src/codes.rs:447
 msgid "Accessibility"
 msgstr ""
 
-#: crates/core/src/codes.rs:380
+#: crates/core/src/codes.rs:448
 msgid "Accessible routes, turning spaces, reach ranges and accessible toilets."
 msgstr ""
 
@@ -2068,7 +2068,7 @@ msgstr ""
 msgid "Batch {} of {} · waiting for the answer… {} s"
 msgstr ""
 
-#: crates/core/src/codes.rs:427
+#: crates/core/src/codes.rs:495
 msgid "Bathroom Volumes"
 msgstr ""
 
@@ -2327,7 +2327,7 @@ msgstr ""
 msgid "Building Codes…"
 msgstr ""
 
-#: crates/core/src/codes.rs:443
+#: crates/core/src/codes.rs:511
 #: crates/core/src/commands.rs:3781
 msgid "Building Demand"
 msgstr ""
@@ -3025,7 +3025,7 @@ msgstr ""
 msgid "Circuit Number"
 msgstr ""
 
-#: crates/core/src/codes.rs:491
+#: crates/core/src/codes.rs:559
 msgid "Circuit Sizing"
 msgstr ""
 
@@ -4053,7 +4053,7 @@ msgstr ""
 msgid "Coil up to"
 msgstr ""
 
-#: crates/core/src/codes.rs:563
+#: crates/core/src/codes.rs:631
 msgid "Cold Water"
 msgstr ""
 
@@ -4190,7 +4190,7 @@ msgstr "計算高度"
 msgid "Conceptual Mass"
 msgstr "概念體量"
 
-#: crates/core/src/codes.rs:411
+#: crates/core/src/codes.rs:479
 #: crates/core/src/family.rs:3244
 msgid "Concrete"
 msgstr "混凝土"
@@ -4199,7 +4199,7 @@ msgstr "混凝土"
 msgid "Concrete block"
 msgstr "混凝土砌塊"
 
-#: crates/core/src/codes.rs:412
+#: crates/core/src/codes.rs:480
 msgid "Concrete cover by exposure class, steel ratios, bars, stirrups and skin bars, used by the reinforcement check."
 msgstr ""
 
@@ -4215,7 +4215,7 @@ msgstr "線管和導線"
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "線管 (CN)：單擊起點和終點；連續單擊可為每一段創建一根線管"
 
-#: crates/core/src/codes.rs:499
+#: crates/core/src/codes.rs:567
 #: crates/core/src/commands.rs:3576
 msgid "Conduit Fill"
 msgstr ""
@@ -5191,7 +5191,7 @@ msgstr ""
 msgid "Datum"
 msgstr "基準"
 
-#: crates/core/src/codes.rs:574
+#: crates/core/src/codes.rs:642
 msgid "Days of water stored, refill time, compartments and pumps."
 msgstr ""
 
@@ -5486,7 +5486,7 @@ msgstr ""
 msgid "Description of {}"
 msgstr ""
 
-#: crates/core/src/codes.rs:547
+#: crates/core/src/codes.rs:615
 msgid "Design Conditions"
 msgstr ""
 
@@ -5851,7 +5851,7 @@ msgstr "配電箱"
 msgid "Distribution System"
 msgstr ""
 
-#: crates/core/src/codes.rs:467
+#: crates/core/src/codes.rs:535
 #: crates/core/src/commands.rs:1079
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Distribution Systems"
@@ -5941,7 +5941,7 @@ msgstr ""
 msgid "Door Schedule"
 msgstr "門明細表"
 
-#: crates/core/src/codes.rs:355
+#: crates/core/src/codes.rs:423
 msgid "Doors and Openings"
 msgstr ""
 
@@ -6131,7 +6131,7 @@ msgstr ""
 msgid "Duct"
 msgstr "風管"
 
-#: crates/core/src/codes.rs:539
+#: crates/core/src/codes.rs:607
 msgid "Ducts and Piping"
 msgstr ""
 
@@ -6181,7 +6181,7 @@ msgstr "帶詳圖複製"
 msgid "Duplicate…"
 msgstr "複製…"
 
-#: crates/core/src/codes.rs:435
+#: crates/core/src/codes.rs:503
 msgid "Dwelling Lighting and Outlets"
 msgstr ""
 
@@ -6202,7 +6202,7 @@ msgstr ""
 msgid "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster"
 msgstr ""
 
-#: crates/core/src/codes.rs:556
+#: crates/core/src/codes.rs:624
 msgid "Each fixture's design flows, weight, fixture units and minimum drain."
 msgstr ""
 
@@ -6537,7 +6537,7 @@ msgstr ""
 msgid "Edit…"
 msgstr "編輯…"
 
-#: crates/core/src/codes.rs:371
+#: crates/core/src/codes.rs:439
 msgid "Egress"
 msgstr ""
 
@@ -6759,7 +6759,7 @@ msgstr ""
 msgid "Entities"
 msgstr "圖元數"
 
-#: crates/core/src/codes.rs:395
+#: crates/core/src/codes.rs:463
 msgid "Envelope and Energy"
 msgstr ""
 
@@ -6775,7 +6775,7 @@ msgstr "相等顯示"
 msgid "Equality Text"
 msgstr "相等文字"
 
-#: crates/core/src/codes.rs:523
+#: crates/core/src/codes.rs:591
 msgid "Equipment Working Space"
 msgstr ""
 
@@ -7490,15 +7490,15 @@ msgstr ""
 msgid "Finishes"
 msgstr ""
 
-#: crates/core/src/codes.rs:387
+#: crates/core/src/codes.rs:455
 msgid "Fire Safety"
 msgstr ""
 
-#: crates/core/src/codes.rs:598
+#: crates/core/src/codes.rs:666
 msgid "Fire hydrant systems by type, the fire water reserve, pipe roughness, and the limits on speed and pressure."
 msgstr ""
 
-#: crates/core/src/codes.rs:388
+#: crates/core/src/codes.rs:456
 msgid "Fire resistance by element, compartments and separation."
 msgstr ""
 
@@ -7535,7 +7535,7 @@ msgstr "固定窗"
 msgid "Fixed to Dimension Line"
 msgstr "固定到尺寸線"
 
-#: crates/core/src/codes.rs:555
+#: crates/core/src/codes.rs:623
 msgid "Fixtures"
 msgstr ""
 
@@ -8484,11 +8484,11 @@ msgstr ""
 msgid "Host this project"
 msgstr "主持此專案"
 
-#: crates/core/src/codes.rs:444
+#: crates/core/src/codes.rs:512
 msgid "How a utility or a country calculates a building's demand: the demand of one home, the factor for the number of homes, and the shared loads."
 msgstr ""
 
-#: crates/core/src/codes.rs:484
+#: crates/core/src/codes.rs:552
 msgid "How a utility works out one unit's demand, and the supply category it gives for the load or demand."
 msgstr ""
 
@@ -8520,7 +8520,7 @@ msgstr ""
 msgid "How far the tread finish stands out past the riser finish below it."
 msgstr ""
 
-#: crates/core/src/codes.rs:500
+#: crates/core/src/codes.rs:568
 msgid "How full a conduit may be, the conduits makers sell, and the outside size of each cable."
 msgstr ""
 
@@ -8532,7 +8532,7 @@ msgstr "它如何顯示視圖階段中已有的內容："
 msgid "How many bars, how thick and how far apart is yours to say; a field left empty is not used. A spacing is the most between bars."
 msgstr "根數、直徑和間距由您決定；留空的項不使用。間距為鋼筋之間的最大值。"
 
-#: crates/core/src/codes.rs:582
+#: crates/core/src/codes.rs:650
 msgid "How many fixture units branches, stacks and building drains can carry by size and slope, and vents and trap distances."
 msgstr ""
 
@@ -8600,7 +8600,7 @@ msgstr ""
 msgid "How wide this flight or landing is; empty for as wide as the stair"
 msgstr ""
 
-#: crates/core/src/codes.rs:597
+#: crates/core/src/codes.rs:665
 msgid "Hydrants and Hose Reels"
 msgstr ""
 
@@ -8924,7 +8924,7 @@ msgstr ""
 msgid "Indicator as Prefix / Suffix"
 msgstr ""
 
-#: crates/core/src/codes.rs:548
+#: crates/core/src/codes.rs:616
 msgid "Indoor temperatures and humidity for heating and cooling."
 msgstr ""
 
@@ -9702,7 +9702,7 @@ msgstr "照明設備"
 msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
 msgstr "照明設備 (LF)：在單擊處放置吊掛於樓板的燈具；按空格鍵旋轉"
 
-#: crates/core/src/codes.rs:515
+#: crates/core/src/codes.rs:583
 msgid "Lighting Levels"
 msgstr ""
 
@@ -10048,7 +10048,7 @@ msgstr ""
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
-#: crates/core/src/codes.rs:403
+#: crates/core/src/codes.rs:471
 msgid "Loads and Combinations"
 msgstr ""
 
@@ -10241,7 +10241,7 @@ msgstr "主間距 Y"
 msgid "Mains"
 msgstr ""
 
-#: crates/core/src/codes.rs:516
+#: crates/core/src/codes.rs:584
 msgid "Maintained illuminance by room or task, and emergency lighting."
 msgstr ""
 
@@ -10713,11 +10713,11 @@ msgstr "最小值"
 msgid "Minimum Angle"
 msgstr "最小角度"
 
-#: crates/core/src/codes.rs:605
+#: crates/core/src/codes.rs:673
 msgid "Minimum Fixtures by Use"
 msgstr ""
 
-#: crates/core/src/codes.rs:364
+#: crates/core/src/codes.rs:432
 msgid "Minimum area, width, height and natural light of rooms, by the kind of room its name shows."
 msgstr ""
 
@@ -12076,7 +12076,7 @@ msgstr ""
 msgid "Object Styles…"
 msgstr "對像樣式…"
 
-#: crates/core/src/codes.rs:372
+#: crates/core/src/codes.rs:440
 msgid "Occupant load factors, exit widths, travel distances and corridors."
 msgstr ""
 
@@ -12453,7 +12453,7 @@ msgstr ""
 msgid "Out"
 msgstr "外"
 
-#: crates/core/src/codes.rs:532
+#: crates/core/src/codes.rs:600
 msgid "Outdoor air by use, per person and per area, default occupancies and exhaust rates."
 msgstr ""
 
@@ -12753,7 +12753,7 @@ msgstr "半橢圓"
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "半橢圓：單擊軸的兩端，然後單擊其凸出的距離"
 
-#: crates/core/src/codes.rs:404
+#: crates/core/src/codes.rs:472
 msgid "Partial factors, imposed loads by use and unit weights."
 msgstr ""
 
@@ -14392,7 +14392,7 @@ msgstr "欄杆扶手"
 msgid "Rainfall intensity"
 msgstr ""
 
-#: crates/core/src/codes.rs:590
+#: crates/core/src/codes.rs:658
 msgid "Rainfall, slopes, roughness, the minimum downpipe and the downpipe charts."
 msgstr ""
 
@@ -14404,7 +14404,7 @@ msgstr "坡道"
 msgid "Ramp: click where it starts, then where its run ends; a landing turns it"
 msgstr "坡道：單擊起點，再單擊坡段終點；平台使其轉向"
 
-#: crates/core/src/codes.rs:347
+#: crates/core/src/codes.rs:415
 msgid "Ramps"
 msgstr "坡道"
 
@@ -15053,7 +15053,7 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "報告參數"
 
-#: crates/core/src/codes.rs:573
+#: crates/core/src/codes.rs:641
 msgid "Reservation"
 msgstr ""
 
@@ -15167,7 +15167,7 @@ msgstr ""
 msgid "Residential Load Points"
 msgstr ""
 
-#: crates/core/src/codes.rs:419
+#: crates/core/src/codes.rs:487
 msgid "Residual-Current Devices"
 msgstr ""
 
@@ -15359,7 +15359,7 @@ msgstr ""
 msgid "Risers"
 msgstr "踢面"
 
-#: crates/core/src/codes.rs:340
+#: crates/core/src/codes.rs:408
 msgid "Risers, treads, widths, landings, winders, nosings, handrails and guards of stairs."
 msgstr ""
 
@@ -15474,7 +15474,7 @@ msgstr ""
 msgid "Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"
 msgstr "房間分隔線：像牆一樣圍合房間的線，用於分隔開放空間；依次單擊各點"
 
-#: crates/core/src/codes.rs:363
+#: crates/core/src/codes.rs:431
 msgid "Rooms and Habitability"
 msgstr ""
 
@@ -15700,7 +15700,7 @@ msgstr "示例項目"
 msgid "Sand"
 msgstr "沙"
 
-#: crates/core/src/codes.rs:581
+#: crates/core/src/codes.rs:649
 msgid "Sanitary Drainage and Vents"
 msgstr ""
 
@@ -16312,7 +16312,7 @@ msgstr ""
 msgid "Separator"
 msgstr ""
 
-#: crates/core/src/codes.rs:451
+#: crates/core/src/codes.rs:519
 msgid "Service Categories"
 msgstr ""
 
@@ -17276,7 +17276,7 @@ msgstr "樓梯：單擊起點，再單擊上行方向"
 msgid "Stair: click where the stair starts, then where each flight or landing ends"
 msgstr ""
 
-#: crates/core/src/codes.rs:339
+#: crates/core/src/codes.rs:407
 msgid "Stairs and Railings"
 msgstr ""
 
@@ -17484,7 +17484,7 @@ msgstr ""
 msgid "Stop the script running"
 msgstr ""
 
-#: crates/core/src/codes.rs:589
+#: crates/core/src/codes.rs:657
 msgid "Storm Drainage"
 msgstr ""
 
@@ -17674,7 +17674,7 @@ msgstr "表面，{}"
 msgid "Surface, {}°"
 msgstr "表面，{}°"
 
-#: crates/core/src/codes.rs:507
+#: crates/core/src/codes.rs:575
 msgid "Surge Protection"
 msgstr ""
 
@@ -18293,7 +18293,7 @@ msgstr ""
 msgid "The centre of a curved wall, a column or a component"
 msgstr "弧形牆、柱或構件的中心"
 
-#: crates/core/src/codes.rs:524
+#: crates/core/src/codes.rs:592
 msgid "The clear space in front of panels and switchboards."
 msgstr ""
 
@@ -18329,7 +18329,7 @@ msgstr ""
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "控制連接埠，智能體透過它處理此項目 (bimcraft-cli mcp --connect)：是否開啟、已連接多少個智能體，以及它們是否只能讀取。單擊可前往 檔案 > 設置 > 智能體"
 
-#: crates/core/src/codes.rs:492
+#: crates/core/src/codes.rs:560
 msgid "The current each cable carries, the corrections for heat, grouping and soil, voltage drop, cable sizes and breakers."
 msgstr ""
 
@@ -18431,7 +18431,7 @@ msgstr "該訊息附帶的檔案不是助手接受的類型"
 msgid "The first guest hosts the session; the others move there"
 msgstr "第一位訪客主持工作階段；其他人轉到那裡"
 
-#: crates/core/src/codes.rs:565
+#: crates/core/src/codes.rs:633
 msgid "The flow method, the maximum speed, the minimum pressure at a fixture, and the equivalent lengths of pipes and fittings."
 msgstr ""
 
@@ -18455,7 +18455,7 @@ msgstr "界面文字；在面板上對比度不足 4.5:1 之處會被調深或�
 msgid "The key stays on this computer: the request is made from here. The answer holds for this session; File > Settings > Co-Work keeps a standing one."
 msgstr "金鑰保留在這台電腦上：請求由此處發出。回答在本次工作階段內有效；檔案 > 設置 > Co-Work 可儲存長期設定。"
 
-#: crates/core/src/codes.rs:476
+#: crates/core/src/codes.rs:544
 msgid "The kinds of wire, by material and insulation, and the current each size carries."
 msgstr ""
 
@@ -18488,7 +18488,7 @@ msgstr "表面相交處的線"
 msgid "The loop is open: {} line ends don't meet another line."
 msgstr "環未閉合：有 {} 個線端沒有與其他線相接。"
 
-#: crates/core/src/codes.rs:540
+#: crates/core/src/codes.rs:608
 msgid "The maximum air and water speeds, and friction losses."
 msgstr ""
 
@@ -18496,11 +18496,11 @@ msgstr ""
 msgid "The middle of a wall, along its arc"
 msgstr "牆的中點，沿其弧線"
 
-#: crates/core/src/codes.rs:356
+#: crates/core/src/codes.rs:424
 msgid "The minimum clear width and height of doors, the widest leaf, and the doors that are not checked."
 msgstr ""
 
-#: crates/core/src/codes.rs:436
+#: crates/core/src/codes.rs:504
 msgid "The minimum lighting and outlets for each room of a home, and the power of each point."
 msgstr ""
 
@@ -18735,7 +18735,7 @@ msgstr "草圖中的線太多。"
 msgid "The skill is installed."
 msgstr ""
 
-#: crates/core/src/codes.rs:348
+#: crates/core/src/codes.rs:416
 msgid "The slope and width of new ramps, the steepest slope allowed, the height between landings, widths and landings."
 msgstr ""
 
@@ -18759,7 +18759,7 @@ msgstr ""
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr "使用系統自帶的標題欄和邊框，而非視窗自己的：應用欄隨之位於其下方"
 
-#: crates/core/src/codes.rs:468
+#: crates/core/src/codes.rs:536
 msgid "The systems that feed a board: the phases and wires, the voltages, and the earthing."
 msgstr ""
 
@@ -18804,7 +18804,7 @@ msgstr ""
 msgid "The treads stand out too far over the risers. Give the stair type a shorter nosing."
 msgstr ""
 
-#: crates/core/src/codes.rs:452
+#: crates/core/src/codes.rs:520
 msgid "The utility's service categories by supply system and use: the load or demand of each, with its breaker and cables."
 msgstr ""
 
@@ -18832,7 +18832,7 @@ msgstr "該視圖側視工作平面：請在正對該平面的視圖或 {3D} 中
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr "項目的電壓（以伏特計）及設備讀數可接受的範圍。配電系統按名稱引用它們。"
 
-#: crates/core/src/codes.rs:460
+#: crates/core/src/codes.rs:528
 msgid "The voltages the project uses, each with the lowest and highest a device may get."
 msgstr ""
 
@@ -18882,7 +18882,7 @@ msgstr ""
 msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
 msgstr "工作平面必須是水平的：樓板、天花板、屋頂或豎井都繪製在水平面上。請將工作平面（3D視圖的視圖控制欄）設置在標高、水平表面或同一高度的三個點上。"
 
-#: crates/core/src/codes.rs:428
+#: crates/core/src/codes.rs:496
 msgid "The zones around a bathtub or shower, their size, the IP rating, and what may be installed in each."
 msgstr ""
 
@@ -18922,7 +18922,7 @@ msgstr "此處沒有可放置的樓板或屋頂。"
 msgid "Thermal"
 msgstr "保溫層"
 
-#: crates/core/src/codes.rs:396
+#: crates/core/src/codes.rs:464
 msgid "Thermal transmittance of walls, roofs, floors and windows by climate zone."
 msgstr ""
 
@@ -19281,7 +19281,7 @@ msgstr ""
 msgid "To change a rule for this project, open Manage > Building Codes."
 msgstr ""
 
-#: crates/core/src/codes.rs:606
+#: crates/core/src/codes.rs:674
 msgid "Toilets, washbasins and other fixtures a building needs for the people in it."
 msgstr ""
 
@@ -19866,7 +19866,7 @@ msgstr "取消隱藏圖元"
 msgid "Unhosted bars"
 msgstr ""
 
-#: crates/core/src/codes.rs:483
+#: crates/core/src/codes.rs:551
 msgid "Unit Demand and Supply"
 msgstr ""
 
@@ -20088,7 +20088,7 @@ msgstr ""
 msgid "Vector"
 msgstr ""
 
-#: crates/core/src/codes.rs:531
+#: crates/core/src/codes.rs:599
 msgid "Ventilation"
 msgstr ""
 
@@ -20407,7 +20407,7 @@ msgstr "電壓 {} 名稱"
 msgid "Voltage {} nominal"
 msgstr "電壓 {} 標稱值"
 
-#: crates/core/src/codes.rs:459
+#: crates/core/src/codes.rs:527
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Voltages"
 msgstr "電壓"
@@ -20627,7 +20627,7 @@ msgstr "新功能"
 msgid "When Selected"
 msgstr ""
 
-#: crates/core/src/codes.rs:508
+#: crates/core/src/codes.rs:576
 msgid "When a surge protective device is needed, where it goes, how it is connected, and the least currents and voltages."
 msgstr ""
 
@@ -20679,7 +20679,7 @@ msgstr ""
 msgid "Where two walls or grids cross"
 msgstr "兩面牆或兩條軸網相交處"
 
-#: crates/core/src/codes.rs:420
+#: crates/core/src/codes.rs:488
 msgid "Which circuits need a high-sensitivity residual-current device (RCD), by place and type of point, and the highest residual current allowed."
 msgstr ""
 
@@ -20786,7 +20786,7 @@ msgstr "導線"
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "導線 (EW)：單擊起點和終點；連續單擊可為每一段創建一根導線"
 
-#: crates/core/src/codes.rs:475
+#: crates/core/src/codes.rs:543
 #: crates/core/src/commands.rs:1090
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Wire Types"

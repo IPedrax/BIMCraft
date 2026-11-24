@@ -1720,3 +1720,63 @@ fn every_column_of_every_unit_demand_method_s_tables_has_its_kind_and_every_cell
     }
     assert!(methods >= 3 && cells > 300, "methods {methods}, cells {cells}");
 }
+
+#[test]
+fn the_other_electrical_sections_say_of_every_field_of_their_tables_the_kind_its_values_have() {
+    // Every field of every row and card of these sections, in every library code, has the kind its values have there: a
+    // text a text, a number a number, a list of numbers a list; a truth or a list of texts has none (the window reads it as
+    // before).
+    fn walk(at: &mut Vec<String>, v: &Value, in_rows: bool, out: &mut Vec<(Vec<String>, Value)>) {
+        match v {
+            Value::Object(o) => {
+                for (k, x) in o {
+                    at.push(k.clone());
+                    walk(at, x, in_rows, out);
+                    at.pop();
+                }
+            }
+            Value::Array(a) if !a.is_empty() && a.iter().all(Value::is_object) => {
+                at.push("[]".into());
+                for x in a {
+                    walk(at, x, true, out);
+                }
+                at.pop();
+            }
+            other if in_rows => out.push((at.clone(), other.clone())),
+            _ => {}
+        }
+    }
+    let mut asked = std::collections::BTreeMap::new();
+    for key in ["rcd", "bath_volumes", "load_points", "circuits", "conduit_fill", "surge", "wire_types"] {
+        let def = section_def(Discipline::Electrical, key).unwrap();
+        for code in of(Discipline::Electrical) {
+            let Some(section) = code.sections.get(key) else { continue };
+            // A wire type is its own card, by its name: its fields are a row's.
+            let mut out = Vec::new();
+            if key == "wire_types" {
+                for (name, w) in section.as_object().into_iter().flatten() {
+                    walk(&mut vec![name.clone()], w, true, &mut out);
+                }
+            } else {
+                walk(&mut Vec::new(), section, false, &mut out);
+            }
+            for (at, v) in out {
+                let want = match &v {
+                    Value::String(_) => Some(ColumnKind::Text),
+                    Value::Number(_) => Some(ColumnKind::Number),
+                    Value::Array(a) if !a.is_empty() && a.iter().all(Value::is_number) => Some(ColumnKind::Numbers),
+                    Value::Null => continue,
+                    _ => None,
+                };
+                // A list of pairs (a conduit family's sizes) is shown by place: it has no kind.
+                if v.as_array().is_some_and(|a| a.iter().any(Value::is_array)) {
+                    assert_eq!((def.columns)(&at), None, "{} {key} {}", code.code, at.join("."));
+                    continue;
+                }
+                assert_eq!((def.columns)(&at), want, "{} {key} {}", code.code, at.join("."));
+                *asked.entry(key).or_insert(0) += 1;
+            }
+        }
+    }
+    assert_eq!(asked.len(), 7, "{asked:?}");
+}

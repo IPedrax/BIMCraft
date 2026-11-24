@@ -168,6 +168,74 @@ fn no_columns(_: &[String]) -> Option<ColumnKind> {
     None
 }
 
+/// The columns of the residual-current device rules' table (`dr::RuleSet`).
+fn rcd_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["rules", "[]", "reason" | "says" | "building" | "source"] => Some(ColumnKind::Text),
+        ["rules", "[]", "lights_from_mm"] => Some(ColumnKind::Number),
+        _ => None,
+    }
+}
+
+/// The columns of the bathroom volumes' tables (`bath::RuleSet`).
+fn bath_volumes_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["volumes", "[]", "name" | "source"] | ["volumes", "[]", "allows", "[]", "source"] => Some(ColumnKind::Text),
+        ["volumes", "[]", "reach_mm" | "shower_reach_mm" | "top_mm" | "ip" | "ip_public" | "selv_max_v"] => Some(ColumnKind::Number),
+        _ => None,
+    }
+}
+
+/// The columns of the load points' rooms table (`loads::RuleSet`).
+fn load_points_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["rooms", "[]", "kind" | "source"] => Some(ColumnKind::Text),
+        ["rooms", "[]", "least" | "per_perimeter_m" | "above_m2" | "counter" | "first" | "first_va" | "va"] => Some(ColumnKind::Number),
+        _ => None,
+    }
+}
+
+/// The columns of the circuits' systems and methods tables (`nbr5410::Rules`).
+fn circuits_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["systems", "[]", "name"] | ["methods", "[]", "method" | "reference" | "grouping"] => Some(ColumnKind::Text),
+        ["systems", "[]", "phase_v" | "line_v"] => Some(ColumnKind::Number),
+        _ => None,
+    }
+}
+
+/// The fields of the conduits' families (`conduit::Rules`); their sizes are rows by place.
+fn conduit_fill_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["families", "[]", "key" | "label" | "material" | "maker" | "document" | "page" | "url"] => Some(ColumnKind::Text),
+        _ => None,
+    }
+}
+
+/// The columns of the surge protection's withstand table (`dps::Rules`).
+fn surge_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        ["withstand", "[]", "kv"] => Some(ColumnKind::Numbers),
+        _ => None,
+    }
+}
+
+/// The fields and sizes of a wire type (`electrical::WireType`), by its name.
+fn wire_types_columns(at: &[String]) -> Option<ColumnKind> {
+    let at: Vec<&str> = at.iter().map(String::as_str).collect();
+    match at.as_slice() {
+        [_, "material" | "insulation" | "note"] | [_, "sizes", "[]", "label"] => Some(ColumnKind::Text),
+        [_, "temperature"] | [_, "sizes", "[]", "section" | "ampacity"] => Some(ColumnKind::Number),
+        _ => None,
+    }
+}
+
 /// The columns of a unit's demand method's tables (`demand::Standard` and its `Method`).
 fn unit_demand_columns(at: &[String]) -> Option<ColumnKind> {
     use ColumnKind::*;
@@ -614,6 +682,13 @@ pub fn sections() -> &'static [SectionDef] {
                 (Electrical, "entrance") => def.columns = entrance_columns,
                 (Electrical, "building_demand") => def.columns = building_demand_columns,
                 (Electrical, "unit_demand") => def.columns = unit_demand_columns,
+                (Electrical, "rcd") => def.columns = rcd_columns,
+                (Electrical, "bath_volumes") => def.columns = bath_volumes_columns,
+                (Electrical, "load_points") => def.columns = load_points_columns,
+                (Electrical, "circuits") => def.columns = circuits_columns,
+                (Electrical, "conduit_fill") => def.columns = conduit_fill_columns,
+                (Electrical, "surge") => def.columns = surge_columns,
+                (Electrical, "wire_types") => def.columns = wire_types_columns,
                 _ => {}
             }
         }
