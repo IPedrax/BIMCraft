@@ -93,7 +93,7 @@ fn a_regions_pattern_angle_a_groups_rotation_and_a_repeats_spacing_show_at_their
         .unwrap();
     let repeat = ids(&h, "repeatingdetail")[0];
     parameters(&mut h, repeat);
-    assert_eq!(field_text(&h, "Spacing"), "500");
+    assert_eq!(field_text(&h, "Spacing"), "500 mm");
     assert!(shown(&h, "Number"));
 }
 
