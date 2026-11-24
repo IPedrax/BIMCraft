@@ -529,6 +529,10 @@ fn is_yes(b: &bool) -> bool {
     *b
 }
 
+fn is_default<T: Default + PartialEq>(x: &T) -> bool {
+    *x == T::default()
+}
+
 fn is_zero_u32(x: &u32) -> bool {
     *x == 0
 }
@@ -3894,6 +3898,8 @@ pub struct RailingType {
     pub posts: Vec<PostPart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel: Option<PanelPart>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub transition: Transition,
 }
 
 /// The section of a rail, a post or a baluster.
@@ -3922,6 +3928,21 @@ pub struct RailPart {
     pub offset: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub material: String,
+    /// The radius it is rounded by where its slope changes, and where it turns a corner in plan (0: sharp, mitred).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bend: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub corner: f64,
+}
+
+/// How a railing's line goes from a landing up to a flight that starts a riser above it (or down from one): climbing to
+/// it on a slope, or a gooseneck, level to the riser and then straight up.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Transition {
+    #[default]
+    Slope,
+    Gooseneck,
 }
 
 /// What an upright stands on: a post always on the host, a baluster wherever its `bottom` says.

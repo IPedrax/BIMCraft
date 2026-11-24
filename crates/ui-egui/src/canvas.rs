@@ -2871,9 +2871,14 @@ impl BimApp {
             let over = local
                 .filter(|_| matches!(self.tool, Tool::Modify | Tool::Trim(_) | Tool::TrimTo { .. }) && sk.drag.is_none())
                 .and_then(|q| sk.line_at(view.mm(q), f64::from(PICK) / view.scale));
+            // A grip dragged is measured from the far end of its line, as a line drawn is from its last point.
+            let anchor = match sk.drag {
+                Some(crate::sketch::Drag::Grip(g)) => sk.grip_anchor(g),
+                _ => Vec::new(),
+            };
             let from: &[P2] = match &self.tool {
                 Tool::SketchLine(chain) if self.shape() == draw::Shape::Line || chain.len() < 2 => chain,
-                _ => &[],
+                _ => &anchor,
             };
             let shift = ui.input(|i| i.modifiers.shift);
             // The snapped cursor is for a grip being dragged and for what a sketch tool shows; Modify's idle frames need none.

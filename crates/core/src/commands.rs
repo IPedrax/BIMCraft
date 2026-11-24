@@ -1831,7 +1831,7 @@ other_files(
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|toposolid|framing|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion|cornermullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material?, profile?, shape?, web?, flange?, radius?, clear_section? | height?, spacing?, rails?, posts?, panel? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?\
+         material?, profile?, shape?, web?, flange?, radius?, clear_section? | height?, spacing?, rails?, posts?, panel?, transition? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?\
          | spacing?, layout?, thickness?, material?, bottom_plates?, top_plates?, kings?, jacks?, window_rough?, door_rough?, headers?, \
          sill_plates?, corner?, tee?, blocking?, stock?, rim?, lap?, bridging?, trimmers?, under_partitions?, ridge?} creates the type, or \
          changes it everywhere it's used. \
@@ -19902,8 +19902,14 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             )?;
             let panel = part(c, p, "panel", old.panel, "{thickness, offset?, bottom?, top?: rail, top_gap?, side_gap?, material?}")?;
             let height = height.or((old.height > 0.0).then_some(old.height));
-            let mut t =
-                RailingType { height: height.unwrap_or(0.0), spacing: num(c, p, "spacing")?.unwrap_or(old.spacing), rails, posts, panel };
+            let mut t = RailingType {
+                height: height.unwrap_or(0.0),
+                spacing: num(c, p, "spacing")?.unwrap_or(old.spacing),
+                rails,
+                posts,
+                panel,
+                transition: part(c, p, "transition", old.transition, "\"slope\" or \"gooseneck\"")?,
+            };
             if !t.rails.is_empty() {
                 t.height = crate::railings::height(&t);
             } else if height.is_none() {

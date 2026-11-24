@@ -148,6 +148,11 @@ posts and balusters standing on the treads; rails over the nosings as one mitred
 landing into the next flight; sloped and shaped floors, roofs and toposolids as hosts; Edit Path. Checked on straight, L,
 U, winder and spiral stairs.
 
+Third round: a rail is solved, then swept: the solver finds its real bends and rounds them (corner and bend radii per
+rail), the sweeper keeps its faces flat; a gooseneck where a flight starts above a landing (the type's transition); the stair
+no longer pulls the line down past its foot; Edit Path in 3D on the host's plane; a sketch grip dragged snaps from its line's
+other end, with Shift and the guides.
+
 Next, after comments: custom profiles, the plan showing rails and posts, ends and extensions, gates.
 
 ## What the research suggested for BIMCraft

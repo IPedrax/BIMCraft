@@ -139,6 +139,7 @@ impl BimApp {
             Of::Profile(id) => Surface::of_wall(&self.session.model, id),
             _ if sheet != Sheet::View3D => None,
             Of::Edit(id) => self.session.model.sketch_plane(id).map(Surface::Plan),
+            Of::RailingPath(id) => crate::railingtype::path_plane(&self.session.model, id).map(Surface::Plan),
             Of::RoofProfile(id) => workplane::roof_profile(&self.session.model, id).map(Surface::Profile),
             _ => sk.surface.map(Surface::Plan),
         }

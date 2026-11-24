@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Model, PanelPart, PartShape, PostKind, PostPart, RailPart, RailingType};
+use bimcraft_core::model::{Model, PanelPart, PartShape, PostKind, PostPart, RailPart, RailingType, Transition};
 use bimcraft_core::railings::{self, Piece, Which};
 use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
@@ -36,6 +36,9 @@ pub(crate) struct RailingEditor {
     rails: Vec<RailPart>,
     posts: Vec<PostPart>,
     panel: Option<PanelPart>,
+    /// How the line goes from a landing into a flight a riser above it.
+    transition: Transition,
+    /// The part picked; none, the whole railing's settings.
     selected: Option<Which>,
     error: Option<String>,
 }
@@ -93,7 +96,7 @@ impl RailingEditor {
         let t = m.types.railing.get(name)?;
         let (rails, posts, panel) = railings::stack(t);
         let selected = (!rails.is_empty()).then_some(Which::Rail(0));
-        Some(RailingEditor { name: name.to_string(), rails, posts, panel, selected, error: None })
+        Some(RailingEditor { name: name.to_string(), rails, posts, panel, transition: t.transition, selected, error: None })
     }
 
     /// The type as it is being made.
@@ -224,6 +227,10 @@ impl RailingEditor {
         let mut gone = None;
         let room = (ui.available_height() - 40.0).max(120.0);
         ScrollArea::vertical().id_salt("railing-parts").max_height(room).auto_shrink([false, false]).show(ui, |ui| {
+            if ui.selectable_label(self.selected.is_none(), RichText::new(t("Whole railing")).strong()).clicked() {
+                self.selected = None;
+            }
+            ui.add_space(6.0);
             let rails: Vec<(Which, String)> = self.rails.iter().enumerate().map(|(i, r)| (Which::Rail(i), r.name.clone())).collect();
             let of = |kind: PostKind| -> Vec<(Which, String)> {
                 self.posts.iter().enumerate().filter(|(_, p)| p.kind == kind).map(|(i, p)| (Which::Post(i), p.name.clone())).collect()
@@ -315,6 +322,11 @@ impl RailingEditor {
                 section(ui, msg!("Material"), |ui| {
                     row(ui, msg!("Material"), |ui| pick(ui, "rail-material", &mut r.material, &materials));
                 });
+                section(ui, msg!("Connections"), |ui| {
+                    row(ui, msg!("Round where the slope changes"), |ui| length(ui, &mut r.bend, units));
+                    row(ui, msg!("Round at corners"), |ui| length(ui, &mut r.corner, units));
+                });
+                hint(ui, msg!("The radius of the curve. 0 makes a sharp corner."));
             }
             Some(Which::Post(i)) => {
                 let Some(q) = self.posts.get_mut(i) else { return };
@@ -413,8 +425,22 @@ impl RailingEditor {
                 });
             }
             None => {
-                ui.add_space(20.0);
-                ui.label(t("Pick a part on the left or in the picture to change it."));
+                ui.heading(t("Whole railing"));
+                let ways = [
+                    (Transition::Slope, t("Slope up to it").to_string()),
+                    (Transition::Gooseneck, t("Gooseneck: level, then straight up").to_string()),
+                ];
+                section(ui, msg!("From a landing to the next flight"), |ui| {
+                    row(ui, msg!("The rail goes"), |ui| pick(ui, "transition", &mut self.transition, &ways));
+                });
+                hint(
+                    ui,
+                    msg!(
+                        "Where a flight starts one step above a landing, the rail can slope up to it, or go level and then straight up. Round the bends of a gooseneck on each rail, under Connections."
+                    ),
+                );
+                ui.add_space(12.0);
+                hint(ui, msg!("Pick a part on the left or in the picture to change it."));
             }
         }
         // A rail renamed keeps what stands on it and goes up to it.
@@ -578,7 +604,8 @@ impl BimApp {
             });
         });
         if ok || apply {
-            let params = json!({"category": "railing", "name": d.name, "rails": d.rails, "posts": d.posts, "panel": d.panel});
+            let params = json!({"category": "railing", "name": d.name, "rails": d.rails, "posts": d.posts, "panel": d.panel,
+                "transition": d.transition});
             let done = self.run_for_type("type", params, &mut d.error);
             ok &= done;
             if done && let Some(open) = &mut self.type_dialog {
@@ -691,4 +718,12 @@ impl BimApp {
             }
         }
     }
+}
+
+/// The plane Edit Path draws a railing's line on in the 3D view: the top of the first floor or roof it stands on, else
+/// its level, as high as its base offset.
+pub(crate) fn path_plane(m: &Model, id: bimcraft_core::model::Id) -> Option<bimcraft_core::walls::Plane> {
+    let Some(bimcraft_core::model::Element::Railing(rl)) = m.elements.get(id) else { return None };
+    let hosted = railings::hosts(rl).into_iter().filter_map(|g| m.elements.id(g)).find_map(|h| m.sketch_plane(h));
+    Some(hosted.unwrap_or_else(|| bimcraft_core::walls::Plane::flat(m.elevation(rl.level) + rl.base_offset)))
 }

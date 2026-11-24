@@ -2672,7 +2672,8 @@ pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
     }
     let plan: Vec<P2> = line.iter().map(|(p, _)| *p).collect();
     let fallback = m.elevation(rl.level) + rl.base_offset;
-    crate::railings::follow(m, &crate::railings::hosts(rl), &plan, rl.base_offset, fallback)
+    let way = m.types.railing.get(&rl.type_name).map(|t| t.transition).unwrap_or_default();
+    crate::railings::follow(m, &crate::railings::hosts(rl), &plan, rl.base_offset, fallback, way)
 }
 
 /// A railing's solids, each a ring in plan between two planes: its rails, posts, balusters and panels

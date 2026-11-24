@@ -231,6 +231,25 @@ impl Sketch {
             .min_by(|a, b| a.dist(p).total_cmp(&b.dist(p)))
     }
 
+    /// What a grip at `grip` being dragged is measured from, for Shift's square step and the guides: the far end of a
+    /// line ending there.
+    pub fn grip_anchor(&self, grip: P2) -> Vec<P2> {
+        self.lines
+            .iter()
+            .find_map(|l| {
+                let (a, b) = (l.start(), l.end());
+                if a.dist(grip) <= TOL {
+                    Some(b)
+                } else if b.dist(grip) <= TOL {
+                    Some(a)
+                } else {
+                    None
+                }
+            })
+            .into_iter()
+            .collect()
+    }
+
     /// Every line end at `from` moved to `to`: the lines joined there stay joined.
     pub fn move_end(&mut self, from: P2, to: P2) {
         for l in &mut self.lines {
@@ -715,7 +734,6 @@ impl BimApp {
         let lines = pts.windows(2).map(|w| SketchLine::new(w[0], w[1])).collect();
         self.start_sketch(Of::RailingPath(id), lines);
         self.drawing.sketch = draw::Shape::Line;
-        self.tool = Tool::Modify;
     }
 
     /// The one element selected, when it has an outline Edit Boundary redraws.
@@ -1179,8 +1197,13 @@ impl BimApp {
         let Some(drag) = self.sketch.as_mut().and_then(|sk| sk.drag.take()) else { return false };
         let Some(at) = ui.input(|i| i.pointer.latest_pos()).map(local) else { return true };
         let m = std::sync::Arc::clone(&self.session.model);
-        let to = self.snap(&m, level, view, at, &[], false).at;
         let mods = ui.input(|i| i.modifiers);
+        // A grip lands as the cursor showed it: from the far end of its line, square with Shift, on the guides.
+        let anchor = match (drag, &self.sketch) {
+            (Drag::Grip(g), Some(sk)) => sk.grip_anchor(g),
+            _ => Vec::new(),
+        };
+        let to = self.snap(&m, level, view, at, &anchor, mods.shift).at;
         let Some(sk) = &mut self.sketch else { return true };
         match drag {
             Drag::Grip(from) => sk.move_end(from, to),

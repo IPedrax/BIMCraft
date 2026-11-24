@@ -1561,6 +1561,7 @@ impl TypeDialog {
             p["rails"] = json!(r.rails);
             p["posts"] = json!(r.posts);
             p["panel"] = json!(r.panel);
+            p["transition"] = json!(r.transition);
         }
         Ok(p)
     }

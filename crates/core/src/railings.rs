@@ -3,10 +3,17 @@
 //! with several hosts (a stair and the floor it comes up to) follows along its line.
 
 use crate::geom::{self, P2};
-use crate::model::{Element, Guid, MAX_BALUSTERS, Model, PanelPart, PartShape, PostKind, PostPart, RailPart, Railing, RailingType};
+use crate::model::{
+    Element, Guid, MAX_BALUSTERS, Model, PanelPart, PartShape, PostKind, PostPart, RailPart, Railing, RailingType, Transition,
+};
 use crate::runs::Geom;
 use crate::view3d::P3;
 use crate::walls::Plane;
+
+pub mod path;
+
+pub use path::sweep;
+use path::{circle, rectangle};
 
 /// The older kind's one rail, which its balusters go up to.
 pub const TOP_RAIL: &str = "Top Rail";
@@ -239,25 +246,9 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>, ground: &Ground) -> Vec<Part
     for (ri, r) in rails.iter().enumerate() {
         let d = rail_depth(r);
         let round = r.shape == PartShape::Circle;
+        // The solver makes its centre line from the railing's, moved across; the sweeper its surface.
         let moved = crate::stairs::offset(&line.pts, r.offset);
-        // Its top `height` up, measured straight up: on a slope its section, square to it, reaches higher over its line.
-        let secant = |i: usize| {
-            let (&(p, zp), &(q, zq)) = (moved.get(i)?, moved.get(i + 1)?);
-            let run = p.dist(q);
-            (run > 1e-6).then(|| (run * run + (zq - zp) * (zq - zp)).sqrt() / run)
-        };
-        let path: Vec<P3> = moved
-            .iter()
-            .enumerate()
-            .map(|(i, &(p, z))| {
-                let k = match (i.checked_sub(1).and_then(secant), secant(i)) {
-                    (Some(a), Some(b)) => (a + b) / 2.0,
-                    (Some(a), None) | (None, Some(a)) => a,
-                    (None, None) => 1.0,
-                };
-                [p.0, p.1, z + r.height - d / 2.0 * k]
-            })
-            .collect();
+        let path = path::rail(&moved, r);
         let profile = if round { circle(r.width / 2.0) } else { rectangle(r.width, d) };
         out.push(Part {
             piece: Piece::Sweep { path, profile, width: r.width, depth: d, round },
@@ -383,114 +374,6 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>, ground: &Ground) -> Vec<Part
     out
 }
 
-/// How many sides a round rail has.
-const SIDES: usize = 24;
-
-/// A circle of radius `r`, counter-clockwise, as a section across a rail: across it, then up.
-fn circle(r: f64) -> Vec<(f64, f64)> {
-    (0..SIDES)
-        .map(|k| {
-            let t = std::f64::consts::TAU * k as f64 / SIDES as f64;
-            (r * t.cos(), r * t.sin())
-        })
-        .collect()
-}
-
-/// A rectangle `w` across and `d` high, counter-clockwise, round its middle.
-fn rectangle(w: f64, d: f64) -> Vec<(f64, f64)> {
-    let (a, b) = (w / 2.0, d / 2.0);
-    vec![(a, -b), (a, b), (-a, b), (-a, -b)]
-}
-
-fn sub(a: P3, b: P3) -> P3 {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-fn add(a: P3, b: P3) -> P3 {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-
-fn mul(a: P3, k: f64) -> P3 {
-    [a[0] * k, a[1] * k, a[2] * k]
-}
-
-fn dot(a: P3, b: P3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn cross(a: P3, b: P3) -> P3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-
-fn unit(a: P3) -> P3 {
-    let l = dot(a, a).sqrt();
-    if l > 1e-12 { mul(a, 1.0 / l) } else { [0.0; 3] }
-}
-
-/// `profile` swept along `path`, mitred where it bends: a closed mesh of triangles turned out, its ends' first, and how
-/// many they are. The profile's first number is across the path (to its left), the second up, square to it.
-pub fn sweep(path: &[P3], profile: &[(f64, f64)]) -> (Vec<[P3; 3]>, usize) {
-    let mut pts: Vec<P3> = Vec::with_capacity(path.len());
-    for p in path {
-        if pts.last().is_none_or(|q| dot(sub(*p, *q), sub(*p, *q)) > 1e-6) {
-            pts.push(*p);
-        }
-    }
-    if pts.len() < 2 || profile.len() < 3 {
-        return (Vec::new(), 0);
-    }
-    // Each stretch's way, and its section's two axes: across (level, to the left) and up (square to it).
-    let frames: Vec<(P3, P3, P3)> = pts
-        .windows(2)
-        .map(|w| {
-            let d = unit(sub(w[1], w[0]));
-            let flat = unit([-d[1], d[0], 0.0]);
-            let across = if dot(flat, flat) > 0.5 { flat } else { [0.0, 1.0, 0.0] };
-            (d, across, cross(d, across))
-        })
-        .collect();
-    let at = |i: usize, (a, b): (f64, f64)| -> P3 {
-        let f = |j: usize| frames.get(j).copied().unwrap_or(([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]));
-        let p = pts.get(i).copied().unwrap_or([0.0; 3]);
-        let off = |(_, s, u): (P3, P3, P3)| add(mul(s, a), mul(u, b));
-        match (i.checked_sub(1).filter(|j| *j < frames.len()), (i < frames.len()).then_some(i)) {
-            (Some(j), Some(k)) => {
-                // On the plane halving the bend: where the lines of the two stretches meet it.
-                let (fa, fb) = (f(j), f(k));
-                let normal = unit(add(fa.0, fb.0));
-                let meet = |fr: (P3, P3, P3)| {
-                    let o = off(fr);
-                    let along = dot(normal, fr.0);
-                    if along.abs() < 1e-6 { add(p, o) } else { add(add(p, o), mul(fr.0, -dot(normal, o) / along)) }
-                };
-                mul(add(meet(fa), meet(fb)), 0.5)
-            }
-            (Some(j), None) => add(p, off(f(j))),
-            (None, _) => add(p, off(f(0))),
-        }
-    };
-    let rings: Vec<Vec<P3>> = (0..pts.len()).map(|i| profile.iter().map(|q| at(i, *q)).collect()).collect();
-    let n = profile.len();
-    let next = |k: usize| (k + 1) % n;
-    let mut tris = Vec::with_capacity(2 * n * pts.len());
-    let (Some(first), Some(last)) = (rings.first(), rings.last()) else { return (Vec::new(), 0) };
-    let middle = |r: &[P3]| mul(r.iter().fold([0.0; 3], |s, q| add(s, *q)), 1.0 / n as f64);
-    let (a, b) = (middle(first), middle(last));
-    for k in 0..n {
-        tris.push([a, first[next(k)], first[k]]);
-        tris.push([b, last[k], last[next(k)]]);
-    }
-    let caps = tris.len();
-    for w in rings.windows(2) {
-        let (ra, rb) = (&w[0], &w[1]);
-        for k in 0..n {
-            tris.push([ra[k], ra[next(k)], rb[k]]);
-            tris.push([ra[next(k)], rb[next(k)], rb[k]]);
-        }
-    }
-    (tris, caps)
-}
-
 /// A host a railing's heights follow: a stair (its walk line and half its width, its flights' runs, and its landings and
 /// winders), a ramp (its walk line), or a surface (a floor's, a roof's or a toposolid's top, as the 3D view has it).
 enum Host {
@@ -554,7 +437,10 @@ impl Host {
                     let going = r.going();
                     return Some(if going > 0.0 { (r.z.0 + each * (1.0 + a / going)).min(r.z.1) } else { r.z.1 });
                 }
-                if let Some(pad) = pads.iter().find(|q| !q.tread && geom::contains(&q.ring, p)) {
+                // A landing flat; winders (a spiral's steps too) along the walk line. Past its flights, landings and winders
+                // (before its foot, past its top) it is no host: what is there is.
+                let pad = pads.iter().find(|q| geom::contains(&q.ring, p))?;
+                if !pad.tread {
                     return Some(pad.z);
                 }
                 let (d, z) = Host::on_walk(walk, p)?;
@@ -609,6 +495,40 @@ fn surface(solids: &[crate::view3d::Solid], p: P2) -> Option<f64> {
     at(p).or_else(|| [P2(2.0, 0.0), P2(-2.0, 0.0), P2(0.0, 2.0), P2(0.0, -2.0)].into_iter().find_map(|d| at(p + d)))
 }
 
+/// `line` with each jump (heights changing faster than twice the steepest flight between two points) made upright: the
+/// line level to where its hosts change, found by halving, and there up or down within a millimetre.
+fn gooseneck(hosts: &[Host], line: Vec<(P2, f64, bool)>, steepest: f64) -> Vec<(P2, f64, bool)> {
+    let top = |p: P2| hosts.iter().find_map(|h| h.top(p));
+    let mut out: Vec<(P2, f64, bool)> = Vec::with_capacity(line.len() + 8);
+    for (i, &(p, z, own)) in line.iter().enumerate() {
+        if let Some(&(q, zq, _)) = i.checked_sub(1).and_then(|j| line.get(j)) {
+            let run = p.dist(q);
+            if run > 1e-6 && (z - zq).abs() > 2.0 * steepest * run + 1.0 {
+                // Where between them the height stops being the one before.
+                let (mut a, mut b) = (0.0, 1.0);
+                // The line's lift over its hosts, and whether a point between is still at the height before.
+                let lift = top(p).map_or(0.0, |h| z - h);
+                let near = |t: f64| top(q + (p - q) * t).is_none_or(|h| (h + lift - zq).abs() < (h + lift - z).abs());
+                for _ in 0..20 {
+                    let mid = (a + b) / 2.0;
+                    if near(mid) {
+                        a = mid;
+                    } else {
+                        b = mid;
+                    }
+                }
+                let u = (p - q) * (1.0 / run);
+                let at = q + (p - q) * a;
+                let half = (0.5f64).min(run * a / 2.0).min(run * (1.0 - a) / 2.0);
+                out.push((at - u * half, zq, false));
+                out.push((at + u * half, z, false));
+            }
+        }
+        out.push((p, z, own));
+    }
+    out
+}
+
 /// The hosts a railing's heights follow: its stair or ramp first, then its `hosts`.
 pub fn hosts(rl: &Railing) -> Vec<Guid> {
     rl.host.into_iter().chain(rl.hosts.iter().copied()).collect()
@@ -617,7 +537,7 @@ pub fn hosts(rl: &Railing) -> Vec<Guid> {
 /// `plan`, its points given the heights of `hosts` under them (the first over each), `lift` above; looked up every
 /// [`STEP`] along it, and a point kept where the heights stop going straight. Where over none, the height it had last
 /// (the first it has, before it), or `fallback` over none at all.
-pub fn follow(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64, fallback: f64) -> Vec<(P2, f64)> {
+pub fn follow(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64, fallback: f64, way: Transition) -> Vec<(P2, f64)> {
     let found: Vec<Host> = hosts.iter().filter_map(|g| Host::of(m, *g, plan)).collect();
     let total: f64 = plan.windows(2).filter_map(|w| Some(w.first()?.dist(*w.get(1)?))).sum();
     let step = STEP.max(total / MAX_SAMPLES as f64);
@@ -642,10 +562,13 @@ pub fn follow(m: &Model, hosts: &[Guid], plan: &[P2], lift: f64, fallback: f64) 
         last = z;
         line.push((p, z + lift, own));
     }
-    // Where a flight begins a riser over the landing before it, the line would jump: it climbs to it instead, at most
-    // twice as steep as the steepest flight, raised and never lowered, so it stays as high over the steps as it is.
+    // Where a flight begins a riser over the landing before it, the line would jump. As a gooseneck, it runs level to
+    // where the jump is and goes straight up (or down) there, a millimetre along; else it climbs to it, at most twice
+    // as steep as the steepest flight, raised and never lowered, so it stays as high over the steps as it is.
     let steepest = found.iter().map(Host::pitch).fold(0.0, f64::max);
-    if steepest > 0.0 {
+    if steepest > 0.0 && way == Transition::Gooseneck {
+        line = gooseneck(&found, line, steepest);
+    } else if steepest > 0.0 {
         let most = 2.0 * steepest;
         let lift = |line: &mut Vec<(P2, f64, bool)>, i: usize, j: usize| {
             if let (Some(&(q, zq, _)), Some(&(p, _, _))) = (line.get(j), line.get(i))
@@ -941,5 +864,24 @@ mod tests {
         assert_eq!(path, vec![P2(0.0, 0.0), P2(1000.0, 0.0), P2(1000.0, 1000.0), P2(2000.0, 1000.0)]);
         let apart = [SketchLine::new(P2(0.0, 0.0), P2(1.0, 0.0)), SketchLine::new(P2(5.0, 0.0), P2(9.0, 0.0))];
         assert!(open_path(&apart).unwrap_err().contains("join end to end"));
+    }
+
+    #[test]
+    fn a_gooseneck_goes_level_to_the_flight_then_straight_up() {
+        let mut s = Session::new();
+        let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 8, "turn": -90}]}))["id"]
+            .as_u64()
+            .unwrap();
+        let id = run(&mut s, "railing", json!({"host": stair, "side": "left"}))["ids"][0].as_u64().unwrap();
+        let line = |s: &Session| {
+            let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+            crate::stairs::railing(&s.model, rl)
+        };
+        let upright = |l: &[(P2, f64)]| l.windows(2).any(|w| w[0].0.dist(w[1].0) <= 1.0 + 1e-9 && (w[1].1 - w[0].1) > 100.0);
+        assert!(!upright(&line(&s)), "climbing on a slope, by default");
+        let name = s.model.types.railing.keys().next().cloned().unwrap();
+        run(&mut s, "type", json!({"category": "railing", "name": name, "transition": "gooseneck"}));
+        let l = line(&s);
+        assert!(upright(&l), "straight up where the next flight starts: {l:?}");
     }
 }
