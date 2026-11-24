@@ -792,13 +792,13 @@ fn resetting_the_palette_layout_brings_panels_and_tools_back() {
 fn right_clicking_a_palettes_header_lists_every_palette_with_its_box() {
     let mut h = app(BOX);
     right_click_at(&mut h, header_of(&h, "Properties"));
-    for p in Palette::known() {
+    for p in Palette::known().into_iter().filter(|p| *p != Palette::Tools) {
         let node = h.get_by_role_and_label(Role::CheckBox, p.name());
         let ticked = node.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True);
         assert_eq!(ticked, h.state().docking.shown(p), "{}", p.name());
     }
-    // Rev has the ribbon in the Tools palette's place, so its box tells the user rather than doing nothing.
-    assert!(h.get_by_role_and_label(Role::CheckBox, "Tools").accesskit_node().is_disabled());
+    // The Tools palette is the tools' surface, not a palette to switch: the menu leaves it out.
+    assert!(h.get_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none());
 }
 
 #[test]
@@ -837,8 +837,7 @@ fn the_palettes_menu_opens_on_the_inspectors_header_in_bimcraft() {
     h.run();
     assert!(!h.state().docking.shown(Palette::Browser), "the Navigator is closed from the menu");
     assert!(h.query_by_label("Palettes").is_some(), "the menu stays open");
-    // BIMCraft's tools are a palette here, not the ribbon: its box is the one that works.
-    h.get_by_role_and_label(Role::CheckBox, crate::lang::t("Tools")).click();
-    h.run();
-    assert!(!h.state().docking.shown(Palette::Tools), "the Tools palette is closed from the menu");
+    // The tools' own palette is not among them: it is what the list of palettes is for the ribbon in Rev.
+    assert!(h.get_all_by_role_and_label(Role::CheckBox, crate::lang::t("Tools")).next().is_none());
+    assert!(h.state().docking.shown(Palette::Tools), "and it stays as it was");
 }
