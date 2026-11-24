@@ -196,8 +196,8 @@ BIMCraft does not need. Rune's web target (WebGPU, experimental, `WEB.md`) is no
 toolchain also needs MinGW-w64's binutils for `dlltool`. On macOS the default Metal backend is Rune's own (objc2), with shader libraries
 checked in (Xcode's Metal toolchain only to rebuild them). On Linux the `-dev` packages of `libxkbcommon` and `libwayland` at build
 time, `libxkbcommon-x11-0` to open a window, and a software Vulkan driver (Mesa's lavapipe) on a machine with no card. The `check` jobs
-of `rune-ui.yml` build and test this crate on `ubuntu-24.04`, `windows-latest` and `macos-15` (run): fmt, `clippy -D warnings`, 34 unit tests (35 with `software.rs`) and the layout guard pass on all three on
-the commit that carries the measurement. Times with the build cache warm: Linux clippy 45 s and tests 6 min, Windows 1 and 8 min,
+of `rune-ui.yml` build and test this crate on `ubuntu-24.04`, `windows-latest` and `macos-15` (run): fmt, `clippy -D warnings`, 35 unit tests and the layout guard pass on all three (34 and the guard on the commit the
+measurement ran on, before `software.rs`). Times with the build cache warm: Linux clippy 45 s and tests 6 min, Windows 1 and 8 min,
 macOS 2 and 11 min; Linux with no cache, the Rune graph and the core included: clippy 2 min 16 s, the test build 8 min 30 s.
 
 **What else the read turned up.** Rune is not GPU-only: it has a CPU renderer (`render::cpu_boot`, `CpuPainter`, tiles of 64x32, only the
