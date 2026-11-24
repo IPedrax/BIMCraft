@@ -26,7 +26,10 @@ add up to its bars. A set's mark is the host's (`N2`), so the zones of one stirr
 `{mark} {count} ø{diameter} c/{spacing} C={length}`: no count for a set of one, and `c/` only where the set's bars spread along the
 beam in the picture (the stirrups, not three bottom bars lying behind one another). Lengths are in the project's unit and decimals
 (`Model::length`), so a project in centimetres reads `c/10 C=118`; the diameter is always millimetres. A tag in a section never has
-the spacing.
+the spacing. In a beam's or a column's picture, sets of one mark that say no spacing (a column's bars lie in rows of 3, 2 and 3, a
+round one's are single) are one tag with their bars added, `N1 8 ø16 C=2950`, as a detailer writes it; the zones of a stirrup do not
+join, since each says where it is, and a mesh's two directions do not either (`tag_count`, `pend` in `sheet/detail.rs`). The reply's
+`sets` still list each set with its own tag.
 
 ## The drawing
 
@@ -36,7 +39,9 @@ detail doesn't. From the top: the elevation (the concrete's outline, every set's
 a zone of three or more stirrups as its first and its last with a thin line between), a column of tags to its right (one tag a row,
 ordered by where its anchor is, so none overlaps), section marks A, B, C, the beam's length and each zone dimensioned; under that the
 sections, each at **twice the scale** of the elevation and lettered with its own, with the stirrup of the zone it is in, each bar it
-cuts as a dot, and the width dimensioned; under those the steel list (`steel::rows` for the beam) with each bar's shape sketched.
+cuts as a dot, and the width dimensioned; under those the steel list (`steel::rows` for the beam) with each bar's shape sketched, its
+columns as wide as their headings and cells need. A curved bar (a round hoop is 24 chords) is sketched without its legs' lengths and
+angles, which would pile up; the row's length says it.
 Default stations of a beam are the middle of each zone of stirrups, or of the beam where it has none.
 
 **A column** is drawn standing: the same elevation turned up (its length on y), its tags to the right, its zones and its height

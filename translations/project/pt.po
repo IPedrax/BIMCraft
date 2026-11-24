@@ -1088,7 +1088,7 @@ msgstr "Bancada"
 msgid "Yes"
 msgstr "Sim"
 
-#: crates/core/src/sheet/detail.rs:314
+#: crates/core/src/sheet/detail.rs:361
 msgid "spatial"
 msgstr "espacial"
 
