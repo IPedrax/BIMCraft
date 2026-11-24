@@ -142,8 +142,13 @@ Usual complaints:
   elevation and a section across, where a click picks a part. A railing selected: Modify tab, Railing > Edit Hosts; Add,
   Remove, Finish; the hosts lit while editing.
 
-Next, after comments: grips to edit a railing's path (to run a stair's railing on over the floor), custom profiles, the plan
-showing rails and posts, joins at corners and between slopes, ends and extensions.
+Second round (comments of 2026-11-24): Edit Railing in three columns of a fixed size (parts by kind; parameters by
+section; the preview), in plain English; posts lined up with every so many steps, on the first and last too by default;
+posts and balusters standing on the treads; rails over the nosings as one mitred sweep each, climbing smoothly from a
+landing into the next flight; sloped and shaped floors, roofs and toposolids as hosts; Edit Path. Checked on straight, L,
+U, winder and spiral stairs.
+
+Next, after comments: custom profiles, the plan showing rails and posts, ends and extensions, gates.
 
 ## What the research suggested for BIMCraft
 

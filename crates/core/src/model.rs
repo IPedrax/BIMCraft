@@ -11181,8 +11181,11 @@ impl Model {
                     if rl.host == Some(*h) || rl.hosts.get(..i).is_some_and(|before| before.contains(h)) {
                         return Err(format!("{who}: host {} is listed twice", self.shown(*h)));
                     }
-                    if !matches!(self.elements.get(*h), Some(Element::Stair(_) | Element::Ramp(_) | Element::Floor(_))) {
-                        return Err(format!("{who}: host {} isn't a stair, a ramp or a floor", self.shown(*h)));
+                    if !matches!(
+                        self.elements.get(*h),
+                        Some(Element::Stair(_) | Element::Ramp(_) | Element::Floor(_) | Element::Roof(_) | Element::Toposolid(_))
+                    ) {
+                        return Err(format!("{who}: host {} isn't a stair, a ramp, a floor, a roof or a toposolid", self.shown(*h)));
                     }
                 }
                 let line = crate::stairs::railing(self, rl);

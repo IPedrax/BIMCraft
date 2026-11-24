@@ -43,6 +43,8 @@ pub enum Of {
     Profile(Id),
     /// An existing extrusion roof's open profile, in its upright reference plane.
     RoofProfile(Id),
+    /// A railing's path, redrawn in plan: lines joined end to end into one open line.
+    RailingPath(Id),
     /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
     /// `edit`, one it has already, redrawn.
     Form { revolve: bool, void: bool, edit: bool },
@@ -164,6 +166,7 @@ impl Sketch {
             Of::Edit(_) => "Edit Boundary",
             Of::Profile(_) => msg!("Modify | Walls > Edit Profile"),
             Of::RoofProfile(_) => msg!("Edit Profile"),
+            Of::RailingPath(_) => msg!("Edit Railing Path"),
             Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
             Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
             Of::Form { revolve: false, void: true, edit: false } => msg!("Modify | Create Void Extrusion"),
@@ -703,6 +706,18 @@ impl BimApp {
         self.tool = Tool::Modify;
     }
 
+    /// Edit Path: the selected railing's line redrawn in plan, each stretch of it a line, its arcs as drawn.
+    pub(crate) fn edit_railing_path(&mut self, id: Id) {
+        let Some(Element::Railing(rl)) = self.session.model.elements.get(id) else { return };
+        let plan: Vec<P2> = bimcraft_core::stairs::railing(&self.session.model, rl).into_iter().map(|(p, _)| p).collect();
+        let mut pts = plan;
+        pts.dedup_by(|b, a| a.dist(*b) <= TOL);
+        let lines = pts.windows(2).map(|w| SketchLine::new(w[0], w[1])).collect();
+        self.start_sketch(Of::RailingPath(id), lines);
+        self.drawing.sketch = draw::Shape::Line;
+        self.tool = Tool::Modify;
+    }
+
     /// The one element selected, when it has an outline Edit Boundary redraws.
     pub(crate) fn boundary_selected(&self) -> bool {
         match self.selection.as_slice() {
@@ -737,6 +752,23 @@ impl BimApp {
             return;
         }
         let Some(sk) = &mut self.sketch else { return };
+        if let Of::RailingPath(id) = sk.of {
+            let path = match solver::open_path(&sk.lines) {
+                Ok(path) => path,
+                Err(text) => {
+                    sk.wrong = (0..sk.lines.len()).collect();
+                    self.status = Status { text, error: true };
+                    return;
+                }
+            };
+            if self.run("modify", json!({"id": id, "path": path})).is_some() {
+                self.sketch = None;
+                self.tool = Tool::Modify;
+                self.forget_picks();
+                self.selection = vec![id];
+            }
+            return;
+        }
         if let Of::RoofProfile(id) = sk.of {
             let profile = match solver::extrusion_profile(&sk.lines) {
                 Ok(profile) => profile,
@@ -825,7 +857,7 @@ impl BimApp {
                 ("modify", json!({"id": id, "profile": if plain { json!([]) } else { json!(loops) }}))
             }
             // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
-            Of::Form { .. } | Of::RoofProfile(_) => return,
+            Of::Form { .. } | Of::RoofProfile(_) | Of::RailingPath(_) => return,
         };
         // Edit Profile's wall stays selected.
         let profiled = match self.sketch.as_ref().map(|sk| sk.of) {
@@ -874,7 +906,7 @@ impl BimApp {
     pub(crate) fn cancel_sketch(&mut self) {
         self.leave_walls_outline();
         let edited = match self.sketch.take() {
-            Some(Sketch { of: Of::Edit(id) | Of::RoofProfile(id), .. }) => Some(id),
+            Some(Sketch { of: Of::Edit(id) | Of::RoofProfile(id) | Of::RailingPath(id), .. }) => Some(id),
             _ => None,
         };
         self.tool = Tool::Modify;

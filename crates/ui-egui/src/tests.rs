@@ -6950,6 +6950,7 @@ mod publisher;
 mod purge;
 mod pyaddins;
 mod qol;
+mod railing;
 mod rebar_detail;
 mod reinforce;
 mod revit;

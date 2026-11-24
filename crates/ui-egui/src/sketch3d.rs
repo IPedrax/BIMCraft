@@ -163,7 +163,7 @@ impl BimApp {
             return on_lines(&[]);
         }
         let (level, editing) = match sk.of {
-            Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
+            Of::Edit(id) | Of::RailingPath(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
             Of::Region { .. } | Of::Form { .. } | Of::Profile(_) | Of::RoofProfile(_) => (None, None),
         };

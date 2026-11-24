@@ -1372,7 +1372,7 @@ other_files(
         "railing_hosts",
         ui_msg!("Railing Hosts"),
         &[],
-        "{id, add?: [id,…], remove?: [id,…]} the stairs, ramps and floors railing `id` follows: where its line passes over \
+        "{id, add?: [id,…], remove?: [id,…]} the stairs, ramps, floors, roofs and toposolids railing `id` follows: where its line passes over \
          one it stands on that one's top (the stair or ramp it is made along first, then the rest in the order added), and \
          where over none it keeps the height it had last. Removing the stair or ramp it is made along keeps its line where it \
          is, as a path. Returns {hosts: [id,…]}",
@@ -15327,9 +15327,12 @@ fn railing_hosts(s: &mut Session, p: &Value) -> R {
     rl.hosts.retain(|h| !remove.contains(h));
     for g in add {
         if let Some(e) = m.elements.get(g)
-            && !matches!(e, Element::Stair(_) | Element::Ramp(_) | Element::Floor(_))
+            && !matches!(e, Element::Stair(_) | Element::Ramp(_) | Element::Floor(_) | Element::Roof(_) | Element::Toposolid(_))
         {
-            return Err(bad(c, format!("{} is a {}; a railing follows stairs, ramps and floors", m.shown(g), e.category())));
+            return Err(bad(
+                c,
+                format!("{} is a {}; a railing follows stairs, ramps, floors, roofs and toposolids", m.shown(g), e.category()),
+            ));
         }
         if rl.host != Some(g) && !rl.hosts.contains(&g) {
             rl.hosts.push(g);

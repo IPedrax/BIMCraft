@@ -327,9 +327,14 @@ ceiling and roof its span reaches into over its outline, all the way through (`M
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
 its side (`stairs::railing`), so it goes wherever its host goes. A railing may follow more hosts (`hosts`, `railing_hosts`; the desktop's Edit
-Hosts, picked as Edit Group picks members): stairs, ramps and floors; its line in plan stays, and its heights are those of
-the first host under each point, looked up every 50 mm and kept where they bend (`railings::follow`), so one railing runs up
-a stair and on along the floor it comes to. A railing type stacks its parts (`railings.rs`, the desktop's Edit Railing):
+Hosts, picked as Edit Group picks members): stairs, ramps, floors, roofs and toposolids; its line in plan stays (Edit Path
+redraws it, `sketch::open_path`), and its heights are those of the first host under each point, looked up every 50 mm and
+kept where they bend (`railings::follow`), so one railing runs up a stair and on along the floor it comes to. Over a
+stair's flight the line runs over the treads' nosings, flat over a landing, and where a flight starts a riser above its
+landing the line climbs to it, at most twice as steep as the flight, never lower; over a floor, a roof or a toposolid it is
+their top as the 3D view has it (`view3d::top_solids`: slopes, shape points and survey points). Posts and balusters on
+the host stand on the tread, landing or surface under them (`railings::Ground`), and a post with `steps` stands on every
+so many treads of each flight, its first and last too unless `skip_ends`. A railing type stacks its parts (`railings.rs`, the desktop's Edit Railing):
 named rails, each a rectangle or a circle, its top `height` over the line and `offset` to its left; posts on the host at the
 ends, the corners and at most `spacing` apart; balusters between the posts, from the host or a rail's top up to a rail's
 underside or the railing's top; and a panel in each bay. Its `height` is worked out, the top of its highest rail; a type

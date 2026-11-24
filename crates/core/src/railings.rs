@@ -928,4 +928,18 @@ mod tests {
         let corner = tris.iter().flatten().any(|p| (p[0] - 1020.0).abs() < 1e-9 && (p[1] + 20.0).abs() < 1e-9);
         assert!(corner, "mitred, not overlapped");
     }
+
+    #[test]
+    fn a_path_is_its_lines_joined_end_to_end_whichever_way_they_were_drawn() {
+        use crate::sketch::{SketchLine, open_path};
+        let lines = [
+            SketchLine::new(P2(1000.0, 0.0), P2(1000.0, 1000.0)),
+            SketchLine::new(P2(1000.0, 0.0), P2(0.0, 0.0)),
+            SketchLine::new(P2(2000.0, 1000.0), P2(1000.0, 1000.0)),
+        ];
+        let path = open_path(&lines).unwrap();
+        assert_eq!(path, vec![P2(0.0, 0.0), P2(1000.0, 0.0), P2(1000.0, 1000.0), P2(2000.0, 1000.0)]);
+        let apart = [SketchLine::new(P2(0.0, 0.0), P2(1.0, 0.0)), SketchLine::new(P2(5.0, 0.0), P2(9.0, 0.0))];
+        assert!(open_path(&apart).unwrap_err().contains("join end to end"));
+    }
 }
