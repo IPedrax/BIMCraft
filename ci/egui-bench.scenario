@@ -1,0 +1,7 @@
+idle 3
+zoom in 20
+zoom out 20
+pan 300 150 60
+pan -300 -150 60
+idle 2
+quit

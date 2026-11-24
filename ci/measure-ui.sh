@@ -38,8 +38,9 @@ for _ in $(seq 1 240); do
     sleep 0.5
 done
 [ -n "$win" ] || { echo "$name: no window in two minutes"; tail -40 "$out/$name.log"; exit 1; }
-xdotool windowmove "$win" 0 0 windowsize "$win" 1280 800
+xdotool windowmove "$win" 0 0 windowsize "$win" 1280 800 || true
 sleep 12
+kill -0 "$pid" 2>/dev/null || { echo "$name: the window went away while it was being placed"; tail -40 "$out/$name.log"; exit 1; }
 
 ticks() { sed 's/.*) //' "/proc/$pid/stat" | awk '{print $12 + $13}'; }
 now() { date +%s.%N; }

@@ -166,14 +166,27 @@ jobs:
           mkdir -p results
           python3 - <<'PY'
           import json, math
-          ev = [{"t": 0.2 + i / 60, "type": "move", "x": 480 + 260 * math.cos(i * 0.15), "y": 400 + 200 * math.sin(i * 0.15)} for i in range(180)]
-          json.dump({"events": ev}, open("hover.json", "w"))
+          def save(name, events):
+              json.dump({"events": events}, open(name, "w"))
+          cx, cy = 600, 400
+          save("hover.json", [{"t": 0.2 + i / 60, "type": "move", "x": cx + 260 * math.cos(i * 0.15), "y": cy + 200 * math.sin(i * 0.15)} for i in range(180)])
+          save("zoom.json", [{"t": 0.2 + i / 30, "type": "wheel", "x": cx, "y": cy, "dx": 0, "dy": 120 if (i // 10) % 2 == 0 else -120} for i in range(120)])
+          drag = [{"t": 0.2, "type": "down", "x": cx, "y": cy}]
+          drag += [{"t": 0.25 + i / 60, "type": "move", "x": cx + 100 * math.cos(i * 0.05) - 100, "y": cy + 100 * math.sin(i * 0.05)} for i in range(120)]
+          drag += [{"t": 2.4, "type": "up", "x": cx, "y": cy}]
+          save("pan.json", drag)
           PY
-          bins/bimcraft-rune/bimcraft-rune --script hover.json --frames 180 --size 1280x800 --out results/frames --every 1000 2>&1 | tee results/rune-headless.log
-          bins/bimcraft-rune/bimcraft-rune --snap results/rune-snap.png --size 1280x800 2>&1 | tail -3
-          BIMCRAFT_RUNE_PLAN=pixels bins/bimcraft-rune/bimcraft-rune --snap results/rune-snap-pixels.png --size 1280x800 2>&1 | tail -3
+          rune=bins/bimcraft-rune/bimcraft-rune
+          for scene in hover:180 zoom:120 pan:150; do
+            echo "== ${scene%%:*}" | tee -a results/rune-headless.log
+            "$rune" --script "${scene%%:*}.json" --frames "${scene##*:}" --size 1280x800 --out results/frames --every 1000 2>&1 | tee -a results/rune-headless.log
+          done
+          echo "== one frame painted on the CPU" | tee -a results/rune-headless.log
+          "$rune" --snap results/rune-cpu-snap.png --cpu-boot results/cpuboot --size 1280x800 2>&1 | tee -a results/rune-headless.log
+          "$rune" --snap results/rune-snap.png --size 1280x800 2>&1 | tail -3
+          BIMCRAFT_RUNE_PLAN=pixels "$rune" --snap results/rune-snap-pixels.png --size 1280x800 2>&1 | tail -3
           for locale in zh_CN vi_VN pl_PL pt_BR; do
-            LC_ALL="$locale.UTF-8" bins/bimcraft-rune/bimcraft-rune --snap "results/rune-snap-$locale.png" --size 1280x800 2>&1 | tail -3
+            LC_ALL="$locale.UTF-8" "$rune" --snap "results/rune-snap-$locale.png" --size 1280x800 2>&1 | tail -3
           done
       - name: Start a display
         run: |
@@ -200,7 +213,7 @@ jobs:
           PY
             echo
             echo '```'
-            grep -h '^rune:' results/rune-headless.log || true
+            grep -h '^==\|^rune:' results/rune-headless.log || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
