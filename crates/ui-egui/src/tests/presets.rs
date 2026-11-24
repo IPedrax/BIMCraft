@@ -20,6 +20,18 @@ fn kept(file: &std::path::Path) -> Value {
     serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap()
 }
 
+/// A right click on the widget named `label`, of the role that picks it out of others named alike: the panels menu is opened from it
+/// (ТЗ-019.2).
+fn right_click(h: &mut Harness<BimApp>, role: Role, label: &str) {
+    let pos = h.get_by_role_and_label(role, label).rect().center();
+    right_click_at(h, pos);
+}
+
+/// The panel of the Tools palette named `label`: the leftmost of those named so, the palette being down the window's left.
+fn palette_panel(h: &Harness<BimApp>, label: &str) -> Pos2 {
+    h.get_all_by_label(label).map(|n| n.rect().center()).min_by(|a, b| a.x.total_cmp(&b.x)).expect("the panel is drawn")
+}
+
 /// Whether the window offers the tool named `tool` of the panel named `panel`: its button or row, or (on the ribbon, folded to fit)
 /// its panel's name.
 fn offered(h: &Harness<BimApp>, tool: &str, panel: &str) -> bool {
@@ -436,4 +448,195 @@ fn edit_tools_done_keeps_the_palette_layout_and_panels_in_the_selected_preset() 
     assert_eq!(kept.docking.docked(Palette::Browser), Some(Side::Bottom), "the palette layout is kept in the preset");
     assert!(kept.panels_hidden.contains("tab:Architecture/Build"), "the panel taken out is kept too");
     assert_eq!(h.state().active_preset.as_deref(), Some("Design"));
+}
+
+#[test]
+fn panel_groups_list_every_tab_once_in_ribbon_order() {
+    let h = bimcraft(BOX);
+    let groups = h.state().panel_groups();
+    let tabs: Vec<&str> = groups.iter().map(|(tab, _)| tab.as_str()).collect();
+    let expected = [
+        "Architecture",
+        "Structure",
+        "Plumbing",
+        "Electrical",
+        "Lightning Protection",
+        "Data",
+        "Insert",
+        "Annotate",
+        "Massing",
+        "Collaborate",
+        "View",
+        "Manage",
+        "PyAddins",
+        "Modify",
+    ];
+    assert_eq!(tabs, expected, "the built-in tabs in the order the ribbon draws them");
+    let view = groups.iter().find(|(tab, _)| tab == "View").map(|(_, panels)| panels.clone());
+    assert_eq!(view, Some(["Graphics", "Create", "Sheet Composition", "Windows"].map(String::from).to_vec()));
+    let keys: Vec<String> = groups.iter().flat_map(|(tab, panels)| panels.iter().map(move |panel| format!("tab:{tab}/{panel}"))).collect();
+    assert_eq!(keys.iter().collect::<BTreeSet<_>>().len(), keys.len(), "each panel key once");
+}
+
+#[test]
+fn known_panel_keys_is_the_flat_panel_groups() {
+    let h = bimcraft(BOX);
+    let flat: BTreeSet<String> =
+        h.state().panel_groups().iter().flat_map(|(tab, panels)| panels.iter().map(move |panel| format!("tab:{tab}/{panel}"))).collect();
+    assert_eq!(h.state().known_panel_keys(), flat, "one list for the menu and the preset editor");
+}
+
+#[test]
+fn right_clicking_a_panel_name_lists_its_tabs_panels_with_their_boxes() {
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    right_click(&mut h, Role::Button, "Graphics ▾");
+    for panel in ["Graphics", "Create", "Sheet Composition", "Windows"] {
+        let node = h.get_by_role_and_label(Role::CheckBox, panel);
+        assert_eq!(node.accesskit_node().toggled(), Some(egui::accesskit::Toggled::True), "{panel} is shown and ticked");
+    }
+}
+
+#[test]
+fn clearing_a_box_in_the_menu_takes_a_panel_out_and_ticking_it_brings_it_back() {
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    right_click(&mut h, Role::Button, "Graphics ▾");
+    h.get_by_role_and_label(Role::CheckBox, "Windows").click();
+    h.run();
+    assert!(h.state().panels_hidden.contains("tab:View/Windows"), "the box taken out hides the panel at once");
+    assert!(h.query_by_label("Windows ▾").is_none(), "the panel left the ribbon");
+    // The menu is still there, hung from Graphics: its box ticks Windows back.
+    h.get_by_role_and_label(Role::CheckBox, "Windows").click();
+    h.run();
+    assert!(!h.state().panels_hidden.contains("tab:View/Windows"));
+    assert!(h.query_by_label("Windows ▾").is_some(), "and the panel is back");
+}
+
+#[test]
+fn the_menu_stays_open_for_several_panels_and_closes_when_its_own_panel_goes() {
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    right_click(&mut h, Role::Button, "Graphics ▾");
+    for panel in ["Windows", "Create"] {
+        h.get_by_role_and_label(Role::CheckBox, panel).click();
+        h.run();
+        assert!(h.state().panels_hidden.contains(&format!("tab:View/{panel}")), "{panel}");
+        assert!(h.query_by_label("Sheet Composition").is_some(), "the menu stays open after {panel}");
+    }
+    // Its own panel goes, and the menu goes with the name it hung from.
+    h.get_by_role_and_label(Role::CheckBox, "Graphics").click();
+    h.run();
+    assert!(h.state().panels_hidden.contains("tab:View/Graphics"));
+    assert!(h.query_by_label("Sheet Composition").is_none(), "the menu closed with its panel");
+    assert!(h.query_by_label("Graphics ▾").is_none());
+}
+
+#[test]
+fn every_tabs_panels_are_under_other_tabs() {
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    right_click(&mut h, Role::Button, "Graphics ▾");
+    press(&mut h, "Other Tabs ⏵");
+    press(&mut h, "Manage ⏵");
+    h.get_by_role_and_label(Role::CheckBox, "Phasing").click();
+    h.run();
+    assert!(h.state().panels_hidden.contains("tab:Manage/Phasing"), "another tab's panel is hidden from this one");
+}
+
+#[test]
+fn a_panel_the_scale_leaves_out_is_listed_unticked_and_cannot_be_ticked() {
+    let mut h = app(BOX);
+    press(&mut h, "Team");
+    pick(&mut h, Role::RadioButton, "Sketch");
+    press(&mut h, "View");
+    right_click(&mut h, Role::Button, "Graphics ▾");
+    let node = h.get_by_role_and_label(Role::CheckBox, "Sheet Composition");
+    assert_eq!(node.accesskit_node().toggled(), Some(egui::accesskit::Toggled::False), "the scale leaves it out");
+    assert!(node.accesskit_node().is_disabled(), "and it cannot be ticked");
+    h.get_by_role_and_label(Role::CheckBox, "Sheet Composition").click();
+    h.run();
+    assert!(!h.state().panels_hidden.contains("tab:View/Sheet Composition"), "a click on it writes nothing");
+}
+
+#[test]
+fn the_menu_opens_on_a_folded_panel_and_in_the_tools_palette() {
+    // Rev, narrow: the last panels fold to one button, and its right click opens the same menu.
+    let mut h = app(BOX);
+    h.set_size(vec2(520.0, 800.0));
+    h.run();
+    h.get_by_label("View").scroll_to_me();
+    h.run();
+    press(&mut h, "View");
+    let folded = h.get_by_label("Windows ▾").rect();
+    assert!(folded.height() > 40.0, "the panel folded to its button");
+    right_click(&mut h, Role::Button, "Windows ▾");
+    h.get_by_role_and_label(Role::CheckBox, "Graphics");
+    // BIMCraft: the panel's name in the Tools palette takes the right click too.
+    let mut h = bimcraft(BOX);
+    press(&mut h, "View");
+    let at = palette_panel(&h, "Sheet Composition");
+    right_click_at(&mut h, at);
+    h.get_by_role_and_label(Role::CheckBox, "Windows");
+}
+
+#[test]
+fn the_menu_leaves_the_edit_tools_box_alone() {
+    let mut h = app(BOX);
+    press(&mut h, "Edit Tools");
+    right_click(&mut h, Role::CheckBox, "Build");
+    let build = h.get_by_role_and_label(Role::CheckBox, "Build");
+    assert_eq!(build.accesskit_node().toggled(), Some(egui::accesskit::Toggled::True), "the box is not flipped by a right click");
+    assert!(!h.state().panels_hidden.contains("tab:Architecture/Build"));
+    // A panel of another tab, from the menu: the same queue and the same keys as Edit Tools' boxes.
+    press(&mut h, "Other Tabs ⏵");
+    press(&mut h, "View ⏵");
+    h.get_by_role_and_label(Role::CheckBox, "Phasing").click();
+    h.run();
+    assert!(h.state().panels_hidden.contains("tab:View/Phasing"));
+}
+
+#[test]
+fn a_menu_toggle_reaches_the_settings_file_and_waits_for_done_to_reach_the_preset() {
+    let file = settings_file("panel-menu");
+    let mut h = bimcraft(BOX);
+    h.state_mut().use_settings(file.clone());
+    let p = Preset {
+        name: "Design".into(),
+        docking: Docking::default(),
+        panels_hidden: BTreeSet::new(),
+        hidden: BTreeSet::new(),
+        profile: Some(Profile::BimCraft),
+        scale: Scale::Team,
+        compact: false,
+    };
+    h.state_mut().presets = vec![p.clone()];
+    h.state_mut().apply_preset(&p);
+    h.run();
+    press(&mut h, "View");
+    let at = palette_panel(&h, "Sheet Composition");
+    right_click_at(&mut h, at);
+    h.get_by_role_and_label(Role::CheckBox, "Windows").click();
+    h.run();
+    assert_eq!(kept(&file)["panels_hidden"], json!(["tab:View/Windows"]), "the window's setting is kept at once");
+    assert!(!h.state().presets[0].panels_hidden.contains("tab:View/Windows"), "the preset waits for Done");
+    press(&mut h, "Edit Tools");
+    press(&mut h, "Done");
+    assert!(h.state().presets[0].panels_hidden.contains("tab:View/Windows"));
+    assert_eq!(kept(&file)["presets"][0]["panels_hidden"], json!(["tab:View/Windows"]));
+    let _ = std::fs::remove_dir_all(file.parent().unwrap());
+}
+
+#[test]
+fn a_menu_never_reopens_by_itself_when_its_panel_returns() {
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    right_click(&mut h, Role::Button, "Graphics ▾");
+    h.get_by_role_and_label(Role::CheckBox, "Graphics").click();
+    h.run();
+    assert!(h.query_by_label("Sheet Composition").is_none(), "the menu closed with its panel");
+    h.state_mut().panels_hidden.remove("tab:View/Graphics");
+    h.run();
+    assert!(h.query_by_label("Graphics ▾").is_some(), "the panel is back");
+    assert!(h.query_by_label("Sheet Composition").is_none(), "and the menu did not come back with it");
 }

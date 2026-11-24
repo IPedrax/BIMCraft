@@ -96,6 +96,20 @@ fn the_plugins_window_asks_for_file_access_and_the_user_grants_it() {
 }
 
 #[test]
+fn a_plugins_panels_are_listed_under_its_tab_in_the_panels_menu() {
+    let dir = tempfile::tempdir().unwrap();
+    folder(dir.path());
+    let Some(mut h) = window_with_plugins(dir.path()) else { return };
+    let pos = h.get_by_role_and_label(Role::Button, "Build ▾").rect().center();
+    right_click_at(&mut h, pos);
+    press(&mut h, "Other Tabs ⏵");
+    press(&mut h, "Areas ⏵");
+    h.get_by_role_and_label(Role::CheckBox, "Rooms").click();
+    h.run();
+    assert!(h.state().panels_hidden.contains("tab:plugin:Areas/Rooms"), "the plugin's panel is hidden by its own key");
+}
+
+#[test]
 fn find_lists_a_plugin_s_function_and_runs_it_as_its_button_does() {
     let dir = tempfile::tempdir().unwrap();
     folder(dir.path());
