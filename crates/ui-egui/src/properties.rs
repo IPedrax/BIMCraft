@@ -112,7 +112,7 @@ type Row = (&'static str, &'static str, &'static str, Kind);
 fn field_of(e: &Value, key: &str, kind: Kind) -> Value {
     match key.split('.').try_fold(e, |v, k| v.get(k)) {
         Some(v) => v.clone(),
-        None if matches!(kind, Length | Number) => json!(0.0),
+        None if matches!(kind, Length | Number | Angle) => json!(0.0),
         None => Value::Null,
     }
 }

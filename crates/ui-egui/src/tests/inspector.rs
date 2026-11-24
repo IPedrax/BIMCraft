@@ -158,7 +158,7 @@ fn a_walls_top_offset_is_a_row_under_its_top_constraint_in_both_profiles() {
         key(&mut h, Key::Enter);
         assert_eq!((field(&h, connected, "top_offset"), field(&h, connected, "height")), (json!(300.0), json!(3300.0)), "rev {rev}");
         assert_eq!(h.state().session.history().last(), Some(&"Modify"), "rev {rev}");
-        assert_eq!(value(&h), "300", "rev {rev}");
+        assert_eq!(value(&h), "300 mm", "rev {rev}");
         // A negative one takes the top down; one that takes it to the base is refused, the wall staying as it was.
         type_into(&mut h, "Top Offset", "-3000");
         key(&mut h, Key::Enter);
