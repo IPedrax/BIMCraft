@@ -7038,6 +7038,7 @@ mod pyaddins;
 mod qol;
 mod rebar_detail;
 mod reinforce;
+mod renovation;
 mod revit;
 mod ribbon_fit;
 mod rooms;

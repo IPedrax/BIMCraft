@@ -1246,6 +1246,9 @@ pub struct BimApp {
     /// Scale's popups: how it scales, the percentage and the length typed.
     pub(crate) scaling: scale::Options,
     active_option: Option<String>,
+    /// The Renovation palette's status of the work new elements are drawn in (existing, demolished, new); none follows
+    /// the view, as the tools always have. The window's, not the project's: `made_in` gives it to each command.
+    pub(crate) drawn_as: Option<bimcraft_core::phasing::Status>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
     paint_material: String,
@@ -2190,6 +2193,7 @@ impl BimApp {
             paste_where: None,
             scaling: scale::Options { percent: "100".into(), ..Default::default() },
             active_option: None,
+            drawn_as: None,
             new_schedule: None,
             component: None,
             component_angle: 0.0,
@@ -2314,6 +2318,7 @@ impl BimApp {
         }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
+        self.renovation_ran(id, params, &result);
         result
     }
 
@@ -6634,6 +6639,11 @@ impl BimApp {
             let on = self.graphic_view().is_some();
             if ui.add_enabled_ui(on, |ui| big_button(ui, Icon::Demolish, "Demolish", self.tool == Tool::Demolish, tip)).inner.clicked() {
                 self.set_tool(Tool::Demolish);
+            }
+            let tip = msg!("Renovation Palette: the status new elements are drawn in, the selection's, and what the view shows");
+            let shown = self.docking.shown(dock::Palette::Renovation);
+            if big_button(ui, Icon::Phasing, "Renovation Palette", shown, tip).clicked() {
+                self.show_palette(dock::Palette::Renovation, !shown);
             }
         });
         panel(ui, msg!("Geometry"), |ui| {

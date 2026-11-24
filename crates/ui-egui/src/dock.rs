@@ -36,6 +36,8 @@ pub enum Palette {
     Assistant,
     /// PyAddins > Player: the user's Python scripts, each to run with a form of its inputs.
     Scripts,
+    /// The status of the work what is drawn is in, the selection's, and what the view shows (`phasing.rs`).
+    Renovation,
     /// A palette a plugin declared, by its place in [`plugin_palettes`]. The registry is the plugins' and is rebuilt
     /// when they are read: the index is stable within a session, and the settings file keeps the name alone.
     Plugin(usize),
@@ -143,20 +145,21 @@ impl Palette {
     /// Every palette the window knows, the one place that lists them: the settings' switches and a preset's editor ask here, and
     /// the layout reads and writes its names through this list. A plugin's palettes come here with the plugin registry.
     pub fn known() -> Vec<Palette> {
-        let mut all = vec![Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts];
+        let mut all =
+            vec![Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant, Palette::Scripts, Palette::Renovation];
         all.extend((0..plugin_palettes().len()).map(Palette::Plugin));
         all
     }
 
     /// Whether it is open in a window that starts afresh (and in one whose settings are from before it came).
     fn opens_at_start(self) -> bool {
-        !matches!(self, Palette::Scripts | Palette::Plugin(_))
+        !matches!(self, Palette::Scripts | Palette::Renovation | Palette::Plugin(_))
     }
 
     /// The side it docks on when it is first opened.
     fn first_side(self) -> Side {
         match self {
-            Palette::Scripts => Side::Right,
+            Palette::Scripts | Palette::Renovation => Side::Right,
             Palette::Plugin(i) => plugin_palette(i).map_or(Side::Right, |p| p.dock),
             _ => Side::Left,
         }
@@ -171,6 +174,7 @@ impl Palette {
             Palette::Tools => msg!("Tools"),
             Palette::Assistant => msg!("Assistant"),
             Palette::Scripts => msg!("Script Automation"),
+            Palette::Renovation => msg!("Renovation"),
             Palette::Plugin(i) => plugin_palette(i).map_or("plugin:unknown", |p| p.name),
         }
     }
@@ -925,7 +929,7 @@ impl BimApp {
     /// A palette's title: the Project Browser's names the project, as Revit's does.
     fn palette_title(&self, p: Palette) -> String {
         match p {
-            Palette::Properties | Palette::Tools | Palette::Assistant | Palette::Scripts => t(p.label()).to_string(),
+            Palette::Properties | Palette::Tools | Palette::Assistant | Palette::Scripts | Palette::Renovation => t(p.label()).to_string(),
             Palette::Plugin(i) => {
                 let title = plugin_palette(i).map_or_else(|| t("Plugin panel").to_string(), |panel| panel.title.to_string());
                 let badge = self.plugin_panel_badge(i);
@@ -954,6 +958,7 @@ impl BimApp {
             Palette::Tools => self.tool_column(ui),
             Palette::Assistant => self.assistant_palette(ui),
             Palette::Scripts => self.scripts_palette(ui),
+            Palette::Renovation => self.renovation_palette(ui),
             Palette::Plugin(i) => {
                 scroll.id_salt(("plugin-panel", i)).show(ui, |ui| self.plugin_panel_body(ui, i));
             }
