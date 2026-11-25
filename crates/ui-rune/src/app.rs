@@ -7,13 +7,12 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::MAX_POINTS;
 use bimcraft_core::render::{self, Drawing};
-use rune::{Live, Pixels, TextEdit};
+use rune::{Live, Pixels};
 use serde_json::{Value, json};
 
 use crate::camera::Camera;
 use crate::profile::Profile;
 use crate::project::{self, Start};
-use crate::props::{self, Kind, Row};
 use crate::select::{self, How, Rubber};
 use crate::snapping::{Landing, Snapper};
 use crate::status;
@@ -77,13 +76,6 @@ impl CameraMode {
     }
 }
 
-/// A field of the selected element a person may try to change, with the text being typed into it.
-pub struct Field {
-    pub name: String,
-    pub kind: Kind,
-    pub edit: TextEdit,
-}
-
 pub struct App {
     pub session: Session,
     pub profile: Profile,
@@ -144,11 +136,8 @@ pub struct App {
     pub selection: Vec<Id>,
     /// The pointer over the plan, points from its top left.
     pub cursor: Option<(f32, f32)>,
-    pub props: Vec<Row>,
-    /// The fields of the selected element that can be edited.
-    pub fields: Vec<Field>,
-    /// Where an edit goes that has no field (a stale one): never read.
-    pub scratch: TextEdit,
+    /// The Properties palette: what it shows for the selection, and the text being typed into it (`app/properties.rs`).
+    pub palette: Palette,
     /// A command's refusal, as the core says it.
     pub message: Option<String>,
     /// How far the press now dragging has been followed, points.
@@ -191,9 +180,7 @@ impl App {
             square: false,
             selection: Vec::new(),
             cursor: None,
-            props: Vec::new(),
-            fields: Vec::new(),
-            scratch: TextEdit::new(""),
+            palette: Palette::new(),
             message: None,
             followed: (0.0, 0.0),
         };
@@ -267,13 +254,7 @@ impl App {
     }
 
     fn refresh(&mut self) {
-        let json = match self.selection.as_slice() {
-            [id] => bimcraft_core::element_json(&self.session.model, *id),
-            _ => serde_json::Value::Null,
-        };
-        self.props = props::rows(&json);
-        self.fields =
-            props::editable(&json).into_iter().map(|(name, kind, text)| Field { name, kind, edit: TextEdit::new(text) }).collect();
+        self.refresh_panel();
     }
 
     /// The canvas has laid out at `w` x `h` points.
@@ -635,20 +616,6 @@ impl App {
         self.reland();
     }
 
-    /// The text typed into field `i` of the selected element goes to the core as a `modify`; a number that is no number, or a refusal,
-    /// is said in the status bar and changes nothing.
-    pub fn commit_field(&mut self, i: usize) -> bool {
-        let (Some(field), [id]) = (self.fields.get(i), self.selection.as_slice()) else { return false };
-        let (name, id) = (field.name.clone(), *id);
-        match props::parse(field.kind, &field.edit.text) {
-            Ok(value) => self.run("modify", &json!({"id": id, name: value})),
-            Err(why) => {
-                self.message = Some(format!("{name}: {why}"));
-                false
-            }
-        }
-    }
-
     /// Opens the project at `path`, framed on its first level.
     pub fn open_path(&mut self, path: std::path::PathBuf) -> bool {
         let opened = self.run("open", &json!({ "path": path }));
@@ -700,6 +667,9 @@ impl App {
         })
     }
 }
+
+mod properties;
+pub use properties::Palette;
 
 #[cfg(test)]
 mod tests;
