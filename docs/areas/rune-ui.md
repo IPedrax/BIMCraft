@@ -325,7 +325,7 @@ measurements the gates asked for. Not done: `settings.json` and the window's rem
 are in the kit, nothing here uses them), views in the browser besides levels, and all five extractions into the core (a pull request each
 to main, the tool registry first). The gates: the **Windows** gate is met on a GitHub Windows runner (WARP), not on dansity's VM; the **dense
 chrome and big project** gate is met with a ribbon, a palette, a browser and a three-storey tower (not the hundred); the **upstream
-issue** is drafted below and not posted.
+issue** was filed on 2026-11-24 as [anomalyco/rune#2068](https://github.com/anomalyco/rune/issues/2068), with no answer yet.
 
 1. **Go on to stage 3, or stop and take Iced?** The gates ran. With no card, Rune's CPU renderer costs a tenth to a fifteenth of
    egui's CPU when the pointer moves over the plan on Linux, and a twenty-fifth to a thirty-fifth on a Windows runner (WARP), where egui
@@ -341,7 +341,8 @@ issue** is drafted below and not posted.
    lock, plus whatever its API changed; the crate keeps Rune out of `app.rs`, `camera.rs`, `paint.rs`, `props.rs`, `status.rs` and
    `lang.rs` (the logic, tested without a window) so a bump touches `ui/` only. Is that risk acceptable for a front end that may one
    day be the only one?
-3. **The issue to file at github.com/anomalyco/rune** (the maintainer's to post; nothing was sent): "Linux and Windows: choose the CPU
+3. **The issue at github.com/anomalyco/rune**, filed 2026-11-24 as [#2068](https://github.com/anomalyco/rune/issues/2068) (its body names no
+   project and links nothing of ours; it points at their #296 and #301, which are the same machine class). Its first draft read: "Linux and Windows: choose the CPU
    renderer from the app, and by default when the adapter is a software one. `RUNE_CPU_FIRST=only` keeps a window on `CpuPainter`, which
    costs a tenth of the GPU path on lavapipe when the pointer moves over a 12,500-instance scene (4.5 ms against 46 ms of CPU a move,
    Mesa lavapipe, Xvfb, 4 vCPUs). An app that forbids `unsafe` cannot set the variable; an `App` option, and a rule that treats lavapipe
