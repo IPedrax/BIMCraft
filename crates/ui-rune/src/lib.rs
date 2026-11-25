@@ -21,6 +21,7 @@ pub mod software;
 pub mod status;
 pub mod tools;
 pub mod ui;
+pub mod views;
 
 use rune::AppSpec;
 
