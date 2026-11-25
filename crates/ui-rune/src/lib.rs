@@ -11,6 +11,8 @@
 
 pub mod app;
 pub mod camera;
+pub mod context;
+pub mod grips;
 pub mod lang;
 pub mod paint;
 pub mod profile;

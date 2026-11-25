@@ -709,6 +709,8 @@ impl App {
     }
 }
 
+mod grips;
+mod menu;
 mod tooling;
 
 #[cfg(test)]

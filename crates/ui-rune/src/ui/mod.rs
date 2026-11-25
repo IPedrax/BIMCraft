@@ -11,6 +11,7 @@ use crate::profile::Profile;
 
 mod browser;
 mod draw_bar;
+mod menu;
 mod plan;
 mod properties;
 mod ribbon;
@@ -25,15 +26,27 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
     let th = tok::theme(true);
     // The right-hand column both profiles share: the selected element's properties over the project's levels.
     let side = col().w(PANEL_WIDTH).h_full().child(properties::panel(s, &th)).child(browser::panel(s, &th));
+    // The plan's right-click menu, when it is open, puts its elements in `layer`, which go over the whole window.
+    let mut layer = Vec::new();
+    let plan = menu::with_menu(s, plan::plan(s), &mut layer);
     let middle = match s.profile {
-        Profile::Bimcraft => row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(plan::plan(s)).child(side),
-        Profile::Rev => row().grow(1.0).min_h(0.0).child(plan::plan(s)).child(side),
+        Profile::Bimcraft => row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(plan).child(side),
+        Profile::Rev => row().grow(1.0).min_h(0.0).child(plan).child(side),
     };
     let top = match s.profile {
         Profile::Bimcraft => None,
         Profile::Rev => Some(ribbon::ribbon(s, &th)),
     };
-    col().key("root").w_full().h_full().fill(th.bg).child(topbar::bar(s, &th)).children(top).child(middle).child(status_bar::bar(s, &th))
+    let body = col()
+        .key("root")
+        .w_full()
+        .h_full()
+        .fill(th.bg)
+        .child(topbar::bar(s, &th))
+        .children(top)
+        .child(middle)
+        .child(status_bar::bar(s, &th));
+    if layer.is_empty() { body } else { rune_kit::root(body, layer) }
 }
 
 /// Every frame: the plan on screen, which the camera moves through Rune's live offset and scale, is drawn exactly once the camera has

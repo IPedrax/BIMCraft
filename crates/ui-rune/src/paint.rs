@@ -11,8 +11,10 @@ use rune::{Color, LineCap, Shape};
 
 use crate::select::Rubber;
 
+mod handles;
 mod preview;
 mod snap;
+pub use handles::handles;
 pub use preview::ghost;
 pub use snap::over;
 
