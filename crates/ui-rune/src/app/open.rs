@@ -23,6 +23,13 @@ impl App {
         self.settle();
         true
     }
+
+    /// After the model, the selection or the view may have changed: what the view shown is made of is made again (the section's
+    /// picture is asked for, the schedule's grid is built), and what another kind of view held is let go.
+    pub(super) fn follow_view(&mut self) {
+        self.ask_section();
+        self.make_grid();
+    }
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@ use crate::camera::Camera;
 use crate::profile::Profile;
 use crate::project::{self, Start};
 use crate::props::{self, Kind, Row};
+use crate::sched::Grid;
 use crate::section::Cut;
 use crate::select::{self, How, Rubber};
 use crate::snapping::{Landing, Snapper};
@@ -21,6 +22,7 @@ use crate::status;
 use crate::views::{self, ViewKind, Views};
 
 mod open;
+mod schedule;
 mod section;
 
 /// How near a click or a hover must be to a line to take it, points.
@@ -107,6 +109,8 @@ pub struct App {
     pub views: Views,
     /// The section or elevation shown, with the thread that makes its picture (`section.rs`).
     pub cut: Cut,
+    /// The schedule shown, as a grid (`sched.rs`).
+    pub grid: Grid,
     pub level: Option<Id>,
     pub level_name: String,
     pub camera: Camera,
@@ -179,6 +183,7 @@ impl App {
             view: ViewKind::default(),
             views: Views::default(),
             cut: Cut::new(),
+            grid: Grid::default(),
             level: None,
             level_name: String::new(),
             camera: Camera { cx: 0.0, cy: 0.0, scale: 0.1, angle: 0.0 },
@@ -293,8 +298,8 @@ impl App {
         self.props = props::rows(&json);
         self.fields =
             props::editable(&json).into_iter().map(|(name, kind, text)| Field { name, kind, edit: TextEdit::new(text) }).collect();
-        // What is selected is tinted in a section's picture, and a command may have changed what it shows.
-        self.ask_section();
+        // What is selected is tinted in a section's picture, and a command may have changed what a view shows.
+        self.follow_view();
     }
 
     /// The canvas has laid out at `w` x `h` points.

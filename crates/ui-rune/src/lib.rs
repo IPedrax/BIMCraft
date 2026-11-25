@@ -15,6 +15,7 @@ pub mod paint;
 pub mod profile;
 pub mod project;
 pub mod props;
+pub mod sched;
 pub mod section;
 pub mod select;
 pub mod snapping;

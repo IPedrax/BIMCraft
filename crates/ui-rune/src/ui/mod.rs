@@ -14,6 +14,7 @@ mod canvas;
 mod plan;
 mod properties;
 mod ribbon;
+mod schedule;
 mod section;
 mod status_bar;
 mod tools;
