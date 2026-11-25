@@ -327,3 +327,20 @@ fn the_zoom_buttons_zoom_fit_and_go_back_and_the_region_button_arms_a_box() {
         assert!(buttons.iter().any(|k| k == key), "{key} is a button to a screen reader: {buttons:?}");
     }
 }
+
+#[test]
+fn a_wheel_moves_the_plan_without_drawing_it_and_the_poll_draws_it_when_the_camera_is_still() {
+    let mut rt = window();
+    rt.poll = Some(super::poll);
+    let (ox, oy) = plan_origin(&rt).expect("the plan");
+    let revision = rt.state.revision;
+    rt.wheel_event(WheelEvent::new(0.0, 200.0).at(ox + 300.0, oy + 200.0));
+    rt.frame(0.0);
+    assert_eq!(rt.state.revision, revision, "no drawing by the core while the camera moves");
+    assert!(rt.state.live_scale.get() > 1.0, "the plan on screen is scaled instead: {}", rt.state.live_scale.get());
+    rt.frame(0.05);
+    assert_eq!(rt.state.revision, revision, "and it waits for the camera to be still");
+    rt.frame(0.2);
+    assert!(rt.state.revision > revision, "then the core draws it exactly");
+    assert_eq!(rt.state.live_scale.get(), 1.0);
+}

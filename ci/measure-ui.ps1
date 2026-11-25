@@ -1,6 +1,6 @@
 # What a UI costs on a Windows machine with no graphics card (a GitHub runner's adapter is WARP): the same method as ci/measure-ui.sh.
 # Start it, place its window at the top left, settle, read the process's CPU time over an idle stretch, then over the pointer moving
-# round an ellipse over the plan, the wheel (ten notches in, ten out) and a drag that pans (the middle button for egui, the left for Rune),
+# round an ellipse over the plan, the wheel (ten notches in, ten out) and a drag that pans (the middle button, which egui and, since stage 3's selection slice, Rune pan with; -PanButton 1 is the left),
 # and keep a screenshot. The pointer is the real one (SetCursorPos, mouse_event), so a window must be on the desktop, as it is on a runner.
 #
 # usage: pwsh ci/measure-ui.ps1 -Name NAME -Out DIR -Exe PATH [-AppArgs a,b] [-PanButton 1|2]
@@ -14,7 +14,7 @@ param(
     [int]$Notches = 200,
     [int]$Drags = 1000,
     [int]$Settle = 15,
-    [int]$PanButton = 1
+    [int]$PanButton = 2
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $Out | Out-Null

@@ -44,5 +44,5 @@ pub fn run() {
     }
     lang::set(lang::from_system());
     rune::set_app_id("com.ipedrax.bimcraft");
-    rune::run(AppSpec { on_key: Some(ui::on_key), ..AppSpec::new(TITLE, SIZE, start, ui::view) });
+    rune::run(AppSpec { on_key: Some(ui::on_key), poll: Some(ui::poll), ..AppSpec::new(TITLE, SIZE, start, ui::view) });
 }

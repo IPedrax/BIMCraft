@@ -16,8 +16,8 @@ A window of the sample house that works end to end, small on purpose:
 
 | Module | What it does | Tests |
 |---|---|---|
-| `app.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 22, no window |
-| `ui/` | the plan canvas, the top bar (Open and Save through the system's file dialogs, Undo, Redo), the Tools palette or the ribbon, Properties (a `rune_kit::TextInput` for each field the core may take a `modify` of), the browser of levels, the status bar, as functions of `App` | 15, Rune's headless `Runtime` (dialogs answered by the test) |
+| `app.rs`, `app/tests.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 24, no window |
+| `ui/` | the plan canvas, the top bar (Open and Save through the system's file dialogs, Undo, Redo), the Tools palette or the ribbon, Properties (a `rune_kit::TextInput` for each field the core may take a `modify` of), the browser of levels, the status bar, as functions of `App` | 16, Rune's headless `Runtime` (dialogs answered by the test) |
 | `project.rs`, `profile.rs` | where a project comes from (`--sample`, `--highrise`, a file through `open`), and the two profiles of one app: BIMCraft's palette, Rev's ribbon | 2 |
 | `camera.rs` | pan, zoom and Zoom In Region in the core's `View`, hostile numbers refused | 6 |
 | `select.rs` | what a click or a box does to the selection: Ctrl adds, Shift takes away, a plain pick replaces; a box left to right takes what it holds, right to left what it touches (stage 3, slice 1) | 3 |
@@ -314,16 +314,19 @@ copy keeps merging until then):
 | 5 | the 3D view, sheets and schedules on screen, export and print | the sample house exports and prints from Rune |
 | 6 | the Family Editor, the MEP and structure tabs, Co-Work, the Assistant, PyAddins, Plugins, Building Codes | parity: the registry test passes with no entry missing |
 
-**Stage 3 so far.** Slice 1, selection, is written and waits for CI (`select.rs`, `App::sweep`, `release`, `step`, `escape`, the box layer in
+**Stage 3 so far.** Slice 1, selection, is built (`select.rs`, `App::sweep`, `release`, `step`, `escape`, the box layer in
 `ui/plan.rs`): a click replaces the selection, Ctrl adds and Shift takes away (read as `tx.mods()`); a drag with nothing in hand draws a
 box, solid and blue left to right (what it holds), dashed and green right to left (what it touches), through the core's `Drawing::in_box`;
 Tab and Shift+Tab step through `Drawing::pick_all` at the pointer and a click takes the one Tab reached; Escape puts the tool down, then
 clears the selection. The middle button pans (`El::pointer_buttons`), as in egui, so the primary drag no longer does, except while a tool is
 in hand (a placeholder until the tools take the button). Slice 2, the zoom commands, is written too: Zoom to Fit, Zoom In and Out about the middle, Zoom In Region (armed from the top bar, one box, drawn as a
 window whichever way it goes, a click leaves it armed, Escape disarms it) and Previous Pan/Zoom (twenty steps of what the commands left, as in egui's
-`zoom.rs`; the wheel and a pan are no steps). Their Revit shortcuts (ZF, ZR, ZO, ZP) wait for the shared registry. Not in the slices: the Filter
-dialog (stage 4), grips, snapping and its guides, temporary dimensions, the Draw and Modify tools, the context menu, sections, and the live camera (`live_offset`,
-`live_scale`) that the wheel and the pan need to stop drawing the plan again on every event. The tools and grips lean on the tool state
+`zoom.rs`; the wheel and a pan are no steps). Their Revit shortcuts (ZF, ZR, ZO, ZP) wait for the shared registry. Slice 3, the live camera, is the
+answer to the naive wheel and drag of "What costs what": a wheel notch or a pan moves the last drawing through `live_offset` and `live_scale`
+(`App::glide`; hover and picks map the pointer back into the drawing), and the core draws it exactly once the camera has been still for 150 ms
+(`ui::poll`) or a click, a box or a command needs it. Rune's `Live` is a lock-free 128-bit atomic and asserts that the CPU has them, so the
+crate would stop at start on one that does not (x86_64 before 2007, riscv64); Rune's own platforms have them. Not in the slices: the Filter
+dialog (stage 4), grips, snapping and its guides, temporary dimensions, the Draw and Modify tools, the context menu, sections. The tools and grips lean on the tool state
 machines, which are still inside egui's `canvas.rs` (extraction 4 above), so they wait on that pull request.
 
 Before Rune becomes the default, one run on a machine with no graphics card must show it cheaper than egui on that machine with PR 628's

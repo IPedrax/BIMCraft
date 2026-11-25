@@ -1,6 +1,8 @@
 //! The window's elements, each a function of the app's state: the plan, the Properties panel and the status bar. A handler here
 //! only calls a method of `App`; what it does, and every change to the model, is `app`'s.
 
+use std::time::Duration;
+
 use rune::tok;
 use rune::{Cx, El, Key, KeyEvent, Tx, col, row};
 
@@ -31,6 +33,17 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
         Profile::Rev => Some(ribbon::ribbon(s, &th)),
     };
     col().key("root").w_full().h_full().fill(th.bg).child(topbar::bar(s, &th)).children(top).child(middle).child(status_bar::bar(s, &th))
+}
+
+/// Every frame: the plan on screen, which the camera moves through Rune's live offset and scale, is drawn exactly once the camera has
+/// been still for `app::SETTLE`. True when it was, so the view runs again; else asks for a frame when it is due.
+pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    s.tick(clock);
+    let drawn = s.settle_if_still();
+    if let Some(due) = s.settle_in() {
+        tx.wake_after(Duration::from_secs_f64(due));
+    }
+    drawn
 }
 
 /// Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac); Tab and Shift+Tab step through what

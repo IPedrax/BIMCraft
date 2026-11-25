@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # What a UI costs on a machine with no graphics card, the way a person would use it: start it under Xvfb on software Vulkan
 # (lavapipe), let it settle, read the process's CPU time over an idle stretch, then over a stretch of the pointer moving over the
-# plan (xdotool, about 50 moves a second), then over the wheel zooming it in and out, then over a drag that pans it (the middle button
-# for egui, which pans with it: PAN_BUTTON=2; the left one otherwise), and keep a screenshot. docs/areas/rune-ui.md has the numbers
-# and what they leave out.
+# plan (xdotool, about 50 moves a second), then over the wheel zooming it in and out, then over a drag that pans it (the middle button,
+# which egui and, since stage 3's selection slice, Rune pan with; PAN_BUTTON=1 is the left, which Rune panned with before), and keep a
+# screenshot. docs/areas/rune-ui.md has the numbers and what they leave out.
 #
 # usage: ci/measure-ui.sh NAME OUTDIR -- COMMAND [ARGS...]      (DISPLAY names a running X server; IDLE seconds, MOVES moves)
 set -euo pipefail
@@ -16,7 +16,7 @@ idle=${IDLE:-10}
 moves=${MOVES:-1500}
 notches=${NOTCHES:-200}
 drags=${DRAGS:-1000}
-button=${PAN_BUTTON:-1}
+button=${PAN_BUTTON:-2}
 mkdir -p "$out"
 
 home=$(mktemp -d)

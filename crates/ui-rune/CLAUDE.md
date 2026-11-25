@@ -32,7 +32,8 @@ winit and wgpu would be replaced too. So here, inside `crates/ui-rune`:
   state and the elements read back (`rt.state`, `rt.elements()`). A window is never opened in a test. Ctrl and Shift held for the
   presses that follow: `rt.physical_input(PhysicalInput::Modifiers(..))` (a handler reads them as `tx.mods()`); the middle button:
   `rt.button_down(x, y, PointerButton::Middle)`; the window's keys: `rt.on_key = Some(ui::on_key)` first, then `rt.key(..)`. A press moves
-  no pointer (`pointer_down` sets the place and runs no hover), so a test that wants hover moves first.
+  no pointer (`pointer_down` sets the place and runs no hover), so a test that wants hover moves first. The poll: `rt.poll = Some(ui::poll)`,
+  and `rt.frame(dt)` steps the clock by `dt`, so a test of what waits for the camera to be still frames 0.2 s.
 - What needs no window is tested without one: `app.rs` (state and handlers), `camera.rs`, `paint.rs`, `props.rs`, `status.rs`, `lang.rs`.
 - Rune looks at itself: `bimcraft-rune --snap out.png --size 1280x800`, `--tree out.json`, `--script s.json --frames N` render and
   drive it with no display, on whatever Vulkan the machine has (lavapipe with no card): [looking at the result](../../docs/areas/looking-at-results.md).
@@ -44,7 +45,9 @@ One line per module. A new module adds its line here, not to the root.
 - `lib.rs`: the modules, and `run()` (the window). `main.rs`: the `bimcraft-rune` binary. `software.rs`: `--software`, which starts the
   program again with `RUNE_CPU_FIRST=only` so a machine with no card draws on Rune's CPU renderer (it cannot set the variable itself, safely).
 - `app.rs`: the state (`App`) and what its handlers do, the one place that meets the core: `render::draw`, `Drawing::pick`,
-  `Session::execute` for every change. It holds no widget, so it is tested without a window.
+  `Session::execute` for every change. It holds no widget, so it is tested without a window (`app/tests.rs`). The plan on screen is the
+  last drawing (`drawn`) moved by the camera through `live_offset` and `live_scale`, which the plan binds, and drawn again exactly once the
+  camera has been still for `SETTLE` (`settle_if_still`, from `ui::poll`) or something needs the exact drawing (a release, a command).
 - `ui/`: the elements, a function of `App`: `mod.rs` the window (laid out by profile) and its keys, `plan.rs` the canvas (the drawing kept as
   one element while it is the same, the pointer and wheel handlers, the primary button's click and box, the middle button's pan, the hover, selection and box layers), `topbar.rs` (Open and Save through
   the system's file dialogs, Undo, Redo, the zoom buttons), `tools.rs` the BIMCraft profile's palette, `ribbon.rs` Rev's, `properties.rs` (the rows, and a
