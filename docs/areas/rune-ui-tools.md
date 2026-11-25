@@ -44,6 +44,33 @@ one closed command of two half circles). While the clicks are made, `App::shape_
 landing, drawn by `paint::ghost` as a layer of its own (`plan-ghost`); a Line has no ghost, as `paint::over` already draws the chain's
 segment to the pointer. Changing the shape gives up the points. The polygon's sides (`Options::sides`, 6) and a radius have no control yet.
 
+## The Modify tools
+
+The same machine, in the same table (`SPECS` holds the tools of `tools::MODIFY` too), on what is selected or picked. A tool that needs
+the selection and finds it empty refuses on its first click and says so in the status bar. The pointer lands with the snap and the
+guides as for any point (the chain's first point is the base).
+
+| Tool | Command | Clicks |
+|---|---|---|
+| Move, Copy | `move`, `copy` | a base point, then the destination: `{ids, by}`. A copy leaves the copies selected; the tool is put down after |
+| Rotate | `rotate` | the centre, a point on the first ray, a point on the second: the angle between them, counter-clockwise (`angle_between`) |
+| Mirror | `mirror` | the two points of the axis, with Copy on as Revit's default |
+| Split | `split` | a click on a wall or a detail line, at the snapped point; stays in hand |
+| Trim | `corner` | Trim/Extend to Corner: each of the two elements picked on the part that stays (the core's `corner` takes both walls and detail lines) |
+| Align | `align` | a click on the element whose line is the reference (`align::nearest` within the pointer's reach), then on the element to bring to it |
+| Offset | `copy` for a straight wall, `offset` for a detail line | the element, then a point that says how far and to which side; a copy is made |
+
+What a Modify tool keeps between clicks besides the points is `Tooling::held` (the element or the line its first pick named); the
+first click overwrites it, so Escape, Backspace and a change of tool leave nothing stale. `Step::Hold` is how the machine sets it.
+Move, Copy, Rotate and Mirror are put down once they have worked, as in the egui window (which goes back to Modify); Split, Trim, Align
+and Offset stay for the next pick, as they do there.
+
+**Not done:** Array (the core has no command for it, and it needs a count), Scale (the core's `scale_elements` takes a factor and only
+scales annotation, CAD drawings, images and PDFs; egui types the length), Offset's typed distance and its Copy switch (a copy is
+always made, by the distance of the second point), Move and Copy's Multiple and Constrain, Rotate's Copy and a typed angle, Mirror's
+pick-an-axis (the axis is two points), Trim/Extend to a single boundary and to many (`trim_extend`), Match Properties, Pin. Egui's
+smaller things in a move (a door sliding to the middle of its wall, `move_point`) are not here either.
+
 ## Not here yet
 
 - **The Options Bar.** Types, heights, the wall's location line, a beam's justification and offset, a ceiling's height, a roof's
@@ -59,7 +86,8 @@ segment to the pointer. Changing the shape gives up the points. The polygon's si
 - **Previews of what stands:** a ghost of the wall's thickness, of a door in its wall, of a column. The pointer's glyph and the
   chain are all a point tool shows.
 - **After a click:** egui selects the roof or floor it made and goes back to Modify; here the tool stays in hand and nothing is selected.
-- **A drag with a tool in hand** still pans on the primary button (the placeholder of stage 3, slice 4).
+- **A drag with a tool in hand** still pans on the primary button (the placeholder of stage 3, slice 4); a Modify tool takes the two
+  clicks of a base point and a destination, not the press, drag and release of one.
 
 ## Where the tests are
 
