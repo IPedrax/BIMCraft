@@ -127,7 +127,6 @@ fn what_is_selected_is_tinted_in_the_picture_and_that_asks_for_no_new_geometry()
     let id = in_picture(&cut).expect("the picture shows an element");
     let plain = cut.frame.as_ref().map(|f| f.image.as_ref().map(|i| i.rgba.clone())).expect("a frame");
     cut.ask(&app.session.model, &[id]);
-    assert!(cut.busy(), "another selection is another request");
     assert!(wait(&mut cut));
     let f = cut.frame.as_ref().expect("a frame");
     assert_eq!(f.request.tints, vec![(id, SELECT)]);

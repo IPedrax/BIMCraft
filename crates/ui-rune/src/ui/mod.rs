@@ -49,9 +49,12 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if let Some(due) = s.settle_in() {
         tx.wake_after(Duration::from_secs_f64(due));
     }
-    // A view made on a thread of its own (a section): its picture comes in when it is made, and the window comes back for it.
+    // A view made on a thread of its own (a section): its picture comes in when it is made, and the window comes back for it. Whether it
+    // is busy is read before the answer is taken: an answer is queued before the thread says it is through, so a thread that is not
+    // busy has its answer in the queue for this very call, and one that is gets a frame to come back in.
+    let busy = s.views_busy();
     let made = s.poll_views();
-    if s.views_busy() {
+    if busy {
         tx.wake_after(Duration::from_millis(16));
     }
     drawn || made

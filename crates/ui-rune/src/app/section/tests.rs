@@ -56,7 +56,6 @@ fn opening_a_section_asks_for_its_picture_and_leaving_it_lets_the_thread_go() {
             _ => None,
         }
     );
-    assert!(app.views_busy() || app.cut.frame.is_some(), "the picture is being made");
     wait(&mut app);
     assert!(app.cut.frame.is_some() && app.cut.error.is_none(), "{:?}", app.cut.error);
     assert!(app.drawing.is_none(), "the plan has nothing to draw while a section is shown");
@@ -78,10 +77,6 @@ fn a_click_in_a_section_selects_what_the_picture_shows_and_the_plan_shows_it_sel
     app.section_release((x, y), (x, y), How::Replace);
     assert!(!app.selection.is_empty(), "a click on what the picture shows ({id}) takes it");
     let selected = app.selection.clone();
-    assert!(
-        app.views_busy() || app.cut.frame.as_ref().is_some_and(|f| !f.request.tints.is_empty()),
-        "the selection asks for a tinted picture"
-    );
     wait(&mut app);
     let tinted: Vec<u64> = app.cut.frame.as_ref().map(|f| f.request.tints.iter().map(|(id, _)| *id).collect()).unwrap_or_default();
     assert_eq!(tinted, selected);
@@ -128,7 +123,6 @@ fn a_command_makes_the_picture_again_and_the_zoom_buttons_work_on_the_section() 
     wait(&mut app);
     let (revision, plan_camera) = (app.cut.revision, app.camera);
     assert!(app.run("wall", &json!({"points": [[20000, 0], [22000, 0]]})), "refused: {:?}", app.message);
-    assert!(app.views_busy() || app.cut.revision > revision, "the model changed: the picture is asked for again");
     wait(&mut app);
     assert!(app.cut.revision > revision);
     assert!(
@@ -136,6 +130,9 @@ fn a_command_makes_the_picture_again_and_the_zoom_buttons_work_on_the_section() 
         "a picture of the model as it is"
     );
 
+    // What Zoom to Fit frames is of the model as it is now (the new wall is something the section sees), so the baseline is its fit.
+    app.zoom_fit();
+    wait(&mut app);
     let scale = app.cut.camera.scale;
     app.zoom_by(2.0);
     assert!((app.cut.live_scale.get() - 2.0).abs() < 1e-6, "the picture on screen is twice as big at once");

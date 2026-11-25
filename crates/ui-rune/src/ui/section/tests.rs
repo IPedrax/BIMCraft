@@ -81,19 +81,27 @@ fn the_wheel_zooms_the_section_about_the_pointer_and_the_exact_picture_follows()
 fn a_press_on_a_section_row_in_the_browser_opens_it() {
     let mut rt = window();
     let section = first_section(&rt);
-    // The row is below what the list shows: the groups above it fold first, as a person folds them.
+    let key = section.key();
+    let tap = |rt: &mut Runtime<App>, at: (f32, f32)| {
+        rt.pointer_down(at.0, at.1);
+        rt.pointer_up(at.0, at.1);
+        // Time passes, so nothing is still on its way to where it will stand.
+        for _ in 0..3 {
+            rt.frame(0.3);
+        }
+    };
+    // The row may be below what the list shows: the groups above it fold first, as a person folds them, until it is on screen.
     for label in ["Floor Plans", "Ceiling Plans", "3D Views", "Elevations (Building Elevation)"] {
+        let at = rt.find(&key).expect("the section's row");
+        if rt.contains(&key, at.0, at.1) {
+            break;
+        }
         let head = rt.find(&format!("group-{label}")).expect("the group");
-        rt.pointer_down(head.0, head.1);
-        rt.pointer_up(head.0, head.1);
-        rt.frame(0.0);
-        rt.frame(0.0);
+        tap(&mut rt, head);
     }
-    let row = rt.find(&section.key()).expect("the section's row");
-    rt.pointer_down(row.0, row.1);
-    rt.pointer_up(row.0, row.1);
-    rt.frame(0.0);
-    rt.frame(0.0);
-    assert_eq!(rt.state.view, section);
+    let at = rt.find(&key).expect("the section's row");
+    assert!(rt.contains(&key, at.0, at.1), "the row is on screen: {at:?} in {:?}", rt.presented("browser"));
+    tap(&mut rt, at);
+    assert_eq!(rt.state.view, section, "the press on {at:?} opened it");
     assert!(rt.find("section").is_some());
 }

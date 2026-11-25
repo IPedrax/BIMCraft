@@ -128,7 +128,6 @@ fn a_click_finds_what_the_picture_shows_and_what_is_selected_is_tinted_in_it() {
     assert!(app.session.model.elements.get(id).is_some());
     let plain = rgba(&o);
     o.ask(&app.session.model, &[id]);
-    assert!(o.busy(), "another selection is another picture");
     assert!(wait(&mut o));
     assert_eq!(o.frame.as_ref().map(|f| f.request.tints.clone()), Some(vec![(id, SELECT)]));
     assert_ne!(rgba(&o), plain, "the selected element is tinted");
