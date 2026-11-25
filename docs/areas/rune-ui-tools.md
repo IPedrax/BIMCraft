@@ -97,6 +97,21 @@ it is **a duplicate of egui's `gripped`, `grip_ends`, `grip_target` and `grip_dr
 from there: the angle to click and type beside a wall's end, a Fixed Grid wall's stay in its pattern's lengths, the element's outline as
 it would stand while dragged (the line is drawn), the ruler's graduations, and the grips of a stair, a section, a callout and a shape.
 
+## Temporary dimensions
+
+The wall, door, window, column, structural column, footing or component selected alone, with no tool in hand and no end being dragged,
+shows what it measures to (`tempdim.rs`, from the core's `wall_clearances`, `clearances` and `opening_span`): a straight wall its length
+and its distance from the nearest parallel wall or grid on each side, an opening the two stretches of its wall either side of its middle,
+a standing element its distance to the nearest wall centre line or grid east, north, west and south. `paint/dims.rs` places each (its line
+parallel to what it measures and a little off it on its side, extension lines and ticks; none under 24 points) and `ui/tempdim.rs` draws
+the lines as one inert layer (`plan-dims`) and a `rune_kit::TextInput` at each line's middle (`plan-dim-<n>`) on the number being typed
+(`App::temp`, made with the Properties rows in `App::refresh`). Enter commits it (`App::commit_dim`, `tempdim::apply`): a wall's length is
+`wall_length`, a clearance moves the element toward the line by the difference (`move`), an opening slides (`modify offset`); a number that
+is no length, or past the wall, is the status bar's message. The pure part is **a duplicate of egui's `temporary_dimension`,
+`wall_dimensions`, `opening_dimensions` and `standing_dimensions` to fold into the core when egui adopts it**. Not here from there: a
+curved wall's arc length, Make Dimension Permanent, the side of a wall the line is drawn on (the wall's left here, away from the middle
+of the view there), and a dimension's locks and equality.
+
 ## Not here yet
 
 - **The Options Bar.** Types, heights, the wall's location line, a beam's justification and offset, a ceiling's height, a roof's
@@ -123,5 +138,7 @@ it would stand while dragged (the line is drawn), the ruler's graduations, and t
 - `src/ui/tooling_tests.rs`: through Rune's headless `Runtime`: taps, Enter and Backspace as keys, the shape bar and the ghost layer.
 - `src/paint/preview.rs`: the ghost's strokes. `src/paint/handles.rs`: the grips' squares.
 - `src/context/tests.rs`, `src/app/menu_tests.rs`: the menu's items and what each does; the menu through the window is in `ui/tooling_tests.rs`.
+- `src/tempdim/tests.rs`, `src/app/tempdim_tests.rs`: the dimensions of the sample house's elements and what a typed length does; `src/paint/dims.rs`:
+  where they are placed and their strokes; the dimensions through the window are in `ui/tooling_tests.rs`.
 - `src/grips/tests.rs`, `src/app/grips_tests.rs`: the grips' pure part, then the press, the drag and the move through the app; the drag through
   the window is in `ui/tooling_tests.rs`.
