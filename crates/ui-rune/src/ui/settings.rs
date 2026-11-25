@@ -61,7 +61,7 @@ fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
 pub fn dialog(s: &App, k: &Kit, layer: &mut Vec<El>) {
     let Some(d) = &s.dialogs.settings else { return };
     let kept = &s.prefs.kept;
-    let language = kept.language.as_deref().unwrap_or_else(lang::from_system);
+    let language = kept.language.as_deref().unwrap_or(lang::from_system());
     let languages = LANGUAGES.iter().map(|(code, name)| ((*name).to_string(), (*code).to_string())).collect();
     let units = Units::ALL.iter().map(|u| (t(u.label()).to_string(), u.name().to_string())).collect();
     let profile = match s.profile {
