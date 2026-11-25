@@ -71,3 +71,7 @@ One line per module. A new module adds its line here, not to the root.
   (`tree`, `Views`): whether the model has a view (`exists`, `keep`), the plan kinds' `draw` and `fit`, a view's `name` and `title`. No toolkit, so it is tested
   without a window. `app/open.rs`: `App::open_view`, which shows another view and keeps the selection (the model's, not a view's). Detail:
   [the views](../../docs/areas/rune-ui-views.md).
+- `worker.rs`: `Latest`, a thread that makes the newest of what it is asked (a newer request cancels the job being made and replaces the waiting ones; a panic is an
+  error), polled by the window each frame. `section.rs`: the section or elevation on screen (`Cut`: its camera, the picture and drawing the thread made, what a click or box
+  finds); `section/render.rs`: what the thread makes (egui's `section_worker.rs`, for one picture a pixel to a point). `app/section.rs`: the section canvas's handlers on `App`.
+  `ui/section.rs`: its canvas (the picture and the drawing as one moved layer). Detail: [the views](../../docs/areas/rune-ui-views.md#2-sections-and-elevations-sectionrs-sectionrenderrs-workerrs-appsectionrs-uisectionrs).
