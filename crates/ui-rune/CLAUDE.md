@@ -72,3 +72,5 @@ One line per module. A new module adds its line here, not to the root.
   `app/dialogs.rs`: the dialogs' state and handlers (`Dialogs` on `App`: Find, the open form, Run through `Session::execute`; a refusal is kept for the dialog, not the status
   bar). `ui/dialog.rs` and `ui/find.rs`: the modal dialogs over the kit's `Dialog`, `TextInput` and `Select`, mounted as absolute children of the window's root. Detail:
   [dialogs](../../docs/areas/rune-ui-dialogs.md).
+- `settings.rs`: the user's `settings.json` (language, theme, profile, window size), the file the egui app keeps: read kindly, the four keys merged into the file as it is and written atomically. `app/settings.rs`: its state and
+  handlers (`Prefs`, the Settings dialog, units through the core's `units` command, the window's size kept once still). `ui/settings.rs`: the Settings dialog. Detail: [dialogs](../../docs/areas/rune-ui-dialogs.md).
