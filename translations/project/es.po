@@ -45,7 +45,7 @@ msgstr "Viga"
 msgid "Bed"
 msgstr "Cama"
 
-#: crates/core/src/model.rs:5207
+#: crates/core/src/model.rs:5284
 msgid "Brick"
 msgstr "Ladrillo"
 
@@ -81,7 +81,7 @@ msgstr "Eje"
 msgid "Centre Lines"
 msgstr "Líneas de eje"
 
-#: crates/core/src/model.rs:5215
+#: crates/core/src/model.rs:5292
 msgid "Ceramic tile"
 msgstr "Baldosa cerámica"
 
@@ -115,7 +115,7 @@ msgstr "Columna"
 msgid "Concrete"
 msgstr "Hormigón"
 
-#: crates/core/src/model.rs:5209
+#: crates/core/src/model.rs:5286
 msgid "Concrete block"
 msgstr "Bloque de hormigón"
 
@@ -124,7 +124,7 @@ msgstr "Bloque de hormigón"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:5223
+#: crates/core/src/model.rs:5300
 msgid "Copper"
 msgstr "Cobre"
 
@@ -238,11 +238,11 @@ msgstr "Puntos"
 msgid "Double Door"
 msgstr "Puerta doble"
 
-#: crates/core/src/model.rs:4450
+#: crates/core/src/model.rs:4527
 msgid "Double Sliding"
 msgstr "Corredera doble"
 
-#: crates/core/src/model.rs:4448
+#: crates/core/src/model.rs:4525
 msgid "Double Swing"
 msgstr "Batiente doble"
 
@@ -302,7 +302,7 @@ msgstr "Tela"
 msgid "Family"
 msgstr "Familia"
 
-#: crates/core/src/model.rs:4452
+#: crates/core/src/model.rs:4529
 msgid "Fixed"
 msgstr "Fija"
 
@@ -322,7 +322,7 @@ msgstr "Sumidero de piso"
 msgid "Floor Schedule"
 msgstr "Tabla de pisos"
 
-#: crates/core/src/model.rs:4451
+#: crates/core/src/model.rs:4528
 msgid "Folding"
 msgstr "Plegable"
 
@@ -355,15 +355,16 @@ msgid "Gate Valve"
 msgstr "Válvula de compuerta"
 
 #: crates/core/src/family.rs:3515
+#: crates/core/src/model.rs:4200
 #: crates/core/src/view3d.rs:2109
 msgid "Glass"
 msgstr "Vidrio"
 
-#: crates/core/src/model.rs:5233
+#: crates/core/src/model.rs:5310
 msgid "Grass"
 msgstr ""
 
-#: crates/core/src/model.rs:5235
+#: crates/core/src/model.rs:5312
 msgid "Gravel"
 msgstr ""
 
@@ -420,7 +421,7 @@ msgstr ""
 msgid "Gross Floor Area"
 msgstr "Superficie bruta de planta"
 
-#: crates/core/src/model.rs:5214
+#: crates/core/src/model.rs:5291
 msgid "Gypsum board"
 msgstr "Placa de yeso"
 
@@ -498,7 +499,7 @@ msgid "Length"
 msgstr "Longitud"
 
 #: crates/core/src/commands.rs:10292
-#: crates/core/src/model.rs:5399
+#: crates/core/src/model.rs:5477
 msgid "Level"
 msgstr "Nivel"
 
@@ -562,7 +563,7 @@ msgstr "Lámina impermeable"
 #: crates/core/src/commands.rs:20452
 #: crates/core/src/curtain.rs:133
 #: crates/core/src/family.rs:3515
-#: crates/core/src/model.rs:7223
+#: crates/core/src/model.rs:7306
 #: crates/core/src/quantities.rs:112
 msgid "Metal"
 msgstr "Metal"
@@ -646,7 +647,7 @@ msgstr ""
 msgid "Patch Panel"
 msgstr "Panel de parcheo"
 
-#: crates/core/src/model.rs:5244
+#: crates/core/src/model.rs:5321
 msgid "Paving"
 msgstr ""
 
@@ -737,11 +738,11 @@ msgstr "Contrahuellas"
 msgid "Role"
 msgstr "Función"
 
-#: crates/core/src/model.rs:4454
+#: crates/core/src/model.rs:4531
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:5216
+#: crates/core/src/model.rs:5293
 msgid "Roof tiles"
 msgstr "Tejas"
 
@@ -779,7 +780,7 @@ msgstr "Arena"
 msgid "Scale"
 msgstr ""
 
-#: crates/core/src/model.rs:5212
+#: crates/core/src/model.rs:5289
 msgid "Screed"
 msgstr "Recrecido"
 
@@ -797,7 +798,7 @@ msgstr "Sección"
 msgid "Section Area"
 msgstr ""
 
-#: crates/core/src/model.rs:4453
+#: crates/core/src/model.rs:4530
 msgid "Sectional"
 msgstr ""
 
@@ -866,7 +867,7 @@ msgstr "Antepecho"
 msgid "Single Door"
 msgstr "Puerta simple"
 
-#: crates/core/src/model.rs:4449
+#: crates/core/src/model.rs:4526
 msgid "Sliding"
 msgstr "Corredera"
 
@@ -923,7 +924,7 @@ msgstr "Resumen del acero"
 msgid "Stock Length"
 msgstr "Largo comercial"
 
-#: crates/core/src/model.rs:4447
+#: crates/core/src/model.rs:4524
 msgid "Swing"
 msgstr "Batiente"
 
@@ -1047,7 +1048,7 @@ msgstr "Armario"
 msgid "Washbasin"
 msgstr "Lavabo"
 
-#: crates/core/src/model.rs:5251
+#: crates/core/src/model.rs:5328
 msgid "Water"
 msgstr ""
 
@@ -1076,7 +1077,7 @@ msgstr "Ancho"
 msgid "Window Schedule"
 msgstr "Tabla de ventanas"
 
-#: crates/core/src/model.rs:5242
+#: crates/core/src/model.rs:5319
 msgid "Wood"
 msgstr ""
 

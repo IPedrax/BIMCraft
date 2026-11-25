@@ -1826,11 +1826,11 @@ msgstr ""
 msgid "At the start and end"
 msgstr ""
 
-#: crates/core/src/model.rs:4780
+#: crates/core/src/model.rs:4857
 msgid "At wall centre line"
 msgstr "在墙中心线"
 
-#: crates/core/src/model.rs:4781
+#: crates/core/src/model.rs:4858
 msgid "At wall finish"
 msgstr "在墙面层"
 
@@ -2371,7 +2371,7 @@ msgstr ""
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:5207
+#: crates/core/src/model.rs:5284
 msgid "Brick"
 msgstr "砖"
 
@@ -2387,7 +2387,7 @@ msgstr ""
 msgid "Bring in renamed"
 msgstr ""
 
-#: crates/core/src/model.rs:5883
+#: crates/core/src/model.rs:5966
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2956,7 +2956,7 @@ msgstr ""
 msgid "Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:5215
+#: crates/core/src/model.rs:5292
 msgid "Ceramic tile"
 msgstr "瓷砖"
 
@@ -4347,7 +4347,7 @@ msgstr "概念体量"
 msgid "Concrete"
 msgstr "混凝土"
 
-#: crates/core/src/model.rs:5209
+#: crates/core/src/model.rs:5286
 msgid "Concrete block"
 msgstr "混凝土砌块"
 
@@ -4647,7 +4647,7 @@ msgstr "已复制 {} 行，以制表符分隔。"
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:5223
+#: crates/core/src/model.rs:5300
 msgid "Copper"
 msgstr "铜"
 
@@ -6162,11 +6162,11 @@ msgstr "点线"
 msgid "Double Door"
 msgstr "双扇门"
 
-#: crates/core/src/model.rs:4450
+#: crates/core/src/model.rs:4527
 msgid "Double Sliding"
 msgstr "双扇推拉"
 
-#: crates/core/src/model.rs:4448
+#: crates/core/src/model.rs:4525
 msgid "Double Swing"
 msgstr "双扇平开"
 
@@ -7758,7 +7758,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:4452
+#: crates/core/src/model.rs:4529
 msgid "Fixed"
 msgstr "固定"
 
@@ -8000,7 +8000,7 @@ msgstr "新项目的文件夹"
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:4451
+#: crates/core/src/model.rs:4528
 msgid "Folding"
 msgstr "折叠"
 
@@ -8381,11 +8381,11 @@ msgstr "显卡"
 msgid "Graphics follow parent view {}"
 msgstr "图形跟随父视图 {}"
 
-#: crates/core/src/model.rs:5233
+#: crates/core/src/model.rs:5310
 msgid "Grass"
 msgstr ""
 
-#: crates/core/src/model.rs:5235
+#: crates/core/src/model.rs:5312
 msgid "Gravel"
 msgstr ""
 
@@ -8550,7 +8550,7 @@ msgstr ""
 msgid "Guides from the whole model"
 msgstr ""
 
-#: crates/core/src/model.rs:5214
+#: crates/core/src/model.rs:5291
 msgid "Gypsum board"
 msgstr "石膏板"
 
@@ -13333,7 +13333,7 @@ msgstr "图案显示在平面图、天花板平面图、剖面切割和填充区
 msgid "Patterns from a PAT file, AutoCAD's and Revit's"
 msgstr "来自 PAT 文件的图案（AutoCAD 与 Revit 的）"
 
-#: crates/core/src/model.rs:5244
+#: crates/core/src/model.rs:5321
 msgid "Paving"
 msgstr ""
 
@@ -14982,7 +14982,7 @@ msgstr "读取规则"
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:5851
+#: crates/core/src/model.rs:5934
 msgid "Reading elements"
 msgstr ""
 
@@ -14990,7 +14990,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:5895
+#: crates/core/src/model.rs:5978
 msgid "Reading the project"
 msgstr ""
 
@@ -15933,7 +15933,7 @@ msgstr ""
 msgid "Role"
 msgstr ""
 
-#: crates/core/src/model.rs:4454
+#: crates/core/src/model.rs:4531
 msgid "Roller"
 msgstr ""
 
@@ -15965,7 +15965,7 @@ msgstr "面屋顶 (RB)：在所选体量的顶面上创建屋顶"
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "迹线屋顶：单击墙内部，在上一标高为其创建屋顶"
 
-#: crates/core/src/model.rs:5216
+#: crates/core/src/model.rs:5293
 msgid "Roof tiles"
 msgstr "屋面瓦"
 
@@ -16543,7 +16543,7 @@ msgstr "明细表/数量（全部）"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:5212
+#: crates/core/src/model.rs:5289
 msgid "Screed"
 msgstr "找平层"
 
@@ -16647,7 +16647,7 @@ msgstr "剖面框：将三维视图剪切到一个框内，每个面可在视图
 msgid "Section: {}"
 msgstr "剖面：{}"
 
-#: crates/core/src/model.rs:4453
+#: crates/core/src/model.rs:4530
 msgid "Sectional"
 msgstr ""
 
@@ -17473,7 +17473,7 @@ msgstr ""
 msgid "Slanted with Wall"
 msgstr ""
 
-#: crates/core/src/model.rs:4449
+#: crates/core/src/model.rs:4526
 msgid "Sliding"
 msgstr "推拉"
 
@@ -18368,7 +18368,7 @@ msgstr "放样融合：一条线或一段弧构成的路径，两端各有一个
 msgid "Swept Blends"
 msgstr ""
 
-#: crates/core/src/model.rs:4447
+#: crates/core/src/model.rs:4524
 msgid "Swing"
 msgstr "平开"
 
@@ -21274,7 +21274,7 @@ msgstr "洗手盆"
 msgid "Waste"
 msgstr ""
 
-#: crates/core/src/model.rs:5251
+#: crates/core/src/model.rs:5328
 msgid "Water"
 msgstr ""
 
@@ -21592,7 +21592,7 @@ msgstr "尺寸界线长度"
 msgid "Witness Line Overshoot:"
 msgstr "尺寸界线延伸量:"
 
-#: crates/core/src/model.rs:5242
+#: crates/core/src/model.rs:5319
 msgid "Wood"
 msgstr ""
 

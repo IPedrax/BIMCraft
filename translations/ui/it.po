@@ -1826,11 +1826,11 @@ msgstr "Almeno {} caratteri"
 msgid "At the start and end"
 msgstr ""
 
-#: crates/core/src/model.rs:4780
+#: crates/core/src/model.rs:4857
 msgid "At wall centre line"
 msgstr "Sull'asse del muro"
 
-#: crates/core/src/model.rs:4781
+#: crates/core/src/model.rs:4858
 msgid "At wall finish"
 msgstr "Sulla finitura del muro"
 
@@ -2371,7 +2371,7 @@ msgstr ""
 msgid "Branch Panel"
 msgstr "Quadro secondario"
 
-#: crates/core/src/model.rs:5207
+#: crates/core/src/model.rs:5284
 msgid "Brick"
 msgstr "Mattone"
 
@@ -2387,7 +2387,7 @@ msgstr ""
 msgid "Bring in renamed"
 msgstr ""
 
-#: crates/core/src/model.rs:5883
+#: crates/core/src/model.rs:5966
 msgid "Bringing the project up to date"
 msgstr "Aggiornamento del progetto"
 
@@ -2956,7 +2956,7 @@ msgstr "Larghezza del cosciale centrale (facoltativa)"
 msgid "Centreline"
 msgstr "Asse"
 
-#: crates/core/src/model.rs:5215
+#: crates/core/src/model.rs:5292
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -4347,7 +4347,7 @@ msgstr "Volume concettuale"
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:5209
+#: crates/core/src/model.rs:5286
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -4647,7 +4647,7 @@ msgstr "Copiate {} righe, separate da tabulazione."
 msgid "Copies"
 msgstr "Copie"
 
-#: crates/core/src/model.rs:5223
+#: crates/core/src/model.rs:5300
 msgid "Copper"
 msgstr "Rame"
 
@@ -6162,11 +6162,11 @@ msgstr "Punteggiata"
 msgid "Double Door"
 msgstr "Porta a due battenti"
 
-#: crates/core/src/model.rs:4450
+#: crates/core/src/model.rs:4527
 msgid "Double Sliding"
 msgstr "Scorrevole doppia"
 
-#: crates/core/src/model.rs:4448
+#: crates/core/src/model.rs:4525
 msgid "Double Swing"
 msgstr "Doppio battente"
 
@@ -7758,7 +7758,7 @@ msgstr "Distribuisci in modo uniforme"
 msgid "Fit to page"
 msgstr "Adatta alla pagina"
 
-#: crates/core/src/model.rs:4452
+#: crates/core/src/model.rs:4529
 msgid "Fixed"
 msgstr "Fisso"
 
@@ -8000,7 +8000,7 @@ msgstr "Cartella per i nuovi progetti"
 msgid "Folder {}"
 msgstr "Cartella {}"
 
-#: crates/core/src/model.rs:4451
+#: crates/core/src/model.rs:4528
 msgid "Folding"
 msgstr "Pieghevole"
 
@@ -8381,11 +8381,11 @@ msgstr "Scheda grafica"
 msgid "Graphics follow parent view {}"
 msgstr "La grafica segue la vista madre {}"
 
-#: crates/core/src/model.rs:5233
+#: crates/core/src/model.rs:5310
 msgid "Grass"
 msgstr ""
 
-#: crates/core/src/model.rs:5235
+#: crates/core/src/model.rs:5312
 msgid "Gravel"
 msgstr ""
 
@@ -8550,7 +8550,7 @@ msgstr "Guide dalle griglie"
 msgid "Guides from the whole model"
 msgstr "Guide da tutto il modello"
 
-#: crates/core/src/model.rs:5214
+#: crates/core/src/model.rs:5291
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -13333,7 +13333,7 @@ msgstr "I motivi compaiono in piante, piante dei controsoffitti, sezioni e retin
 msgid "Patterns from a PAT file, AutoCAD's and Revit's"
 msgstr "Motivi da un file PAT, di AutoCAD o di Revit"
 
-#: crates/core/src/model.rs:5244
+#: crates/core/src/model.rs:5321
 msgid "Paving"
 msgstr ""
 
@@ -14982,7 +14982,7 @@ msgstr "Verso di lettura"
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr "Leggi un cartiglio disegnato al vero (in mm sulla carta) nello spazio modello di un DXF o DWG: le sue linee, i retini pieni e i testi; ogni {KEY} indicato dai testi diventa un campo"
 
-#: crates/core/src/model.rs:5851
+#: crates/core/src/model.rs:5934
 msgid "Reading elements"
 msgstr "Lettura degli elementi"
 
@@ -14990,7 +14990,7 @@ msgstr "Lettura degli elementi"
 msgid "Reading the file"
 msgstr "Lettura del file"
 
-#: crates/core/src/model.rs:5895
+#: crates/core/src/model.rs:5978
 msgid "Reading the project"
 msgstr "Lettura del progetto"
 
@@ -15933,7 +15933,7 @@ msgstr "Alzate, pedate, larghezze, pianerottoli, gradini a ventaglio, nasi, corr
 msgid "Role"
 msgstr ""
 
-#: crates/core/src/model.rs:4454
+#: crates/core/src/model.rs:4531
 msgid "Roller"
 msgstr "Avvolgibile"
 
@@ -15965,7 +15965,7 @@ msgstr "Copertura da faccia (RB): una copertura sulle facce superiori dei volumi
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Copertura da impronta: clicca dentro i muri per coprirli, sul piano superiore"
 
-#: crates/core/src/model.rs:5216
+#: crates/core/src/model.rs:5293
 msgid "Roof tiles"
 msgstr "Tegole"
 
@@ -16543,7 +16543,7 @@ msgstr "Abachi/Quantità (tutti)"
 msgid "Scope"
 msgstr "Ambito"
 
-#: crates/core/src/model.rs:5212
+#: crates/core/src/model.rs:5289
 msgid "Screed"
 msgstr "Massetto"
 
@@ -16647,7 +16647,7 @@ msgstr "Box di sezione: taglia la vista 3D con un parallelepipedo, ogni faccia s
 msgid "Section: {}"
 msgstr "Sezione: {}"
 
-#: crates/core/src/model.rs:4453
+#: crates/core/src/model.rs:4530
 msgid "Sectional"
 msgstr "Sezionale"
 
@@ -17473,7 +17473,7 @@ msgstr "Spessore della soletta"
 msgid "Slanted with Wall"
 msgstr ""
 
-#: crates/core/src/model.rs:4449
+#: crates/core/src/model.rs:4526
 msgid "Sliding"
 msgstr "Scorrevole"
 
@@ -18368,7 +18368,7 @@ msgstr "Unione su percorso: un percorso di una linea o di un arco e un profilo a
 msgid "Swept Blends"
 msgstr ""
 
-#: crates/core/src/model.rs:4447
+#: crates/core/src/model.rs:4524
 msgid "Swing"
 msgstr "Battente"
 
@@ -21274,7 +21274,7 @@ msgstr "Lavabo"
 msgid "Waste"
 msgstr "Sfrido"
 
-#: crates/core/src/model.rs:5251
+#: crates/core/src/model.rs:5328
 msgid "Water"
 msgstr ""
 
@@ -21592,7 +21592,7 @@ msgstr "Lunghezza linea di richiamo"
 msgid "Witness Line Overshoot:"
 msgstr "Sporgenza linea di richiamo:"
 
-#: crates/core/src/model.rs:5242
+#: crates/core/src/model.rs:5319
 msgid "Wood"
 msgstr ""
 

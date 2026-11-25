@@ -1826,11 +1826,11 @@ msgstr "Pelo menos {} caracteres"
 msgid "At the start and end"
 msgstr ""
 
-#: crates/core/src/model.rs:4780
+#: crates/core/src/model.rs:4857
 msgid "At wall centre line"
 msgstr "Na linha de centro da parede"
 
-#: crates/core/src/model.rs:4781
+#: crates/core/src/model.rs:4858
 msgid "At wall finish"
 msgstr "No acabamento da parede"
 
@@ -2371,7 +2371,7 @@ msgstr ""
 msgid "Branch Panel"
 msgstr "Quadro de distribuição"
 
-#: crates/core/src/model.rs:5207
+#: crates/core/src/model.rs:5284
 msgid "Brick"
 msgstr "Tijolo"
 
@@ -2387,7 +2387,7 @@ msgstr "Espaçamento do travamento entre vigotas"
 msgid "Bring in renamed"
 msgstr ""
 
-#: crates/core/src/model.rs:5883
+#: crates/core/src/model.rs:5966
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2956,7 +2956,7 @@ msgstr ""
 msgid "Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:5215
+#: crates/core/src/model.rs:5292
 msgid "Ceramic tile"
 msgstr "Cerâmica"
 
@@ -4347,7 +4347,7 @@ msgstr "Massa conceitual"
 msgid "Concrete"
 msgstr "Concreto"
 
-#: crates/core/src/model.rs:5209
+#: crates/core/src/model.rs:5286
 msgid "Concrete block"
 msgstr "Bloco de concreto"
 
@@ -4647,7 +4647,7 @@ msgstr "{} linhas copiadas, separadas por tabulação."
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:5223
+#: crates/core/src/model.rs:5300
 msgid "Copper"
 msgstr "Cobre"
 
@@ -6162,11 +6162,11 @@ msgstr "Pontilhada"
 msgid "Double Door"
 msgstr "Porta dupla"
 
-#: crates/core/src/model.rs:4450
+#: crates/core/src/model.rs:4527
 msgid "Double Sliding"
 msgstr "De correr, duas folhas"
 
-#: crates/core/src/model.rs:4448
+#: crates/core/src/model.rs:4525
 msgid "Double Swing"
 msgstr "De abrir, duas folhas"
 
@@ -7758,7 +7758,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:4452
+#: crates/core/src/model.rs:4529
 msgid "Fixed"
 msgstr "Fixa"
 
@@ -8000,7 +8000,7 @@ msgstr "Pasta para novos projetos"
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:4451
+#: crates/core/src/model.rs:4528
 msgid "Folding"
 msgstr "Camarão"
 
@@ -8381,11 +8381,11 @@ msgstr "Placa de vídeo"
 msgid "Graphics follow parent view {}"
 msgstr "Os gráficos seguem a vista principal {}"
 
-#: crates/core/src/model.rs:5233
+#: crates/core/src/model.rs:5310
 msgid "Grass"
 msgstr ""
 
-#: crates/core/src/model.rs:5235
+#: crates/core/src/model.rs:5312
 msgid "Gravel"
 msgstr ""
 
@@ -8550,7 +8550,7 @@ msgstr ""
 msgid "Guides from the whole model"
 msgstr ""
 
-#: crates/core/src/model.rs:5214
+#: crates/core/src/model.rs:5291
 msgid "Gypsum board"
 msgstr "Placa de gesso"
 
@@ -13333,7 +13333,7 @@ msgstr "Os padrões aparecem em plantas, plantas de forro, cortes e regiões pre
 msgid "Patterns from a PAT file, AutoCAD's and Revit's"
 msgstr "Padrões de um arquivo PAT, do AutoCAD e do Revit"
 
-#: crates/core/src/model.rs:5244
+#: crates/core/src/model.rs:5321
 msgid "Paving"
 msgstr ""
 
@@ -14982,7 +14982,7 @@ msgstr "Convenção de leitura"
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr "Lê um carimbo desenhado em tamanho real (em mm do papel) no espaço do modelo de um DXF ou DWG: suas linhas, hachuras sólidas e textos; cada {KEY} citado nos textos vira um campo"
 
-#: crates/core/src/model.rs:5851
+#: crates/core/src/model.rs:5934
 msgid "Reading elements"
 msgstr ""
 
@@ -14990,7 +14990,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:5895
+#: crates/core/src/model.rs:5978
 msgid "Reading the project"
 msgstr ""
 
@@ -15933,7 +15933,7 @@ msgstr "Espelhos, pisos, larguras, patamares, degraus em leque, bocéis, corrim�
 msgid "Role"
 msgstr "Função"
 
-#: crates/core/src/model.rs:4454
+#: crates/core/src/model.rs:4531
 msgid "Roller"
 msgstr ""
 
@@ -15965,7 +15965,7 @@ msgstr "Telhado por face (RB): um telhado na face superior das massas selecionad
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Telhado por perímetro: clique dentro das paredes para cobri-las, no nível acima"
 
-#: crates/core/src/model.rs:5216
+#: crates/core/src/model.rs:5293
 msgid "Roof tiles"
 msgstr "Telhas"
 
@@ -16543,7 +16543,7 @@ msgstr "Tabelas/quantitativos (todas)"
 msgid "Scope"
 msgstr "Abrangência"
 
-#: crates/core/src/model.rs:5212
+#: crates/core/src/model.rs:5289
 msgid "Screed"
 msgstr "Contrapiso"
 
@@ -16647,7 +16647,7 @@ msgstr "Caixa de corte: corta a vista 3D em uma caixa, cada face movida pela sua
 msgid "Section: {}"
 msgstr "Corte: {}"
 
-#: crates/core/src/model.rs:4453
+#: crates/core/src/model.rs:4530
 msgid "Sectional"
 msgstr ""
 
@@ -17473,7 +17473,7 @@ msgstr ""
 msgid "Slanted with Wall"
 msgstr "Inclinada com a parede"
 
-#: crates/core/src/model.rs:4449
+#: crates/core/src/model.rs:4526
 msgid "Sliding"
 msgstr "De correr"
 
@@ -18368,7 +18368,7 @@ msgstr "Mesclagem de varredura: um caminho de uma linha ou arco e um perfil em c
 msgid "Swept Blends"
 msgstr ""
 
-#: crates/core/src/model.rs:4447
+#: crates/core/src/model.rs:4524
 msgid "Swing"
 msgstr "De abrir"
 
@@ -21274,7 +21274,7 @@ msgstr "Lavatório"
 msgid "Waste"
 msgstr "Perda"
 
-#: crates/core/src/model.rs:5251
+#: crates/core/src/model.rs:5328
 msgid "Water"
 msgstr ""
 
@@ -21592,7 +21592,7 @@ msgstr "Comprimento da linha de chamada"
 msgid "Witness Line Overshoot:"
 msgstr "Prolongamento da linha de chamada:"
 
-#: crates/core/src/model.rs:5242
+#: crates/core/src/model.rs:5319
 msgid "Wood"
 msgstr ""
 
