@@ -10,6 +10,7 @@ use crate::app::App;
 use crate::profile::Profile;
 
 mod browser;
+mod canvas;
 mod plan;
 mod properties;
 mod ribbon;
@@ -25,8 +26,8 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
     // The right-hand column both profiles share: the selected element's properties over the project's levels.
     let side = col().w(PANEL_WIDTH).h_full().child(properties::panel(s, &th)).child(browser::panel(s, &th));
     let middle = match s.profile {
-        Profile::Bimcraft => row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(plan::plan(s)).child(side),
-        Profile::Rev => row().grow(1.0).min_h(0.0).child(plan::plan(s)).child(side),
+        Profile::Bimcraft => row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(canvas::canvas(s, &th)).child(side),
+        Profile::Rev => row().grow(1.0).min_h(0.0).child(canvas::canvas(s, &th)).child(side),
     };
     let top = match s.profile {
         Profile::Bimcraft => None,
