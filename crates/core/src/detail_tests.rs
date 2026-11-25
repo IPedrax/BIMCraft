@@ -734,3 +734,72 @@ fn the_sweeps_detailing_payloads_use_real_keys_and_the_base_holds_something_for_
     let missing: Vec<&str> = added.into_iter().filter(|c| !accepted.contains(c)).collect();
     assert!(missing.is_empty(), "no payload is accepted by {missing:?}");
 }
+
+#[test]
+fn a_detail_view_is_a_fragment_of_its_parent() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
+    let level = s.model.levels()[0].0;
+    let made = run(
+        &mut s,
+        "detail_view",
+        json!({"parent": "Level 1", "region": [[0, 0], [2000, 1500]], "scale": 5, "name": "Corner", "number": "У-01"}),
+    );
+    let id = id_of(&made);
+    let Some(Element::DetailView(v)) = s.model.elements.get(id) else { panic!("no detail view {id}") };
+    assert_eq!(v.scale, 5.0);
+    assert_eq!(v.parent, s.model.guid(level));
+    assert_eq!(v.name, "У-01 Corner");
+    // It shows its fragment: the crop of a detail of a plan is its region.
+    assert_eq!(s.model.shown_crop(id), Some([P2(0.0, 0.0), P2(2000.0, 1500.0)]));
+    let listing = run(&mut s, "elements", json!({"category": "detail"}));
+    assert_eq!(listing["elements"][0]["kind"], "detail");
+    assert_eq!(listing["elements"][0]["parent_id"], json!(level));
+    assert_eq!(listing["elements"][0]["scale"], json!(5.0));
+}
+
+#[test]
+fn a_detail_marker_appears_on_its_parent_and_annotation_stays_in_the_model() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
+    let level = s.model.levels()[0].0;
+    let made = run(
+        &mut s,
+        "detail_view",
+        json!({"parent": "Level 1", "region": [[0, 0], [2000, 1500]], "scale": 5, "name": "Corner", "number": "У-01"}),
+    );
+    let detail = id_of(&made);
+    let note = run(&mut s, "text", json!({"view": "У-01 Corner", "at": [1000, 800], "text": "Corner board"}));
+    let note = id_of(&note);
+    // The callout is drawn on the parent, owned by the detail so a click picks the detail.
+    let plan = crate::render::plan(&s.model, level, 800, 600);
+    assert!(plan.owners.contains(&Some(detail)), "the parent draws no callout for its detail");
+    // Moving the fragment moves the marker; the note is in the parent's coordinates and stays where it was.
+    run(&mut s, "modify", json!({"id": detail, "region": [[500, 500], [2500, 2000]]}));
+    let Some(Element::DetailView(v)) = s.model.elements.get(detail) else { panic!("no detail view {detail}") };
+    assert_eq!(v.region, [P2(500.0, 500.0), P2(2500.0, 2000.0)]);
+    let Some(Element::Text(n)) = s.model.elements.get(note) else { panic!("no note {note}") };
+    assert_eq!(n.at, P2(1000.0, 800.0));
+    let moved = crate::render::plan(&s.model, level, 800, 600);
+    assert!(moved.owners.contains(&Some(detail)), "the callout goes with the fragment");
+}
+
+#[test]
+fn a_detail_of_a_section_is_cut_from_the_parent_line() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
+    let cut = run(&mut s, "section", json!({"start": [0, 3000], "end": [8000, 3000], "name": "Cut A"}));
+    let cut = id_of(&cut);
+    let made = run(
+        &mut s,
+        "detail_view",
+        json!({"parent": "Cut A", "region": [[1000, 0], [3000, 2500]], "scale": 10, "name": "Footing", "number": "У-02"}),
+    );
+    let detail = id_of(&made);
+    let geometry = s.model.section_geometry(detail).unwrap_or_else(|| panic!("no section for detail {detail}"));
+    assert_eq!(geometry.start, P2(1000.0, 3000.0));
+    assert_eq!(geometry.end, P2(3000.0, 3000.0));
+    assert_eq!(geometry.crop, Some([0.0, 2500.0]));
+    assert!(s.model.section(cut).is_some());
+    assert!(s.model.section(detail).is_none());
+}

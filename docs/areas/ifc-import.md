@@ -103,6 +103,11 @@ class where it hasn't ([families](families.md)); a class is never forced into an
   roof's or a stair's parts. A mullion, a plate, a post, a stud, a stringer, a user's own type (its object type says what it
   is), one that stands or slopes past a beam's limit: generic, as before. A member that comes in as a beam goes back out as an
   `IfcBeam`.
+- **A beam that is a slab's or a wall's part stays out.** An `IfcBeam` aggregated to an `IfcSlab` or an `IfcWall` is that
+  element's framing (a framed floor's joists, rims, trimmers and headers, as BIMCraft writes them, `IfcBeam` `JOIST`): the
+  floor comes back unframed and its beams are left out, as a framed wall's `IfcMember`s are. A framed roof's rafters, ridge
+  and eave boards, headers and blocking (`IfcMember`s aggregated to its `IfcRoof`, as BIMCraft writes them) are its framing
+  too: the roof comes back unframed, its shape from its own body, the members neither added to it nor brought in.
 - **`IfcAirTerminal` stays generic.** BIMCraft's `Category::AirTerminal` is a lightning air terminal (a captor), written as a
   proxy of object type `LightningTerminal`; IFC's is a supply or extract grille or diffuser. Reading one as the other would put
   diffusers in the SPDA tab's category, so it stays a generic component of its class, as Revit's Air Terminals do

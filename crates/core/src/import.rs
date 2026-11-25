@@ -2487,6 +2487,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             join: true,
             curtain: None,
             panel_of: None,
+            slant: 0.0,
+            profile: Vec::new(),
+            framing: None,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
@@ -2600,6 +2603,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 params: Default::default(),
                 sketch: Vec::new(),
                 shape,
+                framing: None,
+                framing_angle: None,
                 type_name,
                 level,
                 boundary: outer.into_iter().map(flat).collect(),
@@ -2661,6 +2666,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             params: Default::default(),
             sketch: Vec::new(),
             shape: Default::default(),
+            framing: None,
+            framing_angle: None,
             type_name,
             level,
             boundary: ring.into_iter().map(flat).collect(),
@@ -2729,7 +2736,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let mut faces = r.body_out(roof);
         for part in l.parts.get(&id).into_iter().flatten() {
             if let Some(p) = e(*part) {
-                faces.extend(r.body_out(p));
+                // A member that is a part of it (a framed roof's rafter, as BIMCraft writes one) is its framing, not its shape:
+                // left out, as a framed wall's members are.
+                if !matches!(p.name.as_str(), "IFCMEMBER" | "IFCMEMBERSTANDARDCASE") {
+                    faces.extend(r.body_out(p));
+                }
                 seen.insert(*part);
             }
         }
@@ -2809,6 +2820,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                             .map(|(a, b)| crate::model::SplitLine { a: flat(a), b: flat(b), ..Default::default() })
                             .collect(),
                     },
+                    framing: None,
                 };
                 let proxy = m.roof_as_floor(&roof);
                 let meets = |p: &P3| {
@@ -2861,6 +2873,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     join: None,
                     extrusion: rd.extrusion,
                     shape: Default::default(),
+                    framing: None,
                 };
                 match m.roof_faces(&roof) {
                     Ok(_) => {
@@ -3136,6 +3149,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         if member && !framing(id, b) {
             continue;
         }
+        // A beam that is a part of a slab or a wall (a framed floor's joist, as BIMCraft writes one) is that element's
+        // framing: left out, as a framed wall's members are.
+        if l.whole.get(&id).and_then(|w| e(*w)).is_some_and(|w| matches!(w.name.as_str(), "IFCSLAB" | "IFCWALL" | "IFCWALLSTANDARDCASE")) {
+            continue;
+        }
         let declared = run_props.get(&id).and_then(|(_, c)| c.as_deref());
         let category = if member { Some("beam") } else { crate::runs::from_ifc(&b.name, enumeration(b.args.get(8)), declared) };
         let Some(category) = category else { continue };
@@ -3174,8 +3192,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.material == material && k.profile == profile
         };
         let types = m.types.runs.entry(category.to_string()).or_default();
-        let type_name =
-            kind(types, &base, same, RunType { width: w, depth: d, round, material: material.clone(), profile: profile.clone() });
+        let type_name = kind(
+            types,
+            &base,
+            same,
+            RunType { width: w, depth: d, round, material: material.clone(), profile: profile.clone(), clear_section: None },
+        );
         let height = |z: f64| ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         // The body is the centre line; the justification BIMCraft wrote puts the heights back on the line they were typed at.
         let justify = run_props.get(&id).and_then(|(j, _)| *j).unwrap_or(Justify::Centre);
@@ -3256,7 +3278,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             let find = |name: &str| sets.said(product, name);
             let value = |name: &str| find(name).and_then(|p| p.args.get(2));
             // A property with a bounded value says its own in the set point.
+            // IFC2x3 names it `NominalVoltage`.
             let voltage = find("RatedVoltage")
+                .or_else(|| find("NominalVoltage"))
                 .and_then(|p| if p.name == "IFCPROPERTYBOUNDEDVALUE" { real(p.args.get(5)) } else { real(p.args.get(2)) });
             // The systems BIMCraft writes: any other is no connector of its.
             let system = text(value("System")).and_then(|s| ["power-balanced", "power-unbalanced", "switch"].into_iter().find(|k| *k == s));
@@ -3976,6 +4000,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             width: (width * 100.0).round() / 100.0,
             slope: (slope * 1e6).round() / 1e6,
             landings,
+            path: Vec::new(),
+            sketch: Vec::new(),
+            flipped: false,
+            type_name: String::new(),
+            line: Default::default(),
         };
         let rid = m.insert(Element::Ramp(ramp));
         from.insert(rid, who(id));
@@ -4219,6 +4248,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             mark,
             flip_facing,
             flip_hand,
+            slanted: false,
         };
         let oid = m.insert(if is_door { Element::Door(op) } else { Element::Window(op) });
         from.insert(oid, who(id));

@@ -542,6 +542,38 @@ fn a_circuit_comes_back_from_ifc_with_its_board_devices_breaker_voltage_and_wire
 }
 
 #[test]
+fn a_circuit_comes_back_from_ifc4x3_on_its_board() {
+    use crate::ifc::{Origin, Schema, export_as};
+    // IFC4.3 writes a board as an `IfcDistributionBoard`, which is read as a board as IFC4's class is.
+    let (s, b, _, c) = wired();
+    let (t, r) = read(&export_as(&s.model, Origin::Internal, Schema::Ifc4x3), "ifc4x3");
+    let there = |id: Id| t.model.elements.id(s.model.guid(id));
+    let board = there(b).unwrap_or_else(|| panic!("the board came back: {r}"));
+    let circuit = there(c).unwrap_or_else(|| panic!("the circuit came back: {r}"));
+    let (a, z) = (element_json(&s.model, c), element_json(&t.model, circuit));
+    assert_eq!(z["panel_id"], json!(board));
+    // Its load is its devices' connectors': each luminaire's voltage came back.
+    for k in ["name", "number", "rating_a", "poles", "installed_va"] {
+        assert_eq!(a[k], z[k], "{k}");
+    }
+}
+
+#[test]
+fn a_luminaires_connector_comes_back_from_ifc2x3_by_its_nominal_voltage() {
+    use crate::ifc::{Origin, Schema, export_as};
+    let (s, _, d, _) = wired();
+    let file = export_as(&s.model, Origin::Internal, Schema::Ifc2x3);
+    assert!(file.contains("'NominalVoltage'"));
+    let (t, r) = read(&file, "ifc2x3");
+    let lamp = t.model.elements.id(s.model.guid(d[0])).unwrap_or_else(|| panic!("the luminaire came back: {r}"));
+    let Some(Element::Component(c)) = t.model.elements.get(lamp) else { panic!("a component: {r}") };
+    let family = t.model.families.get(&c.family).unwrap_or_else(|| panic!("its family {}", c.family));
+    assert!(!family.connectors.is_empty(), "its family has a connector: {r}");
+    // The voltage is the connector's, as `RatedVoltage` is in IFC4, not a parameter of its own.
+    assert!(!t.model.parameters.contains_key("NominalVoltage"), "{:?}", t.model.parameters.keys().collect::<Vec<_>>());
+}
+
+#[test]
 fn what_a_file_says_that_the_project_cannot_hold_is_left_out_with_why_and_the_rest_stays() {
     let (mut s, _, _, c) = wired();
     // (A name without a degree sign, which a STEP file writes as an escape.)

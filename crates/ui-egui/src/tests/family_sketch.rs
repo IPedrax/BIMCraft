@@ -316,13 +316,14 @@ fn an_extrusions_end_drags_by_its_handle_unless_it_is_tied() {
         e => panic!("{e:?}"),
     };
     assert!((now - (to + 200.0)).abs() < 15.0, "{to} to {now}");
-    // The box's End is `Height`: its handle is greyed, and a drag on it is refused, saying why.
+    // The box's End is `Height`: its drag changes Height for the type, the End still `Height`.
     view(&mut h, Some(Which::Elevation(Side::Front)));
     editor_mut(&mut h).select_form(0);
     h.run();
     let (a, b) = (screen(&h, [200.0, 0.0, 600.0]), screen(&h, [200.0, 0.0, 900.0]));
     drag_screen(&mut h, a, b, PointerButton::Primary);
-    assert!(h.state().status.text.contains("tied"), "{}", h.state().status.text);
+    let height = editor(&h).draft_family().unwrap().types["T"].get("Height").and_then(|v| v.as_f64());
+    assert!(height.is_some_and(|x| (x - 900.0).abs() < 15.0), "{height:?} {}", h.state().status.text);
     assert_eq!(editor(&h).draft_family().unwrap().forms[0].to, Expr::Formula("Height".into()));
 }
 

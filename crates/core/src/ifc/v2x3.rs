@@ -3,7 +3,8 @@
 //! the class it is written as (an IFC4-only class is its nearest IFC2x3 supertype, so a pipe segment is a flow segment and what
 //! it is stays on its type object; an element with none is a proxy), how many attributes that has, the owner history every
 //! rooted entity must have there, and the values its enumerations take. The few that differ in kind are written here (a door's
-//! or a window's type is a style, a see-through shading is a rendering) or by the writer itself, which asks `Schema::Ifc2x3`:
+//! or a window's type is a style, a board is an electric distribution point typed by a distribution element type, a
+//! see-through shading is a rendering) or by the writer itself, which asks `Schema::Ifc2x3`:
 //! triangles as a faceted B-rep, a material list for a constituent set, a material for a profile set, the map conversion as the
 //! project's `ePSet_MapConversion`, a swept disk's ends.
 
@@ -27,10 +28,26 @@ fn row(name: &str) -> Option<&'static Row> {
     table::ROWS.binary_search_by(|r| r.from.cmp(name)).ok().and_then(|i| table::ROWS.get(i))
 }
 
-/// Whether IFC2x3 has a type object for `class` (an IFC4 `<CLASS>TYPE`): its own, or a door's or a window's style.
+/// Whether IFC2x3 has a type object for `class` (an IFC4 `<CLASS>TYPE`): its own, a door's or a window's style, or a board's
+/// distribution element type.
 pub(super) fn has_type(class: &str) -> bool {
-    matches!(class, "IFCDOORTYPE" | "IFCWINDOWTYPE") || row(class).is_none_or(|r| !r.to.is_empty())
+    matches!(class, "IFCDOORTYPE" | "IFCWINDOWTYPE" | "IFCELECTRICDISTRIBUTIONBOARDTYPE") || row(class).is_none_or(|r| !r.to.is_empty())
 }
+
+/// The functions an IFC2x3 board may have (`IfcElectricDistributionPointFunctionEnum`).
+const BOARD_FUNCTIONS: [&str; 11] = [
+    "ALARMPANEL",
+    "CONSUMERUNIT",
+    "CONTROLPANEL",
+    "DISTRIBUTIONBOARD",
+    "GASDETECTORPANEL",
+    "INDICATORPANEL",
+    "MIMICPANEL",
+    "MOTORCONTROLCENTRE",
+    "SWITCHBOARD",
+    "USERDEFINED",
+    "NOTDEFINED",
+];
 
 /// An entity's name and its attributes as written, split at the commas between them.
 pub(super) fn split(entity: &str) -> Option<(&str, Vec<&str>)> {
@@ -79,6 +96,27 @@ pub(super) fn downgrade(entity: &str, owner: u64) -> String {
             args.extend([".NOTDEFINED.".into(), panels, ".F.".into(), ".F.".into()]);
             "IFCWINDOWSTYLE"
         }
+        // A board is an `IfcElectricDistributionPoint`, an element's eight attributes, its function (required: its predefined
+        // type, where IFC2x3 has it) and a function of the user's, which one of `USERDEFINED` must have (WR31): its object
+        // type, as IFC4 has it. The table has no row for it, so its owner history is set here.
+        "IFCELECTRICDISTRIBUTIONBOARD" => {
+            let (kind, object_type) = (at(&args, 8), at(&args, 4));
+            let known = kind.strip_prefix('.').and_then(|k| k.strip_suffix('.')).is_some_and(|k| BOARD_FUNCTIONS.contains(&k));
+            let function = match kind.as_str() {
+                ".USERDEFINED." if object_type != "$" => [kind, object_type],
+                ".USERDEFINED." => [".NOTDEFINED.".into(), "$".into()],
+                _ if known => [kind, "$".into()],
+                _ => [".NOTDEFINED.".into(), "$".into()],
+            };
+            args.resize(8, "$".to_string());
+            if let Some(history) = args.get_mut(1) {
+                *history = format!("#{owner}");
+            }
+            args.extend(function);
+            return format!("IFCELECTRICDISTRIBUTIONPOINT({})", args.join(","));
+        }
+        // IFC2x3 has no board type: a board's type object is a distribution element type.
+        "IFCELECTRICDISTRIBUTIONBOARDTYPE" => "IFCDISTRIBUTIONELEMENTTYPE",
         // A bounded value has no set point in IFC2x3: one that is only that is a single value.
         "IFCPROPERTYBOUNDEDVALUE" if set(5) && !set(2) && !set(3) => {
             args = vec![at(&args, 0), at(&args, 1), at(&args, 5), at(&args, 4)];
@@ -202,6 +240,33 @@ mod tests {
         );
         assert_eq!(downgrade("IFCSURFACESTYLESHADING(#4,0.5)", 9), "IFCSURFACESTYLERENDERING(#4,0.5,$,$,$,$,$,$,.NOTDEFINED.)");
         assert_eq!(downgrade("IFCSURFACESTYLESHADING(#4,$)", 9), "IFCSURFACESTYLESHADING(#4)");
+    }
+
+    #[test]
+    fn a_board_is_a_distribution_point_of_its_function_typed_by_a_distribution_element_type() {
+        assert_eq!(
+            downgrade("IFCELECTRICDISTRIBUTIONBOARD('g',$,'B',$,$,#1,#2,'7',.DISTRIBUTIONBOARD.)", 9),
+            "IFCELECTRICDISTRIBUTIONPOINT('g',#9,'B',$,$,#1,#2,'7',.DISTRIBUTIONBOARD.,$)"
+        );
+        // A predefined type IFC2x3 has no function for is none defined.
+        assert_eq!(
+            downgrade("IFCELECTRICDISTRIBUTIONBOARD('g',$,'B',$,$,#1,#2,'7',.DISPATCHINGBOARD.)", 9),
+            "IFCELECTRICDISTRIBUTIONPOINT('g',#9,'B',$,$,#1,#2,'7',.NOTDEFINED.,$)"
+        );
+        // A function of the user's is its object type (WR31 requires one), else none defined.
+        assert_eq!(
+            downgrade("IFCELECTRICDISTRIBUTIONBOARD('g',$,'B',$,'Kiosk',#1,#2,'7',.USERDEFINED.)", 9),
+            "IFCELECTRICDISTRIBUTIONPOINT('g',#9,'B',$,'Kiosk',#1,#2,'7',.USERDEFINED.,'Kiosk')"
+        );
+        assert_eq!(
+            downgrade("IFCELECTRICDISTRIBUTIONBOARD('g',$,'B',$,$,#1,#2,'7',.USERDEFINED.)", 9),
+            "IFCELECTRICDISTRIBUTIONPOINT('g',#9,'B',$,$,#1,#2,'7',.NOTDEFINED.,$)"
+        );
+        assert_eq!(
+            downgrade("IFCELECTRICDISTRIBUTIONBOARDTYPE('g',$,'B',$,$,$,$,$,$,.DISTRIBUTIONBOARD.)", 9),
+            "IFCDISTRIBUTIONELEMENTTYPE('g',#9,'B',$,$,$,$,$,$)"
+        );
+        assert!(has_type("IFCELECTRICDISTRIBUTIONBOARDTYPE"));
     }
 
     #[test]

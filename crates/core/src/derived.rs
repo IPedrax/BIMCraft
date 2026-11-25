@@ -141,6 +141,7 @@ pub const RARE: &[&str] = &[
     "refplane",
     "pointcloud",
     "cadimport",
+    "image",
     "mass",
     "link",
     "column",
@@ -151,8 +152,10 @@ pub const RARE: &[&str] = &[
     "planview",
     "section",
     "elevation",
+    "detail",
     "schedule",
     "panelschedule",
+    "rebardetail",
     "view3d",
     "stair",
     // A storey's ceilings, which a stair's headroom is measured to.
@@ -163,7 +166,8 @@ pub const RARE: &[&str] = &[
 
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
 /// apart, and a view goes on one sheet, so they are checked together ([`crate::model::Model::check_changed`]).
-pub const DRAWING_SET: &[&str] = &["sheet", "viewport", "planview", "section", "elevation", "schedule", "panelschedule", "view3d"];
+pub const DRAWING_SET: &[&str] =
+    &["sheet", "viewport", "planview", "section", "elevation", "detail", "schedule", "panelschedule", "rebardetail", "view3d"];
 
 /// Banded elements' groups and bands, by id.
 type Banded = BTreeMap<Id, (Arc<Group>, [i64; 2])>;

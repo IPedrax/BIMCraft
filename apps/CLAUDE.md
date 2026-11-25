@@ -17,4 +17,6 @@ tools run the same commands. Neither adds behaviour of its own: a feature is a c
 - Both count what they allocate (`cap`, the global allocator) and read what the machine has free (`sysinfo`), and install that as
   the core's meter first thing in `main`, so a file opened is held to the memory there is (`bimcraft_core::memory`).
 - A release build on Windows has no console: a start that fails says so through `startup::note`, not `eprintln!` alone.
+- `wgpu_log.rs` installs the one `log` logger: wgpu's, egui-wgpu's and eframe's warnings go to `bimcraft.log`, the first 20 of a start
+  and then a count a minute (software rendering, under Startup in [the desktop](../docs/areas/desktop.md)).
 - `cargo test -p bimcraft -p bimcraft-cli` runs in a few seconds.

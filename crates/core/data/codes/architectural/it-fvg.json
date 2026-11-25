@@ -1,0 +1,157 @@
+{
+ "code": "it-fvg",
+ "discipline": "architectural",
+ "name": "Friuli Venezia Giulia (L.R. 44/1985 e L.R. 19/2009)",
+ "edition": "1985",
+ "region": "Italia, Friuli Venezia Giulia",
+ "amends": "it-dm-1975",
+ "references": [
+  "Legge regionale Friuli Venezia Giulia 23 agosto 1985, n. 44: altezze minime e principali requisiti igienico-sanitari dei locali adibiti ad abitazione (testo vigente dal 14/05/2024)",
+  "Legge regionale Friuli Venezia Giulia 11 novembre 2009, n. 19: Codice regionale dell'edilizia, art. 39 (testo vigente dal 30/10/2026)"
+ ],
+ "note": "Friuli Venezia Giulia's rules over DM 5 July 1975, for a building below 400 m above sea level in a seismic zone, as most of the region is: habitable rooms 2.50 m high, service rooms 2.40 m (LR 44/1985 art. 2), bedrooms of 8 and 12 m² and a living room of 12 m² (art. 6), openable windows of 1/10 of the floor (art. 7). An attic made habitable (LR 19/2009 art. 39) is 1.90 m high on average, never under 1.30 m, with openable windows of 1/20 of the floor. Above 400 m the rooms may be 2.40 m high with windows of 1/12: a project there changes those rules.",
+ "sections": {
+  "rooms": {
+   "kinds": [
+    {
+     "kind": "attic",
+     "names": [
+      "sottotetto",
+      "mansarda",
+      "soffitta abitabile",
+      "recupero sottotetto",
+      "attic"
+     ],
+     "area_min": 8.0,
+     "side_min": 0.0,
+     "height_min": 1900.0,
+     "light_min": 0.05
+    },
+    {
+     "kind": "double_bedroom",
+     "names": [
+      "matrimoniale",
+      "doppia",
+      "camera matrimoniale",
+      "camera doppia",
+      "due letti",
+      "master bedroom"
+     ],
+     "area_min": 12.0,
+     "side_min": 0.0,
+     "height_min": 2500.0,
+     "light_min": 0.1
+    },
+    {
+     "kind": "single_bedroom",
+     "names": [
+      "singola",
+      "cameretta",
+      "camera",
+      "letto",
+      "camera singola",
+      "bedroom"
+     ],
+     "area_min": 8.0,
+     "side_min": 0.0,
+     "height_min": 2500.0,
+     "light_min": 0.1
+    },
+    {
+     "kind": "living_room",
+     "names": [
+      "soggiorno",
+      "salotto",
+      "living",
+      "pranzo",
+      "sala",
+      "sala da pranzo",
+      "soggiorno pranzo",
+      "tinello"
+     ],
+     "area_min": 12.0,
+     "side_min": 0.0,
+     "height_min": 2500.0,
+     "light_min": 0.1
+    },
+    {
+     "kind": "kitchen",
+     "names": [
+      "cucina",
+      "cucinotto",
+      "angolo cottura",
+      "kitchen",
+      "pantry"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2500.0,
+     "light_min": 0.1
+    },
+    {
+     "kind": "habitable",
+     "names": [
+      "studio",
+      "abitabile"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2500.0,
+     "light_min": 0.1
+    },
+    {
+     "kind": "bathroom",
+     "names": [
+      "bagno",
+      "wc",
+      "bwc",
+      "lavabo",
+      "toilette",
+      "sanitario",
+      "servizio igienico",
+      "servizi igienici",
+      "doppio servizio",
+      "lavanderia",
+      "bathroom",
+      "toilet",
+      "restroom"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2400.0,
+     "light_min": 0.0
+    },
+    {
+     "kind": "service",
+     "names": [
+      "corridoio",
+      "disimpegno",
+      "ingresso",
+      "atrio",
+      "disimpegno notte",
+      "vano scale",
+      "scale",
+      "ripostiglio",
+      "guardaroba",
+      "cabina armadio",
+      "cantina",
+      "soffitta",
+      "sgabuzzino",
+      "centrale termica",
+      "hall",
+      "corridor",
+      "closet",
+      "storage"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2400.0,
+     "light_min": 0.0
+    }
+   ]
+  }
+ },
+ "sources": {
+  "rooms": "LR FVG 44/1985: art. 2 (habitable rooms 2.50 m below 400 m above sea level, service rooms 2.40 m), art. 6 (bedrooms 8 and 12 m², living room 12 m², in a seismic zone or above 400 m), art. 7 (openable windows of 1/10 of the floor below 400 m in a seismic zone); LR FVG 19/2009 art. 39 comma 1 (an attic made habitable: average height 1.90 m, never under 1.30 m, openable windows of 1/20 of the floor, the room's volume no less than its least area by that height)"
+ }
+}

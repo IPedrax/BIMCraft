@@ -11,6 +11,7 @@ use crate::properties::group_header;
 use bimcraft_core::family::{Group, Under, Val};
 use bimcraft_core::ids::Guid;
 use bimcraft_core::shared_parameters::SharedFile;
+use bimcraft_core::units::Units;
 use std::collections::BTreeSet;
 
 /// The widths of the table's columns: a parameter's name, its value, its formula and its lock.
@@ -209,7 +210,7 @@ pub(super) fn body(ed: &mut FamilyEditor, ui: &mut Ui, base: &Arc<Model>, materi
         ui.label(RichText::new(note).color(pal().muted));
     }
     ui.separator();
-    table(ed, ui, materials);
+    table(ed, ui, base.units, materials);
     ui.add_space(6.0);
     buttons(ed, ui, base);
     // Said in the dialog: the view's would be under it. One line, the most pressing.
@@ -254,7 +255,7 @@ fn type_row(ed: &mut FamilyEditor, ui: &mut Ui) {
 }
 
 /// The table: a heading per group with rows, in the palette's order, each heading folding its rows.
-fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
+fn table(ed: &mut FamilyEditor, ui: &mut Ui, units: Units, materials: &[String]) {
     let values = ed.values();
     let h = ui.spacing().interact_size.y;
     Grid::new("family-types-head").num_columns(4).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
@@ -282,7 +283,7 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         }
         Grid::new(("family-types-group", g.label())).num_columns(4).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
             for i in rows {
-                if row(ed, ui, i, &values, materials) {
+                if row(ed, ui, i, &values, units, materials) {
                     select = Some(ed.params[i].name.trim().to_string());
                 }
                 ui.end_row();
@@ -298,11 +299,25 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 }
 
 /// Row `i` of the table: its name (selecting it), its value, its formula and its lock. Whether its name was clicked.
-fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, Val>, materials: &[String]) -> bool {
+fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, Val>, units: Units, materials: &[String]) -> bool {
     let h = ui.spacing().interact_size.y;
     let FamilyEditor { params, types, picked, types_dialog, dimensions, .. } = ed;
     let p = &mut params[i];
     let name = p.name.trim().to_string();
+    if p.derived {
+        ui.label(name.clone());
+        let mut text = match values.get(&name) {
+            Some(Val::Number(mm2)) => {
+                let (area, unit) = units.area(*mm2);
+                format!("{area:.2} {unit}")
+            }
+            _ => String::new(),
+        };
+        ui.add_enabled_ui(false, |ui| ui.add_sized([VALUE_W, h], TextEdit::singleline(&mut text).id_salt(&name)));
+        ui.label("");
+        ui.label("");
+        return false;
+    }
     // Revit marks an instance parameter's: what is typed is the value a new instance starts with.
     let label = if p.instance { format!("{name} {}", t("(default)")) } else { name.clone() };
     let selected = types_dialog.selected.as_deref() == Some(name.as_str());
@@ -679,6 +694,7 @@ fn commit(ed: &mut FamilyEditor, e: &Editing) -> Result<(), String> {
                 instance: e.instance,
                 value: String::new(),
                 formula: String::new(),
+                derived: false,
             });
             ed.params.len() - 1
         }

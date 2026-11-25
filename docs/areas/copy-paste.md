@@ -85,6 +85,11 @@ Done:
   on a level line in a section or an elevation, the level under the cursor lit (a level line, though a wall lies nearer); the
   Selected Levels and Selected Views lists; Ctrl+V in a 3D view asking Same Place or Position on Work Plane, and the paste by
   hand there, its box over the work plane. Tests: `crates/ui-egui/src/tests/clipboard.rs`.
+- A family's tab: the same panel (`clipboard::panel`, which both draw) and the same Copy, Cut and Paste events and ribbon
+  paste, handed to the family's clipboard, whose text is marked as a family's (`family::clipboard::KIND`), so a project's
+  paste doesn't take it for its own: it refuses it, saying to paste it in a family tab, rather than paste the project's older
+  copy ([families](families.md)). A
+  paste the ribbon asked for on one tab and answered on another is given up (`paste_asked` keeps the tab). Tests: `crates/ui-egui/src/tests/family_clipboard.rs`.
 
 Still to do:
 

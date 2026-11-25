@@ -77,11 +77,12 @@ pub fn in_force(codes: &Codes, d: Discipline, name: &str) -> BuildingCode {
 pub fn in_force_layered(codes: &Codes, d: Discipline, name: &str) -> Result<Vec<BuildingCode>, String> {
     let base = in_force(codes, d, name);
     let layers = codes.layers(d);
-    let split: Vec<&str> = super::WHOLE
-        .iter()
-        .filter(|(wd, k)| *wd == d && layers.iter().filter(|c| c.sections.contains_key(*k)).count() > 1)
-        .map(|(_, k)| *k)
-        .collect();
+    // Every method held, once more than one layer holds any: which answers depends on the layers' order across keys too (a
+    // utility's entrance in one layer, its unit demand in another), so each layer's methods keep their place.
+    let whole: Vec<&str> = super::WHOLE.iter().filter(|(wd, _)| *wd == d).map(|(_, k)| *k).collect();
+    let holders = layers.iter().filter(|c| whole.iter().any(|k| c.sections.contains_key(*k))).count();
+    let split: Vec<&str> =
+        if holders > 1 { whole.into_iter().filter(|k| layers.iter().any(|c| c.sections.contains_key(*k))).collect() } else { Vec::new() };
     if split.is_empty() {
         return Ok(vec![base]);
     }
@@ -357,6 +358,12 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("`{gone}` amends `{over}`, which is neither the base nor another amendment chosen")));
         }
     }
+    // The settings taken away by name, for `settings_fit`.
+    let asked: Vec<(String, String)> = patches
+        .iter()
+        .filter(|(key, _)| d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key.as_str()))
+        .flat_map(|(key, rules)| rules.iter().filter(|(_, v)| v.is_null()).map(|(k, _)| (key.clone(), k.clone())))
+        .collect();
     // The rules changed in an amendment are its own: one of BIMCraft's becomes the project's copy of it.
     if let Some(target) = &amend {
         let held: Vec<String> = next.layers(d).iter().skip(1).map(|k| k.code.clone()).collect();
@@ -450,6 +457,7 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
                 ),
             ));
         }
+        let prior = held.then(|| next.clone());
         let gone = next.own.remove(i);
         if held {
             let choice = next.choice_mut(d);
@@ -459,6 +467,13 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
             }
             for (key, rules) in before {
                 next.choice_mut(d).changes.insert(key, rules);
+            }
+            // The code held to now can make an amendment chosen stand that didn't over the one taken away: it would bring in
+            // what wasn't in force, so it is no longer chosen.
+            if let Some(prior) = &prior {
+                let stood: Vec<String> = prior.layers(d).iter().skip(1).map(|k| k.code.clone()).collect();
+                let stands: Vec<String> = next.layers(d).iter().skip(1).map(|k| k.code.clone()).collect();
+                next.choice_mut(d).amendments.retain(|a| stood.contains(a) || !stands.contains(a));
             }
         }
     }
@@ -476,9 +491,9 @@ pub(crate) fn building_code(s: &mut Session, p: &Value) -> R {
         let pins = next.pins(d);
         next.choice_mut(d).editions = pins;
     }
-    next.check().map_err(|e| bad(c, e))?;
+    next.check_keeping(Some(&unchanged)).map_err(|e| bad(c, e))?;
     if d == Discipline::Electrical {
-        crate::electrical::settings_fit(&s.model, &unchanged, &next).map_err(|e| bad(c, e))?;
+        crate::electrical::settings_fit(&s.model, &unchanged, &next, &asked).map_err(|e| bad(c, e))?;
     }
     if next != unchanged {
         let m = s.model_mut();
@@ -547,7 +562,10 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
         }
         None => {}
     }
+    let mut ordinary = BTreeSet::new();
     for (key, rules) in patches {
+        // A section asked with no rule changes nothing, and is not checked.
+        let asked_none = rules.is_empty();
         let resolved = resolve_in(next, d, &key);
         // A utility's or a country's method is the amendment's own whole, whatever another's over it holds.
         let known = if super::is_whole(d, &key) {
@@ -559,7 +577,6 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
         // The electrical settings are entries by name: a new one is added, and one a code under it names is taken away as null.
         let settings = d == Discipline::Electrical && crate::electrical::SECTIONS.contains(&key.as_str());
         let reference = def.is_some_and(|def| def.read_by.is_empty()) || settings;
-        let mine = Layer::Amendment(next.own[i].code.clone());
         let mut section = next.own[i].sections.get(&key).and_then(Value::as_object).cloned().unwrap_or_default();
         let mut set = Vec::new();
         for (k, v) in rules {
@@ -571,8 +588,18 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
                 return Err("a rule's name is 128 characters at most".into());
             }
             // A setting taken away that a code under it names, or that a new project has, is null here, so it stays away;
-            // the project's own change of it goes with it.
-            let under = resolved.from.get(&k).is_some_and(|l| *l != mine && *l != Layer::Project);
+            // the project's own change of it goes with it. A code under it names it whether or not this one gives it too:
+            // the layers under this amendment alone, without it and those over it.
+            let under = settings && v.is_null() && {
+                let mut below = next.clone();
+                let target = &below.own[i].code;
+                if let Some(at) = below.choice(d).amendments.iter().position(|a| a == target) {
+                    below.choice_mut(d).amendments.truncate(at);
+                } else if let Some(o) = below.own[i].sections.get_mut(&key).and_then(Value::as_object_mut) {
+                    o.remove(&k);
+                }
+                layered(&below, d, &key).value.get(&k).is_some_and(|v| !v.is_null())
+            };
             if v.is_null()
                 && settings
                 && (under || crate::electrical::starter_has(&key, &k) || resolved.from.get(&k) == Some(&Layer::Project))
@@ -631,6 +658,29 @@ fn amend_rules(next: &mut Codes, d: Discipline, target: &str, reset: Option<Opti
             && let (Some(def), Some(whole)) = (def, super::whole_section(&next.own[i], &key))
         {
             def.check(&Value::Object(whole)).map_err(|e| format!("{} {key} of {target}: {e}", d.key()))?;
+        } else if def.is_some() && !settings && !asked_none && !super::is_whole(d, &key) {
+            ordinary.insert(key.clone());
+        }
+    }
+    // An ordinary section changed is checked, once all its patches are in, as this layer and the ones under it make it,
+    // not only as it is in force, where a layer over it may hide what it holds until that layer goes. The layers in the
+    // order they stand (an amendment over another stands over it, whatever order the project chose them in).
+    if !ordinary.is_empty() {
+        let standing: Vec<String> = next.layers(d).iter().skip(1).map(|c| c.code.clone()).collect();
+        let mut upto = next.clone();
+        if let Some(at) = standing.iter().position(|a| a == target) {
+            let under = &standing[..=at];
+            upto.choice_mut(d).amendments = under.to_vec();
+            // Each stands where it stood, though what it was made over may now be left out of the list.
+            let base = upto.base(d).code.clone();
+            for c in upto.own.iter_mut().filter(|c| c.discipline == d && under.contains(&c.code)) {
+                c.amends = base.clone();
+            }
+        }
+        for key in &ordinary {
+            let Some(def) = section_def(d, key) else { continue };
+            let made = super::layered(&upto, d, key).value;
+            def.check(&Value::Object(made)).map_err(|e| format!("{} {key} of {target}: {e}", d.key()))?;
         }
     }
     Ok(())
@@ -736,8 +786,8 @@ pub(crate) fn building_code_import(s: &mut Session, p: &Value) -> R {
         let pins = next.pins(d);
         next.choice_mut(d).editions = pins;
     }
-    next.check().map_err(|e| bad(c, format!("{path}: {e}")))?;
-    crate::electrical::settings_fit(&s.model, &s.model.codes, &next).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    next.check_keeping(Some(&s.model.codes)).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    crate::electrical::settings_fit(&s.model, &s.model.codes, &next, &[]).map_err(|e| bad(c, format!("{path}: {e}")))?;
     let first = read.first().map(|k| k.code.clone()).unwrap_or_default();
     let all: Vec<Value> = read.iter().map(|k| json!({"code": k.code, "discipline": k.discipline.key()})).collect();
     let m = s.model_mut();

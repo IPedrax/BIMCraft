@@ -183,6 +183,31 @@ fn files_zipped(path: &Path) -> bool {
     bimcraft_core::bimc::is_zip(&std::fs::read(path).unwrap())
 }
 
+/// Issue 566: a file naming a line pattern it doesn't hold opens (the reference draws solid), the note says what was
+/// replaced, and the note can be copied, so a bug report can quote it.
+#[test]
+fn a_file_missing_a_line_pattern_opens_and_its_note_says_what_was_replaced_and_can_be_copied() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = Session::new();
+    s.script(BOX).unwrap();
+    s.execute("line_pattern", &json!({"name": "Chain", "segments": [{"dash": 4}, {"space": 1}]})).unwrap();
+    s.execute("grid_type", &json!({"name": "Zig", "like": "Grid - ISO 128", "line_pattern": "Chain"})).unwrap();
+    let path = dir.path().join("house.bimc");
+    s.execute("save", &json!({"path": path})).unwrap();
+    let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    file["line_patterns"].as_object_mut().unwrap().remove("Chain");
+    std::fs::write(&path, file.to_string()).unwrap();
+    let mut h = app(BOX);
+    assert!(h.state_mut().open_path(&path), "the file opens: {}", h.state().status.text);
+    let said = h.state().status.text.clone();
+    assert!(said.contains("line pattern `Chain` was replaced with Solid"), "{said}");
+    h.run();
+    press(&mut h, "Copy");
+    assert!(h.query_by_label("Copied").is_some() && h.query_by_label("Copy").is_none(), "the button says it was pressed");
+    press(&mut h, "Dismiss");
+    assert!(h.state().status.text.is_empty());
+}
+
 /// Settings > Files with Compressed save, for a person to look at: `BIMCRAFT_SETTINGS_DUMP=<folder>` writes it light and dark.
 #[test]
 fn compressed_save_screenshots() {

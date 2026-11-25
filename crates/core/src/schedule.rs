@@ -184,6 +184,8 @@ enum From {
     Flag(&'static str),
     /// A value among the element's parameters, under the field's own name (its phases, its design option).
     Param,
+    /// A family's value, under a key of its `values`, mm²: an area shown in m².
+    FamilyArea(&'static str),
     /// How a door or a window opens, in the project's language.
     Operation,
     /// Its element's category, as elements name theirs: `wall`.
@@ -203,6 +205,9 @@ const TYPE: Own = ("Type", Kind::Text, From::Key("type"));
 const FAMILY: Own = (msg!("Family"), Kind::Text, From::Key("family"));
 const LEVEL: Own = ("Level", Kind::Text, From::Level);
 const AREA: Own = (msg!("Area"), Kind::Area, From::Key("area_m2"));
+const OPENINGS_AREA: Own = (msg!("Openings Area"), Kind::Area, From::Key("openings_area_m2"));
+const OPENING_AREA: Own = (msg!("Opening Area"), Kind::Area, From::FamilyArea(crate::family::OPENING_AREA));
+const PLAN_AREA: Own = (msg!("Plan Area"), Kind::Area, From::Key("plan_area_m2"));
 const WIDTH: Own = ("Width", Kind::Length, From::Key("width"));
 const HEIGHT: Own = ("Height", Kind::Length, From::Key("height"));
 const LENGTH: Own = ("Length", Kind::Length, From::Key("length"));
@@ -257,6 +262,7 @@ const SHARED: (&str, usize, &[Own]) = (
         ("Length", Kind::Length, From::Shared),
         ("Thickness", Kind::Length, From::Shared),
         (msg!("Area"), Kind::Area, From::Shared),
+        OPENINGS_AREA,
         (msg!("Material"), Kind::Text, From::Material),
         ID,
         MARK,
@@ -292,7 +298,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("door", 6, &[MARK, TYPE, WIDTH, HEIGHT, LEVEL, HOST, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "door",
+        6,
+        &[MARK, TYPE, WIDTH, HEIGHT, LEVEL, HOST, OPENING_AREA, FAMILY, OPERATION, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     (
         "window",
         7,
@@ -304,6 +314,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             (msg!("Sill"), Kind::Length, From::Key("sill")),
             LEVEL,
             HOST,
+            OPENING_AREA,
             FAMILY,
             OPERATION,
             COUNT,
@@ -312,7 +323,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("wall", 6, &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "wall",
+        6,
+        &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, AREA, OPENINGS_AREA, VOLUME, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     // A curtain wall's parts have no ids of their own: `host` is its wall, what picking a row selects.
     ("curtainpanel", 5, &[TYPE, WIDTH, HEIGHT, AREA, HOST_WALL, THICKNESS, COUNT]),
     ("mullion", 3, &[TYPE, LENGTH, HOST_WALL, COUNT]),
@@ -325,6 +340,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
             LEVEL,
             AREA,
             THICKNESS,
+            PLAN_AREA,
+            OPENINGS_AREA,
             OFFSET,
             COUNT,
             (ui_msg!("Structural"), Kind::YesNo, From::Flag("structural")),
@@ -337,7 +354,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             REBAR_RATIO,
         ],
     ),
-    ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "ceiling",
+        5,
+        &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, OPENINGS_AREA, VOLUME, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION],
+    ),
     ("toposolid", 5, &[NAME, LEVEL, AREA, VOLUME, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "roof",
@@ -347,7 +368,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             TYPE,
             LEVEL,
             (msg!("Slope"), Kind::Number, From::Key("slope")),
-            (msg!("Plan Area"), Kind::Area, From::Key("area_m2")),
+            THICKNESS,
+            PLAN_AREA,
+            AREA,
+            OPENINGS_AREA,
+            VOLUME,
             OFFSET,
             COUNT,
             PHASE_CREATED,
@@ -464,7 +489,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             LENGTH,
             COUNT,
             (msg!("Weight"), Kind::Number, From::Key("weight_kg")),
-            ("Host", Kind::Number, From::Ref("host")),
+            (msg!("Host"), Kind::Number, From::Ref("host")),
             ("Layer", Kind::Text, From::Key("layer")),
             MARK,
             (msg!("Host Mark"), Kind::Text, From::Key("host_mark")),
@@ -666,6 +691,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
+    // A row for each member of each framed wall, floor and roof (`sources`): grouped by Role, Section and Length with Count,
+    // the cut list.
+    (
+        "framingmember",
+        10,
+        &[
+            (msg!("Host"), Kind::Number, From::Ref("host")),
+            (msg!("Host Type"), Kind::Text, From::Key("host_type")),
+            (msg!("Framing Type"), Kind::Text, From::Key("framing_type")),
+            (msg!("Role"), Kind::Text, From::Key("role")),
+            (msg!("Section"), Kind::Text, From::Key("section")),
+            LENGTH,
+            (msg!("Stock Length"), Kind::Length, From::Key("stock")),
+            LEVEL,
+            (msg!("Key"), Kind::Text, From::Key("key")),
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+        ],
+    ),
     ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
     ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
@@ -699,7 +745,10 @@ pub fn all_categories() -> Vec<&'static str> {
 /// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels, masses
 /// and sheets.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline" | "sheet")).collect()
+    categories()
+        .into_iter()
+        .filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "framingmember" | "propertyline" | "sheet"))
+        .collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.
@@ -755,6 +804,7 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                 },
             );
         }
+        add(family::OPENING_AREA, Kind::Area);
     }
     out
 }
@@ -827,9 +877,9 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     if let Some(c) = sc
         .categories
         .iter()
-        .find(|c| !categories().contains(&category(c).as_str()) || matches!(category(c).as_str(), "massfloor" | "sheet"))
+        .find(|c| !categories().contains(&category(c).as_str()) || matches!(category(c).as_str(), "massfloor" | "framingmember" | "sheet"))
     {
-        let there: Vec<&str> = categories().into_iter().filter(|c| !matches!(*c, "massfloor" | "sheet")).collect();
+        let there: Vec<&str> = categories().into_iter().filter(|c| !matches!(*c, "massfloor" | "framingmember" | "sheet")).collect();
         return Err(format!("`{c}` isn't a category a multi-category schedule lists; there are: {}", there.join(", ")));
     }
     if let Some((of, name)) = builtin(Some(&sc.name), None).filter(|(of, _)| *of != cat) {
@@ -1107,6 +1157,9 @@ impl Row<'_> {
                 },
                 From::Category => Value::String(self.e.category().to_string()),
                 From::Material => self.material(),
+                From::FamilyArea(k) => {
+                    j.get("values").and_then(|v| v.get(k)).and_then(Value::as_f64).map_or(Value::Null, |x| serde_json::json!(fine(x / 1e6)))
+                }
                 From::Shared => self.shared(name, *kind),
             };
         }
@@ -1124,6 +1177,13 @@ impl Row<'_> {
                 _ => v,
             };
         }
+        // A host-cutting family's opening area is worked out with its values, not a parameter of its own.
+        if matches!(cat, "component" | "door" | "window")
+            && name == crate::family::OPENING_AREA
+            && let Some(x) = j.get("values").and_then(|v| v.get(name)).and_then(Value::as_f64)
+        {
+            return serde_json::json!(fine(x / 1e6));
+        }
         let cat = self.cat;
         if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
             return match crate::parameters::value_of(m, self.e, name, p) {
@@ -1139,7 +1199,6 @@ impl Row<'_> {
     /// Field `name`, holding `kind`, as its element's own category has it; else an area worked out from its sizes.
     fn shared(&self, name: &str, kind: Kind) -> Value {
         let cat = self.e.category();
-        let name = if (cat, name) == ("roof", "Area") { "Plan Area" } else { name };
         if own(cat).1.iter().any(|(n, k, _)| *n == name && *k == kind) {
             return self.field_of(cat, name);
         }
@@ -1213,6 +1272,9 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
             .map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms)))
             .collect();
     }
+    if cat == "framingmember" {
+        return framing_members(m);
+    }
     if cat != "massfloor" {
         let rooms = Rooms::new(m);
         return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms))).collect();
@@ -1275,6 +1337,42 @@ pub fn table_kept(m: &Model, view: Option<Id>, sc: &Schedule) -> Result<Arc<Tabl
         None => TableKey::Builtin(sc.of.clone()),
     };
     m.derived.kept_table(&m.elements, key, || table(m, sc))
+}
+
+/// A row for each member of each framed wall, floor and roof, each its host's: what the member is, its section as sawn (`38 x 89`,
+/// a header of two plies `2 x 38 x 184`, in mm whatever the project's units), its cut length to the millimetre and the stock
+/// length it is cut from (0 where it is longer than all of them).
+fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
+    // To the millimetre, as the cut list has them: a header cut to fit is 153.4567 deep.
+    let number = |x: f64| format!("{:.0}", x.round());
+    let mut out = Vec::new();
+    for (&id, e) in &m.elements {
+        let (type_name, level) = match e {
+            Element::Wall(w) if w.framing.is_some() => (&w.type_name, w.level),
+            Element::Floor(f) if f.framing.is_some() => (&f.type_name, f.level),
+            Element::Roof(r) if r.framing.is_some() => (&r.type_name, r.level),
+            _ => continue,
+        };
+        let Ok(Some(f)) = crate::framing::of(m, id) else { continue };
+        for member in &f.members {
+            let [t, d] = member.section;
+            let section = match member.plies {
+                1 => format!("{} x {}", number(t), number(d)),
+                n => format!("{n} x {} x {}", number(t), number(d)),
+            };
+            let length = member.length.round();
+            out.push((
+                id,
+                e,
+                serde_json::json!({
+                    "id": id, "host": f.host, "host_type": type_name, "framing_type": f.type_name, "role": member.role.name(),
+                    "section": section, "length": length, "stock": crate::framing::stock(member.length, &f.stock), "level": level,
+                    "key": member.key,
+                }),
+            ));
+        }
+    }
+    out
 }
 
 /// Schedule `sc`'s table: a column for each of its fields, a row for each element its filters keep,
@@ -1720,7 +1818,8 @@ mod tests {
             assert_eq!(wall[2], Value::Null, "a wall has a thickness, not a width");
             let (l, h) = (wall[4].as_f64().unwrap(), wall[3].as_f64().unwrap());
             assert!(l > 0.0 && h > 0.0, "{wall:?}");
-            assert_eq!(wall[5], json!(fine(l * h / 1e6)), "a wall's area is its length by its height");
+            let area = wall[5].as_f64().unwrap();
+            assert!(area > 0.0 && area <= fine(l * h / 1e6), "a wall's area is its length by its height, less its openings");
         }
     }
 

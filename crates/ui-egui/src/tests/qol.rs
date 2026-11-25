@@ -187,6 +187,10 @@ fn in_3d_attach_top_takes_the_roof_clicked_for_a_wall_and_for_a_column_which_los
         h.state_mut().selection = vec![id];
         h.run();
         press(&mut h, if category == "wall" { "Modify | Walls" } else { "Modify | Columns" });
+        // A wall's Mode panel beside it: at 1280 the Modify Wall panel lists Attach and Detach.
+        if h.query_by_label("Attach Top/Base").is_none() {
+            press(&mut h, "Modify Wall ▾");
+        }
         press(&mut h, "Attach Top/Base");
         assert_eq!(h.state().tool, Tool::Attach, "{}", h.state().status.text);
         // Up through the roof's middle, as a hand looks for it: a click on what isn't a roof or a floor takes nothing.
@@ -202,6 +206,9 @@ fn in_3d_attach_top_takes_the_roof_clicked_for_a_wall_and_for_a_column_which_los
         assert_eq!(h.state().tool, Tool::Modify);
         let kinds: Vec<Handle> = bimcraft_core::handles::of(&h.state().session.model, id).into_iter().map(|x| x.0).collect();
         assert!(!kinds.contains(&Handle::Top), "{category}: {kinds:?}");
+        if h.query_by_label("Detach Top/Base").is_none() {
+            press(&mut h, if category == "wall" { "Modify Wall ▾" } else { "Modify Column ▾" });
+        }
         press(&mut h, "Detach Top/Base");
         let v = element_json(&h.state().session.model, id);
         assert!(v["attach_top"].is_null(), "{category}: {v}");

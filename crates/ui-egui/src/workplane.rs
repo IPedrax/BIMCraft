@@ -100,7 +100,8 @@ pub(crate) fn plane_mark(p: Patch, step: f64) -> PlaneMark {
         lo: p.lo,
         hi: p.hi,
         step,
-        fill: TINT.to_array(),
+        // On a dark canvas the tint as it is would read as a solid blue: there it is laid thinner.
+        fill: if crate::style::canvas_dark() { TINT.gamma_multiply(0.4).to_array() } else { TINT.to_array() },
         grid: pal().muted.gamma_multiply(0.5).to_array(),
         edge: pal().accent.gamma_multiply(0.6).to_array(),
         edge_width: 1.0,

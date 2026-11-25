@@ -42,6 +42,13 @@ wall the jambs; whether the opening is drawn at all is still its rectangle's hei
 `IfcOpeningElement`'s body, closed face sets placed at the opening's middle as its forms are, in place of the extruded
 rectangle. A plan draws a family opening's forms the cut plane passes through as it cuts them (`view3d::level_slice`: a frame
 extruded across the wall, its jambs), each edge of a void's cut from one face of the wall to the other a jamb. A void's size may read an instance parameter (a depth in its `from` and `to`), so each opening cuts its own.
+A family's host-cutting voids also give its values an `Opening Area`, mm² (`Family::host_void_area`; m² in a schedule):
+each straight extrusion's volume over its sweep, as its profile measures. An arched void reports the arch, not its
+bounding rectangle. A door's or a window's family with no such void gets the rectangle of its `Width` and `Height`
+instead, and a door or a window of a project type gets that in its values too (`element_json`); a generic family with no
+host-cutting void, or whose void is a blend or a sweep, has none. It is worked out with the values, not stored as a
+parameter, so a changed type or instance changes it. `Width` and `Height` are the names a hosted family is sized by
+(`Model::opening_dims`): renaming them is not supported, and would leave the opening itself without a size.
 Neither is new in a file, so nothing takes a FORMAT step: an older build reads the family and cuts the rectangle. Below the cut
 plane (F10b), a plan sees the family's forms from it, in projection, as walls below the cut are drawn: each form's outline there
 (its triangles clipped at the cut and laid flat, an edge drawn where one side of it is covered and the other not, so the
@@ -127,7 +134,7 @@ shading or a rendering. Only the nearest see-through surface is blended, so a gl
 accumulate; plans and sections ignore it. Paint (`paint.rs`) is `{face: material}` in an element's `params` under `Paint`, a reserved
 name: a triangle's face is read from its winding, so every solid emits triangles turned out (`Solid::tris`, `prism`), and
 `Image::face` says which face a pixel is on. Favorites (`favorites.rs`) are a file of the user's own (`default_path`:
-`BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials; they change
+`BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials, and title blocks and their logos' pictures; they change
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
 (`editor.rs`, `editor/document.rs`) opens every family in a document of its own, with a family ribbon,
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
@@ -409,6 +416,21 @@ door's or a window's now has too: a generic copy of the family, its wall's thick
 frame. {3D} ghosts the forms its Detail Level leaves out in the ghost material. Model lines and model text in families, and
 symbolic lines drawn in elevations, are not here.
 
+## Manage in the family document
+
+FE-19. A family has no object styles, materials or units of its own: it names the project's. So the family document's Manage
+tab opens the project's own Object Styles, Materials and Project Units, each saying in itself that it changes the project's now,
+not on Load into Project (`editor::PROJECT_NOTE_*`): their changes are the project's commands and steps, which the family's Undo
+leaves and the project's Undo takes back. Object Styles lists the family's category and its subcategories first
+(`ObjectStylesDialog::for_family`); a family's subcategories are among the project's rows, since a family may name only those
+(`Family::check`). Purge Unused works on the draft, one step of the family's history: `Family::unused` (`family/purge.rs`) offers,
+unticked, a parameter or a nested family only where it is shown unused. Its name appears nowhere else in the family as a file
+holds it (formulas, forms, labels, dimensions, type values, visibility formulas, connectors, nested instances' parameters, the
+nested definitions), it is no reporting or shared parameter, no component or door or window of the project holds a value of it,
+and the family checks as it did without it. What that can't show isn't offered; what a purge frees is offered the next time, as
+the project's purge repeats (`family_purge_tests.rs`, `tests/family_manage.rs`). None of them has a key in the family yet; Find
+(Ctrl+K) lists them on a family's tab (`BimApp::family_find_actions`).
+
 ## Shared parameters file
 
 A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text
@@ -484,7 +506,11 @@ line is drawn on is refused, naming them. A new plane or line may carry a GUID o
 same command; a host given as an id is resolved to that plane's GUID (`Family::resolve_hosts`). A plane or line whose GUID
 the sync gives anew (a family loaded twice) takes what is drawn on it along (`Family::rehost`). The Family Editor keeps the
 planes, lines and hosts as they are; its Plane list picks a datum, and its plans and elevations draw, select and move
-planes (*The family's views*, below). A connector has no place yet: when it gets `at` and
+planes (*The family's views*, below). Create > Datum > Reference Line (FE-11) draws a line in a plan or an elevation of a family of
+any category that isn't adaptive (an adaptive family draws its own in {3D}): two clicks, each where the view looks through it
+onto the view's work plane (`family::views::new_line`), the line hosted there and selected; refused, saying why, where the
+view sees its work plane edge on. It has no key yet; Find lists it where its button is enabled
+(`tests/family_reference_line.rs`). A connector has no place yet: when it gets `at` and
 `direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
@@ -609,10 +635,38 @@ lines, a click unlocking one. They are written at Finish (a refusal by the const
 Cancel. An Align padlock, on a finished form and while sketching, sits beside the line it locks, a few pixels off it to the side away from the
 form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
 Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
-(`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
-a dimension can name them before the family is loaded; a form the document takes in without them (a blank family's starter box,
+(`sketch::kept` against the lines shown). Every line gets a GUID of its own as it is drawn (and any still without one at
+Finish), a new form its GUID at once, so a lock or a dimension can name them before the family is loaded; a form the document takes in without them (a blank family's starter box,
 a profile typed as numbers) is given them as it comes in (`FormText::of`), since `sketch_faces` and `end_faces` leave out a form
 or a line without one, and Align, Aligned Dimension and Pick Lines' Lock would find nothing on its outline.
+
+**Dimensions while sketching** (`editor/sketch_dims.rs`): while a form is sketched, the contextual tab's Dimension panel (Aligned Dimension, DI and DD,
+Angular, AN, Radial and Diameter) works in a plan or an elevation that sees the sketch's plane flat, as outside sketch mode:
+it picks the sketch's own lines and circles as they are, reference planes, reference lines and other forms' lines, then a
+click places the dimension (`dimensions::pick_reference`, `placing`, `dimension_click`, which both modes share). It is greyed,
+saying why, in {3D} and in a view that sees the plane edge-on; a sweep's path, a Blend's base and top and a sweep's
+profiles (in an elevation that sees the profile's plane flat, picking the profile's own lines alone) are measured. What is made, changed or taken off while sketching is
+held with the sketch, as Align's locks are (`FormSketch::dims`, `changed`, `unlocked`, and `params`, the parameters Create
+Parameter… made for a label), and drawn with it with the draft's own dimensions that measure the form's lines (its Align
+locks are the padlocks above). A click selects one ("Modify" first: the Draw panel's shape takes the click otherwise): its
+padlocks lock and unlock, its EQ toggles, the Options Bar gives its Label, and Value for one of one segment with no label,
+taken on Enter; Delete takes it away. The family Finish would make (`sketch_family`: the draft, the form made of the lines as
+they are, `sketched_form`, and those dimensions, `sketch_dimensions`) is solved for the type previewed at each label, lock,
+EQ or value (`sketch_try`), and the sketch's lines go where the solve puts them at once; a value is a lock at it for that one
+solve, refused where only a plane or a reference line would move. Finish writes a line the dimensions moved as it was drawn
+(its formulas kept, `FormSketch::driven`) while the constraints still put it where it shows, as labelling it after Finish
+would; one they no longer do is written where it is. The sketch's Ctrl+Z takes back every part's lines with the dimensions,
+locks and parameters made or changed while sketching, one step together. A draft dimension that lost a line deleted while
+sketching isn't changed until the line is back (Ctrl+Z) or the dimension deleted. A revolve's axis drawn again keeps its
+GUID, so what measures to it still does. What the constraints can't hold for the type previewed is refused then, with the constraints'
+words, nothing changed; Align's padlock and a lock another type can't hold are found at Finish, which refuses them for each
+type, naming it, with sketch mode open and the draft as it was. Finish writes the form, its dimensions and their parameters as
+one step of the history (Undo takes them back together); Cancel drops them all, leaving no step and no Unsaved mark. A line of
+the form gone from the sketch (deleted, or taken back by Ctrl+Z) is taken from the dimensions that measure to it, made while
+sketching or the draft's (`forget_reference`, one left with too few references gone), as `forget_lines_gone` takes it at
+Finish. The status bar asks what the dimension tool asks outside sketch mode, and with a dimension selected what can be done
+to it. The view leaves out the form being sketched again (`staged`), its sketch standing for it. A dimension's text is set on the paper, so a
+plane's trace through it doesn't cross it out. Out of scope: a drag of a line's end is checked at Finish, not driven.
 
 Align onto a reference that isn't parallel (`constraints/turn.rs`) turns what can turn, where Revit's help says nothing either
 way: a reference plane of the family's own or a reference line turns about where it crosses the reference, or, where it doesn't
@@ -744,7 +798,10 @@ app's Tab hook leaves Tab to the family document while it is open. The blank win
 plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
 window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
 share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is outlined, the
-selected plane's trace drawn heavier. A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
+selected plane's trace drawn heavier. The outline is the form's own edges as the view sees them (`views::outline_edges`: each
+edge between a face toward the eye and one not, and each crease between two faces toward it, where no face of the form lies in
+front of it: an L's notch, a hole seen from above, a Blend's top, and an elevation's real silhouette; it is picked and boxed by
+them too, FE-20). A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
 of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
@@ -758,6 +815,292 @@ lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tes
 plane hides it and one behind it is seen through its tint.
 An adaptive family's modelling view keeps its own Work Plane panel and Show. An elevation is framed on what it shows as a project's
 is (`render::section_extent`), so its levels' names past their lines' ends aren't cut at the picture's edge.
+
+FE-1: what is selected in a family that isn't adaptive is one set, the only place the selection is kept (`editor/select_box.rs`,
+`Selection`): forms, planes (a datum too, as a click takes one), reference lines, dimensions, plan symbols, connectors and nested
+instances (`family::select::Picked`, the core's). Each kind's accessor (`selected_form`, `selected_plane` and the rest) names the
+one thing selected while the set holds exactly one, of any kind, and nothing while it holds several, so Properties, the
+contextual tab, Align, Pivot, the Start and End handles and the grips act on one element as before and never on one of several;
+a click and the Project Browser make the set what they select. In a plan or an elevation, a drag of the primary button that
+starts on no element (nor a handle, a grip or a padlock), with no tool in hand, draws a box: left to right a window,
+solid, taking what lies wholly inside it; right to left a crossing, dashed, taking what it touches too. Let go within
+`canvas::STILL` (6 px each way, sketch mode's box's too) of where it began, it is no box but the click there: a slow click or a
+shaky one, which egui calls a drag once held past its click's time, selects what a click would rather than boxing nothing and
+letting the selection go (FE-20). It is the rule the adaptive modelling view boxes by, one for both (`geom::SelectBox` in the
+core), drawn as a project's plan draws its box (`canvas::box_shapes`). Each element is boxed by what it is drawn with on screen:
+a form's or a nested instance's edges as the view draws them (`views::outline_edges`, `nested_outline_edges`: an L's inner
+corner, never its hull's chord across the empty corner), a plane's trace, a reference line, a dimension's line, a symbol's
+strokes (in the plans, which draw symbols: `Family::symbol_mark`), a connector's place; a void, which a click doesn't pick in a
+view, a form hidden for now, and what the view's Visibility Settings leave out (F8) aren't, nor does a click pick them, by a face
+or by an edge, nor a drag from one take hold of them, a box beginning there instead (`Scene::hidden`, `views::form_at_among` and
+`form_edge_at_among`): a nested instance's pieces they hide, which the view never draws (`views::nested_drawn`), and while
+Preview Visibility is on a form they hide, which is drawn halftone, and taken as a click takes it, while it is off. Ctrl adds what
+the box takes, Shift takes it away, else it is the selection; a click on an element with Ctrl or Shift adds or takes away that
+one, and a click on nothing with either keeps the selection. The middle button still pans, and a drag with a tool in hand is the
+tool's. A drag from an element's edge (one a form or a nested instance is drawn with, a plane's trace, a reference line, a
+connector) is the element's and draws no box: it selects the element if it isn't selected, alone or added with Ctrl (Shift
+leaves the selection be), and moves the selection (below), or with Ctrl copies it.
+The face of a form or a nested instance that isn't
+selected is the box's to begin in, so a
+box can be drawn inside one, unless Drag Elements on Selection is on (below), when a face that selects is its element's as an
+edge is; the face of one selected is its own either way, and draws no box (`Scene::held_face`). What a face does is Select
+Elements by Face's to say (below): on, a click on it selects and a crossing box drawn inside it takes what it is of; off, a
+crossing box wholly inside a face, meeting none of its edges, doesn't take the form, and a click selects by
+an edge alone: a form is boxed and clicked by the edges the view draws it with. A drag from an element moves the
+selection (below); a lone plane of the family's own still moves square to itself, a handle or a grip as before.
+With several selected, Properties say how many (Multi-Select (N)) and show none of
+their rows, the contextual tab is Modify | Multi-Select, each is drawn selected (in the views, in {3D}, and in the Project
+Browser's lists), Temporary Hide/Isolate takes every form and plane selected, and Delete (the key, the ribbon's) takes them all
+away as one step of the document's history: a dimension, a nested instance, a form, a symbol, a connector, then a reference
+line, then a plane, each list from its end so the places of the rest hold, a datum staying and staying selected. Where one can't
+go (a plane something not selected is drawn on), none does, and the status bar says why. Escape and Modify (the ribbon's) let
+the selection go. What goes from the draft another way (undone, redone, changed while another tab was in front) goes from the set
+(`FamilyEditor::prune_selection`); the history keeps the reference lines too (`Draft`), so Undo brings back a line deleted. {3D}
+has no box: a drag there turns the view, as before.
+
+FE-20: the selection's commands, over that one set (`editor/selection.rs`; what each finds
+is the core's, `family/select.rs`). None has a key of its own in the family yet; Find (Ctrl+K) lists each on a family's tab
+where it works (`BimApp::family_find_actions`, `family_find_action`), and one with nothing to work on (Filter with nothing
+selected, Select Previous with no selection before this one, any of them while a form is sketched or in an adaptive family)
+does nothing. None is a step of the document's history, and nothing reaches the project.
+
+- **Filter** (the Select panel's Filter on Modify | Multi-Select; the status bar's funnel, which on a
+  family's tab counts and filters the family's selection, never the project's) lists the kinds the selection holds, each with
+  how many of it (`select::groups`): forms by what they are (Extrusions, Blends, Revolves, Sweeps, Swept Blends, the void ones
+  apart, a file's Meshes), Reference Planes, Reference Lines, Dimensions, Symbols, Connectors and Nested Instances, in that
+  order whatever the language (`Kind::rank`; sorted by name, a translation would reorder them). Each is checked to keep or
+  cleared to leave out, with Check All and Check None, and OK keeps what is checked selected (`select::kept`). The list is
+  the project's Filter's own (`filter::checklist`).
+- **Select Previous** brings back the selection as it was before it was last let go (Escape, Modify, a click on nothing) or
+  replaced by another (a click, a box, Filter, Select by ID): one set (`Selection::previous`), kept in step with the draft as
+  the selection is, so what was deleted since is skipped; an undo or a redo follows each thing of it to where the step puts it
+  (a form by the tag it keeps while the document is open; a symbol, a connector and a nested instance by its GUID, or with none
+  yet at its place while the step left it as it was: `document::followed`), and lets go only what it can't follow. What it
+  replaces becomes the previous one, so Select Previous again changes them back; Ctrl and Shift, which add to a selection and
+  take from it, make no previous one.
+- **Select by ID** (Manage > Inquiry, as the project's) selects, or adds to the selection, the parts a list names
+  (`select::find`, which reads a list as `inquiry::find` does: ids, GUIDs dashed or not, IFC GlobalIds, separated by spaces,
+  commas, semicolons or lines), and says as it is typed what it finds and what names nothing; OK waits while it finds nothing.
+  **IDs of Selection** beside it shows each selected thing's id and GUID to read or copy: the one place a family document
+  shows them (Properties and the Project Browser show neither). A part holds the id and the GUID its family's project gave it
+  (`HasPart`). One made in the document since has no id until the family is loaded into a project and opened again (a dash),
+  and is found by its GUID, which a plane and a dimension drawn there and a form sketched there are given as they are made; a
+  symbol, a connector and a nested instance made since have neither yet, and nothing names them.
+- **Select Elements by Face** (the toggle left of the status bar's funnel on the tab of a family that isn't adaptive, lit
+  while on and crossed out while off; the window's setting, `select_by_face` in `settings.json`, on to begin with since a click
+  has always taken a form by its face): on, a click on a form's or a nested instance's face
+  selects it, and a crossing box takes one by its faces as by its edges, so one drawn wholly inside a face takes what the face
+  is of (`views::face_in_box`, `geom::SelectBox::touches`); off, each is taken by an edge the view draws it with alone
+  (`views::form_edge_at`, `nested_edge_at`, over `outline_edges`: an L's inner corner, never its hull's chord), by a click and
+  by a box. Pick Lines and Mirror - Pick Axis take a form's edge by the same edges. Either way a box may begin inside the face of what isn't
+  selected, and never inside the face of what is. It is of
+  the plans and elevations: greyed in {3D}, which takes a form by its face either way as the project's 3D view does, and while
+  a form is sketched.
+- **Drag Elements on Selection** (the toggle between Select Elements by Face and the funnel, drawn as that one is; the
+  window's setting, `drag_on_selection` in `settings.json`, off to begin with): off, the face of a form
+  or a nested instance that isn't selected is the box's to begin in, as above; on, a drag from it is the element's, as a drag
+  from its edge is, selects it (Ctrl adds it; `Scene::under`) and moves it. Only where a face selects: with Select Elements by Face off a
+  face picks nothing, so a drag from one is still a box and this changes nothing. A form the view leaves out (`Scene::hidden`)
+  is taken by neither. It is greyed where Select Elements by Face is ({3D}, where a drag turns the view, and while a form is
+  sketched), and a tool in hand takes the drag either way.
+
+Tests: `tests/family_box_select.rs`, `tests/family_selection.rs`; the core's in `family/select.rs`, `family/views.rs` and
+`geom.rs`.
+
+**Drag to move** (`editor/drag_move.rs`, `family/constraints/moving.rs`): in a plan or an elevation, with no tool in hand, a press on an element
+(what a click there would select and the box doesn't begin on, `Scene::under`; a dimension's line; a selected symbol's strokes) and a
+drag past the few points a click allows move the whole selection by the drag, in the view's plane, live, as one step of the
+history. One not selected is selected first, alone, or added with Ctrl. A lone plane of the family's own keeps its drag
+above, square to itself through its constraints (a label it measures to takes the new length). Planes, reference lines and forms
+move through the constraints (`Family::move_by`, `Moving`): each unknown of theirs is held where it is drawn plus the move (a plane
+along its normal, a line's start in the axes of what it is drawn on, a form's sketch and top in its host's axes, its ends along its
+normal), those rows first, then every constraint; what is locked to what moves follows where they let it (a form's line locked to a
+plane that moves goes with it), and a lock, a label, EQ or an Align lock to what stays holds it, the move refused, "Constraints are
+not satisfied: dimension 2 holds what is moved where it is". A form moves its sketch where the view sees its plane flat; where it
+sees it edge-on, the drag's part along the normal moves an extrusion's or a blend's Start and End together, a revolve's, a sweep's
+or a reference line's refusing ("would leave the plane it is drawn on"). What is drawn on a plane that moves goes with it, and moves
+by the rest of the drag alone: a form, a nested instance, and a reference line (and what is drawn on that), whether the plane moves
+in a move or by its own drag (`Family::move_by`'s and `drag_plane`'s edits, `drag_move::carry_lines`). Only what the view shows
+moves (`Scene::pieces`): a plan's symbol or dimension left selected stays where it is when the selection is dragged in an
+elevation. A connector has no host (its place is in the family's axes), so one on a form that moves stays unless it
+is selected too; a selected connector with no place of its own (an electrical device's may have none) stays where it is, and
+the status bar says so as the move begins (`unplaced_connector_selected`). A nested instance (its `at` and `offset` in its host's
+axes), a symbol and a connector are placed again; a dimension's line (`at`) goes with the drag, never what it measures. Only the numbers that move are written, as numbers:
+one that is a formula refuses the move, the rest keep theirs (a box whose x is `W`'s moves north). A datum, a plane that defines
+the origin, what a pivot turns and a form of a file's triangles stay, refusing it, and after it every type must still solve and
+build, as Finish checks, and the family pass its checks if it did before (`Family::check`: a reference line off its plane among
+them; the plane's own drag is refused the same way) (a form whose Align lock pulls another's side past a hole in another type is refused, naming the type).
+Refused, everything is as it was and the status bar says why. The drag is as a shape handle's: made again from the draft as it was at each
+step, the pointer read through the view as the drag began; a drag back where it began leaves nothing to save; Escape, Undo, Redo and
+another view or tab shown give it up, everything put back. Handles, grips and padlocks keep their drags, and a drag from nothing
+its box. Over something selected the status bar says a drag moves it. Shift on an element not selected neither moves
+it nor draws a box, as before; on one selected it moves the selection. Known, as Align and a plane's drag have it: an arc a
+constraint turns while what it follows moves is given its turn as a number, its formula lost. Shift (Ortho) keeps the move
+square to the view's axes, from where the drag began: the delta is worked out in one place (`drag_move::delta`). Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
+
+**Ctrl+drag copies** (`editor/drag_move.rs`, `family/constraints/copying.rs`): Ctrl held as such a drag is let go copies the selection there
+instead: the copies follow the pointer, selected in place of the originals while Ctrl is held (the
+originals selected and moving while it isn't, so the preview says which), and once the button is up they are added as one step
+of the history and stay the selection; the originals stay where they were. Ctrl may be pressed or let go during the drag: Ctrl as
+the button comes up decides (`settle_drag`). Ctrl on an element not selected adds it first, as a move has it, and a Ctrl-click
+without a drag still adds or takes away; with Ctrl, a lone plane of the family's own is copied by the same drag, not its own
+(let go of Ctrl mid-drag, it moves as its own drag moves it, through `drag_plane` where a dimension measures to it, a label taking
+the new length, and Constraints Not Satisfied asking where they hold it). `Family::copies` (`Copying`, `Copies`) makes the copies
+where the originals are: a form with a new GUID and a new one for every line of its sketch, top and profiles (its formulas and
+what is typed for it as they are, `FormText::copied`), a reference plane or line (a plane's name and a named reference, Left
+through Top, being one plane's, the copy has neither), a symbol, a connector and a nested instance (the same type, a new GUID),
+ids left to be given; what a copy is drawn on is the copy of it where that is copied too. A form's copy goes into the list right
+after it, so the voids after it cut it as they cut the original; the rest go at the end. A dimension is copied where every
+reference of it is, naming the copies: one selected (its copy selected too), or one that holds a constraint among what is copied
+(a label, which keeps its parameter, so the copy is driven as the original is, but for a reporting parameter's, which holds
+nothing and is one dimension's: a selected dimension's copy measures without it, and a label that would make two dimensions
+report one parameter is refused where it is set, by `family`'s `dimension` and `dimensions` and by the Options Bar's Label,
+while a file that holds two still opens and warns which it reads, the last, `Family::reported_twice`; a lock; EQ; an Align lock), while one that
+reaches past the copies isn't, so a lock to what isn't copied is dropped. Parameters aren't copied. A datum or a
+plane that defines the origin refuses the copy ("Center (Left/Right) is a datum: it isn't copied."), and so do what a pivot
+turns and what is drawn on it (its copy would turn about the same point). A selection of which nothing can be copied (a
+dimension alone, measuring what isn't selected) refuses it ("Nothing selected here can be copied."), the selection kept. The copies are then put
+where they go by the move of them (`move_picked`), so its rules hold: edge-on, an extrusion's or a blend's Start and End
+move, a revolve, a sweep and a reference line refuse; a number that would change and is a formula refuses (a copy across a box
+whose x is `W`'s; north it keeps `-W` and moves its y), the refusal naming the original, not its copy: what is refused is said
+from where each copy came from (`drag_move::Origin`: forms, planes, lines, symbols, connectors, nested instances and dimensions,
+the core's `Named` and `Unsat::renumbered`), never by rewriting a translated message. A build's or a check's own words (free
+text) are said as they are; a copy, placed rigidly, rarely meets one its original doesn't. Every type
+must still solve and build and the family pass `Family::check` (one copy past `MAX_SYMBOLS` is refused). Refused, the draft and
+the selection are as they were, with no step and no Unsaved mark. Escape, Undo, Redo and another view give it up as they give a
+move up; let go where it began, it makes no copies and leaves no step, saying nothing (rather than stacking copies on the originals). Only what the
+view shows is copied. Over something selected with Ctrl held, the status bar says a drag copies it, and while copying, that
+letting Ctrl go first moves instead. The drag goes through `drag_move::delta` too, so Shift (Ortho) keeps a copy square as it keeps a move. Tests:
+`tests/family_drag_copy.rs`, `family_constraint_tests.rs`.
+
+The Modify panel's tools (`editor/modify.rs`, `family/constraints/transform.rs`), in a family that isn't adaptive. Outside sketch
+mode, in a plan or an elevation, on what is selected and the view shows (a form Temporary Hide hides stays): Move and Copy by two
+clicks, a start and an end, with Constrain (or Shift) keeping it square and Copy's Multiple making a copy at each click after
+(each from the last, which is the original copied a step further); Rotate about the middle of what it takes (found where the view
+draws it) or a centre Place Centre puts, by the angle between two rays clicked (snapped as the project's Rotate) or one typed on
+the Options Bar's Angle and Enter, with Copy; Mirror - Pick Axis across a reference plane's trace, a reference line or a form's
+edge clicked, and Mirror - Draw Axis across a line drawn by two clicks, Copy on at first; Scale of reference planes and reference
+lines about an origin, in the view's plane alone (the depth it looks along held, a plane's up kept a way), Graphical (the origin,
+a point, where that point goes) or Numerical (the origin, by the Options Bar's factor); Offset of a reference plane or a
+reference line clicked, moved or copied (Copy) the Options Bar's distance square to its trace toward the side clicked, a dashed
+preview where it goes. Move, Copy and Offset are the drag's move and copy (`drag_move_to`, `copy_picked`), so their rules and
+refusals are those; Rotate, Mirror and Scale go through `Family::transformed` (`Transform`, `Transforming`): the planes,
+reference lines and forms taken are drawn again where the transform puts them, a plane's ends and up (mirrored, its ends swapped,
+so its normal is the mirror image of its own and what is drawn on it keeps its side), a line's ends, a form's sketch and top in
+its host's axes, and what is drawn on what is taken goes with it (a form or a line on a plane rotated). A form whose host stays
+and that the transform would take off it is refused ("would leave the plane it is drawn on"; drawn on a datum, which can't be
+taken, the message says so): a form on Ref. Level turns in a plan, and in an elevation only by a half turn about a point on the
+level line. Where the transform turns the host's normal over (that half turn, a mirror across the level, a form on a reference
+line's face mirrored with the line), an extrusion's Start and End go to the other side (−End to −Start) and a Blend's base and
+top each to the other side, a sweep refusing. The points a tool clicks in the views snap to the planes' and lines' traces within
+reach, and to where two cross (`modify::snap_to`), so a centre clicked on the level line is on it; Offset's isn't, as it reads
+the side clicked. Only the numbers that change are written; one that is a formula refuses it. A mirrored arc turns the other way
+and a mirrored revolve turns from −End to −Start (a turn keeps a revolve's angles); a sweep isn't mirrored (its profile would
+face the wrong way), and Scale leaves forms (a form is sized by its dimensions and parameters), its button greyed for a
+selection with one, saying so. A dimension whose references are all taken goes with them; one holding a constraint between what
+is taken and what isn't (a label, a lock, EQ, an Align lock), or a label or a lock whose length Scale changes, refuses it as
+"Constraints are not satisfied: dimension 2 ties what is rotated to what isn't", the dimensions lit, whose Remove Constraints
+takes theirs off and does it again (`Retry::Modify`), both one step; refused again, the constraints are put back and nothing is
+left of either. A plain dimension between what is taken and what isn't whose references no longer face one way is deleted, as
+it no longer measures. A datum, a plane that defines the origin, what a pivot turns and a form of a file's triangles stay, as on
+a move; symbols, connectors and nested instances are moved and copied but not rotated, mirrored or scaled (the tool says to take
+them out of the selection, or move them), and with only dimensions selected, or what is shown of the selection only dimensions,
+they say what they take rather than do nothing. After each, every type must still solve and build and the family pass its
+checks if it did; refused, everything is as it was and the status bar says why. Each is one step of the history. While a tool is
+in hand the view shows its marks (the start, the centre, the axis, the rubber band) and the selection where the click would put
+it, the status bar says what to click next, and the Options Bar has its options (kept for the session); Escape lets go of the
+points clicked, then the tool; another view, Undo, Redo, and another selection (a click, Delete) start it again, Rotate's centre
+found again (`modify_fresh`), and in a sketch so do Ctrl+Z, Delete and another pick (a boundary or a start that moved or went is
+never used, `FormSketch::edit_seen`); a press doesn't drag or box. Rotate's Angle typed with nothing of the selection shown says
+so. In sketch mode the same tools act on the lines picked (`FormSketch::edit`), in the plane's own axes: Move, Copy (Multiple),
+Rotate (about the middle of the lines picked), Mirror (a line of the sketch, a reference or a form's edge, or one drawn), Scale
+and Offset (a line clicked, toward the side clicked, Copy), Scale taking a circle's radius and an ellipse's radii with it
+(`modify::scaled`), with Trim/Extend Single Element and Trim/Extend Multiple Elements (the boundary, then each line on the part to
+keep, the project's `draw::meet` and `trim_to`) and Split Element (the line clicked cut there, the half from its start keeping
+its GUID; a dimension or a lock to its end measures to the new half's end, `rebind_split`) beside Trim/Extend to Corner; a
+copy is a new line with a GUID of its own, never the Axis Line. A line a sketch tool moves keeps its GUID, and its formulas go as
+a moved line's do (the sketch dimensions' `driven`); a lock or an Align lock from it to what didn't move with it, added while
+sketching or the form's, is released, the status bar saying how many. Outside a sketch Trim/Extend and Split Element are greyed,
+saying they work on a sketch's lines; in {3D} those that pick from the view say they work in a plan or an elevation (below);
+with nothing selected, what to select. None has a key yet: Find (Ctrl+K) lists each on a family tab (`modify::FIND`), and one that can't be used now says why
+there, as its greyed button's tooltip does. Known: Rotate, Mirror and Scale don't take symbols, connectors or nested instances
+yet, and a sketch tool doesn't refuse what a label holds while sketching (Finish solves it as before). Tests:
+`tests/family_modify.rs`, `tests/family_edges_not_hull.rs`, `family_transform_tests.rs`.
+
+In {3D} the tools whose clicks are points work on the view's work plane (Ref. Level until Work Plane > Set picks another, an
+upright one to move up and down): Move, Copy, Rotate about what the plane faces, and Mirror - Draw Axis (`Tool::in_3d`). The
+plane's frame is the tools' space as a plan's is (`Space::on_plane`), so `modify_3d`, called once from `family_3d`, puts a click
+on the plane with `Camera::on` and hands it to the plans' `modify_click`: the edit, the typed distances and angles, the refusals
+and the one step are the same. A click with a tool in hand selects nothing; a drag still turns the view. While a tool is in
+hand the work plane is shown, and over the picture go the tool's marks, its rubber band and the box of each form taken where
+the click would put it (`boxed`, from `family::views::form_corners`), worked out once for the draft, the selection and the
+plane and only moved as the pointer moves (`Views::taken_3d`). The tool takes what {3D} draws of the selection, so a form
+hidden in the view stays, and planes and lines selected in a plan before. A tool taken in another view starts again in {3D},
+its points let go, or is put down there, saying why, where {3D} can't work with it. Mirror - Pick Axis, Offset, Scale and
+Align, which pick something of the view or lean on its depth, are greyed in {3D} with that reason. Tests:
+`tests/family_modify_3d.rs`.
+
+The Clipboard panel (`editor/clipboard.rs`, `family/clipboard.rs`) in a family that isn't adaptive, on the Modify tab and the
+contextual tab: the project's panel (`crate::clipboard::panel`), Paste with its Aligned options, Cut to Clipboard and Copy to
+Clipboard (a sketch's contextual tab has no room for it at 1600 pixels without folding Dimension and Work Plane, so while
+sketching the clipboard is Ctrl+C, Ctrl+X, Ctrl+V and Find). Copy to Clipboard (Ctrl+C) puts what is selected on the
+clipboard, Cut to Clipboard (Ctrl+X) too, taking it away as Delete does (one step of the history; what Delete refuses, Cut
+refuses, nothing changed). What is held is a Ctrl+drag's copies (`Family::clip`, `Clip`), kept as a family of their own, so
+the clipboard stays what was copied whatever the document does after: what a copy is drawn on is the copy of it where that is
+copied too, else what the original is drawn on; a dimension comes along where every reference of it is copied (one selected,
+or one holding a label, a lock, EQ or an Align lock among the copies), and one tying what is copied to what isn't is dropped and
+counted (`Clip::dropped`); a datum, the plane that defines the origin and what a pivot turns refuse the copy as a Ctrl+drag
+does. Each paste copies the clipboard again (`Family::paste`), so every paste has GUIDs of its own and the clipboard pastes
+again and again; the copies are added at the end of each list (a form too, so a void pasted cuts what is listed before it) and
+selected after, and the status bar says how many constraints were dropped. Paste from Clipboard (Ctrl+V) has the copies follow
+the pointer in the plan or elevation shown, drawn as the view draws them (`paste_preview`, through `Scene::pieces`), held by
+the middle of what has a size of its own (a plane's trace runs across the view, so with forms, lines or symbols it doesn't
+count), drawn once for the draft, the clipboard and the view and only moved as the pointer moves (`Views::paste_ghost`); a click puts that middle where it is, through the drag's move of the copies (`move_picked`), so its rules hold: a
+number the move would change that is a formula refuses it, as a Ctrl+drag's copy does; edge-on, an extrusion's Start and End
+move. Refused, nothing is changed, the paste goes on and the status bar says why; Escape gives it up. Every type must still
+solve and build and the family pass its checks if it did. Of the Aligned options, Aligned to Selected Levels and Aligned to
+Picked Level are greyed (a family has one level, Ref. Level, which what is copied is on already); Aligned to Same Place puts
+the copies where what was copied is (from any view, {3D} too, where Paste from Clipboard is greyed and Ctrl+V pastes Aligned
+to Same Place); Aligned to Current View
+and Aligned to Selected Views paste dimensions copied alone, without what they measure (`Clip::loose`, view-specific): each a
+new dimension measuring the same references in the view shown, or in each view ticked in a dialog that lists the views that
+can draw them (those where the family's checks pass with them), their labels, locks and EQ left behind (they hold in the view
+copied from) and counted. Dimensions alone don't paste by the pointer or in the same place, and model elements don't paste
+into views; each says so. While a form is sketched, the same commands copy, cut and paste the lines picked (`SketchClip`),
+never the Axis Line, into the same sketch (the same form and part): new GUIDs, the locks and dimensions among them coming
+along (to `FormSketch::dims`, an Align lock to `locks`), those to lines not copied dropped and counted, by the pointer (their
+middle where the click is) or in the same place; one change the sketch's Ctrl+Z takes back. A command that can't be used now
+is greyed with the reason as its tooltip (`clipboard_blocked`), as the Modify tools are.
+
+It goes through the project's clipboard (`clipboard.rs`, [copy and paste](copy-paste.md)) where that fits. Ctrl+C, Ctrl+X and
+Ctrl+V come as the window's Copy, Cut and Paste events, which `BimApp::clipboard_events` takes on a family tab as on a
+project's (from `family_keys`), and the ribbon's paste asks the system clipboard for its text as a project's does
+(`ask_paste`, the window's own copy once it has waited; a paste asked on one tab and answered on another is given up); `copy_to_clipboard` and `pasted_text` hand a family tab's to
+`family_copy` and `family_pasted`. Find (Ctrl+K) lists Copy to Clipboard, Cut to Clipboard, Paste from Clipboard and the three
+Aligned options a family can use (`clipboard::FIND`), done on the next frame as the right-click menu's are (`Request`). A copy
+puts its text on the system clipboard, as a project's does: the core's (`family::clipboard::text`), marked as a family's
+(`KIND`, apart from a project's, which a project's paste doesn't take for its own) with its family's name and the copy's GUID
+(`Source`). A paste takes the window's own copy (`BimApp::family_clip`, `Held`) where the system clipboard's text is that copy
+or isn't BIMCraft's at all; a project's copy made since is refused, saying to paste it on the project's tab (the family's
+older copy isn't the clipboard's last), and a family's copy made in another window is refused, naming its family, and so is pasting into
+another family's document: the copies name the first family's planes, parameters, formulas and nested families, which another
+may not have, and nothing maps them yet, so a paste reads the text's source alone (`family::clipboard::source`). The clipboard
+is the window's, so it outlives views, ribbon tabs and document tabs. Nothing of it is saved. Tests: `tests/family_clipboard.rs`,
+`family_clipboard_tests.rs`.
+
+**Measure** (`editor/measure.rs`; the Measure panel's button, in a plan or an elevation, not sketching) lays a ruler by two
+clicks, snapped as the Modify tools' points are, Shift keeping it square, and reads it over the view and in the status bar: its
+length, its angle from the view's across, and its parts across and up, in the project's units (`snap::ruler`, as the project's
+Measure reads). It changes nothing; the ruler stays on show until the next first click, Escape (which lets a first click go,
+then the tool) or another tool. Greyed in {3D} and while a form is sketched, saying where it works.
+
+**Create Similar** starts the tool that makes the one thing selected, as it is: Create's Extrusion, Blend, Revolve, Sweep or
+Swept Blend, solid or void as the form is; Reference Plane for a plane, a datum too; Reference Line for a reference line;
+Aligned, Angular, Radial or Diameter Dimension as the dimension is; another symbol of the symbol's part; a connector of the
+connector's kind; Component with the nested instance's family and type. With nothing or several selected it does nothing; a
+form of a file's triangles says so, and so does a plane, a line or a dimension in {3D}, whose tools draw in a plan or an
+elevation. Neither has a key yet: Find lists Measure (in a plan or an elevation) and Create Similar
+on a family tab. Neither is a step of the history. Tests: `tests/family_measure.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
@@ -803,7 +1146,15 @@ spline or ellipse), Modify (pick, Delete, a picked line's end dragged; Trim/Exte
 to where they meet, each keeping the part clicked, `draw::corner`, F10a) and Work Plane (Set, the Work Plane dialog for the sketch: the plane taken, its lines go with it in the plane's own
 axes; Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
 markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
-and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
+and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Holding Shift constrains
+a line or a chained arc's endpoint horizontally or vertically in the work plane's own axes, including in {3D}; releasing it
+restores free drawing. Other shapes' construction points and an arc's third point stay free.
+The core's `snap::orthogonal_step` also constrains reference-plane drawing and dragging in plans/elevations, and adaptive
+Line, Move/Copy and point dragging. Dragging keeps the press origin across frames and uses the work plane's axes, in the
+parallel plane through that origin; a constrained snap never substitutes an off-axis point. New Line points and their preview
+lie on the work plane even when the chain starts above it; Move/Copy preserves the original normal offset. Shift + middle-button
+orbit remains navigation.
+Chain, on the Options Bar
 for Line and the chained arcs, is kept for the session: off, each starts afresh. A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
 those that do and {3D}: the Work Plane dialog's one Go To View (`FamilyEditor::on_work_plane`, `work_plane::Then`), the sketch
 beginning in the view opened; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
@@ -822,10 +1173,96 @@ the draft (and so its Unsaved mark) as it was. A selected form's contextual tab 
 out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
-parameter or a formula is greyed and a drag on it is refused, saying why. Where a form's dimensions and locks put its outline,
+parameter (a formula of one, or a dimension's label) drags that parameter, and one a lock or EQ holds (`Family::end_held`) has no
+handle (below).
+
+**Shape handles** (`family/handles.rs`, `editor/shape_handles.rs`): with one extrusion selected, solid or void, a plan or an elevation that
+sees its plane flat shows a handle at the middle of each edge of its profile, outlines and holes alike, pointing out of the solid
+(`handles::edge_handles`, which side by the profile's rings as built); one that sees the plane edge-on shows one at mid-depth on
+each straight side it sees edge-on, unless another part of the profile hides it (`in_sight`), beside the Start and End handles.
+A Blend shows its base's handles where its base is seen flat, none on its leaning sides; a revolve, a sweep and a swept blend
+none. Dragged, a handle offsets its edge along its normal (`offset_edge`): each straight line at its ends slides along its own
+line to meet it, one in line with it has its shared end moved with it, and an arc there still runs through its middle as
+drawn and through its ends where they now are (a D's arc grows with its flat side); an arc's handle changes its radius about its
+centre, its ends going out along their radii and the lines at them following them; a whole circle's, its radius. That side
+alone moves: only the numbers that move are written, a number as a number and a formula as itself with the move added
+(`handles::shifted`: the starter box's `Width / 2` side dragged 40 out is `(Width / 2) + 40`, folded into on the next drag and
+back to `Width / 2` when it comes back to nothing), so its parameter still moves it; the rest keep their formulas. The form is
+made again from what it was at each step of the drag (live, one step of the history), the pointer read through the view as the
+drag began. A drag back where it began leaves the form as typed (no
+step, nothing unsaved); Escape, Undo, Redo and another view or tab shown give it up, the form put back as it was (the Start and
+End drag too); the form is followed by what it is known by while the document is open, never by its place. A click on an arrow
+keeps the selection. Refused, the form left as it was and the status
+bar saying why (an edge a dimension's label measures to drags its parameter instead, and one a lock, an Align lock or EQ holds
+has no handle: below): a drag that leaves
+no profile (a line turned back or of no length, or what `finish_check` refuses: lines crossing, overlapping, a loop open); one
+the constraints would undo (where a family is constrained, the type previewed must flex the edge to where the drag put it, the
+handles sitting where that type shows the outline); and one a type can't build, as Finish checks. Where a form's dimensions and locks put its outline,
 Start or End otherwise for the type previewed than it is drawn, its Properties say so under a note naming the type (F10,
 `held_forms`), its ends a dimension sets greyed as they come to: the drawn numbers stay, and its Edit tool or the dimensions
 change them.
+
+**Shape handles in {3D}** (`editor/handles3d.rs`): {3D} shows the same handles on the selected extrusion or Blend, drawn over the picture where the
+type previewed puts them: an extrusion's at the middle of each profile edge at mid-depth, a Blend's base's at its base, and the
+End and Start (a Blend's Second and First End) at the middle of the profile there (a Blend's top at its End), pointing out along
+the plane's normal. Only those on faces turned toward the camera show (a way out that goes further from the eye is a face turned
+away), and none on a form the view hides (Temporary Hide/Isolate, `temp_hidden_form`; so too in a plan or an
+elevation). Each arrow has a rim of the canvas's opposite (dark on a light canvas, light on a dark one) so it reads over a
+shaded form. A press on one holds it rather than turning the view (a greyed one too, doing nothing and saying why); the pointer is
+read along the arrow as the view showed it when the button went down. {3D} writes nothing while the hand moves, so the scene isn't
+made again under it: the held arrow follows the pointer, lit, and the status bar says what the drag would make (a parameter's
+value, the End's number, the distance), and the drag is written once the button is up (a side's through the plans' own
+`drag_edge_to`), one step of the history; Escape, Undo, Redo and a plan or an elevation shown give it up. A plan or an elevation
+writes as the hand moves. A handle the view sees end-on (its way within about 75 degrees of the way the view looks,
+`handles3d::SEEN`) can't be dragged along: it isn't drawn, as a plan draws none on a side it sees flat. Revolves, sweeps and swept
+blends have no handles in any view: their shapes are their profiles' and paths', changed by sketching them again (Edit Revolve,
+Edit Sweep). In every view the drag reads the pointer where the button comes up too, so a hand quicker than the frames still lands
+where it let go.
+
+**Lining up, and what stays** (`family/handles.rs`, `editor/shape_handles.rs`), what a drag lines up with and what stays where it is:
+
+- **Lining up.** A side or an end dragged by its handle to within `shape_handles::SNAP` (8) points of something that faces its
+  way lines up with it, mid-drag too: a reference plane (the datums too), or another form's straight side, Start or End
+  (`Family::handle_targets`, the nearest within reach by `handles::snapped`, a plane before a side at the same place). The
+  form's own sides are none of them, and nothing the view hides (Temporary Hide/Isolate) is either. A dashed line
+  runs through the held handle while it is lined up, and the status bar says so. Let go there in a plan or an elevation, Align's
+  padlock is offered, open, where the hand left it; a click on it locks the two, as Align's does, and the next click elsewhere
+  lets it go. A drag through a parameter lines up but offers no padlock (its label holds it), and {3D} lines up with none.
+- **An aligned face holds the face, not its corners.** Align and a lock write only the coordinate of a corner that moves
+  (`apply_edits` through `shift_sketch_point`, as a move does): a face aligned to a plane keeps the formula that places each of its
+  corners along it, so the side next to it dragged afterwards takes the corner along the aligned face and the solid keeps its
+  square corners.
+- **The view stays where it is.** Each plan and elevation is fitted to the room the family takes up when it is first shown at
+  its size and when Zoom to Fit asks, and keeps its own frame while another view is shown (`Views::fitted`, one per view, over
+  the core's `Staged::fitted` and `draw_lines_at`). While something is dragged the frame never changes, so a drag past the room
+  doesn't zoom the view out under the hand; an edit that shrinks the family keeps it too. Once nothing is dragged, a family
+  grown past the frame (a form sketched far off in a family that began empty, a step undone, a file reloaded) is fitted again
+  (`views::holds`). A move of the selection and a plane's drag wait until the hand leaves a click's few points
+  (`select_box::still`), so a shaky click moves nothing.
+
+Wherever a handle shows, it drags (`editor/handle_params.rs`). A side or an end whose place is a parameter's, through a
+labelled dimension (`Family::edge_held`, `end_held`, which name a label before a lock or EQ on the same side, whichever dimension
+is listed first), or an end whose number is a formula naming parameters (an End associated with `Height`), is dragged by changing
+that parameter. A side whose numbers are formulas and that no label sets moves alone (above). Which is found by moving each (`drive`,
+worked out once for the draft as it is): of the parameters the End's formula names, or the label on it,
+those that move it over a widening range from their value (so one flat where it starts still counts), a label's first, then a
+size (one that leaves the far side of the form that way where it is, or moves it the other way) before a position (one that moves
+both sides one way: `Offset + Width / 2` with the box centred on Offset drags Width), then as the family lists them. A name that
+isn't the family's (a door's `Wall Thickness`) is no parameter of it; where nothing the family sets moves the side, the handle is
+greyed, saying so. The value is the one that puts the side or end where the hand is on the flexed family (a labelled dimension's
+length after the drag, an End's new number), searched for (`solve`): secant steps from the last two places known, then a bracket
+widened outward from the value the drag began at and halved, so a nonlinear formula, a continuous `if()` and one flat where it
+starts are reached; an Integer parameter takes the nearer whole number, the rest a hundredth of a millimetre. A centred box's side
+lands under the hand, so its Width changes by twice the drag; a side an EQ keeps the middle of moves with what the solver lets
+give. The value is written as a labelled dimension's drag writes it (`Edit::Parameter`): a type parameter for the type previewed
+alone, other types keeping theirs; an instance parameter its own value, the family's default for it. The status bar says the
+value. Refused, the draft as it was and the status bar saying why: a parameter worked out by a formula, a reporting one, one the
+instance previewed sets, a type parameter of a family with no type (these handles are greyed, and never lit), a value that turns
+the profile inside out, leaves it nothing or the form no depth (whatever the parameter's kind: the profile is checked, not the
+kind), one the search can't reach, and one a type that built as the drag began can't build with (which types built is read once,
+at the press). Greyed handles are the only ones never lit; the handle under the pointer that a drag takes is drawn larger in the
+hover colour (`handles3d::paint_arrow`, in every view). A lock, an Align lock or EQ holding a side or an end with no label on it
+isn't a parameter, and its handle isn't drawn.
 
 ## Blends, sweeps and swept blends
 
@@ -862,8 +1299,15 @@ triangles, as for any form not flat on a level plane. IFC writes the triangles a
 
 Constraints (F7) reach a Blend's base and top and a sweep's path: they are `Form::plane_lines`, the sketch then the top,
 whose vertices join within one group only (a base corner and a top corner over each other stay two); a Blend's First and
-Second End are measured as an extrusion's Start and End. A sweep's profile lines lie in a plane of their own and aren't
-measured yet: a dimension naming one is refused, saying so (F6d). `edit_work_plane`'s `keep` maps a Blend's top too (and
+Second End are measured as an extrusion's Start and End. A sweep's profile lines (a Swept Blend's two profiles') are
+`plane_lines` too, groups 2 and 3: each is read in its profile's plane as the path is drawn for the type
+(`forms::profile_frames`, `Layout::profiles`, `Seen::profile`), which moves with no unknown, so a profile's lines are
+measured among themselves alone (`check_dimensions` refuses one with what lies off its plane: the plane follows the path, as
+nothing else does). Labels, locks and EQ on them flex the profile in its own axes; no FORMAT change, `{"form", "line"}`
+naming a profile line as it names any other. Older builds: a project file's such dimension is left out and listed in
+`left_out`, as one measuring to nothing; a family file holding one isn't filtered there (`read_family_file`), and Load into
+Project refuses it (their sweep-profile check, which no `invalid_dimensions` passes), so such a family can't be loaded from
+an older build until the shared FORMAT 19 to 20 step marks it. `edit_work_plane`'s `keep` maps a Blend's top too (and
 swaps base and top on a plane facing the other way) and refuses a sweep on a plane facing the other way or mirrored.
 
 In the family document (`editor/sketch.rs`), Create > Blend, Sweep and Swept Blend, and Void Forms' Void Blend, Void Sweep
@@ -880,7 +1324,7 @@ every type as F5 does (`commit_form`); Edit Blend, Edit Sweep and Edit Swept Ble
 each part keeping its lines' formulas where they don't move.
 
 Left out, each a task: Edit Vertices' connecting chosen vertex pairs by hand (F6b); profile families (BIMCraft has no
-Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions and locks on a sweep's profile (F6d);
+Profile category: loading one, `sweep.family`, its offsets and angle); dimensions between a sweep's profile and what lies off its plane;
 paths across planes and Pick Path of 3D edges (F6e).
 
 ## Family options
@@ -1327,13 +1771,18 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/origin.rs`: its origin, the insertion point it stands by, and its instances kept where they stand when it moves (O1).
 - `family/options.rs`: Family Category and Parameters' options.
 - `family/views.rs`: a family's plans and elevations.
-- `family/sketch.rs`: forms' sketches.
+- `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges.
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
   lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
-  isn't parallel.
+  isn't parallel; `family/constraints/moving.rs`, what a drag moves together through them; `family/constraints/copying.rs`,
+  the copies a Ctrl+drag makes; `family/constraints/transform.rs`, what Rotate, Mirror and Scale do.
+- `family/clipboard.rs`: what the clipboard holds, its text, and what each paste adds.
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
+- `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,
+  Select by ID's parts and the names of one (FE-20).
+- `family/purge.rs`: what Purge Unused offers in a family, and taking it out (FE-19).
 
 In `crates/ui-egui`, the Family Editor:
 
@@ -1342,7 +1791,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
-- `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
+- `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched. `editor/shape_handles.rs`: a selected form's profile handles; `editor/handles3d.rs`: the same and its ends in {3D}; `editor/handle_params.rs`: a handle's drag through the parameter its place is. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
 - `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.
@@ -1351,3 +1800,11 @@ In `crates/ui-egui`, the Family Editor:
   overlay drawn through a view's projection alone).
 - `editor/origin_mark.rs`: the insertion point's mark over plans and elevations and, as a point in space, {3D}; Defines Origin ticked on a plane.
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+- `editor/select_box.rs`: the selection, one set (FE-1), and the box a plan or an elevation selects with, window or crossing.
+- `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select
+  Elements by Face and Drag Elements on Selection.
+- `editor/purge.rs`: Manage > Purge Unused in the family document (FE-19).
+- `editor/drag_move.rs`: the selection moved by a drag, or copied with Ctrl.
+- `editor/modify.rs`: the Modify panel's tools, in a plan, an elevation and a sketch.
+- `editor/measure.rs`: Measure and Create Similar.
+- `editor/clipboard.rs`: the family's Clipboard panel, Ctrl+C, Ctrl+X and Ctrl+V, Paste Aligned.

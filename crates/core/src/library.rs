@@ -700,9 +700,11 @@ impl Model {
                 "railing" => self.types.railing.remove(name).is_some(),
                 "room" => self.types.room.remove(name).is_some(),
                 "stair" => self.types.stair.remove(name).is_some(),
+                "ramp" => self.types.ramp.remove(name).is_some(),
                 "curtainpanel" => self.types.curtain_panel.remove(name).is_some(),
                 "mullion" => self.types.mullion.remove(name).is_some(),
                 "cornermullion" => self.types.corner_mullion.remove(name).is_some(),
+                "framing" => self.types.framing.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
                 "toposolid" => self.types.toposolid.remove(name).is_some(),
@@ -714,7 +716,10 @@ impl Model {
                 name.split_once(": ").is_some_and(|(f, t)| self.families.get_mut(f).is_some_and(|fam| fam.types.remove(t).is_some()))
             }
             Kind::Material => self.materials.remove(name).is_some(),
-            Kind::Picture => self.images.remove(name).is_some(),
+            Kind::Picture => {
+                self.pdfs.remove(name);
+                self.images.remove(name).is_some()
+            }
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
             Kind::TitleBlock => self.title_blocks.remove(name).is_some(),
@@ -748,9 +753,11 @@ impl Model {
                 "railing" => mv(&mut self.types.railing, from, to),
                 "room" => mv(&mut self.types.room, from, to),
                 "stair" => mv(&mut self.types.stair, from, to),
+                "ramp" => mv(&mut self.types.ramp, from, to),
                 "curtainpanel" => mv(&mut self.types.curtain_panel, from, to),
                 "mullion" => mv(&mut self.types.mullion, from, to),
                 "cornermullion" => mv(&mut self.types.corner_mullion, from, to),
+                "framing" => mv(&mut self.types.framing, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
                 "toposolid" => mv(&mut self.types.toposolid, from, to),
@@ -847,9 +854,11 @@ impl Model {
         add(Kind::Type("railing".into()), &mut t.railing.keys());
         add(Kind::Type("room".into()), &mut t.room.keys());
         add(Kind::Type("stair".into()), &mut t.stair.keys());
+        add(Kind::Type("ramp".into()), &mut t.ramp.keys());
         add(Kind::Type("curtainpanel".into()), &mut t.curtain_panel.keys());
         add(Kind::Type("mullion".into()), &mut t.mullion.keys());
         add(Kind::Type("cornermullion".into()), &mut t.corner_mullion.keys());
+        add(Kind::Type("framing".into()), &mut t.framing.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -1446,7 +1455,7 @@ impl Model {
 
 /// Each name `g` holds of a library entry, given to `f` with what it names, which may put another in its place: a view's
 /// template, filters, phase, phase filter, design options, its linework's line styles and the CAD drawings whose layers it hides.
-fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
+pub(crate) fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
     for o in g.categories.values_mut().chain(g.elements.values_mut()).chain(g.filters.iter_mut().map(|a| &mut a.over)) {
         for name in o.patterns_mut() {
             f(&Kind::FillPattern, name);
@@ -1548,15 +1557,29 @@ impl crate::model::Element {
                 if let Some(c) = &mut w.curtain {
                     c.names_mut(f);
                 }
+                if let Some(framing) = &mut w.framing {
+                    f(&Kind::Type("framing".into()), framing);
+                }
             }
-            Element::Floor(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Floor(x) => {
+                f(&Kind::Type(category), &mut x.type_name);
+                if let Some(framing) = &mut x.framing {
+                    f(&Kind::Type("framing".into()), framing);
+                }
+            }
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
-            Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Roof(x) => {
+                f(&Kind::Type(category), &mut x.type_name);
+                if let Some(framing) = &mut x.framing {
+                    f(&Kind::Type("framing".into()), framing);
+                }
+            }
             Element::Toposolid(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
             // A stair of no type names none.
             Element::Stair(x) if !x.type_name.is_empty() => f(&Kind::Type(category), &mut x.type_name),
+            Element::Ramp(x) if !x.type_name.is_empty() => f(&Kind::Type(category), &mut x.type_name),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => f(&Kind::Type(category), &mut c.type_name),
             run_arm!(r) => f(&Kind::Type(category), &mut r.type_name),
             Element::Door(o) | Element::Window(o) => match &mut o.family {
@@ -1599,6 +1622,7 @@ impl crate::model::Element {
                 }
             }
             Element::CadImport(ci) => f(&Kind::Cad, &mut ci.cad),
+            Element::Image(im) => f(&Kind::Picture, &mut im.picture),
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
@@ -1669,6 +1693,9 @@ impl Model {
         for r in t.runs.values_mut().flat_map(|x| x.values_mut()).filter(|r| !r.material.is_empty()) {
             f(&Kind::Material, &mut r.material);
         }
+        for m in t.framing.values_mut().filter_map(|x| x.material.as_mut()) {
+            f(&Kind::Material, m);
+        }
         // A room type's floor and ceiling are types of the project's.
         for r in t.room.values_mut() {
             if let Some(floor) = &mut r.floor {
@@ -1688,9 +1715,12 @@ impl Model {
             }
         }
         for m in self.materials.values_mut() {
-            if let Some(tx) = m.texture.as_mut().filter(|tx| !tx.image.is_empty()) {
+            for tx in m.pictures_mut().filter(|tx| !tx.image.is_empty()) {
                 f(&Kind::Picture, &mut tx.image);
             }
+        }
+        for l in self.title_blocks.values_mut().flat_map(|t| t.logos.iter_mut()) {
+            f(&Kind::Picture, &mut l.image);
         }
         for vf in self.view_filters.values_mut() {
             rules_refs(&mut [], &mut vf.rules, f);
@@ -1724,7 +1754,7 @@ impl Model {
             m.element.lib_refs_mut(f);
         }
         for x in self.materials.values_mut() {
-            for p in [&mut x.cut_pattern, &mut x.surface_pattern].into_iter().flatten() {
+            for p in x.fills_mut() {
                 f(&Kind::FillPattern, p);
             }
         }

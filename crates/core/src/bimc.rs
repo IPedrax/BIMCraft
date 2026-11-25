@@ -207,6 +207,56 @@ fn inflate_pieces(data: &[u8], p: &Pieces) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Files in one zip, each `(name, bytes, deflate)`: deflated where asked (a PNG is deflated already, and stored as it is). What
+/// a `.bima` holds (`bima.rs`).
+pub fn zip_files(files: &[(&str, &[u8], bool)]) -> Result<Vec<u8>, String> {
+    if files.len() > MAX_ENTRIES {
+        return Err(format!("a zip of this BIMCraft holds up to {MAX_ENTRIES} files, not {}", files.len()));
+    }
+    let mut zip = Zip::default();
+    for (name, data, deflated) in files {
+        let mut crc = Crc::new();
+        crc.update(data);
+        if *deflated {
+            zip.add(name, 8, &deflate(data, 6, true)?, crc.sum(), data.len() as u64)?;
+        } else {
+            zip.add(name, 0, data, crc.sum(), data.len() as u64)?;
+        }
+    }
+    zip.finish()
+}
+
+/// The files of zip `bytes`, each inflated and checked against its checksum, `most` bytes in all.
+pub fn unzip_files(bytes: &[u8], most: u64) -> Result<Vec<(String, Vec<u8>)>, String> {
+    if !is_zip(bytes) {
+        return Err("it isn't a zip".into());
+    }
+    let mut left = most;
+    let mut out = Vec::new();
+    for e in entries(bytes)? {
+        if e.size > left {
+            return Err(format!("its files inflate past the {most} bytes they may take here"));
+        }
+        let data = e.data(bytes)?;
+        let raw = match e.method {
+            0 => data.to_vec(),
+            8 => inflate(data, e.size)?,
+            m => return Err(format!("`{}` is compressed in a way this BIMCraft doesn't read (zip method {m})", e.name)),
+        };
+        let mut crc = Crc::new();
+        crc.update(&raw);
+        if raw.len() as u64 != e.size || crc.sum() != e.crc {
+            return Err(format!("`{}` doesn't match its checksum: the file is damaged", e.name));
+        }
+        left -= e.size;
+        out.push((e.name, raw));
+    }
+    Ok(out)
+}
+
+/// The most files a zip is read for.
+pub const MAX_ENTRIES: usize = 64;
+
 /// A zip's entry, as its central directory lists it.
 struct Entry {
     name: String,
@@ -247,8 +297,8 @@ fn entries(b: &[u8]) -> Result<Vec<Entry>, String> {
     let end = (from..b.len().saturating_sub(21)).rev().find(|&i| b.get(i..i + 4) == Some(b"PK\x05\x06")).ok_or(DAMAGED)?;
     let count = u16_at(b, end + 10).ok_or(DAMAGED)?;
     let mut at = u32_at(b, end + 16).ok_or(DAMAGED)? as usize;
-    let mut out = Vec::with_capacity(count.min(64));
-    for _ in 0..count.min(64) {
+    let mut out = Vec::with_capacity(count.min(MAX_ENTRIES));
+    for _ in 0..count.min(MAX_ENTRIES) {
         if b.get(at..at + 4) != Some(b"PK\x01\x02") {
             return Err(DAMAGED.into());
         }

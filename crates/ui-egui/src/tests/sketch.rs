@@ -624,20 +624,20 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
         let slope = |h: &Harness<BimApp>| h.get_by_role_and_label(Role::TextInput, "Slope").value().unwrap_or_default();
         // The east line, which the roof's edge there rises along at 45°; the south one has the roof's, blank.
         click(&mut h, P2(8000.0, 3000.0));
-        assert_eq!(slope(&h), "45", "rev {rev}");
+        assert_eq!(slope(&h), "45°", "rev {rev}");
         click(&mut h, P2(4000.0, 0.0));
         assert_eq!(slope(&h), "", "rev {rev}");
         // The south line given 20°, which Finish sends with the lines: the roof's south edge, number 0, rises at 20°.
         type_into(&mut h, "Slope", "20");
         key(&mut h, Key::Enter);
-        assert_eq!(slope(&h), "20", "rev {rev}");
+        assert_eq!(slope(&h), "20°", "rev {rev}");
         assert_eq!(field(&h, roof, "slopes").as_array().map(Vec::len), Some(4), "nothing is the roof's until Finish");
         assert_eq!(field(&h, roof, "slopes"), json!([0.0, 45.0, 0.0, 45.0]), "rev {rev}");
         for typed in ["6:12", "6/12", "1/2", " 6 : 12 ", "50%", " 50 % "] {
             type_into(&mut h, "Slope", typed);
             key(&mut h, Key::Enter);
             assert!(!h.state().status.error, "{typed}: rev {rev}: {}", h.state().status.text);
-            assert_eq!(slope(&h), "26.57", "{typed}: rev {rev}");
+            assert_eq!(slope(&h), "26.56505117707799°", "{typed}: rev {rev}");
         }
         for typed in [
             "6:0", "6/0", "0:12", "0/12", "-6:12", "6/-12", "6:12:1", "1/2/3", "NaN:12", "6:inf", "60:1", "0%", "-50%", "NaN%", "inf%",
@@ -646,19 +646,19 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
             type_into(&mut h, "Slope", typed);
             key(&mut h, Key::Enter);
             assert!(h.state().status.error, "{typed}: rev {rev}");
-            assert_eq!(slope(&h), "26.57", "{typed}: rev {rev}");
+            assert_eq!(slope(&h), "26.56505117707799°", "{typed}: rev {rev}");
         }
         pick(&mut h, Role::CheckBox, "Defines Slope");
         assert!(h.query_by_role_and_label(Role::TextInput, "Slope").is_none());
         pick(&mut h, Role::CheckBox, "Defines Slope");
-        assert_eq!(slope(&h), "26.57", "disabling an edge preserves its pitch");
+        assert_eq!(slope(&h), "26.56505117707799°", "disabling an edge preserves its pitch");
         type_into(&mut h, "Slope", "20");
         key(&mut h, Key::Enter);
         // Blank is the roof's again, and a number out of range is refused, saying so, the line keeping the slope it had.
         type_into(&mut h, "Slope", "90");
         key(&mut h, Key::Enter);
         assert!(h.state().status.error && h.state().status.text.contains("from 0 to 75"), "rev {rev}: {}", h.state().status.text);
-        assert_eq!(slope(&h), "20", "rev {rev}");
+        assert_eq!(slope(&h), "20°", "rev {rev}");
         press(&mut h, "Finish Edit Mode");
         assert!(h.state().sketch.is_none(), "rev {rev}: {}", h.state().status.text);
         assert_eq!(field(&h, roof, "slopes"), json!([20.0, 45.0, 0.0, 45.0]), "rev {rev}");
@@ -668,7 +668,7 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
         h.run();
         key(&mut h, Key::Escape);
         click(&mut h, P2(8000.0, 3000.0));
-        assert_eq!(slope(&h), "45", "rev {rev}");
+        assert_eq!(slope(&h), "45°", "rev {rev}");
         type_into(&mut h, "Slope", "");
         key(&mut h, Key::Backspace);
         key(&mut h, Key::Enter);
@@ -708,7 +708,7 @@ fn roof_pitch_in_the_3d_inspector_accepts_ratios_and_percentages_and_keeps_edge_
         ("22.5", 22.5),
         ("0", 0.0),
     ] {
-        type_into(&mut h, "Slope (°)", typed);
+        type_into(&mut h, "Slope", typed);
         key(&mut h, Key::Enter);
         if h.state().roof_slope_dialog.is_some() {
             press(&mut h, "Apply slope");
@@ -743,7 +743,7 @@ fn roof_edge_selection_names_the_scope_and_changes_only_picked_planes() {
         click(&mut h, P2(4000.0, -600.0));
         assert!(h.query_by_label("Roof edges: 1 selected").is_some());
         roof_edge_capture(&mut h, rev, "one");
-        assert!(h.query_by_role_and_label(Role::TextInput, "Slope (°)").is_none(), "no competing overall field");
+        assert!(h.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "no competing overall field");
         type_into(&mut h, "Selected pitch", "8:12");
         key(&mut h, Key::Enter);
         assert_eq!(*h.state().session.model, *before, "draft until Apply");
@@ -766,6 +766,46 @@ fn roof_edge_selection_names_the_scope_and_changes_only_picked_planes() {
         press(&mut h, "Cancel pitch edit");
         assert_eq!(*h.state().session.model, *before);
         assert_eq!(h.state().session.history().len(), steps);
+    }
+}
+
+#[test]
+fn unchanged_roof_angle_text_keeps_exact_pitches_and_history_in_all_three_editors() {
+    for rev in [false, true] {
+        let pitch = 0.5_f64.atan().to_degrees();
+        let script = format!(
+            "roof {{\"boundary\":[[0,0],[8000,0],[8000,6000],[0,6000]],\"slope\":{pitch},\"slopes\":[{pitch},0,{pitch},0],\"gables\":[1,3],\"overhang\":600}}"
+        );
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let roof = ids(&h, "roof")[0];
+        h.state_mut().selection = vec![roof];
+        h.run();
+        let before = h.state().session.model.clone();
+        let steps = h.state().session.history().len();
+        let displayed = format!("{pitch}°");
+        assert_eq!(h.get_by_role_and_label(Role::TextInput, "Slope").value(), Some(displayed.clone()));
+        type_into(&mut h, "Slope", &displayed);
+        key(&mut h, Key::Enter);
+        assert!(h.state().roof_slope_dialog.is_none());
+        assert_eq!(h.state().session.history().len(), steps);
+        press(&mut h, "Edit roof pitches");
+        click(&mut h, P2(4000.0, -600.0));
+        assert_eq!(h.get_by_role_and_label(Role::TextInput, "Selected pitch").value(), Some(displayed.clone()));
+        type_into(&mut h, "Selected pitch", &displayed);
+        key(&mut h, Key::Enter);
+        assert!(is_disabled(&h, Role::Button, "Apply pitches"), "unchanged text stages no rounded override");
+        press(&mut h, "Cancel pitch edit");
+        h.state_mut().edit_boundary();
+        h.run();
+        key(&mut h, Key::Escape);
+        click(&mut h, P2(4000.0, -600.0));
+        assert_eq!(h.get_by_role_and_label(Role::TextInput, "Slope").value(), Some(displayed.clone()));
+        type_into(&mut h, "Slope", &displayed);
+        key(&mut h, Key::Enter);
+        assert_eq!(h.state().sketch.as_ref().unwrap().lines[0].slope.unwrap().to_bits(), pitch.to_bits());
+        press(&mut h, "Cancel Edit Mode");
+        assert_eq!(h.state().session.history().len(), steps);
+        assert_eq!(*h.state().session.model, *before);
     }
 }
 
@@ -901,8 +941,8 @@ fn overall_roof_pitch_offers_each_choice_and_warns_before_changing_the_eave() {
         let before = h.state().session.model.clone();
         let steps = h.state().session.history().len();
         for choice in ["Cancel", "Escape", "Keep individual edge pitches", "Apply to all defining edges"] {
-            assert_eq!(h.get_by_role_and_label(Role::TextInput, "Slope (°)").value().as_deref(), Some("Varies"));
-            type_into(&mut h, "Slope (°)", "40");
+            assert_eq!(h.get_by_role_and_label(Role::TextInput, "Slope").value().as_deref(), Some("Varies"));
+            type_into(&mut h, "Slope", "40");
             key(&mut h, Key::Enter);
             assert_eq!(*h.state().session.model, *before, "opening the choice never changes the roof");
             assert_eq!(h.state().session.history().len(), steps);
@@ -948,14 +988,14 @@ fn overall_roof_pitch_offers_each_choice_and_warns_before_changing_the_eave() {
             );
             assert_eq!(h.state().session.history().len(), steps + 1);
             assert_eq!(
-                h.get_by_role_and_label(Role::TextInput, "Slope (°)").value().as_deref(),
-                Some(if choice.starts_with("Keep") { "Varies" } else { "40" })
+                h.get_by_role_and_label(Role::TextInput, "Slope").value().as_deref(),
+                Some(if choice.starts_with("Keep") { "Varies" } else { "40°" })
             );
             h.state_mut().session.execute("undo", &json!({})).unwrap();
             h.run();
             assert_eq!(*h.state().session.model, *before);
         }
-        type_into(&mut h, "Slope (°)", "40");
+        type_into(&mut h, "Slope", "40");
         key(&mut h, Key::Enter);
         assert!(h.state().roof_slope_dialog.is_some());
         h.state_mut().session.execute("modify", &json!({"id":roof,"offset":100})).unwrap();

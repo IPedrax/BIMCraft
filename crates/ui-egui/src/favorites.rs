@@ -24,6 +24,7 @@ use crate::{BimApp, Status};
 enum Tab {
     Materials,
     Families,
+    TitleBlocks,
 }
 
 /// The Favorites window: which kind it lists, what the file held when it was read, and the swatches drawn of it.
@@ -114,7 +115,7 @@ impl BimApp {
                 ui.label(RichText::new(t("Kept for every project: add one to this project with a click.")).color(pal().muted));
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    for (tab, label) in [(Tab::Materials, "Materials"), (Tab::Families, "Families")] {
+                    for (tab, label) in [(Tab::Materials, "Materials"), (Tab::Families, "Families"), (Tab::TitleBlocks, "Title Blocks")] {
                         if ui.selectable_label(d.tab == tab, t(label)).clicked() {
                             d.tab = tab;
                         }
@@ -135,7 +136,7 @@ impl BimApp {
                                 ui.vertical(|ui| {
                                     ui.label(RichText::new(name).strong());
                                     let what =
-                                        e.material.texture.as_ref().map_or(t("No texture"), |x| t(crate::properties::texture_name(x.kind)));
+                                        e.material.texture.as_ref().map_or(t("No texture"), |x| t(crate::materials::texture_name(x.kind)));
                                     ui.label(RichText::new(what).color(pal().muted));
                                 });
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -144,6 +145,35 @@ impl BimApp {
                                     }
                                     if ui.button(t("Add to Project")).clicked() {
                                         act = Some(("load", "material", name.clone()));
+                                    }
+                                });
+                            });
+                            ui.add_space(2.0);
+                        }
+                    }
+                    (Ok(f), Tab::TitleBlocks) => {
+                        if f.title_blocks.is_empty() {
+                            ui.label(
+                                RichText::new(t("No favorite title blocks yet: save one from View > Title Blocks.")).color(pal().muted),
+                            );
+                        }
+                        for (name, e) in &f.title_blocks {
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.label(RichText::new(name).strong());
+                                    let b = &e.title_block;
+                                    let mut what = format!("{} × {} mm", b.width, b.height);
+                                    if !b.sizes.is_empty() {
+                                        what = format!("{what}, {}", b.sizes.join(", "));
+                                    }
+                                    ui.label(RichText::new(what).color(pal().muted));
+                                });
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if ui.button(t("Remove")).clicked() {
+                                        act = Some(("delete", "title_block", name.clone()));
+                                    }
+                                    if ui.button(t("Add to Project")).clicked() {
+                                        act = Some(("load", "title_block", name.clone()));
                                     }
                                 });
                             });
@@ -183,7 +213,11 @@ impl BimApp {
             let mut p = self.favorite_params(action, kind, &name);
             // A name the project has already is its own: the favorite comes in as another.
             if action == "load" {
-                let taken = |n: &str| if kind == "material" { model.materials.contains_key(n) } else { model.families.contains_key(n) };
+                let taken = |n: &str| match kind {
+                    "material" => model.materials.contains_key(n),
+                    "title_block" => model.title_blocks.contains_key(n),
+                    _ => model.families.contains_key(n),
+                };
                 if taken(&name) {
                     p["as"] = json!((2..).map(|k| format!("{name} {k}")).find(|n| !taken(n)).unwrap_or_default());
                 }

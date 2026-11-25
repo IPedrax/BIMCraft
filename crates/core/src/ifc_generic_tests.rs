@@ -334,3 +334,12 @@ fn a_family_remembers_only_an_ifc_class_and_types_it_can_write() {
     run(&mut t, "family", json!({"name": "P", "ifc": {"class": "IfcMember", "predefined": "mullion"}}));
     assert_eq!(run(&mut t, "family", json!({"name": "P"}))["family"]["ifc"], json!({"class": "IFCMEMBER", "predefined": "MULLION"}));
 }
+
+#[test]
+fn only_a_common_property_set_has_the_status_and_load_bearing_the_export_writes() {
+    // `Status` of a `Pset_` that is not a `*Common` one is a parameter's, kept both ways, not the export's own.
+    assert!(crate::ifc::own_property("Pset_WallCommon", "Status") && crate::ifc::own_property("Pset_BeamCommon", "LoadBearing"));
+    for set in ["Pset_ConcreteElementGeneral", "Pset_EnvironmentalImpactIndicators", "Pset_CommonWall"] {
+        assert!(!crate::ifc::own_property(set, "Status") && !crate::ifc::own_property(set, "LoadBearing"), "{set}");
+    }
+}

@@ -24,12 +24,15 @@ Both a selected roof's **Slope** field and a selected footprint line's **Slope**
 | Input | Result |
 |---|---|
 | `26.56505117707799` | Degrees |
+| `26.56505117707799°` | The same angle with a degree suffix |
 | `6:12`, `6/12`, `1/2` | Rise divided by horizontal run, approximately 26.565° |
 | `50%` | 100 × rise/run; the same pitch as 6:12 |
 | `100%` | 45° |
 | `12.5%` | Approximately 7.125° |
 
-Stored commands and displayed values remain degrees. The selected roof reports its common effective pitch or **Varies**,
+Stored commands and displayed values remain degrees. Overall, selected-edge and boundary-line pitch fields show a degree
+suffix and preserve the stored angle's precision, so re-entering their unchanged text does not round the pitch.
+The selected roof reports its common effective pitch or **Varies**,
 ignoring upright gables. Entering a new overall value when individual pitches are involved opens **Roof slope change**:
 
 - **Keep individual edge pitches:** only inherited pitches change. Explicit pitches keep their angles.
@@ -113,6 +116,7 @@ The live wiki is not changed while the feature remains a draft.
 > The selected roof's Slope and its boundary-line Slope accept degrees, positive rise:run or rise/run (`6:12`, `6/12`),
 > and positive percentages (`50%`). 50% equals 6:12; 100% equals 45°. Values display in degrees and the 75° limit still
 > applies. Bare zero on the roof makes it flat; on a boundary line, blank or bare zero inherits the roof's slope.
+> Degree text may include `°`; the displayed angle retains its precision when entered again.
 > The creation Options Bar still uses degrees. Extrusion profile editing is not part of this footprint workflow.
 >
 > A multi-line selection shows an indeterminate Defines Slope checkbox or Varies when its settings differ. Editing a

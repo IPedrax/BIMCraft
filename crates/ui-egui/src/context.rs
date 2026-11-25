@@ -185,7 +185,10 @@ pub(crate) fn menu(response: &Response, groups: &[Vec<Item>], chosen: &mut Optio
                     continue;
                 }
                 let mut button = Button::new(t(item.action.label()));
-                if let Some(keys) = item.action.shortcut() {
+                let live = crate::shortcuts::hint_for_label(item.action.label());
+                if !live.is_empty() {
+                    button = button.shortcut_text(live.join(", "));
+                } else if let Some(keys) = item.action.shortcut() {
                     button = button.shortcut_text(keys);
                 }
                 if ui.add_enabled(item.enabled, button).clicked() {

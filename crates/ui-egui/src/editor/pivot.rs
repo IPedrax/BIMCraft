@@ -130,9 +130,12 @@ pub(super) fn picked(
 }
 
 impl FamilyEditor {
-    /// The reference line selected, while the family has it.
+    /// The reference line selected, while it alone is and the family has it.
     pub(crate) fn selected_line(&self) -> Option<Guid> {
-        self.views.line.filter(|g| self.lines.iter().any(|l| l.guid == *g))
+        match self.only_selected() {
+            Some(super::select_box::Picked::Line(g)) => Some(g),
+            _ => None,
+        }
     }
 
     /// What Pivot takes: the reference line selected, or a plane of the family's own.
@@ -159,6 +162,9 @@ impl FamilyEditor {
     pub(crate) fn pivot_tool(&mut self) {
         if let Some(g) = self.pivot_candidate() {
             self.views.pivoting = Some(g);
+            self.views.modify = None;
+            self.views.pasting = None;
+            self.views.measuring = None;
         }
     }
 
@@ -208,7 +214,7 @@ impl FamilyEditor {
         f.forget_pivots(g);
         f.forget_reference(g);
         (self.lines, self.planes, self.dimensions) = (f.lines, f.planes, f.dimensions);
-        self.views.line = None;
+        self.selection.forget(super::select_box::Picked::Line(g));
         Ok(())
     }
 

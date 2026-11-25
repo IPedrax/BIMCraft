@@ -47,13 +47,25 @@ impl FamilyScene {
 }
 
 impl FamilyEditor {
-    /// What is selected, as {3D} shows it: a form, a nested instance, a reference plane or a reference line.
-    pub(crate) fn selected_3d(&self) -> Option<Lit> {
+    /// What is selected, as {3D} shows it: forms, nested instances, reference planes and reference lines, one or several
+    /// (FE-1).
+    pub(crate) fn selected_3d(&self) -> Vec<Lit> {
+        use super::select_box::Picked;
         if self.adaptive.is_some() {
-            return None;
+            return Vec::new();
         }
-        let part = self.selected_form().map(Part::Form).or_else(|| self.selected_nested().map(Part::Nested));
-        part.map(Lit::Part).or_else(|| self.selected_line().map(Lit::Line)).or_else(|| self.selected_plane().map(Lit::Plane))
+        self.selection
+            .items()
+            .iter()
+            .filter(|p| self.holds(**p))
+            .filter_map(|p| match p {
+                Picked::Form(i) => Some(Lit::Part(Part::Form(*i))),
+                Picked::Nested(i) => Some(Lit::Part(Part::Nested(*i))),
+                Picked::Line(g) => Some(Lit::Line(*g)),
+                Picked::Plane(g) => Some(Lit::Plane(*g)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// What {3D} highlights, and in which colour: what is selected, in the selection's, and the part under the pointer (when
@@ -63,11 +75,11 @@ impl FamilyEditor {
             return Vec::new();
         }
         let selected = self.selected_3d();
-        let hovered = self.views.hover3d.and_then(|(_, _, p)| p).map(Lit::Part).filter(|h| Some(*h) != selected);
+        let hovered = self.views.hover3d.and_then(|(_, _, p)| p).map(Lit::Part).filter(|h| !selected.contains(h));
         let colour = |c: Color32| Rgb(c.r(), c.g(), c.b());
         selected
-            .map(|s| (s, colour(crate::style::canvas_pal().accent)))
             .into_iter()
+            .map(|s| (s, colour(crate::style::canvas_pal().accent)))
             .chain(hovered.map(|h| (h, colour(crate::style::canvas_pal().hover))))
             .collect()
     }
@@ -75,9 +87,6 @@ impl FamilyEditor {
     /// A click in {3D} on `part` (none: on nothing): the form or nested instance selected, as a click selects it in a plan; on
     /// nothing, the selection let go.
     pub(crate) fn click_3d(&mut self, part: Option<Part>) {
-        self.views.dim = None;
-        self.views.plane = None;
-        self.views.line = None;
         match part {
             Some(Part::Form(i)) => {
                 self.select_only_form(i);
@@ -208,9 +217,16 @@ impl FamilyEditor {
         let extents = bimcraft_core::family::views::extents(&f, &values);
         let mut marks: Vec<PlaneMark> =
             self.shown_work_plane_3d().and_then(|shown| super::views::work_plane_mark(&shown, extents)).into_iter().collect();
-        if let Some((datum, c)) = self.lit_3d().into_iter().find(|(l, _)| !matches!(l, Lit::Part(_))) {
+        // Where a Modify tool in hand would put the forms it takes.
+        if self.views.shown.is_none() && self.views.modify.is_some() {
+            marks.extend(self.views.ghost_3d.iter().copied());
+        }
+        let datums: Vec<(Lit, Rgb)> = self.lit_3d().into_iter().filter(|(l, _)| !matches!(l, Lit::Part(_))).collect();
+        if !datums.is_empty() {
             let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
-            marks.extend(datum_mark(cam, &flexed, datum, Color32::from_rgb(c.0, c.1, c.2), extents));
+            for (datum, c) in datums {
+                marks.extend(datum_mark(cam, &flexed, datum, Color32::from_rgb(c.0, c.1, c.2), extents));
+            }
         }
         marks
     }

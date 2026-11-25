@@ -2547,6 +2547,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"set": "nbr", "keep_rules": 5, "stairs": {"riser": 1e300, "going": -1, "flight_risers_max": 1e30, "walk_line": [], "winders": null}}),
         json!({"set": [], "reset": true, "stairs": {"riser_min": 1e-300, "riser_max": 5e-324, "walk_line_offset": f64::MAX}}),
         json!({"ids": [100002, 1e300, -1, "x"]}),
+        json!({"status": "demolished", "ids": [100002, 100000, 999999], "phase": "Existing"}),
+        json!({"status": "temporary", "ids": [100002], "phase": 5}),
+        json!({"status": ["new"], "phase": "nowhere\n"}),
+        json!({"status": "demolished", "phase": "New Construction"}),
         json!({"save": "x\ny", "delete": 5, "set": "nope"}),
         json!({"save": "Ours", "delete": "Ours", "stairs": {"riser": 150}}),
         json!({"electrical": {"demand": 5, "building_demand": []}, "set": "ibc", "keep_rules": true}),
@@ -3114,6 +3118,12 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
     // A model group of walls and a door, and the payloads that place, break, edit and mend groups.
     targeted.extend(crate::groups::tests::sweep_payloads(&mut base));
+    // A framed wall with a window and a partition butting into it, and the payloads that frame, query and retype them.
+    targeted.extend(crate::framing_tests::sweep_payloads(&mut base));
+    // A framed floor with an opening over a beam, and the payloads that frame it at an angle, query it and retype it.
+    targeted.extend(crate::framing_floor_tests::sweep_payloads(&mut base));
+    // A framed gable roof open through a skylight, and the payloads that frame, query and retype it.
+    targeted.extend(crate::framing_roof_tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),
@@ -3362,6 +3372,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::steel_tests::sweep_payloads(&mut base));
     // A structural column and floor to be counted, and the quantities command's and template's payloads.
     targeted.extend(crate::quantities_tests::sweep_payloads(&mut base));
+    // A beam armed by `reinforce`, and `rebar_detail`'s payloads.
+    targeted.extend(crate::rebar_detail_tests::sweep_payloads(&mut base));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -4992,7 +5004,7 @@ fn extrusion_roofs_sweep_their_profile_across() {
     let profile = json!({"line": [[0, 0], [8000, 0]], "profile": [[-500, 0], [3000, 2000], [8500, 0]], "from": -600, "to": 6600});
     let roof = run(&mut s, "roof", json!({"extrusion": profile}))["id"].as_u64().unwrap();
     let e = element(&mut s, roof);
-    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64()), (Some(5000.0), Some(64.8)), "{e}");
+    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64(), e["plan_area_m2"].as_f64()), (Some(5000.0), Some(71.16), Some(64.8)), "{e}");
     // Halfway up its west slope: 1 m up, 300 mm thick across the slope.
     let top = crate::view3d::tops_at(&s.model, P2(1250.0, 3000.0))[&roof];
     assert!((top - (4000.0 + 300.0 * 3500f64.hypot(2000.0) / 3500.0)).abs() < 1e-6, "{top}");
@@ -5081,7 +5093,7 @@ fn roofs_slope_round_a_courtyard_up_to_a_ring_of_ridges() {
         assert!((top(&s, 8000.0, y).unwrap() - (3000.0 + 1000.0 * tan + rise)).abs() < 1e-6, "{y}");
     }
     let e = element(&mut s, roof);
-    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64()), (Some(4732.05), Some(240.0)), "{e}");
+    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64(), e["plan_area_m2"].as_f64()), (Some(4732.05), Some(277.13), Some(240.0)), "{e}");
     // In plan, its eaves round the courtyard; from Level 1, they're dashed overhead.
     let d = crate::render::plan(&s.model, 100001, 800, 600);
     assert_eq!(d.pick(d.view.px(P2(8000.0, 6000.0)), 2.0), Some(roof));
@@ -5132,7 +5144,7 @@ fn roofs_over_the_walls_leave_a_loop_of_walls_standing_free_open_as_a_courtyard(
     assert_eq!(e["courtyards"], json!([[[6600.0, 6600.0], [6600.0, 9400.0], [9400.0, 9400.0], [9400.0, 6600.0]]]));
     // Each wing 7.2 m from eaves to eaves, its ridge 3.6 m in from both, where the slopes have risen
     // from 500 mm below the base: 3000 + 3100 tan 30°. Its area: 17.2² less 2.8².
-    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64()), (Some(4789.79), Some(288.0)), "{e}");
+    assert_eq!((e["ridge"].as_f64(), e["area_m2"].as_f64(), e["plan_area_m2"].as_f64()), (Some(4789.79), Some(332.55), Some(288.0)), "{e}");
     let top = |s: &Session, id: u64, x: f64, y: f64| crate::view3d::tops_at(&s.model, P2(x, y)).get(&id).copied();
     assert_eq!(top(&s, roof, 8000.0, 8000.0), None, "the courtyard is open");
     // Courtyards given are the roof's own; one too small to stay open past the overhang is roofed over.
@@ -5811,29 +5823,30 @@ fn a_materials_texture_is_set_changed_and_taken_away_and_a_picture_comes_into_th
     assert_eq!((t(&s), s.model.materials["Oak"].color), (json!(null), [160, 112, 60]));
     // A picture: its file, taken into the project (a tile a metre across, as tall as its proportions make it); the same file again, the same picture.
     let (wide, tall) = (picture_file("wide", 8, 4, [200, 100, 50, 255]), picture_file("tall", 4, 8, [20, 100, 250, 255]));
+    let starter = s.model.images.clone();
     run(&mut s, "material", json!({"name": "Oak", "texture": {"kind": "image", "path": wide}}));
     run(&mut s, "material", json!({"name": "Maple", "texture": {"kind": "image", "path": wide}}));
-    assert_eq!((s.model.images.len(), t(&s)["size"].clone()), (1, json!([1000.0, 500.0])));
+    assert_eq!((s.model.images.len(), t(&s)["size"].clone()), (starter.len() + 1, json!([1000.0, 500.0])));
     let inspected = run(&mut s, "inspect", json!({}))["images"].clone();
-    let id = s.model.images.keys().next().unwrap().clone();
+    let id = s.model.images.keys().find(|k| !starter.contains_key(*k)).unwrap().clone();
     assert_eq!(
         (&inspected[&id]["size"], inspected[&id]["name"].as_str().map(|n| n.starts_with("bimcraft-wide"))),
         (&json!([8, 4]), Some(true))
     );
     // A picture is the project's while a material's texture is made of it: out of one, still there for the other; out of both, gone.
     run(&mut s, "material", json!({"name": "Oak", "texture": {"kind": "image", "path": tall}}));
-    assert_eq!(s.model.images.len(), 2);
+    assert_eq!(s.model.images.len(), starter.len() + 2);
     run(&mut s, "material", json!({"name": "Oak", "texture": null}));
-    assert_eq!(s.model.images.len(), 1);
+    assert_eq!(s.model.images.len(), starter.len() + 1);
     run(&mut s, "material", json!({"name": "Maple", "delete": true}));
-    assert!(s.model.images.is_empty());
+    assert_eq!(s.model.images, starter);
     // A project that holds one saves it with it, and opens with it.
     run(&mut s, "material", json!({"name": "Oak", "texture": {"kind": "image", "path": tall, "angle": 45}}));
     let project = temp("textured.bimcraft");
     run(&mut s, "save", json!({"path": project}));
     let mut t2 = Session::new();
     run(&mut t2, "open", json!({"path": project}));
-    assert_eq!((t2.model.images.len(), &t2.model.materials["Oak"]), (1, &s.model.materials["Oak"]));
+    assert_eq!((t2.model.images.len(), &t2.model.materials["Oak"]), (starter.len() + 1, &s.model.materials["Oak"]));
     assert_eq!(t2.model.images, s.model.images);
     // As a hand might spoil it: a picture's data cut short comes back with its name, and the project isn't opened.
     let mut v: Value = serde_json::from_str(&crate::bimc::read_to_string(&project).unwrap()).unwrap();
@@ -5872,8 +5885,8 @@ fn a_texture_that_isnt_sound_is_refused_and_says_why_and_the_project_is_as_it_wa
         assert!(e.contains(says), "{texture}: {e}");
         assert_eq!(*s.model, *before);
     }
-    // At most 24 pictures; the 25th isn't taken in.
-    for k in 0..crate::texture::MAX_IMAGES as u8 {
+    // At most 32 pictures, the starter library's among them; the next isn't taken in.
+    for k in 0..(crate::texture::MAX_IMAGES - s.model.images.len()) as u8 {
         let file = picture_file(&format!("many{k}"), 2, 2, [k, 7, 9, 255]);
         run(&mut s, "material", json!({"name": format!("M{k}"), "texture": {"kind": "image", "path": file.clone()}}));
         std::fs::remove_file(file).unwrap();
@@ -5975,8 +5988,9 @@ fn favorites_keep_materials_and_families_for_every_project() {
     );
     // In another project, from the file alone: the lawn comes with its picture, the family with the oak it's made of.
     let mut b = Session::new();
+    let before = b.model.images.len();
     run(&mut b, "favorite", json!({"action": "load", "name": "My Lawn", "as": "Lawn", "path": file}));
-    assert_eq!((b.model.images.len(), &b.model.materials["Lawn"].texture), (1, &a.model.materials["My Lawn"].texture));
+    assert_eq!((b.model.images.len(), &b.model.materials["Lawn"].texture), (before + 1, &a.model.materials["My Lawn"].texture));
     run(&mut b, "favorite", json!({"action": "load", "kind": "family", "name": "Bench", "path": file}));
     assert_eq!(b.model.materials["My Oak"].color, [160, 112, 60]);
     let bench = run(&mut b, "component", json!({"family": "Bench", "at": [0, 0]}))["id"].as_u64().unwrap();
@@ -6002,7 +6016,7 @@ fn favorites_keep_materials_and_families_for_every_project() {
         (json!({"action": "save", "path": file}), "`name` is required"),
         (json!({"action": "delete", "name": "Nothing", "path": file}), "no favorite"),
         (json!({"action": "keep", "path": file}), "list, save, load or delete"),
-        (json!({"kind": "texture", "path": file}), "material or family"),
+        (json!({"kind": "texture", "path": file}), "material, family or title_block"),
     ] {
         let e = b.execute("favorite", &p).unwrap_err();
         assert!(e.contains(says), "{p}: {e}");
@@ -7767,11 +7781,11 @@ fn a_toposolid_shows_its_types_surface_pattern_in_plan_and_its_texture_in_3d() {
     let mut s = Session::new();
     // A paving surface: a model pattern of level courses, and a texture, on the type's one layer.
     run(&mut s, "fill_pattern", json!({"name": "Pavers", "target": "model", "lines": [{"angle": 0, "spacing": 1000}]}));
-    run(&mut s, "material", json!({"name": "Paving", "surface": "Pavers", "texture": {"kind": "tile", "size": [1000, 1000]}}));
+    run(&mut s, "material", json!({"name": "Pavement", "surface": "Pavers", "texture": {"kind": "tile", "size": [1000, 1000]}}));
     run(
         &mut s,
         "type",
-        json!({"category": "toposolid", "name": "Paved", "layers": [{"function": "finish", "material": "Paving", "thickness": 300}]}),
+        json!({"category": "toposolid", "name": "Paved", "layers": [{"function": "finish", "material": "Pavement", "thickness": 300}]}),
     );
     let t = run(&mut s, "toposolid", json!({"type": "Paved", "boundary": plot(), "points": [[5000, 5000, 2000]]}))["id"]
         .as_u64()
@@ -7937,4 +7951,16 @@ fn a_toposolid_goes_to_ifc_as_a_terrain_slab_and_comes_back_from_the_file() {
     assert_eq!(t.map(|t| (t.shape.points.len(), t.interval)), Some((1, 500.0)));
     assert_eq!(t.map(|t| m.toposolid_thickness(t)), Some(300.0), "its type's thickness, kept as the type");
     assert_eq!(m.types.toposolid["Generic - 300mm"].thickness, 300.0);
+}
+
+#[test]
+fn a_wall_of_an_unknown_type_says_its_area_is_unknown() {
+    let mut s = Session::new();
+    let id = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]}))["ids"][0].as_u64().unwrap();
+    let mut m = (*s.model).clone();
+    let Some(crate::model::Element::Wall(w)) = m.elements.get_mut(id) else { panic!("no wall {id}") };
+    w.type_name = "No Such Type".into();
+    let warnings = m.warnings();
+    assert!(warnings.iter().any(|w| w.contains(&format!("wall {id}")) && w.contains("No Such Type")), "{warnings:?}");
+    assert!(m.quantities(id).is_none(), "no area is known");
 }

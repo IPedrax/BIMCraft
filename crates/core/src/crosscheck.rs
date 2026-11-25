@@ -174,6 +174,9 @@ pub fn ours(m: &Model) -> Vec<Row> {
             Element::Wall(w) => {
                 rows.push(Row::new("wall", id, "length_m", centre_line(m, w).3 / 1e3));
                 rows.push(Row::new("wall", id, "openings", hosted.get(&g).copied().unwrap_or(0) as f64));
+                if let Some(areas) = m.areas(id) {
+                    rows.push(Row::new("wall", id, "area_m2", areas.net / 1e6));
+                }
             }
             Element::Floor(f) => {
                 let thickness = m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness);

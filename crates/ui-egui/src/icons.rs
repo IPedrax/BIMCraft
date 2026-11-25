@@ -44,6 +44,8 @@ icon_names! {
     ThinLines,
     Schedule,
     CloseInactive,
+    Tile,
+    DockAll,
     Interface,
     Properties,
     TypeProperties,
@@ -57,6 +59,7 @@ icon_names! {
     Cut,
     CopyClipboard,
     Rotate,
+    Scale,
     MirrorPick,
     MirrorDraw,
     Align,
@@ -68,6 +71,7 @@ icon_names! {
     TagAll,
     View3D,
     Section,
+    DetailView,
     Elevation,
     Camera,
     Sheet,
@@ -75,6 +79,8 @@ icon_names! {
     Column,
     Beam,
     Rebar,
+    Frame,
+    Unframe,
     Footing,
     WallFooting,
     Pipe,
@@ -115,10 +121,13 @@ icon_names! {
     Crop,
     Units,
     Line,
+    ReferenceLine,
     Arc,
     Flip,
     Attach,
     Detach,
+    EditProfile,
+    ResetProfile,
     Ai,
     Floor,
     WorkPlane,
@@ -182,6 +191,7 @@ icon_names! {
     FillPatterns,
     AnnotationSettings,
     LinePatterns,
+    Halftone,
     Circle,
     Inscribed,
     Circumscribed,
@@ -230,6 +240,7 @@ icon_names! {
     FamilyTypes,
     LoadIntoProject,
     LoadIntoProjectClose,
+    DragOnSelection,
     Cowork,
     Script,
     Player,
@@ -432,6 +443,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(11.0, 11.0), (17.0, 17.0)]);
             g.line(&[(17.0, 11.0), (11.0, 17.0)]);
         }
+        Icon::Tile => {
+            // Four equal cells: the views tiled.
+            g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);
+            g.line(&[(12.0, 4.0), (12.0, 20.0)]);
+            g.line(&[(3.0, 12.0), (21.0, 12.0)]);
+        }
+        Icon::DockAll => {
+            // A tab bar over one view: every window docked again.
+            g.closed(&[(3.0, 9.0), (21.0, 9.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.closed(&[(3.0, 3.0), (21.0, 3.0), (21.0, 7.0), (3.0, 7.0)]);
+            g.line(&[(8.0, 3.0), (8.0, 7.0)]);
+            g.line(&[(14.0, 3.0), (14.0, 7.0)]);
+            if !compact {
+                g.line(&[(7.0, 13.0), (17.0, 13.0)]);
+            }
+        }
         Icon::Interface => {
             g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);
             g.line(&[(3.0, 9.0), (21.0, 9.0)]);
@@ -515,6 +542,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // A circular arc with a tangential return arrow; no floating arrowhead.
             g.line(&[(1.5, 15.0), (4.0, 12.0), (6.5, 15.0)]);
             g.arc((12.0, 12.0), 8.0, -90.0, 180.0);
+        }
+        Icon::Scale => {
+            // A small square grown into a big one from the corner they share, an arrow out along the diagonal.
+            g.closed(&[(3.0, 21.0), (3.0, 14.0), (10.0, 14.0), (10.0, 21.0)]);
+            g.line(&[(3.0, 11.0), (3.0, 3.0), (21.0, 3.0), (21.0, 21.0), (13.0, 21.0)]);
+            g.line(&[(8.0, 16.0), (17.0, 7.0)]);
+            g.line(&[(12.0, 7.0), (17.0, 7.0), (17.0, 12.0)]);
         }
         Icon::MirrorPick => {
             // Mirrored triangles around a dashed picked axis.
@@ -627,6 +661,16 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 6.0), (4.0, 6.0)]);
             g.line(&[(12.0, 11.0), (12.0, 17.0)]);
             g.line(&[(9.0, 14.0), (15.0, 14.0)]);
+        }
+        Icon::DragOnSelection => {
+            // An element, and Move's cross over its corner: what is pressed on is its own to drag.
+            g.closed(&[(3.0, 3.0), (13.0, 3.0), (13.0, 13.0), (3.0, 13.0)]);
+            g.line(&[(16.0, 10.0), (16.0, 22.0)]);
+            g.line(&[(10.0, 16.0), (22.0, 16.0)]);
+            g.line(&[(14.0, 12.0), (16.0, 10.0), (18.0, 12.0)]);
+            g.line(&[(14.0, 20.0), (16.0, 22.0), (18.0, 20.0)]);
+            g.line(&[(12.0, 14.0), (10.0, 16.0), (12.0, 18.0)]);
+            g.line(&[(20.0, 14.0), (22.0, 16.0), (20.0, 18.0)]);
         }
         Icon::RepeatingDetail => {
             // A brick course: the same block again and again along a line.
@@ -751,6 +795,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(15.0, 16.0), (18.0, 16.0)]);
             g.line(&[(21.0, 12.0), (21.0, 20.0)]);
         }
+        Icon::DetailView => {
+            // A callout's fragment, and its numbered circle on a leader.
+            g.closed(&[(3.0, 4.0), (15.0, 4.0), (15.0, 13.0), (3.0, 13.0)]);
+            g.circle((18.0, 17.5), 3.5);
+            g.line(&[(15.0, 13.0), (16.2, 15.3)]);
+        }
         Icon::Elevation => {
             // An elevation direction marker, with the triangle above the circular head.
             g.closed(&[(7.0, 10.0), (12.0, 3.0), (17.0, 10.0)]);
@@ -818,6 +868,27 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(5.0, 5.0), (19.0, 5.0), (19.0, 19.0), (5.0, 19.0)]);
             for (x, y) in [(8.5, 8.5), (15.5, 8.5), (8.5, 15.5), (15.5, 15.5)] {
                 g.circle((x, y), 1.8);
+            }
+        }
+        Icon::Frame | Icon::Unframe => {
+            // A framed wall: a double top plate and a bottom plate with studs standing between them; Remove Framing keeps the
+            // first stud and a minus where the others stood.
+            g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 7.0), (3.0, 7.0)]);
+            g.closed(&[(3.0, 17.0), (21.0, 17.0), (21.0, 20.0), (3.0, 20.0)]);
+            if !compact {
+                g.line(&[(3.0, 5.5), (21.0, 5.5)]);
+            }
+            let studs: &[f32] = if matches!(icon, Icon::Unframe) { &[5.0] } else { &[5.0, 12.0, 19.0] };
+            for &x in studs {
+                if compact {
+                    g.line(&[(x, 7.0), (x, 17.0)]);
+                } else {
+                    g.line(&[(x - 1.0, 7.0), (x - 1.0, 17.0)]);
+                    g.line(&[(x + 1.0, 7.0), (x + 1.0, 17.0)]);
+                }
+            }
+            if matches!(icon, Icon::Unframe) {
+                g.line(&[(10.0, 12.0), (19.0, 12.0)]);
             }
         }
         Icon::Footing => {
@@ -1171,6 +1242,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(3.0, 17.0), (7.0, 17.0), (7.0, 21.0), (3.0, 21.0)]);
             g.closed(&[(17.0, 3.0), (21.0, 3.0), (21.0, 7.0), (17.0, 7.0)]);
         }
+        Icon::ReferenceLine => {
+            // A segment between round endpoints, crossed at its middle by the plane it carries: the family's Reference
+            // Line, told apart from Reference Plane's segment between square handles.
+            g.line(&[(6.4, 17.6), (17.6, 6.4)]);
+            g.circle((5.0, 19.0), 2.0);
+            g.circle((19.0, 5.0), 2.0);
+            g.line(&[(9.0, 9.0), (15.0, 15.0)]);
+        }
         Icon::Arc => {
             // A smooth curve joining two endpoint handles, with the midpoint indication omitted when small.
             g.closed(&[(3.0, 15.0), (7.0, 15.0), (7.0, 19.0), (3.0, 19.0)]);
@@ -1199,6 +1278,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(2.5, 20.0), (9.0, 4.0), (15.5, 20.0)]);
             g.line(&[(5.0, 14.5), (13.0, 14.5)]);
             g.line(&[(20.5, 4.0), (20.5, 20.0)]);
+        }
+        Icon::EditProfile => {
+            // A wall in elevation with a gable top, a hole in it, and a pencil on its edge.
+            g.closed(&[(3.0, 21.0), (3.0, 11.0), (10.0, 5.0), (17.0, 11.0), (17.0, 21.0)]);
+            g.closed(&[(7.0, 14.0), (11.0, 14.0), (11.0, 18.0), (7.0, 18.0)]);
+            g.line(&[(14.0, 9.0), (19.0, 4.0)]);
+            g.line(&[(16.0, 11.0), (21.0, 6.0)]);
+            g.line(&[(19.0, 4.0), (21.0, 6.0)]);
+            g.line(&[(14.0, 9.0), (13.0, 12.0), (16.0, 11.0)]);
+        }
+        Icon::ResetProfile => {
+            // The wall's rectangle again, and the arrow of an undo round its corner.
+            g.closed(&[(3.0, 21.0), (3.0, 9.0), (17.0, 9.0), (17.0, 21.0)]);
+            g.line(&[(11.0, 5.0), (16.0, 3.0), (21.0, 6.0), (21.0, 12.0)]);
+            g.line(&[(11.0, 5.0), (14.0, 2.5)]);
+            g.line(&[(11.0, 5.0), (14.5, 7.5)]);
         }
         Icon::Detach => {
             g.line(&[(3.0, 8.0), (12.0, 3.0), (21.0, 8.0)]);
@@ -1746,6 +1841,16 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
                 g.line(&[(11.0, 8.0), (8.0, 11.0)]);
             }
             g.line(&[(3.0, 20.0), (20.0, 20.0)]);
+        }
+        Icon::Halftone => {
+            // A square cut by its diagonal: one half bare, the other lightly hatched, as halftone lightens what it draws.
+            g.closed(&[(3.0, 3.0), (21.0, 3.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.line(&[(3.0, 21.0), (21.0, 3.0)]);
+            g.line(&[(12.0, 21.0), (21.0, 12.0)]);
+            if !compact {
+                g.line(&[(7.5, 21.0), (21.0, 7.5)]);
+                g.line(&[(16.5, 21.0), (21.0, 16.5)]);
+            }
         }
         Icon::LinePatterns => {
             // Three lines, dashed, dash-dot and dotted.

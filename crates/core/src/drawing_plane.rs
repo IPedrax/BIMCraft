@@ -2,7 +2,19 @@
 //! along its section line from its start; y is world height, never model northing.
 use crate::geom::{self, P2};
 use crate::ids::{Guid, Key};
-use crate::model::{Element, End, Face, Line, Model, Reference};
+use crate::model::{Element, End, Face, Line, Model, Reference, Section};
+
+/// The section line a vertical drawing is measured along: a detail's is its parent's, so its annotation keeps the parent's
+/// coordinates.
+fn section_plane(m: &Model, view: impl Key) -> Option<Section> {
+    match m.elements.get(view)? {
+        Element::DetailView(d) => match m.elements.get(d.parent)? {
+            Element::Section(v) | Element::Elevation(v) => Some(v.clone()),
+            _ => None,
+        },
+        _ => m.section_geometry(view),
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct DrawingPlane {
@@ -13,7 +25,7 @@ pub struct DrawingPlane {
 
 impl DrawingPlane {
     pub fn of(m: &Model, view: impl Key) -> Option<Self> {
-        if let Some(s) = m.section(view) {
+        if let Some(s) = section_plane(m, view) {
             let u = (s.end - s.start).unit();
             Some(Self { origin: [s.start.0, s.start.1, 0.0], right: [u.0, u.1, 0.0], up: [0.0, 0.0, 1.0] })
         } else {
@@ -40,7 +52,7 @@ impl DrawingPlane {
 /// A persistent semantic reference resolved in its owning drawing, for validation, dimensions
 /// and picking alike. No mesh edge is replaced by a plan reference or an invented endpoint.
 pub fn reference(m: &Model, view: Option<Guid>, r: &Reference) -> Result<Line, String> {
-    let Some((view, s)) = view.and_then(|v| m.section(v).map(|s| (v, s))) else { return m.reference_geometry(r) };
+    let Some((view, s)) = view.and_then(|v| section_plane(m, v).map(|s| (v, s))) else { return m.reference_geometry(r) };
     match m.elements.get(r.id) {
         Some(Element::DetailLine(l)) if m.same(l.view, view) => m.reference_geometry(r),
         Some(Element::Level(l)) if r.face == Face::Centre && r.point.is_none() => {
@@ -65,7 +77,7 @@ pub fn references(m: &Model, view: Guid, id: impl Key) -> Vec<(Reference, Line)>
     let id = m.guid(id);
     let mut refs = vec![Reference::line(id, Face::Centre)];
     if matches!(m.elements.get(id), Some(Element::DetailLine(_))) {
-        refs.extend([End::Start, End::End].map(|point| Reference { id, face: Face::Centre, point: Some(point) }));
+        refs.extend([End::Start, End::End].map(|point| Reference { id, face: Face::Centre, point: Some(point), link: None }));
     }
     refs.into_iter().filter_map(|r| Some((r, reference(m, Some(view), &r).ok()?))).collect()
 }

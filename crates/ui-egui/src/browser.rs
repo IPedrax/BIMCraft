@@ -63,9 +63,10 @@ impl Tab {
     }
 }
 
-/// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
-const SYSTEM_FAMILIES: [&str; 12] =
-    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing", "grid"];
+/// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks;
+/// and framing types, which a click opens in Type Properties (Frame is no tool to pick a type for).
+const SYSTEM_FAMILIES: [&str; 13] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing", "grid", "framing"];
 
 /// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,7 +114,7 @@ enum Act {
     Publisher,
     /// Expand All, or Collapse All.
     Fold(bool),
-    /// A curtain panel's or a mullion's type: Type Properties on it.
+    /// A type's Type Properties: a curtain panel's, a mullion's or a framing type's.
     EditType(&'static str, String),
     /// A type's Select All Instances submenu, followed by its chosen scope.
     Instances(serde_json::Value),
@@ -636,6 +637,36 @@ impl BimApp {
                 kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| leaf(*id, name)).collect()));
             }
         }
+        // Detail views, each under the view they are a fragment of, as Revit's callouts are.
+        let mut by_parent: std::collections::BTreeMap<Id, Vec<(Id, String)>> = std::collections::BTreeMap::new();
+        for id in m.rare("detail") {
+            let Some(Element::DetailView(v)) = m.elements.get(id) else { continue };
+            if let Some(parent) = m.elements.id(v.parent) {
+                by_parent.entry(parent).or_default().push((id, v.name.clone()));
+            }
+        }
+        if !by_parent.is_empty() {
+            let mut parents: Vec<(String, Vec<Node>)> = by_parent
+                .into_iter()
+                .map(|(parent, mut details)| {
+                    details.sort_by(|a, b| a.1.cmp(&b.1));
+                    let leaves = details
+                        .into_iter()
+                        .map(|(id, name)| {
+                            let sheet = if m.plan_level(id).is_some() { Sheet::Plan(id) } else { Sheet::Section(id) };
+                            self.view_leaf(&name, sheet).with_menu(vec![("Delete", Act::Delete(vec![id]))])
+                        })
+                        .collect();
+                    (m.view_name(parent).unwrap_or_default().to_string(), leaves)
+                })
+                .collect();
+            parents.sort_by(|a, b| a.0.cmp(&b.0));
+            kids.push(Node::group(
+                t("Callouts"),
+                true,
+                parents.into_iter().map(|(parent, leaves)| Node::group(&parent, true, leaves)).collect(),
+            ));
+        }
         Node::group(t("Views (all)"), true, kids)
     }
 
@@ -663,6 +694,15 @@ impl BimApp {
         if !panels.is_empty() {
             let leaves = panels.into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))).collect();
             kids.push(Node::group(t("Panel Schedules"), true, leaves));
+        }
+        // The detail drawings of reinforced members.
+        let details = self.rebar_details();
+        if !details.is_empty() {
+            let leaves = details
+                .into_iter()
+                .map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))]))
+                .collect();
+            kids.push(Node::group(t("Reinforcement Details"), true, leaves));
         }
         Node::group(t("Schedules/Quantities (all)"), true, kids)
     }
@@ -711,8 +751,9 @@ impl BimApp {
                 .iter()
                 .map(|ty| {
                     let on = self.types.get(category).is_some_and(|t| t == ty);
-                    Node::leaf(ty, Act::Pick(category, ty.to_string()), on)
-                        .with_menu(type_menu(serde_json::json!({"category": category, "type": ty})))
+                    let act =
+                        if *category == "framing" { Act::EditType(category, ty.to_string()) } else { Act::Pick(category, ty.to_string()) };
+                    Node::leaf(ty, act, on).with_menu(type_menu(serde_json::json!({"category": category, "type": ty})))
                 })
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))

@@ -77,19 +77,19 @@ fn facing(m: &Mark, project: Project, c: Pos2) -> Option<Vec2> {
     (v.length() > 1e-3).then(|| v.normalized())
 }
 
-/// Each of `marks` drawn: its symbol and its arrow, `selected` in `lit.0` and `hovered` in `lit.1`, thicker; the rest in the
-/// connectors' ink.
+/// Each of `marks` drawn: its symbol and its arrow, those `selected` in `lit.0` and `hovered` in `lit.1`, thicker; the rest
+/// in the connectors' ink.
 pub(crate) fn paint(
     painter: &Painter,
     marks: &[Mark],
     project: Project,
-    selected: Option<usize>,
+    selected: &[usize],
     hovered: Option<usize>,
     lit: (Color32, Color32),
 ) {
     for m in marks {
         let Some(c) = project(m.at) else { continue };
-        let (colour, width) = if Some(m.index) == selected {
+        let (colour, width) = if selected.contains(&m.index) {
             (lit.0, 2.5)
         } else if Some(m.index) == hovered {
             (lit.1, 2.5)
@@ -151,7 +151,7 @@ mod tests {
 
     /// A pipe connector facing +x at the origin and a power one 100 east, drawn with `selected` and `hovered`: each
     /// symbol's outline colour (the pipe's circle, the power's square) and whether an arrow was drawn.
-    fn drawn(selected: Option<usize>, hovered: Option<usize>) -> (Color32, Color32, bool) {
+    fn drawn(selected: &[usize], hovered: Option<usize>) -> (Color32, Color32, bool) {
         let marks = [
             Mark { index: 0, kind: ConnectorKind::Pipe, at: [0.0, 0.0, 0.0], direction: Some([1.0, 0.0, 0.0]) },
             Mark { index: 1, kind: ConnectorKind::Power, at: [100.0, 0.0, 0.0], direction: None },
@@ -178,9 +178,10 @@ mod tests {
 
     #[test]
     fn the_selected_connector_is_drawn_in_the_selections_colour_the_hovered_in_the_hovers_the_rest_in_ink() {
-        assert_eq!(drawn(None, None), (INK, INK, true), "a pipe's circle with its arrow, a power connector's square");
-        assert_eq!(drawn(Some(0), Some(1)), (SELECTED, HOVERED, true));
-        assert_eq!(drawn(Some(1), None), (INK, SELECTED, true));
+        assert_eq!(drawn(&[], None), (INK, INK, true), "a pipe's circle with its arrow, a power connector's square");
+        assert_eq!(drawn(&[0], Some(1)), (SELECTED, HOVERED, true));
+        assert_eq!(drawn(&[1], None), (INK, SELECTED, true));
+        assert_eq!(drawn(&[0, 1], None), (SELECTED, SELECTED, true), "each of several selected (FE-1)");
     }
 
     #[test]

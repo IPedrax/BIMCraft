@@ -131,3 +131,20 @@ impl BimApp {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::summary;
+    use crate::lang::tf;
+    use serde_json::json;
+
+    #[test]
+    fn a_single_warning_is_said() {
+        // One warning is said as any number of them is; none, not at all.
+        let said = |n: usize| tf("The project would then have {} warnings.", &[&n.to_string()]);
+        let one = summary(&json!({"made": [], "changed": [], "removed": [], "warnings": ["a wall overlaps another"]}));
+        assert!(one.contains(&said(1)), "{one}");
+        let none = summary(&json!({"made": [], "changed": [], "removed": [], "warnings": []}));
+        assert!(!none.contains(&said(0)), "{none}");
+    }
+}

@@ -182,8 +182,7 @@ impl BimApp {
             let effective = |i: &usize| edit.slopes.get(*i).copied().filter(|s| *s > 0.0).unwrap_or(edit.default);
             let first = edit.picked.first().map(effective).unwrap_or(edit.default);
             let mixed = edit.picked.iter().any(|i| (effective(i) - first).abs() > 1e-9);
-            let current =
-                if mixed { t("Varies").to_string() } else { format!("{first:.6}").trim_end_matches('0').trim_end_matches('.').to_string() };
+            let current = if mixed { t("Varies").to_string() } else { crate::properties::roof_pitch_text(first) };
             let mut typed = None;
             egui::Grid::new(("roof-edge-pitch", &edit.picked)).num_columns(2).show(ui, |ui| {
                 let label = ui.label(t("Selected pitch"));

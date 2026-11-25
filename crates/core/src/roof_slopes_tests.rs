@@ -459,3 +459,56 @@ fn a_sketch_line_gives_its_edges_a_slope_and_none_of_it_is_kept_in_the_roofs_ske
     let e = fails(&mut s, "floor", json!({"sketch": lines}));
     assert!(e.contains("slope") && e.contains("roof"), "{e}");
 }
+
+#[test]
+fn a_roof_whose_faces_cannot_be_found_says_its_area_is_unknown() {
+    let mut s = Session::new();
+    let id = run(&mut s, "roof", json!({"boundary": rect()}))["id"].as_u64().unwrap();
+    let mut m = (*s.model).clone();
+    let Some(Element::Roof(r)) = m.elements.get_mut(id) else { panic!("no roof {id}") };
+    r.gables = vec![99];
+    let warnings = m.warnings();
+    assert!(warnings.iter().any(|w| w.contains(&format!("roof {id}")) && w.contains("faces")), "{warnings:?}");
+    assert!(m.quantities(id).is_none(), "no area is known");
+}
+
+#[test]
+fn independent_pitches_keep_net_surface_and_plan_quantities_distinct_through_history_and_reopen() {
+    let mut s = Session::new();
+    let pitch = 0.5_f64.atan().to_degrees();
+    let id = run(
+        &mut s,
+        "roof",
+        json!({"boundary": rect(), "slope": pitch, "slopes": [0, 0, 45, 0], "gables": [1, 3], "overhang": 0,
+            "openings": [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000]]]}),
+    )["id"]
+        .as_u64()
+        .unwrap();
+    let check = |s: &mut Session, rise: f64| {
+        // The ridge divides the 6 m span where the two heights meet. The 1 m² skylight is on the south plane.
+        let south_run = 6.0 / (1.0 + rise);
+        let south_factor = (1.0 + rise * rise).sqrt();
+        let surface = 8.0 * (south_run * south_factor + (6.0 - south_run) * 2.0_f64.sqrt()) - south_factor;
+        let q = s.model.quantities(id).unwrap();
+        assert!(near(q.plan.unwrap() / 1e6, 47.0));
+        assert!(near(q.areas.net / 1e6, surface));
+        assert!(near(q.areas.openings / 1e6, south_factor));
+        let e = run(s, "elements", json!({"category": "roof"}));
+        let e = e["elements"].as_array().unwrap().iter().find(|e| e["id"] == id).unwrap();
+        assert_eq!(e["plan_area_m2"], json!(47.0));
+        assert_eq!(e["area_m2"], json!((surface * 100.0).round() / 100.0));
+        assert_eq!(e["openings_area_m2"], json!((south_factor * 100.0).round() / 100.0));
+    };
+    check(&mut s, 0.5);
+    run(&mut s, "modify", json!({"id": id, "slopes": [(2.0_f64 / 3.0).atan().to_degrees(), 0, 45, 0]}));
+    check(&mut s, 2.0 / 3.0);
+    run(&mut s, "undo", json!({}));
+    check(&mut s, 0.5);
+    run(&mut s, "redo", json!({}));
+    check(&mut s, 2.0 / 3.0);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("independent-pitches.bimcraft");
+    run(&mut s, "save", json!({"path": path}));
+    run(&mut s, "open", json!({"path": path}));
+    check(&mut s, 2.0 / 3.0);
+}

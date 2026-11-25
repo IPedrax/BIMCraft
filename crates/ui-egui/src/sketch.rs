@@ -38,8 +38,15 @@ pub enum Of {
     Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
     Edit(Id),
+    /// A wall's shape in elevation (Edit Profile), sketched on its face in a section, an elevation or the 3D view: its points
+    /// `[along, up]` from its start at its base.
+    Profile(Id),
     /// An existing extrusion roof's open profile, in its upright reference plane.
     RoofProfile(Id),
+    /// A new ramp on the level, sketched: its sides, and its run lines.
+    Ramp(Id),
+    /// A sketched ramp's sketch, redrawn.
+    RampEdit(Id),
     /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
     /// `edit`, one it has already, redrawn.
     Form { revolve: bool, void: bool, edit: bool },
@@ -124,6 +131,8 @@ pub struct Sketch {
     pub region: (String, Option<String>),
     /// A region's sketch: each line drawn takes the Options Bar's line style.
     pub styled: bool,
+    /// A ramp's sketch drawing its run lines (its start, its end, a landing's ends), not its sides.
+    pub run: bool,
     /// The plan it began in: the sketch belongs to it, and Finish Edit Mode makes its element there.
     pub plan: Sheet,
     /// The work plane a new one begun in the 3D view lies on (`workplane.rs`): what it makes stands on the level below it.
@@ -145,6 +154,9 @@ const UNDO: usize = 100;
 /// Sketch lines in the plan: Revit's magenta.
 const SKETCH: Color32 = Color32::from_rgb(0xC0, 0x26, 0xD3);
 
+/// A ramp's run lines in the plan: grey, as Revit's riser lines are black.
+const RUN_LINE: Color32 = Color32::from_rgb(0x70, 0x70, 0x70);
+
 /// How near a grip a press takes it, px.
 const GRIP: f32 = 8.0;
 
@@ -156,9 +168,12 @@ impl Sketch {
             Of::Ceiling(_) => msg!("Create Ceiling Boundary"),
             Of::Roof(_) => "Create Roof Footprint",
             Of::Shaft(_) => msg!("Create Shaft Opening Sketch"),
+            Of::Ramp(_) => msg!("Create Ramp Sketch"),
+            Of::RampEdit(_) => msg!("Edit Ramp Sketch"),
             Of::Region { masking: false, .. } => msg!("Create Filled Region Boundary"),
             Of::Region { masking: true, .. } => msg!("Create Masking Region Boundary"),
             Of::Edit(_) => "Edit Boundary",
+            Of::Profile(_) => msg!("Modify | Walls > Edit Profile"),
             Of::RoofProfile(_) => msg!("Edit Profile"),
             Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
             Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
@@ -183,6 +198,7 @@ impl Sketch {
             outlines: Vec::new(),
             region: (String::new(), None),
             styled: false,
+            run: false,
             plan: Sheet::View3D,
             surface: None,
             history: Vec::new(),
@@ -262,6 +278,9 @@ impl Sketch {
         if self.styled {
             l.invisible = self.region.1.is_none();
             l.style = self.region.1.clone();
+        }
+        if matches!(self.of, Of::Ramp(_) | Of::RampEdit(_)) {
+            l.style = self.run.then(|| bimcraft_core::model::RAMP_RUN.to_string());
         }
         if l.curve.check("").is_ok() {
             self.lines.push(l);
@@ -467,6 +486,7 @@ impl Sketch {
                 () if self.picked.contains(&i) || lit.contains(&i) => (3.0, canvas_pal().accent),
                 () if hovered == Some(i) => (3.0, canvas_pal().hover),
                 () if self.wrong.contains(&i) => (3.0, canvas_pal().error),
+                () if l.style.as_deref() == Some(bimcraft_core::model::RAMP_RUN) => (2.0, RUN_LINE),
                 () => (2.0, SKETCH),
             };
             let shown = match (self.drag, cursor) {
@@ -635,6 +655,7 @@ impl BimApp {
             outlines: Vec::new(),
             region,
             styled,
+            run: false,
             plan,
             surface: None,
             history: Vec::new(),
@@ -733,6 +754,43 @@ impl BimApp {
             return;
         }
         let Some(sk) = &mut self.sketch else { return };
+        // A ramp's sketch: its sides and its run lines, which the core lays as flights and landings or says what's wrong.
+        if let Of::Ramp(_) | Of::RampEdit(_) = sk.of {
+            let lines = json!(sk.lines.iter().map(sent).collect::<Vec<_>>());
+            let (cmd, p) = match sk.of {
+                Of::Ramp(level) => {
+                    let m = &self.session.model;
+                    let mut p = self.typed("ramp", json!({"level": level, "sketch": lines, "railings": self.railings}));
+                    if let Ok(top) = crate::top_params(m, level, self.ramp_top, &self.ramp_height) {
+                        p["top_level"] = top["top_level"].clone();
+                        p["height"] = top["height"].clone();
+                        if p["top_level"].is_null() {
+                            p.as_object_mut().map(|o| o.remove("top_level"));
+                        }
+                        if p["height"].is_null() {
+                            p.as_object_mut().map(|o| o.remove("height"));
+                        }
+                    }
+                    if let Some(w) = m.units.parse(&self.ramp_width) {
+                        p["width"] = json!(w);
+                    }
+                    ("ramp", p)
+                }
+                Of::RampEdit(id) => ("modify", json!({"id": id, "sketch": lines})),
+                _ => return,
+            };
+            if let Some(made) = self.run(cmd, p) {
+                let id = match sk_of(&self.sketch) {
+                    Some(Of::RampEdit(id)) => Some(id),
+                    _ => made["id"].as_u64(),
+                };
+                self.sketch = None;
+                self.tool = Tool::Modify;
+                self.forget_picks();
+                self.selection = id.into_iter().collect();
+            }
+            return;
+        }
         if let Of::RoofProfile(id) = sk.of {
             let profile = match solver::extrusion_profile(&sk.lines) {
                 Ok(profile) => profile,
@@ -809,8 +867,24 @@ impl BimApp {
                 ("filled_region", json!({"view": view, "sketch": lines, "type": sk.region.0, "line_style": sk.region.1}))
             }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
+            // Its outline and holes as the wall's profile; the wall's own rectangle, none.
+            Of::Profile(id) => {
+                let Ok(region) = solver::solve_one(&sk.lines) else { return };
+                let loops: Vec<Vec<P2>> = std::iter::once(region.outer).chain(region.holes).collect();
+                let plain = m.wall(id).is_some_and(|w| {
+                    let length = w.start.dist(w.end);
+                    let height = m.top_z(w) - m.base_z(w);
+                    w.profile.is_empty() && loops.len() == 1 && same_ring(&loops[0], &crate::profile::rectangle(length, height))
+                });
+                ("modify", json!({"id": id, "profile": if plain { json!([]) } else { json!(loops) }}))
+            }
             // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
-            Of::Form { .. } | Of::RoofProfile(_) => return,
+            Of::Form { .. } | Of::RoofProfile(_) | Of::Ramp(_) | Of::RampEdit(_) => return,
+        };
+        // Edit Profile's wall stays selected.
+        let profiled = match self.sketch.as_ref().map(|sk| sk.of) {
+            Some(Of::Profile(wall)) => Some(wall),
+            _ => None,
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
         if let Some(made) = self.run(id, p) {
@@ -818,7 +892,7 @@ impl BimApp {
             self.tool = Tool::Modify;
             // The lines picked for a fillet were the sketch's: their places mean nothing in the next one.
             self.forget_picks();
-            self.selection = made["id"].as_u64().into_iter().collect();
+            self.selection = profiled.or_else(|| made["id"].as_u64()).into_iter().collect();
         }
     }
 
@@ -1132,7 +1206,7 @@ impl BimApp {
         let Some(sk) = &mut self.sketch else { return true };
         match drag {
             Drag::Grip(from) => sk.move_end(from, to),
-            Drag::Box(from) if (from.0 - at.0).abs().max((from.1 - at.1).abs()) < 6.0 => {
+            Drag::Box(from) if (from.0 - at.0).abs().max((from.1 - at.1).abs()) < crate::canvas::STILL => {
                 let reach = f64::from(crate::canvas::PICK) / view.scale;
                 let hit = sk.line_at(view.mm(from), reach);
                 if !(mods.shift || mods.command || mods.ctrl) {
@@ -1207,6 +1281,26 @@ impl BimApp {
     /// The contextual tab's Draw panel while sketching: every shape, and Pick Walls.
     pub(crate) fn sketch_draw(&mut self, ui: &mut Ui) {
         self.draw_panel(ui, draw::Target::Sketch);
+    }
+
+    /// A ramp's sketch: whether the lines drawn next are its sides (Boundary) or its run lines (Run).
+    pub(crate) fn ramp_sketch_panel(&mut self, ui: &mut Ui) {
+        let Some(sk) = &mut self.sketch else { return };
+        if !matches!(sk.of, Of::Ramp(_) | Of::RampEdit(_)) {
+            return;
+        }
+        panel(ui, msg!("Ramp Lines"), |ui| {
+            let tip = msg!("Boundary: the lines drawn next are the ramp's two sides, each from its start line to its end line");
+            if big_button(ui, Icon::Line, "Boundary", !sk.run, tip).clicked() {
+                sk.run = false;
+            }
+            let tip = msg!(
+                "Run: the lines drawn next go across the ramp: the first is its start, the second its end, and each two more the ends of a landing"
+            );
+            if big_button(ui, Icon::Ramp, "Run", sk.run, tip).clicked() {
+                sk.run = true;
+            }
+        });
     }
 
     /// Editing tools must remain available in the sketch's contextual ribbon.
@@ -1659,7 +1753,16 @@ impl BimApp {
     }
 }
 
+fn sk_of(sk: &Option<Sketch>) -> Option<Of> {
+    sk.as_ref().map(|s| s.of)
+}
+
 /// A line as Finish sends it: its curve's fields, and its id when it kept one, so it keeps it.
+/// Whether two rings go round the same points, from wherever and whichever way.
+fn same_ring(a: &[P2], b: &[P2]) -> bool {
+    a.len() == b.len() && a.iter().all(|p| b.iter().any(|q| p.dist(*q) < 1e-6))
+}
+
 fn sent(l: &SketchLine) -> serde_json::Value {
     let mut v = serde_json::to_value(bimcraft_core::curves::Fields::of(&l.curve)).unwrap_or_default();
     if l.id != 0 {
@@ -1681,13 +1784,18 @@ fn sent(l: &SketchLine) -> serde_json::Value {
 }
 
 impl BimApp {
-    /// A small palette over the view at the middle of the sketch line picked alone, in Modify: what can be done to it, each button
+    /// A small palette over a plan at the middle of the sketch line picked alone, in Modify: what can be done to it, each button
     /// starting its tool as the panels' do (Add Vertex, which no panel offers while sketching, Split, Offset, Trim/Extend).
     pub(crate) fn edge_palette(&mut self, ctx: &egui::Context) {
         if !matches!(self.tool, Tool::Modify) {
             return;
         }
         let Some(sk) = &self.sketch else { return };
+        // Only over a plan: Edit Profile and a sketch on the 3D view's work plane have the same tools on the ribbon, and their
+        // lines aren't in a plan's axes.
+        if matches!(sk.of, crate::sketch::Of::Profile(_)) || self.sketch_face_in(sk.plan).is_some() {
+            return;
+        }
         let picked: Vec<usize> = sk.picked.iter().copied().collect();
         let [i] = picked[..] else { return };
         let Some(line) = sk.lines.get(i) else { return };

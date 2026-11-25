@@ -23,12 +23,14 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
-    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Grid, Id, Key, Layer, LeaderKind, Model,
-    Note, Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Grid, Id, Key, Layer, LeaderKind,
+    Material, Model, Note, Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
+use crate::texture::Sampler;
 use crate::units::Units;
+use crate::view_range::Zone;
 use crate::view3d::{self, Camera, Clip, Image, Scene};
 pub use crate::view3d::{FragmentStats, SectionCache};
 use crate::walls::{self, Axis};
@@ -49,8 +51,10 @@ pub const PAPER: Rgb = Rgb(255, 255, 255);
 pub const POCHE: Rgb = Rgb(168, 168, 168);
 /// A cut compound wall's layers that aren't its structure: lighter.
 pub const LIGHT_POCHE: Rgb = Rgb(212, 212, 212);
-const INK: Rgb = Rgb(25, 25, 25);
-const FAINT: Rgb = Rgb(120, 120, 120);
+pub(crate) const INK: Rgb = Rgb(25, 25, 25);
+pub(crate) const FAINT: Rgb = Rgb(120, 120, 120);
+/// How far apart a pattern's lines are in a [`Swatch`], px.
+const SWATCH_GAP: f64 = 6.0;
 /// A reference plane's line in plan.
 pub(crate) const REFERENCE_PLANE: Rgb = Rgb(70, 140, 90);
 /// A mass's outline, dashed.
@@ -70,6 +74,9 @@ pub enum Part {
     Pattern,
     /// Stroke-like pattern graphics: filled dots and font outlines take line colour overrides.
     LinePattern,
+    /// What a placed image or PDF draws: its fills by the non-zero rule (a letter's counters and a frame's opening stay open),
+    /// and kept in their own colours when it is selected or hovered, which a front end shows over the whole of it.
+    Picture,
 }
 
 impl Part {
@@ -89,6 +96,15 @@ impl Drawing {
 
 #[derive(Clone)]
 pub enum Prim {
+    /// Notes and title-block lettering: layout in paper mm, placement in pixels, and the exact paint it replaces.
+    /// The fallback contains only fills and lines, already placed, in their original paint order.
+    /// Cropping may leave only a subset of the layout; a text exporter must clip characters itself.
+    /// After `Look::dress`, fallback fills take the override fill colour and lines take its color.
+    Text {
+        frame: NoteFrame,
+        layout: std::sync::Arc<crate::text::Layout>,
+        fallback: Vec<Prim>,
+    },
     Fill {
         rings: Vec<Vec<(f32, f32)>>,
         color: Rgb,
@@ -113,9 +129,33 @@ pub enum Prim {
 }
 
 impl Prim {
+    /// Existing painters use these primitives, in order; lettering keeps its exact fallback paint.
+    pub fn paint(&self) -> &[Prim] {
+        match self {
+            Prim::Text { fallback, .. } => fallback,
+            _ => std::slice::from_ref(self),
+        }
+    }
+    pub(crate) fn paint_mut(&mut self) -> &mut [Prim] {
+        match self {
+            Prim::Text { fallback, .. } => fallback,
+            _ => std::slice::from_mut(self),
+        }
+    }
+
+    fn restyled(&self, f: &impl Fn(&Prim) -> Prim) -> Prim {
+        match self {
+            Prim::Text { frame, layout, fallback } => {
+                Prim::Text { frame: *frame, layout: layout.clone(), fallback: fallback.iter().map(f).collect() }
+            }
+            _ => f(self),
+        }
+    }
+
     /// Its points, px: a fill's rings', a line's, a picture's corners.
     pub fn points(&self) -> Vec<(f32, f32)> {
         match self {
+            Prim::Text { fallback, .. } => fallback.iter().flat_map(Prim::points).collect(),
             Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
             Prim::Line { pts, .. } => pts.clone(),
             Prim::Image { at, width, height, .. } => Prim::corners(*at, *width, *height),
@@ -126,6 +166,10 @@ impl Prim {
     pub(crate) fn moved(self, dx: f32, dy: f32) -> Prim {
         let mv = |pts: Vec<(f32, f32)>| pts.into_iter().map(|(x, y)| (x + dx, y + dy)).collect();
         match self {
+            Prim::Text { mut frame, layout, fallback } => {
+                frame.at = (frame.at.0 + dx, frame.at.1 + dy);
+                Prim::Text { frame, layout, fallback: fallback.into_iter().map(|p| p.moved(dx, dy)).collect() }
+            }
             Prim::Fill { rings, color } => Prim::Fill { rings: rings.into_iter().map(mv).collect(), color },
             Prim::Line { pts, width, color, dash, closed } => Prim::Line { pts: mv(pts), width, color, dash, closed },
             Prim::Image { at, width, height, rgba, ink } => Prim::Image { at: (at.0 + dx, at.1 + dy), width, height, rgba, ink },
@@ -144,6 +188,10 @@ impl Prim {
         let mm = |p: (f32, f32)| P2(f64::from(p.0), f64::from(p.1));
         let px = |p: P2| (p.0 as f32, p.1 as f32);
         match self {
+            Prim::Text { frame, layout, fallback } => {
+                let fallback: Vec<_> = fallback.into_iter().flat_map(|p| p.cropped(lo, hi)).collect();
+                if fallback.is_empty() { Vec::new() } else { vec![Prim::Text { frame, layout, fallback }] }
+            }
             Prim::Fill { rings, color } => {
                 let rings: Vec<Vec<(f32, f32)>> = rings.iter().map(|r| clip_ring(r, lo, hi)).filter(|r| r.len() >= 3).collect();
                 if rings.is_empty() { Vec::new() } else { vec![Prim::Fill { rings, color }] }
@@ -276,14 +324,21 @@ pub struct Drawing {
     pattern_styles: std::collections::BTreeMap<Id, [crate::graphics::Style; 2]>,
     /// What a pick takes before anything under it: Site's points, which stand on walls' corners and the like.
     pub(crate) on_top: Vec<Id>,
+    /// The pixels its image fills cover so far, held to [`MAX_IMAGE_FILL`].
+    pictured: usize,
 }
 
 impl Drawing {
+    /// Paint primitives in drawing order, paired with their top-level index for ownership and style.
+    pub fn paint_prims(&self) -> impl DoubleEndedIterator<Item = (usize, &Prim)> {
+        self.prims.iter().enumerate().flat_map(|(i, p)| p.paint().iter().map(move |p| (i, p)))
+    }
+
     /// A copy through the same view, each primitive as `f` makes it, its owners, parts and pens kept: how it prints in other
-    /// colours or other lines.
+    /// colours or other lines. For lettering, `f` sees its fallback paint; placement and layout are kept.
     pub fn restyled(&self, f: impl Fn(&Prim) -> Prim) -> Drawing {
         let mut d = Drawing::new(self.view);
-        d.prims = self.prims.iter().map(f).collect();
+        d.prims = self.prims.iter().map(|p| p.restyled(&f)).collect();
         d.owners = self.owners.clone();
         d.parts = self.parts.clone();
         d.pens = self.pens.clone();
@@ -311,6 +366,7 @@ impl Drawing {
             detail: Detail::Fine,
             pattern_styles: std::collections::BTreeMap::new(),
             on_top: Vec::new(),
+            pictured: 0,
         }
     }
     /// Finish the model layer before view-specific regions and annotation are drawn.
@@ -434,6 +490,24 @@ impl Drawing {
             self.subs.push(sub);
         }
     }
+    /// Every line and fill of the elements in `ids` lightened toward the paper as `fade` says: a plan's underlay.
+    fn fade_owned(&mut self, ids: &std::collections::BTreeSet<Id>, fade: crate::graphics::Fade) {
+        if ids.is_empty() {
+            return;
+        }
+        for (prim, owner) in self.prims.iter_mut().zip(&self.owners) {
+            if !owner.is_some_and(|o| ids.contains(&o)) {
+                continue;
+            }
+            for p in prim.paint_mut() {
+                match p {
+                    Prim::Line { color, .. } | Prim::Fill { color, .. } => *color = fade.apply(*color),
+                    Prim::Image { .. } | Prim::Text { .. } => {}
+                }
+            }
+        }
+    }
+
     /// The solid fills of a surface pushed since `from` (a floor's pattern or its background, filled), first, in the order they
     /// were drawn in: under all else pushed since, so a room's colour lies over them and under their lines.
     fn solid_fills_under(&mut self, from: usize) {
@@ -523,10 +597,16 @@ impl Drawing {
         let k = self.k;
         let at = |p: &mut (f32, f32)| *p = (about.0 + (p.0 - about.0) * k, about.1 + (p.1 - about.1) * k);
         for prim in self.prims.iter_mut().skip(from).filter(|_| k != 1.0) {
-            match prim {
-                Prim::Fill { rings, .. } => rings.iter_mut().flatten().for_each(at),
-                Prim::Line { pts, .. } => pts.iter_mut().for_each(at),
-                Prim::Image { .. } => {}
+            if let Prim::Text { frame, .. } = prim {
+                at(&mut frame.at);
+                frame.k *= k;
+            }
+            for p in prim.paint_mut() {
+                match p {
+                    Prim::Fill { rings, .. } => rings.iter_mut().flatten().for_each(at),
+                    Prim::Line { pts, .. } => pts.iter_mut().for_each(at),
+                    _ => {}
+                }
             }
         }
     }
@@ -557,12 +637,17 @@ impl Drawing {
     /// on screen (y runs down).
     pub(crate) fn text_turned(&mut self, text: &str, (x, y): (f32, f32), height: f32, angle: f32, color: Rgb) {
         // Only this lettering path substitutes '?' directly. Notes have their own font fallback.
+        let mut shown: String = text.chars().take(40).collect();
+        if shown.chars().count() < text.chars().count() {
+            shown.push('…');
+        }
         for ch in text.chars() {
             if self.notes.len() >= 32 {
                 break;
             }
             if !font::has(ch) {
-                let note = format!("Drawing lettering has no glyph for U+{:04X}; drawn as a question mark (?)", ch as u32);
+                let note =
+                    format!("Drawing lettering has no glyph for «{ch}» (U+{:04X}) in «{shown}»; drawn as a question mark (?)", ch as u32);
                 if !self.notes.contains(&note) {
                     self.notes.push(note);
                 }
@@ -588,6 +673,16 @@ impl Drawing {
     /// Every element drawn within `tol` px of `at`, in the order [`Drawing::pick`] prefers them:
     /// what Tab cycles through.
     pub fn pick_all(&self, at: (f32, f32), tol: f32) -> Vec<Id> {
+        self.pick_all_of(at, tol, false)
+    }
+
+    /// [`Drawing::pick_all`] with what links build too, by the ids the views give them: what a dimension may measure to, as
+    /// Revit's measure into a link (`Reference::link`). Nothing else picks them.
+    pub fn pick_all_measured(&self, at: (f32, f32), tol: f32) -> Vec<Id> {
+        self.pick_all_of(at, tol, true)
+    }
+
+    fn pick_all_of(&self, at: (f32, f32), tol: f32, linked: bool) -> Vec<Id> {
         let p = P2(f64::from(at.0), f64::from(at.1));
         let ring = |pts: &[(f32, f32)]| -> Vec<P2> { pts.iter().map(|&(x, y)| P2(f64::from(x), f64::from(y))).collect() };
         let edges = |pts: &[P2], closed: bool| {
@@ -603,9 +698,11 @@ impl Drawing {
         };
         // Each element's nearest primitive: its distance, and how late it's drawn.
         let mut near: std::collections::BTreeMap<Id, (f64, usize)> = std::collections::BTreeMap::new();
-        for (order, (prim, owner)) in self.prims.iter().zip(&self.owners).enumerate() {
-            // What a link builds is drawn and snapped to, never picked.
-            let Some(id) = owner.filter(|id| !crate::link::is_linked(*id)) else { continue };
+        for (order, prim) in self.paint_prims() {
+            let owner = self.owners.get(order).copied().flatten();
+            // What a link builds is drawn and snapped to, never picked, but by a dimension; the fills that union it are no
+            // element's.
+            let Some(id) = owner.filter(|id| *id != crate::link::UNION && (linked || !crate::link::is_linked(*id))) else { continue };
             let d = match prim {
                 Prim::Fill { rings, .. } => {
                     let rings: Vec<Vec<P2>> = rings.iter().map(|r| ring(r)).collect();
@@ -617,6 +714,7 @@ impl Drawing {
                 }
                 Prim::Line { pts, width, closed, .. } => (edges(&ring(pts), *closed) - f64::from(*width) / 2.0).max(0.0),
                 Prim::Image { at, width, height, rgba, .. } => drawn_near(p, (*at, *width, *height), rgba, tol),
+                Prim::Text { .. } => continue,
             };
             if d <= f64::from(tol) && near.get(&id).is_none_or(|&(b, _)| d <= b) {
                 near.insert(id, (d, order));
@@ -635,7 +733,8 @@ impl Drawing {
         let inside = |q: &(f32, f32)| (lo.0..=hi.0).contains(&q.0) && (lo.1..=hi.1).contains(&q.1);
         // Each element: whether all of it is inside, and whether any of it is.
         let mut seen: std::collections::BTreeMap<Id, (bool, bool)> = std::collections::BTreeMap::new();
-        for (prim, owner) in self.prims.iter().zip(&self.owners) {
+        for (i, prim) in self.paint_prims() {
+            let owner = self.owners.get(i).copied().flatten();
             let Some(id) = owner.filter(|id| !crate::link::is_linked(*id)) else { continue };
             let corners;
             let (rings, closed): (Vec<&[(f32, f32)]>, bool) = match prim {
@@ -645,6 +744,7 @@ impl Drawing {
                     (vec![corners.as_slice()], true)
                 }
                 Prim::Line { pts, closed, .. } => (vec![pts.as_slice()], *closed),
+                Prim::Text { .. } => continue,
             };
             let all = rings.iter().all(|r| r.iter().all(inside));
             let any = rings.iter().any(|r| {
@@ -691,11 +791,17 @@ fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, ind
     elements
         .iter()
         .filter(|(id, _)| look.shows(*id))
-        .filter_map(|&(id, e)| match e {
+        .flat_map(|&(id, e)| match e {
             // A curtain wall is drawn part by part: nothing fills it as a whole.
-            Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => None,
-            Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, index))),
-            _ => stands(m, id, e, index).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
+            Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => Vec::new(),
+            // Its outline at the cut plane: its ends as what it joins there has them, a slanted one where it has leant to, an
+            // edited profile's only where that reaches the plane.
+            Element::Wall(w) if m.spans(w, z) => walls::plan_cut(m, id, index, z).into_iter().map(|o| (id, o)).collect(),
+            _ => stands(m, id, e, index)
+                .filter(|(_, bottom, top)| *bottom <= z && z < *top)
+                .map(|(outline, ..)| (id, outline))
+                .into_iter()
+                .collect(),
         })
         .collect()
 }
@@ -873,7 +979,9 @@ fn plan_filter<'a>(
             Element::Component(c) => {
                 let (bottom, top) = components.heights_of(c);
                 // Its plan symbols are annotation of its level, whatever height its forms reach.
-                bottom < r.cut && top > r.depth || c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
+                bottom < r.cut && top > r.depth
+                    || over_cut(m, e, r, bottom)
+                    || c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
             }
             Element::Room(x) => x.level == level,
             Element::RoomSeparator(x) => x.level == level,
@@ -939,16 +1047,44 @@ fn curtains_in_plan<'a>(m: &'a Model, range: &PlanRange, shown: impl Fn(Id) -> b
 /// cut plane passes through filled and inked, and the panels it passes through thin (at coarse detail, a line down their middle).
 fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, range: &PlanRange, seen: bool) {
     use crate::curtain::{self, PartKind};
-    let (id, w, l) = (wall.0, wall.1, &wall.2);
-    let (axis, plane, cut) = (walls::Axis::of(w), curtain::grid_plane(m, w), range.cut - m.own_base(w));
+    let (id, l) = (wall.0, &wall.2);
+    // Its parts stand on its grid's surface: a curved wall's chords, a slanted wall's slope.
+    let f = &l.surface;
+    // A part's corners in the model, `[along, across, up]` from its centre in its own axes.
+    let corners = |p: &curtain::Part, size: [f64; 3]| -> [[f64; 3]; 8] {
+        let [along, up, across] = p.centre;
+        let [da, dz, dc] = size.map(|x| x / 2.0);
+        let (ax, o) = (f.axes(along, p.turn), f.at(along, up, across));
+        let at = |x: f64, y: f64, z: f64| std::array::from_fn(|k| o[k] + ax[0][k] * x + ax[1][k] * y + ax[2][k] * z);
+        [
+            at(-da, -dc, -dz),
+            at(da, -dc, -dz),
+            at(da, dc, -dz),
+            at(-da, dc, -dz),
+            at(-da, -dc, dz),
+            at(da, -dc, dz),
+            at(da, dc, dz),
+            at(-da, dc, dz),
+        ]
+    };
+    // How high a part reaches in the model, from its lowest corner to its highest.
+    let span = |p: &curtain::Part, size: [f64; 3]| {
+        corners(p, size).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), c| (lo.min(c[2]), hi.max(c[2])))
+    };
     let ring = |p: &curtain::Part, s: &curtain::Shape| -> Vec<P2> {
-        if p.turn != 0.0 || s.plan.is_some() {
-            return p.corners(s).iter().map(|q| axis.at(q[0], plane + q[1])).collect();
+        if s.plan.is_some() {
+            return p.corners(s).iter().map(|q| f.at(q[0], 0.0, q[1])).map(|c| P2(c[0], c[1])).collect();
         }
-        let [along, _, across] = p.centre;
-        let [da, _, dc] = s.size.map(|x| x / 2.0);
-        let c = plane + across;
-        vec![axis.at(along - da, c - dc), axis.at(along + da, c - dc), axis.at(along + da, c + dc), axis.at(along - da, c + dc)]
+        let c = corners(p, s.size);
+        if f.leans() {
+            // Tilted: where the cut plane passes through it, or seen below the plane, its middle.
+            let (lo, hi) = span(p, s.size);
+            let z = if lo <= range.cut && range.cut < hi { range.cut } else { (lo + hi) / 2.0 };
+            let faces: [[usize; 4]; 6] = [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]];
+            let tris: Vec<[[f64; 3]; 3]> = faces.iter().flat_map(|q| [[c[q[0]], c[q[1]], c[q[2]]], [c[q[0]], c[q[2]], c[q[3]]]]).collect();
+            return view3d::level_slice(&tris, z).into_iter().max_by_key(Vec::len).unwrap_or_default();
+        }
+        c[..4].iter().map(|q| P2(q[0], q[1])).collect()
     };
     let coarse = d.detail == Detail::Coarse;
     let style = |kind: PartKind| m.object_style(crate::graphics::part_row(kind));
@@ -957,7 +1093,7 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         let row = look.part(kind);
         let (own, pen) = if cut { (&row.cut, style(kind).cut) } else { (&row.projection, style(kind).projection) };
         let color = own.color.map_or(INK, |[r, g, b]| Rgb(r, g, b));
-        d.line(pts, own.weight.unwrap_or(pen), if row.halftone { crate::graphics::halftoned(color) } else { color }, closed);
+        d.line(pts, own.weight.unwrap_or(pen), if row.halftone { look.fade().apply(color) } else { color }, closed);
         let paper = d.paper();
         if let (Some(k), Some(Prim::Line { dash, .. })) = (own.dash, d.prims.last_mut()) {
             *dash = k.pattern(paper);
@@ -970,7 +1106,8 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         for piece in l.pieces() {
             let Some(p) = l.parts.get(piece.first) else { continue };
             let Some(s) = l.shapes.get(p.shape as usize).filter(|s| look.shows_curtain_part(s.kind)) else { continue };
-            if piece.centre[1] + piece.size[1] / 2.0 <= cut {
+            let whole_part = curtain::Part { centre: piece.centre, ..*p };
+            if span(&whole_part, piece.size).1 <= range.cut {
                 // One piece, however many parts: no joint where a mullion runs on.
                 let whole = curtain::Part { centre: piece.centre, ..*p };
                 let r = if s.plan.is_some() { ring(p, s) } else { ring(&whole, &curtain::Shape { size: piece.size, ..s.clone() }) };
@@ -983,7 +1120,10 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         return;
     }
     d.part(Part::Cut);
-    let crossing = |p: &curtain::Part, s: &curtain::Shape| (p.centre[1] - s.size[1] / 2.0 <= cut) && (cut < p.centre[1] + s.size[1] / 2.0);
+    let crossing = |p: &curtain::Part, s: &curtain::Shape| {
+        let (lo, hi) = span(p, s.size);
+        lo <= range.cut && range.cut < hi
+    };
     // The panels first, for the mullions to stand over where they touch.
     for p in &l.parts {
         let Some(s) =
@@ -991,10 +1131,10 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         else {
             continue;
         };
-        if coarse {
-            let [along, _, across] = p.centre;
-            let c = plane + across;
-            ink(d, &[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], PartKind::Panel, true, false);
+        if coarse && !f.leans() {
+            // Its middle line, along it.
+            let c = corners(p, [s.size[0], s.size[1], 0.0]);
+            ink(d, &[P2(c[0][0], c[0][1]), P2(c[1][0], c[1][1])], PartKind::Panel, true, false);
         } else {
             ink(d, &ring(p, s), PartKind::Panel, true, true);
         }
@@ -1008,7 +1148,7 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, r
         let r = ring(p, s);
         let own = look.part(PartKind::Mullion);
         let filled = own.cut.fill.map_or_else(|| look.cut_fill(id, POCHE), |[r, g, b]| Rgb(r, g, b));
-        d.fill(std::slice::from_ref(&r), if own.halftone { crate::graphics::halftoned(filled) } else { filled });
+        d.fill(std::slice::from_ref(&r), if own.halftone { look.fade().apply(filled) } else { filled });
         ink(d, &r, PartKind::Mullion, true, true);
     }
 }
@@ -1502,7 +1642,9 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
             }
         }
         Element::Stair(st) => stair(&mut d, m, st, st.level, &StairSubs::default()),
-        Element::Ramp(r) => ramp(&mut d, m, r, r.level),
+        Element::Ramp(r) => {
+            ramp(&mut d, m, r, r.level);
+        }
         Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen::MEDIUM, INK, false),
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
         Element::PropertyLine(pl) => {
@@ -2018,6 +2160,7 @@ pub fn crop_region(m: &Model, id: impl Key) -> Option<[P2; 2]> {
         Element::Level(l) => l.crop,
         Element::PlanView(v) => v.crop,
         Element::Section(v) | Element::Elevation(v) => v.crop.map(|[bottom, top]| [P2(0.0, bottom), P2(v.start.dist(v.end), top)]),
+        Element::DetailView(v) => Some(v.region),
         _ => None,
     }
 }
@@ -2062,12 +2205,12 @@ fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn F
 /// Where level `level` ends in section or elevation `view`, along its line from its start: its near
 /// end and its far one, as far as the view shows. None where it doesn't show it.
 pub fn level_ends(m: &Model, level: impl Key, view: impl Key) -> Option<(f64, f64)> {
-    let v = m.section(view)?;
+    let v = m.section_geometry(view)?;
     let look = Look::of(m, view);
     let w = SectionWork::new(m);
-    let (first, last) = span(m, &w, v, &look, &|| false)?;
+    let (first, last) = span(m, &w, &v, &look, &|| false)?;
     let level = m.elements.id(level)?;
-    let (_, a, b) = level_spans(m, &w, v, &look, &|| false)?.into_iter().find(|(id, ..)| *id == level)?;
+    let (_, a, b) = level_spans(m, &w, &v, &look, &|| false)?.into_iter().find(|(id, ..)| *id == level)?;
     let (a, b) = (a.max(first), b.min(last));
     (a < b).then_some((a, b))
 }
@@ -2078,10 +2221,10 @@ fn section_level_ends(
     id: Id,
     cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Option<std::collections::BTreeMap<Id, (f64, f64)>> {
-    let Some(v) = m.section(id) else { return Some(Default::default()) };
+    let Some(v) = m.section_geometry(id) else { return Some(Default::default()) };
     let look = Look::of(m, id);
-    let (first, last) = span(m, work, v, &look, cancelled)?;
-    let spans = level_spans(m, work, v, &look, cancelled)?;
+    let (first, last) = span(m, work, &v, &look, cancelled)?;
+    let spans = level_spans(m, work, &v, &look, cancelled)?;
     Some(
         spans
             .into_iter()
@@ -2152,7 +2295,7 @@ pub fn section_fit_cancellable(
         let fresh = SectionWork::new_cancellable(m, cancelled)?;
         return section_fit_cancellable(m, &fresh, id, width, height, cancelled);
     }
-    if m.section(id).is_none() {
+    if m.section_geometry(id).is_none() {
         return Some(fit(&[], width, height, m.units.default_scale()));
     }
     let [lo, hi] = section_bare(m, work, id, cancelled)?;
@@ -2171,9 +2314,9 @@ pub(crate) fn section_extent(m: &Model, w: &SectionWork, id: impl Key, scale: f6
 /// Section or elevation `id` along its line, past its lowest and highest heights: all it shows but the names of its levels.
 /// Cropped, from its start to its end; else as far as anything it shows reaches.
 fn section_bare(m: &Model, w: &SectionWork, id: impl Key, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<[P2; 2]> {
-    let v = m.section(id)?;
+    let v = m.section_geometry(id)?;
     let look = Look::of(m, id);
-    let ((lo, hi), (first, last)) = (shown_heights(m, w, v, &look, cancelled)?, span(m, w, v, &look, cancelled)?);
+    let ((lo, hi), (first, last)) = (shown_heights(m, w, &v, &look, cancelled)?, span(m, w, &v, &look, cancelled)?);
     Some([P2(first, lo - GRID_PAST), P2(last, hi + GRID_PAST)])
 }
 
@@ -2185,7 +2328,7 @@ fn level_names(m: &Model) -> f32 {
 
 /// The camera, and what it keeps, that show what section or elevation `id` sees through `view`.
 pub fn section_camera(m: &Model, id: impl Key, view: View) -> Option<(Camera, Clip)> {
-    let v = m.section(id)?;
+    let v = m.section_geometry(id)?;
     let (u, back) = ((v.end - v.start).unit(), v.looking() * -1.0);
     let at = v.start + u * view.cx;
     let cam = Camera {
@@ -2384,6 +2527,7 @@ impl SectionOverlay {
             detail: b.detail,
             pattern_styles: b.pattern_styles.clone(),
             on_top: b.on_top.clone(),
+            pictured: b.pictured,
         };
         if let Some(image) = picture {
             d.picture(m, self.id, image);
@@ -2420,14 +2564,16 @@ fn section_base_cancellable(
     }
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, id), m.line_weights().at(n));
-    let Some(v) = m.section(id) else { return Some(d) };
+    let Some(v) = m.section_geometry(id) else { return Some(d) };
     let look = Look::of(m, id);
     d.pattern_styles = look.pattern_styles();
     let u = (v.end - v.start).unit();
-    let (first, last) = span(m, work, v, &look, cancelled)?;
+    let (first, last) = span(m, work, &v, &look, cancelled)?;
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
     // leaves no seam.
     let mut cuts: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
+    // A framed floor's or roof's members where the line cuts them: filled with the rest, patterned in their own material.
+    let mut joists: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
     let solids: Vec<&view3d::Solid> = work.shown(&look).collect();
     d.part(Part::Cut);
     // A bar lies inside the concrete it reinforces, so its cuts are dots over that poché, not pieces of it.
@@ -2458,9 +2604,14 @@ fn section_base_cancellable(
             return None;
         }
         let bar = matches!(m.elements.get(s.owner()), Some(Element::Rebar(_)));
+        let joist = crate::family::visibility::framing(s.vis()) == Some(true)
+            && matches!(m.elements.get(s.owner()), Some(Element::Floor(_) | Element::Roof(_)));
         // Cut from where the view begins, then back along the line from its start.
         for ring in s.cuts(v.start + u * first, u, last - first) {
             let ring: Vec<P2> = ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect();
+            if joist {
+                joists.entry(s.owner()).or_default().push(ring.clone());
+            }
             if bar { dots.push((s.owner(), ring)) } else { cuts.entry(s.owner()).or_default().push(ring) }
         }
     }
@@ -2548,12 +2699,13 @@ fn section_base_cancellable(
     // the line crosses its boundaries; a thin line up each boundary between two, as high as the wall
     // stands there, around its openings.
     let lookup = m.lookup();
-    for (wall, w) in section_walls(m, &lookup, v, first, last) {
+    for (wall, w) in section_walls(m, &lookup, &v, first, last) {
         if cancelled() {
             return None;
         }
         let layers = m.type_layers("wall", &w.type_name);
-        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
+        // A slanted wall's layers lean across the section: it shows in poché, its layers not yet drawn.
+        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse || w.slant != 0.0 {
             continue;
         }
         d.owner = Some(wall);
@@ -2588,7 +2740,18 @@ fn section_base_cancellable(
                 })
                 .collect()
         };
-        for (layer, spans) in layers.iter().zip(intervals) {
+        // A framed wall's members are cut in the framing type's material, where it names one.
+        let framed = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
+        let timber = framed.and(crate::framing::material(m, w));
+        for (k, (layer, spans)) in layers.iter().zip(intervals).enumerate() {
+            let own;
+            let layer = match timber.filter(|_| framed == Some(k)) {
+                Some(material) => {
+                    own = Layer { material: material.to_string(), ..layer.clone() };
+                    &own
+                }
+                None => layer,
+            };
             for (s0, s1) in spans {
                 let (s0, s1) = (s0.min(s1).max(first), s0.max(s1).min(last));
                 for r in cuts.get(&wall).into_iter().flatten() {
@@ -2638,6 +2801,124 @@ fn section_base_cancellable(
     for (&owner, rings) in cuts.iter().filter(|_| !coarse) {
         if cancelled() {
             return None;
+        }
+        // A framed floor's: its members in their material, and its other pieces' layers where they lie.
+        if let Some(Element::Floor(f)) = m.elements.get(owner)
+            && f.framing.is_some()
+            && let Some((k, _)) = crate::framing::floor::framed(m, f)
+        {
+            let layers = m.type_layers("floor", &f.type_name);
+            let z = crate::framing::floor::heights(m, f);
+            let members = joists.get(&owner).map_or(&[][..], Vec::as_slice);
+            d.owner = Some(owner);
+            for r in rings {
+                let Some([a0, b0, _, _]) = quad(r) else { continue };
+                let joist = members.contains(r);
+                let (lo, hi) = r.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), q| (lo.min(q.1), hi.max(q.1)));
+                // A thin line along a member's top where layers lie over it, as between two layers.
+                if joist && z.first().is_some_and(|top| hi < top - 1e-6) {
+                    d.part(Part::Pattern);
+                    d.line(&[P2(a0.0, hi), P2(b0.0, hi)], Pen::PROJECTION, INK, false);
+                    d.part(Part::Cut);
+                }
+                for (j, layer) in layers.iter().enumerate() {
+                    let (Some(&top), Some(&bottom)) = (z.get(j), z.get(j + 1)) else { continue };
+                    let (z0, z1) = (bottom.max(lo), top.min(hi));
+                    if (joist && j != k) || z1 - z0 <= 1e-6 {
+                        continue;
+                    }
+                    let own;
+                    let layer = match crate::framing::floor::material(m, f).filter(|_| joist) {
+                        Some(material) => {
+                            own = Layer { material: material.to_string(), ..layer.clone() };
+                            &own
+                        }
+                        None => layer,
+                    };
+                    let (x0, x1) = (a0.0, b0.0);
+                    let room = (z1 - z0).min(x1 - x0) * d.view.scale;
+                    cut_layer(&mut d, m, layer, &[P2(x0, z0), P2(x1, z0), P2(x1, z1), P2(x0, z1)], P2(1.0, 0.0), room);
+                    // A thin line over each layer under the piece's top.
+                    if !joist && z1 < hi - 1e-6 {
+                        d.part(Part::Pattern);
+                        d.line(&[P2(x0, z1), P2(x1, z1)], Pen::PROJECTION, INK, false);
+                        d.part(Part::Cut);
+                    }
+                }
+            }
+            continue;
+        }
+        // A framed roof's: its members in their material, and its other pieces' layers between the planes they lie between
+        // over the slope each piece is of.
+        if let Some(Element::Roof(r)) = m.elements.get(owner)
+            && r.framing.is_some()
+            && let Some((k, _)) = crate::framing::roof::framed(m, r)
+        {
+            let layers = m.type_layers("roof", &r.type_name);
+            let shares = crate::framing::roof::shares(m, r);
+            let members = joists.get(&owner).map_or(&[][..], Vec::as_slice);
+            let pieces = m.roof_prisms(r);
+            let plan = |along: f64| v.start + u * along;
+            d.owner = Some(owner);
+            for ring in rings {
+                let member = members.contains(ring);
+                let (lo, hi) = ring.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), q| (lo.min(q.0), hi.max(q.0)));
+                if hi - lo <= 1e-6 {
+                    continue;
+                }
+                let c = geom::centroid(ring);
+                // The slab piece it is cut from: over its middle, its height between that one's underside and top.
+                let Some((_, under, top)) = pieces.iter().find(|(p, under, top)| {
+                    let q = plan(c.0);
+                    geom::contains(p, q) && c.1 >= under.at(q) - 1e-3 && c.1 <= top.at(q) + 1e-3
+                }) else {
+                    continue;
+                };
+                let rise = top.at(plan(c.0)) - under.at(plan(c.0));
+                let dir = P2(1.0, under.g.dot(u)).unit();
+                for (j, layer) in layers.iter().enumerate() {
+                    if member && j != k {
+                        continue;
+                    }
+                    let (Some(&t), Some(&b)) = (shares.get(j), shares.get(j + 1)) else { continue };
+                    let part = if member {
+                        ring.clone()
+                    } else {
+                        let low = geom::clip(ring, |q| q.1 - (under.at(plan(q.0)) + rise * b));
+                        geom::clip(&low, |q| under.at(plan(q.0)) + rise * t - q.1)
+                    };
+                    if part.len() < 3 || geom::area(&part).abs() < 1e-6 {
+                        continue;
+                    }
+                    let own;
+                    let layer = match crate::framing::roof::material(m, r).filter(|_| member) {
+                        Some(material) => {
+                            own = Layer { material: material.to_string(), ..layer.clone() };
+                            &own
+                        }
+                        None => layer,
+                    };
+                    let room = (rise * (t - b) * dir.0).min(hi - lo) * d.view.scale;
+                    cut_layer(&mut d, m, layer, &part, dir, room);
+                    // A thin line along the top of each piece under the roof's top, as between two layers.
+                    let line_top = if member {
+                        let (a0, a1) = (lo, hi);
+                        let z = |a: f64| part.iter().filter(|q| (q.0 - a).abs() < 1e-6).map(|q| q.1).fold(f64::NEG_INFINITY, f64::max);
+                        (j > 0).then(|| [P2(a0, z(a0)), P2(a1, z(a1))])
+                    } else {
+                        let edge = part.iter().filter(|q| (q.1 - (under.at(plan(q.0)) + rise * t)).abs() < 1e-6).map(|q| q.0);
+                        let (a0, a1) = edge.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), a| (lo.min(a), hi.max(a)));
+                        let at = |a: f64| P2(a, under.at(plan(a)) + rise * t);
+                        (j > 0 && a1 - a0 > 1e-6).then(|| [at(a0), at(a1)])
+                    };
+                    if let Some(line) = line_top.filter(|l| l.iter().all(|q| q.1.is_finite())) {
+                        d.part(Part::Pattern);
+                        d.line(&line, Pen::PROJECTION, INK, false);
+                        d.part(Part::Cut);
+                    }
+                }
+            }
+            continue;
         }
         let layers = match m.elements.get(owner) {
             Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
@@ -2704,14 +2985,14 @@ fn section_base_cancellable(
     }
     d.owner = None;
     d.part(Part::Projection);
-    let (lo, hi) = shown_heights(m, work, v, &look, cancelled)?;
+    let (lo, hi) = shown_heights(m, work, &v, &look, cancelled)?;
     if v.crop.is_some() {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
     }
     d.model_under_regions(m.elements.id(id));
     // Each level over as much of its extent as the view sees, named past its end.
-    for (level, from, to) in level_spans(m, work, v, &look, cancelled)? {
+    for (level, from, to) in level_spans(m, work, &v, &look, cancelled)? {
         if cancelled() {
             return None;
         }
@@ -2989,8 +3270,15 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
     if cancelled() {
         return None;
     }
-    let Some(v) = m.section(id) else { return Some(d) };
+    let Some(v) = m.section_geometry(id) else { return Some(d) };
     let (lookup, look, view) = (m.lookup(), Look::of(m, id), d.view);
+    // A detail of a section keeps its annotation in its parent's coordinates: its own view starts where its region does,
+    // so what is drawn in it moves back by that much.
+    let shift = match m.elements.get(id) {
+        Some(Element::DetailView(dv)) => dv.region[0].0,
+        _ => 0.0,
+    };
+    d.view.cx += shift;
     // What is drawn in it, from what points at it: its regions, notes, details and spot elevations.
     let own: Vec<(Id, &Element)> =
         lookup.referrers(&m.guid(id)).filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))).collect();
@@ -3016,14 +3304,22 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
             Element::Dimension(dm) if dm.view.is_some_and(|v| m.same(v, id)) => dimension(&mut d, m, dm),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::RepeatingDetail(r) if m.same(r.view, id) => detail_members(&mut d, m, &r.members(m)),
+            // Its callouts' boundaries and marks, in the section or elevation they are fragments of.
+            Element::DetailView(dv) if m.same(dv.parent, id) => {
+                detail_boundary(&mut d, dv);
+                detail_mark(&mut d, dv);
+            }
             // A spot slope reads a plan's floor or roof; a section has none to show.
             Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
-                spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
+                let at = d.view.px(P2(sp.at.0, z));
+                spot_mark(&mut d, at, Some(z), m.units);
             }
             _ => {}
         }
     }
+    // The model's own marks are in the detail's coordinates, not its parent's.
+    d.view.cx -= shift;
     // Site's three points, where the view's graphics show them: along the line from its start, and up.
     let graphics = crate::graphics::graphics_of(m, id).map_or_else(Default::default, |g| g.resolved(m).into_owned());
     let u = (v.end - v.start).unit();
@@ -3116,6 +3412,44 @@ pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
     draw_plan(m, level, view, false, k, f64::from(k) * sheet::DENSITY / view.scale, false)
 }
 
+/// What detail view `id` shows of its parent: its region.
+pub(crate) fn detail_extent(m: &Model, id: impl Key) -> Option<[P2; 2]> {
+    match m.elements.get(id)? {
+        Element::DetailView(v) => Some(v.region),
+        _ => None,
+    }
+}
+
+/// Detail view `id` fitted into `width` x `height` px: a fragment of a plan, cropped to its region, or of a section or an
+/// elevation, from its region along the parent line and its heights.
+pub fn detail_fit(m: &Model, id: impl Key, width: u32, height: u32) -> View {
+    if m.plan_level(id).is_some() {
+        let pts: Vec<P2> = detail_extent(m, id).map(|[lo, hi]| vec![lo, hi]).unwrap_or_else(|| plan_extent(m, id));
+        fit(&pts, width, height, scale_of(m, id))
+    } else {
+        section_fit(m, id, width, height)
+    }
+}
+
+/// Detail view `id` through `view`: a fragment of a plan at the view's crop, annotated in the parent's coordinates, or the
+/// section or elevation it is a fragment of.
+pub fn detail(m: &Model, id: impl Key, view: View) -> Drawing {
+    if m.plan_level(id).is_some() {
+        draw_plan(m, id, view, false, annotation(m, id, view), scale_of(m, id), true)
+    } else {
+        section(m, id, view)
+    }
+}
+
+/// Detail view `id` as a sheet draws it, its annotation `k` times the size it is laid out at.
+pub fn detail_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
+    if m.plan_level(id).is_some() {
+        draw_plan(m, id, view, false, k, f64::from(k) * sheet::DENSITY / view.scale, false)
+    } else {
+        section_at(m, id, view, k)
+    }
+}
+
 /// The points of the scans a plan sees, from its cut plane down to its view depth, as Revit draws a point cloud in plan: from
 /// above, each a dot [`view3d::DOT`] pixels wide in its colour (or the view's), the highest at each pixel on top, no more than
 /// [`view3d::DRAWN`] of them among the scans. Each scan is one picture, no bigger than its dots and clear where it has none, so
@@ -3179,6 +3513,166 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
         d.push(Prim::Image { at: (lo.0 as f32, lo.1 as f32), width: pw as u32, height: ph as u32, rgba, ink: look.filled(id) });
     }
     d.own(None);
+}
+
+/// The images a plan shows, under its CAD drawings and the model, or with `front` those drawn over the model: those placed on
+/// its level, in each of its plans or in this one only. A PDF's page the project holds as a drawing is drawn as its lines,
+/// fills and pictures; any other image is its picture's pixels, the nearest to each of the view's. Each stands upright
+/// whatever way the view is turned, mirrored as it says.
+fn images(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::ids::Guid, look: &Look, front: bool) {
+    for (id, e) in m.rare("image").into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
+        let Element::Image(im) = e else { continue };
+        if im.front != front || im.level != level || im.view.is_some_and(|v| v != key) || !look.shows(id) {
+            continue;
+        }
+        let Some(h) = im.height(m) else { continue };
+        d.own(Some(id));
+        let part = std::mem::replace(&mut d.part, Part::Picture);
+        match m.pdfs.get(&im.picture) {
+            Some(doc) if !doc.drawing().items.is_empty() => pdf_page(d, im, h, doc.drawing()),
+            _ => picture_image(d, m, im, h),
+        }
+        d.part = part;
+    }
+    d.own(None);
+}
+
+/// Where a point of a placed image is in the view, px, from where it is across and down its picture, 0 to 1.
+fn image_px(view: View, im: &crate::model::PlacedImage, h: f64) -> impl Fn(f64, f64) -> (f32, f32) + use<> {
+    let (left, top, w) = (im.at.0 - im.width / 2.0, im.at.1 + h / 2.0, im.width);
+    let (fx, fy) = (im.flip_x, im.flip_y);
+    move |u: f64, v: f64| {
+        let (u, v) = (if fx { 1.0 - u } else { u }, if fy { 1.0 - v } else { v });
+        view.px(P2(left + u * w, top - v * h))
+    }
+}
+
+/// A placed image's picture, its pixels nearest to each of the view's.
+fn picture_image(d: &mut Drawing, m: &Model, im: &crate::model::PlacedImage, h: f64) {
+    let Some(picture) = m.images.get(&im.picture) else { return };
+    let (pw, ph, rgb) = picture.pixels();
+    let (vw, vh) = (f64::from(d.view.width), f64::from(d.view.height));
+    let (cx, cy) = d.view.px(im.at);
+    let (w_px, h_px) = (im.width * d.view.scale, h * d.view.scale);
+    let (x0, y0) = (f64::from(cx) - w_px / 2.0, f64::from(cy) - h_px / 2.0);
+    // The part of it in the view, whole pixels.
+    let (a, b) = (x0.max(0.0).floor(), y0.max(0.0).floor());
+    let (c, dd) = ((x0 + w_px).min(vw).ceil(), (y0 + h_px).min(vh).ceil());
+    if !(c > a && dd > b) || pw == 0 || ph == 0 {
+        return;
+    }
+    let (cols, rows) = ((c - a) as usize, (dd - b) as usize);
+    let mut rgba = Vec::with_capacity(cols * rows * 4);
+    for y in 0..rows {
+        let mut v = (b + y as f64 + 0.5 - y0) / h_px;
+        if im.flip_y {
+            v = 1.0 - v;
+        }
+        let v = (v * ph as f64).floor();
+        for x in 0..cols {
+            let mut u = (a + x as f64 + 0.5 - x0) / w_px;
+            if im.flip_x {
+                u = 1.0 - u;
+            }
+            let u = (u * pw as f64).floor();
+            if u < 0.0 || v < 0.0 || u >= pw as f64 || v >= ph as f64 {
+                rgba.extend([0, 0, 0, 0]);
+                continue;
+            }
+            let i = (v as usize * pw + u as usize) * 3;
+            rgba.extend([rgb[i], rgb[i + 1], rgb[i + 2], 255]);
+        }
+    }
+    d.push(Prim::Image { at: (a as f32, b as f32), width: cols as u32, height: rows as u32, rgba, ink: false });
+}
+
+/// A PDF's page placed: its fills, its lines (as wide as they print, scaled with the page, a pixel at least) and the pictures
+/// in it, each left out where it lies outside the view.
+fn pdf_page(d: &mut Drawing, im: &crate::model::PlacedImage, h: f64, page: &crate::pdf_in::Drawing) {
+    use crate::pdf_in::Item;
+    let [pw, ph] = page.size;
+    if pw <= 0.0 || ph <= 0.0 {
+        return;
+    }
+    let px = image_px(d.view, im, h);
+    let at = |p: &[f32; 2]| px(f64::from(p[0]) / pw, f64::from(p[1]) / ph);
+    // Pixels for each of the page's points.
+    let k = (im.width * d.view.scale / pw) as f32;
+    let (vw, vh) = (d.view.width as f32, d.view.height as f32);
+    let seen = |b: [f32; 4]| {
+        let (p, q) = (at(&[b[0], b[1]]), at(&[b[2], b[3]]));
+        let (x0, x1, y0, y1) = (p.0.min(q.0), p.0.max(q.0), p.1.min(q.1), p.1.max(q.1));
+        x1 >= 0.0 && x0 <= vw && y1 >= 0.0 && y0 <= vh && (x1 - x0 >= 0.25 || y1 - y0 >= 0.25)
+    };
+    // Over white where it lets the paper through.
+    let rgb = |c: [u8; 4]| {
+        let a = u16::from(c[3]);
+        let over = |v: u8| ((u16::from(v) * a + 255 * (255 - a)) / 255) as u8;
+        Rgb(over(c[0]), over(c[1]), over(c[2]))
+    };
+    for item in &page.items {
+        if !seen(item.bounds()) {
+            continue;
+        }
+        match item {
+            Item::Fill { rings, rgba, .. } => {
+                let rings: Vec<Vec<(f32, f32)>> = rings.iter().map(|r| r.iter().map(at).collect()).collect();
+                d.push(Prim::Fill { rings, color: rgb(*rgba) });
+            }
+            Item::Stroke { lines, rgba, width, dash, .. } => {
+                let width = (width * k).max(1.0);
+                let dash = dash.as_ref().map(|ds| ds.iter().map(|x| (x * k).max(0.5)).collect::<Vec<f32>>());
+                for (pts, closed) in lines {
+                    let pts: Vec<(f32, f32)> = pts.iter().map(at).collect();
+                    d.push(Prim::Line { pts, width, color: rgb(*rgba), dash: dash.clone(), closed: *closed });
+                }
+            }
+            Item::Image { w, h: ih, rgba, m: mm, local, .. } => pdf_picture(d, &at, *w, *ih, rgba, mm, *local),
+        }
+    }
+}
+
+/// A picture inside a PDF's page, at `mm` (its pixels' space to the page's points), drawn into the view by `at`, the view's
+/// pixel nearest each of its own.
+fn pdf_picture(d: &mut Drawing, at: &dyn Fn(&[f32; 2]) -> (f32, f32), w: u32, h: u32, rgba: &[u8], mm: &[f64; 6], local: [f64; 2]) {
+    // Its corners in the view, and the way back from the view to its pixels.
+    let page = |x: f64, y: f64| [(mm[0] * x + mm[2] * y + mm[4]) as f32, (mm[1] * x + mm[3] * y + mm[5]) as f32];
+    let o = at(&page(0.0, 0.0));
+    let ex = at(&page(local[0], 0.0));
+    let ey = at(&page(0.0, local[1]));
+    let (ax, ay, bx, by) = (f64::from(ex.0 - o.0), f64::from(ex.1 - o.1), f64::from(ey.0 - o.0), f64::from(ey.1 - o.1));
+    let det = ax * by - ay * bx;
+    if det.abs() < 1e-9 || w == 0 || h == 0 {
+        return;
+    }
+    let far = (f64::from(ex.0 + ey.0 - o.0), f64::from(ex.1 + ey.1 - o.1));
+    let xs = [f64::from(o.0), f64::from(ex.0), f64::from(ey.0), far.0];
+    let ys = [f64::from(o.1), f64::from(ex.1), f64::from(ey.1), far.1];
+    let (vw, vh) = (f64::from(d.view.width), f64::from(d.view.height));
+    let x0 = xs.iter().copied().fold(f64::MAX, f64::min).max(0.0).floor();
+    let x1 = xs.iter().copied().fold(f64::MIN, f64::max).min(vw).ceil();
+    let y0 = ys.iter().copied().fold(f64::MAX, f64::min).max(0.0).floor();
+    let y1 = ys.iter().copied().fold(f64::MIN, f64::max).min(vh).ceil();
+    if !(x1 > x0 && y1 > y0) {
+        return;
+    }
+    let (cols, rows) = ((x1 - x0) as usize, (y1 - y0) as usize);
+    let mut out = vec![0u8; cols * rows * 4];
+    for r in 0..rows {
+        for c in 0..cols {
+            let (px, py) = (x0 + c as f64 + 0.5 - f64::from(o.0), y0 + r as f64 + 0.5 - f64::from(o.1));
+            let s = (px * by - py * bx) / det;
+            let t = (ax * py - ay * px) / det;
+            if !(0.0..1.0).contains(&s) || !(0.0..1.0).contains(&t) {
+                continue;
+            }
+            let (u, v) = ((s * f64::from(w)) as usize, (t * f64::from(h)) as usize);
+            let i = (v * w as usize + u) * 4;
+            let Some(p) = rgba.get(i..i + 4) else { continue };
+            out[(r * cols + c) * 4..(r * cols + c) * 4 + 4].copy_from_slice(p);
+        }
+    }
+    d.push(Prim::Image { at: (x0 as f32, y0 as f32), width: cols as u32, height: rows as u32, rgba: out, ink: false });
 }
 
 /// The CAD drawings a plan shows, under all the rest but its scans, as Revit draws an import in the background: those placed on
@@ -3305,9 +3799,12 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let elements: Vec<(Id, &Element)> =
         if among { plan_elements(m, key, level, &range, up, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
     let all = || elements.iter().map(|(id, e)| (id, *e));
+    // What it sees between its bottom and its view depth: drawn as the rest is, then lightened (its underlay).
+    let mut underlay: std::collections::BTreeSet<Id> = std::collections::BTreeSet::new();
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
         scans(&mut d, m, &range, &look);
+        images(&mut d, m, key, level, &look, false);
         cad_imports(&mut d, m, key, level, &look);
     }
     // A ceiling plan isn't cropped: the crop region is the floor plan's.
@@ -3343,13 +3840,19 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     }
     let coloured = d.prims.len() > under;
     // Floors whose tops it sees, from the cut plane down to the view depth: their outlines and their
-    // openings', the holes shafts cut in them, and a sloped one's slope arrow.
+    // openings', the holes shafts cut in them, and a sloped one's slope arrow; a framed one's members under its top, in hidden
+    // line, where the plan shows Floors > Framing Lines (a framed roof's, below, where it shows Roofs > Framing Lines).
+    let resolved = crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned());
+    let (joist_lines, rafter_lines) = (!resolved.hides("floorframingline"), !resolved.hides("roofframingline"));
     for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Element::Floor(f) = e else { continue };
         let top = m.floor_top(f);
         let (lo, hi) = f.boundary.iter().map(|q| top.at(*q)).fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
-        if hi < range.depth || lo > range.cut {
+        if hi < range.depth - TOL || lo > range.cut {
             continue;
+        }
+        if range.under(hi) {
+            underlay.insert(id);
         }
         d.owner = Some(id);
         // Surface overrides also work on an unpatterned material and at coarse detail.
@@ -3363,17 +3866,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                     && d.detail == Detail::Fine
                     && let Some(x) = material
                 {
-                    match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
-                        Some(p) => fill_pattern(
-                            &mut d,
-                            p,
-                            std::slice::from_ref(&piece),
-                            std::slice::from_ref(&piece),
-                            FAINT,
-                            (f.pattern_origin, f.pattern_angle),
-                        ),
-                        None => surface(&mut d, &piece, x.surface, FAINT, (f.pattern_origin, f.pattern_angle)),
-                    }
+                    material_surface(&mut d, m, x, &piece, FAINT, (f.pattern_origin, f.pattern_angle));
                 }
             }
         }
@@ -3389,6 +3882,16 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
         holes(&mut d, m, &m.floor_slabs(f));
+        if joist_lines
+            && f.framing.is_some()
+            && let Ok(Some(framing)) = crate::framing::floor::floor(m, id)
+        {
+            d.sub(Some("floorframingline"));
+            for member in &framing.members {
+                d.dashed(&framing.ring(member), BY_CATEGORY, INK, true);
+            }
+            d.sub(None);
+        }
         if let Some([tail, head]) = f.arrow.filter(|_| f.slope != 0.0) {
             slope_arrow(&mut d, tail, head, f.slope);
         }
@@ -3397,14 +3900,18 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         d.solid_fills_under(under);
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
-    // the cut plane and over the view depth; and the symbols of those on its level.
+    // the cut plane and over the view depth, or over the cut and under the top where a plan shows its category there
+    // (casework, generic models); and the symbols of those on its level.
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
         let mut pieces = components.pieces(c);
         d.owner = Some(id);
         if !up && !pieces.is_empty() {
             let (bottom, top) = components.heights(c);
-            if bottom < range.cut && top > range.depth {
+            if bottom < range.cut && top > range.depth || over_cut(m, e, &range, bottom) {
+                if range.under(top) {
+                    underlay.insert(id);
+                }
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
                 pieces.retain(|p| plan_draws(p, d.detail, range.cut));
                 component(&mut d, m, &pieces);
@@ -3421,12 +3928,47 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     for (id, o, top) in seen_below(m, &elements, &range, &look, index).into_iter().filter(|_| !up) {
         d.owner = Some(id);
         override_patterns(&mut d, m, std::slice::from_ref(&o), false, (P2(0.0, 0.0), 0.0));
-        let ink = if top > range.bottom - TOL { INK } else { FAINT };
+        // Past the bottom, in the underlay: lightened with the rest of it.
+        if range.under(top) {
+            underlay.insert(id);
+        }
+        let ink = INK;
         d.line(&o, BY_CATEGORY, ink, true);
         // A door or window rising past a wall's top notches it: the notch's sides, seen from above.
         if matches!(m.elements.get(id), Some(Element::Wall(_))) {
             for side in walls::notches(m, id) {
                 d.line(&side, BY_CATEGORY, ink, false);
+            }
+        }
+    }
+    // A slanted wall leans across the plan: below the cut plane the plan sees its foot, and the top of one that stops under the
+    // plane, in projection, but where what is cut covers them.
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+        let Element::Wall(w) = e else { continue };
+        if w.slant == 0.0 || crate::curtain::pattern(m, w).is_some() {
+            continue;
+        }
+        let (lo, hi) = (m.base_z(w), m.top_z(w));
+        if !(range.depth - TOL < hi && lo <= range.cut) {
+            continue;
+        }
+        let cut = if m.spans(w, range.cut) { walls::plan_cut(m, id, index, range.cut) } else { Vec::new() };
+        let covers: Vec<Vec<P2>> = cut.iter().flat_map(|r| walls::convex_pieces(r)).collect();
+        let covers: Vec<&[P2]> = covers.iter().map(Vec::as_slice).collect();
+        // Its foot, unless seen below whole already (`seen_below` outlines it); its top when it stops under the plane.
+        let mut seen = Vec::new();
+        if m.spans(w, range.cut) {
+            seen.push(walls::outline_at_in(m, id, index, lo + 1e-3));
+        }
+        if hi <= range.cut {
+            seen.push(walls::outline_at_in(m, id, index, hi - 1e-3));
+        }
+        d.owner = Some(id);
+        for ring in seen {
+            let mut closed = ring.clone();
+            closed.extend(ring.first().copied());
+            for part in lines_outside_columns(&closed, &covers) {
+                d.line(&part, BY_CATEGORY, INK, false);
             }
         }
     }
@@ -3437,6 +3979,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         let seen = range.depth - TOL < hi && hi <= range.cut;
         let over = range.cut < lo && lo <= range.top;
         if seen || over {
+            if seen && range.under(hi) {
+                underlay.insert(id);
+            }
             d.owner = Some(id);
             let pts = [P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1])].iter().map(|p| d.view.px(*p)).collect();
             let dash = d.dash(&[14.0, 5.0]);
@@ -3474,6 +4019,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     }
     let curtains = curtains_in_plan(m, &range, shown);
     for wall in curtains.iter().filter(|_| !up) {
+        if range.under(m.own_top(wall.1)) {
+            underlay.insert(wall.0);
+        }
         curtain_plan(&mut d, m, &look, wall, &range, true);
     }
     d.part(Part::Cut);
@@ -3509,10 +4057,11 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.fill(&pieces, POCHE);
         }
     }
-    for (id, runs) in cut_edges(&outlines, 1.0 / d.view.scale) {
-        d.owner = Some(id);
+    let edges = cut_edges(&outlines, 1.0 / d.view.scale);
+    for (id, runs) in &edges {
+        d.owner = Some(*id);
         for run in runs {
-            ink_cut(&mut d, &run);
+            ink_cut(&mut d, run);
         }
     }
     for (id, _) in &outlines {
@@ -3539,12 +4088,26 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             continue;
         }
         d.owner = Some(id);
-        let geometry = walls::layer_geometry(m, id, index);
-        let along = (w.end - w.start).unit();
+        let geometry = walls::layer_geometry_at(m, id, index, Some(range.cut));
+        // The material's pattern lies on the project's axes from its origin, not along the wall: walls of one material
+        // show one hatch, running on through their corners.
+        let along = P2(1.0, 0.0);
+        // A framed wall's structure layer is its members: those the cut plane passes through, and nothing between them.
+        let framing = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::wall(m, id).ok().flatten());
+        let framed = framing.as_ref().and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
         for (k, layer) in layers.iter().enumerate() {
-            let ring = geometry.band(k);
+            let rings = walls::profile::clip(w, range.cut - m.own_base(w), &geometry.band(k));
             let room = layer.thickness * d.view.scale;
-            for piece in outside_columns(vec![ring], &columns) {
+            if let (Some(f), true) = (&framing, framed == Some(k)) {
+                members_cut(&mut d, m, f, (layer, outside_columns(rings, &columns)), range.cut, &columns);
+                if let Some((_, runs)) = edges.iter().find(|(e, _)| *e == id) {
+                    for run in runs {
+                        ink_cut(&mut d, run);
+                    }
+                }
+                continue;
+            }
+            for piece in outside_columns(rings, &columns) {
                 cut_layer(&mut d, m, layer, &piece, along, room);
             }
         }
@@ -3568,6 +4131,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         {
             d.owner = Some(id);
             opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
+            if shown(id) && !up {
+                opening_over(&mut d, m, e, o, w, &range);
+            }
         }
         // A component on one of a wall's faces whose voids cut it (T16b): the wall cleared where the cut plane passes through
         // them, as a door's voids clear it. The hole is the wall's: the component hidden, it is still there.
@@ -3578,7 +4144,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             for (by, voids) in m.hosted_voids(id) {
                 d.owner = Some(by).filter(|c| shown(*c));
                 let past = 3.0 / d.view.scale;
-                wall_voids(&mut d, &Axis::of(w), walls::faces(m, w), past, &voids, range.cut);
+                wall_voids(&mut d, &Axis::of(w), walls::faces_at(m, w, Some(range.cut)), past, &voids, range.cut);
             }
         }
     }
@@ -3676,29 +4242,44 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             // A mass the plane passes through: its outline, dashed.
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level, &stair_subs),
-            Element::Ramp(r) => ramp(&mut d, m, r, level),
+            Element::Ramp(r) => {
+                if !ramp(&mut d, m, r, level) && ramp_below(&mut d, m, r, &range) {
+                    let l = stairs::ramp(m, r);
+                    let top =
+                        l.runs.iter().map(|run| run.z.0.max(run.z.1)).chain(l.pads.iter().map(|p| p.z)).fold(f64::NEG_INFINITY, f64::max);
+                    if range.under(top) {
+                        underlay.insert(id);
+                    }
+                }
+            }
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
+            // Another level's railing the plan sees from above: in projection, or in its underlay.
+            Element::Railing(rl) => {
+                let z = stairs::railing(m, rl)
+                    .into_iter()
+                    .map(|(_, z)| z)
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+                if matches!(range.zone(z.0, z.1), Some(Zone::Projection | Zone::Underlay)) {
+                    if range.under(z.1) {
+                        underlay.insert(id);
+                    }
+                    railing(&mut d, m, rl, range.cut);
+                }
+            }
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
             // A toposolid: its boundary, the lines where its top crosses each contour height, and its type's surface.
-            Element::Toposolid(t) if t.level == level => {
+            Element::Toposolid(t) if t.level == level || toposolid_seen(m, t, &range).is_some() => {
                 d.owner = Some(id);
+                if t.level != level && toposolid_seen(m, t, &range) == Some(true) {
+                    underlay.insert(id);
+                }
                 let material = m.type_layers("toposolid", &t.type_name).first().and_then(|l| m.materials.get(&l.material));
                 if d.detail == Detail::Fine
                     && let Some(x) = material
                 {
                     for (face, rise) in m.toposolid_slabs(t) {
                         for piece in m.less_shafts(&face, rise).0 {
-                            match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
-                                Some(p) => fill_pattern(
-                                    &mut d,
-                                    p,
-                                    std::slice::from_ref(&piece),
-                                    std::slice::from_ref(&piece),
-                                    FAINT,
-                                    (t.pattern_origin, t.pattern_angle),
-                                ),
-                                None => surface(&mut d, &piece, x.surface, FAINT, (t.pattern_origin, t.pattern_angle)),
-                            }
+                            material_surface(&mut d, m, x, &piece, FAINT, (t.pattern_origin, t.pattern_angle));
                         }
                     }
                 }
@@ -3714,17 +4295,36 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 let pts = vec![d.view.px(rs.start), d.view.px(rs.end)];
                 d.stroke(pts, BY_CATEGORY, INK, None, false);
             }
-            Element::Roof(r) if r.level == level => roof(&mut d, m, id, r),
+            Element::Roof(r) if r.level == level => {
+                roof(&mut d, m, id, r);
+                // Framed, its members' outlines, dashed, where the plan shows Roofs > Framing Lines.
+                if rafter_lines
+                    && r.framing.is_some()
+                    && let Ok(Some(framing)) = crate::framing::roof::roof(m, id)
+                {
+                    d.sub(Some("roofframingline"));
+                    for member in &framing.members {
+                        d.dashed(&framing.ring(member), BY_CATEGORY, INK, true);
+                    }
+                    d.sub(None);
+                }
+            }
             // Overhead, from below: its edges, round its courtyards too, dashed, while its eaves are under
-            // the view range's top.
+            // the view range's top. Under the cut plane, another level's roof is seen from above, as a roof is on its own
+            // level's plan: in projection down to the bottom, past it in the underlay.
             Element::Roof(r) => {
-                let eave = m
+                let (eave, ridge) = m
                     .roof_faces(r)
                     .into_iter()
                     .flatten()
                     .flat_map(|(loops, p)| loops.into_iter().flatten().map(move |q| p.at(q)))
-                    .fold(f64::INFINITY, f64::min);
-                if range.cut < eave && eave <= range.top {
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+                if matches!(range.zone(eave, ridge), Some(Zone::Projection | Zone::Underlay)) {
+                    if range.under(ridge) {
+                        underlay.insert(id);
+                    }
+                    roof(&mut d, m, id, r);
+                } else if range.cut < eave && eave <= range.top {
                     for ring in std::iter::once(&m.roof_outline(r)).chain(&r.courtyards) {
                         let pts = ring.iter().map(|p| d.view.px(*p)).collect();
                         let dash = d.dash(&DASHED);
@@ -3764,6 +4364,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.owner = Some(id);
             property_label(&mut d, m, pl, &room_labels);
         }
+    }
+    // The images drawn in front of the model.
+    if !up {
+        images(&mut d, m, key, level, &look, true);
     }
     d.model_under_regions(None);
     // Regions replace model backgrounds; non-masking ones retain the visible model foreground.
@@ -3809,6 +4413,13 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
             Element::Elevation(v) if inside(crate::elevation::mark(v)) => elevation_mark(&mut d, v),
+            // A callout's boundary and mark, in the plan they are fragments of.
+            Element::DetailView(v) if m.same(v.parent, key) => {
+                detail_boundary(&mut d, v);
+                if inside(v.middle()) {
+                    detail_mark(&mut d, v);
+                }
+            }
             // A camera stands on its level's plan: a symbol at its eye, and a line to what it looks at.
             Element::View3D(v) if !up && v.camera.is_some_and(|c| m.camera_level(c.eye[2]) == m.elements.id(level)) => {
                 camera_mark(&mut d, v)
@@ -3841,6 +4452,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     if let Some(g) = crate::graphics::graphics_of(m, key) {
         linework(&mut d, m, &g.linework);
     }
+    d.fade_owned(&underlay, look.fade());
     d.weigh(|o| annotates(m, o));
     if titled {
         let mut title = m.view_name(key).map_or_else(String::new, str::to_string);
@@ -3851,6 +4463,44 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         d.text_turned(&title, at, 16.0, 0.0, INK);
     }
     d
+}
+
+/// Whether element `e`, its lowest point at `bottom`, is one a plan of range `r` shows over its cut plane: of a category it
+/// shows there (casework, generic models), all of it over the cut and some under the top.
+fn over_cut(m: &Model, e: &Element, r: &PlanRange, bottom: f64) -> bool {
+    r.cut < bottom && bottom <= r.top && crate::view_range::shown_over_cut(crate::graphics::category_of(m, e))
+}
+
+/// A door or a window all of it over a plan's cut plane and under its top, in a wall the plane cuts: seen from below, its
+/// jambs across the wall and a line along it between them, in projection; the wall isn't opened.
+fn opening_over(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, r: &PlanRange) {
+    let Some(h) = walls::hole(m, w, e, o) else { return };
+    if !(r.cut < h.bottom && h.bottom <= r.top) {
+        return;
+    }
+    let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
+    let part = d.part;
+    d.part(Part::Projection);
+    for s in [h.s0, h.s1] {
+        d.line(&[axis.at(s, int), axis.at(s, ext)], BY_CATEGORY, INK, false);
+    }
+    d.line(&axis.points(h.s0, h.s1, (ext + int) / 2.0), BY_CATEGORY, INK, false);
+    d.part(part);
+}
+
+/// Whether a plan of range `r` sees toposolid `t` of another level from above: none, where it doesn't; else whether it is in
+/// the underlay.
+fn toposolid_seen(m: &Model, t: &crate::model::Toposolid, r: &PlanRange) -> Option<bool> {
+    let (lo, hi) = m
+        .toposolid_faces(t)
+        .into_iter()
+        .flat_map(|(ring, p)| ring.into_iter().map(move |q| p.at(q)))
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+    match r.zone(lo, hi)? {
+        Zone::Projection => Some(false),
+        Zone::Underlay => Some(true),
+        Zone::Above | Zone::Cut => None,
+    }
 }
 
 /// A family's plan marks, in the model's axes: its lines and lettering in the category's pen, its dots solid ink.
@@ -3993,6 +4643,38 @@ fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
     alo.0 <= bhi.0 && blo.0 <= ahi.0 && alo.1 <= bhi.1 && blo.1 <= ahi.1
 }
 
+/// Framing `f`'s structure layer in plan, where it lies in `band` (`layer`'s, outside the columns): cleared, and each member
+/// the cut plane at `cut` passes through filled, in its material's cut pattern where it holds one, and outlined.
+fn members_cut(
+    d: &mut Drawing,
+    m: &Model,
+    f: &crate::framing::Framing,
+    (layer, band): (&Layer, Vec<Vec<P2>>),
+    cut: f64,
+    columns: &[&[P2]],
+) {
+    d.fill(&band, PAPER);
+    let layer = Layer { material: f.material.clone(), ..layer.clone() };
+    d.sub(Some("framing"));
+    for member in &f.members {
+        let Some([s0, s1]) = member.cut_at(cut) else { continue };
+        let [a0, a1] = member.across;
+        let ring = vec![f.at(s0, a0), f.at(s1, a0), f.at(s1, a1), f.at(s0, a1)];
+        let room = (s1 - s0).min(a1 - a0) * d.view.scale;
+        for piece in outside_columns(vec![ring], columns) {
+            if pattern_style(d, true).is_some() {
+                d.fill(std::slice::from_ref(&piece), PAPER);
+                override_patterns(d, m, std::slice::from_ref(&piece), true, (P2(0.0, 0.0), 0.0));
+            } else {
+                d.fill(std::slice::from_ref(&piece), POCHE);
+            }
+            cut_layer(d, m, &layer, &piece, f.x_axis, room);
+            d.line(&piece, Pen::PROJECTION, INK, true);
+        }
+    }
+    d.sub(None);
+}
+
 /// `rings` less the outlines of the columns the plan cuts (convex, a rectangle or a round one's polygon): what of a wall's layer
 /// is not inside one.
 fn outside_columns(rings: Vec<Vec<P2>>, columns: &[&[P2]]) -> Vec<Vec<P2>> {
@@ -4023,17 +4705,35 @@ fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room
     let material = m.materials.get(&layer.material);
     let pattern = material.map_or(Pattern::None, |x| x.cut);
     let fill = material.and_then(|x| x.cut_pattern.as_ref()).and_then(|n| m.fill_patterns.get(n));
-    if let Some(p) = fill.filter(|_| room >= PATTERN_ROOM && d.detail == Detail::Fine) {
-        // A fill pattern of the project's, its courses along the layer.
+    let back = material
+        .and_then(|x| x.cut_background.as_ref())
+        .filter(|b| b.shows() && (gap >= 2.0 || b.fill.is_some() || b.pattern == Pattern::Solid));
+    let ink = material.and_then(|x| x.cut_color).map_or(INK, |[r, g, b]| Rgb(r, g, b));
+    let along = (P2(0.0, 0.0), u.1.atan2(u.0).to_degrees());
+    let lines = pattern != Pattern::None && gap >= 2.0;
+    // A picture in place of its patterns.
+    let picture = material.and_then(|x| x.cut_image.as_ref()).and_then(|t| Sampler::new(t, [128; 3], &m.images));
+    if let Some(s) = picture.filter(|_| room >= PATTERN_ROOM && d.detail == Detail::Fine) {
+        image_fill(d, &s, ring, along);
+        return;
+    }
+    if room >= PATTERN_ROOM && d.detail == Detail::Fine && (fill.is_some() || lines || back.is_some()) {
         if over.is_none() {
             d.fill(&[ring.to_vec()], PAPER);
         }
-        fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], INK, (P2(0.0, 0.0), u.1.atan2(u.0).to_degrees()));
-    } else if pattern != Pattern::None && room >= PATTERN_ROOM && gap >= 2.0 && d.detail == Detail::Fine {
-        if over.is_none() {
-            d.fill(&[ring.to_vec()], PAPER);
+        if let Some(b) = back {
+            let tint = b.color.map_or(INK, |[r, g, b]| Rgb(r, g, b));
+            match b.fill.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+                Some(p) => fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], tint, along),
+                None => hatch(d, ring, b.pattern, u, tint, gap / d.view.scale, P2(0.0, 0.0)),
+            }
         }
-        hatch(d, ring, pattern, u, INK, gap / d.view.scale, P2(0.0, 0.0));
+        // A fill pattern of the project's, its courses along the layer; else one drawn in code.
+        if let Some(p) = fill {
+            fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], ink, along);
+        } else if lines {
+            hatch(d, ring, pattern, u, ink, gap / d.view.scale, P2(0.0, 0.0));
+        }
     } else if layer.function != Function::Structure && over.is_none() {
         d.fill(&[ring.to_vec()], LIGHT_POCHE);
     }
@@ -4078,6 +4778,8 @@ pub(crate) fn cap_fill(
     for (prim, part) in d.prims.iter().zip(&d.parts) {
         match prim {
             Prim::Fill { color, .. } if *part == Part::Pattern => base = Some(*color),
+            // An image fill: its colour on average, a section box's cap being of one colour.
+            Prim::Image { rgba, .. } if *part == Part::Pattern => base = average(rgba).or(base),
             Prim::Line { pts, color, .. } => {
                 strokes.extend(pts.windows(2).filter_map(|w| Some(([view.mm(*w.first()?), view.mm(*w.get(1)?)], *color))))
             }
@@ -4087,10 +4789,153 @@ pub(crate) fn cap_fill(
     (base, strokes)
 }
 
+/// The average colour of the pixels of `rgba` that show.
+fn average(rgba: &[u8]) -> Option<Rgb> {
+    let (sum, n) = rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|p| p[3] > 0)
+        .fold(([0_u64; 3], 0_u64), |(s, n), p| ([s[0] + u64::from(p[0]), s[1] + u64::from(p[1]), s[2] + u64::from(p[2])], n + 1));
+    (n > 0).then(|| Rgb((sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8))
+}
+
+/// What material `x` shows on a surface over `piece`: its background, then its foreground over it, each in its colour, else in
+/// `ink`, placed as `placed` says.
+fn material_surface(d: &mut Drawing, m: &Model, x: &Material, piece: &[P2], ink: Rgb, placed: (P2, f64)) {
+    if let Some(s) = x.surface_image.as_ref().and_then(|t| Sampler::new(t, x.color, &m.images)) {
+        image_fill(d, &s, piece, placed);
+        return;
+    }
+    let tint = |c: Option<[u8; 3]>| c.map_or(ink, |[r, g, b]| Rgb(r, g, b));
+    let one = std::slice::from_ref;
+    let piece = piece.to_vec();
+    if let Some(b) = x.surface_background.as_ref().filter(|b| b.shows()) {
+        match b.fill.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+            Some(p) => fill_pattern(d, p, one(&piece), one(&piece), tint(b.color), placed),
+            None => surface(d, &piece, b.pattern, tint(b.color), placed),
+        }
+    }
+    match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+        Some(p) => fill_pattern(d, p, one(&piece), one(&piece), tint(x.surface_color), placed),
+        None => surface(d, &piece, x.surface, tint(x.surface_color), placed),
+    }
+}
+
+/// The most pixels a drawing's image fills cover between them; past it, the rest are filled in their pictures' average colour.
+pub const MAX_IMAGE_FILL: usize = 8_000_000;
+
+/// A picture laid over `ring` (mm), as image fill `s` says, placed as `placed` says (an origin, and degrees turned): the pixels
+/// of the drawing inside the ring, each the colour of the picture there, as one picture over the ring's box on the view.
+fn image_fill(d: &mut Drawing, s: &Sampler, ring: &[P2], placed: (P2, f64)) {
+    if ring.len() < 3 {
+        return;
+    }
+    let part = std::mem::replace(&mut d.part, Part::Pattern);
+    let pts: Vec<(f64, f64)> = ring.iter().map(|q| d.view.px(*q)).map(|(x, y)| (f64::from(x), f64::from(y))).collect();
+    let (lo, hi) = pts
+        .iter()
+        .fold(((f64::MAX, f64::MAX), (f64::MIN, f64::MIN)), |(lo, hi), q| ((lo.0.min(q.0), lo.1.min(q.1)), (hi.0.max(q.0), hi.1.max(q.1))));
+    // What of its box the view shows, whole pixels.
+    let (x0, y0) = (lo.0.floor().max(0.0), lo.1.floor().max(0.0));
+    let (x1, y1) = (hi.0.ceil().min(f64::from(d.view.width)), hi.1.ceil().min(f64::from(d.view.height)));
+    if !(x0 < x1 && y0 < y1) {
+        d.part = part;
+        return;
+    }
+    let (w, h) = ((x1 - x0) as usize, (y1 - y0) as usize);
+    if d.pictured.saturating_add(w * h) > MAX_IMAGE_FILL {
+        d.fill(&[ring.to_vec()], s.average());
+        let note = "a view holds more image fills than it draws at once, so some show their picture's average colour: zoom in".to_string();
+        if d.notes.len() < 32 && !d.notes.contains(&note) {
+            d.notes.push(note);
+        }
+        d.part = part;
+        return;
+    }
+    d.pictured += w * h;
+    let foot = 1.0 / d.view.scale.max(f64::MIN_POSITIVE);
+    let (sin, cos) = placed.1.to_radians().sin_cos();
+    let mut rgba = vec![0_u8; w * h * 4];
+    let mut crossings = Vec::new();
+    for (row, line) in rgba.chunks_exact_mut(w * 4).enumerate() {
+        // Where the ring crosses the middle of this row of pixels, left to right: inside between each pair.
+        let y = y0 + row as f64 + 0.5;
+        crossings.clear();
+        for (a, b) in pts.iter().zip(pts.iter().cycle().skip(1)) {
+            if (a.1 <= y) != (b.1 <= y) {
+                crossings.push(a.0 + (y - a.1) / (b.1 - a.1) * (b.0 - a.0));
+            }
+        }
+        crossings.sort_by(f64::total_cmp);
+        for [a, b] in crossings.as_chunks::<2>().0 {
+            let (from, to) = ((a - x0 - 0.5).ceil().max(0.0) as usize, ((b - x0 - 0.5).floor() + 1.0).max(0.0) as usize);
+            for col in from..to.min(w) {
+                let q = d.view.mm(((x0 + col as f64 + 0.5) as f32, y as f32));
+                let (dx, dy) = (q.0 - placed.0.0, q.1 - placed.0.1);
+                let Rgb(r, g, b) = s.at(dx * cos + dy * sin, dy * cos - dx * sin, foot);
+                if let Some(px) = line.get_mut(col * 4..col * 4 + 4) {
+                    px.copy_from_slice(&[r, g, b, 255]);
+                }
+            }
+        }
+    }
+    d.push(Prim::Image { at: (x0 as f32, y0 as f32), width: w as u32, height: h as u32, rgba, ink: false });
+    d.part = part;
+}
+
+/// A pattern drawn small, to show in a list: whether it fills, and its lines, in a box `w` by `h`, y down.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Swatch {
+    pub solid: bool,
+    pub lines: Vec<[P2; 2]>,
+}
+
+/// `pattern` as a [`Swatch`] `w` by `h` across.
+pub fn pattern_swatch(pattern: Pattern, w: f64, h: f64) -> Swatch {
+    if pattern == Pattern::Solid {
+        return Swatch { solid: true, lines: Vec::new() };
+    }
+    if !(w.is_finite() && h.is_finite() && w >= 1.0 && h >= 1.0 && w <= 4096.0 && h <= 4096.0) {
+        return Swatch::default();
+    }
+    let view = View { angle: 0.0, scale: 1.0, cx: w / 2.0, cy: h / 2.0, width: w.ceil() as u32, height: h.ceil() as u32 };
+    let mut d = Drawing::new(view);
+    let ring = [P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)];
+    hatch(&mut d, &ring, pattern, P2(1.0, 0.0), INK, SWATCH_GAP, P2(0.0, 0.0));
+    let mut lines = Vec::new();
+    for prim in &d.prims {
+        if let Prim::Line { pts, .. } = prim {
+            let at = |q: &(f32, f32)| P2(f64::from(q.0), f64::from(q.1));
+            lines.extend(pts.windows(2).filter_map(|s| in_box([at(s.first()?), at(s.get(1)?)], w, h)));
+        }
+    }
+    Swatch { solid: false, lines }
+}
+
+/// What of a line lies in the box `w` by `h`: a pattern's dashes start inside and may run past its edge.
+fn in_box([a, b]: [P2; 2], w: f64, h: f64) -> Option<[P2; 2]> {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let (mut from, mut to) = (0.0_f64, 1.0_f64);
+    for (d, room) in [(-dx, a.0), (dx, w - a.0), (-dy, a.1), (dy, h - a.1)] {
+        if d == 0.0 {
+            if room < 0.0 {
+                return None;
+            }
+        } else if d < 0.0 {
+            from = from.max(room / d);
+        } else {
+            to = to.min(room / d);
+        }
+    }
+    (from < to).then_some([P2(a.0 + dx * from, a.1 + dy * from), P2(a.0 + dx * to, a.1 + dy * to)])
+}
+
 /// A surface pattern over `ring`, where its lines are far enough apart to read: its courses turned by `placed`'s angle
 /// and its lines started at its origin, as a named fill pattern's are — one paving over every piece of a shaped slab.
 fn surface(d: &mut Drawing, ring: &[P2], pattern: Pattern, color: Rgb, (origin, angle): (P2, f64)) {
-    if MODULE * d.view.scale >= GAP / 2.0 {
+    // A solid one has no lines to run together.
+    if pattern == Pattern::Solid || MODULE * d.view.scale >= GAP / 2.0 {
         let (sin, cos) = angle.to_radians().sin_cos();
         hatch(d, ring, pattern, P2(cos, sin), color, MODULE, origin);
     }
@@ -4236,10 +5081,7 @@ fn ceiling(d: &mut Drawing, m: &Model, id: Id, c: &Ceiling) {
         for piece in less_holes(m.less_shafts(face, *rise).0, &cut_by) {
             let replaced = override_patterns(d, m, std::slice::from_ref(&piece), false, (P2(0.0, 0.0), 0.0));
             if !replaced && let Some(x) = material {
-                match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
-                    Some(p) => fill_pattern(d, p, std::slice::from_ref(&piece), std::slice::from_ref(&piece), INK, (P2(0.0, 0.0), 0.0)),
-                    None => surface(d, &piece, x.surface, INK, (P2(0.0, 0.0), 0.0)),
-                }
+                material_surface(d, m, x, &piece, INK, (P2(0.0, 0.0), 0.0));
             }
         }
     }
@@ -4544,7 +5386,8 @@ fn below_tris(tris: &[[view3d::P3; 3]], cut: f64) -> Vec<[view3d::P3; 3]> {
 #[allow(clippy::too_many_arguments)]
 fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64, shown: bool, hides: &dyn Fn(&str) -> bool) {
     let Some(h) = m.opening_hole(e, cut) else { return };
-    let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
+    // A slanted wall's faces where the plane cuts it.
+    let (axis, (ext, int)) = (Axis::of(w), walls::faces_at(m, w, Some(cut)));
     let (s0, s1) = (h.s0, h.s1);
     // Clear a little past the faces too, where the outlines' outer halves are; along an arc, an arc.
     let past = 3.0 / d.view.scale;
@@ -4718,14 +5561,16 @@ pub(crate) struct StairSubs {
     hidden: [bool; 9],
     paint: [Option<crate::graphics::Override>; 9],
     ways: Option<crate::model::PlanShows>,
+    fade: crate::graphics::Fade,
 }
 
 impl StairSubs {
     /// As view `key` has them.
     pub(crate) fn of(m: &Model, key: impl Key) -> StairSubs {
-        let Some(own) = crate::graphics::graphics_of(m, key) else { return StairSubs::default() };
+        let fade = crate::graphics::Fade::of(m);
+        let Some(own) = crate::graphics::graphics_of(m, key) else { return StairSubs { fade, ..StairSubs::default() } };
         let g = own.resolved(m);
-        let mut out = StairSubs { ways: g.stairs, ..StairSubs::default() };
+        let mut out = StairSubs { ways: g.stairs, fade, ..StairSubs::default() };
         for (i, sub) in crate::graphics::STAIR_SUBS.iter().enumerate() {
             out.hidden[i] = g.hides(sub);
             out.paint[i] = g.categories.get(*sub).filter(|o| !o.projection.is_empty() || o.halftone).cloned();
@@ -4754,7 +5599,7 @@ impl StairSubs {
                             *dash = k.pattern(paper);
                         }
                         if o.halftone {
-                            *color = crate::graphics::halftone(*color);
+                            *color = self.fade.apply(*color);
                         }
                     }
                     Prim::Fill { color, .. } => {
@@ -4762,7 +5607,7 @@ impl StairSubs {
                             *color = Rgb(r, g, b);
                         }
                         if o.halftone {
-                            *color = crate::graphics::halftone(*color);
+                            *color = self.fade.apply(*color);
                         }
                     }
                     _ => {}
@@ -5191,24 +6036,131 @@ fn numbers(d: &mut Drawing, m: &Model, st: &Stair, l: &stairs::Layout, cut: f64,
     }
 }
 
-/// A ramp in the plan of `level`: from its own level, its runs' and landings' outlines, dashed
-/// where they're over the cut plane, and its walk line marked UP; from the level it climbs to, all
-/// of it, marked DN.
-fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) {
+/// A ramp in the plan of `level`, as its type says it shows there, as a stair's does (a ramp of no type as ramps always
+/// were: on its own level, in full under the cut plane and dashed over it, its walk line marked UP; on the level it climbs
+/// to, all of it, marked DN). Each flight the plane passes is split there, with the type's break mark across it.
+fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) -> bool {
     let level = m.guid(level);
-    let up = r.level == level;
-    if !up && r.top_level != Some(level) {
-        return;
-    }
-    let l = stairs::ramp(m, r);
-    let cut = if up { m.plan_range(level).cut } else { f64::INFINITY };
-    let rings = l.runs.iter().map(|run| (run.ring(), run.z.0)).chain(l.pads.iter().map(|p| (p.ring.clone(), p.z)));
-    for (ring, z) in rings {
-        for (a, b) in geom::ring_edges(&ring) {
-            segment(d, a, b, z > cut);
+    let kind = m.types.ramp.get(&r.type_name);
+    let own = r.level == level;
+    let topped = r.top_level == Some(level) && !own;
+    let under = !own && !topped && m.level_above(level) == Some(r.level);
+    let ways = kind.map(|t| t.plan).unwrap_or_default();
+    let way = match (own, topped, under) {
+        (true, ..) => ways.same,
+        (_, true, _) => ways.above,
+        (.., true) => ways.below,
+        _ => return false,
+    };
+    // A ramp of no type: under the plane in full and over it hidden, with no break mark; from above, all of it.
+    let (below, above, mark) = match (kind, own) {
+        (None, true) => (Shown::Full, Shown::Hidden, false),
+        (None, false) if topped => (Shown::Full, Shown::Full, false),
+        (None, false) => return false,
+        // The type says it isn't shown there: that is drawn, as far as the View Range's own say (below) goes.
+        (Some(_), _) => match way.look() {
+            Some(l) => l,
+            None => return true,
+        },
+    };
+    let style = |name: Option<&String>, usual: &str| {
+        name.filter(|n| !n.is_empty())
+            .and_then(|n| m.line_styles.get(n))
+            .or_else(|| m.line_styles.get(m.language.word(usual)))
+            .or_else(|| m.line_styles.get(usual))
+    };
+    let full = kind.and_then(|t| style(Some(&t.line_visible), crate::lines::MEDIUM));
+    let hidden = kind.and_then(|t| style(Some(&t.line_hidden), crate::lines::HIDDEN));
+    let fill = kind.and_then(|t| m.fill_patterns.get(&t.fill));
+    let cut_style = kind.map_or(crate::model::CutMark::default(), |t| t.cut_mark);
+    let cut = m.plan_range(level).cut;
+    let line = |d: &mut Drawing, pts: &[P2], over: bool| {
+        if pts.len() < 2 {
+            return;
+        }
+        let (st, dash) = match if over { above } else { below } {
+            Shown::Full => (full, None),
+            Shown::Hidden => (hidden, Some(vec![6.0, 4.0])),
+            Shown::Out => return,
+        };
+        let px: Vec<(f32, f32)> = pts.iter().map(|q| d.view.px(*q)).collect();
+        match st {
+            Some(s) => d.styled(m, s, px, false),
+            None => d.stroke(px, BY_CATEGORY, INK, dash, false),
+        }
+    };
+    for p in crate::ramps::pieces(m, r) {
+        // The plane passing through a flight: the part under it and the part over it, the mark between.
+        let (parts, split) = match p.split(cut) {
+            Some((a, b)) => {
+                let at = (a.end_cut.first().copied(), a.end_cut.last().copied());
+                (vec![a, b], Some(at))
+            }
+            None => (vec![p], None),
+        };
+        let n = parts.len();
+        for (k, part) in parts.iter().enumerate() {
+            let over = (part.z.0 + part.z.1) / 2.0 > cut + 1e-6;
+            if let (Some(f), Shown::Full) = (fill, if over { above } else { below }) {
+                fill_pattern(d, f, std::slice::from_ref(&part.ring), std::slice::from_ref(&part.ring), INK, (P2(0.0, 0.0), 0.0));
+            }
+            if part.landing || part.left.len() < 2 {
+                for (a, b) in geom::ring_edges(&part.ring) {
+                    line(d, &[a, b], over);
+                }
+                continue;
+            }
+            line(d, &part.left, over);
+            line(d, &part.right, over);
+            // Its ends, but not where the plane cuts it: the break mark is there.
+            if k == 0 {
+                line(d, &part.start_cut, over);
+            }
+            if k + 1 == n {
+                line(d, &part.end_cut, over);
+            }
+        }
+        if let (true, Some((Some(a), Some(b)))) = (mark, split) {
+            let way = parts.first().and_then(|x| x.walk.windows(2).last().map(|w| (w[1] - w[0]).unit())).unwrap_or(P2(1.0, 0.0));
+            cut_mark(d, a, b, way * 150.0, cut_style);
         }
     }
-    walk(d, m, &l.walk, up);
+    if under {
+        return true;
+    }
+    let l = stairs::ramp(m, r);
+    match kind {
+        Some(t) => {
+            let walk = if t.walk_rounded { round_corners(&l.walk, r.width / 2.0) } else { l.walk.clone() };
+            walk_marked(d, m, &walk, own, (t.arrow, t.walk_start));
+        }
+        None => walk(d, m, &l.walk, own),
+    }
+    true
+}
+
+/// A line from `a` to `b`, one pixel wide; dashed, `over`.
+fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
+    let pts = vec![d.view.px(a), d.view.px(b)];
+    d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
+}
+
+/// A ramp of neither the plan's level nor ending on it, seen from above where all of it is under the cut plane and its top
+/// over the view depth: its runs' and landings' edges, solid. Whether it was drawn.
+fn ramp_below(d: &mut Drawing, m: &Model, r: &Ramp, range: &PlanRange) -> bool {
+    let l = stairs::ramp(m, r);
+    let heights = l.runs.iter().flat_map(|run| [run.z.0, run.z.1]).chain(l.pads.iter().map(|p| p.z));
+    let (lo, hi) = heights.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+    if !matches!(range.zone(lo, hi), Some(Zone::Projection | Zone::Underlay)) {
+        return false;
+    }
+    let rings = l.runs.iter().map(|run| run.ring()).chain(l.pads.iter().map(|p| p.ring.clone()));
+    for ring in rings {
+        for (a, b) in geom::ring_edges(&ring) {
+            segment(d, a, b, false);
+        }
+    }
+    true
 }
 
 /// A railing in a plan cutting at height `cut`: its line, solid where what it runs along is under
@@ -5227,12 +6179,6 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
             d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
         }
     }
-}
-
-/// A line from `a` to `b`, one pixel wide; dashed, `over`.
-fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
-    let pts = vec![d.view.px(a), d.view.px(b)];
-    d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
 }
 
 /// A stair's or a ramp's walk line, its arrow at the top, marked UP at its foot; from above, the
@@ -5780,6 +6726,21 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
 
 /// `layout` lettered where `frame` puts it, in `color`: a note's text, or a title block's.
 pub(crate) fn lettering(d: &mut Drawing, layout: &crate::text::Layout, frame: NoteFrame, color: Rgb) {
+    let from = d.prims.len();
+    lettering_fallback(d, layout, frame, color);
+    let fallback = d.prims.split_off(from);
+    d.owners.truncate(from);
+    d.parts.truncate(from);
+    d.pens.truncate(from);
+    d.subs.truncate(from);
+    if !fallback.is_empty() {
+        let part = std::mem::replace(&mut d.part, Part::Text);
+        d.push(Prim::Text { frame, layout: std::sync::Arc::new(layout.clone()), fallback });
+        d.part = part;
+    }
+}
+
+fn lettering_fallback(d: &mut Drawing, layout: &crate::text::Layout, frame: NoteFrame, color: Rgb) {
     let f = |(x, y): (f32, f32)| frame.px((f64::from(x), f64::from(y)));
     let k = frame.k;
     let part = std::mem::replace(&mut d.part, Part::Text);
@@ -5936,6 +6897,77 @@ fn section_mark(d: &mut Drawing, v: &Section) {
     d.grow(from, b);
 }
 
+/// The rectangle of the fragment a callout shows, on the view it is a fragment of: what it takes, and what moves with its
+/// mark. Drawn in the parent's own line, at its annotation's size.
+fn detail_boundary(d: &mut Drawing, v: &crate::model::DetailView) {
+    let [a, b] = v.region;
+    let corners = [a, P2(b.0, a.1), b, P2(a.0, b.1)];
+    let pts: Vec<(f32, f32)> = corners.iter().map(|p| d.view.px(*p)).collect();
+    d.stroke(pts, Pen::MEDIUM, INK, None, true);
+}
+
+/// A detail view's callout in its parent: a circle 8 mm across on the paper, holding its number, and a line to the middle
+/// of the fragment it shows. It grows with the view's annotation, as a section's mark does.
+fn detail_mark(d: &mut Drawing, v: &crate::model::DetailView) {
+    // Its circle stands where its mark is, or just outside the fragment's north-east corner before it is moved: 4 mm on
+    // the paper, as big as the view's annotation.
+    let k = d.k;
+    let r = (4.0 * sheet::DENSITY) as f32 * k;
+    let (at, target) = match v.mark {
+        Some(mark) => {
+            let target = detail_boundary_point(v.region, mark);
+            (d.view.px(mark), d.view.px(target))
+        }
+        None => {
+            let corner = d.view.px(v.region[1]);
+            ((corner.0 + 0.9 * r, corner.1 - 0.9 * r), corner)
+        }
+    };
+    // The leader, from the circle's rim to the fragment's boundary: it stops there, never running on to its middle.
+    let (dx, dy) = (target.0 - at.0, target.1 - at.1);
+    let len = dx.hypot(dy).max(1e-6);
+    d.stroke(vec![(at.0 + dx / len * r, at.1 + dy / len * r), target], Pen::MEDIUM, INK, None, false);
+    let ring: Vec<(f32, f32)> = (0..40)
+        .map(|i| {
+            let t = f64::from(i) * PI / 20.0;
+            (at.0 + r * t.cos() as f32, at.1 + r * t.sin() as f32)
+        })
+        .collect();
+    d.push(Prim::Fill { rings: vec![ring.clone()], color: PAPER });
+    d.stroke(ring, Pen::BUBBLE, INK, None, true);
+    // Its name, shrunk to fit the circle when it is long.
+    let text = v.label();
+    let per_pixel = font::width(text, 1.0).max(1e-6);
+    let height = (10.0 * k).min(1.6 * r / per_pixel).max(4.0 * k);
+    d.text(text, at, height, INK);
+}
+
+/// Where the ray from the middle of `region` through `from` meets its boundary, mm. A mark outside the fragment draws
+/// its leader to the near side; one inside, to the side beyond it.
+pub fn detail_boundary_point([lo, hi]: [P2; 2], from: P2) -> P2 {
+    let c = (lo + hi) * 0.5;
+    let mut d = from - c;
+    if d.length() <= TOL {
+        d = P2(1.0, 0.0);
+    }
+    let mut near: Option<f64> = None;
+    for x in [lo.0, hi.0] {
+        let t = (x - c.0) / d.0;
+        let y = c.1 + d.1 * t;
+        if d.0.abs() > 1e-12 && t > 0.0 && (lo.1 - TOL..=hi.1 + TOL).contains(&y) {
+            near = near.map_or(Some(t), |n| Some(n.min(t)));
+        }
+    }
+    for y in [lo.1, hi.1] {
+        let t = (y - c.1) / d.1;
+        let x = c.0 + d.0 * t;
+        if d.1.abs() > 1e-12 && t > 0.0 && (lo.0 - TOL..=hi.0 + TOL).contains(&x) {
+            near = near.map_or(Some(t), |n| Some(n.min(t)));
+        }
+    }
+    near.map_or(c, |t| c + d * t)
+}
+
 /// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
 /// looks, and its name behind it.
 fn elevation_mark(d: &mut Drawing, v: &Section) {
@@ -5993,7 +7025,7 @@ fn grid(d: &mut Drawing, m: &Model, g: &Grid, start: P2, end: P2) {
             k: px_per_mm,
             angle: 0.0,
         };
-        lettering(d, &layout, frame, color);
+        lettering_fallback(d, &layout, frame, color);
     }
 }
 
@@ -6189,8 +7221,9 @@ pub fn svg(d: &Drawing) -> String {
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><rect width="{w}" height="{h}" fill="{}"/>"#,
         hex(PAPER)
     );
-    for (i, p) in d.prims.iter().enumerate() {
+    for (i, p) in d.paint_prims() {
         let _ = match p {
+            Prim::Text { .. } => continue,
             Prim::Fill { rings, color } => {
                 let data: Vec<String> = rings.iter().map(|r| path_data(r, true)).collect();
                 write!(s, r#"<path d="{}" fill="{}"/>"#, data.join(" "), hex(*color))
@@ -6344,9 +7377,10 @@ fn picture(width: u32, height: u32, rgba: &[u8]) -> Option<Pixmap> {
 
 /// The display list drawn over what `pm` holds.
 fn paint(pm: &mut Pixmap, d: &Drawing, t: Transform, clip: Option<&tiny_skia::Mask>) {
-    for (i, p) in d.prims.iter().enumerate() {
+    for (i, p) in d.paint_prims() {
         let mut paint = Paint { anti_alias: true, ..Paint::default() };
         match p {
+            Prim::Text { .. } => continue,
             Prim::Fill { rings, color } => {
                 paint.set_color_rgba8(color.0, color.1, color.2, 255);
                 let rings: Vec<&[(f32, f32)]> = rings.iter().map(Vec::as_slice).collect();
@@ -6387,6 +7421,108 @@ fn paint(pm: &mut Pixmap, d: &Drawing, t: Transform, clip: Option<&tiny_skia::Ma
 mod tests {
     use super::*;
     use crate::engine::Session;
+
+    fn text_carrier_frame_matches_fallback(d: &Drawing) {
+        let mut seen = 0;
+        for p in &d.prims {
+            if let Prim::Text { frame, layout, fallback } = p {
+                let mut fresh = Drawing::new(d.view);
+                lettering_fallback(&mut fresh, layout, *frame, INK);
+                let a: Vec<_> = fresh.prims.iter().flat_map(Prim::points).collect();
+                let b: Vec<_> = fallback.iter().flat_map(Prim::points).collect();
+                assert_eq!(a.len(), b.len());
+                assert!(a.iter().zip(b).all(|(a, b)| (a.0 - b.0).hypot(a.1 - b.1) < 0.001));
+                seen += 1;
+            }
+        }
+        assert!(seen > 0);
+    }
+
+    #[test]
+    fn text_carrier_angled_section_underlay_frame_matches_fallback() {
+        let mut s = Session::new();
+        let source = s.execute("section", &serde_json::json!({"start":[-1000,0], "end":[1000,0]})).unwrap()["id"].as_u64().unwrap();
+        s.execute("text", &serde_json::json!({"view":source, "text":"AV note", "at":[1000,0], "angle":17})).unwrap();
+        s.execute("underlay", &serde_json::json!({"view":"Level 1", "source":source, "angle":31, "hide_annotation":false})).unwrap();
+        let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 400, height: 300 };
+        let under = crate::underlay::draw_cancellable(&s.model, None, 100000, view, &|| false).unwrap().unwrap();
+        text_carrier_frame_matches_fallback(&under.drawing);
+    }
+
+    #[test]
+    fn text_carrier_fallback_is_exact() {
+        let mut s = Session::new();
+        s.script(
+            r#"text {"text":"note", "at":[0,0]}
+            grid {"start":[0,-2000], "end":[0,8000]}"#,
+        )
+        .unwrap();
+        let id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Text(_))).unwrap().0;
+        let grids = plan(&s.model, 100000, 400, 300);
+        assert_eq!(grids.prims.iter().filter(|p| matches!(p, Prim::Text { .. })).count(), 1, "no grid-bubble carriers");
+        s.execute(
+            "graphics",
+            &serde_json::json!({"view":100000,"elements":{id.to_string():{
+                "projection":{"color":"#cc5511", "fill":"#1155cc", "weight":8}, "halftone":true
+            }}}),
+        )
+        .unwrap();
+        for font in [crate::text::SANS, crate::text::LETTERING] {
+            let t = crate::text::TextType { font: font.into(), ..Default::default() };
+            let layout = crate::text::layout(&t, "AV g\nNotes 123", &[crate::text::Style { underline: true, ..Default::default() }]);
+            let frame = NoteFrame { at: (24.0, 30.0), k: 5.0, angle: 0.3 };
+            let view = View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 240, height: 160 };
+            let make = |wrapped| {
+                let mut d = Drawing::new(view);
+                d.own(Some(100010));
+                d.push(Prim::Fill { rings: vec![vec![(0.0, 0.0), (220.0, 0.0), (220.0, 150.0), (0.0, 150.0)]], color: POCHE });
+                d.own(Some(id));
+                if wrapped {
+                    super::lettering(&mut d, &layout, frame, INK);
+                } else {
+                    lettering_fallback(&mut d, &layout, frame, INK);
+                }
+                d.own(Some(100012));
+                d.stroke(vec![(30.0, 40.0), (160.0, 40.0)], Pen::PROJECTION, REFERENCE_PLANE, None, false);
+                d
+            };
+            let (mut wrapped, mut plain) = (make(true), make(false));
+            assert_eq!(wrapped.prims.len(), 3);
+            let Prim::Text { layout: carried, frame: placed, .. } = &wrapped.prims[1] else { panic!("no text carrier") };
+            assert_eq!((&**carried, *placed), (&layout, frame));
+            let same = |a: &Drawing, b: &Drawing| {
+                assert_eq!(svg(a), svg(b));
+                assert_eq!(rgba(a, None).unwrap(), rgba(b, None).unwrap());
+                for x in (10..180).step_by(7) {
+                    for y in (15..120).step_by(7) {
+                        assert_eq!(a.pick_all((x as f32, y as f32), 2.0), b.pick_all((x as f32, y as f32), 2.0));
+                    }
+                }
+                for crossing in [true, false] {
+                    assert_eq!(a.in_box((20.0, 20.0), (100.0, 80.0), crossing), b.in_box((20.0, 20.0), (100.0, 80.0), crossing));
+                }
+                assert_eq!(crate::pdf::pdf(&[(a, P2(48.0, 32.0))]), crate::pdf::pdf(&[(b, P2(48.0, 32.0))]));
+            };
+            same(&wrapped, &plain);
+            same(&wrapped.cropped((42.0, 35.0), (142.0, 90.0)).0, &plain.cropped((42.0, 35.0), (142.0, 90.0)).0);
+            for d in [&mut wrapped, &mut plain] {
+                d.prims = std::mem::take(&mut d.prims).into_iter().map(|p| p.moved(7.0, -4.0)).collect();
+            }
+            same(&wrapped, &plain);
+            text_carrier_frame_matches_fallback(&wrapped);
+            text_carrier_frame_matches_fallback(&wrapped.cropped((-10.0, -10.0), (250.0, 170.0)).0);
+            let mut grown = make(true);
+            grown.k = 1.7;
+            grown.grow(0, (13.0, 19.0));
+            text_carrier_frame_matches_fallback(&grown);
+            let setup = crate::export::page::PageSetup { colour: crate::export::page::Colour::Grey, hairlines: true, ..Default::default() };
+            same(&crate::export::formats::styled(&wrapped, &setup).unwrap(), &crate::export::formats::styled(&plain, &setup).unwrap());
+            for d in [&mut wrapped, &mut plain] {
+                Look::of(&s.model, 100000).dress(d);
+            }
+            same(&wrapped, &plain);
+        }
+    }
 
     #[test]
     fn a_plan_is_fitted_where_its_drawing_stands_without_being_drawn() {
@@ -7135,6 +8271,19 @@ mod tests {
     }
 
     #[test]
+    fn a_ceiling_at_the_top_of_the_view_range_hides_a_beam_lying_on_it() {
+        // The view range's top is held: a ceiling there is seen, and a beam whose bottom is there too, over it, is hidden.
+        let mut s = house();
+        let top = s.model.plan_range(100000u64).top - s.model.elevation(s.model.guid(100000u64));
+        s.script(&format!(r#"beam {{"points": [[1000, 1500], [7000, 1500]], "offset": {top}, "justify": "bottom"}}"#)).unwrap();
+        let beam = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Beam(_))).map(|(id, _)| *id);
+        assert!(ceiling_plan(&s.model, 100000, 800, 600).owners.contains(&beam), "seen, at the top, {top} mm");
+        s.script(&format!(r#"ceiling {{"point": [4000, 1500], "offset": {top}}}"#)).unwrap();
+        let d = ceiling_plan(&s.model, 100000, 800, 600);
+        assert!(!d.owners.contains(&beam), "hidden by the ceiling at the top, {top} mm");
+    }
+
+    #[test]
     fn plans_draw_stairs_that_turn_ramps_and_railings() {
         let mut s = house();
         // A stair (11) turning right at a landing and its railings (12, 13); a ramp (14) turning back
@@ -7352,10 +8501,10 @@ mod tests {
     /// The extremes of what `d` draws, px: left, top, right, bottom.
     fn drawn_extent(d: &Drawing) -> [f32; 4] {
         let mut e = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
-        let pts = d.prims.iter().flat_map(|p| match p {
+        let pts = d.paint_prims().flat_map(|(_, p)| match p {
             Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect::<Vec<_>>(),
             Prim::Line { pts, .. } => pts.clone(),
-            Prim::Image { .. } => Vec::new(),
+            Prim::Image { .. } | Prim::Text { .. } => Vec::new(),
         });
         for (x, y) in pts {
             e = [e[0].min(x), e[1].min(y), e[2].max(x), e[3].max(y)];
@@ -7455,6 +8604,55 @@ mod tests {
         // A weight overridden is a pen too.
         s.execute("graphics", &serde_json::json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 13}}}})).unwrap();
         assert!((widest(&s, view, wall) - 0.7 * 5.0 * 2.0).abs() < 1e-4, "pen 13, 0.7 mm: {}", widest(&s, view, wall));
+    }
+
+    #[test]
+    fn walls_of_one_material_share_one_hatch_laid_from_the_origin_whichever_way_they_run() {
+        // A rectangle of hatched walls, each running its own way round: the hatch is the material's, not the wall's, so
+        // every wall's lines run the same way and lie on the same lattice from the project's origin.
+        let mut s = Session::new();
+        s.script(
+            r#"material {"name": "Hatched", "cut": "diagonal"}
+               type {"category": "wall", "name": "Hatched Wall", "layers": [{"material": "Hatched", "thickness": 300}]}
+               wall {"points": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "closed": true, "type": "Hatched Wall"}"#,
+        )
+        .unwrap();
+        let walls: Vec<Id> = s.model.elements.iter().filter_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).collect();
+        assert_eq!(walls.len(), 4);
+        let level = s.model.levels()[0].0;
+        let view = View { angle: 0.0, scale: 0.1, cx: 3000.0, cy: 2000.0, width: 900, height: 700 };
+        let d = draw(&s.model, level, view);
+        let mut ways = Vec::new();
+        let mut lattice = Vec::new();
+        for ((p, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+            let (Prim::Line { pts, .. }, Some(o), Part::Pattern) = (p, o, part) else { continue };
+            if !walls.contains(o) || pts.len() != 2 {
+                continue;
+            }
+            let (a, b) = (P2(f64::from(pts[0].0), f64::from(pts[0].1)), P2(f64::from(pts[1].0), f64::from(pts[1].1)));
+            if a.dist(b) < 4.0 {
+                continue;
+            }
+            let u = (b - a).unit();
+            let u = if u.0 < 0.0 { u * -1.0 } else { u };
+            ways.push((*o, u));
+            // How far across the lines each lies: on one lattice, a whole number of steps from any other.
+            lattice.push((*o, a.dot(u.perp())));
+        }
+        for w in &walls {
+            assert!(ways.iter().any(|(o, _)| o == w), "wall {w} is hatched");
+        }
+        let (_, first) = ways[0];
+        for (o, u) in &ways {
+            assert!(u.dist(first) < 0.02, "wall {o}'s hatch runs {u:?}, another's {first:?}");
+        }
+        let gaps: Vec<f64> = lattice.iter().map(|(_, c)| *c).collect();
+        let step = gaps.windows(2).map(|w| (w[1] - w[0]).abs()).filter(|g| *g > 1.0).fold(f64::INFINITY, f64::min);
+        assert!(step.is_finite());
+        for c in &gaps {
+            let k = (c - gaps[0]) / step;
+            assert!((k - k.round()).abs() < 0.05, "a line {k} steps off the others' lattice");
+        }
     }
 
     #[test]

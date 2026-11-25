@@ -565,3 +565,94 @@ fn rules(ui: &mut Ui, rows: &mut [Rule], units: Units, code: &str) {
         }
     });
 }
+
+/// A ramp type's own page, beside its layers: whether it is solid to its level or a slab of its layers, its material, and how
+/// plans draw it, as a stair type's Graphics.
+#[derive(Clone, PartialEq)]
+pub(crate) struct RampDraft {
+    solid: bool,
+    material: String,
+    plan: [String; 3],
+    line_visible: String,
+    line_hidden: String,
+    fill: String,
+    arrow: &'static str,
+    walk_start: &'static str,
+    cut_mark: &'static str,
+    walk_rounded: bool,
+}
+
+impl RampDraft {
+    pub(crate) fn new(m: &Model, name: &str) -> RampDraft {
+        let kind = m.types.ramp.get(name).cloned().unwrap_or_default();
+        let way = |w: PlanShow| {
+            let key = word(serde_json::to_value(w));
+            WAYS.iter().find(|(k, _)| *k == key).map_or(String::new(), |(_, l)| t(l).to_string())
+        };
+        RampDraft {
+            solid: kind.solid,
+            material: kind.material,
+            plan: [way(kind.plan.below), way(kind.plan.same), way(kind.plan.above)],
+            line_visible: usual_style(m, kind.line_visible, bimcraft_core::lines::MEDIUM),
+            line_hidden: usual_style(m, kind.line_hidden, bimcraft_core::lines::HIDDEN),
+            fill: kind.fill,
+            arrow: key_of(&ARROWS, serde_json::to_value(kind.arrow)),
+            walk_start: key_of(&WALK_STARTS, serde_json::to_value(kind.walk_start)),
+            cut_mark: key_of(&CUT_MARKS, serde_json::to_value(kind.cut_mark)),
+            walk_rounded: kind.walk_rounded,
+        }
+    }
+
+    /// What the `type` command takes for what is picked.
+    pub(crate) fn params(&self, p: &mut Value) {
+        let way = |shown: &String| WAYS.iter().find(|(_, l)| t(l) == shown).map_or("break_visible_hidden", |(k, _)| k);
+        p["solid"] = json!(self.solid);
+        p["material"] = json!(self.material);
+        p["plan"] = json!({"below": way(&self.plan[0]), "same": way(&self.plan[1]), "above": way(&self.plan[2])});
+        p["line_visible"] = json!(self.line_visible);
+        p["line_hidden"] = json!(self.line_hidden);
+        p["fill"] = json!(self.fill);
+        p["arrow"] = json!(self.arrow);
+        p["walk_start"] = json!(self.walk_start);
+        p["cut_mark"] = json!(self.cut_mark);
+        p["walk_rounded"] = json!(self.walk_rounded);
+    }
+
+    /// Its rows: the structure, then the graphics.
+    pub(crate) fn show(&mut self, tb: &mut Table, m: &Model) {
+        tb.group(msg!("Structure"));
+        tb.check_about(
+            t("Solid to Level"),
+            &mut self.solid,
+            t("Solid all the way down to its level, as Revit's Shape: Solid. Off, it is a slab of the layers above under its slope."),
+        );
+        let materials: Vec<String> = std::iter::once(String::new()).chain(m.materials.keys().cloned()).collect();
+        tb.pick(t("Solid Material"), &mut self.material, &materials);
+        tb.section(msg!("Graphics"), msg!("How plans draw ramps of this type."));
+        tb.group(msg!("Floor Plan Display"));
+        let ways: Vec<String> = WAYS.iter().map(|(_, l)| t(l).to_string()).collect();
+        for (i, label) in ["On the Level Below", "On Its Own Level", "On the Level Above"].into_iter().enumerate() {
+            let label = t(label);
+            tb.row(label, |ui, l| {
+                if let Some(picked) = way_pick(ui, label, l, &self.plan[i], &ways) {
+                    self.plan[i] = picked;
+                }
+            });
+        }
+        tb.group(msg!("Lines and Fill"));
+        let lines: Vec<String> = m.line_styles.keys().cloned().collect();
+        tb.pick(t("Visible Line Style"), &mut self.line_visible, &lines);
+        tb.pick(t("Hidden Line Style"), &mut self.line_hidden, &lines);
+        let fills: Vec<String> = std::iter::once(String::new()).chain(m.fill_patterns.keys().cloned()).collect();
+        tb.pick(t("Fill of the Visible Part"), &mut self.fill, &fills);
+        tb.group(msg!("Symbols"));
+        choose(tb, t("Walk Line Arrow"), &mut self.arrow, &ARROWS);
+        choose(tb, t("Walk Line Start"), &mut self.walk_start, &WALK_STARTS);
+        tb.check_about(
+            t("Rounded Walk Line"),
+            &mut self.walk_rounded,
+            t("Round the walk line's corners where it turns, instead of turning them square."),
+        );
+        choose(tb, t("Cut Mark"), &mut self.cut_mark, &CUT_MARKS);
+    }
+}

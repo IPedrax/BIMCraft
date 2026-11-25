@@ -66,6 +66,19 @@ thread_local! {
     static IN_TOOLS: Cell<bool> = const { Cell::new(false) };
     /// The tools whose box was ticked or cleared in Edit Tools this frame, by name.
     static TOGGLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// The tab being drawn, for the keys of its panels: `tab:<tab>/<panel>` (`ТЗ-019`). A plugin's tab is `plugin:<name>`
+    /// and a family document's `family:<DocTab>`.
+    static CURRENT_TAB: RefCell<String> = const { RefCell::new(String::new()) };
+    /// The keys of the panels the user took out of the window, drawn in Edit Tools alone.
+    static PANELS_HIDDEN: RefCell<std::collections::BTreeSet<String>> = const { RefCell::new(std::collections::BTreeSet::new()) };
+    /// The panels whose box was ticked or cleared in Edit Tools this frame, by key.
+    static TOGGLED_PANELS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// Every panel key drawn since the window started: what a preset's editor lists under its tabs.
+    static SEEN_PANELS: RefCell<std::collections::BTreeSet<String>> = const { RefCell::new(std::collections::BTreeSet::new()) };
+    /// How many panels the tab being drawn has drawn: none at all says so (every panel of it is hidden).
+    static DRAWN_PANELS: Cell<usize> = const { Cell::new(0) };
+    /// How many panels of the tab being drawn the user took out: it says so only when some were, not when the scale hid them all.
+    static HIDDEN_PANELS: Cell<usize> = const { Cell::new(0) };
     /// How the panels of the tab being drawn fit, by name; one not named shows all its tools.
     static FITS: RefCell<Vec<(String, Fit)>> = const { RefCell::new(Vec::new()) };
     /// The panels of the tab being drawn, as they're drawn.
@@ -148,6 +161,69 @@ pub(crate) fn toggle(name: &str) {
 /// The tools ticked or cleared since the last call.
 pub(crate) fn take_toggled() -> Vec<String> {
     TOGGLED.with(|t| std::mem::take(&mut *t.borrow_mut()))
+}
+
+/// The tab the panels drawn next belong to: its English name, `plugin:<name>` for a plugin's tab, `family:<DocTab>` for a family
+/// document's. A panel's key is built from it ([`panel_key`]).
+pub(crate) fn set_tab(name: &str) {
+    CURRENT_TAB.with(|t| *t.borrow_mut() = name.to_string());
+}
+
+/// The key of the panel named `title` of the tab being drawn: `tab:<tab>/<panel>`, never translated.
+pub(crate) fn panel_key(title: &str) -> String {
+    let tab = CURRENT_TAB.with(|t| t.borrow().clone());
+    format!("tab:{tab}/{title}")
+}
+
+/// What the panels drawn now leave out: the user's hidden panels (`panels_hidden` in `settings.json`).
+pub(crate) fn panel_rules(hidden: std::collections::BTreeSet<String>) {
+    PANELS_HIDDEN.with(|h| *h.borrow_mut() = hidden);
+}
+
+/// Whether the user took the panel whose key is `key` out of the window.
+pub(crate) fn panel_hidden(key: &str) -> bool {
+    PANELS_HIDDEN.with(|h| h.borrow().contains(key))
+}
+
+/// Ticks or clears the panel whose key is `key` in Edit Tools.
+pub(crate) fn toggle_panel(key: &str) {
+    TOGGLED_PANELS.with(|t| t.borrow_mut().push(key.to_string()));
+}
+
+/// The panels ticked or cleared since the last call.
+pub(crate) fn take_toggled_panels() -> Vec<String> {
+    TOGGLED_PANELS.with(|t| std::mem::take(&mut *t.borrow_mut()))
+}
+
+/// Starts counting the panels the tab drawn next has: [`drawn_panels`] says whether any was drawn.
+pub(crate) fn begin_tab() {
+    DRAWN_PANELS.with(|d| d.set(0));
+    HIDDEN_PANELS.with(|h| h.set(0));
+}
+
+/// How many panels the tab being drawn drew.
+pub(crate) fn drawn_panels() -> usize {
+    DRAWN_PANELS.with(Cell::get)
+}
+
+/// How many panels of the tab being drawn the user took out.
+pub(crate) fn hidden_panels() -> usize {
+    HIDDEN_PANELS.with(Cell::get)
+}
+
+/// Keeps a panel's key for the preset editor.
+fn note_panel(key: &str) {
+    SEEN_PANELS.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.len() < 2048 {
+            s.insert(key.to_string());
+        }
+    });
+}
+
+/// The panel keys drawn since the window started, for the preset editor: taken once a frame.
+pub(crate) fn take_seen_panels() -> Vec<String> {
+    SEEN_PANELS.with(|s| std::mem::take(&mut *s.borrow_mut()).into_iter().collect())
 }
 
 /// Leaves the tabs' Select panel out of what is drawn next, or puts it back.
@@ -272,21 +348,27 @@ pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
     }
     // A panel folded on the way may not have been needed: the ones before it, asked after, can make more room than was left
     // over (a whole tool's worth). Each fold that room still holds is given back, the first made first; a kept panel's
-    // before any other's, and none other while a kept one stays folded, so it still gives way last.
+    // before any other's, and none other while a kept one stays folded, so it still gives way last. A fold the room can't
+    // hold whole is given back in part when it holds the panel's first tools, measured: its first so many shown, the rest
+    // handed over, wider than its folded button by no more than what is spare.
     let mut spare = -over;
     for kept in [true, false] {
         let mut stays = false;
-        fits.retain(|(name, fit)| {
+        fits.retain_mut(|(name, fit)| {
             let Some(p) = seen.iter().find(|p| &p.name == name && p.kept == kept).filter(|_| *fit == Fit::Fold) else {
                 return true;
             };
             let made = p.natural - FOLDED;
-            if made > spare {
-                stays = true;
-                return true;
+            if made <= spare {
+                spare -= made;
+                return false;
             }
-            spare -= made;
-            false
+            stays = true;
+            if let Some(k) = (1..p.tools).rev().find(|&k| p.widths.get(k).is_some_and(|w| w - FOLDED <= spare)) {
+                spare -= p.widths[k] - FOLDED;
+                *fit = Fit::Show(k);
+            }
+            true
         });
         if kept && stays {
             break;
@@ -312,27 +394,53 @@ pub(crate) fn yielding(ui: &mut Ui, title: &str, add: impl FnMut(&mut Ui)) {
     YIELD.with(|k| k.set(false));
 }
 
-/// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does.
+/// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does. Taken out of the window, it is
+/// drawn in Edit Tools alone, dimmed, under an empty box that brings it back.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     let (kept, yields) = (KEEP.with(Cell::take), YIELD.with(Cell::take));
     // A panel the project's scale leaves out: not drawn, on the ribbon or in the Tools palette.
     if scale_hides(title) {
         return;
     }
+    let key = panel_key(title);
+    note_panel(&key);
+    let editing = editing_tools();
+    let on = !panel_hidden(&key);
+    // Taken out, it is drawn in Edit Tools alone: there its box is, and its tools' boxes with it.
+    if !on && !editing {
+        HIDDEN_PANELS.with(|h| h.set(h.get() + 1));
+        return;
+    }
+    DRAWN_PANELS.with(|d| d.set(d.get() + 1));
     if listing() {
         // Inside another panel's list (a folded panel's): the tools as rows; in the Tools palette, under the panel's name.
         if in_palette() {
-            // Painted: a panel may be named as a tab is (the Structure tab's Structure panel), and its tools say the rest.
-            let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
-            let at = r.left_bottom() - vec2(0.0, 6.0);
-            ui.painter().text(at, Align2::LEFT_BOTTOM, t(title), FontId::proportional(11.5), pal().muted);
+            if editing {
+                let mut shown = on;
+                if ui.checkbox(&mut shown, t(title)).changed() {
+                    toggle_panel(&key);
+                }
+            } else {
+                // Painted: a panel may be named as a tab is (the Structure tab's Structure panel), and its tools say the rest.
+                let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+                let at = r.left_bottom() - vec2(0.0, 6.0);
+                ui.painter().text(at, Align2::LEFT_BOTTOM, t(title), FontId::proportional(11.5), pal().muted);
+            }
         }
-        add(ui);
+        if !on {
+            ui.scope(|ui| {
+                ui.set_opacity(0.45);
+                add(ui);
+            });
+        } else {
+            add(ui);
+        }
         return;
     }
     let name = t(title);
     let id = ui.id().with(("ribbon-panel", title));
-    let fit = FITS.with(|f| f.borrow().iter().find(|(n, _)| n == title).map(|(_, fit)| *fit));
+    // Edit Tools shows every tool, its box to tick: no panel folds it to its list there.
+    let fit = if editing { None } else { FITS.with(|f| f.borrow().iter().find(|(n, _)| n == title).map(|(_, fit)| *fit)) };
     let shows = match fit {
         Some(Fit::Show(k)) => k,
         _ => usize::MAX,
@@ -355,24 +463,47 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         r.rect.width()
     } else {
         let shown = ui.vertical(|ui| {
-            let row = ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = GAP;
-                row_at.0 = ui.min_rect().left();
-                add(ui);
-            });
-            let font = FontId::proportional(11.5);
-            let text = ui.painter().layout_no_wrap(name.to_string(), font.clone(), pal().muted).size().x;
-            row_at.1 = text + 24.0;
-            let (r, title_row) = ui.allocate_exact_size(vec2(row.response.rect.width().max(text + 24.0), 16.0), Sense::click());
-            if title_row.hovered() {
-                ui.painter().rect_filled(Rect::from_center_size(r.center(), vec2(text + 22.0, 16.0)), 4.0, pal().hover_fill);
+            if editing {
+                // The panel's name is its box: ticked shows it, cleared takes it out and keeps its tools' boxes here. It stands
+                // over the tools, where a short ribbon cannot clip it.
+                let mut shown = on;
+                let r = ui.checkbox(&mut shown, t(title));
+                if r.changed() {
+                    toggle_panel(&key);
+                }
+                row_at.1 = r.rect.width();
+                ui.scope(|ui| {
+                    if !on {
+                        ui.set_opacity(0.45);
+                    }
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = GAP;
+                        row_at.0 = ui.min_rect().left();
+                        add(ui);
+                    })
+                });
+                r
+            } else {
+                let row = ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = GAP;
+                    row_at.0 = ui.min_rect().left();
+                    add(ui);
+                });
+                let font = FontId::proportional(11.5);
+                let text = ui.painter().layout_no_wrap(name.to_string(), font.clone(), pal().muted).size().x;
+                row_at.1 = text + 24.0;
+                let (r, title_row) = ui.allocate_exact_size(vec2(row.response.rect.width().max(text + 24.0), 16.0), Sense::click());
+                if title_row.hovered() {
+                    ui.painter().rect_filled(Rect::from_center_size(r.center(), vec2(text + 22.0, 16.0)), 4.0, pal().hover_fill);
+                }
+                ui.painter().text(r.center() - vec2(5.0, 0.0), Align2::CENTER_CENTER, name, font, pal().muted);
+                caret(ui, pos2(r.center().x + text / 2.0 + 3.0, r.center().y), pal().muted);
+                let label = format!("{name} ▾");
+                title_row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+                open_if_asked(ui, &title_row);
+                list(&title_row.clone().on_hover_text(name), &mut add);
+                title_row
             }
-            ui.painter().text(r.center() - vec2(5.0, 0.0), Align2::CENTER_CENTER, name, font, pal().muted);
-            caret(ui, pos2(r.center().x + text / 2.0 + 3.0, r.center().y), pal().muted);
-            let label = format!("{name} ▾");
-            title_row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
-            open_if_asked(ui, &title_row);
-            list(&title_row.on_hover_text(name), &mut add);
         });
         shown.response.rect.width()
     };
@@ -548,6 +679,16 @@ mod tests {
         assert_eq!(fit(&[(300.0, 10), (82.0, 1)], 355.0), [("p0".into(), Fit::Show(8))]);
         // 95 over: the fold and three tools (100 made) do it, where the first alone would hand four over; the fold stays.
         assert_eq!(fit(&[(300.0, 10), (82.0, 1)], 305.0), [("p1".into(), Fit::Fold), ("p0".into(), Fit::Show(7))]);
+    }
+
+    #[test]
+    fn a_fold_the_room_cant_hold_whole_is_given_back_in_part() {
+        // 380 wide in 330, 50 over: the last panel (two tools, 114 wide, 83 showing its first) can't make it alone and folds
+        // (42 made); the first then hands a tool over (about 30 made), some 22 more than was left: room for the last panel's
+        // first tool (11 wider than its fold), not for both.
+        let mut seen = panels(&[(266.0, 9), (114.0, 2)]);
+        seen[1].widths = vec![83.0, 83.0];
+        assert_eq!(fits(&seen, 380.0, 330.0), [("p1".into(), Fit::Show(1)), ("p0".into(), Fit::Show(8))]);
     }
 
     #[test]
