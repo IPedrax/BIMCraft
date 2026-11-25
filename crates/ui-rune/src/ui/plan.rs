@@ -11,7 +11,7 @@ use std::time::Duration;
 use rune::tok::type_;
 use rune::{El, Phase, PointerButton, Shape, Tx, canvas, el, memo, text};
 
-use super::draw_bar;
+use super::{draw_bar, tempdim};
 use crate::app::{App, CameraMode, PlanMode};
 use crate::paint::{self, Palette};
 use crate::select::How;
@@ -154,5 +154,6 @@ pub fn plan(s: &App) -> El {
         .children(tag(s, &pal))
         .children(grips)
         .children(grip_tag)
+        .children(tempdim::dimensions(s, &pal))
         .children(draw_bar::bar(s))
 }

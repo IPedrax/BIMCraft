@@ -22,6 +22,7 @@ pub mod select;
 pub mod snapping;
 pub mod software;
 pub mod status;
+pub mod tempdim;
 pub mod tooling;
 pub mod tools;
 pub mod ui;

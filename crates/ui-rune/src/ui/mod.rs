@@ -16,6 +16,7 @@ mod plan;
 mod properties;
 mod ribbon;
 mod status_bar;
+mod tempdim;
 mod tools;
 mod topbar;
 

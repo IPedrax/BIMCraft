@@ -152,6 +152,8 @@ pub struct App {
     pub fields: Vec<Field>,
     /// Where an edit goes that has no field (a stale one): never read.
     pub scratch: TextEdit,
+    /// The temporary dimensions of the element selected alone, each with the number being typed into it (`app/tempdim.rs`).
+    pub temp: Vec<tempdim::TempField>,
     /// A command's refusal, as the core says it.
     pub message: Option<String>,
     /// How far the press now dragging has been followed, points.
@@ -198,6 +200,7 @@ impl App {
             props: Vec::new(),
             fields: Vec::new(),
             scratch: TextEdit::new(""),
+            temp: Vec::new(),
             message: None,
             followed: (0.0, 0.0),
         };
@@ -278,6 +281,7 @@ impl App {
         self.props = props::rows(&json);
         self.fields =
             props::editable(&json).into_iter().map(|(name, kind, text)| Field { name, kind, edit: TextEdit::new(text) }).collect();
+        self.refresh_dims();
     }
 
     /// The canvas has laid out at `w` x `h` points.
@@ -711,6 +715,7 @@ impl App {
 
 mod grips;
 mod menu;
+mod tempdim;
 mod tooling;
 
 #[cfg(test)]
