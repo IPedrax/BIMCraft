@@ -2,10 +2,14 @@
 //! application only through commands. This crate reads the folder, checks the manifests, compiles the modules,
 //! registers their functions as commands of a [`Session`] and runs them under [`runtime`]'s limits.
 //!
+//! A plugin of ABI 2 may also declare dockable panels, which the window draws from the manifest; the guest still writes no
+//! UI code and imports nothing more than ABI 1's three functions.
+//!
 //! The core knows nothing of WASM: it only has a session's registry of external commands (`engine::ExternalCommand`),
 //! which is what [`Plugins::register`] fills. Without a plugin folder nothing changes, and the catalog, the errors and
 //! the undo history are exactly as they were.
 
+pub mod answer;
 pub mod manifest;
 pub mod runtime;
 pub mod testing;
@@ -19,7 +23,8 @@ use serde_json::Value;
 
 use bimcraft_core::engine::{ExternalCommand, Session};
 
-pub use manifest::{Function, Manifest};
+pub use answer::{PanelAnswer, PanelTable};
+pub use manifest::{Align, Choice, Column, Dock, EnabledWhen, Function, FunctionUi, Manifest, Panel, Unit, Widget};
 
 /// The manifest's file name, in a plugin's folder.
 pub const MANIFEST: &str = "plugin.json";
@@ -163,6 +168,35 @@ pub struct RibbonTab {
     /// The plugin's own tab name; none for the common Plugins section.
     pub name: Option<String>,
     pub panels: Vec<RibbonPanel>,
+}
+
+/// A panel a plugin declares: a palette the window docks and draws, in the order the plugins were read, then the
+/// panel's `order`, then its id.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PluginPanel {
+    /// The plugin's id.
+    pub plugin: String,
+    /// The plugin's name, for the palette's tooltip.
+    pub plugin_name: String,
+    /// The panel's id within the plugin.
+    pub id: String,
+    /// The palette's title: the plugin's data, not translated.
+    pub title: String,
+    pub order: i64,
+    pub dock: Dock,
+    /// The function called once, when the palette is first shown.
+    pub on_open: Option<String>,
+    /// The function called by Refresh and after each of the panel's buttons.
+    pub refresh: Option<String>,
+    /// Its widgets, top to bottom.
+    pub widgets: Vec<Widget>,
+}
+
+impl PluginPanel {
+    /// The palette's stable name, as the layout keeps it: `plugin:<plugin id>:<panel id>`.
+    pub fn name(&self) -> String {
+        format!("plugin:{}:{}", self.plugin, self.id)
+    }
 }
 
 /// Where a plugin's folder is: `BIMCRAFT_PLUGINS` if it is set (empty disables plugins), else `plugins`
@@ -469,6 +503,10 @@ impl Plugins {
         let mut commands: Vec<(Option<String>, String, RibbonCommand)> = Vec::new();
         for plugin in self.plugins.iter().filter(|p| p.status.is_loaded()) {
             for f in &plugin.manifest.functions {
+                // A function only a panel calls has no button on the ribbon.
+                if !f.ui.on_ribbon() {
+                    continue;
+                }
                 let tab = plugin.manifest.tab_name(f);
                 let panel = plugin.manifest.panel_name(f);
                 let order = f.order.unwrap_or(0);
@@ -502,6 +540,29 @@ impl Plugins {
             }
         }
         tabs
+    }
+
+    /// The panels the loaded plugins declare, the order the plugins were read, then each panel's `order`, then its id.
+    pub fn panels(&self) -> Vec<PluginPanel> {
+        let mut out = Vec::new();
+        for plugin in self.plugins.iter().filter(|p| p.status.is_loaded()) {
+            let mut panels: Vec<&Panel> = plugin.manifest.panels.iter().collect();
+            panels.sort_by(|a, b| a.order.unwrap_or(0).cmp(&b.order.unwrap_or(0)).then_with(|| a.id.cmp(&b.id)));
+            for panel in panels {
+                out.push(PluginPanel {
+                    plugin: plugin.manifest.id.clone(),
+                    plugin_name: plugin.manifest.name.clone(),
+                    id: panel.id.clone(),
+                    title: panel.title.clone(),
+                    order: panel.order.unwrap_or(0),
+                    dock: panel.dock,
+                    on_open: panel.on_open.clone(),
+                    refresh: panel.refresh.clone(),
+                    widgets: panel.widgets.clone(),
+                });
+            }
+        }
+        out
     }
 
     /// A map from a command id to the plugin that brings it, for the window's lists.

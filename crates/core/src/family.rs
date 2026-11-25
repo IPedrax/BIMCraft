@@ -16,7 +16,7 @@ use crate::csg;
 use crate::font;
 use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
-use crate::view3d::{P3, add, cross, mul};
+use crate::view3d::{P3, add, cross, dot, mul};
 
 mod bounds;
 pub mod clipboard;
@@ -263,6 +263,9 @@ fn wall_of(values: &BTreeMap<String, Val>) -> f64 {
 pub const WIDTH: &str = msg!("Width");
 pub const HEIGHT: &str = msg!("Height");
 pub const SILL: &str = ui_msg!("Sill Height");
+/// The area a family's host-cutting voids take from its host, as its values hold it, mm²: a straight extrusion's
+/// volume over its sweep, as its profile measures. Schedules show it in m², as an area.
+pub const OPENING_AREA: &str = msg!("Opening Area");
 
 /// What a parameter holds.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -2069,6 +2072,18 @@ impl Family {
                 self.resolve(&p.name, set, instance, &mut done, &mut Vec::new())?;
             }
         }
+        if !done.contains_key(OPENING_AREA) {
+            let area = self.host_void_area(&done).or_else(|| {
+                // A door or a window with no void of its own takes the rectangle of its Width and Height from the wall.
+                self.category.hosted().then(|| match (done.get(WIDTH), done.get(HEIGHT)) {
+                    (Some(Val::Number(w)), Some(Val::Number(h))) => w * h,
+                    _ => 0.0,
+                })
+            });
+            if let Some(area) = area.filter(|a| a.is_finite() && *a > 0.0) {
+                done.insert(OPENING_AREA.to_string(), Val::Number(area));
+            }
+        }
         Ok(done)
     }
 
@@ -2849,6 +2864,35 @@ impl Family {
             }
         }
         Ok(out)
+    }
+
+    /// The area, mm², its host-cutting voids take from its host: each straight extrusion's volume over its sweep, as its
+    /// profile measures. None for a family with no such void, or one whose void isn't a straight extrusion.
+    pub fn host_void_area(&self, values: &BTreeMap<String, Val>) -> Option<f64> {
+        let f = self.flexed(values).ok()?;
+        let mut read = HashMap::new();
+        let mut area = 0.0;
+        let mut any = false;
+        for i in 0..f.forms.len() {
+            let form = &f.forms[i];
+            if !form.void || !form.cuts().host() {
+                continue;
+            }
+            if form.kind() != forms::FormKind::Extrusion {
+                return None;
+            }
+            let from = number(&form.from, values, &mut read).ok()?;
+            let to = number(&form.to, values, &mut read).ok()?;
+            let length = to - from;
+            if !length.is_finite() || length <= 0.0 {
+                return None;
+            }
+            let Some(piece) = f.solid(i, values, &mut read).ok()? else { continue };
+            let volume = piece.tris.iter().map(|[a, b, c]| dot(*a, cross(*b, *c))).sum::<f64>() / 6.0;
+            area += volume.abs() / length;
+            any = true;
+        }
+        any.then_some(area)
     }
 
     /// The voids a door's or a window's family cut its wall with before a void had `cuts` (F10d), by `values`: each that

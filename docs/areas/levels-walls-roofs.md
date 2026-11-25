@@ -367,7 +367,24 @@ Visibility/Graphics and Object Styles (`railingrail`, `railingpost`, `railingbal
 by `graphics::railing_tag`), and project parameters may be for them: an instance's value on the railing's part, a type's on
 its type's part. IFC has the railing as an `IfcRailing` made of its parts (`railings::ifc_class`): a rail an `IfcRailing`
 HANDRAIL, a post an `IfcMember` POST, a baluster an `IfcMember` BALUSTER, a panel an `IfcPlate` INFILLPANEL; an import
-takes the parts with the railing. A stair's `start` is on its location line
+takes the parts with the railing. A ramp may instead be drawn along a line (`path`, `RampSeg`:
+each stretch a flight at its own `slope` or a flat `landing`, straight or an `arc`), climbing as high as its flights rise;
+two flights meeting at a corner are mitred, and where a flight meets a landing the flight ends square at the inside corner
+and the landing takes the corner (`ramps::along`). Or it is sketched (`sketch`): its two sides, and run lines (style
+`ramp run`, `model::RAMP_RUN`) across them: its start and its end (those across the sides' ends, the first drawn its start)
+and two round each landing, its flights sharing its height as they are long (`ramps::sketched`). `flipped` makes any ramp
+climb the other way. `ramps::pieces` is every ramp's flights and landings with their sides and heights, which the plan, the 3D
+view (a strip of planes between the sides) and a railing on a drawn or sketched ramp (`ramps::side`) follow; `ramps::with_slope`
+is a drawn flight given a new slope, as long as it must be to climb what it did, what comes after moving with its end. In
+the window the Ramp tool draws Straight, Arc or Circular (round a centre until it reaches its top), Flight or Landing, each
+flight at the Options Bar's slope when it was clicked; Sketch is the ramp's sketch mode (Boundary and Run lines); a selected
+ramp's flights are picked by Tab or a click, and Properties lists them with their slopes. A drawn ramp's `line` is the line
+its path runs along (its left edge, its middle or its right edge). A ramp's type (`types.ramp`, `RampType`; none for one solid
+to its level, as ramps were) is `solid` to its level, or a slab of its `layers` (`thickness` in all) under its slope, each layer
+as thick square to it, in its material's colour; in plan it shows as a stair type says (`plan` below, same and above, line
+styles, fill, the walk line's head and foot, the break mark across a flight the cut plane passes, `Piece::split`). The window
+types and shows a slope in percent, degrees or as a grade (1:x), the Options Bar's choice, and a selected ramp's Properties
+have all three, linked (`ramps::with_all_slopes`). A stair's `start` is on its location line
 (`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
 the line stays when the width changes. A turn is straight on, back beside the run, or any angle from 5 to 135 degrees (the runs then share the turn's inside
 corner). A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may

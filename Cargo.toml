@@ -47,6 +47,7 @@ bimcraft-rvt = { path = "crates/rvt" }
 bimcraft-dwg = { path = "crates/dwg" }
 egui = "0.36"
 eframe = "0.36"
+log = { version = "0.4", features = ["std"] }
 egui_kittest = "0.36"
 rfd = "0.17"
 # The system's language, on Windows and macOS too, where no environment variable says it.

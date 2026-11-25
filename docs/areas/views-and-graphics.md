@@ -723,6 +723,41 @@ element has no model pattern, or the lines aren't parallel or have no length), s
 sets it with `modify`. `pattern_origin` and `pattern_angle` are in the `modify`, `filled_region` and `floor` command docs, and
 `elements` shows them for a region and a floor even at their defaults.
 
+## View range and the underlay
+
+A plan's view range (`view_range.rs`; `Level::view_range`, `PlanView::view_range`, a template's `view_range`) is Revit's: four planes,
+each a level (`Base`) and an offset over it. `associated` is the plan's own level, `above` and `below` the next level up or down (none
+there: no limit), `{"level": guid}` a level by name, `unlimited` no limit (the top up, the bottom and the view depth down, infinite in
+`PlanRange`). The cut plane is always over the plan's own level. The fields are `top`, `cut`, `bottom`, `depth` (mm) and `top_from`,
+`bottom_from`, `depth_from` (written only when not `associated`); a top with no offset and no base is the level above, as files have
+always said (`ViewRange::plane`, `with`). `Model::plan_range` turns it into heights (`range_heights`, `plane_height`). `Model::check`
+keeps the planes in order in every plan as its template or its own range has them (`check_range`): top ≥ cut plane ≥ bottom ≥ view
+depth, an unlimited bottom taking an unlimited view depth; the level above as the top may still be under the cut plane, which then
+shows nothing over it, as before. A plan's planes may name any level, which `visit_refs!` lists; `delete` measures a plane whose level
+goes from the plan's own level at the height it was (`view_range::rebased`). A template's planes never name one (`range_ok` with
+`template`): it serves every storey, each plan measuring from its own level, and a template made from a plan takes its range so
+(`view_range::relative`).
+
+What a plan draws of an element follows where its heights stand in the range (`PlanRange::zone`, `Zone`): over the cut plane and
+under the top, only doors, windows, casework and generic models (`shown_over_cut`), and the dashed overhead lines of roofs, runs and
+bars; a door or a window all over the cut in a wall the plane cuts is drawn by its jambs and a line between them, the wall not opened
+(`render::opening_over`). What the plane passes through is cut. What lies under it with its top at or over the bottom is seen in
+projection (a floor whose top touches the bottom too). What lies under the bottom with its top over the view depth is the underlay:
+drawn as it would be, then every line and fill of it lightened (`Drawing::fade_owned`, after `Look::dress`). Walls, columns, runs,
+floors, components, curtain walls, roofs, toposolids, railings and ramps of every level are drawn by their heights so; stairs keep
+their storeys' own display.
+
+Halftone is how far toward the paper (`Model::halftone`, 1 to 100 percent, 50 as a project starts; `graphics::Fade`): the underlay,
+Visibility/Graphics' Halftone, a link and a stair's halftone part all take it (`Look::fade`). The `halftone` command sets it, and Manage >
+Annotation Settings > Halftone/Underlay is its slider (`crates/ui-egui/src/halftone.rs`). The desktop's View Range dialog
+(`crates/ui-egui/src/viewrange.rs`, Properties' View Range: Edit…, and the template editor's View Range row) shows each plane as a list
+of what it is measured from and its offset, under a picture of the four planes (`assets/help/view-range.jpg`, the project's own).
+One plan's lists are its levels by name and Unlimited (`Mode::Plan`: its own level is written as `associated`, the level above and
+below by name); plans picked together and a template's are Associated Level, Level Above or Below, and Unlimited (`Mode::Relative`),
+each plan measuring from its own level. A plan following a template that controls its range shows it greyed, the template named.
+An order the core refuses names the plane out of place and the one it crosses, each where it is (`view_range::clash`): "the bottom
+(+2000 over the plan's level) is above its cut plane (+1200 over the plan's level): the bottom can't be higher than the cut plane".
+
 ## Reference planes in views
 
 A project's reference plane (`hosting.rs`) is drawn as Revit draws one. In every plan, an upright one is a dashed line along it in

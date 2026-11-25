@@ -42,6 +42,13 @@ wall the jambs; whether the opening is drawn at all is still its rectangle's hei
 `IfcOpeningElement`'s body, closed face sets placed at the opening's middle as its forms are, in place of the extruded
 rectangle. A plan draws a family opening's forms the cut plane passes through as it cuts them (`view3d::level_slice`: a frame
 extruded across the wall, its jambs), each edge of a void's cut from one face of the wall to the other a jamb. A void's size may read an instance parameter (a depth in its `from` and `to`), so each opening cuts its own.
+A family's host-cutting voids also give its values an `Opening Area`, mm² (`Family::host_void_area`; m² in a schedule):
+each straight extrusion's volume over its sweep, as its profile measures. An arched void reports the arch, not its
+bounding rectangle. A door's or a window's family with no such void gets the rectangle of its `Width` and `Height`
+instead, and a door or a window of a project type gets that in its values too (`element_json`); a generic family with no
+host-cutting void, or whose void is a blend or a sweep, has none. It is worked out with the values, not stored as a
+parameter, so a changed type or instance changes it. `Width` and `Height` are the names a hosted family is sized by
+(`Model::opening_dims`): renaming them is not supported, and would leave the opening itself without a size.
 Neither is new in a file, so nothing takes a FORMAT step: an older build reads the family and cuts the rectangle. Below the cut
 plane (F10b), a plan sees the family's forms from it, in projection, as walls below the cut are drawn: each form's outline there
 (its triangles clipped at the cut and laid flat, an edge drawn where one side of it is covered and the other not, so the

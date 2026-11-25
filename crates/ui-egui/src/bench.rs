@@ -117,6 +117,8 @@ struct Done {
     seconds: f64,
     frames: Vec<Frame>,
     note: Option<String>,
+    /// Frames whose surface wgpu couldn't give during the step (`pacing::surface_failures`): dropped on a swap chain that timed out.
+    surface_failures: u64,
 }
 
 /// A scenario being run on a window.
@@ -142,6 +144,8 @@ pub struct Bench {
     /// What measures the process's memory: the core's meter, where the app installed one.
     memory: fn() -> Option<usize>,
     pub(crate) finished: bool,
+    /// The count of frames without a surface when the step under way began.
+    failures: u64,
 }
 
 impl Bench {
@@ -163,6 +167,7 @@ impl Bench {
             started: now,
             memory: resident,
             finished: false,
+            failures: crate::pacing::surface_failures(),
         }
     }
 
@@ -296,7 +301,9 @@ impl Bench {
         let seconds = self.began.elapsed().as_secs_f64();
         let frames = std::mem::take(&mut self.frames);
         eprintln!("bench: {}", line(&step, seconds, &frames, note.as_deref()));
-        self.done.push(Done { step, seconds, frames, note });
+        let failures = crate::pacing::surface_failures();
+        let surface_failures = failures.saturating_sub(std::mem::replace(&mut self.failures, failures));
+        self.done.push(Done { step, seconds, frames, note, surface_failures });
         self.at += 1;
         self.began = Instant::now();
         (self.progress, self.settled, self.shot) = (0, 0, None);
@@ -317,12 +324,17 @@ impl Bench {
                     "frames": ms.len(),
                     "frame_ms": stats(&ms),
                     "cpu_ms": stats(&cpu),
+                    "surface_failures": d.surface_failures,
                     "memory_peak_mb": d.frames.iter().filter_map(|f| f.memory).max().map(|b| b as f64 / 1e6),
                     "frame_intervals_ms": ms,
                 })
             })
             .collect();
-        let report = json!({"seconds": self.started.elapsed().as_secs_f64(), "steps": steps});
+        let report = json!({
+            "seconds": self.started.elapsed().as_secs_f64(),
+            "surface_failures": self.done.iter().map(|d| d.surface_failures).sum::<u64>(),
+            "steps": steps,
+        });
         if let Some(out) = &self.out {
             match serde_json::to_string_pretty(&report) {
                 Ok(text) => {

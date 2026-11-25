@@ -489,6 +489,7 @@ dependencies = [
  "cap",
  "eframe",
  "fmv-macos-events",
+ "log",
  "rfd",
  "serde_json",
  "sysinfo",

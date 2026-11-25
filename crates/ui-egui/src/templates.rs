@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bimcraft_core::graphics::{Group, ViewKind, ViewTemplate};
-use bimcraft_core::model::{Model, ViewRange};
+use bimcraft_core::model::Model;
 use bimcraft_i18n::msg;
 use egui::text::{CCursor, CCursorRange};
 use egui::{
@@ -65,7 +65,7 @@ pub(crate) struct TemplatesDialog {
     naming: Option<Naming>,
     drafts: BTreeMap<String, ViewTemplate>,
     assign: Option<Value>,
-    range: Option<[String; 4]>,
+    range: Option<crate::viewrange::RangeForm>,
     error: Option<String>,
 }
 
@@ -118,7 +118,7 @@ fn patch(was: &ViewTemplate, now: &ViewTemplate) -> Option<serde_json::Map<Strin
     if was.view_range != now.view_range
         && let Some(r) = now.view_range
     {
-        p.insert("view_range".into(), json!(r));
+        p.insert("view_range".into(), crate::viewrange::range_json(&r));
     }
     if a.categories != b.categories {
         p.insert("categories".into(), merge_patch(&json!(a.categories), &json!(b.categories)));
@@ -605,7 +605,7 @@ fn settings(ui: &mut Ui, d: &mut TemplatesDialog, m: &Model) -> Option<Ask> {
     if matches!(ask, Some(Ask::Range)) {
         // The View Range row: its own small dialog, on the draft's range.
         let r = d.current(m).and_then(|t| t.view_range).unwrap_or_default();
-        d.range = Some([r.top.map(|v| m.field(v)).unwrap_or_default(), m.field(r.cut), m.field(r.bottom), m.field(r.depth)]);
+        d.range = Some(crate::viewrange::RangeForm::new(m, &r, crate::viewrange::Mode::Relative));
         return None;
     }
     ask
@@ -730,24 +730,18 @@ fn group_rows(rows: &mut Rows, g: Group, now: &mut ViewTemplate, m: &Model) -> O
     ask
 }
 
-/// The View Range dialog over the templates', while it's open: the template's range, typed in the project's units; OK puts it
-/// in the draft.
+/// The View Range dialog over the templates', while it's open: the template's range, each plane measured from the level of
+/// each plan that follows it, its offsets typed in the project's units; OK puts it in the draft.
 fn range_window(ctx: &Context, d: &mut TemplatesDialog, m: &Model) {
-    let Some(mut fields) = d.range.take() else { return };
+    let Some(mut form) = d.range.take() else { return };
     let (mut ok, mut cancel) = (false, false);
-    let r = Modal::new(UiId::new("view-template-range"), t("View Range")).width(340.0).show(ctx, |ui| {
+    let r = Modal::new(UiId::new("view-template-range"), t("View Range")).width(600.0).show(ctx, |ui| {
         crate::popup::body(ui, |ui| {
-            egui::Grid::new("view-template-range-fields").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                for (i, (label, hint)) in
-                    [(t("Top"), t("Level Above")), (t("Cut Plane"), ""), (t("Bottom"), ""), (t("View Depth"), "")].into_iter().enumerate()
-                {
-                    let l = ui.label(label);
-                    ui.add_sized([160.0, ui.spacing().interact_size.y], TextEdit::singleline(&mut fields[i]).hint_text(hint))
-                        .labelled_by(l.id);
-                    ui.end_row();
-                }
-            });
-            ui.label(RichText::new(t("Offsets from the plan's level.")).color(pal().muted));
+            form.show(ui, m);
+            if let Some(e) = &d.error {
+                ui.add_space(6.0);
+                ui.label(RichText::new(e).color(pal().error));
+            }
         });
         crate::popup::footer(ui, |ui| {
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -759,26 +753,23 @@ fn range_window(ctx: &Context, d: &mut TemplatesDialog, m: &Model) {
     });
     let mut keep = !(ok || cancel || r.should_close());
     if ok {
-        let units = m.units;
-        let parse = |s: &str| units.parse(s);
-        let top = if fields[0].trim().is_empty() { Some(None) } else { parse(&fields[0]).map(Some) };
-        match (top, parse(&fields[1]), parse(&fields[2]), parse(&fields[3])) {
-            (Some(top), Some(cut), Some(bottom), Some(depth)) => {
+        match form.range(m) {
+            Ok(range) => {
                 if let Some(name) = d.picked.clone()
                     && let Some(t) = d.draft(m, &name)
                 {
-                    t.view_range = Some(ViewRange { top, cut, bottom, depth });
+                    t.view_range = Some(range);
                 }
                 d.error = None;
             }
-            _ => {
-                d.error = Some(t("Each is a length, and Top may be left empty for the level above.").to_string());
+            Err(e) => {
+                d.error = Some(e);
                 keep = true;
             }
         }
     }
     if keep {
-        d.range = Some(fields);
+        d.range = Some(form);
     }
 }
 

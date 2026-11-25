@@ -405,7 +405,7 @@ impl BimApp {
                 crate::settings::heading(ui, msg!("Palettes"));
                 for p in Palette::known() {
                     let mut on = draft.docking.shown(p);
-                    if ui.checkbox(&mut on, t(p.name())).changed() {
+                    if ui.checkbox(&mut on, p.title()).changed() {
                         draft.docking.show(p, on);
                     }
                 }

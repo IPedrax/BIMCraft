@@ -17,6 +17,7 @@ use bimcraft_ui_egui::{BimApp, Status, lang};
 use serde_json::json;
 
 mod startup;
+mod wgpu_log;
 
 const USAGE: &str = "USAGE: bimcraft [FILE] [--sample | --highrise | --tower] [--control PORT] [--bench SCENARIO [--bench-out FILE]]
   FILE       a .bimc project (or a .bimt or earlier .bimcraft) to open, a .bimf family, or an .ifc or .rvt (Revit) file to import
@@ -163,6 +164,10 @@ fn main() -> ExitCode {
     let favorites = bimcraft_core::favorites::default_path();
     let files = favorites.as_deref().map(startup::Files::beside);
     let graphics = startup::begin(files.as_ref(), language);
+    // wgpu's, egui-wgpu's and eframe's warnings (a frame dropped on a swap chain that timed out) go to the log too.
+    if let Some(files) = &files {
+        wgpu_log::install(files.log.clone());
+    }
     // What the arguments built is where the user starts: nothing to undo, nothing unsaved.
     let (model, path) = ((*session.model).clone(), session.path.clone());
     session.reset(model, path);
@@ -230,14 +235,40 @@ fn main() -> ExitCode {
     let mut options = eframe::NativeOptions { viewport, centered: true, ..Default::default() };
     // Windows' vsync held the window to a fraction of the screen's rate, so there the window presents without it and paces
     // itself (`bimcraft_ui_egui::pacing`).
+    // The pacer also paces a window with no graphics card by its frames' cost, and any window to the user's limit.
     let pacing = bimcraft_ui_egui::pacing::system_policy();
     options.wgpu_options.surface.present_mode = pacing.start;
-    if pacing.paced {
-        app.frames = Some(bimcraft_ui_egui::pacing::Pacer::default());
-    }
+    let mut pacer = bimcraft_ui_egui::pacing::Pacer::default();
+    pacer.monitor = pacing.paced;
+    app.frames = Some(pacer);
+    // The frames whose surface wgpu couldn't give are counted for the benchmark; what egui-wgpu does with them stays its own.
+    let surface_status = std::sync::Arc::clone(&options.wgpu_options.on_surface_status);
+    options.wgpu_options.on_surface_status = std::sync::Arc::new(move |status| {
+        if bimcraft_ui_egui::pacing::counts_as_failure(status) {
+            bimcraft_ui_egui::pacing::surface_failed();
+        }
+        surface_status(status)
+    });
     let mut setup = eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     if let Some(backends) = graphics.backends() {
         setup.instance_descriptor.backends = backends;
+    }
+    // BIMCRAFT_SOFTWARE=1 draws on a software adapter (WARP on Windows), as a machine without a graphics card does.
+    if bimcraft_ui_egui::pacing::software_asked() {
+        if cfg!(windows) && std::env::var_os("WGPU_BACKEND").is_none() {
+            setup.instance_descriptor.backends = eframe::wgpu::Backends::DX12;
+        }
+        let log = files.as_ref().map(|f| f.log.clone());
+        setup.native_adapter_selector = Some(std::sync::Arc::new(move |adapters, _surface| {
+            let infos: Vec<_> = adapters.iter().map(eframe::wgpu::Adapter::get_info).collect();
+            let found = bimcraft_ui_egui::pacing::software_choice(infos.iter().map(|i| (i.device_type, i.name.as_str())));
+            if found.is_none()
+                && let Some(log) = &log
+            {
+                startup::note(log, "BIMCRAFT_SOFTWARE: this system has no software adapter; drawing on the first adapter");
+            }
+            adapters.get(found.unwrap_or(0)).cloned().ok_or_else(|| "no graphics adapter".to_string())
+        }));
     }
     // The buffers as big as the card has them, not the defaults: the 3D view draws models of any size.
     let asked = std::sync::Arc::clone(&setup.device_descriptor);
@@ -260,11 +291,16 @@ fn main() -> ExitCode {
         }
         #[cfg(target_os = "macos")]
         apple_events(&mut app, &cc.egui_ctx, inbox);
-        let adapter = cc.wgpu_render_state.as_ref().map(|state| {
-            let info = state.adapter.get_info();
-            format!("{} ({:?}, driver {} {})", info.name, info.backend, info.driver, info.driver_info)
+        let info = cc.wgpu_render_state.as_ref().map(|state| state.adapter.get_info());
+        let adapter = info.as_ref().map(|info| {
+            let kind = if bimcraft_ui_egui::pacing::software(info.device_type, &info.name) { ", software rendering" } else { "" };
+            format!("{} ({:?}, {:?}{kind}, driver {} {})", info.name, info.backend, info.device_type, info.driver, info.driver_info)
         });
         startup::up(up_files.as_ref(), graphics, adapter.as_deref().unwrap_or("no wgpu adapter"));
+        // No graphics card: the frames are paced by what they cost the processor, and the status bar says so.
+        if let Some(info) = info.filter(|info| bimcraft_ui_egui::pacing::software(info.device_type, &info.name)) {
+            app.software_rendering(&info.name);
+        }
         // The 3D view may be drawn on the card egui draws on, if the user asks (Settings > Performance); it is made then.
         if let Some(state) = cc.wgpu_render_state.as_ref() {
             app.use_graphics_card(state);
@@ -286,7 +322,10 @@ fn main() -> ExitCode {
         app.space_mouse = bimcraft_ui_egui::spacemouse::SpaceMouse::start(move || ctx.request_repaint());
         Ok(Box::new(app))
     };
-    match eframe::run_native("BIMCraft", options, Box::new(start)) {
+    let run = eframe::run_native("BIMCraft", options, Box::new(start));
+    // The warnings held back are counted in the log.
+    log::logger().flush();
+    match run {
         Ok(()) => {
             startup::closed(files.as_ref(), graphics);
             ExitCode::SUCCESS
