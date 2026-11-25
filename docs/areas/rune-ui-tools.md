@@ -71,6 +71,32 @@ always made, by the distance of the second point), Move and Copy's Multiple and 
 pick-an-axis (the axis is two points), Trim/Extend to a single boundary and to many (`trim_extend`), Match Properties, Pin. Egui's
 smaller things in a move (a door sliding to the middle of its wall, `move_point`) are not here either.
 
+## The right-click menu
+
+A right click on the plan opens `rune_kit`'s `Menu` at the window point (`on_secondary_press` on the plan, `Tooling::menu`, `ui/menu.rs`;
+its elements go in a layer mounted over the window by `rune_kit::root`, which wraps the window only while the menu is open, so the plan is
+as it was when it is closed). The items are `context::items(model, selection, tool, finishable)`, groups of `Item { action, enabled }`:
+Finish Drawing (a tool with points picked) and Cancel; Delete; Pin and Unpin; Disallow Join and Allow Join (each offered when some
+selected wall or run would change); Zoom to Fit, In and Out. `App::act` does the item and closes the menu (Cancel is `escape`, Finish is
+`finish_tool`, Pin and the joins are `pin`, `unpin` and `modify`), and Escape or a press outside closes it without doing anything.
+`context.rs` is a copy of the part of the egui window's `context_items` and `Action` that is about the plan and the selection, **a
+duplicate to fold into the core when egui adopts it**. Not in it from there: Edit Family and Type, Select All Instances, the groups'
+items, Hide Element, Hide Category and Override Graphics (a view's), Reload CAD, Create Circuit, Edit Dimension References and the
+clipboard's Cut, Copy and Paste. The Revit shortcuts the egui menu shows beside an item wait for the shared registry; Esc, Enter and Del
+are shown.
+
+## Grips
+
+The wall, run (a beam, a pipe) or grid selected alone with no tool in hand shows a square at each end (`paint/handles.rs`, the layer
+`plan-grips`, there only then). A primary press within eight points of an end takes it (`App::grip_down`, asked first by the plan's
+drag handler), the drag follows the pointer with the snap and the guides from the end that stays (`Snapper::land` with that end as the
+chain; Shift squares it; Ctrl keeps the length and turns the element about the fixed end), the line the element would take is drawn with a
+reading beside the end (`plan-grip-tag`, the ruler's length and angle), and the release is one `move {ids, by, end}` (the walls joined
+there follow). Escape, which cancels a Rune drag, puts it back. The pure part, which end and where it lands, is `grips.rs`, tested alone;
+it is **a duplicate of egui's `gripped`, `grip_ends`, `grip_target` and `grip_drag` to fold into the core when egui adopts it**. Not here
+from there: the angle to click and type beside a wall's end, a Fixed Grid wall's stay in its pattern's lengths, the element's outline as
+it would stand while dragged (the line is drawn), the ruler's graduations, and the grips of a stair, a section, a callout and a shape.
+
 ## Not here yet
 
 - **The Options Bar.** Types, heights, the wall's location line, a beam's justification and offset, a ceiling's height, a roof's
@@ -95,4 +121,7 @@ smaller things in a move (a door sliding to the middle of its wall, `move_point`
 - `src/app/tooling_tests.rs`: through `App` with no window: a wall chain click by click and undo, Backspace and Enter, a point tool and
   the core's refusal in the message, a path and a stair, a shape as one undo step with its ghost.
 - `src/ui/tooling_tests.rs`: through Rune's headless `Runtime`: taps, Enter and Backspace as keys, the shape bar and the ghost layer.
-- `src/paint/preview.rs`: the ghost's strokes.
+- `src/paint/preview.rs`: the ghost's strokes. `src/paint/handles.rs`: the grips' squares.
+- `src/context/tests.rs`, `src/app/menu_tests.rs`: the menu's items and what each does; the menu through the window is in `ui/tooling_tests.rs`.
+- `src/grips/tests.rs`, `src/app/grips_tests.rs`: the grips' pure part, then the press, the drag and the move through the app; the drag through
+  the window is in `ui/tooling_tests.rs`.

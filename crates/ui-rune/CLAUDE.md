@@ -69,6 +69,9 @@ One line per module. A new module adds its line here, not to the root.
   `Session::execute` (`finish_tool`, `back_point`, `set_shape`, `shape_preview`); a child of `app` so it reaches the private handlers. `paint/preview.rs`: `ghost`, what the next
   click would make as strokes. `ui/draw_bar.rs`: the Draw panel's shapes for the Wall tool, over the plan while it is in hand. What is built and what is not: the area write-up
   [the plan tools](../../docs/areas/rune-ui-tools.md). Their tests: `tooling/tests.rs`, `app/tooling_tests.rs`, `ui/tooling_tests.rs`.
+- `context.rs`: the plan's right-click menu as data (`Action`, `Item`, `items`, from the selection and the tool); `app/menu.rs`: `open_menu`, `act` and what each item does; `ui/menu.rs`:
+  the `rune_kit::Menu` over the plan. `grips.rs`: the grips of the wall, run or grid selected alone (which end a press takes, where a drag lands, the `move` it ends in); `app/grips.rs`:
+  the press, the drag with the snap from the fixed end, the release; `paint/handles.rs`: the squares. Both are copies of egui's logic, in the area write-up's words ([the plan tools](../../docs/areas/rune-ui-tools.md)).
 - `camera.rs`: pan, zoom and Zoom In Region of the plan, in the core's `View` (the history Previous Pan/Zoom walks back is `App`'s). `paint.rs`: a `Drawing`'s primitives as Rune shapes (dashes split,
   lettering through `text::triangles`, what cannot be drawn counted). `props.rs`: the Properties rows from `element_json`.
   `status.rs`: the status line. `lang.rs`: `t`, `tf`, `tc` over `translations/ui/*.po`, the catalogs egui reads.
