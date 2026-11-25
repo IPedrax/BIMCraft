@@ -11,6 +11,9 @@ use rune::{Color, LineCap, Shape};
 
 use crate::select::Rubber;
 
+mod snap;
+pub use snap::over;
+
 /// The most strokes one dashed line may split into: a hostile pattern (a dash of a millionth of a point) draws a line, not a hang.
 const MAX_DASHES: usize = 20_000;
 /// The thinnest a stroke is drawn, points: a hairline that would fall between pixels still shows.
@@ -29,6 +32,9 @@ pub struct Palette {
     pub window_fill: Color,
     pub crossing: Color,
     pub crossing_fill: Color,
+    /// An alignment guide (Revit's magenta) and the square that marks the point it lines up with (its blue).
+    pub guide: Color,
+    pub anchor: Color,
 }
 
 impl Palette {
@@ -43,6 +49,8 @@ impl Palette {
             window_fill: rgba8(90, 150, 255, 45),
             crossing: rgb8(90, 210, 120),
             crossing_fill: rgba8(90, 210, 120, 45),
+            guide: rgb8(255, 0, 255),
+            anchor: rgb8(0, 160, 255),
         }
     }
 }

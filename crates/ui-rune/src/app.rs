@@ -5,6 +5,7 @@
 use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Id;
+use bimcraft_core::model::MAX_POINTS;
 use bimcraft_core::render::{self, Drawing};
 use rune::{Live, Pixels, TextEdit};
 use serde_json::{Value, json};
@@ -14,6 +15,7 @@ use crate::profile::Profile;
 use crate::project::{self, Start};
 use crate::props::{self, Kind, Row};
 use crate::select::{self, How, Rubber};
+use crate::snapping::{Landing, Snapper};
 use crate::status;
 
 /// How near a click or a hover must be to a line to take it, points.
@@ -130,6 +132,15 @@ pub struct App {
     history: Vec<Camera>,
     /// The tool picked in the Tools palette, by its id in `tools::TOOLS`.
     pub tool: Option<&'static str>,
+    /// What snaps are in force, and the guide held (`snapping`).
+    pub snapper: Snapper,
+    /// Where a pick at the pointer would land, while a tool is in hand: what the plan has there, and the guides that hold the point.
+    pub landing: Option<Landing>,
+    /// The points a tool in hand has had picked, in model millimetres: the chain the plan shows, which guides and angle steps run from.
+    /// The tools do not take them yet (stage 3, tools).
+    pub picked: Vec<P2>,
+    /// Shift is held as the pointer moves: a pick keeps its step from the last point horizontal or vertical.
+    pub square: bool,
     pub selection: Vec<Id>,
     /// The pointer over the plan, points from its top left.
     pub cursor: Option<(f32, f32)>,
@@ -174,6 +185,10 @@ impl App {
             region: false,
             history: Vec::new(),
             tool: None,
+            snapper: Snapper::default(),
+            landing: None,
+            picked: Vec::new(),
+            square: false,
             selection: Vec::new(),
             cursor: None,
             props: Vec::new(),
@@ -222,6 +237,8 @@ impl App {
         self.refresh();
         self.fit();
         self.redraw();
+        self.snapper.forget();
+        self.reland();
     }
 
     /// Frames the level when it is first shown, or shown again at another size.
@@ -314,10 +331,21 @@ impl App {
         };
         self.cycle = 0;
         self.hovered = self.under.first().copied();
+        self.reland();
+    }
+
+    /// Where a pick at the pointer would land, with a tool in hand: nowhere without one, or with the pointer off the plan.
+    fn reland(&mut self) {
+        let (Some(_), Some(at), Some(level)) = (self.tool, self.cursor, self.level) else {
+            self.landing = None;
+            return;
+        };
+        let view = self.camera.view(self.size.0, self.size.1);
+        self.landing = self.snapper.land(&self.session.model, level, &view, at, &self.picked, self.square);
     }
 
     pub fn leave(&mut self) {
-        (self.cursor, self.hovered, self.cycle) = (None, None, 0);
+        (self.cursor, self.hovered, self.cycle, self.landing) = (None, None, 0, None);
         self.under.clear();
     }
 
@@ -333,9 +361,19 @@ impl App {
         true
     }
 
-    /// Escape: disarms Zoom In Region, else puts down the tool in hand, else clears the selection. False when there was nothing to do.
+    /// Escape: disarms Zoom In Region, else gives up the points picked, else puts down the tool in hand, else clears the selection. False
+    /// when there was nothing to do.
     pub fn escape(&mut self) -> bool {
-        if std::mem::take(&mut self.region) || self.tool.take().is_some() {
+        if std::mem::take(&mut self.region) {
+            return true;
+        }
+        if !self.picked.is_empty() {
+            self.picked.clear();
+            self.reland();
+            return true;
+        }
+        if self.tool.take().is_some() {
+            self.landing = None;
             return true;
         }
         let some = !self.selection.is_empty();
@@ -484,7 +522,10 @@ impl App {
             }
         } else if self.tool.is_some() {
             // ponytail: shortcut: a tool in hand pans on the primary button, the middle one's job, until the tools take it (slice 3.3).
-            self.drag(to.0 - from.0, to.1 - from.1);
+            // A press that hardly moves is a click, which picks a point: the plan must not slip under it.
+            if (to.0 - from.0).hypot(to.1 - from.1) > CLICK {
+                self.drag(to.0 - from.0, to.1 - from.1);
+            }
         } else if (to.0 - from.0).hypot(to.1 - from.1) > CLICK {
             self.rubber = Some(Rubber { from, to });
         }
@@ -509,12 +550,28 @@ impl App {
                 self.zoom_region(from, to);
             }
         } else if (to.0 - from.0).hypot(to.1 - from.1) <= CLICK {
-            self.select_at(to.0, to.1, how);
+            if self.tool.is_some() {
+                self.pick_point(to.0, to.1);
+            } else {
+                self.select_at(to.0, to.1, how);
+            }
         } else if band.is_some() {
             let r = Rubber { from, to };
             let found = self.drawing.as_ref().map(|d| d.in_box(r.from, r.to, r.crossing())).unwrap_or_default();
             select::apply(&mut self.selection, found, how);
             self.refresh();
+        }
+    }
+
+    /// A click with a tool in hand picks the point the pointer lands on (what the plan has there, or a guide, else the nearest 10 mm),
+    /// at most [`MAX_POINTS`] of them. The pointer is taken to be where the click is.
+    pub fn pick_point(&mut self, x: f32, y: f32) {
+        self.hover(x, y);
+        if let Some(l) = &self.landing
+            && self.picked.len() < MAX_POINTS
+        {
+            self.picked.push(l.at);
+            self.reland();
         }
     }
 
@@ -558,6 +615,7 @@ impl App {
         (self.hovered, self.rubber, self.cycle) = (None, None, 0);
         self.under.clear();
         self.history.clear();
+        self.picked.clear();
         self.level = Some(id);
         self.settle();
     }
@@ -573,6 +631,8 @@ impl App {
     pub fn set_tool(&mut self, id: &str) {
         let picked = crate::tools::id_of(id);
         self.tool = if picked == self.tool { None } else { picked };
+        self.picked.clear();
+        self.reland();
     }
 
     /// The text typed into field `i` of the selected element goes to the core as a `modify`; a number that is no number, or a refusal,
@@ -595,6 +655,7 @@ impl App {
         if opened {
             (self.fitted, self.moved) = (false, false);
             self.history.clear();
+            self.picked.clear();
             self.selection.clear();
             self.settle();
         }

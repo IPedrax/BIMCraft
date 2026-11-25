@@ -8,7 +8,8 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use rune::{El, Phase, PointerButton, Shape, Tx, canvas, el, memo};
+use rune::tok::type_;
+use rune::{El, Phase, PointerButton, Shape, Tx, canvas, el, memo, text};
 
 use crate::app::{App, CameraMode, PlanMode};
 use crate::paint::{self, Palette};
@@ -23,6 +24,17 @@ fn settle_soon(s: &App, tx: &mut Tx) {
 
 fn layer(key: &'static str, shape: Shape) -> El {
     canvas(shape).key(key).inert().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+}
+
+/// What the pointer is on, as a name beside the glyph of the snap: pinned a little right of and below it, as egui's canvas tags it.
+fn tag(s: &App, pal: &Palette) -> Option<El> {
+    let l = s.landing.as_ref()?;
+    let name = l.tag()?;
+    let (x, y) = s.camera.view(s.size.0, s.size.1).px(l.at);
+    if !(x.is_finite() && y.is_finite()) {
+        return None;
+    }
+    Some(text(name).key("plan-snap-tag").font(type_::LABEL).color(pal.accent).inert().pin(Some(x + 12.0), Some(y + 14.0), None, None))
 }
 
 pub fn plan(s: &App) -> El {
@@ -45,6 +57,12 @@ pub fn plan(s: &App) -> El {
         Some(r) => layer("plan-rubber", paint::rubber(r, &pal).shape),
         None => layer("plan-rubber", Shape::new()),
     };
+    // What a pick shows follows the camera as it is now, so it sits outside the world the live camera moves. It is there only with a tool
+    // in hand: with none, the plan's elements are as they were before, which the measurements in docs/areas/rune-ui.md were made on.
+    let snap = s
+        .tool
+        .is_some()
+        .then(|| layer("plan-snap", paint::over(&s.picked, s.landing.as_ref(), &s.camera.view(size.0, size.1), &pal).shape));
     let layers =
         [base, lit("plan-selected", &selected, pal.accent, pal.accent_fill), lit("plan-hovered", &hovered, pal.hover, pal.hover_fill)];
     // In `Live` the layers sit in one element the camera moves; in `Exact` they are the canvas's own children, as they were before the
@@ -68,7 +86,10 @@ pub fn plan(s: &App) -> El {
         .fill(pal.paper)
         .clip_soft(0.0)
         .on_layout(|s: &mut App, r| s.resize(r[2], r[3]))
-        .on_pointer_move_local(|s: &mut App, e, _| s.hover(e.x, e.y))
+        .on_pointer_move_local(|s: &mut App, e, tx| {
+            s.square = tx.mods().shift;
+            s.hover(e.x, e.y);
+        })
         .on_hover_change(|s: &mut App, over, _| {
             if !over {
                 s.leave();
@@ -104,4 +125,6 @@ pub fn plan(s: &App) -> El {
         })
         .children(world)
         .child(band)
+        .children(snap)
+        .children(tag(s, &pal))
 }

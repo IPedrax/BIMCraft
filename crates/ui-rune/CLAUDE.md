@@ -34,6 +34,9 @@ winit and wgpu would be replaced too. So here, inside `crates/ui-rune`:
   `rt.button_down(x, y, PointerButton::Middle)`; the window's keys: `rt.on_key = Some(ui::on_key)` first, then `rt.key(..)`. A press moves
   no pointer (`pointer_down` sets the place and runs no hover), so a test that wants hover moves first. The poll: `rt.poll = Some(ui::poll)`,
   and `rt.frame(dt)` steps the clock by `dt`, so a test of what waits for the camera to be still frames 0.2 s.
+- A tool in hand is `app.set_tool("wall")` or the palette's `tool-wall`; the snap is then `app.landing`, and a click (`release` with no travel, or a tap)
+  picks `landing.at` into `app.picked`. A test that wants a place far from every wall and grid uses a model point such as (-30000, -30000), where the
+  snap is the nearest 10 mm, and one that wants a guide from the plan sets `app.snapper.snaps.guides_from_whole_model = true`.
 - What needs no window is tested without one: `app.rs` (state and handlers), `camera.rs`, `paint.rs`, `props.rs`, `status.rs`, `lang.rs`.
 - Rune looks at itself: `bimcraft-rune --snap out.png --size 1280x800`, `--tree out.json`, `--script s.json --frames N` render and
   drive it with no display, on whatever Vulkan the machine has (lavapipe with no card): [looking at the result](../../docs/areas/looking-at-results.md).
@@ -57,6 +60,10 @@ One line per module. A new module adds its line here, not to the root.
   (`--sample`, `--highrise`, a file through the core's `open`) and what the arguments ask. `tools.rs`: the table of tools both profiles draw.
 - `select.rs`: what a click or a box does to the selection (`How`: replace, add, take away; `Rubber`, the box being dragged, a window
   left to right and crossing right to left), the same rules as egui's canvas.
+- `snapping.rs`: where a point picked at the pointer lands (`Snapper::land`: the core's `snap::snap` and `AlignmentGuideService`, the pixel reach,
+  the held guide; `Landing::tag`, the words). `paint/snap.rs`: what a pick shows, in one shape (the points picked, the guides, the snap's glyph). The state is
+  `App::landing`, `picked` and `snapper`; it is made only with a tool in hand (`App::reland`, from `rehover` and after a command), and the plan's snap layer is
+  only there then. What egui's canvas has and this does not is listed in the doc's slice 4.
 - `camera.rs`: pan, zoom and Zoom In Region of the plan, in the core's `View` (the history Previous Pan/Zoom walks back is `App`'s). `paint.rs`: a `Drawing`'s primitives as Rune shapes (dashes split,
   lettering through `text::triangles`, what cannot be drawn counted). `props.rs`: the Properties rows from `element_json`.
   `status.rs`: the status line. `lang.rs`: `t`, `tf`, `tc` over `translations/ui/*.po`, the catalogs egui reads.

@@ -1,6 +1,7 @@
 //! The window driven as a person drives it, headless: Rune's own `Runtime` on the app's real state and view, with a pointer, a
 //! wheel and presses at window points, and the elements read back (`Runtime::elements`).
 
+use bimcraft_core::geom::P2;
 use rune::{Env, Key, KeyEvent, Mods, PhysicalInput, PointerButton, Runtime, WheelEvent};
 
 use super::view;
@@ -344,4 +345,29 @@ fn a_wheel_moves_the_plan_without_drawing_it_and_the_poll_draws_it_when_the_came
     rt.frame(0.2);
     assert!(rt.state.revision > revision, "then the core draws it exactly");
     assert_eq!(rt.state.live_scale.get(), 1.0);
+}
+
+#[test]
+fn with_a_tool_in_hand_the_plan_shows_what_the_pointer_lands_on_and_a_click_picks_the_point() {
+    let mut rt = window();
+    assert!(rt.find("plan-snap").is_none(), "with no tool the plan's elements are as they were");
+    let wall = rt.find("tool-wall").expect("the Wall tool in the palette");
+    tap(&mut rt, wall);
+    assert!(rt.find("plan-snap").is_some(), "with one in hand the snap's layer is there");
+    let (ox, oy) = plan_origin(&rt).expect("the plan");
+    let (w, h) = rt.state.size;
+    let corner = rt.state.camera.view(w, h).px(P2(10000.0, 7000.0));
+    let at = (ox + corner.0 + 2.0, oy + corner.1);
+    rt.pointer_move(at.0, at.1);
+    rt.frame(0.0);
+    let landing = rt.state.landing.clone().expect("the pointer landed");
+    assert!(landing.at.dist(P2(10000.0, 7000.0)) < 400.0, "{:?}", landing.at);
+    assert!(text_of(&rt, "plan-snap-tag").is_some_and(|name| !name.is_empty()), "the glyph is named");
+    tap(&mut rt, at);
+    assert_eq!(rt.state.picked.len(), 1, "a click picks the point");
+    assert!(rt.state.selection.is_empty());
+    rt.state.escape();
+    rt.state.escape();
+    rt.frame(0.0);
+    assert!(rt.find("plan-snap").is_none(), "put down, the layer goes again");
 }

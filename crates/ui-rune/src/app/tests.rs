@@ -479,3 +479,102 @@ fn hostile_pointer_numbers_change_nothing() {
     assert_eq!(app.size, FIRST_SIZE);
     assert!(app.revision >= revision);
 }
+
+/// The canvas point of a model point, for the camera as it is.
+fn at(app: &App, p: P2) -> (f32, f32) {
+    app.camera.view(app.size.0, app.size.1).px(p)
+}
+
+#[test]
+fn with_a_tool_in_hand_the_pointer_lands_on_what_the_plan_has_there_and_with_none_it_lands_nowhere() {
+    use bimcraft_core::snap::Kind as Snap;
+    let mut app = App::sample();
+    let (x, y) = at(&app, P2(10000.0, 7000.0));
+    app.hover(x + 2.0, y);
+    assert!(app.landing.is_none(), "with no tool in hand there is nothing to land");
+    app.set_tool("wall");
+    app.hover(x + 3.0, y);
+    let l = app.landing.clone().expect("a landing");
+    assert_ne!(l.found.kind, Snap::Free, "{:?}", l.found);
+    assert!(l.at.dist(P2(10000.0, 7000.0)) < 400.0, "on the corner or a face's corner beside it: {:?}", l.at);
+    app.leave();
+    assert!(app.landing.is_none(), "off the plan it lands nowhere");
+    app.hover(x + 4.0, y);
+    app.set_tool("wall");
+    assert!(app.tool.is_none() && app.landing.is_none(), "put down, the tool has no landing");
+}
+
+#[test]
+fn a_click_with_a_tool_in_hand_picks_the_point_it_landed_on_and_selects_nothing() {
+    let mut app = App::sample();
+    app.set_tool("wall");
+    let (x, y) = at(&app, P2(10000.0, 7000.0));
+    app.hover(x, y);
+    let first = app.landing.as_ref().map(|l| l.at).expect("a landing");
+    app.release((x, y), (x, y), How::Replace);
+    assert_eq!(app.picked, vec![first]);
+    assert!(app.selection.is_empty(), "a click with a tool in hand picks no element");
+    let (x2, y2) = at(&app, P2(10000.0, 3000.0));
+    app.hover(x2, y2);
+    app.release((x2, y2), (x2, y2), How::Replace);
+    assert_eq!(app.picked.len(), 2, "a second point goes on the chain");
+    assert_ne!(app.picked[1], first);
+    let moved = app.landing.as_ref().map(|l| l.at);
+    assert!(moved.is_some(), "and the pointer still lands, now from the second point");
+}
+
+#[test]
+fn escape_gives_up_the_points_before_it_puts_the_tool_down() {
+    let mut app = App::sample();
+    app.set_tool("wall");
+    let (x, y) = at(&app, P2(10000.0, 7000.0));
+    app.hover(x, y);
+    app.release((x, y), (x, y), How::Replace);
+    assert_eq!(app.picked.len(), 1);
+    assert!(app.escape());
+    assert!(app.picked.is_empty() && app.tool == Some("wall"), "the chain goes first");
+    assert!(app.escape());
+    assert!(app.tool.is_none() && app.landing.is_none());
+    assert!(!app.escape(), "nothing left to do");
+}
+
+#[test]
+fn a_press_with_a_tool_in_hand_that_hardly_moves_does_not_slide_the_plan_under_the_click() {
+    let mut app = App::sample();
+    app.set_tool("wall");
+    let before = app.camera;
+    app.grab();
+    app.sweep((100.0, 100.0), (102.0, 101.0));
+    assert_eq!(app.camera, before, "a click, not a pan");
+    app.sweep((100.0, 100.0), (130.0, 110.0));
+    assert_ne!(app.camera, before, "a drag still pans, as the tools do not take the button yet");
+}
+
+#[test]
+fn the_points_are_at_most_the_core_allows_and_another_level_or_tool_starts_a_new_chain() {
+    let mut app = App::sample();
+    app.set_tool("wall");
+    app.picked = vec![P2(0.0, 0.0); MAX_POINTS];
+    let (x, y) = at(&app, P2(10000.0, 7000.0));
+    app.hover(x, y);
+    app.release((x, y), (x, y), How::Replace);
+    assert_eq!(app.picked.len(), MAX_POINTS, "a click past the cap picks nothing");
+    app.set_tool("door");
+    assert!(app.picked.is_empty(), "another tool starts afresh");
+    app.picked.push(P2(1.0, 1.0));
+    let other = app.levels.iter().map(|(id, _)| *id).find(|id| Some(*id) != app.level).expect("a second level");
+    app.set_level(other);
+    assert!(app.picked.is_empty(), "the points belong to the level they were picked on");
+}
+
+#[test]
+fn shift_keeps_the_step_from_the_last_point_horizontal_or_vertical() {
+    let mut app = App::sample();
+    app.set_tool("wall");
+    app.picked = vec![P2(-30000.0, -30000.0)];
+    app.square = true;
+    let (x, y) = at(&app, P2(-25000.0, -29000.0));
+    app.hover(x, y);
+    let l = app.landing.as_ref().expect("a landing");
+    assert!(l.at.dist(P2(-25000.0, -30000.0)) < 20.0, "straight east of the last point: {:?}", l.at);
+}
