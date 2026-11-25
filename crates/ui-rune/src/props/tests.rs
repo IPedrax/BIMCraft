@@ -204,18 +204,14 @@ fn nothing_selected_shows_the_plans_own_view_and_an_element_that_is_gone_shows_n
 
 #[test]
 fn more_elements_than_the_palette_works_out_are_counted_and_given_no_rows() {
-    let tower = tower();
-    let all: Vec<Id> = tower.elements.iter().map(|(id, _)| *id).collect();
-    assert!(
-        all.len() > super::panel::MAX_IDS,
-        "the tower with its drawings has more than {} elements: {}",
-        super::panel::MAX_IDS,
-        all.len()
-    );
-    let panel = Panel::of(&tower, &all, None, None);
+    let session = house();
+    let Some(wall) = first_of(&session.model, "wall") else { panic!("the house has walls") };
+    let many = vec![wall; super::panel::MAX_IDS + 5];
+    let panel = Panel::of(&session.model, &many, None, None);
     assert!(panel.groups.is_empty(), "no rows");
     assert_eq!(panel.notes.len(), 1, "the count is said: {:?}", panel.notes);
-    assert_eq!(panel.ids.len(), all.len(), "an edit would still be all of them, which is why no row is offered");
+    assert_eq!(panel.ids.len(), many.len(), "an edit would still be all of them, which is why no row is offered");
+    assert!(panel.title.contains(&(super::panel::MAX_IDS + 5).to_string()), "{}", panel.title);
 }
 
 #[test]

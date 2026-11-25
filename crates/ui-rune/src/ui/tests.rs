@@ -190,7 +190,8 @@ fn the_properties_of_a_selected_level_have_fields_that_edit_through_the_engine()
     for _ in 0..2 {
         rt.frame(0.0);
     }
-    assert!(!rt.state.palette.fields.is_empty());
+    assert_eq!(rt.state.palette.panel.subject, crate::props::panel::Subject::Element(level), "a level, not the plan's own view");
+    assert!(rt.state.palette.fields.iter().any(|f| f.key == "elevation"), "a level has an elevation to type");
     assert!(rt.elements().iter().any(|e| e.role == "textbox"), "a field is a text box to a screen reader");
 }
 
