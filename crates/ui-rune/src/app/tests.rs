@@ -581,3 +581,34 @@ fn shift_keeps_the_step_from_the_last_point_horizontal_or_vertical() {
     let l = app.landing.as_ref().expect("a landing");
     assert!(l.at.dist(P2(-25000.0, -30000.0)) < 20.0, "straight east of the last point: {:?}", l.at);
 }
+
+#[test]
+fn escape_closes_the_palettes_open_list_before_it_clears_the_selection() {
+    let mut app = App::sample();
+    let (_, _, id) = pickable(&app).expect("a pickable point");
+    app.select(vec![id]);
+    app.open_list("level");
+    assert_eq!(app.palette.open, Some("level"));
+    app.open_list("level");
+    assert_eq!(app.palette.open, None, "the same list again closes it");
+    app.open_list("level");
+    assert!(app.escape());
+    assert_eq!(app.palette.open, None);
+    assert_eq!(app.selection, vec![id], "the selection stays");
+    assert!(app.escape());
+    assert!(app.selection.is_empty());
+}
+
+#[test]
+fn a_group_folds_by_its_name_and_edit_type_is_a_seam_that_says_so() {
+    let mut app = App::sample();
+    app.fold("Constraints");
+    assert!(app.palette.folded.contains("Constraints"));
+    app.fold("Constraints");
+    assert!(app.palette.folded.is_empty());
+    let (_, _, id) = pickable(&app).expect("a pickable point");
+    app.edit_type(id);
+    assert!(app.palette.refusal.as_deref().is_some_and(|s| s.contains("Type Properties")), "{:?}", app.palette.refusal);
+    app.select(vec![id]);
+    assert_eq!(app.palette.refusal, None, "a new selection clears what the palette said");
+}

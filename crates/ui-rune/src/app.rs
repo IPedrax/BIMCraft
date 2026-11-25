@@ -342,10 +342,14 @@ impl App {
         true
     }
 
-    /// Escape: disarms Zoom In Region, else gives up the points picked, else puts down the tool in hand, else clears the selection. False
+    /// Escape: disarms Zoom In Region, else closes the palette's open list, else gives up the points picked, else puts down the tool in hand, else clears the selection. False
     /// when there was nothing to do.
     pub fn escape(&mut self) -> bool {
         if std::mem::take(&mut self.region) {
+            return true;
+        }
+        // An open list of the palette closes first.
+        if self.palette.open.take().is_some() {
             return true;
         }
         if !self.picked.is_empty() {
