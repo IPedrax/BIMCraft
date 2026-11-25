@@ -197,3 +197,26 @@ fn dragging_an_end_grip_of_the_selected_wall_moves_that_end_through_the_window()
     let (after_start, after_end) = ends(&rt);
     assert!(after_end.dist(end) > 500.0 && after_start.dist(start) < 1.0, "only the dragged end moved: {after_end:?} from {end:?}");
 }
+
+#[test]
+fn the_selected_wall_shows_its_temporary_dimension_and_a_tool_in_hand_takes_it_away() {
+    let mut rt = Runtime::new(App::sample(), view, (1280.0, 800.0), Env::new(true, 1.0));
+    for _ in 0..3 {
+        rt.frame(0.0);
+    }
+    let wall = rt
+        .state
+        .session
+        .model
+        .elements
+        .iter()
+        .find_map(|(id, e)| matches!(e, Element::Wall(w) if w.arc == 0.0 && w.start.dist(w.end) > 3000.0).then_some(*id))
+        .expect("a long straight wall");
+    assert!(rt.find("plan-dims").is_none(), "nothing selected, no dimension");
+    rt.update(|s, _| s.select(vec![wall]));
+    settle(&mut rt);
+    assert!(rt.find("plan-dims").is_some() && rt.find("plan-dim-0").is_some(), "the wall's length has a line and a number to type into");
+    rt.update(|s, _| s.set_tool("beam"));
+    settle(&mut rt);
+    assert!(rt.find("plan-dims").is_none() && rt.find("plan-dim-0").is_none(), "a tool in hand takes them away");
+}

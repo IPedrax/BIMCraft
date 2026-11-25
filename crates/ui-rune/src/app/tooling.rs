@@ -48,7 +48,7 @@ impl App {
     pub fn shape_preview(&self) -> Vec<Curve> {
         let takes_shape = self.tool.and_then(tooling::spec_of).is_some_and(tooling::Spec::takes_shape);
         let (Some(landing), true) = (&self.landing, takes_shape) else { return Vec::new() };
-        let Tooling { shape, options } = self.tooling;
+        let Tooling { shape, options, .. } = self.tooling;
         if shape == Shape::Line || self.picked.is_empty() {
             return Vec::new();
         }
