@@ -474,10 +474,11 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>, ground: &Ground, flip: bool)
             *c += 1;
         }
         let c = at + u.perp() * p.offset;
-        // On the step, the landing or the floor under it; on a rail, that rail's top.
+        // On the step, the landing or the floor under it (moved past the stair's side, on the tread the railing's line is
+        // over there); on a rail, that rail's top.
         let bottom = match (p.kind, rail(&p.bottom)) {
             (PostKind::Baluster, Some(r)) => z + r.height + p.bottom_offset,
-            _ => ground.at(c).unwrap_or(z) + p.bottom_offset,
+            _ => ground.at(c).or_else(|| ground.at(at)).unwrap_or(z) + p.bottom_offset,
         };
         let up = match rail(&p.top) {
             Some(r) => z + r.height - rail_depth(r) + p.top_offset,
@@ -1929,5 +1930,45 @@ mod tests {
         assert!((rise[0].0 - (to - 50.0)).abs() < 1.0, "{line:?}");
         assert!((rise[0].1 - (landing + h)).abs() < 0.6 && (rise[1].1 - (landing + h + each)).abs() < 0.6);
         assert!((height_at(&line, to - 20.0) - (landing + h + each)).abs() < 0.6, "level over the extension");
+    }
+
+    #[test]
+    fn every_baluster_stands_on_the_tread_under_it_its_bottom_offset_over_that_wherever_across_the_railing_it_is() {
+        let mut s = Session::new();
+        let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1200}))["id"].as_u64().unwrap();
+        let each = 3000.0 / 17.0;
+        let tread = |y: f64| (y / 280.0 - 0.5).round() + 1.0;
+        for (offset, lift) in [(0.0, 0.0), (40.0, 0.0), (-40.0, 0.0), (40.0, 30.0), (0.0, -20.0), (80.0, 0.0), (-80.0, 25.0)] {
+            run(
+                &mut s,
+                "type",
+                json!({"category": "railing", "name": "Bars", "rails": [{"name": "Top", "width": 50, "height": 900}],
+                "posts": [{"name": "Bar", "kind": "baluster", "width": 15, "spacing": 110, "offset": offset,
+                    "bottom_offset": lift, "top": "Top"}]}),
+            );
+            for side in ["left", "right"] {
+                let id = run(&mut s, "railing", json!({"host": stair, "side": side, "type": "Bars"}))["ids"][0].as_u64().unwrap();
+                let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+                let bars: Vec<(P2, f64)> = parts(&s.model, rl)
+                    .iter()
+                    .filter(|p| p.at.kind == RailingPartKind::Baluster)
+                    .map(|p| {
+                        let (ring, bottom, _) = p.piece.prisms()[0].clone();
+                        (geom::centroid(&ring), bottom.z)
+                    })
+                    .collect();
+                // Those wholly over a tread, clear of its nosing by more than half a bar.
+                let over: Vec<&(P2, f64)> = bars
+                    .iter()
+                    .filter(|(c, _)| c.1 > 10.0 && c.1 < 4470.0 && (c.1 / 280.0 - (c.1 / 280.0).round()).abs() * 280.0 > 10.0)
+                    .collect();
+                assert!(over.len() > 20, "{bars:?}");
+                for (c, z) in over {
+                    let want = tread(c.1) * each + lift;
+                    assert!((z - want).abs() < 1e-6, "{side}, offset {offset}, {lift} up: {z} at {c:?}, the tread's {want}");
+                }
+                run(&mut s, "delete", json!({"ids": [id]}));
+            }
+        }
     }
 }

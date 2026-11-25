@@ -118,3 +118,34 @@ fn tab_picks_a_part_of_the_selected_railing_and_delete_leaves_it_out_of_the_patt
     let Some(Element::Railing(rl)) = h.state().session.model.elements.get(railing) else { panic!() };
     assert!(rl.parts.is_empty());
 }
+
+#[test]
+fn undo_in_edit_path_takes_back_the_last_change_to_the_path_not_the_model() {
+    let mut h = app(&format!("{BOX}\nrailing {{\"path\": [[1000, 500], [1000, 5500]]}}"));
+    let railing = ids(&h, "railing")[0];
+    h.state_mut().selection = vec![railing];
+    h.state_mut().raise_context();
+    h.run();
+    let steps = h.state().session.history().len();
+    press(&mut h, "Edit Path");
+    let lines = |h: &Harness<BimApp>| h.state().sketch.as_ref().map(|sk| sk.lines.len());
+    assert_eq!(lines(&h), Some(1));
+    // A line on from its end.
+    click(&mut h, P2(1000.0, 5500.0));
+    click(&mut h, P2(3000.0, 5500.0));
+    key(&mut h, Key::Escape);
+    assert_eq!(lines(&h), Some(2));
+    // Ctrl+Z takes the line back.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(lines(&h), Some(1));
+    // Again, and Undo on the toolbar: the sketch's, never the model's behind it.
+    click(&mut h, P2(1000.0, 5500.0));
+    click(&mut h, P2(3000.0, 5500.0));
+    key(&mut h, Key::Escape);
+    assert_eq!(lines(&h), Some(2));
+    press(&mut h, "Undo");
+    assert_eq!(lines(&h), Some(1), "the toolbar's Undo takes back the line");
+    assert_eq!(h.state().session.history().len(), steps, "and the model is as it was");
+    assert!(h.state().sketch.is_some(), "still editing the path");
+}

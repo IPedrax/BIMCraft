@@ -2,7 +2,8 @@
 //! point by point, and makes the rail's centre line: the points where it really turns or changes slope kept, the rest
 //! left out, and each of those bends rounded as the rail asks (a plan corner by `corner`, a change of slope by `bend`;
 //! 0 leaves it sharp). The sweeper ([`sweep`]) takes any centre line and a section and makes the rail's surface, its
-//! section carried along without rolling and mitred on the plane halving each bend it meets sharp.
+//! section carried along without rolling, each stretch a straight prism of its own mitred on the plane halving each bend
+//! it meets sharp.
 
 use crate::geom::P2;
 use crate::model::{PartShape, RailPart};
@@ -263,20 +264,15 @@ fn round(pts: &[P3], corner: f64, bend: f64, thick: f64) -> Vec<P3> {
     out
 }
 
-/// `profile` swept along `path`: a closed mesh of triangles turned out, its ends' first, and how many they are. The
-/// profile's first number is across the path (to its left, level), the second up, square to it. Each stretch's section
-/// is level across while the path is not upright, and carried on unturned up an upright stretch (a gooseneck's rise);
-/// where two stretches meet, one ring of points on the plane halving the bend, where the lines of the stretch coming in
-/// meet it, so the faces either side stay flat.
-pub fn sweep(path: &[P3], profile: &[(f64, f64)]) -> (Vec<[P3; 3]>, usize) {
+/// Each stretch of `path` (repeated points left out) as `profile` stands at its two ends: its section level across (to its
+/// left) while the stretch is not upright, carried on unturned up an upright one (a gooseneck's rise), and cut at each
+/// bend on the plane halving it, so the stretch is a straight prism whose faces are flat and whose edges run along it.
+pub(crate) fn stretches(path: &[P3], profile: &[(f64, f64)]) -> Vec<(Vec<P3>, Vec<P3>)> {
     let mut pts: Vec<P3> = Vec::with_capacity(path.len());
     for p in path {
         if pts.last().is_none_or(|q| length(sub(*p, *q)) > 1e-6) {
             pts.push(*p);
         }
-    }
-    if pts.len() < 2 || profile.len() < 3 {
-        return (Vec::new(), 0);
     }
     // Each stretch's way, and its section's axes: across (level, to the left) and up (square to it).
     let mut frames: Vec<(P3, P3, P3)> = Vec::with_capacity(pts.len());
@@ -288,44 +284,69 @@ pub fn sweep(path: &[P3], profile: &[(f64, f64)]) -> (Vec<[P3; 3]>, usize) {
         across_was = across;
         frames.push((d, across, unit(cross(d, across))));
     }
-    let off = |(_, s, u): (P3, P3, P3), (a, b): (f64, f64)| add(mul(s, a), mul(u, b));
-    let rings: Vec<Vec<P3>> = (0..pts.len())
-        .map(|i| {
-            let p = pts.get(i).copied().unwrap_or([0.0; 3]);
-            let before = i.checked_sub(1).and_then(|j| frames.get(j)).copied();
-            let after = frames.get(i).copied();
-            profile
-                .iter()
-                .map(|q| match (before, after) {
-                    (Some(fa), Some(fb)) => {
-                        // On the plane halving the bend, where the line of this point of the section coming in meets it.
-                        let normal = unit(add(fa.0, fb.0));
-                        let o = off(fa, *q);
-                        let along = dot(normal, fa.0);
-                        if along.abs() < 1e-6 { add(p, o) } else { add(add(p, o), mul(fa.0, -dot(normal, o) / along)) }
-                    }
-                    (Some(f), None) | (None, Some(f)) => add(p, off(f, *q)),
-                    (None, None) => p,
-                })
-                .collect()
+    // The section of stretch `f` round `p`, each point's line along the stretch cut by the plane square to `normal`.
+    let ring = |p: P3, f: (P3, P3, P3), normal: Option<P3>| -> Vec<P3> {
+        profile
+            .iter()
+            .map(|&(a, b)| {
+                let o = add(mul(f.1, a), mul(f.2, b));
+                let at = add(p, o);
+                match normal {
+                    Some(n) if dot(n, f.0).abs() > 1e-6 => add(at, mul(f.0, -dot(n, o) / dot(n, f.0))),
+                    _ => at,
+                }
+            })
+            .collect()
+    };
+    let halving = |a: Option<&(P3, P3, P3)>, b: Option<&(P3, P3, P3)>| Some(unit(add(a?.0, b?.0)));
+    (0..frames.len())
+        .filter_map(|j| {
+            let (&f, &p, &q) = (frames.get(j)?, pts.get(j)?, pts.get(j + 1)?);
+            let before = j.checked_sub(1).and_then(|i| frames.get(i));
+            Some((ring(p, f, halving(before, Some(&f))), ring(q, f, halving(Some(&f), frames.get(j + 1)))))
         })
-        .collect();
+        .collect()
+}
+
+/// `profile` swept along `path`: a closed mesh of triangles turned out, its ends' first, and how many they are. The
+/// profile's first number is across the path (to its left, level), the second up, square to it. Each stretch is a
+/// straight prism of its own ([`stretches`]), mitred on the plane halving each bend; where a bend turns in plan and in
+/// slope at once, the two sections there are not the same, and each is closed on that plane.
+pub fn sweep(path: &[P3], profile: &[(f64, f64)]) -> (Vec<[P3; 3]>, usize) {
+    if profile.len() < 3 {
+        return (Vec::new(), 0);
+    }
+    let parts = stretches(path, profile);
+    let (Some(first), Some(last)) = (parts.first(), parts.last()) else { return (Vec::new(), 0) };
     let n = profile.len();
     let next = |k: usize| (k + 1) % n;
-    let mut tris = Vec::with_capacity(2 * n * pts.len());
-    let (Some(first), Some(last)) = (rings.first(), rings.last()) else { return (Vec::new(), 0) };
     let middle = |r: &[P3]| mul(r.iter().fold([0.0; 3], |s, q| add(s, *q)), 1.0 / n as f64);
-    let (a, b) = (middle(first), middle(last));
-    for k in 0..n {
-        tris.push([a, first[next(k)], first[k]]);
-        tris.push([b, last[k], last[next(k)]]);
+    let mut tris = Vec::with_capacity(2 * n * (parts.len() + 1));
+    // An end facing back along the path, another facing on.
+    let back = |tris: &mut Vec<[P3; 3]>, r: &[P3]| {
+        let c = middle(r);
+        tris.extend((0..n).filter_map(|k| Some([c, *r.get(next(k))?, *r.get(k)?])));
+    };
+    let on = |tris: &mut Vec<[P3; 3]>, r: &[P3]| {
+        let c = middle(r);
+        tris.extend((0..n).filter_map(|k| Some([c, *r.get(k)?, *r.get(next(k))?])));
+    };
+    back(&mut tris, &first.0);
+    on(&mut tris, &last.1);
+    // Where two stretches' sections differ at a bend, each closed there.
+    for w in parts.windows(2) {
+        let (a, b) = (&w[0].1, &w[1].0);
+        if a.iter().zip(b).any(|(p, q)| length(sub(*p, *q)) > 1e-6) {
+            on(&mut tris, a);
+            back(&mut tris, b);
+        }
     }
     let caps = tris.len();
-    for w in rings.windows(2) {
-        let (ra, rb) = (&w[0], &w[1]);
+    for (ra, rb) in &parts {
         for k in 0..n {
-            tris.push([ra[k], ra[next(k)], rb[k]]);
-            tris.push([ra[next(k)], rb[next(k)], rb[k]]);
+            let (Some(&a0), Some(&a1), Some(&b0), Some(&b1)) = (ra.get(k), ra.get(next(k)), rb.get(k), rb.get(next(k))) else { continue };
+            tris.push([a0, a1, b0]);
+            tris.push([a1, b1, b0]);
         }
     }
     (tris, caps)
@@ -361,5 +382,45 @@ mod tests {
         assert_eq!(caps, 8);
         assert_eq!(tris.len(), 8 + 3 * 8);
         assert!(tris.iter().flatten().all(|p| p[1].abs() <= 20.0 + 1e-9), "never rolls sideways");
+    }
+
+    #[test]
+    fn a_bend_turning_in_plan_and_slope_at_once_is_mitred_each_stretch_straight_and_flat() {
+        // Up a flight, then turning left onto a landing, level: a turn in plan and in slope at one point.
+        let path = [[0.0, 0.0, 0.0], [1000.0, 0.0, 600.0], [1000.0, 800.0, 600.0], [1600.0, 800.0, 950.0]];
+        let parts = stretches(&path, &rectangle(50.0, 40.0));
+        assert_eq!(parts.len(), 3);
+        for (j, (a, b)) in parts.iter().enumerate() {
+            let way = unit(sub(path[j + 1], path[j]));
+            for (p, q) in a.iter().zip(b) {
+                // Every edge of the stretch runs along it: none twists round.
+                let e = unit(sub(*q, *p));
+                assert!(length(cross(e, way)) < 1e-9, "stretch {j}: {p:?} to {q:?} is not along {way:?}");
+            }
+            // The section level across: square to the stretch, its two bottom corners as high as each other.
+            let level = |r: &[P3]| {
+                let across = sub(r[3], r[0]);
+                (across[2] - way[2] * dot(across, way)).abs() < 1e-6
+            };
+            assert!(level(a) && level(b), "stretch {j}: {a:?} {b:?}");
+        }
+        // Each bend's two sections on the plane halving it.
+        for j in 0..2 {
+            let n = unit(add(unit(sub(path[j + 1], path[j])), unit(sub(path[j + 2], path[j + 1]))));
+            for p in parts[j].1.iter().chain(&parts[j + 1].0) {
+                assert!(dot(n, sub(*p, path[j + 1])).abs() < 1e-6);
+            }
+        }
+        // Closed: every edge of the mesh is two triangles'.
+        let (tris, _) = sweep(&path, &rectangle(50.0, 40.0));
+        let key = |p: &P3| p.map(|x| (x * 1e6).round() as i64);
+        let mut edges = std::collections::BTreeMap::new();
+        for t in &tris {
+            for k in 0..3 {
+                let (a, b) = (key(&t[k]), key(&t[(k + 1) % 3]));
+                *edges.entry(if a < b { (a, b) } else { (b, a) }).or_insert(0) += 1;
+            }
+        }
+        assert!(edges.values().all(|c| c % 2 == 0), "open edges");
     }
 }

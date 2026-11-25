@@ -2770,7 +2770,11 @@ impl BimApp {
                 true
             }
             "undo" => {
-                self.run("undo", json!({}));
+                if self.sketch.is_some() {
+                    self.unsketch();
+                } else {
+                    self.run("undo", json!({}));
+                }
                 true
             }
             "redo" => {

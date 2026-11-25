@@ -185,6 +185,20 @@ From the user's comments on round 5:
   and categories of project parameters, type and instance. In IFC: rails `IfcRailing` HANDRAIL, posts `IfcMember` POST,
   balusters `IfcMember` BALUSTER, panels `IfcPlate` INFILLPANEL, all parts of the railing's `IfcRailing`.
 
+## Round 7 (2026-11-25)
+
+From the user's comments on round 6:
+
+- **Balusters off the stair's side.** A post or baluster moved past a stair's side (its offset more than the railing's
+  50 mm in from the edge) found nothing under it and stood on the railing's line, up to a riser over its tread; now it
+  stands on the tread the railing's line is over there.
+- **Sharp corners.** The sweeper put one ring at each bend in the incoming stretch's frame, so where a bend turns in plan
+  and in slope at once the next stretch twisted. Each stretch is now a straight prism of its own (`path::stretches`), cut
+  on the plane halving each bend, each side closed there.
+- **Undo in Edit Path.** Ctrl+Z took back the sketch's last line, but the toolbar's Undo (and a rebound "undo" shortcut)
+  undid the model behind the sketch; both are now the sketch's while one is open.
+- Merged `main` (ramps, view range): another level's railing a plan sees from above is drawn as its type's plan below says.
+
 ## What the research suggested for BIMCraft
 
 Proposals, to settle before building:

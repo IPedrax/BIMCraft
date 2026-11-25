@@ -4784,9 +4784,12 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 // A family document's Undo and Redo are its own: the project's steps are not offered while it is open.
                 let family = self.family_doc();
+                // While sketching, Undo takes back the sketch's last change, as Ctrl+Z does; the model's waits for Finish.
                 if icon_button(ui, Icon::Undo, "Undo").clicked() {
                     if family {
                         self.family_undo();
+                    } else if self.sketch.is_some() {
+                        self.unsketch();
                     } else {
                         self.run("undo", json!({}));
                     }
