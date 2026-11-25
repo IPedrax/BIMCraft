@@ -5,7 +5,9 @@ name: Rune UI
 
 on:
   push:
-    branches: [main, 'IPedrax-Test/Rune-GUI']
+    # The work branches of the port (IPedrax-Test/Rune-GUI-tools and so on) get the check job; the builds and the measurements below are for
+    # IPedrax-Test/Rune-GUI itself (their `if`).
+    branches: [main, 'IPedrax-Test/Rune-GUI', 'IPedrax-Test/Rune-GUI-*']
     paths:
       - 'crates/ui-rune/**'
       - 'crates/core/**'
