@@ -101,3 +101,27 @@ fn the_wall_tool_has_a_shape_bar_that_picks_a_shape_and_shows_what_the_next_clic
     frames(&mut rt);
     assert!(rt.find("draw-bar").is_none(), "a beam takes no shape: the bar goes");
 }
+
+#[test]
+fn a_modify_tool_of_the_ribbon_moves_the_selection_with_two_taps_on_the_plan() {
+    let mut app = App::sample();
+    app.profile = crate::profile::Profile::Rev;
+    let mut rt = Runtime::new(app, view, (1280.0, 800.0), Env::new(true, 1.0));
+    rt.on_key = Some(super::on_key);
+    for _ in 0..3 {
+        rt.frame(0.0);
+    }
+    rt.update(|s, _| s.zoom_by(0.25));
+    let wall = rt.state.session.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
+    let start = |rt: &Runtime<App>| rt.state.session.model.wall(wall).map(|w| w.start).expect("a wall");
+    let before = start(&rt);
+    rt.update(|s, _| s.select(vec![wall]));
+    frames(&mut rt);
+    let tool = rt.find("tool-move").expect("Move in the ribbon");
+    tap(&mut rt, tool);
+    assert_eq!(rt.state.tool, Some("move"));
+    tap_plan(&mut rt, 100.0, 500.0);
+    tap_plan(&mut rt, 300.0, 500.0);
+    assert!(start(&rt).dist(before) > 1000.0, "the wall moved by what two taps are apart: {:?} -> {:?}", before, start(&rt));
+    assert!(rt.state.tool.is_none(), "and Move is done with: {:?}", rt.state.message);
+}

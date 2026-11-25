@@ -21,7 +21,16 @@ fn world() -> World {
 
 impl World {
     fn ctx(&self) -> Ctx<'_> {
-        Ctx { model: &self.model, level: self.level, hovered: None, shape: Shape::Line, options: Options::default() }
+        Ctx {
+            model: &self.model,
+            level: self.level,
+            hovered: None,
+            shape: Shape::Line,
+            options: Options::default(),
+            selection: &[],
+            held: Held::Nothing,
+            reach: 100.0,
+        }
     }
 }
 
@@ -60,7 +69,10 @@ fn every_palette_tool_that_draws_has_a_spec_and_every_spec_names_a_command_the_c
         assert!(crate::tools::label(s.id).is_some(), "{} is a tool of the palette", s.id);
         assert!(bimcraft_core::engine::find(s.command).is_some(), "{} makes `{}`, which the core has", s.id, s.command);
     }
-    assert!(spec_of("move").is_none(), "a Modify tool is not a drawing one");
+    for &(id, _) in crate::tools::MODIFY {
+        // Array has no command in the core and Scale needs a typed factor: neither is a tool of this machine yet.
+        assert_eq!(spec_of(id).is_some(), !matches!(id, "array" | "scale"), "{id}");
+    }
 }
 
 #[test]
@@ -170,7 +182,16 @@ fn a_click_on_a_stair_makes_a_railing_for_it_and_one_on_a_wall_does_not() {
     let stair = made["id"].as_u64().expect("an id");
     let wall = app.session.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
     let model = (*app.session.model).clone();
-    let ctx = |hovered| Ctx { model: &model, level, hovered, shape: Shape::Line, options: Options::default() };
+    let ctx = |hovered| Ctx {
+        model: &model,
+        level,
+        hovered,
+        shape: Shape::Line,
+        options: Options::default(),
+        selection: &[],
+        held: Held::Nothing,
+        reach: 100.0,
+    };
     let (cmds, _) = run_of(advance(of("railing"), &ctx(Some(stair)), &pts(&[A])));
     assert_eq!((cmds[0].0, &cmds[0].1["host"]), ("railing", &json!(stair)));
     assert_eq!(advance(of("railing"), &ctx(Some(wall)), &pts(&[A])), Step::More, "a wall is no host: the click starts a path");
@@ -228,4 +249,110 @@ fn a_point_that_is_no_number_is_left_alone_and_a_path_is_capped() {
     let long: Vec<P2> = (0..MAX_POINTS).map(|i| P2(i as f64 * 10.0, 0.0)).collect();
     assert!(matches!(advance(of("railing"), &c, &long), Step::Run { .. }), "a path that reaches the cap is made, not dropped");
     assert_eq!(run_of(advance(of("wall"), &c, &long)).1, Chain::No, "and so is a chain of walls ended");
+}
+
+const SEL: [Id; 2] = [100100, 100101];
+
+fn approx(v: &serde_json::Value, want: &[f64]) -> bool {
+    v.as_array().is_some_and(|a| a.len() == want.len() && a.iter().zip(want).all(|(x, w)| x.as_f64().is_some_and(|x| (x - w).abs() < 1e-6)))
+}
+
+#[test]
+fn the_angle_between_two_rays_is_counter_clockwise_in_minus_180_to_180() {
+    let o = P2(10.0, 10.0);
+    let angle = |a: (f64, f64), b: (f64, f64)| angle_between(o, o + P2(a.0, a.1), o + P2(b.0, b.1));
+    assert!((angle((1.0, 0.0), (0.0, 1.0)) - 90.0).abs() < 1e-9);
+    assert!((angle((1.0, 0.0), (0.0, -1.0)) + 90.0).abs() < 1e-9);
+    assert!((angle((1.0, 0.0), (-1.0, 0.0)) - 180.0).abs() < 1e-9, "a half turn is +180, not -180");
+    assert!((angle((0.0, 1.0), (1.0, 0.0)) + 90.0).abs() < 1e-9);
+    assert!((angle((-1.0, 0.1), (-1.0, -0.1)) - 11.42).abs() < 0.01, "across the cut at 180 it goes the short way, counter-clockwise");
+}
+
+#[test]
+fn move_and_copy_need_a_selection_then_a_base_point_and_a_destination() {
+    let w = world();
+    assert!(matches!(advance(of("move"), &w.ctx(), &pts(&[A])), Step::Refuse(_)), "with nothing selected the tool says so");
+    let c = Ctx { selection: &SEL, ..w.ctx() };
+    assert_eq!(advance(of("move"), &c, &pts(&[A])), Step::More);
+    assert_eq!(advance(of("move"), &c, &pts(&[A, A])), Step::Ignore, "the same place is no move");
+    let (cmds, keep) = run_of(advance(of("move"), &c, &pts(&[A, C])));
+    assert_eq!((cmds[0].0, keep), ("move", Chain::No));
+    assert_eq!(cmds[0].1["ids"], json!([100100, 100101]));
+    assert!(approx(&cmds[0].1["by"], &[4000.0, 3000.0]), "{:?}", cmds[0].1);
+    assert_eq!(run_of(advance(of("copy"), &c, &pts(&[A, B]))).0[0].0, "copy");
+    assert!(of("move").ends_tool() && of("copy").ends_tool() && !of("split").ends_tool(), "Split stays in hand, Move does not");
+}
+
+#[test]
+fn rotate_takes_a_centre_and_two_rays_and_mirror_two_points_for_its_axis() {
+    let w = world();
+    let c = Ctx { selection: &SEL, ..w.ctx() };
+    let rotate = of("rotate");
+    assert_eq!(advance(rotate, &c, &pts(&[A])), Step::More);
+    assert_eq!(advance(rotate, &c, &pts(&[A, (1000.0, 0.0)])), Step::More);
+    assert_eq!(advance(rotate, &c, &pts(&[A, A])), Step::Ignore, "a ray with no length");
+    assert_eq!(advance(rotate, &c, &pts(&[A, (1000.0, 0.0), A])), Step::Ignore);
+    let (cmds, _) = run_of(advance(rotate, &c, &pts(&[A, (1000.0, 0.0), (0.0, 1000.0)])));
+    assert_eq!((cmds[0].0, &cmds[0].1["copy"]), ("rotate", &json!(false)));
+    assert!(approx(&cmds[0].1["about"], &[0.0, 0.0]) && cmds[0].1["angle"].as_f64().is_some_and(|a| (a - 90.0).abs() < 1e-9));
+    let mirror = of("mirror");
+    assert_eq!(advance(mirror, &c, &pts(&[A])), Step::More);
+    assert_eq!(advance(mirror, &c, &pts(&[A, A])), Step::Ignore);
+    let (cmds, _) = run_of(advance(mirror, &c, &pts(&[A, B])));
+    assert_eq!((cmds[0].0, &cmds[0].1["copy"]), ("mirror", &json!(true)));
+    assert_eq!(cmds[0].1["axis"], json!([[0.0, 0.0], [4000.0, 0.0]]));
+    assert!(matches!(advance(mirror, &w.ctx(), &pts(&[A])), Step::Refuse(_)), "nothing selected");
+}
+
+#[test]
+fn split_and_trim_work_on_the_elements_picked_under_the_pointer() {
+    let w = world();
+    assert!(matches!(advance(of("split"), &w.ctx(), &pts(&[A])), Step::Refuse(_)), "nothing there to split");
+    let on = |hovered, held| Ctx { hovered, held, ..w.ctx() };
+    let (cmds, keep) = run_of(advance(of("split"), &on(Some(7), Held::Nothing), &pts(&[B])));
+    assert_eq!((cmds[0].0, keep), ("split", Chain::No));
+    assert_eq!((&cmds[0].1["id"], &cmds[0].1["at"]), (&json!(7), &json!([4000.0, 0.0])));
+    let trim = of("trim");
+    assert_eq!(advance(trim, &on(Some(7), Held::Nothing), &pts(&[A])), Step::Hold(Held::Element(7)), "the first pick is held");
+    assert!(matches!(advance(trim, &on(None, Held::Nothing), &pts(&[A])), Step::Refuse(_)));
+    let second = pts(&[A, C]);
+    assert_eq!(advance(trim, &on(Some(7), Held::Element(7)), &second), Step::Ignore, "the same element twice is no corner");
+    let (cmds, _) = run_of(advance(trim, &on(Some(8), Held::Element(7)), &second));
+    assert_eq!(cmds[0].0, "corner", "Trim is the core's corner");
+    assert_eq!((&cmds[0].1["ids"], &cmds[0].1["keep"]), (&json!([7, 8]), &json!([[0.0, 0.0], [4000.0, 3000.0]])));
+}
+
+#[test]
+fn align_holds_the_first_line_and_offset_copies_a_wall_across_to_the_point() {
+    let w = world();
+    let (id, start, end) = w
+        .model
+        .elements
+        .iter()
+        .find_map(|(id, e)| match e {
+            Element::Wall(wall) if wall.arc == 0.0 && wall.start.dist(wall.end) > 2000.0 => Some((*id, wall.start, wall.end)),
+            _ => None,
+        })
+        .expect("a straight wall in the house");
+    let on = |hovered, held, reach| Ctx { hovered, held, reach, ..w.ctx() };
+    let align = of("align");
+    let Step::Hold(Held::Line(reference)) = advance(align, &on(Some(id), Held::Nothing, 100.0), &[start]) else { panic!("a line is held") };
+    assert!(reference.0.dist(reference.1) > 1000.0, "the wall's own edge or axis: {reference:?}");
+    assert!(
+        matches!(advance(align, &on(Some(id), Held::Nothing, 0.0), &[start + P2(0.0, 5000.0)]), Step::Refuse(_)),
+        "too far from any line"
+    );
+    assert!(matches!(advance(align, &on(None, Held::Nothing, 100.0), &[start]), Step::Refuse(_)));
+    let (cmds, _) = run_of(advance(align, &on(Some(id), Held::Line(reference), 100.0), &[start, end]));
+    assert_eq!((cmds[0].0, &cmds[0].1["id"]), ("align", &json!(id)));
+    assert!(approx(&cmds[0].1["reference"][0], &[reference.0.0, reference.0.1]), "{:?}", cmds[0].1);
+
+    let offset = of("offset");
+    assert_eq!(advance(offset, &on(Some(id), Held::Nothing, 100.0), &[start]), Step::Hold(Held::Element(id)));
+    assert!(matches!(advance(offset, &on(None, Held::Nothing, 100.0), &[start]), Step::Refuse(_)));
+    let n = (end - start).unit().perp();
+    let (cmds, _) = run_of(advance(offset, &on(None, Held::Element(id), 100.0), &[start, start + n * 500.0]));
+    assert_eq!((cmds[0].0, &cmds[0].1["ids"]), ("copy", &json!([id])));
+    assert!(approx(&cmds[0].1["by"], &[n.0 * 500.0, n.1 * 500.0]), "{:?}", cmds[0].1);
+    assert_eq!(advance(offset, &on(None, Held::Element(id), 100.0), &[start, start + n * 0.5]), Step::Ignore, "on the wall: no distance");
 }

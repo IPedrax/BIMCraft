@@ -126,13 +126,13 @@ fn a_shape_makes_its_walls_as_one_undo_step_and_previews_what_the_next_click_mak
 }
 
 #[test]
-fn a_tool_that_modifies_leaves_the_points_it_picks_alone_and_the_shape_goes_with_the_tool() {
+fn a_tool_the_machine_does_not_know_leaves_the_points_it_picks_alone_and_the_shape_goes_with_the_tool() {
     let mut app = App::sample();
-    app.set_tool("move");
+    app.set_tool("array");
     let before = elements(&app);
     click(&mut app, A);
     click(&mut app, B);
-    assert_eq!((elements(&app), app.picked.len()), (before, 2), "nothing draws it yet");
+    assert_eq!((elements(&app), app.picked.len()), (before, 2), "Array has no command in the core yet");
     app.set_tool("beam");
     app.set_shape(Shape::Rectangle);
     assert!(app.shape_preview().is_empty(), "a beam takes no shape");
@@ -140,4 +140,137 @@ fn a_tool_that_modifies_leaves_the_points_it_picks_alone_and_the_shape_goes_with
     click(&mut app, B);
     assert_eq!(elements(&app), before + 1, "a beam is a line from click to click: {:?}", app.message);
     assert_eq!(app.picked.len(), 1, "and the run goes on from where it ended");
+}
+
+/// The ends of wall `id`, as the model has them.
+fn ends(app: &App, id: u64) -> (P2, P2) {
+    let w = app.session.model.wall(id).expect("a wall");
+    (w.start, w.end)
+}
+
+/// A wall of the model between two points made through the app, the newest wall there is.
+fn make_wall(app: &mut App, a: P2, b: P2) -> u64 {
+    let level = app.level;
+    assert!(app.run("wall", &serde_json::json!({"points": [[a.0, a.1], [b.0, b.1]], "level": level})), "{:?}", app.message);
+    app.session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).max().expect("a wall")
+}
+
+fn near(p: P2, x: f64, y: f64) -> bool {
+    p.dist(P2(x, y)) < 30.0
+}
+
+const D1: P2 = P2(-20000.0, -20000.0);
+const D2: P2 = P2(-18000.0, -19000.0);
+
+#[test]
+fn move_slides_the_selection_by_the_distance_between_two_clicks_and_goes_back_with_undo() {
+    let mut app = App::sample();
+    let id = make_wall(&mut app, A, B);
+    let (start, end) = ends(&app, id);
+    app.select(vec![id]);
+    app.set_tool("move");
+    click(&mut app, D1);
+    assert_eq!(app.picked.len(), 1, "the base point");
+    click(&mut app, D2);
+    let (s, e) = ends(&app, id);
+    assert!(near(s, start.0 + 2000.0, start.1 + 1000.0) && near(e, end.0 + 2000.0, end.1 + 1000.0), "{s:?} {e:?}");
+    assert!(app.tool.is_none() && app.picked.is_empty(), "Move is done with");
+    assert_eq!(app.selection, vec![id], "and the wall is still selected");
+    assert!(app.undo());
+    assert_eq!(ends(&app, id), (start, end));
+}
+
+#[test]
+fn with_nothing_selected_a_modify_tool_says_so_and_a_copy_is_what_is_selected_after_it() {
+    let mut app = App::sample();
+    let id = make_wall(&mut app, A, B);
+    app.set_tool("copy");
+    click(&mut app, D1);
+    assert!(app.message.as_deref().is_some_and(|m| m.contains("select")), "{:?}", app.message);
+    assert!(app.picked.is_empty(), "the click is given back");
+    app.select(vec![id]);
+    let before = walls(&app);
+    click(&mut app, D1);
+    click(&mut app, D2);
+    assert_eq!(walls(&app), before + 1, "{:?}", app.message);
+    assert_eq!(app.selection.len(), 1);
+    assert_ne!(app.selection[0], id, "the copy is selected, not the wall it came from");
+    assert!(near(ends(&app, id).0, A.0, A.1), "the first is where it was");
+}
+
+#[test]
+fn rotate_turns_the_selection_about_the_centre_by_the_angle_between_the_rays() {
+    let mut app = App::sample();
+    let id = make_wall(&mut app, A, B);
+    app.select(vec![id]);
+    app.set_tool("rotate");
+    for p in [D1, P2(D1.0 + 1000.0, D1.1), P2(D1.0, D1.1 + 1000.0)] {
+        click(&mut app, p);
+    }
+    let (s, e) = ends(&app, id);
+    let d = e - s;
+    assert!(d.0.abs() < 30.0 && (d.1.abs() - 4000.0).abs() < 30.0, "an east wall turned a quarter is a north one: {d:?}");
+    assert!(app.tool.is_none(), "Rotate is done with: {:?}", app.message);
+}
+
+#[test]
+fn mirror_with_an_axis_of_two_points_makes_a_mirrored_copy() {
+    let mut app = App::sample();
+    let id = make_wall(&mut app, A, B);
+    app.select(vec![id]);
+    app.set_tool("mirror");
+    let before = walls(&app);
+    click(&mut app, P2(-30000.0, -25000.0));
+    click(&mut app, P2(-26000.0, -25000.0));
+    assert_eq!(walls(&app), before + 1, "{:?}", app.message);
+    assert!(app.tool.is_none());
+}
+
+#[test]
+fn split_cuts_the_element_under_the_pointer_and_stays_in_hand() {
+    let mut app = App::sample();
+    let id = make_wall(&mut app, A, B);
+    let before = walls(&app);
+    app.set_tool("split");
+    click(&mut app, P2(-28000.0, -30000.0));
+    assert_eq!(walls(&app), before + 1, "{:?}", app.message);
+    assert!(app.session.model.wall(id).is_some_and(|w| w.start.dist(w.end) < 3000.0), "the wall is shorter");
+    assert_eq!(app.tool, Some("split"), "Split stays in hand for the next");
+    click(&mut app, P2(-30000.0, -23000.0));
+    assert!(app.message.is_some() && walls(&app) == before + 1, "nothing there to split");
+}
+
+#[test]
+fn trim_to_corner_takes_two_picks_and_extends_both_to_where_they_meet() {
+    let mut app = App::sample();
+    let first = make_wall(&mut app, A, P2(-28500.0, -30000.0));
+    let second = make_wall(&mut app, P2(-28000.0, -29000.0), P2(-28000.0, -27000.0));
+    app.set_tool("trim");
+    click(&mut app, P2(-29000.0, -30000.0));
+    assert_eq!(app.picked.len(), 1, "the first pick is held with its point");
+    click(&mut app, P2(-28000.0, -28500.0));
+    let (s, e) = ends(&app, first);
+    assert!(near(P2(s.0.max(e.0), s.1), -28000.0, s.1) && (s.1 + 30000.0).abs() < 30.0, "the first reaches the second's line: {s:?} {e:?}");
+    assert!(ends(&app, second).0.1.min(ends(&app, second).1.1) < -29900.0, "and the second reaches the first's: {:?}", ends(&app, second));
+    assert!(app.picked.is_empty() && app.tool == Some("trim"), "{:?}", app.message);
+}
+
+#[test]
+fn align_moves_the_second_wall_onto_the_first_ones_line_and_offset_copies_across() {
+    let mut app = App::sample();
+    make_wall(&mut app, A, B);
+    let second = make_wall(&mut app, P2(-29000.0, -25000.0), P2(-27000.0, -25000.0));
+    app.set_tool("align");
+    click(&mut app, P2(-28000.0, -30000.0));
+    assert!(app.tooling.held != crate::tooling::Held::Nothing, "the reference line is held");
+    click(&mut app, P2(-28000.0, -25000.0));
+    let (s, e) = ends(&app, second);
+    assert!((s.1 + 30000.0).abs() < 150.0 && (e.1 + 30000.0).abs() < 150.0, "the second wall lies on the first's line: {s:?} {e:?}");
+    assert_eq!(app.tool, Some("align"));
+    app.set_tool("align");
+    app.set_tool("offset");
+    let before = walls(&app);
+    click(&mut app, P2(-28000.0, -30000.0));
+    click(&mut app, P2(-28000.0, -29000.0));
+    assert_eq!(walls(&app), before + 1, "{:?}", app.message);
 }

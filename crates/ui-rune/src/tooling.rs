@@ -6,14 +6,16 @@
 //!
 //! How a tool finishes: a click that completes it (a column, a door, a pair of ends), the last point clicked again (a double click
 //! is two clicks at one place, so it does too), or Enter (`finish`). Backspace gives the last point back (`App::back_point`).
-//! The params are what the command needs and no more: the type, height and location line an Options Bar would set are the
+//! The Modify tools work on the selection through the same machine: Move and Copy (a base point and a destination), Rotate (a centre and two
+//! rays), Mirror (an axis), Split, Trim to Corner, Align and Offset (elements picked). The params are what the command needs and no more: the type, height and location line an Options Bar would set are the
 //! command's defaults here, as that bar is not in this window yet (docs/areas/rune-ui-tools.md).
 
+use bimcraft_core::align;
 use bimcraft_core::draw::{self, Options, Shape};
 use bimcraft_core::family::Category;
 use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Id;
-use bimcraft_core::model::{Element, MAX_POINTS, Model, TOL};
+use bimcraft_core::model::{Element, Line, MAX_POINTS, Model, TOL};
 use serde_json::{Value, json};
 
 use crate::lang::{t, tf};
@@ -47,6 +49,20 @@ pub enum Kind {
     /// A family placed at the point: `component {family, type, at, level}`, of the first family that is one of these kinds (any
     /// when there are none named). The Type Selector is not in this window yet, so the first type of the first family it is.
     Family { kinds: &'static [Category] },
+    /// Move and Copy, on the selection: from a base point to a destination, `{ids, by: [dx, dy]}`.
+    Shift,
+    /// Rotate, on the selection: about a centre, from one ray to the next, `{ids, about, angle}`.
+    Turn,
+    /// Mirror, on the selection: across the line of two points, `{ids, axis, copy}`.
+    Reflect,
+    /// Split: the element under the pointer cut at the point, `{id, at}`.
+    Cut,
+    /// Trim/Extend to Corner: two elements, each picked on the part that stays, `corner {ids, keep}`.
+    Corner,
+    /// Align: an element's line picked, then the element to bring to it, `{id, reference, line}`.
+    Align,
+    /// Offset: an element picked, then the point that says how far and to which side.
+    Offset,
 }
 
 /// A plan tool: its id in `tools::TOOLS`, the core's command it makes, and how its clicks make it.
@@ -62,6 +78,12 @@ impl Spec {
     pub fn takes_shape(&self) -> bool {
         matches!(self.kind, Kind::Run { shapes: true, .. })
     }
+
+    /// Whether the tool is put down once it has done its work (Move, Copy, Rotate and Mirror, as in the egui window, which goes back to
+    /// Modify); the others, Split, Trim, Align and Offset, stay for the next pick, as they do there.
+    pub fn ends_tool(&self) -> bool {
+        matches!(self.kind, Kind::Shift | Kind::Turn | Kind::Reflect)
+    }
 }
 
 const fn spec(id: &'static str, command: &'static str, kind: Kind) -> Spec {
@@ -71,7 +93,9 @@ const fn spec(id: &'static str, command: &'static str, kind: Kind) -> Spec {
 const RUN: Kind = Kind::Run { chain: Chain::Last, shapes: false, curtain: false };
 const AT: Kind = Kind::Point { key: "at" };
 
-/// Every tool of `tools::TOOLS` that draws on the plan with the points it picks. A test keeps the two tables the same.
+/// Every tool of `tools::TOOLS` that draws on the plan with the points it picks, and the tools of `tools::MODIFY` that act on what is
+/// selected or picked (not Array, which the core has no command for, and Scale, which only scales annotation and needs a typed factor).
+/// A test keeps the tables the same.
 pub const SPECS: &[Spec] = &[
     spec("wall", "wall", Kind::Run { chain: Chain::Whole, shapes: true, curtain: false }),
     spec("curtain_wall", "wall", Kind::Run { chain: Chain::Whole, shapes: false, curtain: true }),
@@ -98,6 +122,14 @@ pub const SPECS: &[Spec] = &[
     spec("switch", "component", Kind::Family { kinds: &[Category::Switch] }),
     spec("lighting", "component", Kind::Family { kinds: &[Category::Lighting] }),
     spec("cable_tray", "cable_tray", RUN),
+    spec("move", "move", Kind::Shift),
+    spec("copy", "copy", Kind::Shift),
+    spec("rotate", "rotate", Kind::Turn),
+    spec("mirror", "mirror", Kind::Reflect),
+    spec("trim", "corner", Kind::Corner),
+    spec("split", "split", Kind::Cut),
+    spec("align", "align", Kind::Align),
+    spec("offset", "offset", Kind::Offset),
 ];
 
 /// The tool with this id, if it draws with picked points.
@@ -105,11 +137,21 @@ pub fn spec_of(id: &str) -> Option<&'static Spec> {
     SPECS.iter().find(|s| s.id == id)
 }
 
-/// What the Draw panel has set, which the tools that take a shape read.
+/// What a Modify tool keeps between its clicks besides the points: the element or the line its first pick named.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Held {
+    #[default]
+    Nothing,
+    Element(Id),
+    Line(Line),
+}
+
+/// What the Draw panel has set, which the tools that take a shape read, and what a Modify tool holds from its first pick.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Tooling {
     pub shape: Shape,
     pub options: Options,
+    pub held: Held,
 }
 
 /// What the machine reads of the window and the model besides the points.
@@ -121,6 +163,12 @@ pub struct Ctx<'a> {
     /// The Draw panel's shape and its settings, for the tools that take one.
     pub shape: Shape,
     pub options: Options,
+    /// What is selected, which the Modify tools act on.
+    pub selection: &'a [Id],
+    /// What the tool's first pick named (a Modify tool's); read only on its second click, as the first one overwrites it.
+    pub held: Held,
+    /// How near an element's line the pointer must be to pick it, millimetres.
+    pub reach: f64,
 }
 
 /// A command and its params.
@@ -135,6 +183,8 @@ pub enum Step {
     Ignore,
     /// The tool is finished with its points and makes nothing (a chain ended by its last point clicked again): the points go.
     Done,
+    /// The click is the first of a pick that names an element or a line: the point stays and the tool holds that until the next.
+    Hold(Held),
     /// Run these commands, as one step when there are several. Then the points become `keep`; if the core refuses, the click is given back.
     Run { commands: Vec<Command>, keep: Chain },
     /// The tool cannot go on, and says why.
@@ -304,6 +354,98 @@ pub fn advance(spec: &Spec, ctx: &Ctx, points: &[P2]) -> Step {
             Some((family, ty)) => run(spec, json!({"family": family, "type": ty, "at": xy(last), "level": ctx.level}), Chain::No),
             None => Step::Refuse(tf("{}: the project has no family to place; load one first.", &[label(spec)])),
         },
+        Kind::Shift | Kind::Turn | Kind::Reflect if ctx.selection.is_empty() => {
+            Step::Refuse(tf("{}: select the elements first, then pick the tool.", &[label(spec)]))
+        }
+        Kind::Shift => match before {
+            None => Step::More,
+            Some(_) if again => Step::Ignore,
+            Some(from) => run(spec, json!({"ids": ctx.selection, "by": xy(last - from)}), Chain::No),
+        },
+        Kind::Turn => match points {
+            [_] => Step::More,
+            [centre, from] if from.dist(*centre) <= TOL => Step::Ignore,
+            [_, _] => Step::More,
+            [centre, from, to] if to.dist(*centre) > TOL && from.dist(*centre) > TOL => {
+                let angle = angle_between(*centre, *from, *to);
+                run(spec, json!({"ids": ctx.selection, "about": xy(*centre), "angle": angle, "copy": false}), Chain::No)
+            }
+            _ => Step::Ignore,
+        },
+        Kind::Reflect => match before {
+            None => Step::More,
+            Some(_) if again => Step::Ignore,
+            Some(a) => run(spec, json!({"ids": ctx.selection, "axis": [xy(a), xy(last)], "copy": true}), Chain::No),
+        },
+        Kind::Cut => match ctx.hovered {
+            Some(id) => run(spec, json!({"id": id, "at": xy(last)}), Chain::No),
+            None => Step::Refuse(tf("{}: click a wall or a detail line.", &[label(spec)])),
+        },
+        Kind::Corner => match (points.len(), ctx.hovered, ctx.held) {
+            (1, Some(a), _) => Step::Hold(Held::Element(a)),
+            (2, Some(b), Held::Element(a)) if a != b => {
+                let keep = [xy(points[0]), xy(last)];
+                run(spec, json!({"ids": [a, b], "keep": keep}), Chain::No)
+            }
+            (1 | 2, None, _) => Step::Refuse(tf("{}: click a wall or a line on the part that stays.", &[label(spec)])),
+            _ => Step::Ignore,
+        },
+        Kind::Align => {
+            let line = ctx.hovered.and_then(|id| align::nearest(ctx.model, id, last).map(|(line, d)| (id, line, d)));
+            match (points.len(), line, ctx.held) {
+                (1, Some((_, line, d)), _) if d <= ctx.reach => Step::Hold(Held::Line(line)),
+                (2, Some((id, line, d)), Held::Line(reference)) if d <= ctx.reach => run(
+                    spec,
+                    json!({"id": id, "reference": [xy(reference.0), xy(reference.1)], "line": [xy(line.0), xy(line.1)]}),
+                    Chain::No,
+                ),
+                (1 | 2, ..) => Step::Refuse(tf("{}: click a wall, a line or an edge.", &[label(spec)])),
+                _ => Step::Ignore,
+            }
+        }
+        Kind::Offset => match (points.len(), ctx.hovered, ctx.held) {
+            (1, Some(id), _) if offsets(ctx.model, id) => Step::Hold(Held::Element(id)),
+            (1, ..) => Step::Refuse(tf("{}: click a straight wall or a detail line.", &[label(spec)])),
+            (2, _, Held::Element(id)) => offset_to(spec, ctx, id, last),
+            _ => Step::Ignore,
+        },
+    }
+}
+
+/// Degrees from the ray `centre` to `from` to the ray `centre` to `to`, counter-clockwise, in (-180, 180].
+pub fn angle_between(centre: P2, from: P2, to: P2) -> f64 {
+    let (u, v) = (from - centre, to - centre);
+    let d = (v.1.atan2(v.0) - u.1.atan2(u.0)).to_degrees();
+    if d > 180.0 {
+        d - 360.0
+    } else if d <= -180.0 {
+        d + 360.0
+    } else {
+        d
+    }
+}
+
+/// Whether Offset takes the element: a straight wall or a detail line.
+fn offsets(m: &Model, id: Id) -> bool {
+    m.wall(id).is_some_and(|w| w.arc == 0.0) || matches!(m.elements.get(id), Some(Element::DetailLine(_)))
+}
+
+/// Offset's second pick: the element `id` drawn again as far from itself as the point `at` is, on the side it is on. A detail line
+/// is offset by the core's `offset`; a wall is copied by the distance across it, as the egui window does.
+fn offset_to(spec: &Spec, ctx: &Ctx, id: Id, at: P2) -> Step {
+    let m = ctx.model;
+    if let Some(w) = m.wall(id).filter(|w| w.arc == 0.0) {
+        let n = (w.end - w.start).unit().perp();
+        let across = (at - w.start).dot(n);
+        if across.abs() <= TOL {
+            return Step::Ignore;
+        }
+        return Step::Run { commands: vec![("copy", json!({"ids": [id], "by": xy(n * across)}))], keep: Chain::No };
+    }
+    match draw::element_curve(m, id).map(|c| c.dist(at)) {
+        Some(d) if d > TOL => run(spec, json!({"id": id, "distance": d, "toward": xy(at), "copy": true}), Chain::No),
+        Some(_) => Step::Ignore,
+        None => Step::Refuse(tf("{}: click a straight wall or a detail line.", &[label(spec)])),
     }
 }
 
