@@ -153,3 +153,57 @@ fn a_choice_is_made_from_its_list() {
     assert_eq!(rt.state.dialogs.form.as_ref().and_then(|f| f.open), None);
     assert!(rt.state.dialogs.form.is_some(), "and the form stays open");
 }
+
+#[test]
+fn settings_open_from_the_bar_and_from_ctrl_comma_and_close() {
+    let mut rt = window();
+    tap(&mut rt, "settings");
+    assert!(rt.state.dialogs.settings.is_some(), "the Settings button opens it");
+    for key in ["language-row", "units-row", "theme-row", "profile-row", "settings-project-info", "settings-close"] {
+        assert!(rt.find(key).is_some(), "{key} is in the dialog");
+    }
+    tap(&mut rt, "settings-close");
+    assert!(rt.state.dialogs.settings.is_none() && rt.find("settings-close").is_none());
+    press(&mut rt, Key::Command(','), ctrl());
+    assert!(rt.state.dialogs.settings.is_some(), "Ctrl+, opens it");
+    press(&mut rt, Key::Escape, Mods::default());
+    assert!(rt.state.dialogs.settings.is_none(), "Escape closes it");
+}
+
+#[test]
+fn a_unit_chosen_in_settings_is_the_projects_through_the_engine() {
+    let mut rt = window();
+    tap(&mut rt, "settings");
+    tap(&mut rt, "units-trigger");
+    assert_eq!(rt.state.dialogs.settings.as_ref().and_then(|d| d.open), Some(crate::app::settings::Choice::Units), "its list opens");
+    settle(&mut rt);
+    tap(&mut rt, "option4");
+    assert_eq!(rt.state.session.model.units, bimcraft_core::units::Units::Feet, "the fifth unit is feet");
+    assert!(rt.state.dialogs.settings.as_ref().is_some_and(|d| d.open.is_none() && d.error.is_none()));
+}
+
+#[test]
+fn the_theme_and_the_profile_are_chosen_and_the_window_is_drawn_again() {
+    let mut rt = window();
+    tap(&mut rt, "settings");
+    tap(&mut rt, "theme-trigger");
+    settle(&mut rt);
+    tap(&mut rt, "option1");
+    assert!(!rt.state.dark(), "the second theme is light");
+    assert!(rt.find("settings-close").is_some(), "and the dialog is still drawn");
+    tap(&mut rt, "profile-trigger");
+    settle(&mut rt);
+    tap(&mut rt, "option1");
+    assert_eq!(rt.state.profile, crate::profile::Profile::Rev);
+    assert!(rt.find("ribbon").is_some(), "Rev draws its ribbon");
+}
+
+#[test]
+fn project_information_is_the_commands_own_form() {
+    let mut rt = window();
+    tap(&mut rt, "settings");
+    tap(&mut rt, "settings-project-info");
+    assert!(rt.state.dialogs.settings.is_none(), "Settings gives way");
+    assert_eq!(rt.state.dialogs.form.as_ref().map(|f| f.form.id), Some("project_info"));
+    assert!(rt.find("form-run").is_some());
+}

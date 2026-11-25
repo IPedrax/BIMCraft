@@ -23,6 +23,7 @@ pub fn layers(s: &App, k: &Kit, layer: &mut Vec<El>) {
         form(f, k, layer);
     }
     find::dialog(s, k, layer);
+    super::settings::dialog(s, k, layer);
 }
 
 /// The text of a field's choice that means none.

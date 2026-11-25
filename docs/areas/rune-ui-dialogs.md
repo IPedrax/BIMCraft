@@ -62,3 +62,40 @@ the core's own, so it is translated where the core's catalog is.
 **Not done.** Command-specific controls (a level picker where the doc says a level, a material picker, a file dialog for a `path`);
 the form does not learn a command's parameters from the model (the types a family has, for example); undo and redo are the same
 commands as any, not the top bar's buttons; the Find list does not show the keys a command is bound to.
+
+## Piece 2: settings.json, the window's size, and the Settings dialog
+
+| Module | What it owns | Tests |
+|---|---|---|
+| `settings.rs` | the user's `settings.json`, pure and the file's IO: `Settings` (language, theme, profile, window), read kindly, written atomically, `default_path()` beside the favorites | 4, in a folder of their own |
+| `app/settings.rs` | the state (`Prefs` on `App`, the Settings dialog in `Dialogs`) and handlers: `use_settings`, `set_language`, `set_theme`, `set_profile`, `set_units`, the window's size kept once it has held still | 7, no window |
+| `ui/settings.rs` | the dialog: four selects (language, units, theme, profile) and a Project Information button | 4, Rune's headless `Runtime` |
+
+**The file.** It is the file the egui app keeps (`settings::beside` the favorites: `favorites::default_path()` with the file name
+`settings.json`), and the four keys have the same names and values there (`language`: a catalog code; `theme`: `dark`, `light` or
+`system`; `profile`: `bimcraft` or `rev`; `window`: `width`, `height`, `maximized`), so a choice made in either UI shows in both. This UI
+reads that file as JSON, sets its four keys and writes the whole of it back, so every key it does not know (shortcuts, the assistant's,
+colours: a hundred) is left as it was. The egui app writes its whole struct, so a key only this UI added would be dropped by it, and
+this UI adds none. A missing, damaged or over-large (1 MiB) file is the defaults; a key it cannot read keeps what it was; a write goes
+through `settings.json.new` and a rename. A test holds each of those. The file is read once, at the window's start (`lib.rs`'s `start`,
+`size`); tests never reach the real one (`App::use_settings` takes a path, and the tests give it a folder of their own).
+
+**What each choice does.** Language: `lang::set`, at once and at start; the dialog lists the twelve catalogs in their own words.
+Theme: `Dark`, `Light` or `System`, which draws dark because this front end cannot ask the system yet; `tok::theme` and the kit's
+palette follow it (`App::dark`), so every panel that takes the theme does, and the plan's own drawing (the core's colours) does not
+change. Profile: BIMCraft's palette or Rev's ribbon, unless the arguments asked (`--rev`, `--bimcraft` win over the file). Units: the
+*project's* (`Model::units`), so it goes through the core's `units` command and into the project's file, not into `settings.json`; the
+core's refusal is said in the dialog. Manage > Project Information is the command `project_info` as the generic form (it has every
+field the command takes, none of egui's tabs).
+
+**The window.** The size is read from the file when the window opens (`AppSpec::size`, held to 300 to 16,000 points) and kept again
+once it has held still for half a second (the window's root reports its layout: `on_layout`; `ui::poll` writes it). Only the size is
+kept, as in egui (Wayland tells an app no place). Not done: maximized is read and written but not applied (`AppSpec` has no option for
+it), a window too big for a smaller screen is not brought within it (Rune does not say the monitor's size), and the place.
+
+**Keys.** Ctrl+K is Find and Ctrl+, is Settings (both also buttons on the top bar, and Settings is in Find). The Revit shortcuts wait
+for the shared registry.
+
+**Words.** Written first here, so English until the tool learns this folder: Settings (in the catalogs already), Language, Units,
+Theme, Profile, Dark, Light, Project Information and Close are in them (egui's), so those show translated; System, BIMCraft, Rev and Dialog
+may not be.

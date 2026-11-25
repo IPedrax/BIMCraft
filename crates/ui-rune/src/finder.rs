@@ -20,6 +20,8 @@ pub enum Found {
     Command(&'static str),
     /// Shows the level's plan.
     Level(Id),
+    /// Opens the Settings dialog.
+    Settings,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -79,6 +81,10 @@ fn ranked(query: &str, levels: &[(Id, String)]) -> Vec<Hit> {
             rows.push((rank(label, &first), 1, Hit { label: label.to_string(), note, found: Found::Command(cmd.id) }));
         }
     }
+    let settings = t("Settings");
+    if matches(settings, query) {
+        rows.push((rank(settings, &first), 1, Hit { label: settings.to_string(), note: t("Dialog").to_string(), found: Found::Settings }));
+    }
     for (id, name) in levels {
         if matches(name, query) {
             rows.push((rank(name, &first), 2, Hit { label: name.clone(), note: t("View").to_string(), found: Found::Level(*id) }));
@@ -125,6 +131,13 @@ mod tests {
         let wall = hits.iter().find(|h| h.found == Found::Command("wall")).expect("WA is Wall's shortcut");
         assert!(wall.note.contains("WA"), "the shortcut is said beside it: {}", wall.note);
         assert!(ranked("adaptive_move", &[]).iter().any(|h| h.found == Found::Command("adaptive_move")), "by id");
+    }
+
+    #[test]
+    fn settings_are_found_by_name() {
+        let hits = ranked("settings", &[]);
+        assert_eq!(hits.first().map(|h| &h.found), Some(&Found::Settings), "its label is the word");
+        assert!(ranked("sett", &levels()).iter().any(|h| h.found == Found::Settings));
     }
 
     #[test]

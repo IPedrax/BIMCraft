@@ -47,6 +47,8 @@ pub struct FindState {
 pub struct Dialogs {
     pub form: Option<FormState>,
     pub find: Option<FindState>,
+    /// The Settings dialog (`app/settings.rs`).
+    pub settings: Option<super::settings::SettingsDialog>,
     /// Where an edit goes when its field is gone (a stale handler): never read.
     pub scratch: TextEdit,
 }
@@ -54,7 +56,7 @@ pub struct Dialogs {
 impl Dialogs {
     /// A dialog is open: the keys and pointer are its, not the plan's.
     pub fn any(&self) -> bool {
-        self.form.is_some() || self.find.is_some()
+        self.form.is_some() || self.find.is_some() || self.settings.is_some()
     }
 
     /// The box Find types into.
@@ -84,7 +86,7 @@ impl App {
         // The field starts focused, so what is typed goes to it.
         let mut edit = TextEdit::new("");
         edit.focused = true;
-        self.dialogs.form = None;
+        (self.dialogs.form, self.dialogs.settings) = (None, None);
         self.dialogs.find = Some(FindState { edit, at: 0 });
     }
 
@@ -115,6 +117,7 @@ impl App {
                 self.open_command(id);
             }
             Found::Level(id) => self.set_level(id),
+            Found::Settings => self.toggle_settings(),
         }
     }
 
@@ -140,15 +143,14 @@ impl App {
         if let Some(i) = form.fields.iter().position(|f| !f.kind.chosen()) {
             entries[i].edit.focused = true;
         }
-        self.dialogs.find = None;
+        (self.dialogs.find, self.dialogs.settings) = (None, None);
         self.dialogs.form = Some(FormState { form, entries, rest: TextEdit::new(""), open: None, error: None, reply: None });
         true
     }
 
     /// Closes whatever dialog is open.
     pub fn close_dialogs(&mut self) {
-        self.dialogs.form = None;
-        self.dialogs.find = None;
+        (self.dialogs.form, self.dialogs.find, self.dialogs.settings) = (None, None, None);
     }
 
     /// Opens the choices of field `i`, or closes them when they are open.
@@ -210,7 +212,7 @@ impl App {
 
     /// Runs a command for a dialog: like `run`, but a refusal is the dialog's to say, not the status bar's, and the command's reply
     /// comes back. A command that replaces the project starts the view again, as Open does.
-    fn execute(&mut self, id: &str, params: &Value) -> Result<Value, String> {
+    pub(super) fn execute(&mut self, id: &str, params: &Value) -> Result<Value, String> {
         let reply = self.session.execute(id, params)?;
         self.message = None;
         if engine::REPLACES.contains(&id) {

@@ -15,7 +15,7 @@ pub fn panel(s: &App, th: &Theme) -> El {
     let body = if s.props.is_empty() {
         col().child(text(t("Nothing selected")).font(type_::BODY).color(th.text_secondary))
     } else {
-        let kit = Kit::neutral(true);
+        let kit = Kit::neutral(s.dark());
         col().key("rows").gap(4.0).children(s.props.iter().map(|r| {
             let value = match s.fields.iter().position(|f| f.name == r.name) {
                 Some(i) => TextInput::new(&s.fields[i].edit)

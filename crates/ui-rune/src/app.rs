@@ -19,6 +19,7 @@ use crate::snapping::{Landing, Snapper};
 use crate::status;
 
 pub mod dialogs;
+pub mod settings;
 
 /// How near a click or a hover must be to a line to take it, points.
 const REACH: f32 = 4.0;
@@ -155,6 +156,8 @@ pub struct App {
     pub message: Option<String>,
     /// Find and the generic command form, the modal dialogs (`app/dialogs.rs`).
     pub dialogs: dialogs::Dialogs,
+    /// The user's `settings.json`: what it holds of ours and where it is (`app/settings.rs`).
+    pub prefs: settings::Prefs,
     /// How far the press now dragging has been followed, points.
     followed: (f32, f32),
 }
@@ -200,6 +203,7 @@ impl App {
             scratch: TextEdit::new(""),
             message: None,
             dialogs: dialogs::Dialogs::default(),
+            prefs: settings::Prefs::default(),
             followed: (0.0, 0.0),
         };
         app.settle();

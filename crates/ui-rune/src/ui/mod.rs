@@ -15,6 +15,7 @@ mod find;
 mod plan;
 mod properties;
 mod ribbon;
+mod settings;
 mod status_bar;
 mod tools;
 mod topbar;
@@ -23,7 +24,7 @@ mod topbar;
 pub const PANEL_WIDTH: f32 = 300.0;
 
 pub fn view(s: &App, _: &mut Cx<App>) -> El {
-    let th = tok::theme(true);
+    let th = tok::theme(s.dark());
     // The right-hand column both profiles share: the selected element's properties over the project's levels.
     let side = col().w(PANEL_WIDTH).h_full().child(properties::panel(s, &th)).child(browser::panel(s, &th));
     let middle = match s.profile {
@@ -37,13 +38,14 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
     // A dialog that is open is a scrim and a panel over the whole window: absolute children of the root, so nothing wraps the plan.
     let mut layer = Vec::new();
     if s.dialogs.any() {
-        dialog::layers(s, &rune_kit::Kit::neutral(true), &mut layer);
+        dialog::layers(s, &rune_kit::Kit::neutral(s.dark()), &mut layer);
     }
     col()
         .key("root")
         .w_full()
         .h_full()
         .fill(th.bg)
+        .on_layout(|s: &mut App, r| s.window_seen(r[2], r[3]))
         .child(topbar::bar(s, &th))
         .children(top)
         .child(middle)
@@ -59,6 +61,11 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if let Some(due) = s.settle_in() {
         tx.wake_after(Duration::from_secs_f64(due));
     }
+    // The window's size is kept in the settings once it has held still: nothing the view reads changes, so no frame is asked for.
+    s.save_window_if_still();
+    if let Some(due) = s.window_due() {
+        tx.wake_after(Duration::from_secs_f64(due));
+    }
     drawn
 }
 
@@ -67,6 +74,10 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
 pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     if key.mods.cmd && matches!(key.key, Key::Command('k')) {
         s.toggle_find();
+        return true;
+    }
+    if key.mods.cmd && matches!(key.key, Key::Command(',')) {
+        s.toggle_settings();
         return true;
     }
     // With a dialog open the keys are its.

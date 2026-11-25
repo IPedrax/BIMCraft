@@ -76,6 +76,7 @@ pub fn bar(s: &App, th: &Theme) -> El {
             s.redo();
         }))
         .child(button("find", t("Find"), th, |s: &mut App, _: &mut Tx| s.toggle_find()))
+        .child(button("settings", t("Settings"), th, |s: &mut App, _: &mut Tx| s.toggle_settings()))
         .child(labelled("zoom-fit", t("Zoom to Fit"), t("Fit"), th, |s: &mut App, _: &mut Tx| s.zoom_fit()))
         .child(labelled("zoom-in", t("Zoom In"), "+", th, |s: &mut App, _: &mut Tx| s.zoom_by(1.25)))
         .child(labelled("zoom-out", t("Zoom Out"), "-", th, |s: &mut App, _: &mut Tx| s.zoom_by(0.8)))
