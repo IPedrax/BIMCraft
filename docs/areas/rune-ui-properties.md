@@ -142,4 +142,26 @@ ui/properties.rs    the palette: title, filter, type selector, groups   ui/prope
 
 ## 3. What is built
 
-Nothing yet beyond this file and what the first slice lists below as it lands.
+**Slice 1 and 2, the palette for an element (this branch).** `props/` and `ui/properties/`:
+
+- `Panel::of(model, selection, filter, level)` is the whole palette as a value. One element, several of one category (a value they share
+  shows, the rest are blank, an edit changes all of them in one `modify`), a mixed selection (the categories it holds, each a button
+  that narrows what is shown and edited, the selection staying), and with nothing selected the plan of the level (egui's `PLAN` rows: name,
+  associated level, level elevation, crop, section box, view range). Past `MAX_IDS` (1,000) elements it counts and lists no rows.
+- Every row of egui's table is carried over (`table.rs` is a copy of `rows`, `PLAN`, `PLAN_VIEW`, `PLAN_DEPENDENT`), with the same rules for which
+  row shows (`relevant`, no row for a length an element lacks, a hosted component's offset and a floor's that follows a room shown and not typed,
+  work plane rows) and the same kinds. Lengths, points and outlines are shown with `Units::with_unit` and typed with `Units::parse`; areas and
+  volumes shown with `Units::area` and `Units::volume`; commands and files stay in mm.
+- The editors: read-only text, a field (Enter commits; a value typed over with itself is no edit), a check box, a list opened in place under its
+  row (no popup), a link that selects what it points at, and a button for a dialog this window does not have (`seam`: View Range). A refusal, from the
+  value typed or from the core, is said under the title of the palette and in the status bar, and changes nothing.
+- Tests: `props/tests.rs` sweeps every category of the sample house and of a two-storey tower with its drawings (one element, three of a
+  category, a field for each row typed over with itself, a check set the other way, every option of every list), and carries an edit through
+  `Session::execute` and reads it back; `ui/properties/tests.rs` drives the window.
+
+**Not built from egui's palette yet** (each is a row of the same shape, a kind, or an extra panel): the extra panels of the inventory above
+(layers picture, floor slope presets, opening picker, sketch, ties, stair and ramp flights, curtain part panel, component family parameters,
+the electrical group of a board and a circuit, the project's parameters, a sheet's title block, phasing, camera, section box, underlay,
+schedule fields, a site point's panel), the greyed rows of a group's member, several views picked in the browser, a field committing when it loses
+the keyboard (the kit's `TextInput` gives Enter only), the Framing drop-down's Type Properties button, `Apply` (a field commits on Enter, as in egui),
+and the layer sample beside a wall type. The Revit shortcuts wait for the shared registry.
