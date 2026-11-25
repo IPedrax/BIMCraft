@@ -172,6 +172,14 @@ elements; the plan of a level is the dense picture the Rune window shows):
   a scaled subtree again in full each frame (the cost sits in the live frames, not in the core). I have not profiled why. The window
   therefore opens in `CameraMode::Live` on Windows and `Exact` elsewhere (`BIMCRAFT_RUNE_CAMERA=live` or `exact` chooses), to be measured
   again when Rune's Linux CPU renderer is released. A real card, which composites a scaled layer for nothing, was not measured.
+
+  Two more runs say how far to trust the table. The Windows house, `Live` again (runs 45532642548 and 45538998003): a wheel notch 2.8 to
+  3.4 and then 4.2 to 5.6 ms, a pan step 13.6 and then 18.1 to 18.4 against 33 for `Exact`: the runners differ by a third, the win does not.
+  And a trap on Linux: with `Exact` still on, but the layers inside the wrapper element bound to the live offset and scale at rest (run
+  45532642548), the house's wheel notch cost 80 to 84 ms against 42 and its pan step 17 against 22, so the wrapper alone, doing nothing,
+  changes the cost on that renderer in both directions (not profiled). `Exact` therefore has no wrapper; the layers are the canvas's own
+  children, as before, and every Linux number came back to the commit before the live camera's (run 45538998003: house wheel notch 43,
+  pan 22.2, pointer 2.8 to 3.0 ms; tower 133 and 16.5).
 - **Frame cost, by each toolkit's own clock.** egui's `--bench` (frames forced as if the user kept moving, on the real window): a median
   frame of 22 to 29 ms idle and zoomed, 33 ms panned, on two different runners; with the join of PR 628, 48 to 82 ms, because it paces
   on cost (14 to 15 frames a second panned or zoomed against 31 to 32: PR 628 buys its CPU with frame rate). Rune headless on lavapipe
